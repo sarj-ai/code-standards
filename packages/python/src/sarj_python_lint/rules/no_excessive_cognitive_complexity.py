@@ -15,7 +15,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
-from sarj_python_lint.rules._ast_index import children
+from sarj_python_lint.rules._ast_index import children, comprehension_results
 
 
 if TYPE_CHECKING:
@@ -154,8 +154,7 @@ class _Complexity:
                 self.add(condition, nesting, "comprehension filter")
                 self.visit(condition, nesting)
                 nesting += 1
-        values = (node.key, node.value) if isinstance(node, ast.DictComp) else (node.elt,)
-        self.visit_all(values, nesting)
+        self.visit_all(comprehension_results(node), nesting)
 
 
 @final

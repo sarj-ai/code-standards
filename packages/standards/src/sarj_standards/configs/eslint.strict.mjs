@@ -1365,7 +1365,7 @@ export function createConfig(options = {}) {
       "@sarj/no-offset-pagination": "error",
       "@sarj/no-select-star": "error",
       "@sarj/no-zod-native-enum": "error",
-      "@sarj/no-impossible-zod-literal-bounds": "error",
+      "@sarj/no-impossible-zod-literal-bounds": ["error", { delegateRealContradictions: true }],
       "@sarj/no-in-operator-on-built-in-collections": "error",
       "@sarj/prefer-module-level-constant": "error",
       "@sarj/prefer-module-level-schema": "error",

@@ -4,7 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/require-fetch-timeout.test.ts
  */
 
-import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
+import {
+  AST_NODE_TYPES,
+  ASTUtils,
+  type TSESTree,
+} from "@typescript-eslint/utils";
 
 import { unwrapExpression } from "./_unwrap-expression.js";
 
@@ -12,6 +16,8 @@ import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isScriptFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "missingSignal";
+type EmptySignal = "null" | "undefined";
+type SignalState = EmptySignal | "absent" | "unknown";
 type Options = readonly [
   {
     allowIn?: readonly string[];
@@ -19,14 +25,46 @@ type Options = readonly [
 ];
 
 export const REQUIRE_FETCH_TIMEOUT_DOCUMENTATION = {
-  summary: "Require an explicit abort signal on locally analyzable global fetch calls.",
-  rationale: "An unbounded request can occupy work indefinitely when an upstream stalls.",
-  remediation: "Pass an abort signal, such as `AbortSignal.timeout(ms)`, in the fetch init.",
+  summary:
+    "Require an explicit abort signal on locally analyzable global fetch calls.",
+  rationale:
+    "An unbounded request can occupy work indefinitely when an upstream stalls.",
+  remediation:
+    "Pass an abort signal, such as `AbortSignal.timeout(ms)`, in the fetch init.",
   category: "correctness",
-  limitations: ["Signal presence establishes an explicit cancellation path, not a guaranteed timeout. Literal null, global undefined, and void 0 do not provide a signal. Unknown spreads and dynamic values are not inferred. Forwarded Request objects can carry an existing signal."],
+  limitations: [
+    "Signal presence establishes an explicit cancellation path, not a guaranteed timeout. Literal null, global undefined, and void 0 do not provide a signal. Erased TypeScript wrappers preserve the same analysis. Unknown spreads and dynamic values are not inferred. Forwarded Request objects retain their signal unless an init explicitly resets it to null.",
+    "Accessors and unproved prototypes are excluded because native option conversion can attach or replace a signal before it is read.",
+  ],
   examples: [
-    { id: "bounded-fetch", title: "Bound the request", outcome: "no-match", files: [{ path: "src/client.ts", source: "await fetch(url, { signal: AbortSignal.timeout(5000) });" }], focusPath: "src/client.ts", expectedCount: 0, public: true },
-    { id: "unbounded-fetch", title: "Do not leave fetch unbounded", outcome: "match", files: [{ path: "src/client.ts", source: "await fetch('https://api.example.com/items');" }], focusPath: "src/client.ts", expectedCount: 1, public: true },
+    {
+      id: "bounded-fetch",
+      title: "Bound the request",
+      outcome: "no-match",
+      files: [
+        {
+          path: "src/client.ts",
+          source: "await fetch(url, { signal: AbortSignal.timeout(5000) });",
+        },
+      ],
+      focusPath: "src/client.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "unbounded-fetch",
+      title: "Do not leave fetch unbounded",
+      outcome: "match",
+      files: [
+        {
+          path: "src/client.ts",
+          source: "await fetch('https://api.example.com/items');",
+        },
+      ],
+      focusPath: "src/client.ts",
+      expectedCount: 1,
+      public: true,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -55,32 +93,84 @@ function matchesAnyPattern(
   return false;
 }
 
-function initProvablyLacksSignal(
+function emptySignal(
+  expression: TSESTree.Node,
+  resolvesToGlobal: (identifier: TSESTree.Identifier) => boolean,
+): EmptySignal | null {
+  const value = unwrapExpression(expression);
+  if (value.type === AST_NODE_TYPES.Literal && value.value === null)
+    return "null";
+  if (
+    value.type === AST_NODE_TYPES.Identifier &&
+    value.name === "undefined" &&
+    resolvesToGlobal(value)
+  )
+    return "undefined";
+  if (
+    value.type === AST_NODE_TYPES.UnaryExpression &&
+    value.operator === "void"
+  ) {
+    const argument = unwrapExpression(value.argument);
+    if (argument.type === AST_NODE_TYPES.Literal && argument.value === 0)
+      return "undefined";
+  }
+  return null;
+}
+
+function initSignalState(
   init: TSESTree.CallExpressionArgument,
   resolvesToGlobal: (identifier: TSESTree.Identifier) => boolean,
-): boolean {
-  if (init.type !== AST_NODE_TYPES.ObjectExpression) return false;
-  let lacksSignal = true;
+): SignalState {
+  init = unwrapExpression(init);
+  if (init.type !== AST_NODE_TYPES.ObjectExpression) return "unknown";
+  let state: SignalState = "absent";
   for (const prop of init.properties) {
     if (prop.type === AST_NODE_TYPES.SpreadElement) {
-      lacksSignal = false;
+      state = "unknown";
       continue;
     }
+    if (prop.kind !== "init" || hasUnprovedPrototype(prop)) return "unknown";
     const isSignal =
-      (!prop.computed && prop.key.type === AST_NODE_TYPES.Identifier && prop.key.name === "signal") ||
+      (!prop.computed &&
+        prop.key.type === AST_NODE_TYPES.Identifier &&
+        prop.key.name === "signal") ||
       (prop.key.type === AST_NODE_TYPES.Literal && prop.key.value === "signal");
     if (isSignal) {
-      const value = prop.value;
-      lacksSignal = prop.kind === "init" && !prop.method && (
-        (value.type === AST_NODE_TYPES.Literal && value.value === null) ||
-        (value.type === AST_NODE_TYPES.Identifier && value.name === "undefined" && resolvesToGlobal(value)) ||
-        (value.type === AST_NODE_TYPES.UnaryExpression && value.operator === "void" && value.argument.type === AST_NODE_TYPES.Literal && value.argument.value === 0)
-      );
+      state = !prop.method
+        ? (emptySignal(prop.value, resolvesToGlobal) ?? "unknown")
+        : "unknown";
+    } else if (
+      !prop.computed &&
+      ASTUtils.getPropertyName(prop) === "__proto__" &&
+      state === "absent"
+    ) {
+      state = "unknown";
     } else if (prop.computed && prop.key.type !== AST_NODE_TYPES.Literal) {
-      lacksSignal = false;
+      state = "unknown";
     }
   }
-  return lacksSignal;
+  return state;
+}
+
+function hasUnprovedPrototype(property: TSESTree.Property): boolean {
+  if (
+    property.computed ||
+    property.method ||
+    property.shorthand ||
+    ASTUtils.getPropertyName(property) !== "__proto__"
+  )
+    return false;
+  const prototype = unwrapExpression(property.value);
+  if (prototype.type === AST_NODE_TYPES.Literal && prototype.value === null)
+    return false;
+  if (prototype.type !== AST_NODE_TYPES.ObjectExpression) return true;
+  return prototype.properties.some(
+    (member) =>
+      member.type === AST_NODE_TYPES.SpreadElement ||
+      member.kind !== "init" ||
+      (!member.computed && ASTUtils.getPropertyName(member) === "__proto__") ||
+      (member.computed && member.key.type !== AST_NODE_TYPES.Literal),
+  );
 }
 
 /** True for a URL spelled inline rather than a forwarded Request. */
@@ -149,37 +239,41 @@ export default createRule<Options, MessageIds>({
     /** True for `fetch(...)` / `globalThis.fetch(...)` / `window.fetch(...)` /
      * `self.fetch(...)` where the receiver resolves to the global scope. */
     function isGlobalFetchCall(callee: TSESTree.Expression): boolean {
+      callee = unwrapExpression(callee);
       if (callee.type === AST_NODE_TYPES.Identifier) {
         return callee.name === "fetch" && resolvesToGlobal(callee);
       }
+      const receiver =
+        callee.type === AST_NODE_TYPES.MemberExpression
+          ? unwrapExpression(callee.object)
+          : null;
       return (
         callee.type === AST_NODE_TYPES.MemberExpression &&
-        !callee.computed &&
-        callee.property.type === AST_NODE_TYPES.Identifier &&
-        callee.property.name === "fetch" &&
-        callee.object.type === AST_NODE_TYPES.Identifier &&
-        GLOBAL_OBJECTS.has(callee.object.name) &&
-        resolvesToGlobal(callee.object)
+        ASTUtils.getPropertyName(callee) === "fetch" &&
+        receiver?.type === AST_NODE_TYPES.Identifier &&
+        GLOBAL_OBJECTS.has(receiver.name) &&
+        resolvesToGlobal(receiver)
       );
     }
 
     /** Prove a same-scope const object cannot acquire a signal before use. */
-    function localConstInitProvablyLacksSignal(
+    function localConstInitSignalState(
       identifier: TSESTree.Identifier,
-    ): boolean {
+    ): SignalState {
       const variable = ASTUtils.findVariable(
         context.sourceCode.getScope(identifier),
         identifier.name,
       );
-      if (variable?.defs.length !== 1) return false;
+      if (variable?.defs.length !== 1) return "unknown";
       const definition = variable.defs[0];
       if (
         definition?.type !== "Variable" ||
         definition.parent.kind !== "const" ||
-        definition.node.init?.type !== AST_NODE_TYPES.ObjectExpression ||
-        !initProvablyLacksSignal(definition.node.init, resolvesToGlobal)
+        definition.node.init === null ||
+        unwrapExpression(definition.node.init).type !==
+          AST_NODE_TYPES.ObjectExpression
       ) {
-        return false;
+        return "unknown";
       }
       for (const reference of variable.references) {
         const ref = reference.identifier;
@@ -191,24 +285,45 @@ export default createRule<Options, MessageIds>({
           member.computed ||
           member.property.type !== AST_NODE_TYPES.Identifier ||
           member.property.name === "signal" ||
+          member.property.name === "__proto__" ||
           member.parent.type !== AST_NODE_TYPES.AssignmentExpression ||
           member.parent.left !== member
         ) {
-          return false;
+          return "unknown";
         }
       }
-      return true;
+      return initSignalState(definition.node.init, resolvesToGlobal);
     }
 
-    function isForwardedRequest(argument: TSESTree.CallExpressionArgument): boolean {
-      let value = argument;
+    function isForwardedRequest(
+      argument: TSESTree.CallExpressionArgument,
+    ): boolean {
+      let value = unwrapExpression(argument);
       if (value.type === AST_NODE_TYPES.Identifier) {
-        const binding = ASTUtils.findVariable(context.sourceCode.getScope(value), value.name);
-        const definition = binding?.defs.length === 1 ? binding.defs[0] : undefined;
-        if (definition?.type !== "Variable" || definition.parent.kind !== "const" || definition.node.init === null || binding?.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
-        value = definition.node.init;
+        const binding = ASTUtils.findVariable(
+          context.sourceCode.getScope(value),
+          value.name,
+        );
+        const definition =
+          binding?.defs.length === 1 ? binding.defs[0] : undefined;
+        if (
+          definition?.type !== "Variable" ||
+          definition.parent.kind !== "const" ||
+          definition.node.init === null ||
+          binding?.references.some(
+            (reference) => reference.isWrite() && reference.init !== true,
+          )
+        )
+          return false;
+        value = unwrapExpression(definition.node.init);
       }
-      return value.type === AST_NODE_TYPES.NewExpression && value.callee.type === AST_NODE_TYPES.Identifier && value.callee.name === "Request" && resolvesToGlobal(value.callee);
+      if (value.type !== AST_NODE_TYPES.NewExpression) return false;
+      const callee = unwrapExpression(value.callee);
+      return (
+        callee.type === AST_NODE_TYPES.Identifier &&
+        callee.name === "Request" &&
+        resolvesToGlobal(callee)
+      );
     }
 
     return {
@@ -221,19 +336,30 @@ export default createRule<Options, MessageIds>({
         // Proxy passthrough: a lone non-string argument is a Request (or
         // equivalent) being forwarded — the inbound request owns the
         // lifetime, and a fresh signal cannot be attached without an init.
-        const [first, init] = node.arguments;
+        const [first, rawInit] = node.arguments;
+        const init =
+          rawInit === undefined ? undefined : unwrapExpression(rawInit);
+        const state =
+          init === undefined
+            ? "unknown"
+            : init.type === AST_NODE_TYPES.Identifier
+              ? localConstInitSignalState(init)
+              : initSignalState(init, resolvesToGlobal);
         if (
           first !== undefined &&
-          ((node.arguments.length === 1 && !isInlineUrl(first, resolvesToGlobal)) || isForwardedRequest(first))
+          ((node.arguments.length === 1 &&
+            !isInlineUrl(first, resolvesToGlobal)) ||
+            (isForwardedRequest(first) && state !== "null"))
         ) {
           return;
         }
 
         if (
           init === undefined ||
-          initProvablyLacksSignal(init, resolvesToGlobal) ||
-          (init.type === AST_NODE_TYPES.Identifier &&
-            localConstInitProvablyLacksSignal(init))
+          state !== "unknown" ||
+          (first !== undefined &&
+            isInlineUrl(first, resolvesToGlobal) &&
+            emptySignal(init, resolvesToGlobal) !== null)
         ) {
           context.report({ node, messageId: "missingSignal" });
         }

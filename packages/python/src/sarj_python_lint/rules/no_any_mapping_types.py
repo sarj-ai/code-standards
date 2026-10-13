@@ -4,6 +4,7 @@ import ast
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import PurePosixPath
+import re
 from typing import TYPE_CHECKING, ClassVar, final, override
 
 from sarj_python_lint.rule_base import (
@@ -38,6 +39,7 @@ _MAPPING_NAMES = frozenset({"dict", "Dict", "Mapping", "MutableMapping"})
 _MAPPING_ARGUMENT_COUNT = 2
 _BUILTIN_TYPE_CONTAINERS = frozenset({"dict", "list", "set", "frozenset", "tuple", "type"})
 _TYPE_MODULES = frozenset({"typing", "typing_extensions", "pydantic", "collections", "builtins"})
+_TYPE_COMMENT_MARKER = re.compile(r"#\s*type:")
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,9 +127,14 @@ class NoAnyMappingTypes(Rule):
         source = context.source
         if context.generated or _is_vendor_path(path):
             return []
-        try:
-            tree = ast.parse(source, filename=str(path), type_comments=True)
-        except SyntaxError:
+        if _TYPE_COMMENT_MARKER.search(source) is None:
+            tree = context.tree
+        else:
+            try:
+                tree = ast.parse(source, filename=str(path), type_comments=True)
+            except SyntaxError:
+                return []
+        if tree is None:
             return []
         semantics = AnnotationSemantics.from_tree(tree)
         imports = semantics.imports

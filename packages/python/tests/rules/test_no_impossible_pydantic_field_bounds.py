@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path, PurePosixPath
 
+from pydantic import BaseModel, Field, ValidationError
 import pytest
 from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 from sarj_rule_contracts.examples import verify_native_rule
@@ -14,6 +16,81 @@ from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossi
 _PREFIX = "from pydantic import BaseModel, Field\nfrom typing import Annotated\n"
 
 
+@pytest.mark.parametrize(
+    ("configuration", "matches"),
+    [
+        ("ConfigDict(strict=True, extra='forbid')", True),
+        ("{'frozen': True, 'validate_default': True}", True),
+        ("ConfigDict(strict=False, extra='allow')", True),
+        ("ConfigDict(str_max_length=1)", False),
+        ("ConfigDict(**settings)", False),
+    ],
+)
+def test_passive_model_configuration_does_not_hide_empty_domains(configuration: str, *, matches: bool) -> None:
+    source = (
+        "from pydantic import BaseModel, ConfigDict, Field\n"
+        "class Model(BaseModel):\n"
+        f"    model_config = {configuration}\n"
+        "    value: int = Field(gt=0, lt=1)\n"
+    )
+    assert len(NoImpossiblePydanticFieldBounds().check(Path("app/models.py"), source)) == int(matches)
+    feasible = source.replace("lt=1", "le=1")
+    assert NoImpossiblePydanticFieldBounds().check(Path("app/models.py"), feasible) == []
+
+
+@pytest.mark.parametrize(
+    ("declaration", "matches"),
+    [
+        ("Field(ge=1, le=2, multiple_of=3)", True),
+        ("Field(gt=-3, lt=0, multiple_of=3)", True),
+        ("Field(ge=9007199254740993, le=9007199254740994, multiple_of=5)", True),
+        ("Field(ge=1, le=3, multiple_of=3)", False),
+        ("Field(ge=-6, le=-4, multiple_of=3)", False),
+        ("Field(gt=-1, lt=1, multiple_of=2)", False),
+        ("Field(ge=1, multiple_of=3)", False),
+        ("Field(ge=1, le=2, multiple_of=3.0)", False),
+        ("Field(ge=1, le=2, multiple_of=0)", False),
+        ("Field(ge=1, le=2, multiple_of=step)", False),
+    ],
+)
+def test_integer_multiples_must_intersect_the_bounded_domain(declaration: str, *, matches: bool) -> None:
+    source = _PREFIX + f"class Model(BaseModel):\n    value: int = {declaration}\n"
+    assert len(NoImpossiblePydanticFieldBounds().check(Path("app/models.py"), source)) == int(matches)
+
+
+@pytest.mark.parametrize(
+    ("lower", "upper", "lower_name", "upper_name", "witness"),
+    [
+        (1.0, math.nextafter(1.0, math.inf), "gt", "lt", None),
+        (0.0, math.nextafter(0.0, math.inf), "gt", "lt", None),
+        (math.nextafter(-1.0, -math.inf), -1.0, "gt", "lt", None),
+        (1.0, math.nextafter(1.0, math.inf), "ge", "lt", 1.0),
+        (1.0, math.nextafter(1.0, math.inf), "gt", "le", math.nextafter(1.0, math.inf)),
+    ],
+)
+def test_adjacent_float_bounds_follow_native_float_validation(
+    lower: float, upper: float, lower_name: str, upper_name: str, witness: float | None
+) -> None:
+    class BoundedFloat(BaseModel):
+        value: float = Field(
+            gt=lower if lower_name == "gt" else None,
+            ge=lower if lower_name == "ge" else None,
+            lt=upper if upper_name == "lt" else None,
+            le=upper if upper_name == "le" else None,
+        )
+
+    source = (
+        _PREFIX + f"class Model(BaseModel):\n    value: float = Field({lower_name}={lower!r}, {upper_name}={upper!r})\n"
+    )
+    assert len(NoImpossiblePydanticFieldBounds().check(Path("app/models.py"), source)) == int(witness is None)
+    if witness is None:
+        for endpoint in (lower, upper):
+            with pytest.raises(ValidationError):
+                BoundedFloat.model_validate({"value": endpoint})
+    else:
+        assert BoundedFloat.model_validate({"value": witness}).value == witness
+
+
 @pytest.mark.parametrize("member_value", ["Descriptor()", "guard", "guards[0]"])
 def test_class_creation_descriptor_can_replace_an_apparently_impossible_field(member_value: str) -> None:
     source = (
@@ -24,6 +101,56 @@ def test_class_creation_descriptor_can_replace_an_apparently_impossible_field(me
         f"    marker: ClassVar[Descriptor] = {member_value}\n"
     )
     assert NoImpossiblePydanticFieldBounds().check(Path("app/records.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "Registration[Model]",
+        "'Registration[Model]'",
+        "list[Registration[Model]]",
+        "list['Registration[Model]']",
+        "typing.List['Registration[Model]']",
+    ],
+)
+@pytest.mark.parametrize("configuration", ["", "    model_config = ConfigDict(strict=True)\n"])
+def test_opaque_annotation_subscription_can_replace_a_field(annotation: str, configuration: str) -> None:
+    source = (
+        "from __future__ import annotations\n"
+        "import typing\nfrom pydantic import BaseModel, ConfigDict, Field\n"
+        "class Registration:\n"
+        "    @classmethod\n"
+        "    def __class_getitem__(cls, owner):\n"
+        "        owner.value = Field(gt=0, lt=2)\n"
+        "        return int\n"
+        "class Model(BaseModel):\n"
+        + configuration
+        + "    value: int = Field(gt=0, lt=1)\n"
+        + f"    trigger: {annotation} = 0\n"
+    )
+    assert NoImpossiblePydanticFieldBounds().check(Path("app/models.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    [
+        "list[int]",
+        "tuple[int, ...]",
+        "dict[str, int]",
+        "type[int]",
+        "typing.List['int']",
+        "typing.Literal['Registration[Model]']",
+        "typing.Annotated[int, 'Registration[Model]']",
+    ],
+)
+def test_source_proven_annotation_subscriptions_preserve_domain_checks(annotation: str) -> None:
+    source = (
+        "import typing\nfrom pydantic import BaseModel, Field\n"
+        "class Model(BaseModel):\n"
+        "    value: int = Field(gt=0, lt=1)\n"
+        f"    trigger: {annotation} = 0\n"
+    )
+    assert len(NoImpossiblePydanticFieldBounds().check(Path("app/models.py"), source)) == 1
 
 
 _CASES = (

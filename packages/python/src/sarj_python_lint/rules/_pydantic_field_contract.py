@@ -25,6 +25,8 @@ DECORATOR_SOURCES = frozenset({"pydantic", "pydantic.functional_validators", "py
 TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
 _ALIAS_VERSION = Version("2.11")
 _BUILTIN_BINDINGS = frozenset({"int", "float", "str", "list", "classmethod", "staticmethod"})
+_GENERIC_BUILTINS = frozenset({"dict", "frozenset", "list", "set", "tuple", "type"})
+_BUILTIN_SOURCES = frozenset({"builtins"})
 _SENSITIVE_MODULES = frozenset({"pydantic", "typing", "typing_extensions", "builtins"})
 
 
@@ -76,6 +78,8 @@ def _plain_member(node: ast.stmt, context: PythonFileContext, provenance: Resour
 
 
 def inert_annotation(node: ast.expr, context: PythonFileContext) -> bool:
+    if isinstance(node, (ast.Tuple, ast.List)):
+        return all(inert_annotation(element, context) for element in node.elts)
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         try:
             node = ast.parse(node.value, mode="eval").body
@@ -104,6 +108,8 @@ def inert_signature(node: ast.FunctionDef | ast.AsyncFunctionDef, context: Pytho
 
 
 def _inert_expr(node: ast.AST, context: PythonFileContext) -> bool:
+    if isinstance(node, ast.Subscript) and not _inert_subscription(node, context):
+        return False
     if isinstance(node, ast.Lambda):
         return not node.args.defaults and not node.args.kw_defaults
     if isinstance(node, ast.Call):
@@ -121,10 +127,39 @@ def _inert_expr(node: ast.AST, context: PythonFileContext) -> bool:
             return False
     if isinstance(
         node,
-        (ast.NamedExpr, ast.Await, ast.Yield, ast.YieldFrom, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp),
+        (
+            ast.NamedExpr,
+            ast.Starred,
+            ast.Await,
+            ast.Yield,
+            ast.YieldFrom,
+            ast.ListComp,
+            ast.SetComp,
+            ast.DictComp,
+            ast.GeneratorExp,
+        ),
     ):
         return False
     return all(_inert_expr(child, context) for child in ast.iter_child_nodes(node))
+
+
+def _inert_subscription(node: ast.Subscript, context: PythonFileContext) -> bool:
+    symbol = context.imports.resolved_symbol(node.value, sources=TYPING_SOURCES)
+    if symbol is None and not (
+        (
+            isinstance(node.value, ast.Name)
+            and node.value.id in _GENERIC_BUILTINS
+            and context.imports.builtin_is_unshadowed(node.value.id)
+        )
+        or context.imports.resolved_symbol(node.value, sources=_BUILTIN_SOURCES) in _GENERIC_BUILTINS
+    ):
+        return False
+    arguments = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
+    if symbol == "Literal":
+        return True
+    if symbol == "Annotated":
+        return bool(arguments) and inert_annotation(arguments[0], context)
+    return all(inert_annotation(argument, context) for argument in arguments)
 
 
 def literal_value(value: ast.expr) -> bool:

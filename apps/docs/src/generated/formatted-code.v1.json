@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "585e001e00ccf5ad53deb10c0493ca44367554ff061a244f66f50e43a71506b7",
-  "cliSha256": "6526ebd426fe3038edfcef744d16d227f00e6081ea44463b3592332cc9a0c6a1",
+  "catalogSha256": "4879a4c36c402d4d067b2d3a27e9e66afc8eb75871e0ad204953b946d1db6530",
+  "cliSha256": "b0d89d7fa0142966faef6c1535b6e595a01c0df02b79205d6482b13f58bb5700",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.20.2",
@@ -1074,7 +1074,7 @@
           "title": "Reject an empty numeric interval"
         }
       ],
-      "optionsSchemaSource": null
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"delegateRealContradictions\": {\n      \"description\": \"Let enabled upstream zod/no-conflicting-checks own explicit real-bound contradictions.\",\n      \"type\": \"boolean\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:no-in-operator-on-built-in-collections": {
       "examples": [

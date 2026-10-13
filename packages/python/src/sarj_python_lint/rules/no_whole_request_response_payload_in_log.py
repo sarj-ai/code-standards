@@ -69,6 +69,9 @@ def _reference_tokens(value: ast.expr) -> tuple[str, ...]:
             return tuple(identifier_tokens(name))
         case ast.Attribute(value=receiver, attr=attribute):
             return (*_reference_tokens(receiver), *identifier_tokens(attribute))
+        case ast.Subscript(value=receiver, slice=ast.Constant(value=str() as key)):
+            metadata = tuple(word for word in identifier_tokens(key) if word in _SAFE_METADATA or word == "not")
+            return (*_reference_tokens(receiver), *metadata)
         case ast.Subscript(value=receiver):
             return _reference_tokens(receiver)
         case ast.Await(value=awaited):

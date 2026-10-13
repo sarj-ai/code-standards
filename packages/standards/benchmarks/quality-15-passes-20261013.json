@@ -1,0 +1,467 @@
+{
+  "schemaVersion": 1,
+  "repository": "sarj-ai/code-standards",
+  "baseCommit": "a04163964b34e7bf130005424e1f68108e64cf7a",
+  "requestedPasses": 15,
+  "state": "local-verified-and-five-judge-passes-approved",
+  "passes": [
+    {
+      "pass": 1,
+      "focus": "dependency-freshness",
+      "evidence": "Official registry versions of eight core dependencies match the current pins.",
+      "decision": "verified-current"
+    },
+    {
+      "pass": 2,
+      "focus": "modern-enum-and-closed-domain-typing",
+      "evidence": "Audit existing Ruff UP042 and SARJ006 ownership; preserve named Literal alternatives and external domains.",
+      "decision": "verified-existing-owner",
+      "controls": {
+        "legacyEnumRuff": "UP042",
+        "modernStrEnum": "0 findings"
+      }
+    },
+    {
+      "pass": 3,
+      "focus": "any-mapping-parse-cache",
+      "evidence": "NoAnyMappingTypes reparsed every source despite PythonFileContext already owning the same syntax tree; retain separate parsing only for type comments.",
+      "decision": "measured-diagnostic-parity",
+      "measurement": "Three alternating before/after process pairs on the selected six-rule Python panel; 3976 files, identical diagnostics per pair."
+    },
+    {
+      "pass": 4,
+      "focus": "pydantic-passive-config",
+      "evidence": "Strict/frozen/default-validation/extra-only ConfigDict or dict settings masked otherwise impossible field domains. Opaque and quoted/nested custom type subscriptions are excluded from the shared class-effect proof, preserving canonical built-in and typing forms.",
+      "decision": "implemented"
+    },
+    {
+      "pass": 5,
+      "focus": "pydantic-integer-multiples",
+      "evidence": "A bounded integer domain can contain no positive integer multiple even when its lower bound is below its upper bound.",
+      "decision": "implemented"
+    },
+    {
+      "pass": 6,
+      "focus": "pydantic-representable-floats",
+      "evidence": "Open intervals between adjacent finite floats admit no representable Python float.",
+      "decision": "implemented"
+    },
+    {
+      "pass": 7,
+      "focus": "modern-zod-integers",
+      "evidence": "Top-level Zod int constructors were absent from the existing empty-domain detector.",
+      "decision": "implemented"
+    },
+    {
+      "pass": 8,
+      "focus": "zod-intrinsic-integer-ranges",
+      "evidence": "int32 and uint32 bounds can contradict their intrinsic ranges without a second explicit bound.",
+      "decision": "implemented"
+    },
+    {
+      "pass": 9,
+      "focus": "zod-lengths-and-diagnostic-ownership",
+      "evidence": "Fractional string/array bounds can admit no integer length; explicit real conflicts should have one enabled owner in the managed preset. Erased wrapper boundaries preserve admitted default, optional and nullable results; continued bound chains report once.",
+      "decision": "implemented"
+    },
+    {
+      "pass": 10,
+      "focus": "fetch-computed-globals",
+      "evidence": "Literal computed ambient fetch access bypassed the existing cancellation rule.",
+      "decision": "implemented"
+    },
+    {
+      "pass": 11,
+      "focus": "fetch-erased-init-and-inherited-options",
+      "evidence": "Erased assertions/satisfies wrappers bypassed inspection; literal prototype options can provide an inherited signal and must not be treated as a proven absence. Preserve wrapped Request cancellation and abstain on prototype setter writes. Own and inherited accessors remain unproved during native option conversion, regardless of declaration order.",
+      "decision": "implemented"
+    },
+    {
+      "pass": 12,
+      "focus": "fetch-empty-init-and-request-signal-reset",
+      "evidence": "Explicit empty init values leave inline URLs unbounded; null resets an existing Request signal while undefined retains it.",
+      "decision": "implemented"
+    },
+    {
+      "pass": 13,
+      "focus": "payload-metadata-remediation",
+      "evidence": "Literal metadata selection was falsely reported despite being the documented remedy. Preserve warning coverage for unproven selections and raw full slices.",
+      "decision": "implemented"
+    },
+    {
+      "pass": 14,
+      "focus": "python315-unpacking-comprehensions",
+      "evidence": "Valid Python 3.15 dictionary-unpacking comprehensions exposed optional expression slots and crashed multiple native traversals. Preserve generator scope and mutation detection through expression-only result traversal.",
+      "decision": "implemented"
+    },
+    {
+      "pass": 15,
+      "focus": "baseline-and-consumer-adoption",
+      "evidence": "Retain rejection of unreviewed repository fingerprint migration; validate rollout configuration and scope. Official registry has five consumers with auto_merge=false.",
+      "decision": "verified-existing-safety-controls",
+      "tests": 72
+    }
+  ],
+  "newRuleIds": 0,
+  "policy": "Source-semantic improvements at existing owners; no blanket severity promotion or automatic fix; five judge reviews and normal exact-head CI before the code-standards-only admin merge. Consumer verification and PR creation follow publication; consumer merging remains disabled.",
+  "consumerScope": {
+    "registeredConsumers": 5,
+    "registryPubliclyDisclosed": false,
+    "autoMergeEnabled": 0,
+    "discoveredActiveConsumers": 12,
+    "additionalActiveConsumersOutsideRegistry": 7
+  },
+  "artifact": "packages/standards/benchmarks/quality-15-passes-20261013.json",
+  "versions": {
+    "python": "1.36.0",
+    "typescript": "16.11.0",
+    "standards": "8.55.0"
+  },
+  "freshness": [
+    {
+      "package": "pydantic",
+      "latestStable": "2.14.1",
+      "registry": "https://pypi.org/pypi/pydantic/json"
+    },
+    {
+      "package": "ruff",
+      "latestStable": "0.17.0",
+      "registry": "https://pypi.org/pypi/ruff/json"
+    },
+    {
+      "package": "basedpyright",
+      "latestStable": "1.40.2",
+      "registry": "https://pypi.org/pypi/basedpyright/json"
+    },
+    {
+      "package": "repo-standards",
+      "latestStable": "6.5.0",
+      "registry": "https://pypi.org/pypi/repo-standards/json"
+    },
+    {
+      "package": "unicorn",
+      "latestStable": "78.0.0",
+      "registry": "https://registry.npmjs.org/eslint-plugin-unicorn/latest"
+    },
+    {
+      "package": "typescript-eslint",
+      "latestStable": "8.71.2",
+      "registry": "https://registry.npmjs.org/typescript-eslint/latest"
+    },
+    {
+      "package": "eslint-plugin-zod",
+      "latestStable": "5.0.1",
+      "registry": "https://registry.npmjs.org/eslint-plugin-zod/latest"
+    },
+    {
+      "package": "zod",
+      "latestStable": "4.6.7",
+      "registry": "https://registry.npmjs.org/zod/latest"
+    }
+  ],
+  "primaryReferences": [
+    "https://docs.python.org/3.15/library/ast.html",
+    "https://fetch.spec.whatwg.org/#dom-request",
+    "https://zod.dev/api",
+    "https://docs.pydantic.dev/latest/api/fields/"
+  ],
+  "validation": {
+    "focusedPythonTests": 272,
+    "focusedTypeScriptTests": 158,
+    "python315IntegrationContexts": 13,
+    "baselineAndRolloutControls": 72,
+    "canonicalPythonTypeErrors": 0,
+    "canonicalTypeScriptTypeErrors": 0,
+    "fullRepositoryGate": "passed-final-repaired-source",
+    "fiveJudgePasses": {
+      "completed": 5,
+      "approved": 5,
+      "sourceSha256ExcludingReport": "974aa4388e47976a4ccde79b974d733a82ee6621f75568a15baec4d3d44a1831",
+      "remainingConcreteSourceBlockers": 0,
+      "independentClosingPythonTests": 168,
+      "independentClosingTypeScriptTests": 158
+    },
+    "fullRepositoryTestsPassed": 29731,
+    "fullRepositoryTestsSkipped": 9,
+    "python314Compatibility": {
+      "version": "3.14.7",
+      "passed": 262,
+      "syntaxSpecificSkips": 10
+    },
+    "judgeRepairControls": {
+      "zodWrapperBeforeFailed": 7,
+      "fetchWrapperBeforeFailed": 5,
+      "fetchAccessorBeforeFailed": 4,
+      "fetchPrototypeAccessorBeforeFailed": 3,
+      "pydanticSubscriptionBeforeFailed": 10,
+      "afterCombinedTypeScriptPassed": 158,
+      "afterCombinedPydanticOwnersPassed": 168
+    }
+  },
+  "limitations": [
+    "Finite fixtures and corpus inspection do not establish universal false-positive rates.",
+    "Unknown schema hooks, aliases, dynamic bounds, generic argument identities, and escaped/mutated providers remain outside the added proof.",
+    "Corpus observations use already-local frozen snapshots, not live consumer checkouts; live consumer verification follows publication.",
+    "No automatic fix rewrites validation, request lifetime, or application state.",
+    "The full local privacy gate delegates to trusted exact-head CI."
+  ],
+  "corpusPanels": {
+    "pythonSelected": {
+      "files": 3976,
+      "bytes": 38444889,
+      "sources": 7,
+      "runs": [
+        {
+          "mode": "baseline",
+          "pair": 0,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 98.288898,
+          "nativeSeconds": 76.23230366432108,
+          "peakBytes": 528039936,
+          "findings": 1012
+        },
+        {
+          "mode": "candidate",
+          "pair": 0,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 86.793093,
+          "nativeSeconds": 69.73723629163578,
+          "peakBytes": 525549568,
+          "findings": 1012
+        },
+        {
+          "mode": "candidate",
+          "pair": 1,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 95.96346,
+          "nativeSeconds": 75.80664362385869,
+          "peakBytes": 525762560,
+          "findings": 1012
+        },
+        {
+          "mode": "baseline",
+          "pair": 1,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 111.310294,
+          "nativeSeconds": 87.24328270577826,
+          "peakBytes": 528318464,
+          "findings": 1012
+        },
+        {
+          "mode": "baseline",
+          "pair": 2,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 112.272587,
+          "nativeSeconds": 89.7881031257566,
+          "peakBytes": 528580608,
+          "findings": 1012
+        },
+        {
+          "mode": "candidate",
+          "pair": 2,
+          "files": 3976,
+          "batches": 21,
+          "wallSeconds": 82.977194,
+          "nativeSeconds": 66.97959046135657,
+          "peakBytes": 525484032,
+          "findings": 1012
+        }
+      ],
+      "baselineMedianNativeSeconds": 87.24328270577826,
+      "candidateMedianNativeSeconds": 69.73723629163578,
+      "nativeOverheadPercent": -20.065781423173135,
+      "budgetPercent": 50,
+      "withinBudget": true,
+      "identicalDiagnosticsPerPair": [true, true, true],
+      "finalProvenanceRepairsReverified": true
+    },
+    "pythonNormal": {
+      "files": 128,
+      "bytes": 1727151,
+      "sources": 7,
+      "runs": [
+        {
+          "mode": "baseline",
+          "pair": 0,
+          "files": 128,
+          "batches": 7,
+          "wallSeconds": 26.072807,
+          "nativeSeconds": 20.009057501796633,
+          "peakBytes": 530497536,
+          "findings": 1297
+        },
+        {
+          "mode": "candidate",
+          "pair": 0,
+          "files": 128,
+          "batches": 7,
+          "wallSeconds": 25.232885,
+          "nativeSeconds": 19.263807291863486,
+          "peakBytes": 530202624,
+          "findings": 1297
+        },
+        {
+          "mode": "candidate",
+          "pair": 1,
+          "files": 128,
+          "batches": 7,
+          "wallSeconds": 24.749162,
+          "nativeSeconds": 19.016417000675574,
+          "peakBytes": 529448960,
+          "findings": 1297
+        },
+        {
+          "mode": "baseline",
+          "pair": 1,
+          "files": 128,
+          "batches": 7,
+          "wallSeconds": 25.015816,
+          "nativeSeconds": 19.109819000819698,
+          "peakBytes": 530153472,
+          "findings": 1297
+        },
+        {
+          "mode": "baseline",
+          "pair": 2,
+          "files": 128,
+          "batches": 7,
+          "wallSeconds": 24.904076,
+          "nativeSeconds": 19.166639293776825,
+          "peakBytes": 529940480,
+          "findings": 1297
+        },
+        {
+          "mode": "candidate",
+          "pair": 2,
+          "files": 128,
+          "batches": 7,
+          "wallSeconds": 26.979252,
+          "nativeSeconds": 20.65712400013581,
+          "peakBytes": 530104320,
+          "findings": 1297
+        }
+      ],
+      "baselineMedianNativeSeconds": 19.166639293776825,
+      "candidateMedianNativeSeconds": 19.263807291863486,
+      "nativeOverheadPercent": 0.5069641922995416,
+      "budgetPercent": 25,
+      "withinBudget": true,
+      "identicalDiagnosticsPerPair": [true, true, true],
+      "finalProvenanceRepairsReverified": true
+    },
+    "typescriptSelected": {
+      "files": 2078,
+      "bytes": 12563492,
+      "sources": 4,
+      "runs": [
+        {
+          "mode": "baseline",
+          "pair": 0,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 9.859816,
+          "nativeSeconds": 7.078041668000001,
+          "peakBytes": 620183552,
+          "findings": 32
+        },
+        {
+          "mode": "candidate",
+          "pair": 0,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 9.468882,
+          "nativeSeconds": 6.805185373,
+          "peakBytes": 586874880,
+          "findings": 32
+        },
+        {
+          "mode": "candidate",
+          "pair": 1,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 9.164971,
+          "nativeSeconds": 6.577629458,
+          "peakBytes": 591806464,
+          "findings": 32
+        },
+        {
+          "mode": "baseline",
+          "pair": 1,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 9.148354,
+          "nativeSeconds": 6.567493915,
+          "peakBytes": 580337664,
+          "findings": 32
+        },
+        {
+          "mode": "baseline",
+          "pair": 2,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 8.986375,
+          "nativeSeconds": 6.409506501,
+          "peakBytes": 619282432,
+          "findings": 32
+        },
+        {
+          "mode": "candidate",
+          "pair": 2,
+          "files": 2078,
+          "batches": 10,
+          "wallSeconds": 8.968685,
+          "nativeSeconds": 6.40335429,
+          "peakBytes": 572833792,
+          "findings": 32
+        }
+      ],
+      "baselineMedianNativeSeconds": 6.567493915,
+      "candidateMedianNativeSeconds": 6.577629458,
+      "nativeOverheadPercent": 0.154328928677816,
+      "budgetPercent": 50,
+      "withinBudget": true,
+      "identicalDiagnosticsPerPair": [true, true, true],
+      "finalProvenanceRepairsReverified": true
+    }
+  },
+  "corpusMethod": "Already-local pinned snapshots; fresh process per corpus root and <=250-file batch; three alternating baseline/candidate pairs; no cache flushing. Full Python panel retains the established SHA-256 sample of at most 20 files per root (128 total). Private identities, content, and digests are omitted. TypeScript selected syntax scans ignore inline ESLint configuration for deterministic comparison; exact suppression is tested separately.",
+  "inspection": {
+    "changedObservedDiagnostics": 0,
+    "newKnownCorpusFalsePositives": 0,
+    "duplicateIdentityChanges": 0,
+    "scope": "Exact multiset identity comparison, including messages and severity, on all three before/after pairs in each panel. New defects are proven separately by labeled and native-runtime fixtures."
+  },
+  "sourceSha256ExcludingReport": "974aa4388e47976a4ccde79b974d733a82ee6621f75568a15baec4d3d44a1831",
+  "judgeReviews": [
+    {
+      "pass": 1,
+      "focus": "Pydantic bounds, passive configuration and provenance",
+      "verdict": "approve final bounded source and evidence"
+    },
+    {
+      "pass": 2,
+      "focus": "Zod integer/length domains, opt-in delegation and standalone compatibility",
+      "verdict": "approve final bounded source and evidence"
+    },
+    {
+      "pass": 3,
+      "focus": "Fetch null/undefined inheritance, erased wrappers, prototype and alias scope",
+      "verdict": "approve final bounded source and evidence"
+    },
+    {
+      "pass": 4,
+      "focus": "Python 3.15 comprehension traversal, COW mutation ownership, Any parse-cache/type comments and logging metadata",
+      "verdict": "approve final bounded source and evidence"
+    },
+    {
+      "pass": 5,
+      "focus": "Versions, locks, generated catalog/CLI artifacts, private corpus evidence, budgets and final release readiness",
+      "verdict": "approve final bounded source and evidence"
+    }
+  ]
+}
