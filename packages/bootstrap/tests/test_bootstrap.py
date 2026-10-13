@@ -135,7 +135,7 @@ def test_execs_exact_bundle_and_preserves_environment(
     if python == "3.15.0":
         assert (
             captured_environment["UV_PYTHON_DOWNLOADS_JSON_URL"]
-            == "https://raw.githubusercontent.com/astral-sh/uv/f69fb50c8b28997af9c6b0e5c700a34470d86005/crates/uv-python-managed/download-metadata.json"
+            == "https://raw.githubusercontent.com/astral-sh/uv/4ecd0eff2a81e3ffdcd7cfee10d08936e4747c17/crates/uv-python-managed/download-metadata.json"
         )
     assert captured_environment["UV_OFFLINE"] == "1"
     assert captured_environment["UV_INDEX_URL"] == "https://packages.example/simple"

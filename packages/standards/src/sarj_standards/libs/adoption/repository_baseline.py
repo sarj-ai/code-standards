@@ -17,6 +17,9 @@ if TYPE_CHECKING:
 PATH = ".repo-standards/baseline.json"
 # These releases only introduce and promote the nonbaselineable Makefile rule;
 # ordinary finding identities and the existing manifest scope stay compatible.
+# Policy 21 changes a baselineable documentation rule's fingerprint version;
+# policy 22 adds baselineable PR-template checks. Preserve rejection of these
+# transitions rather than silently recapturing or dropping existing debt.
 _COMPATIBLE_TRANSITIONS = frozenset({(18, 19), (18, 20), (19, 20)})
 _POLICY_VERSION = re.compile(rb'("policy_version"\s*:\s*)[0-9]+(?=\s*[,}])')
 

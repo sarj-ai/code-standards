@@ -1,7 +1,7 @@
 {
   "name": "@sarj-ai/code-standards-docs",
   "version": "0.1.0",
-  "packageManager": "npm@12.1.0",
+  "packageManager": "npm@12.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -22,35 +22,39 @@
     "audit:dependencies": "node scripts/audit-dependencies.mjs"
   },
   "dependencies": {
-    "@astrojs/starlight": "0.41.11",
+    "@astrojs/starlight": "0.42.6",
     "@sarj/design": "0.5.0",
-    "astro": "7.3.5"
+    "astro": "7.3.8"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.10",
     "@astrojs/sitemap": "3.7.4",
     "@eslint/js": "10.0.1",
     "@sarj/eslint-plugin": "file:../../packages/typescript",
-    "eslint": "10.11.0",
+    "eslint": "10.12.0",
     "eslint-plugin-astro": "3.2.1",
-    "prettier": "3.9.9",
-    "prettier-plugin-sh": "0.19.0",
-    "prettier-plugin-toml": "2.0.6",
-    "react-doctor": "0.9.14",
+    "prettier": "3.9.10",
+    "prettier-plugin-sh": "0.20.2",
+    "prettier-plugin-toml": "3.0.2",
+    "react-doctor": "0.9.18",
     "sql-formatter": "15.9.0",
-    "typescript": "6.0.3",
-    "typescript-eslint": "8.70.1",
-    "wrangler": "4.138.0"
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "typescript-eslint": "8.71.2",
+    "wrangler": "4.149.0",
+    "@typescript/native": "npm:typescript@7.0.2"
   },
   "engines": {
-    "node": ">=22.22.2"
+    "node": "^22.22.2 || >=24.15.0"
   },
   "overrides": {
     "postcss-selector-parser": "7.1.6",
-    "http-cache-semantics": "https://codeload.github.com/kornelski/http-cache-semantics/tar.gz/11fb104275349bbd84bf21eafd40b18220c29c46",
+    "http-cache-semantics": "4.3.0",
     "sharp": "0.35.5",
     "miniflare": {
-      "undici": "7.29.1"
+      "undici": "8.11.2"
+    },
+    "@sarj/design": {
+      "@astrojs/starlight": "$@astrojs/starlight"
     }
   }
 }

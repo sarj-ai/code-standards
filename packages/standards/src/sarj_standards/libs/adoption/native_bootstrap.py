@@ -10,13 +10,13 @@ from typing import Final
 from urllib.request import Request, urlopen
 
 
-VERSION: Final = "2026.10.6"
-# Official raw-asset digests: https://api.github.com/repos/jdx/mise/releases/tags/v2026.10.6
+VERSION: Final = "2026.10.8"
+# Official raw-asset digests: https://api.github.com/repos/jdx/mise/releases/tags/v2026.10.8
 _DIGESTS: Final = {
-    "linux-x64": "3f44343eebc7e0d6623bcea46e304864f02dff648edd75c82871b53cc697b366",
-    "linux-arm64": "5f3187febbe9ff98e4c78b3596c7bbfde0e3ef8e4b1820494d03efd499de7b6e",
-    "macos-x64": "70e1407e2fdc7a19f94db35745a8e5885b0e4bbdbfb34bfb7e3619d6230a8f70",
-    "macos-arm64": "bbcea7b0f844d026424a4c8335357a15a2f5c9e9132c9408de990d9be6f26101",
+    "linux-x64": "c72477ae6c3a8e7d817a322f43da70e4643e75ee5c21265f1c19c894273b7428",
+    "linux-arm64": "6ee0bd8173f1347514f4974d55fb1fae13aa7f6de0a55338adbefa0667cad7e5",
+    "macos-x64": "a122fd04db5f2da07d24528ed61109bc82142ca44e821d4faafa05650f6ba627",
+    "macos-arm64": "dd77de9a7574e38d8409fb06fa85e1581415896639d075987791d8c4e5a57b73",
 }
 
 

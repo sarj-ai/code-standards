@@ -2947,7 +2947,7 @@ def test_show_ci_renders_a_complete_versioned_workflow(tmp_path: Path, ecosystem
     assert isinstance(parsed, dict)
     assert "permissions:\n  contents: read" in rendered.stdout
     assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7" in rendered.stdout
-    assert "astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0" in rendered.stdout
+    assert "astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0" in rendered.stdout
     uv_config = manifest.as_table(tomllib.loads((REPO_ROOT / "uv.toml").read_text(encoding="utf-8")))
     uv_required = manifest.text_field(uv_config, "required-version")
     assert uv_required is not None

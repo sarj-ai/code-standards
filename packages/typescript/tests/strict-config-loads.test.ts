@@ -84,6 +84,7 @@ const UNICORN_CONCISION_ADVISORY_RULES = [
 const UNICORN_SEMANTIC_ADVISORY_RULES = [
   "unicorn/custom-error-definition",
   "unicorn/no-computed-property-existence-check",
+  "unicorn/no-repeated-call-wrappers",
 ] as const;
 
 function parserOptionsOf(config: Linter.Config[]): Record<string, unknown> {

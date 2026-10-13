@@ -54,7 +54,7 @@ def test_helm_strict_lint_uses_declared_namespace(tmp_path: Path, namespace: str
         "source": source.name,
         "source_sha256": sha256(source.read_bytes()).hexdigest(),
         "kind": "helm",
-        "helm_version": "3.19.0",
+        "helm_version": "4.3.0",
         "release": "example",
         "namespace": namespace,
         "stage": "install",

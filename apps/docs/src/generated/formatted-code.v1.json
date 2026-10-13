@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "0411d9097deb01366a65096fff97adff282d642a2e1d64fc2a5dd08c5e006d42",
-  "cliSha256": "1f8af38f26fa2fd2b8bec3f266c9b1cdf3f1f54ee5ad628b9ebb0586a5e3df45",
+  "catalogSha256": "585e001e00ccf5ad53deb10c0493ca44367554ff061a244f66f50e43a71506b7",
+  "cliSha256": "6526ebd426fe3038edfcef744d16d227f00e6081ea44463b3592332cc9a0c6a1",
   "formatterVersions": {
     "prettier": "3.9.6",
-    "prettierPluginSh": "0.19.0",
+    "prettierPluginSh": "0.20.2",
     "prettierPluginToml": "2.0.6",
-    "ruff": "0.16.10",
+    "ruff": "0.17.0",
     "sqlFormatter": "15.8.2",
     "terraform": "1.15.8"
   },
@@ -4011,7 +4011,7 @@
           "installedDependencies": [
             {
               "module": "zod",
-              "version": "4.6.5"
+              "version": "4.6.7"
             }
           ],
           "outcome": "reject",
@@ -4032,7 +4032,7 @@
           "installedDependencies": [
             {
               "module": "zod",
-              "version": "4.6.5"
+              "version": "4.6.7"
             }
           ],
           "outcome": "accept",
@@ -7581,7 +7581,7 @@
             },
             {
               "path": "pyproject.toml",
-              "source": "[project]\nname = 'example'\nversion = '0.1.0'\n"
+              "source": "[project]\nname = \"example\"\nversion = \"0.1.0\"\n"
             }
           ],
           "fixedFiles": [],
@@ -7608,7 +7608,7 @@
             },
             {
               "path": "pyproject.toml",
-              "source": "[project]\nname = 'example'\nversion = '0.1.0'\n"
+              "source": "[project]\nname = \"example\"\nversion = \"0.1.0\"\n"
             }
           ],
           "fixedFiles": [],
@@ -10072,7 +10072,7 @@
             },
             {
               "path": "pyproject.toml",
-              "source": "[project]\nrequires-python = '>=3.10'\n"
+              "source": "[project]\nrequires-python = \">=3.10\"\n"
             }
           ],
           "fixedFiles": [],
@@ -13944,7 +13944,7 @@
           "files": [
             {
               "path": "mise.toml",
-              "source": "[vars]\ntext = '''\nrun = \"printf inert; printf data\"\n'''\n[tasks.probe]\n\"run\" = \"printf public-marker\"\n"
+              "source": "[vars]\ntext = '''\nrun = \"printf inert; printf data\"\n'''\n\n[tasks.probe]\n\"run\" = \"printf public-marker\"\n"
             }
           ],
           "fixedFiles": [],
@@ -13959,7 +13959,7 @@
           "files": [
             {
               "path": "mise.toml",
-              "source": "[vars]\ntext = '''\nrun = \"printf inert; printf data\"\n'''\n[tasks.probe]\n\"run\" = \"printf first && printf second\"\n"
+              "source": "[vars]\ntext = '''\nrun = \"printf inert; printf data\"\n'''\n\n[tasks.probe]\n\"run\" = \"printf first && printf second\"\n"
             }
           ],
           "fixedFiles": [],

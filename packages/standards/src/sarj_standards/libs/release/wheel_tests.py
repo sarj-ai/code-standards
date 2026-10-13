@@ -86,7 +86,7 @@ def run_wheel_tests(
                 "pytest==9.1.1",
                 "pytest-xdist==3.8.0",
                 "pytest-unused-fixtures==0.3.1",
-                "jsonschema==4.25.1",
+                "jsonschema==4.26.0",
                 *(str(path) for path in artifacts),
             ),
             cwd=root,
