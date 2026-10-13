@@ -1159,7 +1159,7 @@ def rewrite_version_pins(text: str, installed: Mapping[str, str]) -> VersionPinR
     if current_plugin := installed.get(_ESLINT_PLUGIN):
         preapprovals[_ESLINT_PLUGIN] = current_plugin
     pinned, age_gate_changed = _rewrite_age_gate_preapprovals(
-        pinned, preapprovals, retired=frozenset(manifest.eslint_yarn_identity_pins())
+        pinned, preapprovals, identity_pins=manifest.eslint_yarn_identity_pins()
     )
     changed.update(age_gate_changed)
     return VersionPinRewrite(pinned, tuple(sorted(changed)))
@@ -1169,9 +1169,10 @@ def _rewrite_age_gate_preapprovals(
     text: str,
     approvals: Mapping[str, str],
     *,
-    retired: frozenset[str] = frozenset(),
+    identity_pins: Mapping[str, str] | None = None,
 ) -> AgeGateRewrite:
-    managed = frozenset(approvals) | retired
+    identities = identity_pins or {}
+    managed = frozenset(approvals) | frozenset(identities)
     lines = text.splitlines(keepends=True)
     for index, line in enumerate(lines):
         header = _AGE_GATE_YAML_HEADER.fullmatch(line.rstrip("\r\n"))
@@ -1202,7 +1203,11 @@ def _rewrite_age_gate_preapprovals(
                     saw_item = True
                     value = item.group("value")
                     package = _managed_preapproval(value, managed)
-                    if package is None:
+                    if package is None or (
+                        package not in approvals
+                        and package in identities
+                        and value == f"{package}@{identities[package]}"
+                    ):
                         retained.append(candidate)
                 end += 1
             return end
@@ -1219,7 +1224,9 @@ def _rewrite_age_gate_preapprovals(
 
     def npm_replacement(match: re.Match[str]) -> str:
         existing = [trimmed for item in match.group("value").split(",") if (trimmed := item.strip())]
-        retained = [item for item in existing if item not in managed]
+        # npm's exclusions are names, not versions. They are authored policy;
+        # preserve them while the dependency manifest pins the exact toolchain.
+        retained = [item for item in existing if item not in approvals]
         values = ",".join((*retained, *sorted(approvals)))
         prefix, suffix = match.group("prefix", "suffix")
         return f"{prefix}{values}{suffix}"
