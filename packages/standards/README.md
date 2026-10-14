@@ -12,7 +12,7 @@ Adopt the repository once with `code-standards setup`. It installs one canonical
 
 The pre-commit gate runs once on every commit and discovers paths directly from the Git index, including mixed file types and deletion-only commits. The shared dispatcher selects applicable rules and retains type analysis, repository policy, exclusions and suppression accountability. Errors and incomplete analysis block the commit; warning-stage findings stay visible even when the hook passes. Agents should address the diagnostics, run `code-standards fix --staged` for safe mechanical fixes, review and stage intended edits, then retry. Staged fixes never fall back to the whole repository and refuse files with unstaged changes.
 
-Setup installs the selected hook manager. In a fresh checkout, run `code-standards doctor --repair` before committing; doctor checks installation and the exact unconditional command. Conditional Lefthook jobs must be moved to an unconditional job without changing unrelated hooks. Git can bypass local hooks with `--no-verify`; the canonical CI gate independently enforces policy.
+Setup installs the selected hook manager. In a fresh checkout, run `code-standards doctor --repair` before committing; doctor checks installation and the exact unconditional command. Setup normalizes conditional or duplicated owned Lefthook jobs into one complete staged gate, preserving unrelated hooks. Shared definitions and conditions on a whole hook or group need an explicit move to an unconditional job. Git can bypass local hooks with `--no-verify`; the canonical CI gate independently enforces policy.
 
 ```bash
 code-standards setup
@@ -22,6 +22,8 @@ code-standards fix
 code-standards doctor
 code-standards update
 ```
+
+The Python facade `Standards(root).setup(...)` uses the same planner. It accepts `python_root`, `typescript_root`, `swift_root`, `kotlin_root` and `hook_manager`. Use `dry_run=True` to inspect changes, and `install=False` to write configuration without installing tools. Explicit mobile roots must identify reviewed projects; an explicit Lefthook choice preserves an existing Lefthook configuration.
 
 Use repeatable `check --rule ENGINE:ID` selectors to select native rules, ESLint rules, or managed security audits. Exclusions, baselines, and severities still apply; Ruff selectors are not supported. Native linters and ESLint execute only selected rules. ESLint retains configured parsers, options, severities, and suppression directives.
 

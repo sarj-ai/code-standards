@@ -16,9 +16,10 @@ from .configs import (
     MOBILE_COMPANION_CONFIGS,
     MOBILE_CONFIGS,
     PYTHON_COMPANION_CONFIGS,
-    PYTHON_CONFIGS,
     SWIFT_CONFIGS,
     TYPESCRIPT_COMPANION_CONFIGS,
+    DestinationKind as _DestinationKind,
+    destination_kind,
 )
 
 
@@ -46,14 +47,6 @@ class SyncOutcome(StrEnum):
     SKIPPED = "skipped"
     DRIFT = "drift"
     INVALID = "invalid"
-
-
-class _DestinationKind(StrEnum):
-    DEFAULT = "default"
-    PYTHON = "python"
-    SWIFT = "swift"
-    KOTLIN = "kotlin"
-    TYPESCRIPT = "typescript"
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,22 +148,18 @@ def plan_sync(
         return destinations[kind]
 
     targets: list[SyncTarget] = []
+    overrides = {
+        _DestinationKind.DEFAULT: None,
+        _DestinationKind.PYTHON: python_dest,
+        _DestinationKind.TYPESCRIPT: typescript_dest,
+        _DestinationKind.SWIFT: swift_dest,
+        _DestinationKind.KOTLIN: kotlin_dest,
+    }
 
     def append_target(name: str) -> None:
-        standard_source, target_name = CONFIG_NAMES[name]
-        source_name = standard_source
-        if name == "eslint":
-            base = destination(_DestinationKind.TYPESCRIPT, typescript_dest)
-        elif name in PYTHON_CONFIGS:
-            base = destination(_DestinationKind.PYTHON, python_dest)
-        elif name in SWIFT_CONFIGS:
-            base = destination(_DestinationKind.SWIFT, swift_dest)
-        elif name in KOTLIN_CONFIGS:
-            base = destination(_DestinationKind.KOTLIN, kotlin_dest)
-        elif name in MOBILE_CONFIGS:
-            base = destination(_DestinationKind.DEFAULT, None)
-        else:
-            base = destination(_DestinationKind.DEFAULT, None)
+        source_name, target_name = CONFIG_NAMES[name]
+        kind = destination_kind(name)
+        base = destination(kind, overrides[kind])
         targets.append(SyncTarget(name, CONFIGS_DIR / source_name, base / target_name))
         if name == "pyright":
             for companion, (companion_source, companion_target) in PYTHON_COMPANION_CONFIGS.items():
@@ -227,6 +216,9 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
     allow_existing_nested_eslint: bool = False,
     enable_repository_rules: Sequence[str] = (),
 ) -> InitPlan:
+    if hook_manager is not None and hook_manager not in manifest.HOOK_MANAGERS:
+        msg = f"hook manager must be one of: {', '.join(manifest.HOOK_MANAGERS)}"
+        raise ValueError(msg)
     if profile is not None and profile not in manifest.PROFILES:
         msg = f"profile must be one of: {', '.join(manifest.PROFILES)}"
         raise ValueError(msg)
@@ -495,17 +487,14 @@ def init_destination(
     swift_dest: str = ".",
     kotlin_dest: str = ".",
 ) -> Path:
-    if name == "eslint":
-        base = root / typescript_dest
-    elif name in PYTHON_CONFIGS:
-        base = root / python_dest
-    elif name in SWIFT_CONFIGS:
-        base = root / swift_dest
-    elif name in KOTLIN_CONFIGS:
-        base = root / kotlin_dest
-    else:
-        base = root
-    return base / CONFIG_NAMES[name][1]
+    destinations = {
+        _DestinationKind.DEFAULT: ".",
+        _DestinationKind.PYTHON: python_dest,
+        _DestinationKind.TYPESCRIPT: typescript_dest,
+        _DestinationKind.SWIFT: swift_dest,
+        _DestinationKind.KOTLIN: kotlin_dest,
+    }
+    return root / destinations[destination_kind(name)] / CONFIG_NAMES[name][1]
 
 
 def _selected_configs(configs: Sequence[str] | None, adopted: manifest.Manifest | None) -> tuple[str, ...]:

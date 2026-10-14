@@ -10,6 +10,23 @@ from sarj_standards.libs.rules import RuleEngine
 _AUTHORING_SOURCE = Path("packages/standards/src/sarj_standards/libs/repository/rule_authoring.py")
 
 
+def command(root: Path, *arguments: str) -> str:
+    return shlex.join(
+        (
+            "uv",
+            "run",
+            "--frozen",
+            "--project",
+            str(root / "packages/standards"),
+            "--no-config",
+            "code-standards",
+            "--root",
+            str(root),
+            *arguments,
+        )
+    )
+
+
 def ensure_current(
     root: Path,
     arguments: tuple[str, ...],
@@ -28,18 +45,6 @@ def ensure_current(
         spec = find_spec(module)
         if spec is not None and spec.origin is not None and Path(spec.origin).resolve() == expected.resolve():
             continue
-        invocation = shlex.join(
-            (
-                "uv",
-                "run",
-                "--frozen",
-                "--project",
-                str(root / "packages/standards"),
-                "code-standards",
-                "--root",
-                str(root),
-                *arguments,
-            )
-        )
+        invocation = command(root, *arguments)
         msg = f"rule authoring requires the selected checkout's source packages; {module} is loaded from another installation. Run:\n{invocation}"
         raise RuntimeError(msg)

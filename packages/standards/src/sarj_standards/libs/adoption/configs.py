@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import StrEnum
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
@@ -61,3 +62,23 @@ PYTHON_CONFIGS: Final = frozenset({"ruff", "pyright"})
 SWIFT_CONFIGS: Final = frozenset({"swiftformat", "swiftlint"})
 KOTLIN_CONFIGS: Final = frozenset({"detekt", "ktlint"})
 MOBILE_CONFIGS: Final = frozenset({"mobile-security"})
+
+
+class DestinationKind(StrEnum):
+    DEFAULT = "root"
+    PYTHON = "python"
+    SWIFT = "swift"
+    KOTLIN = "kotlin"
+    TYPESCRIPT = "typescript"
+
+
+def destination_kind(name: str) -> DestinationKind:
+    if name in PYTHON_CONFIGS:
+        return DestinationKind.PYTHON
+    if name == "eslint":
+        return DestinationKind.TYPESCRIPT
+    if name in SWIFT_CONFIGS:
+        return DestinationKind.SWIFT
+    if name in KOTLIN_CONFIGS:
+        return DestinationKind.KOTLIN
+    return DestinationKind.DEFAULT

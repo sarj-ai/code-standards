@@ -12,7 +12,6 @@ import re
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- git enumerates authored files without executing repository code.
 import tomllib
-from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, NamedTuple
 
 from pydantic import BaseModel, Field, ValidationError
@@ -28,7 +27,7 @@ from sarj_standards.libs.typed_containers import is_object_mapping
 from sarj_standards.libs.yaml_boundary import mapping_items, sequence_items
 
 from . import hooks, launcher, manifest, packagemanager, retired_suppressions, scaffold
-from .configs import PYTHON_COMPANION_CONFIGS
+from .configs import CONFIG_NAMES, PYTHON_COMPANION_CONFIGS, DestinationKind, destination_kind
 
 
 if TYPE_CHECKING:
@@ -165,20 +164,6 @@ _PYRIGHT_REPORT_DEPRECATED = re.compile(
 _RUFF_CONFIG_NAMES: Final = frozenset({".ruff.toml", "ruff.toml", "pyproject.toml"})
 _STANDALONE_RUFF_CONFIG_NAMES: Final = (".ruff.toml", "ruff.toml")
 _RUFF_REPLACEMENT_KEYS: Final = frozenset({"ignore", "per-file-ignores", "select"})
-_CONFIG_TARGETS: Final = MappingProxyType(
-    {
-        "ruff": ("ruff.strict.toml", "ruff.application.toml", ".ruff-strict.toml", "python"),
-        "pyright": ("pyright.strict.json", "pyright.strict.json", ".pyright-strict.json", "python"),
-        "eslint": ("eslint.strict.mjs", "eslint.application.mjs", "eslint.strict.mjs", "typescript"),
-        "markdownlint": ("markdownlint.strict.yaml", "markdownlint.strict.yaml", ".markdownlint.yaml", "root"),
-        "shellcheck": ("shellcheck.strict.rc", "shellcheck.strict.rc", ".shellcheckrc", "root"),
-        "taplo": ("taplo.strict.toml", "taplo.strict.toml", ".taplo.toml", "root"),
-        "yamllint": ("yamllint.strict.yaml", "yamllint.strict.yaml", ".yamllint.yaml", "root"),
-        "zizmor": ("zizmor.strict.yml", "zizmor.strict.yml", "zizmor.yml", "root"),
-        "checkov": ("checkov.strict.yml", "checkov.strict.yml", ".checkov.yml", "root"),
-    }
-)
-
 #: Where a rule identifier can be written: configs and suppression baselines, but
 #: also ordinary source, because an `eslint-disable-next-line @sarj/<rule>` for a
 #: rule that no longer exists is its own error under the shipped strict config's
@@ -1467,8 +1452,16 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:
     if adopted is None:
         return
 
-    destinations: dict[str, Path | None] = {"root": root}
-    for kind, value in (("python", adopted.python_dest), ("typescript", adopted.typescript_dest)):
+    destinations: dict[DestinationKind, Path | None] = {DestinationKind.DEFAULT: root}
+    requested = {destination_kind(name) for name in adopted.configs}
+    for kind, value in (
+        (DestinationKind.PYTHON, adopted.python_dest),
+        (DestinationKind.TYPESCRIPT, adopted.typescript_dest),
+        (DestinationKind.SWIFT, adopted.swift_dest),
+        (DestinationKind.KOTLIN, adopted.kotlin_dest),
+    ):
+        if kind in {DestinationKind.SWIFT, DestinationKind.KOTLIN} and kind not in requested:
+            continue
         destinations[kind] = _manifest_destination(root, value)
         if destinations[kind] is None:
             yield Finding(
@@ -1481,8 +1474,8 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:
     for name in adopted.configs:
         yield from _check_adopted_config(root, name, destinations)
 
-    yield from _check_python_wiring(root, destinations["python"], adopted)
-    yield from _check_typescript_wiring(root, destinations["typescript"], adopted)
+    yield from _check_python_wiring(root, destinations[DestinationKind.PYTHON], adopted)
+    yield from _check_typescript_wiring(root, destinations[DestinationKind.TYPESCRIPT], adopted)
 
 
 def _check_typescript_wiring(root: Path, typescript_root: Path | None, adopted: manifest.Manifest) -> Iterator[Finding]:
@@ -1559,8 +1552,10 @@ def _check_python_wiring(root: Path, python_root: Path | None, adopted: manifest
         )
 
 
-def _check_adopted_config(root: Path, name: str, destinations: Mapping[str, Path | None]) -> Iterator[Finding]:
-    spec = _CONFIG_TARGETS.get(name)
+def _check_adopted_config(
+    root: Path, name: str, destinations: Mapping[DestinationKind, Path | None]
+) -> Iterator[Finding]:
+    spec = CONFIG_NAMES.get(name)
     if spec is None:
         yield Finding(
             Level.DRIFT,
@@ -1570,12 +1565,11 @@ def _check_adopted_config(root: Path, name: str, destinations: Mapping[str, Path
             "remove or correct the unknown config name in the adoption manifest",
         )
         return
-    standard_source, _application_source, target_name, kind = spec
-    destination = destinations[kind]
+    source_name, target_name = spec
+    destination = destinations[destination_kind(name)]
     if destination is None:
         return
     target = destination / target_name
-    source_name = standard_source
     expected = CONFIGS_DIR / source_name
     if not target.is_file():
         yield Finding(

@@ -12,6 +12,7 @@ from typing import Final, TypeGuard
 
 from sarj_standards.libs.adoption import transaction
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.repository import rule_checkout, rule_layout
 from sarj_standards.libs.typed_containers import is_object_mapping
 
 
@@ -129,6 +130,10 @@ def _root_readme(
             "## Contributing\n\n"
             "Install uv 0.13.0, Python 3.15, Node 24.21, and GNU Make. Then bootstrap a fresh checkout:\n\n"
             "```bash\nmake setup\nmake verify\n```"
+        ),
+        _rule_authoring_usage(),
+        (
+            "### Verification and releases"
             "\n\nRun independent package suites with `make test -j4`, or focus on the fresh Standards wheel "
             "with `make test-standards PYTEST_ARGS='-k release'`. `TEST_JOBS=1` serializes wheel tests "
             "(default: 4, maximum: 16). Wheel tests build local exact sibling versions in a temporary "
@@ -159,31 +164,7 @@ def _root_readme(
             "The underlying `maintain release status --commit REV --format json` command provides JSON. "
             "Release builds and portability checks overlap safety checks; publication still requires "
             "every check, exact public sibling version, verified artifact digest, and trusted-publisher attestation."
-            "\n\nCreate a rule with `maintain rules new ENGINE:ID --category CATEGORY --summary TEXT --apply`. "
-            "Without `--apply`, the command shows its plan. Creation writes the detector and executable test, "
-            "registers the rule, and reserves its identifier atomically. New rules default to warning. "
-            "Run authoring commands through `uv run --project packages/standards --frozen code-standards` "
-            "to use the source and dependencies of the checkout being edited. Implement the detector and "
-            "replace the example placeholders, then verify and prepare it:\n\n"
-            "```bash\n"
-            "code-standards --root . maintain rules verify python:no-string-concat-in-loop\n"
-            "code-standards --root . maintain rules prepare python:no-string-concat-in-loop\n"
-            "code-standards --root . maintain rules evaluate --rule python:no-string-concat-in-loop --scope corpus\n"
-            "make verify\n"
-            "```\n\nFor reproducible multi-repository calibration, use an immutable public manifest and an optional "
-            "owner-readable private overlay:\n\n"
-            "```bash\n"
-            "code-standards --root . maintain rules evaluate --rule python:no-string-concat-in-loop "
-            "--corpus-manifest corpora.toml --private-overlay private-corpora.toml\n"
-            "```\n\nAfter committing the resulting changes, review the complete rule diff:\n\n"
-            "```bash\n"
-            "code-standards --root . maintain rules changes --before origin/main --after HEAD\n"
-            "```\n\n"
-            "Rule comparison reads immutable Git blobs and fingerprints explicit local runtime imports "
-            "from source and test modules. Type-only imports and data-only registry member edges are excluded; "
-            "computed imports and TypeScript path aliases are not resolved. For TypeScript-bearing revisions, "
-            "run `make setup` first to prepare the pinned Node and locked compiler in the authoring repository. "
-            "Comparison never installs tools or falls back to text matching. Python-only revisions do not require Node.\n\n"
+            "\n\n"
             "Fleet calibration and downstream PR creation run automatically after review and release.\n\n"
             "### Fleet rollout\n\n"
             "Copy `.sarj-standards-rollout.example.toml` to the ignored `.sarj-standards-rollout.toml` "
@@ -281,6 +262,44 @@ def _package_readme(
     return "\n\n".join(sections) + "\n"
 
 
+def _rule_authoring_usage() -> str:
+    command = rule_checkout.command(Path(), "maintain", "rules")
+    engines = ", ".join(engine.value for engine in rule_layout.AUTHORED_ENGINES)
+    return (
+        "### Adding a rule\n\n"
+        f"Custom authoring supports {engines}. Configure upstream Checkov and zizmor policies through "
+        "their maintained presets. Use the checkout's source command so registration, verification and "
+        "preparation inspect the code being edited:\n\n"
+        "```bash\n"
+        f'{command} new python:prefer-explicit-clock --category testing --summary "Tests should receive an explicit clock." --apply\n'
+        "```\n\n"
+        "Omit `--apply` to preview. Creation writes the detector and executable test, registers the rule, "
+        "and reserves its identifier atomically. One shared layout owns source, test and registry paths. "
+        "Rules own their metadata and examples; catalogs, documentation and strict presets are derived. "
+        "New rules default to warning. Implement the detector and replace the example placeholders, then run:\n\n"
+        "```bash\n"
+        f"{command} prepare python:prefer-explicit-clock\n"
+        f"{command} evaluate --rule python:prefer-explicit-clock --scope corpus\n"
+        "make verify\n"
+        "```\n\n"
+        "`prepare` executes the documented examples and focused test, then synchronizes the warning "
+        "lifecycle and derived rule artifacts. Use `verify` for an isolated check while editing. "
+        "For reproducible multi-repository calibration, use an "
+        "immutable public manifest and an optional owner-readable private overlay:\n\n"
+        "```bash\n"
+        f"{command} evaluate --rule python:prefer-explicit-clock --corpus-manifest corpora.toml --private-overlay private-corpora.toml\n"
+        "```\n\nAfter committing, review the complete rule diff:\n\n"
+        "```bash\n"
+        f"{command} changes --before origin/main --after HEAD\n"
+        "```\n\n"
+        "Rule comparison reads immutable Git blobs and fingerprints explicit local runtime imports from "
+        "source and test modules. Type-only imports and data-only registry member edges are excluded; "
+        "computed imports and TypeScript path aliases are not resolved. TypeScript-bearing comparisons "
+        "need the pinned Node and locked compiler from `make setup`. Comparison never installs tools or "
+        "falls back to text matching. Python-only revisions do not require Node."
+    )
+
+
 def _package_usage(name: str, engine: str | None) -> str:
     if name == "code-standards":
         return (
@@ -295,8 +314,10 @@ def _package_usage(name: str, engine: str | None) -> str:
             "safe mechanical fixes, review and stage intended edits, then retry. Staged fixes never fall back "
             "to the whole repository and refuse files with unstaged changes.\n\n"
             "Setup installs the selected hook manager. In a fresh checkout, run `code-standards doctor --repair` "
-            "before committing; doctor checks installation and the exact unconditional command. Conditional "
-            "Lefthook jobs must be moved to an unconditional job without changing unrelated hooks. "
+            "before committing; doctor checks installation and the exact unconditional command. Setup "
+            "normalizes conditional or duplicated owned Lefthook jobs into one complete staged gate, "
+            "preserving unrelated hooks. Shared definitions and conditions on a whole hook or group need "
+            "an explicit move to an unconditional job. "
             "Git can bypass local hooks with `--no-verify`; the canonical CI gate independently enforces policy.\n\n"
             "```bash\n"
             "code-standards setup\n"
@@ -306,6 +327,11 @@ def _package_usage(name: str, engine: str | None) -> str:
             "code-standards doctor\n"
             "code-standards update\n"
             "```\n\n"
+            "The Python facade `Standards(root).setup(...)` uses the same planner. It accepts "
+            "`python_root`, `typescript_root`, `swift_root`, `kotlin_root` and `hook_manager`. "
+            "Use `dry_run=True` to inspect changes, and `install=False` to write configuration without "
+            "installing tools. Explicit mobile roots must identify reviewed projects; an explicit Lefthook "
+            "choice preserves an existing Lefthook configuration.\n\n"
             "Use repeatable `check --rule ENGINE:ID` selectors to select native rules, ESLint rules, or managed security audits. "
             "Exclusions, baselines, and severities still apply; Ruff selectors are not supported. "
             "Native linters and ESLint execute only selected rules. ESLint retains configured parsers, options, "

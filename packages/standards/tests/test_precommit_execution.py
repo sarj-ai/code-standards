@@ -96,17 +96,25 @@ def test_real_git_precommit_runs_once_and_shows_diagnostics(tmp_path: Path, stat
 
 
 @pytest.mark.parametrize("state", ["empty", "deleted"])
-def test_real_lefthook_runs_without_source_filenames(tmp_path: Path, state: str) -> None:
+@pytest.mark.parametrize("layout", ["ordinary", "conditional-duplicates"])
+def test_real_lefthook_runs_without_source_filenames(tmp_path: Path, state: str, layout: str) -> None:
     repository = _repository(tmp_path / "repository")
     config = repository / "lefthook.yml"
     config.write_text("pre-commit:\n  commands: {}\n", encoding="utf-8")
+    if layout == "conditional-duplicates":
+        command = f"{launcher.repository_command()} check --staged --trust-repository-code -- {{staged_files}}"
+        config.write_text(
+            "pre-commit:\n  jobs:\n    - group:\n        jobs:\n"
+            f"          - name: first\n            skip: true\n            run: {command}\n"
+            f"          - name: second\n            only: false\n            run: {command}\n"
+            "          - name: other\n            glob: '*.ts'\n            run: echo UNEXPECTED_OTHER_JOB\n"
+        )
     probe = _probe(tmp_path, status=0)
     generated = hooks.wire_lefthook_staged_check(repository).contents
-    config.write_text(
-        generated.replace(launcher.repository_command(), probe.command)
-        + "    other:\n      glob: '*.ts'\n      run: echo UNEXPECTED_OTHER_JOB\n",
-        encoding="utf-8",
-    )
+    generated = generated.replace(launcher.repository_command(), probe.command)
+    if layout == "ordinary":
+        generated += "    other:\n      glob: '*.ts'\n      run: echo UNEXPECTED_OTHER_JOB\n"
+    config.write_text(generated, encoding="utf-8")
     assert repository_hooks.install(repository) == 0
     installed = repository / ".git" / "hooks" / "pre-commit"
     installed.write_text(
@@ -139,6 +147,7 @@ def test_real_lefthook_runs_without_source_filenames(tmp_path: Path, state: str)
         text=True,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert (completed.stdout + completed.stderr).count("warning fixture:") == 1
     assert installed.read_bytes() == before
     assert "UNEXPECTED_OTHER_JOB" not in completed.stdout + completed.stderr
     assert json.loads(probe.receipt.read_text(encoding="utf-8")) == {
@@ -175,7 +184,7 @@ def test_real_lefthook_runs_without_source_filenames(tmp_path: Path, state: str)
         ("group", "files", "git ls-files '*.ts'"),
     ],
 )
-def test_conditioned_lefthook_checks_are_not_healthy_or_silently_rewired(
+def test_conditioned_lefthook_checks_require_owned_job_migration_or_scope_review(
     tmp_path: Path, scope: str, field: str, value: object
 ) -> None:
     job: dict[str, object] = {
@@ -194,9 +203,51 @@ def test_conditioned_lefthook_checks_are_not_healthy_or_silently_rewired(
     original = yaml.safe_dump({"pre-commit": pre_commit}, sort_keys=False)
     config.write_text(original, encoding="utf-8")
     assert not hooks.lefthook_runs_staged_check(tmp_path)
+    if scope == "job":
+        planned = hooks.wire_lefthook_staged_check(tmp_path)
+        assert config.read_text(encoding="utf-8") == original
+        config.write_text(planned.contents)
+        assert hooks.lefthook_runs_staged_check(tmp_path)
+        assert hooks.wire_lefthook_staged_check(tmp_path).contents == planned.contents
+        return
     with pytest.raises(ValueError, match="unconditional pre-commit job"):
         hooks.wire_lefthook_staged_check(tmp_path)
     assert config.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+@pytest.mark.parametrize("final_newline", [True, False])
+def test_owned_migration_preserves_unrelated_jobs_comments_and_unicode(
+    tmp_path: Path, newline: str, final_newline: bool
+) -> None:
+    command = f"{launcher.repository_command()} check --staged --trust-repository-code"
+    unrelated = "    other:\n      glob: '*.ts'\n      run: echo café\n"
+    original = (
+        "# café hook configuration\npre-commit:\n  commands:\n    standards:\n"
+        f"      run: {command}\n      exclude:\n        - '*.py'\n      glob: '*.ts'\n"
+        "# preserve the next job\n" + unrelated
+    )
+    original = original.replace("\n", newline)
+    if not final_newline:
+        original = original.removesuffix(newline)
+    config = tmp_path / "lefthook.yml"
+    config.write_bytes(original.encode())
+    migrated = hooks.wire_lefthook_staged_check(tmp_path)
+    assert unrelated.replace("\n", newline).rstrip("\r\n") in migrated.contents
+    assert "# café hook configuration" in migrated.contents
+    assert "# preserve the next job" in migrated.contents
+    config.write_text(migrated.contents)
+    assert hooks.lefthook_runs_staged_check(tmp_path)
+
+
+def test_shared_conditional_yaml_definition_is_left_for_explicit_review(tmp_path: Path) -> None:
+    command = f"{launcher.repository_command()} check --staged --trust-repository-code"
+    config = tmp_path / "lefthook.yml"
+    original = f"defaults: &defaults\n  skip: true\npre-commit:\n  jobs:\n    - <<: *defaults\n      run: {command}\n"
+    config.write_text(original)
+    with pytest.raises(ValueError, match="unconditional pre-commit job"):
+        hooks.wire_lefthook_staged_check(tmp_path)
+    assert config.read_text() == original
 
 
 def test_unconditional_group_and_neutral_options_remain_supported(tmp_path: Path) -> None:
