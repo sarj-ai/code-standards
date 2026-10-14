@@ -15,6 +15,14 @@ const selected = new Set([
 const eslint = new ESLint({
   cwd: process.cwd(),
   ...(request.config === null ? {} : { overrideConfigFile: request.config }),
+  // A partial rule run cannot validate whether unrelated inline directives are
+  // needed. Full lint owns those checks; live selected suppressions still apply.
+  overrideConfig: {
+    linterOptions: {
+      reportUnusedDisableDirectives: "off",
+      reportUnusedInlineConfigs: "off",
+    },
+  },
   cache: false,
   warnIgnored: false,
   applySuppressions: true,
