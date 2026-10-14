@@ -271,6 +271,10 @@ def _run_native(
     native_result: Sequence[_NativeDiagnostic]
     if package == "sarj_python_lint":
         from sarj_python_lint.__main__ import analyze as analyze_python  # ruff: ignore[import-outside-top-level]
+        from sarj_python_lint.rules import DEFAULT_REGISTRY  # ruff: ignore[import-outside-top-level]
+
+        if rule_ids is None:
+            selected_rules = sorted(DEFAULT_REGISTRY)
 
         native_result = analyze_python(
             selected_rules,

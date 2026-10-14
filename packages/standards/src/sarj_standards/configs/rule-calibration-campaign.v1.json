@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/test-without-explicit-oracle",
+      "family": "python",
+      "ruleId": "test-without-explicit-oracle",
+      "state": "pending",
+      "evidence": "Focused collection, helper, fixture, generated/non-unit, opt-out, and suppression controls are executable in the owning rule tests. A local smoke scan found intentional no-throw and syntax-compatibility contracts; these were retained. Pinned multi-repository calibration remains pending.",
+      "outcome": "Keep SARJ495 opt-in and warning-only, without autofix or automatic deletion. Absence of a visible oracle is a review candidate, not proof of low business value."
+    },
+    {
       "task": "rule-audit/python/prefer-declarative-batch-validation",
       "family": "python",
       "ruleId": "prefer-declarative-batch-validation",

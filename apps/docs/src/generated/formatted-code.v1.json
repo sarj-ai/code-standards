@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "4879a4c36c402d4d067b2d3a27e9e66afc8eb75871e0ad204953b946d1db6530",
-  "cliSha256": "bbb4502b02173a20f195ba767501ad85b6c11ff4d49692263a8317170b28bcdb",
+  "catalogSha256": "3f968596faff1e6bcbab26153692f94e0aaff42ba6511316d1ec91c2f29ffaf5",
+  "cliSha256": "75ae0626cdd1901e64b02dfc4721243dfeeb911efcb83012f6b8d543912aa2aa",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.20.2",
@@ -12323,6 +12323,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:test-without-explicit-oracle": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
+              "source": "def test_delivery(sender):\n    deliver(\"hello\", sender)\n    assert sender.messages == [\"hello\"]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "observed-effect",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The assertion distinguishes a missing delivery"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
+              "source": "def test_delivery():\n    deliver(\"hello\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "unobserved-effect",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Observe whether the requested side effect occurred"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:timestamp-order-requires-tiebreaker": {
       "examples": [
         {
@@ -14044,7 +14079,7 @@
       "analyze": "code-standards analyze [-h] [--external] [--prepared-only] [--trust-repository-code] [--prepared-devops PREPARED_DEVOPS ...] [--prepared-target PREPARED_TARGET ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [FILES ...]\n",
       "check": "code-standards check [-h] [--trust-repository-code] [--jobs JOBS] [--skip-python-type-check] [--staged] [--rule SELECTED_RULES ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
       "validate-slack-automations": "code-standards validate-slack-automations [-h] PATH\n",
-      "observe": "code-standards observe [-h] --rule SELECTED_RULES ... [--format OUTPUT_FORMAT] [--output OUTPUT] [--trust-repository-code] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
+      "observe": "code-standards observe [-h] [--rule SELECTED_RULES ...] [--test-value] [--base BASE] [--format OUTPUT_FORMAT] [--output OUTPUT] [--trust-repository-code] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
       "fix": "code-standards fix [-h] [--staged] [FILES ...]\n",
       "update": "code-standards update [-h] [--check] [--offline] [--to VERSION] [--no-install]\n",
       "baseline": "code-standards baseline [-h] {init,update}\n",

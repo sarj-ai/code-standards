@@ -22,12 +22,14 @@ const eslint = new ESLint({
       reportUnusedDisableDirectives: "off",
       reportUnusedInlineConfigs: "off",
     },
+    // Bulk suppressions apply to errors; advisories become warnings in the report.
+    rules: Object.fromEntries((request.upstreamAdvisories ?? []).map((rule) => [rule, "error"])),
   },
   cache: false,
   warnIgnored: false,
   applySuppressions: true,
-  // ESLint preserves each file's parser, plugins, options, severity and inline
-  // directives; the predicate prevents unrelated rule visitors from running.
+  // Preserve repository parsers, plugins, options, and suppressions;
+  // the predicate prevents unrelated rule visitors from running.
   ruleFilter: ({ ruleId }) => selected.has(ruleId),
 });
 const results = await eslint.lintFiles(process.argv.slice(4));

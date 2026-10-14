@@ -54,7 +54,7 @@ from .libs.diagnostics import (
 )
 from .libs.filesystem import is_link_like
 from .libs.linting.analysis import analyze as analyze_paths, report_from_tools
-from .libs.linting.external import analyze_external
+from .libs.linting.external import UpstreamESLintRules, analyze_external
 from .libs.linting.library_policy import (
     ManifestPolicyError,
     accepts_path as library_policy_accepts_path,
@@ -78,6 +78,7 @@ if TYPE_CHECKING:
 
 _INVALID_EXIT = 2
 _INTERRUPTED_EXIT = 130
+_NO_UPSTREAM_ESLINT_RULES = UpstreamESLintRules()
 _INVALID_DOCTOR_FINDING_IDS = frozenset(
     {"doctor.manifest.destination", "doctor.config.unknown", "doctor.package-json.invalid"}
 )
@@ -256,6 +257,7 @@ class Standards:
         trust: TrustMode | str = TrustMode.SAFE,
         mode: AnalysisMode | str = AnalysisMode.POLICY,
         rules: Sequence[str | RuleSelector] | None = None,
+        upstream_rules: UpstreamESLintRules = _NO_UPSTREAM_ESLINT_RULES,
         staged: bool = False,
         react_doctor_triggered: bool = False,
         include_react_doctor: bool = True,
@@ -268,6 +270,7 @@ class Standards:
     ) -> AnalysisReport:
         if jobs not in {1, 2}:
             return _failed_analysis(self.root, "invalid-input", "analysis jobs must be 1 or 2")
+        external = external or bool(upstream_rules.ids)
         try:
             normalized_trust = TrustMode(trust)
             normalized_mode = AnalysisMode(mode)
@@ -297,10 +300,7 @@ class Standards:
             selected_groups = group_paths(active_selected, policy=selection_policy)
         except (OSError, TypeError, ValueError) as exc:
             return _failed_analysis(self.root, "invalid-input", str(exc))
-        requested_paths = adopted.verify_paths if paths is None and adopted is not None else paths
-        react_doctor_full_scan = not staged and (
-            requested_paths is None or any(Path(path) == Path() for path in requested_paths)
-        )
+        react_doctor_full_scan = _react_doctor_full_scan(adopted, paths, staged=staged)
 
         def native_analysis() -> tuple[ToolReport, ...]:
             native = analyze_paths(
@@ -317,7 +317,9 @@ class Standards:
             prepared = _prepared_reports(self.root, adopted, prepared_devops, prepared_targets)
             return (*native.tools, *prepared)
 
-        coverage = _selection_coverage(self.root, selected, active_selected, selected_groups, rule_selection)
+        coverage = _selection_coverage(
+            self.root, selected, active_selected, selected_groups, rule_selection, upstream_rules=upstream_rules
+        )
         coverage.extend(_prepared_coverage(adopted, prepared_devops))
         if not external:
             native = report_from_tools(self.root, native_analysis())
@@ -361,14 +363,18 @@ class Standards:
                 react_doctor_full_scan=react_doctor_full_scan,
                 pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
                 python_type_check=python_type_check,
+                upstream_rules=upstream_rules,
             )
 
         combined = report_from_tools(
             self.root, analyze_groups(self.root, native_analysis, external_analysis, jobs=jobs)
         )
         combined = _with_shell_format_severity(combined, paths=paths, staged=staged, changed_scope=changed_scope)
-        if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE}:
-            combined = _with_warning_severity(combined, _warning_rule_keys())
+        combined = _with_warning_severity(
+            combined,
+            _warning_rule_keys() if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE} else frozenset(),
+            upstream_rules=upstream_rules,
+        )
         return _with_coverage(
             _without_baselined_diagnostics(combined, baseline_counts, changed_scope=changed_scope), coverage
         )
@@ -723,6 +729,7 @@ def _selected_external_analysis(
     react_doctor_full_scan: bool,
     pass_on_unpruned_eslint_suppressions: bool,
     python_type_check: bool,
+    upstream_rules: UpstreamESLintRules,
 ) -> tuple[ToolReport, ...]:
     rule_ids = (
         frozenset(str(value) for value in rule_selection.ids_for(RuleEngine.ESLINT))
@@ -730,12 +737,13 @@ def _selected_external_analysis(
         else None
     )
     external_engines = frozenset({RuleEngine.ESLINT, RuleEngine.CHECKOV, RuleEngine.ZIZMOR})
+    upstream_capabilities = frozenset({"eslint"}) if upstream_rules.ids else frozenset[str]()
     selected_capabilities = (
-        frozenset(engine.value for engine in rule_selection.engines & external_engines)
+        frozenset(engine.value for engine in rule_selection.engines & external_engines) | upstream_capabilities
         if rule_selection is not None
         else None
     )
-    run_external = rule_selection is None or not rule_selection.engines.isdisjoint(external_engines)
+    run_external = selected_capabilities is None or bool(selected_capabilities)
     external_reports = (
         (
             analyze_external(
@@ -748,6 +756,7 @@ def _selected_external_analysis(
                 ),
                 grouped=selected_groups,
                 rule_ids=rule_ids,
+                upstream_rules=upstream_rules,
                 security_selection=rule_selection,
                 include_react_doctor=include_react_doctor and rule_selection is None,
                 force_react_doctor=react_doctor_triggered,
@@ -764,6 +773,7 @@ def _selected_external_analysis(
                 capabilities=selected_capabilities,
                 grouped=selected_groups,
                 rule_ids=rule_ids,
+                upstream_rules=upstream_rules,
                 security_selection=rule_selection,
                 include_react_doctor=include_react_doctor and rule_selection is None,
                 force_react_doctor=react_doctor_triggered,
@@ -777,7 +787,10 @@ def _selected_external_analysis(
         else ()
     )
     if rule_selection is not None:
-        external_reports = tuple(_filter_report_selectors(report, rule_selection) for report in external_reports)
+        external_reports = tuple(
+            _filter_report_selectors(report, rule_selection, upstream_rules=upstream_rules)
+            for report in external_reports
+        )
     return external_reports
 
 
@@ -811,12 +824,19 @@ def _with_repository_analysis(root: Path, native: AnalysisReport, *, staged: boo
     return native
 
 
+def _react_doctor_full_scan(adopted: Manifest | None, paths: Sequence[str] | None, *, staged: bool) -> bool:
+    requested_paths = adopted.verify_paths if paths is None and adopted is not None else paths
+    return not staged and (requested_paths is None or any(Path(path) == Path() for path in requested_paths))
+
+
 def _selection_coverage(
     root: Path,
     selected: list[str],
     active_selected: list[str],
     selected_groups: GroupedPaths,
     rule_selection: RuleSelection | None,
+    *,
+    upstream_rules: UpstreamESLintRules,
 ) -> list[CoverageNotice]:
     coverage: list[CoverageNotice] = []
     excluded = sum(Path(item).is_file() and item not in active_selected for item in selected)
@@ -830,6 +850,8 @@ def _selection_coverage(
             )
         )
     routed = _routed_for_selection(selected_groups, rule_selection)
+    if upstream_rules.ids:
+        routed.update(selected_groups.typescript)
     if rule_selection is None:
         routed.update(
             item for item in active_selected if Path(item).is_file() and library_policy_accepts_path(Path(item), root)
@@ -947,9 +969,13 @@ def _routed_for_selection(grouped: object, selected: RuleSelection | None) -> se
 def _filter_report_selectors(
     report: ToolReport,
     selected: RuleSelection,
+    *,
+    upstream_rules: UpstreamESLintRules = _NO_UPSTREAM_ESLINT_RULES,
 ) -> ToolReport:
     engine = RuleEngine(report.name) if report.name in {"eslint", "zizmor", "checkov"} else None
     allowed: frozenset[str] = frozenset() if engine is None else selected.native_ids_for(engine)
+    if engine is RuleEngine.ESLINT:
+        allowed |= upstream_rules.ids
     return ToolReport(
         report.name,
         report.completion,
@@ -972,15 +998,23 @@ def _warning_rule_keys() -> frozenset[RuleSelector]:
     return warning_selectors()
 
 
-def _with_warning_severity(report: AnalysisReport, selectors: frozenset[RuleSelector]) -> AnalysisReport:
-    if not selectors:
+def _with_warning_severity(
+    report: AnalysisReport,
+    selectors: frozenset[RuleSelector],
+    *,
+    upstream_rules: UpstreamESLintRules = _NO_UPSTREAM_ESLINT_RULES,
+) -> AnalysisReport:
+    if not selectors and not upstream_rules.warning_only:
         return report
     tools = tuple(
         ToolReport(
             tool.name,
             tool.completion,
             diagnostics=tuple(
-                replace(item, severity=Severity.WARNING) if _selector_for_diagnostic(item) in selectors else item
+                replace(item, severity=Severity.WARNING)
+                if _selector_for_diagnostic(item) in selectors
+                or (tool.name == "eslint" and upstream_rules.warning_only and item.rule_id in upstream_rules.ids)
+                else item
                 for item in tool.diagnostics
             ),
             issues=tool.issues,
