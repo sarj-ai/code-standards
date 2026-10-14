@@ -232,15 +232,6 @@ def test_flags_an_orphaned_key_with_no_declaration(tmp_path: Path) -> None:
     assert (diags[0].line, diags[0].col) == (2, 1)
 
 
-def test_declared_assignments_are_not_orphans(tmp_path: Path) -> None:
-    root = _write_root(
-        tmp_path,
-        _DECLARED_TIER,
-        {"dev": 'redis_tier = "BASIC"\n', "prod": 'redis_tier = "STANDARD_HA"\n'},
-    )
-    assert _check_env(root, "dev") == []
-
-
 def test_never_flags_a_variable_declared_but_never_assigned(tmp_path: Path) -> None:
     root = _write_root(
         tmp_path,

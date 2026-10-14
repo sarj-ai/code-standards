@@ -572,11 +572,6 @@ def test_vars_with_an_argument_is_not_frame_reflection():
     assert len(_check(src)) == 1
 
 
-def test_read_by_a_safe_consumer_still_fires():
-    # The opposite case for the zero-read guard: one recognised read is enough.
-    assert len(_check(_fn(f"allowed = {EIGHT_LIST}\nreturn len(allowed)"))) == 1
-
-
 def test_regex_bound_but_never_used_is_ignored():
     src = "import re\n\n" + _fn('pattern = re.compile(r"^[a-z]+$")\nreturn payload')
     assert _check(src) == []

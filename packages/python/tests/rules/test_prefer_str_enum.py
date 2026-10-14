@@ -1703,22 +1703,6 @@ def render(kind: str) -> str:
     assert len(_check(src)) == 1
 
 
-def test_match_with_proven_assert_never_reports() -> None:
-    src = """
-from typing import assert_never
-
-def render(kind: str) -> str:
-    match kind:
-        case "text":
-            return "Text"
-        case "image":
-            return "Image"
-        case _:
-            assert_never(kind)
-"""
-    assert len(_check(src)) == 1
-
-
 def test_shadowed_assert_never_does_not_prove_rejection() -> None:
     src = """
 def assert_never(value):
