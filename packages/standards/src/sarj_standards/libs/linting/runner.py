@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 from sarj_standards.libs.filesystem import is_link_like
 
-from . import textlint
+from . import library_policy, textlint
 
 
 if TYPE_CHECKING:
@@ -285,7 +285,7 @@ def _validated_inputs(files: Sequence[str], *, policy: Policy | None) -> list[tu
 
 def accepts_hook_path(path: Path, *, root: Path | None = None) -> bool:
     return (
-        _owns_path(path)
+        (_owns_path(path) or (root is not None and library_policy.accepts_path(path, root)))
         and not _is_skill_artifact(path)
         and not _is_ignored_path(path, root=root)
         and not _is_conventionally_generated(path)

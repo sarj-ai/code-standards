@@ -2275,12 +2275,12 @@ def _precommit_hook(runner_prefix: str, *, hook_indent: int = 6) -> str:
     return (
         f"{item}- id: sarj-standards-check\n"
         f"{field}name: sarj standards -- staged checks\n"
-        f"{field}entry: {runner_prefix} check --staged --trust-repository-code --\n"
+        f"{field}entry: {runner_prefix} check --staged --trust-repository-code\n"
         f"{field}language: system\n"
         f"{field}always_run: true\n"
-        f"{field}pass_filenames: true\n"
+        f"{field}pass_filenames: false\n"
         f"{field}require_serial: true\n"
-        f"{field}files: '{hooks.PRECOMMIT_FILES_PATTERN}'\n"
+        f"{field}verbose: true\n"
         f"{field}stages: [pre-commit]\n"
         f"{_precommit_commit_message_hook(runner_prefix, hook_indent=hook_indent)}"
     )

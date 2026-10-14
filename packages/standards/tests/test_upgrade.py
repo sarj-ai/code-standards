@@ -1877,7 +1877,7 @@ def test_upgrade_refreshes_every_doctor_owned_pin_site_without_thrashing(tmp_pat
     assert repository_launcher in workflow
     assert repository_launcher in package_json
     assert "sarj-standards==" not in workflow + package_json
-    assert "verbose: true" not in (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    assert "verbose: true" in (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     assert f"sarj-python-lint=={python_lint}" in pyproject.read_text(encoding="utf-8")
     assert f"sarj-python-lint=={python_lint}" in (tmp_path / "requirements-dev.txt").read_text(encoding="utf-8")
     assert {finding.id for finding in doctor.diagnose(tmp_path) if finding.level is doctor.Level.DRIFT} == set()

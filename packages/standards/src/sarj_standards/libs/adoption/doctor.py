@@ -635,7 +635,7 @@ def _check_lefthook_hooks(
         yield Finding(
             Level.DRIFT,
             "lefthook.yml",
-            "Lefthook does not run `code-standards check --staged` during pre-commit",
+            "Lefthook does not run exactly one unconditional `code-standards check --staged` during pre-commit",
             "doctor.hooks.lefthook",
             "run `code-standards update --offline`",
         )
@@ -750,9 +750,7 @@ def _installed_hook_managers(root: Path, *, hook_type: str = "pre-commit") -> fr
             continue
         if repository_hooks.has_durable_environment(candidate):
             managers.add("lefthook")
-        if (
-            "hook-type=pre-commit" in contents or "pre_commit" in contents
-        ) and repository_hooks.has_managed_uvx_environment(candidate):
+        if (f"hook-type={hook_type}" in contents) and repository_hooks.has_managed_uvx_environment(candidate):
             managers.add("pre-commit")
     return frozenset(managers)
 
