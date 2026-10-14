@@ -5,18 +5,21 @@ description: Write or review pytest and Vitest tests when reducing redundancy or
 
 # Test value
 
-Review changed tests or the requested suite.
+Run `code-standards observe --test-value --base BASE` for changed tests; omit
+`--base` for the suite. Authorize repository ESLint execution with
+`--trust-repository-code`. Verify candidates in source.
 
-1. Run applicable deterministic checks; verify findings in source.
-2. Name the contract and a plausible wrong outcome the test rejects. Reuse existing coverage when it already rejects that outcome.
-3. Observe returned content, state, access, or emitted effects. Exact interaction assertions belong at real boundaries.
-4. Parameterize independent cases sharing one action and oracle. Keep ordered scenarios intact.
-5. Add tests for uncovered behavior changes. Mechanical edits and review comments alone do not require new tests.
-6. Treat smoke, no-throw, compatibility, nullable results, enum sweeps, and property tests as possible contracts. Broad advisories require review.
-7. Use real construction and maintained fakes. Add production abstractions only when production needs them.
+- Name the contract and wrong outcome. Reuse adequate coverage; mechanical edits and review comments do not require tests.
+- Compare inputs, actions, fixtures/marks, runtime, and assertion order/effects before removing duplicated or subsumed oracles. Combine complementary assertions sharing those conditions.
+- Cover inherited behavior at its owner; retain override and composition contracts.
+- Parameterize independent cases when shorter; preserve ordered scenarios.
+- Observe content, state, access, or effects. Exact interactions belong at real boundaries. Preserve smoke, no-throw, compatibility, enum/property, representation, and assertion-helper contracts.
+- Verify retained cases and coverage; use targeted regression probes when an oracle could be lost. Equal coverage does not prove equivalence.
+- Rerun checks and inspect affected helpers/fixtures until no confirmed improvement remains within scope.
 
-Preserve mandatory repository coverage rules, including store line/branch coverage. Preserve assertion helpers and explicit representation contracts.
+Preserve mandatory coverage, including store lines/branches. Reuse maintained
+fakes; production abstractions need a production reason. Findings never
+authorize deletion.
 
-Report keep, strengthen, merge, or delete with the contract, evidence, and focused command. Automated findings never authorize deletion.
-
-Read [references/oracles.md](references/oracles.md) only for uncertain cases.
+Report keep, strengthen, merge, or delete with evidence and a focused command.
+Read [references/oracles.md](references/oracles.md) for uncertain cases.

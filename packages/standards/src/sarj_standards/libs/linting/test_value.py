@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Final
 
 from repo_standards.pull_request import is_test_path
 
-from sarj_standards.libs.rules import RuleSelector
+from sarj_standards.libs.rules import RuleEngine, RuleSelector
 
 from .runner import group_paths
 
@@ -14,14 +14,21 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
-UPSTREAM_RULES: Final = frozenset({"vitest/expect-expect", "vitest/valid-expect-in-promise"})
 SELECTORS: Final = frozenset(
     RuleSelector.parse(selector)
     for selector in (
         "python:test-without-explicit-oracle",
         "python:no-raw-source-text-test-oracle",
         "python:iac-source-coupled-test",
+        "python:no-repeated-test-body",
+        "python:no-statically-truthy-assertion",
+        "eslint:duplicate-test-body",
+        "eslint:no-duplicate-test-case",
+        "eslint:no-tautological-expect",
     )
+)
+ESLINT_RULES: Final = frozenset({"vitest/expect-expect", "vitest/valid-expect-in-promise"}) | frozenset(
+    selector.native_rule_id for selector in SELECTORS if selector.engine is RuleEngine.ESLINT
 )
 
 

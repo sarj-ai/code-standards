@@ -10,6 +10,7 @@ import pytest
 from sarj_standards.api import Standards
 from sarj_standards.cli.main import main
 from sarj_standards.libs.adoption.manifest import as_table, list_field
+from sarj_standards.libs.diagnostics import Severity
 
 
 def _report(output: str) -> dict[str, object]:
@@ -23,18 +24,32 @@ def test_observe_reports_candidates_without_turning_them_into_default_blockers(
 ) -> None:
     tests = tmp_path / "tests"
     tests.mkdir()
-    (tests / "test_delivery.py").write_text("def test_delivery():\n    deliver()\n", encoding="utf-8")
+    (tests / "test_delivery.py").write_text(
+        "def test_delivery():\n    deliver()\n"
+        "def test_starts_job():\n    job = build_job()\n    job.run()\n    assert job.done\n"
+        "def test_stops_job():\n    job = build_job()\n    job.run()\n    assert job.done\n"
+        "def test_guard():\n    assert 1\n",
+        encoding="utf-8",
+    )
     (tests / "fakes").mkdir()
     (tests / "fakes/test_sender.py").write_text("def test_unused():\n    send()\n", encoding="utf-8")
     default = Standards(tmp_path).analyze(["tests/test_delivery.py"])
     assert not any(item.code == "SARJ495" for item in default.diagnostics)
+    assert {(item.code, item.severity) for item in default.diagnostics if item.code in {"SARJ057", "SARJ066"}} == {
+        ("SARJ057", Severity.ERROR),
+        ("SARJ066", Severity.ERROR),
+    }
 
     status = main(["--root", str(tmp_path), "observe", "--test-value", "--format", "json", *paths])
     report = _report(capsys.readouterr().out)
-    assert status == 0
+    assert status == 0, report
     assert report["completion"] == "complete"
     findings = [as_table(item) for item in list_field(report, "diagnostics")]
-    assert [(item["code"], item["severity"]) for item in findings] == [("SARJ495", "warning")]
+    assert sorted((item["code"], item["severity"]) for item in findings) == [
+        ("SARJ057", "warning"),
+        ("SARJ066", "warning"),
+        ("SARJ495", "warning"),
+    ]
 
 
 def _git(root: Path, *args: str) -> str:
@@ -72,7 +87,7 @@ def test_observe_base_scans_only_existing_changed_tests(
 
     status = main(["--root", str(tmp_path), "observe", "--test-value", "--base", base, "--format", "json"])
     report = _report(capsys.readouterr().out)
-    assert status == 0
+    assert status == 0, report
     assert report["completion"] == "complete"
     codes = [as_table(item)["code"] for item in list_field(report, "diagnostics")]
     assert codes == (["SARJ495"] if change == "test" else [])
@@ -105,50 +120,137 @@ def test_typescript_analysis_requires_a_trusted_repository_runtime(
 
 
 @pytest.mark.parametrize(
-    ("body", "directive", "expected", "bulk"),
+    ("body", "directive", "expected", "bulk", "registered"),
     [
-        ("deliver();", "", "vitest/expect-expect", False),
-        ("expect(deliver()).toEqual('hello');", "", None, False),
+        ("test('delivery', () => {deliver();});", "", "vitest/expect-expect", False, True),
         (
-            "Promise.resolve('hello').then(value => expect(value).toEqual('hello'));",
+            "function verify(value){expect(value).toEqual('hello');}\ntest('delivery', () => {verify(deliver());});",
+            "",
+            None,
+            False,
+            False,
+        ),
+        (
+            "test('delivery', () => {Promise.resolve('hello').then(value => expect(value).toEqual('hello'));});",
             "",
             "vitest/valid-expect-in-promise",
             False,
+            True,
         ),
-        ("return Promise.resolve('hello').then(value => expect(value).toEqual('hello'));", "", None, False),
-        ("deliver();", "// eslint-disable-next-line vitest/expect-expect\n", None, False),
-        ("deliver();", "", None, True),
+        (
+            "test('delivery', () => {return Promise.resolve('hello').then(value => expect(value).toEqual('hello'));});",
+            "",
+            None,
+            False,
+            True,
+        ),
+        (
+            "test('delivery', () => {deliver();});",
+            "// eslint-disable-next-line vitest/expect-expect\n",
+            None,
+            False,
+            True,
+        ),
+        ("test('delivery', () => {deliver();});", "", "vitest/expect-expect", True, True),
+        ("test('delivery', () => {expect(true).toBe(true);});", "", "@sarj/no-tautological-expect", False, True),
+        (
+            "test.each([1, 1])('value %s', value => {expect(value).toBe(1);});",
+            "",
+            "@sarj/no-duplicate-test-case",
+            False,
+            True,
+        ),
+        (
+            (
+                "test('starts', () => {const job=buildJob();job.run();expect(job.done).toBe(true);});\n"
+                "test('stops', () => {const job=buildJob();job.run();expect(job.done).toBe(true);});"
+            ),
+            "",
+            "@sarj/duplicate-test-body",
+            False,
+            True,
+        ),
+        (
+            "test.each([1, 1])('value %s', value => {expect(value).toBe(1);});",
+            "",
+            "@sarj/no-duplicate-test-case",
+            True,
+            False,
+        ),
     ],
-    ids=["missing-oracle", "asserted", "discarded-promise", "returned-promise", "inline-suppressed", "bulk-suppressed"],
+    ids=[
+        "missing-oracle",
+        "asserted",
+        "discarded-promise",
+        "returned-promise",
+        "inline-suppressed",
+        "bulk-suppressed",
+        "tautology",
+        "duplicate-case",
+        "duplicate-body",
+        "sarj-bulk-suppressed",
+    ],
 )
-def test_observe_vitest_oracles_and_promise_completion(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], body: str, directive: str, expected: str | None, *, bulk: bool
+def test_observe_vitest_oracles_redundancy_and_promise_completion(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    body: str,
+    directive: str,
+    expected: str | None,
+    *,
+    bulk: bool,
+    registered: bool,
 ) -> None:
     modules = Path(__file__).resolve().parents[2] / "typescript/node_modules"
     if shutil.which("node") is None or not (modules / "@vitest/eslint-plugin/package.json").is_file():
         pytest.skip("requires the repository's locked TypeScript dependencies")
-    (tmp_path / "node_modules").symlink_to(modules, target_is_directory=True)
+    plugin = modules.parent / "dist/index.js"
+    if not plugin.is_file():
+        pytest.skip("requires the built TypeScript plugin")
+    installed = tmp_path / "node_modules"
+    (installed / "@sarj").mkdir(parents=True)
+    for name in ("eslint", "@typescript-eslint", "@vitest", ".bin"):
+        (installed / name).symlink_to(modules / name, target_is_directory=True)
+    (installed / "@sarj/eslint-plugin").symlink_to(modules.parent, target_is_directory=True)
+    configured = "vitest,'@sarj':sarj" if registered else ""
+    active = (
+        "'@sarj/no-tautological-expect':'error','@sarj/no-duplicate-test-case':'error',"
+        "'@sarj/duplicate-test-body':'error',"
+        if registered
+        else ""
+    )
     (tmp_path / "package.json").write_text('{"type":"module"}', encoding="utf-8")
     (tmp_path / "eslint.config.mjs").write_text(
         "import parser from '@typescript-eslint/parser';\n"
         "import vitest from '@vitest/eslint-plugin';\n"
+        f"import sarj from {json.dumps(plugin.as_uri())};\n"
         "const unrelated={create(){throw new Error('UNRELATED RULE EXECUTED');}};\n"
         "export default [{files:['**/*.ts'],languageOptions:{parser},"
-        "plugins:{vitest,'@sarj':{rules:{unrelated}}},rules:{'@sarj/unrelated':'error'}}];\n",
+        f"plugins:{{guard:{{rules:{{unrelated}}}}{',' + configured if configured else ''}}},"
+        f"rules:{{'guard/unrelated':'error',{active}"
+        "'vitest/expect-expect':['off',{assertFunctionNames:['expect','verify']}]}}];\n",
         encoding="utf-8",
     )
     (tmp_path / "delivery.test.ts").write_text(
-        "import {test, expect} from 'vitest';\n" + directive + "test('delivery', () => {" + body + "});\n",
+        "import {test, expect} from 'vitest';\n" + directive + body + "\n",
         encoding="utf-8",
     )
     if bulk:
         (tmp_path / "eslint-suppressions.json").write_text(
-            json.dumps({"delivery.test.ts": {"vitest/expect-expect": {"count": 1}}}), encoding="utf-8"
+            json.dumps({"delivery.test.ts": {expected: {"count": 1}}}), encoding="utf-8"
         )
     status = main(["--root", str(tmp_path), "observe", "--test-value", "--trust-repository-code", "--format", "json"])
     report = _report(capsys.readouterr().out)
-    assert status == 0
+    assert status == 0, report
     assert report["completion"] == "complete"
     assert list_field(report, "issues") == []
     findings = [as_table(item) for item in list_field(report, "diagnostics")]
-    assert [(item["ruleId"], item["severity"]) for item in findings] == ([(expected, "warning")] if expected else [])
+    assert [(item["ruleId"], item["severity"]) for item in findings] == (
+        [(expected, "warning")] if expected and not bulk else []
+    )
+
+    if expected and expected.startswith("@sarj/") and not bulk and registered:
+        policy = Standards(tmp_path).analyze(
+            ["delivery.test.ts"], external=True, trust="trusted", rules=["eslint:" + expected.removeprefix("@sarj/")]
+        )
+        assert [(item.rule_id, item.severity) for item in policy.diagnostics] == [(expected, Severity.ERROR)]

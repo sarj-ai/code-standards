@@ -1618,7 +1618,7 @@ def _object_table(value: object) -> dict[str, object] | None:
 def cmd_observe(args: _Args) -> int:
     from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
     from sarj_standards.libs.linting.external import UpstreamESLintRules  # ruff: ignore[import-outside-top-level]
-    from sarj_standards.libs.linting.test_value import UPSTREAM_RULES  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.test_value import ESLINT_RULES  # ruff: ignore[import-outside-top-level]
 
     root = _resolve_dest(args.dest)
     if _validate_analysis_output(args, root):
@@ -1644,7 +1644,7 @@ def cmd_observe(args: _Args) -> int:
         trust=TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE,
         mode=AnalysisMode.OBSERVE,
         rules=selected_rules,
-        upstream_rules=UpstreamESLintRules(UPSTREAM_RULES, warning_only=True)
+        upstream_rules=UpstreamESLintRules(ESLINT_RULES, warning_only=True)
         if args.test_value
         else UpstreamESLintRules(),
     )
@@ -1656,11 +1656,12 @@ def _observation_rules(args: _Args) -> list[RuleSelector]:
     from sarj_standards.libs.linting.test_value import SELECTORS  # ruff: ignore[import-outside-top-level]
 
     warning_rules = warning_selectors()
-    selected_rules = sorted(set(args.selected_rules) | (SELECTORS if args.test_value else frozenset()), key=str)
+    test_value_rules: frozenset[RuleSelector] = SELECTORS if args.test_value else frozenset()
+    selected_rules = sorted(set(args.selected_rules) | test_value_rules, key=str)
     if not selected_rules:
         msg = "observe requires --rule or --test-value"
         raise ValueError(msg)
-    invalid = sorted(set(selected_rules) - warning_rules)
+    invalid = sorted(set(selected_rules) - (warning_rules | test_value_rules))
     if invalid:
         rendered = ", ".join(map(str, invalid))
         msg = (
@@ -3164,7 +3165,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
             typer.Option("--rule", parser=_parse_rule_selector, help="canonical ENGINE:ID selector (repeatable)"),
         ] = None,
         test_value: Annotated[
-            bool, typer.Option("--test-value", help="report the curated opt-in test-oracle advisories")
+            bool, typer.Option("--test-value", help="report curated test-oracle and redundancy advisories")
         ] = False,
         base: Annotated[
             str | None, typer.Option("--base", help="observe existing paths changed from this Git base")
