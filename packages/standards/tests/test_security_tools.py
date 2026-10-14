@@ -352,6 +352,7 @@ def test_security_process_preserves_environment_allowlist_and_timeout(
     safe_keys = ("UV_CACHE_DIR", "UV_PYTHON_INSTALL_DIR", "UV_TOOL_DIR")
     for key in safe_keys:
         monkeypatch.setenv(key, str(tmp_path / key))
+    expected = ProcessOutput(37, "child output", "child diagnostic")
 
     def bounded(
         argv: Sequence[str], *, cwd: Path, environment: dict[str, str], timeout_seconds: float
@@ -364,12 +365,12 @@ def test_security_process_preserves_environment_allowlist_and_timeout(
         for key in safe_keys:
             assert environment[key] == str(tmp_path / key)
         assert timeout_seconds == 300
-        return ProcessOutput(0, "{}", "")
+        return expected
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept the production process boundary; injected runners bypass the environment and timeout controls being tested.
         external, "_run_process", bounded
     )
-    external._security_runner(external.run_process, ("checkov",), cwd=tmp_path, name="checkov")  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert external._security_runner(external.run_process, ("checkov",), cwd=tmp_path, name="checkov") == expected  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
 
 
 def test_upstream_selectors_and_exclusions_use_canonical_ids(tmp_path: Path) -> None:
