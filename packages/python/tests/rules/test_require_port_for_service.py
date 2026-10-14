@@ -292,6 +292,86 @@ def test_mock_spec_without_production_typed_consumer_does_not_need_port(tmp_path
     assert rule.check(definition, loaded[definition]) == []
 
 
+@pytest.mark.parametrize(
+    ("mock_source", "targets"),
+    [
+        ("from unittest.mock import Mock as M\nM(spec=First)\nM(spec_set=Second)\n", {"First", "Second"}),
+        ("import unittest.mock as m\nm.Mock(spec=First)\nm.create_autospec(Second)\n", {"First", "Second"}),
+        (
+            "from unittest import mock as m\nm.AsyncMock(spec=First)\nm.MagicMock(spec_set=Second)\n",
+            {"First", "Second"},
+        ),
+        ("from unittest.mock import create_autospec as auto\nauto(First, spec_set=True)\n", {"First"}),
+        ("from unittest.mock import Mock\nMock(First)\nMock(spec='First')\nMock(spec=unknown)\n", set[str]()),
+        ("from unrelated import Mock\nMock(spec=First)\n", set[str]()),
+        ("from unittest.mock import Mock\ndef nested():\n    return Mock(spec=Second)\n", {"Second"}),
+        ("from unittest.mock import Mock\nMock(spec=First)\nMock(spec_set=First)\n", {"First"}),
+        ("from unittest.mock import Mock\nMock(spec=Other)\n", {"Other"}),
+        ("def nested():\n    from unittest.mock import Mock\n    return Mock(spec=First)\n", set[str]()),
+    ],
+    ids=[
+        "symbol-alias",
+        "module-alias",
+        "namespace-alias",
+        "autospec",
+        "unresolved",
+        "unrelated",
+        "nested",
+        "duplicate",
+        "same-name-different-module",
+        "local-import-scope",
+    ],
+)
+def test_project_mock_specs_preserve_targets_paths_and_unit_replacement(
+    tmp_path: Path, mock_source: str, targets: set[str]
+) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    package = tmp_path / "app"
+    package.mkdir()
+    (package / "__init__.py").write_text("")
+    definition = package / "services.py"
+    substitute = tmp_path / "test_services.py"
+    production_mock = package / "mocks.py"
+    other_definition = package / "other.py"
+    imports = (
+        "from app.services import FirstService as First, SecondService as Second\n"
+        "from app.other import FirstService as Other\n"
+    )
+    sources = {
+        definition: "class FirstService: pass\nclass SecondService: pass\n",
+        other_definition: "class FirstService: pass\n",
+        substitute: imports + mock_source,
+        production_mock: "from .services import FirstService as First\nfrom unittest.mock import Mock\nMock(spec=First)\n",
+        tmp_path / "malformed.py": "this is not valid Python!\n",
+    }
+    for path, source in sources.items():
+        path.write_text(source)
+    indexes = ProjectIndexSet.build(list(sources), sources)
+    unit = indexes.unit(definition)
+    assert unit is not None
+
+    for name in ("Second", "Missing", "First"):
+        expected: set[Path] = {production_mock} if name == "First" else set()
+        if name in targets:
+            expected.add(substitute)
+        assert indexes.test_mock_specs(unit, f"{name}Service") == frozenset(expected)
+    other = indexes.unit(other_definition)
+    assert other is not None
+    assert indexes.test_mock_specs(other, "FirstService") == (
+        frozenset({substitute}) if "Other" in targets else frozenset()
+    )
+
+    replacement_sources = {**sources, substitute: f"{imports}from unittest.mock import Mock\nMock(spec=Second)\n"}
+    replacement = ProjectIndexSet.build(list(replacement_sources), replacement_sources).unit(substitute)
+    assert replacement is not None
+    updated = indexes.with_unit(replacement)
+    assert updated.test_mock_specs(unit, "FirstService") == frozenset({production_mock})
+    assert updated.test_mock_specs(unit, "SecondService") == frozenset({substitute})
+    assert indexes.test_mock_specs(unit, "SecondService") == (
+        frozenset({substitute}) if "Second" in targets else frozenset()
+    )
+
+
 def test_namespace_package_manager_with_mocked_consumer_needs_port(tmp_path: Path) -> None:
     root = tmp_path / "project"
     common = root / "common"
