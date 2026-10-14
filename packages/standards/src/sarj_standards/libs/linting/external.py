@@ -73,6 +73,7 @@ class _PreparedInputs(NamedTuple):
 @dataclass(frozen=True, slots=True)
 class UpstreamESLintRules:
     ids: frozenset[str] = frozenset()
+    warning_only: bool = False
 
 
 _NO_UPSTREAM_ESLINT_RULES = UpstreamESLintRules()
@@ -3273,6 +3274,7 @@ def _selected_eslint_argv(
         {
             "rules": sorted(rule_ids),
             "upstreamRules": sorted(upstream_rules.ids),
+            "upstreamAdvisories": sorted(upstream_rules.ids) if upstream_rules.warning_only else [],
             "config": config,
             "passOnUnpruned": pass_on_unpruned_suppressions,
         },

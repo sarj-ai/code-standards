@@ -94,6 +94,7 @@ class Rule(ABC):
     id: str
     code: str
     description: str
+    enabled_by_default: ClassVar[bool] = True
     documentation: ClassVar[RuleDocumentation | None] = None
     _analysis_session: AnalysisSession | None = None
 
