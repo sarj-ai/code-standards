@@ -221,6 +221,7 @@ from sarj_python_lint.rules.no_contradictory_type_guard import NoContradictoryTy
 from sarj_python_lint.rules.no_defaulted_environment_setting import NoDefaultedEnvironmentSetting
 from sarj_python_lint.rules.no_duplicate_field_validator_body import NoDuplicateFieldValidatorBody
 from sarj_python_lint.rules.no_folded_bad_request_not_found import NoFoldedBadRequestNotFound
+from sarj_python_lint.rules.no_hasattr import NoHasattr
 from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossiblePydanticFieldBounds
 from sarj_python_lint.rules.no_invalid_pydantic_bypass import NoInvalidPydanticBypass
 from sarj_python_lint.rules.no_invalid_pydantic_validator_return import NoInvalidPydanticValidatorReturn
@@ -241,6 +242,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferBulkUpsert.id: PreferBulkUpsert,
         PreferPsycopgExecutemany.id: PreferPsycopgExecutemany,
         StoreFieldUpdateReusesUpsert.id: StoreFieldUpdateReusesUpsert,
+        NoHasattr.id: NoHasattr,
         NoFoldedBadRequestNotFound.id: NoFoldedBadRequestNotFound,
         NoDefaultedEnvironmentSetting.id: NoDefaultedEnvironmentSetting,
         NoDuplicateFieldValidatorBody.id: NoDuplicateFieldValidatorBody,

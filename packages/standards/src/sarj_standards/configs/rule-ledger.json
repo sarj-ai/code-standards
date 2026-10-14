@@ -70,6 +70,7 @@
       "no-folded-bad-request-not-found",
       "no-frozen-after-validator-field-write",
       "no-generic-single-export-module",
+      "no-hasattr",
       "no-hidden-constructor-fallback",
       "no-impossible-pydantic-field-bounds",
       "no-injected-module-loader",
@@ -218,6 +219,7 @@
       "no-environment-conditional",
       "no-managed-service-account-key",
       "no-mocked-terraform-test-oracle",
+      "no-plaintext-secret-env",
       "no-project-basic-privilege",
       "no-project-secret-access-for-service-account",
       "no-redundant-variable-validation",
@@ -317,6 +319,7 @@
       "prefer-multi-value-zod-literal",
       "prefer-named-callback-domain",
       "prefer-named-complex-return-type",
+      "prefer-native-fetch-in-server-actions",
       "prefer-native-random-uuid",
       "prefer-node-crypto-hash",
       "prefer-node-fs-promises",
@@ -523,6 +526,7 @@
       "SARJ496",
       "SARJ497",
       "SARJ498",
+      "SARJ499",
       "SARJ507",
       "SARJ508",
       "SARJ509",
@@ -573,7 +577,8 @@
       "SARJ210",
       "SARJ211",
       "SARJ212",
-      "SARJ213"
+      "SARJ213",
+      "SARJ214"
     ],
     "text": [
       "SARJ300",

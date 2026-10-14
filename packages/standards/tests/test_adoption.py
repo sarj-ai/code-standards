@@ -878,7 +878,7 @@ def test_setup_discards_removed_rule_exclusions(tmp_path: Path, schema: int, bun
 @pytest.mark.parametrize(
     ("exclusions", "message"),
     [
-        ('rules = ["python:SARJ449", "python:SARJ499"]', "unknown Standards rule exclusion: python:SARJ499"),
+        ('rules = ["python:SARJ449", "python:SARJ999"]', "unknown Standards rule exclusion: python:SARJ999"),
         ('rules = ["code:SARJ449"]', "must use a canonical engine:rule selector"),
         ('rules = ["python:SARJ449", 449]', "must contain only non-empty strings"),
         (
