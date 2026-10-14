@@ -208,22 +208,36 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from sarj_python_lint.rule_base import Rule
+from sarj_python_lint.rules.delete_route_returns_no_content import DeleteRouteReturnsNoContent
 from sarj_python_lint.rules.duplicate_adjacent_exception_handler import DuplicateAdjacentExceptionHandler
 from sarj_python_lint.rules.duplicate_closed_pure_helper import DuplicateClosedPureHelper
+from sarj_python_lint.rules.excluded_field_skips_json_schema import ExcludedFieldSkipsJsonSchema
 from sarj_python_lint.rules.no_conflicting_pydantic_alias_validation import NoConflictingPydanticAliasValidation
+from sarj_python_lint.rules.no_create_verb_in_post_path import NoCreateVerbInPostPath
 from sarj_python_lint.rules.no_defaulted_environment_setting import NoDefaultedEnvironmentSetting
 from sarj_python_lint.rules.no_duplicate_field_validator_body import NoDuplicateFieldValidatorBody
+from sarj_python_lint.rules.no_exception_text_in_500_detail import NoExceptionTextIn500Detail
 from sarj_python_lint.rules.no_folded_bad_request_not_found import NoFoldedBadRequestNotFound
 from sarj_python_lint.rules.no_hasattr import NoHasattr
 from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossiblePydanticFieldBounds
+from sarj_python_lint.rules.no_slash_collection_root_under_prefix import NoSlashCollectionRootUnderPrefix
 from sarj_python_lint.rules.no_unknown_pydantic_validator_field import NoUnknownPydanticValidatorField
+from sarj_python_lint.rules.no_work_verb_get_route import NoWorkVerbGetRoute
 from sarj_python_lint.rules.redundant_test_constructor_forwarder import RedundantTestConstructorForwarder
 from sarj_python_lint.rules.repeated_unimplemented_test_contract import RepeatedUnimplementedTestContract
+from sarj_python_lint.rules.require_exp_on_jwt_decode import RequireExpOnJwtDecode
 from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOracle
 
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        DeleteRouteReturnsNoContent.id: DeleteRouteReturnsNoContent,
+        NoExceptionTextIn500Detail.id: NoExceptionTextIn500Detail,
+        RequireExpOnJwtDecode.id: RequireExpOnJwtDecode,
+        NoSlashCollectionRootUnderPrefix.id: NoSlashCollectionRootUnderPrefix,
+        NoWorkVerbGetRoute.id: NoWorkVerbGetRoute,
+        ExcludedFieldSkipsJsonSchema.id: ExcludedFieldSkipsJsonSchema,
+        NoCreateVerbInPostPath.id: NoCreateVerbInPostPath,
         NoHasattr.id: NoHasattr,
         NoFoldedBadRequestNotFound.id: NoFoldedBadRequestNotFound,
         NoDefaultedEnvironmentSetting.id: NoDefaultedEnvironmentSetting,

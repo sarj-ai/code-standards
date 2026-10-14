@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 _CODE = re.compile(r"SARJ(?P<number>[0-9]{3})")
 _BANDS = MappingProxyType(
     {
-        RuleEngine.PYTHON: range(400, 500),
+        RuleEngine.PYTHON: range(400, 600),
         RuleEngine.SQL: range(100, 200),
         RuleEngine.IAC: range(200, 300),
         RuleEngine.TEXT: range(300, 400),

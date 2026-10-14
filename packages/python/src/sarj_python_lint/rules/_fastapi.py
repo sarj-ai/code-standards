@@ -47,6 +47,7 @@ class Route:
     inherited_hidden: bool = False
     inherited_responses: ast.expr | None = None
     inherited_response_class: ast.expr | None = None
+    inherited_prefix: ast.expr | None = None
 
     @property
     def keywords(self) -> dict[str, ast.expr]:
@@ -300,7 +301,7 @@ class FastapiIndex:
             self.receiver_defaults[key] = {
                 keyword.arg: keyword.value
                 for keyword in value.keywords
-                if keyword.arg in {"responses", "default_response_class"}
+                if keyword.arg in {"responses", "default_response_class", "prefix"}
             }
         if self._constructor_is_hidden(value):
             self.hidden_receivers.add(key)
@@ -399,6 +400,7 @@ class FastapiIndex:
                 inherited_hidden=receiver_key in self.hidden_receivers,
                 inherited_responses=defaults.get("responses"),
                 inherited_response_class=defaults.get("default_response_class"),
+                inherited_prefix=defaults.get("prefix"),
             )
             for route_method in route_methods
         )
