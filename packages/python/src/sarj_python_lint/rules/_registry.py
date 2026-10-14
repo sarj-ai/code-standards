@@ -215,10 +215,12 @@ from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossi
 from sarj_python_lint.rules.no_unknown_pydantic_validator_field import NoUnknownPydanticValidatorField
 from sarj_python_lint.rules.redundant_test_constructor_forwarder import RedundantTestConstructorForwarder
 from sarj_python_lint.rules.repeated_unimplemented_test_contract import RepeatedUnimplementedTestContract
+from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOracle
 
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoExplicitTestOracle.id: NoExplicitTestOracle,
         NoConflictingPydanticAliasValidation.id: NoConflictingPydanticAliasValidation,
         NoUnknownPydanticValidatorField.id: NoUnknownPydanticValidatorField,
         NoImpossiblePydanticFieldBounds.id: NoImpossiblePydanticFieldBounds,
@@ -366,4 +368,9 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         DuplicateClosedPureHelper.id: DuplicateClosedPureHelper,
         RepeatedUnimplementedTestContract.id: RepeatedUnimplementedTestContract,
     }
+)
+
+
+DEFAULT_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
+    {name: rule for name, rule in REGISTRY.items() if rule.enabled_by_default}
 )

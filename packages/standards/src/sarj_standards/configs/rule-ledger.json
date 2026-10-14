@@ -167,6 +167,7 @@
       "stepdown",
       "store-get-delegates-to-bulk-read",
       "subprocess-kill-without-reap",
+      "test-without-explicit-oracle",
       "timestamp-order-requires-tiebreaker",
       "typed-error-reasons",
       "unused-test-factory-option"
@@ -489,7 +490,8 @@
       "SARJ491",
       "SARJ492",
       "SARJ493",
-      "SARJ494"
+      "SARJ494",
+      "SARJ495"
     ],
     "sql": [
       "SARJ101",

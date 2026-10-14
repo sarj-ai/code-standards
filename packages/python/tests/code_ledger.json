@@ -282,5 +282,6 @@
   "SARJ491": "no-impossible-pydantic-field-bounds",
   "SARJ492": "no-unknown-pydantic-validator-field",
   "SARJ493": "no-conflicting-pydantic-alias-validation",
-  "SARJ494": "prefer-declarative-batch-validation"
+  "SARJ494": "prefer-declarative-batch-validation",
+  "SARJ495": "test-without-explicit-oracle"
 }

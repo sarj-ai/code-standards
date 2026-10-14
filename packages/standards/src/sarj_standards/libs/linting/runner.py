@@ -222,6 +222,12 @@ def _run_tool(
     if not files or selected == frozenset():
         return 0
     checker, registry = _load_tool(package)
+    if selected is None and package == "sarj_python_lint":
+        from sarj_python_lint.rule_base import Rule  # ruff: ignore[import-outside-top-level]
+
+        registry = {
+            name: rule for name, rule in registry.items() if not issubclass(rule, Rule) or rule.enabled_by_default
+        }
     if selected is not None:
         registry = _select_rules(registry, selected)
     return _run(checker, registry, files, extra_args=extra_args)

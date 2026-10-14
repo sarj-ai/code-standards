@@ -1,0 +1,4 @@
+interface:
+  display_name: "Test Value"
+  short_description: "Reduce test clutter and strengthen regression evidence"
+  default_prompt: "Use $test-value to write or review pytest/Vitest tests against their observable contracts."
