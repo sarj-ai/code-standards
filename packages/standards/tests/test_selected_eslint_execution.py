@@ -6,11 +6,13 @@ import shutil
 
 import pytest
 
+from sarj_standards.libs.adoption import manifest
 from sarj_standards.libs.diagnostics import Severity, TrustMode
 from sarj_standards.libs.linting.external import UpstreamESLintRules, analyze_external
 
 
 @pytest.mark.parametrize("upstream", [False, True])
+@pytest.mark.parametrize("unselected_directive", ["disable", "configure"])
 @pytest.mark.parametrize(
     ("suppressed", "bulk_count", "pass_unpruned", "failed"),
     [
@@ -22,7 +24,14 @@ from sarj_standards.libs.linting.external import UpstreamESLintRules, analyze_ex
     ],
 )
 def test_selected_eslint_preserves_parser_options_and_suppressions_without_running_other_rules(
-    tmp_path: Path, *, suppressed: bool, bulk_count: int | None, pass_unpruned: bool, failed: bool, upstream: bool
+    tmp_path: Path,
+    unselected_directive: str,
+    *,
+    suppressed: bool,
+    bulk_count: int | None,
+    pass_unpruned: bool,
+    failed: bool,
+    upstream: bool,
 ) -> None:
     modules = Path(__file__).resolve().parents[2] / "typescript/node_modules"
     if shutil.which("node") is None or not (modules / "eslint/package.json").is_file():
@@ -44,12 +53,18 @@ def test_selected_eslint_preserves_parser_options_and_suppressions_without_runni
         "context.report({node,messageId:'found'});}};}};\n"
         "const unrelated={create(){throw new Error('UNRELATED RULE EXECUTED');}};\n"
         "export default [{files:['**/*.ts'],languageOptions:{parser},"
+        "linterOptions:{reportUnusedDisableDirectives:'error',reportUnusedInlineConfigs:'error'},"
         f"plugins:{{'{namespace}':{{rules:{{selected,unrelated}}}}}},"
         f"rules:{{'{selected_id}':['{severity}','needle'],'{namespace}/unrelated':'error'}}}}];\n",
         encoding="utf-8",
     )
+    unrelated = (
+        f"// eslint-disable {namespace}/unrelated\n"
+        if unselected_directive == "disable"
+        else f'/* eslint {namespace}/unrelated: "error" */\n'
+    )
     directive = f"// eslint-disable-next-line {selected_id}\n" if suppressed else ""
-    (tmp_path / "sample.ts").write_text(directive + "const needle: number = 1;\n", encoding="utf-8")
+    (tmp_path / "sample.ts").write_text(unrelated + directive + "const needle: number = 1;\n", encoding="utf-8")
     reports = analyze_external(
         [str(tmp_path / "sample.ts")],
         root=tmp_path,
@@ -68,3 +83,51 @@ def test_selected_eslint_preserves_parser_options_and_suppressions_without_runni
         assert len(diagnostics) == 1
         assert diagnostics[0].severity is Severity.WARNING
         assert diagnostics[0].message == "selected option preserved"
+
+
+@pytest.mark.parametrize("severity", ["warn", "error"])
+@pytest.mark.parametrize("suppressed", [False, True])
+def test_selected_shadcn_rule_runs_the_shipped_policy_with_native_severity_and_suppression(
+    tmp_path: Path, severity: str, *, suppressed: bool
+) -> None:
+    typescript = Path(__file__).resolve().parents[2] / "typescript"
+    modules = typescript / "node_modules"
+    compiled = typescript / "dist/index.js"
+    if shutil.which("node") is None or not (modules / "eslint/package.json").is_file() or not compiled.is_file():
+        pytest.skip("requires the repository's built TypeScript package and locked dependencies")
+    (tmp_path / "node_modules").symlink_to(modules, target_is_directory=True)
+    (tmp_path / "package.json").write_text('{"type":"module"}', encoding="utf-8")
+    (tmp_path / "components.json").write_text('{"tailwind":{"css":"theme.css"}}', encoding="utf-8")
+    (tmp_path / "theme.css").write_text('@import "tailwindcss";', encoding="utf-8")
+    source = manifest.PEERS_JSON.with_name("eslint.strict.mjs").read_text(encoding="utf-8")
+    (tmp_path / "eslint.strict.mjs").write_text(
+        source.replace('from "@sarj/eslint-plugin"', f'from "{compiled.as_uri()}"'), encoding="utf-8"
+    )
+    (tmp_path / "eslint.config.mjs").write_text(
+        'import {createConfig} from "./eslint.strict.mjs";\n'
+        "export default [...createConfig({projectService:false,tsconfigRootDir:import.meta.dirname}),"
+        f'{{rules:{{"shadcn/no-arbitrary-values":["{severity}",{{allow:["layout"]}}]}}}}];\n',
+        encoding="utf-8",
+    )
+    directive = (
+        "// eslint-disable-next-line shadcn/no-arbitrary-values -- Reviewed spacing exception.\n" if suppressed else ""
+    )
+    sample = tmp_path / "sample.tsx"
+    sample.write_text(directive + '<div className="w-[320px] p-[13px]" />;\n', encoding="utf-8")
+    reports = analyze_external(
+        [str(sample)],
+        root=tmp_path,
+        trust=TrustMode.TRUSTED,
+        capabilities=frozenset({"eslint"}),
+        rule_ids=frozenset(),
+        upstream_rules=UpstreamESLintRules(frozenset({"shadcn/no-arbitrary-values"})),
+    )
+    assert len(reports) == 1
+    assert reports[0].issues == ()
+    diagnostics = reports[0].diagnostics
+    if suppressed:
+        assert diagnostics == ()
+    else:
+        assert len(diagnostics) == 1
+        assert diagnostics[0].severity is (Severity.WARNING if severity == "warn" else Severity.ERROR)
+        assert "p-[13px]" in diagnostics[0].message
