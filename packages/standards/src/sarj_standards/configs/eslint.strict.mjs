@@ -1348,6 +1348,8 @@ export function createConfig(options = {}) {
       "@sarj/no-detached-global-fetch": "error",
       "@sarj/no-json-stringify-object-equality": "error",
       "@sarj/no-dangerously-allow-svg": "error",
+      "@sarj/no-credential-in-browser-storage": "warn",
+      "@sarj/no-numeric-search-param-coercion": "warn",
       "@sarj/no-duplicate-lifecycle-refresh-listeners": "error",
       "@sarj/no-production-browser-source-maps": "error",
       "@sarj/no-router-refresh-polling": "error",
