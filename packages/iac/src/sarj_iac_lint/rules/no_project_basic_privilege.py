@@ -15,7 +15,7 @@ from sarj_iac_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
-from sarj_iac_lint.rules._literal_policy import balanced_blocks
+from sarj_iac_lint.rules._literal_policy import balanced_blocks, grant_roles
 
 
 if TYPE_CHECKING:
@@ -94,7 +94,7 @@ class NoProjectBasicPrivilege(Rule):
                 continue
             roles: frozenset[str] = frozenset()
             if block.labels[0] in _GRANTS:
-                roles = _grant_roles(block)
+                roles = grant_roles(block)
             elif block.labels[0] == "google_project_iam_policy" and (attr := block.attribute("policy_data")):
                 roles = policies.get(attr.value.strip(), _jsonencode_roles(attr.value))
             forbidden = sorted(roles & _BASIC_PRIVILEGES)
@@ -111,27 +111,8 @@ class NoProjectBasicPrivilege(Rule):
         return findings
 
 
-def _grant_roles(block: Block) -> frozenset[str]:
-    attr = block.attribute("role")
-    if attr is None:
-        return frozenset()
-    value = attr.value.strip()
-    literal = None if value.endswith(",") else literal_string(value)
-    if literal is not None:
-        return frozenset({literal})
-    if attr.value.strip() not in {"each.value", "each.key"} or (each := block.attribute("for_each")) is None:
-        return frozenset()
-    parts = tokens(each.value)
-    if parts[:2] == ("toset", "(") and parts[-1:] == (")",):
-        parts = parts[2:-1]
-    if parts[:1] != ("[",) or parts[-1:] != ("]",):
-        return frozenset()
-    values = [literal_string(part) for part in parts[1:-1] if part != ","]
-    return frozenset(value for value in values if value is not None) if all(values) else frozenset()
-
-
 def _data_policy_roles(block: Block) -> frozenset[str]:
-    return frozenset(role for binding in block.blocks if binding.type == "binding" for role in _grant_roles(binding))
+    return frozenset(role for binding in block.blocks if binding.type == "binding" for role in grant_roles(binding))
 
 
 def _jsonencode_roles(value: str) -> frozenset[str]:

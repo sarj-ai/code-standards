@@ -2441,6 +2441,54 @@
       "state": "complete",
       "evidence": "Forty targeted design/admission passes, 111 distinct warning-promotion admission reviews, five sequential independent judge rounds and regression-checked supplemental repairs. The final six-rule source has 372 focused cases and 1,054 independently verified integration/helper-client cases; native/catalog ERROR, exit 1, blocking baselines, suppression and precedence are checked. Repository verification passes 29,041 tests with nine existing skips, strict types, lint, dogfood and artifacts; remaining repository/shell gates pass after an environmental interpreter-cache retry. The 105-warning sweep retried one temporary ENOSPC failure on unchanged source and all suites pass. Three serialized performance pairs are within 2 ms/file, with a 1.173 ms/file median paired incremental cost; all 954 diagnostics exactly match the pre-cache scope. All 105 retained-warning suites pass and the independent judge approved the hold rationale with no additional helpful promotion. Verified local corpus has 954 Any-erasure matches; 53 deterministic cluster-covering samples reproduce, while API intent remains unclassified. Pydantic final-source corpus has four expected seed matches and zero natural matches. No universal precision or full-registry performance claim. See packages/python/benchmarks/strict-typing-promotions.json for final paired timing and exact gate state.",
       "outcome": "Promote to ERROR without autofix after warning-first publication and source-owned contract/mutation/escape exclusions. External signatures, ambiguous provenance and valid cleanup ownership remain preserved; exact explained suppressions remain available. Six-rule semantic approval, full verification and the warning plateau are complete. Exact-head green CI is required before admin merge."
+    },
+    {
+      "task": "rule-audit/python/no-duplicate-field-validator-body",
+      "family": "python",
+      "ruleId": "no-duplicate-field-validator-body",
+      "state": "pending",
+      "evidence": "Focused cases cover renamed parameters, docstrings, aliased imports, different modes and bodies, unproven decorators, separate models and malformed input. A scan of one private application corpus (about 1,900 Python files) reported 0 findings; the reference survey of 10 popular Python repositories found 2 duplicated validator pairs in one of them. Pinned multi-repository calibration remains pending.",
+      "outcome": "Keep SARJ496 warning-only without autofix. Report only structurally identical bodies with the same decorator stack and mode."
+    },
+    {
+      "task": "rule-audit/python/no-defaulted-environment-setting",
+      "family": "python",
+      "ruleId": "no-defaulted-environment-setting",
+      "state": "pending",
+      "evidence": "Focused cases cover literal, enum, positional, keyword and factory defaults, alias-only names, same-file settings inheritance, required fields, non-settings models, unproven bases and malformed input. A scan of one private application corpus reported 1 finding, reviewed as a true positive (an integration service environment defaulting to local).",
+      "outcome": "Keep SARJ497 warning-only without autofix. Other environment-isolating settings have no stable name and remain review guidance."
+    },
+    {
+      "task": "rule-audit/python/no-folded-bad-request-not-found",
+      "family": "python",
+      "ruleId": "no-folded-bad-request-not-found",
+      "state": "pending",
+      "evidence": "Focused cases cover tuple, list and set membership, HTTPStatus and Starlette names, equality chains, match or-patterns, different subjects, string codes and test-module exclusion. A scan of one private application corpus reported 1 finding, reviewed as a true positive: a CRM client still returns None for remaining 400 responses after its incident fix.",
+      "outcome": "Keep SARJ498 warning-only without autofix. Abstain on statuses held in variables or unknown constant owners."
+    },
+    {
+      "task": "rule-audit/iac/no-project-secret-access-for-service-account",
+      "family": "iac",
+      "ruleId": "no-project-secret-access-for-service-account",
+      "state": "pending",
+      "evidence": "Focused cases cover literal and for_each roles, member and members attributes, human groups, metadata-only roles, unknown roles and members, folder grants, malformed HCL and non-Terraform files. A scan of one private infrastructure corpus reported 0 findings; its service accounts already use per-secret grants.",
+      "outcome": "Keep SARJ213 warning-only without autofix. Human principals and inherited access stay out of scope."
+    },
+    {
+      "task": "rule-audit/typescript/no-numeric-search-param-coercion",
+      "family": "typescript",
+      "ruleId": "no-numeric-search-param-coercion",
+      "state": "pending",
+      "evidence": "Typed RuleTester cases cover parseInt, parseFloat, Number and Number.parseInt over URLSearchParams and ReadonlyURLSearchParams get calls through ??, optional chaining, non-null and as wrappers, plus shadowed parsers, Map receivers, copied values and String coercion. A text survey of one private Next.js corpus found 0 candidate sites.",
+      "outcome": "Keep the rule warning-only without autofix. Page searchParams props and values copied into variables are not followed."
+    },
+    {
+      "task": "rule-audit/typescript/no-credential-in-browser-storage",
+      "family": "typescript",
+      "ruleId": "no-credential-in-browser-storage",
+      "state": "pending",
+      "evidence": "RuleTester cases cover setItem, property and computed assignment on local and session storage through window, constant key aliases, document.cookie templates and concatenation, shadowed storage, other receivers, reads, removals and metadata-named keys. A text survey of one private Next.js corpus found 12 storage writes, none under a credential name.",
+      "outcome": "Keep the rule warning-only without autofix. Storage wrappers and neutral key names stay in review."
     }
   ]
 }

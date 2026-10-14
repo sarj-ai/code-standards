@@ -9,6 +9,7 @@ from sarj_iac_lint.rules.no_environment_conditional import NoEnvironmentConditio
 from sarj_iac_lint.rules.no_managed_service_account_key import NoManagedServiceAccountKey
 from sarj_iac_lint.rules.no_mocked_terraform_test_oracle import NoMockedTerraformTestOracle
 from sarj_iac_lint.rules.no_project_basic_privilege import NoProjectBasicPrivilege
+from sarj_iac_lint.rules.no_project_secret_access_for_service_account import NoProjectSecretAccessForServiceAccount
 from sarj_iac_lint.rules.no_redundant_variable_validation import NoRedundantVariableValidation
 from sarj_iac_lint.rules.no_restated_comment import NoRestatedComment
 from sarj_iac_lint.rules.no_terraform_data_condition import NoTerraformDataCondition
@@ -24,6 +25,7 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoProjectSecretAccessForServiceAccount.id: NoProjectSecretAccessForServiceAccount,
         RequireDeletionProtection.id: RequireDeletionProtection,
         RequirePreventDestroyOnIrreplaceable.id: RequirePreventDestroyOnIrreplaceable,
         NoCommentCruft.id: NoCommentCruft,

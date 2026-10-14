@@ -15,7 +15,7 @@ from sarj_standards.libs.linting import library_policy
 def test_catalog_has_stable_unique_ids_and_adapter_messages() -> None:
     entries = library_policy.catalog()
 
-    assert len(entries) == 41
+    assert len(entries) == 42
     assert len({entry.id for entry in entries}) == len(entries)
     assert library_policy.python_banned_api()["argparse"].startswith("LIB001:")
     assert {entry.name for entry in library_policy.typescript_restricted_imports()} >= {"axios", "express", "tslint"}

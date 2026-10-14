@@ -283,5 +283,8 @@
   "SARJ492": "no-unknown-pydantic-validator-field",
   "SARJ493": "no-conflicting-pydantic-alias-validation",
   "SARJ494": "prefer-declarative-batch-validation",
-  "SARJ495": "test-without-explicit-oracle"
+  "SARJ495": "test-without-explicit-oracle",
+  "SARJ496": "no-duplicate-field-validator-body",
+  "SARJ497": "no-defaulted-environment-setting",
+  "SARJ498": "no-folded-bad-request-not-found"
 }

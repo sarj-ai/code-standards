@@ -288,6 +288,7 @@ warns-extend-require-match-for = [
 "futures".msg = "LIB017: Remove the obsolete futures backport on Python 3.14. Replace with concurrent.futures."
 "importlib_metadata".msg = "LIB013: Python 3.14 provides importlib.metadata. Replace with importlib.metadata."
 "importlib_resources".msg = "LIB014: Python 3.14 provides importlib.resources. Replace with importlib.resources."
+"logging".msg = "LIB023: Standards standardizes application logging on loguru, whose bound context carries correlation fields to every line; a second stdlib logger splits the logs. A loguru bridge that intercepts third-party stdlib records needs a local, reasoned TID251 suppression. Replace with loguru."
 "marshmallow".msg = "LIB007: Standards standardizes validation and serialization on Pydantic. Replace with Pydantic."
 "mock".msg = "LIB022: Python 3.14 provides unittest.mock. Replace with unittest.mock."
 "nose".msg = "LIB021: Nose is unmaintained; use pytest. Replace with pytest."
