@@ -10,6 +10,10 @@ uv tool install --python 3.15 code-standards
 
 Adopt the repository once with `code-standards setup`. It installs one canonical staged gate that includes semantic lint and repository policy, plus commit-message and pull-request history enforcement. Do not install Repo Standards separately.
 
+The pre-commit gate runs once on every commit and discovers paths directly from the Git index, including mixed file types and deletion-only commits. The shared dispatcher selects applicable rules and retains type analysis, repository policy, exclusions and suppression accountability. Errors and incomplete analysis block the commit; warning-stage findings stay visible even when the hook passes. Agents should address the diagnostics, run `code-standards fix --staged` for safe mechanical fixes, review and stage intended edits, then retry. Staged fixes never fall back to the whole repository and refuse files with unstaged changes.
+
+Setup installs the selected hook manager. In a fresh checkout, run `code-standards doctor --repair` before committing; doctor checks installation and the exact unconditional command. Conditional Lefthook jobs must be moved to an unconditional job without changing unrelated hooks. Git can bypass local hooks with `--no-verify`; the canonical CI gate independently enforces policy.
+
 ```bash
 code-standards setup
 code-standards check

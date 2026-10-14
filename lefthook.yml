@@ -26,7 +26,7 @@ pre-commit:
         drifted from its packaged source. Fix the reported path and retry.
 
     standards:
-      run: uv run --no-config --project packages/standards --frozen code-standards check --staged --trust-repository-code -- {staged_files}
+      run: uv run --no-config --project packages/standards --frozen code-standards check --staged --trust-repository-code
       fail_text: >-
         Standards staged checks failed. Fix the reported findings and retry.
     dogfood:

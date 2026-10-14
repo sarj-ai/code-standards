@@ -1748,9 +1748,9 @@ def test_generated_precommit_block_carries_no_rev(tmp_path: Path) -> None:
     generated = (tmp_path / ".pre-commit-config.yaml").read_text()
     assert "rev:" not in generated
     assert "repo: local" in generated
-    assert f"{BOOTSTRAP_COMMAND} check --staged --" in generated
+    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code" in generated
     assert "always_run: true" in generated
-    assert "package\\.json|pyrightconfig\\.json" in generated
+    assert "files:" not in generated
     assert generated.count("id: sarj-standards-check") == 1
     assert generated.count("id: repo-standards-commit-message") == 1
     assert f"entry: {BOOTSTRAP_COMMAND} commit-message" in generated
@@ -2007,7 +2007,7 @@ def test_init_repairs_inert_or_compound_lefthook_commands(tmp_path: Path, run: s
 
     assert proc.returncode == 0, proc.stderr
     updated = (tmp_path / "lefthook.yml").read_text(encoding="utf-8")
-    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code -- {{staged_files}}" in updated
+    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code" in updated
 
 
 def test_init_repairs_a_commented_out_lefthook_command(tmp_path: Path) -> None:
@@ -2022,7 +2022,7 @@ def test_init_repairs_a_commented_out_lefthook_command(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr
     updated = (tmp_path / "lefthook.yml").read_text(encoding="utf-8")
     assert "# sarj-standards check --staged" in updated
-    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code -- {{staged_files}}" in updated
+    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code" in updated
 
 
 def test_init_rejects_malformed_lefthook_yaml(tmp_path: Path) -> None:
@@ -2059,9 +2059,9 @@ def test_init_repairs_unwired_but_rejects_missing_lefthook_management(tmp_path: 
     (tmp_path / "lefthook.yml").write_text("pre-commit:\n  commands: {}\n", encoding="utf-8")
     unwired = _cli("--root", str(tmp_path), "setup", "--hooks", "lefthook", "--no-install")
     assert unwired.returncode == 0, unwired.stderr
-    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code -- {{staged_files}}" in (
-        tmp_path / "lefthook.yml"
-    ).read_text(encoding="utf-8")
+    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code" in (tmp_path / "lefthook.yml").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_init_repairs_final_lefthook_commands_key_without_a_newline(tmp_path: Path) -> None:
@@ -2087,7 +2087,7 @@ def test_init_preserves_and_extends_lefthook_v2_jobs(tmp_path: Path) -> None:
     updated = config.read_text(encoding="utf-8")
     assert original_job in updated
     assert f"- name: sarj-standards\n      run: {BOOTSTRAP_COMMAND}" in updated
-    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code -- {{staged_files}}" in updated
+    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code" in updated
     assert "pre-push:\n  commands: {}" in updated
     assert adoption_hooks.lefthook_runs_staged_check(tmp_path)
 
@@ -2106,7 +2106,7 @@ def test_nested_lefthook_v2_job_can_already_run_staged_check(tmp_path: Path) -> 
     assert proc.returncode == 0, proc.stderr
     updated = config.read_text(encoding="utf-8")
     assert updated != original
-    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code -- {{staged_files}}" in updated
+    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code" in updated
 
 
 def test_lefthook_cycle_fails_closed_without_recursing(tmp_path: Path) -> None:
@@ -2118,15 +2118,14 @@ def test_lefthook_cycle_fails_closed_without_recursing(tmp_path: Path) -> None:
     assert not adoption_hooks.lefthook_runs_staged_check(tmp_path)
 
 
-@pytest.mark.parametrize("suffix", ["js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts", "kt", "kts", "swift"])
-def test_generated_precommit_block_routes_every_supported_staged_suffix(tmp_path: Path, suffix: str) -> None:
+def test_generated_precommit_block_discovers_its_own_index(tmp_path: Path) -> None:
     _typescript_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
 
     generated = (tmp_path / ".pre-commit-config.yaml").read_text()
-    match = re.search(r"(?m)^\s*files:\s*'(?P<pattern>[^']+)'$", generated)
-    assert match is not None
-    assert re.search(match.group("pattern"), f"src/example.{suffix}") is not None
+    assert "files:" not in generated
+    assert "pass_filenames: false" in generated
+    assert "always_run: true" in generated
 
 
 def test_init_writes_the_npm_overrides_into_package_json(tmp_path: Path) -> None:
@@ -2301,14 +2300,14 @@ def test_the_generated_precommit_hook_actually_runs(tmp_path: Path) -> None:
         assert proc.returncode == 0, f"{entry!r} failed: {proc.stdout}{proc.stderr}"
 
 
-def test_generated_check_hook_uses_normal_precommit_output_behavior(tmp_path: Path) -> None:
+def test_generated_check_hook_shows_passing_warnings(tmp_path: Path) -> None:
     _python_repo(tmp_path)
 
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
 
     config = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
     check_block = config.split("id: sarj-standards-check", 1)[1]
-    assert "verbose: true" not in check_block
+    assert "verbose: true" in check_block
 
 
 def test_doctor_detects_a_disabled_generated_precommit_hook(tmp_path: Path) -> None:
@@ -2316,7 +2315,7 @@ def test_doctor_detects_a_disabled_generated_precommit_hook(tmp_path: Path) -> N
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     config = tmp_path / ".pre-commit-config.yaml"
     config.write_text(
-        config.read_text(encoding="utf-8").replace("check --staged --", "echo standards-disabled"),
+        config.read_text(encoding="utf-8").replace("check --staged --trust-repository-code", "echo standards-disabled"),
         encoding="utf-8",
     )
 
@@ -2330,7 +2329,7 @@ def test_doctor_detects_competing_canonical_hook_managers(tmp_path: Path) -> Non
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     (tmp_path / "lefthook.yml").write_text(
         "pre-commit:\n  jobs:\n    - name: standards\n"
-        f"      run: {BOOTSTRAP_COMMAND} check --staged --trust-repository-code -- {{staged_files}}\n",
+        f"      run: {BOOTSTRAP_COMMAND} check --staged --trust-repository-code\n",
         encoding="utf-8",
     )
 
@@ -2443,9 +2442,9 @@ def test_doctor_rejects_a_nondurable_lefthook_launcher(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("old", "new"),
     [
-        ("files: '(?i)", "files: '$^"),
+        ("verbose: true", "verbose: false"),
         ("stages: [pre-commit]", "stages: [pre-push]"),
-        ("pass_filenames: true", "pass_filenames: false"),
+        ("pass_filenames: false", "pass_filenames: true"),
         ("require_serial: true", "require_serial: false"),
         ("always_run: true", "always_run: false"),
     ],
@@ -2579,7 +2578,12 @@ def test_lefthook_setup_update_and_doctor_converge_installed_hooks(
             hook = hooks_dir / hook_type
             hook.write_text(
                 f"#!/bin/sh\nexport LEFTHOOK_BIN={durable.as_posix()}\n"
-                f'export PATH={uvx_directory.as_posix()}:"$PATH" # sarj-standards: uvx-path\n',
+                f'export PATH={uvx_directory.as_posix()}:"$PATH" # sarj-standards: uvx-path\n'
+                + (
+                    repository_hooks.empty_index_gate(tmp_path) + 'call_lefthook run "pre-commit" "$@"\n'
+                    if hook_type == "pre-commit"
+                    else ""
+                ),
                 encoding="utf-8",
             )
             hook.chmod(0o755)
@@ -2645,17 +2649,6 @@ def test_doctor_repair_restores_owned_config_while_reporting_manual_retired_rule
     assert "doctor.rule.retired" in repaired.stdout
 
 
-@pytest.mark.parametrize("path", ["requirements.txt", "requirements-dev.in", "requirements/prod.txt"])
-def test_generated_check_hook_includes_application_requirement_manifests(tmp_path: Path, path: str) -> None:
-    _python_repo(tmp_path)
-    assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
-
-    config = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
-    pattern_text = re.search(r"(?m)^\s*files: '(?P<pattern>.+)'$", config)
-    assert pattern_text is not None
-    assert re.search(pattern_text.group("pattern"), path), path
-
-
 def test_init_migrates_existing_generated_hooks_to_one_staged_hook(tmp_path: Path) -> None:
     _python_repo(tmp_path)
     config = tmp_path / ".pre-commit-config.yaml"
@@ -2673,7 +2666,7 @@ def test_init_migrates_existing_generated_hooks_to_one_staged_hook(tmp_path: Pat
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
 
     updated = config.read_text(encoding="utf-8")
-    assert "verbose: true" not in updated
+    assert updated.count("verbose: true") == 1
     assert updated.count("id: sarj-standards-check") == 1
     assert "id: sarj-standards-drift" not in updated
     assert "check --staged" in updated
@@ -3429,10 +3422,8 @@ def test_setup_adopts_mobile_configs_and_staged_hook_only_for_configured_project
     assert adopted is not None
     assert set(expected_configs + manifest.MOBILE_CONFIGS).issubset(adopted.configs)
     hook = (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8")
-    pattern = re.search(r"(?m)^\s*files: '(?P<pattern>.+)'$", hook)
-    assert pattern is not None
-    suffix = "swift" if detected == "swift" else "kt"
-    assert re.search(pattern.group("pattern"), f"Sources/Account.{suffix}") is not None
+    assert "files:" not in hook
+    assert "pass_filenames: false" in hook
     workflow = (tmp_path / ".github/workflows/standards.yml").read_text(encoding="utf-8")
     assert "timeout-minutes: 60" in workflow
     if detected == "swift":

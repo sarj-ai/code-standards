@@ -1047,7 +1047,7 @@ def test_hook_install_resolves_environment_binaries(monkeypatch: pytest.MonkeyPa
     )
     hook = tmp_path / ".git/hooks/pre-commit"
     hook.parent.mkdir(parents=True)
-    hook.write_text("#!/bin/sh\n", encoding="utf-8")
+    hook.write_text('#!/bin/sh\ncall_lefthook run "pre-commit" "$@"\n', encoding="utf-8")
     (tmp_path / "lefthook.yml").write_text("pre-commit: {}\n", encoding="utf-8")
 
     hooks.install(tmp_path)
@@ -1059,6 +1059,7 @@ def test_hook_install_resolves_environment_binaries(monkeypatch: pytest.MonkeyPa
     assert stat.S_IMODE(durable.stat().st_mode) == 0o755
     assert hooks.is_durable_binary(durable)
     assert hook.read_text(encoding="utf-8").count(f"export LEFTHOOK_BIN={durable.as_posix()}") == 1
+    assert hook.read_text(encoding="utf-8").count("# sarj-standards: empty-index gate") == 1
     assert hook.read_text(encoding="utf-8").count('export PATH=/bin:"$PATH" # sarj-standards: uvx-path') == 1
 
 
@@ -1125,7 +1126,7 @@ def test_hook_install_rolls_back_every_hook_when_validation_fails(
         nonlocal calls
         calls += 1
         if calls == 1:
-            original.write_text("#!/bin/sh\nchanged\n", encoding="utf-8")
+            original.write_text('#!/bin/sh\nchanged\ncall_lefthook run "pre-commit" "$@"\n', encoding="utf-8")
             (hooks_dir / "commit-msg").write_text("#!/bin/sh\nnew\n", encoding="utf-8")
             return
         raise subprocess.CalledProcessError(1, argv)
@@ -1183,7 +1184,7 @@ def test_hook_install_refuses_linked_durable_binary_without_overwriting_its_targ
     native.write_text("new binary", encoding="utf-8")
     hook = tmp_path / ".git" / "hooks" / "pre-commit"
     hook.parent.mkdir(parents=True)
-    hook.write_text("#!/bin/sh\n", encoding="utf-8")
+    hook.write_text('#!/bin/sh\ncall_lefthook run "pre-commit" "$@"\n', encoding="utf-8")
     victim = tmp_path / "outside"
     victim.write_text("keep me", encoding="utf-8")
     durable = hook.parent / ".sarj-lefthook"
@@ -1255,7 +1256,7 @@ def test_native_hook_binary_matches_the_runtime_platform(
 
     hook = tmp_path / ".git/hooks/pre-commit"
     hook.parent.mkdir(parents=True)
-    hook.write_text("#!/bin/sh\n", encoding="utf-8")
+    hook.write_text('#!/bin/sh\ncall_lefthook run "pre-commit" "$@"\n', encoding="utf-8")
     (tmp_path / "lefthook.yml").write_text("pre-commit: {}\n", encoding="utf-8")
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- filesystem and tool lookup interception is the behavior under test.
         "sarj_standards.libs.repository.hooks.shutil.which", which

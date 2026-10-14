@@ -24,15 +24,25 @@ if TYPE_CHECKING:
 
 LEFTHOOK_NAMES: Final = ("lefthook.yml", "lefthook.yaml")
 PRECOMMIT_NAMES: Final = (".pre-commit-config.yaml", ".pre-commit-config.yml")
-PRECOMMIT_FILES_PATTERN: Final = (
-    r"(?i)(\.py|\.[cm]?[jt]s|\.[jt]sx|\.kts?|\.swift|\.sql|\.tf|\.tfvars|\.hcl|\.ya?ml|\.toml|\.jsonc|\.mdx?|"
-    r"\.(?:bash|cfg|conf|env|ini|properties|sh|tftpl|zsh)|(?:^|/)\.env(?:\..*)?$|"
-    r"(?:^|/)requirements(?:/.*|[^/]*\.(?:txt|in))$|"
-    r"(?:^|/)(?:Dockerfile(?:\..*)?|Gnumakefile|Justfile|Makefile|package\.json|pyrightconfig\.json))$"
+SOURCE_STAGED_COMMAND: Final = (
+    "uv run --no-config --project packages/standards --frozen code-standards check --staged --trust-repository-code"
 )
 _COMMANDS_BLOCK: Final = re.compile(r"(?m)^(?P<indent> +)commands:(?P<tail>[^\n]*)$")
 _JOBS_BLOCK: Final = re.compile(r"(?m)^(?P<indent> +)jobs:(?P<tail>[^\n]*)$")
 _MAX_JOB_DEPTH: Final = 64
+_STAGED_JOB_CONDITIONS: Final = frozenset(
+    {
+        "skip",
+        "glob",
+        "exclude",
+        "file_types",
+        "files",
+        "args",
+        "stage_fixed",
+    }
+)
+_HOOK_CONDITIONS: Final = frozenset({"skip", "files", "exclude"})
+_INHERITED_JOB_CONDITIONS: Final = _STAGED_JOB_CONDITIONS - {"args", "stage_fixed"}
 _REPO_LINE: Final = re.compile(r"^(?P<indent> *)-\s+repo:\s*(?P<value>[^\r\n]+)(?:\r?\n)?$")
 _OFFICIAL_STANDARDS_REPO: Final = re.compile(
     r"(?i)(?:https?://github\.com/|ssh://git@github\.com/|git@github\.com:)"
@@ -54,15 +64,16 @@ def _construct_unique_mapping(
     node: MappingNode,
     deep: bool = False,  # ruff: ignore[boolean-type-hint-positional-argument,boolean-default-value-positional-argument] -- PyYAML callback signature.
 ) -> dict[object, object]:
-    loader.flatten_mapping(node)
-    mapping: dict[object, object] = {}
-    for key_node, value_node in mapping_items(node):
+    explicit_keys: set[object] = set()
+    for key_node, _value_node in mapping_items(node):
+        if key_node.tag == "tag:yaml.org,2002:merge":
+            continue
         key: object = loader.construct_object(  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
             key_node,
             deep=deep,
         )
         try:
-            duplicate = key in mapping
+            duplicate = key in explicit_keys
         except TypeError as exc:
             context = "while constructing a mapping"
             problem = "found an unhashable mapping key"
@@ -81,6 +92,14 @@ def _construct_unique_mapping(
                 problem,
                 key_node.start_mark,
             )
+        explicit_keys.add(key)  # pyright: ignore[reportUnknownArgumentType] -- PyYAML's constructed-key boundary.
+    loader.flatten_mapping(node)
+    mapping: dict[object, object] = {}
+    for key_node, value_node in mapping_items(node):
+        key = loader.construct_object(  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+            key_node,
+            deep=deep,
+        )
         mapping[key] = loader.construct_object(  # pyright: ignore[reportUnknownMemberType]
             value_node,
             deep=deep,
@@ -112,6 +131,7 @@ class _LefthookEntries(NamedTuple):
     text: str
     layout: str
     entries: Mapping[str, object]
+    hook: Mapping[str, object]
 
 
 class _LocatedBlock(NamedTuple):
@@ -173,14 +193,11 @@ def insert_precommit_repository(text: str, block: str) -> str:
 
 
 def validate_precommit_configuration(text: str) -> None:
-    loader = _UniqueKeyLoader(text)
     try:
-        parsed: object = loader.get_single_data()  # pyright: ignore[reportAny] -- parser boundary
+        parsed = _parse_hook_configuration(text)
     except yaml.YAMLError as exc:
         msg = f"pre-commit configuration is not valid YAML: {exc}"
         raise ValueError(msg) from exc
-    finally:
-        loader.dispose()  # pyright: ignore[reportUnknownMemberType]
     document = manifest.as_table(parsed)
     if not document and text.strip():
         msg = "pre-commit configuration must be a YAML mapping"
@@ -189,6 +206,14 @@ def validate_precommit_configuration(text: str) -> None:
     if repositories is not None and not isinstance(repositories, list):
         msg = "pre-commit configuration top-level repos must be a list"
         raise ValueError(msg)
+
+
+def _parse_hook_configuration(text: str) -> object:
+    loader = _UniqueKeyLoader(text)
+    try:
+        return loader.get_single_data()  # pyright: ignore[reportAny] -- parser boundary
+    finally:
+        loader.dispose()  # pyright: ignore[reportUnknownMemberType]
 
 
 def _line_offsets(lines: list[str]) -> list[int]:
@@ -270,7 +295,7 @@ def precommit_runs_staged_check(root: Path) -> bool:
     if len(paths) != 1:
         return False
     try:
-        parsed: object = parse_yaml(paths[0].read_text(encoding="utf-8"))
+        parsed = _parse_hook_configuration(paths[0].read_text(encoding="utf-8"))
     except OSError, UnicodeError, yaml.YAMLError:
         return False
     candidates: list[dict[str, object]] = []
@@ -288,13 +313,13 @@ def precommit_runs_staged_check(root: Path) -> bool:
     candidate = candidates[0]
     return (
         candidate.get("id") == "sarj-standards-check"
-        and _runs_staged_check(candidate.get("entry"))
+        and candidate.get("entry") == f"{launcher.repository_command()} check --staged --trust-repository-code"
         and candidate.get("language") == "system"
-        and "verbose" not in candidate
+        and candidate.get("verbose") is True
         and candidate.get("always_run") is True
-        and candidate.get("pass_filenames") is True
+        and candidate.get("pass_filenames") is False
         and candidate.get("require_serial") is True
-        and candidate.get("files") == PRECOMMIT_FILES_PATTERN
+        and not candidate.get("args")
         and candidate.get("stages") == ["pre-commit"]
     )
 
@@ -304,7 +329,7 @@ def precommit_runs_commit_message_check(root: Path, *, runner_prefix: str | None
     if len(paths) != 1:
         return False
     try:
-        parsed: object = parse_yaml(paths[0].read_text(encoding="utf-8"))
+        parsed = _parse_hook_configuration(paths[0].read_text(encoding="utf-8"))
     except OSError, UnicodeError, yaml.YAMLError:
         return False
     candidates: list[dict[str, object]] = []
@@ -365,13 +390,75 @@ def lefthook_runs_staged_check(root: Path) -> bool:
     if path is None:
         return False
     try:
-        parsed: object = parse_yaml(path.read_text(encoding="utf-8"))
+        parsed = _parse_hook_configuration(path.read_text(encoding="utf-8"))
     except OSError, UnicodeError, yaml.YAMLError:
         return False
     document = manifest.as_table(parsed)
     pre_commit = manifest.as_table(document.get("pre-commit"))
-    values = tuple(_lefthook_run_values(pre_commit))
-    return values.count(_canonical_lefthook_command(root)) == 1
+    scopes = _staged_job_scopes(pre_commit)
+    return (
+        len(scopes) == 1
+        and scopes[0][-1].get("run") == canonical_staged_command(root)
+        and not _staged_job_conditions(scopes[0])
+    )
+
+
+def _staged_job_scopes(
+    hook: Mapping[str, object],
+    *,
+    ancestors: tuple[Mapping[str, object], ...] = (),
+    depth: int = 0,
+) -> list[tuple[Mapping[str, object], ...]]:
+    if depth > _MAX_JOB_DEPTH:
+        return []
+    scopes = (*ancestors, hook)
+    found: list[tuple[Mapping[str, object], ...]] = []
+    for name, raw_command in manifest.as_table(hook.get("commands")).items():
+        command = manifest.as_table(raw_command)
+        if _runs_staged_check(command.get("run")):
+            found.append((*scopes, {**command, "name": name}))
+    for raw_job in manifest.list_field(hook, "jobs"):
+        job = manifest.as_table(raw_job)
+        if _runs_staged_check(job.get("run")):
+            found.append((*scopes, job))
+        group = manifest.as_table(job.get("group"))
+        if group:
+            found.extend(_staged_job_scopes(group, ancestors=(*scopes, job), depth=depth + 1))
+    return found
+
+
+def _staged_job_conditions(scopes: tuple[Mapping[str, object], ...]) -> tuple[str, ...]:
+    conditions: set[str] = set()
+    names = {name for scope in scopes if isinstance(name := scope.get("name"), str)}
+    for index, scope in enumerate(scopes):
+        conditions.update(_scope_conditions(scope, hook_level=index == 0))
+    excluded = {tag for scope in scopes for tag in manifest.list_field(scope, "exclude_tags") if isinstance(tag, str)}
+    tags = {tag for scope in scopes for tag in manifest.list_field(scope, "tags") if isinstance(tag, str)}
+    if not excluded.isdisjoint(names | tags):
+        conditions.add("exclude_tags")
+    return tuple(sorted(conditions))
+
+
+def _scope_conditions(scope: Mapping[str, object], *, hook_level: bool) -> set[str]:
+    keys: frozenset[str]
+    if hook_level:
+        keys = _HOOK_CONDITIONS
+    elif "jobs" in scope:
+        keys = frozenset()
+    elif "group" in scope:
+        keys = _INHERITED_JOB_CONDITIONS
+    else:
+        keys = _STAGED_JOB_CONDITIONS
+    conditions = {key for key in keys if scope.get(key)}
+    root = scope.get("root")
+    changed_root = root is not None and (not isinstance(root, str) or root not in {"", "."})
+    if not hook_level and changed_root:
+        conditions.add("root")
+    if hook_level or "jobs" not in scope:
+        only = scope.get("only")
+        if only is not None and only is not True:
+            conditions.add("only")
+    return conditions
 
 
 def lefthook_runs_commit_message_check(root: Path, *, runner_prefix: str | None = None) -> bool:
@@ -474,8 +561,17 @@ def wire_lefthook_staged_check(root: Path) -> LefthookWrite:
     if path is None:
         msg = "--hooks lefthook requires lefthook.yml or lefthook.yaml"
         raise ValueError(msg)
-    text, layout, entries = _load_lefthook_entries(path)
-    staged_values = tuple(value for value in _lefthook_run_values_from_entries(entries) if _runs_staged_check(value))
+    text, layout, entries, hook = _load_lefthook_entries(path)
+    scopes = _staged_job_scopes(hook)
+    conditions = _staged_job_conditions(scopes[0] if scopes else (hook,))
+    if conditions:
+        fields = ", ".join(conditions)
+        msg = (
+            f"cannot safely wire {path.name}: staged Standards check is conditional ({fields}); "
+            "move it to an unconditional pre-commit job without changing unrelated hooks"
+        )
+        raise ValueError(msg)
+    staged_values = tuple(value for scope in scopes if isinstance(value := scope[-1].get("run"), str))
     if len(staged_values) > 1:
         msg = f"cannot safely wire {path.name}: multiple staged Standards commands are active"
         raise ValueError(msg)
@@ -483,7 +579,7 @@ def wire_lefthook_staged_check(root: Path) -> LefthookWrite:
         repaired = _replace_lefthook_run(
             text,
             old=staged_values[0],
-            new=_canonical_lefthook_command(root),
+            new=canonical_staged_command(root),
         )
         if repaired is None:
             msg = f"cannot safely wire {path.name}: staged Standards command is not a scalar run value"
@@ -501,20 +597,20 @@ def wire_lefthook_staged_check(root: Path) -> LefthookWrite:
 def _load_lefthook_entries(path: Path) -> _LefthookEntries:
     try:
         text = path.read_text(encoding="utf-8")
-        parsed: object = parse_yaml(text)
+        parsed = _parse_hook_configuration(text)
         document = manifest.as_table(parsed)
         pre_commit = manifest.as_table(document.get("pre-commit"))
     except (OSError, UnicodeError, TypeError, yaml.YAMLError) as exc:
         msg = f"cannot safely wire {path.name}: expected valid pre-commit commands or jobs"
         raise ValueError(msg) from exc
     if "commands" in pre_commit:
-        return _LefthookEntries(text, "commands", manifest.as_table(pre_commit.get("commands")))
+        return _LefthookEntries(text, "commands", manifest.as_table(pre_commit.get("commands")), pre_commit)
     jobs = manifest.list_field(pre_commit, "jobs")
     if "jobs" in pre_commit:
         names = {
             str(job.get("name")): job for value in jobs if (job := manifest.as_table(value)).get("name") is not None
         }
-        return _LefthookEntries(text, "jobs", names)
+        return _LefthookEntries(text, "jobs", names, pre_commit)
     msg = f"cannot safely wire {path.name}: expected block-style pre-commit commands or jobs"
     raise ValueError(msg)
 
@@ -545,7 +641,7 @@ def _insert_staged_job(
 ) -> str:
     block_indent = len(jobs_match.group("indent"))
     child_indent = " " * (block_indent + 2)
-    command = _canonical_lefthook_command(path.parent) if run is None else run
+    command = canonical_staged_command(path.parent) if run is None else run
     rendered = f"{child_indent}- name: {name}\n{child_indent}  run: {command}\n"
     tail = jobs_match.group("tail")
     if tail.strip():
@@ -572,7 +668,7 @@ def _insert_staged_command(
 ) -> str:
     command_indent = len(commands_match.group("indent"))
     child_indent = " " * (command_indent + 2)
-    command = _canonical_lefthook_command(path.parent) if run is None else run
+    command = canonical_staged_command(path.parent) if run is None else run
     rendered = f"{child_indent}{name}:\n{child_indent}  run: {command}\n"
     absolute_start = commands_match.start()
     absolute_end = commands_match.end()
@@ -607,6 +703,9 @@ def _runs_staged_check(value: object) -> bool:
         tokens = shlex.split(value)
     except ValueError:
         return False
+    source_prefix = shlex.split(SOURCE_STAGED_COMMAND)[:-1]
+    if tokens[: len(source_prefix)] == source_prefix:
+        return True
     prefix = launcher.repository_argv()
     if _is_exact_standards_argv(tokens):
         prefix = tuple(tokens[: len(launcher.repository_argv())])
@@ -676,13 +775,10 @@ def _is_exact_standards_argv(tokens: list[str]) -> bool:
     )
 
 
-def _canonical_lefthook_command(root: Path | None = None) -> str:
+def canonical_staged_command(root: Path | None = None) -> str:
     if root is not None and (root / "packages" / "standards" / "pyproject.toml").is_file():
-        return (
-            "uv run --no-config --project packages/standards --frozen code-standards check --staged "
-            "--trust-repository-code -- {staged_files}"
-        )
-    return f"{launcher.repository_command()} check --staged --trust-repository-code -- {{staged_files}}"
+        return SOURCE_STAGED_COMMAND
+    return f"{launcher.repository_command()} check --staged --trust-repository-code"
 
 
 def _canonical_commit_message_command(root: Path | None = None, *, runner_prefix: str | None = None) -> str:
@@ -722,7 +818,7 @@ def _lefthook_run_values_from_entries(entries: Mapping[str, object]) -> list[str
 
 def _replace_lefthook_run(text: str, *, old: str, new: str) -> str | None:
     matches: list[re.Match[str]] = []
-    for match in re.finditer(r"(?m)^(?P<prefix>\s*run:\s*)(?P<value>[^\r\n]+)$", text):
+    for match in re.finditer(r"(?m)^(?P<prefix>\s*(?:-\s+)?run:\s*)(?P<value>[^\r\n]+)$", text):
         try:
             parsed: object = parse_yaml(f"value: {match.group('value')}\n")
             value = manifest.as_table(parsed).get("value")

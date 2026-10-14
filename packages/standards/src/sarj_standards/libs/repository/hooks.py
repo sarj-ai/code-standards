@@ -14,13 +14,15 @@ import sysconfig
 from types import MappingProxyType
 from typing import Final
 
-from sarj_standards.libs.adoption import transaction
+from sarj_standards.libs.adoption import hooks as adoption_hooks, transaction
 
 
 _VERSION: Final = "2.2.1"
 _ARCHITECTURES: Final = MappingProxyType({"aarch64": "arm64", "amd64": "x86_64"})
 _EXPORT_ASSIGNMENT_PARTS: Final = 2
 _UVX_PATH_MARKER: Final = "# sarj-standards: uvx-path"
+_EMPTY_INDEX_MARKER: Final = "# sarj-standards: empty-index gate"
+_PRECOMMIT_CALL: Final = 'call_lefthook run "pre-commit" "$@"'
 
 
 def install(root: Path) -> int:
@@ -77,9 +79,22 @@ def _install_managed_hooks(
             ]
             lines.insert(1, marker)
             lines.insert(2, uvx_path)
-            transaction.atomic_write_text(hook_path.parent, hook_path, "\n".join(lines) + "\n")
+            contents = "\n".join(lines) + "\n"
+            if hook_path.name == "pre-commit":
+                contents = _harden_precommit_entry(contents, root)
+            transaction.atomic_write_text(hook_path.parent, hook_path, contents)
     subprocess.run([str(binary), "validate"], cwd=root, check=True)  # ruff: ignore[subprocess-without-shell-equals-true]
     subprocess.run([str(binary), "check-install"], cwd=root, check=True)  # ruff: ignore[subprocess-without-shell-equals-true]
+
+
+def _harden_precommit_entry(contents: str, root: Path) -> str:
+    expected = empty_index_gate(root) + _PRECOMMIT_CALL
+    if contents.count(_EMPTY_INDEX_MARKER) == 1 and expected in contents:
+        return contents
+    if _EMPTY_INDEX_MARKER in contents or contents.count(_PRECOMMIT_CALL) != 1:
+        msg = "installed Lefthook hook has no unique pre-commit entry point"
+        raise OSError(msg)
+    return contents.replace(_PRECOMMIT_CALL, expected, 1)
 
 
 def _hook_transaction_targets(hooks_dir: Path) -> tuple[Path, ...]:
@@ -147,6 +162,28 @@ def has_durable_environment(path: Path) -> bool:
         and durable.name in {".sarj-lefthook", ".sarj-lefthook.exe"}
         and is_durable_binary(durable)
         and has_managed_uvx_environment(path)
+        and (path.name.removesuffix(".legacy") != "pre-commit" or _has_empty_index_gate(contents))
+    )
+
+
+def empty_index_gate(root: Path | None = None, *, command: str | None = None) -> str:
+    selected_command = adoption_hooks.canonical_staged_command(root) if command is None else command
+    return (
+        f"{_EMPTY_INDEX_MARKER}\n"
+        "git diff --cached --quiet --exit-code\n"
+        "SARJ_STANDARDS_INDEX_STATUS=$?\n"
+        'case "$SARJ_STANDARDS_INDEX_STATUS" in\n'
+        f'  0) {selected_command} || exit "$?" ;;\n'
+        "  1) ;;\n"
+        '  *) exit "$SARJ_STANDARDS_INDEX_STATUS" ;;\n'
+        "esac\n"
+    )
+
+
+def _has_empty_index_gate(contents: str) -> bool:
+    return contents.count(_EMPTY_INDEX_MARKER) == 1 and any(
+        f"{gate}{_PRECOMMIT_CALL}" in contents
+        for gate in (empty_index_gate(), empty_index_gate(command=adoption_hooks.SOURCE_STAGED_COMMAND))
     )
 
 

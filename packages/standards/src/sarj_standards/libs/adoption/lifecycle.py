@@ -420,8 +420,8 @@ def selected_format_commands(root: Path, paths: Iterable[str]) -> list[Command]:
     if python_paths:
         commands.extend(
             (
-                Command("Ruff format", (_environment_binary("ruff"), "format", *python_paths), repository),
-                Command("Ruff fixes", (_environment_binary("ruff"), "check", "--fix", *python_paths), repository),
+                Command("Ruff format", (_environment_binary("ruff"), "format", "--", *python_paths), repository),
+                Command("Ruff fixes", (_environment_binary("ruff"), "check", "--fix", "--", *python_paths), repository),
             )
         )
     commands.extend(select_eslint_commands(repository, selected, label="selected", fix=True).commands)
