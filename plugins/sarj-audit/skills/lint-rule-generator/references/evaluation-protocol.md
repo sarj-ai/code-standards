@@ -31,8 +31,11 @@ evidence of value until matches are inspected.
 Distinct IDs or titles do not make repeated execution contexts independent
 coverage. Compare source, path, options, virtual files, supported runtime,
 expected diagnostics and integration contracts; equal source alone does not
-prove duplication. Interpret raw case-count thresholds as reporting measures,
-not semantic coverage or a reason to add clone cases.
+prove duplication. Raw case counts are reporting measures, not semantic
+coverage: the default evaluation has no total-case quota. Preserve positive and
+negative evidence, verified corpora, zero errors, and the performance budget.
+An error recommendation does not promote a rule; the separate warning-release
+and metadata review still apply.
 
 ## Interaction and developer experience
 

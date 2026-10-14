@@ -28,7 +28,7 @@ class PromotionDecision(StrEnum):
 class EvaluationThresholds:
     max_false_positives: int = 0
     max_false_negatives: int = 0
-    minimum_cases_for_error: int = 20
+    minimum_cases_for_error: int = 0
     minimum_positives_for_error: int = 1
     minimum_negatives_for_error: int = 1
 

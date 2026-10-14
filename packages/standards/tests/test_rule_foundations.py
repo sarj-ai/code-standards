@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import timedelta
 import json
 from pathlib import Path, PurePosixPath
@@ -302,8 +303,14 @@ def test_evaluation_reports_metrics_and_warning_first_decision() -> None:
     assert report.decision is PromotionDecision.WARN
 
 
-def test_false_positive_or_duplicate_location_rejects_promotion() -> None:
-    case = EvaluationCase("good", Language.PYTHON, "return None", ExpectedOutcome.NO_MATCH)
+def test_errors_or_duplicate_location_reject_promotion() -> None:
+    good = EvaluationCase("good", Language.PYTHON, "return None", ExpectedOutcome.NO_MATCH)
+    bad = EvaluationCase("bad", Language.PYTHON, "pass", ExpectedOutcome.MATCH)
+    hit = Finding("TEST001", 1, 1, "hit")
+    false_positive = evaluate(_problem(), "TEST001", (good,), lambda _case: (hit,))
+    assert false_positive.false_positives == 1
+    assert false_positive.decision is PromotionDecision.REJECT
+    assert evaluate(_problem(), "TEST001", (bad,), lambda _case: ()).decision is PromotionDecision.REJECT
 
     def checker(_case: EvaluationCase) -> Sequence[Finding]:
         return (
@@ -314,22 +321,14 @@ def test_false_positive_or_duplicate_location_rejects_promotion() -> None:
     report = evaluate(
         _problem(),
         "TEST001",
-        (case,),
+        (bad,),
         checker,
         thresholds=EvaluationThresholds(minimum_cases_for_error=1),
     )
 
-    assert report.false_positives == 1
-    assert report.duplicate_locations == (("good", 1, 1),)
+    assert report.false_positives == 0
+    assert report.duplicate_locations == (("bad", 1, 1),)
     assert report.decision is PromotionDecision.REJECT
-
-
-def test_clean_one_sided_cases_cannot_promote_to_error() -> None:
-    cases = tuple(EvaluationCase(f"negative-{index}", Language.PYTHON, "return None") for index in range(20))
-
-    report = evaluate(_problem(), "TEST001", cases, lambda _case: ())
-
-    assert report.decision is PromotionDecision.WARN
 
 
 def test_candidate_cannot_claim_another_rules_findings() -> None:
@@ -383,31 +382,32 @@ def test_error_promotion_requires_verified_evidence_zero_errors_and_performance_
     with pytest.raises(ValueError, match="verified corpora"):
         EvaluationEvidence((unverified,), "all cases", timedelta(seconds=1), timedelta(seconds=1))
     verified = verify(CorpusSource("sample", tmp_path, CorpusKind.LOCAL, unverified.digest, ("*.py",)))
-    slow = EvaluationEvidence(
+    fast = EvaluationEvidence(
         (verified,),
         "all cases",
-        timedelta(seconds=2),
+        timedelta(seconds=1),
         timedelta(seconds=1),
         maximum_slowdown=1.25,
     )
-    cases = tuple(
-        EvaluationCase(
-            f"case-{index}",
-            Language.PYTHON,
-            "pass" if index == 0 else "return None",
-            ExpectedOutcome.MATCH if index == 0 else ExpectedOutcome.NO_MATCH,
-        )
-        for index in range(20)
+    cases = (
+        EvaluationCase("positive", Language.PYTHON, "pass", ExpectedOutcome.MATCH),
+        EvaluationCase("negative", Language.PYTHON, "return None", ExpectedOutcome.NO_MATCH),
     )
 
-    report = evaluate(
-        _problem(),
-        "TEST001",
-        cases,
-        lambda case: (Finding("TEST001", 1, 1, "hit"),) if case.expected is ExpectedOutcome.MATCH else (),
-        evidence=slow,
-    )
-    assert report.decision is PromotionDecision.WARN
+    def checker(case: EvaluationCase) -> Sequence[Finding]:
+        return (Finding("TEST001", 1, 1, "hit"),) if case.source == "pass" else ()
+
+    assert evaluate(_problem(), "TEST001", cases, checker, evidence=fast).decision is PromotionDecision.ERROR
+    assert evaluate(_problem(), "TEST001", (), checker, evidence=fast).decision is PromotionDecision.REJECT
+    for selection, evidence, thresholds in (
+        (cases, None, EvaluationThresholds()),
+        (cases[:1], fast, EvaluationThresholds()),
+        (cases[1:], fast, EvaluationThresholds()),
+        (cases, replace(fast, elapsed=timedelta(seconds=2)), EvaluationThresholds()),
+        (cases, fast, EvaluationThresholds(minimum_cases_for_error=3)),
+    ):
+        report = evaluate(_problem(), "TEST001", selection, checker, evidence=evidence, thresholds=thresholds)
+        assert report.decision is PromotionDecision.WARN
 
     permissive = EvaluationThresholds(max_false_positives=1, minimum_cases_for_error=1)
     false_positive = evaluate(
@@ -416,6 +416,6 @@ def test_error_promotion_requires_verified_evidence_zero_errors_and_performance_
         (EvaluationCase("good", Language.PYTHON, "return None"),),
         lambda _case: (Finding("TEST001", 1, 1, "hit"),),
         thresholds=permissive,
-        evidence=slow,
+        evidence=fast,
     )
     assert false_positive.decision is PromotionDecision.WARN
