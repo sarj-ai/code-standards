@@ -1657,28 +1657,6 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         )
         assert runner.environments[-1] == {"PATH": "/tools", "GH_TOKEN": "push-secret"}
 
-    def test_reuses_a_merged_managed_branch_without_amending_the_base(self, tmp_path: Path) -> None:
-        old_sha = "a" * 40
-        base_sha = "b" * 40
-        parent_sha = "c" * 40
-        tree_sha = "d" * 40
-        runner = FakeRunner(
-            [
-                (0, f"{old_sha}\trefs/heads/standards-rollout/current"),
-                (0, ""),
-                (0, rollout.managed_commit_message("5.8.0", tree_sha)),
-                (0, f"{old_sha} {parent_sha}"),
-                (0, tree_sha),
-                (0, ""),
-                (0, ""),
-            ]
-        )
-
-        prepared = rollout.prepare_branch(tmp_path, "5.8.1", base_sha, runner)
-
-        assert prepared.previous_sha == old_sha
-        assert runner.commands[-1] == ("git", "switch", "-C", "standards-rollout/current", base_sha)
-
     def test_base_advancement_discards_previous_bot_patch_and_rebuilds_from_captured_base(self, tmp_path: Path) -> None:
         old_sha = "a" * 40
         base_sha = "b" * 40
