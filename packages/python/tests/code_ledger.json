@@ -286,5 +286,6 @@
   "SARJ495": "test-without-explicit-oracle",
   "SARJ496": "no-duplicate-field-validator-body",
   "SARJ497": "no-defaulted-environment-setting",
-  "SARJ498": "no-folded-bad-request-not-found"
+  "SARJ498": "no-folded-bad-request-not-found",
+  "SARJ499": "no-hasattr"
 }

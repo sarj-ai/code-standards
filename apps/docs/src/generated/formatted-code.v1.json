@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "bee2e99eda790b8832f7f39c19741e8ee38067362d2b4e6c23c6eeb0cbd1b20a",
+  "catalogSha256": "cd729ecf0af624541cb9eb27ea0c85c9b4af3d383d6fca3092a8b95a29e45e0b",
   "cliSha256": "9e33b079fe2f1f33699ed8b7570f835d26e5ee3e3e860a917409a19baec07d6a",
   "formatterVersions": {
     "prettier": "3.9.6",
@@ -3506,6 +3506,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "eslint:prefer-native-fetch-in-server-actions": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/app/actions.ts",
+              "source": "\"use server\";\n\nimport ky from \"ky\";\n\nexport async function upload(url: string, body: Blob): Promise<void> {\n  await ky.put(url, { body });\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/app/actions.ts",
+          "id": "ky-in-action",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A server action imports ky"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/app/actions.ts",
+              "source": "\"use server\";\n\nexport async function upload(url: string, body: Blob): Promise<void> {\n  const response = await fetch(url, {\n    method: \"PUT\",\n    body,\n    signal: AbortSignal.timeout(30_000),\n  });\n  if (!response.ok) throw new Error(`upload failed: ${response.status}`);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/app/actions.ts",
+          "id": "native-fetch-action",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A server action uploads with native fetch"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:prefer-native-random-uuid": {
       "examples": [
         {
@@ -5422,6 +5457,41 @@
           "outcome": "accept",
           "scenarioId": "terraform-provider-evidence",
           "title": "Empty mock provider validates configured plan behavior"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "iac:no-plaintext-secret-env": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"google_cloud_run_v2_service\" \"api\" {\n  template {\n    containers {\n      env {\n        name  = \"API_KEY\"\n        value = var.api_key\n      }\n    }\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "plain-api-key",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An API key is injected as a plain value"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"google_cloud_run_v2_service\" \"api\" {\n  template {\n    containers {\n      env {\n        name = \"API_KEY\"\n        value_source {\n          secret_key_ref {\n            secret  = google_secret_manager_secret.api_key.secret_id\n            version = \"latest\"\n          }\n        }\n      }\n    }\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "secret-reference",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "An API key is read from Secret Manager"
         }
       ],
       "optionsSchemaSource": null
@@ -7768,6 +7838,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Specific module contains one public definition"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-hasattr": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service/agent.py",
+              "source": "def model_name(settings: object) -> str:\n    return settings.model if hasattr(settings, \"model\") else \"default\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service/agent.py",
+          "id": "hasattr-probe",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A hasattr probe hides a loose type"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service/agent.py",
+              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass LLMSettings:\n    model: str\n\n\ndef model_name(settings: LLMSettings) -> str:\n    return settings.model\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service/agent.py",
+          "id": "typed-access",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A typed parameter states which attributes exist"
         }
       ],
       "optionsSchemaSource": null
