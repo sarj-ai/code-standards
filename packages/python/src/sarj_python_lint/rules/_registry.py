@@ -218,6 +218,9 @@ from sarj_python_lint.rules.duplicate_adjacent_exception_handler import Duplicat
 from sarj_python_lint.rules.duplicate_closed_pure_helper import DuplicateClosedPureHelper
 from sarj_python_lint.rules.no_conflicting_pydantic_alias_validation import NoConflictingPydanticAliasValidation
 from sarj_python_lint.rules.no_contradictory_type_guard import NoContradictoryTypeGuard
+from sarj_python_lint.rules.no_defaulted_environment_setting import NoDefaultedEnvironmentSetting
+from sarj_python_lint.rules.no_duplicate_field_validator_body import NoDuplicateFieldValidatorBody
+from sarj_python_lint.rules.no_folded_bad_request_not_found import NoFoldedBadRequestNotFound
 from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossiblePydanticFieldBounds
 from sarj_python_lint.rules.no_invalid_pydantic_bypass import NoInvalidPydanticBypass
 from sarj_python_lint.rules.no_invalid_pydantic_validator_return import NoInvalidPydanticValidatorReturn
@@ -238,6 +241,9 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferBulkUpsert.id: PreferBulkUpsert,
         PreferPsycopgExecutemany.id: PreferPsycopgExecutemany,
         StoreFieldUpdateReusesUpsert.id: StoreFieldUpdateReusesUpsert,
+        NoFoldedBadRequestNotFound.id: NoFoldedBadRequestNotFound,
+        NoDefaultedEnvironmentSetting.id: NoDefaultedEnvironmentSetting,
+        NoDuplicateFieldValidatorBody.id: NoDuplicateFieldValidatorBody,
         NoExplicitTestOracle.id: NoExplicitTestOracle,
         PreferDiscriminatedModelUnion.id: PreferDiscriminatedModelUnion,
         NoInvalidPydanticBypass.id: NoInvalidPydanticBypass,

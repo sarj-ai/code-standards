@@ -1,3 +1,5 @@
+import noCredentialInBrowserStorage from "./rules/no-credential-in-browser-storage.js";
+import noNumericSearchParamCoercion from "./rules/no-numeric-search-param-coercion.js";
 import packageMetadata from "../package.json" with { type: "json" };
 import requireExplicitContractImplementation from "./rules/require-explicit-contract-implementation.js";
 import requireExplicitServiceContract from "./rules/require-explicit-service-contract.js";
@@ -134,6 +136,8 @@ import { RENAMED_RULES } from "./rules/_renamed-rules.js";
 import { RETIRED_RULES } from "./rules/_retired-rules.js";
 
 const RULES = {
+  "no-credential-in-browser-storage": noCredentialInBrowserStorage,
+  "no-numeric-search-param-coercion": noNumericSearchParamCoercion,
   "require-explicit-contract-implementation": requireExplicitContractImplementation,
   "require-explicit-service-contract": requireExplicitServiceContract,
   "no-conditional-empty-object-spread": noConditionalEmptyObjectSpread,
@@ -284,9 +288,11 @@ const ADVISORY_RULES = [
   "@sarj/no-contradictory-overload-return",
   "@sarj/no-contradictory-type-predicate",
   "@sarj/no-cors-wildcard-with-credentials",
+  "@sarj/no-credential-in-browser-storage",
   "@sarj/no-exception-text-in-5xx-response",
   "@sarj/no-invalid-typed-mutation",
   "@sarj/no-invalid-zod-custom-parse",
+  "@sarj/no-numeric-search-param-coercion",
   "@sarj/no-partial-type-predicate",
   "@sarj/no-restated-comment",
   "@sarj/no-restated-jsdoc",
@@ -349,6 +355,8 @@ const RECOMMENDED_RULES = {
   "@sarj/no-detached-global-fetch": "error",
   "@sarj/no-json-stringify-object-equality": "error",
   "@sarj/no-dangerously-allow-svg": "error",
+  "@sarj/no-credential-in-browser-storage": "warn",
+  "@sarj/no-numeric-search-param-coercion": "warn",
   "@sarj/no-duplicate-lifecycle-refresh-listeners": "error",
   "@sarj/no-long-comment": "error",
   "@sarj/no-vague-suppression-description": "error",
@@ -476,6 +484,8 @@ const STRICT_RULES = {
   "@sarj/no-detached-global-fetch": "error",
   "@sarj/no-json-stringify-object-equality": "error",
   "@sarj/no-dangerously-allow-svg": "error",
+  "@sarj/no-credential-in-browser-storage": "warn",
+  "@sarj/no-numeric-search-param-coercion": "warn",
   "@sarj/no-duplicate-lifecycle-refresh-listeners": "error",
   "@sarj/no-long-comment": "error",
   "@sarj/no-vague-suppression-description": "error",

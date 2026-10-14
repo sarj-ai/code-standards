@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "804aad0c032e8a4730a12b26880f640cd4f51cf175c9d8029fae2779ee3b18ba",
-  "cliSha256": "ac03691b0430bef15279ae46e3f1e76b1ce47b107a3d0c3dc1910a16e7bb3e5d",
+  "catalogSha256": "f30b4d9636f14db99055dc42e5fa61b877b223cb0ad1c14b2b29ea14ab549693",
+  "cliSha256": "6ad6bd1969b07c32a2824d65a0e7587d27e6dd62fb44bbccadbfef44884a83c8",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -751,6 +751,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Review a wildcard that blocks access to credentialed responses"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-credential-in-browser-storage": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/theme.ts",
+              "source": "localStorage.setItem(\"sidebar-collapsed\", \"true\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/theme.ts",
+          "id": "server-cookie",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Store a non-credential preference in localStorage"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/session.ts",
+              "source": "export function remember(token: string): void {\n  localStorage.setItem(\"accessToken\", token);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/session.ts",
+          "id": "token-in-local-storage",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not store an access token in localStorage"
         }
       ],
       "optionsSchemaSource": null
@@ -1993,6 +2028,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Paragraphs separate a component's durable constraints"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-numeric-search-param-coercion": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/page.ts",
+              "source": "export function page(params: URLSearchParams): number {\n  return parseInt(params.get(\"page\") ?? \"1\", 10);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/page.ts",
+          "id": "parse-int-page",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not coerce a search parameter with parseInt"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/page.ts",
+              "source": "declare const z: { coerce: { number(): { parse(value: unknown): number } } };\nexport function page(params: URLSearchParams): number {\n  return z.coerce.number().parse(params.get(\"page\") ?? undefined);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/page.ts",
+          "id": "schema-parsed-page",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Parse the page number with a schema"
         }
       ],
       "optionsSchemaSource": null
@@ -6274,6 +6344,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "iac:no-project-secret-access-for-service-account": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"google_secret_manager_secret_iam_member\" \"api\" {\n  secret_id = google_secret_manager_secret.api_key.id\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = \"serviceAccount:${google_service_account.api.email}\"\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "per-secret-accessor",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A service account reads only the secret it needs"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"google_project_iam_member\" \"api\" {\n  role   = \"roles/secretmanager.secretAccessor\"\n  member = \"serviceAccount:${google_service_account.api.email}\"\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "project-secret-accessor",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A service account can read every project secret"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "iac:no-redundant-variable-validation": {
       "examples": [
         {
@@ -8017,6 +8122,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-defaulted-environment-setting": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service/settings.py",
+              "source": "from pydantic import Field\nfrom pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    environment: str = Field(default=\"local\", alias=\"ENVIRONMENT\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service/settings.py",
+          "id": "defaulted-environment",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A defaulted environment pretends to be local"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service/settings.py",
+              "source": "from pydantic import Field\nfrom pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    environment: str = Field(alias=\"ENVIRONMENT\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service/settings.py",
+          "id": "required-environment",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A required environment fails at startup when missing"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-delete-statement": {
       "examples": [
         {
@@ -8218,6 +8358,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Unique names in a package export list"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-duplicate-field-validator-body": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "models/contact.py",
+              "source": "from pydantic import BaseModel, field_validator\n\n\nclass Contact(BaseModel):\n    first_name: str\n    last_name: str\n\n    @field_validator(\"first_name\", mode=\"before\")\n    @classmethod\n    def strip_first(cls, value: str) -> str:\n        return value.strip()\n\n    @field_validator(\"last_name\", mode=\"before\")\n    @classmethod\n    def strip_last(cls, raw: str) -> str:\n        return raw.strip()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "models/contact.py",
+          "id": "duplicate-strip-validators",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Two validators repeat one strip rule"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "models/contact.py",
+              "source": "from pydantic import BaseModel, field_validator\n\n\nclass Contact(BaseModel):\n    first_name: str\n    last_name: str\n\n    @field_validator(\"first_name\", \"last_name\", mode=\"before\")\n    @classmethod\n    def strip_names(cls, value: str) -> str:\n        return value.strip()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "models/contact.py",
+          "id": "one-multi-field-validator",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "One validator names every field that shares the rule"
         }
       ],
       "optionsSchemaSource": null
@@ -8566,6 +8741,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A polling loop sleeps for a hardcoded interval"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-folded-bad-request-not-found": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "client/records.py",
+              "source": "def fetch(response):\n    if response.status_code in (400, 404):\n        return None\n    return response.json()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "client/records.py",
+          "id": "folded-membership",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A 400 is treated as not found"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "client/records.py",
+              "source": "def fetch(response):\n    if response.status_code == 404:\n        return None\n    if response.status_code == 400:\n        raise ValueError(response.text)\n    return response.json()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "client/records.py",
+          "id": "separate-branches",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Not found and bad request are separate outcomes"
         }
       ],
       "optionsSchemaSource": null

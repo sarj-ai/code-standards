@@ -111,7 +111,7 @@ def _root_readme(
         f"# {title}",
         _string(standards, "description"),
         (
-            "Every repository receives one complete policy, including all 41 library policies. "
+            "Every repository receives one complete policy, including all 42 library policies. "
             "There is no standard/application selection. Legacy profile fields and preset filenames remain "
             "read-compatible aliases; newly written manifests omit the profile field. "
             "Warning-stage rules retain their reviewed severity. Rules requiring repository-specific "
