@@ -214,6 +214,7 @@ from sarj_python_lint.rules.no_conflicting_pydantic_alias_validation import NoCo
 from sarj_python_lint.rules.no_defaulted_environment_setting import NoDefaultedEnvironmentSetting
 from sarj_python_lint.rules.no_duplicate_field_validator_body import NoDuplicateFieldValidatorBody
 from sarj_python_lint.rules.no_folded_bad_request_not_found import NoFoldedBadRequestNotFound
+from sarj_python_lint.rules.no_hasattr import NoHasattr
 from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossiblePydanticFieldBounds
 from sarj_python_lint.rules.no_unknown_pydantic_validator_field import NoUnknownPydanticValidatorField
 from sarj_python_lint.rules.redundant_test_constructor_forwarder import RedundantTestConstructorForwarder
@@ -223,6 +224,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoHasattr.id: NoHasattr,
         NoFoldedBadRequestNotFound.id: NoFoldedBadRequestNotFound,
         NoDefaultedEnvironmentSetting.id: NoDefaultedEnvironmentSetting,
         NoDuplicateFieldValidatorBody.id: NoDuplicateFieldValidatorBody,

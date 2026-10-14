@@ -2489,6 +2489,30 @@
       "state": "pending",
       "evidence": "RuleTester cases cover setItem, property and computed assignment on local and session storage through window, constant key aliases, document.cookie templates and concatenation, shadowed storage, other receivers, reads, removals and metadata-named keys. A text survey of one private Next.js corpus found 12 storage writes, none under a credential name.",
       "outcome": "Keep the rule warning-only without autofix. Storage wrappers and neutral key names stay in review."
+    },
+    {
+      "task": "rule-audit/python/no-hasattr",
+      "family": "python",
+      "ruleId": "no-hasattr",
+      "state": "pending",
+      "evidence": "Focused cases cover repeated calls on one line, module-level feature probes, shadowed and imported names, getattr, methods named hasattr, malformed input and test, conftest and test-support exclusion. A scan of one private application corpus reported 8 findings in 7 production files; all are attribute probes on typed values or untyped libraries, consistent with the rule. The 10-repository survey shows libraries use hasattr heavily for optional-dependency detection, which is why the rule stays warning-only and suppressible.",
+      "outcome": "Keep SARJ499 warning-only without autofix. Consumers baseline existing findings; genuine runtime feature detection keeps a reasoned local suppression."
+    },
+    {
+      "task": "rule-audit/iac/no-plaintext-secret-env",
+      "family": "iac",
+      "ruleId": "no-plaintext-secret-env",
+      "state": "pending",
+      "evidence": "Focused cases cover Cloud Run and Kubernetes env blocks with variable, local, literal and interpolated values, non-secret settings, metadata names, empty values, secret references, dynamic names, malformed HCL and non-Terraform files. A scan of one private infrastructure corpus reported 1 finding, reviewed as a true positive (an API key passed as a plain Cloud Run value).",
+      "outcome": "Keep SARJ214 warning-only without autofix. Secrets under unconventional names or embedded in connection strings stay in review."
+    },
+    {
+      "task": "rule-audit/typescript/prefer-native-fetch-in-server-actions",
+      "family": "typescript",
+      "ruleId": "prefer-native-fetch-in-server-actions",
+      "state": "pending",
+      "evidence": "RuleTester cases cover default, named and subpath ky imports after a use server directive, type-only imports, directives after statements, use client modules, similarly named packages and native fetch. A survey of one private Next.js corpus found 3 server action modules importing ky.",
+      "outcome": "Keep the rule warning-only without autofix. ky reached through shared client modules is not followed."
     }
   ]
 }
