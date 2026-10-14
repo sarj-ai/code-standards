@@ -113,6 +113,11 @@ def test_real_lefthook_runs_without_source_filenames(tmp_path: Path, state: str)
         installed.read_text(encoding="utf-8").replace(launcher.repository_command(), probe.command),
         encoding="utf-8",
     )
+    before = installed.read_bytes()
+    config.write_text(
+        config.read_text(encoding="utf-8") + "pre-push:\n  commands:\n    later:\n      run: true\n",
+        encoding="utf-8",
+    )
     if state == "deleted":
         _git(repository, "rm", "source.py")
     completed = subprocess.run(
@@ -134,6 +139,7 @@ def test_real_lefthook_runs_without_source_filenames(tmp_path: Path, state: str)
         text=True,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert installed.read_bytes() == before
     assert "UNEXPECTED_OTHER_JOB" not in completed.stdout + completed.stderr
     assert json.loads(probe.receipt.read_text(encoding="utf-8")) == {
         "args": ["check", "--staged", "--trust-repository-code"],

@@ -22,7 +22,7 @@ _ARCHITECTURES: Final = MappingProxyType({"aarch64": "arm64", "amd64": "x86_64"}
 _EXPORT_ASSIGNMENT_PARTS: Final = 2
 _UVX_PATH_MARKER: Final = "# sarj-standards: uvx-path"
 _EMPTY_INDEX_MARKER: Final = "# sarj-standards: empty-index gate"
-_PRECOMMIT_CALL: Final = 'call_lefthook run "pre-commit" "$@"'
+_PRECOMMIT_CALL: Final = 'call_lefthook run "pre-commit" --no-auto-install "$@"'
 
 
 def install(root: Path) -> int:
@@ -80,6 +80,7 @@ def _install_managed_hooks(
             lines.insert(1, marker)
             lines.insert(2, uvx_path)
             contents = "\n".join(lines) + "\n"
+            contents = _harden_managed_call(contents, hook_type=hook_path.name)
             if hook_path.name == "pre-commit":
                 contents = _harden_precommit_entry(contents, root)
             transaction.atomic_write_text(hook_path.parent, hook_path, contents)
@@ -95,6 +96,21 @@ def _harden_precommit_entry(contents: str, root: Path) -> str:
         msg = "installed Lefthook hook has no unique pre-commit entry point"
         raise OSError(msg)
     return contents.replace(_PRECOMMIT_CALL, expected, 1)
+
+
+def managed_hook_call(hook_type: str) -> str:
+    return f'call_lefthook run "{hook_type}" --no-auto-install "$@"'
+
+
+def _harden_managed_call(contents: str, *, hook_type: str) -> str:
+    expected = managed_hook_call(hook_type)
+    if contents.count(expected) == 1:
+        return contents
+    original = f'call_lefthook run "{hook_type}" "$@"'
+    if contents.count(original) != 1:
+        msg = f"installed Lefthook hook has no unique {hook_type} entry point"
+        raise OSError(msg)
+    return contents.replace(original, expected, 1)
 
 
 def _hook_transaction_targets(hooks_dir: Path) -> tuple[Path, ...]:
@@ -162,6 +178,7 @@ def has_durable_environment(path: Path) -> bool:
         and durable.name in {".sarj-lefthook", ".sarj-lefthook.exe"}
         and is_durable_binary(durable)
         and has_managed_uvx_environment(path)
+        and contents.count(managed_hook_call(path.name.removesuffix(".legacy"))) == 1
         and (path.name.removesuffix(".legacy") != "pre-commit" or _has_empty_index_gate(contents))
     )
 

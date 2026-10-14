@@ -1060,6 +1060,7 @@ def test_hook_install_resolves_environment_binaries(monkeypatch: pytest.MonkeyPa
     assert hooks.is_durable_binary(durable)
     assert hook.read_text(encoding="utf-8").count(f"export LEFTHOOK_BIN={durable.as_posix()}") == 1
     assert hook.read_text(encoding="utf-8").count("# sarj-standards: empty-index gate") == 1
+    assert hooks.managed_hook_call("pre-commit") in hook.read_text(encoding="utf-8")
     assert hook.read_text(encoding="utf-8").count('export PATH=/bin:"$PATH" # sarj-standards: uvx-path') == 1
 
 
@@ -1081,7 +1082,9 @@ def test_managed_hook_environment_requires_one_executable_uvx_path(
     hook.write_text(
         "#!/bin/sh\n"
         f"export LEFTHOOK_BIN={durable.as_posix()}\n"
-        f"export PATH='{uvx_directory.as_posix()}':\"$PATH\" # sarj-standards: uvx-path\n",
+        f"export PATH='{uvx_directory.as_posix()}':\"$PATH\" # sarj-standards: uvx-path\n"
+        + hooks.managed_hook_call("commit-msg")
+        + "\n",
         encoding="utf-8",
     )
 

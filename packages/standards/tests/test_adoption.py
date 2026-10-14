@@ -2579,11 +2579,9 @@ def test_lefthook_setup_update_and_doctor_converge_installed_hooks(
             hook.write_text(
                 f"#!/bin/sh\nexport LEFTHOOK_BIN={durable.as_posix()}\n"
                 f'export PATH={uvx_directory.as_posix()}:"$PATH" # sarj-standards: uvx-path\n'
-                + (
-                    repository_hooks.empty_index_gate(tmp_path) + 'call_lefthook run "pre-commit" "$@"\n'
-                    if hook_type == "pre-commit"
-                    else ""
-                ),
+                + (repository_hooks.empty_index_gate(tmp_path) if hook_type == "pre-commit" else "")
+                + repository_hooks.managed_hook_call(hook_type)
+                + "\n",
                 encoding="utf-8",
             )
             hook.chmod(0o755)
