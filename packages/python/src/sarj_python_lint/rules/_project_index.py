@@ -566,20 +566,22 @@ class ProjectIndexSet:
             if isinstance(owner, ast.ClassDef) and _class_has_typed_dependency(candidate, owner, target)
         )
 
+    @cached_property
+    def _mock_specs(self) -> Mapping[SymbolRef, frozenset[Path]]:
+        specs: dict[SymbolRef, set[Path]] = {}
+        for candidate in self._units.values():
+            if candidate.tree is None:
+                continue
+            for call in walk_ast(candidate.tree):
+                if isinstance(call, ast.Call):
+                    for target in _mock_spec_targets(candidate, call):
+                        specs.setdefault(target, set()).add(candidate.path)
+        return MappingProxyType({target: frozenset(paths) for target, paths in specs.items()})
+
     def test_mock_specs(self, unit: SourceUnit, name: str) -> frozenset[Path]:
         if unit.module is None:
             return frozenset()
-        target = SymbolRef(unit.module, name)
-        return frozenset(
-            candidate.path
-            for candidate in self._units.values()
-            if candidate.tree is not None
-            and any(
-                _is_mock_spec_for(candidate, call, target)
-                for call in walk_ast(candidate.tree)
-                if isinstance(call, ast.Call)
-            )
-        )
+        return self._mock_specs.get(SymbolRef(unit.module, name), frozenset())
 
     def class_inherits_from(self, unit: SourceUnit, name: str, qualified_bases: frozenset[str]) -> bool:
         if unit.module is None:
@@ -1350,14 +1352,15 @@ def _class_has_typed_dependency(unit: SourceUnit, owner: ast.ClassDef, target: S
     return False
 
 
-def _is_mock_spec_for(unit: SourceUnit, call: ast.Call, target: SymbolRef) -> bool:
+def _mock_spec_targets(unit: SourceUnit, call: ast.Call) -> Iterator[SymbolRef]:
     mock_name = _mock_function_name(unit, call.func)
     if mock_name is None:
-        return False
-    return any(
-        keyword.arg in {"spec", "spec_set"} and _direct_base_symbol(unit, keyword.value) == target
-        for keyword in call.keywords
-    ) or (mock_name == "create_autospec" and bool(call.args) and _direct_base_symbol(unit, call.args[0]) == target)
+        return
+    for keyword in call.keywords:
+        if keyword.arg in {"spec", "spec_set"} and (target := _direct_base_symbol(unit, keyword.value)) is not None:
+            yield target
+    if mock_name == "create_autospec" and call.args and (target := _direct_base_symbol(unit, call.args[0])) is not None:
+        yield target
 
 
 def _mock_function_name(unit: SourceUnit, function: ast.expr) -> str | None:
