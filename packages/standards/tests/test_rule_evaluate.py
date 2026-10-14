@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, NamedTuple, TypeGuard
 import pytest
 
 from sarj_standards import __version__
-import sarj_standards.api as standards_api
 from sarj_standards.cli.main import main
 from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, Manifest
 from sarj_standards.libs.corpus import CorpusKind, CorpusSource, snapshot
@@ -324,9 +323,6 @@ def test_warning_lifecycle_is_nonblocking_but_observable(
     )
     warning_selector = RuleSelector.parse(_SELECTOR)
     assert lint_policy.warning_selectors() == frozenset({warning_selector})
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- isolated warning-policy lookup is the behavior under test.
-        standards_api, "_warning_rule_keys", lambda: frozenset({warning_selector})
-    )
 
     corpus_status, corpus = _evaluate(tmp_path, "corpus", capsys)
     effective_status, effective = _evaluate(tmp_path, "effective", capsys)

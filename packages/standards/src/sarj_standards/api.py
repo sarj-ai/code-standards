@@ -319,7 +319,7 @@ class Standards:
             native = report_from_tools(self.root, native_analysis())
             _native_typescript_coverage(selected_groups, adopted, rule_selection, coverage)
             if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE}:
-                native = _with_warning_severity(native, _warning_rule_keys())
+                native = _with_warning_severity(native, _warning_rule_keys(normalized_mode, rule_selection))
             return _with_coverage(
                 _without_baselined_diagnostics(native, baseline_counts, changed_scope=changed_scope), coverage
             )
@@ -366,7 +366,9 @@ class Standards:
         combined = _with_shell_format_severity(combined, paths=paths, staged=staged, changed_scope=changed_scope)
         combined = _with_warning_severity(
             combined,
-            _warning_rule_keys() if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE} else frozenset(),
+            _warning_rule_keys(normalized_mode, rule_selection)
+            if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE}
+            else frozenset(),
             upstream_rules=upstream_rules,
         )
         return _with_coverage(
@@ -984,12 +986,16 @@ def _filter_report_selectors(
     )
 
 
-def _warning_rule_keys() -> frozenset[RuleSelector]:
+def _warning_rule_keys(mode: AnalysisMode, selected: RuleSelection | None) -> frozenset[RuleSelector]:
     from sarj_standards.libs.linting.policy import (  # ruff: ignore[import-outside-top-level]
         warning_selectors,
     )
+    from sarj_standards.libs.linting.test_value import SELECTORS  # ruff: ignore[import-outside-top-level]
 
-    return warning_selectors()
+    warnings = warning_selectors()
+    if mode is AnalysisMode.OBSERVE and selected is not None:
+        return warnings | (selected.selectors & SELECTORS)
+    return warnings
 
 
 def _with_warning_severity(
