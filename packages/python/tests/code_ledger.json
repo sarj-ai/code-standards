@@ -287,5 +287,12 @@
   "SARJ496": "no-duplicate-field-validator-body",
   "SARJ497": "no-defaulted-environment-setting",
   "SARJ498": "no-folded-bad-request-not-found",
-  "SARJ499": "no-hasattr"
+  "SARJ499": "no-hasattr",
+  "SARJ500": "no-create-verb-in-post-path",
+  "SARJ501": "excluded-field-skips-json-schema",
+  "SARJ502": "no-work-verb-get-route",
+  "SARJ503": "no-slash-collection-root-under-prefix",
+  "SARJ504": "require-exp-on-jwt-decode",
+  "SARJ505": "no-exception-text-in-500-detail",
+  "SARJ506": "delete-route-returns-no-content"
 }
