@@ -23,34 +23,43 @@ make setup
 make verify
 ```
 
+### Adding a rule
+
+Custom authoring supports python, sql, iac, text, eslint. Configure upstream Checkov and zizmor policies through their maintained presets. Use the checkout's source command so registration, verification and preparation inspect the code being edited:
+
+```bash
+uv run --frozen --project packages/standards --no-config code-standards --root . maintain rules new python:prefer-explicit-clock --category testing --summary "Tests should receive an explicit clock." --apply
+```
+
+Omit `--apply` to preview. Creation writes the detector and executable test, registers the rule, and reserves its identifier atomically. One shared layout owns source, test and registry paths. Rules own their metadata and examples; catalogs, documentation and strict presets are derived. New rules default to warning. Implement the detector and replace the example placeholders, then run:
+
+```bash
+uv run --frozen --project packages/standards --no-config code-standards --root . maintain rules prepare python:prefer-explicit-clock
+uv run --frozen --project packages/standards --no-config code-standards --root . maintain rules evaluate --rule python:prefer-explicit-clock --scope corpus
+make verify
+```
+
+`prepare` executes the documented examples and focused test, then synchronizes the warning lifecycle and derived rule artifacts. Use `verify` for an isolated check while editing. For reproducible multi-repository calibration, use an immutable public manifest and an optional owner-readable private overlay:
+
+```bash
+uv run --frozen --project packages/standards --no-config code-standards --root . maintain rules evaluate --rule python:prefer-explicit-clock --corpus-manifest corpora.toml --private-overlay private-corpora.toml
+```
+
+After committing, review the complete rule diff:
+
+```bash
+uv run --frozen --project packages/standards --no-config code-standards --root . maintain rules changes --before origin/main --after HEAD
+```
+
+Rule comparison reads immutable Git blobs and fingerprints explicit local runtime imports from source and test modules. Type-only imports and data-only registry member edges are excluded; computed imports and TypeScript path aliases are not resolved. TypeScript-bearing comparisons need the pinned Node and locked compiler from `make setup`. Comparison never installs tools or falls back to text matching. Python-only revisions do not require Node.
+
+### Verification and releases
+
 Run independent package suites with `make test -j4`, or focus on the fresh Standards wheel with `make test-standards PYTEST_ARGS='-k release'`. `TEST_JOBS=1` serializes wheel tests (default: 4, maximum: 16). Wheel tests build local exact sibling versions in a temporary wheelhouse and leave existing distribution output intact. Use `make release-status COMMIT=origin/main` to inspect exact-revision checks, publication, tagging, and rollout with queue and job durations. Preview affected test files with `make test-plan BASE=origin/main`, then run them against fresh local wheels with `make test-standards-changed BASE=origin/main`. Ordinary PR and main CI select affected packages and test cohorts; shared code, dependencies, workflows, missing comparisons, unknown paths, and uncertified comparison bases fall back to full coverage. Manual and weekly CI run every package and test. Test plans record selected files, fallback reasons, and elapsed time in the job summary.
 
 On main, CI can reuse successful own-repository PR validation only when the checked Git tree and comparison base are identical. The verifier requires the latest successful CI run, matching run attempt, successful job, immutable artifact digest, and checked-tree certificate less than 24 hours old. It preserves the tested wheel bytes and submits reviewed CodeQL results for the actual main commit. Documentation source checks can be reused, while main builds and deploys the site afresh. Missing, expired, malformed, forked, changed or uncertified proofs fall back to fresh checks; PR, weekly and manual runs always perform fresh validation. The job summary links the source CI and explains reuse or fallback.
 
 Publication reuses the successful exact-main CI artifact after checking its repository, event, commit, job result, and archive digest; missing/expired artifacts receive a fresh build and full wheel suite. Consumer portability repeats when shared runtime code can be affected. CLI smoke tests and a fresh revision-local pre-commit installation run concurrently; either failure blocks publication, and a second hook run must reuse its environment. Reproduce both lanes with `make release-portability`; CI retains separate logs and timings. Release detection uses the exact source-owned bootstrap pins without installing lint engines. Documentation deployment uses a separate locked Wrangler toolchain; reproduce its dry run with `make docs-deploy-check` after building the site. The underlying `maintain release status --commit REV --format json` command provides JSON. Release builds and portability checks overlap safety checks; publication still requires every check, exact public sibling version, verified artifact digest, and trusted-publisher attestation.
-
-Create a rule with `maintain rules new ENGINE:ID --category CATEGORY --summary TEXT --apply`. Without `--apply`, the command shows its plan. Creation writes the detector and executable test, registers the rule, and reserves its identifier atomically. New rules default to warning. Run authoring commands through `uv run --project packages/standards --frozen code-standards` to use the source and dependencies of the checkout being edited. Implement the detector and replace the example placeholders, then verify and prepare it:
-
-```bash
-code-standards --root . maintain rules verify python:no-string-concat-in-loop
-code-standards --root . maintain rules prepare python:no-string-concat-in-loop
-code-standards --root . maintain rules evaluate --rule python:no-string-concat-in-loop --scope corpus
-make verify
-```
-
-For reproducible multi-repository calibration, use an immutable public manifest and an optional owner-readable private overlay:
-
-```bash
-code-standards --root . maintain rules evaluate --rule python:no-string-concat-in-loop --corpus-manifest corpora.toml --private-overlay private-corpora.toml
-```
-
-After committing the resulting changes, review the complete rule diff:
-
-```bash
-code-standards --root . maintain rules changes --before origin/main --after HEAD
-```
-
-Rule comparison reads immutable Git blobs and fingerprints explicit local runtime imports from source and test modules. Type-only imports and data-only registry member edges are excluded; computed imports and TypeScript path aliases are not resolved. For TypeScript-bearing revisions, run `make setup` first to prepare the pinned Node and locked compiler in the authoring repository. Comparison never installs tools or falls back to text matching. Python-only revisions do not require Node.
 
 Fleet calibration and downstream PR creation run automatically after review and release.
 

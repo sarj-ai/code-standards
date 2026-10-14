@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Mapping
+from itertools import pairwise
 from pathlib import Path
 import re
 import shlex
@@ -8,16 +10,19 @@ from typing import TYPE_CHECKING, Final, NamedTuple
 
 import yaml
 from yaml.constructor import ConstructorError
+from yaml.nodes import MappingNode, ScalarNode, SequenceNode
 from yaml.resolver import BaseResolver
 
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
-from sarj_standards.libs.yaml_boundary import mapping_items, parse_yaml
+from sarj_standards.libs.yaml_boundary import mapping_items, parse_yaml, sequence_items
 
 from . import launcher, manifest
 
 
 if TYPE_CHECKING:
-    from yaml.nodes import MappingNode
+    from collections.abc import Iterator
+
+    from yaml.nodes import Node
 
     from .manifest import HookManager
 
@@ -563,11 +568,16 @@ def wire_lefthook_staged_check(root: Path) -> LefthookWrite:
         raise ValueError(msg)
     text, layout, entries, hook = _load_lefthook_entries(path)
     scopes = _staged_job_scopes(hook)
-    conditions = _staged_job_conditions(scopes[0] if scopes else (hook,))
+    conditions = tuple(sorted({field for scope in scopes for field in _staged_job_conditions(scope)}))
+    if not scopes:
+        conditions = _staged_job_conditions((hook,))
+    if _can_normalize_staged_jobs(scopes):
+        migrated = _normalize_owned_staged_jobs(text, scopes, canonical_staged_command(root))
+        if migrated is not None:
+            return LefthookWrite(path, migrated)
     if conditions:
-        fields = ", ".join(conditions)
         msg = (
-            f"cannot safely wire {path.name}: staged Standards check is conditional ({fields}); "
+            f"cannot safely wire {path.name}: staged Standards check is conditional ({', '.join(conditions)}); "
             "move it to an unconditional pre-commit job without changing unrelated hooks"
         )
         raise ValueError(msg)
@@ -594,9 +604,164 @@ def wire_lefthook_staged_check(root: Path) -> LefthookWrite:
     return LefthookWrite(path, contents)
 
 
+class _OwnedStagedJob(NamedTuple):
+    node: MappingNode
+    start: int
+    end: int
+
+
+def _can_normalize_staged_jobs(scopes: list[tuple[Mapping[str, object], ...]]) -> bool:
+    if not scopes:
+        return False
+    for chain in scopes:
+        if "exclude_tags" in _staged_job_conditions(chain):
+            return False
+        if any(_scope_conditions(scope, hook_level=index == 0) for index, scope in enumerate(chain[:-1])):
+            return False
+    return len(scopes) > 1 or any(_scope_conditions(chain[-1], hook_level=False) for chain in scopes)
+
+
+def _normalize_owned_staged_jobs(text: str, scopes: list[tuple[Mapping[str, object], ...]], command: str) -> str | None:
+    tree = _compose_hook_yaml(text)
+    hook = _yaml_field(tree, "pre-commit")
+    nodes = _owned_staged_nodes(hook)
+    if hook is None or len(nodes) != len(scopes) or len({id(job.node) for job in nodes}) != len(nodes):
+        return None
+    if not _owned_yaml_is_private(tree, hook, nodes):
+        return None
+    edits = _staged_source_edits(text, nodes, scopes[0][-1], command)
+    if edits is None:
+        return None
+    updated = _apply_yaml_edits(text, edits)
+    if updated is None:
+        return None
+    parsed = manifest.as_table(_parse_hook_configuration(updated))
+    repaired = _staged_job_scopes(manifest.as_table(parsed.get("pre-commit")))
+    if len(repaired) != 1 or _staged_job_conditions(repaired[0]) or repaired[0][-1].get("run") != command:
+        return None
+    return updated
+
+
+def _owned_yaml_is_private(tree: MappingNode, hook: Node, jobs: list[_OwnedStagedJob]) -> bool:
+    shared = {
+        identity for identity, count in Counter(id(node) for node in _yaml_nodes(tree, set())).items() if count > 1
+    }
+    for job in jobs:
+        if job.node.flow_style:
+            return False
+        if job.node.start_mark.index < hook.start_mark.index or job.node.end_mark.index > hook.end_mark.index:
+            return False
+        if any(id(node) in shared for node in _yaml_nodes(job.node, set())):
+            return False
+    return True
+
+
+def _staged_source_edits(
+    text: str, nodes: list[_OwnedStagedJob], scope: Mapping[str, object], command: str
+) -> list[tuple[int, int, str]] | None:
+    lines = text.splitlines(keepends=True)
+    offsets = [0]
+    for line in lines:
+        offsets.append(offsets[-1] + len(line))
+    edits: list[tuple[int, int, str]] = []
+    run = _yaml_field(nodes[0].node, "run")
+    if not isinstance(run, ScalarNode) or run.style in {"|", ">"}:
+        return None
+    edits.append((run.start_mark.index, run.end_mark.index, command))
+    fields = _scope_conditions(scope, hook_level=False)
+    for key, value in mapping_items(nodes[0].node):
+        if _yaml_text(key) not in fields:
+            continue
+        if key.start_mark.line == nodes[0].start and lines[nodes[0].start].lstrip().startswith("-"):
+            return None
+        flow = isinstance(value, (MappingNode, SequenceNode)) and value.flow_style
+        end = value.end_mark.line + (value.end_mark.column > 0 and (isinstance(value, ScalarNode) or flow))
+        kept = _comment_lines(lines[key.start_mark.line : end])
+        edits.append((offsets[key.start_mark.line], offsets[end], kept))
+    for duplicate in nodes[1:]:
+        end = len(lines) if duplicate.node.end_mark.index == len(text) else duplicate.end
+        kept = _comment_lines(lines[duplicate.start : end])
+        edits.append((offsets[duplicate.start], offsets[end], kept))
+    return edits
+
+
+def _comment_lines(lines: list[str]) -> str:
+    return "".join(line for line in lines if line.lstrip().startswith("#"))
+
+
+def _apply_yaml_edits(text: str, edits: list[tuple[int, int, str]]) -> str | None:
+    ordered = sorted(edits, reverse=True)
+    if any(current[1] > previous[0] for previous, current in pairwise(ordered)):
+        return None
+    fragments: list[str] = []
+    cursor = len(text)
+    for start, end, replacement in ordered:
+        fragments.extend((text[end:cursor], replacement))
+        cursor = start
+    fragments.append(text[:cursor])
+    return "".join(reversed(fragments))
+
+
+def _yaml_field(node: Node | None, name: str) -> Node | None:
+    if not isinstance(node, MappingNode):
+        return None
+    return next((value for key, value in mapping_items(node) if _yaml_text(key) == name), None)
+
+
+def _yaml_text(node: Node | None) -> str | None:
+    if not isinstance(node, ScalarNode):
+        return None
+    value: object = node.value  # pyright: ignore[reportAny] -- narrow the untyped YAML scalar boundary.
+    return value if isinstance(value, str) else None
+
+
+def _compose_hook_yaml(text: str) -> MappingNode:
+    node: object = yaml.compose(text, Loader=yaml.SafeLoader)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType] -- validate the parser boundary.
+    if not isinstance(node, MappingNode):
+        msg = "Lefthook configuration must be a YAML mapping"
+        raise TypeError(msg)
+    return node
+
+
+def _yaml_nodes(node: Node | None, seen: set[int], *, depth: int = 0) -> Iterator[Node]:
+    if node is None or depth > _MAX_JOB_DEPTH:
+        return
+    yield node
+    if id(node) in seen:
+        return
+    seen.add(id(node))
+    if isinstance(node, MappingNode):
+        for key, value in mapping_items(node):
+            yield from _yaml_nodes(key, seen, depth=depth + 1)
+            yield from _yaml_nodes(value, seen, depth=depth + 1)
+    elif isinstance(node, SequenceNode):
+        for item in sequence_items(node):
+            yield from _yaml_nodes(item, seen, depth=depth + 1)
+
+
+def _owned_staged_nodes(node: Node | None, *, depth: int = 0) -> list[_OwnedStagedJob]:
+    if depth > _MAX_JOB_DEPTH or not isinstance(node, MappingNode):
+        return []
+    entries: list[tuple[Node, int]] = []
+    commands = _yaml_field(node, "commands")
+    if isinstance(commands, MappingNode):
+        entries.extend((value, key.start_mark.line) for key, value in mapping_items(commands))
+    jobs = _yaml_field(node, "jobs")
+    if isinstance(jobs, SequenceNode):
+        entries.extend((job, job.start_mark.line) for job in sequence_items(jobs))
+    found: list[_OwnedStagedJob] = []
+    for entry, start in entries:
+        if not isinstance(entry, MappingNode):
+            continue
+        if _runs_staged_check(_yaml_text(_yaml_field(entry, "run"))):
+            found.append(_OwnedStagedJob(entry, start, entry.end_mark.line))
+        found.extend(_owned_staged_nodes(_yaml_field(entry, "group"), depth=depth + 1))
+    return found
+
+
 def _load_lefthook_entries(path: Path) -> _LefthookEntries:
     try:
-        text = path.read_text(encoding="utf-8")
+        text = path.read_bytes().decode("utf-8")
         parsed = _parse_hook_configuration(text)
         document = manifest.as_table(parsed)
         pre_commit = manifest.as_table(document.get("pre-commit"))
@@ -818,7 +983,7 @@ def _lefthook_run_values_from_entries(entries: Mapping[str, object]) -> list[str
 
 def _replace_lefthook_run(text: str, *, old: str, new: str) -> str | None:
     matches: list[re.Match[str]] = []
-    for match in re.finditer(r"(?m)^(?P<prefix>\s*(?:-\s+)?run:\s*)(?P<value>[^\r\n]+)$", text):
+    for match in re.finditer(r"(?m)^(?P<prefix>\s*(?:-\s+)?run:\s*)(?P<value>[^\r\n]+)(?P<cr>\r?)$", text):
         try:
             parsed: object = parse_yaml(f"value: {match.group('value')}\n")
             value = manifest.as_table(parsed).get("value")
@@ -829,7 +994,7 @@ def _replace_lefthook_run(text: str, *, old: str, new: str) -> str | None:
     if len(matches) != 1:
         return None
     match = matches[0]
-    return f"{text[: match.start()]}{match.group('prefix')}{new}{text[match.end() :]}"
+    return f"{text[: match.start()]}{match.group('prefix')}{new}{match.group('cr')}{text[match.end() :]}"
 
 
 def _jobs_run_staged_check(value: object, seen: set[int] | None = None, *, depth: int = 0) -> bool:

@@ -9,7 +9,7 @@ import pytest
 import sarj_standards
 from sarj_standards import api
 from sarj_standards.libs.adoption.lifecycle import Command
-from sarj_standards.libs.adoption.manifest import Manifest
+from sarj_standards.libs.adoption.manifest import HookManager, Manifest, load
 from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelector
 
 
@@ -471,6 +471,58 @@ def test_standards_facade_init_dry_run_reports_invalid_plan(tmp_path: Path) -> N
     assert result.exit_code == 2
     assert result.findings[0].id == "setup.plan.invalid"
     assert "multiple pre-commit configurations" in result.findings[0].message
+
+
+@pytest.mark.parametrize("hook_manager", ["pre-commit", "lefthook"])
+def test_setup_api_resolves_mobile_project_ambiguity_and_preserves_dry_run(
+    tmp_path: Path, hook_manager: HookManager
+) -> None:
+    if hook_manager == "lefthook":
+        (tmp_path / "lefthook.yml").write_text("pre-commit:\n  commands: {}\n")
+    for name in ("ios", "other-ios"):
+        project = tmp_path / name
+        project.mkdir()
+        (project / "Package.swift").write_text("let package = Package(platforms: [.iOS(.v16)])\n")
+    for name in ("android", "other-android"):
+        project = tmp_path / name
+        project.mkdir()
+        (project / "build.gradle.kts").write_text('plugins { id("com.android.application") }\n')
+    standards = api.Standards(tmp_path)
+    ambiguous = standards.setup(configs=("swiftlint", "detekt"), install=False, dry_run=True)
+    assert ambiguous.status is api.Status.INVALID
+    preview = standards.setup(
+        configs=("swiftlint", "detekt"),
+        swift_root="ios",
+        kotlin_root="android",
+        hook_manager=hook_manager,
+        install=False,
+        dry_run=True,
+    )
+    assert preview.ok, preview.findings
+    paths = {change.path for change in preview.changes}
+    assert tmp_path / "ios/.swiftlint.yml" in paths
+    assert tmp_path / "android/config/detekt/detekt.yml" in paths
+    assert not (tmp_path / ".sarj-standards.toml").exists()
+    assert all(change.action != "run" for change in preview.changes)
+    applied = standards.setup(
+        configs=("swiftlint", "detekt"),
+        swift_root="ios",
+        kotlin_root="android",
+        hook_manager=hook_manager,
+        install=False,
+    )
+    assert applied.ok, applied.findings
+    adopted = load(tmp_path)
+    assert adopted is not None
+    assert (adopted.swift_dest, adopted.kotlin_dest, adopted.hook_manager) == ("ios", "android", hook_manager)
+
+
+def test_setup_api_rejects_invalid_hook_manager_before_planning_or_writing(tmp_path: Path) -> None:
+    result = api.Standards(tmp_path).setup(hook_manager="bogus", install=False)  # type: ignore[arg-type]
+    assert result.status is api.Status.INVALID
+    assert result.exit_code == 2
+    assert "hook manager must be one of" in result.findings[0].message
+    assert not any(tmp_path.iterdir())
 
 
 def test_standards_facade_update_targets_latest_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

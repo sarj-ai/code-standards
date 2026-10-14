@@ -8,6 +8,7 @@ import re
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.repository import rule_layout
 from sarj_standards.libs.rules import RuleEngine, RuleSelector
 
 
@@ -22,20 +23,16 @@ class FileEdit:
 
 
 def registry_path(root: Path, engine: RuleEngine) -> Path:
-    if engine is RuleEngine.ESLINT:
-        return root / "packages/typescript/src/index.ts"
-    if engine is RuleEngine.TEXT:
-        return root / "packages/standards/src/sarj_standards/libs/linting/text_rules/_registry.py"
-    package = engine.value
-    return root / f"packages/{package}/src/sarj_{package}_lint/rules/_registry.py"
+    return rule_layout.layout(root, engine).registry
 
 
 def plan(
     root: Path, selector: RuleSelector, code: str | None, *, reserved: frozenset[str] = frozenset()
 ) -> tuple[FileEdit, ...]:
     slug = str(selector.rule_id)
-    name = "".join(part.capitalize() for part in slug.split("-"))
-    registry = registry_path(root, selector.engine)
+    name = rule_layout.class_name(selector.rule_id)
+    layout = rule_layout.layout(root, selector.engine)
+    registry = layout.registry
     before = registry.read_bytes() if registry.is_file() else None
     if selector.engine is RuleEngine.ESLINT:
         source = before.decode() if before is not None else "const RULES = {\n};\n"
@@ -43,7 +40,7 @@ def plan(
         if source.count(anchor) != 1:
             msg = "ESLint registry must contain one RULES object"
             raise ValueError(msg)
-        binding = name[0].lower() + name[1:]
+        binding = rule_layout.eslint_binding(selector.rule_id)
         if re.search(rf"\b(?:import|const|let|class|function)\s+{re.escape(binding)}\b", source):
             msg = f"generated rule binding {binding} is already in use; choose a distinct rule ID"
             raise ValueError(msg)
@@ -56,12 +53,8 @@ def plan(
             if before is not None
             else "from types import MappingProxyType\n\nREGISTRY = MappingProxyType({\n})\n"
         )
-        module = (
-            "sarj_standards.libs.linting.text_rules"
-            if selector.engine is RuleEngine.TEXT
-            else f"sarj_{selector.engine.value}_lint.rules"
-        )
-        source = _native(source, module, slug.replace("-", "_"), name)
+        module = layout.native_module
+        source = _native(source, module, rule_layout.module_name(selector.rule_id), name)
     return FileEdit(registry, before, source), _reserve(root, selector, code, reserved)
 
 
@@ -175,14 +168,13 @@ def _registered_codes(root: Path, engine: RuleEngine, registry: Path) -> set[str
     if len(names) != len(dictionary.values):
         msg = "live registry entries must reference distinct imported rule classes"
         raise ValueError(msg)
-    prefix = (
-        "sarj_standards.libs.linting.text_rules." if engine is RuleEngine.TEXT else f"sarj_{engine.value}_lint.rules."
-    )
+    layout = rule_layout.layout(root, engine)
+    prefix = layout.native_module + "."
     bindings = _registry_imports(tree, prefix)
     if missing := names.difference(bindings):
         msg = "cannot resolve live registry bindings: " + ", ".join(sorted(missing))
         raise ValueError(msg)
-    return {_import_code(root, engine, bindings[name]) for name in names}
+    return {_import_code(layout, engine, bindings[name]) for name in names}
 
 
 def _registry_imports(tree: ast.Module, prefix: str) -> dict[str, _RegistryImport]:
@@ -194,9 +186,8 @@ def _registry_imports(tree: ast.Module, prefix: str) -> dict[str, _RegistryImpor
     }
 
 
-def _import_code(root: Path, engine: RuleEngine, binding: _RegistryImport) -> str:
-    package = "standards" if engine is RuleEngine.TEXT else engine.value
-    path = root / f"packages/{package}/src" / (binding.module.replace(".", "/") + ".py")
+def _import_code(layout: rule_layout.RuleLayout, engine: RuleEngine, binding: _RegistryImport) -> str:
+    path = layout.package / "src" / (binding.module.replace(".", "/") + ".py")
     source = ast.parse(path.read_text(encoding="utf-8"))
     declaration = next(
         (node for node in source.body if isinstance(node, ast.ClassDef) and node.name == binding.name), None

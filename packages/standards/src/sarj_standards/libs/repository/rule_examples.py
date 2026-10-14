@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from sarj_rule_contracts.examples import ExampleAnalyzer, ExampleFinding, verify_examples
 
-from sarj_standards.libs.repository import rule_catalog_artifact
+from sarj_standards.libs.repository import rule_catalog_artifact, rule_layout
 from sarj_standards.libs.rules import Language, RuleEngine, RuleSelector, RuleSpec
 
 
@@ -125,31 +125,16 @@ def _typescript(root: Path, selector: RuleSelector) -> int:
 
 
 def run_focused_tests(root: Path, selector: RuleSelector) -> None:
-    package = (
-        root
-        / "packages"
-        / (
-            "typescript"
-            if selector.engine is RuleEngine.ESLINT
-            else "standards"
-            if selector.engine is RuleEngine.TEXT
-            else selector.engine.value
-        )
-    )
-    slug = str(selector.rule_id)
+    layout = rule_layout.layout(root, selector.engine)
+    package = layout.package
+    test = layout.test(selector.rule_id)
     if selector.engine is RuleEngine.ESLINT:
-        test = package / "tests/rules" / f"{slug}.test.ts"
         npm = shutil.which("npm")
         if npm is None:
             msg = "cannot execute selected tests: npm is not installed"
             raise RuntimeError(msg)
         command = (npm, "run", "test", "--", str(test))
     else:
-        test = (
-            package
-            / ("tests/text_rules" if selector.engine is RuleEngine.TEXT else "tests/rules")
-            / f"test_{slug.replace('-', '_')}.py"
-        )
         if selector.engine is RuleEngine.TEXT and not test.is_file():
             test = package / "tests/test_textlint.py"
         command = (sys.executable, "-m", "pytest", str(test), "-q", "-o", "addopts=")

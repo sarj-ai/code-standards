@@ -2357,7 +2357,7 @@ def test_lefthook_replaces_one_semantic_staged_command_with_a_stale_bootstrap_pi
     assert write.contents.count("check --staged") == 1
 
 
-def test_lefthook_refuses_duplicate_semantic_staged_commands_even_with_stale_pins(tmp_path: Path) -> None:
+def test_lefthook_consolidates_owned_semantic_staged_commands_even_with_stale_pins(tmp_path: Path) -> None:
     config = tmp_path / "lefthook.yml"
     first = BOOTSTRAP_COMMAND.replace("==2.0.3", "==1.8.0")
     second = BOOTSTRAP_COMMAND.replace("==2.0.3", "==1.9.0")
@@ -2368,8 +2368,11 @@ def test_lefthook_refuses_duplicate_semantic_staged_commands_even_with_stale_pin
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="multiple staged Standards commands"):
-        adoption_hooks.wire_lefthook_staged_check(tmp_path)
+    planned = adoption_hooks.wire_lefthook_staged_check(tmp_path)
+    assert planned.contents.count("check --staged") == 1
+    config.write_text(planned.contents)
+    assert adoption_hooks.lefthook_runs_staged_check(tmp_path)
+    assert adoption_hooks.wire_lefthook_staged_check(tmp_path).contents == planned.contents
 
 
 def test_doctor_detects_a_precommit_migration_chain_with_legacy_lefthook(

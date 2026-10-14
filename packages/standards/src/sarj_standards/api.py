@@ -72,7 +72,7 @@ from .libs.typed_containers import is_object_list, is_object_mapping
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from .libs.adoption.manifest import Manifest, Profile
+    from .libs.adoption.manifest import HookManager, Manifest, Profile
     from .libs.linting.runner import GroupedPaths
 
 
@@ -155,6 +155,9 @@ class Standards:
         configs: Sequence[str] | None = None,
         python_root: str | None = None,
         typescript_root: str | None = None,
+        swift_root: str | None = None,
+        kotlin_root: str | None = None,
+        hook_manager: HookManager | None = None,
         force: bool = False,
         install: bool = True,
         dry_run: bool = False,
@@ -167,6 +170,9 @@ class Standards:
                 configs=configs,
                 python_dest=python_root,
                 typescript_dest=typescript_root,
+                swift_dest=swift_root,
+                kotlin_dest=kotlin_root,
+                hook_manager=hook_manager,
                 force=force,
                 enable_repository_rules=enable_repository_rules,
             )

@@ -4528,7 +4528,7 @@ def _run_repo_rules_new(args: _Args) -> int:
         )
         if args.apply_rule:
             rule_authoring.apply(plan, _resolve_dest(args.dest))
-    except (OSError, TypeError, ValueError) as exc:
+    except (OSError, TypeError, ValueError, RuntimeError) as exc:
         print(f"error: cannot scaffold rule: {exc}", file=sys.stderr)
         return 2
     print(plan.render(_resolve_dest(args.dest)))

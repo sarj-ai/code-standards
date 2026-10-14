@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 import subprocess
 from typing import TYPE_CHECKING, TypeGuard
 
@@ -9,7 +10,7 @@ from typer.testing import CliRunner
 
 from sarj_standards.cli.main import build_app, main
 from sarj_standards.libs.adoption.manifest import as_table, list_field
-from sarj_standards.libs.repository import rule_lifecycle
+from sarj_standards.libs.repository import rule_authoring, rule_lifecycle
 from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelector
 from sarj_standards.libs.typed_containers import is_object_mapping
 
@@ -64,6 +65,74 @@ def test_stage_warning_selector_is_typed_at_the_parser_boundary() -> None:
     args = _parse(("maintain", "rules", "stage-warning", "python:no-print"))
 
     assert args["selector"] == RuleSelector(RuleEngine.PYTHON, RuleId("no-print"))
+
+
+def test_authoring_recovery_command_preserves_required_options_and_quoted_values(tmp_path: Path) -> None:
+    root = tmp_path / "other checkout"
+    marker = root / "packages/standards/src/sarj_standards/libs/repository/rule_authoring.py"
+    marker.parent.mkdir(parents=True)
+    marker.touch()
+    selector = RuleSelector.parse("python:new-rule")
+    summary = 'Require "literal" options; preserve $(text) and apostrophes.'
+    with pytest.raises(RuntimeError, match="requires the selected checkout's source packages") as caught:
+        rule_authoring.plan_new(root, selector, category="testing", summary=summary)
+    invocation = shlex.split(str(caught.value).split("Run:\n", 1)[1])
+    args = _parse(invocation[invocation.index("code-standards") + 1 :])
+    assert args["selector"] == selector
+    assert args["rule_category"] == "testing"
+    assert args["rule_summary"] == summary
+    assert args["dest"] == str(root)
+    assert args["apply_rule"] is False
+
+
+def test_stale_authoring_installation_is_an_actionable_cli_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    marker = tmp_path / "packages/standards/src/sarj_standards/libs/repository/rule_authoring.py"
+    marker.parent.mkdir(parents=True)
+    marker.touch()
+    status = main(
+        [
+            "--root",
+            str(tmp_path),
+            "maintain",
+            "rules",
+            "new",
+            "python:new-rule",
+            "--category",
+            "testing",
+            "--summary",
+            "A detector.",
+            "--apply",
+        ]
+    )
+    assert status == 2
+    assert "requires the selected checkout's source packages" in capsys.readouterr().err
+    assert not (tmp_path / "packages/python").exists()
+
+
+@pytest.mark.parametrize("selector", ["checkov:CKV_AWS_999", "zizmor:review-policy"])
+def test_upstream_engine_authoring_returns_guidance_without_writing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], selector: str
+) -> None:
+    status = main(
+        [
+            "--root",
+            str(tmp_path),
+            "maintain",
+            "rules",
+            "new",
+            selector,
+            "--category",
+            "security",
+            "--summary",
+            "A detector.",
+            "--apply",
+        ]
+    )
+    assert status == 2
+    assert "supported authoring engines: python, sql, iac, text, eslint" in capsys.readouterr().err
+    assert not any(tmp_path.iterdir())
 
 
 def test_check_concurrency_defaults_to_two_and_can_be_serial() -> None:

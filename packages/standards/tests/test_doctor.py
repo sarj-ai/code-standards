@@ -15,10 +15,48 @@ import pytest
 import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import doctor, lifecycle, manifest, scaffold
 from sarj_standards.libs.adoption.doctor import Level, check_pyright_deprecated, check_ruff_policy_authority
+from sarj_standards.libs.adoption.service import apply_sync, plan_sync
 
 
 if TYPE_CHECKING:
     from tests.call_contracts import SubprocessOptions
+
+
+@pytest.mark.parametrize(
+    ("name", "target"),
+    [
+        ("swiftformat", "ios/.swiftformat"),
+        ("swiftlint", "ios/.swiftlint.yml"),
+        ("ktlint", "android/.editorconfig"),
+        ("detekt", "android/config/detekt/detekt.yml"),
+        ("mobile-security", ".mobsf"),
+    ],
+)
+def test_doctor_checks_mobile_configs_at_the_same_destination_as_setup(tmp_path: Path, name: str, target: str) -> None:
+    swift = tmp_path / "ios"
+    kotlin = tmp_path / "android"
+    swift.mkdir()
+    kotlin.mkdir()
+    (swift / "Package.swift").write_text("let package = Package(platforms: [.iOS(.v16)])\n")
+    (kotlin / "build.gradle.kts").write_text('plugins { id("com.android.application") }\n')
+    applied = apply_sync(plan_sync(tmp_path, configs=(name,), swift_dest="ios", kotlin_dest="android"))
+    assert applied.status == 0
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        manifest.Manifest(
+            version=manifest.adopted_version(),
+            configs=(name,),
+            python_dest=".",
+            typescript_dest=".",
+            swift_dest="ios",
+            kotlin_dest="android",
+        ).render()
+    )
+    findings = doctor.diagnose(tmp_path)
+    assert any(item.id == "doctor.config.current" and item.where == target for item in findings)
+    assert not any(item.id == "doctor.config.unknown" for item in findings)
+    (tmp_path / target).write_text("")
+    changed = doctor.diagnose(tmp_path)
+    assert any(item.id == "doctor.config.drift" and item.where == target for item in changed)
 
 
 @pytest.mark.parametrize("profile", ["standard", "application"])
