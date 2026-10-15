@@ -1278,7 +1278,9 @@
       "task": "rule-audit/eslint/no-cors-wildcard-with-credentials",
       "family": "typescript",
       "ruleId": "no-cors-wildcard-with-credentials",
-      "state": "complete"
+      "state": "complete",
+      "evidence": "Precision review corrected the browser contract and preserved established static-key/wrapper cases with official imports. Final validation passes 83 focused/native cases, 18 existing wrapper fixtures, 160 cross-parser checks and all 8,008 TypeScript tests. Pinned isolated calibration covered 3,433 files and 26,579,618 bytes in 18 fresh processes capped at 250 files: Standards, one installed mature public package, three private source corpora and 81 adversarial labeled seeds. Every match was inspected. Candidate labels: 21 TP, 60 TN, zero FP/FN/duplicates; baseline: 17 TP, 9 TN, 51 FP, 4 FN and one extra diagnostic. Both had zero findings in 3,352 unseeded files. These are synthetic precision controls, not observed production bug counts or fleet-wide precision estimates. Runtime patches, custom header methods and later consumers remain unresolved.",
+      "outcome": "Stage the existing rule as a correctness warning with no autofix: a wildcard prevents browser access to credentialed cross-origin responses, while credentialless wildcard callers remain valid. Require stable official cors/Hono imports for options and effective literal property/header values; combine native duplicate-case headers and abstain on uncertain writes, branches, aliases, value escapes and executable binding patterns."
     },
     {
       "task": "rule-audit/eslint/no-dangerously-allow-svg",

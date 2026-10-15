@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e5dce93e6b214ab39c3fbe1d9803bca947bd78fd40a48147b5f02c853e6b2da5",
-  "cliSha256": "e3aa3e25102b4e63a0a3b6dacd497413022339eacaa8c960e893727d24cb2bd5",
+  "catalogSha256": "7110668a9f5d7497920937022254100f63250558ca1bed474f81a556afa77051",
+  "cliSha256": "19f2eaa6171acc60003bfb07a8c0ae87bffa05d407716b048350416f92c6b4dd",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.20.2",
@@ -438,7 +438,7 @@
           "files": [
             {
               "path": "src/server.ts",
-              "source": "app.use(cors({ origin: \"https://app.example.com\", credentials: true }));\n"
+              "source": "import cors from \"cors\";\ncors({ origin: \"https://app.example.com\", credentials: true });\n"
             }
           ],
           "fixedFiles": [],
@@ -446,14 +446,14 @@
           "id": "trusted-origin-with-credentials",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Credentials are limited to a trusted origin"
+          "title": "Use a trusted origin for credentialed callers"
         },
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "src/server.ts",
-              "source": "app.use(cors({ origin: \"*\", credentials: true }));\n"
+              "source": "import cors from \"cors\";\ncors({ origin: \"*\", credentials: true });\n"
             }
           ],
           "fixedFiles": [],
@@ -461,7 +461,7 @@
           "id": "wildcard-origin-with-credentials",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Credentials are enabled for every origin"
+          "title": "Review a wildcard that blocks access to credentialed responses"
         }
       ],
       "optionsSchemaSource": null

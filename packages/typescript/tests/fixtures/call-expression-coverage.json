@@ -149,7 +149,7 @@
     "files": [
       {
         "path": "src/server.ts",
-        "source": "(app.use as typeof app.use)((cors as typeof cors)({ origin: '*', credentials: true }));"
+        "source": "import cors from 'cors';\n(app.use as typeof app.use)((cors as typeof cors)({ origin: '*', credentials: true }));"
       }
     ],
     "focusPath": "src/server.ts",
@@ -161,7 +161,7 @@
     "files": [
       {
         "path": "src/server.ts",
-        "source": "(app.use satisfies typeof app.use)((cors satisfies typeof cors)({ origin: '*', credentials: true }));"
+        "source": "import cors from 'cors';\n(app.use satisfies typeof app.use)((cors satisfies typeof cors)({ origin: '*', credentials: true }));"
       }
     ],
     "focusPath": "src/server.ts",
@@ -173,7 +173,7 @@
     "files": [
       {
         "path": "src/server.ts",
-        "source": "(app.use!)((cors!)({ origin: '*', credentials: true }));"
+        "source": "import cors from 'cors';\n(app.use!)((cors!)({ origin: '*', credentials: true }));"
       }
     ],
     "focusPath": "src/server.ts",
@@ -185,7 +185,7 @@
     "files": [
       {
         "path": "src/server.ts",
-        "source": "((app.use!) as typeof app.use)(((cors!) as typeof cors)({ origin: '*', credentials: true }));"
+        "source": "import cors from 'cors';\n((app.use!) as typeof app.use)(((cors!) as typeof cors)({ origin: '*', credentials: true }));"
       }
     ],
     "focusPath": "src/server.ts",
@@ -197,7 +197,7 @@
     "files": [
       {
         "path": "src/server.ts",
-        "source": "app.use(cors({ [\"origin\"]: '*', [\"credentials\"]: true }));"
+        "source": "import cors from 'cors';\napp.use(cors({ [\"origin\"]: '*', [\"credentials\"]: true }));"
       }
     ],
     "focusPath": "src/server.ts",
@@ -209,7 +209,7 @@
     "files": [
       {
         "path": "src/server.ts",
-        "source": "app.use(cors({ [`origin`]: '*', [`credentials`]: true }));"
+        "source": "import cors from 'cors';\napp.use(cors({ [`origin`]: '*', [`credentials`]: true }));"
       }
     ],
     "focusPath": "src/server.ts",

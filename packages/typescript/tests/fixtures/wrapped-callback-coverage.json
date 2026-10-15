@@ -54,7 +54,7 @@
     "files": [
       {
         "path": "src/server.ts",
-        "source": "app.use(cors({ origin: (('https://app.example.com')!), credentials: ((true)!) }));"
+        "source": "import cors from 'cors';\napp.use(cors({ origin: (('https://app.example.com')!), credentials: ((true)!) }));"
       }
     ],
     "expected": 0
@@ -66,7 +66,7 @@
     "files": [
       {
         "path": "src/server.ts",
-        "source": "app.use(cors({ origin: (('*')!), credentials: ((true)!) }));"
+        "source": "import cors from 'cors';\napp.use(cors({ origin: (('*')!), credentials: ((true)!) }));"
       }
     ],
     "expected": 1

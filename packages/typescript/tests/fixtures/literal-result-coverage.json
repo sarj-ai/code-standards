@@ -5,7 +5,7 @@
     "files": [
       {
         "path": "src/server.ts",
-        "source": "app.use(cors({ origin: \"\\u0068ttps://app.example.com\", credentials: true }));"
+        "source": "import cors from 'cors';\napp.use(cors({ origin: \"\\u0068ttps://app.example.com\", credentials: true }));"
       }
     ],
     "focusPath": "src/server.ts",
@@ -17,7 +17,7 @@
     "files": [
       {
         "path": "src/server.ts",
-        "source": "app.use(cors(({ origin: 'https://app.example.com', credentials: true }!)));"
+        "source": "import cors from 'cors';\napp.use(cors(({ origin: 'https://app.example.com', credentials: true }!)));"
       }
     ],
     "focusPath": "src/server.ts",
@@ -29,7 +29,7 @@
     "files": [
       {
         "path": "src/server.ts",
-        "source": "app[(\"use\" as const)](cors({ origin: 'https://app.example.com', credentials: true }));"
+        "source": "import cors from 'cors';\napp[(\"use\" as const)](cors({ origin: 'https://app.example.com', credentials: true }));"
       }
     ],
     "focusPath": "src/server.ts",
@@ -41,7 +41,7 @@
     "files": [
       {
         "path": "src/server.ts",
-        "source": "((app!) satisfies typeof app).use(cors({ origin: 'https://app.example.com', credentials: true }));"
+        "source": "import cors from 'cors';\n((app!) satisfies typeof app).use(cors({ origin: 'https://app.example.com', credentials: true }));"
       }
     ],
     "focusPath": "src/server.ts",
@@ -53,7 +53,7 @@
     "files": [
       {
         "path": "src/server.ts",
-        "source": "app.use((cors({ origin: 'https://app.example.com', credentials: true }) as ReturnType<typeof cors>));"
+        "source": "import cors from 'cors';\napp.use((cors({ origin: 'https://app.example.com', credentials: true }) as ReturnType<typeof cors>));"
       }
     ],
     "focusPath": "src/server.ts",
@@ -65,7 +65,7 @@
     "files": [
       {
         "path": "src/server.ts",
-        "source": "app.use(cors(({ origin: '*', credentials: true }!)));"
+        "source": "import cors from 'cors';\napp.use(cors(({ origin: '*', credentials: true }!)));"
       }
     ],
     "focusPath": "src/server.ts",
@@ -77,7 +77,7 @@
     "files": [
       {
         "path": "src/server.ts",
-        "source": "app[(\"use\" as const)](cors({ origin: '*', credentials: true }));"
+        "source": "import cors from 'cors';\napp[(\"use\" as const)](cors({ origin: '*', credentials: true }));"
       }
     ],
     "focusPath": "src/server.ts",
@@ -89,7 +89,7 @@
     "files": [
       {
         "path": "src/server.ts",
-        "source": "((app!) satisfies typeof app).use(cors({ origin: '*', credentials: true }));"
+        "source": "import cors from 'cors';\n((app!) satisfies typeof app).use(cors({ origin: '*', credentials: true }));"
       }
     ],
     "focusPath": "src/server.ts",
@@ -101,7 +101,7 @@
     "files": [
       {
         "path": "src/server.ts",
-        "source": "app.use((cors({ origin: '*', credentials: true }) as ReturnType<typeof cors>));"
+        "source": "import cors from 'cors';\napp.use((cors({ origin: '*', credentials: true }) as ReturnType<typeof cors>));"
       }
     ],
     "focusPath": "src/server.ts",
