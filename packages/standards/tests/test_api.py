@@ -596,15 +596,18 @@ def test_standards_facade_init_rejects_invalid_existing_manifest(tmp_path: Path)
 
 
 @pytest.mark.parametrize("configs", [("bogus",), (), "ruff"], ids=("unknown", "empty", "string"))
-def test_standards_facade_init_rejects_invalid_configs(tmp_path: Path, configs: object) -> None:
-    result = api.Standards(tmp_path).setup(configs=configs, install=False)  # type: ignore[arg-type]
+def test_standards_facade_init_rejects_invalid_configs(tmp_path: Path, configs: Sequence[str]) -> None:
+    result = api.Standards(tmp_path).setup(configs=configs, install=False)
 
     assert result.status is api.Status.INVALID
     assert result.findings[0].id == "setup.input.invalid"
 
 
 def test_standards_facade_init_rejects_invalid_runtime_profile(tmp_path: Path) -> None:
-    result = api.Standards(tmp_path).setup(profile="bogus", install=False)  # type: ignore[arg-type]
+    result = api.Standards(tmp_path).setup(
+        profile="bogus",  # pyright: ignore[reportArgumentType] -- deliberately pass an invalid profile to test runtime validation.
+        install=False,
+    )
 
     assert result.status is api.Status.INVALID
     assert result.findings[0].id == "setup.input.invalid"

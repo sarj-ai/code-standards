@@ -120,7 +120,7 @@ def test_mutating_a_standalone_callers_lines_invalidates_comment_provenance() ->
 def test_cached_comment_mapping_cannot_be_mutated() -> None:
     comments = comment_lines(("query = 1 # sarj-noqa: SARJ021 -- external contract",))
     with pytest.raises(TypeError):
-        comments[1] = "# sarj-noqa: SARJ999"  # type: ignore[index] -- runtime immutable mapping contract.
+        comments[1] = "# sarj-noqa: SARJ999"  # pyright: ignore[reportIndexIssue] -- deliberately exercise the runtime immutable mapping contract.
 
 
 _PROCESS_CASES = (

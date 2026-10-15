@@ -104,17 +104,21 @@ def test_add_and_remove_are_atomic_idempotent_manifest_operations(tmp_path: Path
     assert added.changed
     assert not duplicate.changed
     assert path.read_bytes() == first
-    assert manifest.load(tmp_path).excluded_paths == ("generated/clients/**",)  # type: ignore[union-attr]
-    assert manifest.load(tmp_path).verify_paths == ("src", "tests")  # type: ignore[union-attr]
-    assert manifest.load(tmp_path).durable_artifacts == ("evidence/**",)  # type: ignore[union-attr]
-    assert manifest.load(tmp_path).text_excluded_paths == ("templates/**",)  # type: ignore[union-attr]
-    assert manifest.load(tmp_path).doctor_excluded_paths == ("tests/fixtures/**",)  # type: ignore[union-attr]
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    assert adopted.excluded_paths == ("generated/clients/**",)
+    assert adopted.verify_paths == ("src", "tests")
+    assert adopted.durable_artifacts == ("evidence/**",)
+    assert adopted.text_excluded_paths == ("templates/**",)
+    assert adopted.doctor_excluded_paths == ("tests/fixtures/**",)
 
     removed = exclusions.remove(tmp_path, "path", "generated/clients/**")
     absent = exclusions.remove(tmp_path, "path", "generated/clients/**")
     assert removed.changed
     assert not absent.changed
-    assert manifest.load(tmp_path).excluded_paths == ()  # type: ignore[union-attr]
+    remaining = manifest.load(tmp_path)
+    assert remaining is not None
+    assert remaining.excluded_paths == ()
 
 
 @pytest.mark.parametrize("value", ["**", "../generated/**", "/outside/**", ".sarj-standards.toml"])

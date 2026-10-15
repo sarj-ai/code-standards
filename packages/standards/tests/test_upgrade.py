@@ -470,8 +470,8 @@ def test_upgrade_refreshes_the_python_lockfile_with_the_consumers_uv_version(
     (tmp_path / "uv.toml").write_text('required-version = "==0.11.32"\n', encoding="utf-8")
     commands: list[lifecycle.Command] = []
 
-    def execute(planned: object) -> int:
-        commands.extend(planned)  # type: ignore[arg-type] -- exercise the command boundary
+    def execute(planned: Iterable[lifecycle.Command]) -> int:
+        commands.extend(planned)
         lockfile.write_text("fresh lock\n", encoding="utf-8")
         return 0
 
@@ -833,8 +833,8 @@ def test_upgrade_refreshes_a_secondary_javascript_lock_after_rewriting_its_pin(
     lockfile.write_text('{"lockfileVersion":3}\n', encoding="utf-8")
     commands: list[lifecycle.Command] = []
 
-    def execute(planned: object) -> int:
-        commands.extend(planned)  # type: ignore[arg-type] -- exercise the command boundary
+    def execute(planned: Iterable[lifecycle.Command]) -> int:
+        commands.extend(planned)
         lockfile.write_text('{"lockfileVersion":3,"fresh":true}\n', encoding="utf-8")
         return 0
 
