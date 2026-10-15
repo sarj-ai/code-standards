@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "960226e72eb96f3e7193fa60af08d39d4a19b4cd6b7a54181980cffc8008787e",
-  "cliSha256": "2e4e5f3168576feb028e383575676d2911523965e551e03252e399c5777b745e",
+  "catalogSha256": "e5dce93e6b214ab39c3fbe1d9803bca947bd78fd40a48147b5f02c853e6b2da5",
+  "cliSha256": "e3aa3e25102b4e63a0a3b6dacd497413022339eacaa8c960e893727d24cb2bd5",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.20.2",
@@ -7957,6 +7957,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A standard logging argument does not capture the exception"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-loguru-printf-format": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from loguru import logger\n\nlogger.error(\"Request {} failed with status {}\", \"request-marker\", 503)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "brace-values-rendered",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Brace fields render positional diagnostic values"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from loguru import logger\n\nlogger.error(\"Request %s failed with status %d\", \"request-marker\", 503)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "printf-values-ignored",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Loguru leaves printf placeholders unchanged"
         }
       ],
       "optionsSchemaSource": null
