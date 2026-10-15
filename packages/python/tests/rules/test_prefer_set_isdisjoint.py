@@ -3,6 +3,7 @@ import textwrap
 from typing import TYPE_CHECKING
 
 import pytest
+from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 
 from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules._project_index import ProjectIndexSet
@@ -56,6 +57,7 @@ def test_flags_boolean_only_builtin_intersections(source: str) -> None:
     "source",
     [
         "def overlap(left: set[int], right: set[int]):\n    return bool(left & right)",
+        "def overlap(left: frozenset[int]):\n    return bool(left & {1})",
         "left: set[int] = load()\nif left & {1}:\n    pass",
         "result = {1} & {2}",
         "if custom.intersection(values):\n    pass",
@@ -251,3 +253,155 @@ def test_dict_key_view_boolean_intersection(source: str) -> None:
 )
 def test_dict_key_view_exclusions(source: str) -> None:
     assert _check(source) == []
+
+
+_BOOLEAN_CONTEXT_CASES = (
+    EvaluationCase("assignment", Language.PYTHON, "overlap = bool({1} & {2})", ExpectedOutcome.MATCH),
+    EvaluationCase("annotated-assignment", Language.PYTHON, "overlap: bool = bool({1} & {2})", ExpectedOutcome.MATCH),
+    EvaluationCase("return", Language.PYTHON, "def overlap():\n    return bool({1} & {2})", ExpectedOutcome.MATCH),
+    EvaluationCase(
+        "boolean-value", Language.PYTHON, "overlap = bool({1}.intersection({2})) or ready", ExpectedOutcome.MATCH
+    ),
+    EvaluationCase("lambda", Language.PYTHON, "predicate = lambda: bool({1} & {2})", ExpectedOutcome.MATCH),
+    EvaluationCase(
+        "generator-literal", Language.PYTHON, "checks = (bool({1} & {2}) for row in rows)", ExpectedOutcome.MATCH
+    ),
+    EvaluationCase(
+        "generator-eager-iterable",
+        Language.PYTHON,
+        "tags = {'read'}\nchecks = (row for row in choose(bool(tags & {'read'})))",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase("existing-condition-once", Language.PYTHON, "if bool({1} & {2}):\n    pass", ExpectedOutcome.MATCH),
+)
+
+
+@pytest.mark.parametrize("case", _BOOLEAN_CONTEXT_CASES, ids=tuple(case.case_id for case in _BOOLEAN_CONTEXT_CASES))
+def test_explicit_bool_consumes_intersection_in_value_context(case: EvaluationCase) -> None:
+    assert len(_check(case.source)) == 1
+
+
+def test_negated_bool_value_suggests_disjoint_predicate() -> None:
+    findings = _check("disjoint = not bool({1} & {2})")
+    assert len(findings) == 1
+    assert "use `left.isdisjoint(right)`" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param("value = {1} & {2}", id="stored-set"),
+        pytest.param("def values():\n    return {1} & {2}", id="returned-set"),
+        pytest.param("def check(bool):\n    return bool({1} & {2})", id="shadowed-bool"),
+        pytest.param("def check(tags):\n    return bool(tags & {'read'})", id="unknown-parameter"),
+        pytest.param("def check(tags: int):\n    return bool(tags & 1)", id="integer-mask"),
+        pytest.param("def check(tags: CustomSet):\n    return bool(tags & {'read'})", id="custom-set"),
+        pytest.param("def check(tags: set[str] | Custom):\n    return bool(tags & {'read'})", id="union"),
+        pytest.param("tags = {'read'}\ntags = custom\nresult = bool(tags & {'read'})", id="rebound"),
+        pytest.param("set = Custom\ntags = set()\nresult = bool(tags & {'read'})", id="shadowed-set"),
+        pytest.param(
+            "class Owner:\n    bool = predicate\n    overlap = bool({'read'} & {'write'})",
+            id="class-shadow",
+        ),
+        pytest.param("tags = {'read'}\nresult = [bool(tags & {'read'}) for tags in rows]", id="comprehension-shadow"),
+        pytest.param("tags = {'read'}\npredicate = lambda tags: bool(tags & {'read'})", id="lambda-shadow"),
+        pytest.param("tags = {'read'}\nresult = bool((tags := custom) & {'read'})", id="walrus-rebound"),
+        pytest.param(
+            "tags = {'read'}\nresult = ((tags := custom), bool(tags & {'read'}))", id="walrus-before-tuple-item"
+        ),
+        pytest.param(
+            "tags = {'read'}\nconsume((tags := custom), bool(tags & {'read'}))", id="walrus-before-call-argument"
+        ),
+        pytest.param("tags = {'read'}\nresult = (tags := custom) or bool(tags & {'read'})", id="walrus-before-bool-op"),
+        pytest.param(
+            "tags = {'read'}\nif (tags := custom) or bool(tags & {'read'}):\n    pass", id="walrus-before-condition"
+        ),
+        pytest.param(
+            "tags = {'read'}\npredicate = lambda: bool(tags & {'read'})\ntags = custom\nresult = predicate()",
+            id="deferred-lambda-binding",
+        ),
+        pytest.param(
+            "tags = {'read'}\nchecks = (bool(tags & {'read'}) for row in rows)\ntags = custom\nresult = list(checks)",
+            id="deferred-generator-binding",
+        ),
+        pytest.param(
+            "tags = {'read'}\nchecks = (row for row in rows if bool(tags & {'read'}))\ntags = custom\nresult = list(checks)",
+            id="deferred-generator-filter",
+        ),
+        pytest.param(
+            "tags = {'read'}\nif (tags := custom):\n    result = bool(tags & {'read'})", id="walrus-if-header"
+        ),
+        pytest.param(
+            "tags = {'read'}\nfor row in (tags := custom):\n    result = bool(tags & {'read'})", id="walrus-for-header"
+        ),
+        pytest.param(
+            "tags = {'read'}\nwith manager(tags := custom):\n    result = bool(tags & {'read'})",
+            id="walrus-with-header",
+        ),
+        pytest.param("result = bool({1}.intersection(*operands))", id="starred-intersection-value"),
+        pytest.param("if {1}.intersection(*operands):\n    pass", id="starred-intersection-condition"),
+        pytest.param(
+            "tags = {'read'}\nwith make_custom() as tags, choose(bool(tags & {'read'})):\n    pass",
+            id="with-earlier-binding",
+        ),
+        pytest.param(
+            "tags = {'read'}\nfor row in rows:\n    result = bool(tags & {'read'})\n    tags = custom",
+            id="for-later-iteration",
+        ),
+        pytest.param(
+            "tags = {'read'}\nwhile ready:\n    result = bool(tags & {'read'})\n    tags = custom",
+            id="while-later-iteration",
+        ),
+        pytest.param(
+            "tags = {'read'}\ntry:\n    tags = custom\n    fail()\nexcept Error:\n    result = bool(tags & {'read'})",
+            id="except-after-rebinding",
+        ),
+        pytest.param(
+            "tags = {'read'}\ntry:\n    tags = custom\nfinally:\n    result = bool(tags & {'read'})",
+            id="finally-after-rebinding",
+        ),
+        pytest.param(
+            "tags = {'read'}\ntry:\n    tags = custom\nexcept Error:\n    pass\nelse:\n    result = bool(tags & {'read'})",
+            id="else-after-rebinding",
+        ),
+    ],
+)
+def test_explicit_bool_contract_near_misses(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        pytest.param("import module as tags", id="import"),
+        pytest.param("from module import custom as tags", id="from-import"),
+        pytest.param("from module import *", id="star-import"),
+        pytest.param("class tags:\n    pass", id="class"),
+        pytest.param("def tags():\n    pass", id="function"),
+        pytest.param("try:\n    fail()\nexcept Error as tags:\n    pass", id="exception"),
+        pytest.param("match value:\n    case tags:\n        pass", id="match-capture"),
+        pytest.param("match value:\n    case [*tags]:\n        pass", id="match-star"),
+        pytest.param("match value:\n    case {'key': item, **tags}:\n        pass", id="match-mapping"),
+        pytest.param("del tags", id="delete"),
+    ],
+)
+def test_compound_binding_forms_discard_set_proof(binding: str) -> None:
+    source = "tags = {'read'}\ntry:\n" + textwrap.indent(binding, "    ")
+    source += "\nfinally:\n    result = bool(tags & {'read'})"
+    assert _check(source) == []
+
+
+def test_imported_declared_field_inside_bool_assignment(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='sample'\nversion='0.1.0'\n")
+    (tmp_path / "models.py").write_text("class Case:\n    tags: frozenset[str]\n")
+    path = tmp_path / "policy.py"
+    source = (
+        "from models import Case\n"
+        "def accepts(case: Case):\n"
+        "    checks_access = bool(case.tags & {'read', 'write'}) or ready\n"
+        "    return checks_access\n"
+    )
+    path.write_text(source)
+    rule = PreferSetIsdisjoint()
+    rule.prepare(ProjectIndexSet.build([path], {path: source}))
+    assert len(rule.check(path, source)) == 1

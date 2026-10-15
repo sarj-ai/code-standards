@@ -295,7 +295,7 @@ def _name_role(identifier: str) -> _Role:
     if not _is_authenticator_name(identifier):
         return _Role(external=False, expected=False)
     first = leading_word(identifier) or ""
-    external = first in _EXTERNAL_PREFIXES or ("header" in tokens and bool(set(tokens) & {"auth", "authorization"}))
+    external = first in _EXTERNAL_PREFIXES or ("header" in tokens and not {"auth", "authorization"}.isdisjoint(tokens))
     expected = first in _EXPECTED_PREFIXES or identifier.isupper()
     return _Role(external=external, expected=expected, password=_node_name_is_password(identifier))
 
@@ -400,7 +400,7 @@ def _node_is_password(node: ast.expr) -> bool:
 
 
 def _node_name_is_password(identifier: str) -> bool:
-    return bool(set(identifier_tokens(identifier)) & {"passwd", "password", "passwords"})
+    return not {"passwd", "password", "passwords"}.isdisjoint(identifier_tokens(identifier))
 
 
 def _environment_names(module: ast.Module) -> frozenset[str]:

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "8928f590758acd8d37d7a28baa6d72f0a2b0e13e64b085eaf726bd0da5220253",
-  "cliSha256": "0e0e98714e1b5bcb133de2e06d4c4ad3d156aa2aa06a7c1829aa5596323bc28c",
+  "catalogSha256": "78cfd5f39425d60a022eb09499614632edcff197b847d19e1fbde9a0032ca03d",
+  "cliSha256": "bc94bc7961027e0fd36e538d02b8aefd551b875f59b4599ba9f6e7855585a1c7",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.20.2",
@@ -10860,7 +10860,7 @@
           "files": [
             {
               "path": "app/policy.py",
-              "source": "class AccessCase:\n    tags: frozenset[str]\n\n\ndef accepts(case: AccessCase):\n    if case.tags & {\"read\", \"write\"}:\n        allow()\n"
+              "source": "class AccessCase:\n    tags: frozenset[str]\n\n\ndef accepts(case: AccessCase):\n    return bool(case.tags & {\"read\", \"write\"})\n"
             },
             {
               "path": "pyproject.toml",

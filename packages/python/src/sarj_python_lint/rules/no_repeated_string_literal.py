@@ -307,7 +307,7 @@ def _is_skipped_path(path: Path) -> bool:
             "snapshots",
         }
     )
-    return is_test_path(path) or bool(excluded_parts.intersection(part.lower() for part in path.parts))
+    return is_test_path(path) or not excluded_parts.isdisjoint(part.lower() for part in path.parts)
 
 
 def _exclude_scaffolding_strings(node: ast.Call, excluded: set[int]) -> None:
