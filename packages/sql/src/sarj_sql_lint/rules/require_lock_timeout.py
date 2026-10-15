@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from itertools import starmap
 import operator
 from pathlib import PurePosixPath
 import re
@@ -41,6 +42,7 @@ DDL_PATTERN = re.compile(
     re.IGNORECASE,
 )
 TX_END_PATTERN = re.compile(r"\b(COMMIT|ROLLBACK)\b", re.IGNORECASE)
+RESET_ALL_PATTERN = re.compile(r"\bRESET\s+ALL\b", re.IGNORECASE)
 SECTION_BOUNDARY_PATTERN = re.compile(
     r"^\s*--\s*\+goose\s+down\s*$",
     re.IGNORECASE | re.MULTILINE,
@@ -64,7 +66,10 @@ class RequireLockTimeout(Rule):
         remediation="Set a short positive lock_timeout or statement_timeout before the DDL statement.",
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
-        limitations=("Only PostgreSQL migration paths and explicitly marked PostgreSQL migrations are checked.",),
+        limitations=(
+            "Only PostgreSQL migration paths and explicitly marked PostgreSQL migrations are checked.",
+            "Literal session/local settings, RESET and RESET ALL are tracked. Defaults, rollback of session SET, savepoints and procedural configuration effects are not resolved.",
+        ),
         examples=(
             RuleExample(
                 example_id="unbounded-ddl-lock-wait",
@@ -106,7 +111,7 @@ class RequireLockTimeout(Rule):
         events = _timeout_events(source, masked)
 
         active_global_timeouts: dict[str, bool] = {"lock_timeout": False, "statement_timeout": False}
-        active_local_timeouts: dict[str, bool] = {"lock_timeout": False, "statement_timeout": False}
+        active_local_timeouts: dict[str, bool] = {}
         # Report once per contiguous run of DDL under one timeout state, re-arming on state-changing events.
         reported_for_current_state = False
 
@@ -119,14 +124,13 @@ class RequireLockTimeout(Rule):
                     match, active_local_timeouts, active_global_timeouts, nontransactional=nontransactional
                 )
             elif event_type == "TX_END":
-                active_local_timeouts = {"lock_timeout": False, "statement_timeout": False}
-            elif event_type == "SECTION_BOUNDARY":
-                # Up/down sections are separate migration-runner invocations.
-                # Neither session nor transaction-local settings cross the boundary.
+                active_local_timeouts.clear()
+            elif event_type in {"SECTION_BOUNDARY", "RESET_ALL"}:
+                # A new runner invocation or RESET ALL removes prior explicit protection.
                 active_global_timeouts = {"lock_timeout": False, "statement_timeout": False}
-                active_local_timeouts = {"lock_timeout": False, "statement_timeout": False}
+                active_local_timeouts.clear()
             elif event_type == "DDL":
-                has_timeout = any(active_global_timeouts.values()) or any(active_local_timeouts.values())
+                has_timeout = any(starmap(active_local_timeouts.get, active_global_timeouts.items()))
                 if not has_timeout and not reported_for_current_state:
                     reported_for_current_state = True
                     lineno = source_location(source, pos).line
@@ -157,6 +161,7 @@ def _timeout_events(source: str, masked: str) -> list[tuple[int, str, re.Match[s
         if masked[start_pos : start_pos + 3].strip():
             events.append((start_pos, "ASSIGNMENT", match))
     events.extend((match.start(), "TX_END", match) for match in TX_END_PATTERN.finditer(masked))
+    events.extend((match.start(), "RESET_ALL", match) for match in RESET_ALL_PATTERN.finditer(masked))
     events.extend(_section_boundary_events(source))
     events.extend((match.start(), "DDL", match) for match in DDL_PATTERN.finditer(masked))
 
@@ -193,9 +198,11 @@ def _apply_timeout_assignment(
     is_active = False if "RESET" in cmd else (bool(val) and _positive_timeout(val))
 
     if is_local:
-        active_local_timeouts[target_var] = is_active and not nontransactional
+        if not nontransactional:
+            active_local_timeouts[target_var] = is_active
     else:
         active_global_timeouts[target_var] = is_active
+        active_local_timeouts.pop(target_var, None)
 
 
 def _positive_timeout(value: str) -> bool:
