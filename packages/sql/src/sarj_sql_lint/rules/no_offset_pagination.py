@@ -32,18 +32,18 @@ _DYNAMIC_VALUE = (
     r"(?<!:):[A-Za-z_]\w*|@[A-Za-z_]\w*|\$\d+(?!\w))"
 )
 _SCALAR = rf"(?:{_DYNAMIC_VALUE}|\d+)"
-_SIMPLE_EXPRESSION = rf"[+-]?\s*{_DYNAMIC_VALUE}(?:\s*[+*/%-]\s*{_SCALAR})*"
 _TYPE_NAME = (
     r"[A-Za-z_][A-Za-z0-9_]*(?:\s*\.\s*[A-Za-z_][A-Za-z0-9_]*)*"
     r"(?:\s*\(\s*\d+(?:\s*,\s*\d+)?\s*\))?(?:\s*\[\s*\])*"
 )
+_POSTFIX_CAST = rf"(?:\s*::\s*{_TYPE_NAME})?"
+_SIMPLE_EXPRESSION = rf"[+-]?\s*{_DYNAMIC_VALUE}{_POSTFIX_CAST}(?:\s*[+*/%-]\s*{_SCALAR})*"
 _PAREN_EXPRESSION = rf"\(\s*(?:{_SIMPLE_EXPRESSION}|\(\s*{_SIMPLE_EXPRESSION}\s*\))\s*\)"
 _OFFSET_VALUE = (
     rf"(?:{_SIMPLE_EXPRESSION}|{_PAREN_EXPRESSION}|"
     rf"CAST\s*\(\s*{_DYNAMIC_VALUE}\s+AS\s+{_TYPE_NAME}\s*\)|"
     rf"COALESCE\s*\(\s*{_DYNAMIC_VALUE}\s*,\s*\d+\s*\))"
 )
-_POSTFIX_CAST = rf"(?:\s*::\s*{_TYPE_NAME})?"
 _CLAUSE_END = r"(?=\s*(?:ROWS?\b|FETCH\b|FOR\b|\)|$))"
 _OFFSET_PATTERN = re.compile(
     rf"\bOFFSET\b\s+{_OFFSET_VALUE}{_POSTFIX_CAST}{_CLAUSE_END}",
@@ -103,7 +103,8 @@ class NoOffsetPagination(Rule):
         aliases=("no-limit-offset",),
         limitations=(
             "Only dynamic driver markers in credible SELECT statements are reported; fixed ordinal offsets are preserved.",
-            "PostgreSQL, SQLite, and common Python driver markers are recognized, together with MySQL LIMIT offset,count syntax.",
+            "PostgreSQL, SQLite, and common Python driver markers are recognized, including a postfix cast inside a parenthesized dynamic offset and MySQL LIMIT offset,count syntax.",
+            "The bounded grammar does not resolve casts on later arithmetic operands, quoted or multiword type names, or arbitrary recursive expressions.",
             "Dumps, migrations, generated paths or marked files, tests, fixtures, snapshots, ORM calls, bare procedural variables, and ambiguous templates are excluded.",
         ),
         examples=(

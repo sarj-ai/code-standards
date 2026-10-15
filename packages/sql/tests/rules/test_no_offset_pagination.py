@@ -111,6 +111,39 @@ def test_preserves_fixed_ordinal_offsets(source: str) -> None:
 @pytest.mark.parametrize(
     "source",
     [
+        "SELECT id FROM event ORDER BY id LIMIT 50 OFFSET ($1::integer);",
+        "SELECT id FROM event ORDER BY id LIMIT 50 OFFSET (($1::integer));",
+        "SELECT id FROM event ORDER BY id LIMIT 50 OFFSET (:offset::pg_catalog.int8);",
+        "SELECT id FROM event ORDER BY id LIMIT 50 OFFSET ($1::integer * 10);",
+        "SELECT id FROM event ORDER BY id LIMIT 50 OFFSET (:page::integer * :limit);",
+        "SELECT id FROM event ORDER BY id LIMIT 50 OFFSET (+:offset::integer);",
+        "SELECT id FROM event ORDER BY id LIMIT 50 OFFSET ($1::integer)::bigint;",
+    ],
+)
+def test_cast_inside_parentheses_does_not_hide_dynamic_offset(source: str) -> None:
+    findings = _check(source)
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ107"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "SELECT id FROM event ORDER BY id LIMIT 50 OFFSET (10::integer);",
+        "SELECT id FROM event ORDER BY id LIMIT 50 OFFSET (offset::integer);",
+        "SELECT id FROM event ORDER BY id LIMIT 50 OFFSET ($1::integer) + unknown;",
+        "SELECT id FROM event ORDER BY id LIMIT 50 OFFSET ($1::integer;",
+        "SELECT id FROM event ORDER BY id LIMIT 50 OFFSET ($1::);",
+        "SELECT id FROM event ORDER BY id LIMIT 50 OFFSET ($1::integer OR active);",
+    ],
+)
+def test_preserves_fixed_ambiguous_or_malformed_cast_offsets(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
         "SELECT utc_offset, byte_offset_end FROM tz_info;",
         'SELECT "OFFSET :offset" FROM tz_info;',
         "SELECT `OFFSET :offset` FROM tz_info;",
