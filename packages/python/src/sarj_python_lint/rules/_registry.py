@@ -32,6 +32,7 @@ from sarj_python_lint.rules.no_analytical_aggregation_in_postgres_store import (
     NoAnalyticalAggregationInPostgresStore,
 )
 from sarj_python_lint.rules.no_any_mapping_types import NoAnyMappingTypes
+from sarj_python_lint.rules.no_async_function_cache import NoAsyncFunctionCache
 from sarj_python_lint.rules.no_before_validator_input_mutation import NoBeforeValidatorInputMutation
 from sarj_python_lint.rules.no_broad_keyword_capture import NoBroadKeywordCapture
 from sarj_python_lint.rules.no_comment_cruft import NoCommentCruft
@@ -241,6 +242,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoSwallowedAsyncioCancellation.id: NoSwallowedAsyncioCancellation,
         RequireExplicitPsycopgTransaction.id: RequireExplicitPsycopgTransaction,
         AsyncMockCallWithoutAwaitAssertion.id: AsyncMockCallWithoutAwaitAssertion,
+        NoAsyncFunctionCache.id: NoAsyncFunctionCache,
         ComplexPostgresQueryRequiresArchitectureReview.id: ComplexPostgresQueryRequiresArchitectureReview,
         ExcessiveCommentary.id: ExcessiveCommentary,
         PreferWalrusAwaitedNoneGuard.id: PreferWalrusAwaitedNoneGuard,

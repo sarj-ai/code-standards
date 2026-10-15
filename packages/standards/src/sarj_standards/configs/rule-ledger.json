@@ -43,6 +43,7 @@
       "negative-only-http-status-assertion",
       "no-analytical-aggregation-in-postgres-store",
       "no-any-mapping-types",
+      "no-async-function-cache",
       "no-bare-test-phase-comments",
       "no-before-validator-input-mutation",
       "no-broad-keyword-capture",
@@ -491,7 +492,8 @@
       "SARJ492",
       "SARJ493",
       "SARJ494",
-      "SARJ495"
+      "SARJ495",
+      "SARJ507"
     ],
     "sql": [
       "SARJ101",

@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/no-async-function-cache",
+      "family": "python",
+      "ruleId": "no-async-function-cache",
+      "state": "complete",
+      "evidence": "Five review passes reproduced and repaired nested and relative import shadowing false positives and two-positional-argument lru_cache misses. All 58 focused tests pass on Python 3.14 and 3.15; 53 labeled cases contain 18 true positives and 35 true negatives, with zero false positives, misses or duplicate locations. A fresh pinned process-isolated scan of 3,331 Python files (29,829,340 bytes), across five corpora including three private sources, produced zero matches in 16 batches. A 20-file combined-runner sample measured baseline/candidate medians of 4.906/5.116 seconds (+4.27%) under contention; no speedup is claimed. Ruff 0.17 and BasedPyright 1.40.2 pass.",
+      "outcome": "Ship SARJ507 as a warning with no autofix. Require a proven functools cache as the innermost decorator on a coroutine function. Preserve async-generator, transformed-function, disabled/dynamic-size, generated-file, wildcard and shadowed-import exclusions. Exclude ambiguous nested/relative import bindings conservatively; explicit async-aware cache design remains a manual decision. Include the minimal Python SARJ500-599 allocator expansion; preserve all previously assigned codes."
+    },
+    {
       "task": "rule-audit/python/test-without-explicit-oracle",
       "family": "python",
       "ruleId": "test-without-explicit-oracle",
