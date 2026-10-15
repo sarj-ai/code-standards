@@ -72,6 +72,44 @@ locals {
     assert "contains([...], var.environment)" in diags[0].message
 
 
+@pytest.mark.parametrize(
+    ("expression", "expected_count"),
+    [
+        pytest.param('!contains(["dev", "preview"], var.cloud_build_branch)', 1, id="cloud-build-approval-gate"),
+        pytest.param('contains(["dev", "preview"], var.branch)', 1, id="branch-membership"),
+        pytest.param('contains(["platform-prod"], var.project_id)', 1, id="project-membership"),
+        pytest.param('contains(["dev", "preview"], var.stack)', 1, id="stack-membership"),
+        pytest.param('contains(["platform-prod"], local.stack_name)', 1, id="qualified-stack-membership"),
+        pytest.param('contains((["dev", "preview"]), (var.cloud_build_branch))', 1, id="parenthesized-membership"),
+        pytest.param('contains(["dev"], lower(trimspace(var.cloud_build_branch)))', 1, id="normalized-branch"),
+        pytest.param('contains(["DEV"], upper(var.stack))', 1, id="normalized-stack"),
+        pytest.param('var.cloud_build_branch == "prod"', 1, id="branch-comparison"),
+        pytest.param('var.stack == "production"', 1, id="stack-comparison"),
+        pytest.param('contains(["feature", "release"], var.cloud_build_branch)', 0, id="ordinary-build-branches"),
+        pytest.param('contains(["finance", "billing"], var.stack)', 0, id="business-stack-labels"),
+        pytest.param('contains(["prod"], var.tree_branch)', 0, id="unrelated-resource-branch"),
+        pytest.param('contains(["prod"], var.customer_stack_id)', 0, id="unrelated-resource-stack"),
+        pytest.param('contains(["developmental"], var.stack)', 0, id="literal-substring"),
+        pytest.param("contains(var.allowed_branches, var.cloud_build_branch)", 0, id="typed-input-list"),
+        pytest.param("contains(local.allowed_branches, var.cloud_build_branch)", 0, id="unresolved-local-list"),
+        pytest.param('contains(["${var.allowed_branch}"], var.cloud_build_branch)', 0, id="dynamic-list-member"),
+        pytest.param('contains(["%{ if var.enabled }dev%{ endif }"], var.stack)', 0, id="dynamic-list-directive"),
+        pytest.param('contains(["prod"], coalesce(var.cloud_build_branch, "dev"))', 0, id="arbitrary-function"),
+        pytest.param('contains(["prod"], var.stack, true)', 0, id="invalid-arity"),
+    ],
+)
+def test_membership_uses_literal_environment_evidence_for_deployment_selectors(
+    expression: str, expected_count: int
+) -> None:
+    source = f'resource "google_clouddeploy_target" "target" {{\n  require_approval = {expression}\n}}\n'
+    diagnostics = _check(source)
+    assert [(finding.code, finding.line, finding.col) for finding in diagnostics] == (
+        [("SARJ204", 2, 3)] if expected_count else []
+    )
+    assert diagnostics == _check(source)
+    assert uses_environment_conditional(expression) is bool(expected_count)
+
+
 def test_flags_environment_selected_access_groups():
     src = """locals {
   product_qa_nonprod_groups = contains(["dev", "preview", "sandbox"], var.environment) ? toset([
@@ -533,7 +571,7 @@ locals {
 
 def test_the_segment_sets_are_exactly_these():
     assert {"environment", "env"} == ENVIRONMENT_SEGMENTS
-    assert {"project", "slug", "branch", "account", "tenant", "stage", "workspace", "deployment"} == (
+    assert {"project", "slug", "branch", "account", "tenant", "stage", "workspace", "deployment", "stack"} == (
         QUALIFIED_SEGMENTS
     )
 
@@ -881,7 +919,7 @@ def test_non_candidate_attributes_preserve_malformed_document_abstention(value: 
         pytest.param('contains(["dev"], "var.environment")', 0, id="identity-shaped-literal"),
         pytest.param('contains(["enterprise:billing"], "${var.account}:${var.product}")', 0, id="business-identity"),
         pytest.param('"${var.project}" == "analytics"', 0, id="ambiguous-business-comparison"),
-        pytest.param('contains(["acme-prod"], "${var.project}")', 0, id="ambiguous-membership-opaque"),
+        pytest.param('contains(["acme-prod"], "${var.project}")', 1, id="qualified-membership-literal-evidence"),
         pytest.param('contains(var.allowed_environments, "${var.environment}")', 0, id="typed-input-haystack"),
         pytest.param(
             'contains(local.allowed_environments, "${var.environment}")', 0, id="unresolved-template-haystack"
@@ -952,8 +990,9 @@ def test_template_branch_operands_preserve_generated_header_exclusion() -> None:
     ],
     ids=["variable-validation", "lifecycle-precondition", "lifecycle-postcondition", "check-assertion"],
 )
-def test_template_branch_operands_preserve_safety_assertion_exemptions(wrapper: str) -> None:
-    source = wrapper.format(condition='condition = contains(["dev"], "${var.environment}")')
+@pytest.mark.parametrize("identity", ['"${var.environment}"', "var.cloud_build_branch", "var.stack"])
+def test_template_branch_operands_preserve_safety_assertion_exemptions(wrapper: str, identity: str) -> None:
+    source = wrapper.format(condition=f'condition = contains(["dev"], {identity})')
     assert _check(source) == []
 
 

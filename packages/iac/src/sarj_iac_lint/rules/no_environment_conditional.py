@@ -41,6 +41,7 @@ QUALIFIED_SEGMENTS = frozenset(
         "stage",
         "workspace",
         "deployment",
+        "stack",
     }
 )
 
@@ -51,6 +52,7 @@ _NEUTRAL_QUALIFIERS = frozenset(
         "aws",
         "azure",
         "cloud",
+        "build",
         "tf",
         "terraform",
         "id",
@@ -163,9 +165,9 @@ class NoEnvironmentConditional(Rule):
                 "results remain opaque."
             ),
             (
-                "Ambiguous identity names (`project`, `account`, `tenant`, `branch`, and `slug`) require an "
-                "environment-labelled comparison literal such as `platform-prod`; comparisons to ordinary "
-                "business values and map indexing by those names are intentionally ignored."
+                "Ambiguous identity names (`project`, `account`, `tenant`, `branch`, `stack`, and `slug`) require an "
+                "environment-labelled comparison literal or literal-list member such as `platform-prod`; comparisons "
+                "to ordinary business values and map indexing by those names are intentionally ignored."
             ),
             "Only .tf and terragrunt.hcl are read; Packer, Nomad, and other HCL dialects are outside this rule.",
             "Environment-keyed map indexing and lookup are data selection rather than branching and are allowed.",
@@ -451,7 +453,13 @@ def _call(toks: tuple[str, ...], index: int) -> _Use | None:
     args = _call_arguments(toks, index + 1)
     if len(args) != _CONTAINS_ARGS:
         return None
-    needle = _single_identity(args[1])
+    items = list(_peel(args[0]))
+    literal = (
+        next((item for item in items if _literal_names_environment(item)), None)
+        if _is_literal_list(items) and not any("%{" in item.replace("%%{", "") for item in items)
+        else None
+    )
+    needle = _single_identity(args[1], literal=literal)
     haystack = _single_token(args[0])
     if needle is None or (haystack is not None and haystack.startswith("var.")):
         return None
@@ -484,18 +492,18 @@ def _call_arguments(toks: tuple[str, ...], open_index: int) -> list[list[str]]:
     return args
 
 
-def _single_identity(arg: Sequence[str]) -> str | None:
+def _single_identity(arg: Sequence[str], *, literal: str | None = None) -> str | None:
     peeled = _peel(arg)
     tok = _single_token(peeled)
     if tok is not None:
-        return tok if _is_environment_identity(tok) else None
+        return tok if _is_environment_identity(tok, literal=literal) else None
     if (
         len(peeled) >= _GROUP_TOKENS + 1
         and peeled[0] in _NORMALIZERS
         and peeled[1] == "("
         and _matching_close(peeled, 1) == len(peeled) - 1
     ):
-        return _normalized_identity(peeled[0], peeled[2:-1])
+        return _normalized_identity(peeled[0], peeled[2:-1], literal=literal)
     return None
 
 
@@ -624,10 +632,10 @@ def _message(owner: Block, attr: Attribute, use: _Use) -> str:
     )
 
 
-def _normalized_identity(function: str, argument: Sequence[str]) -> str | None:
+def _normalized_identity(function: str, argument: Sequence[str], *, literal: str | None = None) -> str | None:
     if function not in _NORMALIZERS:
         return None
-    return _single_identity(argument)
+    return _single_identity(argument, literal=literal)
 
 
 def _generated_header(source: str) -> bool:
