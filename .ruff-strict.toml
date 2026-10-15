@@ -23,7 +23,8 @@ preview = true
 # imports. Its fix is intentionally unsafe when it must change annotation
 # evaluation semantics, so consumer baselines can grandfather existing debt.
 future-annotations = true
-logger-objects = ["loguru.logger"]  # treat loguru as a logger so G004/G010 fire on it (the house logger)
+# logger-objects accepts stdlib Logger equivalents; Loguru has different formatting
+# and exception arguments. SARJ508 checks Loguru's exc_info misuse separately.
 # TC001/2/3 stay advisory but are never auto-applied: their unsafe fixes can
 # move runtime-evaluated framework annotations into `TYPE_CHECKING`, changing
 # behavior under deferred annotations. Marking them unfixable preserves the

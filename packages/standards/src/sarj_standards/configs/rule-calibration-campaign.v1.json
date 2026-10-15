@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/no-loguru-exc-info",
+      "family": "python",
+      "ruleId": "no-loguru-exc-info",
+      "state": "complete",
+      "evidence": "Five focused review passes completed. Runtime Loguru 0.7.3 controls reproduce missing traceback for exc_info=True and confirm explicit exception capture, false exception options, last-opt reset behavior and bind preservation. Pinned Ruff 0.17.0 rejects valid Loguru brace formatting and applies stdlib-only exc_info assumptions under the old logger-objects declaration. Forty-two labeled cases contain 16 positives and 26 negatives; native registration/example checks and eight preset behavior cases pass. A fixed-pin fresh-process scan of 3,518 Python files (33,097,488 bytes) in 18 batches found one seeded positive and four live matches; every live match was inspected and classified true positive, with zero false positives or duplicate locations. A 20-file/128,102-byte combined-runner panel measured five-run baseline/candidate medians of 2.817/2.770 seconds and rule-only median 3.52 ms under shared load; no speedup is claimed. Seventy sampled production ERROR records had exc_info=true without exception or traceback fields; deployed source revision is unproven. Strict self-lint, type checks and all canonical verification targets pass. Standards wheel tests pass 5,478 with 9 skips. After transient disk exhaustion and shifting existing-rule performance failures, unchanged-main and candidate performance controls both pass without threshold changes; exact locked Semgrep admission passes after warming its dependency cache. Private evidence remains owner-only.",
+      "outcome": "Stage SARJ508 as a warning without autofix. Require an unambiguous Loguru import, literal message and literal exc_info=True; preserve explicit active exception options, exception(), intentional template fields, dynamic messages/values, unknown wrappers and ambiguous imports. Runtime monkeypatches are not resolved. Remove only the incorrect Loguru-as-stdlib logger declaration; retain Ruff logging controls for actual stdlib logging. Finite calibration does not establish universal precision or fleet-wide performance."
+    },
+    {
       "task": "rule-audit/python/no-async-function-cache",
       "family": "python",
       "ruleId": "no-async-function-cache",
