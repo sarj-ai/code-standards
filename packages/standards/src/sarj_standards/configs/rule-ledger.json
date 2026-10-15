@@ -230,6 +230,7 @@
       "no-duplicate-test-case",
       "no-dynamic-sql",
       "no-enum",
+      "no-exception-text-in-5xx-response",
       "no-excessive-cognitive-complexity",
       "no-fat-try-blocks",
       "no-first-party-module-mock",

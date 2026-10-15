@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/typescript/no-exception-text-in-5xx-response",
+      "family": "typescript",
+      "ruleId": "no-exception-text-in-5xx-response",
+      "state": "complete",
+      "evidence": "Five review passes cover failure admission, independent precision/API review, simplicity and strict types, pinned corpus/performance, and atomic integration. All 85 labeled TypeScript and native JavaScript parser cases (29 positives, 56 negatives), one native Response.json runtime check, 21 independent flow probes, 28 API/import controls and 16 cross-parser controls pass. A verified 3,373-file / 26,544,477-byte corpus runs in 16 fresh processes of at most 250 files: one inspected live true positive, 11 seeded positives and 12 seeded negatives; zero known false positives, misses, fatal parse errors or duplicate locations. Full 120 Sarj + one core rule typed integration reports only the 11 expected warnings; exact suppression and no-fix convergence pass. A 144-file / 1,408,276-byte panel uses 12 fresh processes with one cold and two warm loops: combined warm callback median 29.44 ms, normal native cold medians 2.201/2.081 s and warm medians 1.062/1.089 s under shared load. No causal speedup or stable latency claim. All canonical verification targets pass, covering 30,145 unique package tests with nine skips. Native header examples-link and docs workspace lock metadata were corrected without weakening assertions; the final comment-only header change produces byte-identical compiled rule output. Final catalog and formatted projections are synchronized together. Private source and pins remain owner-only.",
+      "outcome": "Stage a warning without autofix for directly returned native Response.json or named NextResponse imports, literal integer 500\u2013599 status, stable caught message/stack fields and explicit literal payload paths. Preserve public 4xx contracts, dynamic statuses, sanitizers, uncertain properties/serializers, mutable or escaped values/factories, tests and generated files. Interprocedural mutation, runtime monkeypatches, factory aliases and response wrappers remain manual-review boundaries. A warning does not prove a secret or observed production disclosure; finite calibration does not establish universal precision or performance."
+    },
+    {
       "task": "rule-audit/python/no-loguru-exc-info",
       "family": "python",
       "ruleId": "no-loguru-exc-info",

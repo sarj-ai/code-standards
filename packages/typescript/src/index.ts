@@ -34,6 +34,7 @@ import noHandRolledSleep from "./rules/no-hand-rolled-sleep.js";
 import noHandRolledSpinner from "./rules/no-hand-rolled-spinner.js";
 import noInsecureRandomId from "./rules/no-insecure-random-id.js";
 import noDetachedGlobalFetch from "./rules/no-detached-global-fetch.js";
+import noExceptionTextIn5xxResponse from "./rules/no-exception-text-in-5xx-response.js";
 import noJsonStringifyError from "./rules/no-json-stringify-error.js";
 import noJsonStringifyObjectEquality from "./rules/no-json-stringify-object-equality.js";
 import noImpossibleZodLiteralBounds from "./rules/no-impossible-zod-literal-bounds.js";
@@ -159,6 +160,7 @@ const RULES = {
   "no-hand-rolled-spinner": noHandRolledSpinner,
   "no-insecure-random-id": noInsecureRandomId,
   "no-detached-global-fetch": noDetachedGlobalFetch,
+  "no-exception-text-in-5xx-response": noExceptionTextIn5xxResponse,
   "no-json-stringify-error": noJsonStringifyError,
   "no-json-stringify-object-equality": noJsonStringifyObjectEquality,
   "no-impossible-zod-literal-bounds": noImpossibleZodLiteralBounds,
@@ -266,6 +268,7 @@ const LIBRARY_IMPORT_POLICY = ["error", {
 const ADVISORY_RULES = [
   "@sarj/excessive-commentary",
   "@sarj/no-bespoke-api-case-conversion",
+  "@sarj/no-exception-text-in-5xx-response",
   "@sarj/no-restated-comment",
   "@sarj/no-restated-jsdoc",
   "@sarj/prefer-millisecond-control-duration-schema",
@@ -309,6 +312,7 @@ const RECOMMENDED_RULES = {
   "@sarj/no-hand-rolled-sleep": "error",
   "@sarj/no-hand-rolled-spinner": "error",
   "@sarj/no-insecure-random-id": "error",
+  "@sarj/no-exception-text-in-5xx-response": "warn",
   "@sarj/no-json-stringify-error": "error",
   "@sarj/no-impossible-zod-literal-bounds": "error",
   "@sarj/no-in-operator-on-built-in-collections": "error",
@@ -429,6 +433,7 @@ const STRICT_RULES = {
   "@sarj/no-hand-rolled-sleep": "error",
   "@sarj/no-hand-rolled-spinner": "error",
   "@sarj/no-insecure-random-id": "error",
+  "@sarj/no-exception-text-in-5xx-response": "warn",
   "@sarj/no-json-stringify-error": "error",
   "@sarj/no-impossible-zod-literal-bounds": "error",
   "@sarj/no-in-operator-on-built-in-collections": "error",

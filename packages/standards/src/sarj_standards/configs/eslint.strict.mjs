@@ -1358,6 +1358,7 @@ export function createConfig(options = {}) {
       "@sarj/no-vague-suppression-description": "error",
       "@sarj/no-generic-single-export-module": "error",
       "@sarj/no-insecure-random-id": "error",
+      "@sarj/no-exception-text-in-5xx-response": "warn",
       "@sarj/no-json-stringify-error": "error",
       "@sarj/no-string-concat-in-loop": "error",
       "@sarj/prefer-discriminated-union": "error",
