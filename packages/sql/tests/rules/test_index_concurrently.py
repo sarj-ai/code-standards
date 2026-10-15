@@ -121,6 +121,100 @@ CREATE INDEX idx_orders_user ON public.orders (user_id);
     assert _check(src) == []
 
 
+@pytest.mark.parametrize(
+    ("created", "indexed", "expected"),
+    [
+        pytest.param("scratch.items", "app.items", 1, id="different-schemas"),
+        pytest.param('"App".items', "app.items", 1, id="quoted-schema-case"),
+        pytest.param('"Items"', "items", 1, id="quoted-table-case"),
+        pytest.param('"app.items"', "app.items", 1, id="quoted-dot-is-not-qualification"),
+        pytest.param("café", "caf", 1, id="unicode-name-does-not-prove-prefix"),
+        pytest.param("café", "café", 0, id="same-unquoted-unicode"),
+        pytest.param("CAFÉ", "cafÉ", 0, id="unicode-folds-ascii-only"),
+        pytest.param("CAFÉ", "café", 1, id="unicode-case-remains-distinct"),
+        pytest.param('"cafÉ"', "CAFÉ", 0, id="quoted-unicode-equivalent"),
+        pytest.param('"CAFÉ"', "CAFÉ", 1, id="quoted-unicode-preserves-ascii-case"),
+        pytest.param('"नमस्ते"', "नमस्ते", 0, id="unicode-combining-characters"),
+        pytest.param('"item\nname"', '"item\nname"', 0, id="quoted-newline"),
+        pytest.param("app /* explanation */ . items", "app", 1, id="comment-does-not-truncate-qualification"),
+        pytest.param("public.items", "items", 0, id="qualified-create-may-be-unqualified-target"),
+        pytest.param("items", "public.items", 0, id="unqualified-create-may-be-qualified-target"),
+        pytest.param("current_db.public.items", "public.items", 0, id="catalog-qualified-create"),
+        pytest.param("public.items", "current_db.public.items", 0, id="catalog-qualified-target"),
+        pytest.param('"current.db".public.items', "public.items", 0, id="quoted-catalog"),
+        pytest.param("current_db.scratch.items", "current_db.app.items", 1, id="catalog-distinct-schemas"),
+        pytest.param("current_db.scratch.items", "app.items", 1, id="catalog-create-distinct-schema"),
+        pytest.param("scratch.items", "current_db.app.items", 1, id="catalog-target-distinct-schema"),
+        pytest.param('current_db."App".items', "app.items", 1, id="catalog-preserves-quoted-schema"),
+        pytest.param("pg_temp.items", "pg_temp_3.items", 0, id="temp-alias-create"),
+        pytest.param("pg_temp_3.items", "pg_temp.items", 0, id="temp-alias-target"),
+        pytest.param('"pg_temp_3".items', "pg_temp.items", 0, id="quoted-numbered-temp-schema"),
+        pytest.param("current_db.pg_temp_3.items", "pg_temp.items", 0, id="catalog-temp-create"),
+        pytest.param("pg_temp_3.items", "current_db.pg_temp.items", 0, id="catalog-temp-target"),
+        pytest.param("public.items", "pg_temp_3.items", 0, id="explicit-temp-target-is-session-local"),
+        pytest.param("pg_temp_3.items", "public.items", 1, id="temp-and-ordinary-schemas-differ"),
+        pytest.param("pg_temp.items", "pg_temp_custom.items", 1, id="temp-like-schema-is-not-numbered"),
+        pytest.param("pg_temp.items", '"PG_TEMP_3".items', 1, id="quoted-uppercase-temp-like-schema"),
+        pytest.param("APP.ITEMS", "app.items", 0, id="unquoted-case-folds"),
+        pytest.param('"app"."items"', "app.items", 0, id="quoted-lowercase-equivalent"),
+        pytest.param("app . items", "app.items", 0, id="qualification-whitespace"),
+        pytest.param("app /* explanation */ . items", "app.items", 0, id="qualification-comments"),
+        pytest.param('"App"."Items"', '"App"."Items"', 0, id="same-quoted-case"),
+        pytest.param('"ap""p"."it""ems"', '"ap""p"."it""ems"', 0, id="escaped-identifier-quotes"),
+        pytest.param('"app data"."item data"', '"app data"."item data"', 0, id="quoted-identifier-spaces"),
+        pytest.param("app.it$ems", "app.it$ems", 0, id="dollar-in-unquoted-identifier"),
+    ],
+)
+def test_new_table_exemption_preserves_postgres_relation_identity(created: str, indexed: str, expected: int) -> None:
+    source = (
+        f"CREATE TABLE IF NOT EXISTS {created} (id bigint);\nCREATE INDEX IF NOT EXISTS items_idx ON {indexed}(id);\n"
+    )
+
+    assert len(_check(source)) == expected
+
+
+@pytest.mark.parametrize(
+    ("target", "expected"),
+    [
+        pytest.param("pg_temp.items", 0, id="current-temp-alias"),
+        pytest.param("pg_temp_3.items", 0, id="numbered-temp-schema"),
+        pytest.param('"pg_temp".items', 0, id="quoted-temp-alias"),
+        pytest.param("current_db.pg_temp.items", 0, id="catalog-temp-target"),
+        pytest.param('"PG_TEMP".items', 1, id="uppercase-schema-is-distinct"),
+        pytest.param('"PG_TEMP_3".items', 1, id="uppercase-numbered-schema-is-distinct"),
+        pytest.param("pg_temp_custom.items", 1, id="temp-like-name-is-ordinary"),
+        pytest.param('"pg_temp.items"', 1, id="quoted-dot-is-an-ordinary-table-name"),
+        pytest.param("public.items", 1, id="ordinary-table-still-requires-concurrency"),
+    ],
+)
+def test_explicit_temporary_targets_need_no_same_file_creation_proof(target: str, expected: int) -> None:
+    source = f"CREATE TABLE scratch.items(id int);\nCREATE INDEX items_idx ON {target}(id);\n"
+
+    assert len(_check(source)) == expected
+
+
+@pytest.mark.parametrize("search_path", ["public", "another_schema"])
+def test_search_path_does_not_override_ambiguous_qualification_abstention(search_path: str) -> None:
+    source = (
+        f"SET search_path={search_path};\nCREATE TABLE public.items(id int);\nCREATE INDEX items_idx ON items(id);\n"
+    )
+
+    assert _check(source) == []
+
+
+def test_on_inside_a_quoted_index_name_does_not_replace_the_real_target() -> None:
+    source = 'CREATE TABLE items(id int);\nCREATE INDEX IF NOT EXISTS "name ON unrelated" ON items(id);\n'
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(("target", "expected"), [("existing", 1), ('"on"', 0)])
+def test_on_inside_an_unquoted_unicode_index_name_is_not_a_keyword(target: str, expected: int) -> None:
+    source = f'CREATE TABLE "on"(id int);\nCREATE INDEX name_🐈ON ON {target}(id);\n'
+
+    assert len(_check(source)) == expected
+
+
 def test_allows_index_whose_on_clause_is_on_a_later_line():
     src = """
 CREATE TABLE orders (id BIGSERIAL PRIMARY KEY, user_id BIGINT);

@@ -128,6 +128,51 @@ def test_reset_undoes_a_timeout() -> None:
 
 
 @pytest.mark.parametrize(
+    ("settings", "expected"),
+    [
+        pytest.param("SET lock_timeout='1s'; SET LOCAL lock_timeout=0;", 1, id="local-zero-masks-session"),
+        pytest.param("SET LOCAL lock_timeout='1s'; SET lock_timeout=0;", 1, id="session-zero-replaces-local"),
+        pytest.param("SET LOCAL lock_timeout='1s'; RESET lock_timeout;", 1, id="reset-replaces-local"),
+        pytest.param("SET lock_timeout='1s'; SET statement_timeout='5s'; RESET ALL;", 1, id="reset-all-settings"),
+        pytest.param("SET LOCAL lock_timeout='1s'; RESET /* explanation */ ALL;", 1, id="reset-all-with-comment"),
+        pytest.param(
+            "SET lock_timeout='1s'; SELECT set_config('lock_timeout','0',true);", 1, id="local-function-masks-session"
+        ),
+        pytest.param(
+            "SET LOCAL lock_timeout='1s'; SELECT set_config('lock_timeout','0',false);",
+            1,
+            id="session-function-replaces-local",
+        ),
+        pytest.param("SET lock_timeout=0; SET LOCAL lock_timeout='1s';", 0, id="positive-local-masks-zero-session"),
+        pytest.param("SET LOCAL lock_timeout=0; SET lock_timeout='1s';", 0, id="positive-session-replaces-zero-local"),
+        pytest.param(
+            "SET lock_timeout='1s'; BEGIN; SET LOCAL lock_timeout=0; COMMIT;", 0, id="commit-restores-session"
+        ),
+        pytest.param(
+            "SET lock_timeout='1s'; BEGIN; SET LOCAL lock_timeout=0; ROLLBACK;", 0, id="rollback-restores-session"
+        ),
+        pytest.param(
+            "SET lock_timeout='1s'; SET LOCAL lock_timeout=0; SET statement_timeout='5s';",
+            0,
+            id="other-timeout-still-bounds",
+        ),
+        pytest.param("SET LOCAL lock_timeout='1s'; RESET statement_timeout;", 0, id="reset-other-timeout"),
+        pytest.param("SET lock_timeout='1s'; SELECT 'RESET ALL'; -- RESET ALL\n", 0, id="reset-mentioned-only"),
+        pytest.param(
+            "SET lock_timeout='1s'; RESET ALL; SET LOCAL statement_timeout='5s';", 0, id="setting-after-reset-all"
+        ),
+        pytest.param(
+            "-- migrate:up transaction:false\nSET lock_timeout='1s'; SET LOCAL lock_timeout=0;",
+            0,
+            id="ineffective-local-does-not-mask-session",
+        ),
+    ],
+)
+def test_only_the_effective_timeout_setting_can_bound_ddl(settings: str, expected: int) -> None:
+    assert len(_check(f"{settings}\nALTER TABLE items ADD COLUMN value text;\n")) == expected
+
+
+@pytest.mark.parametrize(
     "prologue",
     [
         "SET statement_timeout = '3s';\nRESET statement_timeout;",
