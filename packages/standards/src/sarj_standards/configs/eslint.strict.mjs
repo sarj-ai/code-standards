@@ -1364,7 +1364,7 @@ export function createConfig(options = {}) {
       "@sarj/prefer-discriminated-union": "error",
       "@sarj/no-comment-cruft": "error",
       "@sarj/no-fat-try-blocks": ["error", { max: 5 }],
-      "@sarj/no-cors-wildcard-with-credentials": "error",
+      "@sarj/no-cors-wildcard-with-credentials": "warn",
       "@sarj/no-secret-in-log": "error",
       "@sarj/no-hand-rolled-sleep": "error",
       "@sarj/no-hand-rolled-spinner": "error",

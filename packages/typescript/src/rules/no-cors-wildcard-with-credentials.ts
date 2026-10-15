@@ -1,350 +1,308 @@
 /**
- * @fileoverview no-cors-wildcard-with-credentials — `Access-Control-Allow-Origin: *` together with credentials lets any site read authenticated responses.
+ * @fileoverview no-cors-wildcard-with-credentials — review wildcard origins that prevent browser access to credentialed responses.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-cors-wildcard-with-credentials.test.ts
  */
 
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
+import { ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
-import { unwrapExpression } from "./_unwrap-expression.js";
-
-import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 
 type MessageIds = "corsWildcardWithCredentials";
 type Options = readonly [];
+type HeaderName = "access-control-allow-origin" | "access-control-allow-credentials";
+
+const ACAO_HEADER = "access-control-allow-origin";
+const ACAC_HEADER = "access-control-allow-credentials";
+const HEADER_METHODS: ReadonlySet<string> = new Set(["set", "setHeader", "append", "delete", "removeHeader"]);
+const CONTROL_STATEMENTS: ReadonlySet<string> = new Set([
+  "BlockStatement", "IfStatement", "SwitchStatement", "TryStatement", "ForStatement",
+  "ForInStatement", "ForOfStatement", "WhileStatement", "DoWhileStatement", "WithStatement", "LabeledStatement",
+]);
 
 export const NO_CORS_WILDCARD_WITH_CREDENTIALS_DOCUMENTATION = {
-  summary: "Disallow wildcard CORS origins when credentials are enabled.",
-  rationale:
-    "Reflecting every origin while allowing credentials can let an untrusted site read authenticated cross-origin responses.",
-  remediation: "Enumerate the trusted origins that may receive credentialed responses.",
-  category: "security",
+  summary: "Review wildcard CORS origins combined with an explicit credentials opt-in.",
+  rationale: "Browsers do not expose credentialed cross-origin responses when Access-Control-Allow-Origin is '*'. Credentialless requests can still use a wildcard even when Access-Control-Allow-Credentials is emitted, so review the intended caller contract.",
+  remediation: "Use a trusted explicit origin for credentialed callers, or omit the credentials opt-in for a credentialless wildcard endpoint.",
+  category: "correctness",
+  defaultLevel: "warning",
+  autofix: "none",
+  references: ["https://fetch.spec.whatwg.org/#cors-protocol-and-credentials"],
   limitations: [
-    "The rule detects literal CORS option and header combinations within the same syntactic scope; it does not resolve runtime configuration.",
+    "Options require a stable official cors default import or hono/cors named or namespace import, one literal object argument, literal origin '*', and credentials true. Custom bindings, callbacks, arrays, conditional origins and dynamic options are excluded.",
+    "Literal header maps use effective case-sensitive JavaScript property writes followed by native Headers combination of differently-cased header names. Unknown values/spreads/computed keys, accessors and non-null prototypes lose proof; literals used only inside object spreads are not reported independently.",
+    "Manual set/setHeader/delete/removeHeader calls use direct identifier receivers and literal arguments in straight-line program or function bodies. Control-flow bodies, member receivers, aliases and unknown operations are excluded. Append requires a proven empty native Headers constructor or a preceding known write/removal.",
+    "The rule reviews a local configuration contract, not actual request credentials or a data disclosure. Runtime patches, custom header method implementations, interprocedural mutation and later consumers are not resolved. No autofix.",
   ],
   examples: [
     {
       id: "trusted-origin-with-credentials",
-      title: "Credentials are limited to a trusted origin",
+      title: "Use a trusted origin for credentialed callers",
       outcome: "no-match",
-      files: [{ path: "src/server.ts", source: "app.use(cors({ origin: 'https://app.example.com', credentials: true }));" }],
-      focusPath: "src/server.ts",
-      expectedCount: 0,
-      public: true,
+      files: [{ path: "src/server.ts", source: "import cors from 'cors'; cors({ origin: 'https://app.example.com', credentials: true });" }],
+      focusPath: "src/server.ts", expectedCount: 0, public: true,
     },
     {
       id: "wildcard-origin-with-credentials",
-      title: "Credentials are enabled for every origin",
+      title: "Review a wildcard that blocks access to credentialed responses",
       outcome: "match",
-      files: [{ path: "src/server.ts", source: "app.use(cors({ origin: '*', credentials: true }));" }],
-      focusPath: "src/server.ts",
-      expectedCount: 1,
-      public: true,
+      files: [{ path: "src/server.ts", source: "import cors from 'cors'; cors({ origin: '*', credentials: true });" }],
+      focusPath: "src/server.ts", expectedCount: 1, public: true,
     },
   ],
 } as const satisfies RuleDocumentation;
 
-const ACAO_HEADER = "access-control-allow-origin";
-const ACAC_HEADER = "access-control-allow-credentials";
-const HEADER_SET_METHODS: ReadonlySet<string> = new Set(["setheader", "set", "append"]);
-
-function isCredentialsTrueValue(node: TSESTree.Node): boolean {
-  node = unwrapExpression(node);
-  if (node.type === "Literal") {
-    if (node.value === true) {
-      return true;
-    }
-    if (typeof node.value === "string") {
-      return node.value.trim().toLowerCase() === "true";
-    }
-  }
-  return false;
+interface HeaderState {
+  readonly values: Record<HeaderName, string | null | undefined>;
+  origin: TSESTree.CallExpression | null;
 }
-
-function isStarLiteral(node: TSESTree.Node): boolean {
-  return node.type === "Literal" && node.value === "*";
-}
-
-/**
- * Returns the (non-computed) string name of a property key, or `undefined`.
- */
-function propertyKeyName(prop: TSESTree.Property): string | undefined {
-  return ASTUtils.getPropertyName(prop) ?? undefined;
-}
-
-function isCorsWildcardCredentialsCall(
-  node: TSESTree.CallExpression | TSESTree.NewExpression,
-): boolean {
-  const name = calleeName(node);
-  if (name === undefined || name.toLowerCase() !== "cors") {
-    return false;
-  }
-  const options = node.arguments.map(unwrapExpression).find(
-    (arg): arg is TSESTree.ObjectExpression => arg.type === "ObjectExpression",
-  );
-  if (options === undefined) {
-    return false;
-  }
-  let hasCredentials = false;
-  let hasWildcardOrigin = false;
-  for (const prop of options.properties) {
-    if (prop.type !== "Property") {
-      continue;
-    }
-    const key = propertyKeyName(prop);
-    if (key === "credentials" && isTrueLiteral(prop.value)) {
-      hasCredentials = true;
-    } else if (key === "origin" && subtreeContainsStarLiteral(prop.value)) {
-      hasWildcardOrigin = true;
-    }
-  }
-  return hasCredentials && hasWildcardOrigin;
-}
-
-/**
- * True only for the boolean literal `true` (not `1`, not a truthy expression).
- */
-function isTrueLiteral(node: TSESTree.Node): boolean {
-  node = unwrapExpression(node);
-  return node.type === "Literal" && node.value === true;
-}
-
-function subtreeContainsStarLiteral(node: TSESTree.Node): boolean {
-  if (isStarLiteral(node)) {
-    return true;
-  }
-  return forEachOwnAstChild(node, subtreeContainsStarLiteral,
-    key => key !== "loc" && key !== "range");
-}
-
-/**
- * Extracts the callee's terminal identifier name for a call/new expression
- * (`cors` for `cors(...)` and `app.cors(...)`, `Cors` for `new Cors(...)`).
- */
-function calleeName(
-  node: TSESTree.CallExpression | TSESTree.NewExpression,
-): string | undefined {
-  const callee = unwrapExpression(node.callee);
-
-  if (callee.type === "Identifier") {
-    return callee.name;
-  }
-  if (
-    callee.type === "MemberExpression" &&
-    !callee.computed &&
-    callee.property.type === "Identifier"
-  ) {
-    return callee.property.name;
-  }
-  return undefined;
-}
-
-/**
- * True if the ObjectExpression is a header map setting BOTH
- * `Access-Control-Allow-Origin: "*"` and
- * `Access-Control-Allow-Credentials: "true"` (case-insensitive keys).
- */
-function isWildcardCredentialsHeaderObject(
-  node: TSESTree.ObjectExpression,
-): boolean {
-  let wildcardOrigin = false;
-  let credentialsTrue = false;
-  for (const prop of node.properties) {
-    if (prop.type !== "Property") {
-      continue;
-    }
-    const key = propertyKeyName(prop);
-    if (key === undefined) {
-      continue;
-    }
-    const header = key.toLowerCase();
-    if (header === ACAO_HEADER && isStarLiteral(prop.value)) {
-      wildcardOrigin = true;
-    } else if (header === ACAC_HEADER && isCredentialsTrueValue(prop.value)) {
-      credentialsTrue = true;
-    }
-  }
-  return wildcardOrigin && credentialsTrue;
-}
-
-type HeaderSetKind = "origin" | "credentials";
-
-/**
- * Classifies a `x.setHeader(name, value)` / `x.set(name, value)` /
- * `x.append(name, value)` call as an ACAO-wildcard set, an ACAC-true set, or
- * neither.
- */
-function classifyHeaderSetCall(
-  node: TSESTree.CallExpression,
-): HeaderSetKind | undefined {
-  const callee = unwrapExpression(node.callee);
-
-  if (
-    callee.type !== "MemberExpression" ||
-    callee.computed ||
-    callee.property.type !== "Identifier" ||
-    !HEADER_SET_METHODS.has(callee.property.name.toLowerCase())
-  ) {
-    return undefined;
-  }
-  const [nameArg, valueArg] = node.arguments;
-  if (
-    nameArg === undefined ||
-    valueArg === undefined ||
-    nameArg.type !== "Literal" ||
-    typeof nameArg.value !== "string"
-  ) {
-    return undefined;
-  }
-  const header = nameArg.value.toLowerCase();
-  if (header === ACAO_HEADER && isStarLiteral(valueArg)) {
-    return "origin";
-  }
-  if (header === ACAC_HEADER && isCredentialsTrueValue(valueArg)) {
-    return "credentials";
-  }
-  return undefined;
-}
-
-function enclosingScope(node: TSESTree.Node): TSESTree.Node | undefined {
-  let current: TSESTree.Node | undefined = node.parent;
-  while (current) {
-    if (
-      current.type === "FunctionDeclaration" ||
-      current.type === "FunctionExpression" ||
-      current.type === "ArrowFunctionExpression"
-    ) {
-      return current;
-    }
-    current = current.parent;
-  }
-  return undefined;
-}
-
-interface ScopeHeaderSets {
-  originNodes: TSESTree.CallExpression[];
-  credentialsNodes: TSESTree.CallExpression[];
-}
-
-type ReceiverHeaderSets = Map<string, ScopeHeaderSets>;
 
 export default createRule<Options, MessageIds>({
   name: "no-cors-wildcard-with-credentials",
   documentation: NO_CORS_WILDCARD_WITH_CREDENTIALS_DOCUMENTATION,
   meta: {
     type: "problem",
-    docs: {
-      description: "Disallow wildcard CORS origins when credentials are enabled.",
-    },
+    docs: { description: NO_CORS_WILDCARD_WITH_CREDENTIALS_DOCUMENTATION.summary },
     schema: [],
     messages: {
-      corsWildcardWithCredentials:
-        'CORS reflects any Origin (`"*"`) while allowing credentials — any site can read authenticated responses. Enumerate explicit trusted origins instead of using `"*"` with credentials.',
+      corsWildcardWithCredentials: "A wildcard CORS origin blocks browser access to credentialed responses. Review the intended contract: use a trusted explicit origin for credentialed callers, or omit the credentials opt-in for a credentialless endpoint.",
     },
   },
   defaultOptions: [],
   create(context) {
-    const scopeHeaderSets = new Map<TSESTree.Node | "module", ReceiverHeaderSets>();
-    const variableIds = new WeakMap<TSESLint.Scope.Variable, number>();
-    let nextVariableId = 0;
+    const sourceCode = context.sourceCode;
+    const importedCors = new Set<TSESLint.Scope.Variable>();
+    const importedNamespaces = new Set<TSESLint.Scope.Variable>();
+    const receiverProof = new Map<TSESLint.Scope.Variable | string, boolean>();
 
-    function recordHeaderSet(
-      node: TSESTree.CallExpression,
-      kind: HeaderSetKind,
-    ): void {
-      const unwrappedNodeCallee = unwrapExpression(node.callee);
-      if (unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression) return;
-      const receiver = receiverIdentity(unwrappedNodeCallee.object);
-      if (receiver === null) return;
-      const key = enclosingScope(node) ?? "module";
-      let receivers = scopeHeaderSets.get(key);
-      if (receivers === undefined) {
-        receivers = new Map();
-        scopeHeaderSets.set(key, receivers);
+    function binding(node: TSESTree.Identifier): TSESLint.Scope.Variable | null {
+      return ASTUtils.findVariable(sourceCode.getScope(node), node.name);
+    }
+
+    function officialCors(node: TSESTree.Node): boolean {
+      const value = unwrapExpression(node);
+      if (value.type === "Identifier") {
+        const variable = binding(value);
+        return variable !== null && importedCors.has(variable);
       }
-      let entry = receivers.get(receiver);
-      if (entry === undefined) {
-        entry = { originNodes: [], credentialsNodes: [] };
-        receivers.set(receiver, entry);
-      }
-      if (kind === "origin") {
-        entry.originNodes.push(node);
-      } else {
-        entry.credentialsNodes.push(node);
+      if (value.type !== "MemberExpression" || value.optional || value.computed ||
+        value.property.type !== "Identifier" || value.property.name !== "cors" || value.object.type !== "Identifier") return false;
+      const variable = binding(value.object);
+      return variable !== null && importedNamespaces.has(variable);
+    }
+
+    function recordImports(node: TSESTree.Program): void {
+      for (const statement of node.body) {
+        if (statement.type === "ImportDeclaration" && statement.importKind !== "type") recordImport(statement);
       }
     }
 
-    function receiverIdentity(node: TSESTree.Node): string | null {
-      if (node.type === AST_NODE_TYPES.Identifier) {
-        const variable = ASTUtils.findVariable(
-          context.sourceCode.getScope(node),
-          node.name,
-        );
-        return variable === null
-          ? `global:${node.name}`
-          : `variable:${variableId(variable)}`;
+    function recordImport(node: TSESTree.ImportDeclaration): void {
+      for (const specifier of node.specifiers) {
+        const role = importRole(specifier, node.source.value);
+        if (role === null) continue;
+        const variable = binding(specifier.local);
+        if (variable === null || variable.references.some(reference => reference.isWrite())) continue;
+        (role === "namespace" ? importedNamespaces : importedCors).add(variable);
       }
-      if (node.type === AST_NODE_TYPES.ThisExpression) return "this";
-      if (
-        node.type === AST_NODE_TYPES.MemberExpression &&
-        !node.computed &&
-        node.property.type === AST_NODE_TYPES.Identifier
-      ) {
-        const owner = receiverIdentity(node.object);
-        return owner === null ? null : `${owner}.${node.property.name}`;
-      }
-      return null;
     }
 
-    function variableId(variable: TSESLint.Scope.Variable): number {
-      const existing = variableIds.get(variable);
-      if (existing !== undefined) return existing;
-      const value = nextVariableId++;
-      variableIds.set(variable, value);
-      return value;
+    function inspectSequence(node: TSESTree.Program | TSESTree.BlockStatement): void {
+      if (node.body.some(statement => CONTROL_STATEMENTS.has(statement.type))) return;
+      const states = new Map<TSESLint.Scope.Variable | string, HeaderState>();
+      for (const statement of node.body) {
+        if (statement.type === "ImportDeclaration" || statement.type === "FunctionDeclaration") continue;
+        if (statement.type === "VariableDeclaration") {
+          recordHeaderDeclaration(statement, states);
+          continue;
+        }
+        const expression = statement.type === "ExpressionStatement" ? unwrapExpression(statement.expression) : null;
+        if (expression?.type !== "CallExpression" || !applyHeaderWrite(expression, states)) states.clear();
+      }
+      for (const state of states.values()) {
+        if (state.values[ACAO_HEADER] === "*" && state.values[ACAC_HEADER] === "true" && state.origin !== null) {
+          context.report({ node: state.origin, messageId: "corsWildcardWithCredentials" });
+        }
+      }
+    }
+
+    function recordHeaderDeclaration(node: TSESTree.VariableDeclaration, states: Map<TSESLint.Scope.Variable | string, HeaderState>): void {
+      for (const declaration of node.declarations) {
+        if (declaration.id.type === "Identifier" && declaration.init !== null && freshHeaders(declaration.init)) {
+          const key = receiverKey(declaration.id);
+          if (key !== null) states.set(key, { values: { [ACAO_HEADER]: null, [ACAC_HEADER]: null }, origin: null });
+        } else if (declaration.id.type !== "Identifier" || (declaration.init !== null && unwrapExpression(declaration.init).type !== "Literal")) states.clear();
+      }
+    }
+
+    function freshHeaders(node: TSESTree.Node): boolean {
+      const value = unwrapExpression(node);
+      if (value.type !== "NewExpression" || value.arguments.length !== 0) return false;
+      const callee = unwrapExpression(value.callee);
+      return callee.type === "Identifier" && callee.name === "Headers" && !binding(callee)?.defs.length;
+    }
+
+    function applyHeaderWrite(node: TSESTree.CallExpression, states: Map<TSESLint.Scope.Variable | string, HeaderState>): boolean {
+      const callee = unwrapExpression(node.callee);
+      if (node.optional || callee.type !== "MemberExpression" || callee.optional || callee.computed ||
+        callee.property.type !== "Identifier" || !HEADER_METHODS.has(callee.property.name) || callee.object.type !== "Identifier") return false;
+      const method = callee.property.name;
+      const removal = method === "delete" || method === "removeHeader";
+      if (node.arguments.length !== (removal ? 1 : 2)) return false;
+      const name = literalString(node.arguments[0]);
+      const value = removal ? null : headerValue(node.arguments[1]);
+      if (name === null || (!removal && value === null)) return false;
+      const key = receiverKey(callee.object);
+      if (key === null) return false;
+      let state = states.get(key);
+      if (state === undefined) {
+        state = { values: { [ACAO_HEADER]: undefined, [ACAC_HEADER]: undefined }, origin: null };
+        states.set(key, state);
+      }
+      const header = name.toLowerCase();
+      if (header !== ACAO_HEADER && header !== ACAC_HEADER) return true;
+      state.values[header] = method === "append" ? appendValue(state.values[header], value) : value;
+      if (header === ACAO_HEADER) state.origin = node;
+      return true;
+    }
+
+    function receiverKey(node: TSESTree.Identifier): TSESLint.Scope.Variable | string | null {
+      const variable = binding(node);
+      const key = variable ?? node.name;
+      const cached = receiverProof.get(key);
+      if (cached !== undefined) return cached ? key : null;
+      const references = variable?.references ?? sourceCode.scopeManager?.globalScope?.through.filter(reference => reference.identifier.name === node.name) ?? [];
+      const unaliased = !variable?.defs.some(aliasDefinition) && references.every(headerReceiverReference);
+      receiverProof.set(key, unaliased);
+      return unaliased ? key : null;
     }
 
     return {
-      NewExpression(node: TSESTree.NewExpression): void {
-        if (isCorsWildcardCredentialsCall(node)) {
+      Program(node): void {
+        recordImports(node);
+        inspectSequence(node);
+      },
+      BlockStatement(node): void {
+        if (["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"].includes(node.parent.type)) inspectSequence(node);
+      },
+      CallExpression(node): void {
+        if (node.optional || node.arguments.length !== 1 || !officialCors(node.callee)) return;
+        const argument = node.arguments[0];
+        const options = argument === undefined ? undefined : unwrapExpression(argument);
+        if (options?.type !== "ObjectExpression") return;
+        const properties = effectiveProperties(options);
+        const origin = properties?.get("origin");
+        const credentials = properties?.get("credentials");
+        const value = credentials === undefined ? undefined : unwrapExpression(credentials.value);
+        if (origin !== undefined && literalString(origin.value) === "*" && value?.type === "Literal" && value.value === true) {
           context.report({ node, messageId: "corsWildcardWithCredentials" });
         }
       },
-      CallExpression(node: TSESTree.CallExpression): void {
-        if (isCorsWildcardCredentialsCall(node)) {
+      ObjectExpression(node): void {
+        if (spreadOnly(node)) return;
+        const properties = effectiveProperties(node);
+        if (properties === null) return;
+        const headers = new Map<string, string>();
+        for (const [key, property] of properties) {
+          const value = headerValue(property.value);
+          if (value === null) return;
+          const name = key.toLowerCase();
+          if (name !== ACAO_HEADER && name !== ACAC_HEADER) continue;
+          const previous = headers.get(name);
+          headers.set(name, previous === undefined ? value : previous + ", " + value);
+        }
+        if (headers.get(ACAO_HEADER) === "*" && headers.get(ACAC_HEADER) === "true") {
           context.report({ node, messageId: "corsWildcardWithCredentials" });
-          return;
-        }
-        const kind = classifyHeaderSetCall(node);
-        if (kind !== undefined) {
-          recordHeaderSet(node, kind);
-        }
-      },
-      ObjectExpression(node: TSESTree.ObjectExpression): void {
-        if (isWildcardCredentialsHeaderObject(node)) {
-          context.report({ node, messageId: "corsWildcardWithCredentials" });
-        }
-      },
-      "Program:exit"(): void {
-        for (const receivers of scopeHeaderSets.values()) {
-          for (const { originNodes, credentialsNodes } of receivers.values()) {
-            if (originNodes.length > 0 && credentialsNodes.length > 0) {
-              for (const node of originNodes) {
-                context.report({
-                  node,
-                  messageId: "corsWildcardWithCredentials",
-                });
-              }
-            }
-          }
         }
       },
     };
   },
 });
+
+function importRole(specifier: TSESTree.ImportDeclaration["specifiers"][number], module: string): "function" | "namespace" | null {
+  if (module === "hono/cors" && specifier.type === "ImportNamespaceSpecifier") return "namespace";
+  if (module === "cors" && specifier.type === "ImportDefaultSpecifier") return "function";
+  if (specifier.type !== "ImportSpecifier" || specifier.importKind === "type") return null;
+  const name = specifier.imported.type === "Identifier" ? specifier.imported.name : specifier.imported.value;
+  return (module === "cors" && name === "default") || (module === "hono/cors" && name === "cors") ? "function" : null;
+}
+
+function aliasDefinition(definition: TSESLint.Scope.Definition): boolean {
+  if (definition.type !== "Variable") return false;
+  if (definition.node.id.type !== "Identifier") return true;
+  const initializer = definition.node.init;
+  return initializer !== null && ["Identifier", "MemberExpression", "AssignmentExpression", "ConditionalExpression", "LogicalExpression", "SequenceExpression"].includes(unwrapExpression(initializer).type);
+}
+
+function headerReceiverReference(reference: TSESLint.Scope.Reference): boolean {
+  let typeName: TSESTree.Node = reference.identifier;
+  while (typeName.parent.type === "TSQualifiedName") typeName = typeName.parent;
+  if (reference.isValueReference === false || typeName.parent.type === "TSTypeQuery") return true;
+  if (reference.isWrite()) return reference.init === true;
+  const member = reference.identifier.parent;
+  if (member.type !== "MemberExpression" || member.object !== reference.identifier || member.computed || member.optional ||
+    member.property.type !== "Identifier" || !HEADER_METHODS.has(member.property.name)) return false;
+  return member.parent.type === "CallExpression" && member.parent.callee === member && !member.parent.optional;
+}
+
+function appendValue(previous: string | null | undefined, value: string | null): string | null | undefined {
+  if (previous === undefined) return undefined;
+  return previous === null ? value : previous + ", " + value;
+}
+
+function literalString(node: TSESTree.Node | undefined): string | null {
+  const value = node === undefined ? undefined : unwrapExpression(node);
+  return value?.type === "Literal" && typeof value.value === "string" ? value.value : null;
+}
+
+function headerValue(node: TSESTree.Node | undefined): string | null {
+  const value = node === undefined ? undefined : unwrapExpression(node);
+  if (value?.type !== "Literal" || !["string", "boolean", "number"].includes(typeof value.value)) return null;
+  return String(value.value).replace(/^[\t\n\r ]+|[\t\n\r ]+$/g, "");
+}
+
+function effectiveProperties(node: TSESTree.ObjectExpression): ReadonlyMap<string, TSESTree.Property> | null {
+  const properties = new Map<string, TSESTree.Property>();
+  for (const entry of node.properties) {
+    const entries = propertyEntries(entry);
+    if (entries === null) return null;
+    for (const [key, property] of entries) properties.set(key, property);
+  }
+  return properties;
+}
+
+function propertyEntries(entry: TSESTree.ObjectLiteralElement): Iterable<readonly [string, TSESTree.Property]> | null {
+  if (entry.type === "SpreadElement") {
+    const value = unwrapExpression(entry.argument);
+    return value.type === "ObjectExpression" ? effectiveProperties(value) : null;
+  }
+  if (entry.kind !== "init" || entry.method) return null;
+  const key = entry.computed ? literalPropertyKey(entry.key) : ASTUtils.getPropertyName(entry);
+  if (key === null) return null;
+  if (key === "__proto__" && !entry.computed) {
+    const value = unwrapExpression(entry.value);
+    return value.type === "Literal" && value.value === null ? [] : null;
+  }
+  return [[key, entry]];
+}
+
+function literalPropertyKey(node: TSESTree.Node): string | null {
+  const value = unwrapExpression(node);
+  const literal = literalString(value);
+  if (literal !== null) return literal;
+  if (value.type !== "TemplateLiteral" || value.expressions.length !== 0) return null;
+  return value.quasis[0]?.value.cooked ?? null;
+}
+
+function spreadOnly(node: TSESTree.ObjectExpression): boolean {
+  let current: TSESTree.Node = outerExpression(node);
+  while (current.parent !== undefined) {
+    const parent: TSESTree.Node = current.parent;
+    if (parent.type === "SpreadElement") return parent.parent.type === "ObjectExpression";
+    if (!["Property", "ObjectExpression", "ConditionalExpression", "LogicalExpression", "SequenceExpression",
+      "TSAsExpression", "TSSatisfiesExpression", "TSNonNullExpression", "TSTypeAssertion"].includes(parent.type)) return false;
+    current = parent;
+  }
+  return false;
+}
