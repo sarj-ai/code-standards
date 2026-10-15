@@ -14,6 +14,9 @@
   "strictParameterNoneValue": true,
   "deprecateTypingAliases": true,
   "enableExperimentalFeatures": false,
+  // PEP 484 ignores suppress the entire line even when their bracketed code is
+  // unrelated. Use checked, exact-code `pyright: ignore[...]` directives.
+  "enableTypeIgnoreComments": false,
 
   "reportUnusedImport": "error",
   "reportUnusedVariable": "error",
