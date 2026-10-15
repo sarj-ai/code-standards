@@ -84,6 +84,7 @@ const CONSTANT_CASE_RE = /^[A-Z][A-Z0-9_]*$/;
  * property is CONSTANT_CASE (`TABLES.USERS`), or a string literal.
  */
 function isStaticFragment(expression: TSESTree.Expression): boolean {
+  expression = unwrapExpression(expression);
   if (expression.type === AST_NODE_TYPES.Identifier) {
     return CONSTANT_CASE_RE.test(expression.name);
   }

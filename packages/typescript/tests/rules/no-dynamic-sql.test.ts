@@ -20,6 +20,8 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-dynamic-sql", rule, {
   valid: [
+    { name: "preserves a type-erased literal inside a LIKE pattern", code: "db.query(`SELECT id FROM users WHERE name LIKE '%${'fixed' as const}%'`);" },
+    { name: "preserves a type-erased literal in a concatenated value", code: 'db.query("SELECT id FROM users WHERE name = \'prefix_" + ("fixed" as const) + "_suffix\'");' },
     { name: "binds a complete LIKE pattern separately", code: "db.query('SELECT id FROM users WHERE name LIKE ?', ['%' + term + '%']);" },
     { name: "preserves partial value-like text in a quoted identifier", code: 'db.query(`SELECT "prefix_${column}_suffix" FROM users`);' },
     { name: "preserves partial value-like text in a dollar string", code: "db.query(`SELECT $$ prefix_'${note}'_suffix $$ FROM users`);" },
@@ -131,6 +133,7 @@ RULE_TESTER.run("no-dynamic-sql", rule, {
     },
   ],
   invalid: [
+    { name: "reports a type-erased runtime value inside a LIKE pattern", code: "db.query(`SELECT id FROM users WHERE name LIKE '%${term as string}%'`);", errors: [{ messageId: "dynamicSql" }] },
     { name: "reports a runtime value inside a LIKE pattern", code: "db.query(`SELECT id FROM users WHERE name LIKE '%${term}%'`);", errors: [{ messageId: "dynamicSql" }] },
     { name: "reports a runtime suffix in a quoted value", code: "db.query(`SELECT id FROM users WHERE name = 'prefix_${name}'`);", errors: [{ messageId: "dynamicSql" }] },
     { name: "reports a runtime prefix in a quoted value", code: "db.query(`SELECT id FROM users WHERE name = '${name}_suffix'`);", errors: [{ messageId: "dynamicSql" }] },
