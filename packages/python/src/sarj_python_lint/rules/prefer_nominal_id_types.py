@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 import re
@@ -710,7 +711,8 @@ def _unambiguous_exports(tree: ast.Module, imports: ImportIndex, facts: _TypeFac
             assignments.setdefault(assignment.target, []).append(assignment)
     # Imports are re-exports only when their binding is unambiguous; local
     # aliases must have exactly one top-level assignment and no other writes.
-    unique = {name for name, values in assignments.items() if len(values) == 1 and _binding_count(tree, name) == 1}
+    bindings: Counter[str] = _binding_counts(tree) if assignments else Counter()
+    unique = {name for name, values in assignments.items() if len(values) == 1 and bindings.get(name, 0) == 1}
     allowed = unique | set(imports.bindings)
     return _TypeFacts(
         {name: shape for name, shape in facts.raw_aliases.items() if name in allowed},
@@ -718,15 +720,23 @@ def _unambiguous_exports(tree: ast.Module, imports: ImportIndex, facts: _TypeFac
     )
 
 
-def _binding_count(tree: ast.Module, name: str) -> int:
-    return sum(
-        1
-        for node in walk_ast(tree)
-        if (isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del)) and node.id == name)
-        or (isinstance(node, ast.arg) and node.arg == name)
-        or (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and node.name == name)
-        or (isinstance(node, ast.alias) and (node.asname or node.name.partition(".")[0]) == name)
-    )
+def _binding_counts(tree: ast.Module) -> Counter[str]:
+    bindings: Counter[str] = Counter()
+    for node in walk_ast(tree):
+        match node:
+            case (
+                ast.Name(id=name, ctx=ast.Store() | ast.Del())
+                | ast.arg(arg=name)
+                | ast.FunctionDef(name=name)
+                | ast.AsyncFunctionDef(name=name)
+                | ast.ClassDef(name=name)
+            ):
+                bindings[name] += 1
+            case ast.alias(name=name, asname=alias):
+                bindings[alias or name.partition(".")[0]] += 1
+            case _:
+                continue
+    return bindings
 
 
 def _imported_facts(
