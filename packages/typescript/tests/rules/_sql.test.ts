@@ -67,12 +67,59 @@ describe("createSqlListener hands each whole statement over exactly once", () =>
   it("reports a joined fragment array once, not once per element", () => {
     expect(dispatched(`db.prepare(["INSERT INTO t", "VALUES (?)", "ON CONFLICT DO NOTHING"].join(" "));`)).toEqual([
       "INSERT INTO t VALUES (?) ON CONFLICT DO NOTHING",
-      " ",
     ]);
   });
 
   it("does not treat an unjoined array as one statement", () => {
     expect(dispatched(`const names = ["a", "b"];`)).toEqual(["a", "b"]);
+  });
+
+  it("preserves an empty join separator instead of inserting spaces", () => {
+    expect(dispatched(`db.query(["SEL", "ECT id FROM users"].join(""));`)).toEqual(["SELECT id FROM users"]);
+  });
+
+  it("preserves a newline join separator after a line comment", () => {
+    expect(dispatched(`db.query(["SELECT id FROM users -- note", "LIMIT 1 OFFSET 1"].join("\\n"));`)).toEqual([
+      "SELECT id FROM users        \nLIMIT 1 OFFSET 1",
+    ]);
+  });
+
+  it("uses the native comma separator when join has no arguments", () => {
+    expect(dispatched(`db.query(["SELECT id", "name FROM users"].join());`)).toEqual(["SELECT id,name FROM users"]);
+  });
+
+  it("does not scan an unused single-element join separator as SQL", () => {
+    expect(dispatched(`const note = ["ready"].join("SELECT * FROM users");`)).toEqual(["ready"]);
+  });
+
+  it("abstains from reconstructed fragments when the separator is unknown", () => {
+    expect(dispatched(`db.query(["SELECT * FROM users", "WHERE id = 1"].join(separator));`)).toEqual([]);
+  });
+
+  it("keeps a query executed while evaluating an unknown separator", () => {
+    expect(dispatched(`db.query(["SELECT id FROM users"].join(db.query("SELECT * FROM audit")));`)).toEqual(["SELECT * FROM audit"]);
+  });
+
+  it("does not infer native nested-array coercion from the standalone fragment-builder contract", () => {
+    expect(dispatched(`db.query([["SELECT * FROM users"], ["WHERE id = 1"]].join(" "));`)).toEqual([]);
+  });
+
+  it("does not consume executed queries inside a template substitution", () => {
+    expect(dispatched('logger.info(`value ${db.query("SELECT * FROM users")}`);')).toEqual([
+      "value ?", "SELECT * FROM users",
+    ]);
+  });
+
+  it("does not consume executed queries inside a joined template substitution", () => {
+    expect(dispatched('logger.info([`value ${db.query("SELECT * FROM users")}`].join(" "));')).toEqual([
+      "value ?", "SELECT * FROM users",
+    ]);
+  });
+
+  it("dispatches distinct outer and inner SQL statements once each", () => {
+    expect(dispatched('db.query(`SELECT * FROM users WHERE id = ${db.query("SELECT * FROM audit")}`);')).toEqual([
+      "SELECT * FROM users WHERE id = ?", "SELECT * FROM audit",
+    ]);
   });
 });
 

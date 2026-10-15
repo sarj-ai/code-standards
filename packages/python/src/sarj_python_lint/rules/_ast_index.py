@@ -33,6 +33,26 @@ def comprehension_results(node: ast.ListComp | ast.SetComp | ast.DictComp | ast.
     return [child for child in children(node) if isinstance(child, ast.expr)]
 
 
+def has_own_yield(function: ast.AsyncFunctionDef) -> bool:
+    pending: list[ast.AST] = list(function.body)
+    while pending:
+        match pending.pop():
+            case ast.Yield() | ast.YieldFrom():
+                return True
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.Lambda() as definition:
+                pending.extend(definition.args.defaults)
+                pending.extend(default for default in definition.args.kw_defaults if default is not None)
+                if not isinstance(definition, ast.Lambda):
+                    pending.extend(definition.decorator_list)
+            case ast.ClassDef() as definition:
+                pending.extend(definition.bases)
+                pending.extend(keyword.value for keyword in definition.keywords)
+                pending.extend(definition.decorator_list)
+            case node:
+                pending.extend(children(node))
+    return False
+
+
 def walk(node: ast.AST, *, index: NodeIndex | None = None) -> Iterator[ast.AST]:
     if index is not None and index.tree is node:
         yield from index.query((ast.AST,))

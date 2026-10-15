@@ -321,6 +321,10 @@ def test_statement_boundaries_ignore_semicolons_inside_quoted_identifiers(ending
         ("<unnamed>", "<unnamed>"),
         ("a-b", "a-b"),
         ("a..b", "a..b"),
+        ("CAFé_idx", "café_idx"),
+        ('"Ä"', "Ä"),
+        ('"AÄ"', '"AÄ"'),
+        (" child\u00a0 ", "child\u00a0"),
     ],
 )
 def test_identifier_normalization_preserves_quoted_identity_and_unparsed_text(source: str, expected: str) -> None:

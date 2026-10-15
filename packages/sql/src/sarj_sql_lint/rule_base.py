@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 import re
+from string import ascii_lowercase, ascii_uppercase
 from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, final
 
@@ -714,20 +715,35 @@ def sql_code_matches(pattern: re.Pattern[str], source: str, *, group: str | int 
         yield match
 
 
-_SQL_IDENTIFIER = r'(?:[A-Za-z_][A-Za-z0-9_$]*|"(?:""|[^"\n])+")'
-_SQL_IDENTIFIER_PART = re.compile(_SQL_IDENTIFIER)
-_SQL_QUALIFIED_IDENTIFIER = re.compile(rf"\s*{_SQL_IDENTIFIER}(?:\s*\.\s*{_SQL_IDENTIFIER})*\s*")
-_SAFE_SQL_IDENTIFIER = re.compile(r"[a-z_][a-z0-9_$]*")
+POSTGRES_IDENTIFIER_PART = r'(?-i:"(?:""|[^"\x00])+"|[A-Za-z_\u0080-\U0010ffff][A-Za-z0-9_$\u0080-\U0010ffff]*)'
+SQL_WHITESPACE = " \t\r\n\v\f"
+_SQL_IDENTIFIER_PART = re.compile(POSTGRES_IDENTIFIER_PART)
+_SQL_QUALIFIED_IDENTIFIER = re.compile(rf"\s*{POSTGRES_IDENTIFIER_PART}(?:\s*\.\s*{POSTGRES_IDENTIFIER_PART})*\s*")
+_SAFE_SQL_IDENTIFIER = re.compile(r"[a-z_\u0080-\U0010ffff][a-z0-9_$\u0080-\U0010ffff]*")
+SQL_ASCII_LOWER = str.maketrans(ascii_uppercase, ascii_lowercase)
+_CATALOG_PARTS = 3
+_TEMP_SCHEMA_RE = re.compile(r"pg_temp_[0-9]+")
+
+
+def sql_relation_key(value: str) -> tuple[str, ...]:
+    # PostgreSQL UTF-8 identifiers fold ASCII letters only; quoted parts preserve their exact text.
+    parts: list[str] = []
+    for match in _SQL_IDENTIFIER_PART.finditer(value):
+        token = match.group()
+        parts.append(token[1:-1].replace('""', '"') if token.startswith('"') else token.translate(SQL_ASCII_LOWER))
+    if len(parts) > 1 and _TEMP_SCHEMA_RE.fullmatch(parts[-2]) is not None:
+        parts[-2] = "pg_temp"
+    return tuple(parts[-2:] if len(parts) == _CATALOG_PARTS else parts)
 
 
 def normalize_sql_identifier(value: str, *, unqualified: bool = False) -> str:
     if _SQL_QUALIFIED_IDENTIFIER.fullmatch(value) is None:
-        return value.strip()
+        return value.strip(SQL_WHITESPACE)
     parts: list[str] = []
     for match in _SQL_IDENTIFIER_PART.finditer(value):
         token = match.group(0)
         if not token.startswith('"'):
-            parts.append(token.lower())
+            parts.append(token.translate(SQL_ASCII_LOWER))
         elif _SAFE_SQL_IDENTIFIER.fullmatch(token[1:-1]) is not None:
             parts.append(token[1:-1])
         else:

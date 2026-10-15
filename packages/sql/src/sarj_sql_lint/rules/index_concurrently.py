@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 import re
-from string import ascii_lowercase, ascii_uppercase
 from typing import TYPE_CHECKING, final, override
 
 from sarj_sql_lint.rule_base import (
+    POSTGRES_IDENTIFIER_PART,
     AutofixPolicy,
     Diagnostic,
     ExampleFile,
@@ -20,6 +20,7 @@ from sarj_sql_lint.rule_base import (
     mask_sql,
     mask_sql_comments,
     source_location,
+    sql_relation_key,
 )
 
 
@@ -36,12 +37,9 @@ PATTERN = re.compile(
 # Match table-name patterns against raw source to preserve quoted identifiers, gating on live code in masked text.
 
 # Search for target table forward from CREATE INDEX up to statement semicolon boundary.
-_IDENTIFIER_PART = r'(?:"(?:""|[^"\x00])+"|[A-Za-z_\u0080-\U0010ffff][A-Za-z0-9_$\u0080-\U0010ffff]*)'
-_IDENTIFIER_PART_RE = re.compile(_IDENTIFIER_PART)
-_ASCII_LOWER = str.maketrans(ascii_uppercase, ascii_lowercase)
-_CATALOG_PARTS = 3
-_TEMP_SCHEMA_RE = re.compile(r"pg_temp_[0-9]+")
-_QUALIFIED_IDENTIFIER = rf"{_IDENTIFIER_PART}(?:\s*\.\s*{_IDENTIFIER_PART})*(?![A-Za-z0-9_$\u0080-\U0010ffff]|\s*\.)"
+_QUALIFIED_IDENTIFIER = (
+    rf"{POSTGRES_IDENTIFIER_PART}(?:\s*\.\s*{POSTGRES_IDENTIFIER_PART})*(?![A-Za-z0-9_$\u0080-\U0010ffff]|\s*\.)"
+)
 _ON_TABLE_RE = re.compile(
     rf"(?<![A-Za-z0-9_$\u0080-\U0010ffff])ON\s+(?:ONLY\s+)?({_QUALIFIED_IDENTIFIER})", re.IGNORECASE
 )
@@ -145,7 +143,7 @@ class IndexConcurrently(Rule):
         created_by_basename: dict[str, int] = {}
         for match in _CREATE_TABLE_RE.finditer(uncommented):
             if _is_live(masked, match.start()):
-                name = _relation_name(match.group(1))
+                name = sql_relation_key(match.group(1))
                 created.setdefault(name, match.start())
                 created_by_basename.setdefault(name[-1], match.start())
 
@@ -187,23 +185,12 @@ def _is_live(masked: str, pos: int) -> bool:
     return pos < len(masked) and not masked[pos].isspace()
 
 
-def _relation_name(value: str) -> tuple[str, ...]:
-    # PostgreSQL UTF-8 identifiers fold ASCII letters only; quoted parts preserve their exact text.
-    parts: list[str] = []
-    for match in _IDENTIFIER_PART_RE.finditer(value):
-        token = match.group()
-        parts.append(token[1:-1].replace('""', '"') if token.startswith('"') else token.translate(_ASCII_LOWER))
-    if len(parts) > 1 and _TEMP_SCHEMA_RE.fullmatch(parts[-2]) is not None:
-        parts[-2] = "pg_temp"
-    return tuple(parts[-2:] if len(parts) == _CATALOG_PARTS else parts)
-
-
 def _target_table(source: str, masked: str, start: int) -> tuple[str, ...] | None:
     end = masked.find(";", start)
     stmt_end = len(masked) if end == -1 else end
     return next(
         (
-            _relation_name(match.group(1))
+            sql_relation_key(match.group(1))
             for match in _ON_TABLE_RE.finditer(source, start, stmt_end)
             if _is_live(masked, match.start())
         ),
