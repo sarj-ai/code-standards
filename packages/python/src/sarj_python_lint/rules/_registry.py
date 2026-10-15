@@ -66,6 +66,7 @@ from sarj_python_lint.rules.no_injected_module_loader import NoInjectedModuleLoa
 from sarj_python_lint.rules.no_input_model_mutation import NoInputModelMutation
 from sarj_python_lint.rules.no_interpreter_source_arguments import NoInterpreterSourceArguments
 from sarj_python_lint.rules.no_invalid_argument_name_suppression import NoInvalidArgumentNameSuppression
+from sarj_python_lint.rules.no_loguru_exc_info import NoLoguruExcInfo
 from sarj_python_lint.rules.no_mocked_pydantic_value_object import NoMockedPydanticValueObject
 from sarj_python_lint.rules.no_nested_pydantic_field_validator import NoNestedPydanticFieldValidator
 from sarj_python_lint.rules.no_nullable_dependency_fallback import NoNullableDependencyFallback
@@ -243,6 +244,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         RequireExplicitPsycopgTransaction.id: RequireExplicitPsycopgTransaction,
         AsyncMockCallWithoutAwaitAssertion.id: AsyncMockCallWithoutAwaitAssertion,
         NoAsyncFunctionCache.id: NoAsyncFunctionCache,
+        NoLoguruExcInfo.id: NoLoguruExcInfo,
         ComplexPostgresQueryRequiresArchitectureReview.id: ComplexPostgresQueryRequiresArchitectureReview,
         ExcessiveCommentary.id: ExcessiveCommentary,
         PreferWalrusAwaitedNoneGuard.id: PreferWalrusAwaitedNoneGuard,

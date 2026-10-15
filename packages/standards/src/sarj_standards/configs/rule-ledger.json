@@ -71,6 +71,7 @@
       "no-input-model-mutation",
       "no-interpreter-source-arguments",
       "no-invalid-argument-name-suppression",
+      "no-loguru-exc-info",
       "no-mocked-pydantic-value-object",
       "no-nested-pydantic-field-validator",
       "no-nullable-dependency-fallback",
@@ -493,7 +494,8 @@
       "SARJ493",
       "SARJ494",
       "SARJ495",
-      "SARJ507"
+      "SARJ507",
+      "SARJ508"
     ],
     "sql": [
       "SARJ101",

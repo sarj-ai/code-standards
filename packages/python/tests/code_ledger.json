@@ -284,5 +284,6 @@
   "SARJ493": "no-conflicting-pydantic-alias-validation",
   "SARJ494": "prefer-declarative-batch-validation",
   "SARJ495": "test-without-explicit-oracle",
-  "SARJ507": "no-async-function-cache"
+  "SARJ507": "no-async-function-cache",
+  "SARJ508": "no-loguru-exc-info"
 }
