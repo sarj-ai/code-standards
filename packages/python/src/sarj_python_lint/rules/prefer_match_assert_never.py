@@ -204,7 +204,7 @@ def _ignores_argument_type(comment: str) -> bool:
     if match is None:
         return False
     codes = match.group(1)
-    return codes is None or bool({code.strip() for code in codes.split(",")} & {"reportArgumentType", "arg-type"})
+    return codes is None or not {"reportArgumentType", "arg-type"}.isdisjoint(code.strip() for code in codes.split(","))
 
 
 def _module_scope_classdefs(tree: ast.Module) -> list[ast.ClassDef]:

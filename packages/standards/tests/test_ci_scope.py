@@ -507,7 +507,7 @@ def test_ci_completion_covers_every_job_and_rejects_failures(result: str, accept
     }
     for key in terminal.needs:
         candidate = dict.fromkeys(terminal.needs, "success") | {key: result}
-        triggers_guard = bool(rejected.intersection(candidate.values()))
+        triggers_guard = not rejected.isdisjoint(candidate.values())
         previous_gate_accepts = all(value in {"success", "skipped"} for value in candidate.values())
         assert triggers_guard is not previous_gate_accepts
         assert previous_gate_accepts is accepted

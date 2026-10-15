@@ -263,10 +263,10 @@ def detect(
 
 
 def detect_adopted(root: Path, adopted: manifest.Manifest) -> Ecosystems:
-    python = bool({"ruff", "pyright"}.intersection(adopted.configs))
+    python = not {"ruff", "pyright"}.isdisjoint(adopted.configs)
     typescript = "eslint" in adopted.configs
-    swift = bool({"swiftformat", "swiftlint"}.intersection(adopted.configs))
-    kotlin = bool({"ktlint", "detekt"}.intersection(adopted.configs))
+    swift = not {"swiftformat", "swiftlint"}.isdisjoint(adopted.configs)
+    kotlin = not {"ktlint", "detekt"}.isdisjoint(adopted.configs)
     # An adopted manifest is authoritative. Do not auto-detect disabled
     # ecosystems: a repository may intentionally contain several unowned mobile
     # projects, and discovery would make an unrelated legacy migration ambiguous.

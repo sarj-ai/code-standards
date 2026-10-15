@@ -59,9 +59,10 @@ class PreferSetIsdisjoint(ProjectRule):
         category=RuleCategory.STYLE,
         autofix=AutofixPolicy.SUGGESTION,
         limitations=(
+            "Explicit unshadowed built-in bool calls are predicates even in assignments and returns. Raw stored or returned intersections remain values, not predicates.",
             "Set receivers must come from a literal, comprehension, constructor, dominating local assignment, or an unchanged parameter's directly declared first-party set/frozenset field.",
             "Dictionary key-view receivers require a literal/comprehension/constructor or one unreassigned, dominating local binding. Custom mappings and unproven parameters are excluded.",
-            "Declared fields rely on the annotated contract. Unknown or union field types, properties, explicit owner/field reassignment, branch-merged bindings, stored intersections, and generated files are excluded. The other operand must be a known iterable.",
+            "Declared fields rely on the annotated contract. Unknown or union field types, properties, explicit owner/field reassignment, branch-merged bindings, stored intersections, and generated files are excluded. Captured bindings in deferred lambda/generator bodies and starred intersection arguments are excluded. The other operand must be a known iterable.",
             "The suggestion is intentionally not an autofix because short-circuiting may make custom element equality or hashing side effects observable.",
         ),
         examples=(
@@ -73,7 +74,7 @@ class PreferSetIsdisjoint(ProjectRule):
                     ExampleFile(PurePosixPath("pyproject.toml"), '[project]\nname = "example"\nversion = "0.1.0"\n'),
                     ExampleFile.python(
                         "app/policy.py",
-                        "class AccessCase:\n    tags: frozenset[str]\n\ndef accepts(case: AccessCase):\n    if case.tags & {'read', 'write'}:\n        allow()\n",
+                        "class AccessCase:\n    tags: frozenset[str]\n\ndef accepts(case: AccessCase):\n    return bool(case.tags & {'read', 'write'})\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/policy.py"),
@@ -144,16 +145,20 @@ class _Scanner:
             self._update_binding(statement, local)
 
     def _scan_statement(self, statement: ast.stmt, exact: set[str]) -> None:
+        exact.difference_update(_named_expression_targets(statement))
+        if isinstance(
+            statement,
+            ast.If | ast.While | ast.For | ast.AsyncFor | ast.With | ast.AsyncWith | ast.Try | ast.Match,
+        ):
+            stored = _stored_names(statement)
+            if "*" in stored:
+                exact.clear()
+            else:
+                exact.difference_update(stored)
         match statement:
-            case ast.If():
+            case ast.If() | ast.While():
                 self._scan_boolean(statement.test, exact)
                 self._scan_embedded(statement.test, exact)
-                self.scan_body(statement.body, set(exact))
-                self.scan_body(statement.orelse, set(exact))
-            case ast.While():
-                loop_exact = exact - _stored_names(ast.Module(body=[*statement.body, *statement.orelse]))
-                self._scan_boolean(statement.test, loop_exact)
-                self._scan_embedded(statement.test, loop_exact)
                 self.scan_body(statement.body, set(exact))
                 self.scan_body(statement.orelse, set(exact))
             case ast.Assert(test=test):
@@ -172,7 +177,7 @@ class _Scanner:
             case ast.With() | ast.AsyncWith():
                 nested = set(exact)
                 for item in statement.items:
-                    self._scan_embedded(item.context_expr, exact)
+                    self._scan_embedded(item.context_expr, nested)
                     if item.optional_vars is not None:
                         nested.difference_update(_stored_names(item.optional_vars))
                 self.scan_body(statement.body, nested)
@@ -192,9 +197,14 @@ class _Scanner:
 
     def _scan_embedded(self, expression: ast.expr, exact: set[str]) -> None:
         if isinstance(expression, ast.Lambda):
-            nested = exact - _argument_names(expression.args)
-            self._scan_embedded(expression.body, nested)
+            self._scan_embedded(expression.body, set())
             return
+        if _is_builtin_bool_call(expression, self.shadowed) or (
+            isinstance(expression, ast.UnaryOp)
+            and isinstance(expression.op, ast.Not)
+            and _is_builtin_bool_call(expression.operand, self.shadowed)
+        ):
+            self._scan_boolean(expression, exact)
         if isinstance(expression, ast.IfExp):
             self._scan_boolean(expression.test, exact)
         if isinstance(expression, ast.DictComp):
@@ -202,6 +212,9 @@ class _Scanner:
             self._scan_embedded(expression.key, nested)
             self._scan_embedded(expression.value, nested)
             return
+        if isinstance(expression, ast.GeneratorExp):
+            self._scan_embedded(expression.generators[0].iter, exact)
+            exact = set()
         if isinstance(expression, ast.ListComp | ast.SetComp | ast.GeneratorExp):
             nested = self._scan_comprehensions(expression.generators, exact)
             self._scan_embedded(expression.elt, nested)
@@ -252,7 +265,6 @@ class _Scanner:
         )
 
     def _update_binding(self, statement: ast.stmt, exact: set[str]) -> None:
-        exact.difference_update(_named_expression_targets(statement))
         match statement:
             case ast.Assign(targets=[ast.Name(id=name)], value=value):
                 if _is_exact_set(value, exact, self.shadowed):
@@ -274,17 +286,6 @@ class _Scanner:
                 exact.difference_update(alias.asname or alias.name.split(".")[0] for alias in aliases)
             case ast.ImportFrom(names=aliases):
                 _invalidate_imported_bindings(aliases, exact)
-            case (
-                ast.If()
-                | ast.While()
-                | ast.For()
-                | ast.AsyncFor()
-                | ast.With()
-                | ast.AsyncWith()
-                | ast.Try()
-                | ast.Match()
-            ):
-                exact.difference_update(_stored_names(statement))
             case _:
                 pass
 
@@ -299,6 +300,7 @@ def _is_intersection(node: ast.expr, exact: set[str], shadowed: frozenset[str], 
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == "intersection"
         and len(node.args) == 1
+        and not isinstance(node.args[0], ast.Starred)
         and not node.keywords
         and _is_exact_set(node.func.value, exact, shadowed)
     )
@@ -356,45 +358,37 @@ def _is_proven_iterable(node: ast.expr, exact: set[str], shadowed: frozenset[str
     )
 
 
-def _stored_names(node: ast.AST) -> set[str]:
-    return {child.id for child in walk_ast(node) if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store)}
+def _stored_names(node: ast.AST, *, node_index: NodeIndex | None = None) -> set[str]:
+    names: set[str] = set()
+    for child in walk_ast(node, index=node_index):
+        match child:
+            case (
+                ast.Name(id=name, ctx=ast.Store() | ast.Del())
+                | ast.arg(arg=name)
+                | ast.FunctionDef(name=name)
+                | ast.AsyncFunctionDef(name=name)
+                | ast.ClassDef(name=name)
+                | ast.ExceptHandler(name=name)
+                | ast.MatchAs(name=name)
+                | ast.MatchStar(name=name)
+                | ast.MatchMapping(rest=name)
+            ):
+                if name is not None:
+                    names.add(name)
+            case ast.alias(name=name, asname=alias):
+                names.add(alias or name.split(".")[0])
+            case _:
+                pass
+    return names
 
 
 def _named_expression_targets(node: ast.AST) -> set[str]:
     return {expression.target.id for expression in walk_ast(node) if isinstance(expression, ast.NamedExpr)}
 
 
-def _argument_names(arguments: ast.arguments) -> set[str]:
-    return {
-        argument.arg
-        for argument in (
-            *arguments.posonlyargs,
-            *arguments.args,
-            *arguments.kwonlyargs,
-            *((arguments.vararg,) if arguments.vararg is not None else ()),
-            *((arguments.kwarg,) if arguments.kwarg is not None else ()),
-        )
-    }
-
-
 def _shadowed_builtins(tree: ast.Module, *, node_index: NodeIndex | None = None) -> frozenset[str]:
-    shadowed: set[str] = set()
-    for node in walk_ast(tree, index=node_index):
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store) and node.id in _TRACKED_BUILTINS:
-            shadowed.add(node.id)
-        elif isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) and node.name in _TRACKED_BUILTINS:
-            shadowed.add(node.name)
-        elif isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names):
-            shadowed.update(_TRACKED_BUILTINS)
-        elif isinstance(node, ast.ExceptHandler | ast.MatchAs | ast.MatchStar) and node.name in _TRACKED_BUILTINS:
-            shadowed.add(node.name)
-        elif isinstance(node, ast.MatchMapping) and node.rest in _TRACKED_BUILTINS:
-            shadowed.add(node.rest)
-        elif isinstance(node, ast.arg) and node.arg in _TRACKED_BUILTINS:
-            shadowed.add(node.arg)
-        elif isinstance(node, ast.alias) and (node.asname or node.name.split(".")[0]) in _TRACKED_BUILTINS:
-            shadowed.add(node.asname or node.name.split(".")[0])
-    return frozenset(shadowed)
+    stored = _stored_names(tree, node_index=node_index)
+    return _TRACKED_BUILTINS if "*" in stored else frozenset(stored.intersection(_TRACKED_BUILTINS))
 
 
 def _invalidate_imported_bindings(aliases: list[ast.alias], exact: set[str]) -> None:
