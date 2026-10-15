@@ -96,7 +96,7 @@ class PreferRequiredConstructorParameters(Rule):
                 continue
             if method.decorator_list:
                 if provenance is None:
-                    provenance = _overload_provenance(context)
+                    provenance = ResourceProvenance(context)
                 if _is_overload(context, provenance, method):
                     continue
             findings.extend(
@@ -132,24 +132,6 @@ def _scope(context: PythonFileContext, node: ast.AST) -> ast.AST | None:
     ):
         parent = context.parents.get(parent)
     return parent
-
-
-def _overload_provenance(context: PythonFileContext) -> ResourceProvenance:
-    provenance = ResourceProvenance(context)
-    comprehensions = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
-    for expression in context.nodes(ast.NamedExpr):
-        target = expression.target
-        original = provenance.scope(target)
-        if not isinstance(original, comprehensions):
-            continue
-        # Assignment expressions in comprehensions bind in the containing
-        # scope, unlike iteration targets, which stay comprehension-local.
-        containing = original
-        while isinstance(containing, comprehensions):
-            containing = provenance.scope(containing)
-        provenance.bindings[original][target.id].remove(target)
-        provenance.bindings[containing][target.id].append(target)
-    return provenance
 
 
 def _binding(provenance: ResourceProvenance, name: str, at: ast.AST) -> ast.AST | None:

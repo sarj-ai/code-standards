@@ -2466,7 +2466,7 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
     generated_comment_wall = _has_generated_config_header(path, lines)
     attached: list[_AttachedComment] = []
     findings: list[Finding] = []
-    config_run_lines = _commented_config_runs(path, lines)
+    config_run_lines = _commented_config_runs(path, lines, literal_lines=validated_literal_lines)
     if config_run_lines:
         findings.extend(
             Finding(
@@ -2562,10 +2562,11 @@ def _suppresses_previous_line(
     return match is not None and code in {item.strip().upper() for item in match.group("codes").split(",")}
 
 
-def _commented_config_runs(path: Path, lines: list[str]) -> set[int]:
+def _commented_config_runs(path: Path, lines: list[str], *, literal_lines: set[int] | None) -> set[int]:
     if path.suffix.lower() not in {".yaml", ".yml", ".toml", ".jsonc"}:
         return set()
-    literal_lines = _config_literal_lines(path, lines)
+    if literal_lines is None:
+        literal_lines = _config_literal_lines(path, lines)
     leaders: set[int] = set()
     index = 0
     while index < len(lines):

@@ -1,9 +1,16 @@
+import asyncio
+import inspect
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 
 from sarj_python_lint.rules.async_cleanup_registered_synchronously import AsyncCleanupRegisteredSynchronously
+
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 _BASE = "from contextlib import AsyncExitStack\nasync def close():\n    await finish()\nasync def run():\n    async with AsyncExitStack() as stack:\n        stack.callback(close)\n"
@@ -92,6 +99,98 @@ CASES = (
 def test_labeled_cases(case: EvaluationCase) -> None:
     findings = AsyncCleanupRegisteredSynchronously().check(Path("app/resources.py"), case.source)
     assert len(findings) == (1 if case.expected is ExpectedOutcome.MATCH else 0)
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "[(close := synchronous) for _ in (0,)]",
+        "{(close := synchronous) for _ in (0,)}",
+        "{key: (close := synchronous) for key in (0,)}",
+        "tuple((close := synchronous) for _ in (0,))",
+        "[[(close := synchronous) for _ in (0,)] for _ in (0,)]",
+    ],
+    ids=("list", "set", "dict", "generator", "nested-comprehensions"),
+)
+@pytest.mark.parametrize("module_scope", [False, True], ids=("function", "module"))
+def test_comprehension_walrus_rebinds_the_containing_scope(replacement: str, module_scope: bool) -> None:
+    setup = "def synchronous():\n    pass\n"
+    if module_scope:
+        source = _BASE.replace("async def run():", f"{setup}{replacement}\nasync def run():")
+    else:
+        source = _BASE.replace("async def run():", f"{setup}async def run():\n    {replacement}")
+
+    assert AsyncCleanupRegisteredSynchronously().check(Path("app/resources.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "[close for close in (synchronous,)]",
+        "[lambda: (close := synchronous) for _ in (0,)]",
+    ],
+    ids=("iteration-binding", "lambda-local-walrus"),
+)
+def test_comprehension_local_bindings_do_not_shadow_the_outer_callback(statement: str) -> None:
+    source = _BASE.replace(
+        "async def run():",
+        f"def synchronous():\n    pass\n{statement}\nasync def run():",
+    )
+
+    assert len(AsyncCleanupRegisteredSynchronously().check(Path("app/resources.py"), source)) == 1
+
+
+def test_comprehension_rebinding_registers_a_synchronous_callback_at_runtime() -> None:
+    events: list[str] = []
+
+    async def original() -> None:
+        await asyncio.sleep(0)
+        events.append("async")
+
+    def synchronous() -> None:
+        events.append("sync")
+
+    async def run() -> None:
+        from contextlib import AsyncExitStack  # ruff: ignore[import-outside-top-level] -- mirror the production resource API locally.
+
+        close: Callable[[], object] = original
+        [(close := synchronous) for _ in (0,)]
+        async with AsyncExitStack() as stack:
+            stack.callback(close)
+
+    asyncio.run(run())
+
+    assert events == ["sync"]
+
+
+@pytest.mark.parametrize(
+    ("body", "coroutine"),
+    [
+        ("    def values():\n        yield 1\n    await finish()", True),
+        ("    async def values():\n        yield 1\n    await finish()", True),
+        ("    factory = lambda: (yield 1)\n    await finish()", True),
+        ("    class Values:\n        def values(self):\n            yield 1\n    await finish()", True),
+        ("    def values(default=(yield 1)):\n        pass", False),
+        ("    factory = lambda default=(yield 1): default", False),
+        ("    class Values((yield 1)):\n        pass", False),
+    ],
+    ids=(
+        "nested-sync",
+        "nested-async",
+        "nested-lambda",
+        "nested-method",
+        "evaluated-default",
+        "lambda-default",
+        "evaluated-base",
+    ),
+)
+def test_callback_kind_uses_its_own_yields(body: str, coroutine: bool) -> None:
+    source = _BASE.replace("    await finish()", body)
+    namespace: dict[str, object] = {}
+    exec(source, namespace)  # ruff: ignore[exec-builtin] -- inspect compiler flags for fixed synthetic Python scope cases.
+
+    assert inspect.iscoroutinefunction(namespace["close"]) is coroutine
+    assert len(AsyncCleanupRegisteredSynchronously().check(Path("app/resources.py"), source)) == int(coroutine)
 
 
 @pytest.mark.parametrize(

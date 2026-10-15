@@ -120,6 +120,7 @@ RULE_TESTER.run("store-insert-requires-on-conflict", rule, {
     },
   ],
   invalid: [
+    { name: "inspects a seed insert reconstructed with an empty separator", code: "function seed() { db.query(['INS', 'ERT INTO users(id) VALUES (1)'].join('')); }", errors: [{ messageId: "storeInsertRequiresOnConflict" }] },
     { name: "reports the documented bare insert", code: STORE_INSERT_REQUIRES_ON_CONFLICT_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "storeInsertRequiresOnConflict" }] },
     {
       name: "reports a replay contract without conflict handling",

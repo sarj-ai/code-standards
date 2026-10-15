@@ -7,6 +7,7 @@
 import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { unwrapExpression } from "./_unwrap-expression.js";
+import { staticString } from "./_static-string.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { sqlSingleQuotedRanges, stripSqlNoise } from "./_sql.js";
@@ -26,7 +27,7 @@ export const NO_DYNAMIC_SQL_DOCUMENTATION = {
   remediation: "Bind data values through SQL placeholders. Select non-bindable identifiers or clauses from fixed, reviewed fragments instead of interpolating runtime text.",
   category: "security",
   limitations: [
-    "Template and concatenation fragments are inspected at recognized execution calls. Double-quoted identifiers, comments, and dollar strings are excluded; this is not a general SQL injection detector.",
+    "Template and concatenation fragments are inspected at recognized execution calls, including runtime pieces surrounded by literal text inside a quoted value. Double-quoted identifiers, comments, and dollar strings are excluded; this is not a general SQL injection detector.",
     "Literal fragments, legacy uppercase fragment names, and parameterizing tagged templates are exempt; uppercase spelling does not prove a value is static.",
     "The bounded lexer recognizes doubled quotes, comments, and PostgreSQL dollar strings; dialect-specific escape modes and SQL generated through other APIs require separate security review.",
   ],
@@ -83,6 +84,7 @@ const CONSTANT_CASE_RE = /^[A-Z][A-Z0-9_]*$/;
  * property is CONSTANT_CASE (`TABLES.USERS`), or a string literal.
  */
 function isStaticFragment(expression: TSESTree.Expression): boolean {
+  expression = unwrapExpression(expression);
   if (expression.type === AST_NODE_TYPES.Identifier) {
     return CONSTANT_CASE_RE.test(expression.name);
   }
@@ -122,33 +124,12 @@ function runtimeInterpolations(
       const unquoted = visible.slice(offset, offset + RUNTIME_MARKER.length) === RUNTIME_MARKER;
       offset += RUNTIME_MARKER.length;
       if (isStaticFragment(expression)) return [];
-      if (inValue && endsWithSqlQuote(parts[index] ?? "") && startsWithSqlQuote(parts[index + 1] ?? "")) {
+      if (inValue) {
         return [{ expression, messageId: "dynamicSql" as const }];
       }
       return unquoted ? [{ expression, messageId: "dynamicFragment" as const }] : [];
     },
   );
-}
-
-function endsWithSqlQuote(text: string): boolean {
-  return /'\s*$/u.test(text);
-}
-
-function startsWithSqlQuote(text: string): boolean {
-  return /^\s*'/u.test(text);
-}
-
-function staticLiteralText(node: TSESTree.Expression): string | undefined {
-  if (node.type === AST_NODE_TYPES.Literal && typeof node.value === "string") {
-    return node.value;
-  }
-  if (
-    node.type === AST_NODE_TYPES.TemplateLiteral &&
-    node.expressions.length === 0
-  ) {
-    return node.quasis[0]?.value.raw;
-  }
-  return undefined;
 }
 
 function runtimeConcatOperands(node: TSESTree.Node): SqlInterpolation[] {
@@ -166,7 +147,7 @@ function runtimeConcatOperands(node: TSESTree.Node): SqlInterpolation[] {
   if (!hasStringLiteral) {
     return [];
   }
-  const parts = operands.map((operand) => staticLiteralText(operand) ?? RUNTIME_MARKER);
+  const parts = operands.map((operand) => staticString(operand) ?? RUNTIME_MARKER);
   const statement = parts.join("");
   const ranges = sqlSingleQuotedRanges(statement);
   const visible = stripSqlNoise(statement);
@@ -176,13 +157,7 @@ function runtimeConcatOperands(node: TSESTree.Node): SqlInterpolation[] {
     const unquoted = visible.slice(offset, offset + RUNTIME_MARKER.length) === RUNTIME_MARKER;
     offset += parts[index]?.length ?? 0;
     if (isStaticFragment(operand)) return [];
-    const before = operands[index - 1];
-    const after = operands[index + 1];
-    if (inValue && before !== undefined &&
-      after !== undefined &&
-      endsWithSqlQuote(staticLiteralText(before) ?? "") &&
-      startsWithSqlQuote(staticLiteralText(after) ?? "")
-    ) {
+    if (inValue) {
       return [{ expression: operand, messageId: "dynamicSql" as const }];
     }
     return unquoted ? [{ expression: operand, messageId: "dynamicFragment" as const }] : [];

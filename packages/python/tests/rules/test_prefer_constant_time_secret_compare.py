@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 import textwrap
 from typing import TYPE_CHECKING
@@ -6,6 +7,7 @@ import pytest
 
 from sarj_python_lint.__main__ import main
 from sarj_python_lint.rule_base import RuleExample, Severity
+import sarj_python_lint.rules.prefer_constant_time_secret_compare as secret_compare
 from sarj_python_lint.rules.prefer_constant_time_secret_compare import PreferConstantTimeSecretCompare
 
 
@@ -76,6 +78,35 @@ def test_header_and_settings_aliases_fire() -> None:
             return provided == expected
     """
     assert len(_check(source)) == 1
+
+
+def test_scope_roles_are_reused_across_comparisons(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Count internal scope fact construction without replacing its behavior.
+    original = secret_compare._roles_for_scope  # pyright: ignore[reportPrivateUsage]  # ruff: ignore[private-member-access]
+    built: list[ast.Module | ast.FunctionDef | ast.AsyncFunctionDef] = []
+
+    def counted(scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef, names: frozenset[str]) -> object:
+        built.append(scope)
+        return original(scope, names)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Interception counts cache builds; injection would bypass the cache under test.
+        secret_compare, "_roles_for_scope", counted
+    )
+    source = """
+        def first(request, settings):
+            accepted = request.headers["X-API-Key"] == settings.api_key
+            return request.cookies["token"] == settings.token
+
+        def second(request, settings):
+            return request.headers["X-API-Key"] != settings.api_key
+    """
+
+    diagnostics = _check(source)
+
+    assert len(diagnostics) == 2
+    assert all(finding.code == "SARJ011" for finding in diagnostics)
+    assert len(built) == 2
+    assert {scope.name for scope in built if isinstance(scope, ast.FunctionDef)} == {"first", "second"}
 
 
 def test_settings_call_assignment_keeps_expected_name_role() -> None:

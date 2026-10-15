@@ -5,6 +5,9 @@ import re
 from typing import TYPE_CHECKING, NamedTuple
 
 from sarj_sql_lint.rule_base import (
+    POSTGRES_IDENTIFIER_PART,
+    SQL_ASCII_LOWER,
+    SQL_WHITESPACE,
     declared_dialect,
     dollar_quoted_spans,
     is_dump_file,
@@ -22,7 +25,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_IDENTIFIER_PART = r'(?:"(?:""|[^"\n])+"|[A-Za-z_][A-Za-z0-9_$]*)'
+_IDENTIFIER_PART = POSTGRES_IDENTIFIER_PART
 _QUALIFIED_IDENTIFIER = rf"{_IDENTIFIER_PART}(?:\s*\.\s*{_IDENTIFIER_PART})*"
 _IDENTIFIER_PART_RE = re.compile(_IDENTIFIER_PART)
 _CREATE_INDEX_RE = re.compile(
@@ -159,10 +162,8 @@ def authored_secondary_indexes(path: Path, source: str) -> tuple[IndexDefinition
     return tuple(index for index in authored_indexes(path, source) if not index.unique)
 
 
-def parse_indexes(source: str) -> tuple[IndexDefinition, ...]:
-    masked = _mask_dollar_quoted_bodies(
-        source, mask_sql_literals_and_comments(source, mask_dollar_literals="$" in source)
-    )
+def parse_indexes(source: str, *, include_executable_bodies: bool = False) -> tuple[IndexDefinition, ...]:
+    masked = _index_source(source, include_executable_bodies=include_executable_bodies)
     uncommented = mask_sql_comments(source)
     identifier_spans = quoted_identifier_spans(masked)
     indexes: list[IndexDefinition] = []
@@ -210,6 +211,11 @@ def parse_indexes(source: str) -> tuple[IndexDefinition, ...]:
     return tuple(indexes)
 
 
+def _index_source(source: str, *, include_executable_bodies: bool) -> str:
+    masked = mask_sql_literals_and_comments(source, mask_dollar_literals="$" in source)
+    return masked if include_executable_bodies else _mask_dollar_quoted_bodies(source, masked)
+
+
 def _mask_dollar_quoted_bodies(source: str, masked: str) -> str:
     output = list(masked)
     for start, end in dollar_quoted_spans(source):
@@ -233,7 +239,12 @@ def _parse_drops(masked: str) -> tuple[IndexDrop, ...]:
         if _inside_spans(match.start(), identifier_spans):
             continue
         statement_end = _statement_end(masked, match.end())
-        body = re.sub(r"\s+(?:CASCADE|RESTRICT)\s*$", "", masked[match.end() : statement_end], flags=re.IGNORECASE)
+        body = re.sub(
+            r"[ \t\r\n\v\f]+(?:CASCADE|RESTRICT)[ \t\r\n\v\f]*$",
+            "",
+            masked[match.end() : statement_end],
+            flags=re.IGNORECASE,
+        )
         raw_names = _split_identifier_list(body)
         if not raw_names or any(re.fullmatch(_QUALIFIED_IDENTIFIER, name) is None for name in raw_names):
             continue
@@ -282,7 +293,7 @@ def _parse_index_suffix(masked: str, start: int, end: int) -> IndexSuffix | None
             return parser.result(None)
         if (match := _WHERE_RE.match(masked, parser.cursor, end)) is not None:
             predicate = masked[match.end() : end]
-            if not predicate.strip() or not _has_balanced_parentheses(predicate):
+            if not predicate.strip(SQL_WHITESPACE) or not _has_balanced_parentheses(predicate):
                 return None
             return parser.result(match.end())
         if not parser.consume(masked, end):
@@ -290,7 +301,7 @@ def _parse_index_suffix(masked: str, start: int, end: int) -> IndexSuffix | None
 
 
 def _skip_space(value: str, start: int, end: int) -> int:
-    while start < end and value[start].isspace():
+    while start < end and value[start] in SQL_WHITESPACE:
         start += 1
     return start
 
@@ -385,10 +396,10 @@ def _split_identifier_list(value: str) -> tuple[str, ...]:
             cursor = _quoted_identifier_end(value, cursor, len(value))
             continue
         if value[cursor] == ",":
-            parts.append(value[start:cursor].strip())
+            parts.append(value[start:cursor].strip(SQL_WHITESPACE))
             start = cursor + 1
         cursor += 1
-    parts.append(value[start:].strip())
+    parts.append(value[start:].strip(SQL_WHITESPACE))
     return tuple(parts)
 
 
@@ -448,14 +459,14 @@ def _normalize_sql(value: str) -> str:
             pending_space = False
             quote = char
             output.append(char)
-        elif char.isspace():
+        elif char in SQL_WHITESPACE:
             pending_space = True
         else:
             _append_normalizing_space(output, pending_space=pending_space)
             pending_space = False
-            output.append(char.lower())
+            output.append(char.translate(SQL_ASCII_LOWER))
         position += 1
-    return "".join(output).strip()
+    return "".join(output).strip(SQL_WHITESPACE)
 
 
 def _dollar_quoted_literal_end(value: str, start: int) -> int | None:

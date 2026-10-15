@@ -82,7 +82,7 @@ def test_flags_fk_that_no_migration_in_the_tree_indexes(tmp_path: Path) -> None:
     target = root / "20220711182928_add_workflows" / "migration.sql"
     diags = _check(target.read_text(), target)
     assert len(diags) == 1
-    assert "eventTypeId".lower() in diags[0].message
+    assert '"eventTypeId"' in diags[0].message
 
 
 def test_tree_scan_does_not_reach_outside_the_migrations_directory(tmp_path: Path) -> None:
@@ -356,3 +356,111 @@ def test_cascading_and_set_value_actions_require_an_index(action: str) -> None:
     source = f"CREATE TABLE child (parent_id BIGINT REFERENCES parent(id) {action});"
 
     assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    ("child", "indexed", "expected"),
+    [
+        ("app.child", "audit.child", 1),
+        ("app.child", "app.child", 0),
+        ('"Child"', "child", 1),
+        ('"child"', "child", 0),
+        ("app.child", "child", 0),
+        ("child", "app.child", 0),
+        ("current_db.app.child", "app.child", 0),
+        ("app.child", "current_db.app.child", 0),
+        ("pg_temp.child", "pg_temp_3.child", 0),
+        ("pg_temp_3.child", "pg_temp.child", 0),
+        ('"schema.with.dot".child', '"schema.other".child', 1),
+        ("child\u00a0", "child\u00a0", 0),
+        ("child\u00a0", "child", 1),
+    ],
+)
+def test_index_coverage_preserves_relation_identity(child: str, indexed: str, expected: int) -> None:
+    source = (
+        f"CREATE TABLE {child}(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n"
+        f"CREATE INDEX child_parent ON {indexed}(parent_id);\n"
+    )
+    assert len(_check(source)) == expected
+
+
+@pytest.mark.parametrize(
+    ("predicate", "expected"),
+    [
+        ("FALSE", 1),
+        ("((FALSE))", 1),
+        ("TRUE", 0),
+        ("parent_id IS NOT NULL", 0),
+        ("active", 0),
+        ("falſe", 0),
+    ],
+)
+def test_only_provably_empty_partial_indexes_stop_proving_coverage(predicate: str, expected: int) -> None:
+    source = (
+        "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE, active bool, falſe bool);\n"
+        f"CREATE INDEX child_parent ON child(parent_id) WHERE {predicate};"
+    )
+    assert len(_check(source)) == expected
+
+
+def test_empty_index_does_not_override_another_covering_index() -> None:
+    source = (
+        "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n"
+        "CREATE INDEX empty ON child(parent_id) WHERE FALSE;\n"
+        "CREATE INDEX covering ON child(parent_id);\n"
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("column", "indexed", "expected"),
+    [
+        ("Ä", "Ä", 0),
+        ("Ä", "ä", 1),
+        ('"ParentId"', '"ParentId"', 0),
+        ('"ParentId"', "parentid", 1),
+        ("parent\u00a0id", "parent\u00a0id", 0),
+        ("parent\u00a0id", "parent_id", 1),
+    ],
+)
+def test_index_key_identity_preserves_unicode_and_quoted_case(column: str, indexed: str, expected: int) -> None:
+    source = (
+        f"CREATE TABLE child({column} int REFERENCES parent(id) ON DELETE CASCADE);\n"
+        f"CREATE INDEX child_parent ON child({indexed});\n"
+    )
+    assert len(_check(source)) == expected
+
+
+@pytest.mark.parametrize(("indexed", "expected"), [("audit.child", 1), ("app.child", 0)])
+def test_sibling_index_coverage_preserves_explicit_schema(tmp_path: Path, indexed: str, expected: int) -> None:
+    root = _tree(
+        tmp_path,
+        {
+            "001_child": "CREATE TABLE app.child(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n",
+            "002_index": f"CREATE INDEX child_parent ON {indexed}(parent_id);\n",
+        },
+    )
+    target = root / "001_child" / "migration.sql"
+    assert len(_check(target.read_text(), target)) == expected
+
+
+@pytest.mark.parametrize(
+    ("index_statement", "expected"),
+    [
+        ("DO $$ BEGIN CREATE INDEX child_parent ON child(parent_id); END $$;", 0),
+        ("SELECT $$CREATE INDEX child_parent ON child(parent_id);$$;", 1),
+        ("DO $$ BEGIN RAISE NOTICE 'CREATE INDEX child_parent ON child(parent_id);'; END $$;", 1),
+    ],
+)
+def test_shared_index_parser_preserves_executable_body_coverage(index_statement: str, expected: int) -> None:
+    source = "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n" + index_statement
+    assert len(_check(source)) == expected
+
+
+@pytest.mark.parametrize("name", ["café_idx", "name_🐈ON"])
+def test_shared_index_parser_preserves_unicode_index_names(name: str) -> None:
+    source = (
+        "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n"
+        f"CREATE INDEX {name} ON child(parent_id);"
+    )
+    assert _check(source) == []
