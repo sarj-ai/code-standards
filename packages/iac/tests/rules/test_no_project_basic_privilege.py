@@ -68,6 +68,63 @@ def test_findings_are_deterministic() -> None:
     assert findings == NoProjectBasicPrivilege().check(Path("main.tf"), source)
 
 
+@pytest.mark.parametrize(
+    ("declarations", "collection", "role", "count"),
+    [
+        ('locals { grants = ["roles/editor", "roles/viewer"] }', "toset(local.grants)", "each.value", 1),
+        ('locals { grants = ["roles/owner"] }', "toset(local.grants)", "each.key", 1),
+        ('locals { grants = toset(["roles/editor"]) }', "local.grants", "each.value", 1),
+        ('locals { grants = toset(["roles/owner"]) }', "local.grants", "each.key", 1),
+        ('locals { grants = toset(["roles/editor"]) }', "toset(local.grants)", "each.value", 1),
+        ('locals { grants = ["roles/owner", "roles/editor", "roles/owner"] }', "toset(local.grants)", "each.value", 1),
+        ('locals { grants = ["roles/viewer", "roles/logging.logWriter"] }', "toset(local.grants)", "each.value", 0),
+        ("locals { grants = [] }", "toset(local.grants)", "each.value", 0),
+        ('locals { grants = ["roles/editor", var.role] }', "toset(local.grants)", "each.value", 0),
+        ('locals { grants = ["roles/${var.role}"] }', "toset(local.grants)", "each.value", 0),
+        ("locals { grants = var.roles }", "toset(local.grants)", "each.value", 0),
+        ("locals { grants = module.access.roles }", "toset(local.grants)", "each.value", 0),
+        ('locals { grants = ["roles/editor"] }', "toset(local.unknown)", "each.value", 0),
+        ('locals { grants = ["roles/editor"] }', "toset(var.grants)", "each.value", 0),
+        ('locals { grants = ["roles/editor"] }', "local.grants", "each.value", 0),
+        ('locals { grants = { app = "roles/editor" } }', "local.grants", "each.value", 0),
+        ("locals { grants = [for role in var.roles : role] }", "toset(local.grants)", "each.value", 0),
+        ('locals { grants = concat(["roles/editor"], var.roles) }', "toset(local.grants)", "each.value", 0),
+        ('locals { grants = ["roles/editor"] }', "toset(local.grants)", "var.role", 0),
+        ('locals { grants = ["roles/editor"] }', "toset(local.grants)", "each.value.role", 0),
+        (
+            'locals { grants = ["roles/editor"] }\nlocals { grants = ["roles/viewer"] }',
+            "toset(local.grants)",
+            "each.value",
+            0,
+        ),
+        ('locals { grants = ["roles/editor"]\ngrants = ["roles/viewer"] }', "toset(local.grants)", "each.value", 0),
+        ('locals { grants = ["roles/editor"]\nalias = local.grants }', "toset(local.alias)", "each.value", 0),
+        ('module "child" { locals { grants = ["roles/editor"] } }', "toset(local.grants)", "each.value", 0),
+    ],
+)
+def test_same_file_literal_local_role_sets(declarations: str, collection: str, role: str, count: int) -> None:
+    source = (
+        f"{declarations}\n"
+        'resource "google_project_iam_member" "app" {\n'
+        f"  for_each = {collection}\n  role = {role}\n"
+        "}\n"
+    )
+    findings = NoProjectBasicPrivilege().check(Path("main.tf"), source)
+    assert len(findings) == count
+    if findings:
+        assert findings[0].code == "SARJ212"
+        assert findings[0].line == len(declarations.splitlines()) + 1
+
+
+def test_literal_locals_do_not_cross_files_or_leak_between_invocations() -> None:
+    rule = NoProjectBasicPrivilege()
+    resource = 'resource "google_project_iam_binding" "app" {\nfor_each = toset(local.grants)\nrole = each.value\n}'
+    assert rule.check(Path("locals.tf"), 'locals { grants = ["roles/editor"] }') == []
+    assert rule.check(Path("main.tf"), resource) == []
+    assert len(rule.check(Path("main.tf"), f'locals {{ grants = ["roles/editor"] }}\n{resource}')) == 1
+    assert rule.check(Path("main.tf"), resource) == []
+
+
 def test_role_comparison_is_not_a_literal_grant() -> None:
     source = 'resource "google_project_iam_policy" "app" { policy_data = jsonencode({bindings = [{role = "roles/editor" == var.role ? "roles/viewer" : "roles/viewer"}]}) }'
     assert NoProjectBasicPrivilege().check(Path("main.tf"), source) == []

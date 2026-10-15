@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "78cfd5f39425d60a022eb09499614632edcff197b847d19e1fbde9a0032ca03d",
-  "cliSha256": "bc94bc7961027e0fd36e538d02b8aefd551b875f59b4599ba9f6e7855585a1c7",
+  "catalogSha256": "a9b10338e7df5c251abdac442030fb372e4c53b0d1b81aef458748e9daf579e9",
+  "cliSha256": "b05a33fa3dc876024ca8db2a50791dc282ef7b2b1ad121e83eb174ee2a73b1fc",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.20.2",
@@ -5398,7 +5398,7 @@
           "files": [
             {
               "path": "main.tf",
-              "source": "resource \"google_project_iam_member\" \"app\" { role = \"roles/editor\" }\n"
+              "source": "locals { grants = [\"roles/editor\", \"roles/logging.logWriter\"] }\nresource \"google_project_iam_member\" \"app\" {\n  for_each = toset(local.grants)\n  role     = each.value\n}\n"
             }
           ],
           "fixedFiles": [],

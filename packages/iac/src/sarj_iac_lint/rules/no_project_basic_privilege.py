@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
 
@@ -19,6 +20,7 @@ from sarj_iac_lint.rules._literal_policy import balanced_blocks
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
     from sarj_iac_lint._hcl import Block
@@ -42,7 +44,8 @@ class NoProjectBasicPrivilege(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only project IAM member, binding and policy resources in .tf files are checked.",
-            "Literal roles, literal for_each role sets, jsonencode bindings and same-file google_iam_policy data are recognized.",
+            "Literal roles, literal for_each role sets, same-file unique local tuples/sets, jsonencode bindings and same-file google_iam_policy data are recognized.",
+            "Local collections must be literal strings consumed as a set; duplicate declarations, local aliases, dynamic values, maps and comprehensions are excluded.",
             "Unknown expressions, inherited organization/folder access and other roles are not guessed.",
         ),
         examples=tuple(
@@ -60,7 +63,11 @@ class NoProjectBasicPrivilege(Rule):
                     "project-editor",
                     "Project Editor grants broad mutable access",
                     ExampleOutcome.MATCH,
-                    'resource "google_project_iam_member" "app" { role = "roles/editor" }\n',
+                    (
+                        'locals { grants = ["roles/editor", "roles/logging.logWriter"] }\n'
+                        'resource "google_project_iam_member" "app" {\n'
+                        "  for_each = toset(local.grants)\n  role = each.value\n}\n"
+                    ),
                     1,
                 ),
                 (
@@ -83,6 +90,7 @@ class NoProjectBasicPrivilege(Rule):
             top = balanced_blocks(source)
         except ValueError:
             return []
+        collections = _local_collections(top)
         policies = {
             f"data.google_iam_policy.{block.labels[1]}.policy_data": _data_policy_roles(block)
             for block in top
@@ -94,7 +102,7 @@ class NoProjectBasicPrivilege(Rule):
                 continue
             roles: frozenset[str] = frozenset()
             if block.labels[0] in _GRANTS:
-                roles = _grant_roles(block)
+                roles = _grant_roles(block, collections)
             elif block.labels[0] == "google_project_iam_policy" and (attr := block.attribute("policy_data")):
                 roles = policies.get(attr.value.strip(), _jsonencode_roles(attr.value))
             forbidden = sorted(roles & _BASIC_PRIVILEGES)
@@ -111,7 +119,13 @@ class NoProjectBasicPrivilege(Rule):
         return findings
 
 
-def _grant_roles(block: Block) -> frozenset[str]:
+def _local_collections(top: tuple[Block, ...]) -> dict[str, str]:
+    attributes = [attr for block in top if block.type == "locals" and not block.labels for attr in block.attributes]
+    counts = Counter(attr.name for attr in attributes)
+    return {attr.name: attr.value for attr in attributes if counts[attr.name] == 1}
+
+
+def _grant_roles(block: Block, collections: Mapping[str, str] | None = None) -> frozenset[str]:
     attr = block.attribute("role")
     if attr is None:
         return frozenset()
@@ -121,13 +135,27 @@ def _grant_roles(block: Block) -> frozenset[str]:
         return frozenset({literal})
     if attr.value.strip() not in {"each.value", "each.key"} or (each := block.attribute("for_each")) is None:
         return frozenset()
-    parts = tokens(each.value)
-    if parts[:2] == ("toset", "(") and parts[-1:] == (")",):
-        parts = parts[2:-1]
-    if parts[:1] != ("[",) or parts[-1:] != ("]",):
-        return frozenset()
-    values = [literal_string(part) for part in parts[1:-1] if part != ","]
+    parts = _role_set_items(each.value, collections)
+    values = [literal_string(part) for part in parts if part != ","]
     return frozenset(value for value in values if value is not None) if all(values) else frozenset()
+
+
+def _role_set_items(expression: str, collections: Mapping[str, str] | None) -> tuple[str, ...]:
+    parts = tokens(expression)
+    as_set = parts[:2] == ("toset", "(") and parts[-1:] == (")",)
+    if as_set:
+        parts = parts[2:-1]
+    if len(parts) == 1 and parts[0].startswith("local."):
+        expression = collections.get(parts[0][len("local.") :], "") if collections is not None else ""
+        parts = tokens(expression)
+        local_set = parts[:2] == ("toset", "(") and parts[-1:] == (")",)
+        if not as_set and not local_set:
+            return ()
+        if local_set:
+            parts = parts[2:-1]
+    if parts[:1] != ("[",) or parts[-1:] != ("]",):
+        return ()
+    return parts[1:-1]
 
 
 def _data_policy_roles(block: Block) -> frozenset[str]:
