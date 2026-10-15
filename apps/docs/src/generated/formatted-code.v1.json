@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "372f29bb049cca49c3085e9f37dc4a154994eca70fa0f6dda5a4ebb6758cc9fe",
-  "cliSha256": "a55442ae9f924393b368131d5b6936b495c87647b9f8dbe0198c22364ed2e806",
+  "catalogSha256": "884fc15874c598fa473a65d2fbe47efad21f758cc646ed5374186b530ade0a53",
+  "cliSha256": "bda8cde7b25d4608f7c48cb655108df830c4b92b0855d606edf7cc4da9815fbe",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.20.2",
@@ -6557,6 +6557,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A TypedDict preserves the record schema"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-async-function-cache": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/cache.py",
+              "source": "from functools import cache\n\n\n@cache\nasync def load() -> int:\n    return 1\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/cache.py",
+          "id": "cached-coroutine-function",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A standard cache retains an exhausted coroutine"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/cache.py",
+              "source": "async def load() -> int:\n    return 1\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/cache.py",
+          "id": "fresh-coroutine-function",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Each call creates a fresh coroutine"
         }
       ],
       "optionsSchemaSource": null

@@ -145,6 +145,21 @@ def test_allocator_never_fills_a_historical_hole(tmp_path: Path) -> None:
     assert plan.code == "SARJ404"
 
 
+def test_python_allocation_continues_into_its_5xx_block(tmp_path: Path) -> None:
+    ledger = tmp_path / rule_registration.LEDGER
+    ledger.parent.mkdir(parents=True)
+    ledger.write_text('{"codes": {"python": ["SARJ499"]}}', encoding="utf-8")
+
+    plan = rule_authoring.plan_new(
+        tmp_path,
+        RuleSelector.parse("python:new-rule"),
+        category="style",
+        summary="A new rule.",
+    )
+
+    assert plan.code == "SARJ500"
+
+
 @pytest.mark.parametrize("target_kind", ["unrelated", "unwritten", "written"])
 def test_scaffold_rollback_preserves_concurrent_edits(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target_kind: str

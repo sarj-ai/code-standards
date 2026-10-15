@@ -32,11 +32,11 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 _HOOKS_PATH = _REPO_ROOT / ".pre-commit-hooks.yaml"
 
 #: Distribution name to (registry, the hundreds digits its codes may use).
-#: Python exhausted its original SARJ0xx allocation, so SARJ4xx is its
-#: explicit overflow band. Existing codes are never recycled because old
-#: suppressions must retain one stable meaning.
+#: Python exhausted its original SARJ0xx allocation and then SARJ4xx, so
+#: SARJ5xx continues its overflow. Existing codes are never recycled because
+#: old suppressions must retain one stable meaning.
 _BANDS: Final[Mapping[str, tuple[Mapping[str, _Coded | type[_Coded]], frozenset[int]]]] = {
-    "sarj-python-lint": (PYTHON_REGISTRY, frozenset({0, 4})),
+    "sarj-python-lint": (PYTHON_REGISTRY, frozenset({0, 4, 5})),
     "sarj-sql-lint": (SQL_REGISTRY, frozenset({1})),
     "sarj-iac-lint": (IAC_REGISTRY, frozenset({2})),
     "sarj-standards:text": (TEXT_REGISTRY, frozenset({3})),
