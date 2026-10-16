@@ -1,5 +1,5 @@
 /**
- * @fileoverview prefer-discriminated-union — a boolean status flag beside many optionals makes illegal states representable.
+ * @fileoverview prefer-discriminated-union — represent correlated tags and payloads as explicit variants.
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-discriminated-union.test.ts
  */
@@ -8,20 +8,30 @@ import { type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
+import { discriminatedUnionReturns } from "./_discriminated-union-returns.js";
 import { AST_NODE_TYPES } from "@typescript-eslint/utils";
 
-type MessageIds = "preferDiscriminatedUnion";
+type MessageIds = "preferDiscriminatedUnion" | "preferProducedVariants";
 type Options = readonly [];
+type Producer = TSESTree.ArrowFunctionExpression | TSESTree.FunctionDeclaration | TSESTree.FunctionExpression;
 
 export const PREFER_DISCRIMINATED_UNION_DOCUMENTATION = {
-  summary: "Flag flat result objects with a required positive boolean status and optional success/failure payloads.",
-  rationale: "When success and failure are mutually exclusive outcomes, a boolean plus optional branch data permits contradictory and incomplete states.",
-  remediation: "If the outcomes are mutually exclusive, represent each branch as a discriminated union member with its required payload.",
+  summary: "Prefer discriminated unions for result contracts and locally proven tag-specific return payloads.",
+  defaultLevel: "warning",
+  rationale: "A flat object with optional branch data loses the relationship between a tag and its payload. Callers cannot narrow to the required fields, and the type permits incomplete or contradictory combinations.",
+  remediation: "If the variants are mutually exclusive, represent each with a literal tag and its required payload. Preserve shared fields on every member, including payload value types and nullability. For a producer returning a subset of a broader wire contract, give the producer a precise domain return type after validation.",
   category: "correctness",
-  limitations: ["Only local object shapes with recognized non-computed status and payload names are inspected. Names do not prove that partial-success outcomes are forbidden; review the domain before changing its representation."],
+  limitations: [
+    "The legacy boolean-result advisory recognizes local status and payload names; those names do not prove that partial-success outcomes are forbidden. Review the domain before changing its representation.",
+    "Producer analysis requires a finite literal tag, every declared tag syntactically witnessed, exhaustive simple return paths without literal constant conditions, plain object returns, and consistent optional-field presence for each tag. It resolves only unmerged local aliases/interfaces without inheritance or generics, and the built-in Promise around async returns. This is syntax-only evidence of field presence; explicit undefined, void and null payloads are skipped, while expression value types are not inferred. Dynamic returns, spreads, computed keys, accessors, loops, switch and try statements are deliberately skipped.",
+    "Returned variants prove this producer's key relationships, not all legal consumers of a shared type. The advisory remains conditional, has no autofix, and excludes generated/declaration and test files.",
+  ],
+  references: ["https://functional-architecture.org/make_illegal_states_unrepresentable/", "https://www.typescriptlang.org/docs/handbook/2/narrowing.html#discriminated-unions"],
   examples: [
     { id: "explicit-result-branches", title: "Use explicit result branches", outcome: "no-match", files: [{ path: "src/result.ts", source: "type Result = { ok: true; data: string } | { ok: false; error: string };" }], focusPath: "src/result.ts", expectedCount: 0, public: true },
-    { id: "optional-result-payloads", title: "Do not make both result payloads optional", outcome: "match", files: [{ path: "src/result.ts", source: "type Result = { ok: boolean; data?: string; error?: string };" }], focusPath: "src/result.ts", expectedCount: 1, public: true },
+    { id: "optional-result-payloads", title: "Review optional result payloads", outcome: "match", files: [{ path: "src/result.ts", source: "type Result = { ok: boolean; data?: string; error?: string };" }], focusPath: "src/result.ts", expectedCount: 1, public: true },
+    { id: "flat-produced-variants", scenarioId: "produced-variants", title: "Preserve producer variant relationships", outcome: "match", files: [{ path: "src/job.ts", source: 'function job(done: boolean): { phase: "queued" | "complete"; ticket?: string } { return done ? { phase: "complete" } : { phase: "queued", ticket: "t" }; }' }], focusPath: "src/job.ts", expectedCount: 1, public: true },
+    { id: "explicit-produced-variants", scenarioId: "produced-variants", title: "Give each produced variant its payload", outcome: "no-match", files: [{ path: "src/job.ts", source: 'function job(done: boolean): { phase: "queued"; ticket: string } | { phase: "complete" } { return done ? { phase: "complete" } : { phase: "queued", ticket: "t" }; }' }], focusPath: "src/job.ts", expectedCount: 0, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -170,10 +180,12 @@ export default createRule<Options, MessageIds>({
     type: "suggestion",
     docs: {
       description:
-        "Flag flat result objects with a required positive boolean status and optional success/failure payloads.",
+        "Prefer discriminated unions for result contracts and locally proven tag-specific return payloads.",
     },
     schema: [],
     messages: {
+      preferProducedVariants:
+        "This producer returns tag-specific payloads for `{{tag}}`, but its flat return contract makes them optional. If these variants define the domain, use a discriminated union with each variant's required payload, or give this producer a precise return type separate from the broader contract.",
       preferDiscriminatedUnion:
         "This object type combines a boolean status with optional payloads. If success and failure are mutually exclusive, consider a discriminated union such as `{ ok: true; data: T } | { ok: false; error: E }`.",
     },
@@ -187,11 +199,26 @@ export default createRule<Options, MessageIds>({
       return {};
     }
 
+    const reportedContracts = new Set<TSESTree.Node>();
+    const producers: Producer[] = [];
+
+    function rememberProducer(node: Producer): void {
+      producers.push(node);
+    }
+
+    function checkProducer(node: Producer): void {
+      const result = discriminatedUnionReturns(node, context.sourceCode);
+      if (result === undefined || reportedContracts.has(result.reportNode)) return;
+      reportedContracts.add(result.reportNode);
+      context.report({ node: result.reportNode, messageId: "preferProducedVariants", data: { tag: result.tag } });
+    }
+
     function checkTypeLiteral(
       typeLiteral: TSESTree.TSTypeLiteral,
       reportNode: TSESTree.Node,
     ): void {
-      if (looksLikeMutuallyExclusiveState(typeLiteral)) {
+      if (looksLikeMutuallyExclusiveState(typeLiteral) && !reportedContracts.has(reportNode)) {
+        reportedContracts.add(reportNode);
         context.report({
           node: reportNode,
           messageId: "preferDiscriminatedUnion",
@@ -200,6 +227,14 @@ export default createRule<Options, MessageIds>({
     }
 
     return {
+      ArrowFunctionExpression: rememberProducer,
+      FunctionDeclaration: rememberProducer,
+      FunctionExpression: rememberProducer,
+      "Program:exit"(): void {
+        // Alias declarations can follow their producers. Always give the legacy
+        // contract diagnostic precedence independent of declaration order.
+        for (const producer of producers) checkProducer(producer);
+      },
       TSInterfaceDeclaration(
         node: TSESTree.TSInterfaceDeclaration,
       ): void {

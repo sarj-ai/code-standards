@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/prefer-discriminated-model-union",
+      "family": "python",
+      "ruleId": "prefer-discriminated-model-union",
+      "state": "complete",
+      "evidence": "Domain-modeling calibration 2026-10-16: 126 focused cases pass, including 24 runtime comparisons that preserve accepted values, aliases, non-null defaults and wire serialization after a discriminated model union rewrite. The detector uses import-proven direct Pydantic after validators that explicitly reject a nullable payload for an admitted Literal tag. A normalized necessary-symbol prefilter avoids unrelated provenance analysis while preserving aliases and NFKC identifiers. Tests include aliases and shadows, opaque and mutating validators, suppression, diagnostic deduplication, common requirements across every tag, and null-only/bottom/opaque payload domains. Ruff, strict type checking and an earlier 1,158-case neighboring-rule/meta suite pass. The final source is evaluated on 3,339 files / 35,166,866 bytes in 21 fresh bounded processes across Standards, three private repositories, five installed mature public packages and labeled seeds. Both labels pass (one positive, one negative), with zero live findings, parse failures or duplicate locations. Full-run timings are load-contended; bounded repeated measurements and canonical verification are recorded in the domain-type-safety benchmark report.",
+      "outcome": "Ship SARJ510 at warning severity without autofix. Recommend a matching variant with a non-nullable payload while preserving every other accepted combination, defaults, aliases and external shape. Restrict inhabited-payload evidence to proven built-in scalars and empty-capable containers; custom/opaque aliases, inherited models, open tags and unsupported validator control flow deliberately abstain. Runtime validation remains necessary at external boundaries. No universal false-positive or fleet-performance guarantee."
+    },
+    {
       "task": "rule-audit/python/no-loguru-printf-format",
       "family": "python",
       "ruleId": "no-loguru-printf-format",
@@ -1669,8 +1677,8 @@
       "family": "typescript",
       "ruleId": "prefer-discriminated-union",
       "state": "complete",
-      "evidence": "Three independent source, test and UI reviews accepted the repair; 49 focused cases pass within the 621-case integrated batch. The one finding is a boolean status with optional validation issues, useful modeling advice rather than proof of exclusivity. Representative calibration used 2,963 parsed files across five local consumers and three installed public packages, not complete upstream repositories, with zero rule crashes.",
-      "outcome": "Exclude computed property keys from static discriminant evidence."
+      "evidence": "Domain-modeling calibration 2026-10-16: 125 rule cases and two compiler-backed remediation tests pass. The expansion proves finite tag-specific key presence from exhaustive explicit local producer returns, without guessing domain field names. Independent reviews cover aliases, shadowing, incomplete tag coverage, partial records, ambiguous returns, shared contracts, suppressions and declaration-order-independent diagnostic precedence. The strict compiler accepts complete variants and rejects missing payloads, crossed fields from non-fresh values, partial grouped payloads and tag-only updates; an added variant fails an exhaustive consumer. A content-pinned 3,547-file / 33,228,746-byte corpus across Standards, three private repositories, two installed mature public packages and labeled seeds runs in 18 fresh bounded processes. All five labels pass (two positive, three negative); baseline legacy spans are preserved, the producer seed adds exactly one location, and live findings, parse failures and duplicates are zero. Zero findings alone does not establish recall; the seeded defect and focused positives are required evidence. Full-run timings are load-contended; bounded repeated measurements and canonical verification are recorded in the domain-type-safety benchmark report.",
+      "outcome": "Ship conditional warning guidance without autofix. Source key presence is not proof of payload value validity or all legal states of a shared contract. Preserve independent options, partial-success/wire states, inherited/merged contracts and opaque control flow. Prefer a precise producer return type when the shared contract must remain broad. Broader domain invariants remain judgment checks; finite calibration does not establish universal precision."
     },
     {
       "task": "rule-audit/eslint/prefer-ecmascript-private-members",

@@ -216,6 +216,7 @@ from sarj_python_lint.rules.duplicate_closed_pure_helper import DuplicateClosedP
 from sarj_python_lint.rules.no_conflicting_pydantic_alias_validation import NoConflictingPydanticAliasValidation
 from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossiblePydanticFieldBounds
 from sarj_python_lint.rules.no_unknown_pydantic_validator_field import NoUnknownPydanticValidatorField
+from sarj_python_lint.rules.prefer_discriminated_model_union import PreferDiscriminatedModelUnion
 from sarj_python_lint.rules.redundant_test_constructor_forwarder import RedundantTestConstructorForwarder
 from sarj_python_lint.rules.repeated_unimplemented_test_contract import RepeatedUnimplementedTestContract
 from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOracle
@@ -224,6 +225,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
         NoExplicitTestOracle.id: NoExplicitTestOracle,
+        PreferDiscriminatedModelUnion.id: PreferDiscriminatedModelUnion,
         NoConflictingPydanticAliasValidation.id: NoConflictingPydanticAliasValidation,
         NoUnknownPydanticValidatorField.id: NoUnknownPydanticValidatorField,
         NoImpossiblePydanticFieldBounds.id: NoImpossiblePydanticFieldBounds,

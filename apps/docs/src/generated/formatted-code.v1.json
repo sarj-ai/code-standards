@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "8be844753e3b2bb96936ade9e0f77db469bcce7aca9bef4a7bf1d7bd24facb0e",
-  "cliSha256": "2caa093735980e98e06362c519ceb1c49171d6b967ee218af937427d2e2eef8f",
+  "catalogSha256": "fead478e8a675aae74b5a90c1ed93eae6a9d4a7af77171483681528b0fc17f84",
+  "cliSha256": "023c7e2b1e61afd88f2e4dc39d2ac5fa3741ffa3df552235b66ba1d2fcc4e256",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.20.2",
@@ -3027,6 +3027,21 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "src/job.ts",
+              "source": "function job(\n  done: boolean,\n): { phase: \"queued\"; ticket: string } | { phase: \"complete\" } {\n  return done ? { phase: \"complete\" } : { phase: \"queued\", ticket: \"t\" };\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/job.ts",
+          "id": "explicit-produced-variants",
+          "outcome": "accept",
+          "scenarioId": "produced-variants",
+          "title": "Give each produced variant its payload"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "src/result.ts",
               "source": "type Result = { ok: true; data: string } | { ok: false; error: string };\n"
             }
@@ -3042,6 +3057,21 @@
           "expectedCount": 1,
           "files": [
             {
+              "path": "src/job.ts",
+              "source": "function job(done: boolean): { phase: \"queued\" | \"complete\"; ticket?: string } {\n  return done ? { phase: \"complete\" } : { phase: \"queued\", ticket: \"t\" };\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/job.ts",
+          "id": "flat-produced-variants",
+          "outcome": "reject",
+          "scenarioId": "produced-variants",
+          "title": "Preserve producer variant relationships"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
               "path": "src/result.ts",
               "source": "type Result = { ok: boolean; data?: string; error?: string };\n"
             }
@@ -3051,7 +3081,7 @@
           "id": "optional-result-payloads",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Do not make both result payloads optional"
+          "title": "Review optional result payloads"
         }
       ],
       "optionsSchemaSource": null
@@ -9757,6 +9787,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A named collection schema owns the batch"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-discriminated-model-union": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from typing import Literal, Self\nfrom pydantic import BaseModel, model_validator\n\n\nclass Delivery(BaseModel):\n    kind: Literal[\"email\", \"pickup\"]\n    address: str | None = None\n\n    @model_validator(mode=\"after\")\n    def validate_address(self) -> Self:\n        if self.kind == \"email\" and self.address is None:\n            raise ValueError(\"Email requires an address\")\n        return self\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "literal-tag-dependent-payload",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An after validator encodes a field dependency that its type cannot express"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from typing import Annotated, Literal\nfrom pydantic import BaseModel, Field\n\n\nclass EmailDelivery(BaseModel):\n    kind: Literal[\"email\"]\n    address: str\n\n\nclass PickupDelivery(BaseModel):\n    kind: Literal[\"pickup\"]\n    address: str | None = None\n\n\ntype Delivery = Annotated[EmailDelivery | PickupDelivery, Field(discriminator=\"kind\")]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "variants-preserve-other-accepted-states",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Only the email variant requires an address; pickup preserves its optional address"
         }
       ],
       "optionsSchemaSource": null
