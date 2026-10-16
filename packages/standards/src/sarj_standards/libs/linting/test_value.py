@@ -25,6 +25,7 @@ SELECTORS: Final = frozenset(
         "eslint:duplicate-test-body",
         "eslint:no-duplicate-test-case",
         "eslint:no-tautological-expect",
+        "eslint:no-bare-return-from-test-catch",
     )
 )
 ESLINT_RULES: Final = frozenset({"vitest/expect-expect", "vitest/valid-expect-in-promise"}) | frozenset(

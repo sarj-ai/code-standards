@@ -40,24 +40,56 @@ class NoTautologicalExpect(Rule):
     id: str = "no-statically-truthy-assertion"
     code: str = "SARJ057"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="An assertion condition is statically truthy, including test-local scalar setup.",
+        summary="An assertion condition is statically truthy, including deferred expressions and test-local scalar setup.",
         rationale=(
             "A condition that stays truthy whenever evaluation succeeds cannot reject an incorrect result and often "
-            "means the intended condition was wrapped in a container or placed in the message slot."
+            "means the intended condition was wrapped in a container, deferred without execution, or placed in the message slot."
         ),
         remediation=(
             "Assert an explicit runtime-derived condition. If the test only requires an operation not to raise, "
-            "evaluate it directly and retain any meaningful follow-up assertion."
+            "evaluate it directly and retain any meaningful follow-up assertion. Consume generator values or call "
+            "the lambda when their result is the contract; choose empty-input behavior explicitly."
         ),
         category=RuleCategory.TESTING,
         aliases=("no-tautological-expect",),
         limitations=(
-            "Detection covers truthy scalar constants and definitely non-empty list, set, and dict displays.",
+            "Detection covers truthy scalar constants, definitely non-empty list/set/dict displays, and directly asserted generator expressions or lambdas.",
+            "Generator consumption, lambda invocation, comprehensions, and runtime iterator/callable values are not inferred; empty universal-quantification contracts remain valid.",
             "Test-local immutable scalar bindings and their aliases are tracked only through straight-line assignments; calls, control flow, mutable values, and global/nonlocal writes invalidate tracking.",
             "Ruff owns asserted strings and tuples, literal comparisons and identity, and unittest-style assertion methods.",
             "Generated files, always-failing assertions, deliberate match-arm success markers, and runtime-value comparisons are excluded.",
         ),
         examples=(
+            RuleExample(
+                example_id="unconsumed-generator",
+                scenario="deferred-condition",
+                title="A generator object does not check the yielded conditions",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_service.py",
+                        "def test_values(rows):\n    assert (row.is_valid for row in rows)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="consumed-generator",
+                scenario="deferred-condition",
+                title="Consume the conditions when the contract requires every row to be valid",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_service.py",
+                        "def test_values(rows):\n    assert all(row.is_valid for row in rows)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_service.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="setup-only-oracle",
                 scenario="setup-only",
@@ -273,6 +305,10 @@ def _fixed_truth_reason(test: ast.expr) -> str | None:
     kind = _nonempty_container_kind(test)
     if kind is not None:
         return f"a non-empty {kind} display is truthy whatever it contains"
+    if isinstance(test, ast.GeneratorExp):
+        return "a generator expression creates a truthy iterator without checking its yielded values"
+    if isinstance(test, ast.Lambda):
+        return "a lambda expression creates a truthy function without calling its body"
     return None
 
 

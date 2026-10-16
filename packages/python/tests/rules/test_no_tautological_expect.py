@@ -91,6 +91,41 @@ def test_flags_container_holding_a_runtime_value():
     assert _count("def test_x(x):\n    assert [x]\n") == 1
 
 
+@pytest.mark.parametrize(
+    ("expression", "reason"),
+    [
+        pytest.param("(row.valid for row in rows)", "generator expression", id="generator"),
+        pytest.param("(row.valid async for row in rows)", "generator expression", id="async-generator"),
+        pytest.param("(lambda: check(rows))", "lambda expression", id="lambda"),
+        pytest.param("(lambda value=build(): check(value))", "lambda expression", id="evaluated-default"),
+    ],
+)
+def test_flags_deferred_conditions_without_execution(expression: str, reason: str) -> None:
+    findings = _check(f"async def test_values(rows):\n    assert {expression}\n")
+
+    assert [(finding.code, finding.line) for finding in findings] == [("SARJ057", 2)]
+    assert reason in findings[0].message
+    assert "if evaluation succeeds" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        pytest.param("all(row.valid for row in rows)", id="all-consumes-generator"),
+        pytest.param("any(row.valid for row in rows)", id="any-consumes-generator"),
+        pytest.param("list(row.valid for row in rows)", id="materialized-generator"),
+        pytest.param("[row.valid for row in rows]", id="list-comprehension-can-be-empty"),
+        pytest.param("{row.valid for row in rows}", id="set-comprehension-can-be-empty"),
+        pytest.param("{row.id: row.valid for row in rows}", id="dict-comprehension-can-be-empty"),
+        pytest.param("(lambda: check(rows))()", id="called-lambda"),
+        pytest.param("callable(check)", id="runtime-callability-contract"),
+        pytest.param("iterator", id="runtime-iterator-can-define-bool"),
+    ],
+)
+def test_preserves_evaluated_conditions_and_runtime_truthiness(expression: str) -> None:
+    assert _check(f"def test_values(rows, check, iterator):\n    assert {expression}\n") == []
+
+
 def test_flags_value_that_slid_into_the_message_slot():
     src = 'def test_hue(cover_result_json):\n    assert True, cover_result_json[0]["success"]["on"]\n'
     diags = _check(src)

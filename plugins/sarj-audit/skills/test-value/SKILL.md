@@ -14,6 +14,8 @@ Run `code-standards observe --test-value --base BASE` for changed tests; omit
 - Cover inherited behavior at its owner; retain override and composition contracts.
 - Parameterize independent cases when shorter; preserve ordered scenarios.
 - Observe content, state, access, or effects. Exact interactions belong at real boundaries. Preserve smoke, no-throw, compatibility, enum/property, representation, and assertion-helper contracts.
+- An integration claim must exercise the real boundary it names and observe its externally visible result. Review negative side effects and failure atomicity when those contracts are affected. See [oracles.md](references/oracles.md#integration-boundaries).
+- Await or return asynchronous assertions and their promise chains. Ensure expected-error tests fail when the operation succeeds; a catch-only assertion leaves the success path unchecked.
 - Verify retained cases and coverage; use targeted regression probes when an oracle could be lost. Equal coverage does not prove equivalence.
 - Rerun checks and inspect affected helpers/fixtures until no confirmed improvement remains within scope.
 
