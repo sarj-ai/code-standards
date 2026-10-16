@@ -9,7 +9,7 @@ import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/util
 import { unwrapExpression } from "./_unwrap-expression.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile, isScriptFile, isTestFile } from "./_paths.js";
+import { isGeneratedFile, isScriptFile, isTestFile, matchesAnyPattern } from "./_paths.js";
 
 type MessageIds = "handRolledSleep" | "handRolledTimeoutRace";
 type Options = readonly [
@@ -67,20 +67,6 @@ const CLIENT_ONLY_MODULES =
 
 const RACE_METHODS: ReadonlySet<string> = new Set(["race", "any"]);
 
-/** Match configured paths where `**` spans separators and `*` does not. */
-function matchesAnyPattern(filename: string, patterns: readonly string[]): boolean {
-  for (const pattern of patterns) {
-    const regexSource = pattern
-      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-      .replace(/\*\*/g, "::DOUBLESTAR::")
-      .replace(/\*/g, "[^/\\\\]*")
-      .replace(/::DOUBLESTAR::/g, ".*");
-    if (new RegExp(`^${regexSource}$`).test(filename)) {
-      return true;
-    }
-  }
-  return false;
-}
 
 function isSetTimeoutCallee(callee: TSESTree.Node): boolean {
   callee = unwrapExpression(callee);

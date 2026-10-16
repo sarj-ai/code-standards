@@ -5,6 +5,8 @@
  *
  */
 
+import { posix } from "node:path";
+
 const LINE_TERMINATOR_RE = /[\n\r\u2028\u2029]/u;
 
 const SCRIPT_FILE_RE = /(?:^|[\\/])scripts[\\/]|\.mjs$/;
@@ -125,6 +127,12 @@ function leadingCommentBodies(sourceText: string): string[] {
 
 export function isScriptFile(filename: string): boolean {
   return SCRIPT_FILE_RE.test(filename);
+}
+
+/** Match configured globs consistently across native path separators. */
+export function matchesAnyPattern(filename: string, patterns: readonly string[]): boolean {
+  const normalized = filename.replaceAll("\\", "/");
+  return patterns.some((pattern) => posix.matchesGlob(normalized, pattern.replaceAll("\\", "/")));
 }
 
 function commentLineEnd(sourceText: string, start: number): number {

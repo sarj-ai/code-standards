@@ -419,3 +419,15 @@ def test_error_promotion_requires_verified_evidence_zero_errors_and_performance_
         evidence=fast,
     )
     assert false_positive.decision is PromotionDecision.WARN
+
+
+@pytest.mark.parametrize("slowdown", [float("nan"), float("inf"), float("-inf")])
+def test_evaluation_performance_budget_must_be_finite(tmp_path: Path, slowdown: float) -> None:
+    (tmp_path / "case.py").write_text("pass\n", encoding="utf-8")
+    observed = snapshot(CorpusSource("sample", tmp_path, CorpusKind.LOCAL, "sha256:" + "0" * 64, ("*.py",)))
+    verified = verify(CorpusSource("sample", tmp_path, CorpusKind.LOCAL, observed.digest, ("*.py",)))
+
+    with pytest.raises(ValueError, match="positive baseline and slowdown budget"):
+        EvaluationEvidence(
+            (verified,), "all cases", timedelta(seconds=1), timedelta(seconds=1), maximum_slowdown=slowdown
+        )

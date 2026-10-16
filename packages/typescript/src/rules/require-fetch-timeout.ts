@@ -14,7 +14,7 @@ import { unwrapExpression } from "./_unwrap-expression.js";
 import { nativeFetchReference } from "./_native-fetch-reference.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isScriptFile, isTestFile } from "./_paths.js";
+import { isScriptFile, isTestFile, matchesAnyPattern } from "./_paths.js";
 
 type MessageIds = "missingSignal";
 type EmptySignal = "null" | "undefined";
@@ -70,23 +70,6 @@ export const REQUIRE_FETCH_TIMEOUT_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function matchesAnyPattern(
-  filename: string,
-  patterns: readonly string[],
-): boolean {
-  for (const pattern of patterns) {
-    // Convert minimatch-ish globs to regex: ** -> .*, * -> [^/\\]*
-    const regexSource = pattern
-      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-      .replace(/\*\*/g, "::DOUBLESTAR::")
-      .replace(/\*/g, "[^/\\\\]*")
-      .replace(/::DOUBLESTAR::/g, ".*");
-    if (new RegExp(`^${regexSource}$`).test(filename)) {
-      return true;
-    }
-  }
-  return false;
-}
 
 function emptySignal(
   expression: TSESTree.Node,

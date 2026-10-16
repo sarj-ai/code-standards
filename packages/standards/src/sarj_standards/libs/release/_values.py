@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from typing import TypeIs
+from sarj_standards.libs.typed_containers import (
+    is_object_list as is_object_list,
+    is_object_mapping,
+)
 
 
-def is_object_list(value: object) -> TypeIs[list[object]]:
-    return isinstance(value, list)
-
-
-def is_object_dict(value: object) -> TypeIs[dict[object, object]]:
-    return isinstance(value, dict)
+is_object_dict = is_object_mapping
 
 
 def string_object_dict(value: object, *, label: str) -> dict[str, object]:

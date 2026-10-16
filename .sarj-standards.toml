@@ -1,5 +1,5 @@
 schema = 4
-bundle = "8.70.1"
+bundle = "8.70.2"
 rule_profile = "all"
 
 [capabilities]
@@ -225,6 +225,12 @@ path = "packages/standards/src/sarj_standards/configs/eslint.peers.json"
 format = "json-pointer"
 version = "typescript"
 selector = "/peers/@sarj~1eslint-plugin"
+
+[[repository.version_references]]
+path = "packages/standards/src/sarj_standards/configs/eslint.peers.json"
+format = "json-pointer"
+version = "typescript"
+selector = "/ageGatePreapprovals/@sarj~1eslint-plugin"
 
 [repository.version_coverage]
 manifests = [
