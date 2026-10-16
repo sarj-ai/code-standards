@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections import Counter
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
@@ -21,7 +22,7 @@ from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Container, Mapping
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
@@ -58,6 +59,11 @@ class _PytestBindings(NamedTuple):
 class _CollectedTest(NamedTuple):
     function: ast.FunctionDef | ast.AsyncFunctionDef
     class_bindings: set[str]
+
+
+class _ImportedCollection(NamedTuple):
+    module: str
+    symbol: str
 
 
 def _scope_binding_counts(statements: list[ast.stmt]) -> dict[str, int]:
@@ -115,8 +121,8 @@ def _imported_bindings(
     binding_counts: dict[str, int],
     path: Path,
     facts: FirstPartyFacts,
-) -> dict[str, str]:
-    bindings: dict[str, str] = {}
+) -> dict[str, _ImportedCollection]:
+    bindings: dict[str, _ImportedCollection] = {}
     for node in tree.body:
         if (
             isinstance(node, ast.ImportFrom)
@@ -125,7 +131,7 @@ def _imported_bindings(
             and _is_first_party_production_module(node.module, path, facts)
         ):
             bindings.update(
-                (local, node.module)
+                (local, _ImportedCollection(node.module, alias.name))
                 for alias in node.names
                 if alias.name != "*"
                 and binding_counts.get(local := alias.asname or alias.name, 0) == 1
@@ -170,7 +176,7 @@ def _pytest_bindings(tree: ast.Module, binding_counts: dict[str, int]) -> _Pytes
 
 def _direct_imported_collection(
     node: ast.expr,
-    imported: Mapping[str, str],
+    imported: Mapping[str, _ImportedCollection],
     blocked: set[str],
     builtin_wrappers: frozenset[str],
 ) -> ast.Name | None:
@@ -199,7 +205,7 @@ def _is_registry(name: str) -> bool:
 
 def _is_imported_collection_wrapper(
     node: ast.Call,
-    imported: Mapping[str, str],
+    imported: Mapping[str, _ImportedCollection],
     builtin_wrappers: frozenset[str],
 ) -> bool:
     return (
@@ -254,30 +260,134 @@ def _collected_tests(tree: ast.Module) -> list[_CollectedTest]:
 
 def _independently_asserted_collections(
     tree: ast.Module,
-    imported: Mapping[str, str],
+    imported: Mapping[str, _ImportedCollection],
     tests: list[_CollectedTest],
 ) -> set[str]:
-    expected = _independent_expected_bindings(tree, _scope_binding_counts(tree.body))
+    expected = _independent_expected_bindings(tree.body, _scope_binding_counts(tree.body))
+    asserted = _asserted_collections(tree.body, imported, expected, blocked=set(), proven_reads={})
+    for test in tests:
+        if imported.keys() <= asserted:
+            break
+        function = test.function
+        if not any(
+            isinstance(statement, ast.Assert)
+            and isinstance(statement.test, ast.Compare)
+            and any(
+                isinstance(operand, ast.Name) and operand.id in imported
+                for operand in (statement.test.left, *statement.test.comparators)
+            )
+            for statement in function.body
+        ):
+            continue
+        bindings = _scope_binding_counts(function.body)
+        parameters = [*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs]
+        if function.args.vararg is not None:
+            parameters.append(function.args.vararg)
+        if function.args.kwarg is not None:
+            parameters.append(function.args.kwarg)
+        for parameter in parameters:
+            bindings[parameter.arg] = bindings.get(parameter.arg, 0) + 1
+        local_expected = _local_expected_bindings(function, bindings)
+        proven_reads = _captured_unchanged_defaults(test, imported, bindings)
+        proven_reads.update(_direct_production_reimports(function, imported, bindings))
+        captured_expected = _captured_unchanged_defaults(test, expected, bindings)
+        asserted.update(
+            _asserted_collections(
+                function.body,
+                imported,
+                (expected - bindings.keys()) | local_expected | captured_expected.keys(),
+                blocked=set(bindings),
+                proven_reads=proven_reads,
+            )
+        )
+    return asserted
+
+
+def _captured_unchanged_defaults(
+    test: _CollectedTest, names: Container[str], bindings: dict[str, int]
+) -> dict[str, tuple[int, int]]:
+    function = test.function
+    defaults = list(zip(function.args.kwonlyargs, function.args.kw_defaults, strict=True))
+    if function.args.defaults:
+        positional = [*function.args.posonlyargs, *function.args.args]
+        defaults.extend(zip(positional[-len(function.args.defaults) :], function.args.defaults, strict=True))
+    return {
+        argument.arg: (function.lineno, function.col_offset)
+        for argument, default in defaults
+        if isinstance(default, ast.Name)
+        and default.id == argument.arg
+        and argument.arg in names
+        and argument.arg not in test.class_bindings
+        and bindings.get(argument.arg) == 1
+    }
+
+
+def _direct_production_reimports(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    imported: Mapping[str, _ImportedCollection],
+    bindings: dict[str, int],
+) -> dict[str, tuple[int, int]]:
+    proven: dict[str, tuple[int, int]] = {}
+    for statement in function.body:
+        if not isinstance(statement, ast.ImportFrom) or statement.level != 0 or statement.module is None:
+            continue
+        local_counts = Counter(alias.asname or alias.name for alias in statement.names)
+        for alias in statement.names:
+            local = alias.asname or alias.name
+            if (
+                local_counts[local] == 1
+                and bindings.get(local) == 1
+                and imported.get(local) == _ImportedCollection(statement.module, alias.name)
+            ):
+                proven[local] = (statement.lineno, statement.col_offset)
+    return proven
+
+
+def _local_expected_bindings(function: ast.FunctionDef | ast.AsyncFunctionDef, bindings: dict[str, int]) -> set[str]:
+    expected = _independent_expected_bindings(function.body, bindings)
+    reads = Counter(
+        node.id for node in ast.walk(function) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+    )
+    expected.update(
+        target.id
+        for statement in function.body
+        if isinstance(statement, (ast.Assign, ast.AnnAssign)) and _is_literal_table(statement.value)
+        for target in _assignment_targets(statement)
+        if isinstance(target, ast.Name) and bindings.get(target.id) == 1 and reads[target.id] == 1
+    )
+    return expected
+
+
+def _asserted_collections(
+    statements: list[ast.stmt],
+    imported: Mapping[str, _ImportedCollection],
+    expected: set[str],
+    *,
+    blocked: set[str],
+    proven_reads: Mapping[str, tuple[int, int]],
+) -> set[str]:
     asserted: set[str] = set()
-    assertions = _direct_assertions(tree, tests)
-    for node in assertions:
-        if not isinstance(node.test, ast.Compare):
+    for node in statements:
+        if not isinstance(node, ast.Assert) or not isinstance(node.test, ast.Compare):
             continue
         compare = node.test
         if len(compare.ops) != 1 or not isinstance(compare.ops[0], ast.Eq) or len(compare.comparators) != 1:
             continue
+        visible = (imported.keys() - blocked) | {
+            name for name, position in proven_reads.items() if position < (node.lineno, node.col_offset)
+        }
         left, right = compare.left, compare.comparators[0]
-        if isinstance(left, ast.Name) and left.id in imported and _is_independent_expected(right, expected):
+        if isinstance(left, ast.Name) and left.id in visible and _is_independent_expected(right, expected):
             asserted.add(left.id)
-        if isinstance(right, ast.Name) and right.id in imported and _is_independent_expected(left, expected):
+        if isinstance(right, ast.Name) and right.id in visible and _is_independent_expected(left, expected):
             asserted.add(right.id)
     return asserted
 
 
-def _independent_expected_bindings(tree: ast.Module, binding_counts: dict[str, int]) -> set[str]:
+def _independent_expected_bindings(statements: list[ast.stmt], binding_counts: dict[str, int]) -> set[str]:
     return {
         target.id
-        for statement in tree.body
+        for statement in statements
         if isinstance(statement, (ast.Assign, ast.AnnAssign))
         for target in _assignment_targets(statement)
         if isinstance(target, ast.Name)
@@ -323,8 +433,40 @@ class ProductionDerivedTestCases(Rule):
             "Only proven first-party, non-test imports with eligible, supported, allowed, or required in their names are checked in collected pytest parametrization.",
             "Direct collections, simple unshadowed builtin wrappers, set expressions, and positional or keyword argvalues are recognized.",
             "A direct module-level or collected-test equality against a distinct literal expected table proves an independent oracle; helper-indirected relationships remain unreported.",
+            "Collected-test oracles must read the imported production binding without parameter/local shadowing. Expected tuple bindings may be module-level or local and must be assigned once; fresh local literal lists/sets are accepted only when their sole read is the assertion.",
+            "Unchanged same-name default captures of production imports or immutable expected tuples, and single direct local reimports of the exact absolute module and symbol, retain provenance. Class-scope default shadowing, later writes, and imports after the assertion do not prove a production read.",
         ),
         examples=(
+            RuleExample(
+                example_id="shadowed-membership-oracle",
+                scenario="oracle-lexical-bindings",
+                title="A fixture equality does not observe the imported production collection",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/tests/test_models.py",
+                        "import pytest\nfrom app.models import ELIGIBLE_MODELS\n\ndef test_membership(ELIGIBLE_MODELS):\n    assert ELIGIBLE_MODELS == ('a', 'b')\n\n@pytest.mark.parametrize('model', ELIGIBLE_MODELS)\ndef test_model(model):\n    assert build(model)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/tests/test_models.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="local-independent-membership-oracle",
+                scenario="oracle-lexical-bindings",
+                title="A fresh local expected table observes the actual production collection",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/tests/test_models.py",
+                        "import pytest\nfrom app.models import ELIGIBLE_MODELS\n\ndef test_membership():\n    expected = ['a', 'b']\n    assert ELIGIBLE_MODELS == expected\n\n@pytest.mark.parametrize('model', ELIGIBLE_MODELS)\ndef test_model(model):\n    assert build(model)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/tests/test_models.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="independent-model-cases",
                 title="Drive behavior from an independent expected table",
@@ -424,11 +566,3 @@ def _collect_pytest_modules(node: ast.Import, binding_counts: dict[str, int], mo
         for alias in node.names
         if alias.name == "pytest" and binding_counts.get(local := alias.asname or alias.name, 0) == 1
     )
-
-
-def _direct_assertions(tree: ast.Module, tests: list[_CollectedTest]) -> list[ast.Assert]:
-    assertions = [node for node in tree.body if isinstance(node, ast.Assert)]
-    assertions.extend(
-        statement for test in tests for statement in test.function.body if isinstance(statement, ast.Assert)
-    )
-    return assertions

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "4105f2c2dafe1a2348fb0bff2c7a7154a9f6e8e5d89cb695955c3c8c79347e59",
-  "cliSha256": "5d2dc621169417df48b6f4f3e0e778bcbcb01b2be2de8c1a52cfe4ebcc72a762",
+  "catalogSha256": "c1e460fd4b4282b797b981d3fbc0f48c954c209695bd3acc929786a1a6cb7c0e",
+  "cliSha256": "52b6316f63788a902c13796c89d7d26a62d1f5bf7ecc033a4366930014de701e",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -721,6 +721,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Distinct inputs have independent rows"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/format.test.ts",
+              "source": "import { test } from \"vitest\";\ntest.for([\n  { input: 0, expected: \"0ms\" },\n  { input: 1, expected: \"1ms\" },\n])(\"$input\", ({ input, expected }) => {\n  expect(format(input)).toBe(expected);\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/format.test.ts",
+          "id": "distinct-for-boundary",
+          "outcome": "accept",
+          "scenarioId": "for-table",
+          "title": "Vitest for tables preserve distinct boundaries"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/format.test.ts",
+              "source": "import { test } from \"vitest\";\ntest.for([\n  { input: 0, expected: \"0ms\" },\n  { input: 0, expected: \"0ms\" },\n])(\"$input\", ({ input, expected }) => {\n  expect(format(input)).toBe(expected);\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/format.test.ts",
+          "id": "duplicate-for-row",
+          "outcome": "reject",
+          "scenarioId": "for-table",
+          "title": "Vitest for tables retain the same case identity"
         },
         {
           "expectedCount": 1,
@@ -4209,6 +4239,36 @@
           "files": [
             {
               "path": "src/user.test.ts",
+              "source": "expect(users[0]).toEqual(\"Ada\");\nexpect(users[1]).toEqual(\"Grace\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/user.test.ts",
+          "id": "indexed-prefix",
+          "outcome": "reject",
+          "scenarioId": "array-length",
+          "title": "Review the collection contract before combining indexed assertions"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/user.test.ts",
+              "source": "expect(users).toHaveLength(3);\nexpect(users[0]).toEqual(\"Ada\");\nexpect(users[1]).toEqual(\"Grace\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/user.test.ts",
+          "id": "length-and-prefix",
+          "outcome": "accept",
+          "scenarioId": "array-length",
+          "title": "A separate exact length can accompany an intentional prefix contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/user.test.ts",
               "source": "expect(user.id).toBe(1);\nexpect(user.name).toBe(\"Ada\");\n"
             }
           ],
@@ -6054,6 +6114,21 @@
           "files": [
             {
               "path": "tests/test_delivery.py",
+              "source": "from unittest.mock import AsyncMock\n\n\nasync def test_delivery():\n    send = AsyncMock()\n    await deliver(send)\n    send.assert_called_once()\n    assert len(send.await_args_list) == 1\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "positive-await-length",
+          "outcome": "accept",
+          "scenarioId": "await-length-evidence",
+          "title": "A positive await-history length distinguishes a dropped coroutine"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
               "source": "from unittest.mock import AsyncMock\n\n\nasync def test_delivery():\n    send = AsyncMock()\n    await send()\n    assert send.called\n    send.assert_awaited_once()\n"
             }
           ],
@@ -6093,6 +6168,21 @@
           "outcome": "reject",
           "scenarioId": "await-expectation-boundaries",
           "title": "A nonnegative await count does not prove execution"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_delivery.py",
+              "source": "from unittest.mock import AsyncMock\n\n\nasync def test_delivery():\n    send = AsyncMock()\n    await deliver(send)\n    send.assert_called_once()\n    assert len(send.await_args_list) >= 0\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_delivery.py",
+          "id": "vacuous-await-length",
+          "outcome": "reject",
+          "scenarioId": "await-length-evidence",
+          "title": "An empty await history still has nonnegative length"
         }
       ],
       "optionsSchemaSource": null
@@ -11691,6 +11781,21 @@
           "title": "Drive behavior from an independent expected table"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/tests/test_models.py",
+              "source": "import pytest\nfrom app.models import ELIGIBLE_MODELS\n\n\ndef test_membership():\n    expected = [\"a\", \"b\"]\n    assert ELIGIBLE_MODELS == expected\n\n\n@pytest.mark.parametrize(\"model\", ELIGIBLE_MODELS)\ndef test_model(model):\n    assert build(model)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/tests/test_models.py",
+          "id": "local-independent-membership-oracle",
+          "outcome": "accept",
+          "scenarioId": "oracle-lexical-bindings",
+          "title": "A fresh local expected table observes the actual production collection"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -11704,6 +11809,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not derive cases from production eligibility"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/tests/test_models.py",
+              "source": "import pytest\nfrom app.models import ELIGIBLE_MODELS\n\n\ndef test_membership(ELIGIBLE_MODELS):\n    assert ELIGIBLE_MODELS == (\"a\", \"b\")\n\n\n@pytest.mark.parametrize(\"model\", ELIGIBLE_MODELS)\ndef test_model(model):\n    assert build(model)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/tests/test_models.py",
+          "id": "shadowed-membership-oracle",
+          "outcome": "reject",
+          "scenarioId": "oracle-lexical-bindings",
+          "title": "A fixture equality does not observe the imported production collection"
         }
       ],
       "optionsSchemaSource": null
