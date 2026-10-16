@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "1f07992a9f4f2cd548a9d3ff38daaa0b2a245b0005275d3540492a0c4f8dd520",
-  "cliSha256": "81adb156ef268f9f16a003cd3c304c5e93ed7485e297e6a6a8ce1b951f4a339a",
+  "catalogSha256": "4046ba20f426a8324ec388234a36d4fa7a62e73a049e1e0bbd3b8770a3853b3c",
+  "cliSha256": "3ce3306c3b9da766392289a9a579203c86204ab758a04b51791175633782293e",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.20.2",
@@ -5608,15 +5608,15 @@
           "files": [
             {
               "path": "main.tf",
-              "source": "resource \"terraform_data\" \"release\" {\n  triggers_replace = [var.release]\n}\n"
+              "source": "resource \"terraform_data\" \"bootstrap\" {\n  triggers_replace = [var.release]\n  provisioner \"local-exec\" {\n    command = \"bootstrap-hosts\"\n  }\n  lifecycle {\n    precondition {\n      condition     = var.release != \"\"\n      error_message = \"A release is required for provisioning.\"\n    }\n  }\n}\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "main.tf",
-          "id": "terraform-data-replacement-trigger",
+          "id": "terraform-data-provisioning-condition",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Keep terraform_data when it models replacement"
+          "title": "Keep a lifecycle condition protecting a provisioning operation"
         }
       ],
       "optionsSchemaSource": null

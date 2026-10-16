@@ -233,6 +233,8 @@ def _mask_spans(source: str, spans: tuple[_Span, ...]) -> str:
 
 
 def mask_block_comments(source: str) -> str:
+    if "/*" not in source:
+        return source
     comments = tuple(span for span in _lexical_document(source).comments if span.kind == "block-comment")
     return _mask_spans(source, comments)
 

@@ -164,6 +164,82 @@ def test_comprehension_rebinding_registers_a_synchronous_callback_at_runtime() -
 
 
 @pytest.mark.parametrize(
+    "statement",
+    [
+        "def nested(value=(close := synchronous)):\n    pass",
+        "def nested(*, value=(close := synchronous)):\n    pass",
+        "nested = lambda value=(close := synchronous): value",
+        "@(close := identity)\ndef nested():\n    pass",
+        "class Nested((close := SyncBase)):\n    pass",
+        "class Nested(metaclass=(close := construct)):\n    pass",
+        "@(close := identity)\nclass Nested:\n    pass",
+    ],
+    ids=("default", "keyword-default", "lambda-default", "function-decorator", "base", "keyword", "class-decorator"),
+)
+@pytest.mark.parametrize("module_scope", [False, True], ids=("function", "module"))
+def test_evaluated_header_walrus_binds_the_enclosing_scope(statement: str, module_scope: bool) -> None:
+    setup = (
+        "def synchronous():\n    pass\ndef identity(value=None):\n    return value\nclass SyncBase:\n    pass\n"
+        "def construct(name='Built', bases=(), namespace=None):\n    return type(name, bases, {} if namespace is None else namespace)\n"
+    )
+    if module_scope:
+        source = _BASE.replace("async def run():", f"{setup}{statement}\nasync def run():")
+    else:
+        body = "\n".join(f"    {line}" for line in statement.splitlines())
+        source = _BASE.replace("async def run():", f"{setup}async def run():\n{body}")
+
+    assert AsyncCleanupRegisteredSynchronously().check(Path("app/resources.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "def nested(close=synchronous):\n    pass",
+        "def nested():\n    close = synchronous",
+        "nested = lambda close: synchronous",
+        "class Nested:\n    close = synchronous",
+    ],
+    ids=("parameter", "function-body", "lambda-parameter", "class-body"),
+)
+def test_header_scope_does_not_relocate_parameters_or_bodies(statement: str) -> None:
+    body = "\n".join(f"    {line}" for line in statement.splitlines())
+    source = _BASE.replace("async def run():", f"def synchronous():\n    pass\nasync def run():\n{body}")
+
+    assert len(AsyncCleanupRegisteredSynchronously().check(Path("app/resources.py"), source)) == 1
+
+
+@pytest.mark.parametrize(
+    "definition",
+    ["def capture(close=close):\n    return close", "capture = lambda close=close: close"],
+    ids=("function-default", "lambda-default"),
+)
+def test_default_capture_does_not_resolve_to_its_own_parameter(definition: str) -> None:
+    source = _BASE.replace("async def run", f"{definition}\nasync def run")
+
+    assert AsyncCleanupRegisteredSynchronously().check(Path("app/resources.py"), source) == []
+
+
+def test_default_walrus_registers_a_synchronous_callback_at_runtime() -> None:
+    events: list[str] = []
+
+    def synchronous() -> None:
+        events.append("sync")
+
+    async def run() -> None:
+        from contextlib import AsyncExitStack  # ruff: ignore[import-outside-top-level] -- exercise the native cleanup boundary.
+
+        def nested(value: object = (close := synchronous)) -> None:
+            pass
+
+        async with AsyncExitStack() as stack:
+            stack.callback(close)
+
+    asyncio.run(run())
+
+    assert events == ["sync"]
+
+
+@pytest.mark.parametrize(
     ("body", "coroutine"),
     [
         ("    def values():\n        yield 1\n    await finish()", True),

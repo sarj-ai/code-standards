@@ -17,7 +17,7 @@ export const PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION = {
   rationale: "Recreating immutable lookup data on every call wastes allocations and obscures its constant nature.",
   remediation: "Declare immutable literal collections and non-stateful regular expressions once at module scope.",
   category: "performance",
-  limitations: ["Small collections, observed direct or nested mutations, nested aliases, direct escapes, and dependencies on local values are excluded. Directly invoked function expressions are excluded rather than assuming they run repeatedly. Callback effects and indirect escapes are not analyzed interprocedurally; review those before hoisting."],
+  limitations: ["Small collections, observed direct or nested mutations, nested aliases, direct escapes, and dependencies on local values are excluded. Directly invoked function expressions are excluded rather than assuming they run repeatedly. Callback effects and indirect escapes are not analyzed interprocedurally; review those before hoisting.", "Builtin constructor and non-retaining call assumptions require unshadowed identifiers; local declarations conservatively abstain. Runtime replacement of globals is not modeled."],
   examples: [
     { id: "hoisted-collection", title: "Hoist a constant collection", outcome: "no-match", files: [{ path: "src/keys.ts", source: "const KEYS = ['a', 'b', 'c'] as const; function isAllowed(key: string) { return KEYS.includes(key); }" }], focusPath: "src/keys.ts", expectedCount: 0, public: true },
     { id: "local-collection", title: "Do not recreate a constant collection", outcome: "match", files: [{ path: "src/keys.ts", source: "function isAllowed(key: string) { const KEYS = ['a', 'b', 'c']; return KEYS.includes(key); }" }], focusPath: "src/keys.ts", expectedCount: 1, public: true },
@@ -189,7 +189,8 @@ function classify(init: TSESTree.Node, checkRegex: boolean, sourceCode: Readonly
   if (
     node.type === AST_NODE_TYPES.NewExpression &&
     node.callee.type === AST_NODE_TYPES.Identifier &&
-    COLLECTION_CONSTRUCTORS.has(node.callee.name)
+    COLLECTION_CONSTRUCTORS.has(node.callee.name) &&
+    isUnshadowedBuiltin(node.callee, sourceCode)
   ) {
     return classifyCollection(node, node.callee.name);
   }
@@ -211,7 +212,7 @@ function unwrapObjectFreeze(node: TSESTree.Node, sourceCode: Readonly<TSESLint.S
     !callee.computed &&
     callee.object.type === AST_NODE_TYPES.Identifier &&
     callee.object.name === "Object" &&
-    (ASTUtils.findVariable(sourceCode.getScope(callee.object), "Object")?.defs.length ?? 0) === 0 &&
+    isUnshadowedBuiltin(callee.object, sourceCode) &&
     callee.property.type === AST_NODE_TYPES.Identifier &&
     callee.property.name === "freeze" &&
     inner.arguments.length === 1 &&
@@ -250,7 +251,7 @@ const NON_RETAINING_BUILTINS: ReadonlyMap<string, ReadonlySet<string>> = new Map
   ],
 );
 
-function isSafeRead(identifier: TSESTree.Identifier): boolean {
+function isSafeRead(identifier: TSESTree.Identifier, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
   let typeOwner: TSESTree.Node = identifier.parent;
   while (typeOwner.type === AST_NODE_TYPES.TSQualifiedName) typeOwner = typeOwner.parent;
   if (typeOwner.type === AST_NODE_TYPES.TSTypeQuery) return true;
@@ -285,7 +286,7 @@ function isSafeRead(identifier: TSESTree.Identifier): boolean {
   if (
     parent.type === AST_NODE_TYPES.CallExpression &&
     parent.arguments.includes(value) &&
-    isNonRetainingBuiltinCall(parent, value)
+    isNonRetainingBuiltinCall(parent, value, sourceCode)
   ) {
     return true;
   }
@@ -304,6 +305,7 @@ function isSafeRead(identifier: TSESTree.Identifier): boolean {
 function isNonRetainingBuiltinCall(
   node: TSESTree.CallExpression,
   argument: TSESTree.Expression,
+  sourceCode: Readonly<TSESLint.SourceCode>,
 ): boolean {
   const callee = unwrapExpression(node.callee);
 
@@ -312,13 +314,14 @@ function isNonRetainingBuiltinCall(
     callee.type === AST_NODE_TYPES.Identifier &&
     callee.name === "structuredClone"
   ) {
-    return true;
+    return isUnshadowedBuiltin(callee, sourceCode);
   }
   if (
     callee.type !== AST_NODE_TYPES.MemberExpression ||
     callee.computed ||
     calleeReceiver.type !== AST_NODE_TYPES.Identifier ||
-    callee.property.type !== AST_NODE_TYPES.Identifier
+    callee.property.type !== AST_NODE_TYPES.Identifier ||
+    !isUnshadowedBuiltin(calleeReceiver, sourceCode)
   ) {
     return false;
   }
@@ -332,6 +335,10 @@ function isNonRetainingBuiltinCall(
     return node.arguments[0] !== argument;
   }
   return true;
+}
+
+function isUnshadowedBuiltin(identifier: TSESTree.Identifier, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+  return (ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name)?.defs.length ?? 0) === 0;
 }
 
 export default createRule<Options, MessageIds>({
@@ -400,7 +407,7 @@ export default createRule<Options, MessageIds>({
         if (reference.identifier.type !== AST_NODE_TYPES.Identifier) {
           return false;
         }
-        if (!isSafeRead(reference.identifier)) {
+        if (!isSafeRead(reference.identifier, sourceCode)) {
           return false;
         }
       }

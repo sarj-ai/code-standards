@@ -12,6 +12,7 @@ from sarj_iac_lint._hcl import (
     document,
     literal_string,
     literal_token,
+    mask_block_comments,
     strip_outer_parentheses,
     suppression_comment_lines,
     tokens,
@@ -30,6 +31,21 @@ def test_tokens_keeps_an_interpolated_string_whole():
 def test_tokens_keeps_multichar_operators_whole():
     assert tokens('var.env=="prod"') == ("var.env", "==", '"prod"')
     assert tokens('var.env != "prod"') == ("var.env", "!=", '"prod"')
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("instance_type = var.instance_type\n", "instance_type = var.instance_type\n"),
+        ("name /* reason */ = var.name", "name              = var.name"),
+        ("name /* reason\r\nmore */ = var.name", "name          \r\n        = var.name"),
+        ('name = "/* literal */"', 'name = "/* literal */"'),
+        ("# /* line-comment data */\nname = var.name", "# /* line-comment data */\nname = var.name"),
+        ("name = <<EOT\n/* heredoc data */\nEOT\n", "name = <<EOT\n/* heredoc data */\nEOT\n"),
+    ],
+)
+def test_block_comment_masking_preserves_values_and_source_positions(source: str, expected: str) -> None:
+    assert mask_block_comments(source) == expected
 
 
 @pytest.mark.parametrize(

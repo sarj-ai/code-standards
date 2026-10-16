@@ -45,6 +45,77 @@ def test_reports_one_diagnostic_for_multiple_conditions() -> None:
     assert len(diagnostics) == 1
 
 
+@pytest.mark.parametrize("condition", ["precondition", "postcondition"])
+@pytest.mark.parametrize(
+    ("provisioner", "operation"),
+    [
+        ("local-exec", 'command = "echo ready"'),
+        ("remote-exec", 'inline = ["echo ready"]'),
+        ("file", 'content = "ready"\n    destination = "/tmp/ready"'),
+    ],
+    ids=("local-exec", "remote-exec", "file"),
+)
+def test_allows_conditions_on_provisioning_resources(condition: str, provisioner: str, operation: str) -> None:
+    source = (
+        'resource "terraform_data" "operation" {\n'
+        f'  provisioner "{provisioner}" {{\n    {operation}\n  }}\n'
+        "  lifecycle {\n"
+        f"    {condition} {{\n"
+        "      condition = var.ready\n"
+        '      error_message = "The operation requires readiness."\n'
+        "    }\n  }\n}\n"
+    )
+
+    assert _check(source) == []
+
+
+def test_destroy_time_provisioner_is_an_operation() -> None:
+    source = (
+        'resource "terraform_data" "operation" {\n'
+        '  provisioner "local-exec" {\n    when = destroy\n    command = "echo cleanup"\n  }\n'
+        "  lifecycle {\n    precondition {\n"
+        "      condition = var.ready\n"
+        '      error_message = "The operation requires readiness."\n'
+        "    }\n  }\n}\n"
+    )
+
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "lookalike",
+    [
+        '  # provisioner "local-exec" { command = "echo ready" }\n',
+        '  input = "provisioner local-exec"\n',
+        '  input = { provisioner = { local-exec = "echo ready" } }\n',
+        '  provisioner "unknown" {\n    command = "echo ready"\n  }\n',
+    ],
+    ids=("comment", "string", "object-key", "unsupported-label"),
+)
+def test_provisioner_lookalikes_do_not_exempt_a_guard(lookalike: str) -> None:
+    source = (
+        'resource "terraform_data" "guard" {\n' + lookalike + "  lifecycle {\n    precondition {\n"
+        "      condition = var.ready\n"
+        '      error_message = "A deployment must be ready."\n'
+        "    }\n  }\n}\n"
+    )
+
+    assert len(_check(source)) == 1
+
+
+def test_data_source_conditions_are_not_terraform_data_resources() -> None:
+    source = (
+        'data "http" "readiness" {\n'
+        '  url = "https://example.invalid/ready"\n'
+        "  lifecycle {\n    postcondition {\n"
+        "      condition = self.status_code == 200\n"
+        '      error_message = "The service must be ready."\n'
+        "    }\n  }\n}\n"
+    )
+
+    assert _check(source) == []
+
+
 @pytest.mark.parametrize(
     "source",
     [

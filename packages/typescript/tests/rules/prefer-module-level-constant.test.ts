@@ -19,6 +19,15 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("prefer-module-level-constant", rule, {
   valid: [
+    { name: "does not assume a parameter Object.keys is non-retaining", code: "function count(Object) { const values = [1, 2, 3]; return Object.keys(values).length; }" },
+    { name: "preserves mutation through a local Object.keys", code: "function count() { const Object = { keys(values) { values.push(4); return values; } }; const values = [1, 2, 3]; return Object.keys(values).length; }" },
+    { name: "does not assume a parameter Array.from is non-retaining", code: "function copy(Array) { const values = [1, 2, 3]; return Array.from(values).length; }" },
+    { name: "does not assume a parameter JSON.stringify is non-retaining", code: "function encode(JSON) { const values = [1, 2, 3]; return JSON.stringify(values); }" },
+    { name: "does not assume a parameter structuredClone is non-retaining", code: "function copy(structuredClone) { const values = [1, 2, 3]; return structuredClone(values).length; }" },
+    { name: "does not hoist construction through a local Set parameter", code: "function count(Set) { const values = new Set([1, 2, 3]); return values.size; }" },
+    { name: "does not hoist construction through a local Map class", code: "class Map { constructor(entries) { this.size = entries.length; } } function count() { const values = new Map([['a', 1], ['b', 2], ['c', 3]]); return values.size; }" },
+    { name: "preserves an imported Object contract", code: "import Object from 'custom-objects'; function count() { const values = [1, 2, 3]; return Object.keys(values).length; }" },
+    { name: "resolves a hoisted function binding for structuredClone", code: "function count() { const values = [1, 2, 3]; return structuredClone(values).length; function structuredClone(values) { values.push(4); return values; } }" },
     { name: "does not call a module IIFE allocation repeated work", code: "const encode = (() => { const table = {a: 1, b: 2, c: 3}; return (key) => table[key]; })();" },
     { name: "excludes a directly invoked typed function expression", code: "const encode = ((function () { const table = {a: 1, b: 2, c: 3}; return (key) => table[key]; }) as () => unknown)();" },
     { name: "preserves nested property mutation per invocation", code: "function f() { const values = {a: {count: 0}, b: 1, c: 2}; values.a.count++; return values.a.count; }" },
