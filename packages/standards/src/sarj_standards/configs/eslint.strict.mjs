@@ -1072,7 +1072,7 @@ export function createConfig(options = {}) {
       "@sarj/prefer-zod-infer": "error",
       // Parse-return contracts require exact type evidence before the local
       // schema can own the blocking return contract.
-      "@sarj/prefer-zod-parse-output-type": "error",
+      "@sarj/prefer-zod-parse-output-type": "warn",
       // Only the semantics-preserving array order is checked: an outer
       // default already handles undefined, while `.default().optional()` is
       // intentionally left alone because it can still return undefined.
@@ -1369,6 +1369,8 @@ export function createConfig(options = {}) {
       "@sarj/no-hand-rolled-sleep": "error",
       "@sarj/no-hand-rolled-spinner": "error",
       "@sarj/no-known-value-widening": "error",
+      "@sarj/no-invalid-typed-mutation": "warn",
+      "@sarj/no-contradictory-type-predicate": "warn",
       "@sarj/no-broad-return-type": "error",
       "@sarj/prefer-typed-reflection": "error",
       "@sarj/no-conditional-empty-object-spread": "error",

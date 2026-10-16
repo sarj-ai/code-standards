@@ -20,6 +20,8 @@ import { createRule, type RuleDocumentation } from "./_docs.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
+import { equivalentZodOutputContracts } from "./_equivalent-zod-output-contracts.js";
+import { hasAuthoritativeOutputContract } from "./_has-authoritative-output-contract.js";
 import {
   isPreferZodInferModuleReshaper,
   isPreferZodInferTypeConstraintName,
@@ -30,9 +32,10 @@ type MessageIds = "handWrittenParsedOutput";
 type Options = readonly [];
 
 export const PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION = {
-  summary: "Derive a function's return contract from the local Zod schema whose parsed output it returns.",
-  rationale: "A hand-written contract can drift from the runtime-validated value even while each declaration remains locally valid.",
-  remediation: "Export or colocate the schema and derive the contract with `z.output<typeof Schema>`.",
+  defaultLevel: "warning",
+  summary: "Consider deriving validated return contracts from the Zod schema when the schema owns the contract.",
+  rationale: "A hand-written contract can drift from the runtime-validated value. Schema ownership determines whether deriving the type preserves the domain architecture.",
+  remediation: "When the schema owns the contract, derive it with `z.output<typeof Schema>`. Preserve independently owned domain and public API contracts, and validate schema compatibility with those contracts.",
   category: "correctness",
   autofix: "none",
   limitations: [
@@ -42,6 +45,8 @@ export const PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION = {
     "Direct returns, nullish conditional branches, and one immutable local parse-result binding are followed; second aliases, assignments, helper calls, imported schemas, and other indirect data flow are intentionally excluded.",
     "Contracts returned from more than one distinct local schema are excluded because no single schema has unambiguous ownership.",
     "Readonly, augmented, indexed, callable, generated, constrained, any, unknown, and never contracts are excluded rather than guessed.",
+    "Nested contracts must preserve property keys, optionality and readonly behavior through aliases, containers and unambiguous unions. Distinct nested classes, accessor or method declarations, opaque members, ambiguous unions, or graphs beyond 128 compared pairs or 16 union alternatives are excluded.",
+    "Explicit callable bindings, independently annotated contextual callbacks or object members, and class members fulfilling an annotated heritage contract retain ownership of their named output contract. Inference from the function body alone does not establish ownership; independent helpers remain eligible.",
     "The rule is report-only because moving or exporting a schema changes module ownership and requires human review.",
   ],
   examples: [
@@ -401,6 +406,7 @@ function reportCandidates(
     if (isGeneratedFile(source.fileName, source.text)) return;
     const tsOutput = services.esTreeNodeToTSNodeMap.get(candidate.output);
     const parsed = checker.getTypeAtLocation(tsOutput);
+    if (hasAuthoritativeOutputContract(checker, tsOutput, contractSymbol)) return;
     // A `z.ZodType<Contract>` constraint deliberately makes the TypeScript
     // contract authoritative over the schema.
     const constrained =
@@ -426,7 +432,7 @@ function reportCandidates(
       }
     }
     if (
-      !exactObjectTypes(
+      !equivalentZodOutputContracts(
         checker,
         checker.getNonNullableType(parsed),
         checker.getNonNullableType(contract),
@@ -492,34 +498,6 @@ function handWrittenObjectDeclaration(
   return null;
 }
 
-function exactObjectTypes(
-  checker: ts.TypeChecker,
-  parsed: ts.Type,
-  contract: ts.Type,
-): boolean {
-  const unsafeFlags = ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never;
-  if ((parsed.flags & unsafeFlags) !== 0 || (contract.flags & unsafeFlags) !== 0) return false;
-  if (
-    checker.getIndexInfosOfType(parsed).length > 0 ||
-    checker.getIndexInfosOfType(contract).length > 0 ||
-    checker.getSignaturesOfType(parsed, ts.SignatureKind.Call).length > 0 ||
-    checker.getSignaturesOfType(contract, ts.SignatureKind.Call).length > 0
-  ) {
-    return false;
-  }
-  const names = (type: ts.Type): string[] =>
-    checker.getPropertiesOfType(type).map((property) => property.getName()).sort();
-  const parsedNames = names(parsed);
-  const contractNames = names(contract);
-  return (
-    parsedNames.length > 0 &&
-    parsedNames.length === contractNames.length &&
-    parsedNames.every((name, index) => name === contractNames[index]) &&
-    checker.isTypeAssignableTo(parsed, contract) &&
-    checker.isTypeAssignableTo(contract, parsed)
-  );
-}
-
 export default createRule<Options, MessageIds>({
   name: "prefer-zod-parse-output-type",
   documentation: PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION,
@@ -527,12 +505,12 @@ export default createRule<Options, MessageIds>({
     type: "problem",
     docs: {
       description:
-        "Derive a function's return contract from the local Zod schema whose parsed output it returns.",
+        "Consider deriving validated return contracts from the Zod schema when the schema owns the contract.",
     },
     schema: [],
     messages: {
       handWrittenParsedOutput:
-        "`{{typeName}}` exactly restates the validated output returned from `{{schemaName}}.{{methodName}}()`. Export or colocate the schema and derive the contract with `z.output<typeof {{schemaName}}>` so the runtime and compile-time shapes cannot drift.",
+        "`{{typeName}}` matches the validated output returned from `{{schemaName}}.{{methodName}}()`. If the schema owns this contract, consider `z.output<typeof {{schemaName}}>`. Preserve independent domain and public API contracts.",
     },
   },
   defaultOptions: [],

@@ -71,6 +71,28 @@ optional-property semantics accounted for. Runtime input still needs parsing;
 static types, literal tags, and casts do not enforce runtime object validity.
 Do not impose exactness when extra metadata is valid.
 
+## Preserve the evidence after validation
+
+Check the implementation of user-defined type predicates, including both
+branches at callers. TypeScript predicates and Python `TypeIs` can exclude their
+target from the false branch, so a positive-integer or non-empty-value filter is
+not a total test for `number`, `int`, or the whole container type. Use Python
+`TypeGuard` for intentional partial predicates and retain the remaining cases
+in false-branch callers. A predicate annotation does not validate its body.
+
+Look for escape hatches that can invalidate an established contract: reflective
+property writes, Pydantic `model_construct`, and `model_copy(update=...)` do not
+provide the same checks as ordinary typed assignment or validated construction.
+Report a demonstrated incompatible value or missing required field; trusted
+compatible bypasses remain valid. Revalidating an existing Pydantic instance
+may return it unchanged, so validate complete input data when validation is
+required.
+
+When replacing a hand-written contract with schema output, preserve readonly
+views, nested optional-property semantics, callable capabilities, and deliberate
+public abstractions. Mutual assignability alone does not prove that replacing
+the type preserves those guarantees.
+
 ## Preserve known evidence
 
 Check whether a populated fixed-key map is widened to an open dictionary, or a

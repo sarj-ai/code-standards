@@ -6,6 +6,8 @@ import preferTypedReflection from "./rules/prefer-typed-reflection.js";
 import noBroadReturnType from "./rules/no-broad-return-type.js";
 import noReduceAccumulatorCopy from "./rules/no-reduce-accumulator-copy.js";
 import noKnownValueWidening from "./rules/no-known-value-widening.js";
+import noInvalidTypedMutation from "./rules/no-invalid-typed-mutation.js";
+import noContradictoryTypePredicate from "./rules/no-contradictory-type-predicate.js";
 /**
  * @fileoverview index — the plugin's rule registry and its two presets; the historical rename map lives in `rules/_renamed-rules.ts`.
  */
@@ -135,6 +137,8 @@ const RULES = {
   "no-broad-return-type": noBroadReturnType,
   "no-reduce-accumulator-copy": noReduceAccumulatorCopy,
   "no-known-value-widening": noKnownValueWidening,
+  "no-invalid-typed-mutation": noInvalidTypedMutation,
+  "no-contradictory-type-predicate": noContradictoryTypePredicate,
   "require-button-accessible-name": requireButtonAccessibleName,
   "require-camelcase-properties": requireCamelcaseProperties,
   "require-svg-accessible-name": requireSvgAccessibleName,
@@ -268,8 +272,10 @@ const LIBRARY_IMPORT_POLICY = ["error", {
 const ADVISORY_RULES = [
   "@sarj/excessive-commentary",
   "@sarj/no-bespoke-api-case-conversion",
+  "@sarj/no-contradictory-type-predicate",
   "@sarj/no-cors-wildcard-with-credentials",
   "@sarj/no-exception-text-in-5xx-response",
+  "@sarj/no-invalid-typed-mutation",
   "@sarj/no-restated-comment",
   "@sarj/no-restated-jsdoc",
   "@sarj/prefer-discriminated-union",
@@ -279,6 +285,7 @@ const ADVISORY_RULES = [
   "@sarj/prefer-node-fs-promises",
   "@sarj/prefer-shared-zod-enum",
   "@sarj/prefer-whole-object-assertion",
+  "@sarj/prefer-zod-parse-output-type",
   "@sarj/require-sql-access-class",
 ] as const;
 
@@ -289,6 +296,8 @@ const RECOMMENDED_RULES = {
   "@sarj/no-broad-return-type": "error",
   "@sarj/no-reduce-accumulator-copy": "error",
   "@sarj/no-known-value-widening": "error",
+  "@sarj/no-invalid-typed-mutation": "warn",
+  "@sarj/no-contradictory-type-predicate": "warn",
   "@sarj/require-button-accessible-name": "error",
   "@sarj/require-camelcase-properties": "error",
   "@sarj/require-svg-accessible-name": "error",
@@ -382,7 +391,7 @@ const RECOMMENDED_RULES = {
   "@sarj/prefer-whole-object-assertion": "warn",
   "@sarj/repeated-static-call-cases": "error",
   "@sarj/prefer-zod-infer": "error",
-  "@sarj/prefer-zod-parse-output-type": "error",
+  "@sarj/prefer-zod-parse-output-type": "warn",
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
   "@sarj/require-explicit-contract-implementation": "error",
@@ -409,6 +418,8 @@ const STRICT_RULES = {
   "@sarj/no-broad-return-type": "error",
   "@sarj/no-reduce-accumulator-copy": "error",
   "@sarj/no-known-value-widening": "error",
+  "@sarj/no-invalid-typed-mutation": "warn",
+  "@sarj/no-contradictory-type-predicate": "warn",
   "@sarj/require-button-accessible-name": "error",
   "@sarj/require-camelcase-properties": "error",
   "@sarj/require-svg-accessible-name": "error",
@@ -506,7 +517,7 @@ const STRICT_RULES = {
   "@sarj/prefer-whole-object-assertion": "warn",
   "@sarj/repeated-static-call-cases": "error",
   "@sarj/prefer-zod-infer": "error",
-  "@sarj/prefer-zod-parse-output-type": "error",
+  "@sarj/prefer-zod-parse-output-type": "warn",
   "@sarj/require-assert-never": "error",
   "@sarj/require-fetch-timeout": "error",
   "@sarj/require-explicit-contract-implementation": "error",

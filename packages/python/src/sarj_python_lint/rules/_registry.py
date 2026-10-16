@@ -214,7 +214,10 @@ if TYPE_CHECKING:
 from sarj_python_lint.rules.duplicate_adjacent_exception_handler import DuplicateAdjacentExceptionHandler
 from sarj_python_lint.rules.duplicate_closed_pure_helper import DuplicateClosedPureHelper
 from sarj_python_lint.rules.no_conflicting_pydantic_alias_validation import NoConflictingPydanticAliasValidation
+from sarj_python_lint.rules.no_contradictory_type_guard import NoContradictoryTypeGuard
 from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossiblePydanticFieldBounds
+from sarj_python_lint.rules.no_invalid_pydantic_bypass import NoInvalidPydanticBypass
+from sarj_python_lint.rules.no_partial_type_is import NoPartialTypeIs
 from sarj_python_lint.rules.no_unknown_pydantic_validator_field import NoUnknownPydanticValidatorField
 from sarj_python_lint.rules.prefer_discriminated_model_union import PreferDiscriminatedModelUnion
 from sarj_python_lint.rules.redundant_test_constructor_forwarder import RedundantTestConstructorForwarder
@@ -226,6 +229,9 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
         NoExplicitTestOracle.id: NoExplicitTestOracle,
         PreferDiscriminatedModelUnion.id: PreferDiscriminatedModelUnion,
+        NoInvalidPydanticBypass.id: NoInvalidPydanticBypass,
+        NoPartialTypeIs.id: NoPartialTypeIs,
+        NoContradictoryTypeGuard.id: NoContradictoryTypeGuard,
         NoConflictingPydanticAliasValidation.id: NoConflictingPydanticAliasValidation,
         NoUnknownPydanticValidatorField.id: NoUnknownPydanticValidatorField,
         NoImpossiblePydanticFieldBounds.id: NoImpossiblePydanticFieldBounds,

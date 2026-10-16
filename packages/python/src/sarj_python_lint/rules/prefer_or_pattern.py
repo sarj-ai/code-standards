@@ -46,6 +46,7 @@ class PreferOrPattern(Rule):
         limitations=(
             "Only adjacent, unguarded, refutable arms with structurally identical non-empty bodies are compared.",
             "Arms with different bound names or comments, intervening or leading comments, and combined patterns rejected by Python are excluded.",
+            "Bodies that read pattern captures or names used by the match subject are excluded: merging can lose correlated narrowing required by typed calls. This syntax-only check also abstains from safe forwarding of those values.",
         ),
         examples=(
             RuleExample(
@@ -127,7 +128,7 @@ def _mergeable_runs(node: ast.Match, comments: list[tuple[int, int, str, bool]])
             current
             and _is_mergeable_arm(case)
             and not (len(current) == 1 and _has_leading_comment(node, index - 1, comments))
-            and _arms_merge(current[-1], case, comments)
+            and _arms_merge(current[-1], case, node.subject, comments)
             and _render_valid_or_pattern(candidate_patterns) is not None
         ):
             current.append(case)
@@ -142,7 +143,7 @@ def _mergeable_runs(node: ast.Match, comments: list[tuple[int, int, str, bool]])
 
 def _has_structural_candidate(node: ast.Match) -> bool:
     return any(
-        _arms_structurally_merge(first, second)
+        _arms_structurally_merge(first, second, node.subject)
         and _render_valid_or_pattern([first.pattern, second.pattern]) is not None
         for first, second in zip(node.cases, node.cases[1:], strict=False)
     )
@@ -176,9 +177,10 @@ def _is_empty_body(body: list[ast.stmt]) -> bool:
 def _arms_merge(
     first: ast.match_case,
     second: ast.match_case,
+    subject: ast.expr,
     comments: list[tuple[int, int, str, bool]],
 ) -> bool:
-    if not _arms_structurally_merge(first, second):
+    if not _arms_structurally_merge(first, second, subject):
         return False
     if _comments_in(comments, first.pattern.lineno, _arm_end(first)) != _comments_in(
         comments, second.pattern.lineno, _arm_end(second)
@@ -188,12 +190,22 @@ def _arms_merge(
     return not _comments_in(comments, _arm_end(first) + 1, second.pattern.lineno - 1)
 
 
-def _arms_structurally_merge(first: ast.match_case, second: ast.match_case) -> bool:
+def _arms_structurally_merge(first: ast.match_case, second: ast.match_case, subject: ast.expr) -> bool:
     return (
         _is_mergeable_arm(first)
         and _is_mergeable_arm(second)
         and _bound_names(first.pattern) == _bound_names(second.pattern)
         and _bodies_equal(first.body, second.body)
+        and not _body_uses_narrowed_names(first, subject)
+    )
+
+
+def _body_uses_narrowed_names(case: ast.match_case, subject: ast.expr) -> bool:
+    narrowed = _bound_names(case.pattern) | frozenset(node.id for node in walk(subject) if isinstance(node, ast.Name))
+    return any(
+        isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in narrowed
+        for statement in case.body
+        for node in walk(statement)
     )
 
 
