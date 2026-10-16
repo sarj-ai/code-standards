@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "isolatedDeclarations": false,
+    "allowImportingTsExtensions": true,
+    "types": ["node"],
+    "lib": ["ES2025", "DOM", "DOM.Iterable"],
+    "ignoreDeprecations": "6.0",
+    "strict": true,
+    "noImplicitAny": true,
+    "noUncheckedIndexedAccess": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "exactOptionalPropertyTypes": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "allowJs": false
+  },
+  "include": ["scripts/**/*.ts", "*.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}

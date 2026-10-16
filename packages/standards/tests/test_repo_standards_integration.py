@@ -6,6 +6,7 @@ import subprocess
 from typing import TYPE_CHECKING
 
 import pytest
+from repo_standards.core.engine import baseline_from_report
 from repo_standards.core.models import (
     ComponentId,
     Diagnostic as RepositoryDiagnostic,
@@ -22,16 +23,19 @@ from repo_standards.core.models import (
     RuleId,
     SourceLocation,
 )
+from repo_standards.core.render import baseline_dict
 from repo_standards.policy_sarj import SarjPolicy
+from repo_standards.repository import RepositoryAnalysisRequest, analyze_repository
 
 from sarj_standards import api
+from sarj_standards.cli.main import main
+from sarj_standards.libs.adoption import doctor, manifest as adoption_manifest, scaffold, service, upgrade
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting import repo_standards
 
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    from repo_standards.repository import RepositoryAnalysisRequest
 
 
 def _makefile_severity() -> str:
@@ -525,3 +529,183 @@ def test_selected_adoption_reports_missing_manifest_when_worktree_marker_is_dele
     assert report.exit_code == 2
     assert report.issues[0].source == "repo-standards"
     assert report.issues[0].kind == "analysis.manifest-absent"
+
+
+_JAVASCRIPT_RULE = "repository/artifacts/untyped-javascript"
+
+
+def _typed_policy_repository(repository: Path, *, include_warnings: bool, artifact_kind: str | None = None) -> Path:
+    manifest = _adopt(repository)
+    manifest.write_text(
+        f'repository_id = "fixture"\ncomponents = []\nenabled_rules = ["{_JAVASCRIPT_RULE}"]\n'
+        + (
+            f'\n[[javascript.artifacts]]\npath = "tool.mjs"\nkind = "{artifact_kind}"\nreason = "Reviewed loader compatibility fixture"\n'
+            + ('source = "tool.ts"\n' if artifact_kind == "generated" else "")
+            if artifact_kind is not None
+            else ""
+        ),
+        encoding="utf-8",
+    )
+    (repository / ".sarj-standards.toml").write_text(
+        f'schema = 4\nbundle = "{api.__version__}"\n[capabilities]\ndisable = {json.dumps([name for name in adoption_manifest.ALL_CAPABILITIES if name != "taplo"])}\n[hooks]\nmanager = "none"\n',
+        encoding="utf-8",
+    )
+    if artifact_kind is not None:
+        (repository / "tool.mjs").write_text("export const reviewed = true;\n", encoding="utf-8")
+    if artifact_kind == "generated":
+        (repository / "tool.ts").write_text("export const reviewed: boolean = true;\n", encoding="utf-8")
+    assert main(["--root", str(repository), "setup", "--no-install"]) == 0
+    subprocess.run(("git", "init", "--quiet"), cwd=repository, check=True)
+    _commit(repository)
+    clean = analyze_repository(RepositoryAnalysisRequest(root=repository))
+    assert clean.execution_issues == ()
+    assert clean.diagnostics == ()
+    baseline = repository / ".repo-standards/baseline.json"
+    baseline.write_text(
+        json.dumps(baseline_dict(baseline_from_report(clean, include_warnings=include_warnings))) + "\n",
+        encoding="utf-8",
+    )
+    _commit(repository)
+    return baseline
+
+
+@pytest.mark.parametrize("staged", [False, True])
+@pytest.mark.parametrize("include_warnings", [False, True])
+def test_canonical_repository_gate_enforces_only_opted_in_new_warnings(
+    tmp_path: Path, *, staged: bool, include_warnings: bool
+) -> None:
+    _typed_policy_repository(tmp_path, include_warnings=include_warnings)
+    (tmp_path / "tool.mjs").write_text("export const authored = true;\n", encoding="utf-8")
+    if staged:
+        subprocess.run(("git", "add", "tool.mjs"), cwd=tmp_path, check=True)
+    else:
+        _commit(tmp_path)
+
+    report = api.Standards(tmp_path).analyze((), staged=staged)
+
+    assert report.exit_code == int(include_warnings)
+    assert report.completion.value == "complete"
+    assert report.issues == ()
+    assert len(report.diagnostics) == 1
+    assert report.diagnostics[0].rule_id == _JAVASCRIPT_RULE
+    assert report.diagnostics[0].severity.value == "warning"
+    native = next(tool for tool in report.tools if tool.name == "repo-standards")
+    assert native.policy_failed is include_warnings
+    if include_warnings:
+        fingerprint = report.diagnostics[0].fingerprint
+        assert fingerprint is not None
+        visible = api._without_baselined_diagnostics(report, {fingerprint: 1})  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- A real native warning must survive an exact central budget.
+        assert visible.exit_code == 1
+        assert visible.diagnostics == report.diagnostics
+    arguments = ["--root", str(tmp_path), "check", "--format", "json"]
+    if staged:
+        arguments.append("--staged")
+    else:
+        arguments.append("tool.mjs")
+    assert main(arguments) == int(include_warnings)
+
+
+@pytest.mark.parametrize("staged", [False, True])
+@pytest.mark.parametrize("selected_marker", [False, True])
+def test_warning_ratchet_marker_uses_exact_selected_git_baseline(
+    tmp_path: Path, *, staged: bool, selected_marker: bool
+) -> None:
+    baseline = _typed_policy_repository(tmp_path, include_warnings=not selected_marker if staged else selected_marker)
+    (tmp_path / "tool.mjs").write_text("export const authored = true;\n", encoding="utf-8")
+    _commit(tmp_path)
+    contents = adoption_manifest.as_table(parse_json(baseline.read_text(encoding="utf-8")))
+    contents["include_warnings"] = selected_marker
+    baseline.write_text(json.dumps(contents), encoding="utf-8")
+    if staged:
+        subprocess.run(("git", "add", ".repo-standards/baseline.json"), cwd=tmp_path, check=True)
+    contents["include_warnings"] = not selected_marker
+    baseline.write_text(json.dumps(contents), encoding="utf-8")
+
+    report = api.Standards(tmp_path).analyze((), staged=staged)
+
+    assert report.exit_code == int(selected_marker)
+    assert report.issues == ()
+    assert report.diagnostics[0].severity.value == "warning"
+
+
+def test_reviewed_exact_artifact_keeps_canonical_staged_gate_clean(tmp_path: Path) -> None:
+    baseline = _typed_policy_repository(tmp_path, include_warnings=True, artifact_kind="runtime")
+    (tmp_path / "tool.mjs").write_text("export const reviewed = false;\n", encoding="utf-8")
+    subprocess.run(("git", "add", "tool.mjs"), cwd=tmp_path, check=True)
+
+    report = api.Standards(tmp_path).analyze((), staged=True)
+
+    assert report.exit_code == 0
+    assert report.diagnostics == ()
+    assert json.loads(baseline.read_text(encoding="utf-8"))["fingerprints"] == []
+    assert main(["--root", str(tmp_path), "check", "--staged", "--format", "json"]) == 0
+
+
+@pytest.mark.parametrize("kind", ["tool-config", "generated", "vendor", "fixture", "runtime"])
+def test_setup_update_and_doctor_preserve_reviewed_artifact_provenance_and_warning_marker(
+    tmp_path: Path, kind: str
+) -> None:
+    baseline = _typed_policy_repository(tmp_path, include_warnings=True, artifact_kind=kind)
+    manifest = tmp_path / ".repo-standards/repository.toml"
+    before = manifest.read_bytes()
+    accepted = baseline.read_bytes()
+
+    planned = service.plan_init(tmp_path)
+    assert not planned.scaffold.errors
+    scaffold.apply(planned.scaffold)
+    assert manifest.read_bytes() == before
+    assert baseline.read_bytes() == accepted
+    assert upgrade.apply(upgrade.build_plan(tmp_path), install=False) == 0
+    assert manifest.read_bytes() == before
+    assert baseline.read_bytes() == accepted
+    assert not [
+        item
+        for item in doctor.diagnose_commit_policy(tmp_path)
+        if item.id.startswith("doctor.repository.") and item.level is doctor.Level.DRIFT
+    ]
+    assert manifest.read_bytes() == before
+    assert baseline.read_bytes() == accepted
+    assert json.loads(accepted)["include_warnings"] is True
+    assert json.loads(accepted)["fingerprints"] == []
+
+
+def test_invalid_selected_warning_marker_cannot_silently_disable_the_native_gate(tmp_path: Path) -> None:
+    baseline = _typed_policy_repository(tmp_path, include_warnings=True)
+    contents = adoption_manifest.as_table(parse_json(baseline.read_text(encoding="utf-8")))
+    contents["include_warnings"] = "true"
+    baseline.write_text(json.dumps(contents), encoding="utf-8")
+    (tmp_path / "tool.mjs").write_text("export const authored = true;\n", encoding="utf-8")
+    subprocess.run(("git", "add", ".repo-standards/baseline.json", "tool.mjs"), cwd=tmp_path, check=True)
+
+    report = api.Standards(tmp_path).analyze((), staged=True)
+
+    assert report.exit_code == 2
+    assert report.issues
+    assert all(item.source == "repo-standards" for item in report.issues)
+
+
+def test_explicit_rule_selection_stays_narrow_without_corrupting_an_active_repository_gate(tmp_path: Path) -> None:
+    _typed_policy_repository(tmp_path, include_warnings=True)
+    (tmp_path / "tool.mjs").write_text("export const authored = true;\n", encoding="utf-8")
+    (tmp_path / "sample.py").write_text("value = 1\n", encoding="utf-8")
+    subprocess.run(("git", "add", "tool.mjs", "sample.py"), cwd=tmp_path, check=True)
+    assert api.Standards(tmp_path).analyze((), staged=True).exit_code == 1
+
+    assert (
+        main(
+            [
+                "--root",
+                str(tmp_path),
+                "check",
+                "--staged",
+                "--rule",
+                "python:no-broad-keyword-capture",
+                "sample.py",
+                "--format",
+                "json",
+            ]
+        )
+        == 0
+    )
+
+    assert api.Standards(tmp_path).analyze((), staged=True).exit_code == 1

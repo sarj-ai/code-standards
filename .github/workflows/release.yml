@@ -941,7 +941,7 @@ jobs:
           cache-dependency-path: packages/typescript/package-lock.json
       - run: npm install --global npm@12.2.0 --ignore-scripts
       - name: Validate JSON
-        run: node ../../.github/scripts/ci-validate-tsconfig.mjs
+        run: node ../../.github/scripts/ci-validate-tsconfig.mts
       - name: Pack publishable artifact
         run: bash ../../.github/scripts/release-pack-npm.sh
       - name: Normalize the single artifact name

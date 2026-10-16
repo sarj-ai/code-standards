@@ -19,8 +19,8 @@ from sarj_standards.libs.linting.devops_tools import TOOLS
 
 
 _DESTINATION: Final = Path("apps/docs/src/generated/third-party-rules.v1.json")
-_NODE_PROJECTION: Final = Path("packages/typescript/scripts/project-third-party-rules.mjs")
-_REACT_DOCTOR_PROJECTION: Final = Path("apps/docs/scripts/project-react-doctor-rules.mjs")
+_NODE_PROJECTION: Final = Path("packages/typescript/scripts/project-third-party-rules.ts")
+_REACT_DOCTOR_PROJECTION: Final = Path("apps/docs/scripts/project-react-doctor-rules.ts")
 _MOBILE_CONFIG_ROOT: Final = Path("packages/standards/src/sarj_standards/configs")
 _RUFF_CONFIGS: Final = MappingProxyType(
     {

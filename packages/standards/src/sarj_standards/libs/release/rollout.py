@@ -121,6 +121,10 @@ MANAGED_ROLLOUT_NAMES = frozenset(
         "doctor.config.json",
         "eslint.config.js",
         "eslint.config.mjs",
+        "eslint.config.cjs",
+        "eslint.config.ts",
+        "eslint.config.mts",
+        "eslint.config.cts",
         "eslint.strict.mjs",
         "package-lock.json",
         "package.json",
@@ -139,6 +143,10 @@ DEFAULT_ALLOWED_ROLLOUT_PATHS = frozenset(
         ".shellcheckrc",
         "uv.lock",
         "eslint.config.mjs",
+        "eslint.config.cjs",
+        "eslint.config.ts",
+        "eslint.config.mts",
+        "eslint.config.cts",
         *MANAGED_WORKFLOW_PATHS,
     }
 )

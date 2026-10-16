@@ -2,10 +2,10 @@ import js from "@eslint/js";
 import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 
-import { MODULE_CONSTANT_NAMING_OPTIONS } from "./module-constant-naming-options.mjs";
+import { MODULE_CONSTANT_NAMING_OPTIONS } from "./module-constant-naming-options.ts";
 
 export default defineConfig(
-  { ignores: ["dist/**", "eslint.dogfood.config.mjs", "tests/fixtures/**"] },
+  { ignores: ["dist/**", "eslint.dogfood.config.ts", "tests/fixtures/**"] },
   {
     name: "sarj/typescript",
     files: ["**/*.{ts,tsx,mts,cts,mjs}"],
@@ -35,14 +35,27 @@ export default defineConfig(
     name: "sarj/module-constant-naming",
     files: ["**/*.{ts,tsx,mts,cts,mjs}"],
     rules: {
-      "@typescript-eslint/naming-convention": ["error", ...MODULE_CONSTANT_NAMING_OPTIONS],
+      "@typescript-eslint/naming-convention": [
+        "error",
+        ...MODULE_CONSTANT_NAMING_OPTIONS,
+      ],
     },
   },
   {
-    name: "sarj/dynamic-projection-scripts",
-    files: ["scripts/**/*.mjs"],
-    extends: [tseslint.configs.disableTypeChecked],
-    languageOptions: { globals: { process: "readonly" } },
-    rules: { "@typescript-eslint/naming-convention": "off" },
+    name: "sarj/typed-tooling",
+    files: [
+      "scripts/**/*.ts",
+      "eslint.config.ts",
+      "eslint.dogfood.config.ts",
+      "module-constant-naming-options.ts",
+      "eslint-rule-setting.ts",
+    ],
+    languageOptions: {
+      parserOptions: {
+        projectService: false,
+        project: "./tsconfig.tools.json",
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
   },
 );

@@ -5,21 +5,21 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "code-examples:check": "node scripts/format-code-examples.mjs --check",
-    "code-examples:sync": "node scripts/format-code-examples.mjs --write",
+    "code-examples:check": "node scripts/format-code-examples.ts --check",
+    "code-examples:sync": "node scripts/format-code-examples.ts --write",
     "prebuild": "npm run code-examples:check && npm run third-party-catalog:check",
-    "postbuild": "node scripts/verify-third-party-catalog.mjs --dist",
+    "postbuild": "node scripts/verify-third-party-catalog.ts --dist",
     "precheck": "npm run code-examples:check && npm run third-party-catalog:check",
     "predev": "npm run code-examples:check",
     "build": "astro build",
-    "check": "astro check",
+    "check": "astro check && tsc --project tsconfig.tools.json",
     "lint": "eslint . --max-warnings 0",
     "dev": "astro dev",
     "preview": "astro preview",
     "deploy": "wrangler deploy",
-    "third-party-catalog:check": "node scripts/verify-third-party-catalog.mjs --source",
-    "verify:deployment": "node scripts/verify-deployment.mjs",
-    "audit:dependencies": "node scripts/audit-dependencies.mjs"
+    "third-party-catalog:check": "node scripts/verify-third-party-catalog.ts --source",
+    "verify:deployment": "node scripts/verify-deployment.ts",
+    "audit:dependencies": "node scripts/audit-dependencies.ts"
   },
   "dependencies": {
     "@astrojs/starlight": "0.42.6",
@@ -41,7 +41,9 @@
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "typescript-eslint": "8.71.2",
     "wrangler": "4.149.0",
-    "@typescript/native": "npm:typescript@7.0.2"
+    "@typescript/native": "npm:typescript@7.0.2",
+    "jiti": "2.7.0",
+    "@types/node": "26.6.5"
   },
   "engines": {
     "node": "^22.22.2 || >=24.15.0"

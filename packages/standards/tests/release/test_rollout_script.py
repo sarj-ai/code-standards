@@ -566,8 +566,9 @@ class TestSafety:
     ) -> None:
         nested_configs = (
             "apps/assistant/eslint.config.js",
-            "apps/dashboard/eslint.config.js",
-            "packages/shared/eslint.config.js",
+            "apps/dashboard/eslint.config.ts",
+            "packages/shared/eslint.config.mts",
+            "packages/commonjs/eslint.config.cts",
         )
         for relative in nested_configs:
             config = tmp_path / relative

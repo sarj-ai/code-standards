@@ -1870,10 +1870,10 @@
         "Root coordinated an idle verification window; unrelated system activity is not controlled."
       ]
     },
-    "integrationScope": "Measured before upstream57109f07 testing-rule integration. The seven guard implementation pins are unchanged. Selected guard timings still measure these exact sources; full-preset timings describe the recorded pre-integration workload, not final combined-plugin throughput."
+    "integrationScope": "Measured before upstream57109f07 testing fixes and cb20349d typed-tooling integration. Seven guard implementation pins are unchanged; selected guard timings measure these exact sources. Full-preset and normal-runner timings describe their recorded pre-integration workload, not final combined-tooling throughput."
   },
   "validation": {
-    "status": "Passed canonical make verify on the integrated branch with frozen rule source and regenerated combined artifacts.",
+    "status": "Passed canonical make verify after integration of the typed-tooling upstream release, with frozen guard source and regenerated combined artifacts.",
     "typescriptFocused": 191,
     "minimumMinorTypeScript": {
       "compiler": "5.0.4",
@@ -2137,7 +2137,7 @@
         "sourceEditsForRecovery": false
       }
     ],
-    "canonical": {
+    "preTypedToolingCanonical": {
       "command": "VITEST_MAX_WORKERS=2 TEST_JOBS=4 make verify",
       "exitCode": 0,
       "passed": 36610,
@@ -2171,6 +2171,40 @@
       ],
       "temporaryFiles": "Owner-only task temporary directory; no shared unrelated fixture cleanup.",
       "recordUpdate": "Only this benchmark validation record changed after verification; implementation and packaged artifacts remain unchanged."
+    },
+    "canonical": {
+      "command": "VITEST_MAX_WORKERS=2 TEST_JOBS=4 make verify",
+      "exitCode": 0,
+      "passed": 36663,
+      "skipped": 10,
+      "perPackagePassed": {
+        "typescript": 9294,
+        "bootstrap": 18,
+        "contracts": 46,
+        "python": 18285,
+        "sql": 1755,
+        "iac": 1446,
+        "standardsFreshWheel": 5819
+      },
+      "skips": {
+        "sql": 1,
+        "standardsFreshWheel": 9
+      },
+      "gates": [
+        "doctor",
+        "docs and generated artifacts",
+        "format",
+        "lint",
+        "all-rule self-checks",
+        "native type checks including typed tools",
+        "all package tests including fresh wheels",
+        "tsconfig validation through typed native entrypoint",
+        "repository policy",
+        "private-reference gate",
+        "shellcheck",
+        "shfmt"
+      ],
+      "recordUpdate": "Only this benchmark validation record changed after verification; implementation and packaged artifacts remain unchanged."
     }
   },
   "limitations": [
@@ -2195,7 +2229,7 @@
     ]
   },
   "closingReview": {
-    "status": "Independent source/hash/privacy and fifty-question review complete; integrated canonical verification passed.",
+    "status": "Fifty-question/source/privacy review and upstream typed-tooling preservation audit complete; final integrated canonical verification passed.",
     "passCount": 50,
     "replacements": [
       {
@@ -2436,7 +2470,7 @@
     "privacy": "No private corpus identities, paths, source digests or findings are present; only public implementation pins and synthetic fixture digests are retained."
   },
   "integration": {
-    "baseRevision": "57109f07a4bb3530d391eb9bc3a3e0a72476476f",
+    "baseRevision": "cb20349d2c616636459e8613c690d189ea9bb68b",
     "sourcePinsUnchanged": true,
     "upstreamFixesPreserved": [
       "python:production-derived-test-cases",
@@ -2444,6 +2478,15 @@
       "eslint:no-duplicate-test-case",
       "eslint:prefer-whole-object-assertion"
     ],
-    "generatedArtifacts": "Regenerated from combined sources; newer minor versions and exact sibling pins retained."
+    "generatedArtifacts": "Regenerated from combined sources; newer minor versions and exact sibling pins retained.",
+    "previousBaseRevision": "57109f07a4bb3530d391eb9bc3a3e0a72476476f",
+    "typedToolingSourcePreserved": true,
+    "versions": {
+      "typescript": "16.18.0",
+      "python": "1.44.0",
+      "standards": "8.74.0",
+      "auditPlugin": "2.11.0",
+      "repoStandards": "6.8.0"
+    }
   }
 }

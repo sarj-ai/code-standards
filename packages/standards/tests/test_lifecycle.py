@@ -519,13 +519,14 @@ def test_eslint_selection_keeps_owned_projects_when_other_files_are_unowned(tmp_
     assert selection.unowned_count == 1
 
 
-def test_eslint_selection_routes_root_scripts_to_the_adopted_nested_project(tmp_path: Path) -> None:
+@pytest.mark.parametrize("suffix", ["js", "cjs", "mjs", "ts", "mts", "cts"])
+def test_eslint_selection_routes_root_scripts_to_the_adopted_nested_project(tmp_path: Path, suffix: str) -> None:
     (tmp_path / "package.json").write_text('{"name":"root"}\n', encoding="utf-8")
     project = tmp_path / "typescript"
     project.mkdir()
     (project / "package.json").write_text('{"name":"web"}\n', encoding="utf-8")
     (project / "package-lock.json").write_text('{"lockfileVersion":3}\n', encoding="utf-8")
-    (project / "eslint.config.mjs").write_text("export default [];\n", encoding="utf-8")
+    (project / f"eslint.config.{suffix}").write_text("export default [];\n", encoding="utf-8")
     scripts = tmp_path / "scripts"
     scripts.mkdir()
     source = scripts / "release.mjs"
@@ -550,7 +551,7 @@ def test_eslint_selection_routes_root_scripts_to_the_adopted_nested_project(tmp_
         "--",
         "eslint",
         "--config",
-        "eslint.config.mjs",
+        f"eslint.config.{suffix}",
         "--",
         "../scripts/release.mjs",
     )
@@ -586,6 +587,8 @@ def test_staged_eslint_excludes_globally_ignored_config_modules(tmp_path: Path) 
         "eslint.config.cjs",
         "eslint.config.mjs",
         "eslint.config.ts",
+        "eslint.config.mts",
+        "eslint.config.cts",
         "eslint.strict.mjs",
     )
     for name in ignored:

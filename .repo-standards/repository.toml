@@ -1,3 +1,33 @@
 repository_id = "code-standards"
-enabled_rules = ["repository/artifacts/makefile-growth"]
+enabled_rules = ["repository/artifacts/makefile-growth", "repository/artifacts/untyped-javascript"]
 components = []
+
+[[javascript.artifacts]]
+path = "packages/standards/src/sarj_standards/configs/eslint.strict.mjs"
+kind = "tool-config"
+reason = "Published native ESLint preset consumed directly by existing JavaScript and TypeScript config loaders; retaining its JavaScript module is the runtime compatibility contract."
+
+[[javascript.artifacts]]
+path = "packages/standards/src/sarj_standards/configs/eslint.application.mjs"
+kind = "tool-config"
+reason = "Published compatibility entrypoint re-exports the shared native ESLint preset for existing adopters."
+
+[[javascript.artifacts]]
+path = "packages/typescript/tests/fixtures/nested-monorepo/packages/example/.dependency-cruiser.cjs"
+kind = "fixture"
+reason = "Minimal CommonJS configuration fixture proves package-local config routing and discovery."
+
+[[javascript.artifacts]]
+path = "packages/typescript/tests/fixtures/nested-monorepo/packages/example/eslint.config.base.js"
+kind = "fixture"
+reason = "Minimal JavaScript config fixture proves explicit configuration ownership in a nested workspace."
+
+[[javascript.artifacts]]
+path = "packages/typescript/tests/fixtures/runs/.pnp.cjs"
+kind = "fixture"
+reason = "Minimal generated-loader stand-in tests exclusion of Yarn PnP runtime artifacts."
+
+[[javascript.artifacts]]
+path = "packages/typescript/tests/fixtures/runs/.pnp.loader.mjs"
+kind = "fixture"
+reason = "Minimal generated-loader stand-in tests exclusion of Yarn PnP ESM loader artifacts."

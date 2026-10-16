@@ -136,7 +136,7 @@ test-standards-changed:
 	uv run --project packages/standards --frozen python -m sarj_standards.libs.release.wheel_tests --root . --jobs "$(TEST_JOBS)" --changed --base "$(BASE)" $(PYTEST_ARGS)
 
 test-tsconfig:
-	node .github/scripts/ci-validate-tsconfig.mjs packages/tsconfig
+	node .github/scripts/ci-validate-tsconfig.mts packages/tsconfig
 
 release-status:
 	$(STANDARDS) --root . maintain release status --commit "$(COMMIT)"
