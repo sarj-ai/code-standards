@@ -17,7 +17,11 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._imports import TYPING_SOURCES
-from sarj_python_lint.rules._type_guard_symbols import builtin_guard_symbol, guard_symbols_ambiguous
+from sarj_python_lint.rules._type_guard_symbols import (
+    builtin_guard_symbol,
+    guard_symbols_ambiguous,
+    unique_guard_function_names,
+)
 
 
 if TYPE_CHECKING:
@@ -33,7 +37,7 @@ _WITNESSES: Final = {
     "str": frozenset({"str"}),
     "bytes": frozenset({"bytes"}),
 }
-_ALL_WITNESSES = frozenset({"int", "bool", "str", "bytes"})
+_ALL_WITNESSES = frozenset({"int", "bool", "str", "bytes", "none"})
 _MAX_INPUT_NODES = 4096
 _BAD = (
     "from typing import TypeGuard\ndef is_text(value: object) -> TypeGuard[str]:\n    return isinstance(value, int)\n"
@@ -47,9 +51,9 @@ class NoContradictoryTypeGuard(Rule):
     code = "SARJ513"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         default_level=Severity.WARNING,
-        summary="Primitive type guards must agree with the isinstance check they return.",
+        summary="Primitive type guards must agree with the builtin predicate they return.",
         rationale=(
-            "A guard annotation does not validate its implementation. Returning an incompatible isinstance "
+            "A guard annotation does not validate its implementation. Returning an incompatible primitive predicate "
             "check makes callers trust the wrong primitive; TypeIs also incorrectly excludes rejected target "
             "values in the false branch."
         ),
@@ -61,12 +65,14 @@ class NoContradictoryTypeGuard(Rule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Checks undecorated, non-generic module functions with one parameter and a single returned direct builtin isinstance call, optionally after a docstring.",
+            "Checks undecorated, non-generic module functions with one parameter and a single returned direct builtin isinstance call, its unary not, or a bool constant, optionally after a docstring.",
             "Guard symbols must resolve to typing or typing_extensions TypeGuard or TypeIs. Targets and checked classes are builtin int, bool, str or bytes; bool is treated as an int subtype.",
-            "Inputs must be object or fully classified plain unions of those primitive types and None. Impossible isinstance tests and compiler-invalid TypeIs target/input relationships are excluded.",
+            "Inputs must be object or fully classified plain unions of those primitive types and None. Direct positive impossible isinstance tests and compiler-invalid TypeIs target/input relationships are excluded.",
             "Input unions are traversed iteratively with a bounded node budget; overly complex annotations are excluded.",
             "Literal and refined targets, aliases, custom classes, float numeric promotion, tuple isinstance tests, helper predicates, nested functions and complex bodies are not inferred.",
             "TypeGuard may intentionally recognize a subset of its target, so TypeGuard[int] with an isinstance bool test remains legal. Visible namespace mutation and ambiguous or shadowed symbols abstain conservatively.",
+            "Constant false remains legal for TypeGuard. Constant true is reported only with a proven incompatible primitive or None input; false TypeIs needs a proven inhabited target. Negated isinstance uses the same finite witness domains.",
+            "Repeated top-level function definition names abstain because overloads can constrain the public input more narrowly than the implementation input.",
             "Generated files are excluded; maintained tests remain checked. No autofix guesses a domain or changes false-branch behavior.",
         ),
         examples=(
@@ -88,6 +94,36 @@ class NoContradictoryTypeGuard(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="constant-true-claims-text",
+                scenario="constant-predicate",
+                title="A constant result does not prove a primitive type",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/guards.py",
+                        "from typing import TypeGuard\ndef is_text(value: object) -> TypeGuard[str]:\n    return True\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/guards.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="constant-false-is-legal-partial-guard",
+                scenario="constant-predicate",
+                title="TypeGuard can intentionally recognize no inputs",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/guards.py",
+                        "from typing import TypeGuard\ndef is_text(value: object) -> TypeGuard[str]:\n    return False\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/guards.py"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description = documentation.summary
@@ -99,8 +135,9 @@ class NoContradictoryTypeGuard(Rule):
         if context.tree is None or guard_symbols_ambiguous(context, _BUILTINS):
             return []
         findings: list[Diagnostic] = []
+        unique_names = unique_guard_function_names(context)
         for function in context.tree.body:
-            if not isinstance(function, ast.FunctionDef):
+            if not isinstance(function, ast.FunctionDef) or function.name not in unique_names:
                 continue
             statement = _contradictory_return(function, context)
             if statement is None or is_suppressed(context.source_lines, statement.lineno, self.code):
@@ -111,7 +148,7 @@ class NoContradictoryTypeGuard(Rule):
                     statement.lineno,
                     statement.col_offset + 1,
                     self.code,
-                    "This guard's isinstance test contradicts its primitive narrowing promise; align the target "
+                    "This guard's builtin predicate contradicts its primitive narrowing promise; align the target "
                     "and test, preserving TypeIs false-branch behavior and intentional TypeGuard partial predicates.",
                     severity=Severity.WARNING,
                 )
@@ -133,12 +170,11 @@ def _contradictory_return(function: ast.FunctionDef, context: PythonFileContext)
     if target is None or inputs is None or (guard == "TypeIs" and not target <= inputs):
         return None
     statement = _single_return(function)
-    checked_kind = _checked_kind(statement.value, parameter.arg, context) if statement is not None else None
-    checked = _WITNESSES.get(checked_kind) if checked_kind is not None else None
-    if checked is None or not inputs & checked:
+    accepted = _accepted_witnesses(statement.value, parameter.arg, inputs, context) if statement is not None else None
+    if accepted is None:
         return None
-    accepts_wrong = bool((inputs & checked) - target)
-    rejects_target = guard == "TypeIs" and bool((inputs & target) - checked)
+    accepts_wrong = bool(accepted - target)
+    rejects_target = guard == "TypeIs" and bool((inputs & target) - accepted)
     return statement if accepts_wrong or rejects_target else None
 
 
@@ -174,6 +210,7 @@ def _input_witnesses(annotation: ast.expr | None, imports: ImportIndex) -> froze
         if visited > _MAX_INPUT_NODES:
             return None
         if isinstance(member, ast.Constant) and member.value is None:
+            witnesses.add("none")
             continue
         if isinstance(member, ast.BinOp) and isinstance(member.op, ast.BitOr):
             pending.extend((member.left, member.right))
@@ -186,6 +223,20 @@ def _input_witnesses(annotation: ast.expr | None, imports: ImportIndex) -> froze
         else:
             return None
     return frozenset(witnesses)
+
+
+def _accepted_witnesses(
+    node: ast.expr | None, parameter: str, inputs: frozenset[str], context: PythonFileContext
+) -> frozenset[str] | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, bool):
+        return inputs if node.value else frozenset()
+    negate = isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not)
+    expression = node.operand if negate and isinstance(node, ast.UnaryOp) else node
+    checked_kind = _checked_kind(expression, parameter, context)
+    checked = _WITNESSES.get(checked_kind) if checked_kind is not None else None
+    if checked is None or (not negate and not inputs & checked):
+        return None
+    return inputs - checked if negate else inputs & checked
 
 
 def _checked_kind(node: ast.expr | None, parameter: str, context: PythonFileContext) -> str | None:

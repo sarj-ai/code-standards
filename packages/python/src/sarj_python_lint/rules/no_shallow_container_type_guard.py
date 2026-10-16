@@ -17,7 +17,11 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._imports import TYPING_SOURCES
-from sarj_python_lint.rules._type_guard_symbols import builtin_guard_symbol, guard_symbols_ambiguous
+from sarj_python_lint.rules._type_guard_symbols import (
+    builtin_guard_symbol,
+    guard_symbols_ambiguous,
+    unique_guard_function_names,
+)
 
 
 if TYPE_CHECKING:
@@ -46,12 +50,16 @@ class NoShallowContainerTypeGuard(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Checks top-level, undecorated, non-generic synchronous functions with one positional parameter proven to be builtin object and a single return isinstance(parameter, builtin_container), optionally after a docstring.",
+            "Repeated module-level function names abstain: an overload's public input contract can be narrower than the implementation annotation.",
             "The TypeGuard or TypeIs target must be a matching builtin dict, list, or set whose slots all resolve to object, str, int, bool, float, or bytes; at least one slot must be narrower than object.",
             "Includes authored tests; generated and vendor source is excluded. String annotations, constrained input types, unions, Any, TypeVars, Protocols, assignment aliases, nested definitions, and content validators are not inferred.",
             "Annotation imports include TYPE_CHECKING imports. Runtime imports use conservative file-wide shadow facts, so unrelated local rebinding can cause false negatives. Wildcard imports, explicit writes to relevant builtin or typing attributes, and exception, pattern or walrus bindings that shadow relevant names or imported aliases exclude the file; dynamic namespace mutation is not inferred.",
             "Relative or conditional imports that replace relevant builtin or typing names exclude the file unless the import proves the same canonical symbol. Unrelated relative imports remain in scope.",
             "No autofix: widening the return contract can require caller changes, while adding content validation changes behavior and cost.",
-            "Visible __builtins__ access, escaping typing/builtins module aliases, and their __dict__ access abstain because namespace mutation can change the meaning of the check.",
+            "Visible __builtins__ access, canonical namespace-capability imports, module-class changes, and escaping typing/builtins module aliases abstain because namespace mutation can change the meaning of the check.",
+            "Canonical native builtin function objects outside direct calls also abstain: captured, passed, or introspected function values can expose the mutable builtin namespace. The explicit native-function inventory covers CPython 3.14 and 3.15; unrelated application methods remain in scope, and arbitrary external effects are not inferred.",
+            "Known native function names and canonical imported aliases remain possible namespace capabilities when shadowing or later rebinding obscures their identity. This conservatively excludes some benign first-class application variables with builtin function names.",
+            "Direct __lazy_import__ calls and canonical aliases also abstain: CPython 3.15 introduces lazy imports that can return mutable module namespaces.",
         ),
         examples=(
             RuleExample(
@@ -78,11 +86,17 @@ class NoShallowContainerTypeGuard(Rule):
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        if context.tree is None or context.generated or _ambiguous_symbols(context):
+        if (
+            context.tree is None
+            or context.generated
+            or ("TypeGuard" not in context.symbol_source and "TypeIs" not in context.symbol_source)
+            or _ambiguous_symbols(context)
+        ):
             return []
         findings: list[Diagnostic] = []
+        unique_names = unique_guard_function_names(context)
         for function in context.tree.body:
-            if not isinstance(function, ast.FunctionDef):
+            if not isinstance(function, ast.FunctionDef) or function.name not in unique_names:
                 continue
             statement = _shallow_guard(function, context)
             if statement is None or is_suppressed(context.source_lines, statement.lineno, self.code):

@@ -253,6 +253,7 @@
       "no-log-only-catch",
       "no-long-comment",
       "no-offset-pagination",
+      "no-partial-type-predicate",
       "no-positional-tuple-return",
       "no-production-browser-source-maps",
       "no-raw-env",

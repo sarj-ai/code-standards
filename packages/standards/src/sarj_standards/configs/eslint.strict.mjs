@@ -1371,6 +1371,7 @@ export function createConfig(options = {}) {
       "@sarj/no-known-value-widening": "error",
       "@sarj/no-invalid-typed-mutation": "warn",
       "@sarj/no-contradictory-type-predicate": "warn",
+      "@sarj/no-partial-type-predicate": "warn",
       "@sarj/no-broad-return-type": "error",
       "@sarj/prefer-typed-reflection": "error",
       "@sarj/no-conditional-empty-object-spread": "error",
