@@ -21,7 +21,7 @@ from sarj_python_lint.rule_base import (
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._pytest import collected_tests
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
+from sarj_python_lint.rules._resource_provenance import ResourceProvenance, builtin_namespace_untouched
 
 
 if TYPE_CHECKING:
@@ -97,13 +97,44 @@ class AsyncMockCallWithoutAwaitAssertion(Rule):
             "Requires a fresh local unittest.mock.AsyncMock constructor with unshadowed imports; aliases, reassignment, reset, and ambiguous configuration are excluded.",
             "Visible provider replacement, escape or unresolved lexical ownership retains WARNING; only the closed canonical AsyncMock provider proof blocks.",
             "Only the mock itself and unchanged immediate children of unspecced, unwrapped mocks are inferred; spec children, return values, and deeper chains are excluded.",
-            "Positive call evidence includes direct assertion methods and literal integer or boolean call-state checks; unresolved call expectations are excluded.",
-            "Await evidence excludes provably vacuous checks, including zero or nonnegative counts and empty expected await sequences; unresolved expectations are accepted without inferring their values.",
+            "Positive call evidence includes direct assertion methods and literal numeric or boolean call-state checks; unresolved call expectations are excluded.",
+            "Await evidence excludes provably vacuous checks, including non-None count/list state, zero or nonnegative numeric bounds, and empty expected await sequences; unresolved expectations are accepted without inferring their values.",
+            "Length comparisons over await_args_list use count semantics only for an unshadowed builtin len without visible builtin namespace access; custom length functions remain unresolved.",
             "Conjunctions need one accepted await branch; disjunctions need accepted evidence for the same mock in every branch. Argument equality and assertion strength are not compared.",
             "Compound negation and custom expression semantics remain unresolved; no variable values or fixture graphs are inferred.",
             "Custom assertion helpers and intentional scheduling contracts may require a reasoned local suppression.",
         ),
         examples=(
+            RuleExample(
+                example_id="vacuous-await-length",
+                scenario="await-length-evidence",
+                title="An empty await history still has nonnegative length",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_delivery.py",
+                        "from unittest.mock import AsyncMock\nasync def test_delivery():\n    send = AsyncMock()\n    await deliver(send)\n    send.assert_called_once()\n    assert len(send.await_args_list) >= 0\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_delivery.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="positive-await-length",
+                scenario="await-length-evidence",
+                title="A positive await-history length distinguishes a dropped coroutine",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_delivery.py",
+                        "from unittest.mock import AsyncMock\nasync def test_delivery():\n    send = AsyncMock()\n    await deliver(send)\n    send.assert_called_once()\n    assert len(send.await_args_list) == 1\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_delivery.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="spaced-positive-called-state",
                 scenario="called-attribute-spacing",
@@ -212,6 +243,7 @@ class AsyncMockCallWithoutAwaitAssertion(Rule):
         if tree is None:
             return []
         imports = context.module_imports
+        builtin_len = builtin_namespace_untouched(context)
         writes = {
             _reference(node)
             for node in context.nodes(ast.AST)
@@ -221,14 +253,20 @@ class AsyncMockCallWithoutAwaitAssertion(Rule):
             finding
             for test in collected_tests(tree.body)
             if not _is_pytest_fixture(test, imports)
-            for finding in _test_diagnostics(test, context, imports, writes, self.code)
+            for finding in _test_diagnostics(test, context, imports, writes, self.code, builtin_len=builtin_len)
         ]
 
 
 def _test_diagnostics(
-    test: _TestFunction, context: PythonFileContext, imports: ImportIndex, writes: set[_Reference], code: str
+    test: _TestFunction,
+    context: PythonFileContext,
+    imports: ImportIndex,
+    writes: set[_Reference],
+    code: str,
+    *,
+    builtin_len: bool,
 ) -> list[Diagnostic]:
-    calls = tuple(_uncovered_calls(_test_imports(imports, test), test, writes))
+    calls = tuple(_uncovered_calls(_test_imports(imports, test), test, writes, builtin_len=builtin_len))
     if not calls:
         return []
     severity = Severity.ERROR if _mock_provider_proven(test, context) else Severity.WARNING
@@ -281,11 +319,11 @@ def _test_imports(module: ImportIndex, test: _TestFunction) -> ImportIndex:
 
 
 def _uncovered_calls(
-    imports: ImportIndex, test: _TestFunction, writes: set[_Reference]
+    imports: ImportIndex, test: _TestFunction, writes: set[_Reference], *, builtin_len: bool
 ) -> Iterator[ast.Call | ast.Attribute]:
     nodes = tuple(walk_ast(test))
     bindings = _mock_bindings(imports, test.body, writes)
-    covered = _await_oracles(test.body)
+    covered = _await_oracles(test.body, builtin_len=builtin_len and imports.builtin_is_unshadowed("len"))
     reported: set[_Reference] = set()
     for statement in test.body:
         for reference, oracle in _call_oracles(statement):
@@ -375,7 +413,7 @@ def _is_async_reference(reference: _Reference, constructor: ast.Call) -> bool:
     )
 
 
-def _await_oracles(statements: list[ast.stmt]) -> set[_Reference]:
+def _await_oracles(statements: list[ast.stmt], *, builtin_len: bool) -> set[_Reference]:
     covered: set[_Reference] = set()
     for statement in statements:
         match statement:
@@ -385,7 +423,7 @@ def _await_oracles(statements: list[ast.stmt]) -> set[_Reference]:
                 if method != "assert_has_awaits" or _calls_evidence(call) is not _Evidence.INSUFFICIENT:
                     covered.add(_reference(receiver))
             case ast.Assert(test=condition):
-                covered.update(_asserted_states(condition, _AWAIT_STATE))
+                covered.update(_asserted_states(condition, _AWAIT_STATE, builtin_len=builtin_len))
             case _:
                 pass
     return covered
@@ -409,17 +447,21 @@ def _sequence_evidence(node: ast.expr) -> _Evidence:
     return _Evidence.UNRESOLVED
 
 
-def _asserted_states(condition: ast.expr, states: frozenset[str]) -> set[_Reference]:
+def _asserted_states(condition: ast.expr, states: frozenset[str], *, builtin_len: bool = False) -> set[_Reference]:
     match condition:
         case ast.UnaryOp(op=ast.Not(), operand=ast.UnaryOp(op=ast.Not(), operand=operand)):
-            return _asserted_states(operand, states)
+            return _asserted_states(operand, states, builtin_len=builtin_len)
         case ast.UnaryOp(op=ast.Not(), operand=ast.Compare(left=left, ops=[operator], comparators=[right])):
             inverse = _negated_operator(operator)
-            return _comparison_states(left, inverse, right, states) if inverse is not None else set()
+            return (
+                _comparison_states(left, inverse, right, states, builtin_len=builtin_len)
+                if inverse is not None
+                else set()
+            )
         case ast.UnaryOp(op=ast.Not(), operand=ast.Attribute(attr=attribute)) if attribute in states:
             return set()
         case ast.BoolOp(op=operator, values=values):
-            branches = [_asserted_states(value, states) for value in values]
+            branches = [_asserted_states(value, states, builtin_len=builtin_len) for value in values]
             return (
                 branches[0].union(*branches[1:])
                 if isinstance(operator, ast.And)
@@ -430,7 +472,7 @@ def _asserted_states(condition: ast.expr, states: frozenset[str]) -> set[_Refere
         case ast.Compare(left=left, ops=operators, comparators=rights):
             result: set[_Reference] = set()
             for first, operator, second in zip((left, *rights[:-1]), operators, rights, strict=True):
-                result.update(_comparison_states(first, operator, second, states))
+                result.update(_comparison_states(first, operator, second, states, builtin_len=builtin_len))
             return result
         case _:
             # Preserve acceptance of unresolved await-state assertions, such as
@@ -453,16 +495,35 @@ def _negated_operator(operator: ast.cmpop) -> ast.cmpop | None:
     return factory() if factory is not None else None
 
 
-def _comparison_states(left: ast.expr, operator: ast.cmpop, right: ast.expr, states: frozenset[str]) -> set[_Reference]:
+def _comparison_states(
+    left: ast.expr, operator: ast.cmpop, right: ast.expr, states: frozenset[str], *, builtin_len: bool = False
+) -> set[_Reference]:
     result: set[_Reference] = set()
     for node, comparison, expected in ((left, operator, right), (right, _reversed_operator(operator), left)):
-        if isinstance(node, ast.Attribute) and node.attr in states:
-            evidence = _state_evidence(node.attr, comparison, expected)
+        state = _state_operand(node, states, builtin_len=builtin_len)
+        if state is not None:
+            evidence = _state_evidence(
+                "await_count" if isinstance(node, ast.Call) else state.attr, comparison, expected
+            )
             if evidence is _Evidence.POSITIVE or (states == _AWAIT_STATE and evidence is _Evidence.UNRESOLVED):
-                result.add(_reference(node.value))
+                result.add(_reference(state.value))
         else:
             result.update(_unresolved_await_states(node, states))
     return result
+
+
+def _state_operand(node: ast.expr, states: frozenset[str], *, builtin_len: bool) -> ast.Attribute | None:
+    if isinstance(node, ast.Attribute) and node.attr in states:
+        return node
+    if builtin_len and states == _AWAIT_STATE:
+        match node:
+            case ast.Call(
+                func=ast.Name(id="len"), args=[ast.Attribute(attr="await_args_list") as argument], keywords=[]
+            ):
+                return argument
+            case _:
+                pass
+    return None
 
 
 def _reversed_operator(operator: ast.cmpop) -> ast.cmpop:
@@ -489,12 +550,14 @@ def _unresolved_await_states(node: ast.expr, states: frozenset[str]) -> set[_Ref
 
 def _state_evidence(attribute: str, operator: ast.cmpop, expected: ast.expr) -> _Evidence:
     positive: bool
-    if (
-        attribute in {"call_count", "await_count"}
+    if attribute in {"call_count", "await_count"} and (value := _literal_number(expected)) is not None:
+        positive = _proves_positive_count(operator, value)
+    elif (
+        attribute in {"call_count", "await_count", "await_args_list"}
         and isinstance(expected, ast.Constant)
-        and isinstance(expected.value, int)
+        and expected.value is None
     ):
-        positive = _proves_positive_count(operator, expected.value)
+        return _Evidence.INSUFFICIENT
     elif attribute == "called" and isinstance(expected, ast.Constant) and isinstance(expected.value, bool):
         positive = (isinstance(operator, (ast.Eq, ast.Is)) and expected.value) or (
             isinstance(operator, (ast.NotEq, ast.IsNot)) and not expected.value
@@ -513,7 +576,20 @@ def _state_evidence(attribute: str, operator: ast.cmpop, expected: ast.expr) -> 
     return _Evidence.POSITIVE if positive else _Evidence.INSUFFICIENT
 
 
-def _proves_positive_count(operator: ast.cmpop, value: int) -> bool:
+def _literal_number(node: ast.expr) -> int | float | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        return node.value
+    if isinstance(node, ast.UnaryOp) and isinstance(node.operand, ast.Constant):
+        value = node.operand.value
+        if isinstance(value, (int, float)):
+            if isinstance(node.op, ast.USub):
+                return -value
+            if isinstance(node.op, ast.UAdd):
+                return +value
+    return None
+
+
+def _proves_positive_count(operator: ast.cmpop, value: float) -> bool:
     match operator:
         case ast.Eq() | ast.GtE():
             return value > 0

@@ -120,6 +120,69 @@ def test_typescript_analysis_requires_a_trusted_repository_runtime(
 
 
 @pytest.mark.parametrize(
+    ("contract", "independent", "suppressed"),
+    [
+        pytest.param("await", False, False, id="vacuous-await-evidence"),
+        pytest.param("membership", False, False, id="shadowed-membership-oracle"),
+        pytest.param("await", True, False, id="positive-await-evidence"),
+        pytest.param("membership", True, False, id="independent-membership-oracle"),
+        pytest.param("await", False, True, id="suppressed-await-finding"),
+        pytest.param("membership", False, True, id="suppressed-membership-finding"),
+    ],
+)
+def test_observe_checks_execution_and_independent_case_oracles(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    contract: str,
+    *,
+    independent: bool,
+    suppressed: bool,
+) -> None:
+    if contract == "await":
+        code = "SARJ456"
+        source = (
+            "from unittest.mock import AsyncMock\n"
+            "async def test_delivery():\n"
+            "    send = AsyncMock()\n"
+            "    pending = send()\n"
+            "    pending.close()\n"
+            "    send.assert_called_once()\n"
+            f"    assert len(send.await_args_list) {'== 1' if independent else '>= 0'}\n"
+        )
+        finding_line = 6
+    else:
+        code = "SARJ409"
+        parameter = "" if independent else "ELIGIBLE_MODELS"
+        source = (
+            "import pytest\n"
+            "from app.models import ELIGIBLE_MODELS\n\n"
+            f"def test_membership({parameter}):\n"
+            "    assert ELIGIBLE_MODELS == ('a', 'b')\n\n"
+            "@pytest.mark.parametrize('model', ELIGIBLE_MODELS)\n"
+            "def test_model(model):\n"
+            "    assert build(model)\n"
+        )
+        finding_line = 7
+    if suppressed:
+        lines = source.splitlines()
+        lines[finding_line - 1] += f"  # sarj-noqa: {code} -- Intentional scheduling or exhaustiveness contract."
+        source = "\n".join(lines) + "\n"
+    test = tmp_path / "app/tests/test_delivery.py"
+    test.parent.mkdir(parents=True)
+    test.write_text(source, encoding="utf-8")
+
+    status = main(["--root", str(tmp_path), "observe", "--test-value", "--format", "json"])
+    report = _report(capsys.readouterr().out)
+    assert status == 0, report
+    assert report["completion"] == "complete"
+    assert list_field(report, "issues") == []
+    findings = [as_table(item) for item in list_field(report, "diagnostics")]
+    assert [
+        (item["code"], as_table(as_table(item["location"])["position"])["line"], item["severity"]) for item in findings
+    ] == ([] if independent or suppressed else [(code, finding_line - 1, "warning")])
+
+
+@pytest.mark.parametrize(
     ("body", "directive", "expected", "bulk", "registered"),
     [
         ("test('delivery', () => {deliver();});", "", "vitest/expect-expect", False, True),

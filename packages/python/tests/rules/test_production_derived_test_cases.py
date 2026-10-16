@@ -284,6 +284,168 @@ def test_rebound_expected_table_is_not_an_independent_oracle() -> None:
     assert len(_check(source)) == 1
 
 
+@pytest.mark.parametrize(
+    "oracle",
+    [
+        pytest.param(
+            "def test_membership(ELIGIBLE_MODELS):\n    assert ELIGIBLE_MODELS == ('a', 'b')\n",
+            id="production-fixture-parameter",
+        ),
+        pytest.param(
+            "def test_membership(*ELIGIBLE_MODELS):\n    assert ELIGIBLE_MODELS == ('a', 'b')\n",
+            id="production-vararg",
+        ),
+        pytest.param(
+            "def test_membership(**ELIGIBLE_MODELS):\n    assert ELIGIBLE_MODELS == {'a', 'b'}\n",
+            id="production-keyword-capture",
+        ),
+        pytest.param(
+            "def test_membership():\n    ELIGIBLE_MODELS = ('a', 'b')\n    assert ELIGIBLE_MODELS == ('a', 'b')\n",
+            id="production-local-setup",
+        ),
+        pytest.param(
+            "def test_membership():\n    from tests.cases import ELIGIBLE_MODELS\n    assert ELIGIBLE_MODELS == ('a', 'b')\n",
+            id="production-local-import",
+        ),
+        pytest.param(
+            "def test_membership(EXPECTED_MODELS):\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="expected-fixture-parameter",
+        ),
+        pytest.param(
+            "def test_membership():\n    EXPECTED_MODELS = ELIGIBLE_MODELS\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="expected-production-alias",
+        ),
+        pytest.param(
+            "def test_membership():\n    EXPECTED_MODELS = ['a', 'b']\n    EXPECTED_MODELS[:] = ELIGIBLE_MODELS\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="expected-local-mutation",
+        ),
+        pytest.param(
+            "def test_membership(ELIGIBLE_MODELS=ELIGIBLE_MODELS):\n    ELIGIBLE_MODELS = ('a', 'b')\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="rebound-production-capture",
+        ),
+        pytest.param(
+            "def test_membership(EXPECTED_MODELS=EXPECTED_MODELS):\n    EXPECTED_MODELS = ELIGIBLE_MODELS\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="rebound-expected-capture",
+        ),
+        pytest.param(
+            "class TestMembership:\n    ELIGIBLE_MODELS = ('a', 'b')\n    def test_exact(self, ELIGIBLE_MODELS=ELIGIBLE_MODELS):\n        assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="production-default-reads-class-namespace",
+        ),
+        pytest.param(
+            "class TestMembership:\n    EXPECTED_MODELS = ELIGIBLE_MODELS\n    def test_exact(self, EXPECTED_MODELS=EXPECTED_MODELS):\n        assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="expected-default-reads-class-namespace",
+        ),
+        pytest.param(
+            "def test_membership():\n    from app.other import ELIGIBLE_MODELS\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="same-symbol-different-module",
+        ),
+        pytest.param(
+            "def test_membership():\n    from app.models import SUPPORTED_MODELS as ELIGIBLE_MODELS\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="same-module-different-symbol",
+        ),
+        pytest.param(
+            "def test_membership():\n    from .app.models import ELIGIBLE_MODELS\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="relative-reimport",
+        ),
+        pytest.param(
+            "def test_membership():\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n    from app.models import ELIGIBLE_MODELS\n",
+            id="reimport-after-assertion",
+        ),
+    ],
+)
+def test_shadowed_equality_does_not_prove_production_membership(oracle: str) -> None:
+    source = (
+        "import pytest\nfrom app.models import ELIGIBLE_MODELS\nEXPECTED_MODELS = ('a', 'b')\n"
+        f"{oracle}\n@pytest.mark.parametrize('model', ELIGIBLE_MODELS)\n"
+        "def test_model(model):\n    assert build(model)\n"
+    )
+    assert [finding.code for finding in _check(source)] == ["SARJ409"]
+
+
+@pytest.mark.parametrize(
+    "oracle",
+    [
+        pytest.param(
+            "def test_membership():\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="module-expected-tuple",
+        ),
+        pytest.param(
+            "def test_membership():\n    EXPECTED_MODELS = ('a', 'b')\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="local-expected-tuple",
+        ),
+        pytest.param(
+            "def test_membership():\n    EXPECTED_MODELS = ['a', 'b']\n    assert EXPECTED_MODELS == ELIGIBLE_MODELS\n",
+            id="fresh-local-expected-list",
+        ),
+        pytest.param(
+            "def test_membership():\n    EXPECTED_MODELS = {'a', 'b'}\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="fresh-local-expected-set",
+        ),
+        pytest.param(
+            "def test_membership():\n    def helper():\n        ELIGIBLE_MODELS = ()\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="nested-helper-scope",
+        ),
+        pytest.param(
+            "class TestMembership:\n    ELIGIBLE_MODELS = ()\n    def test_exact(self):\n        assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="class-namespace-is-not-method-lexical-scope",
+        ),
+        pytest.param(
+            "def test_membership(ELIGIBLE_MODELS=ELIGIBLE_MODELS):\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="production-default-capture",
+        ),
+        pytest.param(
+            "def test_membership(EXPECTED_MODELS=EXPECTED_MODELS):\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="expected-tuple-default-capture",
+        ),
+        pytest.param(
+            "def test_membership(ELIGIBLE_MODELS=ELIGIBLE_MODELS, /):\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="positional-only-default-capture",
+        ),
+        pytest.param(
+            "def test_membership(*, ELIGIBLE_MODELS=ELIGIBLE_MODELS):\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="keyword-only-default-capture",
+        ),
+        pytest.param(
+            "class TestMembership:\n    def test_exact(self, ELIGIBLE_MODELS=ELIGIBLE_MODELS):\n        assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="method-default-without-class-shadow",
+        ),
+        pytest.param(
+            "def test_membership():\n    from app.models import ELIGIBLE_MODELS\n    assert ELIGIBLE_MODELS == EXPECTED_MODELS\n",
+            id="exact-production-reimport",
+        ),
+    ],
+)
+def test_preserves_independent_oracles_in_their_lexical_scope(oracle: str) -> None:
+    source = (
+        "import pytest\nfrom app.models import ELIGIBLE_MODELS\nEXPECTED_MODELS = ('a', 'b')\n"
+        f"{oracle}\n@pytest.mark.parametrize('model', ELIGIBLE_MODELS)\n"
+        "def test_model(model):\n    assert build(model)\n"
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("local_import", "expected_codes"),
+    [
+        ("from app.models import ELIGIBLE_MODELS as SUPPORTED_MODELS", []),
+        ("from app.models import SUPPORTED_MODELS", ["SARJ409"]),
+        ("from app.models import ELIGIBLE_MODELS as SUPPORTED_MODELS, OTHER as SUPPORTED_MODELS", ["SARJ409"]),
+        ("from app.models import OTHER, ELIGIBLE_MODELS as SUPPORTED_MODELS", []),
+    ],
+)
+def test_reimports_preserve_original_symbol_identity_through_aliases(
+    local_import: str, expected_codes: list[str]
+) -> None:
+    source = (
+        "import pytest\nfrom app.models import ELIGIBLE_MODELS as SUPPORTED_MODELS\n"
+        "def test_membership():\n"
+        f"    {local_import}\n    assert SUPPORTED_MODELS == ('a', 'b')\n"
+        "@pytest.mark.parametrize('model', SUPPORTED_MODELS)\n"
+        "def test_model(model):\n    assert build(model)\n"
+    )
+    assert [finding.code for finding in _check(source)] == expected_codes
+
+
 def test_accepts_keyword_argvalues_and_exact_suppression() -> None:
     source = """
     import pytest

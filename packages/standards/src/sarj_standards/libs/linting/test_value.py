@@ -22,6 +22,8 @@ SELECTORS: Final = frozenset(
         "python:iac-source-coupled-test",
         "python:no-repeated-test-body",
         "python:no-statically-truthy-assertion",
+        "python:async-mock-call-without-await-assertion",
+        "python:production-derived-test-cases",
         "eslint:duplicate-test-body",
         "eslint:no-duplicate-test-case",
         "eslint:no-tautological-expect",

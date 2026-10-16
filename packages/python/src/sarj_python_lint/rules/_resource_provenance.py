@@ -56,6 +56,15 @@ _RESOURCE_OWNERS = MappingProxyType(
 )
 
 
+def builtin_namespace_untouched(context: PythonFileContext) -> bool:
+    return not any(
+        (isinstance(node, ast.Import) and any(alias.name == "builtins" for alias in node.names))
+        or (isinstance(node, ast.ImportFrom) and node.module == "builtins")
+        or (isinstance(node, ast.Name) and node.id == "__builtins__")
+        for node in context.nodes(ast.Import, ast.ImportFrom, ast.Name)
+    )
+
+
 @final
 class ResourceProvenance:
     def __init__(self, context: PythonFileContext, *, require_static_namespace: bool = False) -> None:
@@ -86,12 +95,7 @@ class ResourceProvenance:
 
     @cached_property
     def builtin_namespace_untouched(self) -> bool:
-        return not any(
-            (isinstance(node, ast.Import) and any(alias.name == "builtins" for alias in node.names))
-            or (isinstance(node, ast.ImportFrom) and node.module == "builtins")
-            or (isinstance(node, ast.Name) and node.id == "__builtins__")
-            for node in self.context.nodes(ast.Import, ast.ImportFrom, ast.Name)
-        )
+        return builtin_namespace_untouched(self.context)
 
     def scope(self, node: ast.AST) -> ast.AST | None:
         parent = self.context.parents.get(node)

@@ -287,6 +287,7 @@ def test_await_assertion_does_not_replace_call_count_coverage() -> None:
         "send.call_count > 0",
         "1 <= send.call_count",
         "send.call_count != 0",
+        "send.call_count >= 0.5",
         "send.called and enabled",
         "send.called or send.call_count > 0",
     ],
@@ -308,6 +309,7 @@ def test_positive_call_state_requires_await_evidence(condition: str) -> None:
         "send.called is False",
         "send.called or enabled",
         "send.call_count != -1",
+        "send.call_count > -0.5",
     ],
 )
 def test_nonpositive_call_state_is_not_a_positive_call_contract(condition: str) -> None:
@@ -322,6 +324,14 @@ def test_nonpositive_call_state_is_not_a_positive_call_contract(condition: str) 
     [
         "assert send.await_count >= 0",
         "assert send.await_count == 0",
+        "assert send.await_count >= 0.0",
+        "assert send.await_count > -0.5",
+        "assert send.await_count >= -1",
+        "assert send.await_count is not None",
+        "assert send.await_args_list is not None",
+        "assert len(send.await_args_list) >= 0",
+        "assert 0 <= len(send.await_args_list)",
+        "assert send.await_count > 0 or send.await_args_list is not None",
         "assert send.await_args is None",
         "assert send.await_args_list == []",
         "assert send.await_count > 0 or enabled",
@@ -344,10 +354,33 @@ def test_nonpositive_await_state_does_not_cover_positive_calls(oracle: str) -> N
         "send.await_args_list != []",
         "send.await_count > 0 and enabled",
         "send.await_count == 1 or send.await_args is not None",
+        "send.await_count >= 0.5",
+        "len(send.await_args_list) > +0",
+        "1 <= len(send.await_args_list)",
+        "not len(send.await_args_list) == 0",
     ],
 )
 def test_positive_await_state_covers_call_counts(condition: str) -> None:
     source = f"from unittest.mock import AsyncMock\nasync def test_send():\n    send = AsyncMock()\n    assert send.call_count == 1\n    assert {condition}\n"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("module_setup", "parameters", "local_setup"),
+    [
+        pytest.param("len = custom_length\n", "", "", id="module-binding"),
+        pytest.param("", "len", "", id="fixture-parameter"),
+        pytest.param("", "", "    len = custom_length\n", id="local-binding"),
+        pytest.param("from helpers import len\n", "", "", id="imported-function"),
+        pytest.param("import builtins\n", "", "", id="builtin-namespace-access"),
+    ],
+)
+def test_custom_length_semantics_remain_unresolved(module_setup: str, parameters: str, local_setup: str) -> None:
+    source = (
+        f"from unittest.mock import AsyncMock\n{module_setup}async def test_send({parameters}):\n"
+        f"    send = AsyncMock()\n{local_setup}    send.assert_called_once()\n"
+        "    assert len(send.await_args_list) >= 0\n"
+    )
     assert _check(source) == []
 
 
@@ -365,6 +398,10 @@ def test_unawaited_call_satisfies_numeric_call_assertion_and_nonpositive_await_c
         assert send.call_count == 1  # sarj-noqa: SARJ456 -- demonstrate a dropped coroutine
         assert send.await_count >= 0
         assert send.await_count == 0
+        assert send.await_count is not None
+        assert send.await_args_list is not None
+        assert len(send.await_args_list) >= 0
+        assert send.await_count >= 0.0
     finally:
         pending.close()
 

@@ -24,6 +24,19 @@ const FILENAME = "src/user.test.ts";
 
 RULE_TESTER.run("prefer-whole-object-assertion", rule, {
   valid: [
+    ...([
+      ["leading exact length", "expect(rows).toHaveLength(2); expect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b');"],
+      ["trailing exact length", "expect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b'); expect(rows).toHaveLength(2);"],
+      ["intentional prefix of a longer collection", "expect(rows).toHaveLength(3); expect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b');"],
+      ["length property equality", "expect(rows.length).toBe(2); expect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b');"],
+      ["strict length equality after indices", "expect(rows[0]).toStrictEqual('a'); expect(rows[1]).toStrictEqual('b'); expect(rows['length']).toStrictEqual(2);"],
+      ["same nested receiver", "expect(result.rows).toHaveLength(2); expect(result.rows[0]).toEqual('a'); expect(result.rows[1]).toEqual('b');"],
+      ["erased receiver and length", "expect((rows as string[])).toHaveLength((2 as const)); expect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b');"],
+      ["imported length assertion alias", "import {expect as verify} from 'vitest'; verify(rows).toHaveLength(2); expect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b');"],
+      ["explanation between length and prefix", "expect(rows).toHaveLength(3);\n// The third row is deliberately opaque.\nexpect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b');"],
+      ["type-only expectation is not a runtime assertion", "import type {expect} from 'vitest'; expect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b');"],
+    ] as const).map(([name, code]) => ({name, code, filename: FILENAME})),
+    { name: "assigned expectation global is not the runner API", filename: FILENAME, languageOptions: {globals: {expect: "writable"}}, code: "expect = custom; expect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b');" },
     { name: "keeps wrapped dynamic expected values separate", filename: FILENAME, code: 'expect(user.id).toBe((expectedId as number)); expect(user.name).toBe((expectedName as string));' },
     { name: "preserves intervening effects with wrapped expected values", filename: FILENAME, code: 'expect(user.id).toBe((1 as const)); update(); expect(user.name).toBe(("Ada" as const));' },
 
@@ -375,6 +388,16 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
     },
   ],
   invalid: [
+    ...([
+      ["different collection length", "expect(other).toHaveLength(2); expect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b');"],
+      ["negated length is not exact cardinality", "expect(rows).not.toHaveLength(2); expect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b');"],
+      ["dynamic length remains manual", "expect(rows).toHaveLength(count); expect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b');"],
+      ["an intervening mutation separates length observation", "expect(rows).toHaveLength(2); rows.push('c'); expect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b');"],
+      ["a later mutation separates length observation", "expect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b'); rows.pop(); expect(rows).toHaveLength(2);"],
+      ["custom length helper is not runner proof", "const verify = custom; verify(rows).toHaveLength(2); expect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b');"],
+      ["foreign length helper is not runner proof", "import {verify} from './helpers'; verify(rows).toHaveLength(2); expect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b');"],
+      ["conditional length check is not adjacent proof", "if (ready) expect(rows).toHaveLength(2); expect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b');"],
+    ] as const).map(([name, code]) => ({name, code, filename: FILENAME, output: null, errors: [{messageId: "assertArrayOnce" as const}]})),
     { name: "retains literal expected values through const assertions", filename: FILENAME, code: 'expect(user.id).toBe((1 as const)); expect(user.name).toBe(("Ada" as const));', errors: [{ messageId: "combineAssertions" }] },
     { name: "recognizes static computed matchers in a literal property run", filename: FILENAME, code: 'expect(user.id)["toBe"](1); expect(user.name)["toBe"]("Ada");', errors: [{ messageId: "combineAssertions" }] },
 
@@ -616,6 +639,17 @@ describe("prefer-whole-object-assertion autofix soundness", () => {
 
   it("never rewrites an indexed run, which would add a length assertion", () => {
     const code = `expect(bodies[0]).toEqual("a");\nexpect(bodies[1]).toEqual("b");\n`;
+    expect(fix(code)).toBe(code);
+  });
+
+  it("preserves a complete length contract with intentionally partial element observations", () => {
+    const rows = ["a", "b", "opaque"];
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toEqual("a");
+    expect(rows[1]).toEqual("b");
+    expect(() => expect(rows).toEqual(["a", "b"])).toThrow();
+    const code = "expect(rows).toHaveLength(3); expect(rows[0]).toEqual('a'); expect(rows[1]).toEqual('b');";
+    expect(linter.verify(code, config, FILENAME)).toEqual([]);
     expect(fix(code)).toBe(code);
   });
 

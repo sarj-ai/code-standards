@@ -7,6 +7,7 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { runtimeTestFrameworkName } from "./_test-mock-provenance.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
@@ -38,10 +39,12 @@ export const PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION = {
   category: "testing",
   aliases: ["strict-test-assertions"],
   autofix: "none",
-  limitations: ["Undefined-property assertions are excluded because whole-object matching can require previously absent properties. No automatic rewrite: grouping can change observable getter or proxy reads."],
+  limitations: ["Undefined-property assertions are excluded because whole-object matching can require previously absent properties. Indexed runs with an immediately adjacent literal exact-length assertion are excluded; non-adjacent length checks and intentional prefix contracts remain manual review. No automatic rewrite: grouping can change observable getter or proxy reads."],
   examples: [
     { id: "whole-object", title: "Assert the object once", outcome: "no-match", files: [{ path: "src/user.test.ts", source: "expect(user).toMatchObject({ id: 1, name: 'Ada' });" }], focusPath: "src/user.test.ts", expectedCount: 0, public: true },
     { id: "member-run", title: "Consider grouping related data properties", outcome: "match", files: [{ path: "src/user.test.ts", source: "expect(user.id).toBe(1);\nexpect(user.name).toBe('Ada');" }], focusPath: "src/user.test.ts", expectedCount: 1, public: true },
+    { id: "indexed-prefix", scenarioId: "array-length", title: "Review the collection contract before combining indexed assertions", outcome: "match", files: [{ path: "src/user.test.ts", source: "expect(users[0]).toEqual('Ada');\nexpect(users[1]).toEqual('Grace');" }], focusPath: "src/user.test.ts", expectedCount: 1, public: true },
+    { id: "length-and-prefix", scenarioId: "array-length", title: "A separate exact length can accompany an intentional prefix contract", outcome: "no-match", files: [{ path: "src/user.test.ts", source: "expect(users).toHaveLength(3);\nexpect(users[0]).toEqual('Ada');\nexpect(users[1]).toEqual('Grace');" }], focusPath: "src/user.test.ts", expectedCount: 0, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -134,7 +137,7 @@ export default createRule<Options, MessageIds>({
       combineAssertions:
         "Consider combining these {{count}} assertions on `{{receiver}}` with `toMatchObject` when structural matching preserves property presence and getter or proxy behavior.",
       assertArrayOnce:
-        "These {{count}} assertions check `{{receiver}}[0]`…`{{receiver}}[{{last}}]` one at a time, which never checks how long `{{receiver}}` is — extra elements pass unnoticed. Assert the array once: `expect({{receiver}}).{{matcher}}([ … ])`.",
+        "These {{count}} assertions check `{{receiver}}[0]`…`{{receiver}}[{{last}}]` separately. If the contract requires the complete array, consider `expect({{receiver}}).{{matcher}}([ … ])`, which also checks for extra elements. Preserve intentional prefix checks and separate length assertions.",
     },
     schema: [],
   },
@@ -205,7 +208,7 @@ export default createRule<Options, MessageIds>({
       });
     }
 
-    function reportIndexRun(run: readonly Assertion[]): void {
+    function reportIndexRun(run: readonly Assertion[], before: TSESTree.Statement | undefined, after: TSESTree.Statement | undefined): void {
       const first = run[0];
       if (first === undefined || !ARRAY_MATCHERS.has(first.matcher)) {
         return;
@@ -220,6 +223,7 @@ export default createRule<Options, MessageIds>({
       if (indices.size !== run.length || Math.max(...indices) !== run.length - 1) {
         return;
       }
+      if (isExactLengthAssertion(before, first.receiver) || isExactLengthAssertion(after, first.receiver)) return;
       context.report({
         node: first.statement,
         messageId: "assertArrayOnce",
@@ -234,6 +238,7 @@ export default createRule<Options, MessageIds>({
 
     function checkBody(body: readonly TSESTree.Statement[]): void {
       let run: Assertion[] = [];
+      let start = 0;
 
       const flush = (): void => {
         const first = run[0];
@@ -241,13 +246,13 @@ export default createRule<Options, MessageIds>({
           if (first.key.kind === "property") {
             reportPropertyRun(run);
           } else {
-            reportIndexRun(run);
+            reportIndexRun(run, body[start - 1], body[start + run.length]);
           }
         }
         run = [];
       };
 
-      for (const statement of body) {
+      for (const [index, statement] of body.entries()) {
         const assertion = parseAssertion(statement);
         const previous = run.at(-1);
         if (
@@ -262,6 +267,7 @@ export default createRule<Options, MessageIds>({
         flush();
         if (assertion !== null) {
           run = [assertion];
+          start = index;
         }
       }
       flush();
@@ -316,16 +322,28 @@ export default createRule<Options, MessageIds>({
     }
 
     function isTestExpect(callee: TSESTree.Identifier): boolean {
-      const variable = ASTUtils.findVariable(sourceCode.getScope(callee), callee.name);
-      if (variable !== null && variable.defs.some((definition) => {
-        if (definition.node.type !== AST_NODE_TYPES.ImportSpecifier) return true;
-        const declaration = definition.node.parent;
-        const imported = definition.node.imported;
-        return declaration.type !== AST_NODE_TYPES.ImportDeclaration ||
-          !["vitest", "@jest/globals", "@playwright/test", "bun:test"].includes(String(declaration.source.value)) ||
-          (imported.type === AST_NODE_TYPES.Identifier ? imported.name : imported.value) !== "expect";
-      })) return false;
-      return true;
+      return runtimeTestFrameworkName(sourceCode, callee, "assertion") === "expect";
+    }
+
+    function isExactLengthAssertion(statement: TSESTree.Statement | undefined, receiver: TSESTree.Expression): boolean {
+      if (statement?.type !== AST_NODE_TYPES.ExpressionStatement || statement.expression.type !== AST_NODE_TYPES.CallExpression) return false;
+      const call = statement.expression;
+      const callee = unwrapExpression(call.callee);
+      if (callee.type !== AST_NODE_TYPES.MemberExpression || call.arguments.length !== 1) return false;
+      const matcher = ASTUtils.getPropertyName(callee);
+      const assertion = unwrapExpression(callee.object);
+      if (assertion.type !== AST_NODE_TYPES.CallExpression || assertion.arguments.length !== 1) return false;
+      const expect = unwrapExpression(assertion.callee);
+      if (expect.type !== AST_NODE_TYPES.Identifier || !isTestExpect(expect)) return false;
+      const expected = call.arguments[0] === undefined ? undefined : unwrapExpression(call.arguments[0]);
+      if (expected?.type !== AST_NODE_TYPES.Literal || typeof expected.value !== "number" || !Number.isInteger(expected.value) || expected.value < 0) return false;
+      let actual = assertion.arguments[0] === undefined ? undefined : unwrapExpression(assertion.arguments[0]);
+      if (matcher !== "toHaveLength") {
+        if (matcher === null || !MERGEABLE_MATCHERS.has(matcher) || actual?.type !== AST_NODE_TYPES.MemberExpression ||
+            actual.optional || ASTUtils.getPropertyName(actual) !== "length") return false;
+        actual = unwrapExpression(actual.object);
+      }
+      return actual !== undefined && sourceCode.getText(actual) === sourceCode.getText(receiver);
     }
 
     function assertionExpectation(statement: TSESTree.ExpressionStatement, call: TSESTree.CallExpression, receiver: TSESTree.Expression | TSESTree.Super, key: Assertion["key"], matcher: string): Assertion | null {
