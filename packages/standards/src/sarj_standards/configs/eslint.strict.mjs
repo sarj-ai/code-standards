@@ -1361,7 +1361,7 @@ export function createConfig(options = {}) {
       "@sarj/no-exception-text-in-5xx-response": "warn",
       "@sarj/no-json-stringify-error": "error",
       "@sarj/no-string-concat-in-loop": "error",
-      "@sarj/prefer-discriminated-union": "error",
+      "@sarj/prefer-discriminated-union": "warn",
       "@sarj/no-comment-cruft": "error",
       "@sarj/no-fat-try-blocks": ["error", { max: 5 }],
       "@sarj/no-cors-wildcard-with-credentials": "warn",

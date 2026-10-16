@@ -12,6 +12,65 @@ Audit weak or duplicated data contracts using the shared [audit protocol](../ski
 
 Use the lightest suitable contract. Do not introduce runtime schemas for private, already-trusted local values, component props, ORM-generated types, or useful generic abstractions.
 
+## Model the legal domain states
+
+Establish the invariant from producers, consumers, validation, or a documented
+domain contract before recommending a stronger type. Show one currently
+representable invalid value and the operation it can break. A count of optional
+fields, a status-like name, or several booleans alone does not prove a defect.
+
+- When alternatives are mutually exclusive, prefer a union of complete variants
+  over one record containing every variant's optional fields. Give each variant
+  a stable literal discriminant and require the payload its consumers need.
+  Preserve correlation: `{ kind: "email"; address: Email } | { kind: "sms";
+  phone: Phone }` carries more evidence than independent unions for `kind` and
+  `destination`. Shared fields can stay shared; unrelated options stay optional.
+  When fields must be present together, make the complete record optional, such
+  as `ping?: { at: Time; id: PingId }`, instead of making its required constituents
+  independently optional.
+- For a proven closed vocabulary, use literal unions, enums, or schema-derived
+  alternatives and check dispatch exhaustively. Keep genuinely open external
+  vocabularies open, or model an explicit unknown variant with the original value
+  when forward compatibility requires it. A wildcard/default branch is not
+  evidence that future variants receive deliberate handling. Reuse upstream
+  TypeScript exhaustiveness checks and a helper accepting `never`, or Python's
+  `assert_never`, rather than requiring one dispatch syntax.
+- Distinguish domain roles whose shared primitive representation permits harmful
+  substitution: identifiers, units, money with currency, and validated values.
+  Reuse established nominal types and constructors. A transparent alias does not
+  distinguish roles; a brand, `NewType`, or type assertion does not validate
+  external data. Introduce refinements only when the invariant and affected
+  consumer justify them; do not brand every primitive.
+- Encode cross-field constraints at the smallest owning constructor, parser, or
+  transition: ordered ranges, compatible units, non-empty collections, and state
+  prerequisites need more than independently valid fields. Keep unchecked
+  construction private when it would bypass that invariant. For expected,
+  recoverable construction failures, prefer a typed outcome with the failure
+  information callers actually need.
+- Preserve established invariants through updates. Separate mutation of a tag and
+  its payload, unchecked copies, and mutable aliases can recreate impossible
+  combinations after valid construction. Prefer replacing the complete variant
+  or a domain transition when that prevents the demonstrated defect. Readonly or
+  frozen fields do not validate data or make nested mutable values immutable.
+  Operations available only in one state should accept that variant or
+  capability and return the next valid variant, so callers cannot invoke them
+  with an unrelated state.
+
+Stronger modeling must preserve every legitimate state. Independent feature
+flags, PATCH/update objects, form drafts, partially loaded data, aggregate or
+partial-success results, and externally mandated wire formats can legitimately
+contain multiple optional fields. Keep omission, explicit null, and a supplied
+value distinct when they mean different things. Parse a permissive wire contract
+into a stronger internal model at the trust boundary when the domain requires
+it; do not silently drop valid states or change the public protocol.
+
+TypeScript object types are structural: a union can still accept extra fields
+from a non-fresh value. If a proven invariant forbids a field in another branch,
+consider an explicit forbidden member such as `error?: never`, with the project's
+optional-property semantics accounted for. Runtime input still needs parsing;
+static types, literal tags, and casts do not enforce runtime object validity.
+Do not impose exactness when extra metadata is valid.
+
 ## Preserve known evidence
 
 Check whether a populated fixed-key map is widened to an open dictionary, or a

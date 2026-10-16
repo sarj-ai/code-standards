@@ -1,0 +1,393 @@
+{
+  "schemaVersion": 1,
+  "decision": "ship-warning",
+  "baselineRevision": "af032b50be5889acac7400ec83c32762279dea27",
+  "rules": [
+    "eslint:prefer-discriminated-union",
+    "python:prefer-discriminated-model-union"
+  ],
+  "scope": "Conditional domain-modeling advisories, no autofix; preserve every accepted state and external contract.",
+  "upstreamOwnership": {
+    "compiler": "Existing strict/exact-optional/indexed-access policy remains the owner of compiler guarantees.",
+    "exhaustiveness": "Existing typescript-eslint switch-exhaustiveness-check and never/assert_never consumers; no duplicate detector.",
+    "relatedRules": "Existing nominal-ID, closed-set, unsafe-cast and parsed-boundary rules remain the owners of those constraints."
+  },
+  "references": [
+    "https://functional-architecture.org/make_illegal_states_unrepresentable/",
+    "https://www.typescriptlang.org/docs/handbook/2/narrowing.html#discriminated-unions",
+    "https://typescript-eslint.io/rules/switch-exhaustiveness-check/",
+    "https://docs.pydantic.dev/latest/concepts/unions/#discriminated-unions-with-str-discriminators"
+  ],
+  "focusedValidation": {
+    "pythonTests": 126,
+    "typescriptRuleCases": 125,
+    "typescriptCompilerTests": 2,
+    "pythonRuntimeCompatibilityCombinations": 24,
+    "ruff": "pass",
+    "focusedEslint": "pass",
+    "strictTypes": "pass",
+    "independentFinalReviews": 2
+  },
+  "corpora": [
+    {
+      "language": "typescript",
+      "rule": "eslint:prefer-discriminated-union",
+      "severity": "warning",
+      "corpora": 8,
+      "files": 3547,
+      "bytes": 33228746,
+      "sourceFilesExcludingSeeds": 3542,
+      "publicPackageSnapshots": [
+        "mature-zod",
+        "mature-unicorn"
+      ],
+      "privateCorpusCount": 3,
+      "labeledSeeds": {
+        "TP": 2,
+        "TN": 3,
+        "FP": 0,
+        "FN": 0
+      },
+      "liveFindings": 0,
+      "inspectedLiveFalsePositives": 0,
+      "duplicateLocations": 0,
+      "parseFailures": 0,
+      "baselineSpansPreserved": true,
+      "newDiagnosticLocations": 1,
+      "baseline": {
+        "files": 3547,
+        "batches": 18,
+        "processSeconds": 162.303371,
+        "findings": 1
+      },
+      "candidate": {
+        "files": 3547,
+        "batches": 18,
+        "processSeconds": 96.077377,
+        "findings": 2
+      }
+    },
+    {
+      "language": "python",
+      "rule": "python:prefer-discriminated-model-union",
+      "severity": "warning",
+      "corpora": 10,
+      "files": 3339,
+      "bytes": 35166866,
+      "sourceFilesExcludingSeeds": 3337,
+      "publicPackageSnapshots": [
+        "mature-pydantic",
+        "mature-attrs",
+        "mature-packaging",
+        "mature-pytest",
+        "mature-pygments"
+      ],
+      "privateCorpusCount": 3,
+      "labeledSeeds": {
+        "TP": 1,
+        "TN": 1,
+        "FP": 0,
+        "FN": 0
+      },
+      "liveFindings": 0,
+      "inspectedLiveFalsePositives": 0,
+      "duplicateLocations": 0,
+      "parseFailures": 0,
+      "baselineSpansPreserved": true,
+      "newDiagnosticLocations": 1,
+      "baseline": {
+        "files": 3339,
+        "batches": 21,
+        "processSeconds": 80.942727,
+        "findings": 0
+      },
+      "candidate": {
+        "files": 3339,
+        "batches": 21,
+        "processSeconds": 80.099331,
+        "findings": 1
+      }
+    }
+  ],
+  "performance": {
+    "observedAt": "2026-10-16T17:48:24.268937+00:00",
+    "environment": {
+      "python": "3.15.0",
+      "node": "v24.21.0",
+      "platform": "darwin",
+      "machine": "arm64"
+    },
+    "selection": "First 200 immutable Standards files sorted by SHA256 of seed 20261016 plus colon plus relative path; all labeled seeds included.",
+    "samples": [
+      {
+        "language": "typescript",
+        "files": 205,
+        "bytes": 1761253,
+        "freshProcesses": 9,
+        "mediansProcessSeconds": {
+          "baseline": 3.112818,
+          "candidate": 4.248926,
+          "parse": 2.133076
+        },
+        "mediansAnalysisMs": {
+          "baseline": 2715.7692500000003,
+          "candidate": 3535.870416,
+          "parse": 1515.876375
+        },
+        "candidateMinusBaselineProcessSeconds": 1.1361080000000001,
+        "candidateMinusParseProcessSeconds": 2.11585,
+        "candidateMinusBaselineAnalysisMs": 820.1011659999999,
+        "candidateMinusParseAnalysisMs": 2019.9940410000002,
+        "variants": {
+          "baseline": {
+            "firstProcessSeconds": 4.703603,
+            "repeatedProcessSeconds": [
+              2.052168,
+              3.112818
+            ],
+            "maxRssRaw": 493072,
+            "maxRssUnit": "KiB",
+            "findings": [
+              1,
+              1,
+              1
+            ]
+          },
+          "candidate": {
+            "firstProcessSeconds": 4.408363,
+            "repeatedProcessSeconds": [
+              4.248926,
+              2.048748
+            ],
+            "maxRssRaw": 526672,
+            "maxRssUnit": "KiB",
+            "findings": [
+              2,
+              2,
+              2
+            ]
+          },
+          "parse": {
+            "firstProcessSeconds": 3.671437,
+            "repeatedProcessSeconds": [
+              2.133076,
+              2.05502
+            ],
+            "maxRssRaw": 426512,
+            "maxRssUnit": "KiB",
+            "findings": [
+              0,
+              0,
+              0
+            ]
+          }
+        }
+      },
+      {
+        "language": "python",
+        "files": 202,
+        "bytes": 2986000,
+        "freshProcesses": 9,
+        "mediansProcessSeconds": {
+          "baseline": 2.972898,
+          "candidate": 3.27902,
+          "parse": 2.812059
+        },
+        "mediansAnalysisMs": {
+          "baseline": 1321.575874928385,
+          "candidate": 2042.64633404091,
+          "parse": 1488.9429579488933
+        },
+        "candidateMinusBaselineProcessSeconds": 0.3061220000000002,
+        "candidateMinusParseProcessSeconds": 0.46696099999999996,
+        "candidateMinusBaselineAnalysisMs": 721.070459112525,
+        "candidateMinusParseAnalysisMs": 553.7033760920167,
+        "variants": {
+          "baseline": {
+            "firstProcessSeconds": 4.349924,
+            "repeatedProcessSeconds": [
+              2.275705,
+              2.972898
+            ],
+            "maxRssRaw": 82247680,
+            "maxRssUnit": "bytes",
+            "findings": [
+              0,
+              0,
+              0
+            ]
+          },
+          "candidate": {
+            "firstProcessSeconds": 3.439903,
+            "repeatedProcessSeconds": [
+              2.747543,
+              3.27902
+            ],
+            "maxRssRaw": 82657280,
+            "maxRssUnit": "bytes",
+            "findings": [
+              1,
+              1,
+              1
+            ]
+          },
+          "parse": {
+            "firstProcessSeconds": 3.753049,
+            "repeatedProcessSeconds": [
+              2.244484,
+              2.812059
+            ],
+            "maxRssRaw": 81821696,
+            "maxRssUnit": "bytes",
+            "findings": [
+              0,
+              0,
+              0
+            ]
+          }
+        }
+      }
+    ],
+    "limitations": [
+      "Every sample starts a fresh bounded process. OS caches are not flushed; first versus repeated process observations are not controlled cold-cache measurements.",
+      "Measurements ran on a shared machine alongside other verification; signed differences are observations, not a speedup claim or a hard fleet regression bound.",
+      "TypeScript uses the actual selected ESLint rule and full plugin registry; Python compares one shared parsed PythonFileContext per file with and without the selected rule, keeping parsing equal. Full corpus uses the public analyze runner separately."
+    ]
+  },
+  "performanceDecision": {
+    "metric": "Fresh-process elapsed samples, followed by a controlled warmed TypeScript CPU/elapsed comparison on the same bounded panel.",
+    "maximumCandidateToBaselineRatio": 1.25,
+    "observedRatios": {
+      "typescript": 1.364977,
+      "python": 1.102971
+    },
+    "outcome": "The warmed CPU/elapsed followup does not reproduce a greater-than-25-percent analysis regression. The TypeScript fresh-process elapsed result remains load-sensitive and inconclusive. No speedup or fleet guarantee.",
+    "refinement": "Normalized model_validator presence gates expensive Python provenance analysis; the fixed 202-file panel enters it for 2 files instead of 21. Unicode aliases and diagnostic spans are preserved.",
+    "controlledObservedRatios": {
+      "cpu": 0.9952576923227815,
+      "elapsed": 1.0665209025576396
+    }
+  },
+  "canonicalValidation": {
+    "makeVerify": "pass across all canonical targets; successful prerequisites reused on resumption",
+    "githubCI": "Required on the exact reviewed PR head before administrative merge; public check results are attached to the PR.",
+    "typecheck": "pass for every package, zero errors and warnings",
+    "packageTests": {
+      "typescript": 8488,
+      "bootstrap": 18,
+      "contracts": 15,
+      "python": 14501,
+      "sql": 1713,
+      "iac": 1446,
+      "standards": 5534
+    },
+    "performanceRetry": "The unchanged prefer-match-type-dispatch rule exceeded its relative wall-time outlier threshold once in the full Python run under shared load. Both Python performance tests passed on isolated retry; no existing rule or threshold was changed.",
+    "resumption": "All successful canonical prerequisites were retained after correcting the TypeScript helper structure. TypeScript build/lint/typecheck/full dogfood were rerun on the final helper; make typecheck and the remaining make verify targets run separately. No committed gate was weakened.",
+    "uniquePackageTestsPassed": 31715,
+    "expectedSkips": 9
+  },
+  "reproduce": {
+    "canonical": "make verify",
+    "focusedPython": "uv run --project packages/python --frozen pytest -q packages/python/tests/rules/test_prefer_discriminated_model_union.py",
+    "focusedTypescript": "npm --prefix packages/typescript test -- tests/rules/prefer-discriminated-union.test.ts tests/rules/_discriminated-union-returns.test.ts tests/domain-type-contracts.test.ts",
+    "corpus": "Use the owner-readable corpus-runner.py, pinned manifests, artifact hashes and performance-runner.py in the local domain-type-safety-20261016 evidence directory. Private overlays are deliberately not published."
+  },
+  "limitations": [
+    "Zero false positives is scoped to the labeled cases and every inspected live match in these exact snapshots; it is not a proof for unseen source.",
+    "Corpus snapshots include current tracked working-tree content, pinned both by full Git revision where available and by content digest; installed mature public packages are exact local content snapshots rather than complete upstream repositories.",
+    "Only the selected rule runs in each corpus worker; the full registry is imported. TypeScript uses syntax parsing without project-service type information. Full preset interactions are validated separately by repository tests.",
+    "Each bounded batch starts a fresh process, using the default 250-file cap plus the 64 KiB argv cap. Startup, full-registry import, parsing and concurrent local work affect process time; these observations do not establish a speedup or a fleet performance guarantee.",
+    "Operating-system caches were not flushed. First and repeated runs are fresh-process observations, not controlled cold-cache benchmarks.",
+    "Python matching deliberately abstains on opaque/custom payload aliases, inherited models and unsupported validators. TypeScript matching proves producer key presence, not payload validity or all legal states of a shared type.",
+    "No autofix can safely choose domain variants, compatibility policy or runtime validation. Existing legacy boolean-result name matching is conditional review guidance, now consistently warning-level."
+  ],
+  "installedPublicPackages": {
+    "zod": "4.6.7",
+    "eslint-plugin-unicorn": "78.0.0",
+    "pydantic": "2.14.1",
+    "attrs": "26.1.0",
+    "packaging": "26.3",
+    "pytest": "9.1.1",
+    "pygments": "2.21.0"
+  },
+  "implementationSha256": {
+    "packages/python/src/sarj_python_lint/rules/prefer_discriminated_model_union.py": "3431f8a4567f0ea1250cc1964768953aec57c5511ebc87fa91cde32f48f4ca3c",
+    "packages/typescript/src/rules/prefer-discriminated-union.ts": "b7aa9b7fca62005d0e183bf01e7993960bd351fdb450970e110563a866d3f8b9",
+    "packages/typescript/src/rules/_discriminated-union-returns.ts": "b17ebdafd32e63a35afa16ae6874eb0deff8954d480501c730e438fcd97a9aaf"
+  },
+  "compilerMatrix": {
+    "typescriptVersions": [
+      "6.0.2",
+      "7.0.2"
+    ],
+    "strict": true,
+    "exactOptionalPropertyTypes": [
+      true,
+      false
+    ],
+    "outcome": "pass; the shared-policy regression additionally verifies exact optional rejection of explicit undefined"
+  },
+  "behaviorEquivalence": {
+    "generatedComparisons": 1344,
+    "matchingCases": 252,
+    "nonmatchingCases": 1092,
+    "diagnosticSpanOrMessageDifferences": 0,
+    "scope": "Pure TypeScript helper refactor, compared with the exact pre-refactor artifact; not additional independent domain labels."
+  },
+  "dogfood": {
+    "pythonRules": 151,
+    "pythonFiles": 808,
+    "pythonBlockingDiagnostics": 0,
+    "typescriptRules": 120,
+    "typescriptDiagnostics": 0
+  },
+  "controlledTypescriptFollowup": {
+    "observedAt": "2026-10-16T17:52:08.246821+00:00",
+    "language": "typescript",
+    "files": 205,
+    "bytes": 1761253,
+    "selection": "First 200 immutable Standards files sorted by SHA256 of seed 20261016 plus colon plus relative path; all labeled seeds included.",
+    "freshWorkers": 3,
+    "warmupPassesPerModePerWorker": 1,
+    "measuredPassesPerMode": 9,
+    "passesReadSameFiles": true,
+    "parseFailures": 0,
+    "unrelatedDiagnostics": 0,
+    "diagnosticInstability": 0,
+    "expectedFindingsPerPass": {
+      "baseline": 1,
+      "candidate": 2,
+      "parse": 0
+    },
+    "medians": {
+      "baseline": {
+        "elapsedMs": 782.2547499999996,
+        "cpuUserMs": 1259.082,
+        "cpuSystemMs": 18.406,
+        "cpuTotalMs": 1274.485
+      },
+      "candidate": {
+        "elapsedMs": 834.2910420000003,
+        "cpuUserMs": 1249.576,
+        "cpuSystemMs": 18.865,
+        "cpuTotalMs": 1268.441
+      },
+      "parse": {
+        "elapsedMs": 846.6965,
+        "cpuUserMs": 1135.585,
+        "cpuSystemMs": 18.186,
+        "cpuTotalMs": 1155.234
+      }
+    },
+    "candidateToBaselineCpuRatio": 0.9952576923227815,
+    "candidateToBaselineElapsedRatio": 1.0665209025576396,
+    "candidateMinusParseCpuMs": 113.20700000000011,
+    "candidateMinusBaselineCpuMs": -6.043999999999869,
+    "limitations": [
+      "One bounded immutable corpus panel per fresh worker; repeated passes within that worker measure warmed parser/rule execution, not independent source coverage.",
+      "All modes warm once before measurements; each pass reparses the same inputs and constructs a fresh Linter, and garbage collection runs before each timed pass. Parsing and GC during the timed operation remain included.",
+      "CPU measurements reduce scheduling noise; elapsed measurements still share machine resources. No controlled cold-cache or fleet performance guarantee is inferred."
+    ],
+    "peakRssKiBAcrossWorkers": 595968
+  }
+}

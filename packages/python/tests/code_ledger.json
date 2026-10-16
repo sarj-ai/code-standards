@@ -286,5 +286,6 @@
   "SARJ495": "test-without-explicit-oracle",
   "SARJ507": "no-async-function-cache",
   "SARJ508": "no-loguru-exc-info",
-  "SARJ509": "no-loguru-printf-format"
+  "SARJ509": "no-loguru-printf-format",
+  "SARJ510": "prefer-discriminated-model-union"
 }
