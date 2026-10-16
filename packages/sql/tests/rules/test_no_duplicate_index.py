@@ -364,3 +364,18 @@ def test_commas_inside_comments_do_not_split_index_keys() -> None:
 def test_distinct_quoted_tables_do_not_share_an_index_signature(left: str, right: str) -> None:
     source = f"CREATE INDEX first_idx ON {left} (id); CREATE INDEX second_idx ON {right} (id);"
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(("left", "right", "expected"), [("Ä", "ä", 0), ("Ä", "Ä", 1), ("Owner_ID", "owner_id", 1)])
+def test_unquoted_index_keys_only_fold_ascii_case(left: str, right: str, expected: int) -> None:
+    source = f"CREATE INDEX first_idx ON event({left}); CREATE INDEX second_idx ON event({right});"
+    assert len(_check(source)) == expected
+
+
+def test_unicode_index_name_case_does_not_turn_if_not_exists_into_a_second_index() -> None:
+    assert _check("CREATE INDEX CAFé_idx ON event(id); CREATE INDEX IF NOT EXISTS café_idx ON event(id);") == []
+
+
+def test_unicode_space_in_index_names_and_keys_is_preserved() -> None:
+    assert _check("CREATE INDEX a ON event(parent\u00a0id); CREATE INDEX b ON event(parent_id);") == []
+    assert _check("CREATE INDEX a\u00a0 ON event(id); CREATE INDEX b ON event(id); DROP INDEX a\u00a0;") == []

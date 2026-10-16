@@ -7,6 +7,8 @@ import re
 from typing import NamedTuple, final, override
 
 from sarj_sql_lint.rule_base import (
+    POSTGRES_IDENTIFIER_PART,
+    SQL_WHITESPACE,
     AutofixPolicy,
     Diagnostic,
     ExampleFile,
@@ -18,45 +20,59 @@ from sarj_sql_lint.rule_base import (
     is_dump_file,
     is_mysql,
     mask_sql_literals_and_comments,
+    normalize_sql_identifier,
+    sql_relation_key,
 )
+from sarj_sql_lint.rules._index_analysis import parse_indexes
 
 
 RESERVED_KEYWORDS = frozenset({"foreign", "key", "constraint", "alter", "table", "create", "add", "column"})
 
 
+type _TableKey = tuple[str, ...]
+
+
 class _IndexedColumns(NamedTuple):
-    table: str
+    table: _TableKey
     columns: tuple[str, ...]
 
 
-CREATE_INDEX_PATTERN = re.compile(
-    r"\bCREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:CONCURRENTLY\s+)?(?:IF\s+NOT\s+EXISTS\s+)?[\s\S]*?\bON\s+(?:ONLY\s+)?([a-zA-Z0-9_\"\.]+)\s*(?:USING\s+[a-zA-Z0-9_]+\s*)?\(\s*([\s\S]*?)\)",
+_QUALIFIED_IDENTIFIER = (
+    rf"{POSTGRES_IDENTIFIER_PART}(?:\s*\.\s*{POSTGRES_IDENTIFIER_PART})*(?![A-Za-z0-9_$\u0080-\U0010ffff]|\s*\.)"
+)
+_IDENTIFIER_LIST = rf"{POSTGRES_IDENTIFIER_PART}(?:\s*,\s*{POSTGRES_IDENTIFIER_PART})*"
+_IDENTIFIER_RE = re.compile(POSTGRES_IDENTIFIER_PART)
+_COLUMN_KEY = re.compile(
+    rf"(?P<column>{POSTGRES_IDENTIFIER_PART})(?:\s+(?:ASC|DESC))?(?:\s+NULLS\s+(?:FIRST|LAST))?",
     re.IGNORECASE,
 )
+_EMPTY_PREDICATE = re.compile(r"[\s(]*false[\s)]*", re.IGNORECASE | re.ASCII)
 TABLE_SCOPE_PATTERN = re.compile(
-    r"\b(?:CREATE|ALTER)\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:ONLY\s+)?([a-zA-Z0-9_\"\.]+)",
+    rf"\b(?:CREATE|ALTER)\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:ONLY\s+)?({_QUALIFIED_IDENTIFIER})",
     re.IGNORECASE,
 )
 TABLE_FK_PATTERN = re.compile(
-    r"\bFOREIGN\s+KEY\s*\(\s*([a-zA-Z0-9_,\s\"]+)\s*\)\s*REFERENCES\s+"
-    r"[a-zA-Z0-9_\"\.]+(?:\s*\([^)]*\))?",
+    rf"\bFOREIGN\s+KEY\s*\(\s*({_IDENTIFIER_LIST})\s*\)\s*REFERENCES\s+"
+    rf"{_QUALIFIED_IDENTIFIER}(?:\s*\([^)]*\))?",
     re.IGNORECASE,
 )
 TABLE_PK_OR_UNIQUE_PATTERN = re.compile(
-    r"\b(?:PRIMARY\s+KEY|UNIQUE)\s*\(\s*([a-zA-Z0-9_,\s\"]+)\s*\)",
+    rf"\b(?:PRIMARY\s+KEY|UNIQUE)\s*\(\s*({_IDENTIFIER_LIST})\s*\)",
     re.IGNORECASE,
 )
 INLINE_COLUMN_PATTERN = re.compile(
-    r"(?:\bADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?)?\b([a-zA-Z0-9_\"]+)\b[\s\S]*?\bREFERENCES\s+[a-zA-Z0-9_\"\.]+\b",
+    rf"(?:\bADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?)?"
+    rf"(?<![A-Za-z0-9_$\u0080-\U0010ffff])({POSTGRES_IDENTIFIER_PART})(?=\s)[\s\S]*?\bREFERENCES\s+{_QUALIFIED_IDENTIFIER}",
     re.IGNORECASE,
 )
 PRIMARY_OR_UNIQUE_KEYWORD = re.compile(r"\b(PRIMARY\s+KEY|UNIQUE)\b", re.IGNORECASE)
 INLINE_PK_OR_UNIQUE_PATTERN = re.compile(
-    r"(?:\bADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?)?\b([a-zA-Z0-9_\"]+)\b[\s\S]*?\b(?:PRIMARY\s+KEY|UNIQUE)\b",
+    rf"(?:\bADD\s+(?:COLUMN\s+)?(?:IF\s+NOT\s+EXISTS\s+)?)?"
+    rf"(?<![A-Za-z0-9_$\u0080-\U0010ffff])({POSTGRES_IDENTIFIER_PART})(?=\s)[\s\S]*?\b(?:PRIMARY\s+KEY|UNIQUE)\b",
     re.IGNORECASE,
 )
 _FK_CLEAN_PATTERN = re.compile(
-    r'\bFOREIGN\s+KEY\s*\([^)]*\)\s*REFERENCES\s+[a-zA-Z0-9_"\.]+(?:\([^)]*\))?', re.IGNORECASE
+    rf"\bFOREIGN\s+KEY\s*\([^)]*\)\s*REFERENCES\s+{_QUALIFIED_IDENTIFIER}(?:\([^)]*\))?", re.IGNORECASE
 )
 _INDEX_REQUIRING_ACTION_RE = re.compile(
     r"\bON\s+(?:DELETE|UPDATE)\s+(?:CASCADE|SET\s+NULL|SET\s+DEFAULT)\b",
@@ -65,22 +81,26 @@ _INDEX_REQUIRING_ACTION_RE = re.compile(
 
 
 def _normalize_name(name: str) -> str:
-    clean = name.strip()
-    clean = re.sub(r"\s+(?:ASC|DESC|NULLS\s+FIRST|NULLS\s+LAST)\b.*", "", clean, flags=re.IGNORECASE)
-    clean = clean.replace('"', "").strip()
-    return clean.lower()
+    clean = name.strip(SQL_WHITESPACE)
+    match = _COLUMN_KEY.fullmatch(clean)
+    return normalize_sql_identifier(match.group("column")) if match is not None else clean
 
 
-def _collect_indexes(masked: str) -> dict[str, set[tuple[str, ...]]]:
-    indexed_cols: dict[str, set[tuple[str, ...]]] = {}
-    for match in CREATE_INDEX_PATTERN.finditer(masked):
-        full_table = _normalize_name(match.group(1))
-        base_table = full_table.split(".")[-1]
-        cols = tuple(normalized for column in match.group(2).split(",") if (normalized := _normalize_name(column)))
+def _column_names(value: str) -> tuple[str, ...]:
+    return tuple(_normalize_name(match.group()) for match in _IDENTIFIER_RE.finditer(value))
+
+
+def _collect_indexes(source: str) -> dict[_TableKey, set[tuple[str, ...]]]:
+    indexed_cols: dict[_TableKey, set[tuple[str, ...]]] = {}
+    for index in parse_indexes(source, include_executable_bodies=True):
+        if _EMPTY_PREDICATE.fullmatch(index.predicate) is not None:
+            continue
+        full_table = sql_relation_key(index.table)
+        cols = tuple(_normalize_name(column) for column in index.keys)
         if cols:
             indexed_cols.setdefault(full_table, set()).add(cols)
-            indexed_cols.setdefault(base_table, set()).add(cols)
 
+    masked = mask_sql_literals_and_comments(source, mask_dollar_literals=True)
     for stmt in masked.split(";"):
         _collect_constraint_indexes(stmt, indexed_cols)
     return indexed_cols
@@ -111,14 +131,12 @@ def _tree_indexes(  # sarj-noqa: SARJ023 — bounded tree helpers stay adjacent.
             text = candidate.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        for table, cols in _collect_indexes(mask_sql_literals_and_comments(text, mask_dollar_literals=True)).items():
+        for table, cols in _collect_indexes(text).items():
             indexes.update(_IndexedColumns(table, index) for index in cols if index)
     return frozenset(indexes)
 
 
-def _sibling_indexes(path: Path, tables: tuple[str, ...]) -> set[tuple[str, ...]]:
-    if not tables:
-        return set()
+def _sibling_indexes(path: Path, table: _TableKey) -> set[tuple[str, ...]]:
     try:
         if not path.is_file():
             return set()
@@ -127,8 +145,11 @@ def _sibling_indexes(path: Path, tables: tuple[str, ...]) -> set[tuple[str, ...]
     root = _migration_root(path)
     if root is None:
         return set()
-    wanted = set(tables)
-    return {columns for table, columns in _tree_indexes(root) if table in wanted}
+    return {columns for indexed_table, columns in _tree_indexes(root) if _same_relation(indexed_table, table)}
+
+
+def _same_relation(left: _TableKey, right: _TableKey) -> bool:
+    return left == right or (left[-1] == right[-1] and (len(left) == 1 or len(right) == 1))
 
 
 def _migration_root(path: Path) -> Path | None:  # sarj-noqa: SARJ023 — bounded tree helpers stay adjacent.
@@ -172,6 +193,9 @@ class RequireFkIndex(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only CASCADE, SET NULL, and SET DEFAULT actions are checked; ordinary NO ACTION/RESTRICT foreign keys stay silent.",
+            "Explicit schemas and quoted identifier case remain distinct; mixed qualification is unresolved and may refer to the same relation.",
+            "Literal FALSE partial indexes cannot cover foreign keys. Other partial predicates retain conservative legacy coverage; arbitrary implication and migration-time index drops are not evaluated.",
+            "Unicode escape identifiers (U&) and server-side identifier truncation are not resolved.",
             "A bounded scan includes indexes from sibling files in the same migration tree.",
             "Schema dumps are excluded; add the owning change to an authored migration.",
         ),
@@ -214,18 +238,21 @@ class RequireFkIndex(Rule):
             return []
         diags: list[Diagnostic] = []
         masked = mask_sql_literals_and_comments(source, mask_dollar_literals=True)
-        indexed_cols_by_table = _collect_indexes(masked)
+        indexed_cols_by_table = _collect_indexes(source)
         is_dump = is_dump_file(source, path)
 
         char_offset = 0
         for stmt in masked.split(";"):
             if "REFERENCES" in stmt.upper() and (table_match := TABLE_SCOPE_PATTERN.search(stmt)):
-                full_table = _normalize_name(table_match.group(1))
-                base_table = full_table.split(".")[-1]
-                table_indexes = indexed_cols_by_table.get(full_table, set()) | indexed_cols_by_table.get(
-                    base_table, set()
-                )
-                table_indexes |= _sibling_indexes(path, (full_table, base_table))
+                full_table = normalize_sql_identifier(table_match.group(1))
+                table = sql_relation_key(table_match.group(1))
+                table_indexes = {
+                    columns
+                    for indexed_table, indexes in indexed_cols_by_table.items()
+                    if _same_relation(indexed_table, table)
+                    for columns in indexes
+                }
+                table_indexes |= _sibling_indexes(path, table)
 
                 ctx = _StmtContext(path, masked, stmt, char_offset, full_table, table_match.end(), is_dump)
                 diags.extend(self._check_fk_constraints(ctx, table_indexes))
@@ -246,7 +273,7 @@ class RequireFkIndex(Rule):
             boundary = min(boundary, _clause_end(ctx.stmt, fk_match.end()))
             if _INDEX_REQUIRING_ACTION_RE.search(ctx.stmt, fk_match.end(), boundary) is None:
                 continue
-            fk_cols = tuple(_normalize_name(c) for c in fk_match.group(1).split(","))
+            fk_cols = _column_names(fk_match.group(1))
             if fk_cols and not _has_covering_index(indexes, fk_cols):
                 # `fk_match.start()`, NOT `ctx.stmt.find(fk_match.group(0))` — the
                 # latter re-finds the clause by value and resolves to the first
@@ -329,19 +356,15 @@ def _is_index_requiring_inline_reference(segment: str) -> bool:
     )
 
 
-def _collect_constraint_indexes(stmt: str, indexed_cols: dict[str, set[tuple[str, ...]]]) -> None:
+def _collect_constraint_indexes(stmt: str, indexed_cols: dict[_TableKey, set[tuple[str, ...]]]) -> None:
     table_match = TABLE_SCOPE_PATTERN.search(stmt)
     if not table_match:
         return
-    full_table = _normalize_name(table_match.group(1))
-    base_table = full_table.split(".")[-1]
+    full_table = sql_relation_key(table_match.group(1))
     for pk_match in TABLE_PK_OR_UNIQUE_PATTERN.finditer(stmt):
-        pk_cols = tuple(
-            normalized for column in pk_match.group(1).split(",") if (normalized := _normalize_name(column))
-        )
+        pk_cols = _column_names(pk_match.group(1))
         if pk_cols:
             indexed_cols.setdefault(full_table, set()).add(pk_cols)
-            indexed_cols.setdefault(base_table, set()).add(pk_cols)
     body = stmt[table_match.end() :]
     for segment in body.split(","):
         if TABLE_PK_OR_UNIQUE_PATTERN.search(segment):
@@ -353,4 +376,3 @@ def _collect_constraint_indexes(stmt: str, indexed_cols: dict[str, set[tuple[str
         if column in RESERVED_KEYWORDS:
             continue
         indexed_cols.setdefault(full_table, set()).add((column,))
-        indexed_cols.setdefault(base_table, set()).add((column,))

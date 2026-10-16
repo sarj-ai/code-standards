@@ -170,7 +170,9 @@ class PreferConstantTimeSecretCompare(Rule):
             if _is_password_confirmation_pair(operands):
                 continue
             scope = _enclosing_scope(comparison, parents, tree)
-            roles = role_cache.setdefault(id(scope), _roles_for_scope(scope, environment_names))
+            if id(scope) not in role_cache:
+                role_cache[id(scope)] = _roles_for_scope(scope, environment_names)
+            roles = role_cache[id(scope)]
             position = (comparison.lineno, comparison.col_offset)
             dominant_roles = _dominating_walrus_roles(comparison, parents, roles, position)
             operand_roles = [_operand_role(operand, roles, position, dominant_roles) for operand in operands]

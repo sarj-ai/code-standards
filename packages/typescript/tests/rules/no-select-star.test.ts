@@ -18,6 +18,8 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-select-star", rule, {
   valid: [
+    { name: "does not treat an unused join separator as SQL", code: "const note = ['ready'].join('SELECT * FROM users');" },
+    { name: "abstains from joined fragments with an unknown separator", code: "db.query(['SELECT * FROM users', 'WHERE id = 1'].join(separator));" },
     { name: "ignores stars in PostgreSQL dollar strings", code: "db.query(`SELECT $$ * FROM $$`);" },
     { name: "ignores stars in tagged dollar strings", code: "db.query(`SELECT $body$ * FROM $body$`);" },
     { name: "preserves Unicode offsets while masking SQL values", code: "db.query(`SELECT '😀' AS emoji, '*' FROM users`);" },
@@ -79,6 +81,8 @@ RULE_TESTER.run("no-select-star", rule, {
     },
   ],
   invalid: [
+    { name: "inspects SQL reconstructed with an empty join separator", code: "db.query(['SEL', 'ECT * FROM users'].join(''));", errors: [{ messageId: "noSelectStar" }] },
+    { name: "keeps executed queries inside outer template substitutions", code: 'logger.info(`value ${db.query("SELECT * FROM users")}`);', errors: [{ messageId: "noSelectStar" }] },
     { name: "retains a wildcard following a dollar-quoted literal", code: "db.query(`SELECT $$ literal $$, * FROM users`);", errors: [{ messageId: "noSelectStar" }] },
     { name: "reports the documented wildcard", code: NO_SELECT_STAR_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noSelectStar" }] },
     {

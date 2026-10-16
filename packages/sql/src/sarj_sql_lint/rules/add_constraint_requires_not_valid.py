@@ -65,6 +65,7 @@ class AddConstraintRequiresNotValid(Rule):
         ),
         limitations=(
             "Only PostgreSQL migration files and ALTER TABLE actions that directly add CHECK or foreign-key constraints are inspected.",
+            "Foreign keys may use the referenced table's implicit primary key; NOT VALID and NOT ENFORCED constraints do not require deferred validation advice.",
             "A table is treated as fresh only after an unconditional empty CREATE TABLE in the same migration section; ambiguous or populating statements revoke that exemption.",
             "Validation transactions are not inferred; the diagnostic explains that VALIDATE CONSTRAINT belongs in a later committed migration or transaction.",
         ),
@@ -259,6 +260,8 @@ def _identifier(tokens: list[_Token], cursor: int) -> tuple[_TableKey, int] | No
         if cursor >= len(tokens) or tokens[cursor].text != ".":
             break
         cursor += 1
+        if cursor == len(tokens):
+            return None
     return (tuple(parts), cursor) if parts else None
 
 
@@ -376,8 +379,13 @@ def _is_foreign_key_action(action: list[_Token], cursor: int) -> bool:
     if referenced_table is None:
         return False
     _, referenced_columns_open = referenced_table
-    if referenced_columns_open >= len(action) or action[referenced_columns_open].text != "(":
-        return False
+    if referenced_columns_open == len(action):
+        return True
+    if action[referenced_columns_open].text != "(":
+        return any(
+            _consume(action, referenced_columns_open, keyword)
+            for keyword in ("MATCH", "ON", "DEFERRABLE", "INITIALLY", "ENFORCED", "NOT")
+        )
     referenced_columns_close = _matching_paren(action, referenced_columns_open)
     return referenced_columns_close is not None and _valid_identifier_list(
         action[referenced_columns_open + 1 : referenced_columns_close]
@@ -407,7 +415,7 @@ def _constraint_action_findings(
 ) -> list[Diagnostic]:
     diags: list[Diagnostic] = []
     for action in actions:
-        if table in fresh_tables or _action_has_not_valid(action):
+        if table in fresh_tables or _action_skips_validation(action):
             continue
         location = locate(statement, action[0].start)
         diags.append(
@@ -425,7 +433,7 @@ def _constraint_action_findings(
     return diags
 
 
-def _action_has_not_valid(action: list[_Token]) -> bool:
+def _action_skips_validation(action: list[_Token]) -> bool:
     depth = 0
     for index, token in enumerate(action[:-1]):
         if token.text == "(":
@@ -434,6 +442,6 @@ def _action_has_not_valid(action: list[_Token]) -> bool:
         if token.text == ")":
             depth -= 1
             continue
-        if depth == 0 and token.text.upper() == "NOT" and action[index + 1].text.upper() == "VALID":
+        if depth == 0 and token.text.upper() == "NOT" and action[index + 1].text.upper() in {"VALID", "ENFORCED"}:
             return True
     return False

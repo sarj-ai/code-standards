@@ -1,0 +1,345 @@
+{
+  "schemaVersion": 1,
+  "repository": "sarj-ai/code-standards",
+  "researchBaseCommit": "d61ac2a6c2369de0486b713b98d46fc73ba48612",
+  "integrationBaseCommit": "8998397f674b325d8e487600a7c3a29788ce652d",
+  "requestedPasses": 50,
+  "completedResearchPasses": 50,
+  "newRuleIds": 0,
+  "state": "research complete; release acceptance and publication tracked in PR",
+  "passes": [
+    {
+      "pass": 1,
+      "focus": "Shared AST query order, subtype selection and defensive copies",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 2,
+      "focus": "Unicode identifiers and lexical symbol gates",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 3,
+      "focus": "Source codec decoding and malformed-input boundaries",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 4,
+      "focus": "Analysis-session parse reuse and source freshness",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 5,
+      "focus": "Assignment expressions in comprehensions bind outside the comprehension",
+      "decision": "implemented at existing owner"
+    },
+    {
+      "pass": 6,
+      "focus": "Definition defaults execute in the enclosing scope",
+      "decision": "deferred"
+    },
+    {
+      "pass": 7,
+      "focus": "Class namespaces do not close over methods",
+      "decision": "deferred"
+    },
+    {
+      "pass": 8,
+      "focus": "Own-function yield classification is duplicated and divergent",
+      "decision": "implemented at existing owner"
+    },
+    {
+      "pass": 9,
+      "focus": "CORS origin membership is a value property",
+      "decision": "deferred"
+    },
+    {
+      "pass": 10,
+      "focus": "Dense stream-loop rewrites preserve sentinel and control flow",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 11,
+      "focus": "Regex validation semantics and maintained ownership",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 12,
+      "focus": "Eager dict.setdefault defeats per-scope role caching",
+      "decision": "implemented at existing owner"
+    },
+    {
+      "pass": 13,
+      "focus": "Comprehension density must respect descriptor evaluation order",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 14,
+      "focus": "Elapsed clocks versus timestamps and severity",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 15,
+      "focus": "Runtime pieces inside padded SQL values",
+      "decision": "implemented at existing owner"
+    },
+    {
+      "pass": 16,
+      "focus": "Exact SQL fragment join separators",
+      "decision": "implemented at existing owner"
+    },
+    {
+      "pass": 17,
+      "focus": "Executed SQL inside template substitutions",
+      "decision": "implemented at existing owner"
+    },
+    {
+      "pass": 18,
+      "focus": "Shadowed undefined recovery provenance",
+      "decision": "deferred"
+    },
+    {
+      "pass": 19,
+      "focus": "Hoist read APIs require builtin provenance",
+      "decision": "deferred"
+    },
+    {
+      "pass": 20,
+      "focus": "One-shot hashing input encoding contract",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 21,
+      "focus": "UUID v4 custom generation options",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 22,
+      "focus": "Mock double assertion provenance",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 23,
+      "focus": "Falsy legacy platform objects in nullish filter suggestions",
+      "decision": "deferred"
+    },
+    {
+      "pass": 24,
+      "focus": "Typed Promise then versus custom contracts",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 25,
+      "focus": "ArrayBuffer view range preservation",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 26,
+      "focus": "Promise.allSettled result guards",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 27,
+      "focus": "Return-only generics erase validation contracts",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 28,
+      "focus": "Async finally cleanup failure visibility",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 29,
+      "focus": "Partial child indexes are incorrectly treated as complete foreign-key coverage",
+      "decision": "implemented at existing owner"
+    },
+    {
+      "pass": 30,
+      "focus": "Foreign-key index relation matching collapses distinct explicit schemas and quoted case",
+      "decision": "implemented at existing owner"
+    },
+    {
+      "pass": 31,
+      "focus": "A dropped index continues to count toward cascading FK coverage",
+      "decision": "deferred"
+    },
+    {
+      "pass": 32,
+      "focus": "Duplicate-index expression normalization folds distinct UTF-8 identifiers together",
+      "decision": "implemented at existing owner"
+    },
+    {
+      "pass": 33,
+      "focus": "NOT VALID rule misses foreign keys whose referenced-column list is omitted",
+      "decision": "implemented at existing owner"
+    },
+    {
+      "pass": 34,
+      "focus": "One nested upsert exempts another INSERT in the same CTE statement",
+      "decision": "deferred"
+    },
+    {
+      "pass": 35,
+      "focus": "Migration phase directive recognition reads directives inside block comments",
+      "decision": "deferred"
+    },
+    {
+      "pass": 36,
+      "focus": "terraform_data with real provisioning work is mislabeled as a guard-only fake resource",
+      "decision": "deferred"
+    },
+    {
+      "pass": 37,
+      "focus": "can(values(var.map)) is a missing exact type-guaranteed validation tautology",
+      "decision": "deferred"
+    },
+    {
+      "pass": 38,
+      "focus": "Spanner API-side drop protection is not accepted as protection by SARJ201",
+      "decision": "deferred"
+    },
+    {
+      "pass": 39,
+      "focus": "Terraform JSON is semantically equivalent but outside native HCL security-rule coverage",
+      "decision": "deferred"
+    },
+    {
+      "pass": 40,
+      "focus": "Repeated balance checking across native literal policies may be redundant parser work",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 41,
+      "focus": "Reuse validated config literal masks",
+      "decision": "implemented at existing owner"
+    },
+    {
+      "pass": 42,
+      "focus": "Consolidate duplicate policy factories",
+      "decision": "deferred"
+    },
+    {
+      "pass": 43,
+      "focus": "JSONC lexical fidelity",
+      "decision": "deferred"
+    },
+    {
+      "pass": 44,
+      "focus": "Global diagnostic deduplication",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 45,
+      "focus": "Denser Python syntax via maintained upstream rules",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 46,
+      "focus": "Strict typing without annotation boilerplate",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 47,
+      "focus": "Corpus process and cache isolation",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 48,
+      "focus": "Baseline safety and severity semantics",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 49,
+      "focus": "Remove duplicate registry validation",
+      "decision": "existing control retained; no PR for this proposal"
+    },
+    {
+      "pass": 50,
+      "focus": "Unify source-coordinate caches",
+      "decision": "existing control retained; no PR for this proposal"
+    }
+  ],
+  "implemented": [
+    "Shared Python provenance follows comprehension assignment-expression binding and reuses the existing own-function yield traversal.",
+    "SARJ011 populates scope-role facts lazily instead of eagerly rebuilding cached values.",
+    "TypeScript SQL value checks inspect padded quoted interpolation; shared SQL extraction follows literal join delimiters and preserves executed substitutions.",
+    "SQL111 supports omitted referenced primary-key columns and preserves non-enforced constraints; SQL112 reuses relation/index analysis with bounded predicate and executable-body compatibility.",
+    "Config comment checks reuse validated literal masks instead of reparsing/scanning them."
+  ],
+  "versions": {
+    "python": "1.40.1",
+    "sql": "0.21.1",
+    "typescript": "16.13.1",
+    "standards": "8.68.0",
+    "compatibility": "8.68.0",
+    "preservedIaC": "0.22.1"
+  },
+  "validation": {
+    "state": "native calibration recorded; canonical verification and independent acceptance tracked in PR",
+    "python": {
+      "focusedPassed": 212,
+      "adjacentPassed": 406,
+      "corpusFiles": 327,
+      "corpusBytes": 3757173,
+      "diagnosticsIdentical": 226,
+      "measuredScopeFactBuilds": {
+        "before": 823,
+        "after": 409,
+        "distinctScopes": 409
+      }
+    },
+    "typescript": {
+      "focusedPassed": 280,
+      "corpusFiles": 3210,
+      "corpusBytes": 30061266,
+      "diagnosticsIdentical": 20,
+      "labeledPositive": 9,
+      "labeledNegative": 9,
+      "labeledFalsePositive": 0,
+      "labeledFalseNegative": 0
+    },
+    "sharedText": {
+      "focusedPassed": 464,
+      "corpusFiles": 299,
+      "corpusBytes": 1533928,
+      "roots": 4,
+      "processPairsPerPanel": 3,
+      "selectedDiagnosticsIdentical": 0,
+      "combinedDiagnosticsIdentical": 165,
+      "nativeMedianSeconds": {
+        "selectedBefore": 1.513231541030109,
+        "selectedAfter": 1.090624166186899,
+        "combinedBefore": 13.612643708940595,
+        "combinedAfter": 13.237790582934394
+      }
+    },
+    "sql": {
+      "packageTestsPassed": 1571,
+      "corpusFiles": 487,
+      "corpusBytes": 941878,
+      "publicExampleFiles": 47,
+      "isolatedSeedFiles": 27,
+      "freshProcessesPerVariant": 6,
+      "maxBatchFiles": 250,
+      "addedSeedTruePositives": 6,
+      "removedSeedFalsePositives": 3,
+      "inspectedDiagnosticDeltas": 9,
+      "privateDiagnosticDeltas": 0,
+      "publicExampleDiagnosticDeltas": 0,
+      "workerFailures": 0,
+      "interpretation": "The inspected deltas are isolated controls; no new live defect or production-incident prevention is claimed."
+    }
+  },
+  "policy": [
+    "No blanket severity promotion, new dependency or automatic source rewrite.",
+    "Raw diagnostic multiplicity, source encodings, private corpus boundaries and managed consumer approvals are preserved.",
+    "Native package fixes and exact bundle pins are released together."
+  ],
+  "limitations": [
+    "Fifty investigations are not fifty defects or fifty implemented rules.",
+    "Finite controls and diagnostic parity do not establish universal correctness or zero total baseline false positives.",
+    "TypeScript corpus contains existing trusted-fragment false-positive/uncertain findings; none was newly introduced in the inspected panel.",
+    "Timing figures describe this host and panel, not a fleet or whole-linter speedup.",
+    "Unknown partial-index predicates, Unicode SQL escape identifiers, broader callback header/class scope and other deferred boundaries remain explicit."
+  ]
+}

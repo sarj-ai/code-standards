@@ -6,6 +6,7 @@ from functools import cached_property
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final
 
+from sarj_python_lint.rules._ast_index import has_own_yield
 from sarj_python_lint.rules._namespace_access import dynamic_namespace_access
 
 
@@ -74,7 +75,7 @@ class ResourceProvenance:
                 self.reads[node.id].append(node)
 
             for name in _bound_names(node):
-                self.bindings[self.scope(node)][name].append(node)
+                self.bindings[self._binding_scope(node)][name].append(node)
                 self.wildcard |= name == "*"
             if isinstance(node, ast.Global | ast.Nonlocal):
                 self.external_bindings.update(node.names)
@@ -97,6 +98,14 @@ class ResourceProvenance:
         while parent is not None and not isinstance(parent, _SCOPES):
             parent = self.context.parents.get(parent)
         return parent
+
+    def _binding_scope(self, node: ast.AST) -> ast.AST | None:
+        scope = self.scope(node)
+        parent = self.context.parents.get(node)
+        if isinstance(parent, ast.NamedExpr) and parent.target is node:
+            while isinstance(scope, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
+                scope = self.scope(scope)
+        return scope
 
     def binding(self, name: str, at: ast.AST) -> ast.AST | None:
         scope = self.scope(at)
@@ -251,7 +260,7 @@ class ResourceProvenance:
         owner = self.context.parents.get(function)
         if not isinstance(owner, ast.Module | ast.FunctionDef | ast.AsyncFunctionDef):
             return None
-        if function.decorator_list or any(isinstance(node, ast.Yield | ast.YieldFrom) for node in ast.walk(function)):
+        if function.decorator_list or has_own_yield(function):
             return None
         if function not in self.async_contract_cache:
             self.async_contract_cache[function] = self._async_aliases_untouched(function)

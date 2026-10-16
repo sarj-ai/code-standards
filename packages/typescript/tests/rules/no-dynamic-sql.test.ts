@@ -20,6 +20,13 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-dynamic-sql", rule, {
   valid: [
+    { name: "preserves a type-erased literal inside a LIKE pattern", code: "db.query(`SELECT id FROM users WHERE name LIKE '%${'fixed' as const}%'`);" },
+    { name: "preserves a type-erased literal in a concatenated value", code: 'db.query("SELECT id FROM users WHERE name = \'prefix_" + ("fixed" as const) + "_suffix\'");' },
+    { name: "binds a complete LIKE pattern separately", code: "db.query('SELECT id FROM users WHERE name LIKE ?', ['%' + term + '%']);" },
+    { name: "preserves partial value-like text in a quoted identifier", code: 'db.query(`SELECT "prefix_${column}_suffix" FROM users`);' },
+    { name: "preserves partial value-like text in a dollar string", code: "db.query(`SELECT $$ prefix_'${note}'_suffix $$ FROM users`);" },
+    { name: "preserves partial value-like text in a nested SQL comment", code: "db.query(`SELECT id FROM users /* outer /* '${note}_suffix' */ inner */`);" },
+    { name: "preserves partial value-like text in a concatenated line comment", code: 'db.query("SELECT id FROM users -- \'prefix_" + note + "_suffix\'");' },
     { name: "ignores quoted interpolation in nested PostgreSQL comments", code: "db.query(`SELECT id FROM users /* outer /* inner */ '${note}' */`);" },
     { name: "does not prescribe value bindings for quoted identifiers", code: 'db.query(`SELECT "${column}" FROM users`);' },
     { name: "ignores quoted interpolation in SQL line comments", code: "db.query(`SELECT id FROM users -- '${note}'`);" },
@@ -126,6 +133,15 @@ RULE_TESTER.run("no-dynamic-sql", rule, {
     },
   ],
   invalid: [
+    { name: "reports a type-erased runtime value inside a LIKE pattern", code: "db.query(`SELECT id FROM users WHERE name LIKE '%${term as string}%'`);", errors: [{ messageId: "dynamicSql" }] },
+    { name: "reports a runtime value inside a LIKE pattern", code: "db.query(`SELECT id FROM users WHERE name LIKE '%${term}%'`);", errors: [{ messageId: "dynamicSql" }] },
+    { name: "reports a runtime suffix in a quoted value", code: "db.query(`SELECT id FROM users WHERE name = 'prefix_${name}'`);", errors: [{ messageId: "dynamicSql" }] },
+    { name: "reports a runtime prefix in a quoted value", code: "db.query(`SELECT id FROM users WHERE name = '${name}_suffix'`);", errors: [{ messageId: "dynamicSql" }] },
+    { name: "reports both runtime pieces of one quoted value", code: "db.query(`SELECT id FROM users WHERE name = 'prefix_${first}_${last}_suffix'`);", errors: [{ messageId: "dynamicSql" }, { messageId: "dynamicSql" }] },
+    { name: "reports a runtime piece after a doubled SQL quote", code: "db.query(`SELECT id FROM users WHERE name = 'prefix''_${name}_suffix'`);", errors: [{ messageId: "dynamicSql" }] },
+    { name: "reports concatenation inside a LIKE pattern", code: 'db.query("SELECT id FROM users WHERE name LIKE \'%" + term + "%\'");', errors: [{ messageId: "dynamicSql" }] },
+    { name: "reports concatenation inside a prefixed and suffixed quoted value", code: 'db.query("SELECT id FROM users WHERE name = \'prefix_" + name + "_suffix\'");', errors: [{ messageId: "dynamicSql" }] },
+    { name: "decodes static template pieces in a concatenated quoted value", code: 'db.query(`SELECT id FROM users WHERE name = \\x27prefix_` + name + `_suffix\\x27`);', errors: [{ messageId: "dynamicSql" }] },
     {
       name: "rejects an unquoted runtime value in prepare",
       code: "db.prepare(`select id from users where id = ${id}`);",

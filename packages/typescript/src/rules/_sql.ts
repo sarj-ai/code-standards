@@ -6,8 +6,7 @@
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { unwrapExpression } from "./_unwrap-expression.js";
-
-import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
+import { staticString } from "./_static-string.js";
 
 /** Mask SQL values and comments without changing text or line lengths. */
 export function stripSqlNoise(text: string): string {
@@ -131,27 +130,35 @@ export function sqlTextOf(node: TSESTree.Node): string | null {
       const right = sqlTextOf(node.right);
       return left !== null && right !== null ? left + right : null;
     }
-    case AST_NODE_TYPES.ArrayExpression: {
-      const parts: string[] = [];
-      for (const element of node.elements) {
-        if (element === null) {
-          return null;
-        }
-        const part = sqlTextOf(element);
-        if (part === null) {
-          return null;
-        }
-        parts.push(part);
-      }
-      return parts.length > 0 ? parts.join(" ") : null;
-    }
+    case AST_NODE_TYPES.ArrayExpression:
+      return fragmentArrayText(node);
     default:
       return null;
   }
 }
 
+/** Reconstruct one fragment array using only its supported native join contract. */
+function fragmentArrayText(node: TSESTree.ArrayExpression): string | null {
+  const join = joinedFragmentCall(node);
+  const separator = join === null ? " " : join.arguments.length === 0 ? "," :
+    join.arguments.length === 1 ? staticString(join.arguments[0]) : null;
+  if (separator === null) return null;
+  const parts: string[] = [];
+  for (const element of node.elements) {
+    if (element === null || (join !== null && element.type === AST_NODE_TYPES.ArrayExpression)) {
+      return null;
+    }
+    const part = sqlTextOf(element);
+    if (part === null) {
+      return null;
+    }
+    parts.push(part);
+  }
+  return parts.length > 0 ? parts.join(separator) : null;
+}
+
 /** Return whether an array's fragments are consumed together by `.join(...)`. */
-function isJoinedFragmentArray(node: TSESTree.ArrayExpression): boolean {
+function joinedFragmentCall(node: TSESTree.ArrayExpression): TSESTree.CallExpression | null {
   const parent = node.parent;
   return (
     parent?.type === AST_NODE_TYPES.MemberExpression &&
@@ -159,14 +166,24 @@ function isJoinedFragmentArray(node: TSESTree.ArrayExpression): boolean {
     !parent.computed &&
     parent.property.type === AST_NODE_TYPES.Identifier &&
     parent.property.name === "join" &&
-    parent.parent?.type === AST_NODE_TYPES.CallExpression
-  );
+    parent.parent?.type === AST_NODE_TYPES.CallExpression &&
+    parent.parent.callee === parent
+  ) ? parent.parent : null;
 }
 
-/** Every string-bearing descendant that a composite node has already absorbed. */
+/** Mark only text incorporated into a composite, leaving executed substitutions visible. */
 function markConsumed(node: TSESTree.Node, consumed: WeakSet<TSESTree.Node>): void {
   consumed.add(node);
-  forEachOwnAstChild(node, child => markConsumed(child, consumed));
+  const value = unwrapExpression(node);
+  if (value !== node) { markConsumed(value, consumed); return; }
+  if (node.type === AST_NODE_TYPES.BinaryExpression && node.operator === "+") {
+    markConsumed(node.left, consumed);
+    markConsumed(node.right, consumed);
+  } else if (node.type === AST_NODE_TYPES.ArrayExpression) {
+    for (const element of node.elements) if (element !== null) markConsumed(element, consumed);
+  } else if (node.type === AST_NODE_TYPES.TaggedTemplateExpression) {
+    markConsumed(node.quasi, consumed);
+  }
 }
 
 /** Hand each whole, statically resolvable SQL statement to `handler` once. */
@@ -192,9 +209,14 @@ export function createSqlListener(
       visit(node);
     },
     ArrayExpression: (node: TSESTree.ArrayExpression): void => {
-      if (isJoinedFragmentArray(node)) {
-        visit(node);
-      }
+      const join = joinedFragmentCall(node);
+      if (join === null) return;
+      visit(node);
+      // Unknown separators do not prove a statement. Their fragments and literal
+      // separators are data; nested calls still execute and retain their visitors.
+      markConsumed(node, consumed);
+      const separator = join.arguments[0];
+      if (separator !== undefined && staticString(separator) !== null) markConsumed(separator, consumed);
     },
     TemplateLiteral: (node: TSESTree.TemplateLiteral): void => {
       visit(node);

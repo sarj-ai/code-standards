@@ -43,6 +43,52 @@ def test_not_valid_silences_foreign_key_constraint() -> None:
     assert _check(source) == []
 
 
+@pytest.mark.parametrize(
+    "reference",
+    [
+        "parent",
+        'app."Parent Directory"',
+        "parent ON DELETE CASCADE",
+        "parent ON UPDATE SET NULL",
+        "parent MATCH FULL",
+        "parent DEFERRABLE INITIALLY DEFERRED",
+        "parent NOT DEFERRABLE",
+        "parent ENFORCED",
+    ],
+)
+def test_foreign_key_can_use_the_referenced_primary_key(reference: str) -> None:
+    assert len(_check(f"ALTER TABLE child ADD FOREIGN KEY (parent_id) REFERENCES {reference};")) == 1
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        "FOREIGN KEY (parent_id) REFERENCES parent NOT VALID",
+        "FOREIGN KEY (parent_id) REFERENCES parent NOT ENFORCED",
+        "FOREIGN KEY (parent_id) REFERENCES parent(id) NOT ENFORCED",
+        "CHECK (age >= 18) NOT ENFORCED",
+    ],
+)
+def test_constraint_that_performs_no_validation_is_exempt(action: str) -> None:
+    assert _check(f"ALTER TABLE child ADD {action};") == []
+
+
+def test_implicit_primary_key_on_a_fresh_child_needs_no_deferred_validation() -> None:
+    assert (
+        _check("CREATE TABLE child(parent_id int); ALTER TABLE child ADD FOREIGN KEY (parent_id) REFERENCES parent;")
+        == []
+    )
+
+
+@pytest.mark.parametrize("reference", ["", "parent.", "parent unexpected", "parent()"])
+def test_incomplete_or_unsupported_reference_is_not_inferred(reference: str) -> None:
+    assert _check(f"ALTER TABLE child ADD FOREIGN KEY (parent_id) REFERENCES {reference};") == []
+
+
+def test_non_enforced_expression_words_do_not_disable_constraint_validation() -> None:
+    assert len(_check('ALTER TABLE child ADD CHECK ("NOT" <> "ENFORCED");')) == 1
+
+
 def test_sqlite_migration_is_not_given_postgres_advice() -> None:
     source = "-- dialect: sqlite\nALTER TABLE users ADD CONSTRAINT check_age CHECK (age >= 18);"
     assert _check(source, Path("db/migrations/001.sql")) == []

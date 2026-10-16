@@ -18,6 +18,7 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-offset-pagination", rule, {
   valid: [
+    { name: "preserves a space-joined line comment", code: "db.query(['SELECT id FROM users -- note', 'LIMIT 1 OFFSET 1'].join(' '));" },
     { name: "ignores numeric offsets in error prose", code: "throw new Error('Invalid offset 20 in image');" },
     { name: "ignores placeholder offsets in prose", code: "log('Invalid offset ? in image');" },
     { name: "ignores offset clauses inside dollar strings", code: "db.query(`SELECT $$ OFFSET 20 $$ FROM users`);" },
@@ -80,6 +81,7 @@ RULE_TESTER.run("no-offset-pagination", rule, {
     },
   ],
   invalid: [
+    { name: "preserves a newline join separator after a line comment", code: "db.query(['SELECT id FROM users -- note', 'LIMIT 1 OFFSET 1'].join('\\n'));", errors: [{ messageId: "noOffsetPagination" }] },
     { name: "reports the documented offset query", code: NO_OFFSET_PAGINATION_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noOffsetPagination" }] },
     {
       name: "rejects SQLite qmark offset pagination",
