@@ -59,6 +59,8 @@ The source gate uses pinned actionlint, shared ShellCheck, offline Zizmor, Hadol
 
 Release gates use `code-standards analyze --prepared-only --prepared-devops prepared.json --prepared-target TARGET_ID`. Declare exact `prepared_targets` under `[devops]` with an authored `source` path. Version-one receipts bind target IDs, authored input hashes, staged chart archives, ordered values, typed set arguments, manifests and a hashed local schema closure. Helm 4.3.0 strict lint and stage-specific rendering feed kubeconform 0.8.0 and kube-linter 0.8.3. Missing tools, schemas, targets and invalid receipts fail the gate. Prepared-only findings bypass source debt baselines; container exceptions require exact target, GVK, namespace, object, check, container kind, container name and a reason, and stale exceptions fail.
 
+Prepared YAML rejects duplicate parsed keys and cyclic aliases. Each document must stay below depth 64 and at or below 100,000 expanded nodes, including repeated aliases.
+
 Source-only checks report prepared validation as deferred. They do not certify generated manifests or replace Cloud Deploy, Cloud Build or Kubernetes admission validation. Run `setup --tools-only` in CI after installing the bundle and the pinned mise bootstrap. It requires an existing manifest, installs and attests the applicable native tools, and preserves repository wiring. Release analysis consumes prepared bytes without pulling charts.
 
 [Documentation](https://code-standards.sarj.ai/) · [Source](https://github.com/sarj-ai/code-standards)

@@ -54,5 +54,5 @@ export function staticPropertyName(
   const direct = ASTUtils.getPropertyName(node);
   if (direct !== null || !node.computed) return direct;
   const key = node.type === AST_NODE_TYPES.MemberExpression ? node.property : node.key;
-  return key.type === AST_NODE_TYPES.Identifier ? scopedStaticString(key, sourceCode) : null;
+  return scopedStaticString(key, sourceCode);
 }

@@ -151,7 +151,7 @@ def test_native_repository_gate_keeps_new_review_rules_nonblocking(
 ) -> None:
     scripts = tmp_path / ".github/scripts"
     scripts.mkdir(parents=True)
-    (scripts / "job.sh").write_text("#!/bin/bash\n" + source)
+    (scripts / "job.sh").write_text(f"#!/bin/bash\n{source}")
     assert shell_checks.check(tmp_path, tool="shellcheck") == status
     output = capsys.readouterr().out
     assert ".github/scripts/job.sh:" in output
@@ -188,7 +188,7 @@ def test_direct_native_config_preserves_advisory_exit_behavior(
     config = tmp_path / ".shellcheckrc"
     config.write_bytes((CONFIGS_DIR / "shellcheck.strict.rc").read_bytes())
     script = tmp_path / "job.sh"
-    script.write_text("#!/bin/bash\n" + source)
+    script.write_text(f"#!/bin/bash\n{source}")
     output = invoke(
         checked_tool("shellcheck", root=tmp_path),
         ("--rcfile", str(config), "--format=json1", str(script)),

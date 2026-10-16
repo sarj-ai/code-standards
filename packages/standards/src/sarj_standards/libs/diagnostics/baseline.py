@@ -12,7 +12,7 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed read-on
 from typing import TYPE_CHECKING, TypeIs
 
 from sarj_standards.libs.filesystem import is_link_like
-from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.json_boundary import parse_unique_json
 
 
 if TYPE_CHECKING:
@@ -136,13 +136,13 @@ def load(
         msg = f"diagnostic baseline exceeds {_MAX_BYTES} bytes: {path}"
         raise ValueError(msg)
     try:
-        parsed: object = parse_json(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        parsed = parse_unique_json(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, ValueError, RecursionError) as exc:
         msg = f"cannot read diagnostic baseline {path}: {exc}"
         raise ValueError(msg) from exc
     root = _string_object_dict(parsed, label="diagnostic baseline")
     schema_version = root.get("schemaVersion")
-    if schema_version not in {LEGACY_SCHEMA_VERSION, SCHEMA_VERSION}:
+    if type(schema_version) is not int or schema_version not in {LEGACY_SCHEMA_VERSION, SCHEMA_VERSION}:
         msg = f"diagnostic baseline schemaVersion must equal {LEGACY_SCHEMA_VERSION} or {SCHEMA_VERSION}"
         raise ValueError(msg)
     if require_v2 and schema_version != SCHEMA_VERSION:
@@ -238,7 +238,7 @@ def merge_scoped(
         msg = "a scoped baseline merge requires at least one promoted selector"
         raise ValueError(msg)
     load(path)
-    parsed: object = parse_json(path.read_text(encoding="utf-8"))
+    parsed = parse_unique_json(path.read_text(encoding="utf-8"))
     root = _string_object_dict(parsed, label="diagnostic baseline")
     current = root.get("diagnostics")
     if not _is_object_list(current):
@@ -277,7 +277,7 @@ def remove_rules(
         msg = "a baseline rule removal requires at least one selector"
         raise ValueError(msg)
     load(path)
-    parsed: object = parse_json(path.read_text(encoding="utf-8"))
+    parsed = parse_unique_json(path.read_text(encoding="utf-8"))
     root = _string_object_dict(parsed, label="diagnostic baseline")
     current = root.get("diagnostics")
     if not _is_object_list(current):

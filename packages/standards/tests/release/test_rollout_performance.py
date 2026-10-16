@@ -417,7 +417,7 @@ def test_reduced_clone_scope_requires_registry_opt_in(single_branch: bool, tmp_p
     path = tmp_path / "fleet.toml"
     path.write_text(
         'schema = 1\n[[consumer]]\nname = "Example"\nrepository = "example/consumer"\n'
-        'branch = "main"\nverify = ["true"]\n' + f"single_branch = {str(single_branch).lower()}\n"
+        f'branch = "main"\nverify = ["true"]\nsingle_branch = {str(single_branch).lower()}\n'
     )
     target = rollout.load_registry(path)[0]
     runner = FakeRolloutRunner([(0, "[]"), (1, "HTTP 404")])

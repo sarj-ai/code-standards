@@ -163,7 +163,11 @@ def test_registry_preserves_argv_and_serial_debugging(tmp_path: Path) -> None:
     assert consumer.verify_metadata == ("metadata", "path with spaces")
 
 
-@pytest.mark.parametrize("value", [True, 3, "check", [""], [1], [["check"]]])
+@pytest.mark.parametrize(
+    "value",
+    [True, 3, "check", [""], [1], [["check"]]],
+    ids=("boolean", "integer", "string", "empty-argument", "nonstring-argument", "nested-command"),
+)
 def test_invalid_metadata_command_is_rejected(tmp_path: Path, value: object) -> None:
     with pytest.raises(rollout.RolloutError, match="verify_metadata"):
         _consumer(
@@ -192,7 +196,7 @@ def test_consumer_timings_are_bounded_and_preserve_machine_stdout(capsys: pytest
     rollout.report_consumer_timings(
         consumer,
         "unstructured secret\n[verify] pnpm evil;command: 1s (exit 0)\n"
-        "[verify] pnpm bad\x1b[31m: 1s (exit 0)\n" + timings,
+        f"[verify] pnpm bad\x1b[31m: 1s (exit 0)\n{timings}",
     )
     output = capsys.readouterr()
     assert not output.out

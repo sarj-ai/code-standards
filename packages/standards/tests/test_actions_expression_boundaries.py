@@ -29,10 +29,10 @@ PROBLEM = RuleProblem(
 
 
 def _workflow(source: str) -> str:
-    body = "".join("          " + line + "\n" for line in source.splitlines())
+    body = "".join(f"          {line}\n" for line in source.splitlines())
     return (
         "name: check\n'on': push\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - shell: bash\n        run: |\n"
-        + body
+        f"{body}"
     )
 
 
