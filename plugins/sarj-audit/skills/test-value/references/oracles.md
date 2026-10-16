@@ -199,6 +199,45 @@ findings do not justify rewriting valid asynchronous structure. Python generator
 used directly as assertions are always truthy: consume predicates with the intended `all` or
 `any` semantics, or observe the complete collection independently.
 
+## Fixture design and reuse
+
+Before adding setup, inspect the nearest fixture definitions, registered fixture
+plugins, typed factories, and provider/render harnesses, then read their actual
+consumers. A reuse finding must name the existing provider and show that its
+configuration, initial state, fidelity, and cleanup ownership fit the new case.
+An incompatible fixture is evidence for a small composition or a separate
+provider; a similar name or return type alone does not establish interchangeability.
+
+- Request pytest dependencies through fixture parameters and fixture-aware test
+  runners through their context. Direct calls to a decorated fixture or its
+  wrapped function bypass the framework's dependency, caching, override, and
+  teardown behavior. Put reusable construction in an ordinary typed factory
+  below the fixture when non-fixture callers also need it. Retain intentional
+  dynamic fixture requests with their runtime dependencies.
+- Keep setup in the narrowest scope shared by its consumers. Promote a local
+  factory or harness when another suite needs the same contract. Place shared
+  fixtures where those consumers can discover or explicitly register them;
+  preserve local overrides and avoid importing setup through a collected test
+  module or making unrelated suites depend on a global hook.
+- Compose small providers through declared dependencies so ordering and cleanup
+  ownership remain explicit. Return a typed harness with named fields for
+  collaborators that share state or lifecycle; keep independent resources
+  independently requestable. Expose only variations real callers need, with
+  behavior-relevant overrides visible in each test.
+- Share expensive infrastructure at a justified scope while isolating each
+  test's mutable state with fresh handles, namespaces, transactions, or verified
+  resets as appropriate to its contract. Reusing a provider must not reuse
+  contaminated state. Preserve application-owned
+  lifecycle, register owned cleanup immediately after successful acquisition, and keep async
+  resources within their owning event-loop lifetime. Apply the resource-lifecycle
+  check above when later setup or another teardown fails.
+- After changing shared setup behavior, run its affected consumers through the
+  owned profiles, including relevant overrides, parametrization, and parallel
+  execution. Verify that regression oracles still reject the wrong outcome;
+  fixture extraction must not precompute the tested action or its expectation.
+  Keep inactive-fixture review subject to the complete-run liveness requirements
+  above.
+
 ## Writing pytest tests
 
 Keep setup compact while leaving the action and the observations visible in the
