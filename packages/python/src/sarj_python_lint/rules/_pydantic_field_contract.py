@@ -108,39 +108,48 @@ def inert_signature(node: ast.FunctionDef | ast.AsyncFunctionDef, context: Pytho
 
 
 def _inert_expr(node: ast.AST, context: PythonFileContext) -> bool:
-    if isinstance(node, ast.Subscript) and not _inert_subscription(node, context):
-        return False
-    if isinstance(node, ast.Lambda):
-        return not node.args.defaults and not node.args.kw_defaults
-    if isinstance(node, ast.Call):
-        target = context.imports.resolved_qualified_name(node.func)
-        if target not in {
-            "pydantic.Field",
-            "pydantic.fields.Field",
-            "pydantic.ConfigDict",
-            "pydantic.config.ConfigDict",
-        }:
+    pending = [node]
+    while pending:
+        current = pending.pop()
+        if isinstance(current, ast.Subscript) and not _inert_subscription(current, context):
             return False
-        if any(keyword.arg is None for keyword in node.keywords) or any(
-            isinstance(argument, ast.Starred) for argument in node.args
+        if isinstance(current, ast.Lambda):
+            if current.args.defaults or current.args.kw_defaults:
+                return False
+            continue
+        if isinstance(current, ast.Call) and not _inert_pydantic_call(current, context):
+            return False
+        if isinstance(
+            current,
+            (
+                ast.NamedExpr,
+                ast.Starred,
+                ast.Await,
+                ast.Yield,
+                ast.YieldFrom,
+                ast.ListComp,
+                ast.SetComp,
+                ast.DictComp,
+                ast.GeneratorExp,
+            ),
         ):
             return False
-    if isinstance(
-        node,
-        (
-            ast.NamedExpr,
-            ast.Starred,
-            ast.Await,
-            ast.Yield,
-            ast.YieldFrom,
-            ast.ListComp,
-            ast.SetComp,
-            ast.DictComp,
-            ast.GeneratorExp,
-        ),
-    ):
+        pending.extend(reversed(tuple(ast.iter_child_nodes(current))))
+    return True
+
+
+def _inert_pydantic_call(node: ast.Call, context: PythonFileContext) -> bool:
+    target = context.imports.resolved_qualified_name(node.func)
+    if target not in {
+        "pydantic.Field",
+        "pydantic.fields.Field",
+        "pydantic.ConfigDict",
+        "pydantic.config.ConfigDict",
+    }:
         return False
-    return all(_inert_expr(child, context) for child in ast.iter_child_nodes(node))
+    return not any(keyword.arg is None for keyword in node.keywords) and not any(
+        isinstance(argument, ast.Starred) for argument in node.args
+    )
 
 
 def _inert_subscription(node: ast.Subscript, context: PythonFileContext) -> bool:

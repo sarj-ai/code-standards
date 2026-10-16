@@ -103,7 +103,7 @@ class PreferSetIsdisjoint(ProjectRule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
         source = context.source
-        if ("&" not in source and ".intersection" not in source) or context.generated:
+        if ("&" not in source and "intersection" not in context.symbol_source) or context.generated:
             return []
         tree = context.tree
         if tree is None:

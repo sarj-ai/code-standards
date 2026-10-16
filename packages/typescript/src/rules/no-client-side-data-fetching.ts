@@ -26,10 +26,13 @@ export const NO_CLIENT_SIDE_DATA_FETCHING_DOCUMENTATION = {
   examples: [
     {
       id: "effect-without-fetch",
-      title: "An effect performs no data request",
+      title: "Load data while rendering on the server",
       outcome: "no-match",
-      files: [{ path: "src/users.tsx", source: "import { useEffect } from 'react'; useEffect(() => { console.log('mounted'); }, []);" }],
-      focusPath: "src/users.tsx",
+      files: [
+        { path: "app/users/page.tsx", source: "import { loadUsers } from './users-client';\nexport default async function Users() { const users = await loadUsers(); return <pre>{JSON.stringify(users)}</pre>; }" },
+        { path: "app/users/users-client.ts", source: "export async function loadUsers(): Promise<unknown> { const response = await fetch('https://api.example.com/users'); return response.json(); }" },
+      ],
+      focusPath: "app/users/page.tsx",
       expectedCount: 0,
       public: true,
     },
@@ -37,7 +40,7 @@ export const NO_CLIENT_SIDE_DATA_FETCHING_DOCUMENTATION = {
       id: "fetch-inside-effect",
       title: "An effect starts a data request",
       outcome: "match",
-      files: [{ path: "src/users.tsx", source: "useEffect(() => { fetch('/api/users'); }, []);" }],
+      files: [{ path: "src/users.tsx", source: "'use client'; import { useEffect } from 'react';\nexport function Users() { useEffect(() => { fetch('/api/users'); }, []); return null; }" }],
       focusPath: "src/users.tsx",
       expectedCount: 1,
       public: true,

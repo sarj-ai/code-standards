@@ -386,40 +386,22 @@ def _has_dynamic_reflective_self_write(function: ast.FunctionDef | ast.AsyncFunc
 
 def _function_scopes(tree: ast.Module) -> list[_FunctionScope]:
     scopes: list[_FunctionScope] = []
-
-    class Collector(ast.NodeVisitor):
-        def __init__(self) -> None:
-            self.owner: ast.ClassDef | None = None
-
-        @override
-        def visit_ClassDef(self, node: ast.ClassDef) -> None:
-            previous = self.owner
-            self.owner = node
-            for statement in node.body:
-                self.visit(statement)
-            self.owner = previous
-
-        @override
-        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-            self._function(node)
-
-        @override
-        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-            self._function(node)
-
-        def _function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
-            scopes.append(_FunctionScope(node, self.owner))
-            previous = self.owner
-            self.owner = None
-            for statement in node.body:
-                self.visit(statement)
-            self.owner = previous
-
-        @override
-        def visit_Lambda(self, node: ast.Lambda) -> None:
-            return
-
-    Collector().visit(tree)
+    pending: list[tuple[ast.AST, ast.ClassDef | None]] = [(tree, None)]
+    while pending:
+        node, owner = pending.pop()
+        match node:
+            case ast.Lambda():
+                continue
+            case ast.ClassDef():
+                owner = node
+                children = tuple(node.body)
+            case ast.FunctionDef() | ast.AsyncFunctionDef():
+                scopes.append(_FunctionScope(node, owner))
+                owner = None
+                children = tuple(node.body)
+            case _:
+                children = tuple(ast.iter_child_nodes(node))
+        pending.extend((child, owner) for child in reversed(children))
     return scopes
 
 

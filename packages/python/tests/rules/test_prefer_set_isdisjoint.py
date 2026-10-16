@@ -405,3 +405,22 @@ def test_imported_declared_field_inside_bool_assignment(tmp_path: Path) -> None:
     rule = PreferSetIsdisjoint()
     rule.prepare(ProjectIndexSet.build([path], {path: source}))
     assert len(rule.check(path, source)) == 1
+
+
+@pytest.mark.parametrize(
+    "operation", ["left. intersection(right)", "left.\tintersection(right)", "left.ｉｎｔｅｒｓｅｃｔｉｏｎ(right)"]
+)
+def test_native_attribute_spelling_preserves_proven_set_intersections(operation: str) -> None:
+    source = f"left = {{'read'}}\nright = {{'write'}}\nif {operation}:\n    allow()\n"
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def overlaps(left, right):\n    return bool(left. intersection(right))\n",
+        "source = 'left.ｉｎｔｅｒｓｅｃｔｉｏｎ(right)'\n",
+    ],
+)
+def test_attribute_spelling_does_not_replace_set_provenance(source: str) -> None:
+    assert _check(source) == []

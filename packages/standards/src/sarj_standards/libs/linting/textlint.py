@@ -697,7 +697,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                     title="A Cloud Run configuration update owns infrastructure",
                     outcome=ExpectedOutcome.MATCH,
                     path=".github/workflows/deploy.yml",
-                    source="jobs:\n  deploy:\n    steps:\n      - run: gcloud run deploy api --image $IMAGE --memory 1Gi\n",
+                    source="jobs:\n  deploy:\n    steps:\n      - run: gcloud run services update api --memory 1Gi --region us\n",
                     expected_count=1,
                     scenario="cloud-run-release",
                 ),

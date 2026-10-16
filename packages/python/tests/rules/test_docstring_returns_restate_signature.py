@@ -30,6 +30,13 @@ _PUBLIC_EXAMPLES = DocstringReturnsRestateSignature.public_examples()
 
 
 @pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
+def test_deep_annotation_preserves_return_docstring_examples(example: RuleExample) -> None:
+    annotation = " | ".join(["str"] * 3001 + ["None"])
+    source = f"{example.focus_file.source}\nclass AnnotationCarrier:\n    payload: {annotation}\n"
+    assert len(_check(source, str(example.focus_path))) == example.expected_count
+
+
+@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file
     assert len(DocstringReturnsRestateSignature().check(Path(focus.path), focus.source)) == example.expected_count

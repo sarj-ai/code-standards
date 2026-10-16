@@ -25,7 +25,7 @@ export const REQUIRE_ASSERT_NEVER_DOCUMENTATION = {
   category: "correctness",
   limitations: ["Requires type information and singleton case values covering the current union. The helper must accept never to provide a compile-time check; its spelling alone is not a proof of that contract. Review the desired runtime behavior for unexpected external values."],
   examples: [
-    { id: "assert-never-default", title: "Make the default exhaustive", outcome: "no-match", files: [{ path: "src/render.ts", source: "declare const kind: 'a' | 'b';\nswitch (kind) { case 'a': break; case 'b': break; default: assertNever(kind); }" }], focusPath: "src/render.ts", expectedCount: 0, public: true },
+    { id: "assert-never-default", title: "Make the default exhaustive", outcome: "no-match", files: [{ path: "src/render.ts", source: "function assertNever(value: never): never { throw new Error(`Unexpected kind: ${String(value)}`); }\ndeclare const kind: 'a' | 'b';\nswitch (kind) { case 'a': break; case 'b': break; default: assertNever(kind); }" }], focusPath: "src/render.ts", expectedCount: 0, public: true },
     { id: "empty-default", title: "Do not leave an exhaustive default empty", outcome: "match", files: [{ path: "src/render.ts", source: "declare const kind: 'a' | 'b';\nswitch (kind) { case 'a': break; case 'b': break; default: }" }], focusPath: "src/render.ts", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;

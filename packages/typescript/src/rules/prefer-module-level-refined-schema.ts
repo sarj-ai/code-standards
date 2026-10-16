@@ -81,7 +81,7 @@ export const PREFER_MODULE_LEVEL_REFINED_SCHEMA_DOCUMENTATION = {
       outcome: "no-match",
       files: [{
         path: "src/options.ts",
-        source: "import { z } from 'zod'; const BatchSizeSchema = z.number().int().min(1).max(1000); export function parse(value: unknown) { return BatchSizeSchema.parse(value); }",
+        source: "import { z } from 'zod'; const NameSchema = z.string().trim().min(1).max(128); export function parse(value: unknown) { return NameSchema.parse(value); }",
       }],
       focusPath: "src/options.ts",
       expectedCount: 0,

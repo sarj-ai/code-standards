@@ -546,6 +546,16 @@ class _BoundNameCollector(ast.NodeVisitor):
         self.names: set[str] = set()
         self._include_imports: bool = include_imports
 
+    @override
+    def visit_BinOp(self, node: ast.BinOp) -> None:
+        pending: list[ast.AST] = [node]
+        while pending:
+            current = pending.pop()
+            if isinstance(current, ast.BinOp):
+                pending.extend((current.right, current.op, current.left))
+            else:
+                self.visit(current)
+
     def _record_target(self, target: ast.expr) -> None:
         match target:
             case ast.Name(id=name):

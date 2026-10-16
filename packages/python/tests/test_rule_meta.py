@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from pathlib import Path, PurePosixPath
 import re
@@ -7,6 +8,7 @@ import subprocess
 import warnings
 
 import pytest
+from sarj_rule_contracts.examples import verify_native_rule
 
 from sarj_python_lint.__main__ import analyze
 from sarj_python_lint.rule_base import Diagnostic, ExampleFile, ExampleOutcome, Rule, RuleExample, Severity
@@ -29,6 +31,14 @@ _LEDGER_PATH = Path(__file__).parent / "code_ledger.json"
 # The rules directory, relative to the repo root — the path git history is walked
 # over to recover deleted rule modules.
 _RULES_DIR = "packages/python/src/sarj_python_lint/rules"
+
+_AUTHORED_EXAMPLES = tuple(
+    (rule_id, example)
+    for rule_id, rule in sorted(REGISTRY.items())
+    for documentation in (rule.documentation,)
+    if documentation is not None
+    for example in documentation.examples
+)
 
 _RENAMED_RULES = {
     "defect-xfail-requires-explicit-strict": (
@@ -197,6 +207,25 @@ def test_every_rule_has_valid_source_owned_documentation() -> None:
         assert {example.outcome for example in spec.public_examples} == {"match", "no-match"}
 
 
+@pytest.mark.parametrize(
+    ("rule_id", "example"),
+    _AUTHORED_EXAMPLES,
+    ids=tuple(f"{rule_id}:{example.example_id}" for rule_id, example in _AUTHORED_EXAMPLES),
+)
+def test_authored_example_files_compile_as_python(rule_id: str, example: RuleExample) -> None:
+    for file in example.files:
+        if file.path.suffix == ".py":
+            try:
+                compile(file.source, str(file.path), "exec", dont_inherit=True)
+            except SyntaxError as error:
+                pytest.fail(f"{rule_id}:{example.example_id}:{file.path}: invalid Python example: {error}")
+
+
+@pytest.mark.parametrize("rule_id", sorted(REGISTRY))
+def test_all_authored_examples_execute_the_native_contract(rule_id: str) -> None:
+    verify_native_rule(REGISTRY[rule_id], analyze)
+
+
 def _warning_python_rule_ids() -> set[str]:
     return {
         rule_id
@@ -205,7 +234,7 @@ def _warning_python_rule_ids() -> set[str]:
     }
 
 
-def _analyze_public_example(rule_id: str, example: RuleExample, root: Path) -> list[Diagnostic]:
+def _analyze_example(rule_id: str, example: RuleExample, root: Path) -> list[Diagnostic]:
     root.mkdir(parents=True, exist_ok=True)
     (root / "pyproject.toml").touch(exist_ok=True)
     paths: list[Path] = []
@@ -224,14 +253,26 @@ def _analyze_public_example(rule_id: str, example: RuleExample, root: Path) -> l
     ]
 
 
+@pytest.mark.parametrize("rule_id", sorted(REGISTRY))
+def test_example_source_quoted_as_data_is_not_executed(rule_id: str, tmp_path: Path) -> None:
+    documentation = REGISTRY[rule_id].documentation
+    assert documentation is not None
+    for example in documentation.examples:
+        files = tuple(
+            replace(file, source=f"_source_example = {file.source!r}\n") if file.path == example.focus_path else file
+            for file in example.files
+        )
+        quoted = replace(example, files=files, outcome=ExampleOutcome.NO_MATCH, expected_count=0)
+        findings = _analyze_example(rule_id, quoted, tmp_path / example.example_id)
+        assert findings == [], f"{rule_id}:{example.example_id}: example data was treated as executable source"
+
+
 @pytest.mark.parametrize("rule_id", sorted(REGISTRY.keys() - _warning_python_rule_ids()))
 def test_error_level_python_rules_emit_blocking_public_examples(tmp_path: Path, rule_id: str) -> None:
     examples = [example for example in REGISTRY[rule_id].public_examples() if example.outcome is ExampleOutcome.MATCH]
     assert examples, f"{rule_id}: no published rejecting example to test severity"
     for example in examples:
-        findings = _analyze_public_example(
-            rule_id, example, tmp_path.parent / "error-examples" / rule_id / example.example_id
-        )
+        findings = _analyze_example(rule_id, example, tmp_path.parent / "error-examples" / rule_id / example.example_id)
         assert len(findings) == example.expected_count, f"{rule_id}:{example.example_id}"
         assert all(diagnostic.severity is Severity.ERROR for diagnostic in findings), (
             f"{rule_id}:{example.example_id} is cataloged as error but emits a warning"

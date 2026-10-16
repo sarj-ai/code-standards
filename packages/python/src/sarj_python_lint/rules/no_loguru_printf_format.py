@@ -89,7 +89,7 @@ class NoLoguruPrintfFormat(Rule):
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        if "loguru" not in context.source or context.generated or context.tree is None:
+        if "loguru" not in context.symbol_source or context.generated or context.tree is None:
             return []
         provenance: ResourceProvenance | None = None
         diagnostics: list[Diagnostic] = []

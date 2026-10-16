@@ -16,9 +16,10 @@
  *   `parse + epsilon`, so it could not have caught a rule 10x slower than its
  *   peers. It was arithmetic on a constant.
  *
- * A wall-clock budget that fails on a busy CI runner gets ignored. Ratio gates
- * avoid that trap, with enough measured headroom for parser and scheduler
- * variance across supported runners.
+ * Wall-clock ratios still include time when only the measured rule is
+ * descheduled. Bracketing that rule with parses cannot subtract that pause.
+ * Current-thread CPU time measures the synchronous work being gated, excluding
+ * scheduler delays and unrelated work on other V8 or Vitest threads.
  *
  * ## What it does now
  *
@@ -26,22 +27,24 @@
  * `verify` call, which skips the parser. What is left is the rule. The whole
  * file now runs in ~2 s instead of ~60 s, and the numbers mean what they say.
  *
- * Both gates are RATIOS measured in the same process, in the same run:
+ * Both gates are unchanged RATIOS of current-thread CPU milliseconds measured
+ * in the same process, in the same run:
  *
  * - the absolute-style backstop is "a single rule must cost less than
  *   `MAX_RULE_COST_VS_PARSE` of what parsing the same file costs". Load and
- *   hardware usually move the numerator and the denominator together. The
- *   ceiling also leaves room for faster parsers and shared-runner scheduling;
+ *   hardware move the numerator and the denominator together. The ceiling
+ *   leaves room for faster parsers;
  * - the outlier gate is unchanged in spirit: no rule may exceed
  *   `RELATIVE_OUTLIER_FACTOR` times the median rule, which now compares rule
- *   costs rather than parse costs. Worst observed is ~2.8x.
+ *   costs rather than parse costs.
  *
  * A candidate that exceeds the absolute backstop is confirmed separately with
- * its rule timing bracketed by fresh parse timings. This distinguishes a real,
- * repeatable regression from a scheduler interruption during the broad sweep.
+ * its rule timing bracketed by fresh parse timings. Confirmation remains useful
+ * for JIT/GC variance; it no longer mistakes descheduling for algorithmic work.
  */
 
 import { Linter, type SourceCode } from "eslint";
+import { threadCpuUsage } from "node:process";
 import * as tsParser from "@typescript-eslint/parser";
 import { describe, expect, it } from "vitest";
 
@@ -113,10 +116,11 @@ function configFor(rules: Linter.RulesRecord): Linter.Config[] {
 
 const NO_RULES = configFor({});
 
-function elapsedMs(run: () => void): number {
-  const start = performance.now();
+function threadCpuMs(run: () => void): number {
+  const start = threadCpuUsage();
   run();
-  return performance.now() - start;
+  const { user, system } = threadCpuUsage(start);
+  return (user + system) / 1000;
 }
 
 function median(values: number[]): number {
@@ -144,7 +148,7 @@ for (const name of RULE_NAMES) {
 }
 
 for (let round = 0; round < MEASUREMENT_ROUNDS; round++) {
-  const parseBefore = elapsedMs(() => LINTER.verify(SOURCE, NO_RULES, "synthetic.tsx"));
+  const parseBefore = threadCpuMs(() => LINTER.verify(SOURCE, NO_RULES, "synthetic.tsx"));
   const offset = round % RULE_NAMES.length;
   const orderedNames = [...RULE_NAMES.slice(offset), ...RULE_NAMES.slice(0, offset)];
   const roundSamples = new Map<string, number>();
@@ -153,11 +157,11 @@ for (let round = 0; round < MEASUREMENT_ROUNDS; round++) {
     const config = configFor({ [`@sarj/${name}`]: "error" });
     roundSamples.set(
       name,
-      elapsedMs(() => LINTER.verify(PARSED, config, "synthetic.tsx")),
+      threadCpuMs(() => LINTER.verify(PARSED, config, "synthetic.tsx")),
     );
   }
 
-  const parseAfter = elapsedMs(() => LINTER.verify(SOURCE, NO_RULES, "synthetic.tsx"));
+  const parseAfter = threadCpuMs(() => LINTER.verify(SOURCE, NO_RULES, "synthetic.tsx"));
   const roundParseMs = (parseBefore + parseAfter) / 2;
   PARSE_SAMPLES.push(roundParseMs);
   for (const [name, milliseconds] of roundSamples) {
@@ -180,9 +184,9 @@ function ruleRatio(ruleName: string): number {
 function confirmedRuleRatio(ruleName: string): number {
   const config = configFor({ [`@sarj/${ruleName}`]: "error" });
   const ratios = Array.from({ length: CONFIRMATION_ROUNDS }, () => {
-    const parseBefore = elapsedMs(() => LINTER.verify(SOURCE, NO_RULES, "synthetic.tsx"));
-    const rule = elapsedMs(() => LINTER.verify(PARSED, config, "synthetic.tsx"));
-    const parseAfter = elapsedMs(() => LINTER.verify(SOURCE, NO_RULES, "synthetic.tsx"));
+    const parseBefore = threadCpuMs(() => LINTER.verify(SOURCE, NO_RULES, "synthetic.tsx"));
+    const rule = threadCpuMs(() => LINTER.verify(PARSED, config, "synthetic.tsx"));
+    const parseAfter = threadCpuMs(() => LINTER.verify(SOURCE, NO_RULES, "synthetic.tsx"));
     return rule / ((parseBefore + parseAfter) / 2);
   });
   return median(ratios);
@@ -191,6 +195,29 @@ function confirmedRuleRatio(ruleName: string): number {
 const PERF_TIMEOUT_MS = 120_000;
 
 describe("rule performance", () => {
+  it("excludes blocked time instead of charging it to the rule", () => {
+    const start = performance.now();
+    const cpuMs = threadCpuMs(() => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 40));
+    const wallMs = performance.now() - start;
+    expect(wallMs).toBeGreaterThanOrEqual(30);
+    expect(cpuMs).toBeLessThan(wallMs * MAX_RULE_COST_VS_PARSE);
+  });
+
+  it("still rejects CPU work exceeding the unchanged parser-relative budget", () => {
+    const targetCpuMs = Math.max(5, PARSE_MS * MAX_RULE_COST_VS_PARSE * 2);
+    let checksum = 0;
+    const measured = threadCpuMs(() => {
+      const start = threadCpuUsage();
+      while (true) {
+        for (let index = 0; index < 1000; index++) checksum += index;
+        const { user, system } = threadCpuUsage(start);
+        if ((user + system) / 1000 >= targetCpuMs) break;
+      }
+    });
+    expect(checksum).toBeGreaterThan(0);
+    expect(measured / PARSE_MS).toBeGreaterThan(MAX_RULE_COST_VS_PARSE);
+  });
+
   it("parses once and measures the rules, not the parser", () => {
     // Guard on the measurement itself: if a future refactor goes back to handing
     // `verify` a string, every timing silently becomes a parse timing again and
@@ -227,7 +254,7 @@ describe("rule performance", () => {
       if (timing.ms <= initialCeiling) return timing;
       const config = configFor({ [`@sarj/${timing.name}`]: "error" });
       const confirmation = Array.from({ length: 5 }, () =>
-        elapsedMs(() => {
+        threadCpuMs(() => {
           LINTER.verify(PARSED, config, "synthetic.tsx");
         }),
       );

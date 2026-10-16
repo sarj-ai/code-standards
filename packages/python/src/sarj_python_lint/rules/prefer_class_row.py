@@ -90,7 +90,7 @@ class PreferClassRow(Rule):
                 files=(
                     ExampleFile.python(
                         "app/task_store.py",
-                        "from psycopg.rows import class_row\n\nasync def load(conn):\n    async with conn.cursor(row_factory=class_row(Task)) as cursor:\n        return await cursor.fetchone()\n",
+                        'from psycopg.rows import class_row\n\nasync def load(conn):\n    async with conn.cursor(row_factory=class_row(Task)) as cursor:\n        await cursor.execute("SELECT id, state FROM task")\n        return await cursor.fetchone()\n',
                     ),
                 ),
                 focus_path=PurePosixPath("app/task_store.py"),

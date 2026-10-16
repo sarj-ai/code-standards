@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "fead478e8a675aae74b5a90c1ed93eae6a9d4a7af77171483681528b0fc17f84",
-  "cliSha256": "023c7e2b1e61afd88f2e4dc39d2ac5fa3741ffa3df552235b66ba1d2fcc4e256",
+  "catalogSha256": "8d787b6b13a5d5c4a5b442acacfec242e81c3e8876beb5cb67d2e59d34500a0c",
+  "cliSha256": "5407d6d35466a32fb355cec4e03220adeb4f5fcd9b110061e3d785bc57c4dca9",
   "formatterVersions": {
-    "prettier": "3.9.6",
+    "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
-    "prettierPluginToml": "2.0.6",
+    "prettierPluginToml": "3.0.2",
     "ruff": "0.17.0",
-    "sqlFormatter": "15.8.2",
+    "sqlFormatter": "15.9.0",
     "terraform": "1.15.8"
   },
   "rules": {
@@ -332,23 +332,27 @@
           "expectedCount": 0,
           "files": [
             {
-              "path": "src/users.tsx",
-              "source": "import { useEffect } from \"react\";\nuseEffect(() => {\n  console.log(\"mounted\");\n}, []);\n"
+              "path": "app/users/page.tsx",
+              "source": "import { loadUsers } from \"./users-client\";\nexport default async function Users() {\n  const users = await loadUsers();\n  return <pre>{JSON.stringify(users)}</pre>;\n}\n"
+            },
+            {
+              "path": "app/users/users-client.ts",
+              "source": "export async function loadUsers(): Promise<unknown> {\n  const response = await fetch(\"https://api.example.com/users\");\n  return response.json();\n}\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "src/users.tsx",
+          "focusPath": "app/users/page.tsx",
           "id": "effect-without-fetch",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "An effect performs no data request"
+          "title": "Load data while rendering on the server"
         },
         {
           "expectedCount": 1,
           "files": [
             {
               "path": "src/users.tsx",
-              "source": "useEffect(() => {\n  fetch(\"/api/users\");\n}, []);\n"
+              "source": "\"use client\";\nimport { useEffect } from \"react\";\nexport function Users() {\n  useEffect(() => {\n    fetch(\"/api/users\");\n  }, []);\n  return null;\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -523,7 +527,7 @@
           "files": [
             {
               "path": "src/status.ts",
-              "source": "enum Status {\n  Pending = \"pending\",\n  Done = \"done\",\n  Failed = \"failed\",\n}\n"
+              "source": "enum Status {\n  Pending = \"pending\",\n  Finished = \"finished\",\n  Failed = \"failed\",\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -923,7 +927,7 @@
           "files": [
             {
               "path": "src/load.ts",
-              "source": "function f() {\n  try {\n    const a = one();\n    const b = two();\n    const c = three();\n  } catch (error) {\n    handle(error);\n  }\n  finish();\n}\n"
+              "source": "function f() {\n  try {\n    const a = one();\n    const b = two();\n    const c = three();\n  } catch (error) {\n    handle(error);\n  }\n  const d = four();\n  finish();\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -931,7 +935,7 @@
           "id": "focused-try-block",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Three selected operations stay within the default threshold"
+          "title": "Keep only operations with the same recovery policy in the try block"
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": { \"max\": { \"minimum\": 1, \"type\": \"integer\" } },\n  \"type\": \"object\"\n}\n"
@@ -1433,7 +1437,7 @@
           "files": [
             {
               "path": "src/compare.ts",
-              "source": "const same = sameRecord(actual, expected);\n"
+              "source": "type RecordState = { id: string; state: string };\nfunction sameRecord(actual: RecordState, expected: RecordState): boolean {\n  return actual.id === expected.id && actual.state === expected.state;\n}\nconst same = sameRecord({ id: \"1\", state: \"ready\" }, { state: \"ready\", id: \"1\" });\n"
             }
           ],
           "fixedFiles": [],
@@ -2023,6 +2027,32 @@
     "eslint:no-restricted-library-load": {
       "examples": [
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/client.ts",
+              "source": "import ky from \"ky\";\nconst client = ky;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/client.ts",
+          "id": "configured-replacement",
+          "outcome": "accept",
+          "ruleOptions": [
+            {
+              "libraries": [
+                {
+                  "id": "LIB101",
+                  "module": "axios",
+                  "replacement": "Ky"
+                }
+              ]
+            }
+          ],
+          "scenarioId": "primary",
+          "title": "Use the configured library replacement"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -2047,32 +2077,6 @@
           ],
           "scenarioId": "primary",
           "title": "Do not load a restricted library at runtime"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "src/client.ts",
-              "source": "import axios from \"axios\";\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "src/client.ts",
-          "id": "static-import",
-          "outcome": "accept",
-          "ruleOptions": [
-            {
-              "libraries": [
-                {
-                  "id": "LIB101",
-                  "module": "axios",
-                  "replacement": "Ky"
-                }
-              ]
-            }
-          ],
-          "scenarioId": "primary",
-          "title": "Static imports remain the static-import rule's responsibility"
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"libraries\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"id\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" },\n          \"note\": { \"minLength\": 1, \"type\": \"string\" },\n          \"replacement\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"id\", \"module\", \"replacement\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    }\n  },\n  \"required\": [\"libraries\"],\n  \"type\": \"object\"\n}\n"
@@ -2588,7 +2592,7 @@
           "files": [
             {
               "path": "src/credentials.ts",
-              "source": "interface Credentials {\n  host: string;\n  port: number;\n  username: string;\n}\n"
+              "source": "interface Credentials {\n  host?: string;\n  port?: number;\n  username?: string;\n  password?: string;\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -2919,6 +2923,52 @@
     "eslint:no-zod-native-enum": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/status-values.ts",
+              "source": "export enum Status {\n  Active = \"active\",\n  Inactive = \"inactive\",\n}\n"
+            },
+            {
+              "path": "src/status.ts",
+              "source": "import { z } from \"zod\";\nimport { Status } from \"./status-values.js\";\nexport const StatusSchema = z.enum(Status);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/status.ts",
+          "id": "imported-typescript-enum",
+          "installedDependencies": [
+            {
+              "module": "zod",
+              "version": "4.6.7"
+            }
+          ],
+          "outcome": "reject",
+          "scenarioId": "imported-enum",
+          "title": "Do not hide an imported TypeScript enum behind z.enum"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/status.ts",
+              "source": "import { z } from \"zod\";\nexport const StatusSchema = z.enum([\"active\", \"inactive\"]);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/status.ts",
+          "id": "schema-owned-string-values",
+          "installedDependencies": [
+            {
+              "module": "zod",
+              "version": "4.6.7"
+            }
+          ],
+          "outcome": "accept",
+          "scenarioId": "imported-enum",
+          "title": "Let the schema own its literal value domain"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -2946,7 +2996,7 @@
           "id": "zod-native-enum",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Do not wrap a TypeScript enum"
+          "title": "Declare literal values instead of an enum-like object"
         }
       ],
       "optionsSchemaSource": null
@@ -3348,7 +3398,7 @@
           "files": [
             {
               "path": "src/options.ts",
-              "source": "import { z } from \"zod\";\nconst BatchSizeSchema = z.number().int().min(1).max(1000);\nexport function parse(value: unknown) {\n  return BatchSizeSchema.parse(value);\n}\n"
+              "source": "import { z } from \"zod\";\nconst NameSchema = z.string().trim().min(1).max(128);\nexport function parse(value: unknown) {\n  return NameSchema.parse(value);\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -3733,12 +3783,18 @@
           "files": [
             {
               "path": "src/client.ts",
-              "source": "async function load(response: Response) {\n  const body = UserSchema.parse(await response.json());\n  return body.id;\n}\n"
+              "source": "import { z } from \"zod\";\nconst UserSchema = z.object({ id: z.string() });\nasync function load(response: Response) {\n  const body = UserSchema.parse(await response.json());\n  return body.id;\n}\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "src/client.ts",
           "id": "validated-payload",
+          "installedDependencies": [
+            {
+              "module": "zod",
+              "version": "4.6.7"
+            }
+          ],
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Validate before property access"
@@ -3923,7 +3979,7 @@
           "files": [
             {
               "path": "src/render.ts",
-              "source": "function render(kind: string) {\n  if (kind === \"a\") return a();\n  else if (kind === \"b\") return b();\n  else if (kind === \"c\") return c();\n}\n"
+              "source": "function render(kind: string) {\n  if (kind === \"a\") return \"alpha\";\n  else if (kind === \"b\") return \"beta\";\n  else if (kind === \"c\") return \"gamma\";\n  return \"unknown\";\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -3938,7 +3994,7 @@
           "files": [
             {
               "path": "src/render.ts",
-              "source": "switch (kind) {\n  case \"a\":\n    return a();\n  case \"b\":\n    return b();\n  case \"c\":\n    return c();\n  default:\n    return fallback();\n}\n"
+              "source": "function render(kind: string) {\n  switch (kind) {\n    case \"a\":\n      return \"alpha\";\n    case \"b\":\n      return \"beta\";\n    case \"c\":\n      return \"gamma\";\n    default:\n      return \"unknown\";\n  }\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -4149,7 +4205,7 @@
           "files": [
             {
               "path": "src/render.ts",
-              "source": "declare const kind: \"a\" | \"b\";\nswitch (kind) {\n  case \"a\":\n    break;\n  case \"b\":\n    break;\n  default:\n    assertNever(kind);\n}\n"
+              "source": "function assertNever(value: never): never {\n  throw new Error(`Unexpected kind: ${String(value)}`);\n}\ndeclare const kind: \"a\" | \"b\";\nswitch (kind) {\n  case \"a\":\n    break;\n  case \"b\":\n    break;\n  default:\n    assertNever(kind);\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -5528,7 +5584,7 @@
           "files": [
             {
               "path": "main.tf",
-              "source": "# Set instance type\ninstance_type = var.instance_type\n"
+              "source": "locals {\n  # Set instance type\n  instance_type = \"standard\"\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -5543,7 +5599,7 @@
           "files": [
             {
               "path": "generated.tf",
-              "source": "/* Code generated by schema compiler.\n * DO NOT EDIT.\n */\n# Set instance type\ninstance_type = var.instance_type\n"
+              "source": "/* Code generated by schema compiler.\n * DO NOT EDIT.\n */\nlocals {\n  # Set instance type\n  instance_type = \"standard\"\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -5558,7 +5614,7 @@
           "files": [
             {
               "path": "main.tf",
-              "source": "# Service accounts\napi_service_account_email    = module.iam.api_email\nworker_service_account_email = module.iam.worker_email\n"
+              "source": "locals {\n  # Service accounts\n  api_service_account_email    = \"api@example.test\"\n  worker_service_account_email = \"worker@example.test\"\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -5573,7 +5629,7 @@
           "files": [
             {
               "path": "main.tf",
-              "source": "/* Set instance type */\ninstance_type = var.instance_type\n"
+              "source": "locals {\n  /* Set instance type */\n  instance_type = \"standard\"\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -5588,7 +5644,7 @@
           "files": [
             {
               "path": "main.tf",
-              "source": "# Keep this type because the provider rejects ARM nodes.\ninstance_type = var.instance_type\n"
+              "source": "locals {\n  # Keep this type because the provider rejects ARM nodes.\n  instance_type = \"standard\"\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -5603,7 +5659,7 @@
           "files": [
             {
               "path": "main.tf",
-              "source": "# Service account\nservice_account_email = module.iam.api_email\n"
+              "source": "locals {\n  # Service account\n  service_account_email = \"api@example.test\"\n}\n"
             }
           ],
           "fixedFiles": [],
@@ -6328,7 +6384,7 @@
           "files": [
             {
               "path": "tests/test_policy.py",
-              "source": "def test_policy(rendered_plan_json: str):\n    plan = json.loads(rendered_plan_json)\n    changes = plan[\"resource_changes\"]\n    assert changes[0][\"change\"][\"actions\"] == [\"create\"]\n"
+              "source": "import json\n\n\ndef test_policy(rendered_plan_json: str):\n    plan = json.loads(rendered_plan_json)\n    changes = plan[\"resource_changes\"]\n    assert changes[0][\"change\"][\"actions\"] == [\"create\"]\n"
             }
           ],
           "fixedFiles": [],
@@ -7046,7 +7102,7 @@
           "files": [
             {
               "path": "tests/fakes/batch_fault.py",
-              "source": "await conn.execute(\n    \"ALTER TABLE batch ADD CONSTRAINT fail_counter CHECK (false) NOT VALID\"\n)\n"
+              "source": "async def install_fault(conn):\n    await conn.execute(\n        \"ALTER TABLE batch ADD CONSTRAINT fail_counter CHECK (false) NOT VALID\"\n    )\n"
             }
           ],
           "fixedFiles": [],
@@ -7061,7 +7117,7 @@
           "files": [
             {
               "path": "tests/fakes/batch_fault.py",
-              "source": "await conn.execute(\n    \"CREATE TRIGGER fail_counter BEFORE UPDATE ON batch EXECUTE FUNCTION fail_counter()\"\n)\n"
+              "source": "async def install_fault(conn):\n    await conn.execute(\n        \"CREATE TRIGGER fail_counter BEFORE UPDATE ON batch EXECUTE FUNCTION fail_counter()\"\n    )\n"
             }
           ],
           "fixedFiles": [],
@@ -8726,7 +8782,7 @@
           "id": "redacted-logging-keyword",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Token prefix logged under a redacted name"
+          "title": "Only non-sensitive authentication metadata is logged"
         },
         {
           "expectedCount": 1,
@@ -9613,7 +9669,7 @@
           "files": [
             {
               "path": "app/task_store.py",
-              "source": "from psycopg.rows import class_row\n\n\nasync def load(conn):\n    async with conn.cursor(row_factory=class_row(Task)) as cursor:\n        return await cursor.fetchone()\n"
+              "source": "from psycopg.rows import class_row\n\n\nasync def load(conn):\n    async with conn.cursor(row_factory=class_row(Task)) as cursor:\n        await cursor.execute(\"SELECT id, state FROM task\")\n        return await cursor.fetchone()\n"
             }
           ],
           "fixedFiles": [],
@@ -10940,7 +10996,7 @@
           "files": [
             {
               "path": "app/builder.py",
-              "source": "from typing import Self\n\n\nclass Builder:\n    def set_name(self, name: str) -> Self:\n        self.name = name\n        return self\n"
+              "source": "from typing import Self, final\n\n\nclass Builder:\n    @final\n    def set_name(self, name: str) -> Self:\n        self.name = name\n        return self\n"
             }
           ],
           "fixedFiles": [],
@@ -11594,7 +11650,7 @@
           "files": [
             {
               "path": "tests/test_parser.py",
-              "source": "@pytest.mark.parametrize((\"value\", \"expected\"), [(\"a\", 1), (\"b\", 2), (\"c\", 3)])\ndef test_parse(value, expected):\n    assert parse(value) == expected\n"
+              "source": "import pytest\n\n\n@pytest.mark.parametrize((\"value\", \"expected\"), [(\"a\", 1), (\"b\", 2), (\"c\", 3)])\ndef test_parse(value, expected):\n    assert parse(value) == expected\n"
             }
           ],
           "fixedFiles": [],
@@ -12808,7 +12864,7 @@
           "id": "justified-index-burst",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "An excess index names its application read and durable ticket"
+          "title": "An excess index records its application query and plan evidence"
         },
         {
           "expectedCount": 1,
@@ -13105,6 +13161,21 @@
     "sql:no-database-functions": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001_function.sql",
+              "source": "DO $outer$ BEGIN CREATE FUNCTION app.f() RETURNS integer LANGUAGE sql AS $inner$SELECT 1$inner$; END $outer$;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001_function.sql",
+          "id": "anonymous-block-function",
+          "outcome": "reject",
+          "scenarioId": "executable-sql",
+          "title": "An executable anonymous block still creates a stored function"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -13118,6 +13189,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Declarative constraint in a disposable test database"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001_function.sql",
+              "source": "SELECT\n  $outer$CREATE FUNCTION app.f() RETURNS integer LANGUAGE sql AS $inner$SELECT 1$inner$;$outer$;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001_function.sql",
+          "id": "scalar-function-text",
+          "outcome": "accept",
+          "scenarioId": "executable-sql",
+          "title": "Function DDL stored as scalar data does not execute"
         },
         {
           "expectedCount": 1,
@@ -13433,6 +13519,36 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "queries/name.sql",
+              "source": "SELECT\n  app.varchar (255);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "queries/name.sql",
+          "id": "qualified-function-varchar",
+          "outcome": "accept",
+          "scenarioId": "type-name-ownership",
+          "title": "A schema-qualified function keeps its own contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001_users.sql",
+              "source": "CREATE TABLE users (name \"varchar\" (255));\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001_users.sql",
+          "id": "quoted-builtin-varchar",
+          "outcome": "reject",
+          "scenarioId": "type-name-ownership",
+          "title": "A quoted builtin still declares a bounded VARCHAR column"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "migrations/001_users.sql",
               "source": "CREATE TABLE users (\n  name TEXT NOT NULL CHECK (char_length(name) <= 255)\n);\n"
             }
@@ -13589,7 +13705,7 @@
           "files": [
             {
               "path": "build.yaml",
-              "source": "args: &args [scripts/check.sh, \"$_VALUE\"]\nsteps:\n  - name: builder\n    entrypoint: bash\n    args: *args\n"
+              "source": "substitutions: { _VALUE: fixture-data }\nsteps:\n  - name: builder\n    entrypoint: bash\n    args: &args [scripts/check.sh, \"$_VALUE\"]\n  - name: builder\n    entrypoint: bash\n    args: *args\n"
             }
           ],
           "fixedFiles": [],
@@ -13600,11 +13716,11 @@
           "title": "Aliased external-script arguments retain substitution as argv data"
         },
         {
-          "expectedCount": 1,
+          "expectedCount": 2,
           "files": [
             {
               "path": "build.yaml",
-              "source": "args: &args [-c, \"printf %s $_VALUE\"]\nsteps:\n  - name: builder\n    entrypoint: bash\n    args: *args\n"
+              "source": "substitutions: { _VALUE: fixture-data }\nsteps:\n  - name: builder\n    entrypoint: bash\n    args: &args [-c, \"printf %s $_VALUE\"]\n  - name: builder\n    entrypoint: bash\n    args: *args\n"
             }
           ],
           "fixedFiles": [],
@@ -13612,7 +13728,7 @@
           "id": "alias-shell-source-substitution",
           "outcome": "reject",
           "scenarioId": "cloudbuild-alias-location",
-          "title": "An aliased shell program reports substitution at its executable use"
+          "title": "An aliased shell program reports substitution at each executable use"
         },
         {
           "expectedCount": 1,
@@ -13769,7 +13885,7 @@
           "files": [
             {
               "path": ".github/workflows/deploy.yml",
-              "source": "jobs:\n  deploy:\n    steps:\n      - run: gcloud run deploy api --image $IMAGE --memory 1Gi\n"
+              "source": "jobs:\n  deploy:\n    steps:\n      - run: gcloud run services update api --memory 1Gi --region us\n"
             }
           ],
           "fixedFiles": [],

@@ -116,7 +116,6 @@ class PreferDiscriminatedModelUnion(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if (
             is_test_path(context.path)
-            or "after" not in context.source
             or "None" not in context.symbol_source
             or "model_validator" not in context.symbol_source
         ):
@@ -277,15 +276,23 @@ def _nullable(annotation: ast.expr, context: PythonFileContext) -> bool:
 
 
 def _union_members(annotation: ast.expr, context: PythonFileContext) -> list[ast.expr]:
-    if isinstance(annotation, ast.Subscript) and context.imports.resolves(
-        annotation.value, sources=TYPING_SOURCES, symbol="Optional"
-    ):
-        if isinstance(annotation.slice, ast.Tuple):
-            return [annotation]
-        return [ast.Constant(value=None), *_union_members(annotation.slice, context)]
-    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
-        return [*_union_members(annotation.left, context), *_union_members(annotation.right, context)]
-    return [annotation]
+    members: list[ast.expr] = []
+    pending = [annotation]
+    while pending:
+        member = pending.pop()
+        if isinstance(member, ast.Subscript) and context.imports.resolves(
+            member.value, sources=TYPING_SOURCES, symbol="Optional"
+        ):
+            if isinstance(member.slice, ast.Tuple):
+                members.append(member)
+            else:
+                members.append(ast.Constant(value=None))
+                pending.append(member.slice)
+        elif isinstance(member, ast.BinOp) and isinstance(member.op, ast.BitOr):
+            pending.extend((member.right, member.left))
+        else:
+            members.append(member)
+    return members
 
 
 def _non_none_witness(annotation: ast.expr, context: PythonFileContext) -> bool:

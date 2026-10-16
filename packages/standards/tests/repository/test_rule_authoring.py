@@ -11,6 +11,7 @@ from sarj_python_lint.__main__ import analyze
 from sarj_python_lint.rules.no_dunder_all import NoDunderAll
 from sarj_rule_contracts import ExampleFile, ExpectedOutcome, RuleExample
 from sarj_rule_contracts.examples import ExampleFinding, verify_examples, verify_native_rule
+from sarj_sql_lint.rules.prefer_text_over_varchar import PreferTextOverVarchar
 
 from sarj_standards.libs.adoption import transaction
 from sarj_standards.libs.linting import textlint
@@ -210,7 +211,10 @@ def test_verify_executes_selected_engine_without_building_catalog(
     )
     result = rule_authoring.verify(tmp_path, RuleSelector.parse("sql:prefer-text-over-varchar"))
     assert result.status == 0
-    assert "2 executable examples" in result.message
+    documentation = PreferTextOverVarchar.documentation
+    assert documentation is not None
+    count = len(documentation.examples)
+    assert result.message == f"ok: sql:prefer-text-over-varchar passed {count} executable examples"
 
 
 @pytest.mark.parametrize(("engine", "suffix"), [("python", "py"), ("sql", "sql"), ("iac", "tf"), ("text", "yml")])

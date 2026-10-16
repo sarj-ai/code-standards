@@ -714,6 +714,8 @@ def test_broad_overloads_remain_warnings() -> None:
     [
         "def f(\n **kwargs: object,  # sarj-noqa: SARJ477 — required dynamic callback contract\n) -> None:\n pass\n",
         "def f(  # sarj-noqa: SARJ477 — required dynamic callback contract\n **kwargs: object,\n) -> None:\n pass\n",
+        "def render(\n    template: str, **values: object\n): callback = lambda: 'body: marker'  # sarj-noqa: SARJ477 — required dynamic callback contract\n",
+        "def render(\n    template: str, **values: object\n) -> Témpłate: callback = lambda: 'body: marker'  # sarj-noqa: SARJ477 — required dynamic callback contract\n",
     ],
 )
 def test_multiline_local_suppression(source: str) -> None:
@@ -728,3 +730,33 @@ def test_multiline_diagnostic_points_to_capture() -> None:
 def test_deliberate_open_formatting_contract_has_reasoned_exception() -> None:
     source = "def render(template: str, **values: object) -> str:  # sarj-noqa: SARJ477 — template supplies dynamic field names and object formatting\n return template.format(**values)\n"
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "def render(\n    template: str, **values: object\n) -> str:",
+        "async def render(\n    template: str, **values: object\n) -> str:",
+        "def render[Value: object](\n    template: str, **values: object\n) -> dict[str, Value]:",
+        "def render(\n    template: str = 'colon: marker', **values: object\n) -> str:",
+        "def render(\n    template: str, **values: object\n) -> lambda: (\n    str\n):",
+    ],
+)
+def test_closing_signature_line_preserves_local_suppression(header: str) -> None:
+    source = f"{header}  # sarj-noqa: SARJ477 — template supplies dynamic names\n    return template.format(**values)\n"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def render(\n    template: str, **values: object\n) -> str:\n    # sarj-noqa: SARJ477 — unrelated body comment\n    return template.format(**values)\n",
+        "def render(\n    template: str, **values: object\n) -> str:  # sarj-noqa: SARJ4770 — another diagnostic\n    return template.format(**values)\n",
+        "def render(\n    template: str = 'sarj-noqa: SARJ477', **values: object\n) -> str:\n    return template.format(**values)\n",
+        "def render(\n    template: str, **values: object\n) -> lambda: (  # sarj-noqa: SARJ477 — annotation is not the signature end\n    str\n):\n    return template.format(**values)\n",
+        "def render(\n    template: str, **values: object\n): \\\n    lambda: values  # sarj-noqa: SARJ477 — unrelated continued body comment\n",
+        "def render(\n    template: str, **values: object\n): callback = lambda: 'sarj-noqa: SARJ477'\n",
+    ],
+)
+def test_signature_suppression_does_not_consume_body_comments_or_string_data(source: str) -> None:
+    assert len(_check(source)) == 1

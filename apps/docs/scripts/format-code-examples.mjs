@@ -58,6 +58,18 @@ function sha256(source) {
   return hash("sha256", source, "hex");
 }
 
+async function installedVersion(packageName) {
+  const metadata = JSON.parse(
+    await readFile(
+      resolve(appRoot, "node_modules", packageName, "package.json"),
+      "utf8",
+    ),
+  );
+  assert.equal(metadata.name, packageName, "formatter package identity mismatch");
+  assert.match(metadata.version, /^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/u);
+  return metadata.version;
+}
+
 function normalize(source) {
   return `${source.replaceAll("\r\n", "\n").replaceAll("\r", "\n").trimEnd()}\n`;
 }
@@ -365,11 +377,11 @@ const docsProjection = {
   catalogSha256: sha256(catalogSource),
   cliSha256: sha256(cliSource),
   formatterVersions: {
-    prettier: "3.9.6",
-    prettierPluginSh: "0.20.2",
-    prettierPluginToml: "2.0.6",
+    prettier: await installedVersion("prettier"),
+    prettierPluginSh: await installedVersion("prettier-plugin-sh"),
+    prettierPluginToml: await installedVersion("prettier-plugin-toml"),
     ruff: ruffVersion,
-    sqlFormatter: "15.8.2",
+    sqlFormatter: await installedVersion("sql-formatter"),
     terraform: "1.15.8",
   },
   rules,

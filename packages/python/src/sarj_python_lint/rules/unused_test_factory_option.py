@@ -167,7 +167,7 @@ class UnusedTestFactoryOption(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
         signals = context.symbol_source
-        if not is_test_path(path) or context.generated or "def _" not in signals:
+        if not is_test_path(path) or context.generated or "def" not in signals or "_" not in signals:
             return []
         tree = context.tree
         if tree is None or (

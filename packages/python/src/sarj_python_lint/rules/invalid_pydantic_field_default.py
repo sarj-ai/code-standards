@@ -314,12 +314,24 @@ def _literal_key(value: object) -> _LiteralKey:
     return _LiteralKey(type(value), value)
 
 
+def _bit_union_members(node: ast.expr) -> list[ast.expr]:
+    members: list[ast.expr] = []
+    pending = [node]
+    while pending:
+        member = pending.pop()
+        if isinstance(member, ast.BinOp) and isinstance(member.op, ast.BitOr):
+            pending.extend((member.right, member.left))
+        else:
+            members.append(member)
+    return members
+
+
 def _literal_domain(node: ast.expr, imports: ImportIndex) -> _LiteralDomain | None:
     node = _parse_forward_annotation(node)
     if isinstance(node, ast.Constant) and node.value is None:
         return _LiteralDomain(frozenset({_literal_key(None)}))
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        return _merge_domains((_literal_domain(node.left, imports), _literal_domain(node.right, imports)))
+        return _merge_domains(tuple(_literal_domain(member, imports) for member in _bit_union_members(node)))
     if not isinstance(node, ast.Subscript):
         return None
     if imports.resolves(node.value, sources=_TYPING_SOURCES, symbol="Annotated"):
@@ -334,8 +346,12 @@ def _literal_domain(node: ast.expr, imports: ImportIndex) -> _LiteralDomain | No
         return _merge_domains(tuple(_literal_domain(member, imports) for member in _slice_members(node.slice)))
     if not imports.resolves(node.value, sources=_TYPING_SOURCES, symbol="Literal"):
         return None
+    return _literal_members_domain(_slice_members(node.slice))
+
+
+def _literal_members_domain(members: tuple[ast.expr, ...]) -> _LiteralDomain | None:
     values: set[_LiteralKey] = set()
-    for member in _slice_members(node.slice):
+    for member in members:
         value = _literal_value(member)
         if value is _MISSING or isinstance(value, float):
             return None
@@ -514,7 +530,7 @@ def _numeric_bound_is_violated(name: str, default: float, bound: float) -> bool:
 def _provably_non_null(node: ast.expr, imports: ImportIndex) -> bool:
     node = _parse_forward_annotation(node)
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        return _provably_non_null(node.left, imports) and _provably_non_null(node.right, imports)
+        return all(_provably_non_null(member, imports) for member in _bit_union_members(node))
     if isinstance(node, ast.Name):
         return node.id in _KNOWN_NON_NULL_BUILTINS and imports.builtin_is_unshadowed(node.id)
     if not isinstance(node, ast.Subscript):

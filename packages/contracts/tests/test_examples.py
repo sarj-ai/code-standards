@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path, PurePosixPath
 
 import pytest
 
-from sarj_rule_contracts import ExampleFile, ExpectedOutcome, RuleExample
+from sarj_rule_contracts import ExampleDependency, ExampleFile, ExpectedOutcome, RuleExample
 from sarj_rule_contracts.examples import ExampleFinding, verify_examples
 
 
@@ -50,9 +51,138 @@ def test_examples_reject_broken_detectors(behavior: str) -> None:
     assert all(not root.exists() for root in roots)
 
 
+@pytest.mark.parametrize("source", ["bad = True\n", "bad = True\r\n", "bad = True\r", "bad = '😀é'\r\n"])
+def test_analyzer_receives_authored_focus_and_companion_bytes(source: str) -> None:
+    positive, negative = _examples()
+    positive = replace(
+        positive,
+        files=(
+            ExampleFile(positive.focus_path, source),
+            ExampleFile(PurePosixPath("support.py"), source.replace("bad =", "support =")),
+        ),
+    )
+
+    def analyze(root: Path, focus: Path) -> list[ExampleFinding]:
+        matches = b"bad" in focus.read_bytes()
+        expected = positive if matches else negative
+        for file in expected.files:
+            assert (root / file.path).read_bytes() == file.source.encode("utf-8")
+        return [ExampleFinding(focus, 1, 1, "SARJ999")] if matches else []
+
+    assert verify_examples((positive, negative), analyze) == 2
+
+
 def test_duplicate_diagnostics_cannot_satisfy_expected_count() -> None:
     def analyze(_root: Path, focus: Path) -> list[ExampleFinding]:
         return [ExampleFinding(focus, 1, 1, "SARJ999")] * 2
 
     with pytest.raises(ValueError, match="duplicate diagnostic"):
         verify_examples(_examples(), analyze)
+
+
+def test_different_messages_do_not_make_duplicate_locations_independent() -> None:
+    examples = (replace(_examples()[0], expected_count=2), _examples()[1])
+
+    def analyze(_root: Path, focus: Path) -> list[ExampleFinding]:
+        if "bad" not in focus.read_text(encoding="utf-8"):
+            return []
+        return [ExampleFinding(focus, 1, 1, "SARJ999", message) for message in ("first", "second")]
+
+    with pytest.raises(ValueError, match="duplicate diagnostic"):
+        verify_examples(examples, analyze)
+
+
+@pytest.mark.parametrize(("line", "col", "code"), [(0, 1, "SARJ999"), (1, 0, "SARJ999"), (1, 1, " ")])
+def test_invalid_diagnostic_locations_and_codes_cannot_verify_an_example(line: int, col: int, code: str) -> None:
+    def analyze(_root: Path, focus: Path) -> list[ExampleFinding]:
+        return [ExampleFinding(focus, line, col, code)] if "bad" in focus.read_text(encoding="utf-8") else []
+
+    with pytest.raises(ValueError, match="invalid diagnostic"):
+        verify_examples(_examples(), analyze)
+
+
+def _examples_with_focus_source(source: str) -> tuple[RuleExample, ...]:
+    positive, negative = _examples()
+    return replace(positive, files=(ExampleFile(positive.focus_path, source),)), negative
+
+
+@pytest.mark.parametrize(
+    ("source", "line", "col"),
+    [
+        ("bad = True\n", 999, 1),
+        ("bad = True\n", 1, 999),
+        ("bad = True\n", 3, 1),
+        ("bad = True\n", 2, 2),
+        ("bad = True", 1, 12),
+        ("😀é", 1, 8),
+        ("bad\r\ndata\r\n", 4, 1),
+        ("bad\fdata", 2, 1),
+    ],
+)
+def test_locations_outside_the_authored_focus_source_cannot_verify_an_example(source: str, line: int, col: int) -> None:
+    def analyze(_root: Path, focus: Path) -> list[ExampleFinding]:
+        return [ExampleFinding(focus, line, col, "SARJ999")] if "good" not in focus.read_text(encoding="utf-8") else []
+
+    with pytest.raises(ValueError, match="invalid diagnostic"):
+        verify_examples(_examples_with_focus_source(source), analyze)
+
+
+@pytest.mark.parametrize(
+    ("source", "line", "col"),
+    [
+        ("\n", 1, 1),
+        ("\n", 2, 1),
+        ("bad", 1, 4),
+        ("bad\n", 2, 1),
+        ("bad\r\ndata\r\n", 3, 1),
+        ("bad\rdata\r", 3, 1),
+        ("😀é", 1, 3),
+        ("😀é", 1, 4),
+        ("😀é", 1, 7),
+        ("bad\fdata", 1, 9),
+    ],
+)
+def test_physical_empty_lines_eof_and_native_unicode_columns_remain_valid(source: str, line: int, col: int) -> None:
+    def analyze(_root: Path, focus: Path) -> list[ExampleFinding]:
+        return [ExampleFinding(focus, line, col, "SARJ999")] if "good" not in focus.read_text(encoding="utf-8") else []
+
+    assert verify_examples(_examples_with_focus_source(source), analyze) == 2
+
+
+@pytest.mark.parametrize("setup", ["options", "dependencies", "fixes"])
+def test_analyzer_cannot_silently_ignore_authored_execution_context(setup: str) -> None:
+    positive, negative = _examples()
+    match setup:
+        case "options":
+            positive = replace(positive, rule_options_json="[]")
+        case "dependencies":
+            positive = replace(positive, installed_dependencies=(ExampleDependency("zod", "4.6.5"),))
+        case _:
+            positive = replace(positive, fixed_files=negative.files)
+
+    def analyze(_root: Path, _focus: Path) -> list[ExampleFinding]:
+        pytest.fail("an analyzer without a setup adapter must not verify this fixture")
+
+    with pytest.raises(ValueError, match=r"no .* adapter"):
+        verify_examples((positive, negative), analyze)
+
+
+def test_selected_rule_identity_is_checked_independently_of_count() -> None:
+    def analyze(_root: Path, focus: Path) -> list[ExampleFinding]:
+        return [ExampleFinding(focus, 1, 1, "SARJ998")] if "bad" in focus.read_text(encoding="utf-8") else []
+
+    with pytest.raises(ValueError, match="unexpected diagnostic code"):
+        verify_examples(_examples(), analyze, expected_code="SARJ999")
+
+
+def test_distinct_columns_remain_independent_diagnostic_locations() -> None:
+    examples = (replace(_examples()[0], expected_count=2), _examples()[1])
+
+    def analyze(_root: Path, focus: Path) -> list[ExampleFinding]:
+        return (
+            [ExampleFinding(focus, 1, col, "SARJ999") for col in (1, 7)]
+            if "bad" in focus.read_text(encoding="utf-8")
+            else []
+        )
+
+    assert verify_examples(examples, analyze, expected_code="SARJ999") == 2

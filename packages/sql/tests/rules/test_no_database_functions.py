@@ -111,3 +111,31 @@ def test_database_owned_index_invariant_uses_the_approved_exception(tmp_path: Pa
         + "CREATE UNIQUE INDEX IF NOT EXISTS widget_key ON widget (normalized_key(name));\n"
     )
     assert main(["check", "--rule", "no-database-functions", str(path)]) == 0
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "DO $outer$ BEGIN CREATE FUNCTION app.f() RETURNS integer LANGUAGE sql AS $inner$SELECT 1$inner$; END $outer$;",
+        "DO $outer$ BEGIN CREATE OR REPLACE FUNCTION app.f() RETURNS integer LANGUAGE sql AS $inner$SELECT 1$inner$; END $outer$;",
+    ],
+)
+def test_executable_anonymous_block_cannot_hide_a_stored_function(source: str) -> None:
+    [finding] = NoDatabaseFunctions().check(Path("migrations/001.sql"), source)
+    assert (finding.line, finding.col) == (1, source.index("CREATE") + 1)
+
+
+def test_scalar_dollar_data_cannot_create_a_stored_function() -> None:
+    source = "SELECT $outer$CREATE FUNCTION app.f() RETURNS integer LANGUAGE sql AS $inner$SELECT 1$inner$;$outer$;"
+    assert NoDatabaseFunctions().check(Path("migrations/001.sql"), source) == []
+
+
+def test_every_function_in_an_anonymous_block_keeps_its_absolute_location() -> None:
+    source = (
+        "DO $outer$ BEGIN CREATE FUNCTION app.f() RETURNS integer LANGUAGE sql AS $inner$SELECT 1$inner$; "
+        "CREATE FUNCTION app.g() RETURNS integer LANGUAGE sql AS $inner$SELECT 2$inner$; END $outer$;"
+    )
+    findings = NoDatabaseFunctions().check(Path("migrations/001.sql"), source)
+    first = source.index("CREATE")
+    second = source.index("CREATE", first + 1)
+    assert [(item.line, item.col) for item in findings] == [(1, first + 1), (1, second + 1)]

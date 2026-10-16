@@ -29,8 +29,8 @@ _DATABASE_BEHAVIOR = re.compile(
     r"CREATE\s+CONSTRAINT\s+TRIGGER|ALTER\s+TABLE\s+[^;]+?\s+ENABLE\s+(?:(?:ALWAYS|REPLICA)\s+)?TRIGGER)\b",
     re.IGNORECASE,
 )
-_BAD = 'await conn.execute("CREATE TRIGGER fail_counter BEFORE UPDATE ON batch EXECUTE FUNCTION fail_counter()")\n'
-_GOOD = 'await conn.execute("ALTER TABLE batch ADD CONSTRAINT fail_counter CHECK (false) NOT VALID")\n'
+_BAD = 'async def install_fault(conn):\n    await conn.execute("CREATE TRIGGER fail_counter BEFORE UPDATE ON batch EXECUTE FUNCTION fail_counter()")\n'
+_GOOD = 'async def install_fault(conn):\n    await conn.execute("ALTER TABLE batch ADD CONSTRAINT fail_counter CHECK (false) NOT VALID")\n'
 
 
 @final

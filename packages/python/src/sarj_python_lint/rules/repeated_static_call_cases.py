@@ -110,7 +110,7 @@ class RepeatedStaticCallCases(Rule):
                 files=(
                     ExampleFile.python(
                         "tests/test_parser.py",
-                        "@pytest.mark.parametrize(('value', 'expected'), [('a', 1), ('b', 2), ('c', 3)])\ndef test_parse(value, expected):\n    assert parse(value) == expected\n",
+                        "import pytest\n\n@pytest.mark.parametrize(('value', 'expected'), [('a', 1), ('b', 2), ('c', 3)])\ndef test_parse(value, expected):\n    assert parse(value) == expected\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_parser.py"),

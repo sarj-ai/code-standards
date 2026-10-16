@@ -128,14 +128,14 @@ class DocstringArgsRestateSignature(Rule):
         imports: ImportIndex,
         diags: list[Diagnostic],
     ) -> None:
-        for child in children(node):
+        pending: list[tuple[ast.AST, str | None]] = [(child, class_name) for child in reversed(children(node))]
+        while pending:
+            child, owner = pending.pop()
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                self._check_function(child, class_name, path, imports, diags)
-                self._walk(child, class_name, path, imports, diags)
+                self._check_function(child, owner, path, imports, diags)
             elif isinstance(child, ast.ClassDef):
-                self._walk(child, child.name, path, imports, diags)
-            else:
-                self._walk(child, class_name, path, imports, diags)
+                owner = child.name
+            pending.extend((nested, owner) for nested in reversed(children(child)))
 
     def _check_function(
         self,

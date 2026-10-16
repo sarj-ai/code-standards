@@ -41,7 +41,7 @@ export const NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION = {
       id: "uncommented-members",
       title: "Let clear member names and types stand alone",
       outcome: "no-match",
-      files: [{ path: "src/credentials.ts", source: "interface Credentials { host: string; port: number; username: string; }" }],
+      files: [{ path: "src/credentials.ts", source: "interface Credentials { host?: string; port?: number; username?: string; password?: string; }" }],
       focusPath: "src/credentials.ts",
       expectedCount: 0,
       public: true,

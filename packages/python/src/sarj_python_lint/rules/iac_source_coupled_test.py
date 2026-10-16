@@ -62,7 +62,7 @@ class IacSourceCoupledTest(Rule):
                 files=(
                     ExampleFile.python(
                         "tests/test_policy.py",
-                        "def test_policy(rendered_plan_json: str):\n"
+                        "import json\n\ndef test_policy(rendered_plan_json: str):\n"
                         "    plan = json.loads(rendered_plan_json)\n"
                         "    changes = plan['resource_changes']\n"
                         "    assert changes[0]['change']['actions'] == ['create']\n",

@@ -21,6 +21,12 @@ def _check(source: str, path: str = "models.py"):
 _PUBLIC_EXAMPLES = NoRedundantLiteralDescription.public_examples()
 
 
+def test_deep_open_payload_union_is_not_inferred_as_a_closed_description_domain() -> None:
+    annotation = " | ".join(["str"] * 3001 + ["None"])
+    source = f"from pydantic import BaseModel, Field\nclass Model(BaseModel):\n    value: {annotation} = Field(default=None, description='Allowed values are alpha or beta.')\n"
+    assert _check(source) == []
+
+
 @pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(item.example_id for item in _PUBLIC_EXAMPLES))
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file

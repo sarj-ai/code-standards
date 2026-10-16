@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import ast
 from dataclasses import replace
+from io import StringIO
 from pathlib import PurePosixPath
+import tokenize
 from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, final
 
@@ -187,8 +189,10 @@ class NoBroadKeywordCapture(Rule):
                 overloads = _overload_implementations(context, semantics, mutated_members)
             if function in overloads:
                 continue
-            if is_suppressed(context.source_lines, argument.lineno, self.code) or is_suppressed(
-                context.source_lines, function.lineno, self.code
+            if (
+                is_suppressed(context.source_lines, argument.lineno, self.code)
+                or is_suppressed(context.source_lines, function.lineno, self.code)
+                or _signature_end_suppressed(function, context, self.code)
             ):
                 continue
             findings.append(
@@ -205,6 +209,39 @@ class NoBroadKeywordCapture(Rule):
                 )
             )
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
+
+
+def _signature_end_suppressed(
+    function: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext, code: str
+) -> bool:
+    first_statement = function.body[0]
+    header = context.source_lines[function.lineno - 1 : first_statement.lineno]
+    if not any("sarj-noqa" in line.lower() for line in header):
+        return False
+    # AST columns count UTF-8 bytes, and a continued inline body can share the header's logical line.
+    header[-1] = header[-1].encode("utf-8")[: first_statement.col_offset].decode("utf-8")
+    try:
+        line = _signature_end_line(header, function.lineno)
+    except tokenize.TokenError, SyntaxError:
+        return False
+    return line is not None and is_suppressed(context.source_lines, line, code)
+
+
+def _signature_end_line(header: list[str], start_line: int) -> int | None:
+    depth = 0
+    line = None
+    for token in tokenize.generate_tokens(StringIO("\n".join(header)).readline):
+        if token.type == tokenize.NEWLINE:
+            return line
+        if token.type != tokenize.OP:
+            continue
+        if token.string in {"(", "[", "{"}:
+            depth += 1
+        elif token.string in {")", "]", "}"}:
+            depth -= 1
+        elif token.string == ":" and depth == 0:
+            line = start_line + token.start[0] - 1
+    return line
 
 
 def _interface_severity(

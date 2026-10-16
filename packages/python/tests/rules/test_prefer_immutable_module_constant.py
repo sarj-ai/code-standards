@@ -473,3 +473,12 @@ def test_fromkeys_preserves_empty_shadowed_mutated_and_final_exclusions(source: 
 def test_conditional_final_lookalike_still_warns() -> None:
     source = "from custom import Final\nif enabled:\n    LABELS: Final = {'a': 'A'}"
     assert len(PreferImmutableModuleConstant().check(Path("service.py"), source)) == 1
+
+
+@pytest.mark.parametrize("mutated", [False, True])
+def test_deep_class_union_preserves_actual_module_constant_mutation(mutated: bool) -> None:
+    annotation = " | ".join(["str"] * 3001 + ["None"])
+    source = f"LABELS = {{'a': 'A'}}\nclass Model:\n    payload: {annotation}\n"
+    if mutated:
+        source += "LABELS['b'] = 'B'\n"
+    assert len(PreferImmutableModuleConstant().check(Path("service.py"), source)) == int(not mutated)
