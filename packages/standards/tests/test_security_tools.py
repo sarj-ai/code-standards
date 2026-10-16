@@ -58,7 +58,7 @@ def _zizmor(path: Path) -> dict[str, object]:
         "version": "2.1.0",
         "runs": [
             {
-                "tool": {"driver": {"name": "zizmor", "version": "1.30.1"}},
+                "tool": {"driver": {"name": "zizmor", "version": "1.31.1"}},
                 "invocations": [{"executionSuccessful": True}],
                 "results": [
                     {
@@ -307,7 +307,7 @@ def test_security_routing_uses_actual_selected_source_and_offline_managed_config
     )
     assert [report.name for report in reports] == ["zizmor", "checkov"]
     assert all(report.completion is Completion.COMPLETE for report in reports)
-    assert [report.version for report in reports] == ["1.30.1", "3.3.28"]
+    assert [report.version for report in reports] == ["1.31.1", "3.3.28"]
     assert all(str(config) not in argv for argv in calls)
 
 

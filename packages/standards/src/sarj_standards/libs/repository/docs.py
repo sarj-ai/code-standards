@@ -328,7 +328,7 @@ def _package_usage(name: str, engine: str | None) -> str:
             "replace every warning with a global error. Tailwind theme-loading warnings indicate "
             "grammar fallback with reduced coverage. The project-discovery API is experimental and "
             "is protected by an exact dependency pin and executable integration tests.\n\n"
-            "Terraform, Kubernetes, and GitHub Actions adoption adds isolated Checkov 3.3.20 and zizmor 1.30.1 "
+            "Terraform, Kubernetes, and GitHub Actions adoption adds isolated Checkov 3.3.28 and zizmor 1.31.1 "
             "runtimes. Setup and generated CI prewarm these tools; checks run offline with packaged policy. "
             "Use `--rule checkov:CKV_GCP_95` or `--rule zizmor:template-injection` to select upstream audits. "
             "Their findings start as warnings, use the canonical diagnostic baseline, and retain upstream IDs. "
