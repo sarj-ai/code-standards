@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from dataclasses import dataclass
 from hashlib import sha256
 import json
@@ -9,10 +10,11 @@ from pathlib import Path
 import re
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed read-only git argv.
-from typing import TYPE_CHECKING, TypeIs
+from typing import TYPE_CHECKING
 
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.json_boundary import parse_unique_json
+from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
 if TYPE_CHECKING:
@@ -53,30 +55,49 @@ def changed_line_scope(root: Path, *, staged: bool) -> ChangedLineScope | None:
     if git is None:
         return ChangedLineScope(frozenset(), {}, failed=True)
     comparison = ("--cached",) if staged else (f"{base}...HEAD",)
-    common = (git, "diff", *comparison, "--diff-filter=ACMR")
-    names = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        (*common, "--name-only", "-z", "--"), cwd=root, check=False, text=True, capture_output=True
+    common = (
+        git,
+        "-c",
+        "core.quotePath=true",
+        "diff",
+        *comparison,
+        "--diff-filter=ACMR",
+        "--relative",
+        "--no-ext-diff",
+        "--no-textconv",
     )
-    patch = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        (*common, "--unified=0", "--no-color", "--no-ext-diff", "--"),
+    names = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        (*common, "--name-only", "-z", "--"),
         cwd=root,
         check=False,
-        text=True,
+        capture_output=True,
+    )
+    patch = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        (*common, "--unified=0", "--no-color", "--src-prefix=a/", "--dst-prefix=b/", "--"),
+        cwd=root,
+        check=False,
         capture_output=True,
     )
     if names.returncode != 0 or patch.returncode != 0:
         return ChangedLineScope(frozenset(), {}, failed=True)
-    paths = frozenset(item for item in names.stdout.split("\0") if item)
-    return ChangedLineScope(paths, _changed_lines_from_patch(patch.stdout))
+    paths = frozenset(item.decode("utf-8", errors="surrogateescape") for item in names.stdout.split(b"\0") if item)
+    return ChangedLineScope(paths, _changed_lines_from_patch(patch.stdout.decode("utf-8", errors="surrogateescape")))
 
 
 def _changed_lines_from_patch(patch: str) -> dict[str, frozenset[int]]:
     parsed: dict[str, set[int]] = {}
     current = ""
-    for line in patch.splitlines():
-        if line.startswith("+++ b/"):
-            current = line[6:]
-            parsed.setdefault(current, set())
+    expect_header = False
+    for line in patch.split("\n"):
+        if line.startswith("diff --git "):
+            current = ""
+            expect_header = True
+            continue
+        if expect_header and line.startswith("+++ "):
+            current = _patch_path(line[4:])
+            expect_header = False
+            if current:
+                parsed.setdefault(current, set())
             continue
         match = _HUNK.match(line)
         if not current or match is None:
@@ -88,6 +109,21 @@ def _changed_lines_from_patch(patch: str) -> dict[str, frozenset[int]]:
         affected = range(start, start + count) if count else (max(1, start), start + 1)
         parsed[current].update(affected)
     return {path: frozenset(lines) for path, lines in parsed.items()}
+
+
+def _patch_path(value: str) -> str:
+    if value.startswith('"'):
+        try:
+            decoded: object = ast.literal_eval("b" + value)  # pyright: ignore[reportAny] -- stdlib parser boundary; only byte literals are accepted below.
+        except SyntaxError, ValueError:
+            return ""
+        if not isinstance(decoded, bytes):
+            return ""
+        value = decoded.decode("utf-8", errors="surrogateescape")
+    else:
+        # Git terminates an unquoted space-containing path with a tab.
+        value = value.removesuffix("\t")
+    return value[2:] if value.startswith("b/") else ""
 
 
 def touches_changed_lines(diagnostic: Diagnostic, scope: ChangedLineScope | None) -> bool:
@@ -157,7 +193,7 @@ def load(
             msg = "diagnostic baseline policy digest does not match the executing Standards bundle"
             raise ValueError(msg)
     entries = root.get("diagnostics")
-    if not _is_object_list(entries):
+    if not is_object_list(entries):
         msg = "diagnostic baseline diagnostics must be a list"
         raise TypeError(msg)
     return _baseline_fingerprints(entries)
@@ -241,7 +277,7 @@ def merge_scoped(
     parsed = parse_unique_json(path.read_text(encoding="utf-8"))
     root = _string_object_dict(parsed, label="diagnostic baseline")
     current = root.get("diagnostics")
-    if not _is_object_list(current):
+    if not is_object_list(current):
         msg = "diagnostic baseline diagnostics must be a list"
         raise TypeError(msg)
     preserved = [
@@ -280,7 +316,7 @@ def remove_rules(
     parsed = parse_unique_json(path.read_text(encoding="utf-8"))
     root = _string_object_dict(parsed, label="diagnostic baseline")
     current = root.get("diagnostics")
-    if not _is_object_list(current):
+    if not is_object_list(current):
         msg = "diagnostic baseline diagnostics must be a list"
         raise TypeError(msg)
     entries = [_string_object_dict(value, label="diagnostic baseline entry") for value in current]
@@ -410,7 +446,7 @@ def bundled_catalog_digest() -> str:
 
 
 def _string_object_dict(value: object, *, label: str) -> dict[str, object]:
-    if not _is_object_dict(value):
+    if not is_object_mapping(value):
         msg = f"{label} must be an object"
         raise TypeError(msg)
     result: dict[str, object] = {}
@@ -420,11 +456,3 @@ def _string_object_dict(value: object, *, label: str) -> dict[str, object]:
             raise TypeError(msg)
         result[key] = item
     return result
-
-
-def _is_object_dict(value: object) -> TypeIs[dict[object, object]]:
-    return isinstance(value, dict)
-
-
-def _is_object_list(value: object) -> TypeIs[list[object]]:
-    return isinstance(value, list)

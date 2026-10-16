@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from dataclasses import replace
 import json
+import os
+import shlex
 import subprocess
+import sys
 from typing import TYPE_CHECKING, Unpack
 
 import pytest
@@ -336,23 +339,175 @@ def test_scoped_merge_preserves_existing_tab_indentation(tmp_path: Path) -> None
     assert json.loads(merged)["diagnostics"][0]["fingerprint"] == "b" * 64
 
 
-def test_staged_changed_lines_cannot_consume_baseline_allowance(tmp_path: Path) -> None:
+@pytest.fixture
+def git_root(tmp_path: Path) -> Path:
     subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
     subprocess.run(("git", "config", "user.name", "Standards Test"), cwd=tmp_path, check=True)
     subprocess.run(("git", "config", "user.email", "standards@example.com"), cwd=tmp_path, check=True)
-    source = tmp_path / "app.py"
-    source.write_text("old\n", encoding="utf-8")
-    subprocess.run(("git", "add", "app.py"), cwd=tmp_path, check=True)
-    subprocess.run(("git", "commit", "-qm", "base"), cwd=tmp_path, check=True)
-    source.write_text("old\nnew\n", encoding="utf-8")
-    subprocess.run(("git", "add", "app.py"), cwd=tmp_path, check=True)
+    return tmp_path
 
-    scope = baseline.changed_line_scope(tmp_path, staged=True)
+
+def test_staged_changed_lines_cannot_consume_baseline_allowance(git_root: Path) -> None:
+    source = git_root / "app.py"
+    source.write_text("old\n", encoding="utf-8")
+    subprocess.run(("git", "add", "app.py"), cwd=git_root, check=True)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=git_root, check=True)
+    source.write_text("old\nnew\n", encoding="utf-8")
+    subprocess.run(("git", "add", "app.py"), cwd=git_root, check=True)
+
+    scope = baseline.changed_line_scope(git_root, staged=True)
     old = Diagnostic("X", "old", Severity.ERROR, "ruff", Location("app.py", position=Position(0, 0, 0)))
     new = Diagnostic("X", "new", Severity.ERROR, "ruff", Location("app.py", position=Position(1, 0, 4)))
 
     assert not baseline.touches_changed_lines(old, scope)
     assert baseline.touches_changed_lines(new, scope)
+
+
+@pytest.mark.parametrize("staged", [True, False], ids=("staged", "committed"))
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "plain.py",
+        "space name.py",
+        "caf\u00e9.py",
+        "emoji-\U0001f30d.py",
+        pytest.param("trailing.py ", marks=pytest.mark.skipif(os.name == "nt", reason="Windows filename grammar")),
+        pytest.param('quoted"name.py', marks=pytest.mark.skipif(os.name == "nt", reason="Windows filename grammar")),
+        pytest.param("tab\tname.py", marks=pytest.mark.skipif(os.name == "nt", reason="Windows filename grammar")),
+        pytest.param("line\nname.py", marks=pytest.mark.skipif(os.name == "nt", reason="Windows filename grammar")),
+    ],
+)
+def test_changed_line_paths_preserve_baselines_with_custom_git_configuration(
+    git_root: Path, monkeypatch: pytest.MonkeyPatch, filename: str, *, staged: bool
+) -> None:
+    source = git_root / filename
+    source.write_text("old\nkeep\n", encoding="utf-8")
+    subprocess.run(("git", "add", "."), cwd=git_root, check=True)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=git_root, check=True)
+    base = subprocess.check_output(("git", "rev-parse", "HEAD"), cwd=git_root, text=True).strip()
+    subprocess.run(("git", "config", "core.quotePath", "false"), cwd=git_root, check=True)
+    subprocess.run(("git", "config", "diff.noprefix", "true"), cwd=git_root, check=True)
+    source.write_text("old\nchanged\n", encoding="utf-8")
+    subprocess.run(("git", "add", "."), cwd=git_root, check=True)
+    if not staged:
+        subprocess.run(("git", "commit", "-qm", "head"), cwd=git_root, check=True)
+        monkeypatch.setenv("SARJ_STANDARDS_BASE", base)
+
+    scope = baseline.changed_line_scope(git_root, staged=staged)
+    old = Diagnostic("X", "old", Severity.ERROR, "ruff", Location(filename, position=Position(0, 0, 0)))
+    changed = replace(old, location=Location(filename, position=Position(1, 0, 4)))
+
+    assert scope is not None
+    assert scope.lines == {filename: frozenset({2})}
+    assert not baseline.touches_changed_lines(old, scope)
+    assert baseline.touches_changed_lines(changed, scope)
+
+
+def test_non_utf8_git_paths_preserve_byte_identity(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    filename = "raw-\udcff.py"
+
+    def git_diff(
+        arguments: Sequence[str], *, cwd: Path, check: bool, capture_output: bool
+    ) -> subprocess.CompletedProcess[bytes]:
+        assert cwd == tmp_path
+        assert not check
+        assert capture_output
+        output = (
+            b"raw-\xff.py\0"
+            if "--name-only" in arguments
+            else b'diff --git "a/raw-\\377.py" "b/raw-\\377.py"\n'
+            b'--- "a/raw-\\377.py"\n+++ "b/raw-\\377.py"\n@@ -2 +2 @@\n-old\n+changed\n'
+        )
+        return subprocess.CompletedProcess(arguments, 0, stdout=output, stderr=b"")
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- supply Git byte-protocol output unsupported by this filesystem.
+        subprocess, "run", git_diff
+    )
+
+    scope = baseline.changed_line_scope(tmp_path, staged=True)
+
+    assert scope is not None
+    assert scope.paths == frozenset({filename})
+    assert scope.lines == {filename: frozenset({2})}
+
+
+@pytest.mark.parametrize("staged", [True, False], ids=("staged", "committed"))
+def test_changed_lines_are_relative_to_the_analysis_root(
+    git_root: Path, monkeypatch: pytest.MonkeyPatch, *, staged: bool
+) -> None:
+    project = git_root / "project"
+    project.mkdir()
+    source = project / "app.py"
+    source.write_text("old\nkeep\n", encoding="utf-8")
+    subprocess.run(("git", "add", "."), cwd=git_root, check=True)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=git_root, check=True)
+    base = subprocess.check_output(("git", "rev-parse", "HEAD"), cwd=git_root, text=True).strip()
+    source.write_text("old\nchanged\n", encoding="utf-8")
+    subprocess.run(("git", "add", "."), cwd=git_root, check=True)
+    if not staged:
+        subprocess.run(("git", "commit", "-qm", "head"), cwd=git_root, check=True)
+        monkeypatch.setenv("SARJ_STANDARDS_BASE", base)
+
+    scope = baseline.changed_line_scope(project, staged=staged)
+    old = Diagnostic("X", "old", Severity.ERROR, "ruff", Location("app.py", position=Position(0, 0, 0)))
+    changed = replace(old, location=Location("app.py", position=Position(1, 0, 4)))
+
+    assert scope is not None
+    assert scope.paths == frozenset({"app.py"})
+    assert not baseline.touches_changed_lines(old, scope)
+    assert baseline.touches_changed_lines(changed, scope)
+
+
+@pytest.mark.parametrize(
+    "source_line",
+    [
+        "++ b/decoy;\n",
+        "value;\r+++ b/decoy;\n",
+        "value;\u2028diff --git a/decoy b/decoy\u2028+++ b/decoy;\n",
+    ],
+    ids=("added-header", "carriage-return", "unicode-line-separator"),
+)
+def test_patch_like_source_cannot_hide_a_later_changed_hunk(git_root: Path, source_line: str) -> None:
+    source = git_root / "app.ts"
+    lines = [f"value{index};\n" for index in range(12)]
+    source.write_text("".join(lines), encoding="utf-8")
+    subprocess.run(("git", "add", "."), cwd=git_root, check=True)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=git_root, check=True)
+    lines[1] = source_line
+    lines[10] = "changed;\n"
+    source.write_text("".join(lines), encoding="utf-8")
+    subprocess.run(("git", "add", "."), cwd=git_root, check=True)
+
+    scope = baseline.changed_line_scope(git_root, staged=True)
+    changed = Diagnostic("X", "new", Severity.ERROR, "eslint", Location("app.ts", position=Position(10, 0, 100)))
+
+    assert baseline.touches_changed_lines(changed, scope)
+
+
+def test_changed_line_analysis_does_not_execute_text_converters(git_root: Path) -> None:
+    source = git_root / "app.py"
+    source.write_text("old\nkeep\n", encoding="utf-8")
+    (git_root / ".gitattributes").write_text("app.py diff=fixture\n", encoding="utf-8")
+    subprocess.run(("git", "add", "."), cwd=git_root, check=True)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=git_root, check=True)
+    converter = git_root / "converter.py"
+    converter.write_text(
+        'from pathlib import Path\nPath(__file__).with_suffix(".ran").touch()\nprint("converted")\n',
+        encoding="utf-8",
+    )
+    subprocess.run(
+        ("git", "config", "diff.fixture.textconv", shlex.join((sys.executable, str(converter)))),
+        cwd=git_root,
+        check=True,
+    )
+    source.write_text("old\nchanged\n", encoding="utf-8")
+    subprocess.run(("git", "add", "app.py"), cwd=git_root, check=True)
+
+    scope = baseline.changed_line_scope(git_root, staged=True)
+
+    assert not converter.with_suffix(".ran").exists()
+    assert scope is not None
+    assert scope.lines["app.py"] == frozenset({2})
 
 
 @pytest.mark.parametrize(
