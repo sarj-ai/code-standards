@@ -85,7 +85,8 @@ the weakness:
    disqualifying records and asserts exact identities/order/boundaries.
 5. **Negative cases** — Build a known-valid baseline, introduce one defect, and
    assert the intended stable diagnostic or domain error. A fixture with several
-   faults cannot prove which validator branch fired.
+   faults cannot prove which validator branch fired unless their combination or
+   rejection precedence is the contract.
 6. **Classifier tables** — Each row uniquely exercises the branch named by the
    case; an input accepted by a sibling branch cannot prove the intended branch
    still exists.
@@ -145,6 +146,58 @@ Do not use assertion-to-code ratio, raw coverage percentage, test length, or the
 mere presence of mocks/private calls as evidence of low value. Prefer the
 cheapest test level that exercises the real contract, and justify containers or
 integration dependencies by the fidelity they add.
+
+## Integration boundaries
+
+Name the real boundary under test, the action that crosses it, and the observable
+wrong outcome the case rejects. An HTTP test with a fake store can establish
+request parsing and response mapping; persistence requires exercising the real
+store. A store test with a fake database cannot establish SQL, transaction, or
+constraint behavior. Keep each case at the cheapest level that supplies its
+claimed evidence; a test's directory or marker does not supply fidelity.
+
+- Observe persisted changes through a fresh read or observer when commit visibility
+  is the contract. Reading the same ORM identity-map object can merely echo setup.
+  Retain transaction-local tests when visibility outside the transaction is not
+  their contract.
+- For rejected or failed mutations, observe the promised absence of effects:
+  unchanged durable state, no unauthorized write/event, or rollback of the partial
+  work. An error status or raised exception alone does not establish atomicity.
+  Inject the failure after the relevant first effect when testing rollback.
+- Exercise serialization and routing when the case claims a wire contract. Direct
+  handler calls cover handler behavior; feed independently specified payloads
+  through the real transport adapter to establish parsing, status, and body.
+- For retries and idempotency, repeat the same operation/key and assert the final
+  state and effect multiplicity. Reusing a mock's configured response proves no
+  deduplication; checking only the response can miss duplicate writes or events.
+- Isolate owned mutable state and clean up on failure. Use the existing fixture
+  lifecycle and supported parallel execution; ordering dependence or a skipped
+  dependency is incomplete evidence. Do not add sleeps or retries to conceal it.
+
+Only require these observations for a contract the change actually affects.
+Keep a small representative integration set and exercise independent decision
+tables in unit tests; repeat combinations across levels only for a demonstrated
+interaction or different failure mode.
+
+## Failure paths and asynchronous observations
+
+Expected-error tests must reject success. Prefer `pytest.raises` or awaited
+`expect(...).rejects`; a `try`/`catch` with assertions only inside the handler can
+pass when no error occurs. Observe the intended stable error type/reason from a
+known-valid baseline with one fault, unless their combination or rejection
+precedence is the contract, rather than accepting any setup failure.
+Preserve tests whose explicit contract is a broad process failure.
+
+Await or return asynchronous matchers and promise chains containing assertions.
+An assertion scheduled after the test finishes cannot establish its result.
+Preserve returned chains and awaited `Promise.all`; do not demand sequential
+awaits when concurrency is intentional. The test-value observer's upstream
+`valid-expect-in-promise` findings are advisory: the pinned plugin can flag
+handled aliases or awaits inside control flow and can mistake a synchronous
+`then` method for a promise. Verify the complete chain before acting; those
+findings do not justify rewriting valid asynchronous structure. Python generators
+used directly as assertions are always truthy: consume predicates with the intended `all` or
+`any` semantics, or observe the complete collection independently.
 
 ## Writing pytest tests
 

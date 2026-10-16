@@ -7,6 +7,7 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { unwrapExpression } from "./_unwrap-expression.js";
+import { runtimeTestFrameworkName } from "./_test-mock-provenance.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
@@ -22,7 +23,7 @@ export const NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION = {
   remediation: "Assert on a value produced by the behavior under test against an independently specified expectation, or remove only the redundant assertion while preserving coverage.",
   category: "testing",
   limitations: [
-    "Only direct supported `expect` matcher calls in recognized test files are inspected. Local expect bindings, regular expressions, and unsupported coercions are excluded; failing constant assertions are not tautologies.",
+    "Only supported `expect` matcher calls in recognized test files are inspected, including imported aliases and a single `.not` on zero-argument matchers. Local or type-only bindings, regular expressions, async modifiers and unsupported coercions are excluded; failing constant assertions are not tautologies.",
     "Scalar const bindings and aliases resolve through lexical scope; mutable bindings, objects, arrays, destructuring, runtime initializers and forward references are excluded.",
     "Expected-side runtime dependence, including a complete inline snapshot computed from its actual value, remains manual review; independent static interpolation and intentional partial masking are valid.",
   ],
@@ -53,6 +54,26 @@ export const NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION = {
       files: [{path: "src/service.test.ts", source: "it('works', () => { const status = 'ok'; expect(status).toBe('ok'); });"}],
       focusPath: "src/service.test.ts",
       expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "negated-setup-oracle",
+      scenarioId: "negated-setup",
+      title: "Negating a fixed matcher still does not observe the application",
+      outcome: "match",
+      files: [{path: "src/service.test.ts", source: "import {expect as verify} from 'vitest'; it('works', () => { const ready = false; verify(ready).not.toBeTruthy(); });"}],
+      focusPath: "src/service.test.ts",
+      expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "negated-produced-oracle",
+      scenarioId: "negated-setup",
+      title: "A negated assertion can observe a runtime result",
+      outcome: "no-match",
+      files: [{path: "src/service.test.ts", source: "import {expect as verify} from 'vitest'; it('works', () => { verify(serviceStatus()).not.toBeNull(); });"}],
+      focusPath: "src/service.test.ts",
+      expectedCount: 0,
       public: true,
     },
     {
@@ -158,19 +179,25 @@ function passesZeroArgumentMatcher(node: TSESTree.Node, matcher: string): boolea
   }
 }
 
-/** The `expect(<single argument>)` call a matcher hangs directly off, if any. */
-function expectOperand(callee: TSESTree.MemberExpression): TSESTree.Node | null {
-  const receiver = unwrapExpression(callee.object);
+/** Resolve one optional negation; async modifiers do not prove a literal outcome. */
+function expectOperand(
+  callee: TSESTree.MemberExpression,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): { readonly operand: TSESTree.Node; readonly negated: boolean } | null {
+  let receiver = unwrapExpression(callee.object);
+  const negated = receiver.type === AST_NODE_TYPES.MemberExpression && ASTUtils.getPropertyName(receiver) === "not";
+  if (negated && receiver.type === AST_NODE_TYPES.MemberExpression) receiver = unwrapExpression(receiver.object);
   const expectCallee = receiver.type === AST_NODE_TYPES.CallExpression ? unwrapExpression(receiver.callee) : null;
   if (
     receiver.type !== AST_NODE_TYPES.CallExpression ||
     expectCallee?.type !== AST_NODE_TYPES.Identifier ||
-    expectCallee.name !== "expect" ||
+    runtimeTestFrameworkName(sourceCode, expectCallee, "assertion") !== "expect" ||
     receiver.arguments.length !== 1
   ) {
     return null;
   }
-  return receiver.arguments[0] ?? null;
+  const operand = receiver.arguments[0];
+  return operand === undefined ? null : { operand, negated };
 }
 
 export default createRule<Options, MessageIds>({
@@ -209,36 +236,26 @@ export default createRule<Options, MessageIds>({
         if (callee.type !== AST_NODE_TYPES.MemberExpression) return;
         const matcher = ASTUtils.getPropertyName(callee);
         if (matcher === null) return;
-        const receiver = unwrapExpression(callee.object);
-        if (receiver.type !== AST_NODE_TYPES.CallExpression) return;
-        const expectIdentifier = unwrapExpression(receiver.callee);
-        if (expectIdentifier.type !== AST_NODE_TYPES.Identifier) return;
-        const variable = ASTUtils.findVariable(context.sourceCode.getScope(expectIdentifier), expectIdentifier.name);
-        if (variable !== null && variable.defs.some((definition) => {
-          if (definition.node.type !== AST_NODE_TYPES.ImportSpecifier) return true;
-          const declaration = definition.node.parent;
-          const imported = definition.node.imported;
-          return declaration.type !== AST_NODE_TYPES.ImportDeclaration ||
-            !["vitest", "@jest/globals", "@playwright/test", "bun:test"].includes(String(declaration.source.value)) ||
-            (imported.type === AST_NODE_TYPES.Identifier ? imported.name : imported.value) !== "expect";
-        })) return;
-        const writtenOperand = expectOperand(callee);
-        const operand = writtenOperand === null ? null : resolveLiteral(writtenOperand, context.sourceCode);
+        const assertion = expectOperand(callee, context.sourceCode);
+        if (assertion === null) return;
+        const writtenOperand = assertion.operand;
+        const operand = resolveLiteral(writtenOperand, context.sourceCode);
         if (operand === null) {
           return;
         }
-        if (ZERO_ARG_MATCHERS.has(matcher) && node.arguments.length === 0 && passesZeroArgumentMatcher(operand, matcher)) {
+        const writtenMatcher = `${assertion.negated ? "not." : ""}${matcher}`;
+        if (ZERO_ARG_MATCHERS.has(matcher) && node.arguments.length === 0 && passesZeroArgumentMatcher(operand, matcher) !== assertion.negated) {
           context.report({
             node,
             messageId: "tautologicalMatcher",
-            data: { operand: preview(writtenOperand ?? operand), matcher },
+            data: { operand: preview(writtenOperand), matcher: writtenMatcher },
           });
           return;
         }
         const writtenExpected = node.arguments[0];
         const expected = writtenExpected === undefined ? null : resolveLiteral(writtenExpected, context.sourceCode);
         if (
-          !EQUALITY_MATCHERS.has(matcher) ||
+          assertion.negated || !EQUALITY_MATCHERS.has(matcher) ||
           node.arguments.length !== 1 ||
           expected === null
         ) {
@@ -255,7 +272,7 @@ export default createRule<Options, MessageIds>({
         context.report({
           node,
           messageId: "tautologicalComparison",
-          data: { operand: preview(writtenOperand ?? operand), matcher },
+          data: { operand: preview(writtenOperand), matcher },
         });
       },
     };

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "8d787b6b13a5d5c4a5b442acacfec242e81c3e8876beb5cb67d2e59d34500a0c",
-  "cliSha256": "5407d6d35466a32fb355cec4e03220adeb4f5fcd9b110061e3d785bc57c4dca9",
+  "catalogSha256": "822f9fa3b5736b7cbab468ce22475b7d4e04ab17d3c559fdc87e186e4f85f2b4",
+  "cliSha256": "ca85b30cd133fa177e54f2cda2a6104edddcf6e00a4588ee0125af1c2de4bd65",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -252,6 +252,66 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Preserve the failure"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/codec.test.ts",
+              "source": "test.each([\"valid\", \"invalid\"])(\"decodes %s\", (input) => {\n  try {\n    decode(input);\n  } catch {\n    return;\n  }\n  expect(result()).toBe(\"ok\");\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/codec.test.ts",
+          "id": "table-bare-return",
+          "outcome": "reject",
+          "scenarioId": "table-catch",
+          "title": "Case tables must preserve failures"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/codec.test.ts",
+              "source": "import { test, expect } from \"vitest\";\ntest.for([\"optional\"])(\"decodes %s\", (input, context) => {\n  try {\n    decode(input);\n  } catch {\n    context.skip(false);\n    return;\n  }\n  expect(result()).toBe(\"ok\");\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/codec.test.ts",
+          "id": "table-context-false-skip",
+          "outcome": "reject",
+          "scenarioId": "context-skip",
+          "title": "A false skip condition does not preserve the failure"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/codec.test.ts",
+              "source": "import { test, expect } from \"vitest\";\ntest.for([\"optional\"])(\"decodes %s\", (input, context) => {\n  try {\n    decode(input);\n  } catch {\n    context.skip(\"codec unavailable\");\n    return;\n  }\n  expect(result()).toBe(\"ok\");\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/codec.test.ts",
+          "id": "table-context-skip",
+          "outcome": "accept",
+          "scenarioId": "context-skip",
+          "title": "A Vitest context skip preserves an optional table case"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/codec.test.ts",
+              "source": "test.each([\"valid\", \"invalid\"])(\"decodes %s\", (input) => {\n  try {\n    decode(input);\n  } catch (error) {\n    throw error;\n  }\n  expect(result()).toBe(\"ok\");\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/codec.test.ts",
+          "id": "table-rethrow",
+          "outcome": "accept",
+          "scenarioId": "table-catch",
+          "title": "Each table case propagates its failure"
         }
       ],
       "optionsSchemaSource": null
@@ -2486,6 +2546,36 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not compare identical literals"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/service.test.ts",
+              "source": "import { expect as verify } from \"vitest\";\nit(\"works\", () => {\n  verify(serviceStatus()).not.toBeNull();\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.test.ts",
+          "id": "negated-produced-oracle",
+          "outcome": "accept",
+          "scenarioId": "negated-setup",
+          "title": "A negated assertion can observe a runtime result"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/service.test.ts",
+              "source": "import { expect as verify } from \"vitest\";\nit(\"works\", () => {\n  const ready = false;\n  verify(ready).not.toBeTruthy();\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.test.ts",
+          "id": "negated-setup-oracle",
+          "outcome": "reject",
+          "scenarioId": "negated-setup",
+          "title": "Negating a fixed matcher still does not observe the application"
         },
         {
           "expectedCount": 0,
@@ -8959,6 +9049,21 @@
           "files": [
             {
               "path": "tests/test_service.py",
+              "source": "def test_values(rows):\n    assert all(row.is_valid for row in rows)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_service.py",
+          "id": "consumed-generator",
+          "outcome": "accept",
+          "scenarioId": "deferred-condition",
+          "title": "Consume the conditions when the contract requires every row to be valid"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_service.py",
               "source": "def test_service():\n    status = service_status()\n    assert status == \"ok\"\n"
             }
           ],
@@ -8998,6 +9103,21 @@
           "outcome": "reject",
           "scenarioId": "setup-only",
           "title": "A test asserts only on its own fixed setup"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_service.py",
+              "source": "def test_values(rows):\n    assert (row.is_valid for row in rows)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_service.py",
+          "id": "unconsumed-generator",
+          "outcome": "reject",
+          "scenarioId": "deferred-condition",
+          "title": "A generator object does not check the yielded conditions"
         }
       ],
       "optionsSchemaSource": null

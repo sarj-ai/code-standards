@@ -124,6 +124,13 @@ def test_typescript_analysis_requires_a_trusted_repository_runtime(
     [
         ("test('delivery', () => {deliver();});", "", "vitest/expect-expect", False, True),
         (
+            "test.each(['hello'])('delivery %s', () => {try {deliver();} catch {return;} expect(deliver()).toEqual('hello');});",
+            "",
+            "@sarj/no-bare-return-from-test-catch",
+            False,
+            True,
+        ),
+        (
             "function verify(value){expect(value).toEqual('hello');}\ntest('delivery', () => {verify(deliver());});",
             "",
             None,
@@ -180,6 +187,7 @@ def test_typescript_analysis_requires_a_trusted_repository_runtime(
     ],
     ids=[
         "missing-oracle",
+        "swallowed-table-failure",
         "asserted",
         "discarded-promise",
         "returned-promise",
@@ -216,6 +224,7 @@ def test_observe_vitest_oracles_redundancy_and_promise_completion(
     active = (
         "'@sarj/no-tautological-expect':'error','@sarj/no-duplicate-test-case':'error',"
         "'@sarj/duplicate-test-body':'error',"
+        "'@sarj/no-bare-return-from-test-catch':'error',"
         if registered
         else ""
     )
