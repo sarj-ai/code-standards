@@ -416,6 +416,8 @@ def _package_usage(name: str, engine: str | None) -> str:
             "tools, schemas, targets and invalid receipts fail the gate. Prepared-only findings bypass "
             "source debt baselines; container exceptions require exact target, GVK, namespace, object, "
             "check, container kind, container name and a reason, and stale exceptions fail.\n\n"
+            "Prepared YAML rejects duplicate parsed keys and cyclic aliases. Each document must stay below "
+            "depth 64 and at or below 100,000 expanded nodes, including repeated aliases.\n\n"
             "Source-only checks report prepared validation as deferred. They do not certify generated "
             "manifests or replace Cloud Deploy, Cloud Build or Kubernetes admission validation. "
             "Run `setup --tools-only` in CI after installing the bundle and the pinned mise bootstrap. "

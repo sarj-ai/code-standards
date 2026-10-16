@@ -35,7 +35,7 @@ def test_recipe_separator_data_preserves_source_and_physical_lines(separator: st
             expected = [(1, command), (4 if separator == "\r" else 3, "printf next")]
         case "oneshell":
             source = f".ONESHELL:\ncheck:\n\t@{command}\n\tprintf next\n"
-            expected = [(3, command + "\nprintf next")]
+            expected = [(3, f"{command}\nprintf next")]
         case _:
             source = f"check:\n\t@{command}\n\tprintf next\n"
             expected = [(2, command), (4 if separator == "\r" else 3, "printf next")]

@@ -130,6 +130,7 @@ _SCHEMA_LESS_VERSION_LINE: Final = re.compile(r'(?m)^[ \t]*version\s*=\s*"[^"]*"
 _SCHEMA_LESS_CONFIGS_START: Final = re.compile(r"^[ \t]*configs\s*=")
 _FIRST_TOML_TABLE: Final = re.compile(r"(?m)^\s*\[")
 _TOML_TABLE_HEADER: Final = re.compile(r"(?m)^\s*\[\[?(?P<name>[A-Za-z0-9_.-]+)\]\]?\s*(?:#.*)?$")
+_RUFF_TARGET_VERSION: Final = re.compile(r"(?m)^[ \t]*target-version[ \t]*=[^\n]*$")
 _OWNED_MANIFEST_TABLES: Final = frozenset(
     {
         "artifacts",
@@ -1458,13 +1459,12 @@ def _ruff_python_target(text: str) -> str:
             continue
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
         section = text[match.end() : end]
-        target = re.compile(r"(?m)^[ \t]*target-version[ \t]*=[^\n]*$")
-        if target.search(section):
-            section = target.sub('target-version = "py315"', section, count=1)
+        if _RUFF_TARGET_VERSION.search(section):
+            section = _RUFF_TARGET_VERSION.sub('target-version = "py315"', section, count=1)
         else:
-            section = '\ntarget-version = "py315"' + section
+            section = f'\ntarget-version = "py315"{section}'
         return text[: match.end()] + section + text[end:]
-    return text + '\n[tool.ruff]\ntarget-version = "py315"\n'
+    return f'{text}\n[tool.ruff]\ntarget-version = "py315"\n'
 
 
 def _plan_python_typechecker(root: Path, plan: Plan, python_target: str | None, *, force: bool) -> None:

@@ -29,6 +29,7 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-silent-promise-catch", rule, {
   valid: [
+    { name: "keeps an erased computed rejection handler with observable recovery", code: "const key = 'catch'; load()[key!](error => { logger.error(error); return null; });" },
     { name: "keeps error reporting surrounded by empty statements", code: "load().catch(error => { ; logger.error(error); ; return null; ; });" },
     { name: "keeps an effectful fallback surrounded by empty statements", code: "load().catch(error => { ; return fallbackFor(error); ; });" },
     { name: "keeps rethrowing surrounded by empty statements", code: "load().catch(error => { ; throw error; ; });" },
@@ -242,6 +243,7 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
     { name: "reports the previously exempt static computed catch", code: "p['catch'](() => null);", errors: [{ messageId: "silentCatch" }] },
     { name: "reports a static computed then rejection handler", code: "load()['then'](consume, () => null);", errors: [{ messageId: "silentCatch" }] },
     { name: "reports a computed rejection method behind an erased cast", code: "(load()['catch'] as CatchHandler)(() => null);", errors: [{ messageId: "silentCatch" }] },
+    { name: "reports a silent handler behind an erased computed alias", code: "const key = 'catch'; load()[key!](() => null);", errors: [{ messageId: "silentCatch" }] },
     { name: "reports an erased cast around a silent computed handler", code: "load()['catch']((() => null) as Handler);", errors: [{ messageId: "silentCatch" }] },
     { name: "does not let a shadowed Zod namespace exempt a computed rejection", code: "function build(z) { return z['string']()['catch'](() => null); }", errors: [{ messageId: "silentCatch" }] },
 

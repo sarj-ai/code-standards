@@ -229,6 +229,35 @@ def test_diagnostic_baseline_rejects_duplicate_fingerprints(tmp_path: Path) -> N
         baseline.load(path)
 
 
+@pytest.mark.parametrize(
+    "version", [True, 1.0, 2.0, [], {}], ids=("boolean", "legacy-float", "current-float", "array", "object")
+)
+def test_diagnostic_baseline_schema_version_requires_an_integer(tmp_path: Path, version: object) -> None:
+    path = tmp_path / "baseline.json"
+    path.write_text(json.dumps({"schemaVersion": version, "diagnostics": []}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="schemaVersion"):
+        baseline.load(path)
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        '{"schemaVersion": 1, "schemaVersion": 1, "diagnostics": []}',
+        '{"schemaVersion": 1, "diagnostics": [{"count": 2, "count": 1}]}',
+        '{"schemaVersion": 1, "diagnostics": [], "extra": NaN}',
+        '{"schemaVersion": 1, "diagnostics": [], "extra": Infinity}',
+    ],
+    ids=("schema-key", "nested-count-key", "nan", "infinity"),
+)
+def test_diagnostic_baseline_rejects_ambiguous_json(tmp_path: Path, contents: str) -> None:
+    path = tmp_path / "baseline.json"
+    path.write_text(contents, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="cannot read diagnostic baseline"):
+        baseline.load(path)
+
+
 def test_v2_baseline_records_and_validates_provenance(tmp_path: Path) -> None:
     rendered = baseline.render(
         (),
