@@ -51,6 +51,7 @@ from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting import external as external_module
 from sarj_standards.libs.linting.analysis import analyze as analyze_paths, report_from_tools
 from sarj_standards.libs.linting.policy import Policy
+from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelection, RuleSelector
 
 
 if TYPE_CHECKING:
@@ -155,6 +156,68 @@ def test_baselined_metadata_survives_normalization_without_changing_gate_result(
 
 def test_zero_baselined_count_preserves_existing_serialization() -> None:
     assert "baselinedDiagnosticCount" not in ToolReport("fixture", Completion.COMPLETE).as_dict()
+
+
+@pytest.mark.parametrize("value", [None, 0, 1, "true"])
+def test_policy_failure_flag_requires_a_boolean(value: object) -> None:
+    with pytest.raises(TypeError, match="policy failure must be bool"):
+        ToolReport("fixture", Completion.COMPLETE, policy_failed=value)  # pyright: ignore[reportArgumentType] -- Probe malformed public-model inputs.
+
+
+def test_native_policy_failure_preserves_warning_severity_in_every_report_format(tmp_path: Path) -> None:
+    warning = Diagnostic(
+        "native-warning",
+        "new warning rejected",
+        Severity.WARNING,
+        "repo-standards",
+        Location("tool.ts"),
+        fingerprint="a" * 64,
+    )
+    report = report_from_tools(
+        tmp_path, (ToolReport("repo-standards", Completion.COMPLETE, diagnostics=(warning,), policy_failed=True),)
+    )
+
+    assert report.completion is Completion.COMPLETE
+    assert report.conclusion is Conclusion.FINDINGS
+    assert report.exit_code == 1
+    assert report.diagnostics == (warning,)
+    assert report.issues == ()
+    payload = as_table(parse_json(to_json(report)))
+    assert as_table(list_field(payload, "tools")[0])["policyFailed"] is True
+    assert as_table(list_field(payload, "diagnostics")[0])["severity"] == "warning"
+    for output in (to_text(report), to_github(report)):
+        assert "rejected findings under its configured gate" in output
+        assert "0 error(s), 1 warning(s)" in output
+    sarif = as_table(parse_json(to_sarif(report)))
+    run = as_table(list_field(sarif, "runs")[0])
+    assert as_table(run["properties"])["policyFailedTools"] == ["repo-standards"]
+    assert as_table(list_field(run, "results")[0])["level"] == "warning"
+
+    normalized = api._with_warning_severity(report, frozenset({RuleSelector(RuleEngine.PYTHON, RuleId("unrelated"))}))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    visible = api._without_baselined_diagnostics(normalized, {"a" * 64: 1})  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert visible.exit_code == 1
+    assert visible.diagnostics == (warning,)
+    assert visible.tools[0].policy_failed is True
+    selection = RuleSelection.from_values(("python:no-broad-keyword-capture",))
+    selected = api._filter_report_selectors(report.tools[0], selection)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    excluded = Policy.from_manifest(tmp_path, Manifest("8.71.2", (), ".", ".", excluded_paths=("tool.ts",)))
+    filtered = api._filter_tool_report(selected, excluded)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert filtered == report.tools[0]
+    assert report_from_tools(tmp_path, (filtered,)).exit_code == 1
+
+
+def test_policy_failure_cannot_lose_its_diagnostic_evidence() -> None:
+    with pytest.raises(ValueError, match="retain diagnostic evidence"):
+        ToolReport("fixture", Completion.COMPLETE, policy_failed=True)
+
+
+def test_default_tool_policy_does_not_change_warning_or_serialization_behavior(tmp_path: Path) -> None:
+    warning = Diagnostic("native-warning", "advisory", Severity.WARNING, "repo-standards", Location("tool.ts"))
+    report = report_from_tools(tmp_path, (ToolReport("repo-standards", Completion.COMPLETE, diagnostics=(warning,)),))
+    assert report.exit_code == 0
+    assert "policyFailed" not in report.tools[0].as_dict()
+    assert "configured gate" not in to_text(report)
+    assert "policyFailedTools" not in to_sarif(report)
 
 
 @pytest.mark.parametrize("path", ["/absolute.py", "../escape.py", "C:\\private\\file.py", "C:relative.py"])

@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Measure pull-request size
-        uses: sarj-ai/repo-standards@cc4abc4c776afd899d4f203ae462851cd57386f2 # v6.7.6
+        uses: sarj-ai/repo-standards@625dfe5897b73f04935fa80effa5f7b616f5d38a # v6.8.0
 
   changes:
     name: Detect affected checks
@@ -421,7 +421,7 @@ jobs:
         with:
           node-version: '24'
       - name: Validate JSON
-        run: node ../../.github/scripts/ci-validate-tsconfig.mjs
+        run: node ../../.github/scripts/ci-validate-tsconfig.mts
       - name: Smoke test — extend strict.json against a sample
         run: bash ../../.github/scripts/ci-tsconfig-smoke.sh
       - run: npm pack --dry-run
@@ -605,6 +605,8 @@ jobs:
       - name: Lint, typecheck, and native shell checks
         if: needs.changes.outputs.reviewed-static != 'true'
         run: bash ../../.github/scripts/ci-static-analysis.sh
+      # The canonical dispatcher also enforces the exact committed repository
+      # manifest and its explicitly opted-in native warning ratchet.
       - name: Check repository standards
         if: needs.changes.outputs.reviewed-static != 'true'
         run: uv run code-standards --root ../.. check --jobs 2 .

@@ -106,7 +106,7 @@ class Plan:
 
 
 DEFAULT_CI_RUNNER: Final = "ubuntu-latest"
-_ESLINT_CONFIG: Final = "eslint.config.mjs"
+_ESLINT_CONFIG: Final = "eslint.config.ts"
 _ESLINT_CONFIG_NAMES: Final = (
     "eslint.config.js",
     "eslint.config.mjs",
@@ -1662,7 +1662,10 @@ def _eslint_wiring_reaches_strict(
             target.is_file() or (planned_strict is not None and target == planned_strict.resolve())
         ):
             return True
-        candidates = (target, *(target.with_suffix(suffix) for suffix in (".js", ".mjs", ".cjs", ".ts")))
+        candidates = (
+            target,
+            *(target.with_suffix(suffix) for suffix in (".js", ".mjs", ".cjs", ".ts", ".mts", ".cts")),
+        )
         if any(
             _eslint_wiring_reaches_strict(candidate, root, visited, planned_strict=planned_strict)
             for candidate in candidates
@@ -1900,7 +1903,7 @@ export default [
   //     }],
   //   },
   // },
-];
+] satisfies import("eslint").Linter.Config[];
 """
 
 

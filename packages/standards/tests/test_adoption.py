@@ -1395,7 +1395,7 @@ def test_init_writes_a_typescript_entrypoint_with_an_override_seam(tmp_path: Pat
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert proc.returncode == 0, proc.stderr
 
-    entrypoint = (tmp_path / "eslint.config.mjs").read_text()
+    entrypoint = (tmp_path / "eslint.config.ts").read_text()
     assert 'import strict from "./eslint.strict.mjs"' in entrypoint
     assert 'testFrameworks: ["vitest", "bun", "node", "testing-library", "playwright"]' in entrypoint
     assert "repo-specific overrides" in entrypoint
@@ -1405,6 +1405,54 @@ def test_init_writes_a_typescript_entrypoint_with_an_override_seam(tmp_path: Pat
         (CONFIGS_DIR / "doctor.config.json").read_text(encoding="utf-8")
     )
     assert not (tmp_path / ".ruff-strict.toml").exists()
+    peers = manifest.eslint_peers()
+    assert peers["jiti"] == "2.7.0"
+    repository = tomllib.loads((tmp_path / ".repo-standards/repository.toml").read_text(encoding="utf-8"))
+    assert "repository/artifacts/untyped-javascript" not in repository.get("enabled_rules", [])
+    assert "javascript" not in repository
+    before = (tmp_path / "eslint.config.ts").read_bytes()
+    assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
+    assert (tmp_path / "eslint.config.ts").read_bytes() == before
+    assert not (tmp_path / "eslint.config.mjs").exists()
+
+
+def test_generated_typescript_entrypoint_is_compiler_checked(tmp_path: Path) -> None:
+    modules = REPO_ROOT / "packages/typescript/node_modules"
+    compiler = modules / ".bin/tsc"
+    if shutil.which("node") is None or not compiler.is_file():
+        pytest.skip("requires the repository's locked TypeScript compiler")
+    _typescript_repo(tmp_path)
+    (tmp_path / "node_modules").symlink_to(modules, target_is_directory=True)
+    assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
+    entrypoint = tmp_path / "eslint.config.ts"
+    before = entrypoint.read_text(encoding="utf-8")
+    # The synchronized .mjs is an intentional runtime boundary. allowJs permits
+    # its existing JSDoc return contract; the authored .ts entrypoint stays strict.
+    command = (
+        str(compiler),
+        "--strict",
+        "--noEmit",
+        "--allowJs",
+        "--skipLibCheck",
+        "--target",
+        "ES2025",
+        "--module",
+        "NodeNext",
+        "--moduleResolution",
+        "NodeNext",
+        "--types",
+        "node",
+        str(entrypoint),
+    )
+    accepted = subprocess.run(command, cwd=tmp_path, capture_output=True, text=True, check=False, timeout=30)
+    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+    rejected = before.replace("\n] satisfies", "\n  { name: 17 },\n] satisfies")
+    assert rejected != before
+    entrypoint.write_text(rejected, encoding="utf-8")
+    invalid = subprocess.run(command, cwd=tmp_path, capture_output=True, text=True, check=False, timeout=30)
+    assert invalid.returncode != 0
+    assert "number" in invalid.stdout
+    assert "string" in invalid.stdout
 
 
 @pytest.mark.parametrize(
@@ -2217,9 +2265,9 @@ def test_init_wires_the_subproject_that_actually_installs_eslint(tmp_path: Path)
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert proc.returncode == 0, proc.stderr
 
-    assert (tmp_path / "web" / "eslint.config.mjs").is_file()
+    assert (tmp_path / "web" / "eslint.config.ts").is_file()
     assert (tmp_path / "web" / "eslint.strict.mjs").is_file()
-    assert not (tmp_path / "eslint.config.mjs").exists()
+    assert not (tmp_path / "eslint.config.ts").exists()
 
     parsed: object = json.loads((tmp_path / "web" / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] — untyped stdlib boundary
     assert "eslint-plugin-react" in manifest.table_field(manifest.as_table(parsed), "overrides")
@@ -4123,16 +4171,20 @@ def test_init_safely_wires_existing_python_and_typescript_configs(tmp_path: Path
     assert "// hand-rolled" in eslint
 
 
-def test_init_wires_the_existing_eslint_js_entrypoint_without_creating_a_shadow(tmp_path: Path) -> None:
+@pytest.mark.parametrize("suffix", ["js", "cjs", "mjs", "ts", "mts", "cts"])
+def test_init_wires_the_existing_eslint_js_entrypoint_without_creating_a_shadow(tmp_path: Path, suffix: str) -> None:
     _typescript_repo(tmp_path)
-    entrypoint = tmp_path / "eslint.config.js"
+    entrypoint = tmp_path / f"eslint.config.{suffix}"
     entrypoint.write_text("export default [];\n", encoding="utf-8")
 
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
 
     assert proc.returncode == 0, proc.stderr
     assert "eslint.strict.mjs" in entrypoint.read_text(encoding="utf-8")
-    assert not (tmp_path / "eslint.config.mjs").exists()
+    assert sorted(path.name for path in tmp_path.glob("eslint.config.*")) == [f"eslint.config.{suffix}"]
+    before = entrypoint.read_bytes()
+    assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
+    assert entrypoint.read_bytes() == before
 
 
 def test_setup_composes_a_define_config_entrypoint(tmp_path: Path) -> None:

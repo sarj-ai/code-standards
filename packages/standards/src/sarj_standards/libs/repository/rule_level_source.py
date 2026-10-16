@@ -52,7 +52,7 @@ def _typescript(root: Path, source: str, level: DefaultLevel) -> _RenderedLevel:
     if node is None:
         msg = "cannot edit TypeScript severity: node is not installed"
         raise RuntimeError(msg)
-    helper = Path(__file__).parents[2] / "configs/rule-level-source.mjs"
+    helper = Path(__file__).parents[2] / "configs/rule-level-source.mts"
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed parser helper and severity.
         (node, str(helper), level.value),
         cwd=root / "packages/typescript",

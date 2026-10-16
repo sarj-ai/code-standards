@@ -30,7 +30,15 @@ _PROJECT_SKIP_DIRS = frozenset({".git", ".venv", "build", "dist", "node_modules"
 _SKILL_ARTIFACT_ROOTS = frozenset({".agents", ".claude"})
 _ESLINT_SUFFIXES = frozenset({".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"})
 _ESLINT_GLOBAL_IGNORE_NAMES = frozenset(
-    {"eslint.config.js", "eslint.config.cjs", "eslint.config.mjs", "eslint.config.ts", "eslint.strict.mjs"}
+    {
+        "eslint.config.js",
+        "eslint.config.cjs",
+        "eslint.config.mjs",
+        "eslint.config.ts",
+        "eslint.config.mts",
+        "eslint.config.cts",
+        "eslint.strict.mjs",
+    }
 )
 _COMMAND_TIMEOUT = timedelta(minutes=10)
 _GIT_DISCOVERY_TIMEOUT = timedelta(seconds=5)
@@ -272,7 +280,14 @@ def _nearest_lockfile_owner(bounded: tuple[Path, ...], lock_names: tuple[str, ..
 
 
 def _eslint_config(project: Path) -> Path | None:
-    names = ("eslint.config.js", "eslint.config.cjs", "eslint.config.mjs", "eslint.config.ts")
+    names = (
+        "eslint.config.js",
+        "eslint.config.mjs",
+        "eslint.config.cjs",
+        "eslint.config.ts",
+        "eslint.config.mts",
+        "eslint.config.cts",
+    )
     return next((project / name for name in names if (project / name).is_file()), None)
 
 

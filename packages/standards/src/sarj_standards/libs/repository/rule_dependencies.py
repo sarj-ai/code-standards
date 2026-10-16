@@ -228,7 +228,7 @@ class RuleDependencies:
         prerequisite = f"rule comparison requires preinstalled Node {pins.node} and locked @typescript/typescript6 {pins.package} (compiler {pins.runtime}); use documented repository setup; no automatic installation or fallback"
         if not compiler.is_file():
             raise ValueError(prerequisite)
-        resource = files("sarj_standards.libs.repository").joinpath("rule_imports.cjs")
+        resource = files("sarj_standards.libs.repository").joinpath("rule_imports.mts")
         try:
             with as_file(resource) as frontend:
                 result = runner(

@@ -686,7 +686,7 @@ def test_parser_version_pair_rejects_fully_functional_wrong_compiler(repository:
     before = _write_revision(repository, [entry], "compiler-pair baseline")
     with pytest.raises(ValueError, match=r"preinstalled Node.*compiler"):
         rule_changes.compare(repository, before=before, after=before)
-    frontend = files("sarj_standards.libs.repository").joinpath("rule_imports.cjs")
+    frontend = files("sarj_standards.libs.repository").joinpath("rule_imports.mts")
     invoked = subprocess.run(
         ("node", str(frontend), str(compiler), pins.node, pins.package, pins.runtime),
         cwd=repository,

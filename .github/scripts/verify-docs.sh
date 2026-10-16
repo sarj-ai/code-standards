@@ -27,4 +27,4 @@ wait "$lint_pid" || result=1
 wait "$types_pid" || result=1
 if [[ "$result" != 0 ]]; then exit "$result"; fi
 run_check Build npm --ignore-scripts run build
-run_check Distribution node scripts/verify-third-party-catalog.mjs --dist
+run_check Distribution node scripts/verify-third-party-catalog.ts --dist

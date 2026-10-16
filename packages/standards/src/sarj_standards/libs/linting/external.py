@@ -116,8 +116,8 @@ _CGROUP_MEMORY_LIMIT_FILES: Final = (
     Path("/sys/fs/cgroup/memory.max"),
     Path("/sys/fs/cgroup/memory/memory.limit_in_bytes"),
 )
-_ESLINT_FORMATTER: Final = Path(__file__).parents[2] / "configs" / "eslint-compact-formatter.mjs"
-_ESLINT_SELECTED_RUNNER: Final = Path(__file__).parents[2] / "configs" / "eslint-selected-rules.mjs"
+_ESLINT_FORMATTER: Final = Path(__file__).parents[2] / "configs" / "eslint-compact-formatter.mts"
+_ESLINT_SELECTED_RUNNER: Final = Path(__file__).parents[2] / "configs" / "eslint-selected-rules.mts"
 _PYTHON_TEST_PATHS: Final = PathSpec.from_lines(
     "gitignore", ("**/test/**", "**/tests/**", "**/test_*.py", "**/*_test.py", "**/conftest.py")
 )

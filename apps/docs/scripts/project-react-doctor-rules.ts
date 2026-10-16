@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 
 import { REACT_DOCTOR_RULES } from "oxlint-plugin-react-doctor/core";
 
+import { array, record, text } from "./_json.ts";
+
 const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const REPOSITORY_ROOT = resolve(APP_ROOT, "../..");
 const CONFIG_PATH = join(
@@ -17,7 +19,9 @@ const REACT_DOCTOR_BIN = join(
   APP_ROOT,
   "node_modules/react-doctor/bin/react-doctor.js",
 );
-const FRAMEWORK_CONTEXTS = {
+const FRAMEWORK_CONTEXTS: Readonly<
+  Record<string, readonly [string, string] | undefined>
+> = {
   global: ["react-project", "React projects"],
   nextjs: ["nextjs-project", "Next.js projects"],
   preact: ["preact-project", "Preact projects"],
@@ -27,11 +31,17 @@ const FRAMEWORK_CONTEXTS = {
 };
 
 async function project() {
-  const projectRoot = await mkdtemp(join(tmpdir(), "sarj-react-doctor-catalog-"));
+  const projectRoot = await mkdtemp(
+    join(tmpdir(), "sarj-react-doctor-catalog-"),
+  );
   try {
     await Promise.all([
       cp(CONFIG_PATH, join(projectRoot, "doctor.config.json")),
-      writeFile(join(projectRoot, "package.json"), '{"private":true}\n', "utf8"),
+      writeFile(
+        join(projectRoot, "package.json"),
+        '{"private":true}\n',
+        "utf8",
+      ),
     ]);
     const output = execFileSync(
       process.execPath,
@@ -43,18 +53,31 @@ async function project() {
         maxBuffer: 16 * 1024 * 1024,
       },
     );
-    const effectiveRules = JSON.parse(output);
-    if (!Array.isArray(effectiveRules)) {
-      throw new TypeError("React Doctor rules list must return an array");
-    }
-    const metadata = new Map(REACT_DOCTOR_RULES.map((entry) => [entry.key, entry]));
+    const effectiveRules = array(
+      JSON.parse(output) as unknown,
+      "React Doctor rules",
+    ).map((value) => {
+      const entry = record(value, "React Doctor rule");
+      return {
+        key: text(entry["key"], "rule key"),
+        id: text(entry["id"], "rule id"),
+        category: text(entry["category"], "rule category"),
+        framework: text(entry["framework"], "rule framework"),
+        severity: text(entry["severity"], "rule severity"),
+      };
+    });
+    const metadata = new Map(
+      REACT_DOCTOR_RULES.map((entry) => [entry.key, entry]),
+    );
     const rules = effectiveRules
       .filter(({ severity }) => severity === "error" || severity === "warn")
       .map(({ key, id, category, framework, severity }) => {
         const entry = metadata.get(key);
-        if (entry === undefined) throw new Error(`missing React Doctor metadata for ${key}`);
+        if (entry === undefined)
+          throw new Error(`missing React Doctor metadata for ${key}`);
         const context = FRAMEWORK_CONTEXTS[framework];
-        if (context === undefined) throw new Error(`unknown React Doctor framework ${framework}`);
+        if (!context)
+          throw new Error(`unknown React Doctor framework ${framework}`);
         const level = severity === "warn" ? "warning" : severity;
         const contexts = [{ id: context[0], label: context[1], level }];
         return {
@@ -67,7 +90,10 @@ async function project() {
           family: category,
           autofix: "none",
           hasSuggestions: false,
-          profiles: ["application", "standard"].map((name) => ({ name, contexts })),
+          profiles: ["application", "standard"].map((name) => ({
+            name,
+            contexts,
+          })),
         };
       });
     process.stdout.write(`${JSON.stringify({ rules })}\n`);

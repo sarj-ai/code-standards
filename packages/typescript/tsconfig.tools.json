@@ -1,0 +1,30 @@
+{
+  "extends": "../tsconfig/strict.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "isolatedDeclarations": false,
+    "allowImportingTsExtensions": true,
+    "types": ["node"],
+    "ignoreDeprecations": "6.0",
+    "paths": {
+      "typescript": ["./node_modules/typescript/lib/typescript.d.ts"],
+      "eslint": ["./node_modules/eslint/lib/types/index.d.ts"],
+      "@eslint/js": ["./node_modules/@eslint/js/types/index.d.ts"],
+      "globals": ["./node_modules/globals/index.d.ts"],
+      "typescript-eslint": ["./node_modules/typescript-eslint/dist/index.d.ts"],
+      "eslint/config": ["./node_modules/eslint/lib/types/config-api.d.ts"]
+    }
+  },
+  "include": [
+    "scripts/**/*.ts",
+    "module-constant-naming-options.ts",
+    "../standards/src/sarj_standards/libs/repository/rule_imports.mts",
+    "../../.github/scripts/*.mts",
+    "../standards/eslint.config.mts",
+    "../standards/src/sarj_standards/configs/*.mts",
+    "eslint.config.ts",
+    "eslint.dogfood.config.ts",
+    "eslint-rule-setting.ts"
+  ],
+  "exclude": ["node_modules", "dist", "tests"]
+}

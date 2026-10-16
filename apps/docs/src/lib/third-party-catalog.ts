@@ -1,4 +1,4 @@
-import rawThirdPartyCatalog from "../generated/third-party-rules.v1.json";
+import rawThirdPartyCatalog from "../generated/third-party-rules.v1.json" with { type: "json" };
 
 export const THIRD_PARTY_PROFILES = ["application", "standard"] as const;
 export const THIRD_PARTY_PAGE_SIZE = 32;
@@ -6,9 +6,7 @@ export type ThirdPartyProfile = (typeof THIRD_PARTY_PROFILES)[number];
 export type ThirdPartyLevel = "error" | "warning";
 export type ThirdPartyAutofix = "always" | "available" | "none" | "sometimes";
 export type ThirdPartyProjectionScope =
-  | "complete"
-  | "config-explicit"
-  | "provider-only";
+  "complete" | "config-explicit" | "provider-only";
 
 export interface ThirdPartyProvider {
   id: string;
@@ -87,7 +85,7 @@ function requireString(
   context: string,
 ): string {
   const value = record[field];
-  if (typeof value !== "string" || value.length === 0) {
+  if (typeof value !== "string" || value["length"] === 0) {
     throw new TypeError(`${context}.${field} must be a non-empty string.`);
   }
   return value;
@@ -99,7 +97,7 @@ function requireHttps(
   context: string,
 ): string {
   const value = requireString(record, field, context);
-  if (!value.startsWith("https://"))
+  if (!value["startsWith"]("https://"))
     throw new TypeError(`${context}.${field} must be an HTTPS URL.`);
   return value;
 }
@@ -207,18 +205,18 @@ function parseRule(value: unknown, index: number): ThirdPartyRule {
   if (!["always", "available", "none", "sometimes"].includes(autofix)) {
     throw new TypeError(`${context}.autofix is invalid.`);
   }
-  if (typeof record.hasSuggestions !== "boolean") {
+  if (typeof record["hasSuggestions"] !== "boolean") {
     throw new TypeError(`${context}.hasSuggestions must be a boolean.`);
   }
   if (
-    record.family !== null &&
-    (typeof record.family !== "string" || record.family.length === 0)
+    record["family"] !== null &&
+    (typeof record["family"] !== "string" || record["family"].length === 0)
   ) {
     throw new TypeError(
       `${context}.family must be a non-empty string or null.`,
     );
   }
-  const family = record.family;
+  const family = record["family"];
   const profiles = requireArray(record, "profiles", context).map(
     (item, profileIndex) =>
       parseProfile(item, `${context}.profiles[${String(profileIndex)}]`),
@@ -235,19 +233,19 @@ function parseRule(value: unknown, index: number): ThirdPartyRule {
     docsUrl: requireHttps(record, "docsUrl", context),
     family,
     autofix: autofix as ThirdPartyAutofix,
-    hasSuggestions: record.hasSuggestions,
+    hasSuggestions: record["hasSuggestions"],
     profiles,
   };
 }
 
-function parseCatalog(value: unknown): ThirdPartyCatalog {
+export function parseCatalog(value: unknown): ThirdPartyCatalog {
   const record = requireRecord(value, "third-party catalog");
   requireExactFields(
     record,
     ["profiles", "providers", "rules", "schemaVersion"],
     "third-party catalog",
   );
-  if (record.schemaVersion !== 1)
+  if (record["schemaVersion"] !== 1)
     throw new TypeError("third-party catalog schemaVersion must be 1.");
   const profiles = requireArray(record, "profiles", "third-party catalog");
   if (

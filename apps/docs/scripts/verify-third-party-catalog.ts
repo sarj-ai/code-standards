@@ -6,6 +6,13 @@ import { TextEncoder } from "node:util";
 import { URL } from "node:url";
 import { gzipSync } from "node:zlib";
 
+import {
+  parseCatalog,
+  type ThirdPartyProvider,
+  type ThirdPartyRule,
+} from "../src/lib/third-party-catalog.ts";
+import { array, record, text } from "./_json.ts";
+
 const appRoot = resolve(import.meta.dirname, "..");
 const artifactPath = resolve(
   appRoot,
@@ -16,10 +23,12 @@ const mode = process.argv[2];
 
 assert.ok(
   mode === "--source" || mode === "--dist",
-  "usage: node scripts/verify-third-party-catalog.mjs --source|--dist",
+  "usage: node scripts/verify-third-party-catalog.ts --source|--dist",
 );
 
-const catalog = JSON.parse(await readFile(artifactPath, "utf8"));
+const catalog = parseCatalog(
+  JSON.parse(await readFile(artifactPath, "utf8")) as unknown,
+);
 const profiles = ["application", "standard"];
 const autofixValues = new Set(["always", "available", "none", "sometimes"]);
 const pageSize = 32;
@@ -35,7 +44,7 @@ function verifySource() {
   assert.ok(catalog.providers.length > 0, "catalog must contain providers");
   assert.ok(catalog.rules.length > 0, "catalog must contain rules");
 
-  const providerIds = new Set();
+  const providerIds = new Set<string>();
   for (const [index, provider] of catalog.providers.entries()) {
     const label = `providers[${String(index)}]`;
     exactFields(
@@ -51,7 +60,13 @@ function verifySource() {
       ],
       label,
     );
-    for (const field of ["engine", "id", "label", "package", "version"])
+    for (const field of [
+      "engine",
+      "id",
+      "label",
+      "package",
+      "version",
+    ] as const)
       nonemptyString(provider[field], `${label}.${field}`);
     assert.match(
       provider.id,
@@ -65,9 +80,9 @@ function verifySource() {
     providerIds.add(provider.id);
     httpsUrl(provider.homepage, `${label}.homepage`);
     assert.ok(
-      provider.projectionScope === 'complete' ||
-        provider.projectionScope === 'config-explicit' ||
-        provider.projectionScope === 'provider-only',
+      provider.projectionScope === "complete" ||
+        provider.projectionScope === "config-explicit" ||
+        ["provider-only"].includes(provider.projectionScope),
       `${label}.projectionScope is invalid`,
     );
   }
@@ -77,8 +92,8 @@ function verifySource() {
     "providers must use canonical ID order",
   );
 
-  const ruleKeys = new Set();
-  const ruleAnchors = new Set();
+  const ruleKeys = new Set<string>();
+  const ruleAnchors = new Set<string>();
   const ruleCounts = new Map(
     [...providerIds].map((providerId) => [providerId, 0]),
   );
@@ -100,7 +115,13 @@ function verifySource() {
       ],
       label,
     );
-    for (const field of ["displayId", "id", "key", "provider", "summary"])
+    for (const field of [
+      "displayId",
+      "id",
+      "key",
+      "provider",
+      "summary",
+    ] as const)
       nonemptyString(rule[field], `${label}.${field}`);
     assert.ok(
       providerIds.has(rule.provider),
@@ -139,14 +160,14 @@ function verifySource() {
         profile.contexts.length > 0,
         `${profileLabel} must contain an enabled context`,
       );
-      const contextIds = new Set();
+      const contextIds = new Set<string>();
       for (const [contextIndex, context] of profile.contexts.entries()) {
         const contextLabel = `${profileLabel}.contexts[${String(contextIndex)}]`;
         exactFields(context, ["id", "label", "level"], contextLabel);
         nonemptyString(context.id, `${contextLabel}.id`);
         nonemptyString(context.label, `${contextLabel}.label`);
         assert.ok(
-          context.level === "error" || context.level === "warning",
+          ["error", "warning"].includes(context.level),
           `${contextLabel}.level is invalid`,
         );
         assert.ok(
@@ -156,7 +177,7 @@ function verifySource() {
         contextIds.add(context.id);
       }
     }
-    ruleCounts.set(rule.provider, ruleCounts.get(rule.provider) + 1);
+    ruleCounts.set(rule.provider, (ruleCounts.get(rule.provider) ?? 0) + 1);
   }
   assert.deepEqual(
     catalog.rules.map(({ key }) => key),
@@ -165,13 +186,13 @@ function verifySource() {
   );
   for (const [providerId, count] of ruleCounts) {
     const provider = catalog.providers.find(({ id }) => id === providerId);
-    if (provider.projectionScope !== "provider-only")
+    if (provider?.projectionScope !== "provider-only")
       assert.ok(count > 0, `${providerId} must own at least one rule`);
   }
   return ruleCounts;
 }
 
-function exactFields(value, expected, label) {
+function exactFields(value: object, expected: string[], label: string) {
   assert.deepEqual(
     Object.keys(value).sort(),
     [...expected].sort(),
@@ -179,17 +200,17 @@ function exactFields(value, expected, label) {
   );
 }
 
-function httpsUrl(value, label) {
+function httpsUrl(value: string, label: string) {
   nonemptyString(value, label);
   assert.equal(new URL(value).protocol, "https:", `${label} must use HTTPS`);
 }
 
-function nonemptyString(value, label) {
+function nonemptyString(value: string, label: string) {
   assert.equal(typeof value, "string", `${label} must be a string`);
   assert.ok(value.length > 0, `${label} must not be empty`);
 }
 
-async function verifyDist(ruleCounts) {
+async function verifyDist(ruleCounts: Map<string, number>) {
   const index = await readFile(
     resolve(distRoot, "third-party-linters/index.html"),
     "utf8",
@@ -270,7 +291,7 @@ async function verifyDist(ruleCounts) {
     ),
   );
   for (const provider of catalog.providers) {
-    const totalPages = Math.ceil(ruleCounts.get(provider.id) / pageSize);
+    const totalPages = Math.ceil((ruleCounts.get(provider.id) ?? 0) / pageSize);
     for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
       assert.ok(
         sitemap.includes(
@@ -282,47 +303,54 @@ async function verifyDist(ruleCounts) {
   }
 }
 
-async function verifyProviderPages(provider, expectedProviderOrder) {
+async function verifyProviderPages(
+  provider: ThirdPartyProvider,
+  expectedProviderOrder: string[],
+) {
   const rules = rulesForProvider(provider.id);
   const totalPages = Math.ceil(rules.length / pageSize);
   const searchIndexSource = await readFile(
     resolve(distRoot, "third-party-linters", provider.id, "rules.json"),
     "utf8",
   );
-  const searchIndex = JSON.parse(searchIndexSource);
+  const searchIndex = record(
+    JSON.parse(searchIndexSource) as unknown,
+    "search index",
+  );
+  const searchEntries = array(searchIndex["entries"], "search entries");
   assert.ok(
     gzipSync(searchIndexSource, { level: 9 }).byteLength <= 48_000,
     `${provider.id} compressed search index must stay at or below 48 KB`,
   );
   assert.equal(
-    searchIndex.pageSize,
+    searchIndex["pageSize"],
     pageSize,
     `${provider.id} search index must expose the rendered page size`,
   );
   assert.equal(
-    searchIndex.provider,
+    searchIndex["provider"],
     provider.id,
     `${provider.id} search index must identify its provider`,
   );
   assert.equal(
-    searchIndex.entries.length,
+    searchEntries.length,
     rules.length,
     `${provider.id} search index must cover every rule`,
   );
   for (const [index, rule] of rules.entries()) {
-    const entry = searchIndex.entries[index];
+    const entry = record(searchEntries[index], `search entry ${String(index)}`);
     const pageNumber = Math.floor(index / pageSize) + 1;
     exactFields(
       entry,
       ["anchor", "displayId", "family", "href", "summary"],
       `${provider.id} search entry ${String(index)}`,
     );
-    assert.equal(entry.anchor, anchorForRule(rule));
-    assert.equal(entry.displayId, rule.displayId);
-    assert.equal(entry.family, rule.family);
-    assert.equal(entry.summary, plainSearchSummary(rule.summary));
+    assert.equal(entry["anchor"], anchorForRule(rule));
+    assert.equal(entry["displayId"], rule.displayId);
+    assert.equal(entry["family"], rule.family);
+    assert.equal(entry["summary"], plainSearchSummary(rule.summary));
     assert.equal(
-      entry.href,
+      entry["href"],
       `${providerPageHref(provider.id, pageNumber)}#${anchorForRule(rule)}`,
     );
   }
@@ -344,7 +372,7 @@ async function verifyProviderPages(provider, expectedProviderOrder) {
     `${provider.id} pagination routes must exactly match its rule count`,
   );
 
-  const providerDocHrefs = [];
+  const providerDocHrefs: string[] = [];
   for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
     const pagePath =
       pageNumber === 1
@@ -404,7 +432,7 @@ async function verifyProviderPages(provider, expectedProviderOrder) {
       hrefSet.has(provider.homepage),
       `${provider.id} page ${String(pageNumber)} must link to its official homepage`,
     );
-    const expectedDocsUrlCounts = new Map();
+    const expectedDocsUrlCounts = new Map<string, number>();
     for (const rule of pageRules) {
       expectedDocsUrlCounts.set(
         rule.docsUrl,
@@ -463,7 +491,7 @@ async function verifyProviderPages(provider, expectedProviderOrder) {
   );
 }
 
-function detailsAttributesForSummary(source, label) {
+function detailsAttributesForSummary(source: string, label: string) {
   let labelIndex = source.indexOf(label);
   while (labelIndex >= 0) {
     const summaryStart = source.lastIndexOf("<summary", labelIndex);
@@ -485,14 +513,14 @@ function detailsAttributesForSummary(source, label) {
   assert.fail(`could not find the ${label} disclosure`);
 }
 
-function anchorForRule(rule) {
+function anchorForRule(rule: Pick<ThirdPartyRule, "provider" | "id">) {
   const encodedId = [...new TextEncoder().encode(`${rule.provider}:${rule.id}`)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
   return `rule-${encodedId}`;
 }
 
-function escapeHtml(value) {
+function escapeHtml(value: string) {
   return value
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -501,7 +529,7 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function plainSearchSummary(value) {
+function plainSearchSummary(value: string) {
   return value.replaceAll(/`([^`]+)`/gu, "$1");
 }
 
@@ -515,7 +543,7 @@ function providersForNavigation() {
   );
 }
 
-function rulesForProvider(providerId) {
+function rulesForProvider(providerId: string) {
   return catalog.rules
     .filter((rule) => rule.provider === providerId)
     .sort((left, right) =>
@@ -527,30 +555,30 @@ function rulesForProvider(providerId) {
     );
 }
 
-function compareVisible(left, right, tieBreaker) {
+function compareVisible(left: string, right: string, tieBreaker: number) {
   return left.localeCompare(right, "en", { sensitivity: "base" }) || tieBreaker;
 }
 
-function summaryParts(value) {
+function summaryParts(value: string) {
   return value
     .split(/`([^`]+)`/gu)
     .map((part) => part.trim())
     .filter(Boolean);
 }
 
-function providerPageHref(providerId, page) {
+function providerPageHref(providerId: string, page: number) {
   return page === 1
     ? `/third-party-linters/${providerId}/`
     : `/third-party-linters/${providerId}/${String(page)}/`;
 }
 
-function htmlHrefs(source) {
+function htmlHrefs(source: string) {
   return [...source.matchAll(/\shref="([^"]+)"/gu)].map((match) =>
-    match[1].replaceAll("&amp;", "&"),
+    text(match[1], "HTML href").replaceAll("&amp;", "&"),
   );
 }
 
-function occurrences(source, pattern) {
+function occurrences(source: string, pattern: RegExp) {
   return source.match(pattern)?.length ?? 0;
 }
 

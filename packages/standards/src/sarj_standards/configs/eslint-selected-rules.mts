@@ -2,17 +2,42 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { relative, resolve, sep } from "node:path";
 
-import format from "./eslint-compact-formatter.mjs";
+import type { ESLint as NativeESLint } from "eslint";
+import { record, strings } from "./tool-json.mts";
+
+import format from "./eslint-compact-formatter.mts";
 
 // Resolve the consumer's installed ESLint, including workspace hoisting and PnP.
 const require = createRequire(resolve("package.json"));
-const { ESLint } = require("eslint");
-const request = JSON.parse(process.argv[2]);
+const { ESLint } = require("eslint") as typeof import("eslint");
+const argument = process.argv[2];
+if (argument === undefined)
+  throw new Error("Selected ESLint request is required");
+const rawRequest = record(
+  JSON.parse(argument) as unknown,
+  "Selected ESLint request",
+);
+const configPath = rawRequest["config"];
+if (configPath !== null && typeof configPath !== "string")
+  throw new Error("Selected ESLint config must be a path or null");
+const request = {
+  rules: strings(rawRequest["rules"], "Selected ESLint rules"),
+  config: configPath,
+  upstreamRules: strings(
+    rawRequest["upstreamRules"] ?? [],
+    "Selected upstream rules",
+  ),
+  upstreamAdvisories: strings(
+    rawRequest["upstreamAdvisories"] ?? [],
+    "Selected upstream advisories",
+  ),
+  passOnUnpruned: rawRequest["passOnUnpruned"] === true,
+};
 const selected = new Set([
   ...request.rules.map((rule) => `@sarj/${rule}`),
   ...(request.upstreamRules ?? []),
 ]);
-const options = {
+const options: NativeESLint.Options = {
   cwd: process.cwd(),
   ...(request.config === null ? {} : { overrideConfigFile: request.config }),
   // A partial rule run cannot validate whether unrelated inline directives are
@@ -33,32 +58,46 @@ const options = {
 const eslint = new ESLint(options);
 const files = process.argv.slice(4);
 const advisories = request.upstreamAdvisories ?? [];
-let results;
+let results: NativeESLint.LintResult[];
 if (advisories.length === 0) {
   results = await eslint.lintFiles(files);
 } else {
-  const packages = {
+  const packages: Record<string, string> = {
     "@sarj": "@sarj/eslint-plugin",
     vitest: "@vitest/eslint-plugin",
   };
   const namespaces = [
     ...new Set(advisories.map((rule) => rule.slice(0, rule.lastIndexOf("/")))),
   ];
-  const groups = new Map();
+  const groups = new Map<string, { missing: string[]; files: string[] }>();
   for (const file of files) {
-    const config = await eslint.calculateConfigForFile(file);
-    const missing = config
-      ? namespaces.filter((name) => !config.plugins?.[name])
-      : [];
+    const configured: unknown = await eslint.calculateConfigForFile(file);
+    const plugins =
+      configured === undefined
+        ? {}
+        : record(
+            record(configured, "effective ESLint config")["plugins"] ?? {},
+            "effective ESLint plugins",
+          );
+    const missing =
+      configured === undefined
+        ? []
+        : namespaces.filter((name) => !plugins[name]);
     const key = missing.join(",");
-    if (!groups.has(key)) groups.set(key, { missing, files: [] });
-    groups.get(key).files.push(file);
+    const group = groups.get(key) ?? { missing, files: [] };
+    group.files.push(file);
+    groups.set(key, group);
   }
   results = [];
   for (const group of groups.values()) {
     const plugins = Object.fromEntries(
       group.missing.map((name) => {
-        const loaded = require(packages[name]);
+        const packageName = packages[name];
+        if (packageName === undefined)
+          throw new Error(`Unsupported advisory namespace ${name}`);
+        const loaded = require(packageName) as NativeESLint.Plugin & {
+          readonly default?: NativeESLint.Plugin;
+        };
         return [name, loaded.default ?? loaded];
       }),
     );
@@ -78,13 +117,29 @@ if (advisories.length === 0) {
 // callers. Check only rules that actually ran; unselected entries remain valid.
 let unused = false;
 if (!request.passOnUnpruned) {
-  let suppressions = {};
+  const suppressions = new Map<string, Map<string, { count: number }>>();
   try {
-    suppressions = JSON.parse(
-      await readFile("eslint-suppressions.json", "utf8"),
+    const document = record(
+      JSON.parse(await readFile("eslint-suppressions.json", "utf8")) as unknown,
+      "ESLint suppressions",
     );
+    for (const [path, value] of Object.entries(document)) {
+      const entries = new Map<string, { count: number }>();
+      for (const [id, entry] of Object.entries(
+        record(value, "ESLint file suppressions"),
+      )) {
+        const count = record(entry, "ESLint suppression")["count"];
+        if (typeof count !== "number" || !Number.isInteger(count) || count < 0)
+          throw new Error(
+            "ESLint suppression count must be a nonnegative integer",
+          );
+        entries.set(id, { count });
+      }
+      suppressions.set(path, entries);
+    }
   } catch (error) {
-    if (error.code !== "ENOENT") throw error;
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT"))
+      throw error;
   }
   unused = results.some((result) => {
     const file = relative(process.cwd(), result.filePath).split(sep).join("/");
@@ -94,7 +149,7 @@ if (!request.passOnUnpruned) {
         message.suppressions.some((suppression) => suppression.kind === "file"),
       ),
     ];
-    return Object.entries(suppressions[file] ?? {}).some(
+    return [...(suppressions.get(file) ?? [])].some(
       ([ruleId, entry]) =>
         selected.has(ruleId) &&
         entry.count >

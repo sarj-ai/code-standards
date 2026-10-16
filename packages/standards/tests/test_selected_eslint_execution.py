@@ -131,3 +131,35 @@ def test_selected_shadcn_rule_runs_the_shipped_policy_with_native_severity_and_s
         assert len(diagnostics) == 1
         assert diagnostics[0].severity is (Severity.WARNING if severity == "warn" else Severity.ERROR)
         assert "p-[13px]" in diagnostics[0].message
+
+
+@pytest.mark.parametrize("suffix", ["ts", "mts", "cts"])
+def test_selected_eslint_discovers_typescript_config_and_retains_typed_options(tmp_path: Path, suffix: str) -> None:
+    modules = Path(__file__).resolve().parents[2] / "typescript/node_modules"
+    if shutil.which("node") is None or not (modules / "jiti/package.json").is_file():
+        pytest.skip("requires the repository's locked TypeScript loader")
+    (tmp_path / "node_modules").symlink_to(modules, target_is_directory=True)
+    (tmp_path / "package.json").write_text('{"type":"module"}', encoding="utf-8")
+    (tmp_path / f"eslint.config.{suffix}").write_text(
+        "import type {Linter} from 'eslint';\n"
+        "import parser from '@typescript-eslint/parser';\n"
+        "const options: Linter.Config = {files:['**/*.ts'],languageOptions:{parser},"
+        "rules:{'no-restricted-syntax':['warn',{selector:'Identifier[name=blocked]',message:'typed config applied'}]}};\n"
+        "export default [options];\n",
+        encoding="utf-8",
+    )
+    sample = tmp_path / "sample.ts"
+    sample.write_text("const blocked: number = 1;\n", encoding="utf-8")
+    reports = analyze_external(
+        [str(sample)],
+        root=tmp_path,
+        trust=TrustMode.TRUSTED,
+        capabilities=frozenset({"eslint"}),
+        rule_ids=frozenset(),
+        upstream_rules=UpstreamESLintRules(frozenset({"no-restricted-syntax"})),
+    )
+    assert len(reports) == 1
+    assert reports[0].issues == ()
+    assert [(item.rule_id, item.severity, item.message) for item in reports[0].diagnostics] == [
+        ("no-restricted-syntax", Severity.WARNING, "typed config applied")
+    ]
