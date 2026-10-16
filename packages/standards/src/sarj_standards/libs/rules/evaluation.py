@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 from enum import StrEnum
+import math
 from typing import TYPE_CHECKING, Protocol
 
 from sarj_standards.libs.corpus import CorpusSnapshot
@@ -71,7 +72,12 @@ class EvaluationEvidence:
         if not self.corpora or not all(corpus.verified for corpus in self.corpora) or not self.sample_method.strip():
             msg = "evaluation evidence requires verified corpora and a sampling method"
             raise ValueError(msg)
-        if self.elapsed < timedelta() or self.baseline <= timedelta() or self.maximum_slowdown <= 0:
+        if (
+            self.elapsed < timedelta()
+            or self.baseline <= timedelta()
+            or not math.isfinite(self.maximum_slowdown)
+            or self.maximum_slowdown <= 0
+        ):
             msg = "evaluation timings require a positive baseline and slowdown budget"
             raise ValueError(msg)
 

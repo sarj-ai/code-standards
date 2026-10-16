@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from bisect import bisect_right
-from decimal import Decimal
 from functools import lru_cache
 from itertools import starmap
+import math
 import operator
 from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, NamedTuple, final, override
+from typing import TYPE_CHECKING, Final, NamedTuple, final, override
 
 from sqlglot import exp
 from sqlglot.errors import SqlglotError
@@ -62,7 +62,22 @@ ASSIGNMENT_PATTERN = re.compile(
     r"\b(?:SET\s+(?:(?:LOCAL|SESSION)\s+)?|RESET\s+)((?:lock_timeout|statement_timeout)\b|\"(?:lock_timeout|statement_timeout)\")(?:\s*(?:=|\bTO\b)\s*('[\s\S]*?'|\"[^\"]*\"|[^\s;]+))?|set_config\s*\(\s*'?(lock_timeout|statement_timeout)'?\s*,\s*('[\s\S]*?'|\"[^\"]*\"|[^\s,;]+)\s*,\s*(true|false)\s*\)",
     re.IGNORECASE,
 )
-POSITIVE_VAL_PATTERN = re.compile(r"^['\"]?\s*(?P<number>[0-9]*\.?[0-9]+)\s*(?:[a-zA-Z]+\s*)?['\"]?$", re.IGNORECASE)
+POSITIVE_VAL_PATTERN = re.compile(
+    r"^['\"]?\s*(?P<number>[+-]?(?:0[xX][0-9a-fA-F]+|(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?))\s*(?P<unit>us|ms|s|min|h|d)?\s*['\"]?$"
+)
+# PostgreSQL converts to milliseconds, rounds to the next smaller time unit,
+# then rounds to the integer setting. Zero disables both timeout parameters.
+# https://www.postgresql.org/docs/current/config-setting.html
+_TIMEOUT_UNITS: Final[dict[str, tuple[float, float | None]]] = {
+    "": (1, None),
+    "us": (0.001, None),
+    "ms": (1, 0.001),
+    "s": (1_000, 1),
+    "min": (60_000, 1_000),
+    "h": (3_600_000, 60_000),
+    "d": (86_400_000, 3_600_000),
+}
+_MAXIMUM_TIMEOUT = 2_147_483_647
 
 
 @final
@@ -79,6 +94,7 @@ class RequireLockTimeout(Rule):
             "Only PostgreSQL migration paths and explicitly marked PostgreSQL migrations are checked.",
             "Materialized-view refreshes and parseable CREATE TABLE LIKE statements touch existing relations. Fresh CREATE TABLE definitions and LIKE comparisons do not establish this additional lock requirement.",
             "Literal session/local settings, RESET and RESET ALL are tracked, including intervening comments and case-insensitive parameter names. Defaults, rollback of session SET, savepoints and procedural configuration effects are not resolved.",
+            "Literal timeout values must remain positive after PostgreSQL's unit conversion and integer rounding; submillisecond values that round to zero do not bound a lock wait.",
         ),
         examples=(
             RuleExample(
@@ -100,6 +116,36 @@ class RequireLockTimeout(Rule):
                     ExampleFile.sql(
                         "supabase/migrations/001_users.sql",
                         "SET lock_timeout = '3s';\nALTER TABLE users ADD COLUMN note TEXT;\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_users.sql"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="timeout-rounded-to-disabled",
+                scenario="timeout-rounding",
+                title="A fractional timeout can round to zero",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "supabase/migrations/001_users.sql",
+                        "SET lock_timeout = '0.1ms';\nALTER TABLE users ADD COLUMN note TEXT;\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_users.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="fractional-timeout-remains-positive",
+                scenario="timeout-rounding",
+                title="A fractional timeout that remains enabled",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "supabase/migrations/001_users.sql",
+                        "SET lock_timeout = '0.6ms';\nALTER TABLE users ADD COLUMN note TEXT;\n",
                     ),
                 ),
                 focus_path=PurePosixPath("supabase/migrations/001_users.sql"),
@@ -256,4 +302,25 @@ def _apply_timeout_assignment(
 
 def _positive_timeout(value: str) -> bool:
     match = POSITIVE_VAL_PATTERN.fullmatch(value)
-    return match is not None and Decimal(match.group("number")) > 0
+    if match is None:
+        return False
+    multiplier, smaller_unit = _TIMEOUT_UNITS[match.group("unit") or ""]
+    try:
+        milliseconds = _timeout_number(match.group("number")) * multiplier
+    except ValueError, OverflowError:
+        return False
+    rounding_slack = max(1, smaller_unit or 1)
+    if not math.isfinite(milliseconds) or abs(milliseconds) > _MAXIMUM_TIMEOUT + rounding_slack:
+        return False
+    if smaller_unit is not None:
+        milliseconds = round(milliseconds / smaller_unit) * smaller_unit
+    return 0 < round(milliseconds) <= _MAXIMUM_TIMEOUT
+
+
+def _timeout_number(value: str) -> float:
+    unsigned = value.lstrip("+-")
+    if unsigned.startswith(("0x", "0X")):
+        return float(int(value, 16))
+    if len(unsigned) > 1 and unsigned.startswith("0") and unsigned.isdecimal():
+        return float(int(value, 8))
+    return float(value)

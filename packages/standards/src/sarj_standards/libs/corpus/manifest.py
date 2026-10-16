@@ -7,9 +7,9 @@ from pathlib import Path
 import re
 import stat
 import tomllib
-from typing import TypeIs
 
 from sarj_standards.libs.filesystem import is_link_like
+from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -85,10 +85,6 @@ class CorpusManifest:
             raise ValueError(msg)
 
 
-def _is_object_list(value: object) -> TypeIs[list[object]]:
-    return isinstance(value, list)
-
-
 def load_manifest(path: Path) -> CorpusManifest:
     return _load(path, expect_private=False)
 
@@ -110,7 +106,7 @@ def load_private_overlay(path: Path) -> CorpusManifest:
 def _load(path: Path, *, expect_private: bool) -> CorpusManifest:
     try:
         parsed: object = tomllib.loads(path.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError) as exc:
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
         label = "<private-corpus-overlay>" if expect_private else str(path)
         msg = f"could not read corpus manifest {label}"
         if not expect_private:
@@ -119,7 +115,7 @@ def _load(path: Path, *, expect_private: bool) -> CorpusManifest:
     root = _table(parsed, label="corpus manifest")
     schema = root.get("schema", 1)
     private = root.get("private", False)
-    if not isinstance(schema, int) or not isinstance(private, bool):
+    if type(schema) is not int or not isinstance(private, bool):
         msg = "corpus manifest schema/private fields have invalid types"
         raise TypeError(msg)
     if private is not expect_private:
@@ -127,7 +123,7 @@ def _load(path: Path, *, expect_private: bool) -> CorpusManifest:
         msg = f"expected a {expected}"
         raise ValueError(msg)
     raw_sources = root.get("corpus", [])
-    if not _is_object_list(raw_sources):
+    if not is_object_list(raw_sources):
         msg = "corpus must be an array of tables"
         raise TypeError(msg)
     visibility = CorpusVisibility.PRIVATE if private else CorpusVisibility.PUBLIC
@@ -136,7 +132,7 @@ def _load(path: Path, *, expect_private: bool) -> CorpusManifest:
 
 
 def _table(value: object, *, label: str) -> dict[str, object]:
-    if not _is_object_dict(value):
+    if not is_object_mapping(value):
         msg = f"{label} must be a table"
         raise TypeError(msg)
     table: dict[str, object] = {}
@@ -146,10 +142,6 @@ def _table(value: object, *, label: str) -> dict[str, object]:
             raise TypeError(msg)
         table[key] = item
     return table
-
-
-def _is_object_dict(value: object) -> TypeIs[dict[object, object]]:
-    return isinstance(value, dict)
 
 
 def _source(values: dict[str, object], origin: Path, visibility: CorpusVisibility) -> CorpusSource:
@@ -171,6 +163,11 @@ def _source(values: dict[str, object], origin: Path, visibility: CorpusVisibilit
     if revision is not None and not isinstance(revision, str):
         msg = "corpus revision must be a string"
         raise TypeError(msg)
+    try:
+        corpus_kind = CorpusKind(kind)
+    except ValueError:
+        msg = "corpus kind must be local or git"
+        raise ValueError(msg) from None
     resolved = Path(root)
     if visibility is CorpusVisibility.PUBLIC and resolved.is_absolute():
         msg = "public corpus roots must be relative to the manifest"
@@ -180,10 +177,13 @@ def _source(values: dict[str, object], origin: Path, visibility: CorpusVisibilit
             msg = "public corpus roots must stay below the manifest directory"
             raise ValueError(msg)
         resolved = (origin.parent / resolved).resolve()
+        if visibility is CorpusVisibility.PUBLIC and not resolved.is_relative_to(origin.parent.resolve()):
+            msg = "public corpus roots must stay below the manifest directory"
+            raise ValueError(msg)
     return CorpusSource(
         name,
         resolved,
-        CorpusKind(kind),
+        corpus_kind,
         digest,
         _strings(values["include"], label="corpus include"),
         _strings(values.get("exclude", []), label="corpus exclude"),
@@ -193,7 +193,7 @@ def _source(values: dict[str, object], origin: Path, visibility: CorpusVisibilit
 
 
 def _strings(value: object, *, label: str) -> tuple[str, ...]:
-    if not _is_object_list(value) or not all(isinstance(item, str) for item in value):
+    if not is_object_list(value) or not all(isinstance(item, str) for item in value):
         msg = f"{label} must be an array of strings"
         raise TypeError(msg)
     return tuple(item for item in value if isinstance(item, str))

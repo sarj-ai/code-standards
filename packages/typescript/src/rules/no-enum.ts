@@ -7,7 +7,7 @@
 import { type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile } from "./_paths.js";
+import { isGeneratedFile, matchesAnyPattern } from "./_paths.js";
 
 type MessageIds = "noEnum";
 type Options = readonly [
@@ -49,23 +49,6 @@ export const NO_ENUM_DOCUMENTATION = {
   ],
 } as const satisfies RuleDocumentation;
 
-function matchesAnyPattern(
-  filename: string,
-  patterns: readonly string[],
-): boolean {
-  for (const pattern of patterns) {
-    // Convert minimatch-ish globs to regex: ** -> .*, * -> [^/\\]*
-    const regexSource = pattern
-      .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-      .replace(/\*\*/g, "::DOUBLESTAR::")
-      .replace(/\*/g, "[^/\\\\]*")
-      .replace(/::DOUBLESTAR::/g, ".*");
-    if (new RegExp(`^${regexSource}$`).test(filename)) {
-      return true;
-    }
-  }
-  return false;
-}
 
 export default createRule<Options, MessageIds>({
   name: "no-enum",

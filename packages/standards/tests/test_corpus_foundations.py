@@ -219,6 +219,35 @@ def test_private_snapshot_errors_do_not_reveal_roots(tmp_path: Path) -> None:
     assert "customer-bank" not in str(error.value)
 
 
+def test_private_overlay_invalid_kind_does_not_echo_private_input(tmp_path: Path) -> None:
+    overlay = tmp_path / "private.toml"
+    overlay.write_text(
+        'private = true\n[[corpus]]\nname = "sample"\nroot = "."\n'
+        'kind = "confidential-customer"\n'
+        f'digest = "{_EMPTY_DIGEST}"\ninclude = ["**/*.py"]\n',
+        encoding="utf-8",
+    )
+    overlay.chmod(0o600)
+
+    with pytest.raises(ValueError, match="kind must be local or git") as error:
+        load_private_overlay(overlay)
+
+    assert "confidential-customer" not in str(error.value)
+    assert error.value.__cause__ is None
+
+
+def test_private_overlay_invalid_utf8_uses_redacted_manifest_error(tmp_path: Path) -> None:
+    overlay = tmp_path / "confidential-customer.toml"
+    overlay.write_bytes(b"private = true\n\xff")
+    overlay.chmod(0o600)
+
+    with pytest.raises(ValueError, match="could not read corpus manifest <private-corpus-overlay>") as error:
+        load_private_overlay(overlay)
+
+    assert str(overlay) not in str(error.value)
+    assert error.value.__cause__ is None
+
+
 def test_git_corpus_root_must_match_repository_top_level(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     corpus = tmp_path / "repository" / "nested-corpus"
     corpus.mkdir(parents=True)
@@ -373,6 +402,39 @@ def test_public_manifest_rejects_parent_directory_roots(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValueError, match="below the manifest"):
+        load_manifest(manifest)
+
+
+@pytest.mark.parametrize("outside", [True, False])
+def test_public_manifest_resolves_symlink_roots_within_its_directory(tmp_path: Path, *, outside: bool) -> None:
+    public = tmp_path / "public"
+    public.mkdir()
+    corpus = (tmp_path if outside else public) / "corpus"
+    corpus.mkdir()
+    (public / "checkout").symlink_to(corpus, target_is_directory=True)
+    manifest = public / "corpora.toml"
+    manifest.write_text(
+        "[[corpus]]\n"
+        'name = "sample"\n'
+        'root = "checkout"\n'
+        'kind = "local"\n'
+        f'digest = "{_EMPTY_DIGEST}"\n'
+        'include = ["**/*.py"]\n',
+        encoding="utf-8",
+    )
+
+    if outside:
+        with pytest.raises(ValueError, match="below the manifest"):
+            load_manifest(manifest)
+    else:
+        assert load_manifest(manifest).sources[0].root == corpus
+
+
+def test_corpus_manifest_rejects_boolean_schema(tmp_path: Path) -> None:
+    manifest = tmp_path / "corpora.toml"
+    manifest.write_text("schema = true\n", encoding="utf-8")
+
+    with pytest.raises(TypeError, match="invalid types"):
         load_manifest(manifest)
 
 

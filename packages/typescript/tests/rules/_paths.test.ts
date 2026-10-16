@@ -10,9 +10,33 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { isGeneratedFile, isScriptFile, isStoryFile, isTestFile } from "../../src/rules/_paths.js";
+import { isGeneratedFile, isScriptFile, isStoryFile, isTestFile, matchesAnyPattern } from "../../src/rules/_paths.js";
 
 const RULES_DIR = fileURLToPath(new URL("../../src/rules", import.meta.url));
+
+describe("configured path globs", () => {
+  it.each([
+    ["recursive", "/repo/src/client.ts", "**/*.ts", true],
+    ["zero directory segments", "/repo/src/client.ts", "**/src/**/*.ts", true],
+    ["one segment", "/repo/src/client.ts", "/repo/*/client.ts", true],
+    ["one segment stays bounded", "/repo/src/http/client.ts", "/repo/*/client.ts", false],
+    ["one character", "/repo/client1.ts", "**/client?.ts", true],
+    ["one character is required", "/repo/client.ts", "**/client?.ts", false],
+    ["literal placeholder", "/repo/client.ts", "**/::DOUBLESTAR::.ts", false],
+    ["literal placeholder path", "/repo/::DOUBLESTAR::.ts", "**/::DOUBLESTAR::.ts", true],
+    ["Windows filename", String.raw`C:\repo\src\client.ts`, "**/src/*.ts", true],
+    ["Windows pattern", String.raw`C:\repo\src\client.ts`, String.raw`C:\repo\src\*.ts`, true],
+    ["brace alternatives", "/repo/client.ts", "**/*.{js,ts}", true],
+    ["near miss", "/repo/client.tsx", "**/*.{js,ts}", false],
+  ])("%s", (_name, filename, pattern, expected) => {
+    expect(matchesAnyPattern(filename, [pattern])).toBe(expected);
+  });
+
+  it("matches any configured pattern and keeps an empty configuration in scope", () => {
+    expect(matchesAnyPattern("/repo/client.ts", ["**/other.ts", "**/client.ts"])).toBe(true);
+    expect(matchesAnyPattern("/repo/client.ts", [])).toBe(false);
+  });
+});
 
 describe("isTestFile — shared default", () => {
   it.each([

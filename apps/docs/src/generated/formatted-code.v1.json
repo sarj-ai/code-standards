@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "4046ba20f426a8324ec388234a36d4fa7a62e73a049e1e0bbd3b8770a3853b3c",
-  "cliSha256": "f4b812f3a7efdf5c5359371b72f39910145902ec1899bb2f2975bbe9744d790c",
+  "catalogSha256": "99b100270704cd44a7ef59b9048f0efdfca2c72af674894420f4bcc8e5f9840d",
+  "cliSha256": "8521d9e307c4848a2ea84758a9ad37a4f6fb2e7f7bd70991132e6622fe4852e0",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.20.2",
@@ -13468,6 +13468,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "DDL preceded by a positive lock timeout"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_users.sql",
+              "source": "SET\n  lock_timeout = '0.6ms';\n\nALTER TABLE users\nADD COLUMN note TEXT;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_users.sql",
+          "id": "fractional-timeout-remains-positive",
+          "outcome": "accept",
+          "scenarioId": "timeout-rounding",
+          "title": "A fractional timeout that remains enabled"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001_users.sql",
+              "source": "SET\n  lock_timeout = '0.1ms';\n\nALTER TABLE users\nADD COLUMN note TEXT;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_users.sql",
+          "id": "timeout-rounded-to-disabled",
+          "outcome": "reject",
+          "scenarioId": "timeout-rounding",
+          "title": "A fractional timeout can round to zero"
         },
         {
           "expectedCount": 1,
