@@ -1,0 +1,2449 @@
+{
+  "schemaVersion": 1,
+  "campaign": "type-guard-design-50-passes-20261016",
+  "baselineRevision": "4c8c085f217e1d2de2e7e1f54d5dd4c42be8d905",
+  "objective": "Discourage avoidable or unsound handwritten narrowing by preserving domain evidence, while retaining sound validation, refinement and public contracts.",
+  "passDefinition": "One evidence-backed review question and decision. Parameter matrices, repeated contexts, timing observations, closing corrections and reused corpus files are not additional design passes or independent precision observations.",
+  "orderedPhase": 1,
+  "passesCompleted": 50,
+  "followupPhase": "A separate fifty-pass type-design/anti-pattern campaign begins after this batch is merged. G22/G23 are admitted required implementations there, not claimed solved here.",
+  "routing": "sarj-ai/code-standards: source and type semantics",
+  "policy": {
+    "newWarning": [
+      "eslint:no-partial-type-predicate"
+    ],
+    "expandedWarnings": [
+      "python:no-partial-type-is",
+      "python:no-contradictory-type-guard"
+    ],
+    "falsePositiveOwners": [
+      "eslint:no-contradictory-type-predicate",
+      "python:no-shallow-container-type-guard",
+      "python:no-partial-type-is",
+      "python:no-contradictory-type-guard"
+    ],
+    "autofix": "none",
+    "promotion": "No warning-to-error promotion; existing error472 only receives conservative proof fixes."
+  },
+  "sourcePins": [
+    {
+      "path": "packages/typescript/src/rules/no-partial-type-predicate.ts",
+      "sha256": "8afa355456e2c3e83ae63d96cf87f79b9970954230f45cad1e1c84e33a96ac04"
+    },
+    {
+      "path": "packages/typescript/src/rules/no-contradictory-type-predicate.ts",
+      "sha256": "bdd679eb44cb2f5b8312f4bb71213a009039a2ad6c4cbbddf60fb01140d99d3f"
+    },
+    {
+      "path": "packages/typescript/src/rules/_has-separate-predicate-contract.ts",
+      "sha256": "5e88f42274760424a5b8c55d52bad9f73d5a45cd2d408a552bff9776550b6ff3"
+    },
+    {
+      "path": "packages/python/src/sarj_python_lint/rules/no_partial_type_is.py",
+      "sha256": "a0b8a3682f9d0ce8b09cc682ea5555fe6907794da264b822af780c0c1cd39ae7"
+    },
+    {
+      "path": "packages/python/src/sarj_python_lint/rules/no_contradictory_type_guard.py",
+      "sha256": "33b790001254e0846275387d30990c38dcef9d6fccb2dd88ff1adb6d604c5ab7"
+    },
+    {
+      "path": "packages/python/src/sarj_python_lint/rules/no_shallow_container_type_guard.py",
+      "sha256": "4b775d6b1ad547cd23b1ab4e039b6464bca1836faa84e56e4c5d4130c7af842b"
+    },
+    {
+      "path": "packages/python/src/sarj_python_lint/rules/_type_guard_symbols.py",
+      "sha256": "d2289691627ac30967a058437ad59b2c3959461ccc768e51c966af60f59d7585"
+    }
+  ],
+  "passes": [
+    {
+      "id": "G01",
+      "question": "Should all explicit user-defined predicates be discouraged?",
+      "hypothesis": "A blanket ban would remove valid total boundary guards.",
+      "existingOwner": "TypeScript narrowing; no-contradictory-type-predicate; new no-partial-type-predicate",
+      "gap": "No demonstrated gap justifies banning the syntax itself.",
+      "validBoundary": "Total primitive checks such as typeof value === string must remain available.",
+      "decision": "reject-blanket-ban",
+      "reason": "Correctness depends on both accepted and rejected values, not the presence of an is annotation.",
+      "evidence": {
+        "tests": [
+          "packages/typescript/tests/rules/no-partial-type-predicate.test.ts :: total primitive boundary",
+          "packages/typescript/tests/rules/no-contradictory-type-predicate.test.ts :: public consistent predicate"
+        ],
+        "source": "function isText(value:unknown):value is string{return typeof value === \"string\";}"
+      }
+    },
+    {
+      "id": "G02",
+      "question": "Can declaration-only or ambient predicate contracts be judged without an implementation?",
+      "hypothesis": "Discouraging a signature alone would mislabel public dependency contracts.",
+      "existingOwner": "TypeScript declaration checking and the declaring library",
+      "gap": "The local AST has no body from which to derive a counterexample.",
+      "validBoundary": "Ambient declarations and declaration files may expose necessary narrowing contracts.",
+      "decision": "exclude-no-local-implementation",
+      "reason": "Do not infer validator behavior from the declared type name or signature.",
+      "evidence": {
+        "tests": [
+          "packages/typescript/tests/rules/no-partial-type-predicate.test.ts :: declaration only",
+          "packages/typescript/tests/rules/no-partial-type-predicate.test.ts :: ambient library contract has no implementation"
+        ],
+        "native": "Owner-local evidence ID: typescript/design-native-proof.json :: G02; zero diagnostics (not a shipped repository path)."
+      }
+    },
+    {
+      "id": "G03",
+      "question": "Can a broad primitive predicate reject a valid promised member?",
+      "hypothesis": "Partial value filters unsafely narrow the false branch because explicit predicates have iff semantics.",
+      "existingOwner": "new no-partial-type-predicate; existing contradictory rule covers simple wrong typeof only",
+      "gap": "The compiler accepts typeof-number plus range, nonempty-string and primitive truthiness filters while false callers assume another type.",
+      "validBoundary": "Boolean filters, refined literal/branded targets, contextual contracts and total boundary guards must remain valid.",
+      "decision": "implement-warning-no-autofix",
+      "reason": "A source-proven concrete primitive counterexample supplies deterministic evidence. Changing a predicate can affect callers, so remediation is conditional and manual.",
+      "evidence": {
+        "tests": [
+          "packages/typescript/tests/rules/no-partial-type-predicate.test.ts",
+          "packages/typescript/tests/partial-predicate-contracts.test.ts"
+        ],
+        "native": "Three compiler-accepted implementations execute false branches with the wrong runtime primitive and fail. NaN and Infinity witnesses are asserted explicitly.",
+        "references": [
+          "https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-5.html#inferred-type-predicates"
+        ],
+        "numericEnumRegression": "Both TS5.0.4 and6.0.3 accept broad number assignability to enum Positive{One=1,Two=2}; rejected0 is not a legal input member. Final rule proves numeric witness membership from broad number/unknown or an exact finite literal member, preserving real enum0 counterexamples and excluding NaN/Infinity for restricted enums.",
+        "calibration": "Shipped report section #/corpora/typescript: four new true positives; two baseline contract false positives removed; zero unseeded findings, all hits inspected.",
+        "performance": "Shipped report section #/performance/typescriptCombined: three fresh workers, full strict preset, immutable20 appfiles148588bytes, one warmup plus three warm rounds per mode/worker.",
+        "compilerCompatibility": "TypeScript5.0.4:175/175 unchanged suite cases passed; final focused Vitest191/191 includes16 existing filter(Boolean) owner cases.",
+        "numericEnumNativeProof": "Owner-local evidence ID: typescript/enum-input-native-proof.json: both5.0.4 and6.0.3 preserve positive enum inputs, reject illegal0 input with2345; string/boolean refined target relations remain compiler-owned2677. (not a shipped repository path)."
+      }
+    },
+    {
+      "id": "G04",
+      "question": "Should every Array.isArray-backed typed predicate be discouraged?",
+      "hypothesis": "A shallow check can overclaim elements for unknown input, but a syntax-wide ban also rejects sound element contracts established by the input.",
+      "existingOwner": "Native Array.isArray; TypeScript input/target relation",
+      "gap": "Unknown-input element validation would require a separate native API identity and element-counterexample analysis. No such broad rule is admitted by this pass.",
+      "validBoundary": "string[] | null already establishes the element contract; Array.isArray then separates exactly the array member.",
+      "decision": "reject-blanket-shallow-array-ban",
+      "reason": "Native API syntax alone cannot establish the input-domain gap. Preserve the total typed boundary and do not expand primitive analysis into arrays by name.",
+      "evidence": {
+        "tests": [
+          "packages/typescript/tests/rules/no-partial-type-predicate.test.ts :: typed array boundary already establishes its elements"
+        ],
+        "native": "Owner-local evidence ID: typescript/design-native-proof.json :: G04; zero diagnostics and [true,false] (not a shipped repository path).",
+        "knownUncovered": "Unknown-input predicates claiming element validation from Array.isArray alone require independent native-identity/provenance work."
+      }
+    },
+    {
+      "id": "G05",
+      "question": "Can structural guards be banned from field-count or object-check heuristics?",
+      "hypothesis": "A structural guard may only refine nullability in an already typed domain.",
+      "existingOwner": "TypeScript structural assignability and actual boundary validation",
+      "gap": "Neither a target property count nor typeof-object alone describes which runtime facts are already established.",
+      "validBoundary": "A {id:string}|null input can soundly use truthiness to return a {id:string} predicate.",
+      "decision": "reject-structural-heuristic",
+      "reason": "The complete object-domain example compiles and preserves both valid states. General unknown-object validation needs a separate proof, including callable structural values.",
+      "evidence": {
+        "tests": [
+          "packages/typescript/tests/rules/no-partial-type-predicate.test.ts :: object truthiness is total over the target"
+        ],
+        "native": "Owner-local evidence ID: typescript/design-native-proof.json :: G05; zero diagnostics and preserved object/null states (not a shipped repository path)."
+      }
+    },
+    {
+      "id": "G06",
+      "question": "Should discriminator-based predicates over a domain union be replaced unconditionally?",
+      "hypothesis": "A type predicate can be a sound API over an already well-modeled discriminated union.",
+      "existingOwner": "TypeScript discriminant narrowing; prefer-discriminated-union owns malformed domain representations",
+      "gap": "No invalid state is demonstrated when the input already is the intended sum type.",
+      "validBoundary": "A ready/idle union with an exact kind test preserves both branches.",
+      "decision": "retain-domain-union-boundary",
+      "reason": "An unconditional replacement would regulate spelling while the representation already excludes invalid combinations.",
+      "evidence": {
+        "native": "Owner-local evidence ID: typescript/design-native-proof.json :: G06; ready and idle states preserved (not a shipped repository path).",
+        "source": "type State={kind:\"ready\";value:string}|{kind:\"idle\"}; function ready(value:State):value is Extract<State,{kind:\"ready\"}>{return value.kind===\"ready\";}"
+      }
+    },
+    {
+      "id": "G07",
+      "question": "Should constructor/instanceof guards be discouraged as a category?",
+      "hypothesis": "A blanket rule would ignore class authority, constructor provenance and intentionally nominal boundaries.",
+      "existingOwner": "TypeScript instanceof narrowing and the owning class/factory",
+      "gap": "No general constructor-syntax test proves an illegal target value; prototype changes and custom Symbol.hasInstance need their own provenance analysis.",
+      "validBoundary": "Constructor-owned Date values and strings can be separated by the intended runtime authority.",
+      "decision": "reject-constructor-ban",
+      "reason": "The native example validates ordinary constructor-produced states; it does not claim instanceof verifies arbitrary forged structural values.",
+      "evidence": {
+        "tests": [
+          "packages/typescript/tests/rules/no-partial-type-predicate.test.ts :: constructor authority needs a separate analysis"
+        ],
+        "native": "Owner-local evidence ID: typescript/design-native-proof.json :: G07; constructor-produced Date/string states preserved (not a shipped repository path)."
+      }
+    },
+    {
+      "id": "G08",
+      "question": "Should schema-backed predicate adapters be prohibited?",
+      "hypothesis": "A schema adapter can implement a necessary boolean/narrowing bridge at an external boundary.",
+      "existingOwner": "Validation schema; prefer-zod-parse-output-type owns duplicated parse-return contracts",
+      "gap": "The primitive counterexample analysis cannot infer arbitrary library transforms or refinements.",
+      "validBoundary": "A z.string safeParse success adapter recognizes the complete primitive string domain.",
+      "decision": "preserve-schema-boundary-adapters",
+      "reason": "Do not infer unsoundness from a safeParse member name or predicate annotation. Schema refinements and output branding require independent semantic analysis.",
+      "evidence": {
+        "tests": [
+          "packages/typescript/tests/rules/no-partial-type-predicate.test.ts :: schema boundary adapter"
+        ],
+        "native": "Owner-local evidence ID: typescript/design-native-proof.json :: G08; schema adapter compiles without diagnostics (not a shipped repository path)."
+      }
+    },
+    {
+      "id": "G09",
+      "question": "Should this-based class-state predicates be replaced by immutable typestate automatically?",
+      "hypothesis": "A class can encapsulate a sound state check; its lifecycle cannot be inferred from one predicate.",
+      "existingOwner": "TypeScript this predicates; owning class lifecycle and domain model",
+      "gap": "The direct-parameter primitive proof does not describe class invariants, ownership or permissible transitions.",
+      "validBoundary": "Slot.hasValue can narrow its encapsulated optional field and preserve empty/populated states.",
+      "decision": "exclude-class-state-from-primitive-rule",
+      "reason": "A sum-type redesign may help a concrete domain, but a generic warning cannot assume immutable reconstruction is the required contract.",
+      "evidence": {
+        "tests": [
+          "packages/typescript/tests/rules/no-partial-type-predicate.test.ts :: this based state contract"
+        ],
+        "native": "Owner-local evidence ID: typescript/design-native-proof.json :: G09; both class states preserved with zero compiler diagnostics (not a shipped repository path)."
+      }
+    },
+    {
+      "id": "G10",
+      "question": "Does filter(Boolean) need another guard-discouragement rule?",
+      "hypothesis": "An existing narrow owner already distinguishes nullish filtering from removing meaningful falsy primitives.",
+      "existingOwner": "prefer-nullish-filter-predicate; strict-boolean-expressions/no-unnecessary-condition for their separate contexts",
+      "gap": "Duplicating the rule would emit redundant advice and risk deleting 0 or empty-string values.",
+      "validBoundary": "Only nullish-plus-provably-truthy element types are eligible for the existing suggestion.",
+      "decision": "retain-existing-owner",
+      "reason": "The existing implementation checks native Array/ReadonlyArray filter identity and excludes broad primitives, any, unknown, generics, intersections and shadowed Boolean.",
+      "evidence": {
+        "tests": [
+          "packages/typescript/tests/rules/prefer-nullish-filter-predicate.test.ts"
+        ],
+        "source": "Existing owner requires isNullishPlusTruthy before suggesting an explicit nullish predicate.",
+        "references": [
+          "https://typescript-eslint.io/rules/strict-boolean-expressions/",
+          "https://typescript-eslint.io/rules/no-unnecessary-condition/"
+        ],
+        "focusedOwnerTests": "16/16 existing prefer-nullish-filter-predicate checks passed in final focused191-test run."
+      }
+    },
+    {
+      "id": "G11",
+      "question": "Can guard validity across mutation be fixed by banning predicates?",
+      "hypothesis": "Mutation can invalidate any previous narrowing, including an ordinary inline condition.",
+      "existingOwner": "Mutation ownership and alias flow; no-invalid-typed-mutation covers proven local incompatible native writes",
+      "gap": "A predicate-style ban does not solve opaque mutations or time-of-check/time-of-use behavior.",
+      "validBoundary": "Stable primitive values and captured field snapshots retain their contracts; domain updates can require immutable replacement.",
+      "decision": "reject-style-fix-for-temporal-state",
+      "reason": "The native proof compiles and fails only after an opaque mutation. The appropriate boundary is storage ownership, not guard syntax.",
+      "evidence": {
+        "native": "Owner-local evidence ID: typescript/design-native-proof.json :: G11; zero compiler diagnostics followed by expected runtime failure (not a shipped repository path).",
+        "scope": "No new temporal/alias rule is claimed. The new detector deliberately analyzes primitive values and a single returned expression."
+      }
+    },
+    {
+      "id": "G12",
+      "question": "May a counterexample be inferred from a same-looking captured variable rather than the guarded parameter?",
+      "hypothesis": "A comparison of another binding can be constant true and recognize the whole guarded domain.",
+      "existingOwner": "Scope-resolved AST binding identity",
+      "gap": "Identifier spelling alone is insufficient evidence that the rejected value is the predicate parameter.",
+      "validBoundary": "A captured ready=1 condition is true for every number and supplies no rejected number witness.",
+      "decision": "require-same-binding-proof",
+      "reason": "The detector compares scope-manager variable identities and excludes opaque nested closures and other-parameter comparisons.",
+      "evidence": {
+        "tests": [
+          "packages/typescript/tests/rules/no-partial-type-predicate.test.ts :: wrong parameter is not a witness",
+          "packages/typescript/tests/rules/no-partial-type-predicate.test.ts :: different check parameter"
+        ],
+        "native": "Owner-local evidence ID: typescript/design-native-proof.json :: G12; all tested numbers preserved with zero diagnostics (not a shipped repository path)."
+      }
+    },
+    {
+      "id": "G13",
+      "question": "Should guards using destructured discriminant aliases be discouraged because the return no longer reads the parameter?",
+      "hypothesis": "Const aliases can preserve discriminated-union correlation correctly.",
+      "existingOwner": "TypeScript control-flow analysis of destructured discriminants",
+      "gap": "Treating indirect spelling as inadequate validation would reject native, compiler-supported narrowing.",
+      "validBoundary": "An immutable const {kind}=value alias can refine the original ready/idle union.",
+      "decision": "preserve-compiler-flow-correlation",
+      "reason": "General alias expansion would require control-flow and mutation analysis; this detector conservatively keeps multi-statement/aliased validators outside its direct proof.",
+      "evidence": {
+        "tests": [
+          "packages/typescript/tests/rules/no-partial-type-predicate.test.ts :: aliased discriminant correlation"
+        ],
+        "native": "Owner-local evidence ID: typescript/design-native-proof.json :: G13; zero diagnostics and both domain variants preserved (not a shipped repository path)."
+      }
+    },
+    {
+      "id": "G14",
+      "question": "Can a broad implementation annotation be analyzed without checking its published callable contract?",
+      "hypothesis": "An overload or contextual callback can expose a narrower reachable input domain, making the implementation-only warning a false positive.",
+      "existingOwner": "no-contradictory-type-predicate and shared _has-separate-predicate-contract",
+      "gap": "Existing contradictory analysis warned on a sound published string predicate whose internal implementation annotation also included number.",
+      "validBoundary": "Overloaded declarations, contextual function/object callbacks, and class heritage may supply authoritative domains. Ordinary standalone method diagnostics must remain.",
+      "decision": "fix-existing-owner-and-share-provenance",
+      "reason": "Native checker accepted the examples and runtime calls preserved the public contract. Both predicate rules now preserve those boundaries without changing ordinary class/object method positives.",
+      "evidence": {
+        "tests": [
+          "packages/typescript/tests/rules/no-contradictory-type-predicate.test.ts :: overload/contextual cases",
+          "packages/typescript/tests/partial-predicate-contracts.test.ts :: overloads and contextual callbacks"
+        ],
+        "native": "Compiler accepts the published contracts; runtime results are [\"1\",\"TEXT\",true]. Existing plain-method positive regressions remain green.",
+        "helper": "packages/typescript/src/rules/_has-separate-predicate-contract.ts"
+      }
+    },
+    {
+      "id": "G15",
+      "question": "Should async and generator predicate protocols get another lint rule?",
+      "hypothesis": "These signatures do not provide ordinary synchronous boolean guards and are already rejected by the compiler.",
+      "existingOwner": "Native TypeScript async/generator return-protocol checking",
+      "gap": "No missing owner is demonstrated for the directly declared invalid forms.",
+      "validBoundary": "Async validators can return Promise<boolean> or a typed parse result; generators have iterable return protocols.",
+      "decision": "reject-duplicate-compiler-control",
+      "reason": "The bounded native proof reports TS1064 for async and TS2322 for generator signatures. New custom diagnostics would duplicate the stronger compiler owner.",
+      "evidence": {
+        "tests": [
+          "packages/typescript/tests/rules/no-partial-type-predicate.test.ts :: async invalid predicate stays compiler owned",
+          "packages/typescript/tests/rules/no-partial-type-predicate.test.ts :: generator stays excluded"
+        ],
+        "native": "Owner-local evidence ID: typescript/design-native-proof.json :: G15; actual diagnostics 1064 and 2322 (not a shipped repository path)."
+      }
+    },
+    {
+      "id": "G16",
+      "question": "May a one-sided Python TypeGuard select only a proper subset of its unrefined target?",
+      "hypothesis": "A TypeIs-style totality requirement would falsely reject an intentional partial TypeGuard, whose false branch does not exclude its target.",
+      "owner": "Python one-sided TypeGuard narrowing; SARJ512 excludes intentional partial TypeGuard",
+      "gap": "No defect is established when every accepted value is a str and an empty str is deliberately left in the false branch.",
+      "validBoundary": "Preserve a nonempty-text selector returning TypeGuard[str] when accepted values are proved strings; a false caller retains str|int. This does not claim nonempty string as a new nominal type.",
+      "decision": "preserve-one-sided-partial-membership",
+      "reason": "The partial selector rejects the valid target member emptystr. Native assert_type proves its true caller has str and its false caller retains str|int; the runtime safely renders both. G27 separately reviews complete TypeIs content membership, where false branches do exclude the target.",
+      "evidence": {
+        "nativeChecker": {
+          "version": "1.40.2",
+          "pythonTarget": "3.14",
+          "typeCheckingMode": "strict",
+          "errors": 0
+        },
+        "observation": {
+          "diagnostics": [],
+          "rejectedValidEmptyText": true,
+          "acceptedText": true,
+          "rejectedInteger": true,
+          "callerResults": [
+            "TEXT",
+            "",
+            "1"
+          ],
+          "falseBranchType": "str|int",
+          "trueBranchType": "str"
+        },
+        "runtimeVersions": [
+          "3.14.7",
+          "3.15.0"
+        ],
+        "proofSource": "from typing import TypeGuard, assert_type\n\ndef nonempty_text(value: object) -> TypeGuard[str]:\n    return isinstance(value, str) and bool(value)\n\ndef render(value: str | int) -> str:\n    if nonempty_text(value):\n        assert_type(value, str)\n        return value.upper()\n    assert_type(value, str | int)\n    return str(value)\n",
+        "ownerLocalArtifactId": "closing-dedup-proofs-public.json#G16-one-sided-selector (not a shipped repository path)",
+        "references": [
+          "https://typing.python.org/en/latest/spec/narrowing.html#typeguard"
+        ]
+      }
+    },
+    {
+      "id": "G17",
+      "question": "Can a bool constant contradict an inhabited primitive guard contract?",
+      "hypothesis": "A constant true result can admit incompatible inputs; constant false can reject every TypeIs target.",
+      "owner": "SARJ513 no-contradictory-type-guard",
+      "gap": "Previously only direct isinstance bodies were checked, so constant results escaped the finite witness proof.",
+      "validBoundary": "Constant false is legal partial TypeGuard; constant true with input already inside target is legal. Bottom, opaque and compiler-invalid input/target combinations abstain.",
+      "decision": "ship-warning-expansion",
+      "reason": "Added bool constants to the existing finite primitive/None witness analysis. The public proof type-checks but accepts None as str and fails at the caller.",
+      "evidence": {
+        "nativeChecker": "BasedPyright 1.40.2, strict, Python 3.14 target: this proof module has 0 errors",
+        "observation": {
+          "diagnostics": [
+            "SARJ513"
+          ],
+          "runtimeError": "AttributeError"
+        },
+        "ownerLocalProofId": "Owner-local evidence ID: python-proofs/G17.py (not a shipped repository path).",
+        "references": [
+          "https://typing.python.org/en/latest/guides/type_narrowing.html",
+          "https://typing.python.org/en/latest/spec/narrowing.html"
+        ]
+      }
+    },
+    {
+      "id": "G18",
+      "question": "Does negating isinstance preserve the declared primitive contract?",
+      "hypothesis": "The complement of a primitive class can include incompatible values or reject valid TypeIs members.",
+      "owner": "SARJ513 no-contradictory-type-guard",
+      "gap": "Unary-not bodies were excluded even when a concrete primitive or None counterexample was available.",
+      "validBoundary": "Preserve valid partial TypeGuard[int] accepting non-bool ints from int input. Handle bool as an int subtype, and skip opaque classes or compiler-invalid TypeIs relationships.",
+      "decision": "ship-warning-expansion",
+      "reason": "Added a finite complement relative to proven input witnesses. The public proof accepts None as str and fails at the caller; runtime-subtyping matrices independently exercise both branches.",
+      "evidence": {
+        "nativeChecker": "BasedPyright 1.40.2, strict, Python 3.14 target: this proof module has 0 errors",
+        "observation": {
+          "diagnostics": [
+            "SARJ513"
+          ],
+          "runtimeError": "AttributeError"
+        },
+        "ownerLocalProofId": "Owner-local evidence ID: python-proofs/G18.py (not a shipped repository path).",
+        "references": [
+          "https://typing.python.org/en/latest/guides/type_narrowing.html",
+          "https://typing.python.org/en/latest/spec/narrowing.html"
+        ]
+      }
+    },
+    {
+      "id": "G19",
+      "question": "Can a direct scalar comparison be a total TypeIs test?",
+      "hypothesis": "A direct range or equality filter can reject an actual member even when no isinstance precondition is written.",
+      "owner": "SARJ512 no-partial-type-is",
+      "gap": "The owner previously required an isinstance-and-comparison stencil.",
+      "validBoundary": "Ordering requires exact matching builtin input annotation; equality uses a same-kind concrete witness. Preserve constrained inputs, custom refinements, total predicates and ordinary bool functions.",
+      "decision": "ship-warning-expansion",
+      "reason": "The direct int-positive function type-checks and makes assert_never(0) reachable. Reused concrete builtin comparison witnesses rather than evaluating arbitrary expressions.",
+      "evidence": {
+        "nativeChecker": "BasedPyright 1.40.2, strict, Python 3.14 target: this proof module has 0 errors",
+        "observation": {
+          "diagnostics": [
+            "SARJ512"
+          ],
+          "runtimeError": "AssertionError"
+        },
+        "ownerLocalProofId": "Owner-local evidence ID: python-proofs/G19.py (not a shipped repository path).",
+        "references": [
+          "https://typing.python.org/en/latest/guides/type_narrowing.html",
+          "https://typing.python.org/en/latest/spec/narrowing.html"
+        ]
+      }
+    },
+    {
+      "id": "G20",
+      "question": "Does truthiness establish membership in a scalar or container TypeIs target?",
+      "hypothesis": "bool(value), scalar not, and a proven bool return can reject valid target members.",
+      "owner": "SARJ512 no-partial-type-is",
+      "gap": "Truthiness filters were outside the previous literal-comparison stencil.",
+      "validBoundary": "A falsey empty container remains a valid target even with bottom element types. Do not infer a nonempty container witness for unary not; list[Never] can be empty only. Preserve TypeGuard partiality and shadowed bool calls.",
+      "decision": "ship-warning-expansion",
+      "reason": "Added direct and guarded builtin bool conversion, scalar not, and bool-only raw returns. The public object-input proof rejects valid empty str and accepts incompatible int1, causing a caller failure. Remediation therefore offers ordinary bool for value filters and permits partial TypeGuard only when accepted values already satisfy the target.",
+      "evidence": {
+        "nativeChecker": "BasedPyright 1.40.2, strict, Python 3.14 target: this proof module has 0 errors",
+        "observation": {
+          "diagnostics": [
+            "SARJ512"
+          ],
+          "runtimeError": "AttributeError",
+          "rejectedValidWitness": true
+        },
+        "ownerLocalProofId": "Owner-local evidence ID: python-proofs/G20.py (not a shipped repository path).",
+        "references": [
+          "https://typing.python.org/en/latest/guides/type_narrowing.html",
+          "https://typing.python.org/en/latest/spec/narrowing.html"
+        ]
+      }
+    },
+    {
+      "id": "G21",
+      "question": "Does a direct length constraint recognize every container member?",
+      "hypothesis": "A length comparison can exclude the valid empty member without any preceding isinstance call.",
+      "owner": "SARJ512 no-partial-type-is",
+      "gap": "Direct len predicates on already typed builtin inputs were not analyzed.",
+      "validBoundary": "Only the empty witness is proved; len >= 0 remains valid. Require exact matching builtin input to avoid duplicate invalid object-len errors, and preserve opaque helpers and constrained target domains.",
+      "decision": "ship-warning-expansion",
+      "reason": "The public list proof type-checks and rejects []. Added direct length analysis using the existing comparison evaluator and a concrete empty witness.",
+      "evidence": {
+        "nativeChecker": "BasedPyright 1.40.2, strict, Python 3.14 target: this proof module has 0 errors",
+        "observation": {
+          "diagnostics": [
+            "SARJ512"
+          ],
+          "rejectedValidWitness": true
+        },
+        "ownerLocalProofId": "Owner-local evidence ID: python-proofs/G21.py (not a shipped repository path).",
+        "references": [
+          "https://typing.python.org/en/latest/guides/type_narrowing.html",
+          "https://typing.python.org/en/latest/spec/narrowing.html"
+        ]
+      }
+    },
+    {
+      "id": "G22",
+      "question": "Can a dict-only guard prove a required-field TypedDict?",
+      "hypothesis": "A container check accepts {} even though a local record requires a field.",
+      "owner": "Closest owner SARJ472; typed-record shape analysis absent",
+      "gap": "The existing owner requires a parameterized builtin dict/list/set target and does not inspect local TypedDict definitions.",
+      "validBoundary": "Required/NotRequired, total, inheritance, extra-items, imported aliases and schema mutation require source proof. Empty/open records and complete content validators must remain legal.",
+      "decision": "admit-next-phase",
+      "reason": "Native checker accepts the demonstrated guard and caller, but render({}) raises KeyError. Root explicitly assigned required typed-record implementation to phase 2; this gap is not marked solved or rejected.",
+      "evidence": {
+        "nativeChecker": "BasedPyright 1.40.2, strict, Python 3.14 target: this proof module has 0 errors",
+        "observation": {
+          "diagnostics": [],
+          "runtimeError": "KeyError"
+        },
+        "ownerLocalProofId": "Owner-local evidence ID: python-proofs/G22.py (not a shipped repository path).",
+        "references": [
+          "https://typing.python.org/en/latest/spec/typeddict.html",
+          "https://typing.python.org/en/latest/guides/type_narrowing.html"
+        ]
+      }
+    },
+    {
+      "id": "G23",
+      "question": "Can a tuple-only guard prove a local NamedTuple domain object?",
+      "hypothesis": "A plain tuple can pass the guard while lacking the named attribute promised to callers.",
+      "owner": "Closest owner SARJ472; nominal record membership absent",
+      "gap": "Builtin tuple checks and local NamedTuple targets are not part of the existing container owner.",
+      "validBoundary": "An actual isinstance(value, NamedRecord) check can prove nominal membership; generic tuple validation and NamedTuple defaults must not be confused with that membership.",
+      "decision": "admit-next-phase",
+      "reason": "Native checker accepts the demonstrated guard and caller, but render(()) raises AttributeError. Required source-proven record detection is queued for phase 2, not claimed complete.",
+      "evidence": {
+        "nativeChecker": "BasedPyright 1.40.2, strict, Python 3.14 target: this proof module has 0 errors",
+        "observation": {
+          "diagnostics": [],
+          "runtimeError": "AttributeError"
+        },
+        "ownerLocalProofId": "Owner-local evidence ID: python-proofs/G23.py (not a shipped repository path).",
+        "references": [
+          "https://typing.python.org/en/latest/spec/namedtuples.html",
+          "https://typing.python.org/en/latest/guides/type_narrowing.html"
+        ]
+      }
+    },
+    {
+      "id": "G24",
+      "question": "Can one multi-argument TypeGuard narrow both members of a pair?",
+      "hypothesis": "A predicate checking both parameters might be mistaken for correlated narrowing of both caller variables.",
+      "owner": "Typing first-positional-subject semantics and native BasedPyright",
+      "gap": "No missing owner: native checking narrows the first argument and reports the remaining optional second argument at the unsafe operation.",
+      "validBoundary": "Keep legal multi-argument predicates. When a consumer needs jointly validated values, return a typed aggregate result and consume that aggregate instead of assuming a second argument was narrowed.",
+      "decision": "reject-duplicate-compiler-rule",
+      "reason": "The intentionally invalid public caller is rejected for str + optional str. A corrected validated tuple-result API passes strict checking. This is a distinct pair-correlation design question, not another predicate-body test variant.",
+      "evidence": {
+        "nativeChecker": "BasedPyright 1.40.2, strict, Python 3.14 target: intentionally invalid second-argument caller is compiler-rejected; corrected aggregate result has 0 errors",
+        "observation": {
+          "diagnostics": [],
+          "nativeCompilerOwnsSecondArgument": [
+            "reportOperatorIssue",
+            "reportUnknownVariableType"
+          ],
+          "aggregateResultAccepted": true
+        },
+        "ownerLocalProofId": "Owner-local evidence ID: python-proofs/G24.py (not a shipped repository path).",
+        "references": [
+          "https://typing.python.org/en/latest/spec/narrowing.html",
+          "https://typing.python.org/en/latest/guides/type_narrowing.html"
+        ]
+      }
+    },
+    {
+      "id": "G25",
+      "question": "Can NewType or a refinement name alone establish a missing validation invariant?",
+      "hypothesis": "An isinstance primitive check might appear too weak for a nominal or validated role.",
+      "owner": "Domain constructor/parser and data-contracts audit",
+      "gap": "The annotation alone does not define positivity, validity, or a runtime brand check; inferring one from a type name would create false positives.",
+      "validBoundary": "Preserve intentional NewType/brand introduction and explicit domain constructors. Only report a proven business invariant, never a guessed meaning of an identifier.",
+      "decision": "reject-name-derived-rule",
+      "reason": "The public NewType returns its supplied negative int unchanged and all current guards abstain. Runtime identity demonstrates that the annotation alone cannot supply a positivity or role-validation oracle.",
+      "evidence": {
+        "nativeChecker": "BasedPyright 1.40.2, strict, Python 3.14 target: this proof module has 0 errors",
+        "observation": {
+          "diagnostics": [],
+          "newTypeDoesNotValidateRuntime": true
+        },
+        "ownerLocalProofId": "Owner-local evidence ID: python-proofs/G25.py (not a shipped repository path).",
+        "references": [
+          "https://docs.python.org/3/library/typing.html#typing.NewType"
+        ]
+      }
+    },
+    {
+      "id": "G26",
+      "question": "Can finite string Literal targets supply an exact TypeIs rejection witness?",
+      "hypothesis": "A subset equality filter can reject another literal explicitly promised by the target.",
+      "owner": "SARJ512 no-partial-type-is",
+      "gap": "Opaque/refined targets were excluded, including source-explicit finite Literal domains.",
+      "validBoundary": "Only canonical string-only Literal targets up to 256 members with builtin str/object input. Preserve singleton total equality, duplicate-only singleton domains, non-string/mixed Literals, aliases and custom refinements.",
+      "decision": "ship-warning-expansion",
+      "reason": "Added bounded exact string-domain witnesses with canonical typing-symbol mutation protection. The public red/blue proof type-checks but makes assert_never(blue) reachable.",
+      "evidence": {
+        "nativeChecker": "BasedPyright 1.40.2, strict, Python 3.14 target: this proof module has 0 errors",
+        "observation": {
+          "diagnostics": [
+            "SARJ512"
+          ],
+          "runtimeError": "AssertionError"
+        },
+        "ownerLocalProofId": "Owner-local evidence ID: python-proofs/G26.py (not a shipped repository path).",
+        "references": [
+          "https://typing.python.org/en/latest/guides/type_narrowing.html",
+          "https://typing.python.org/en/latest/spec/narrowing.html"
+        ]
+      }
+    },
+    {
+      "id": "G27",
+      "question": "Can an empty collection satisfy a complete TypeIs element-membership validator despite all using vacuous truth?",
+      "hypothesis": "Treating vacuous truth as missing validation would reject complete element-membership recognition; TypeIs additionally constrains the false branch.",
+      "owner": "SARJ472 content validation exclusion and Python all semantics",
+      "gap": "No defect is established: an empty collection satisfies an element-type contract and a complete all check validates every supplied element.",
+      "validBoundary": "Preserve empty collections when the target permits them; a separately established nonempty domain is a different contract. Do not rewrite valid validators merely because they use all.",
+      "decision": "reject-false-positive-expansion",
+      "reason": "The public TypeIs[list[str]] content validator recognizes every all-string list, including the empty list; no empty value can supply a non-string element witness. Its input/target relation is natively accepted and the three guard rules emit nothing. Unlike G16 this is a complete bidirectional membership contract, not an intentional partial selector.",
+      "evidence": {
+        "nativeChecker": "BasedPyright 1.40.2, strict, Python 3.14 target: this proof module has 0 errors",
+        "observation": {
+          "diagnostics": [],
+          "preservedEmptyValidInput": true
+        },
+        "ownerLocalProofId": "Owner-local evidence ID: python-proofs/G27.py (not a shipped repository path).",
+        "references": [
+          "https://typing.python.org/en/latest/guides/type_narrowing.html",
+          "https://docs.python.org/3/library/functions.html#all"
+        ]
+      }
+    },
+    {
+      "id": "G28",
+      "question": "Do neighboring guard rules produce one actionable owner with stable suppression and severity?",
+      "hypothesis": "Broader predicate recognition might duplicate existing container or totality findings or turn intentional partial guards into errors.",
+      "owner": "SARJ472/512/513 normal check_source suppression and diagnostic composition",
+      "gap": "Integration must be demonstrated after expanding individual expression coverage; fixture repetition is not a separate design pass.",
+      "validBoundary": "Retain existing SARJ472 error severity and new semantic warning severity. Constant false TypeGuard stays legal; generated source and exact-code suppressions stay clear.",
+      "decision": "verify-owner-precedence-integration",
+      "reason": "One integration panel produces exactly one SARJ513 constant-false TypeIs warning, one SARJ512 partial-and warning, and one SARJ472 shallow-container error, at three distinct locations. Exact suppressions and generated variants produce zero findings. This entire policy review counts as one pass.",
+      "evidence": {
+        "nativeChecker": "BasedPyright 1.40.2, strict, Python 3.14 target: this proof module has 0 errors",
+        "observation": {
+          "diagnostics": [
+            "SARJ513",
+            "SARJ512",
+            "SARJ472"
+          ],
+          "owners": [
+            "SARJ513",
+            "SARJ512",
+            "SARJ472"
+          ],
+          "severities": {
+            "SARJ513": "warning",
+            "SARJ512": "warning",
+            "SARJ472": "error"
+          },
+          "duplicateLocations": 0,
+          "suppressedFindings": 0,
+          "generatedFindings": 0
+        },
+        "ownerLocalProofId": "Owner-local evidence ID: python-proofs/G28.py (not a shipped repository path).",
+        "references": [
+          "https://typing.python.org/en/latest/guides/type_narrowing.html",
+          "https://typing.python.org/en/latest/spec/narrowing.html"
+        ]
+      }
+    },
+    {
+      "id": "G29",
+      "question": "Must overload input contracts constrain the implementation witness domain?",
+      "hypothesis": "A broad implementation annotation can admit counterexamples that no public overload permits.",
+      "owner": "Shared unique_guard_function_names plus SARJ472/512/513",
+      "gap": "A valid public Literal[1]/Literal[2] TypeGuard[int] overload group was falsely flagged from its object implementation; a constrained dict-key overload group exposed the same existing472 defect.",
+      "validBoundary": "Skip repeated module-owned definitions, including TYPE_CHECKING and exception control flow, without confusing unrelated nested scopes. Preserve positive single-definition cases. Changed TypeIs target variance examples are compiler-invalid and are not FP evidence.",
+      "decision": "fix-false-positive-conservatively",
+      "reason": "Both same-target overload proofs pass native checking with zero diagnostics. Shared linear definition inventory now makes public-contract cases clear; removing overloads restores the applicable finding. Rejected invariant-TypeIs examples are recorded separately.",
+      "evidence": {
+        "nativeChecker": "BasedPyright 1.40.2, strict, Python 3.14 target: this proof module has 0 errors",
+        "observation": {
+          "diagnostics": [],
+          "preservedPublicInputs": true
+        },
+        "ownerLocalProofId": "Owner-local evidence ID: python-proofs/G29.py (not a shipped repository path).",
+        "references": [
+          "https://typing.python.org/en/latest/spec/narrowing.html",
+          "https://typing.python.org/en/latest/spec/overload.html"
+        ]
+      }
+    },
+    {
+      "id": "G30",
+      "question": "Should runtime isinstance distinctions override Python numeric assignability?",
+      "hypothesis": "Treating float and int as disjoint could make a primitive guard detector report a contract the typing specification permits.",
+      "owner": "Python numeric assignability and SARJ513 bounded scalar exclusions",
+      "gap": "The finite runtime class model is unsuitable for float/complex promotion; this is an existing documented scope boundary, not an unowned spelling policy.",
+      "validBoundary": "Preserve int-to-float compatibility and bool-as-int relationships. Do not extrapolate class-disjointness proofs to numeric promotion, refined numeric types or custom numeric classes.",
+      "decision": "retain-conservative-numeric-boundary",
+      "reason": "Native checker accepts the public TypeGuard[float] int test and the detector abstains. Existing and expanded runtime-subtyping matrices cover bool/int without guessing float semantics.",
+      "evidence": {
+        "nativeChecker": "BasedPyright 1.40.2, strict, Python 3.14 target: this proof module has 0 errors",
+        "observation": {
+          "diagnostics": []
+        },
+        "ownerLocalProofId": "Owner-local evidence ID: python-proofs/G30.py (not a shipped repository path).",
+        "references": [
+          "https://typing.python.org/en/latest/spec/special-types.html",
+          "https://typing.python.org/en/latest/guides/type_narrowing.html"
+        ]
+      }
+    },
+    {
+      "id": "G31",
+      "question": "Can canonical import aliases and Unicode-normalized identifiers be treated as unknown predicates or recognized by a raw spelling heuristic?",
+      "owner": "Shared _imports and _type_guard_symbols resolution; normalized symbol_source prefilters in SARJ472/512/513.",
+      "gap": "No additional matching gap remained. A new SARJ472 fast gate still needed proof that aliases and normalized identifiers retain the canonical TypeGuard/TypeIs evidence.",
+      "noChangeHarm": "An unnormalized fast gate could silently remove valid diagnostics; name-based expansion would confuse unrelated application symbols with builtins.",
+      "validStateBoundary": "Keep aliases of the real typing/builtins symbols; abstain for unknown assignment aliases, shadowing, and replacement imports.",
+      "decision": "retain-canonical-resolution-and-verify-prefilter",
+      "change": "Added the normalized TypeGuard/TypeIs source gate to SARJ472; six canonical/fullwidth import-alias cases preserve all three owners.",
+      "evidence": {
+        "native": "Unicode builtin/guard alias fixture has zero native basic errors and exactly SARJ513.",
+        "focused": "Six alias/prefilter preservation cases in the1567-case shared helper suite.",
+        "ownerLocalArtifactId": "Owner-local evidence ID: domain-proofs.json#G31-canonical-unicode-aliases (not a shipped repository path)."
+      },
+      "validation": [
+        "1667 helper+SARJ472 tests and2849combined nearby guard/helper tests passed.",
+        "Owned source/test strict BasedPyright: 0 errors, 0 warnings."
+      ]
+    },
+    {
+      "id": "G32",
+      "question": "Can discarding a rebound import binding also discard the evidence that its module can be mutated?",
+      "owner": "Shared guard namespace identity analysis.",
+      "gap": "Yes. After import builtins as native, a conditional native assignment removed its ImportIndex binding. A later native.isinstance replacement was invisible, while the rule still assumed canonical bare isinstance. Closing review also reproduced direct canonical namespace dictionary, bound-accessor, __builtins__, and native isinstance/len.__self__ escapes that bypassed the old capability inventory.",
+      "noChangeHarm": "A lawful string recognizer emitted SARJ513 because the detector used a wrong runtime builtin identity.",
+      "validStateBoundary": "Stable native aliases used as direct calls retain the existing namespace checks. Canonical native function objects captured, passed, returned, or introspected can expose builtins and therefore abstain. This intentionally sacrifices coverage for benign higher-order uses such as passing repr to a trusted callback. Application bound methods do not abstain merely for having __self__; arbitrary external effects and loader semantics are not inferred. Ambiguous application variables using a known native function name can also abstain; this documented conservative loss avoids assuming that an earlier global capability escaped safely. Native __lazy_import__ is a known module namespace API in3.15. Its application aliases are preserved when positively nonbuiltin; its native identities and ambiguous native aliases abstain. The38other function categories are not claims of globally pure callbacks.",
+      "decision": "fix-reproduced-false-positive",
+      "change": "Inventory canonical namespace import names directly before stable-binding resolution; retain them for escape and ambiguous-import checks. The finite canonical from-import capabilities __dict__, __builtins__, __getattribute__, __setattr__, and __delattr__ abstain. An explicit authored union of 45 native builtin function names from CPython 3.14/3.15 protects the complete known builtin-module pointer family: only direct Call.func usage remains eligible under existing namespace checks, and any function-object escape abstains. Application methods and unrelated dictionary imports retain diagnostics. Possible native capability identities are retained before ImportIndex pruning: the45bare function names, raw canonical from-builtins function aliases, and raw builtins module aliases withdraw the proof on ambiguous escape references after unrelated local shadowing or later rebinding. Complete native API classification found exactly one additional direct namespace-returning API beyond the six centrally handled namespace/code APIs: CPython3.15 __lazy_import__. Its direct bare, raw-import alias, qualified builtin-module, and ambiguous-native calls now withdraw the proof without changing central namespace analysis.",
+      "evidence": {
+        "before": 1,
+        "after": 0,
+        "runtime": "Eleven namespace escape cases plus the separately owned module-class case each emit one finding with the old identity helper, none with the final helper, and return True for text and False for integer.",
+        "comparison": "Same final SARJ513 detector; only the shared identity helper is replaced with its exact pre-change version for the before run.",
+        "ownerLocalArtifactId": "Owner-local evidence ID: domain-namespace-proofs.json (not a shipped repository path).",
+        "nativeFunctionInventory": "Owner-local evidence ID: domain-native-inventory.json: CPython3.14.7 has44 native builtin-module functions;3.15.0 has45; explicit source family equals their45-name union. (not a shipped repository path).",
+        "pruningPerformance": "Owner-local evidence ID: domain-pruning-performance.json: exact prior-helper digest verified, one warmup pair plus three alternating measured before/after pairs, fresh file contexts in one worker. (not a shipped repository path).",
+        "bindingAmbiguity": "Owner-local evidence ID: domain-binding-ambiguity-proofs.json: imported-function alias shadow, bare local shadow, escape before later rebind, and module-alias local shadow each1\u21920 with runtimeTrue/False. (not a shipped repository path).",
+        "nativeApiClassification": "Owner-local evidence ID: domain-native-api-review.json: all45 inventoried functions classified,6existing central namespace/code APIs,1guard-local lazy-module API,38other value/operation/input-propagating APIs. Python3.14.7 lacks the new builtin, compiles all3ownedfiles, and skips only3.15runtime proofs. (not a shipped repository path)."
+      },
+      "validation": [
+        "27 rebound-namespace cases,90 direct canonical capability imports,405 native bound-namespace forms,135 native function value escapes,117 ordinary native alias-call controls, and unrelated-name controls.",
+        "Nineteen bounded exact-helper before/after runtime cases across the initial namespace family, four binding-ambiguity forms, and three lazy-import forms;2849combined nearby tests passed.",
+        "Closing performance prune preserves nine deep-chain regression cases. Historical pruning artifact36b635, exact2000-attribute fixture before/after warm median CPU0.076321/0.005481seconds, with identical SARJ512 finding; this is a bounded robustness observation, not a normal-runner performance claim.",
+        "The finite45-name ambiguity matrix covers five lost-binding forms across all three guard owners (675cases); three nonbuiltin application controls retain diagnostics.",
+        "Eighteen lazy-import native/ambiguity static cases, six positively nonbuiltin application controls, and three3.15native runtime cases pass; three previous ordinary-call controls correctly move to namespace withdrawal."
+      ]
+    },
+    {
+      "id": "G33",
+      "question": "Can a module keep its import spelling while changing attribute lookup semantics?",
+      "owner": "Shared guard namespace identity analysis; Python module data model.",
+      "gap": "Yes. Assigning a ModuleType subclass to builtins.__class__ can intercept native.isinstance without writing the isinstance attribute itself.",
+      "noChangeHarm": "A correct public TypeGuard[str] emitted SARJ513 while runtime attribute lookup intentionally selected a string recognizer.",
+      "validStateBoundary": "Reading a module class does not invalidate identity. Visible class assignment/deletion does; this conservative rule does not infer arbitrary module metaclass behavior.",
+      "decision": "fix-reproduced-false-positive",
+      "change": "Treat __class__ mutation on imported builtins, typing, or typing_extensions namespaces as identity-invalidating.",
+      "evidence": {
+        "before": 1,
+        "after": 0,
+        "runtime": "Text accepted and integer rejected after controlled module-class interception; module class restored in an isolated process.",
+        "ownerLocalArtifactId": "Owner-local evidence ID: domain-namespace-proofs.json#intercepted_attribute (not a shipped repository path).",
+        "source": "https://docs.python.org/3/reference/datamodel.html#customizing-module-attribute-access"
+      },
+      "validation": [
+        "18 class mutation cases and nine read-only class-access controls.",
+        "Actual runtime counterexample executes in a bounded isolated subprocess."
+      ]
+    },
+    {
+      "id": "G34",
+      "question": "Does admitting a new typing special form into a guard proof require identity protection independent of builtin matching?",
+      "owner": "Shared typing-symbol provenance; SARJ512 owns finite Literal target rejection witnesses.",
+      "gap": "The shared helper originally protected only TypeGuard and TypeIs. A caller reasoning about typing.Literal could otherwise retain that proof after visible Literal replacement.",
+      "noChangeHarm": "Finite target enumeration would rely on a special-form identity that the surrounding source can replace.",
+      "validStateBoundary": "Literal is a typing special form, not a builtin. Unrelated rules should not gain Literal-specific abstention merely because SARJ512 uses it.",
+      "decision": "extend-shared-proof-interface",
+      "change": "Added an explicit typing_symbols keyword with the old guard-symbol set as the default. SARJ512 opts in to Literal; canonical typing and typing_extensions aliases remain accepted.",
+      "evidence": {
+        "focused": "Four replacement/deletion cases are ambiguous only after opting in; two canonical alias controls remain unambiguous.",
+        "source": "packages/python/tests/rules/test_type_guard_symbols.py"
+      },
+      "validation": [
+        "Six opt-in Literal provenance checks passed.",
+        "No rule registry or version changes made by this review."
+      ]
+    },
+    {
+      "id": "G35",
+      "question": "Is a caller-parameterized generic guard necessarily an avoidable loss of domain information?",
+      "owner": "Native Python generic TypeGuard contract; current deterministic rules deliberately require a simple one-parameter target they can prove.",
+      "gap": "No new deterministic gap admitted. A guard relating a value to the caller-provided type[T] communicates a useful relation that a fixed tagged union cannot enumerate.",
+      "noChangeHarm": "A blanket recommendation to remove generic or multiargument guards would erase caller-selected narrowing and encourage casts.",
+      "validStateBoundary": "Preserve generic boundary predicates and the first positional argument subject; do not infer an arbitrary target from parameter names or a class-like identifier.",
+      "decision": "retain-relational-generic-guard-boundary",
+      "change": "No detector expansion. Guidance explicitly preserves generic protocols and externally owned narrowing evidence.",
+      "evidence": {
+        "nativeErrors": 0,
+        "runtime": "A generic TypeGuard[T] with type[T] argument narrows text for upper() and leaves integer input in the other branch.",
+        "selectedFindings": 0,
+        "ownerLocalArtifactId": "Owner-local evidence ID: domain-proofs.json#G35-generic-dependent-guard (not a shipped repository path).",
+        "source": "https://typing.python.org/en/latest/spec/narrowing.html"
+      },
+      "validation": [
+        "Native assert_type(value, str) accepted.",
+        "Runtime output: TEXT other."
+      ]
+    },
+    {
+      "id": "G36",
+      "question": "Can TypeIs be replaced with TypeGuard inside an owned-by-another callback contract without checking assignability?",
+      "owner": "Native callable assignability and TypeIs invariance; guard warnings have no autofix.",
+      "gap": "No extra syntax detector is needed. The callback target is part of the public contract, and the checker already rejects a narrower TypeIs callback where false-branch exclusion would become unsound.",
+      "noChangeHarm": "An unconditional annotation rewrite can break a legitimate callback API or weaken its false-branch contract.",
+      "validStateBoundary": "TypeGuard can serve an intentional partial selection callback. Preserve explicit external callable contracts and prove all callers before changing bidirectional narrowing.",
+      "decision": "retain-native-callback-owner-and-conditional-remediation",
+      "change": "Added callback/public-contract preservation to audit guidance; no blanket predicate conversion.",
+      "evidence": {
+        "typeGuardCallbackErrors": 0,
+        "typeIsCallbackErrors": 1,
+        "runtime": "The accepted partial callback selects text from heterogeneous values.",
+        "ownerLocalArtifactId": "Owner-local evidence ID: domain-proofs.json#G36-type-guard-callback (not a shipped repository path).",
+        "source": "https://typing.python.org/en/latest/spec/narrowing.html"
+      },
+      "validation": [
+        "Native checker accepts TypeGuard[str] in a TypeGuard[str | bytes] callback.",
+        "Native checker rejects TypeIs[str] in a TypeIs[str | bytes] callback."
+      ]
+    },
+    {
+      "id": "G37",
+      "question": "Should a guard review replace an exception policy with False merely to make a predicate look total?",
+      "owner": "The boundary API owns its failure behavior; native TypeIs checks and SARJ512 reason about narrowing after boolean returns.",
+      "gap": "No new rule admitted. A guard can explicitly reject missing input by exception while accurately classifying its returning branches.",
+      "noChangeHarm": "Converting an established exception to False sends callers down a different branch and can silently discard required error handling.",
+      "validStateBoundary": "Keep documented failures, normalization, and recovery behavior. A syntactic request for a single boolean return is insufficient evidence to change it.",
+      "decision": "preserve-failure-policy",
+      "change": "Audit guidance now requires preserving validator failure behavior when introducing a boolean predicate or construction outcome.",
+      "evidence": {
+        "nativeErrors": 0,
+        "selectedFindings": 0,
+        "runtime": "Text returns True, integer False, and None raises the documented missing-input ValueError.",
+        "ownerLocalArtifactId": "Owner-local evidence ID: domain-proofs.json#G37-exception-boundary (not a shipped repository path)."
+      },
+      "validation": [
+        "Native basic checker accepts the complete function.",
+        "Bounded runtime proof verifies both boolean paths and the exception path."
+      ]
+    },
+    {
+      "id": "G38",
+      "question": "Does runtime_checkable protocol membership establish callable signatures as well as attribute presence?",
+      "owner": "Python runtime protocol behavior; SARJ472 owns builtin-container slots, not arbitrary protocol validation.",
+      "gap": "A runtime Reader check accepts an object with read = 1; a narrowed read() consumer then fails. This is a concrete trust-boundary limitation, but it does not justify banning structural feature probes.",
+      "noChangeHarm": "A boundary can mistake attribute existence for full data or callable validation.",
+      "validStateBoundary": "Keep intentional presence probes and externally guaranteed protocol contracts. Require concrete incompatible values and failing consumers before adding validation or replacing the abstraction.",
+      "decision": "add-specific-manual-audit-guidance",
+      "change": "Guidance distinguishes protocol presence from value/signature validation; no general protocol-guard prohibition or new detector admitted.",
+      "evidence": {
+        "nativeErrors": 0,
+        "selectedFindings": 0,
+        "runtime": "Membership returns True; calling read() raises TypeError because the field is an integer.",
+        "ownerLocalArtifactId": "Owner-local evidence ID: domain-proofs.json#G38-runtime-protocol (not a shipped repository path).",
+        "source": "https://docs.python.org/3/library/typing.html#typing.runtime_checkable"
+      },
+      "validation": [
+        "Reproduced independently of untyped external code with a local protocol and local class.",
+        "Deterministic builtin-only rules correctly remain outside this structural boundary."
+      ]
+    },
+    {
+      "id": "G39",
+      "question": "Is an apparent predicate body always the callable executed at the public call site?",
+      "owner": "Decorator/coroutine callable semantics; the existing Python guard rules restrict synchronous undecorated functions.",
+      "gap": "No extra matching scope admitted. A decorator can replace a misleading implementation with a correct guard, and an async definition returns a coroutine before its boolean result exists.",
+      "noChangeHarm": "Inspecting transformed functions as direct boolean predicates can diagnose code that callers never execute or apply narrowing to the wrong execution stage.",
+      "validStateBoundary": "Retain decorated and async exclusions until the callable transformation and the subject being narrowed are proved. Generic wrappers and framework APIs must not be rewritten by body spelling.",
+      "decision": "retain-transformed-callable-boundary",
+      "change": "No detector expansion; valid boundary evidence strengthens the existing scope exclusions.",
+      "evidence": {
+        "nativeErrors": 0,
+        "selectedFindings": 0,
+        "runtime": "A decorator replaces the original int check with a string recognizer, accepting text and rejecting integer.",
+        "asyncNativeErrors": 0,
+        "ownerLocalArtifactId": "Owner-local evidence ID: domain-proofs.json#G39-decorator-contract (not a shipped repository path).",
+        "source": "https://docs.python.org/3/reference/datamodel.html#coroutine-functions"
+      },
+      "validation": [
+        "Correct decorated public callback accepted by native checker and runtime.",
+        "Async guard declaration remains outside direct synchronous analysis."
+      ]
+    },
+    {
+      "id": "G40",
+      "question": "When the domain union is already correct, can a broad operation signature still force avoidable guard rediscovery?",
+      "owner": "Owned domain operation signatures and audit guidance; this is separate from inferring a missing union from optional fields.",
+      "gap": "Yes. start_job(object) accepts PendingJob even though its body requires ReadyJob and raises. A pre-existing Job union does not prevent that invalid operation call when the operation erases the precondition.",
+      "noChangeHarm": "Owned business logic repeatedly rechecks facts the producer already knows, while invalid operation calls remain statically admitted.",
+      "validStateBoundary": "Keep broad parsing and plugin/callback entry points where uncertainty belongs. Preserve pending/draft/unknown/failure alternatives; require ReadyJob only at the operation whose precondition needs it.",
+      "decision": "strengthen-owned-domain-api-guidance",
+      "change": "Recommend parse once to the domain union, dispatch on its discriminant, then call an operation accepting its complete ready variant. Do not replace boundary guards with casts.",
+      "evidence": {
+        "beforeNativeErrors": 0,
+        "beforeRuntime": "A caller-admitted PendingJob reaches the not-ready ValueError.",
+        "afterNativeErrors": 1,
+        "afterMeaning": "The invalid PendingJob argument is rejected, while the discriminant-dispatched ReadyJob call is accepted.",
+        "ownerLocalArtifactId": "Owner-local evidence ID: domain-proofs.json#G40-domain-operation-after (not a shipped repository path)."
+      },
+      "validation": [
+        "Native before/after proof uses the same already-valid Job union.",
+        "Six bounded runtime observations across the ten-source design panel passed."
+      ]
+    },
+    {
+      "id": "G41",
+      "question": "Would banning assertion signatures prevent fabricated narrowing without rejecting legitimate validation?",
+      "owner": "typescript-eslint/no-empty-function and compiler assertion signatures; arbitrary effectful validation is not decidable by the guard rules",
+      "decision": "reject-blanket-ban",
+      "reason": "A real boundary assertion validates by throwing. Empty bodies already have an upstream owner; no new duplicate body-spelling rule.",
+      "evidence": {
+        "compiler": "6.0.3",
+        "badDiagnostics": [],
+        "goodDiagnostics": [],
+        "badRuntime": "expected failure",
+        "goodRuntime": "valid state"
+      }
+    },
+    {
+      "id": "G42",
+      "question": "Can every explicit predicate be replaced by an inferred boolean callback?",
+      "owner": "TypeScript predicate inference since5.5; package supports TypeScript>=5.0",
+      "decision": "retain-version-and-api-boundary",
+      "reason": "Both compile on the current compiler; inference cannot be mandated across the supported5.0 floor or an externally owned explicit callback contract.",
+      "evidence": {
+        "compiler": "6.0.3",
+        "badDiagnostics": [],
+        "goodDiagnostics": [],
+        "badRuntime": "valid state",
+        "goodRuntime": "valid state",
+        "minimumMinorCompiler": {
+          "version": "5.0.4",
+          "inferredCodes": [
+            2322
+          ],
+          "explicitCodes": []
+        }
+      }
+    },
+    {
+      "id": "G43",
+      "question": "Can a production assert inside a Python guard remain the validation authority under interpreter optimization?",
+      "owner": "Existing enabled Ruff S101 assert rule; Python interpreter optimization semantics",
+      "gap": "No new guard detector is needed: production assertions are removable, and the strict Ruff preset already reports them.",
+      "validBoundary": "Keep executable explicit rejection such as ValueError in every optimization mode; test assertions remain covered by the configured test exemptions.",
+      "decision": "retain-upstream-production-assert-owner",
+      "reason": "On actual CPython3.14.7 and3.15.0 the same TypeGuard rejects invalid1 with AssertionError normally, but under-O returnsTrue and its narrowed caller fails with AttributeError. Explicit ValueError rejection is preserved in both modes. This concerns runtime removal of evidence, independent of TypeScript assertion signatures or nullable-record truthiness.",
+      "evidence": {
+        "nativeChecker": {
+          "version": "1.40.2",
+          "pythonTarget": "3.14",
+          "errors": 0,
+          "proofModules": 3
+        },
+        "runtime": {
+          "3.14.7": {
+            "normal": {
+              "is_text": {
+                "error": "AssertionError"
+              },
+              "render": {
+                "error": "AssertionError"
+              }
+            },
+            "optimized": {
+              "is_text": {
+                "result": true
+              },
+              "render": {
+                "error": "AttributeError"
+              }
+            }
+          },
+          "3.15.0": {
+            "normal": {
+              "is_text": {
+                "error": "AssertionError"
+              },
+              "render": {
+                "error": "AssertionError"
+              }
+            },
+            "optimized": {
+              "is_text": {
+                "result": true
+              },
+              "render": {
+                "error": "AttributeError"
+              }
+            }
+          }
+        },
+        "explicitRejection": {
+          "3.14.7": {
+            "normal": {
+              "is_text": {
+                "error": "ValueError"
+              },
+              "render": {
+                "error": "ValueError"
+              }
+            },
+            "optimized": {
+              "is_text": {
+                "error": "ValueError"
+              },
+              "render": {
+                "error": "ValueError"
+              }
+            }
+          },
+          "3.15.0": {
+            "normal": {
+              "is_text": {
+                "error": "ValueError"
+              },
+              "render": {
+                "error": "ValueError"
+              }
+            },
+            "optimized": {
+              "is_text": {
+                "error": "ValueError"
+              },
+              "render": {
+                "error": "ValueError"
+              }
+            }
+          }
+        },
+        "configuredUpstreamOwnership": {
+          "rule": "RuffS101 assert",
+          "config": "packages/standards/src/sarj_standards/configs/ruff.strict.toml",
+          "selection": "ALL",
+          "observed": [
+            {
+              "proof": "G43-removable-assert",
+              "code": "S101",
+              "line": 4
+            }
+          ],
+          "explicitRejectionS101": 0,
+          "retiredCustomOwnerNotes": "packages/standards/src/sarj_standards/configs/rule-ledger.json: SARJ422 retirement and prefer-one-for-required-row removal cite RuffS101"
+        },
+        "selectedGuardDiagnostics": {
+          "G43-removable-assert": [],
+          "G43-explicit-rejection": []
+        },
+        "proofSource": "from typing import TypeGuard\n\ndef is_text(value: object) -> TypeGuard[str]:\n    assert isinstance(value, str)\n    return True\n\ndef render(value: object) -> str:\n    return value.upper() if is_text(value) else \"other\"\n",
+        "preservedSource": "from typing import TypeGuard\n\ndef is_text(value: object) -> TypeGuard[str]:\n    if not isinstance(value, str):\n        raise ValueError(\"expected text\")\n    return True\n\ndef render(value: object) -> str:\n    return value.upper() if is_text(value) else \"other\"\n",
+        "ownerLocalArtifactId": "closing-dedup-proofs-public.json (not a shipped repository path)",
+        "references": [
+          "https://docs.python.org/3/using/cmdline.html#cmdoption-O",
+          "https://docs.astral.sh/ruff/rules/assert/"
+        ]
+      }
+    },
+    {
+      "id": "G44",
+      "question": "Does a property-existence guard always indicate a missing discriminator?",
+      "owner": "Native in-operator narrowing and existing prefer-discriminated-union advisory",
+      "decision": "retain-structural-interop",
+      "reason": "Both models represent coherent alternatives. An external untagged wire union can be safely narrowed by property presence; introducing a tag requires ownership and conversion.",
+      "evidence": {
+        "compiler": "6.0.3",
+        "badDiagnostics": [],
+        "goodDiagnostics": [],
+        "badRuntime": "valid state",
+        "goodRuntime": "valid state"
+      }
+    },
+    {
+      "id": "G45",
+      "question": "Should optional-field counts alone require a tagged union to eliminate guard checks?",
+      "owner": "Existing source-proven prefer-discriminated-union producer analysis; native Partial<T> patch contract",
+      "decision": "reject-optional-field-quota",
+      "reason": "An empty or independently sparse patch is a valid domain state. Optional-count heuristics cannot distinguish patches from hidden mutually exclusive variants.",
+      "evidence": {
+        "compiler": "6.0.3",
+        "badDiagnostics": [],
+        "goodDiagnostics": [],
+        "badRuntime": "valid state",
+        "goodRuntime": "valid state"
+      }
+    },
+    {
+      "id": "G46",
+      "question": "Can a branded predicate always be replaced by typeof or by a plain primitive target?",
+      "owner": "Native structural brand contract plus domain constructor/validated predicate",
+      "decision": "retain-refined-domain-targets",
+      "reason": "Positivity is part of the branded target contract; partial numeric checks are sound for that target. A result constructor is an ownership-dependent alternative, not an automatic replacement.",
+      "evidence": {
+        "compiler": "6.0.3",
+        "badDiagnostics": [],
+        "goodDiagnostics": [],
+        "badRuntime": "valid state",
+        "goodRuntime": "valid state"
+      }
+    },
+    {
+      "id": "G47",
+      "question": "Does content validation make invariant mutable TypeGuard narrowing permanently safe?",
+      "owner": "Python typing specification invariant container semantics; existing SARJ472 owns shallow content validation only",
+      "decision": "document-ownership-and-immutable-boundary",
+      "reason": "The guard validates every element but another alias invalidates the narrowing. Prefer an immutable parsed value or covariant read-only input when the domain permits it. A blanket guard ban also rejects legitimate validated mutable APIs; alias effects need more than a shallow syntax detector.",
+      "evidence": {
+        "checker": "1.40.2",
+        "results": [
+          {
+            "variant": "original",
+            "errors": 0,
+            "rules": [],
+            "runtime": "expected failure"
+          }
+        ]
+      }
+    },
+    {
+      "id": "G48",
+      "question": "Must every TypeIs function be discouraged, including total builtin membership?",
+      "owner": "Python TypeIs bidirectional narrowing; SARJ512 preserves complete predicates",
+      "decision": "retain-total-reusable-membership",
+      "reason": "Both branches accurately represent the input domain. Reusability does not establish poor type design; no additional ban is admitted.",
+      "evidence": {
+        "checker": "1.40.2",
+        "results": [
+          {
+            "variant": "original",
+            "errors": 0,
+            "rules": [],
+            "runtime": "valid state"
+          }
+        ]
+      }
+    },
+    {
+      "id": "G49",
+      "question": "Can ordinary boolean wrappers repair correlation hidden by an optional-field product?",
+      "owner": "Native compiler narrowing and existing source-proven domain-union advisories; ownership-dependent audit guidance",
+      "decision": "prefer-domain-union-at-owned-boundary",
+      "reason": "The plain boolean wrapper cannot communicate a relationship the product type omits. Separate variant payloads let the compiler prove the relationship without a custom type guard. Preserve wire, draft, and patch models whose optional fields are independent.",
+      "evidence": {
+        "checker": "1.40.2",
+        "results": [
+          {
+            "variant": "original",
+            "errors": 1,
+            "rules": [
+              "reportOptionalMemberAccess"
+            ],
+            "runtime": "not run because compiler rejects source"
+          },
+          {
+            "variant": "domain-union",
+            "errors": 0,
+            "rules": [],
+            "runtime": "valid state"
+          }
+        ]
+      }
+    },
+    {
+      "id": "G50",
+      "question": "Can schema parsers safely be replaced by guards that validate and retain the original input?",
+      "owner": "Pydantic model_validate normalization and existing parse-output/domain-contract guidance",
+      "decision": "preserve-transformed-parse-output",
+      "reason": "Successful validation does not turn the original dictionary into the parsed model. Promote returning the actual validated domain value; a narrowing annotation over the original input would discard normalization and identity semantics.",
+      "evidence": {
+        "checker": "1.40.2",
+        "results": [
+          {
+            "variant": "original",
+            "errors": 0,
+            "rules": [],
+            "runtime": "valid state"
+          }
+        ]
+      }
+    }
+  ],
+  "decisionCounts": {
+    "reject-blanket-ban": 2,
+    "exclude-no-local-implementation": 1,
+    "implement-warning-no-autofix": 1,
+    "reject-blanket-shallow-array-ban": 1,
+    "reject-structural-heuristic": 1,
+    "retain-domain-union-boundary": 1,
+    "reject-constructor-ban": 1,
+    "preserve-schema-boundary-adapters": 1,
+    "exclude-class-state-from-primitive-rule": 1,
+    "retain-existing-owner": 1,
+    "reject-style-fix-for-temporal-state": 1,
+    "require-same-binding-proof": 1,
+    "preserve-compiler-flow-correlation": 1,
+    "fix-existing-owner-and-share-provenance": 1,
+    "reject-duplicate-compiler-control": 1,
+    "preserve-one-sided-partial-membership": 1,
+    "ship-warning-expansion": 6,
+    "admit-next-phase": 2,
+    "reject-duplicate-compiler-rule": 1,
+    "reject-name-derived-rule": 1,
+    "reject-false-positive-expansion": 1,
+    "verify-owner-precedence-integration": 1,
+    "fix-false-positive-conservatively": 1,
+    "retain-conservative-numeric-boundary": 1,
+    "retain-canonical-resolution-and-verify-prefilter": 1,
+    "fix-reproduced-false-positive": 2,
+    "extend-shared-proof-interface": 1,
+    "retain-relational-generic-guard-boundary": 1,
+    "retain-native-callback-owner-and-conditional-remediation": 1,
+    "preserve-failure-policy": 1,
+    "add-specific-manual-audit-guidance": 1,
+    "retain-transformed-callable-boundary": 1,
+    "strengthen-owned-domain-api-guidance": 1,
+    "retain-version-and-api-boundary": 1,
+    "retain-upstream-production-assert-owner": 1,
+    "retain-structural-interop": 1,
+    "reject-optional-field-quota": 1,
+    "retain-refined-domain-targets": 1,
+    "document-ownership-and-immutable-boundary": 1,
+    "retain-total-reusable-membership": 1,
+    "prefer-domain-union-at-owned-boundary": 1,
+    "preserve-transformed-parse-output": 1
+  },
+  "corpora": {
+    "python": {
+      "phase": "first-50-guard-design-review",
+      "pythonPassIds": [
+        "G16",
+        "G17",
+        "G18",
+        "G19",
+        "G20",
+        "G21",
+        "G22",
+        "G23",
+        "G24",
+        "G25",
+        "G26",
+        "G27",
+        "G28",
+        "G29",
+        "G30"
+      ],
+      "baselineRevision": "4c8c085f",
+      "sourcePins": {
+        "baseline": {
+          "_type_guard_symbols": "fa65a8bf82a9375bfd75f41011772c35a777e4aa237d18981ece527b354e1109",
+          "no_shallow_container_type_guard": "57f4c4c6f2a4b1c88809962f3f8a8618105e422c195dd91d1c5d839dafe5b41f",
+          "no_partial_type_is": "3c261030f220c2358a2d7ca2c1a2b3019613bf9cba9aa5788dc6004d61b2fa56",
+          "no_contradictory_type_guard": "e1a95da0bcc5a6cab480976db8644a13272094c7d56f8c19e70089a00f898a78"
+        },
+        "candidate": {
+          "_type_guard_symbols": "d2289691627ac30967a058437ad59b2c3959461ccc768e51c966af60f59d7585",
+          "no_shallow_container_type_guard": "4b775d6b1ad547cd23b1ab4e039b6464bca1836faa84e56e4c5d4130c7af842b",
+          "no_partial_type_is": "a0b8a3682f9d0ce8b09cc682ea5555fe6907794da264b822af780c0c1cd39ae7",
+          "no_contradictory_type_guard": "33b790001254e0846275387d30990c38dcef9d6fccb2dd88ff1adb6d604c5ab7"
+        }
+      },
+      "historical": {
+        "reusedCoverage": true,
+        "files": 3339,
+        "bytes": 35166866,
+        "corpora": 10,
+        "batchesPerVariant": 21,
+        "maximumBatchSize": 250,
+        "uniqueContentHashes": 3245,
+        "duplicateContentGroups": 5,
+        "duplicateExtraCopies": 94,
+        "duplicateFindingContents": 0,
+        "baselineFindings": 4,
+        "candidateFindings": 4,
+        "retainedTruePositives": 4,
+        "added": 0,
+        "removed": 0,
+        "allFindingsReviewed": true,
+        "parseFailures": {
+          "baseline": 0,
+          "candidate": 0
+        },
+        "oversized": {
+          "baseline": 0,
+          "candidate": 0
+        },
+        "perCorpus": [
+          {
+            "label": "standards",
+            "files": 813,
+            "bytes": 11017478
+          },
+          {
+            "label": "anonymous-private-1",
+            "files": 1609,
+            "bytes": 12679338
+          },
+          {
+            "label": "anonymous-private-2",
+            "files": 357,
+            "bytes": 3201667
+          },
+          {
+            "label": "anonymous-private-3",
+            "files": 4,
+            "bytes": 45176
+          },
+          {
+            "label": "mature-pydantic",
+            "files": 105,
+            "bytes": 1820880
+          },
+          {
+            "label": "mature-attrs",
+            "files": 6,
+            "bytes": 1557
+          },
+          {
+            "label": "mature-packaging",
+            "files": 22,
+            "bytes": 481499
+          },
+          {
+            "label": "mature-pytest",
+            "files": 78,
+            "bytes": 1341344
+          },
+          {
+            "label": "mature-pygments",
+            "files": 343,
+            "bytes": 4577209
+          },
+          {
+            "label": "labeled-seeds",
+            "files": 2,
+            "bytes": 718
+          }
+        ]
+      },
+      "seeds": {
+        "files": 21,
+        "bytes": 2872,
+        "publicContentDigest": "sha256:f45591d47b294a19f791626ff8acdb7c48f60f00771ef5d143f9d94408c17468",
+        "baselineFindings": 4,
+        "candidateFindings": 11,
+        "newProvenMatches": 8,
+        "nativeProvenOldFalsePositivesRemoved": 1,
+        "candidateExpectedMatches": 11,
+        "scopeNegativeLabels": 10,
+        "labelsCorrect": true,
+        "candidateDuplicateLocations": 0,
+        "label": "guard-design-labeled-seeds"
+      },
+      "validation": {
+        "finalNearbyTests": 2849,
+        "rawTestCountsAreNotIndependentDesignPasses": true,
+        "nativeProofs": "Fourteen question modules plus the corrected aggregate module pass strict BasedPyright 1.40.2 at Python 3.14; the intentional second-argument caller produces two expected native ownership diagnostics. Runtime failures substantiate the approved guard gaps.",
+        "ownedSelfLint": "All 154 custom rules over four owned Python files: 0 findings; Ruff and strict native checks passed. The final helper owner reports 2,849 combined guard/helper tests and clear self-lint/typechecking."
+      },
+      "phase2Required": [
+        "G22 source-proven shallow TypedDict guard",
+        "G23 source-proven tuple-only NamedTuple guard"
+      ],
+      "limitations": [
+        "Warning-only extensions; no autofix guesses a predicate or changes caller narrowing.",
+        "Finite builtin witnesses and bounded string-only Literal domains do not infer arbitrary aliases, custom refinements, helper predicates, subclass effects or complex control flow.",
+        "Repeated module-owned function definitions abstain conservatively, preserving public overload input contracts at the cost of documented coverage loss.",
+        "Corpus and matrix counts describe reused files and test labels, not independent observations. Historical wall times overlap verification and are not performance evidence."
+      ],
+      "performance": {
+        "selected": {
+          "panel": "selected",
+          "startedAt": "2026-10-16T22:14:57.715698+00:00",
+          "finishedAt": "2026-10-16T22:15:08.883487+00:00",
+          "files": 111,
+          "bytes": 1385700,
+          "freshWorkersPerMode": 3,
+          "warmIterationsPerWorker": 3,
+          "baselineRevision": "4c8c085f",
+          "knownConcurrentLoad": [],
+          "timingWindow": "Root confirmed all other agent verification jobs idle for this final window.",
+          "modes": {
+            "baseline": {
+              "firstAnalysisMedianMs": 403.8177919574082,
+              "warmMedianMs": 401.02487499825656,
+              "warmCpuMedianMs": 398.97499999999985,
+              "maxRssMiB": 79.828125
+            },
+            "candidate": {
+              "firstAnalysisMedianMs": 181.45424989052117,
+              "warmMedianMs": 176.53337493538857,
+              "warmCpuMedianMs": 175.61600000000004,
+              "maxRssMiB": 78.125
+            },
+            "parse": {
+              "firstAnalysisMedianMs": 108.40979218482971,
+              "warmMedianMs": 107.6673751231283,
+              "warmCpuMedianMs": 106.99700000000001,
+              "maxRssMiB": 75.625
+            }
+          },
+          "candidateBaselineWarmCpuRatio": 0.44016793032144896,
+          "candidateMinusParseWarmCpuMs": 68.61900000000003,
+          "limitation": "First-iteration results describe a fresh process; OS caches were not reset, so these are not cold-cache measurements. One fresh worker per mode bounds the normal full-registry panel; all selected Latin-square repeats are retained. Ratios are observational with no artificial regression threshold.",
+          "sourcePins": {
+            "baseline": {
+              "_type_guard_symbols": "fa65a8bf82a9375bfd75f41011772c35a777e4aa237d18981ece527b354e1109",
+              "no_shallow_container_type_guard": "57f4c4c6f2a4b1c88809962f3f8a8618105e422c195dd91d1c5d839dafe5b41f",
+              "no_partial_type_is": "3c261030f220c2358a2d7ca2c1a2b3019613bf9cba9aa5788dc6004d61b2fa56",
+              "no_contradictory_type_guard": "e1a95da0bcc5a6cab480976db8644a13272094c7d56f8c19e70089a00f898a78"
+            },
+            "candidate": {
+              "_type_guard_symbols": "d2289691627ac30967a058437ad59b2c3959461ccc768e51c966af60f59d7585",
+              "no_shallow_container_type_guard": "4b775d6b1ad547cd23b1ab4e039b6464bca1836faa84e56e4c5d4130c7af842b",
+              "no_partial_type_is": "a0b8a3682f9d0ce8b09cc682ea5555fe6907794da264b822af780c0c1cd39ae7",
+              "no_contradictory_type_guard": "33b790001254e0846275387d30990c38dcef9d6fccb2dd88ff1adb6d604c5ab7"
+            }
+          },
+          "rules": [
+            "SARJ472",
+            "SARJ512",
+            "SARJ513"
+          ],
+          "warmObservationsPerMode": 9,
+          "pythonVersion": "3.15.0"
+        },
+        "normal": {
+          "panel": "normal",
+          "startedAt": "2026-10-16T22:15:08.884271+00:00",
+          "finishedAt": "2026-10-16T22:17:30.808124+00:00",
+          "files": 20,
+          "bytes": 211230,
+          "freshWorkersPerMode": 1,
+          "warmIterationsPerWorker": 3,
+          "baselineRevision": "4c8c085f",
+          "knownConcurrentLoad": [],
+          "timingWindow": "Root confirmed all other agent verification jobs idle for this final window.",
+          "modes": {
+            "baseline": {
+              "firstAnalysisMedianMs": 11854.526499984786,
+              "warmMedianMs": 11261.464624898508,
+              "warmCpuMedianMs": 10658.086999999998,
+              "maxRssMiB": 898.546875
+            },
+            "candidate": {
+              "firstAnalysisMedianMs": 11869.795083999634,
+              "warmMedianMs": 11520.051332889125,
+              "warmCpuMedianMs": 11084.783000000001,
+              "maxRssMiB": 900.40625
+            },
+            "parse": {
+              "firstAnalysisMedianMs": 17.0995001681149,
+              "warmMedianMs": 12.733916053548455,
+              "warmCpuMedianMs": 12.558999999999987,
+              "maxRssMiB": 61.453125
+            }
+          },
+          "candidateBaselineWarmCpuRatio": 1.0400349518633132,
+          "candidateMinusParseWarmCpuMs": 11072.224000000002,
+          "limitation": "First-iteration results describe a fresh process; OS caches were not reset, so these are not cold-cache measurements. One fresh worker per mode bounds the normal full-registry panel; all selected Latin-square repeats are retained. Ratios are observational with no artificial regression threshold.",
+          "sourcePins": {
+            "baseline": {
+              "_type_guard_symbols": "fa65a8bf82a9375bfd75f41011772c35a777e4aa237d18981ece527b354e1109",
+              "no_shallow_container_type_guard": "57f4c4c6f2a4b1c88809962f3f8a8618105e422c195dd91d1c5d839dafe5b41f",
+              "no_partial_type_is": "3c261030f220c2358a2d7ca2c1a2b3019613bf9cba9aa5788dc6004d61b2fa56",
+              "no_contradictory_type_guard": "e1a95da0bcc5a6cab480976db8644a13272094c7d56f8c19e70089a00f898a78"
+            },
+            "candidate": {
+              "_type_guard_symbols": "d2289691627ac30967a058437ad59b2c3959461ccc768e51c966af60f59d7585",
+              "no_shallow_container_type_guard": "4b775d6b1ad547cd23b1ab4e039b6464bca1836faa84e56e4c5d4130c7af842b",
+              "no_partial_type_is": "a0b8a3682f9d0ce8b09cc682ea5555fe6907794da264b822af780c0c1cd39ae7",
+              "no_contradictory_type_guard": "33b790001254e0846275387d30990c38dcef9d6fccb2dd88ff1adb6d604c5ab7"
+            }
+          },
+          "rules": {
+            "configuredPythonRules": 154
+          },
+          "warmObservationsPerMode": 3,
+          "pythonVersion": "3.15.0",
+          "candidateMinusParseMeaning": "Difference of medians for normal analyze including project preparation absent from parse-only mode; not isolated rule-callback overhead.",
+          "analysisScope": "All154 configured Python rules through normal analyze on20 supplied app files, with full project preparation beyond those supplied files."
+        }
+      },
+      "status": "final-frozen-source",
+      "sourceVerification": {
+        "candidateAllFourBeforeAfter": true,
+        "baselinePinnedAtOriginalRunMatchesFinal": true,
+        "baselineAllFourMatchGit4c8c085f": true,
+        "finalCandidatePins": {
+          "_type_guard_symbols": "d2289691627ac30967a058437ad59b2c3959461ccc768e51c966af60f59d7585",
+          "no_shallow_container_type_guard": "4b775d6b1ad547cd23b1ab4e039b6464bca1836faa84e56e4c5d4130c7af842b",
+          "no_partial_type_is": "a0b8a3682f9d0ce8b09cc682ea5555fe6907794da264b822af780c0c1cd39ae7",
+          "no_contradictory_type_guard": "33b790001254e0846275387d30990c38dcef9d6fccb2dd88ff1adb6d604c5ab7"
+        },
+        "baselineRevision": "4c8c085f"
+      }
+    },
+    "typescript": {
+      "baselineRevision": "4c8c085f217e1d2de2e7e1f54d5dd4c42be8d905",
+      "rows": [
+        {
+          "variant": "baseline",
+          "files": 3575,
+          "batches": 20,
+          "processSeconds": 152.969135,
+          "findings": 3,
+          "newLabeledFindings": 2,
+          "retainedPriorLabeledTruePositive": 1,
+          "unseededFindings": 0,
+          "parseFailures": 0,
+          "unresolvedImports": 12825,
+          "fallbackModuleResolutions": 933
+        },
+        {
+          "variant": "candidate",
+          "files": 3575,
+          "batches": 20,
+          "processSeconds": 123.001444,
+          "findings": 5,
+          "newLabeledFindings": 4,
+          "retainedPriorLabeledTruePositive": 1,
+          "unseededFindings": 0,
+          "parseFailures": 0,
+          "unresolvedImports": 12825,
+          "fallbackModuleResolutions": 933
+        }
+      ],
+      "bytes": 33232086,
+      "corpora": 10,
+      "newLabeledFiles": 15,
+      "historicalFilesReused": 3560,
+      "classification": {
+        "candidateInspectedDiagnostics": 5,
+        "candidateTruePositives": 5,
+        "candidateFalsePositives": 0,
+        "newRuleTruePositives": 4,
+        "confirmedBaselineFalsePositivesRemoved": 2,
+        "newLabeledPositivesMissed": 0
+      },
+      "sampling": "Every emitted diagnostic was inspected; no sampling. All 15 new labeled case counts match expectations. Quiet historical files provide negative evidence, not proof of correctness for all type guards.",
+      "limitations": [
+        "Uniform strict/exactOptional native Programs use lazy actual rule checker queries. Whole-program semantic diagnostics are deliberately not forced; unresolved imports are counted, so silence in affected files is limited evidence.",
+        "Bare imports may resolve through the same controlled installed dependency fallback for both variants.",
+        "Full-corpus times were observed while canonical verification and other processes shared the machine; no speedup or general application-throughput claim is made.",
+        "An incomplete pre-enum-fix candidate run is retained only as discarded evidence. Final candidate results bind to the final source pins."
+      ],
+      "sourcePins": {
+        "no-partial-type-predicate.ts": "8afa355456e2c3e83ae63d96cf87f79b9970954230f45cad1e1c84e33a96ac04",
+        "no-contradictory-type-predicate.ts": "bdd679eb44cb2f5b8312f4bb71213a009039a2ad6c4cbbddf60fb01140d99d3f",
+        "_has-separate-predicate-contract.ts": "5e88f42274760424a5b8c55d52bad9f73d5a45cd2d408a552bff9776550b6ff3"
+      },
+      "perCorpus": [
+        {
+          "label": "standards",
+          "files": 369,
+          "bytes": 3297833
+        },
+        {
+          "label": "anonymous-private-1",
+          "files": 993,
+          "bytes": 8417577
+        },
+        {
+          "label": "anonymous-private-2",
+          "files": 379,
+          "bytes": 5825035
+        },
+        {
+          "label": "anonymous-private-3",
+          "files": 1232,
+          "bytes": 12071866
+        },
+        {
+          "label": "mature-zod",
+          "files": 330,
+          "bytes": 3084460
+        },
+        {
+          "label": "mature-unicorn",
+          "files": 239,
+          "bytes": 531406
+        },
+        {
+          "label": "labeled-seeds",
+          "files": 3,
+          "bytes": 207
+        },
+        {
+          "label": "producer-seeds",
+          "files": 2,
+          "bytes": 362
+        },
+        {
+          "label": "expert-labeled-seeds",
+          "files": 13,
+          "bytes": 1811
+        },
+        {
+          "label": "guard-design-labeled-seeds",
+          "files": 15,
+          "bytes": 1529
+        }
+      ]
+    }
+  },
+  "performance": {
+    "typescriptSelected": {
+      "files": 15,
+      "bytes": 1529,
+      "repeats": 3,
+      "variants": {
+        "parse": {
+          "elapsedMs": 487.8338749999999,
+          "programMs": 411.353125,
+          "lintMs": 84.74595799999997,
+          "lintCpuMs": 82.36,
+          "maxRss": 281008
+        },
+        "baseline": {
+          "elapsedMs": 525.965625,
+          "programMs": 412.040416,
+          "lintMs": 145.85908300000006,
+          "lintCpuMs": 115.536,
+          "maxRss": 282240
+        },
+        "candidate": {
+          "elapsedMs": 627.6598749999999,
+          "programMs": 400.17999999999995,
+          "lintMs": 193.25312500000007,
+          "lintCpuMs": 123.336,
+          "maxRss": 280832
+        }
+      },
+      "scope": "Fresh Node processes with native strict/exactOptional Program on the 15 labeled guard fixtures; interleaved Latin-square order; warm OS caches; canonical verification/corpus jobs share the machine. These are bounded observations, not general application throughput or speedup claims.",
+      "selectedRules": [
+        "no-partial-type-predicate",
+        "no-contradictory-type-predicate"
+      ]
+    },
+    "typescriptCombined": {
+      "scope": "Full custom strict preset on the unchanged, digest-verified immutable 20-application-file panel; no repinning.",
+      "files": 20,
+      "bytes": 148588,
+      "freshWorkers": 3,
+      "warmupsPerModePerWorker": 1,
+      "retainedWarmPassesPerModePerWorker": 3,
+      "order": "Interleaved Latin-square baseline/candidate/parse modes sharing the same native Program within each fresh worker.",
+      "programFiles": [
+        1353
+      ],
+      "syntacticCompilerDiagnostics": [
+        0
+      ],
+      "setupMs": [
+        6820.171458000001,
+        4405.541208000001,
+        4180.763125
+      ],
+      "setupCpuMs": [
+        5457.719,
+        4902.902,
+        4833.569
+      ],
+      "processMaxRssRaw": [
+        856448,
+        858800,
+        886896
+      ],
+      "freshWorkerWallSeconds": [
+        10.480025624856353,
+        8.312247166177258,
+        7.631794292014092
+      ],
+      "variants": {
+        "baseline": {
+          "configuredRules": [
+            123
+          ],
+          "diagnosticsPerPass": [
+            18
+          ],
+          "warmPasses": 9,
+          "warmMedianCpuMs": 310.389,
+          "warmMedianWallMs": 177.73416699999962,
+          "firstWarmupPasses": 3,
+          "firstWarmupMedianCpuMs": 611.616,
+          "firstWarmupMedianWallMs": 385.3329169999997
+        },
+        "candidate": {
+          "configuredRules": [
+            124
+          ],
+          "diagnosticsPerPass": [
+            18
+          ],
+          "warmPasses": 9,
+          "warmMedianCpuMs": 314.494,
+          "warmMedianWallMs": 187.375,
+          "firstWarmupPasses": 3,
+          "firstWarmupMedianCpuMs": 425.364,
+          "firstWarmupMedianWallMs": 221.16408299999966
+        },
+        "parse": {
+          "configuredRules": [
+            0
+          ],
+          "diagnosticsPerPass": [
+            0
+          ],
+          "warmPasses": 9,
+          "warmMedianCpuMs": 187.486,
+          "warmMedianWallMs": 82.43174999999974,
+          "firstWarmupPasses": 3,
+          "firstWarmupMedianCpuMs": 186.051,
+          "firstWarmupMedianWallMs": 96.79750000000058
+        }
+      },
+      "ratios": {
+        "candidateOverBaselineWarmCpu": 1.0132253398155218,
+        "candidateOverBaselineWarmWall": 1.0542429920072736
+      },
+      "limitations": [
+        "OS caches were not flushed. Canonical verification shared machine load, so wall and CPU values are scoped observations.",
+        "Program setup and peak RSS are measured per shared-Program worker, not attributed separately to either plugin.",
+        "Compiler diagnostic counts cover syntactic diagnostics only; no eager semantic scan is performed.",
+        "Stable diagnostic counts are reported separately from configured rule counts and do not prove complete behavioral equivalence or a general performance bound."
+      ],
+      "sourcePins": {
+        "no-partial-type-predicate.ts": "8afa355456e2c3e83ae63d96cf87f79b9970954230f45cad1e1c84e33a96ac04",
+        "no-contradictory-type-predicate.ts": "bdd679eb44cb2f5b8312f4bb71213a009039a2ad6c4cbbddf60fb01140d99d3f",
+        "_has-separate-predicate-contract.ts": "5e88f42274760424a5b8c55d52bad9f73d5a45cd2d408a552bff9776550b6ff3"
+      }
+    },
+    "python": {
+      "status": "final-frozen-source",
+      "baselineRevision": "4c8c085f",
+      "sourcePins": {
+        "baseline": {
+          "_type_guard_symbols": "fa65a8bf82a9375bfd75f41011772c35a777e4aa237d18981ece527b354e1109",
+          "no_shallow_container_type_guard": "57f4c4c6f2a4b1c88809962f3f8a8618105e422c195dd91d1c5d839dafe5b41f",
+          "no_partial_type_is": "3c261030f220c2358a2d7ca2c1a2b3019613bf9cba9aa5788dc6004d61b2fa56",
+          "no_contradictory_type_guard": "e1a95da0bcc5a6cab480976db8644a13272094c7d56f8c19e70089a00f898a78"
+        },
+        "candidate": {
+          "_type_guard_symbols": "d2289691627ac30967a058437ad59b2c3959461ccc768e51c966af60f59d7585",
+          "no_shallow_container_type_guard": "4b775d6b1ad547cd23b1ab4e039b6464bca1836faa84e56e4c5d4130c7af842b",
+          "no_partial_type_is": "a0b8a3682f9d0ce8b09cc682ea5555fe6907794da264b822af780c0c1cd39ae7",
+          "no_contradictory_type_guard": "33b790001254e0846275387d30990c38dcef9d6fccb2dd88ff1adb6d604c5ab7"
+        }
+      },
+      "panels": {
+        "selected": {
+          "panel": "selected",
+          "startedAt": "2026-10-16T22:14:57.715698+00:00",
+          "finishedAt": "2026-10-16T22:15:08.883487+00:00",
+          "files": 111,
+          "bytes": 1385700,
+          "freshWorkersPerMode": 3,
+          "warmIterationsPerWorker": 3,
+          "baselineRevision": "4c8c085f",
+          "knownConcurrentLoad": [],
+          "timingWindow": "Root confirmed all other agent verification jobs idle for this final window.",
+          "modes": {
+            "baseline": {
+              "firstAnalysisMedianMs": 403.8177919574082,
+              "warmMedianMs": 401.02487499825656,
+              "warmCpuMedianMs": 398.97499999999985,
+              "maxRssMiB": 79.828125
+            },
+            "candidate": {
+              "firstAnalysisMedianMs": 181.45424989052117,
+              "warmMedianMs": 176.53337493538857,
+              "warmCpuMedianMs": 175.61600000000004,
+              "maxRssMiB": 78.125
+            },
+            "parse": {
+              "firstAnalysisMedianMs": 108.40979218482971,
+              "warmMedianMs": 107.6673751231283,
+              "warmCpuMedianMs": 106.99700000000001,
+              "maxRssMiB": 75.625
+            }
+          },
+          "candidateBaselineWarmCpuRatio": 0.44016793032144896,
+          "candidateMinusParseWarmCpuMs": 68.61900000000003,
+          "limitation": "First-iteration results describe a fresh process; OS caches were not reset, so these are not cold-cache measurements. One fresh worker per mode bounds the normal full-registry panel; all selected Latin-square repeats are retained. Ratios are observational with no artificial regression threshold.",
+          "sourcePins": {
+            "baseline": {
+              "_type_guard_symbols": "fa65a8bf82a9375bfd75f41011772c35a777e4aa237d18981ece527b354e1109",
+              "no_shallow_container_type_guard": "57f4c4c6f2a4b1c88809962f3f8a8618105e422c195dd91d1c5d839dafe5b41f",
+              "no_partial_type_is": "3c261030f220c2358a2d7ca2c1a2b3019613bf9cba9aa5788dc6004d61b2fa56",
+              "no_contradictory_type_guard": "e1a95da0bcc5a6cab480976db8644a13272094c7d56f8c19e70089a00f898a78"
+            },
+            "candidate": {
+              "_type_guard_symbols": "d2289691627ac30967a058437ad59b2c3959461ccc768e51c966af60f59d7585",
+              "no_shallow_container_type_guard": "4b775d6b1ad547cd23b1ab4e039b6464bca1836faa84e56e4c5d4130c7af842b",
+              "no_partial_type_is": "a0b8a3682f9d0ce8b09cc682ea5555fe6907794da264b822af780c0c1cd39ae7",
+              "no_contradictory_type_guard": "33b790001254e0846275387d30990c38dcef9d6fccb2dd88ff1adb6d604c5ab7"
+            }
+          },
+          "rules": [
+            "SARJ472",
+            "SARJ512",
+            "SARJ513"
+          ],
+          "warmObservationsPerMode": 9,
+          "pythonVersion": "3.15.0"
+        },
+        "normal": {
+          "panel": "normal",
+          "startedAt": "2026-10-16T22:15:08.884271+00:00",
+          "finishedAt": "2026-10-16T22:17:30.808124+00:00",
+          "files": 20,
+          "bytes": 211230,
+          "freshWorkersPerMode": 1,
+          "warmIterationsPerWorker": 3,
+          "baselineRevision": "4c8c085f",
+          "knownConcurrentLoad": [],
+          "timingWindow": "Root confirmed all other agent verification jobs idle for this final window.",
+          "modes": {
+            "baseline": {
+              "firstAnalysisMedianMs": 11854.526499984786,
+              "warmMedianMs": 11261.464624898508,
+              "warmCpuMedianMs": 10658.086999999998,
+              "maxRssMiB": 898.546875
+            },
+            "candidate": {
+              "firstAnalysisMedianMs": 11869.795083999634,
+              "warmMedianMs": 11520.051332889125,
+              "warmCpuMedianMs": 11084.783000000001,
+              "maxRssMiB": 900.40625
+            },
+            "parse": {
+              "firstAnalysisMedianMs": 17.0995001681149,
+              "warmMedianMs": 12.733916053548455,
+              "warmCpuMedianMs": 12.558999999999987,
+              "maxRssMiB": 61.453125
+            }
+          },
+          "candidateBaselineWarmCpuRatio": 1.0400349518633132,
+          "candidateMinusParseWarmCpuMs": 11072.224000000002,
+          "limitation": "First-iteration results describe a fresh process; OS caches were not reset, so these are not cold-cache measurements. One fresh worker per mode bounds the normal full-registry panel; all selected Latin-square repeats are retained. Ratios are observational with no artificial regression threshold.",
+          "sourcePins": {
+            "baseline": {
+              "_type_guard_symbols": "fa65a8bf82a9375bfd75f41011772c35a777e4aa237d18981ece527b354e1109",
+              "no_shallow_container_type_guard": "57f4c4c6f2a4b1c88809962f3f8a8618105e422c195dd91d1c5d839dafe5b41f",
+              "no_partial_type_is": "3c261030f220c2358a2d7ca2c1a2b3019613bf9cba9aa5788dc6004d61b2fa56",
+              "no_contradictory_type_guard": "e1a95da0bcc5a6cab480976db8644a13272094c7d56f8c19e70089a00f898a78"
+            },
+            "candidate": {
+              "_type_guard_symbols": "d2289691627ac30967a058437ad59b2c3959461ccc768e51c966af60f59d7585",
+              "no_shallow_container_type_guard": "4b775d6b1ad547cd23b1ab4e039b6464bca1836faa84e56e4c5d4130c7af842b",
+              "no_partial_type_is": "a0b8a3682f9d0ce8b09cc682ea5555fe6907794da264b822af780c0c1cd39ae7",
+              "no_contradictory_type_guard": "33b790001254e0846275387d30990c38dcef9d6fccb2dd88ff1adb6d604c5ab7"
+            }
+          },
+          "rules": {
+            "configuredPythonRules": 154
+          },
+          "warmObservationsPerMode": 3,
+          "pythonVersion": "3.15.0",
+          "candidateMinusParseMeaning": "Difference of medians for normal analyze including project preparation absent from parse-only mode; not isolated rule-callback overhead.",
+          "analysisScope": "All154 configured Python rules through normal analyze on20 supplied app files, with full project preparation beyond those supplied files."
+        }
+      },
+      "interpretation": "Observed timings on immutable, previously selected inputs with the normal analysis API. They are bounded observations, not guaranteed speedups or independent design passes.",
+      "limitations": [
+        "Historical corpus coverage and timing panels are reused selections, not newly sampled repositories.",
+        "First analysis occurs in a fresh process without resetting OS caches; no cold-cache claim.",
+        "The selected panel has three Latin-square workers and nine warm iterations per mode; the normal 154-rule panel has one worker and three warm iterations per mode.",
+        "Root coordinated an idle verification window; unrelated system activity is not controlled."
+      ]
+    },
+    "integrationScope": "Measured before upstream57109f07 testing-rule integration. The seven guard implementation pins are unchanged. Selected guard timings still measure these exact sources; full-preset timings describe the recorded pre-integration workload, not final combined-plugin throughput."
+  },
+  "validation": {
+    "status": "Passed canonical make verify on the integrated branch with frozen rule source and regenerated combined artifacts.",
+    "typescriptFocused": 191,
+    "minimumMinorTypeScript": {
+      "compiler": "5.0.4",
+      "cases": 175,
+      "passed": 175
+    },
+    "pythonFocused": 2849,
+    "metadataTests": 76,
+    "rawCaseCountsAreNotIndependentCoverage": true,
+    "supplementalCompatibility": {
+      "typescriptNative7": {
+        "compiler": {
+          "invocation": "Actual installed @typescript/native CLI via Node launcher; isolated tsconfig per public synthetic fixture.",
+          "versionOutput": "Version 7.0.2",
+          "packageVersion": "7.0.2"
+        },
+        "nodeVersion": "v26.10.0",
+        "options": {
+          "strict": true,
+          "exactOptionalPropertyTypes": true,
+          "target": "ES2022",
+          "module": "NodeNext",
+          "moduleResolution": "NodeNext",
+          "noEmitOnError": true,
+          "types": []
+        },
+        "cases": 8,
+        "passed": 8,
+        "rows": [
+          {
+            "name": "partial-numeric-range-false-branch",
+            "source": "function isSmall(value:string|number):value is number{return typeof value===\"number\"&&value<10;} function render(value:string|number):string{return isSmall(value)?value.toFixed():value.toUpperCase();} render(20);",
+            "sourceSha256": "74b8e50ad085ca8add5357a29522cdb3e46205146082e3c4c5979885cdff322a",
+            "compilerExitCode": 0,
+            "diagnosticCodes": [],
+            "runtime": {
+              "status": "expected-false-branch-failure",
+              "exitCode": 1,
+              "error": "TypeError: value.toUpperCase is not a function"
+            }
+          },
+          {
+            "name": "nonempty-string-false-branch",
+            "source": "function isText(value:string|number):value is string{return typeof value===\"string\"&&value.length>0;} function render(value:string|number):string{return isText(value)?value.toUpperCase():value.toFixed();} render(\"\");",
+            "sourceSha256": "d3539d2aab4688ac86773b97308e935ac2ebc8f86032c03c1f154d7cec49389a",
+            "compilerExitCode": 0,
+            "diagnosticCodes": [],
+            "runtime": {
+              "status": "expected-false-branch-failure",
+              "exitCode": 1,
+              "error": "TypeError: value.toFixed is not a function"
+            }
+          },
+          {
+            "name": "primitive-truthiness-false-branch",
+            "source": "function isNumber(value:string|number):value is number{return !!value;} function render(value:string|number):string{return isNumber(value)?value.toFixed():value.toUpperCase();} render(0);",
+            "sourceSha256": "895b48828769fb518523b4566632fc0ba1a1d65728604e8b93212ae26c3972e9",
+            "compilerExitCode": 0,
+            "diagnosticCodes": [],
+            "runtime": {
+              "status": "expected-false-branch-failure",
+              "exitCode": 1,
+              "error": "TypeError: value.toUpperCase is not a function"
+            }
+          },
+          {
+            "name": "public-overload-domain-preserved",
+            "source": "function isText(value:string|number):value is string;function isText(value:unknown):value is string|number{return typeof value===\"string\";} function render(value:string|number):string{return isText(value)?value.toUpperCase():value.toFixed();} console.log(JSON.stringify([render(1),render(\"text\")]));",
+            "sourceSha256": "b0d49509953706e6a774b682a2f77f67113239baf04501175311b6511b065800",
+            "compilerExitCode": 0,
+            "diagnosticCodes": [],
+            "runtime": {
+              "status": "valid-contract-preserved",
+              "exitCode": 0,
+              "output": [
+                "1",
+                "TEXT"
+              ]
+            }
+          },
+          {
+            "name": "contextual-callback-domain-preserved",
+            "source": "const callback:(value:string)=>boolean=(value:unknown):value is string|number=>typeof value===\"string\";console.log(JSON.stringify(callback(\"text\")));",
+            "sourceSha256": "6789d991470cf9641e6a53f46f978bfc4cba4dbb72207af17686f9a3cfaa3317",
+            "compilerExitCode": 0,
+            "diagnosticCodes": [],
+            "runtime": {
+              "status": "valid-contract-preserved",
+              "exitCode": 0,
+              "output": true
+            }
+          },
+          {
+            "name": "positive-numeric-enum-domain-preserved",
+            "source": "enum Positive{One=1,Two=2} function check(value:Positive):value is number{return value>0;} console.log(JSON.stringify([check(Positive.One),check(Positive.Two)]));",
+            "sourceSha256": "67e18ef868e10196ce2e0ba1040296821ae5de20c7e4041dd3d7a2751bc4b2ea",
+            "compilerExitCode": 0,
+            "diagnosticCodes": [],
+            "runtime": {
+              "status": "valid-contract-preserved",
+              "exitCode": 0,
+              "output": [
+                true,
+                true
+              ]
+            }
+          },
+          {
+            "name": "positive-enum-excludes-zero-input",
+            "source": "enum Positive{One=1,Two=2} function check(value:Positive):value is number{return value>0;} check(0);",
+            "sourceSha256": "2a33142ed575e7ff4cda2db6d700c1cfd674b7dc30eac8b34ac425d675a07036",
+            "compilerExitCode": 1,
+            "diagnosticCodes": [
+              2345
+            ],
+            "runtime": {
+              "status": "not-run-compiler-rejected"
+            }
+          },
+          {
+            "name": "positive-enum-no-synthetic-nan-input",
+            "source": "enum Positive{One=1,Two=2} function check(value:Positive):value is number{return value<=Infinity;} console.log(JSON.stringify([check(Positive.One),check(Positive.Two)]));",
+            "sourceSha256": "6fba477c9c1c5d0d8268302068d6d0943eadafbbcb7a67263ade986a140a481b",
+            "compilerExitCode": 0,
+            "diagnosticCodes": [],
+            "runtime": {
+              "status": "valid-contract-preserved",
+              "exitCode": 0,
+              "output": [
+                true,
+                true
+              ]
+            }
+          }
+        ],
+        "sourcePins": {
+          "no-partial-type-predicate.ts": "8afa355456e2c3e83ae63d96cf87f79b9970954230f45cad1e1c84e33a96ac04",
+          "no-contradictory-type-predicate.ts": "bdd679eb44cb2f5b8312f4bb71213a009039a2ad6c4cbbddf60fb01140d99d3f",
+          "_has-separate-predicate-contract.ts": "5e88f42274760424a5b8c55d52bad9f73d5a45cd2d408a552bff9776550b6ff3"
+        },
+        "limitations": [
+          "This validates these native compiler contracts and emitted JavaScript executions only; it does not establish full lint-rule coverage under TypeScript 7.",
+          "The installed typescript-estree parser peer range excludes TypeScript 7. No typed ESLint parser run or unsupported legacy API substitution is claimed.",
+          "These are validation examples within existing Phase 1 design passes; they add no new pass, rule, feature, package installation or worktree dependency change.",
+          "The enum examples establish that zero is outside the declared finite enum domain. NaN is therefore not invented as an admitted input merely because the broad number predicate target is accepted."
+        ],
+        "typedParserPeerRange": ">=4.8.4 <6.1.0",
+        "readOnlyReview": {
+          "stagedSourcesMatchWorkingTreeAndCalibrationPins": true,
+          "canonicalBenchmarkTypeScriptCorpusEqualsSanitizedCalibrationReport": true,
+          "canonicalBenchmarkTypeScriptCombinedPerformanceEqualsSanitizedTimingReport": true,
+          "canonicalPassesExactlyG01ThroughG50": true,
+          "newRuleRegistryOwnerCount": 1,
+          "recommendedAndStrictLevels": "warning",
+          "consumerStrictLevel": "warning",
+          "duplicateReview": "The existing contradictory predicate rule handles a direct positive typeof equality. The new partial rule requires a concrete rejected primitive witness from truthiness or a literal comparison (optionally following typeof); these admitted expression shapes do not overlap. Existing nullish-filter guidance owns array filter(Boolean), not explicit predicate false-branch contracts. Native compiler protocol/target errors remain excluded.",
+          "findings": []
+        }
+      },
+      "pythonNative314": {
+        "status": "read-only-release-audit-clear",
+        "sourcePins": {
+          "_type_guard_symbols": "d2289691627ac30967a058437ad59b2c3959461ccc768e51c966af60f59d7585",
+          "no_shallow_container_type_guard": "4b775d6b1ad547cd23b1ab4e039b6464bca1836faa84e56e4c5d4130c7af842b",
+          "no_partial_type_is": "a0b8a3682f9d0ce8b09cc682ea5555fe6907794da264b822af780c0c1cd39ae7",
+          "no_contradictory_type_guard": "33b790001254e0846275387d30990c38dcef9d6fccb2dd88ff1adb6d604c5ab7"
+        },
+        "sourcePinAgreement": {
+          "workingTree": true,
+          "stagedIndex": true,
+          "committedCampaignArtifact": true,
+          "corpusAndPerformanceReports": true
+        },
+        "metadata": [
+          {
+            "code": "SARJ512",
+            "defaultLevel": "warning",
+            "autofix": "none",
+            "sourceAndCatalogRemediationAgree": true,
+            "publishedExamples": 6
+          },
+          {
+            "code": "SARJ513",
+            "defaultLevel": "warning",
+            "autofix": "none",
+            "sourceAndCatalogRemediationAgree": true,
+            "publishedExamples": 4
+          },
+          {
+            "code": "SARJ472",
+            "defaultLevel": "error",
+            "autofix": "none",
+            "sourceAndCatalogRemediationAgree": true,
+            "publishedExamples": 2
+          }
+        ],
+        "remediation": "SARJ512 source and generated catalog recommend ordinary bool for value filters and permit TypeGuard only when the accepted branch already proves its target. TypeIs must recognize exactly its target. No autofix and no warning promotion.",
+        "caseAccounting": {
+          "canonicalFocusedCases": 2849,
+          "independentReviewQuestions": 50,
+          "pythonOwnedReviewQuestions": 15,
+          "matrixAndReplayCountsAreNotIndependentObservations": true
+        },
+        "native314Replay": {
+          "python": "3.14.7",
+          "pytest": "9.1.1",
+          "passed": 2846,
+          "skipped": 3,
+          "elapsedSeconds": 4.09,
+          "scope": [
+            "test_type_guard_symbols.py",
+            "test_no_shallow_container_type_guard.py",
+            "test_no_partial_type_is.py",
+            "test_no_contradictory_type_guard.py"
+          ],
+          "skipReason": "Exactly three parametrized native __lazy_import__ runtime proofs require CPython3.15; the analyzer itself uses only the API name as source text.",
+          "isSupplementalCompatibilityReplay": true,
+          "currentSourceOverrides": [
+            "sarj_python_lint",
+            "sarj_rule_contracts"
+          ],
+          "existingDependencyEnvironment": {
+            "pydantic": "2.13.5",
+            "pydantic_core": "2.46.5",
+            "typing_extensions": "4.16.0",
+            "packaging": "26.3",
+            "sqlglot": "30.19.0",
+            "typer": "0.27.2"
+          },
+          "limitation": "Uses a pre-existing Python3.14 environment; unrelated dependencies differ from the canonical current lock. No installs,3.15 site-packages,source changes or bytecode/cache writes. Replays the same focused cases rather than adding independent precision observations."
+        },
+        "phase2Started": false,
+        "canonicalVerification": "Root-owned frozen make verify remains the release gate."
+      }
+    },
+    "discardedCanonicalRuns": [
+      {
+        "reason": "Generated displayed examples were stale after a closing metadata correction. Re-synchronized catalog and rendered examples before the next run.",
+        "sourceRegression": false
+      },
+      {
+        "reason": "Shared disk exhausted during packaged CLI tests.",
+        "engineTestsPassed": {
+          "typescript": 9247,
+          "python": 18228
+        },
+        "packagedResults": {
+          "passed": 4840,
+          "failed": 100,
+          "errors": 830,
+          "skipped": 9
+        },
+        "failureClassification": {
+          "explicitDiskExhaustionFailures": 98,
+          "otherSubprocessFailures": 2,
+          "otherSubprocessReplayPassed": 2,
+          "explicitDiskErrors": 11,
+          "temporaryDirectoryCreationErrors": 819
+        },
+        "originalOtherSubprocessErrno": "Not exposed in captured traceback; not claimed proven.",
+        "sourceEditsForRecovery": false
+      }
+    ],
+    "canonical": {
+      "command": "VITEST_MAX_WORKERS=2 TEST_JOBS=4 make verify",
+      "exitCode": 0,
+      "passed": 36610,
+      "skipped": 10,
+      "perPackagePassed": {
+        "typescript": 9287,
+        "bootstrap": 18,
+        "contracts": 46,
+        "python": 18285,
+        "sql": 1755,
+        "iac": 1446,
+        "standardsFreshWheel": 5773
+      },
+      "skips": {
+        "sql": 1,
+        "standardsFreshWheel": 9
+      },
+      "gates": [
+        "doctor",
+        "docs and generated artifacts",
+        "format",
+        "lint",
+        "all-rule self-checks",
+        "native type checks",
+        "all package tests including fresh wheels",
+        "tsconfig validation",
+        "repository policy",
+        "private-reference gate",
+        "shellcheck",
+        "shfmt"
+      ],
+      "temporaryFiles": "Owner-only task temporary directory; no shared unrelated fixture cleanup.",
+      "recordUpdate": "Only this benchmark validation record changed after verification; implementation and packaged artifacts remain unchanged."
+    }
+  },
+  "limitations": [
+    "Zero observed false positives in the inspected candidate findings and labeled cases is not a universal guarantee. No unseeded new-rule positives were observed, so empirical new-rule precision cannot be estimated.",
+    "Historical corpora and application timing panels are reused unchanged pinned coverage, not newly independent observations. Duplicate source content and worker overlap are reported where measured.",
+    "TypeScript uses real lazy Programs with controlled dependency fallback and uniform strict/exact-optional options; unresolved imports cause conservative abstention. Repeated module-resolution counts across fresh batches are not unique project-wide missing modules.",
+    "Normal TypeScript timing includes the complete custom preset and ESLint core workload but excludes shared upstream plugins. Python normal analysis includes project preparation beyond its twenty supplied files. First warmups are not controlled cold filesystem-cache measurements.",
+    "Private source identities, paths, content digests and raw findings remain owner-only. Public reports include only aggregates, synthetic seed digests and hashes of this public implementation."
+  ],
+  "evidenceReferenceConvention": {
+    "repositoryPaths": "Only paths beginning packages/ or plugins/ identify shipped repository files. Shipped report section references are JSON pointers within this report.",
+    "ownerLocalEvidenceIds": "Fields named ownerLocalArtifactId or ownerLocalProofId and strings explicitly labeled Owner-local evidence ID identify owner-readable local records, not repository paths, downloads or shipped links. Their sanitized observations are embedded here; private corpus sources and raw findings remain unpublished.",
+    "shippedGuardChecks": [
+      "packages/typescript/tests/rules/no-partial-type-predicate.test.ts",
+      "packages/typescript/tests/rules/no-contradictory-type-predicate.test.ts",
+      "packages/typescript/tests/partial-predicate-contracts.test.ts",
+      "packages/python/tests/rules/test_type_guard_symbols.py",
+      "packages/python/tests/rules/test_no_shallow_container_type_guard.py",
+      "packages/python/tests/rules/test_no_partial_type_is.py",
+      "packages/python/tests/rules/test_no_contradictory_type_guard.py",
+      "plugins/sarj-audit/commands/data-contracts.md"
+    ]
+  },
+  "closingReview": {
+    "status": "Independent source/hash/privacy and fifty-question review complete; integrated canonical verification passed.",
+    "passCount": 50,
+    "replacements": [
+      {
+        "id": "G43",
+        "reason": "Prior nullable-object truthiness question duplicated G05. Replaced by actual Python normal/-O proof of removable assert validation and preserved explicit rejection, routed to existing RuffS101."
+      },
+      {
+        "id": "G16",
+        "reason": "Prior all-content empty-list example overlapped G27. Replaced with actual one-sided partial TypeGuard proof: rejects valid emptystr while false caller retainsstr|int. G27 separately establishes complete bidirectional TypeIs container membership and vacuous truth."
+      }
+    ],
+    "overlapClassification": [
+      {
+        "passes": [
+          "G01",
+          "G16",
+          "G48"
+        ],
+        "classification": "Independent language/contracts: TypeScript iff primitive predicate, Python one-sided partial membership, Python complete TypeIs both-branch membership."
+      },
+      {
+        "passes": [
+          "G05",
+          "G43"
+        ],
+        "classification": "Former duplicate removed: G05 nullable structural truthiness; finalG43 removable Python assert runtime validation and existing Ruff owner."
+      },
+      {
+        "passes": [
+          "G14",
+          "G29",
+          "G36"
+        ],
+        "classification": "Independent callable contract questions: TS contextual/overload implementation ownership; Python overload public-input reachability; Python TypeIs callback invariance versus TypeGuard assignability."
+      },
+      {
+        "passes": [
+          "G19",
+          "G20",
+          "G21",
+          "G26"
+        ],
+        "classification": "Separate admitted runtime contracts: scalar order/equality target witnesses; truthiness conversion with positive-branch hazards; container cardinality and bottom-element empty domains; finite Literal target-member identity and membership. These are expression/domain admissions, not matrix or repeated-context counts."
+      },
+      {
+        "passes": [
+          "G04",
+          "G27",
+          "G47"
+        ],
+        "classification": "Input-established array elements, complete Python content membership including emptiness, and mutation after valid content evidence are separate proof-origin/completeness/lifetime questions."
+      },
+      {
+        "passes": [
+          "G06",
+          "G13",
+          "G44"
+        ],
+        "classification": "Already-correct tagged-union API, preserved destructured alias flow correlation, and externally owned untagged structural wire union are distinct contracts."
+      },
+      {
+        "passes": [
+          "G08",
+          "G50"
+        ],
+        "classification": "Identity primitive schema-to-boolean adapter versus transformed model output identity; validation success cannot replace normalization."
+      },
+      {
+        "passes": [
+          "G31",
+          "G32",
+          "G33",
+          "G34"
+        ],
+        "classification": "Lexical normalized import identity, namespace capability escape/lost binding identity, module-class lookup interception, and protected typing special-form identity are separate proof requirements. Closing family/capability fixes remain within G32."
+      },
+      {
+        "passes": [
+          "G40",
+          "G49"
+        ],
+        "classification": "Variant-specific operation input ownership over an already-correct union versus repairing missing representation correlation; no optional-field or guard quota."
+      }
+    ],
+    "nativeReplacementEvidence": {
+      "nativeChecker": {
+        "version": "1.40.2",
+        "pythonTarget": "3.14",
+        "errors": 0,
+        "proofModules": 3
+      },
+      "sources": {
+        "G43-removable-assert": "from typing import TypeGuard\n\ndef is_text(value: object) -> TypeGuard[str]:\n    assert isinstance(value, str)\n    return True\n\ndef render(value: object) -> str:\n    return value.upper() if is_text(value) else \"other\"\n",
+        "G43-explicit-rejection": "from typing import TypeGuard\n\ndef is_text(value: object) -> TypeGuard[str]:\n    if not isinstance(value, str):\n        raise ValueError(\"expected text\")\n    return True\n\ndef render(value: object) -> str:\n    return value.upper() if is_text(value) else \"other\"\n",
+        "G16-one-sided-selector": "from typing import TypeGuard, assert_type\n\ndef nonempty_text(value: object) -> TypeGuard[str]:\n    return isinstance(value, str) and bool(value)\n\ndef render(value: str | int) -> str:\n    if nonempty_text(value):\n        assert_type(value, str)\n        return value.upper()\n    assert_type(value, str | int)\n    return str(value)\n"
+      },
+      "runtime": {
+        "3.14.7": {
+          "normal": {
+            "G43-removable-assert": {
+              "is_text": {
+                "error": "AssertionError"
+              },
+              "render": {
+                "error": "AssertionError"
+              }
+            },
+            "G43-explicit-rejection": {
+              "is_text": {
+                "error": "ValueError"
+              },
+              "render": {
+                "error": "ValueError"
+              }
+            },
+            "G16-one-sided-selector": {
+              "accepted_text": true,
+              "rejected_empty_text": true,
+              "rejected_integer": true,
+              "caller_results": [
+                "TEXT",
+                "",
+                "1"
+              ]
+            }
+          },
+          "optimized": {
+            "G43-removable-assert": {
+              "is_text": {
+                "result": true
+              },
+              "render": {
+                "error": "AttributeError"
+              }
+            },
+            "G43-explicit-rejection": {
+              "is_text": {
+                "error": "ValueError"
+              },
+              "render": {
+                "error": "ValueError"
+              }
+            },
+            "G16-one-sided-selector": {
+              "accepted_text": true,
+              "rejected_empty_text": true,
+              "rejected_integer": true,
+              "caller_results": [
+                "TEXT",
+                "",
+                "1"
+              ]
+            }
+          }
+        },
+        "3.15.0": {
+          "normal": {
+            "G43-removable-assert": {
+              "is_text": {
+                "error": "AssertionError"
+              },
+              "render": {
+                "error": "AssertionError"
+              }
+            },
+            "G43-explicit-rejection": {
+              "is_text": {
+                "error": "ValueError"
+              },
+              "render": {
+                "error": "ValueError"
+              }
+            },
+            "G16-one-sided-selector": {
+              "accepted_text": true,
+              "rejected_empty_text": true,
+              "rejected_integer": true,
+              "caller_results": [
+                "TEXT",
+                "",
+                "1"
+              ]
+            }
+          },
+          "optimized": {
+            "G43-removable-assert": {
+              "is_text": {
+                "result": true
+              },
+              "render": {
+                "error": "AttributeError"
+              }
+            },
+            "G43-explicit-rejection": {
+              "is_text": {
+                "error": "ValueError"
+              },
+              "render": {
+                "error": "ValueError"
+              }
+            },
+            "G16-one-sided-selector": {
+              "accepted_text": true,
+              "rejected_empty_text": true,
+              "rejected_integer": true,
+              "caller_results": [
+                "TEXT",
+                "",
+                "1"
+              ]
+            }
+          }
+        }
+      },
+      "configuredUpstreamOwnership": {
+        "rule": "RuffS101 assert",
+        "config": "packages/standards/src/sarj_standards/configs/ruff.strict.toml",
+        "selection": "ALL",
+        "observed": [
+          {
+            "proof": "G43-removable-assert",
+            "code": "S101",
+            "line": 4
+          }
+        ],
+        "explicitRejectionS101": 0,
+        "retiredCustomOwnerNotes": "packages/standards/src/sarj_standards/configs/rule-ledger.json: SARJ422 retirement and prefer-one-for-required-row removal cite RuffS101"
+      },
+      "selectedGuardDiagnostics": {
+        "G43-removable-assert": [],
+        "G43-explicit-rejection": [],
+        "G16-one-sided-selector": []
+      },
+      "closingReplacement": "G43 replaces duplicate nullable-record truthiness proof; G16 becomes one-sided partial TypeGuard selection, distinct from G27 total TypeIs content validation. No new design pass IDs or engine changes."
+    },
+    "sourceEdits": false,
+    "phase2Started": false,
+    "privacy": "No private corpus identities, paths, source digests or findings are present; only public implementation pins and synthetic fixture digests are retained."
+  },
+  "integration": {
+    "baseRevision": "57109f07a4bb3530d391eb9bc3a3e0a72476476f",
+    "sourcePinsUnchanged": true,
+    "upstreamFixesPreserved": [
+      "python:production-derived-test-cases",
+      "python:async-mock-call-without-await-assertion",
+      "eslint:no-duplicate-test-case",
+      "eslint:prefer-whole-object-assertion"
+    ],
+    "generatedArtifacts": "Regenerated from combined sources; newer minor versions and exact sibling pins retained."
+  }
+}

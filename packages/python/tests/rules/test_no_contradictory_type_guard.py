@@ -92,7 +92,12 @@ _CASES = (
         _BASE.replace("isinstance(value, int)", "isinstance(value, str) and len(value) > 0"),
     ),
     EvaluationCase("helper-predicate", Language.PYTHON, _BASE.replace("isinstance(value, int)", "recognizes(value)")),
-    EvaluationCase("negative-check", Language.PYTHON, _BASE.replace("return isinstance", "return not isinstance")),
+    EvaluationCase(
+        "negative-check",
+        Language.PYTHON,
+        _BASE.replace("return isinstance", "return not isinstance"),
+        ExpectedOutcome.MATCH,
+    ),
     EvaluationCase("multistatement", Language.PYTHON, _BASE.replace("    return", "    normalize(value)\n    return")),
     EvaluationCase("decorated", Language.PYTHON, _BASE.replace("def identifies", "@adapt\ndef identifies")),
     EvaluationCase("generic", Language.PYTHON, _BASE.replace("identifies(", "identifies[T](")),
@@ -273,3 +278,82 @@ def test_large_unsupported_input_wrappers_abstain_without_recursion(wrapper: str
 def test_over_budget_input_union_abstains_without_recursion() -> None:
     many = " | ".join(["str"] * 2300 + ["int"])
     assert _check(_source(input_type=many)) == []
+
+
+@pytest.mark.parametrize(
+    ("guard", "target_name", "checked_name", "input_name"),
+    tuple(product(("TypeGuard", "TypeIs"), _RUNTIME_TYPES, _RUNTIME_TYPES, _RUNTIME_INPUTS)),
+)
+def test_negated_checks_agree_with_runtime_witnesses(
+    guard: str, target_name: str, checked_name: str, input_name: str
+) -> None:
+    target = _RUNTIME_TYPES[target_name]
+    checked = _RUNTIME_TYPES[checked_name]
+    input_types = _RUNTIME_INPUTS[input_name]
+    values = [value for value in (0, False, "", b"", None) if isinstance(value, input_types)]
+    compiler_owns = guard == "TypeIs" and not issubclass(target, input_types)
+    wrong_true = any(not isinstance(value, checked) and not isinstance(value, target) for value in values)
+    wrong_false = guard == "TypeIs" and any(
+        isinstance(value, target) and isinstance(value, checked) for value in values
+    )
+    source = _source(target_name, checked_name, guard=guard, input_type=input_name).replace(
+        "return isinstance", "return not isinstance"
+    )
+    assert len(_check(source)) == int(not compiler_owns and (wrong_true or wrong_false))
+
+
+@pytest.mark.parametrize(
+    ("guard", "target_name", "input_name", "result"),
+    tuple(product(("TypeGuard", "TypeIs"), _RUNTIME_TYPES, _RUNTIME_INPUTS, (True, False))),
+)
+def test_constant_results_agree_with_runtime_witnesses(
+    guard: str, target_name: str, input_name: str, result: bool
+) -> None:
+    target = _RUNTIME_TYPES[target_name]
+    input_types = _RUNTIME_INPUTS[input_name]
+    values = [value for value in (0, False, "", b"", None) if isinstance(value, input_types)]
+    compiler_owns = guard == "TypeIs" and not issubclass(target, input_types)
+    wrong_true = result and any(not isinstance(value, target) for value in values)
+    wrong_false = guard == "TypeIs" and not result and any(isinstance(value, target) for value in values)
+    source = _source(target_name, guard=guard, input_type=input_name).replace("isinstance(value, int)", str(result))
+    assert len(_check(source)) == int(not compiler_owns and (wrong_true or wrong_false))
+
+
+@pytest.mark.parametrize("annotation", ["Never", "NoReturn", "Literal[1]", "PositiveInt", "Any", "int | Never"])
+@pytest.mark.parametrize("predicate", ["True", "False", "not isinstance(value, str)"])
+def test_constants_and_negation_preserve_uninhabited_or_opaque_inputs(annotation: str, predicate: str) -> None:
+    source = "from typing import Any, Literal, Never, NoReturn\n" + _source(input_type=annotation)
+    assert _check(source.replace("isinstance(value, int)", predicate)) == []
+
+
+def _claims_everything_is_text(_value: object) -> TypeGuard[str]:
+    return True  # sarj-noqa: SARJ513 -- demonstrate a constant predicate's invalid true branch
+
+
+def _claims_nonints_are_text(value: object) -> TypeGuard[str]:
+    return not isinstance(value, int)  # sarj-noqa: SARJ513 -- demonstrate an invalid complement predicate
+
+
+def test_constant_and_complement_guards_fail_for_proven_none_witness() -> None:
+    def render(value: object) -> str:
+        return value.upper() if _claims_everything_is_text(value) else "other"
+
+    def describe(value: object) -> str:
+        return value.upper() if _claims_nonints_are_text(value) else "integer"
+
+    with pytest.raises(AttributeError, match="upper"):
+        render(None)
+    with pytest.raises(AttributeError, match="upper"):
+        describe(None)
+
+
+def test_public_overload_inputs_override_broad_implementation_input() -> None:
+    source = (
+        "from typing import Literal, TypeGuard, overload\n"
+        "@overload\ndef recognizes(value: Literal[1]) -> TypeGuard[int]: ...\n"
+        "@overload\ndef recognizes(value: Literal[2]) -> TypeGuard[int]: ...\n"
+        "def recognizes(value: object) -> TypeGuard[int]:\n    return True\n"
+    )
+    assert _check(source) == []
+    implementation = source.split("def recognizes(value: object)", maxsplit=1)[1]
+    assert len(_check("from typing import TypeGuard\ndef recognizes(value: object)" + implementation)) == 1

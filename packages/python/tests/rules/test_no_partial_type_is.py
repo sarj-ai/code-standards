@@ -1,5 +1,7 @@
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeIs
+import subprocess
+import sys
+from typing import TYPE_CHECKING, Literal, TypeIs, assert_never
 
 import pytest
 from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
@@ -224,3 +226,213 @@ def test_typing_namespace_mutation_abstains(mutation: str) -> None:
 def test_deep_flat_input_union_abstains_without_recursion_failure() -> None:
     input_type = " | ".join(["str"] * 1500 + ["int"])
     assert _check(_source(input_type=input_type)) == []
+
+
+def _direct_source(predicate: str, target: str = "int", input_type: str = "int") -> str:
+    return (
+        "from typing import Literal, TypeIs\n"
+        f"def identifies(value: {input_type}) -> TypeIs[{target}]:\n"
+        f"    return {predicate}\n"
+    )
+
+
+_DIRECT_CASES = (
+    EvaluationCase("direct-order", Language.PYTHON, _direct_source("value > 0"), ExpectedOutcome.MATCH),
+    EvaluationCase(
+        "direct-equality-object",
+        Language.PYTHON,
+        _direct_source("value == 1", input_type="object"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase("direct-inequality", Language.PYTHON, _direct_source("value != 1"), ExpectedOutcome.MATCH),
+    EvaluationCase(
+        "direct-empty-list",
+        Language.PYTHON,
+        _direct_source("len(value) > 0", "list[str]", "list[str]"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "direct-empty-dict",
+        Language.PYTHON,
+        _direct_source("len(value) != 0", "dict[str, int]", "dict[str, int]"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "direct-empty-bottom-list",
+        Language.PYTHON,
+        _direct_source("len(value) > 0", "list[Never]", "list[Never]"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase("direct-total-length", Language.PYTHON, _direct_source("len(value) >= 0", "list[str]", "list[str]")),
+    EvaluationCase("invalid-direct-order-object", Language.PYTHON, _direct_source("value > 0", input_type="object")),
+    EvaluationCase("invalid-direct-len-object", Language.PYTHON, _direct_source("len(value) > 0", "str", "object")),
+    EvaluationCase("direct-unknown-input", Language.PYTHON, _direct_source("value > 0", input_type="PositiveInt")),
+    EvaluationCase("direct-refined-target", Language.PYTHON, _direct_source("value > 0", "PositiveInt")),
+    EvaluationCase(
+        "bool-conversion", Language.PYTHON, _direct_source("bool(value)", input_type="object"), ExpectedOutcome.MATCH
+    ),
+    EvaluationCase(
+        "bool-string", Language.PYTHON, _direct_source("bool(value)", "str", "object"), ExpectedOutcome.MATCH
+    ),
+    EvaluationCase(
+        "bool-empty-set", Language.PYTHON, _direct_source("bool(value)", "set[Never]", "object"), ExpectedOutcome.MATCH
+    ),
+    EvaluationCase("bool-in-conjunction", Language.PYTHON, _source("bool(value)", "list[str]"), ExpectedOutcome.MATCH),
+    EvaluationCase("bool-return", Language.PYTHON, _direct_source("value", "bool", "bool"), ExpectedOutcome.MATCH),
+    EvaluationCase("guarded-bool-return", Language.PYTHON, _source("value", "bool"), ExpectedOutcome.MATCH),
+    EvaluationCase("invalid-object-bool-return", Language.PYTHON, _direct_source("value", "bool", "object")),
+    EvaluationCase("invalid-integer-return", Language.PYTHON, _direct_source("value")),
+    EvaluationCase("negated-integer", Language.PYTHON, _direct_source("not value"), ExpectedOutcome.MATCH),
+    EvaluationCase("negated-string", Language.PYTHON, _direct_source("not value", "str", "str"), ExpectedOutcome.MATCH),
+    EvaluationCase("negated-bottom-list", Language.PYTHON, _direct_source("not value", "list[Never]", "list[Never]")),
+    EvaluationCase(
+        "literal-two-members",
+        Language.PYTHON,
+        _direct_source('value == "red"', 'Literal["red", "blue"]', "str"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "literal-inequality",
+        Language.PYTHON,
+        _direct_source('value != "red"', 'Literal["red", "blue"]', "object"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "literal-constant-false",
+        Language.PYTHON,
+        _direct_source("False", 'Literal["red"]', "object"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "literal-constant-true-no-negative-witness", Language.PYTHON, _direct_source("True", 'Literal["red"]', "object")
+    ),
+    EvaluationCase(
+        "literal-guarded-subset",
+        Language.PYTHON,
+        _direct_source('isinstance(value, str) and value == "red"', 'Literal["red", "blue"]', "object"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "literal-total-singleton", Language.PYTHON, _direct_source('value == "red"', 'Literal["red"]', "object")
+    ),
+    EvaluationCase(
+        "literal-total-exclusion", Language.PYTHON, _direct_source('value != "other"', 'Literal["red", "blue"]', "str")
+    ),
+    EvaluationCase(
+        "literal-all-duplicates-total",
+        Language.PYTHON,
+        _direct_source('value == "red"', 'Literal["red", "red"]', "object"),
+    ),
+    EvaluationCase(
+        "literal-mixed-not-guessed", Language.PYTHON, _direct_source('value == "red"', 'Literal["red", 1]', "object")
+    ),
+    EvaluationCase(
+        "literal-numeric-not-guessed", Language.PYTHON, _direct_source("value == 1", "Literal[1, True]", "object")
+    ),
+    EvaluationCase(
+        "literal-domain-helper", Language.PYTHON, _direct_source("recognizes(value)", 'Literal["red"]', "object")
+    ),
+    EvaluationCase(
+        "literal-constrained-input",
+        Language.PYTHON,
+        _direct_source('value == "red"', 'Literal["red", "blue"]', "Selected"),
+    ),
+    EvaluationCase(
+        "partial-type-guard-preserved", Language.PYTHON, _direct_source("bool(value)").replace("TypeIs", "TypeGuard")
+    ),
+    EvaluationCase("bool-shadow", Language.PYTHON, "bool = custom\n" + _direct_source("bool(value)")),
+    EvaluationCase("len-shadow", Language.PYTHON, "len = custom\n" + _direct_source("len(value) > 0", "str", "str")),
+    EvaluationCase(
+        "literal-custom-import",
+        Language.PYTHON,
+        _direct_source('value == "red"', 'Literal["red", "blue"]', "str").replace(
+            "from typing import Literal, TypeIs", "from typing import TypeIs\nfrom custom import Literal"
+        ),
+    ),
+    EvaluationCase(
+        "literal-namespace-mutation",
+        Language.PYTHON,
+        "import typing\ntyping.Literal = custom\n" + _direct_source('value == "red"', 'Literal["red", "blue"]', "str"),
+    ),
+    EvaluationCase(
+        "literal-shadow",
+        Language.PYTHON,
+        "Literal = custom\n" + _direct_source('value == "red"', 'Literal["red", "blue"]', "str"),
+    ),
+)
+
+
+@pytest.mark.parametrize("case", _DIRECT_CASES, ids=tuple(case.case_id for case in _DIRECT_CASES))
+def test_direct_predicate_domains(case: EvaluationCase) -> None:
+    findings = _check(case.source)
+    assert len(findings) == int(case.expected is ExpectedOutcome.MATCH)
+    assert all(finding.severity is Severity.WARNING for finding in findings)
+
+
+@pytest.mark.parametrize("typing_module", ["typing", "typing_extensions"])
+def test_literal_import_aliases_remain_supported(typing_module: str) -> None:
+    source = _direct_source('value == "red"', 'Literal["red", "blue"]', "object")
+    source = source.replace(
+        "from typing import Literal, TypeIs", f"from {typing_module} import Literal as Choice, TypeIs as Guard"
+    )
+    source = source.replace("-> TypeIs[Literal[", "-> Guard[Choice[")
+    assert len(_check(source)) == 1
+
+
+def test_literal_domain_is_bounded_without_recursion() -> None:
+    members = ", ".join(["'red'"] * 1500)
+    assert _check(_direct_source("False", f"Literal[{members}]", "object")) == []
+
+
+def _nonempty(values: list[object] | str) -> TypeIs[list[object]]:
+    return isinstance(values, list) and bool(values)  # sarj-noqa: SARJ512 -- demonstrate empty-list rejection
+
+
+def _red_only(value: str) -> TypeIs[Literal["red", "blue"]]:
+    return value == "red"  # sarj-noqa: SARJ512 -- demonstrate rejected declared literal
+
+
+def test_direct_predicate_false_branch_failures_are_reproducible() -> None:
+    def render(value: list[object] | str) -> str:
+        return "present" if _nonempty(value) else value.upper()
+
+    def exhaustive(value: Literal["red", "blue"]) -> None:
+        if not _red_only(value):
+            assert_never(value)
+
+    with pytest.raises(AttributeError, match="upper"):
+        render([])
+    with pytest.raises(AssertionError, match="blue"):
+        exhaustive("blue")
+
+
+def test_native_checker_accepts_partial_bodies_that_violate_false_branch_contract(tmp_path: Path) -> None:
+    fragments = ["from typing import Literal, TypeIs, assert_never\n"]
+    for index, (predicate, target, input_type) in enumerate(
+        [
+            ("value > 0", "int", "int"),
+            ("len(value) > 0", "list[object]", "list[object]"),
+            ("bool(value)", "str", "object"),
+            ("value", "bool", "bool"),
+            ('value == "red"', 'Literal["red", "blue"]', "str"),
+        ]
+    ):
+        fragments.append(
+            _direct_source(predicate, target, input_type)
+            .split("\n", maxsplit=1)[1]
+            .replace("identifies", f"identifies_{index}")
+        )
+    fragments.append(
+        "def exhaustive(value: int) -> None:\n    if not identifies_0(value):\n        assert_never(value)\n"
+    )
+    (tmp_path / "guards.py").write_text("".join(fragments))
+    config = tmp_path / "pyrightconfig.json"
+    config.write_text('{"typeCheckingMode":"strict","pythonVersion":"3.14","include":["guards.py"]}')
+    result = subprocess.run(
+        [sys.executable, "-m", "basedpyright", "--project", str(config)],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

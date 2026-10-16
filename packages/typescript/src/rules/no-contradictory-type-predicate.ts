@@ -7,6 +7,7 @@ import { ASTUtils, AST_NODE_TYPES, ESLintUtils, type TSESLint, type TSESTree } f
 import ts from "typescript";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { hasSeparatePredicateContract } from "./_has-separate-predicate-contract.js";
 import { isGeneratedFile } from "./_paths.js";
 import { staticString } from "./_static-string.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
@@ -36,7 +37,7 @@ export const NO_CONTRADICTORY_TYPE_PREDICATE_DOCUMENTATION = {
   autofix: "none",
   limitations: [
     "Requires type information, an explicit predicate over a directly named parameter and a single returned positive typeof equality for the same scope-resolved parameter. Both strict and loose equality and reversed operands are supported.",
-    "Predicate targets must consist of broad primitive types (including complete boolean), and inputs must be unknown or a fully classified primitive/nullish union. Literal, branded, structural, generic, asserted, declaration-only and multi-statement validators are excluded rather than guessed.",
+    "Predicate targets must consist of broad primitive types (including complete boolean), and inputs must be unknown or a fully classified primitive/nullish union. Literal, branded, structural, generic, asserted, declaration-only and multi-statement validators are excluded rather than guessed. Overloaded implementations, contextually typed callbacks and methods with class heritage or contextual object contracts are preserved because they can have a separate callable domain.",
     "Compiler-invalid predicate target/input relations and typeof comparisons impossible for the input remain with existing compiler and unnecessary-condition controls. This rule does not validate arbitrary predicates or runtime refinements. Generated files are excluded; tests remain checked.",
   ],
   references: ["https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-5.html#inferred-type-predicates"],
@@ -66,6 +67,7 @@ export default createRule<Options, MessageIds>({
       if (node.async || node.generator || node.typeParameters !== undefined || annotation?.type !== AST_NODE_TYPES.TSTypePredicate ||
         annotation.asserts || annotation.parameterName.type !== AST_NODE_TYPES.Identifier || annotation.typeAnnotation === undefined) return;
       const name = annotation.parameterName.name;
+      if (hasSeparatePredicateContract(services.esTreeNodeToTSNodeMap.get(node), checker)) return;
       const parameter = node.params.find((candidate): candidate is TSESTree.Identifier => candidate.type === AST_NODE_TYPES.Identifier && candidate.name === name);
       const expression = singleReturn(node);
       if (parameter?.typeAnnotation === undefined || expression === undefined) return;

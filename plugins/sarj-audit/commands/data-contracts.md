@@ -80,6 +80,34 @@ not a total test for `number`, `int`, or the whole container type. Use Python
 `TypeGuard` for intentional partial predicates and retain the remaining cases
 in false-branch callers. A predicate annotation does not validate its body.
 
+Trace why a guard is needed before adding or removing one. Keep guards where
+uncertainty belongs: external input, heterogeneous collections, plugin APIs,
+framework callbacks, and public contracts can require runtime narrowing. An
+imported predicate or a generic protocol can also express evidence the local
+implementation does not own. Do not replace these with assertions or casts.
+For runtime-checkable protocols, distinguish checking that an attribute exists
+from validating its value or callable signature. Preserve intentional feature
+probes; show the incompatible value and the failing consumer before asking a
+boundary to establish more evidence. Preserve a validator's documented failure
+behavior when changing it into a boolean predicate or construction outcome.
+
+Within owned business logic, repeated guards can expose an earlier loss of
+domain information. Show the producer that widened a validated value and the
+consumer forced to rediscover it. Prefer a parser returning the domain union
+once, a constructor returning a validated value or explicit failure, and an
+operation accepting the variant it needs. For example, pass `ReadyJob` to
+`startJob` after dispatching on `Job`'s discriminant, rather than passing
+`unknown` through several helpers that each assert `isReadyJob`. Keep draft,
+unknown, and failure variants when they are legal states; do not make every
+consumer repeat validation or force a successful construction.
+
+When a predicate exists to select a refinement such as non-empty text, check
+whether its callers need a validated refinement type, a filtered collection,
+or a construction outcome. Choose the contract that carries that evidence to
+the operation that needs it. Changing a predicate's annotation alone does not
+construct a refined value, preserve an external callback contract, or establish
+that mutable data will keep satisfying the check.
+
 Look for escape hatches that can invalidate an established contract: reflective
 property writes, Pydantic `model_construct`, and `model_copy(update=...)` do not
 provide the same checks as ordinary typed assignment or validated construction.

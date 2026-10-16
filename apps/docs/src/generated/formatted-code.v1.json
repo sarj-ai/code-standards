@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "c1e460fd4b4282b797b981d3fbc0f48c954c209695bd3acc929786a1a6cb7c0e",
-  "cliSha256": "52b6316f63788a902c13796c89d7d26a62d1f5bf7ecc033a4366930014de701e",
+  "catalogSha256": "3008b9cfaee6556b561ec2a827b771832d93209e86f536d550320a1307676eb5",
+  "cliSha256": "da7755a33ac6d1e9a3d73111e02d71d47ac82b7c9c80ce283d05a661c768d455",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -1791,6 +1791,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not page by offset"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-partial-type-predicate": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/filter.ts",
+              "source": "function isPositive(value: number): boolean {\n  return value > 0;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/filter.ts",
+          "id": "boolean-value-filter",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Keep an intentional value filter boolean"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/guard.ts",
+              "source": "function isPositive(value: unknown): value is number {\n  return typeof value === \"number\" && value > 0;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/guard.ts",
+          "id": "partial-number-predicate",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Zero remains a number when the predicate returns false"
         }
       ],
       "optionsSchemaSource": null
@@ -7293,6 +7328,36 @@
           "title": "Recognize the primitive promised to callers"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/guards.py",
+              "source": "from typing import TypeGuard\n\n\ndef is_text(value: object) -> TypeGuard[str]:\n    return False\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/guards.py",
+          "id": "constant-false-is-legal-partial-guard",
+          "outcome": "accept",
+          "scenarioId": "constant-predicate",
+          "title": "TypeGuard can intentionally recognize no inputs"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/guards.py",
+              "source": "from typing import TypeGuard\n\n\ndef is_text(value: object) -> TypeGuard[str]:\n    return True\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/guards.py",
+          "id": "constant-true-claims-text",
+          "outcome": "reject",
+          "scenarioId": "constant-predicate",
+          "title": "A constant result does not prove a primitive type"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -8545,6 +8610,21 @@
     "python:no-partial-type-is": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/guards.py",
+              "source": "from typing import Literal, TypeIs\n\n\ndef is_selected(value: str) -> TypeIs[Literal[\"red\", \"blue\"]]:\n    return value == \"red\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/guards.py",
+          "id": "declared-literal-rejected",
+          "outcome": "reject",
+          "scenarioId": "string-literal-domain",
+          "title": "Every declared literal belongs to the TypeIs target"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -8573,6 +8653,51 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Zero is still an integer in the false branch"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/guards.py",
+              "source": "from typing import Literal, TypeIs\n\n\ndef is_selected(value: str) -> TypeIs[Literal[\"red\"]]:\n    return value == \"red\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/guards.py",
+          "id": "total-literal-equality",
+          "outcome": "accept",
+          "scenarioId": "string-literal-domain",
+          "title": "Equality recognizes every member of a singleton target"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/guards.py",
+              "source": "def is_truthy(value: object) -> bool:\n    return bool(value)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/guards.py",
+          "id": "truthiness-bool-value-filter",
+          "outcome": "accept",
+          "scenarioId": "truthiness-value-filter",
+          "title": "A value filter can return an ordinary bool"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/guards.py",
+              "source": "from typing import TypeIs\n\n\ndef is_text(value: object) -> TypeIs[str]:\n    return bool(value)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/guards.py",
+          "id": "truthiness-is-not-text-membership",
+          "outcome": "reject",
+          "scenarioId": "truthiness-value-filter",
+          "title": "Truthiness can accept integers and reject the empty string"
         }
       ],
       "optionsSchemaSource": null

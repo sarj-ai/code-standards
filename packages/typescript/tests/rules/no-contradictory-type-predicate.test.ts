@@ -17,6 +17,11 @@ const TESTER = new RuleTester({ languageOptions: { parser, parserOptions: {
 TESTER.run("no-contradictory-type-predicate", rule, {
   valid: [
     { name: "public consistent predicate", code: NO_CONTRADICTORY_TYPE_PREDICATE_DOCUMENTATION.examples[0].files[0].source },
+    { name: "overload publishes a sound narrower predicate", code: 'function isText(v: string | number): v is string; function isText(v: unknown): v is string | number { return typeof v === "string"; }' },
+    { name: "overload publishes only a boolean contract", code: 'function isText(v: string): boolean; function isText(v: unknown): v is string | number { return typeof v === "string"; }' },
+    { name: "contextual callback has a narrower input", code: 'const isText: (v: string) => boolean = (v: unknown): v is string | number => typeof v === "string";' },
+    { name: "contextual function expression preserves exposed domain", code: 'const isText: (v: string) => boolean = function(v: unknown): v is string | number { return typeof v === "string"; };' },
+    { name: "contextual object method preserves its callback contract", code: 'const adapter: { isText(v: string): boolean } = { isText(v: unknown): v is string | number { return typeof v === "string"; } };' },
     ...[
       ["broad number", 'function check(v: unknown): v is number { return typeof v === "number"; }'],
       ["broad boolean", 'function check(v: unknown): v is boolean { return typeof v === "boolean"; }'],

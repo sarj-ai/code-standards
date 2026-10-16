@@ -8,6 +8,7 @@ import noReduceAccumulatorCopy from "./rules/no-reduce-accumulator-copy.js";
 import noKnownValueWidening from "./rules/no-known-value-widening.js";
 import noInvalidTypedMutation from "./rules/no-invalid-typed-mutation.js";
 import noContradictoryTypePredicate from "./rules/no-contradictory-type-predicate.js";
+import noPartialTypePredicate from "./rules/no-partial-type-predicate.js";
 /**
  * @fileoverview index — the plugin's rule registry and its two presets; the historical rename map lives in `rules/_renamed-rules.ts`.
  */
@@ -139,6 +140,7 @@ const RULES = {
   "no-known-value-widening": noKnownValueWidening,
   "no-invalid-typed-mutation": noInvalidTypedMutation,
   "no-contradictory-type-predicate": noContradictoryTypePredicate,
+  "no-partial-type-predicate": noPartialTypePredicate,
   "require-button-accessible-name": requireButtonAccessibleName,
   "require-camelcase-properties": requireCamelcaseProperties,
   "require-svg-accessible-name": requireSvgAccessibleName,
@@ -276,6 +278,7 @@ const ADVISORY_RULES = [
   "@sarj/no-cors-wildcard-with-credentials",
   "@sarj/no-exception-text-in-5xx-response",
   "@sarj/no-invalid-typed-mutation",
+  "@sarj/no-partial-type-predicate",
   "@sarj/no-restated-comment",
   "@sarj/no-restated-jsdoc",
   "@sarj/prefer-discriminated-union",
@@ -298,6 +301,7 @@ const RECOMMENDED_RULES = {
   "@sarj/no-known-value-widening": "error",
   "@sarj/no-invalid-typed-mutation": "warn",
   "@sarj/no-contradictory-type-predicate": "warn",
+  "@sarj/no-partial-type-predicate": "warn",
   "@sarj/require-button-accessible-name": "error",
   "@sarj/require-camelcase-properties": "error",
   "@sarj/require-svg-accessible-name": "error",
@@ -420,6 +424,7 @@ const STRICT_RULES = {
   "@sarj/no-known-value-widening": "error",
   "@sarj/no-invalid-typed-mutation": "warn",
   "@sarj/no-contradictory-type-predicate": "warn",
+  "@sarj/no-partial-type-predicate": "warn",
   "@sarj/require-button-accessible-name": "error",
   "@sarj/require-camelcase-properties": "error",
   "@sarj/require-svg-accessible-name": "error",
