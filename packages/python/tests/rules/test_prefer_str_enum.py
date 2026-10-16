@@ -1989,3 +1989,522 @@ def test_rejecting_membership_accepts_explicit_line_joining() -> None:
 )
 def test_widened_string_enum_hint_preserves_policy_boundaries(source: str) -> None:
     assert _check(source, "app/render.py") == []
+
+
+@pytest.mark.parametrize(
+    "fallback",
+    [
+        "case _ if permissive:\n            return kind",
+        "case captured if permissive:\n            return captured",
+        "case str():\n            return kind",
+        'case "text" | str():\n            return kind',
+    ],
+)
+def test_match_accepting_arbitrary_strings_does_not_prove_a_closed_domain(fallback: str) -> None:
+    source = f"""def render(kind: str, permissive: bool = True) -> str:
+    match kind:
+        case "text" | "image":
+            return kind
+        {fallback}
+        case _:
+            raise ValueError(kind)
+"""
+    assert _check(source, "app/render.py") == []
+
+    namespace: dict[str, object] = {}
+    exec(compile(source, "open_match_fixture.py", "exec"), namespace)  # ruff: ignore[exec-builtin] -- execute fixed native match fixtures to prove that arbitrary strings are accepted.
+    render = namespace["render"]
+    assert callable(render)
+    assert render("plugin") == "plugin"
+
+
+def test_unrelated_literal_alias_does_not_close_an_unannotated_domain() -> None:
+    source = """from typing import Literal
+Other = Literal["text", "image", "video"]
+def render(kind: str) -> str:
+    if kind not in {"text", "image"}:
+        raise ValueError(kind)
+    return kind
+"""
+    [diagnostic] = _check(source, "app/render.py")
+    assert (diagnostic.line, diagnostic.col) == (4, 8)
+    assert "`kind`" in diagnostic.message
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "",
+        "ALLOWED = runtime_choices\n",
+        'ALLOWED = {"text", "image"}\nALLOWED = runtime_choices\n',
+        'ALLOWED = {"text", "image"}\nALLOWED.add("plugin")\n',
+        'ALLOWED = {"text", "image"}\nregister_choices(ALLOWED)\n',
+    ],
+)
+def test_uppercase_runtime_collections_do_not_prove_a_closed_domain(declaration: str) -> None:
+    source = (
+        declaration
+        + """def render(kind: str) -> str:
+    if kind not in ALLOWED:
+        raise ValueError(kind)
+    if kind == "text":
+        return "Text"
+    if kind == "image":
+        return "Image"
+    return kind
+"""
+    )
+    assert _check(source, "app/render.py") == []
+
+
+def test_uppercase_collection_parameter_is_an_open_runtime_domain() -> None:
+    source = """ALLOWED = {"text", "image"}
+def render(kind: str, ALLOWED: set[str]) -> str:
+    if kind not in ALLOWED:
+        raise ValueError(kind)
+    if kind == "text":
+        return "Text"
+    if kind == "image":
+        return "Image"
+    return kind
+"""
+    assert _check(source, "app/render.py") == []
+
+
+@pytest.mark.parametrize("collection", ['{"text", "image"}', '("text", "image")', '["text", "image"]'])
+def test_literal_module_collection_guard_reports_without_later_dispatch(collection: str) -> None:
+    source = f"""ALLOWED = {collection}
+def render(kind: str) -> str:
+    if kind not in ALLOWED:
+        raise ValueError(kind)
+    return kind
+"""
+    [diagnostic] = _check(source, "app/render.py")
+    assert (diagnostic.line, diagnostic.col) == (3, 8)
+
+
+@pytest.mark.parametrize(
+    "rebinding",
+    [
+        "status_choices = runtime_choices",
+        "status_choices: object = runtime_choices",
+        "status_choices += runtime_choices",
+        "if configured:\n        status_choices = runtime_choices",
+        "del status_choices",
+        'status_choices.append("plugin")',
+    ],
+)
+def test_rebound_class_choices_do_not_leave_stale_closed_domain_evidence(rebinding: str) -> None:
+    source = f"""class Record:
+    status_choices = ["text", "image"]
+    {rebinding}
+    status: str
+"""
+    assert _check(source) == []
+
+
+def test_choice_field_deduplication_is_scoped_to_the_owning_class() -> None:
+    source = """class Record:
+    statuses = ("text", "image")
+    status: str
+class Other:
+    status: str
+    def render(self) -> str:
+        if self.status not in {"text", "image"}:
+            raise ValueError(self.status)
+        return self.status
+"""
+    diagnostics = _check(source, "app/render.py")
+    assert [(diagnostic.line, diagnostic.col) for diagnostic in diagnostics] == [(3, 5), (7, 12)]
+
+
+@pytest.mark.parametrize("annotation", ["str", '"str"', "str | None"])
+def test_service_version_default_does_not_establish_a_finite_domain(annotation: str) -> None:
+    source = f"""class Settings:
+    service_version: {annotation} = "dev"
+def health(service_version: {annotation} = "dev") -> str:
+    return service_version
+"""
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("unrelated", ['kind == "image"', 'kind in {"image", "video"}'])
+def test_unrelated_comparisons_do_not_expand_a_singleton_rejecting_guard(unrelated: str) -> None:
+    source = f"""def render(kind: str) -> str:
+    if {unrelated}:
+        record(kind)
+    if kind not in {{"text"}}:
+        raise ValueError(kind)
+    return kind
+"""
+    assert _check(source, "app/render.py") == []
+
+
+def test_unrelated_free_text_comparison_does_not_hide_a_closed_domain() -> None:
+    source = """def render(kind: str) -> str:
+    if kind == "an unrelated human readable message":
+        record(kind)
+    if kind not in {"text", "image"}:
+        raise ValueError(kind)
+    return kind
+"""
+    [diagnostic] = _check(source, "app/render.py")
+    assert (diagnostic.line, diagnostic.col) == (4, 8)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        'self.status_choices.append("plugin")',
+        'cls.status_choices.append("plugin")',
+        'Record.status_choices.append("plugin")',
+        "self.status_choices += extra_choices",
+        "self.status_choices = runtime_choices",
+        'setattr(self, "status_choices", runtime_choices)',
+        'delattr(Record, "status_choices")',
+    ],
+)
+def test_method_mutation_invalidates_class_choice_evidence(mutation: str) -> None:
+    source = f"""class Record:
+    status_choices = ["text", "image"]
+    status: str
+    def configure(self):
+        {mutation}
+"""
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        'Record.status_choices.append("plugin")',
+        "Record.status_choices = runtime_choices",
+        'setattr(Record, "status_choices", runtime_choices)',
+    ],
+)
+def test_external_class_mutation_invalidates_choice_evidence(mutation: str) -> None:
+    source = f"""class Record:
+    status_choices = ["text", "image"]
+    status: str
+{mutation}
+"""
+    assert _check(source) == []
+
+
+def test_membership_only_class_choice_reads_preserve_the_closed_domain() -> None:
+    source = """class Record:
+    status_choices = ["text", "image"]
+    status: str
+    def valid(self):
+        return self.status in self.status_choices
+"""
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "import builtins",
+        "import builtins as native",
+    ],
+)
+def test_qualified_builtin_str_choice_field_reports(declaration: str) -> None:
+    qualifier = "native" if " as " in declaration else "builtins"
+    source = f"""{declaration}
+class Record:
+    statuses = ("text", "image")
+    status: {qualifier}.str
+"""
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("binding", ["allowed", "Allowed", "ALLOWED"])
+def test_proven_collection_closure_depends_on_values_and_bindings(binding: str) -> None:
+    source = f"""{binding} = {{"text", "image"}}
+def render(kind: str) -> str:
+    if kind not in {binding}:
+        raise ValueError(kind)
+    return kind
+"""
+    assert len(_check(source, "app/render.py")) == 1
+
+
+@pytest.mark.parametrize("member", ["str", "None"])
+def test_deep_forward_string_unions_do_not_crash_the_rule(member: str) -> None:
+    annotation = " | ".join(["str", *([member] * 3000)])
+    source = f"""class Record:
+    statuses = ("text", "image")
+    status: {annotation!r}
+"""
+    diagnostics = _check(source)
+    assert len(diagnostics) == int(member == "None")
+
+
+def test_reusing_rule_instance_does_not_leak_closed_collections_between_sources() -> None:
+    rule = PreferStrEnum()
+    path = Path("app/render.py")
+    body = """def render(kind: str) -> str:
+    if kind not in ALLOWED:
+        raise ValueError(kind)
+    return kind
+"""
+    closed = 'ALLOWED = {"text", "image"}\n' + body
+    assert len(rule.check(path, closed)) == 1
+    assert rule.check(path, body) == []
+    assert len(rule.check(path, closed)) == 1
+
+
+def test_choice_field_location_uses_utf8_bytes_after_non_ascii_source() -> None:
+    prefix = '    résumé = "é"; '
+    source = f'class Record:\n    statuses = ("text", "image")\n{prefix}status: str\n'
+    [diagnostic] = _check(source)
+    assert (diagnostic.line, diagnostic.col) == (3, len(prefix.encode("utf-8")) + 1)
+
+
+@pytest.mark.parametrize("suppression", ["SARJ006", "SARJ106"])
+def test_closed_guard_suppression_is_local_and_exact(suppression: str) -> None:
+    source = f"""def render(kind: str) -> str:
+    if kind not in {{"text", "image"}}:  # sarj-noqa: {suppression}
+        raise ValueError(kind)
+    return kind
+"""
+    assert len(_check(source, "app/render.py")) == int(suppression != "SARJ006")
+
+
+@pytest.mark.parametrize(
+    ("subject", "values", "expected"),
+    [
+        ("mode", ("r", "w"), 0),
+        ("char", ("a", "b"), 0),
+        ("method", ("get", "post"), 0),
+        ("country", ("us", "gb"), 0),
+        ("protocol", ("http", "https"), 0),
+        ("kind", ("TEXT", "IMAGE"), 0),
+        ("kind", ("text", "image"), 1),
+        ("service_version", ("dev", "prod"), 1),
+    ],
+)
+def test_closed_dispatch_preserves_external_vocabulary_boundaries(
+    subject: str, values: tuple[str, str], expected: int
+) -> None:
+    source = f"""def render({subject}: str) -> str:
+    if {subject} not in {values!r}:
+        raise ValueError({subject})
+    return {subject}
+"""
+    assert len(_check(source, "app/render.py")) == expected
+
+
+@pytest.mark.parametrize("annotation", ['L["text", "image"]', "Domain[str]"])
+def test_separately_typed_generic_annotation_is_not_retreated_as_raw_string(annotation: str) -> None:
+    source = f"""from typing import Literal as L
+from application.types import Domain
+def render(kind: {annotation}) -> str:
+    if kind not in {{"text", "image"}}:
+        raise ValueError(kind)
+    return kind
+"""
+    assert _check(source, "app/render.py") == []
+
+
+@pytest.mark.parametrize(
+    "shadow",
+    [
+        "try:\n        record(kind)\n    except Exception as ALLOWED:\n        pass",
+        "match payload:\n        case ALLOWED:\n            pass",
+        "match payload:\n        case [*ALLOWED]:\n            pass",
+        'match payload:\n        case {"values": _, **ALLOWED}:\n            pass',
+    ],
+)
+def test_exception_and_pattern_bindings_shadow_module_collection_evidence(shadow: str) -> None:
+    source = f"""ALLOWED = {{"text", "image"}}
+def render(kind: str, payload: object) -> str:
+    {shadow}
+    if kind not in ALLOWED:
+        raise ValueError(kind)
+    return kind
+"""
+    assert _check(source, "app/render.py") == []
+
+
+def test_wildcard_import_can_replace_literal_module_collection() -> None:
+    source = """ALLOWED = {"text", "image"}
+from application.choices import *
+def render(kind: str) -> str:
+    if kind not in ALLOWED:
+        raise ValueError(kind)
+    return kind
+"""
+    assert _check(source, "app/render.py") == []
+
+
+@pytest.mark.parametrize(
+    ("declaration", "annotation"),
+    [
+        ("from typing import Annotated as A", "A[str, 'meta']"),
+        ("from typing import Optional as Maybe", "Maybe[str]"),
+        ("from typing_extensions import Annotated as A", "A[str, 'meta']"),
+        ("from typing_extensions import Optional as Maybe", "Maybe[str]"),
+        ("from typing import Annotated as A, Optional as Maybe", "A[Maybe[str], 'meta']"),
+        ("from typing import Union", "Union[str, None]"),
+        ("from typing import Union as U", "U[str, None]"),
+        ("from typing_extensions import Union as U", "U[None, str]"),
+        ("import typing as t", "t.Union[str, str, None]"),
+        ("from typing import Union as U\ntype Raw = str", "U[str, Raw, None]"),
+        ("from typing import Annotated as A", '"A[str, Meta()]"'),
+    ],
+)
+def test_import_proven_transparent_typing_aliases_preserve_raw_string_domains(
+    declaration: str, annotation: str
+) -> None:
+    source = f"""{declaration}
+def render(kind: {annotation}) -> str:
+    if kind not in {{"text", "image"}}:
+        raise ValueError(kind)
+    return kind
+"""
+    assert len(_check(source, "app/render.py")) == 1
+
+
+def test_import_proven_annotated_alias_on_owned_field_preserves_raw_domain() -> None:
+    source = """from typing import Annotated as A
+class Record:
+    kind: A[str, "meta"]
+    def render(self) -> str:
+        if self.kind not in {"text", "image"}:
+            raise ValueError(self.kind)
+        return self.kind
+"""
+    assert len(_check(source, "app/render.py")) == 1
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "from application import Annotated as A",
+        "from typing import Annotated as A\nA = Domain",
+    ],
+)
+def test_unproven_typing_aliases_remain_opaque(declaration: str) -> None:
+    source = f"""{declaration}
+def render(kind: A[str, 'meta']) -> str:
+    if kind not in {{"text", "image"}}:
+        raise ValueError(kind)
+    return kind
+"""
+    assert _check(source, "app/render.py") == []
+
+
+@pytest.mark.parametrize(
+    ("declaration", "annotation"),
+    [
+        ("from typing import Union as U", "U[str, int]"),
+        ("from typing import Union as U", "U[None, None]"),
+        ("from application import Union as U", "U[str, None]"),
+        ("from typing import Union as U\nU = Domain", "U[str, None]"),
+        ("from typing import Union as U, Literal", "U[str, Literal['text', 'image']]"),
+    ],
+)
+def test_nullable_union_proof_keeps_unknown_and_non_string_domains_opaque(declaration: str, annotation: str) -> None:
+    source = f"""{declaration}
+def render(kind: {annotation}) -> str:
+    if kind not in {{'text', 'image'}}:
+        raise ValueError(kind)
+    return kind
+"""
+    assert _check(source, "app/render.py") == []
+
+
+@pytest.mark.parametrize("declaration", ["status_choices = alias", "alias = status_choices"])
+def test_chained_class_choice_binding_does_not_hide_mutation_through_an_alias(declaration: str) -> None:
+    source = f"""runtime_choices = get_runtime_choices()
+class Record:
+    {declaration} = ["text", "image"]
+    alias.extend(runtime_choices)
+    status: str
+"""
+    assert _check(source) == []
+
+
+def test_single_class_choice_binding_without_alias_retains_closed_evidence() -> None:
+    source = """class Record:
+    status_choices = ["text", "image"]
+    status: str
+"""
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("alias_chain", ["Alias = Record", "First = Record\nAlias = First"])
+def test_class_choice_mutation_through_explicit_class_alias_is_open(alias_chain: str) -> None:
+    source = f"""class Record:
+    status_choices = ['text', 'image']
+    status: str
+{alias_chain}
+Alias.status_choices.extend(get_runtime_choices())
+"""
+    assert _check(source) == []
+
+
+def test_class_alias_without_collection_mutation_preserves_choice_finding() -> None:
+    source = """class Record:
+    status_choices = ['text', 'image']
+    status: str
+Alias = Record
+"""
+    assert len(_check(source)) == 1
+
+
+def test_unrelated_class_alias_mutation_does_not_hide_choice_finding() -> None:
+    source = """class Record:
+    status_choices = ['text', 'image']
+    status: str
+class Other:
+    status_choices = []
+Alias = Other
+Alias.status_choices.extend(get_runtime_choices())
+"""
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("receiver", ["self", "cls"])
+def test_nested_fresh_receiver_has_its_own_closed_domain(receiver: str) -> None:
+    source = f"""class Record:
+    status_choices = ['text', 'image']
+    status: str
+    def outer(self):
+        def inner({receiver}):
+            if {receiver}.status not in {{'ready', 'done'}}:
+                raise ValueError({receiver}.status)
+            return {receiver}.status
+        return inner
+"""
+    assert [finding.line for finding in _check(source, "app/render.py")] == [3, 6]
+
+
+def test_nested_captured_receiver_keeps_the_class_field_diagnostic() -> None:
+    source = """class Record:
+    status_choices = ['text', 'image']
+    status: str
+    def outer(self):
+        def inner():
+            if self.status not in {'text', 'image'}:
+                raise ValueError(self.status)
+            return self.status
+        return inner
+"""
+    assert [finding.line for finding in _check(source, "app/render.py")] == [3]
+
+
+def test_nested_rebound_receiver_has_its_own_closed_domain() -> None:
+    source = """class Record:
+    status_choices = ['text', 'image']
+    status: str
+    def outer(self):
+        def inner(value):
+            self = value
+            if self.status not in {'ready', 'done'}:
+                raise ValueError(self.status)
+            return self.status
+        return inner
+"""
+    assert [finding.line for finding in _check(source, "app/render.py")] == [3, 7]

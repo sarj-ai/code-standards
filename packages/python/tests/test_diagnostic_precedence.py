@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import cProfile
+from itertools import permutations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -137,6 +138,69 @@ def test_nominal_id_boundary_suppresses_generic_swap_prone_signature(tmp_path: P
     diagnostics = analyze(["require-keyword-only-swap-prone-params", "prefer-nominal-id-types"], [source])
 
     assert [finding.code for finding in diagnostics] == ["SARJ093"]
+
+
+def test_nominal_and_closed_string_findings_are_order_independent(tmp_path: Path) -> None:
+    source = tmp_path / "service.py"
+    source.write_text(
+        "def move(file_id: str, folder_id: str) -> None: ...\n\n"
+        "def render(kind: str) -> str:\n"
+        "    if kind not in {'text', 'image'}:\n"
+        "        raise ValueError('unsupported kind')\n"
+        "    return kind\n",
+        encoding="utf-8",
+    )
+    selectors = ("prefer-nominal-id-types", "prefer-str-enum", "require-keyword-only-swap-prone-params")
+
+    for order in permutations(selectors):
+        diagnostics = analyze(list(order), [source])
+        assert sorted((finding.code, finding.line, finding.severity) for finding in diagnostics) == [
+            ("SARJ006", 4, Severity.ERROR),
+            ("SARJ093", 1, Severity.ERROR),
+        ]
+
+
+def test_nominal_and_closed_domain_remediation_converges(tmp_path: Path) -> None:
+    source = tmp_path / "service.py"
+    source.write_text(
+        "from enum import StrEnum\nfrom typing import NewType\n\n"
+        "FileId = NewType('FileId', str)\nFolderId = NewType('FolderId', str)\n\n"
+        "class Kind(StrEnum):\n    TEXT = 'text'\n    IMAGE = 'image'\n\n"
+        "def move(file_id: FileId, folder_id: FolderId) -> None: ...\n\n"
+        "def render(kind: Kind, *, service_version: str = 'dev') -> str:\n"
+        "    if kind not in {Kind.TEXT, Kind.IMAGE}:\n"
+        "        raise ValueError('unsupported kind')\n"
+        "    return service_version\n",
+        encoding="utf-8",
+    )
+    selectors = ["prefer-nominal-id-types", "prefer-str-enum", "require-keyword-only-swap-prone-params"]
+
+    assert analyze(selectors, [source]) == []
+    assert analyze(selectors, [source]) == []
+
+
+def test_nominal_and_enum_cli_suppressions_remain_independent(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "service.py"
+    source.write_text(
+        "def move(file_id: str, folder_id: str) -> None: ...  # sarj-noqa: SARJ093\n\n"
+        "def render(kind: str) -> str:\n"
+        "    if kind not in {'text', 'image'}:\n"
+        "        raise ValueError('unsupported kind')\n"
+        "    return kind\n",
+        encoding="utf-8",
+    )
+    arguments = ["check", "--rule", "prefer-nominal-id-types", "--rule", "prefer-str-enum", str(source)]
+
+    assert main(arguments) == 1
+    output = capsys.readouterr().out
+    assert "SARJ006" in output
+    assert "SARJ093" not in output
+
+    source.write_text(source.read_text().replace("{'text', 'image'}:", "{'text', 'image'}:  # sarj-noqa: SARJ006"))
+    assert main(arguments) == 0
+    assert not capsys.readouterr().out
 
 
 def test_any_mapping_owns_fixed_record_overlap(tmp_path: Path) -> None:

@@ -43,7 +43,6 @@ _STR_CONSTRUCTOR = "str"
 
 class _LiteralAliases(NamedTuple):
     names: frozenset[str]
-    value_sets: list[frozenset[str]]
 
 
 class _ExtractedCompare(NamedTuple):
@@ -55,6 +54,12 @@ class _ExtractedCompare(NamedTuple):
 class _LocalBinding(NamedTuple):
     target: str
     value: ast.expr
+
+
+@dataclass(frozen=True, slots=True)
+class _ClassFieldDiagnostics:
+    diagnostics: list[Diagnostic]
+    member_keys: dict[int, set[str]]
 
 
 #: Sibling class attributes whose presence marks all raw-str fields as choice-like.
@@ -356,12 +361,13 @@ class PreferStrEnum(Rule):
             return []
         signals = context.symbol_source
         class_choice_signal = "str" in signals and any(name in signals.lower() for name in CHOICES_ATTR_NAMES)
-        imports = context.imports if class_choice_signal or "assert_never" in signals else None
+        wrapper_signal = any(symbol in signals for symbol in ("Annotated", "Optional", "Union"))
+        imports = context.imports if class_choice_signal or "assert_never" in signals or wrapper_signal else None
         test_path = is_test_path(path)
         check_clusters = not test_path
         literal_aliases = _module_literal_aliases(tree)
         alias_names = literal_aliases.names
-        alias_valuesets = literal_aliases.value_sets
+        closed_collections = _module_closed_collections(tree, node_index=context.node_index)
         raw_string_aliases = _module_raw_string_aliases(tree)
         choice_string_aliases: frozenset[str] = (
             _module_proven_raw_string_aliases(tree, imports, node_index=context.node_index)
@@ -374,31 +380,31 @@ class PreferStrEnum(Rule):
         )
         method_owned_attributes = _class_method_owned_attributes(tree, node_index=context.node_index)
         method_closed_attributes = _class_method_closed_attributes(
-            tree, alias_names, raw_string_aliases, node_index=context.node_index
+            tree, alias_names, raw_string_aliases, imports=imports, node_index=context.node_index
         )
         enum_like_classes = _enum_like_class_ids(tree, node_index=context.node_index)
+        unsafe_attribute_collections = (
+            _unsafe_attribute_collection_uses(tree, node_index=context.node_index)
+            if class_choice_signal and context.nodes(ast.ClassDef)
+            else {}
+        )
         class_nodes: list[ast.ClassDef] = []
         all_clusters: list[tuple[dict[str, _ClusterEntry], frozenset[str], frozenset[str] | None]] = []
         cluster_opacity: dict[int, frozenset[str]] = {}
         cluster_owned_attributes: dict[int, frozenset[str] | None] = {}
         cluster_closed_nodes: dict[int, frozenset[int]] = {}
+        cluster_methods: dict[int, int | None] = {}
         comprehension_opacity: dict[int, frozenset[str]] = {}
 
         def function_cluster(
             node: ast.FunctionDef | ast.AsyncFunctionDef, active: dict[str, _ClusterEntry] | None
         ) -> dict[str, _ClusterEntry] | None:
             if check_clusters:
-                comprehension_opacity.update(_closed_comprehension_targets(node, alias_names, raw_string_aliases))
+                comprehension_opacity.update(
+                    _closed_comprehension_targets(node, alias_names, raw_string_aliases, imports=imports)
+                )
                 child_active: dict[str, _ClusterEntry] = {}
-                shadowed = {
-                    arg.arg
-                    for arg in (
-                        *node.args.posonlyargs,
-                        *node.args.args,
-                        *node.args.kwonlyargs,
-                    )
-                }
-                shadowed.update(target for target, _value in _local_bindings(node))
+                shadowed = _function_shadowed_names(node)
                 inherited = cluster_opacity.get(id(active), frozenset()) - shadowed
                 opaque = (
                     inherited
@@ -408,6 +414,8 @@ class PreferStrEnum(Rule):
                         literal_funcs,
                         raw_string_aliases,
                         module_func_names,
+                        closed_collections=frozenset(closed_collections),
+                        imports=imports,
                     )
                     | method_closed_attributes.get(id(node), frozenset())
                 )
@@ -415,7 +423,13 @@ class PreferStrEnum(Rule):
                 all_clusters.append((child_active, opaque, owned_attributes))
                 cluster_opacity[id(child_active)] = opaque
                 cluster_owned_attributes[id(child_active)] = owned_attributes
-                cluster_closed_nodes[id(child_active)] = _closed_domain_node_ids(node, imports)
+                cluster_closed_nodes[id(child_active)] = _closed_domain_node_ids(node, imports, closed_collections)
+                inherited_method = cluster_methods.get(id(active))
+                if not _OWNED_ROOTS.isdisjoint(shadowed):
+                    inherited_method = None
+                cluster_methods[id(child_active)] = (
+                    id(node) if id(node) in method_owned_attributes else inherited_method
+                )
             else:
                 return None
             return child_active
@@ -447,6 +461,7 @@ class PreferStrEnum(Rule):
             cluster_opacity[id(child_active)] = frozenset(opaque)
             cluster_owned_attributes[id(child_active)] = owned_attributes
             cluster_closed_nodes[id(child_active)] = frozenset()
+            cluster_methods[id(child_active)] = cluster_methods.get(id(active))
             return child_active
 
         def schedule_children(
@@ -493,6 +508,7 @@ class PreferStrEnum(Rule):
                                     active,
                                     node,
                                     closed=id(node) in cluster_closed_nodes.get(id(active), frozenset()),
+                                    closed_collections=closed_collections,
                                 )
                             elif isinstance(node, ast.Match) and id(node) in cluster_closed_nodes.get(
                                 id(active), frozenset()
@@ -502,25 +518,20 @@ class PreferStrEnum(Rule):
 
         collect_clusters()
 
-        def class_diagnostics() -> list[Diagnostic]:
-            return (
-                [
-                    diag
-                    for cls in class_nodes
-                    for diag in self._class_field_diags(path, cls, choice_string_aliases, enum_like_classes, imports)
-                ]
-                if imports is not None
-                else []
-            )
-
-        class_diags = class_diagnostics()
-        choice_member_keys = _choice_member_keys(class_diags)
+        class_findings = self._all_class_field_diags(
+            path,
+            class_nodes,
+            choice_string_aliases,
+            enum_like_classes,
+            imports,
+            unsafe_attribute_collections=unsafe_attribute_collections,
+        )
         diags: list[Diagnostic] = []
 
         def collect_diagnostics() -> None:
             for clusters, literal_typed, owned_attributes in all_clusters:
                 for key, entry in clusters.items():
-                    if _cluster_is_already_closed(key, entry, literal_typed, alias_valuesets):
+                    if _cluster_is_already_closed(key, literal_typed):
                         continue
                     if (
                         owned_attributes is not None
@@ -530,7 +541,7 @@ class PreferStrEnum(Rule):
                         continue
                     if not _cluster_fires(key, entry):
                         continue
-                    if key in choice_member_keys:
+                    if key in class_findings.member_keys.get(cluster_methods.get(id(clusters)) or 0, set()):
                         continue
                     diags.append(
                         Diagnostic(
@@ -547,10 +558,40 @@ class PreferStrEnum(Rule):
 
         collect_diagnostics()
 
-        diags.extend(class_diags)
+        diags.extend(class_findings.diagnostics)
         diags.sort(key=lambda d: (d.line, d.col))
         source_lines = context.source_lines
         return [diag for diag in diags if not is_suppressed(source_lines, diag.line, self.code)]
+
+    def _all_class_field_diags(
+        self,
+        path: Path,
+        classes: list[ast.ClassDef],
+        raw_string_aliases: frozenset[str],
+        enum_like_classes: frozenset[int],
+        imports: ImportIndex | None,
+        *,
+        unsafe_attribute_collections: dict[str, set[str]],
+    ) -> _ClassFieldDiagnostics:
+        diagnostics: list[Diagnostic] = []
+        member_keys: dict[int, set[str]] = {}
+        if imports is None:
+            return _ClassFieldDiagnostics(diagnostics, member_keys)
+        for cls in classes:
+            current = self._class_field_diags(
+                path,
+                cls,
+                raw_string_aliases,
+                enum_like_classes,
+                imports,
+                unsafe_attribute_collections=unsafe_attribute_collections,
+            )
+            diagnostics.extend(current)
+            keys = _choice_member_keys(current)
+            member_keys.update(
+                (id(method), keys) for method in cls.body if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef))
+            )
+        return _ClassFieldDiagnostics(diagnostics, member_keys)
 
     def _class_field_diags(
         self,
@@ -559,11 +600,13 @@ class PreferStrEnum(Rule):
         raw_string_aliases: frozenset[str],
         enum_like_classes: frozenset[int],
         imports: ImportIndex,
+        *,
+        unsafe_attribute_collections: dict[str, set[str]],
     ) -> list[Diagnostic]:
         diags: list[Diagnostic] = []
         if id(cls) in enum_like_classes or any(_trailing_name(base) in _ENUM_BASE_NAMES for base in cls.bases):
             return diags
-        choice_groups = _class_choice_groups(cls)
+        choice_groups = _class_choice_groups(cls, unsafe_attribute_collections)
         candidates = _class_choice_fields(cls, raw_string_aliases, imports)
         for stmt, name, default in candidates:
             choices = _choice_values_for_field(choice_groups, name)
@@ -654,23 +697,16 @@ def _cluster_fires(key: str, entry: _ClusterEntry) -> bool:
 
 def _cluster_is_already_closed(
     key: str,
-    entry: _ClusterEntry,
     literal_typed: frozenset[str],
-    alias_valuesets: list[frozenset[str]],
 ) -> bool:
     segment = key.rsplit(".", 1)[-1].lower()
     if segment in OPEN_DOMAIN_CODE_NAMES or segment.endswith(_OPEN_DOMAIN_SUFFIXES):
         return True
-    if key in literal_typed:
-        return True
-    _line, _col, _literals, eq_literals, _ne, in_literals, _closed = entry
-    domain_literals = eq_literals | in_literals
-    return any(domain_literals <= vs for vs in alias_valuesets)
+    return key in literal_typed
 
 
 def _module_literal_aliases(tree: ast.Module) -> _LiteralAliases:
     names: set[str] = set()
-    valuesets: list[frozenset[str]] = []
     for stmt in tree.body:
         match stmt:
             case ast.Assign(targets=[ast.Name(id=name)], value=value):
@@ -687,9 +723,7 @@ def _module_literal_aliases(tree: ast.Module) -> _LiteralAliases:
         if members is None:
             continue
         names.add(name)
-        if members:
-            valuesets.append(frozenset(members))
-    return _LiteralAliases(frozenset(names), valuesets)
+    return _LiteralAliases(frozenset(names))
 
 
 def _module_raw_string_aliases(tree: ast.Module) -> frozenset[str]:
@@ -741,7 +775,7 @@ def _module_proven_raw_string_aliases(
 
 def _is_builtin_str(node: ast.expr, imports: ImportIndex) -> bool:
     return (isinstance(node, ast.Name) and node.id == "str" and imports.builtin_is_unshadowed("str")) or (
-        isinstance(node, ast.Name) and imports.resolves(node, sources=frozenset({"builtins"}), symbol="str")
+        imports.resolves(node, sources=frozenset({"builtins"}), symbol="str")
     )
 
 
@@ -751,12 +785,15 @@ def _opaque_names(
     literal_funcs: frozenset[str],
     raw_string_aliases: frozenset[str],
     module_func_names: frozenset[str],
+    *,
+    closed_collections: frozenset[str],
+    imports: ImportIndex | None,
 ) -> frozenset[str]:
     base = (
         _literal_typed_names(func, alias_names)
         | _explicitly_open_literal_union_names(func, raw_string_aliases)
-        | _dynamically_constrained_names(func)
-        | _foreign_typed_names(func, raw_string_aliases)
+        | _dynamically_constrained_names(func, closed_collections)
+        | _foreign_typed_names(func, raw_string_aliases, imports=imports)
         | _wire_bound_names(func, literal_funcs, module_func_names)
         | _fallback_consumed_names(func)
     )
@@ -782,6 +819,7 @@ def _class_method_closed_attributes(
     alias_names: frozenset[str],
     raw_string_aliases: frozenset[str],
     *,
+    imports: ImportIndex | None,
     node_index: NodeIndex | None = None,
 ) -> dict[int, frozenset[str]]:
     result: dict[int, frozenset[str]] = {}
@@ -791,7 +829,7 @@ def _class_method_closed_attributes(
             for statement in cls.body
             if isinstance(statement, ast.AnnAssign)
             and isinstance(statement.target, ast.Name)
-            and _is_closed_annotation(statement.annotation, alias_names, raw_string_aliases)
+            and _is_closed_annotation(statement.annotation, alias_names, raw_string_aliases, imports=imports)
         }
         keys = frozenset(f"{receiver}.{name}" for receiver in _OWNED_ROOTS for name in closed)
         result.update(
@@ -800,7 +838,9 @@ def _class_method_closed_attributes(
     return result
 
 
-def _dynamically_constrained_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
+def _dynamically_constrained_names(
+    func: ast.FunctionDef | ast.AsyncFunctionDef, closed_collections: frozenset[str]
+) -> frozenset[str]:
     result: set[str] = set()
     stack: list[ast.AST] = list(func.body)
     while stack:
@@ -812,7 +852,7 @@ def _dynamically_constrained_names(func: ast.FunctionDef | ast.AsyncFunctionDef)
             if (
                 isinstance(node.ops[0], (ast.In, ast.NotIn))
                 and not isinstance(collection, (ast.List, ast.Set, ast.Tuple))
-                and not (isinstance(collection, ast.Name) and collection.id.isupper())
+                and not (isinstance(collection, ast.Name) and collection.id in closed_collections)
             ):
                 key = _name_key(node.left)
             else:
@@ -929,7 +969,7 @@ def _is_literal_plus_open_string(
 
 def _union_annotation_members(annotation: ast.expr) -> list[ast.expr]:
     if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
-        return [*_union_annotation_members(annotation.left), *_union_annotation_members(annotation.right)]
+        return _flatten_annotation_union(annotation)
     if isinstance(annotation, ast.Subscript) and _trailing_name(annotation.value) == "Union":
         return list(annotation.slice.elts) if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
     return [annotation]
@@ -939,6 +979,8 @@ def _closed_comprehension_targets(
     func: ast.FunctionDef | ast.AsyncFunctionDef,
     alias_names: frozenset[str],
     raw_string_aliases: frozenset[str],
+    *,
+    imports: ImportIndex | None,
 ) -> dict[int, frozenset[str]]:
     annotations: dict[str, ast.expr] = {
         arg.arg: arg.annotation
@@ -960,7 +1002,7 @@ def _closed_comprehension_targets(
     for node in own_nodes:
         if not isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
             continue
-        closed = _closed_generator_targets(node, annotations, alias_names, raw_string_aliases)
+        closed = _closed_generator_targets(node, annotations, alias_names, raw_string_aliases, imports=imports)
         if closed:
             result[id(node)] = frozenset(closed)
     return result
@@ -993,6 +1035,15 @@ def _is_valid_url_group(value: ast.expr) -> bool:
     )
 
 
+def _function_shadowed_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    arguments = [*func.args.posonlyargs, *func.args.args, *func.args.kwonlyargs]
+    if func.args.vararg is not None:
+        arguments.append(func.args.vararg)
+    if func.args.kwarg is not None:
+        arguments.append(func.args.kwarg)
+    return {argument.arg for argument in arguments} | {target for target, _value in _local_bindings(func)}
+
+
 def _local_bindings(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_LocalBinding]:
     bindings: list[_LocalBinding] = []
     stack: list[ast.AST] = list(func.body)
@@ -1015,11 +1066,13 @@ def _local_bindings(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_Local
 def _foreign_typed_names(
     func: ast.FunctionDef | ast.AsyncFunctionDef,
     raw_string_aliases: frozenset[str],
+    *,
+    imports: ImportIndex | None,
 ) -> frozenset[str]:
     names: set[str] = set()
     args = func.args
     for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs):
-        if _is_foreign_annotation(arg.annotation, raw_string_aliases):
+        if _is_foreign_annotation(arg.annotation, raw_string_aliases, imports=imports):
             names.add(arg.arg)
     stack: list[ast.AST] = list(func.body)
     while stack:
@@ -1029,7 +1082,7 @@ def _foreign_typed_names(
         if (
             isinstance(node, ast.AnnAssign)
             and isinstance(node.target, ast.Name)
-            and _is_foreign_annotation(node.annotation, raw_string_aliases)
+            and _is_foreign_annotation(node.annotation, raw_string_aliases, imports=imports)
         ):
             names.add(node.target.id)
         stack.extend(children(node))
@@ -1039,37 +1092,62 @@ def _foreign_typed_names(
 def _is_foreign_annotation(
     annotation: ast.expr | None,
     raw_string_aliases: frozenset[str] = frozenset(),
+    *,
+    imports: ImportIndex | None = None,
 ) -> bool:
     if annotation is None:
         return False
     if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
         parsed = _parse_string_annotation(annotation.value)
-        return parsed is not None and _is_foreign_annotation(parsed, raw_string_aliases)
+        return parsed is not None and _is_foreign_annotation(parsed, raw_string_aliases, imports=imports)
     if _is_literal_annotation(annotation, frozenset()):
         return True
     inner = _strip_optional(annotation)
+    wrapped = _transparent_annotation_members(inner, imports)
+    if wrapped is not None:
+        return not wrapped or any(
+            _is_foreign_annotation(member, raw_string_aliases, imports=imports) for member in wrapped
+        )
     if isinstance(inner, ast.Subscript) and _trailing_name(inner.value) == "Annotated":
         first = inner.slice.elts[0] if isinstance(inner.slice, ast.Tuple) and inner.slice.elts else None
-        return first is not None and _is_foreign_annotation(first, raw_string_aliases)
+        return first is not None and _is_foreign_annotation(first, raw_string_aliases, imports=imports)
     match inner:
         case ast.Name(id=ident):
             return ident != "str" and ident not in raw_string_aliases
         case ast.Attribute(attr=attr):
             return attr != "str"
+        case ast.Subscript():
+            return True
         case _:
             return False
 
 
+def _transparent_annotation_members(annotation: ast.expr, imports: ImportIndex | None) -> list[ast.expr] | None:
+    if not isinstance(annotation, ast.Subscript) or imports is None:
+        return None
+    symbol = imports.resolved_symbol(annotation.value, sources=frozenset({"typing", "typing_extensions"}))
+    if symbol == "Optional":
+        return [annotation.slice]
+    if symbol == "Annotated" and isinstance(annotation.slice, ast.Tuple) and annotation.slice.elts:
+        return [annotation.slice.elts[0]]
+    if symbol == "Union":
+        members = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
+        return [member for member in members if not _is_none_annotation(member)]
+    return None
+
+
 def _strip_optional(annotation: ast.expr) -> ast.expr:
-    match annotation:
-        case ast.BinOp(op=ast.BitOr(), left=left, right=ast.Constant(value=None)):
-            return _strip_optional(left)
-        case ast.BinOp(op=ast.BitOr(), left=ast.Constant(value=None), right=right):
-            return _strip_optional(right)
-        case ast.Subscript(value=head, slice=inner) if _trailing_name(head) == "Optional":
-            return _strip_optional(inner)
-        case _:
-            return annotation
+    current = annotation
+    while True:
+        match current:
+            case ast.BinOp(op=ast.BitOr(), left=left, right=ast.Constant(value=None)):
+                current = left
+            case ast.BinOp(op=ast.BitOr(), left=ast.Constant(value=None), right=right):
+                current = right
+            case ast.Subscript(value=head, slice=inner) if _trailing_name(head) == "Optional":
+                current = inner
+            case _:
+                return current
 
 
 def _literal_returning_functions(tree: ast.Module) -> frozenset[str]:
@@ -1209,9 +1287,15 @@ def _literal_string_values(node: ast.expr) -> list[str] | None:
 
 
 def _flatten_annotation_union(node: ast.expr) -> list[ast.expr]:
-    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        return [*_flatten_annotation_union(node.left), *_flatten_annotation_union(node.right)]
-    return [node]
+    members: list[ast.expr] = []
+    pending = [node]
+    while pending:
+        current = pending.pop()
+        if isinstance(current, ast.BinOp) and isinstance(current.op, ast.BitOr):
+            pending.extend((current.right, current.left))
+        else:
+            members.append(current)
+    return members
 
 
 def _is_file_mode_key(key: str) -> bool:
@@ -1224,23 +1308,139 @@ def _is_scanner_key(key: str) -> bool:
     return segment in _SCANNER_KEY_SEGMENTS or "char" in segment
 
 
-def _class_choice_groups(cls: ast.ClassDef) -> list[tuple[str, set[str]]]:
-    choice_groups: list[tuple[str, set[str]]] = []
+def _class_choice_groups(
+    cls: ast.ClassDef, unsafe_attribute_collections: dict[str, set[str]]
+) -> list[tuple[str, set[str]]]:
+    candidates: list[tuple[str, str, set[str]]] = []
     for stmt in cls.body:
-        if isinstance(stmt, (ast.Assign, ast.AnnAssign)):
-            target = stmt.targets[0] if isinstance(stmt, ast.Assign) and stmt.targets else getattr(stmt, "target", None)
-            if not isinstance(target, ast.Name):
-                continue
-            val = getattr(stmt, "value", None)
-            values = _string_collection_values(val)
-            binding = target.id.lower()
-            if (
-                values is not None
-                and len(values) >= _MIN_CLUSTER_SIZE
-                and (binding in CHOICES_ATTR_NAMES or binding.endswith("_choices"))
+        match stmt:
+            case (
+                ast.Assign(targets=[ast.Name(id=name)], value=value)
+                | ast.AnnAssign(target=ast.Name(id=name), value=value)
             ):
-                choice_groups.append((binding, values))
-    return choice_groups
+                pass
+            case _:
+                continue
+        values = _string_collection_values(value)
+        binding = name.lower()
+        if (
+            values is not None
+            and len(values) >= _MIN_CLUSTER_SIZE
+            and (binding in CHOICES_ATTR_NAMES or binding.endswith("_choices"))
+        ):
+            candidates.append((name, binding, values))
+    if not candidates:
+        return []
+    binding_counts = _alias_binding_counts(cls)
+    mutated = _non_membership_collection_reads(cls)
+    local_unsafe = _unsafe_attribute_collection_uses(cls)
+    mutated.update(unsafe_attribute_collections.get(cls.name, set()))
+    mutated.update(local_unsafe.get("self", set()))
+    mutated.update(local_unsafe.get("cls", set()))
+    return [
+        (binding, values)
+        for name, binding, values in candidates
+        if binding_counts.get(name) == 1 and name not in mutated and "*" not in mutated
+    ]
+
+
+def _module_closed_collections(tree: ast.Module, *, node_index: NodeIndex) -> dict[str, list[str]]:
+    candidates = _module_literal_collections(tree)
+    if not candidates:
+        return {}
+    if any(
+        isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names)
+        for node in node_index.query((ast.ImportFrom,))
+    ):
+        return {}
+    bindings = _alias_binding_counts(tree, node_index=node_index)
+    unsafe = _non_membership_collection_reads(tree, node_index=node_index)
+    return {name: values for name, values in candidates.items() if bindings.get(name) == 1 and name not in unsafe}
+
+
+def _module_literal_collections(tree: ast.Module) -> dict[str, list[str]]:
+    candidates: dict[str, list[str]] = {}
+    for statement in tree.body:
+        match statement:
+            case (
+                ast.Assign(targets=[ast.Name(id=name)], value=value)
+                | ast.AnnAssign(target=ast.Name(id=name), value=ast.expr() as value)
+            ):
+                pass
+            case _:
+                continue
+        if not isinstance(value, (ast.List, ast.Tuple, ast.Set)) or not value.elts:
+            continue
+        members = [_str_const(element) for element in value.elts]
+        if all(member is not None for member in members):
+            candidates[name] = [member for member in members if member is not None]
+    return candidates
+
+
+def _non_membership_collection_reads(tree: ast.AST, *, node_index: NodeIndex | None = None) -> set[str]:
+    unsafe: set[str] = set()
+    for parent in walk_ast(tree, index=node_index):
+        for child in children(parent):
+            if not isinstance(child, ast.Name) or not isinstance(child.ctx, ast.Load):
+                continue
+            if (
+                isinstance(parent, ast.Compare)
+                and len(parent.ops) == 1
+                and isinstance(parent.ops[0], (ast.In, ast.NotIn))
+                and parent.comparators == [child]
+            ):
+                continue
+            unsafe.add(child.id)
+    return unsafe
+
+
+def _unsafe_attribute_collection_uses(tree: ast.AST, *, node_index: NodeIndex | None = None) -> dict[str, set[str]]:
+    unsafe: dict[str, set[str]] = {}
+    for parent in walk_ast(tree, index=node_index):
+        for child in children(parent):
+            if not isinstance(child, ast.Attribute) or not isinstance(child.value, ast.Name):
+                continue
+            if (
+                isinstance(parent, ast.Compare)
+                and len(parent.ops) == 1
+                and isinstance(parent.ops[0], (ast.In, ast.NotIn))
+                and parent.comparators == [child]
+            ):
+                continue
+            unsafe.setdefault(child.value.id, set()).add(child.attr)
+        if (
+            isinstance(parent, ast.Call)
+            and _trailing_name(parent.func) in {"setattr", "delattr"}
+            and len(parent.args) >= _CHOICE_PAIR_ARITY
+            and isinstance(parent.args[0], ast.Name)
+        ):
+            name = _str_const(parent.args[1])
+            unsafe.setdefault(parent.args[0].id, set()).add(name if name is not None else "*")
+    _propagate_collection_alias_uses(tree, unsafe, node_index=node_index)
+    return unsafe
+
+
+def _propagate_collection_alias_uses(
+    tree: ast.AST, unsafe: dict[str, set[str]], *, node_index: NodeIndex | None = None
+) -> None:
+    aliases = [
+        (target.id, node.value.id)
+        for node in walk_ast(tree, index=node_index)
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    ]
+    # Exposure invalidates proof even when an alias has other possible bindings.
+    # The finite owner/attribute sets converge without following runtime values.
+    for _round in range(len(aliases)):
+        changed = False
+        for alias, original in aliases:
+            exposed = unsafe.get(alias, set())
+            if exposed and not exposed <= unsafe.get(original, set()):
+                unsafe.setdefault(original, set()).update(exposed)
+                changed = True
+        if not changed:
+            break
 
 
 def _string_collection_values(node: ast.AST | None) -> set[str] | None:
@@ -1301,8 +1501,16 @@ def _is_choice_string_annotation(
     )
 
 
-def _accumulate_compare(clusters: dict[str, _ClusterEntry], node: ast.Compare, *, closed: bool) -> None:
-    extracted = _extract_compare(node)
+def _accumulate_compare(
+    clusters: dict[str, _ClusterEntry],
+    node: ast.Compare,
+    *,
+    closed: bool,
+    closed_collections: dict[str, list[str]],
+) -> None:
+    if not closed:
+        return
+    extracted = _extract_compare(node) or _extract_named_membership(node, closed_collections)
     if extracted is None:
         return
     _merge_cluster(
@@ -1313,6 +1521,19 @@ def _accumulate_compare(clusters: dict[str, _ClusterEntry], node: ast.Compare, *
         operator=extracted.operator,
         closed=closed,
     )
+
+
+def _extract_named_membership(node: ast.Compare, closed_collections: dict[str, list[str]]) -> _ExtractedCompare | None:
+    if not (
+        len(node.ops) == 1
+        and isinstance(node.ops[0], (ast.In, ast.NotIn))
+        and len(node.comparators) == 1
+        and isinstance(node.comparators[0], ast.Name)
+    ):
+        return None
+    key = _name_key(node.left)
+    values = closed_collections.get(node.comparators[0].id)
+    return _ExtractedCompare(key, values, _MEMBERSHIP) if key is not None and values is not None else None
 
 
 def _accumulate_match(clusters: dict[str, _ClusterEntry], node: ast.Match, imports: ImportIndex | None) -> None:
@@ -1328,13 +1549,29 @@ def _accumulate_match(clusters: dict[str, _ClusterEntry], node: ast.Match, impor
 
 
 def _match_rejects_unlisted_values(node: ast.Match, key: str, imports: ImportIndex | None) -> bool:
-    return any(
-        case.guard is None
-        and isinstance(case.pattern, ast.MatchAs)
-        and case.pattern.pattern is None
-        and _statements_definitely_reject(case.body, key, imports)
-        for case in node.cases
-    )
+    rejecting_fallback = False
+    for case in node.cases:
+        rejects = _statements_definitely_reject(case.body, key, imports)
+        if isinstance(case.pattern, ast.MatchAs) and case.pattern.pattern is None:
+            if not rejects:
+                return False
+            if case.guard is None:
+                rejecting_fallback = True
+        elif not rejects and not _is_finite_string_pattern(case.pattern):
+            return False
+    return rejecting_fallback
+
+
+def _is_finite_string_pattern(pattern: ast.pattern) -> bool:
+    match pattern:
+        case ast.MatchValue(value=value):
+            return _str_const(value) is not None
+        case ast.MatchAs(pattern=inner) if inner is not None:
+            return _is_finite_string_pattern(inner)
+        case ast.MatchOr(patterns=patterns):
+            return all(_is_finite_string_pattern(inner) for inner in patterns)
+        case _:
+            return False
 
 
 def _statements_definitely_reject(statements: list[ast.stmt], key: str, imports: ImportIndex | None) -> bool:
@@ -1368,17 +1605,15 @@ def _statements_definitely_reject(statements: list[ast.stmt], key: str, imports:
 def _closed_domain_node_ids(
     function: ast.FunctionDef | ast.AsyncFunctionDef,
     imports: ImportIndex | None,
+    closed_collections: dict[str, list[str]],
 ) -> frozenset[int]:
     closed: set[int] = set()
-    guarded_keys: set[str] = set()
     # A rejecting branch proves a closed domain only when it governs the whole
     # function. Nested branches may be optional, repeated, or have their
     # rejection caught before an open-domain fallback executes.
     for node in function.body:
         if isinstance(node, ast.If):
-            guarded_key = _record_rejecting_membership_guard(node, imports, closed)
-            if guarded_key is not None:
-                guarded_keys.add(guarded_key)
+            _record_rejecting_membership_guard(node, imports, closed, closed_collections)
             _record_exhaustive_if_chain(node, imports, closed)
         elif isinstance(node, ast.Match) and _match_rejects_unlisted_values(
             node, _name_key(node.subject) or "", imports
@@ -1386,14 +1621,6 @@ def _closed_domain_node_ids(
             closed.add(id(node))
         if not _statement_always_falls_through(node):
             break
-    if guarded_keys:
-        closed.update(
-            id(node)
-            for node in walk_ast(function)
-            if isinstance(node, ast.Compare)
-            and (extracted := _extract_compare(node)) is not None
-            and extracted.key in guarded_keys
-        )
     return frozenset(closed)
 
 
@@ -1409,7 +1636,12 @@ def _statement_always_falls_through(statement: ast.stmt) -> bool:
     return True
 
 
-def _record_rejecting_membership_guard(node: ast.If, imports: ImportIndex | None, closed: set[int]) -> str | None:
+def _record_rejecting_membership_guard(
+    node: ast.If,
+    imports: ImportIndex | None,
+    closed: set[int],
+    closed_collections: dict[str, list[str]],
+) -> str | None:
     if not (
         isinstance(node.test, ast.Compare)
         and len(node.test.ops) == 1
@@ -1419,7 +1651,9 @@ def _record_rejecting_membership_guard(node: ast.If, imports: ImportIndex | None
         return None
     key = _name_key(node.test.left)
     collection = node.test.comparators[0]
-    explicit = _extract_compare(node.test) is not None or (isinstance(collection, ast.Name) and collection.id.isupper())
+    explicit = _extract_compare(node.test) is not None or (
+        isinstance(collection, ast.Name) and collection.id in closed_collections
+    )
     if key is None or not explicit or not _statements_definitely_reject(node.body, key, imports):
         return None
     closed.add(id(node.test))
@@ -1684,11 +1918,18 @@ def _unwrap_type_alias_value(value: ast.expr) -> ast.expr:
     return value
 
 
-def _alias_binding_counts(tree: ast.Module, *, node_index: NodeIndex | None = None) -> dict[str, int]:
+def _alias_binding_counts(tree: ast.AST, *, node_index: NodeIndex | None = None) -> dict[str, int]:
     binding_counts: dict[str, int] = {}
     for node in walk_ast(tree, index=node_index):
         match node:
-            case ast.Name(id=name, ctx=(ast.Store() | ast.Del())) | ast.arg(arg=name):
+            case (
+                ast.Name(id=name, ctx=(ast.Store() | ast.Del()))
+                | ast.arg(arg=name)
+                | ast.ExceptHandler(name=str() as name)
+                | ast.MatchAs(name=str() as name)
+                | ast.MatchStar(name=str() as name)
+                | ast.MatchMapping(rest=str() as name)
+            ):
                 binding_counts[name] = binding_counts.get(name, 0) + 1
             case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
                 binding_counts[node.name] = binding_counts.get(node.name, 0) + 1
@@ -1730,9 +1971,15 @@ def _assignment_targets(node: ast.AST) -> list[ast.expr]:
 
 
 def _is_closed_annotation(
-    annotation: ast.expr, alias_names: frozenset[str], raw_string_aliases: frozenset[str]
+    annotation: ast.expr,
+    alias_names: frozenset[str],
+    raw_string_aliases: frozenset[str],
+    *,
+    imports: ImportIndex | None,
 ) -> bool:
-    return _is_literal_annotation(annotation, alias_names) or _is_foreign_annotation(annotation, raw_string_aliases)
+    return _is_literal_annotation(annotation, alias_names) or _is_foreign_annotation(
+        annotation, raw_string_aliases, imports=imports
+    )
 
 
 def _closed_generator_targets(
@@ -1740,6 +1987,8 @@ def _closed_generator_targets(
     annotations: dict[str, ast.expr],
     alias_names: frozenset[str],
     raw_string_aliases: frozenset[str],
+    *,
+    imports: ImportIndex | None,
 ) -> set[str]:
     closed: set[str] = set()
     for generator in node.generators:
@@ -1749,7 +1998,9 @@ def _closed_generator_targets(
         if not isinstance(annotation, ast.Subscript):
             continue
         element = annotation.slice.elts[0] if isinstance(annotation.slice, ast.Tuple) else annotation.slice
-        if _is_literal_annotation(element, alias_names) or _is_foreign_annotation(element, raw_string_aliases):
+        if _is_literal_annotation(element, alias_names) or _is_foreign_annotation(
+            element, raw_string_aliases, imports=imports
+        ):
             closed.update(_bound_target_names(generator.target))
     return closed
 

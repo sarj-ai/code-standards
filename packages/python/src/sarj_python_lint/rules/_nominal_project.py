@@ -12,6 +12,7 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
 from sarj_python_lint._source import read_python_source
+from sarj_python_lint.rules._ast_index import NodeIndex
 from sarj_python_lint.rules._first_party import distribution_root
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_generated
@@ -34,6 +35,11 @@ class NominalSource:
     text: str
 
     @cached_property
+    def node_index(self) -> NodeIndex | None:
+        tree = self.tree
+        return NodeIndex(tree) if tree is not None else None
+
+    @cached_property
     def tree(self) -> ast.Module | None:
         try:
             tree = ast.parse(self.text, filename=str(self.path))
@@ -49,12 +55,13 @@ class NominalSource:
     @cached_property
     def imports(self) -> ImportIndex:
         tree = self.tree
-        if tree is None:
+        node_index = self.node_index
+        if tree is None or node_index is None:
             return ImportIndex(MappingProxyType({}), frozenset())
         imports = ImportIndex.from_tree(tree)
         mutated = {
             ast.unparse(node).partition(".")[0]
-            for node in ast.walk(tree)
+            for node in node_index.query((ast.Attribute,))
             if isinstance(node, ast.Attribute) and isinstance(node.ctx, (ast.Store, ast.Del))
         }
         return ImportIndex(
