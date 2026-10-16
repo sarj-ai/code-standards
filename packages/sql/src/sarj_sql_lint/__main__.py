@@ -10,6 +10,7 @@ import typer
 from sarj_sql_lint import __version__
 from sarj_sql_lint.rule_base import DefaultLevel, Diagnostic, clear_path_caches, is_suppressed
 from sarj_sql_lint.rules import REGISTRY
+from sarj_sql_lint.rules.require_fk_index import index_analysis_session
 
 
 if TYPE_CHECKING:
@@ -76,7 +77,8 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
 
 
 def analyze(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
-    return _check(rule_ids, paths)
+    with index_analysis_session():
+        return _check(rule_ids, paths)
 
 
 @dataclass

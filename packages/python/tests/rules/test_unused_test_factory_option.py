@@ -448,3 +448,20 @@ def test_callable_remediation_keeps_remaining_literal_diagnostic() -> None:
         source.replace("*, width=3, read=_read", "*, width=3").replace("read=read", "read=_read"),
     )
     assert remaining == diagnostics[:1]
+
+
+@pytest.mark.parametrize("spacing", ["  ", "\t", " \\\n"])
+@pytest.mark.parametrize("varied", [False, True])
+def test_native_definition_whitespace_preserves_factory_argument_evidence(spacing: str, *, varied: bool) -> None:
+    explicit = "False" if varied else "True"
+    source = (
+        f"def{spacing}_widget(*, enabled=True):\n    return Widget(enabled=enabled)\n"
+        f"_widget()\n_widget(enabled={explicit})\n"
+    )
+    diagnostics = UnusedTestFactoryOption().check(Path("tests/test_widgets.py"), source)
+    assert len(diagnostics) == int(not varied)
+
+
+def test_factory_definition_in_string_data_does_not_establish_callers() -> None:
+    source = "source = 'def  _widget(*, enabled=True): return Widget(enabled=enabled)'\n"
+    assert UnusedTestFactoryOption().check(Path("tests/test_widgets.py"), source) == []

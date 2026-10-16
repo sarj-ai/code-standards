@@ -159,8 +159,9 @@ class PreferSelfTypeAnnotation(Rule):
                 files=(
                     ExampleFile.python(
                         "app/builder.py",
-                        "from typing import Self\n\n"
+                        "from typing import Self, final\n\n"
                         "class Builder:\n"
+                        "    @final\n"
                         "    def set_name(self, name: str) -> Self:\n"
                         "        self.name = name\n"
                         "        return self\n",

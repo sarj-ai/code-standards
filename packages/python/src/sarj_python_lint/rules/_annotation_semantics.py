@@ -131,6 +131,15 @@ def _target_names(node: ast.expr) -> set[str]:
 class _ScopeBindings(ast.NodeVisitor):
     def __init__(self) -> None:
         self.names: set[str] = set()
+        self._pending: list[ast.AST] = []
+
+    def visit(self, node: ast.AST) -> None:
+        self._pending.append(node)
+        while self._pending:
+            super().visit(self._pending.pop())
+
+    def generic_visit(self, node: ast.AST) -> None:
+        self._pending.extend(reversed(tuple(ast.iter_child_nodes(node))))
 
     def visit_Name(self, node: ast.Name) -> None:
         if isinstance(node.ctx, (ast.Store, ast.Del)):

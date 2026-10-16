@@ -26,6 +26,13 @@ def test_public_examples_are_executable(example: RuleExample) -> None:
     )
 
 
+@pytest.mark.parametrize("example", FastapiClassRouterContract.public_examples())
+def test_deep_annotation_preserves_router_owner_examples(example: RuleExample) -> None:
+    annotation = " | ".join(["str"] * 3001 + ["None"])
+    source = f"{example.focus_file.source}\nclass AnnotationCarrier:\n    payload: {annotation}\n"
+    assert len(FastapiClassRouterContract().check(Path(example.focus_path), source)) == example.expected_count
+
+
 @pytest.mark.parametrize(
     "source",
     [

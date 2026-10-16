@@ -1225,3 +1225,10 @@ def test_generic_alias_is_not_guessed() -> None:
     source = "type Record[T] = dict[str, T]\ndef payload() -> Record[object]:\n    return {'id': 1}\n"
 
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(("owner", "expected"), [("Public", 1), ("_Private", 0)])
+def test_deep_field_union_preserves_private_class_boundary_exclusion(owner: str, expected: int) -> None:
+    annotation = " | ".join(["str"] * 3001 + ["None"])
+    source = f"class {owner}:\n    payload: {annotation}\n    def payload_record(self) -> dict[str, object]:\n        return {{'id': 1}}\n"
+    assert len(_check(source)) == expected

@@ -154,3 +154,39 @@ def test_flags_multiline_length_limited_type(type_name: str) -> None:
     [finding] = _check(source)
     assert finding.line == 2
     assert finding.col == 8
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "SELECT custom.varchar(255);",
+        'SELECT custom."varchar"(255);',
+        "SELECT varchar(255);",
+        "CREATE TABLE t (value app.varchar(32));",
+        'CREATE TABLE t (value "App"."varchar"(32));',
+        'CREATE TABLE t (value "VARCHAR"(32));',
+    ],
+)
+def test_function_and_custom_type_names_do_not_prove_a_bounded_builtin(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("type_name", ['"varchar"', "pg_catalog.varchar", '"pg_catalog"."varchar"'])
+def test_proven_quoted_and_catalog_bounded_builtins_report(type_name: str) -> None:
+    source = f"CREATE TABLE t (value {type_name}(32));"
+    [finding] = _check(source)
+    assert finding.line == 1
+    assert finding.col == source.index("varchar") + 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'CREATE TABLE "événements" ("résumé" VARCHAR(32));',
+        "SELECT varchar, value::VARCHAR(32) FROM records;",
+        "SELECT app.varchar(255), value::VARCHAR(32) FROM records;",
+    ],
+)
+def test_bounded_builtin_location_survives_identifiers_functions_and_unicode(source: str) -> None:
+    [finding] = _check(source)
+    assert (finding.line, finding.col) == (1, source.index("VARCHAR") + 1)

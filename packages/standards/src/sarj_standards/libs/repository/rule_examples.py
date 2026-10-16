@@ -37,7 +37,7 @@ def verify(root: Path, selector: RuleSelector) -> int:
     if selector.engine is RuleEngine.ESLINT:
         return _typescript(root, selector)
     rule = selected(selector)
-    return verify_examples(rule.spec.examples, rule.analyze)
+    return verify_examples(rule.spec.examples, rule.analyze, expected_code=rule.spec.code)
 
 
 def selected(selector: RuleSelector) -> SelectedRule:

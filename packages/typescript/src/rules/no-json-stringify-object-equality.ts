@@ -38,7 +38,7 @@ export const NO_JSON_STRINGIFY_OBJECT_EQUALITY_DOCUMENTATION = {
       id: "domain-comparator",
       title: "Use an explicit structural comparator",
       outcome: "no-match",
-      files: [{ path: "src/compare.ts", source: "const same = sameRecord(actual, expected);" }],
+      files: [{ path: "src/compare.ts", source: "type RecordState = { id: string; state: string };\nfunction sameRecord(actual: RecordState, expected: RecordState): boolean { return actual.id === expected.id && actual.state === expected.state; }\nconst same = sameRecord({ id: '1', state: 'ready' }, { state: 'ready', id: '1' });" }],
       focusPath: "src/compare.ts",
       expectedCount: 0,
       public: true,

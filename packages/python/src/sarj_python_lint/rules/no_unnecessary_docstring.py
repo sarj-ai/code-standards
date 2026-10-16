@@ -218,15 +218,13 @@ def _is_syntax_required(owner: ast.Module | ast.ClassDef | ast.FunctionDef | ast
 
 def _owner_keys(tree: ast.Module) -> dict[int, str]:
     keys = {id(tree): "__doc__"}
-
-    def visit(node: ast.AST, prefix: tuple[str, ...]) -> None:
+    pending: list[tuple[ast.AST, tuple[str, ...]]] = [(tree, ())]
+    while pending:
+        node, prefix = pending.pop()
         if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
             prefix = (*prefix, node.name)
             keys[id(node)] = ".".join(prefix)
-        for child in ast.iter_child_nodes(node):
-            visit(child, prefix)
-
-    visit(tree, ())
+        pending.extend((child, prefix) for child in reversed(tuple(ast.iter_child_nodes(node))))
     return keys
 
 

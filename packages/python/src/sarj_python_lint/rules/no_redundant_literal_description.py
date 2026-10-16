@@ -275,9 +275,7 @@ def _closed_domain(
     if isinstance(node, ast.Name):
         return local_domains.get(node.id)
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
-        left = _closed_domain(node.left, imports, local_domains)
-        right = _closed_domain(node.right, imports, local_domains)
-        return left | right if left is not None and right is not None else None
+        return _closed_union_domain(node, imports, local_domains)
     if not isinstance(node, ast.Subscript):
         return None
     if imports.resolves(node.value, sources=_TYPING_SOURCES, symbol="Literal"):
@@ -286,6 +284,23 @@ def _closed_domain(
         members = node.slice.elts if isinstance(node.slice, ast.Tuple) else (node.slice,)
         return _closed_domain(members[0], imports, local_domains) if members else None
     return None
+
+
+def _closed_union_domain(
+    node: ast.expr, imports: ImportIndex, local_domains: dict[str, frozenset[str]]
+) -> frozenset[str] | None:
+    values: set[str] = set()
+    pending = [node]
+    while pending:
+        member = pending.pop()
+        if isinstance(member, ast.BinOp) and isinstance(member.op, ast.BitOr):
+            pending.extend((member.right, member.left))
+            continue
+        domain = _closed_domain(member, imports, local_domains)
+        if domain is None:
+            return None
+        values.update(domain)
+    return frozenset(values)
 
 
 def _repeats_domain(description: str, domain: frozenset[str]) -> bool:

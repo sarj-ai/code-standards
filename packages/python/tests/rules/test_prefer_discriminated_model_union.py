@@ -332,6 +332,42 @@ def test_nfkc_normalized_validator_import_keeps_alias_evidence() -> None:
     assert len(_check(source)) == 1
 
 
+@pytest.mark.parametrize(
+    ("keyword", "mode", "matches"),
+    [
+        ("mode", r"'a\x66ter'", True),
+        ("mode", r"'\u0061fter'", True),
+        ("mode", "'af' 'ter'", True),
+        ("ｍｏｄｅ", "'af' 'ter'", True),
+        ("mode", "'be' 'fore'", False),
+        ("mode", r"'a\x66ters'", False),
+    ],
+)
+def test_validator_mode_uses_native_literal_and_keyword_identity(keyword: str, mode: str, *, matches: bool) -> None:
+    source = _BASE.replace("mode='after'", f"{keyword}={mode}")
+    assert len(_check(source)) == int(matches)
+
+
+@pytest.mark.parametrize("member", ["str", "UnknownPayload"])
+def test_deep_payload_union_keeps_proven_scalar_and_unknown_member_boundaries(member: str) -> None:
+    annotation = " | ".join(["str"] * 3000 + [member, "None"])
+    source = _BASE.replace("str | None", annotation)
+    assert len(_check(source)) == int(member == "str")
+
+
+@pytest.mark.parametrize("scalar_count", [501, 3001])
+def test_supported_deep_union_preserves_the_warning_under_the_complete_profile(
+    tmp_path: Path, scalar_count: int
+) -> None:
+    annotation = " | ".join(["str"] * scalar_count + ["None"])
+    path = tmp_path / "models.py"
+    path.write_text(_BASE.replace("str | None", annotation), encoding="utf-8", newline="")
+    findings = analyze(list(REGISTRY), [path])
+    warnings = [finding for finding in findings if finding.code == PreferDiscriminatedModelUnion.code]
+    assert len(warnings) == 1
+    assert warnings[0].severity is Severity.WARNING
+
+
 def test_nearby_type_rules_keep_one_deterministic_model_review() -> None:
     selectors = (
         PreferDiscriminatedModelUnion.id,

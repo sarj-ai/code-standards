@@ -83,7 +83,7 @@ class NoLoguruExcInfo(Rule):
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        if "exc_info" not in context.source or context.generated or context.tree is None:
+        if "exc_info" not in context.symbol_source or context.generated or context.tree is None:
             return []
         shadowed = _ambiguous_import_names(context)
         if "*" in shadowed:

@@ -40,14 +40,16 @@ _ACTIVE_RULE_FLOOR_VS_PARSE = 0.17
 # A rule is scored on whichever path flavour makes it do real work.
 _PATHS = (Path("synthetic.py"), Path("tests/test_synthetic.py"))
 
+# These gates compare CPU work; scheduler pauses belong in the public wall-time benchmark.
+
 
 def _best_time_s(rule_id: str, path: Path, source: str, repeats: int = 5) -> float:
     rule = REGISTRY[rule_id]()
     best = float("inf")
     for _ in range(repeats):
-        start = time.perf_counter()
+        start = time.process_time()
         rule.check(path, source)
-        best = min(best, time.perf_counter() - start)
+        best = min(best, time.process_time() - start)
     return best
 
 
@@ -58,9 +60,9 @@ def _worst_path_time_s(rule_id: str, source: str) -> float:
 def _parse_baseline_s(repeats: int = 7) -> float:
     best = float("inf")
     for _ in range(repeats):
-        start = time.perf_counter()
+        start = time.process_time()
         ast.parse(_SYNTHETIC_PY)
-        best = min(best, time.perf_counter() - start)
+        best = min(best, time.process_time() - start)
     return best
 
 

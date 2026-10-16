@@ -40,7 +40,7 @@ export const NO_DECLARATION_COMMENT_WALL_DOCUMENTATION = {
       id: "uncommented-members",
       title: "Let clear member names stand alone",
       outcome: "no-match",
-      files: [{ path: "src/status.ts", source: "enum Status { Pending = 'pending', Done = 'done', Failed = 'failed' }" }],
+      files: [{ path: "src/status.ts", source: "enum Status { Pending = 'pending', Finished = 'finished', Failed = 'failed' }" }],
       focusPath: "src/status.ts",
       expectedCount: 0,
       public: true,

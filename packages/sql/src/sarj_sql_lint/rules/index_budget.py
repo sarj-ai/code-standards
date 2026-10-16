@@ -72,7 +72,7 @@ class IndexBudget(Rule):
             ),
             RuleExample(
                 example_id="justified-index-burst",
-                title="An excess index names its application read and durable ticket",
+                title="An excess index records its application query and plan evidence",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.sql(

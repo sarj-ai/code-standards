@@ -5,7 +5,8 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_sql_lint.rules.require_fk_index import RequireFkIndex
+from sarj_sql_lint.__main__ import analyze
+from sarj_sql_lint.rules.require_fk_index import RequireFkIndex, index_analysis_session
 
 
 if TYPE_CHECKING:
@@ -464,3 +465,208 @@ def test_shared_index_parser_preserves_unicode_index_names(name: str) -> None:
         f"CREATE INDEX {name} ON child(parent_id);"
     )
     assert _check(source) == []
+
+
+@pytest.mark.parametrize("change", ["create", "edit", "delete", "rename-outside", "rename-inside"])
+def test_repeated_checks_observe_sibling_index_changes(tmp_path: Path, change: str) -> None:
+    foreign_key = "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n"
+    covering = "CREATE INDEX child_parent ON child(parent_id);\n"
+    unrelated = "CREATE INDEX child_other ON child(other_id);\n"
+    root = _tree(tmp_path, {"001_child": foreign_key, "002_index": unrelated if change == "create" else covering})
+    target = root / "001_child" / "migration.sql"
+    index = root / "002_index" / "migration.sql"
+    assert len(_check(foreign_key, target)) == int(change == "create")
+    if change in {"create", "edit"}:
+        index.write_text(covering if change == "create" else unrelated, encoding="utf-8")
+    elif change == "delete":
+        index.unlink()
+    else:
+        destination = root / "003_renamed" / "migration.sql" if change == "rename-inside" else tmp_path / "index.sql"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        index.rename(destination)
+    assert len(_check(foreign_key, target)) == int(change not in {"create", "rename-inside"})
+
+
+def test_sibling_coverage_does_not_replace_current_source_with_stale_disk_content(tmp_path: Path) -> None:
+    foreign_key = "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n"
+    root = _tree(tmp_path, {"001_child": foreign_key + "CREATE INDEX child_parent ON child(parent_id);\n"})
+    target = root / "001_child" / "migration.sql"
+    assert len(_check(foreign_key, target)) == 1
+
+
+def test_current_source_override_excludes_hardlinked_disk_proof(tmp_path: Path) -> None:
+    foreign_key = "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n"
+    root = _tree(tmp_path, {"001_child": foreign_key + "CREATE INDEX child_parent ON child(parent_id);\n"})
+    target = root / "001_child" / "migration.sql"
+    alias = root / "001_child" / "alias.sql"
+    alias.hardlink_to(target)
+    assert target.samefile(alias)
+    assert len(_check(foreign_key, alias)) == 1
+
+
+def test_current_source_override_excludes_case_alias_disk_proof(tmp_path: Path) -> None:
+    foreign_key = "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n"
+    root = _tree(tmp_path, {"001_child": foreign_key + "CREATE INDEX child_parent ON child(parent_id);\n"})
+    target = root / "001_child" / "migration.sql"
+    alias = target.with_name("MIGRATION.SQL")
+    if not alias.exists() or not target.samefile(alias):
+        pytest.skip("requires a case-insensitive filesystem")
+    assert len(_check(foreign_key, target)) == 1
+    assert len(_check(foreign_key, alias)) == 1
+
+
+def test_current_source_keeps_distinct_case_named_sibling_proof(tmp_path: Path) -> None:
+    foreign_key = "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n"
+    root = _tree(tmp_path, {"001_child": foreign_key + "CREATE INDEX child_parent ON child(parent_id);\n"})
+    target = root / "001_child" / "migration.sql"
+    other = target.with_name("MIGRATION.sql")
+    if other.exists() and target.samefile(other):
+        pytest.skip("requires a case-sensitive filesystem")
+    other.write_text(foreign_key, encoding="utf-8")
+    assert not target.samefile(other)
+    assert _check(foreign_key, other) == []
+    with index_analysis_session():
+        assert _check(foreign_key, other) == []
+        replacement = other.with_suffix(".tmp")
+        replacement.write_text(foreign_key, encoding="utf-8")
+        replacement.replace(other)
+        assert _check(foreign_key, other) == []
+
+
+def test_cached_sibling_index_content_does_not_leak_between_migration_roots(tmp_path: Path) -> None:
+    foreign_key = "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n"
+    covered = _tree(
+        tmp_path / "covered", {"001_child": foreign_key, "002_index": "CREATE INDEX i ON child(parent_id);\n"}
+    )
+    uncovered = _tree(tmp_path / "uncovered", {"001_child": foreign_key})
+    assert _check(foreign_key, covered / "001_child" / "migration.sql") == []
+    assert len(_check(foreign_key, uncovered / "001_child" / "migration.sql")) == 1
+
+
+@pytest.mark.parametrize("change", ["create", "edit", "delete"])
+def test_repeated_analysis_invocations_refresh_sibling_index_snapshots(tmp_path: Path, change: str) -> None:
+    foreign_key = "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n"
+    covering = "CREATE INDEX child_parent ON child(parent_id);\n"
+    unrelated = "CREATE INDEX child_other ON child(other_id);\n"
+    root = _tree(tmp_path, {"001_child": foreign_key, "002_index": unrelated if change == "create" else covering})
+    target = root / "001_child" / "migration.sql"
+    index = root / "002_index" / "migration.sql"
+    assert len(analyze(["require-fk-index"], [target])) == int(change == "create")
+    if change == "delete":
+        index.unlink()
+    else:
+        index.write_text(covering if change == "create" else unrelated, encoding="utf-8")
+    assert len(analyze(["require-fk-index"], [target])) == int(change != "create")
+
+
+def test_analysis_snapshot_preserves_current_source_override(tmp_path: Path) -> None:
+    foreign_key = "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n"
+    root = _tree(tmp_path, {"001_child": foreign_key + "CREATE INDEX child_parent ON child(parent_id);\n"})
+    target = root / "001_child" / "migration.sql"
+    with index_analysis_session():
+        assert len(_check(foreign_key, target)) == 1
+        assert _check(target.read_text(), target) == []
+
+
+@pytest.mark.parametrize(("case_alias", "file_symlink"), [(False, False), (True, False), (True, True)])
+def test_current_source_overrides_atomically_replaced_snapshot_entry(
+    tmp_path: Path, *, case_alias: bool, file_symlink: bool
+) -> None:
+    foreign_key = "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n"
+    root = _tree(tmp_path, {"001_child": foreign_key + "CREATE INDEX child_parent ON child(parent_id);\n"})
+    target = root / "001_child" / "migration.sql"
+    active = target.with_name("MIGRATION.SQL") if case_alias else target
+    if not active.exists() or not target.samefile(active):
+        pytest.skip("requires a case-insensitive filesystem")
+    if file_symlink:
+        target.with_name("linked.sql").symlink_to(target)
+    with index_analysis_session():
+        assert len(_check(foreign_key, target)) == 1
+        replacement = target.with_suffix(".tmp")
+        replacement.write_text(foreign_key, encoding="utf-8")
+        replacement.replace(target)
+        assert len(_check(foreign_key, active)) == 1
+
+
+def test_atomic_replacement_keeps_a_now_distinct_hardlink_as_sibling_proof(tmp_path: Path) -> None:
+    foreign_key = "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n"
+    root = _tree(tmp_path, {"001_child": foreign_key + "CREATE INDEX child_parent ON child(parent_id);\n"})
+    target = root / "001_child" / "migration.sql"
+    alias = target.with_name("alias.sql")
+    alias.hardlink_to(target)
+    with index_analysis_session():
+        assert len(_check(foreign_key, alias)) == 1
+        replacement = target.with_suffix(".tmp")
+        replacement.write_text(foreign_key, encoding="utf-8")
+        replacement.replace(alias)
+        assert not target.samefile(alias)
+        assert _check(foreign_key, alias) == []
+
+
+@pytest.mark.parametrize("alias_kind", ["directory", "file"])
+def test_current_source_overrides_replaced_snapshot_through_stable_symlink(tmp_path: Path, alias_kind: str) -> None:
+    foreign_key = "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n"
+    root = _tree(tmp_path, {"001_child": foreign_key + "CREATE INDEX child_parent ON child(parent_id);\n"})
+    target = root / "001_child" / "migration.sql"
+    if alias_kind == "directory":
+        directory = root / "linked"
+        directory.symlink_to(target.parent, target_is_directory=True)
+        active = directory / target.name
+    else:
+        active = target.with_name("linked.sql")
+        active.symlink_to(target)
+    with index_analysis_session():
+        assert len(_check(foreign_key, target)) == 1
+        replacement = target.with_suffix(".tmp")
+        replacement.write_text(foreign_key, encoding="utf-8")
+        replacement.replace(target)
+        assert active.samefile(target)
+        assert len(_check(foreign_key, active)) == 1
+
+
+def test_replaced_source_excludes_every_live_case_spelling_of_symlink_target(tmp_path: Path) -> None:
+    foreign_key = "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n"
+    root = _tree(tmp_path, {"001_child": foreign_key + "CREATE INDEX child_parent ON child(parent_id);\n"})
+    target = root / "001_child" / "migration.sql"
+    if not target.with_name("MIGRATION.SQL").exists():
+        pytest.skip("requires a case-insensitive filesystem")
+    for index, spelling in enumerate(("MIGRATION.SQL", "Migration.Sql")):
+        target.with_name(f"alias_{index}.sql").symlink_to(target.with_name(spelling))
+    with index_analysis_session():
+        assert len(_check(foreign_key, target)) == 1
+        replacement = target.with_suffix(".tmp")
+        replacement.write_text(foreign_key, encoding="utf-8")
+        replacement.replace(target)
+        assert len(_check(foreign_key, target)) == 1
+        assert len(_check(foreign_key, target.with_name("mIgRaTiOn.sQl"))) == 1
+
+
+def test_nested_analysis_snapshot_abort_restores_outer_snapshot_and_direct_freshness(tmp_path: Path) -> None:
+    foreign_key = "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n"
+    root = _tree(tmp_path, {"001_child": foreign_key, "002_index": "CREATE INDEX i ON child(parent_id);\n"})
+    target = root / "001_child" / "migration.sql"
+
+    def abort_nested_analysis() -> None:
+        with index_analysis_session():
+            assert len(_check(foreign_key, target)) == 1
+            message = "abort nested analysis"
+            raise RuntimeError(message)
+
+    with index_analysis_session():
+        assert _check(foreign_key, target) == []
+        (root / "002_index" / "migration.sql").unlink()
+        with pytest.raises(RuntimeError, match="abort nested analysis"):
+            abort_nested_analysis()
+        assert _check(foreign_key, target) == []
+    assert len(_check(foreign_key, target)) == 1
+
+
+def test_failed_analysis_cannot_leave_a_snapshot_in_direct_rule_calls(tmp_path: Path) -> None:
+    foreign_key = "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n"
+    root = _tree(tmp_path, {"001_child": foreign_key, "002_index": "CREATE INDEX i ON child(parent_id);\n"})
+    target = root / "001_child" / "migration.sql"
+    with pytest.raises(SystemExit):
+        analyze(["missing-rule"], [target])
+    assert _check(foreign_key, target) == []
+    (root / "002_index" / "migration.sql").unlink()
+    assert len(_check(foreign_key, target)) == 1

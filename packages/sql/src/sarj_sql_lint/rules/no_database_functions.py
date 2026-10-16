@@ -17,10 +17,9 @@ from sarj_sql_lint.rule_base import (
     is_dump_file,
     is_generated_migration,
     is_postgres_source,
-    locate,
     mask_sql,
     redirect_to_model,
-    split_statements,
+    source_location,
 )
 
 
@@ -28,7 +27,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_CREATE_FUNCTION = re.compile(r"\s*(?P<ddl>CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION)\b", re.IGNORECASE)
+_CREATE_FUNCTION = re.compile(r"(?<![\w$])(?P<ddl>CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION)\b", re.IGNORECASE)
 
 
 @final
@@ -77,6 +76,36 @@ class NoDatabaseFunctions(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="anonymous-block-function",
+                title="An executable anonymous block still creates a stored function",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "migrations/001_function.sql",
+                        "DO $outer$ BEGIN CREATE FUNCTION app.f() RETURNS integer LANGUAGE sql AS $inner$SELECT 1$inner$; END $outer$;\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("migrations/001_function.sql"),
+                expected_count=1,
+                public=True,
+                scenario="executable-sql",
+            ),
+            RuleExample(
+                example_id="scalar-function-text",
+                title="Function DDL stored as scalar data does not execute",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "migrations/001_function.sql",
+                        "SELECT $outer$CREATE FUNCTION app.f() RETURNS integer LANGUAGE sql AS $inner$SELECT 1$inner$;$outer$;\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("migrations/001_function.sql"),
+                expected_count=0,
+                public=True,
+                scenario="executable-sql",
+            ),
         ),
     )
     description = documentation.summary
@@ -86,17 +115,13 @@ class NoDatabaseFunctions(Rule):
         if is_dump_file(source, path) or not is_postgres_source(path, source):
             return []
         diagnostics: list[Diagnostic] = []
-        for statement in split_statements(mask_sql(source, mask_dollar_literals=True)):
-            text = "\n".join(fragment for _, fragment in statement)
-            match = _CREATE_FUNCTION.match(text)
-            if match is None:
-                continue
-            line, col = locate(statement, match.start("ddl"))
+        for match in _CREATE_FUNCTION.finditer(mask_sql(source, mask_dollar_literals=True)):
+            location = source_location(source, match.start("ddl"))
             diagnostics.append(
                 Diagnostic(
                     path=path,
-                    line=line,
-                    col=col,
+                    line=location.line,
+                    col=location.column,
                     code=self.code,
                     message="Project architecture prefers declarative constraints or explicit transactional application behavior. Preserve atomicity and database-enforced integrity; use an exact SARJ120 suppression for an approved database-owned invariant or compatibility exception.",
                 )

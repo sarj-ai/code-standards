@@ -5,7 +5,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import * as parser from "@typescript-eslint/parser";
 import { Linter, type Rule } from "eslint";
 
-import type { DocumentedRule, RuleExample } from "./rules/_docs.js";
+import type { DocumentedRule, ExampleFile, RuleExample } from "./rules/_docs.js";
 
 /** Execute all authored examples, including private regressions, in isolated projects. */
 export async function verifyRuleExamples<Options extends readonly unknown[], MessageIds extends string>(
@@ -22,6 +22,7 @@ export async function verifyRuleExamples<Options extends readonly unknown[], Mes
     try {
       for (const file of example.files) {
         const path = fixturePath(root, file.path);
+        validateFixtureSyntax(example.id, file, path);
         await mkdir(dirname(path), { recursive: true });
         await writeFile(path, file.source);
       }
@@ -63,6 +64,15 @@ function fixturePath(root: string, path: string): string {
   return resolved;
 }
 
+function validateFixtureSyntax(exampleId: string, file: ExampleFile, path: string): void {
+  if (!/\.[cm]?[jt]sx?$/u.test(file.path)) return;
+  try {
+    parser.parse(file.source, { filePath: path });
+  } catch (error) {
+    throw new Error(`${exampleId}: invalid fixture ${file.path}`, { cause: error });
+  }
+}
+
 async function verifyExample(linter: Linter, config: Linter.Config, example: RuleExample, root: string, ruleId: string): Promise<void> {
   const focus = example.files.find((file) => file.path === example.focusPath);
   if (focus === undefined) throw new Error(`${example.id}: focus file is missing`);
@@ -71,6 +81,15 @@ async function verifyExample(linter: Linter, config: Linter.Config, example: Rul
   if (messages.some((message) => message.fatal || message.ruleId !== ruleId)) {
     throw new Error(`${example.id}: invalid fixture: ${messages.map((message) => message.message).join("; ")}`);
   }
+  const lines = linter.getSourceCode().lines;
+  if (messages.some((message) => !physicalDiagnosticLocation(message, lines))) {
+    throw new Error(`${example.id}: invalid diagnostic location`);
+  }
+  const locations = messages.map((message) => JSON.stringify([
+    message.ruleId, message.messageId ?? message.message,
+    message.line, message.column, message.endLine, message.endColumn,
+  ]));
+  if (new Set(locations).size !== locations.length) throw new Error(`${example.id}: duplicate diagnostic`);
   if (messages.length !== example.expectedCount) {
     throw new Error(`${example.id}: expected ${example.expectedCount} findings, received ${messages.length}`);
   }
@@ -86,4 +105,19 @@ async function verifyExample(linter: Linter, config: Linter.Config, example: Rul
       throw new Error(`${example.id}: fix is not clean and idempotent`);
     }
   }
+}
+
+function physicalDiagnosticLocation(message: Linter.LintMessage, lines: readonly string[]): boolean {
+  if (!physicalPosition(lines, message.line, message.column)) return false;
+  if (message.endLine === undefined && message.endColumn === undefined) return true;
+  if (!physicalPosition(lines, message.endLine, message.endColumn)) return false;
+  return message.endLine !== undefined && message.endColumn !== undefined &&
+    (message.endLine > message.line || (message.endLine === message.line && message.endColumn >= message.column));
+}
+
+/** ESLint columns are one-based UTF-16 offsets; an exclusive EOF position is valid. */
+function physicalPosition(lines: readonly string[], line: number | undefined, column: number | undefined): boolean {
+  if (line === undefined || column === undefined || !Number.isInteger(line) || !Number.isInteger(column)) return false;
+  const text = lines[line - 1];
+  return text !== undefined && column >= 1 && column <= text.length + 1;
 }

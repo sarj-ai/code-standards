@@ -237,16 +237,14 @@ def _is_framework_hook(node: ast.FunctionDef | ast.AsyncFunctionDef, imports: Im
 
 def _private_class_function_ids(tree: ast.Module) -> set[int]:
     private: set[int] = set()
-
-    def visit(node: ast.AST, *, inside_private_class: bool) -> None:
+    pending: list[tuple[ast.AST, bool]] = [(tree, False)]
+    while pending:
+        node, inside_private_class = pending.pop()
         if isinstance(node, ast.ClassDef):
             inside_private_class = inside_private_class or node.name.startswith("_")
         if inside_private_class and isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             private.add(id(node))
-        for child in children(node):
-            visit(child, inside_private_class=inside_private_class)
-
-    visit(tree, inside_private_class=False)
+        pending.extend((child, inside_private_class) for child in reversed(children(node)))
     return private
 
 

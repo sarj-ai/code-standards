@@ -198,3 +198,18 @@ def test_decoded_percent_conversions_preserve_loguru_format_diagnostics(escape: 
 def test_decoded_literal_percent_signs_do_not_create_a_conversion() -> None:
     source = 'from loguru import logger\nlogger.info("Progress \\u0025\\u0025", value)\n'
     assert NoLoguruPrintfFormat().check(Path("app/service.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ('from ｌｏｇｕｒｕ import logger\nlogger.error("value %s", value)\n', 1),
+        ('import ｌｏｇｕｒｕ as logs\nlogs.logger.error("value %s", value)\n', 1),
+        ('from unrelated import logger\nlogger.error("value %s", value)\n', 0),
+        ('source = "from ｌｏｇｕｒｕ import logger"\n', 0),
+    ],
+)
+def test_native_normalized_module_identity_survives_the_prefilter(source: str, expected: int) -> None:
+    diagnostics = NoLoguruPrintfFormat().check(Path("app/service.py"), source)
+    assert len(diagnostics) == expected
+    assert all(item.code == "SARJ509" and item.severity is Severity.WARNING for item in diagnostics)

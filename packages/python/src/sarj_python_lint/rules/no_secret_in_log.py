@@ -103,7 +103,7 @@ class NoSecretInLog(Rule):
             ),
             RuleExample(
                 example_id="redacted-logging-keyword",
-                title="Token prefix logged under a redacted name",
+                title="Only non-sensitive authentication metadata is logged",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(

@@ -17,9 +17,11 @@ RULE_TESTER.run("no-client-side-data-fetching", rule, {
   valid: [
     // fetch outside useEffect is fine.
     { code: "async function load() { return await fetch('/x'); }" },
-    // useEffect with no fetch is fine.
+    // Load the same data while rendering on the server.
     {
       code: NO_CLIENT_SIDE_DATA_FETCHING_DOCUMENTATION.examples[0].files[0].source,
+      filename: NO_CLIENT_SIDE_DATA_FETCHING_DOCUMENTATION.examples[0].focusPath,
+      languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },
     },
     // useState only.
     {

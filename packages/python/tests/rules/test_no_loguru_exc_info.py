@@ -135,3 +135,18 @@ def test_rule_is_registered_once(tmp_path: Path) -> None:
 
 def test_public_examples() -> None:
     verify_native_rule(NoLoguruExcInfo, analyze)
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ('from loguru import logger\nlogger.error("failed", ｅｘｃ＿ｉｎｆｏ=True)\n', 1),
+        ('from ｌｏｇｕｒｕ import logger\nlogger.error("failed", ｅｘｃ＿ｉｎｆｏ=True)\n', 1),
+        ('from unrelated import logger\nlogger.error("failed", ｅｘｃ＿ｉｎｆｏ=True)\n', 0),
+        ("source = \"logger.error('failed', ｅｘｃ＿ｉｎｆｏ=True)\"\n", 0),
+    ],
+)
+def test_native_normalized_keyword_identity_survives_the_prefilter(source: str, expected: int) -> None:
+    diagnostics = NoLoguruExcInfo().check(Path("app/service.py"), source)
+    assert len(diagnostics) == expected
+    assert all(item.code == "SARJ508" and item.severity is Severity.WARNING for item in diagnostics)

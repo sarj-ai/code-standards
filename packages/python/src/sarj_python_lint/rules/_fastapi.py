@@ -138,7 +138,9 @@ class FastapiIndex:
         self._read_aliases(tree)
 
     def _index_scopes(self, tree: ast.Module) -> None:
-        def visit(node: ast.AST, scope: int, class_owner: int | None) -> None:
+        pending: list[tuple[ast.AST, int, int | None]] = [(tree, 0, None)]
+        while pending:
+            node, scope, class_owner = pending.pop()
             self._node_scopes[id(node)] = scope
             if isinstance(node, ast.ClassDef):
                 class_owner = node.lineno
@@ -149,10 +151,7 @@ class FastapiIndex:
                 self._route_scopes[id(node)] = scope
                 self._scope_parents[node.lineno] = scope
                 scope = node.lineno
-            for child in ast.iter_child_nodes(node):
-                visit(child, scope, class_owner)
-
-        visit(tree, 0, None)
+            pending.extend((child, scope, class_owner) for child in reversed(tuple(ast.iter_child_nodes(node))))
 
     def _read_imports(self, tree: ast.Module) -> None:
         for node in walk_ast(tree):

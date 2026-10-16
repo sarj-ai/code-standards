@@ -154,17 +154,19 @@ class NoRepeatedStringLiteral(Rule):
                 scope_of[id(node)] = scope
 
         def visit(node: ast.AST, scope: int) -> None:
-            for annotation in _annotation_exprs(node):
-                excluded.update(id(child) for child in walk(annotation) if isinstance(child, ast.Constant))
-            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-                scope = declaration_scope(node, scope)
-            elif isinstance(node, ast.Lambda):
-                scope = id(node)
-                scope_line_of[scope] = node.lineno
-            else:
-                collect_literal(node, scope)
-            for child in children(node):
-                visit(child, scope)
+            pending = [(node, scope)]
+            while pending:
+                node, scope = pending.pop()
+                for annotation in _annotation_exprs(node):
+                    excluded.update(id(child) for child in walk(annotation) if isinstance(child, ast.Constant))
+                if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                    scope = declaration_scope(node, scope)
+                elif isinstance(node, ast.Lambda):
+                    scope = id(node)
+                    scope_line_of[scope] = node.lineno
+                else:
+                    collect_literal(node, scope)
+                pending.extend((child, scope) for child in reversed(children(node)))
 
         visit(tree, _MODULE_SCOPE)
 

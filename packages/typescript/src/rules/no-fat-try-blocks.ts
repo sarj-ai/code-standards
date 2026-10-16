@@ -29,11 +29,11 @@ export const NO_FAT_TRY_BLOCKS_DOCUMENTATION = {
   examples: [
     {
       id: "focused-try-block",
-      title: "Three selected operations stay within the default threshold",
+      title: "Keep only operations with the same recovery policy in the try block",
       outcome: "no-match",
       files: [{
         path: "src/load.ts",
-        source: "function f() { try { const a = one(); const b = two(); const c = three(); } catch (error) { handle(error); } finish(); }",
+        source: "function f() { try { const a = one(); const b = two(); const c = three(); } catch (error) { handle(error); } const d = four(); finish(); }",
       }],
       focusPath: "src/load.ts",
       expectedCount: 0,

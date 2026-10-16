@@ -16,6 +16,13 @@ def _check(source: str, path: str = "app/store.py"):
     return NoPsycopgExecutionOutsideInjectedOwner().check(Path(path), source)
 
 
+@pytest.mark.parametrize("example", NoPsycopgExecutionOutsideInjectedOwner.public_examples())
+def test_deep_annotation_preserves_injected_and_external_owner_examples(example: RuleExample) -> None:
+    annotation = " | ".join(["str"] * 3001 + ["None"])
+    source = f"{example.focus_file.source}\nclass AnnotationCarrier:\n    payload: {annotation}\n"
+    assert len(_check(source, str(example.focus_path))) == example.expected_count
+
+
 @pytest.mark.parametrize(
     "source",
     [

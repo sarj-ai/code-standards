@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path, PurePosixPath
 import re
-from typing import NamedTuple, final, override
+from stat import S_ISREG
+from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_sql_lint.rule_base import (
     POSTGRES_IDENTIFIER_PART,
@@ -26,6 +29,10 @@ from sarj_sql_lint.rule_base import (
 from sarj_sql_lint.rules._index_analysis import parse_indexes
 
 
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
+
 RESERVED_KEYWORDS = frozenset({"foreign", "key", "constraint", "alter", "table", "create", "add", "column"})
 
 
@@ -35,6 +42,33 @@ type _TableKey = tuple[str, ...]
 class _IndexedColumns(NamedTuple):
     table: _TableKey
     columns: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _FileIdentity:
+    device: int
+    inode: int
+
+
+@dataclass(frozen=True, slots=True)
+class _FileIndexes:
+    path: Path
+    identity: _FileIdentity
+    indexes: frozenset[_IndexedColumns]
+
+
+_INDEX_SNAPSHOTS: ContextVar[dict[Path, tuple[_FileIndexes, ...]] | None] = ContextVar(
+    "sql_index_analysis_snapshots", default=None
+)
+
+
+@contextmanager
+def index_analysis_session() -> Generator[None]:
+    token = _INDEX_SNAPSHOTS.set({})
+    try:
+        yield
+    finally:
+        _INDEX_SNAPSHOTS.reset(token)
 
 
 _QUALIFIED_IDENTIFIER = (
@@ -113,39 +147,101 @@ _MIGRATION_ROOT_NAMES = frozenset({"migrations", "migration", "migrate", "drizzl
 # into a repo-wide one.
 _MAX_TREE_FILES = 600
 _MAX_TREE_BYTES = 1_000_000
+_MAX_CACHED_SOURCE_LENGTH = 16_384
+_MAX_SNAPSHOT_ROOTS = 64
 
 
-@lru_cache(maxsize=64)
 def _tree_indexes(  # sarj-noqa: SARJ023 — bounded tree helpers stay adjacent.
     root: Path,
+    *,
+    current_path: Path,
+    current_file: _FileIdentity,
 ) -> frozenset[_IndexedColumns]:
-    indexes: set[_IndexedColumns] = set()
+    root = root.resolve()
+    current_path = current_path.resolve()
+    snapshots = _INDEX_SNAPSHOTS.get()
+    files = None if snapshots is None else snapshots.get(root)
+    if files is None:
+        files = _scan_tree_indexes(root)
+        if snapshots is not None and len(snapshots) < _MAX_SNAPSHOT_ROOTS:
+            snapshots[root] = files
+    owners = _snapshot_current_paths(files, current_path, current_file)
+    return frozenset(
+        index for file in files if file.path not in owners and file.identity != current_file for index in file.indexes
+    )
+
+
+def _snapshot_current_paths(files: tuple[_FileIndexes, ...], current: Path, identity: _FileIdentity) -> frozenset[Path]:
+    owners = {current}
+    spelling = str(current).casefold()
+    candidates = {file.path for file in files if str(file.path).casefold() == spelling}
+    # Case-folding only selects spellings to probe; live physical identity proves each owner.
+    for candidate in candidates - owners:
+        try:
+            metadata = candidate.stat()
+        except OSError:
+            continue
+        if _FileIdentity(metadata.st_dev, metadata.st_ino) == identity:
+            owners.add(candidate)
+    return frozenset(owners)
+
+
+def _scan_tree_indexes(root: Path) -> tuple[_FileIndexes, ...]:
+    files: list[_FileIndexes] = []
     try:
         candidates = sorted(root.rglob("*.sql"))[:_MAX_TREE_FILES]
     except OSError:
-        return frozenset()
+        return ()
     for candidate in candidates:
         try:
-            if candidate.stat().st_size > _MAX_TREE_BYTES:
+            metadata = candidate.stat()
+            if metadata.st_size > _MAX_TREE_BYTES:
                 continue
             text = candidate.read_text(encoding="utf-8", errors="replace")
+            owner = candidate.resolve() if candidate.is_symlink() else candidate
         except OSError:
             continue
-        for table, cols in _collect_indexes(text).items():
-            indexes.update(_IndexedColumns(table, index) for index in cols if index)
-    return frozenset(indexes)
+        files.append(_FileIndexes(owner, _FileIdentity(metadata.st_dev, metadata.st_ino), _source_indexes(text)))
+    return tuple(files)
+
+
+def _source_indexes(source: str) -> frozenset[_IndexedColumns]:
+    if len(source) > _MAX_CACHED_SOURCE_LENGTH:
+        return _index_entries(source)
+    return _cached_source_indexes(source)
+
+
+@lru_cache(maxsize=_MAX_TREE_FILES)
+def _cached_source_indexes(source: str) -> frozenset[_IndexedColumns]:
+    return _index_entries(source)
+
+
+def _index_entries(source: str) -> frozenset[_IndexedColumns]:
+    return frozenset(
+        _IndexedColumns(table, columns)
+        for table, indexes in _collect_indexes(source).items()
+        for columns in indexes
+        if columns
+    )
 
 
 def _sibling_indexes(path: Path, table: _TableKey) -> set[tuple[str, ...]]:
     try:
-        if not path.is_file():
-            return set()
+        metadata = path.stat()
     except OSError:
+        return set()
+    if not S_ISREG(metadata.st_mode):
         return set()
     root = _migration_root(path)
     if root is None:
         return set()
-    return {columns for indexed_table, columns in _tree_indexes(root) if _same_relation(indexed_table, table)}
+    return {
+        columns
+        for indexed_table, columns in _tree_indexes(
+            root, current_path=path, current_file=_FileIdentity(metadata.st_dev, metadata.st_ino)
+        )
+        if _same_relation(indexed_table, table)
+    }
 
 
 def _same_relation(left: _TableKey, right: _TableKey) -> bool:

@@ -26,7 +26,7 @@ export const PREFER_SCHEMA_FOR_API_PAYLOAD_DOCUMENTATION = {
     "Test fixtures, generated clients and recognized local-file reads are excluded. This is bounded local analysis, not a general control-flow or mutation proof.",
   ],
   examples: [
-    { id: "validated-payload", title: "Validate before property access", outcome: "no-match", files: [{ path: "src/client.ts", source: "async function load(response: Response) { const body = UserSchema.parse(await response.json()); return body.id; }" }], focusPath: "src/client.ts", expectedCount: 0, public: true },
+    { id: "validated-payload", title: "Validate before property access", outcome: "no-match", files: [{ path: "src/client.ts", source: "import { z } from 'zod';\nconst UserSchema = z.object({ id: z.string() });\nasync function load(response: Response) { const body = UserSchema.parse(await response.json()); return body.id; }" }], installedDependencies: [{ module: "zod", version: "4.6.7" }], focusPath: "src/client.ts", expectedCount: 0, public: true },
     { id: "unvalidated-payload", title: "Do not trust response JSON directly", outcome: "match", files: [{ path: "src/client.ts", source: "async function load(response: Response) { const body = await response.json(); return body.id; }" }], focusPath: "src/client.ts", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
