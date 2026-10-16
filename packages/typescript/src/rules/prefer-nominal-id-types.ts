@@ -3,7 +3,7 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-nominal-id-types.test.ts
  */
-import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
@@ -49,8 +49,7 @@ function isNullish(node: TSESTree.TypeNode): boolean {
 
 function referenceCarrier(node: TSESTree.TSTypeReference, context: Context, depth: number): Carrier | undefined {
   if (node.typeName.type !== AST_NODE_TYPES.Identifier) return undefined;
-  const variable = ASTUtils.findVariable(context.sourceCode.getScope(node), node.typeName.name);
-  const definitions = variable?.defs ?? [];
+  const definitions = typeDefinitions(node, context);
   const args = node.typeArguments?.params;
   if (definitions.length === 0 && ["Array", "ReadonlyArray"].includes(node.typeName.name) && args?.length === 1) {
     return arrayCarrier(rawCarrier(args[0], context, depth + 1));
@@ -59,6 +58,18 @@ function referenceCarrier(node: TSESTree.TSTypeReference, context: Context, dept
   const declaration = definitions[0]?.node;
   if (declaration?.type !== AST_NODE_TYPES.TSTypeAliasDeclaration || declaration.typeParameters !== undefined) return undefined;
   return rawCarrier(declaration.typeAnnotation, context, depth + 1);
+}
+
+function typeDefinitions(node: TSESTree.TSTypeReference, context: Context): readonly TSESLint.Scope.Definition[] {
+  if (node.typeName.type !== AST_NODE_TYPES.Identifier) return [];
+  let scope: TSESLint.Scope.Scope | null = context.sourceCode.getScope(node);
+  while (scope !== null) {
+    const variable = scope.set.get(node.typeName.name);
+    const definitions = variable?.defs.filter((definition) => definition.isTypeDefinition) ?? [];
+    if (definitions.length > 0 || variable?.isTypeVariable === true) return definitions;
+    scope = scope.upper;
+  }
+  return [];
 }
 
 function rawCarrier(node: TSESTree.TypeNode | undefined, context: Context, depth = 0): Carrier | undefined {
@@ -130,6 +141,9 @@ export default createRule<Options, MessageIds>({
       FunctionExpression: (node): void => checkBoundary(node, context),
       TSDeclareFunction: (node): void => checkBoundary(node, context),
       TSEmptyBodyFunctionExpression: (node): void => checkBoundary(node, context),
+      TSCallSignatureDeclaration: (node): void => checkBoundary(node, context),
+      TSConstructSignatureDeclaration: (node): void => checkBoundary(node, context),
+      TSConstructorType: (node): void => checkBoundary(node, context),
       TSFunctionType: (node): void => checkBoundary(node, context),
       TSMethodSignature: (node): void => checkBoundary(node, context),
     };

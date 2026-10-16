@@ -336,3 +336,456 @@ def test_native_normalized_nonfocus_factory_keeps_canonical_role_ownership(
     diagnostics = _project_check(tmp_path, "def record(room_name: str, call_id: str) -> None: ...\n", definitions)
     assert len(diagnostics) == expected
     assert all(item.code == "SARJ093" and item.severity is Severity.WARNING for item in diagnostics)
+
+
+@pytest.mark.parametrize(
+    ("imports", "first", "second"),
+    [
+        ("", "int", "int"),
+        ("from uuid import UUID as Key\n", "Key", "Key"),
+        ("import uuid as identifiers\n", "identifiers.UUID", "identifiers.UUID"),
+        ("import builtins as native\n", "native.str", "str"),
+        ("from typing import List\n", "list[str]", "List[str]"),
+        ("from typing import Optional\n", "Optional[str]", "str | None"),
+        ("from typing import Annotated\n", "Annotated[str, 'wire']", "str"),
+        ("from typing_extensions import Annotated as Meta\n", "Meta[str, 'wire']", "str"),
+        ("from typing import Union\n", "Union[str, None]", "None | str"),
+        ("from collections.abc import Sequence as Seq\n", "Seq[str]", "Seq[str]"),
+        ("", "tuple[str, ...]", "tuple[str, ...]"),
+        ("", "list[set[str]]", "list[set[str]]"),
+    ],
+)
+def test_proven_carriers_preserve_aliases_and_container_shapes(imports: str, first: str, second: str) -> None:
+    source = f"{imports}def move(left_id: {first}, right_id: {second}) -> None: ...\n"
+    diagnostics = _check(source)
+    assert len(diagnostics) == 1
+    assert diagnostics[0].severity is Severity.ERROR
+
+
+@pytest.mark.parametrize(
+    ("imports", "first", "second"),
+    [
+        ("", "str", "int"),
+        ("", "list[str]", "set[str]"),
+        ("", "str", "list[str]"),
+        ("", "tuple[str, str]", "tuple[str, str]"),
+        ("", "dict[str, str]", "dict[str, str]"),
+        ("", "str | int", "str"),
+        ("from typing import Any\n", "str | Any", "str"),
+        ("from typing import Literal\n", "Literal['dev']", "str"),
+        ("from other import Sequence\n", "Sequence[str]", "Sequence[str]"),
+        ("from other import UUID\n", "UUID", "UUID"),
+        ("", "'invalid['", "str"),
+        ("", "None", "None"),
+    ],
+)
+def test_unlike_or_unknown_carriers_do_not_prove_swappability(imports: str, first: str, second: str) -> None:
+    assert _check(f"{imports}def move(left_id: {first}, right_id: {second}) -> None: ...\n") == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def move(left_id: str, /, right_id: str) -> None: ...\n",
+        "def move(*, left_id: str, right_id: str) -> None: ...\n",
+        "def move(left_id: str, *right_ids: str) -> None: ...\n",
+        "async def move(left_id: str, right_id: str) -> None: ...\n",
+        "class Store:\n    def move(self, left_id: str, right_id: str) -> None: ...\n",
+    ],
+)
+def test_signature_forms_still_expose_role_confusion(source: str) -> None:
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def configure(service_version: str = 'dev') -> None: ...\n",
+        "def configure(service_version: str = 'dev', protocol_version: str = 'v1') -> None: ...\n",
+        "def configure(service_version: str = 'dev', file_id: str = '') -> None: ...\n",
+        "def configure(file_id: str, **values: str) -> None: ...\n",
+        "def configure(file_id, folder_id) -> None: ...\n",
+        "def outer():\n    def move(left_id: str, right_id: str) -> None: ...\n",
+        "class WireSettings:\n    left_id: str\n    right_id: str\n",
+        "from typing import TypedDict as Wire\nclass Payload(Wire):\n    left_id: str\n    right_id: str\n",
+    ],
+)
+def test_defaults_and_unproven_roles_do_not_invent_domain_types(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "type Raw = str\nRaw = object\n",
+        "type Raw = str\ndel Raw\n",
+        "type Raw = str\nRaw += suffix\n",
+        "type Raw = str\nif condition:\n    Raw = object\n",
+        "type Raw = str\ndef other(Raw): ...\n",
+        "type Raw = str\ntry: ...\nexcept Exception as Raw: ...\n",
+        "type Raw = str\nmatch value:\n    case Raw: ...\n",
+        "type Raw[str] = str\n",
+    ],
+)
+def test_unstable_local_carrier_aliases_are_unknown(prefix: str) -> None:
+    assert _check(f"{prefix}def move(left_id: Raw, right_id: str) -> None: ...\n") == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def move[str](left_id: str, right_id: str) -> None: ...\n",
+        "class Pair[str]:\n    left_id: str\n    right_id: str\n",
+        "class Pair[str]:\n    def move(self, left_id: str, right_id: str) -> None: ...\n",
+        "type Raw = str\ndef move[Raw](left_id: Raw, right_id: str) -> None: ...\n",
+        "from uuid import UUID\ndef move[UUID](left_id: UUID, right_id: UUID) -> None: ...\n",
+    ],
+)
+def test_type_parameters_do_not_resolve_to_outer_carriers(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_unrelated_type_parameter_preserves_proven_ids() -> None:
+    assert len(_check("def move[T](left_id: str, right_id: str, value: T) -> None: ...\n")) == 1
+
+
+@pytest.mark.parametrize(
+    "definitions",
+    [
+        "from typing import NewType\nFolderId = NewType('WrongName', str)\n",
+        "from typing import NewType\nFolderId = NewType('FolderId', str, extra)\n",
+        "from typing import NewType\nFolderId = NewType('FolderId', str, extra=True)\n",
+        "from typing import NewType\nFolderId = NewType(name, str)\n",
+        "import typing\ntyping.NewType = other\nFolderId = typing.NewType('FolderId', str)\n",
+        "import typing\ndel typing.NewType\nFolderId = typing.NewType('FolderId', str)\n",
+        "import typing\nsetattr(typing, 'NewType', other)\nFolderId = typing.NewType('FolderId', str)\n",
+        "import typing\ndelattr(typing, 'NewType')\nFolderId = typing.NewType('FolderId', str)\n",
+        "import typing\nfrom builtins import setattr as change\nchange(typing, 'NewType', other)\nFolderId = typing.NewType('FolderId', str)\n",
+        "import typing\ntyping.__dict__['NewType'] = other\nFolderId = typing.NewType('FolderId', str)\n",
+        "import typing\ntyping.__setattr__('NewType', other)\nFolderId = typing.NewType('FolderId', str)\n",
+    ],
+)
+def test_nominal_carriers_require_an_unmodified_valid_factory(definitions: str) -> None:
+    assert _check(f"{definitions}def move(left_id: str, right_id: FolderId) -> None: ...\n") == []
+
+
+@pytest.mark.parametrize(
+    "definitions",
+    [
+        "from typing import NewType\ntype Raw = str\nFolderId = NewType('FolderId', Raw)\n",
+        "from typing import NewType as Brand\nRaw = str\nFolderId = Brand('FolderId', Raw)\n",
+        "from typing import NewType\nBaseId = NewType('BaseId', str)\nFolderId = NewType('FolderId', BaseId)\n",
+        "from typing_extensions import TypeAliasType, NewType\nRaw = TypeAliasType('Raw', str)\nFolderId = NewType('FolderId', Raw)\n",
+    ],
+)
+def test_nominal_carriers_resolve_proven_alias_chains(definitions: str) -> None:
+    diagnostics = _check(f"{definitions}def move(left_id: str, right_id: FolderId) -> None: ...\n")
+    assert len(diagnostics) == 1
+    assert diagnostics[0].severity is Severity.ERROR
+
+
+def test_multiple_shapes_produce_one_stable_boundary_diagnostic() -> None:
+    source = "def move(file_id: str, folder_id: str, user_id: int, team_id: int) -> None: ...\n"
+    diagnostics = _check(source)
+    assert len(diagnostics) == 1
+    assert diagnostics[0].line == 1
+    assert diagnostics[0].col == source.index("str") + 1
+    assert diagnostics[0].message == (
+        "`file_id`, `folder_id`, `user_id`, `team_id` are swappable ID-shaped roles with the same carrier; "
+        "introduce or reuse `typing.NewType` or nominal value-object identifiers and propagate them through this boundary."
+    )
+
+
+def test_class_constructor_and_independent_method_have_distinct_owners() -> None:
+    diagnostics = _check(
+        "class Pair:\n"
+        "    left_id: str\n"
+        "    right_id: str\n"
+        "    def __init__(self, left_id: str, right_id: str) -> None: ...\n"
+        "    def move(self, left_id: str, right_id: str) -> None: ...\n"
+    )
+    assert [(item.line, item.severity) for item in diagnostics] == [(2, Severity.ERROR), (5, Severity.ERROR)]
+
+
+@pytest.mark.parametrize("code", ["SARJ0930", "SARJ094", "SARJ034"])
+def test_other_suppression_codes_do_not_hide_nominal_diagnostic(code: str) -> None:
+    source = f"def move(left_id: str, right_id: str) -> None: ...  # sarj-noqa: {code}\n"
+    assert len(_check(source)) == 1
+
+
+def test_repeated_rule_checks_refresh_project_sources(tmp_path: Path) -> None:
+    rule = PreferNominalIdTypes()
+    source = "from example.types import FolderId\ndef move(file_id: str, folder_id: FolderId) -> None: ...\n"
+    _project_check(tmp_path, source, "from typing import NewType\nFolderId = NewType('FolderId', str)\n")
+    path = tmp_path / "example" / "service.py"
+    assert len(rule.check(path, source)) == 1
+    (tmp_path / "example" / "types.py").write_text("class FolderId: ...\n")
+    assert rule.check(path, source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from .types import Raw\ndef move(file_id: Raw, folder_id: str) -> None: ...\n",
+        "if condition:\n    from example.types import Raw\ndef move(file_id: Raw, folder_id: str) -> None: ...\n",
+        "from example.types import *\ndef move(file_id: Raw, folder_id: str) -> None: ...\n",
+    ],
+)
+def test_unproven_import_ownership_stays_unknown(tmp_path: Path, source: str) -> None:
+    assert _project_check(tmp_path, source, "type Raw = str\n") == []
+
+
+@pytest.mark.parametrize(
+    "definition",
+    [
+        "Raw = TypeAliasType('Raw', str)\n",
+        "Raw = TypeAliasType('Raw', value=str)\n",
+        "Raw = TypeAliasType(name='Raw', value=str)\n",
+        "Raw = TypeAliasType('Raw', str, type_params=())\n",
+    ],
+)
+def test_type_alias_factory_preserves_supported_argument_forms(definition: str) -> None:
+    diagnostics = _check(
+        f"from typing_extensions import TypeAliasType\n{definition}def move(left_id: Raw, right_id: str) -> None: ...\n"
+    )
+    assert len(diagnostics) == 1
+    assert diagnostics[0].severity is Severity.ERROR
+
+
+@pytest.mark.parametrize(
+    "definition",
+    [
+        "Raw = TypeAliasType('Different', str)\n",
+        "Raw = TypeAliasType('Raw', str, extra)\n",
+        "Raw = TypeAliasType('Raw', str, value=int)\n",
+        "Raw = TypeAliasType('Raw', str, **extra)\n",
+        "Raw = TypeAliasType('Raw', str, unexpected=True)\n",
+        "Raw = TypeAliasType(name, str)\n",
+        "Raw = TypeAliasType(*arguments)\n",
+        "Raw = TypeAliasType('Raw', str, type_params=(T,))\n",
+    ],
+)
+def test_type_alias_factory_requires_proven_non_generic_signature(definition: str) -> None:
+    assert (
+        _check(
+            f"from typing_extensions import TypeAliasType\n{definition}"
+            "def move(left_id: Raw, right_id: str) -> None: ...\n"
+        )
+        == []
+    )
+
+
+def test_modified_type_alias_factory_is_unknown() -> None:
+    assert (
+        _check(
+            "import typing_extensions as types\n"
+            "types.TypeAliasType = other\n"
+            "Raw = types.TypeAliasType('Raw', str)\n"
+            "def move(left_id: Raw, right_id: str) -> None: ...\n"
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize("filename", ["test_models.py", "models_test.py", "conftest.py"])
+def test_pytest_only_brand_does_not_establish_production_role(tmp_path: Path, filename: str) -> None:
+    _project_check(tmp_path, "", "")
+    (tmp_path / "example" / filename).write_text("from typing import NewType\nRoomName = NewType('RoomName', str)\n")
+    assert _project_check(tmp_path, "def record(room_name: str, call_id: str) -> None: ...\n", "") == []
+
+
+@pytest.mark.parametrize("role", ["service_version", "protocol_version", "room_names", "roomname"])
+def test_non_id_roles_need_exact_established_brand_evidence(tmp_path: Path, role: str) -> None:
+    assert (
+        _project_check(
+            tmp_path,
+            f"def record({role}: str = 'dev', call_id: str = '') -> None: ...\n",
+            "from typing import NewType\nRoomName = NewType('RoomName', str)\n",
+        )
+        == []
+    )
+
+
+def test_service_version_can_use_existing_nominal_domain_evidence(tmp_path: Path) -> None:
+    diagnostics = _project_check(
+        tmp_path,
+        "def record(service_version: str = 'dev', call_id: str = '') -> None: ...\n",
+        "from typing import NewType\nServiceVersion = NewType('ServiceVersion', str)\n",
+    )
+    assert len(diagnostics) == 1
+    assert diagnostics[0].severity is Severity.WARNING
+
+
+@pytest.mark.parametrize("schema", ["generated", "invalid", "wildcard", "shadowed", "nested"])
+def test_unknown_definition_sources_cannot_establish_domain_roles(tmp_path: Path, schema: str) -> None:
+    definition = "from typing import NewType\nRoomName = NewType('RoomName', str)\n"
+    match schema:
+        case "generated":
+            definition = "# @generated\n" + definition
+        case "invalid":
+            definition += "def invalid(\n"
+        case "wildcard":
+            definition = "from foreign import *\n" + definition
+        case "shadowed":
+            definition += "def other(RoomName): ...\n"
+        case _:
+            definition = "def factory():\n" + "".join(f"    {line}\n" for line in definition.splitlines())
+    assert _project_check(tmp_path, "def record(room_name: str, call_id: str) -> None: ...\n", definition) == []
+
+
+@pytest.mark.parametrize("path", ["app/logging.py", "app/telemetry/service.py", "app/audit/models.py"])
+def test_operational_paths_exclude_domain_role_diagnostics(path: str) -> None:
+    assert _check("def move(file_id: str, folder_id: str) -> None: ...\n", path) == []
+
+
+def test_operational_name_substrings_do_not_hide_unrelated_domain_functions() -> None:
+    assert len(_check("def catalog(file_id: str, folder_id: str) -> None: ...\n")) == 1
+
+
+@pytest.mark.parametrize("brand_on_disk", [True, False])
+def test_current_focus_source_controls_canonical_role_evidence(tmp_path: Path, *, brand_on_disk: bool) -> None:
+    brand = "from typing import NewType\nRoomName = NewType('RoomName', str)\n"
+    boundary = "def record(room_name: str, call_id: str) -> None: ...\n"
+    _project_check(tmp_path, brand + boundary if brand_on_disk else boundary, "")
+    current_source = boundary if brand_on_disk else brand + boundary
+    diagnostics = PreferNominalIdTypes().check(tmp_path / "example" / "service.py", current_source)
+    assert len(diagnostics) == int(not brand_on_disk)
+    assert all(item.severity is Severity.WARNING for item in diagnostics)
+
+
+def test_distinct_class_and_constructor_roles_retain_both_diagnostics() -> None:
+    diagnostics = _check(
+        "class Move:\n"
+        "    file_id: str\n"
+        "    folder_id: str\n"
+        "    def __init__(self, user_id: int, team_id: int) -> None: ...\n"
+    )
+    assert [(item.line, item.severity) for item in diagnostics] == [(2, Severity.ERROR), (4, Severity.ERROR)]
+
+
+def test_distinct_class_and_constructor_carriers_retain_both_diagnostics() -> None:
+    diagnostics = _check(
+        "class Move:\n"
+        "    file_id: str\n"
+        "    folder_id: str\n"
+        "    def __init__(self, file_id: int, folder_id: int) -> None: ...\n"
+    )
+    assert [(item.line, item.severity) for item in diagnostics] == [(2, Severity.ERROR), (4, Severity.ERROR)]
+
+
+def test_distinct_expanded_class_roles_do_not_disappear_behind_constructor(tmp_path: Path) -> None:
+    diagnostics = _project_check(
+        tmp_path,
+        "class Move:\n"
+        "    room_name: str\n"
+        "    call_id: str\n"
+        "    def __init__(self, file_id: str, folder_id: str) -> None: ...\n",
+        "from typing import NewType\nRoomName = NewType('RoomName', str)\n",
+    )
+    assert [(item.line, item.severity) for item in diagnostics] == [(2, Severity.WARNING), (4, Severity.ERROR)]
+
+
+@pytest.mark.parametrize("quote_annotation", [True, False])
+def test_wire_alias_metadata_survives_forward_annotation_strings(*, quote_annotation: bool) -> None:
+    field = "Annotated[str, Field(alias='fileId')]"
+    folder = "Annotated[str, Field(serialization_alias='folderId')]"
+    if quote_annotation:
+        field, folder = repr(field), repr(folder)
+    assert (
+        _check(
+            "from typing import Annotated\nfrom pydantic import Field\n"
+            f"class Payload:\n    file_id: {field}\n    folder_id: {folder}\n"
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "class Pair:\n    file_id: str\n    file_id: str\n",
+        "type Raw = str\nclass Pair:\n    file_id: Raw\n    file_id: str\n",
+        "class Pair:\n    file_id: str\n    ｆｉｌｅ＿ｉｄ: str\n",
+        "class Pair:\n    file_id: str\n    file_id: str\n    def __init__(self, file_id: str) -> None: ...\n",
+    ],
+)
+def test_repeated_declarations_do_not_create_a_second_role(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("source", "line"),
+    [
+        ("class Pair:\n    file_id: str\n    file_id: str\n    folder_id: str\n", 2),
+        (
+            (
+                "class Pair:\n    file_id: str\n    file_id: str\n"
+                "    def __init__(self, file_id: str, folder_id: str) -> None: ...\n"
+            ),
+            4,
+        ),
+        (
+            ("class Pair:\n    file_id: str\n    folder_id: str\n    def __init__(self, file_id: str) -> None: ...\n"),
+            2,
+        ),
+    ],
+)
+def test_distinct_roles_survive_repeated_class_or_single_constructor_declarations(source: str, line: int) -> None:
+    diagnostics = _check(source)
+    assert len(diagnostics) == 1
+    assert diagnostics[0].line == line
+    assert diagnostics[0].message.count("`file_id`") == 1
+    assert "`folder_id`" in diagnostics[0].message
+
+
+def test_duplicate_nominal_then_raw_role_keeps_the_raw_annotation() -> None:
+    diagnostics = _check(
+        "from typing import NewType\nFileId = NewType('FileId', str)\nFolderId = NewType('FolderId', str)\n"
+        "class Pair:\n    file_id: FileId\n    file_id: str\n    folder_id: FolderId\n"
+    )
+    assert len(diagnostics) == 1
+    assert diagnostics[0].line == 6
+    assert diagnostics[0].message.count("`file_id`") == 1
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "vars(typing)['NewType'] = other\n",
+        "namespace = vars(typing)\nnamespace['NewType'] = other\n",
+        "from builtins import vars as namespace\nnamespace(typing)['NewType'] = other\n",
+        "import builtins as native\nnative.vars(typing)['NewType'] = other\n",
+    ],
+)
+def test_builtin_vars_exposure_cannot_prove_factory_identity(mutation: str) -> None:
+    assert (
+        _check(
+            f"import typing\n{mutation}FolderId = typing.NewType('FolderId', str)\n"
+            "def move(file_id: str, folder_id: FolderId) -> None: ...\n"
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "unrelated",
+    [
+        "vars(other)['NewType'] = replacement\n",
+        "from foreign import vars\nvars(typing)['NewType'] = replacement\n",
+    ],
+)
+def test_unrelated_or_unproven_vars_calls_do_not_shadow_typing(unrelated: str) -> None:
+    diagnostics = _check(
+        f"import typing\n{unrelated}FolderId = typing.NewType('FolderId', str)\n"
+        "def move(file_id: str, folder_id: FolderId) -> None: ...\n"
+    )
+    assert len(diagnostics) == 1
+    assert diagnostics[0].severity is Severity.ERROR
+
+
+@pytest.mark.parametrize(("leaf", "expected_count"), [("str", 1), ("Unknown", 0)])
+def test_deep_forward_union_preserves_known_carriers_without_recursion(leaf: str, expected_count: int) -> None:
+    annotation = " | ".join(["str", *(["None"] * 2_999), leaf])
+    diagnostics = _check(f"def move(file_id: {annotation!r}, folder_id: str) -> None: ...\n")
+    assert len(diagnostics) == expected_count
+    assert all(item.severity is Severity.ERROR and item.line == 1 for item in diagnostics)

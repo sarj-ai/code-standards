@@ -20,7 +20,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
-from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._ast_index import nodes, walk as walk_ast
 from sarj_python_lint.rules._nominal_project import NominalSource
 
 
@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_index import NodeIndex
     from sarj_python_lint.rules._imports import ImportIndex
 
 
@@ -97,6 +98,7 @@ class _TypeFacts:
     raw_aliases: dict[str, str]
     nominal_aliases: dict[str, str]
     value_roles: dict[str, str] | None = None
+    shadowed_names: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,20 +110,28 @@ class _ScopeFacts:
 
 @dataclass(frozen=True, slots=True)
 class _BoundaryOwnership:
-    classes: dict[ast.ClassDef, set[str]]
+    classes: dict[ast.ClassDef, set[tuple[str, str]]]
     original_classes: dict[ast.ClassDef, list[_IdRole]]
     constructors: dict[ast.FunctionDef | ast.AsyncFunctionDef, ast.ClassDef]
-    original_constructor_owners: set[ast.ClassDef]
+    original_constructor_roles: dict[ast.ClassDef, set[tuple[str, str]]]
 
-    def redundant(self, node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef, *, has_original: bool) -> bool:
+    def redundant(
+        self,
+        node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef,
+        roles: list[_IdRole],
+        *,
+        has_original: bool,
+    ) -> bool:
+        names = _role_keys(roles)
         if isinstance(node, ast.ClassDef):
-            return node in self.original_constructor_owners and not has_original
+            return not has_original and names <= self.original_constructor_roles.get(node, set())
         owner = self.constructors.get(node)
-        return (
-            owner is not None
-            and bool(self.classes.get(owner))
-            and (bool(self.original_classes.get(owner)) or not has_original)
-        )
+        if owner is None:
+            return False
+        original_names = _role_keys(self.original_classes.get(owner, []))
+        if has_original and not original_names:
+            return False
+        return names <= (original_names or self.classes.get(owner, set()))
 
 
 @final
@@ -144,6 +154,7 @@ class PreferNominalIdTypes(Rule):
             "The rule checks functions, methods, constructors, and classes for at least two ID-shaped roles with the same proven carrier. Existing coverage remains an error.",
             "Imported first-party carriers and non-ID roles backed by a unique matching NewType in the owning distribution or a declared local dependency are warnings. Ambiguous exports, conditional or relative imports, cycles, and unresolved ownership are skipped.",
             "Non-ID role discovery uses exact snake-case names and proven matching carriers; it does not infer brands from names alone. Dependency discovery respects declared workspace members and exclusions, and excludes optional and transitive dependencies.",
+            "Rebound aliases, generic aliases, carrier names shadowed by type parameters, and mutated factory namespaces are skipped conservatively across the file.",
             "Generated code, migrations, external adapters, operational context, raw schemas, SQLAlchemy Mapped fields, ambiguous imports, and unlike carrier shapes are excluded.",
         ),
         examples=(
@@ -225,7 +236,7 @@ class PreferNominalIdTypes(Rule):
             return []
 
         imports = context.imports
-        original_facts = _type_facts(tree, imports)
+        original_facts = _type_facts(tree, imports, node_index=context.node_index)
         boundaries = _boundary_nodes(tree, imports)
         facts = (
             self._expanded_facts(context, tree, imports)
@@ -234,7 +245,7 @@ class PreferNominalIdTypes(Rule):
         )
         source_lines = context.source_lines
         class_role_names = {
-            node: {role.name for role in _qualifying_roles(_boundary_roles(node, imports, facts))}
+            node: _role_keys(_qualifying_roles(_boundary_roles(node, imports, facts)))
             for node in tree.body
             if isinstance(node, ast.ClassDef)
         }
@@ -242,14 +253,14 @@ class PreferNominalIdTypes(Rule):
         original_class_roles = {
             node: _qualifying_roles(_boundary_roles(node, imports, original_facts)) for node in class_role_names
         }
-        original_constructor_owners = {
-            owner
+        original_constructor_roles = {
+            owner: _role_keys(roles)
             for constructor, owner in constructor_owners.items()
-            if _qualifying_roles(_boundary_roles(constructor, imports, original_facts))
+            if (roles := _qualifying_roles(_boundary_roles(constructor, imports, original_facts)))
         }
 
         ownership = _BoundaryOwnership(
-            class_role_names, original_class_roles, constructor_owners, original_constructor_owners
+            class_role_names, original_class_roles, constructor_owners, original_constructor_roles
         )
         diagnostics: list[Diagnostic] = []
 
@@ -259,9 +270,9 @@ class PreferNominalIdTypes(Rule):
                 if not roles:
                     continue
                 old_roles = _qualifying_roles(_boundary_roles(node, imports, original_facts))
-                if ownership.redundant(node, has_original=bool(old_roles)):
-                    continue
                 diagnostic_roles = old_roles or roles
+                if ownership.redundant(node, diagnostic_roles, has_original=bool(old_roles)):
+                    continue
                 first_raw = next(role for role in diagnostic_roles if role.carrier.raw)
                 if is_suppressed(source_lines, first_raw.annotation.lineno, self.code):
                     continue
@@ -287,6 +298,15 @@ class PreferNominalIdTypes(Rule):
         )
         if not sources:
             sources = {"__local__": NominalSource(context.path, context.source)}
+        else:
+            focus_path = context.path.resolve()
+            changed = {
+                module: NominalSource(source.path, context.source)
+                for module, source in sources.items()
+                if source.path == focus_path and source.text != context.source
+            }
+            if changed:
+                sources = {**sources, **changed}
         cached = next((entry for entry in self._scope_cache if entry.sources is sources), None)
         if cached is None:
             resolved: dict[tuple[str, str | None], _TypeFacts] = {}
@@ -296,9 +316,11 @@ class PreferNominalIdTypes(Rule):
             roles = _canonical_roles(sources, resolved)
             cached = _ScopeFacts(sources, resolved, roles)
             self._scope_cache = [*self._scope_cache[-7:], cached]
-        seed = _imported_facts(imports, sources, cached.resolved, (), tree, include_annotations=True)
-        facts = _type_facts(tree, imports, seed)
-        return _TypeFacts(facts.raw_aliases, facts.nominal_aliases, cached.roles)
+        seed = _imported_facts(
+            imports, sources, cached.resolved, (), tree, include_annotations=True, node_index=context.node_index
+        )
+        facts = _type_facts(tree, imports, seed, node_index=context.node_index)
+        return _TypeFacts(facts.raw_aliases, facts.nominal_aliases, cached.roles, facts.shadowed_names)
 
 
 def _is_excluded_path(path: Path) -> bool:
@@ -405,9 +427,14 @@ def _qualifying_roles(roles: list[_IdRole]) -> list[_IdRole]:
     qualifying_shapes = {
         shape
         for shape, same_shape in by_shape.items()
-        if len(same_shape) >= _MIN_SWAPPABLE_ROLES and any(role.carrier.raw for role in same_shape)
+        if len({role.name for role in same_shape}) >= _MIN_SWAPPABLE_ROLES
+        and any(role.carrier.raw for role in same_shape)
     }
     return [role for role in roles if role.carrier.shape in qualifying_shapes]
+
+
+def _role_keys(roles: list[_IdRole]) -> set[tuple[str, str]]:
+    return {(role.name, role.carrier.shape) for role in roles}
 
 
 def _class_id_roles(node: ast.ClassDef, imports: ImportIndex, facts: _TypeFacts) -> list[_IdRole]:
@@ -424,7 +451,7 @@ def _class_id_roles(node: ast.ClassDef, imports: ImportIndex, facts: _TypeFacts)
 def _has_pydantic_wire_alias(statement: ast.AnnAssign, imports: ImportIndex) -> bool:
     if _is_pydantic_wire_alias_call(statement.value, imports):
         return True
-    annotation = statement.annotation
+    annotation = _stringized_annotation(statement.annotation) or statement.annotation
     if not isinstance(annotation, ast.Subscript):
         return False
     if not imports.resolves(annotation.value, sources=_TYPING_SOURCES, symbol="Annotated"):
@@ -442,49 +469,66 @@ def _is_pydantic_wire_alias_call(value: ast.expr | None, imports: ImportIndex) -
     )
 
 
-def _type_facts(tree: ast.Module, imports: ImportIndex, seed: _TypeFacts | None = None) -> _TypeFacts:
+def _type_facts(
+    tree: ast.Module,
+    imports: ImportIndex,
+    seed: _TypeFacts | None = None,
+    *,
+    node_index: NodeIndex | None = None,
+) -> _TypeFacts:
     raw_aliases: dict[str, str] = dict(seed.raw_aliases) if seed is not None else {}
     nominal_aliases: dict[str, str] = dict(seed.nominal_aliases) if seed is not None else {}
     aliases: dict[str, ast.expr] = {}
+    nominal_targets: set[str] = set()
+    shadowed = _carrier_shadowed_names(tree, imports, node_index=node_index)
 
-    _collect_type_aliases(tree, imports, raw_aliases, nominal_aliases, aliases)
+    _collect_type_aliases(tree, imports, aliases, nominal_targets, shadowed, node_index=node_index)
     for _round in range(len(aliases)):
         grew = False
-        facts = _TypeFacts(raw_aliases, nominal_aliases)
+        facts = _TypeFacts(raw_aliases, nominal_aliases, shadowed_names=shadowed)
         for name, value in aliases.items():
             if name in raw_aliases or name in nominal_aliases:
                 continue
             carrier = _carrier(value, imports, facts)
             if carrier is None:
                 continue
-            destination = raw_aliases if carrier.raw else nominal_aliases
+            destination = raw_aliases if carrier.raw and name not in nominal_targets else nominal_aliases
             destination[name] = carrier.shape
             grew = True
         if not grew:
             break
-    return _TypeFacts(raw_aliases, nominal_aliases)
+    return _TypeFacts(raw_aliases, nominal_aliases, shadowed_names=shadowed)
 
 
 def _collect_type_aliases(
     tree: ast.Module,
     imports: ImportIndex,
-    raw_aliases: dict[str, str],
-    nominal_aliases: dict[str, str],
     aliases: dict[str, ast.expr],
+    nominal_targets: set[str],
+    shadowed: frozenset[str],
+    *,
+    node_index: NodeIndex | None = None,
 ) -> None:
+    bindings = _binding_counts(tree, node_index=node_index)
     for statement in tree.body:
         assignment = _alias_assignment(statement)
-        if assignment is None:
+        if assignment is None or bindings[assignment.target] != 1:
             continue
         target = assignment.target
         value = assignment.value
-        if _is_new_type_call(value, imports):
-            if len(value.args) >= _MIN_SWAPPABLE_ROLES:
-                carrier = _carrier(value.args[_SECOND_ARGUMENT], imports, _TypeFacts(raw_aliases, nominal_aliases))
-                if carrier is not None:
-                    nominal_aliases[target] = carrier.shape
+        if isinstance(value, ast.Call) and _expression_is_shadowed(value.func, shadowed):
             continue
-        aliases[target] = _type_alias_type_value(value, imports) or value
+        if _is_new_type_call(value, imports):
+            if (
+                len(value.args) == _PAIR_ARITY
+                and not value.keywords
+                and isinstance(value.args[0], ast.Constant)
+                and value.args[0].value == target
+            ):
+                aliases[target] = value.args[_SECOND_ARGUMENT]
+                nominal_targets.add(target)
+            continue
+        aliases[target] = _type_alias_type_value(value, imports, target) or value
 
 
 @dataclass(frozen=True, slots=True)
@@ -495,7 +539,7 @@ class _AliasAssignment:
 
 def _alias_assignment(statement: ast.stmt) -> _AliasAssignment | None:
     if isinstance(statement, ast.TypeAlias):
-        return _AliasAssignment(target=statement.name.id, value=statement.value)
+        return None if statement.type_params else _AliasAssignment(target=statement.name.id, value=statement.value)
     if isinstance(statement, ast.Assign) and len(statement.targets) == 1 and isinstance(statement.targets[0], ast.Name):
         return _AliasAssignment(target=statement.targets[0].id, value=statement.value)
     if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name) and statement.value is not None:
@@ -507,19 +551,32 @@ def _is_new_type_call(value: ast.expr, imports: ImportIndex) -> TypeGuard[ast.Ca
     return isinstance(value, ast.Call) and imports.resolves(value.func, sources=_TYPING_SOURCES, symbol="NewType")
 
 
-def _type_alias_type_value(value: ast.expr, imports: ImportIndex) -> ast.expr | None:
+def _type_alias_type_value(value: ast.expr, imports: ImportIndex, target: str) -> ast.expr | None:
     if not isinstance(value, ast.Call):
         return None
     if not imports.resolves(value.func, sources=_TYPING_SOURCES, symbol="TypeAliasType"):
         return None
-    if len(value.args) >= _MIN_SWAPPABLE_ROLES:
-        return value.args[_SECOND_ARGUMENT]
-    return next((keyword.value for keyword in value.keywords if keyword.arg == "value"), None)
+    if len(value.args) > _PAIR_ARITY or any(isinstance(argument, ast.Starred) for argument in value.args):
+        return None
+    arguments: dict[str, ast.expr] = dict(zip(("name", "value"), value.args, strict=False))
+    for keyword in value.keywords:
+        if keyword.arg not in {"name", "value", "type_params"} or keyword.arg in arguments:
+            return None
+        arguments[keyword.arg] = keyword.value
+    name = arguments.get("name")
+    if not isinstance(name, ast.Constant) or name.value != target:
+        return None
+    parameters = arguments.get("type_params")
+    if parameters is not None and (not isinstance(parameters, ast.Tuple) or parameters.elts):
+        return None
+    return arguments.get("value")
 
 
 def _carrier(annotation: ast.expr, imports: ImportIndex, facts: _TypeFacts) -> _Carrier | None:
     if (parsed := _stringized_annotation(annotation)) is not None:
         return _carrier(parsed, imports, facts)
+    if _expression_is_shadowed(annotation, facts.shadowed_names):
+        return None
     if isinstance(annotation, (ast.Name, ast.Attribute)):
         name = ast.unparse(annotation)
         if name in facts.raw_aliases:
@@ -534,6 +591,31 @@ def _carrier(annotation: ast.expr, imports: ImportIndex, facts: _TypeFacts) -> _
         return None
 
     return _subscript_carrier(annotation, imports, facts)
+
+
+def _carrier_shadowed_names(
+    tree: ast.Module, imports: ImportIndex, *, node_index: NodeIndex | None = None
+) -> frozenset[str]:
+    # Match ImportIndex's conservative whole-file treatment of ambiguous bindings.
+    # PEP 695 parameters and mutations of imported namespaces also defeat identity.
+    shadowed: set[str] = set()
+    for node in nodes(tree, ast.TypeVar, ast.ParamSpec, ast.TypeVarTuple, ast.Attribute, ast.Call, index=node_index):
+        if isinstance(node, (ast.TypeVar, ast.ParamSpec, ast.TypeVarTuple)):
+            shadowed.add(node.name)
+        elif isinstance(node, ast.Attribute):
+            if isinstance(node.ctx, (ast.Store, ast.Del)) or node.attr in {"__dict__", "__setattr__", "__delattr__"}:
+                shadowed.add(ast.unparse(node).partition(".")[0])
+        elif node.args and any(
+            (isinstance(node.func, ast.Name) and node.func.id == symbol and imports.builtin_is_unshadowed(symbol))
+            or imports.resolves(node.func, sources=_BUILTIN_SOURCES, symbol=symbol)
+            for symbol in ("setattr", "delattr", "vars")
+        ):
+            shadowed.add(ast.unparse(node.args[0]).partition(".")[0])
+    return frozenset(shadowed)
+
+
+def _expression_is_shadowed(expression: ast.expr, names: frozenset[str]) -> bool:
+    return bool(names) and any(isinstance(node, ast.Name) and node.id in names for node in walk_ast(expression))
 
 
 def _primitive_carrier(annotation: ast.expr, imports: ImportIndex) -> str | None:
@@ -615,9 +697,15 @@ def _union_carrier(members: list[ast.expr], imports: ImportIndex, facts: _TypeFa
 
 
 def _flatten_union(annotation: ast.expr) -> list[ast.expr]:
-    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
-        return [*_flatten_union(annotation.left), *_flatten_union(annotation.right)]
-    return [annotation]
+    members: list[ast.expr] = []
+    pending = [annotation]
+    while pending:
+        member = pending.pop()
+        if isinstance(member, ast.BinOp) and isinstance(member.op, ast.BitOr):
+            pending.extend((member.right, member.left))
+        else:
+            members.append(member)
+    return members
 
 
 def _is_none(annotation: ast.expr) -> bool:
@@ -631,7 +719,7 @@ def _stringized_annotation(annotation: ast.expr) -> ast.expr | None:
         return None
     try:
         return ast.parse(annotation.value, mode="eval").body
-    except SyntaxError:
+    except SyntaxError, RecursionError:
         return None
 
 
@@ -697,21 +785,31 @@ def _module_facts(
     ):
         resolved[key] = _TypeFacts({}, {})
         return resolved[key]
-    seed = _imported_facts(source.imports, sources, resolved, (*visiting, module), source.tree, requested=requested)
-    facts = _type_facts(source.tree, source.imports, seed)
-    result = _unambiguous_exports(source.tree, source.imports, facts)
+    seed = _imported_facts(
+        source.imports,
+        sources,
+        resolved,
+        (*visiting, module),
+        source.tree,
+        requested=requested,
+        node_index=source.node_index,
+    )
+    facts = _type_facts(source.tree, source.imports, seed, node_index=source.node_index)
+    result = _unambiguous_exports(source.tree, source.imports, facts, node_index=source.node_index)
     resolved[key] = result
     return result
 
 
-def _unambiguous_exports(tree: ast.Module, imports: ImportIndex, facts: _TypeFacts) -> _TypeFacts:
+def _unambiguous_exports(
+    tree: ast.Module, imports: ImportIndex, facts: _TypeFacts, *, node_index: NodeIndex | None = None
+) -> _TypeFacts:
     assignments: dict[str, list[_AliasAssignment]] = {}
     for statement in tree.body:
         if (assignment := _alias_assignment(statement)) is not None:
             assignments.setdefault(assignment.target, []).append(assignment)
     # Imports are re-exports only when their binding is unambiguous; local
     # aliases must have exactly one top-level assignment and no other writes.
-    bindings: Counter[str] = _binding_counts(tree) if assignments else Counter()
+    bindings: Counter[str] = _binding_counts(tree, node_index=node_index) if assignments else Counter()
     unique = {name for name, values in assignments.items() if len(values) == 1 and bindings.get(name, 0) == 1}
     allowed = unique | set(imports.bindings)
     return _TypeFacts(
@@ -720,9 +818,25 @@ def _unambiguous_exports(tree: ast.Module, imports: ImportIndex, facts: _TypeFac
     )
 
 
-def _binding_counts(tree: ast.Module) -> Counter[str]:
+def _binding_counts(tree: ast.Module, *, node_index: NodeIndex | None = None) -> Counter[str]:
     bindings: Counter[str] = Counter()
-    for node in walk_ast(tree):
+    for node in nodes(
+        tree,
+        ast.Name,
+        ast.arg,
+        ast.FunctionDef,
+        ast.AsyncFunctionDef,
+        ast.ClassDef,
+        ast.ExceptHandler,
+        ast.MatchAs,
+        ast.MatchStar,
+        ast.MatchMapping,
+        ast.TypeVar,
+        ast.ParamSpec,
+        ast.TypeVarTuple,
+        ast.alias,
+        index=node_index,
+    ):
         match node:
             case (
                 ast.Name(id=name, ctx=ast.Store() | ast.Del())
@@ -730,6 +844,13 @@ def _binding_counts(tree: ast.Module) -> Counter[str]:
                 | ast.FunctionDef(name=name)
                 | ast.AsyncFunctionDef(name=name)
                 | ast.ClassDef(name=name)
+                | ast.ExceptHandler(name=str() as name)
+                | ast.MatchAs(name=str() as name)
+                | ast.MatchStar(name=str() as name)
+                | ast.MatchMapping(rest=str() as name)
+                | ast.TypeVar(name=name)
+                | ast.ParamSpec(name=name)
+                | ast.TypeVarTuple(name=name)
             ):
                 bindings[name] += 1
             case ast.alias(name=name, asname=alias):
@@ -748,16 +869,17 @@ def _imported_facts(
     *,
     requested: str | None = None,
     include_annotations: bool = False,
+    node_index: NodeIndex | None = None,
 ) -> _TypeFacts:
     raw: dict[str, str] = {}
     nominal: dict[str, str] = {}
-    needed = _needed_carrier_names(tree, imports, include_annotations=include_annotations)
+    needed = _needed_carrier_names(tree, imports, include_annotations=include_annotations, node_index=node_index)
     if requested is not None:
         needed.add(requested)
     mutated = {
         ast.unparse(node).partition(".")[0]
-        for node in walk_ast(tree)
-        if isinstance(node, ast.Attribute) and isinstance(node.ctx, (ast.Store, ast.Del))
+        for node in nodes(tree, ast.Attribute, index=node_index)
+        if isinstance(node.ctx, (ast.Store, ast.Del))
     }
     for local, binding in imports.bindings.items():
         if local in mutated:
@@ -778,21 +900,23 @@ def _requested_imports(local: str, symbol: str | None, needed: set[str]) -> dict
     return {name.removeprefix(f"{local}."): name for name in needed if name.startswith(f"{local}.")}
 
 
-def _needed_carrier_names(tree: ast.Module, imports: ImportIndex, *, include_annotations: bool) -> set[str]:
+def _needed_carrier_names(
+    tree: ast.Module, imports: ImportIndex, *, include_annotations: bool, node_index: NodeIndex | None = None
+) -> set[str]:
     expressions: list[ast.expr] = []
     for statement in tree.body:
         assignment = _alias_assignment(statement)
         if assignment is None:
             continue
         value = assignment.value
-        if _is_new_type_call(value, imports) and len(value.args) >= _MIN_SWAPPABLE_ROLES:
+        if _is_new_type_call(value, imports) and len(value.args) >= _PAIR_ARITY:
             expressions.append(value.args[_SECOND_ARGUMENT])
-        elif (alias_value := _type_alias_type_value(value, imports)) is not None:
+        elif (alias_value := _type_alias_type_value(value, imports, assignment.target)) is not None:
             expressions.append(alias_value)
         elif not isinstance(value, ast.Call):
             expressions.append(value)
     if include_annotations:
-        expressions.extend(_annotations(tree))
+        expressions.extend(_annotations(tree, node_index=node_index))
     names: set[str] = set()
     for expression in expressions:
         parsed = _stringized_annotation(expression) or expression
@@ -800,11 +924,9 @@ def _needed_carrier_names(tree: ast.Module, imports: ImportIndex, *, include_ann
     return names
 
 
-def _annotations(tree: ast.Module) -> list[ast.expr]:
+def _annotations(tree: ast.Module, *, node_index: NodeIndex | None = None) -> list[ast.expr]:
     return [
-        node.annotation
-        for node in walk_ast(tree)
-        if isinstance(node, (ast.arg, ast.AnnAssign)) and node.annotation is not None
+        node.annotation for node in nodes(tree, ast.arg, ast.AnnAssign, index=node_index) if node.annotation is not None
     ]
 
 
@@ -835,7 +957,7 @@ def _boundary_annotations(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Cla
 
 
 def _boundary_message(roles: list[_IdRole], *, established: bool) -> str:
-    names = ", ".join(f"`{role.name}`" for role in roles)
+    names = ", ".join(f"`{name}`" for name in dict.fromkeys(role.name for role in roles))
     if established:
         # Existing baselines fingerprint this message; expanded coverage must not invalidate them.
         return (
@@ -854,6 +976,8 @@ def _canonical_source(source: NominalSource) -> bool:
         and not _is_excluded_path(source.path)
         and {"tests", "test", "fixtures", "fakes"}.isdisjoint(source.path.parts)
         and not source.path.name.startswith("test_")
+        and not source.path.name.endswith("_test.py")
+        and source.path.name != "conftest.py"
         and source.tree is not None
     )
 
@@ -873,7 +997,7 @@ def _canonical_roles(
             name = assignment.target
             value = assignment.value
             if (
-                len(value.args) != _MIN_SWAPPABLE_ROLES
+                len(value.args) != _PAIR_ARITY
                 or value.keywords
                 or not isinstance(value.args[0], ast.Constant)
                 or value.args[0].value != name
