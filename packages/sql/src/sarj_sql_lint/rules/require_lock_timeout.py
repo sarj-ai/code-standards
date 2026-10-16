@@ -309,7 +309,8 @@ def _positive_timeout(value: str) -> bool:
         milliseconds = _timeout_number(match.group("number")) * multiplier
     except ValueError, OverflowError:
         return False
-    if not math.isfinite(milliseconds) or abs(milliseconds) > _MAXIMUM_TIMEOUT + 1:
+    rounding_slack = max(1, smaller_unit or 1)
+    if not math.isfinite(milliseconds) or abs(milliseconds) > _MAXIMUM_TIMEOUT + rounding_slack:
         return False
     if smaller_unit is not None:
         milliseconds = round(milliseconds / smaller_unit) * smaller_unit

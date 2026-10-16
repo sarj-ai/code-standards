@@ -133,14 +133,27 @@ def test_timeout_rounded_to_zero_does_not_protect_ddl(setting: str, value: str) 
 
 @pytest.mark.parametrize(
     "value",
-    ["0.6", "501us", "0777us", "0x1f5us", "017777777777", "0.501ms", "0.0006s", "0.01min", "0.01h", "0.03d", "1e3ms"],
+    [
+        "0.6",
+        "501us",
+        "0777us",
+        "0x1f5us",
+        "017777777777",
+        "0.501ms",
+        "0.0006s",
+        "0.01min",
+        "0.01h",
+        "0.03d",
+        "1e3ms",
+        "596.52324h",
+    ],
 )
 def test_timeout_that_rounds_to_a_positive_millisecond_protects_ddl(value: str) -> None:
     source = f"SELECT set_config('lock_timeout', '{value}', false);\nALTER TABLE users ADD COLUMN note TEXT;\n"
     assert _check(source) == []
 
 
-@pytest.mark.parametrize("value", ["1MS", "1fortnight", "1e999s", "1e300ms", "2147483648ms"])
+@pytest.mark.parametrize("value", ["1MS", "1fortnight", "1e999s", "1e300ms", "2147483648ms", "600h"])
 def test_invalid_timeout_value_cannot_establish_protection(value: str) -> None:
     source = f"SET lock_timeout = '{value}';\nALTER TABLE users ADD COLUMN note TEXT;\n"
     assert len(_check(source)) == 1
