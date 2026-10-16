@@ -95,9 +95,22 @@ class ResourceProvenance:
 
     def scope(self, node: ast.AST) -> ast.AST | None:
         parent = self.context.parents.get(node)
-        while parent is not None and not isinstance(parent, _SCOPES):
+        while parent is not None:
+            if isinstance(parent, ast.arguments) and (node in parent.defaults or node in parent.kw_defaults):
+                parent = self.context.parents.get(parent)
+            elif isinstance(parent, _SCOPES) and not (
+                (
+                    isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+                    and node in parent.decorator_list
+                )
+                or (isinstance(parent, ast.ClassDef) and (node in parent.bases or node in parent.keywords))
+            ):
+                return parent
+            if parent is None:
+                return None
+            node = parent
             parent = self.context.parents.get(parent)
-        return parent
+        return None
 
     def _binding_scope(self, node: ast.AST) -> ast.AST | None:
         scope = self.scope(node)

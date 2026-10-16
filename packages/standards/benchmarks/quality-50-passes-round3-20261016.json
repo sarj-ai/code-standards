@@ -1,0 +1,341 @@
+{
+  "schemaVersion": 1,
+  "repository": "sarj-ai/code-standards",
+  "baseCommit": "2160e68a0a2d00a649df883039e01b51c4a2e25c",
+  "requestedPasses": 50,
+  "completedResearchPasses": 50,
+  "state": "research complete; final verification, acceptance and publication tracked in PR",
+  "newRuleIds": 0,
+  "selectedResearchPasses": [
+    1,
+    2,
+    17,
+    33
+  ],
+  "passes": [
+    {
+      "pass": 1,
+      "focus": "Evaluated header writes bind outside the new declaration",
+      "decision": "implement-existing-owner"
+    },
+    {
+      "pass": 2,
+      "focus": "A default read must not resolve to its same-named parameter",
+      "decision": "implement-same-cohort"
+    },
+    {
+      "pass": 3,
+      "focus": "Class namespaces are not method lexical closures",
+      "decision": "defer-broader-scope-semantics"
+    },
+    {
+      "pass": 4,
+      "focus": "First comprehension iterables evaluate in the containing scope",
+      "decision": "defer-separate-bounded-fix"
+    },
+    {
+      "pass": 5,
+      "focus": "Lazy annotations are not ordinary eager headers",
+      "decision": "reject-overbroad-refactor"
+    },
+    {
+      "pass": 6,
+      "focus": "Global/nonlocal declarations and directed writes must not be treated as ordinary locals",
+      "decision": "reject-unproven-dry"
+    },
+    {
+      "pass": 7,
+      "focus": "Conditional imports require more than equal spellings to establish a stable owner",
+      "decision": "reject-unsupported-expansion"
+    },
+    {
+      "pass": 8,
+      "focus": "PEP 695 alias targets already invalidate ordinary binding proof",
+      "decision": "reject-redundant-branch"
+    },
+    {
+      "pass": 9,
+      "focus": "Exception capture auto-deletion must invalidate old imports",
+      "decision": "reject-already-covered"
+    },
+    {
+      "pass": 10,
+      "focus": "Exception-group cancellation handlers have subgroup semantics",
+      "decision": "defer-unproved-control-flow"
+    },
+    {
+      "pass": 11,
+      "focus": "External child reapers and conditional later waits defeat local lifecycle certainty",
+      "decision": "reject-overlap-and-unsafe-expansion"
+    },
+    {
+      "pass": 12,
+      "focus": "Constant-time remediation cannot mechanically replace equality for arbitrary strings",
+      "decision": "reject-unsafe-autofix"
+    },
+    {
+      "pass": 13,
+      "focus": "Intermediate string prefixes are an observable contract",
+      "decision": "reject-already-covered"
+    },
+    {
+      "pass": 14,
+      "focus": "Match dispatch evaluates an attribute subject once",
+      "decision": "reject-unsafe-promotion"
+    },
+    {
+      "pass": 15,
+      "focus": "Precise factory signatures need ownership and escape boundaries",
+      "decision": "reject-upstream-and-custom-overlap"
+    },
+    {
+      "pass": 16,
+      "focus": "Catch returns of locally shadowed undefined remain real values",
+      "decision": "existing control retained"
+    },
+    {
+      "pass": 17,
+      "focus": "Hoist analysis must prove native constructor/non-retaining callee identity",
+      "decision": "implemented existing-owner precision repair"
+    },
+    {
+      "pass": 18,
+      "focus": "Shallow copies may expose nested mutable literal children",
+      "decision": "defer separate ownership cohort; document known synthetic boundary"
+    },
+    {
+      "pass": 19,
+      "focus": "Stateful regex inside a literal collection must retain per-call lastIndex",
+      "decision": "existing control retained"
+    },
+    {
+      "pass": 20,
+      "focus": "HTMLAllCollection is an object with false Boolean conversion",
+      "decision": "defer separate suggestion-correctness cohort"
+    },
+    {
+      "pass": 21,
+      "focus": "Nullish-filter suggestion must not capture a local undefined value",
+      "decision": "defer ranked next candidate"
+    },
+    {
+      "pass": 22,
+      "focus": "Fetch init accessors require conservative native-option analysis",
+      "decision": "existing control retained"
+    },
+    {
+      "pass": 23,
+      "focus": "A local function called useEffect is not necessarily a React effect",
+      "decision": "defer distinct API-provenance cohort"
+    },
+    {
+      "pass": 24,
+      "focus": "One-shot crypto advice must preserve Buffer output",
+      "decision": "existing control retained"
+    },
+    {
+      "pass": 25,
+      "focus": "Retained reduce accumulator snapshots make mutation semantically different",
+      "decision": "existing control retained; no automatic rewrite"
+    },
+    {
+      "pass": 26,
+      "focus": "A custom forEach method can invoke its callback once",
+      "decision": "defer distinct iteration-proof cohort"
+    },
+    {
+      "pass": 27,
+      "focus": "Map/Set membership advice must preserve property-lookup alternatives",
+      "decision": "existing control retained"
+    },
+    {
+      "pass": 28,
+      "focus": "Typed reflection can narrow its advice to closed known contracts",
+      "decision": "existing control retained"
+    },
+    {
+      "pass": 29,
+      "focus": "Explicit JSON error replacers are separate serialization contracts",
+      "decision": "existing control retained"
+    },
+    {
+      "pass": 30,
+      "focus": "Unnecessary typed conditions already have a maintained enabled owner",
+      "decision": "existing upstream control retained"
+    },
+    {
+      "pass": 31,
+      "focus": "Migration direction is framework control, not merely SQL comment syntax",
+      "decision": "defer-runner-specific semantics"
+    },
+    {
+      "pass": 32,
+      "focus": "Conflict policy belongs to each data-modifying CTE write",
+      "decision": "defer-structural owner work"
+    },
+    {
+      "pass": 33,
+      "focus": "Provisioning terraform_data is not a condition-only fake resource",
+      "decision": "implement-existing-owner precision"
+    },
+    {
+      "pass": 34,
+      "focus": "can(values(...)) on nonnullable maps repeats type guarantees",
+      "decision": "defer-low materiality"
+    },
+    {
+      "pass": 35,
+      "focus": "Spanner API drop protection is real protection with Terraform guard false",
+      "decision": "defer-provider-specific alternate guard"
+    },
+    {
+      "pass": 36,
+      "focus": "Run-level module overrides replace file-level outputs for the target",
+      "decision": "retain-existing-control"
+    },
+    {
+      "pass": 37,
+      "focus": "Environment membership safety assertions differ from behavior branches",
+      "decision": "retain-existing-control"
+    },
+    {
+      "pass": 38,
+      "focus": "Literal-only interpolation can conceal a broad IAM role",
+      "decision": "defer-bounded template evaluation"
+    },
+    {
+      "pass": 39,
+      "focus": "Idempotent DDL matching must ignore quoted and dollar-valued source",
+      "decision": "retain-existing-control"
+    },
+    {
+      "pass": 40,
+      "focus": "Naive timestamp type and an unquoted timestamp column reference differ",
+      "decision": "defer-type context precision"
+    },
+    {
+      "pass": 41,
+      "focus": "Legacy JSON query/update casts are not new persisted JSON column types",
+      "decision": "retain-existing-control"
+    },
+    {
+      "pass": 42,
+      "focus": "Quoted UUID function identity is case-sensitive",
+      "decision": "retain-existing-control"
+    },
+    {
+      "pass": 43,
+      "focus": "Disabling a trigger differs from enabling hidden behavior",
+      "decision": "retain-existing-control"
+    },
+    {
+      "pass": 44,
+      "focus": "Nested executable routine DDL is not a scalar routine example",
+      "decision": "defer-nested statement ownership"
+    },
+    {
+      "pass": 45,
+      "focus": "NULL inside a text IN check does not enforce the same closed domain",
+      "decision": "retain-existing-control"
+    },
+    {
+      "pass": 46,
+      "focus": "JSONC quoted-string escape parity before comments",
+      "decision": "defer"
+    },
+    {
+      "pass": 47,
+      "focus": "JSONC trailing-comma normalization mutates literal contents",
+      "decision": "defer"
+    },
+    {
+      "pass": 48,
+      "focus": "JSONC empty-array comma admission disagrees with parser",
+      "decision": "defer"
+    },
+    {
+      "pass": 49,
+      "focus": "JSONC unterminated block comments pass validation",
+      "decision": "defer"
+    },
+    {
+      "pass": 50,
+      "focus": "JSONC CR-only line comments hide valid configuration",
+      "decision": "defer"
+    }
+  ],
+  "implemented": [
+    "Python provenance resolves eager defaults/decorators/class bases and keywords in their enclosing scope; function bodies and lazy annotations keep their existing boundaries.",
+    "TypeScript constant-hoisting assumptions require unshadowed builtin identifiers before classifying constructors, freeze wrappers or non-retaining calls.",
+    "IaC guard-only terraform_data detection preserves real direct local-exec, remote-exec and file provisioners, including destroy operations."
+  ],
+  "versions": {
+    "python": "1.41.1",
+    "typescript": "16.14.1",
+    "iac": "0.23.1",
+    "standards": "8.70.0",
+    "compatibility": "8.70.0",
+    "preservedSql": "0.22.0"
+  },
+  "nativeValidation": {
+    "python": {
+      "fullTestsPassed": 14074,
+      "customRules": 150,
+      "maintainedFilesSelfLinted": 804,
+      "corpusFiles": 268,
+      "trackedLiveFiles": 258,
+      "seedFiles": 10,
+      "liveRoots": 4,
+      "corpusBytes": 2596159,
+      "liveDiagnosticsIdentical": 769,
+      "seedFalsePositivesRemoved": 8,
+      "preexistingDuplicateDiagnostics": 8,
+      "newDuplicateDiagnostics": 0
+    },
+    "typescript": {
+      "fullTestsPassed": 8050,
+      "customRules": 120,
+      "corpusFiles": 3227,
+      "corpusBytes": 30065878,
+      "roots": 6,
+      "seedFiles": 17,
+      "freshProcessesPerVariant": 15,
+      "seedFalsePositivesRemoved": 7,
+      "liveDiagnosticChanges": 0,
+      "inspectedLiveFindings": 5
+    },
+    "iac": {
+      "fullTestsPassed": 1390,
+      "corpusFiles": 483,
+      "trackedPrivateFiles": 427,
+      "publicExampleFiles": 48,
+      "seedFiles": 8,
+      "freshProcessesPerVariant": 5,
+      "seedFalsePositivesRemoved": 4,
+      "publicExampleFalsePositivesRemoved": 1,
+      "privateDiagnosticChanges": 0
+    },
+    "corpusBatchCap": 250
+  },
+  "policy": [
+    "No new dependencies, blanket severity promotion or automatic code rewrite.",
+    "Exact native and bundle pins change together.",
+    "Private corpus identities, source, locator hashes and paths remain private."
+  ],
+  "limitations": [
+    "Fifty investigations are not fifty defects or fifty implemented rules.",
+    "All selected diagnostic removals are seeds or a public example; no newly repaired production incident is claimed.",
+    "Python class-namespace lookup, first comprehension iterable scope and lazy annotation behavior are separate deferred boundaries.",
+    "Hoist advice remains manual: shallow-copy escapes and replacement of globals are not proved by the new lexical builtin guard.",
+    "Only direct recognized Terraform provisioner blocks exempt real operations; arbitrary labels and command-shaped data remain outside that exemption.",
+    "Existing Python corpus duplicate SARJ094 findings remain unchanged; no new duplicates were introduced.",
+    "Small shared-host timing panels establish no whole-linter or fleet speedup.",
+    "Five JSONC lexical/parser gaps were investigated and deferred because their present owner gates comment-style checks; no new parser or guard was added.",
+    "Native calibration and the fifty research decisions refer to baseCommit. A concurrent merge is preserved at integrationBaseCommit; combined-tree verification and independent review are recorded in the PR. Its unrelated fixes are not counted as this campaign discoveries."
+  ],
+  "integrationBaseCommit": "1f50ae0667cadab97e8cabac2c0c07ce64562e3f",
+  "concurrentMainRepairs": [
+    "Preserve block-comment masking semantics while avoiding lexical scans when the source has no block-comment opener; keep the existing performance threshold.",
+    "Restore the strict Terraform formatter assertion to the canonical CI and generated-metadata version, 1.15.8."
+  ]
+}
