@@ -1,7 +1,11 @@
+import ast
 from pathlib import Path
+import subprocess
+import sys
 import textwrap
 from typing import TYPE_CHECKING
 
+from pydantic import BaseModel, Field
 import pytest
 
 from sarj_python_lint.rule_base import Severity
@@ -79,13 +83,13 @@ def test_flags_a_run_of_four_arms_once():
         def f(tts):
             match tts:
                 case CartesiaTTSSettings(voice=voice):
-                    tts_voice = voice
+                    tts_voice = None
                 case DeepgramTTSSettings(voice=voice):
-                    tts_voice = voice
+                    tts_voice = None
                 case SarjF5TTSSettings(voice=voice):
-                    tts_voice = voice
+                    tts_voice = None
                 case SarjOmniTTSSettings(voice=voice):
-                    tts_voice = voice
+                    tts_voice = None
             return tts_voice
         """
     )
@@ -181,8 +185,7 @@ def test_finds_a_match_nested_inside_another_arm():
     ],
 )
 def test_flags_every_refutable_pattern_kind(pattern_a: str, pattern_b: str):
-    binds_x = "x" in pattern_a
-    body = "return x" if binds_x else "return 1"
+    body = "return 1"
     diags = _check(
         f"""
         def f(v):
@@ -215,18 +218,151 @@ def test_flags_multi_statement_identical_bodies():
     assert len(diags) == 1
 
 
-def test_flags_arms_that_bind_the_same_name_at_different_positions():
+def test_flags_independent_bodies_with_the_same_capture_at_different_positions():
     diags = _check(
         """
         def f(v):
             match v:
                 case [x, _]:
-                    return x
+                    return 1
                 case [_, x]:
-                    return x
+                    return 1
         """
     )
     assert len(diags) == 1
+
+
+_ORDERED_COMPARISON = "def ordered[T: (int, str, bytes)](left: T, right: T) -> bool:\n    return left < right\n\n"
+_CORRELATED_CLASS_CASES = (
+    _ORDERED_COMPARISON
+    + """\
+def compare(left: int | str | bytes, right: int | str | bytes) -> bool | None:
+    match left, right:
+        case int(), int():
+            return ordered(left, right)
+        case str(), str():
+            return ordered(left, right)
+        case bytes(), bytes():
+            return ordered(left, right)
+        case _:
+            return None
+"""
+)
+_CORRELATED_SEQUENCE_CASES = (
+    "from typing import Literal\n\n"
+    + _ORDERED_COMPARISON
+    + """\
+def compare(value: tuple[Literal[1], int, int] | tuple[Literal[2], str, str]) -> bool | None:
+    match value:
+        case [1, left, right]:
+            return ordered(left, right)
+        case [2, left, right]:
+            return ordered(left, right)
+        case _:
+            return None
+"""
+)
+_CORRELATED_MAPPING_CASES = (
+    """\
+from typing import Literal, TypedDict
+
+class NumberPair(TypedDict):
+    kind: Literal["number"]
+    left: int
+    right: int
+
+class TextPair(TypedDict):
+    kind: Literal["text"]
+    left: str
+    right: str
+
+"""
+    + _ORDERED_COMPARISON
+    + """\
+def compare(value: NumberPair | TextPair) -> bool | None:
+    match value:
+        case {"kind": "number", "left": left, "right": right}:
+            return ordered(left, right)
+        case {"kind": "text", "left": left, "right": right}:
+            return ordered(left, right)
+        case _:
+            return None
+"""
+)
+_CORRELATION_CASES = (
+    pytest.param(_CORRELATED_CLASS_CASES, id="class-subject-correlation"),
+    pytest.param(_CORRELATED_SEQUENCE_CASES, id="literal-sequence-capture-correlation"),
+    pytest.param(_CORRELATED_MAPPING_CASES, id="mapping-capture-correlation"),
+)
+
+
+@pytest.mark.parametrize("source", _CORRELATION_CASES)
+def test_preserves_correlated_narrowing_consumed_by_the_shared_body(source: str) -> None:
+    assert _check(source) == []
+    assert len(_check(source.replace("ordered(left, right)", "True"))) == 1
+
+
+@pytest.mark.parametrize(
+    ("subject", "first", "second", "body"),
+    [
+        pytest.param("value", "A()", "B()", "return value.member()", id="subject-member-read"),
+        pytest.param("holder.value", "A()", "B()", "return holder.value.member()", id="subject-root-read"),
+        pytest.param("(value := fetch())", "A()", "B()", "return value.member()", id="subject-walrus"),
+        pytest.param("value", "A() as hit", "B() as hit", "return hit", id="captured-forwarding-abstains"),
+        pytest.param("value", "[1, *rest]", "[2, *rest]", "return rest", id="star-capture"),
+        pytest.param("value", "{'a': 1, **rest}", "{'b': 2, **rest}", "return rest", id="mapping-rest"),
+        pytest.param("value", "A()", "B()", "return lambda: value", id="nested-capture"),
+        pytest.param("value", "'a'", "'b'", "return value", id="literal-subject-forwarding-abstains"),
+    ],
+)
+def test_preserves_subject_and_capture_reads(subject: str, first: str, second: str, body: str) -> None:
+    assert (
+        _check(
+            f"def f(value):\n    match {subject}:\n        case {first}:\n            {body}\n"
+            f"        case {second}:\n            {body}\n"
+        )
+        == []
+    )
+
+
+class _CheckerDiagnostic(BaseModel, frozen=True):
+    file: str
+    rule: str
+
+
+class _CheckerReport(BaseModel, frozen=True):
+    diagnostics: tuple[_CheckerDiagnostic, ...] = Field(alias="generalDiagnostics")
+
+
+def test_native_basedpyright_rejects_the_previously_suggested_correlated_merges(tmp_path: Path) -> None:
+    sources = (_CORRELATED_CLASS_CASES, _CORRELATED_SEQUENCE_CASES, _CORRELATED_MAPPING_CASES)
+    for index, source in enumerate(sources):
+        (tmp_path / f"legal_{index}.py").write_text(source)
+        tree = ast.parse(source)
+        function = tree.body[-1]
+        assert isinstance(function, ast.FunctionDef)
+        match_node = function.body[0]
+        assert isinstance(match_node, ast.Match)
+        cases = match_node.cases[:-1]
+        cases[0].pattern = ast.MatchOr(patterns=[case.pattern for case in cases])
+        match_node.cases = [cases[0], match_node.cases[-1]]
+        (tmp_path / f"illegal_{index}.py").write_text(ast.unparse(tree))
+    config = tmp_path / "pyrightconfig.json"
+    config.write_text(
+        '{"typeCheckingMode":"strict","pythonVersion":"3.14","reportUnnecessaryComparison":"none","include":["*.py"]}'
+    )
+    result = subprocess.run(
+        [sys.executable, "-m", "basedpyright", "--project", str(config), "--outputjson"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    findings = _CheckerReport.model_validate_json(result.stdout).diagnostics
+    assert len(findings) == 6, result.stdout
+    assert {Path(finding.file).name for finding in findings} == {f"illegal_{index}.py" for index in range(3)}
+    assert all(finding.rule == "reportArgumentType" for finding in findings)
 
 
 # false-positive guards — guarded arms                                         #
@@ -330,9 +466,9 @@ def test_as_pattern_with_a_subpattern_is_refutable_and_still_flagged():
         def f(v):
             match v:
                 case A() as hit:
-                    return hit
+                    return 1
                 case B() as hit:
-                    return hit
+                    return 1
         """
     )
     assert len(diags) == 1
@@ -629,9 +765,9 @@ def test_flags_the_same_pair_once_the_names_agree():
         def f(v):
             match v:
                 case ast.MatchAs(name=bound):
-                    return bound == name
+                    return 1
                 case ast.MatchMapping(rest=bound):
-                    return bound == name
+                    return 1
         """
     )
     assert len(diags) == 1
@@ -675,9 +811,9 @@ def test_flags_star_captures_that_share_a_name():
         def f(v):
             match v:
                 case [1, *rest]:
-                    return rest
+                    return 1
                 case [2, *rest]:
-                    return rest
+                    return 1
         """
     )
     assert len(diags) == 1
@@ -733,9 +869,9 @@ def test_flags_the_same_pair_once_the_body_does_something():
         def f(v):
             match v:
                 case A():
-                    ignored.append(v)
+                    ignored.append("handled")
                 case B():
-                    ignored.append(v)
+                    ignored.append("handled")
         """
     )
     assert len(diags) == 1
@@ -996,11 +1132,11 @@ def test_preview_is_valid_syntax_for_multiline_patterns_with_captures():
                 case First(
                     value=token,
                 ):
-                    return token
+                    return 1
                 case Second(
                     value=token,
                 ):
-                    return token
+                    return 1
         """
     )
     preview = diag.message.split("(`case ", maxsplit=1)[1].split(":`)", maxsplit=1)[0]
@@ -1013,9 +1149,9 @@ def test_preview_parenthesizes_as_patterns_around_an_existing_or_pattern() -> No
         def f(value):
             match value:
                 case (A() | B()) as item:
-                    return item
+                    return 1
                 case C() as item:
-                    return item
+                    return 1
         """
     )
 
@@ -1077,9 +1213,9 @@ def test_async_function_body_is_found():
         async def f(v):
             match v:
                 case A():
-                    await run(v)
+                    await run()
                 case B():
-                    await run(v)
+                    await run()
         """
     )
     assert len(diags) == 1

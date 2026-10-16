@@ -408,3 +408,23 @@ def test_nearby_rules_do_not_duplicate_guard_warning(tmp_path: Path) -> None:
     rules = [NoShallowContainerTypeGuard.id, "no-nullable-dependency-fallback", "no-hidden-constructor-fallback"]
     assert [finding.code for finding in analyze(rules, [path])] == ["SARJ472"]
     assert analyze(rules, [path]) == analyze(rules, [path])
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "setattr(types, 'TypeGuard', Custom)",
+        "configure(types)",
+        "configure(namespace=types)",
+        "configure({'namespace': types})",
+        "alias = types\nalias.TypeGuard = Custom",
+        "types.__dict__['TypeGuard'] = Custom",
+    ],
+    ids=["setattr", "positional-escape", "keyword-escape", "nested-escape", "alias-mutation", "namespace-dict"],
+)
+def test_typing_namespace_mutation_abstains(mutation: str) -> None:
+    source = _BASE.replace("from typing import TypeGuard", "import typing as types").replace(
+        "-> TypeGuard", "-> types.TypeGuard"
+    )
+    source = source.replace("def ", f"{mutation}\ndef ", 1)
+    assert _check(source) == []

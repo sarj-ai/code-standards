@@ -17,6 +17,7 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._imports import TYPING_SOURCES
+from sarj_python_lint.rules._type_guard_symbols import builtin_guard_symbol, guard_symbols_ambiguous
 
 
 if TYPE_CHECKING:
@@ -28,12 +29,6 @@ _CONTAINERS = frozenset({"dict", "list", "set"})
 _MAPPING_SLOTS = 2
 _SLOTS = frozenset({"object", "str", "int", "bool", "float", "bytes"})
 _BUILTINS = _SLOTS | _CONTAINERS | {"isinstance"}
-_MUTATION_TARGETS = {f"builtins.{symbol}" for symbol in _BUILTINS} | {
-    "typing.TypeGuard",
-    "typing.TypeIs",
-    "typing_extensions.TypeGuard",
-    "typing_extensions.TypeIs",
-}
 _BAD = "from typing import TypeGuard\ndef is_mapping(value: object) -> TypeGuard[dict[str, object]]:\n    return isinstance(value, dict)\n"
 _GOOD = _BAD.replace("dict[str, object]", "dict[object, object]")
 
@@ -56,7 +51,7 @@ class NoShallowContainerTypeGuard(Rule):
             "Annotation imports include TYPE_CHECKING imports. Runtime imports use conservative file-wide shadow facts, so unrelated local rebinding can cause false negatives. Wildcard imports, explicit writes to relevant builtin or typing attributes, and exception, pattern or walrus bindings that shadow relevant names or imported aliases exclude the file; dynamic namespace mutation is not inferred.",
             "Relative or conditional imports that replace relevant builtin or typing names exclude the file unless the import proves the same canonical symbol. Unrelated relative imports remain in scope.",
             "No autofix: widening the return contract can require caller changes, while adding content validation changes behavior and cost.",
-            "Visible __builtins__ namespace access abstains because mapping-backed replacement can change the meaning of builtin checks.",
+            "Visible __builtins__ access, escaping typing/builtins module aliases, and their __dict__ access abstain because namespace mutation can change the meaning of the check.",
         ),
         examples=(
             RuleExample(
@@ -166,77 +161,8 @@ def _guarded_container(annotation: ast.expr | None, imports: ImportIndex) -> str
 
 
 def _builtin_symbol(node: ast.expr | None, imports: ImportIndex) -> str | None:
-    if node is None:
-        return None
-    symbol = imports.resolved_symbol(node, sources=frozenset({"builtins"}))
-    if symbol in _BUILTINS:
-        return symbol
-    if isinstance(node, ast.Name) and node.id in _BUILTINS and imports.builtin_is_unshadowed(node.id):
-        return node.id
-    return None
+    return builtin_guard_symbol(node, imports, _BUILTINS)
 
 
 def _ambiguous_symbols(context: PythonFileContext) -> bool:
-    if context.dynamic_namespace or any(node.id == "__builtins__" for node in context.nodes(ast.Name)):
-        return True
-    sensitive_names = _BUILTINS | {
-        name
-        for name, target in context.module_imports.bindings.items()
-        if target.module in TYPING_SOURCES | {"builtins"}
-        and (target.symbol is None or target.symbol in _BUILTINS | {"TypeGuard", "TypeIs"})
-    }
-    for node in context.nodes(
-        ast.Import,
-        ast.ImportFrom,
-        ast.Attribute,
-        ast.ExceptHandler,
-        ast.MatchAs,
-        ast.MatchStar,
-        ast.MatchMapping,
-        ast.NamedExpr,
-    ):
-        match node:
-            case ast.Import() | ast.ImportFrom():
-                if _ambiguous_import(node, context.module_imports, sensitive_names):
-                    return True
-            case ast.Attribute(ctx=(ast.Store() | ast.Del())):
-                if context.module_imports.resolved_qualified_name(node) in _MUTATION_TARGETS:
-                    return True
-            case (
-                ast.ExceptHandler(name=name)
-                | ast.MatchAs(name=name)
-                | ast.MatchStar(name=name)
-                | ast.MatchMapping(rest=name)
-                | ast.NamedExpr(target=ast.Name(id=name))
-            ):
-                if name in sensitive_names:
-                    return True
-            case _:
-                pass
-    return False
-
-
-def _ambiguous_import(node: ast.Import | ast.ImportFrom, imports: ImportIndex, sensitive_names: frozenset[str]) -> bool:
-    if isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names):
-        return True
-    for alias in node.names:
-        name = alias.asname or alias.name.partition(".")[0]
-        if name not in sensitive_names:
-            continue
-        if not _preserves_canonical_import(node, alias, imports):
-            return True
-    return False
-
-
-def _preserves_canonical_import(node: ast.Import | ast.ImportFrom, alias: ast.alias, imports: ImportIndex) -> bool:
-    if isinstance(node, ast.ImportFrom):
-        if node.level:
-            return False
-        module, symbol = node.module, alias.name
-    else:
-        module, symbol = alias.name, None
-    name = alias.asname or alias.name.partition(".")[0]
-    target = imports.bindings.get(name)
-    if target is None:
-        return module == "builtins" and symbol == name
-    return target.module == module and target.symbol == symbol
+    return guard_symbols_ambiguous(context, _BUILTINS)

@@ -1,0 +1,1052 @@
+{
+  "schemaVersion": 1,
+  "decision": "ship-warning",
+  "scope": "Five bounded type-contract correctness rules, three existing-rule false-positive fixes and domain-contract audit guidance; no autofixes.",
+  "baselineRevision": "0d700d0fbc3d0be03e6f601f5c4a4080f1c6e21f",
+  "references": [
+    "https://functional-architecture.org/make_illegal_states_unrepresentable/",
+    "https://www.typescriptlang.org/docs/handbook/2/narrowing.html#using-type-predicates",
+    "https://typing.python.org/en/latest/guides/type_narrowing.html",
+    "https://docs.pydantic.dev/latest/concepts/models/#creating-models-without-validation",
+    "https://docs.pydantic.dev/latest/api/base_model/#pydantic.BaseModel.model_copy"
+  ],
+  "admission": {
+    "baseRevision": "a5068e7bd67c1dca4af6f0dbfdb2835e7eba76b1",
+    "admitted": [
+      {
+        "problem": {
+          "key": "no-invalid-typed-mutation",
+          "summary": "Native reflection signatures permit writes that contradict source-proven data-property contracts.",
+          "harm": "Later typed reads can fail at runtime after an incompatible reflective write.",
+          "languages": [
+            "typescript"
+          ],
+          "bad_examples": [
+            "const x:{count:number}={count:1}; Object.assign(x,{count:\"bad\"}); x.count.toFixed();"
+          ],
+          "good_examples": [
+            "const x:{count:number}={count:1}; Object.assign(x,{count:2});"
+          ],
+          "exclusions": [
+            "Accessors, proxies, unknown origins, escapes, generics and deliberately open contracts."
+          ],
+          "autofix": "none"
+        },
+        "existingOwner": "TypeScript assignment checking and typescript-eslint unsafe-flow rules",
+        "demonstratedGap": "Native generic mutation signatures do not constrain existing property/value relationships.",
+        "smallestFix": "Warning-only source-proven detector; no autofix or blanket style requirement.",
+        "validStateBoundary": "Only report a demonstrated contract contradiction; preserve compatible and ambiguous cases."
+      },
+      {
+        "problem": {
+          "key": "no-contradictory-type-predicate",
+          "summary": "A primitive type predicate disagrees with the returned typeof check.",
+          "harm": "Callers incorrectly narrow either the true or the false branch and can perform invalid operations.",
+          "languages": [
+            "typescript"
+          ],
+          "bad_examples": [
+            "function isText(v:unknown):v is string{return typeof v === \"number\";}"
+          ],
+          "good_examples": [
+            "function isText(v:unknown):v is string{return typeof v === \"string\";}"
+          ],
+          "exclusions": [
+            "Refined, branded, generic, structural and multi-statement predicates."
+          ],
+          "autofix": "none"
+        },
+        "existingOwner": "TypeScript predicate declaration checking and unnecessary-condition rules",
+        "demonstratedGap": "The compiler checks target assignability and boolean return, not the predicate implementation.",
+        "smallestFix": "Warning-only source-proven detector; no autofix or blanket style requirement.",
+        "validStateBoundary": "Only report a demonstrated contract contradiction; preserve compatible and ambiguous cases."
+      },
+      {
+        "problem": {
+          "key": "no-invalid-pydantic-bypass",
+          "summary": "Unchecked construction/copy creates a provably invalid local Pydantic model.",
+          "harm": "Literal/null contracts can become false or required attributes can be missing despite the model type.",
+          "languages": [
+            "python"
+          ],
+          "bad_examples": [
+            "class Job(BaseModel):\n kind: Literal[\"queued\",\"done\"]\nJob.model_construct(kind=\"unknown\")"
+          ],
+          "good_examples": [
+            "class Job(BaseModel):\n kind: Literal[\"queued\",\"done\"]\nJob.model_construct(kind=\"queued\")"
+          ],
+          "exclusions": [
+            "Trusted compatible bypasses, remapped aliases, custom types, hooks, inheritance, ambiguous receivers and opaque updates."
+          ],
+          "autofix": "none"
+        },
+        "existingOwner": "Pydantic validation and existing default/copy rules",
+        "demonstratedGap": "model_construct/model_copy(update=...) intentionally skip validation; permissive signatures do not preserve field contracts.",
+        "smallestFix": "Warning-only source-proven detector; no autofix or blanket style requirement.",
+        "validStateBoundary": "Only report a demonstrated contract contradiction; preserve compatible and ambiguous cases."
+      },
+      {
+        "problem": {
+          "key": "no-partial-type-is",
+          "summary": "A TypeIs predicate demonstrably rejects a valid builtin member of its target type.",
+          "harm": "False-branch narrowing incorrectly excludes a valid type and can cause a runtime failure.",
+          "languages": [
+            "python"
+          ],
+          "bad_examples": [
+            "def positive(v:object)->TypeIs[int]:\n return isinstance(v,int) and v>0"
+          ],
+          "good_examples": [
+            "def positive(v:object)->TypeGuard[int]:\n return isinstance(v,int) and v>0"
+          ],
+          "exclusions": [
+            "TypeGuard partial predicates, constrained inputs, custom refinements, target unions and unsupported conditions."
+          ],
+          "autofix": "none"
+        },
+        "existingOwner": "Python TypeIs declaration checking and SARJ472 container contents checking",
+        "demonstratedGap": "Neither validates that this partial scalar/length filter recognizes every target member.",
+        "smallestFix": "Warning-only source-proven detector; no autofix or blanket style requirement.",
+        "validStateBoundary": "Only report a demonstrated contract contradiction; preserve compatible and ambiguous cases."
+      },
+      {
+        "problem": {
+          "key": "no-contradictory-type-guard",
+          "summary": "A primitive Python narrowing predicate returns an isinstance test for a different domain.",
+          "harm": "Wrong positive narrowing, or TypeIs negative narrowing, permits invalid operations despite successful static checking.",
+          "languages": [
+            "python"
+          ],
+          "bad_examples": [
+            "def is_text(v:object)->TypeGuard[str]:\n return isinstance(v,int)"
+          ],
+          "good_examples": [
+            "def is_text(v:object)->TypeGuard[str]:\n return isinstance(v,str)"
+          ],
+          "exclusions": [
+            "Custom, refined, literal, float, alias and generic targets; opaque inputs and complex bodies."
+          ],
+          "autofix": "none"
+        },
+        "existingOwner": "Python guard declaration checking; SARJ472 shallow container checks; SARJ512 partial-filter checks.",
+        "demonstratedGap": "The compiler trusts primitive guard implementations; existing guard detectors inspect different returned syntax.",
+        "smallestFix": "Warning-only finite primitive subtype/witness analysis of a direct canonical isinstance return.",
+        "validStateBoundary": "Respect bool as an int subtype and intentional TypeGuard partial predicates; TypeIs must recognize every target witness admitted by its input."
+      }
+    ],
+    "existingFalsePositiveFixes": [
+      "Schema-output replacement must preserve deep readonly/optional/callable contracts beyond assignability.",
+      "Shallow type-guard analysis must abstain when typing/builtins namespaces escape or are visibly mutated.",
+      "Schema-output advisory must preserve checker-proven inherited/implemented domain-port callable ownership.",
+      "The OR-pattern style rule must preserve distinct narrowing when a shared body reads the subject or captures; native class/sequence/mapping compiler probes prove that the merge can introduce type errors."
+    ],
+    "rejectedProposals": [
+      {
+        "proposal": "Enable upstream zod/no-empty-custom-schema",
+        "reason": "Reproduced findings on shadowed methods, an honest custom<unknown> schema, and composition that validates through pipe; avoid enabling."
+      },
+      {
+        "proposal": "Duplicate cast/any/exhaustiveness controls",
+        "reason": "Already owned by strict compiler, Ruff, BasedPyright and typescript-eslint policy."
+      },
+      {
+        "proposal": "Blanket bans on trusted Pydantic bypasses or all optional-field records",
+        "reason": "Would reject legitimate trusted construction, patch/draft/wire contracts and independent options."
+      }
+    ],
+    "integrationBaseRevision": "0d700d0fbc3d0be03e6f601f5c4a4080f1c6e21f",
+    "robustness": "Deep input unions/model annotations are processed iteratively or with conservative local bounds, preserving shared parser/type-checker settings."
+  },
+  "validation": {
+    "canonical": "make verify passed in one complete final run after integration with main3826b14b.",
+    "command": "VITEST_MAX_WORKERS=2 make verify TEST_JOBS=4",
+    "packageTestsPassed": {
+      "typescript": 9123,
+      "bootstrap": 18,
+      "contracts": 46,
+      "python": 16008,
+      "sql": 1755,
+      "iac": 1446,
+      "standards": 5759
+    },
+    "totalPackageTestsPassed": 34155,
+    "skipped": 10,
+    "strictTypes": "All packages pass with zero errors and warnings.",
+    "dogfood": {
+      "pythonRules": 154,
+      "pythonSourceFiles": 818,
+      "pythonBlockingDiagnostics": 0,
+      "typescriptRules": 122,
+      "typescriptDiagnostics": 0
+    },
+    "generatedArtifacts": "Rule inventory, ledger, catalog, CLI reference, formatted examples and documentation checks pass.",
+    "otherGates": "Doctor, formatting, lint, repository policy, version synchronization, ShellCheck and shfmt pass. Existing nonblocking warnings remain; no thresholds, suppressions or gates were weakened.",
+    "exactHeadCI": "Required on the exact reviewed PR head before administrative merge; results are attached to the PR."
+  },
+  "convergence": {
+    "decision": "No further rule admitted without a demonstrated gap and a source-proven valid-state boundary.",
+    "reviews": [
+      "Independent domain/API ownership and false-positive review.",
+      "Native compiler/runtime contract probes.",
+      "Full custom-rule dogfood exposed an existing OR-pattern suggestion that loses correlated narrowing; fix the owning rule rather than weaken new source types.",
+      "Final independent Python guard/provenance/guidance review found no actionable issues in the supported scope."
+    ],
+    "limits": "Warnings are deliberately incomplete when runtime identity, type ownership, mutation or refinement is opaque. Corpus silence does not estimate real-world precision for new rules."
+  },
+  "reproduce": {
+    "canonical": "make verify",
+    "focusedPython": "uv run --project packages/python --frozen pytest -q packages/python/tests/rules/test_no_invalid_pydantic_bypass.py packages/python/tests/rules/test_no_partial_type_is.py packages/python/tests/rules/test_no_contradictory_type_guard.py packages/python/tests/rules/test_no_shallow_container_type_guard.py packages/python/tests/rules/test_prefer_or_pattern.py",
+    "focusedTypescript": "npm --prefix packages/typescript test -- tests/rules/no-invalid-typed-mutation.test.ts tests/rules/no-contradictory-type-predicate.test.ts tests/rules/prefer-zod-parse-output-type.test.ts tests/typed-mutation-contracts.test.ts tests/type-predicate-contracts.test.ts",
+    "privateCorpus": "Use the owner-only verified original manifests, relocation overlay, source/artifact pins and corpus/performance runners; private content and identity are intentionally not published."
+  },
+  "focusedValidation": {
+    "pythonNewRuleCases": 649,
+    "typescriptNewRuleAndNativeContractCases": 192,
+    "pythonExistingShallowGuardCases": 98,
+    "pythonExistingOrPatternCases": 170,
+    "typescriptExistingParseOutputCases": 108,
+    "semanticMatrix": "The Python primitive guard suite includes384 runtime-derived subtype combinations; counts are related test vectors, not independent empirical observations.",
+    "behaviorPreservingPythonDogfoodRefactor": "551 sources have identical diagnostics before and after cohesive helper extraction;820 nearby tests pass.",
+    "nativeOrPatternProofs": "Three separate-case programs type-check; their merged equivalents each introduce two reportArgumentType errors.",
+    "independentReviews": "No actionable defect remained in the supported scopes after final independent domain/type/provenance reviews."
+  },
+  "additionalSourceHashes": {
+    "packages/python/src/sarj_python_lint/rules/prefer_or_pattern.py": "708f43cb4a46d73ed80b3380e248626100ccdd7932d45ff261862d07b51861f1",
+    "packages/python/src/sarj_python_lint/rules/_type_guard_symbols.py": "fa65a8bf82a9375bfd75f41011772c35a777e4aa237d18981ece527b354e1109",
+    "packages/typescript/src/rules/_equivalent-zod-output-contracts.ts": "41fa50c32ac23b45572a6c94ae984eb98a27f7c060fefb46594289cc84969f02",
+    "packages/typescript/src/rules/_has-authoritative-output-contract.ts": "5be619c2e6a5a1a57de46fac2d1cc731248e9a54e6325b27f2ce1fb29050a6fc"
+  },
+  "calibration": {
+    "evaluatedAt": "2026-10-16T20:19:27.799140+00:00",
+    "implementationBaselineRevision": "0d700d0fbc3d0be03e6f601f5c4a4080f1c6e21f",
+    "historicalStandardsInputRevision": "af032b50be5889acac7400ec83c32762279dea27",
+    "historicalInputReuse": "The 6,886 historically pinned files are regression inputs reused from the preceding domain-type-safety evaluation; they are not 6,886 new independent observations. Final panels add 24 new labeled files (13 TypeScript, 11 Python).",
+    "newRules": [
+      "@sarj/no-invalid-typed-mutation",
+      "@sarj/no-contradictory-type-predicate",
+      "SARJ511 no-invalid-pydantic-bypass",
+      "SARJ512 no-partial-type-is",
+      "SARJ513 no-contradictory-type-guard"
+    ],
+    "correctedExistingRules": [
+      "@sarj/prefer-zod-parse-output-type",
+      "SARJ472 no-shallow-container-type-guard"
+    ],
+    "versions": {
+      "python": "3.15.0",
+      "pydantic": "2.14.1",
+      "attrs": "26.1.0",
+      "packaging": "26.3",
+      "pytest": "9.1.1",
+      "pygments": "2.21.0",
+      "ts-api-utils": "2.5.0",
+      "zod": "4.6.7",
+      "eslint": "10.12.0",
+      "@typescript-eslint/parser": "8.71.2",
+      "eslint-plugin-unicorn": "78.0.0",
+      "typescriptRuntimeApiVersion": "6.0.3",
+      "typescriptShimTarget": "@typescript/old",
+      "typescriptManifestVersion": "6.0.2",
+      "node": "24.21.0",
+      "platform": "darwin"
+    },
+    "sourceHashes": [
+      {
+        "repositoryPath": "packages/typescript/src/rules/no-invalid-typed-mutation.ts",
+        "sha256": "327824fa39f17348fdcaeeafb032ed58d858c77e6464a98e4821657b50da0a1a"
+      },
+      {
+        "repositoryPath": "packages/typescript/src/rules/no-contradictory-type-predicate.ts",
+        "sha256": "0dc6713607a8cd4d20ece5cadf106707fce587f1da3b6dfa15c743e91394ca7f"
+      },
+      {
+        "repositoryPath": "packages/typescript/src/rules/prefer-zod-parse-output-type.ts",
+        "sha256": "3839daeff2b3cd82b2e0db0035fce3be0d014f2b7d8888b3cf174ac58e1cdf0f"
+      },
+      {
+        "repositoryPath": "packages/typescript/src/rules/_equivalent-zod-output-contracts.ts",
+        "sha256": "41fa50c32ac23b45572a6c94ae984eb98a27f7c060fefb46594289cc84969f02"
+      },
+      {
+        "repositoryPath": "packages/typescript/src/rules/_has-authoritative-output-contract.ts",
+        "sha256": "5be619c2e6a5a1a57de46fac2d1cc731248e9a54e6325b27f2ce1fb29050a6fc"
+      },
+      {
+        "repositoryPath": "packages/python/src/sarj_python_lint/rules/no_invalid_pydantic_bypass.py",
+        "sha256": "f05652981bda30dcc9239705307c116fa4e011743b60a7d46a3b42f46193b7e5"
+      },
+      {
+        "repositoryPath": "packages/python/src/sarj_python_lint/rules/no_partial_type_is.py",
+        "sha256": "3c261030f220c2358a2d7ca2c1a2b3019613bf9cba9aa5788dc6004d61b2fa56"
+      },
+      {
+        "repositoryPath": "packages/python/src/sarj_python_lint/rules/no_contradictory_type_guard.py",
+        "sha256": "e1a95da0bcc5a6cab480976db8644a13272094c7d56f8c19e70089a00f898a78"
+      },
+      {
+        "repositoryPath": "packages/python/src/sarj_python_lint/rules/no_shallow_container_type_guard.py",
+        "sha256": "57f4c4c6f2a4b1c88809962f3f8a8618105e422c195dd91d1c5d839dafe5b41f"
+      },
+      {
+        "repositoryPath": "packages/python/src/sarj_python_lint/rules/_type_guard_symbols.py",
+        "sha256": "fa65a8bf82a9375bfd75f41011772c35a777e4aa237d18981ece527b354e1109"
+      },
+      {
+        "repositoryPath": "packages/python/src/sarj_python_lint/rules/_pydantic_field_contract.py",
+        "sha256": "5a3cb57a3b59c3c0627bccb96cfe4395a257897407fa9bd03b1634bf2a3d5db1"
+      },
+      {
+        "artifactPath": "typescript/baseline-full.cjs",
+        "sha256": "70eced154a984d0d8c5f0303503693bfe94c74aff706f720a622cbcb6c3beccd"
+      },
+      {
+        "artifactPath": "typescript/candidate-full.cjs",
+        "sha256": "2b5e25a412d08eb1d34afe0cf5f1df42b62af4b2d5c7b3d93ddbd49a2e9e4f80"
+      },
+      {
+        "artifactPath": "corpus-runner.py",
+        "sha256": "295d1d0ce20f3ae538e35304e19e0374d706bf18146ce62b07e78c9f0abcd288"
+      },
+      {
+        "artifactPath": "python/corpus-worker.py",
+        "sha256": "37729060ab80850e74c8308d0a41ba80f28befba2ab518870f12a335e9e8151f"
+      },
+      {
+        "artifactPath": "typescript/corpus-worker.mjs",
+        "sha256": "6e438dd0baa25d08f7ac7ae2964224656c0f85d6af779bec45aba3002e145154"
+      },
+      {
+        "artifactPath": "controlled-performance-runner.py",
+        "sha256": "c602e467b470c2acae45aba5f1b48b325cf9e6202375b6eccdbde72f5b6ce34e"
+      },
+      {
+        "artifactPath": "python/controlled-performance-worker.py",
+        "sha256": "94f722f8fdc71b822800c695588a54b50722dd8cef3dfb876d0bd2ea7be77682"
+      },
+      {
+        "artifactPath": "typescript/controlled-performance-worker.mjs",
+        "sha256": "177a468c2bf94e51524941e08915bc2c4151a73e00a49bd9d17f28f5adb67c69"
+      },
+      {
+        "repositoryPath": "packages/python/src/sarj_python_lint/rules/prefer_or_pattern.py",
+        "sha256": "708f43cb4a46d73ed80b3380e248626100ccdd7932d45ff261862d07b51861f1"
+      },
+      {
+        "artifactPath": "combined-performance-runner.py",
+        "sha256": "d80f24b073d0ca5f5f12fe91b87d2e6e8d6a43fac0fa9da30f2e9f774c6af526"
+      },
+      {
+        "artifactPath": "typescript/combined-performance-worker.mjs",
+        "sha256": "fcd8b82883869252fa104e198dcc408cc6c252694eec6df58cede947951cf0da"
+      },
+      {
+        "artifactPath": "python/combined-performance-worker.py",
+        "sha256": "764fa1805d5010a28f8c2d11590f988bb7745215f5fa72f156f94032322e92e0"
+      },
+      {
+        "artifactPath": "write-public-report.py",
+        "sha256": "9f94ffed6cc9565b671ea035917d18f36e554fd3612c618fdfd23817ae97fa43"
+      }
+    ],
+    "corpora": {
+      "python": {
+        "sources": 11,
+        "files": 3350,
+        "bytes": 35168252,
+        "historicalFiles": 3339,
+        "newLabeledFiles": 11,
+        "perCorpus": [
+          {
+            "label": "standards",
+            "files": 813,
+            "bytes": 11017478
+          },
+          {
+            "label": "anonymous-private-1",
+            "files": 1609,
+            "bytes": 12679338
+          },
+          {
+            "label": "anonymous-private-2",
+            "files": 357,
+            "bytes": 3201667
+          },
+          {
+            "label": "anonymous-private-3",
+            "files": 4,
+            "bytes": 45176
+          },
+          {
+            "label": "mature-pydantic",
+            "files": 105,
+            "bytes": 1820880
+          },
+          {
+            "label": "mature-attrs",
+            "files": 6,
+            "bytes": 1557
+          },
+          {
+            "label": "mature-packaging",
+            "files": 22,
+            "bytes": 481499
+          },
+          {
+            "label": "mature-pytest",
+            "files": 78,
+            "bytes": 1341344
+          },
+          {
+            "label": "mature-pygments",
+            "files": 343,
+            "bytes": 4577209
+          },
+          {
+            "label": "labeled-seeds",
+            "files": 2,
+            "bytes": 718
+          },
+          {
+            "label": "expert-labeled-seeds",
+            "files": 11,
+            "bytes": 1386
+          }
+        ],
+        "allNewLabelsMatch": true,
+        "results": {
+          "baseline": {
+            "findings": 6,
+            "byRule": {
+              "SARJ472": 6
+            },
+            "unseededFindings": 4,
+            "freshBatches": 22,
+            "maxRssKiB": 89440.0,
+            "processWallSeconds": 26.262928,
+            "parseFailures": 0,
+            "ignoredOrUnmatched": 0
+          },
+          "candidate": {
+            "findings": 9,
+            "byRule": {
+              "SARJ472": 5,
+              "SARJ513": 2,
+              "SARJ511": 1,
+              "SARJ512": 1
+            },
+            "unseededFindings": 4,
+            "freshBatches": 22,
+            "maxRssKiB": 91072.0,
+            "processWallSeconds": 22.022503,
+            "parseFailures": 0,
+            "ignoredOrUnmatched": 0
+          }
+        }
+      },
+      "typescript": {
+        "sources": 9,
+        "files": 3560,
+        "bytes": 33230557,
+        "historicalFiles": 3547,
+        "newLabeledFiles": 13,
+        "perCorpus": [
+          {
+            "label": "standards",
+            "files": 369,
+            "bytes": 3297833
+          },
+          {
+            "label": "anonymous-private-1",
+            "files": 993,
+            "bytes": 8417577
+          },
+          {
+            "label": "anonymous-private-2",
+            "files": 379,
+            "bytes": 5825035
+          },
+          {
+            "label": "anonymous-private-3",
+            "files": 1232,
+            "bytes": 12071866
+          },
+          {
+            "label": "mature-zod",
+            "files": 330,
+            "bytes": 3084460
+          },
+          {
+            "label": "mature-unicorn",
+            "files": 239,
+            "bytes": 531406
+          },
+          {
+            "label": "labeled-seeds",
+            "files": 3,
+            "bytes": 207
+          },
+          {
+            "label": "producer-seeds",
+            "files": 2,
+            "bytes": 362
+          },
+          {
+            "label": "expert-labeled-seeds",
+            "files": 13,
+            "bytes": 1811
+          }
+        ],
+        "allNewLabelsMatch": true,
+        "results": {
+          "baseline": {
+            "findings": 5,
+            "byRule": {
+              "@sarj/prefer-zod-parse-output-type": 5
+            },
+            "unseededFindings": 1,
+            "freshBatches": 19,
+            "maxRssKiB": 3112256,
+            "processWallSeconds": 76.867789,
+            "parseFailures": 0,
+            "ignoredOrUnmatched": 0,
+            "maxProgramFiles": 4239,
+            "unresolvedSourceModulePairsSummedAcrossBatches": 12810,
+            "newLabelSemanticDiagnostics": 0
+          },
+          "candidate": {
+            "findings": 6,
+            "byRule": {
+              "@sarj/prefer-zod-parse-output-type": 2,
+              "@sarj/no-invalid-typed-mutation": 3,
+              "@sarj/no-contradictory-type-predicate": 1
+            },
+            "unseededFindings": 0,
+            "freshBatches": 19,
+            "maxRssKiB": 3010672,
+            "processWallSeconds": 113.240033,
+            "parseFailures": 0,
+            "ignoredOrUnmatched": 0,
+            "maxProgramFiles": 4239,
+            "unresolvedSourceModulePairsSummedAcrossBatches": 12810,
+            "newLabelSemanticDiagnostics": 0
+          }
+        }
+      }
+    },
+    "performance": {
+      "status": "completed",
+      "measurements": {
+        "python": {
+          "files": 111,
+          "bytes": 1385700,
+          "selection": "100 immutable public Standards files sorted by SHA256(seed20261016:relativePath), plus all new labeled files",
+          "freshWorkers": 9,
+          "measuredPassesPerMode": 9,
+          "summary": {
+            "baseline": {
+              "passes": 9,
+              "medianCpuMs": 470.0550000000001,
+              "medianWallMs": 611.9332078378648,
+              "findings": [
+                2
+              ]
+            },
+            "candidate": {
+              "passes": 9,
+              "medianCpuMs": 485.4639999999999,
+              "medianWallMs": 651.2352079153061,
+              "findings": [
+                5
+              ]
+            },
+            "parse": {
+              "passes": 9,
+              "medianCpuMs": 125.942,
+              "medianWallMs": 146.50137489661574,
+              "findings": [
+                0
+              ]
+            }
+          },
+          "firstWarmPassMedians": {
+            "baseline": {
+              "medianCpuMs": 463.102,
+              "medianWallMs": 547.8253751061857
+            },
+            "candidate": {
+              "medianCpuMs": 481.23299999999995,
+              "medianWallMs": 716.9102497864515
+            },
+            "parse": {
+              "medianCpuMs": 123.447,
+              "medianWallMs": 145.4440001398325
+            }
+          },
+          "maxRssKiB": 81568.0,
+          "candidateToBaselineCpuRatio": 1.032781270276882,
+          "candidateAnalysisMinusParseCpuMs": 359.5219999999999,
+          "minusParseScope": "End-to-end Python analyze minus AST parsing includes source loading, session/context creation and preparation as well as rules; this does not isolate rule callbacks."
+        },
+        "typescript": {
+          "files": 113,
+          "bytes": 915588,
+          "selection": "100 immutable public Standards files sorted by SHA256(seed20261016:relativePath), plus all new labeled files",
+          "freshWorkers": 3,
+          "measuredPassesPerMode": 9,
+          "summary": {
+            "baseline": {
+              "passes": 9,
+              "medianCpuMs": 666.011,
+              "medianWallMs": 481.87641599999915,
+              "findings": [
+                4
+              ]
+            },
+            "candidate": {
+              "passes": 9,
+              "medianCpuMs": 690.298,
+              "medianWallMs": 487.2749160000003,
+              "findings": [
+                6
+              ]
+            },
+            "parse": {
+              "passes": 9,
+              "medianCpuMs": 623.948,
+              "medianWallMs": 487.04541699999936,
+              "findings": [
+                0
+              ]
+            }
+          },
+          "firstWarmPassMedians": {
+            "baseline": {
+              "medianCpuMs": 836.996,
+              "medianWallMs": 482.02275000000054
+            },
+            "candidate": {
+              "medianCpuMs": 739.272,
+              "medianWallMs": 640.200167
+            },
+            "parse": {
+              "medianCpuMs": 703.601,
+              "medianWallMs": 489.85970799999996
+            }
+          },
+          "maxRssKiB": 811712,
+          "candidateToBaselineCpuRatio": 1.0364663646696526,
+          "candidateAnalysisMinusParseCpuMs": 66.35000000000002,
+          "sharedProgramSetupExcludedFromPassTiming": true,
+          "medianSetupCpuMs": 2644.496,
+          "medianSetupWallMs": 1986.926,
+          "minusParseScope": "Program and parser setup are identical; this is the selected analysis increment including registration and type queries, not an isolated callback microbenchmark."
+        }
+      },
+      "decision": "See measured CPU ratios; wall times reflect concurrent host scheduling. No speedup or universal project-cost claim. Program setup, first passes and repeated warm analysis are separated. Repeated passes are timing observations, not additional corpus coverage.",
+      "scope": "Selected-rule families only; combined normal-pipeline measurements are reported separately."
+    },
+    "precisionDecision": "No unseeded positives from the five new rules, so real-world precision cannot be estimated from this corpus. Labeled positives and negative counterexamples establish bounded behavior; corpus silence is not a universal no-false-positive guarantee.",
+    "privacy": "Original pins and revision/content digests, absolute paths, source snippets and raw findings remain in owner-only local files. Public replay requires the owner overlay; public source/package versions are reported here.",
+    "replayCommands": [
+      "python corpus-runner.py verify --language python",
+      "python corpus-runner.py verify --language typescript",
+      "python corpus-runner.py run --language python --variants baseline,candidate",
+      "python corpus-runner.py run --language typescript --variants baseline,candidate",
+      "python controlled-performance-runner.py --language python",
+      "python controlled-performance-runner.py --language typescript"
+    ],
+    "limitations": [
+      "The TypeScript harness uses actual lazy TypeScript Programs and full native module resolution with fallback to the pinned installed dependencies. A uniform strict/exact-optional configuration replaces per-project configuration. Unresolved imports can cause conservative abstention.",
+      "Eager whole-file semantic-diagnostic forcing exhausted a 4 GiB V8 heap during the initial baseline pilot; that aborted attempt is retained separately and is not counted as completed coverage. The final worker forces semantic diagnostics only for labeled files, tracks syntactic diagnostics and resolver failures elsewhere, and performs real type queries at rule candidate nodes.",
+      "Unresolved import totals sum unique (source, module) pairs per worker; shared dependency graphs repeat across batches. They are not unique project-wide missing modules.",
+      "Selected TypeScript rules are forced to error in the isolated counting harness; rollout severity comes from the generated policy. prefer-zod-parse-output-type remains ownership-dependent warning advice.",
+      "Authored test files are included where rule scope admits them. Generated/vendor exclusions and the Python 500,000-byte cap match the existing evaluation protocol."
+    ],
+    "normalCombinedPerformance": {
+      "concurrentLoad": "Original corpus evaluators overlapped portions of selected timing; a roughly 15 second metadata/DTS synchronization overlapped the normal Python sample. Wall measurements are not speedup claims.",
+      "discardedPilot": "A normal Python candidate worker had launched before the integration owner capped this protocol to ordinal 0. Its later observations remain in owner-only driver output and are excluded from paired measurements.",
+      "status": "completed",
+      "measurements": {
+        "python": {
+          "files": 20,
+          "bytes": 211230,
+          "selection": "20 deterministic immutable tracked application files; private names and paths redacted",
+          "pipeline": "All Python REGISTRY rules through analyze including project preparation",
+          "freshWorkers": 3,
+          "measuredPassesPerMode": {
+            "baseline": 3,
+            "candidate": 3,
+            "parse": 3
+          },
+          "summary": {
+            "baseline": {
+              "passes": 3,
+              "medianCpuMs": 11769.951999999996,
+              "medianWallMs": 14955.380416940898,
+              "findings": [
+                43
+              ]
+            },
+            "candidate": {
+              "passes": 3,
+              "medianCpuMs": 12011.088000000002,
+              "medianWallMs": 13086.955000180751,
+              "findings": [
+                43
+              ]
+            },
+            "parse": {
+              "passes": 3,
+              "medianCpuMs": 14.788999999999996,
+              "medianWallMs": 16.383042093366385,
+              "findings": [
+                0
+              ]
+            }
+          },
+          "configuredRules": {
+            "baseline": [
+              151
+            ],
+            "candidate": [
+              154
+            ],
+            "parse": [
+              0
+            ]
+          },
+          "firstWarmPassMedians": {
+            "baseline": {
+              "cpuMs": 14026.893,
+              "wallMs": 24156.820916803554
+            },
+            "candidate": {
+              "cpuMs": 11965.276999999998,
+              "wallMs": 13060.122916009277
+            },
+            "parse": {
+              "cpuMs": 16.978000000000048,
+              "wallMs": 20.37883293814957
+            }
+          },
+          "maxRssKiB": 927072.0,
+          "candidateToBaselineCpuRatio": 1.02048742424778,
+          "candidateMinusParseCpuMs": 11996.299,
+          "minusParseScope": "End-to-end analyze includes normal project preparation and context work absent from AST-parse-only. This difference is not isolated rule-callback overhead."
+        },
+        "typescript": {
+          "files": 20,
+          "bytes": 148588,
+          "selection": "20 deterministic immutable tracked application files; private names and paths redacted",
+          "pipeline": "Complete @sarj strict custom preset with actual Program/parser; shared upstream ESLint plugins excluded",
+          "freshWorkers": 3,
+          "measuredPassesPerMode": {
+            "baseline": 9,
+            "candidate": 9,
+            "parse": 9
+          },
+          "summary": {
+            "baseline": {
+              "passes": 9,
+              "medianCpuMs": 289.75,
+              "medianWallMs": 192.6872089999997,
+              "findings": [
+                18
+              ]
+            },
+            "candidate": {
+              "passes": 9,
+              "medianCpuMs": 294.002,
+              "medianWallMs": 189.14958300000035,
+              "findings": [
+                18
+              ]
+            },
+            "parse": {
+              "passes": 9,
+              "medianCpuMs": 180.19,
+              "medianWallMs": 97.87970799999948,
+              "findings": [
+                0
+              ]
+            }
+          },
+          "configuredRules": {
+            "baseline": [
+              121
+            ],
+            "candidate": [
+              123
+            ],
+            "parse": [
+              0
+            ]
+          },
+          "firstWarmPassMedians": {
+            "baseline": {
+              "cpuMs": 638.859,
+              "wallMs": 380.6996250000002
+            },
+            "candidate": {
+              "cpuMs": 369.131,
+              "wallMs": 289.09812500000044
+            },
+            "parse": {
+              "cpuMs": 181.544,
+              "wallMs": 150.0822909999997
+            }
+          },
+          "maxRssKiB": 885472,
+          "candidateToBaselineCpuRatio": 1.0146747195858499,
+          "candidateMinusParseCpuMs": 113.81200000000001,
+          "sharedProgramSetupExcludedFromPassTiming": true,
+          "medianSetupCpuMs": 4738.005,
+          "medianSetupWallMs": 5256.563125,
+          "minusParseScope": "The full custom preset shares the same Program and parser setup; this difference includes registration and semantic queries as well as callbacks."
+        }
+      },
+      "limitations": [
+        "This is a bounded application sample, not a whole-project performance promise. TypeScript uses a uniform strict compiler configuration and the full custom preset; upstream shared-config plugins are excluded. Python supplies 20 application files to its normal all-rule analyze pipeline; project preparation can inspect additional project files. The 20 input count and bytes do not represent total project facts or all bytes read.",
+        "Common compiler setup is measured separately from repeated TypeScript analysis. First warm-up and repeated timing passes are reported separately; Python normal-runner timing is deliberately limited to one fresh worker and three warm passes per mode because project preparation reaches beyond the 20 selected files; repeated analysis adds no independent precision observations. Existing full-preset diagnostics on private app files are timing workload, not newly triaged findings. Concurrent evaluation jobs can influence wall timing; CPU ratios provide the comparative observation."
+      ]
+    },
+    "cacheConditions": "OS caches were not flushed. Fresh workers provide fresh language runtimes, not controlled cold filesystem caches. The first warm-up observation may use dependencies and source files already warm from setup or preceding evaluation; no cold-cache or speedup claim is made."
+  },
+  "orPatternCalibration": {
+    "rule": "SARJ070/prefer-or-pattern",
+    "baselineRevision": "0d700d0fbc3d0be03e6f601f5c4a4080f1c6e21f",
+    "ruleHashes": {
+      "baseline": "650dc36c8d950fc22696cb41d4682c8a771b0100908bc767893f3992d93f5da4",
+      "candidate": "708f43cb4a46d73ed80b3380e248626100ccdd7932d45ff261862d07b51861f1"
+    },
+    "pythonVersion": "3.15.0",
+    "historicalCorpus": {
+      "reusedCoverage": true,
+      "files": 3339,
+      "bytes": 35166866,
+      "batchesPerVariant": 21,
+      "batchSize": 250,
+      "corpora": 10,
+      "uniqueContentHashes": 3245,
+      "duplicateContentGroups": 5,
+      "duplicateFiles": 99,
+      "duplicateExtraCopies": 94,
+      "baselineFindings": 2,
+      "candidateFindings": 0,
+      "removed": 2,
+      "retained": 0,
+      "added": 0,
+      "reviewed": 2,
+      "demonstratedOldFalsePositives": 0,
+      "documentedCoverageAbstentions": 2,
+      "provenSafeForwardingCoverageLoss": 1,
+      "unprovenCaptureContractCoverageLoss": 1,
+      "duplicateFindingContentGroups": 0,
+      "parseFailures": {
+        "baseline": 0,
+        "candidate": 0
+      },
+      "oversized": {
+        "baseline": 0,
+        "candidate": 0
+      }
+    },
+    "seeds": {
+      "files": 7,
+      "bytes": 2908,
+      "baselineFindings": 4,
+      "candidateFindings": 1,
+      "nativeProvenOldFalsePositives": 3,
+      "preservedPositiveControls": 1,
+      "alreadyMergedNoMatchControls": 3,
+      "labelsCorrect": true,
+      "checker": "BasedPyright 1.40.2",
+      "nativeErrorsOnlyInMergedVariants": 6
+    },
+    "timingLimitation": "Historical corpus wall timings overlapped make verify and a discarded performance pilot. These runs establish diagnostic precision and coverage only, not performance.",
+    "pinPolicy": "Original historical content pins and relocation overlay were reused verbatim. Each historical corpus was verified before and after each bounded run; no historical pin was refreshed.",
+    "historicalClassifications": [
+      {
+        "id": "historical-1",
+        "classification": "documented-conservative-false-negative-safe-forwarding",
+        "reason": "Both mapping alternatives establish a builtin str capture and return that capture. Merging is safe for this forwarding use; the deliberately syntax-only narrowing guard abstains. This is coverage loss, not a demonstrated old false positive."
+      },
+      {
+        "id": "historical-2",
+        "classification": "documented-conservative-abstention-unproven-contract",
+        "reason": "Adjacent class-pair alternatives compare a member of their captured values. Distinct alternatives narrow those captures separately. No native contract proof was established for this existing source, so this is an unsupported/coverage-loss observation, not a demonstrated defect."
+      }
+    ]
+  },
+  "typescriptCompatibility": {
+    "rows": [
+      {
+        "runtimeCompilerVersion": "5.0.4",
+        "mode": "real ESLint RuleTester/parser plus compiler/runtime contracts",
+        "cases": 300,
+        "passed": 300,
+        "failed": 0
+      },
+      {
+        "runtimeCompilerVersion": "6.0.3",
+        "mode": "real ESLint RuleTester/parser plus compiler/runtime contracts",
+        "cases": 300,
+        "passed": 300,
+        "failed": 0
+      },
+      {
+        "runtimeCompilerVersion": "7.0.2",
+        "mode": "actual native CLI compiler plus emitted JavaScript runtime proof",
+        "cases": 12,
+        "passed": 12,
+        "failed": 0,
+        "proofs": [
+          {
+            "name": "assign-bypass",
+            "codes": [],
+            "runtime": "expected-failure"
+          },
+          {
+            "name": "reflect-bypass",
+            "codes": [],
+            "runtime": "expected-failure"
+          },
+          {
+            "name": "descriptor-bypass",
+            "codes": [],
+            "runtime": "expected-failure"
+          },
+          {
+            "name": "direct-write-rejected",
+            "codes": [
+              2322
+            ],
+            "runtime": "not-run"
+          },
+          {
+            "name": "exact-optional-write-rejected",
+            "codes": [
+              2412
+            ],
+            "runtime": "not-run"
+          },
+          {
+            "name": "authored-undefined-accepted",
+            "codes": [],
+            "runtime": "not-run"
+          },
+          {
+            "name": "loose-optional-accepted",
+            "codes": [],
+            "runtime": "not-run"
+          },
+          {
+            "name": "readonly-mutation-bypass",
+            "codes": [],
+            "runtime": "expected-failure"
+          },
+          {
+            "name": "true-predicate-bypass",
+            "codes": [],
+            "runtime": "expected-failure"
+          },
+          {
+            "name": "false-predicate-bypass",
+            "codes": [],
+            "runtime": "expected-failure"
+          },
+          {
+            "name": "nested-readonly-preserved",
+            "codes": [
+              2540
+            ],
+            "runtime": "not-run"
+          },
+          {
+            "name": "nested-readonly-erasure-allows-write",
+            "codes": [],
+            "runtime": "valid-state-preserved"
+          }
+        ]
+      }
+    ],
+    "suiteFiles": [
+      "tests/rules/no-invalid-typed-mutation.test.ts",
+      "tests/rules/no-contradictory-type-predicate.test.ts",
+      "tests/rules/prefer-zod-parse-output-type.test.ts",
+      "tests/typed-mutation-contracts.test.ts",
+      "tests/type-predicate-contracts.test.ts"
+    ],
+    "installedLegacyPackage": {
+      "alias": "@typescript/typescript6@6.0.2",
+      "forwardedCompiler": "@typescript/old@6.0.3"
+    },
+    "sourceHashes": {
+      "no-invalid-typed-mutation.ts": "327824fa39f17348fdcaeeafb032ed58d858c77e6464a98e4821657b50da0a1a",
+      "no-contradictory-type-predicate.ts": "0dc6713607a8cd4d20ece5cadf106707fce587f1da3b6dfa15c743e91394ca7f",
+      "_equivalent-zod-output-contracts.ts": "41fa50c32ac23b45572a6c94ae984eb98a27f7c060fefb46594289cc84969f02",
+      "_has-authoritative-output-contract.ts": "5be619c2e6a5a1a57de46fac2d1cc731248e9a54e6325b27f2ce1fb29050a6fc"
+    },
+    "limitations": [
+      "5.0.4 covers the minimum supported 5.0 minor line; no earlier 5.0 patch tested.",
+      "typescript-estree 8.71.2 peers >=4.8.4 <6.1.0. Native7 has a new API; only actual native CLI/compiler proofs are claimed for7.0.2.",
+      "Workbench recreates test runner hooks without modifying test sources; canonical Vitest verification is separate.",
+      "An initial mixed-server compiler-swap pilot was discarded; retained runs swap TypeScript and tsserver imports coherently."
+    ],
+    "worktreeSourceDependenciesAndLockfilesChanged": false
+  },
+  "preIntegrationValidation": {
+    "canonical": "make verify passed in one complete final run on the frozen implementations.",
+    "command": "VITEST_MAX_WORKERS=2 make verify TEST_JOBS=2",
+    "packageTestsPassed": {
+      "typescript": 9051,
+      "bootstrap": 18,
+      "contracts": 46,
+      "python": 15991,
+      "sql": 1755,
+      "iac": 1446,
+      "standards": 5758
+    },
+    "totalPackageTestsPassed": 34065,
+    "skipped": 10,
+    "strictTypes": "All packages pass with zero errors and warnings.",
+    "dogfood": {
+      "pythonRules": 154,
+      "pythonSourceFiles": 818,
+      "pythonBlockingDiagnostics": 0,
+      "typescriptRules": 122,
+      "typescriptDiagnostics": 0
+    },
+    "generatedArtifacts": "Rule inventory, ledger, catalog, CLI reference, formatted examples and documentation checks pass.",
+    "otherGates": "Doctor, formatting, lint, repository policy, version synchronization, ShellCheck and shfmt pass. Existing nonblocking warnings remain; no thresholds, suppressions or gates were weakened.",
+    "exactHeadCI": "Required on the exact reviewed PR head before administrative merge; results are attached to the PR."
+  },
+  "integration": {
+    "baseRevision": "3826b14b858c4c2fa49d17afa1d5d106ecb549d0",
+    "reason": "Main advanced with independent test-oracle fixes after the first complete verification and normal commit hooks passed.",
+    "preservedUpstreamChanges": [
+      "Python no-tautological-expect",
+      "TypeScript no-tautological-expect",
+      "TypeScript no-bare-return-from-test-catch",
+      "Standards test-value artifact recognition and associated tests/guidance"
+    ],
+    "ownDetectorSourceHashes": "All detector/helper source hashes in the calibration report still match after integration.",
+    "measurementProvenance": "Corpus and performance measurements precede this main integration. Their baseline remains0d700d0f and their immutable full-plugin artifact hashes identify the measured bundles. New detector and corrected helper sources are byte-identical; unrelated upstream rule implementations changed in the final combined bundle. No revised final-bundle timing claim is inferred.",
+    "postIntegrationVerification": "Full make verify passed:34,155 package tests and all canonical targets;10 skips. No own rule source change was needed after integration."
+  },
+  "latestMainIntegration": {
+    "baseRevision": "00d5aa62632b668b3ab40d50cc6aa6c91a13acfb",
+    "scope": "Independent baseline loading/scoping and serialization fixes, with repo-standards6.7.6 and its matching workflow pins preserved.",
+    "ownImplementations": "Every detector/helper source hash in the original calibration remains unchanged.",
+    "localValidation": {
+      "focusedBaselineAdoptionSelectorLifecycleCatalogTestsPassed": 765,
+      "focusedSkips": 9,
+      "nativePythonRulesOnFiveChangedFiles": 154,
+      "nativeDiagnostics": 0,
+      "doctorDocsFormattingStrictTypesRepositoryAndShellChecks": "pass"
+    },
+    "retainedValidation": "The two complete local make verify runs remain tied to their actual bases:0d700d0f and3826b14b. Unchanged language implementations and suites retain that evidence; affected baseline integration was checked separately after this final port.",
+    "exactHeadCI": "Required on the updated PR head before admin merge; includes the affected complete package and integration suites.",
+    "measurementProvenance": "No corpus pins were refreshed and no timing measurements were rerun after this integration. All recorded corpus/performance results retain their original source and artifact pins."
+  }
+}

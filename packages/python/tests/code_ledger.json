@@ -287,5 +287,8 @@
   "SARJ507": "no-async-function-cache",
   "SARJ508": "no-loguru-exc-info",
   "SARJ509": "no-loguru-printf-format",
-  "SARJ510": "prefer-discriminated-model-union"
+  "SARJ510": "prefer-discriminated-model-union",
+  "SARJ511": "no-invalid-pydantic-bypass",
+  "SARJ512": "no-partial-type-is",
+  "SARJ513": "no-contradictory-type-guard"
 }

@@ -30,6 +30,96 @@ const TYPED_RULE_TESTER = new RuleTester({
 
 const IMPORT = 'import { z } from "zod";\n';
 
+function nestedContract(declarations: string, profile: string, schema: string): string {
+  return `${IMPORT}${declarations}\ninterface DeepView { profile: ${profile} }\nconst RowSchema = z.object({ profile: ${schema} });\nfunction load(): DeepView { return RowSchema.parse({}); }`;
+}
+
+const PRESERVED_NESTED_CONTRACTS = [
+  ["inline readonly", nestedContract("", "{ readonly id: string }", "z.object({ id: z.string() })")],
+  ["readonly alias", nestedContract("type Profile = Readonly<{ id: string }>;", "Profile", "z.object({ id: z.string() })")],
+  ["mapped readonly", nestedContract("type Frozen<T> = { readonly [K in keyof T]: T[K] };", "Frozen<{ id: string }>", "z.object({ id: z.string() })")],
+  ["readonly preserved through Pick", nestedContract("type Profile = Pick<Readonly<{ id: string; extra: number }>, 'id'>;", "Profile", "z.object({ id: z.string() })")],
+  ["inherited readonly", nestedContract("interface Base { readonly id: string } interface Profile extends Base {}", "Profile", "z.object({ id: z.string() })")],
+  ["generic readonly", nestedContract("interface Profile<T> { readonly id: T }", "Profile<string>", "z.object({ id: z.string() })")],
+  ["intersection readonly", nestedContract("", "{ id: string } & { readonly label: string }", "z.object({ id: z.string(), label: z.string() })")],
+  ["readonly inside mutable array", nestedContract("", "{ readonly id: string }[]", "z.array(z.object({ id: z.string() }))")],
+  ["readonly inside mutable tuple", nestedContract("", "[{ readonly id: string }]", "z.tuple([z.object({ id: z.string() })])")],
+  ["readonly inside nullable union", nestedContract("", "{ readonly id: string } | null", "z.object({ id: z.string() }).nullable()")],
+  ["readonly inside tagged union", nestedContract("", "{ kind: 'a'; readonly id: string } | { kind: 'b'; id: string }", "z.discriminatedUnion('kind', [z.object({ kind: z.literal('a'), id: z.string() }), z.object({ kind: z.literal('b'), id: z.string() })])")],
+  ["schema readonly must not rewrite a mutable view", nestedContract("", "{ id: string }", "z.object({ id: z.string() }).readonly()")],
+  ["additional optional nested property", nestedContract("", "{ id: string; label?: string }", "z.object({ id: z.string() })")],
+  ["omitted optional nested property", nestedContract("", "{ id: string }", "z.object({ id: z.string(), label: z.string().optional() })")],
+  ["nested optionality", nestedContract("", "{ id?: string }", "z.object({ id: z.string().optional() }).transform(value => ({ id: value.id }))")],
+  ["nested readonly class", nestedContract("class Profile { readonly id = ''; }", "Profile", "z.object({ id: z.string() })")],
+  ["distinct mutable class ownership", nestedContract("class Profile { id: string = ''; }", "Profile", "z.object({ id: z.string() })")],
+  ["nested getter with a broader setter", nestedContract("interface Profile { get id(): string; set id(value: unknown) }", "Profile", "z.object({ id: z.string() })")],
+  ["nested getter with matching setter", nestedContract("interface Profile { get id(): string; set id(value: string) }", "Profile", "z.object({ id: z.string() })")],
+  ["mapped accessor write capability", nestedContract("interface Accessors { get id(): string; set id(value: unknown) } type Profile = Pick<Accessors, 'id'>;", "Profile", "z.object({ id: z.string() })")],
+  ["nested getter", nestedContract("interface Profile { get id(): string }", "Profile", "z.object({ id: z.string() })")],
+  ["nested index signature", nestedContract("interface Profile { id: string; [key: string]: string }", "Profile", "z.object({ id: z.string() })")],
+  ["nested opaque any", nestedContract("", "{ id: any }", "z.object({ id: z.any() })")],
+  ["nested unknown", nestedContract("", "{ id: unknown }", "z.object({ id: z.unknown() })")],
+  ["recursive readonly", nestedContract("interface WireNode { id: string; next?: WireNode } interface Profile { readonly id: string; next?: Profile } const NodeSchema: z.ZodType<WireNode> = z.object({ id: z.string(), next: z.lazy(() => NodeSchema).optional() });", "Profile", "NodeSchema")],
+] as const;
+
+const EQUIVALENT_NESTED_CONTRACTS = [
+  ["mutable inline record", nestedContract("", "{ id: string }", "z.object({ id: z.string() })")],
+  ["mutable alias", nestedContract("interface Profile { id: string }", "Profile", "z.object({ id: z.string() })")],
+  ["mutable inheritance", nestedContract("interface Base { id: string } interface Profile extends Base {}", "Profile", "z.object({ id: z.string() })")],
+  ["instantiated mutable generic", nestedContract("interface Profile<T> { id: T }", "Profile<string>", "z.object({ id: z.string() })")],
+  ["removed mapped readonly", nestedContract("interface Frozen { readonly id: string } type Mutable<T> = { -readonly [K in keyof T]: T[K] };", "Mutable<Frozen>", "z.object({ id: z.string() })")],
+  ["mutable array", nestedContract("", "{ id: string }[]", "z.array(z.object({ id: z.string() }))")],
+  ["mutable tuple", nestedContract("", "[{ id: string }, number]", "z.tuple([z.object({ id: z.string() }), z.number()])")],
+  ["nullable nested record", nestedContract("", "{ id: string } | null", "z.object({ id: z.string() }).nullable()")],
+  ["matching optional nested property", nestedContract("", "{ id: string; label?: string }", "z.object({ id: z.string(), label: z.string().optional() })")],
+  ["matching nested readonly", nestedContract("", "Readonly<{ id: string }>", "z.object({ id: z.string() }).readonly()")],
+  ["matching tagged union", nestedContract("", "{ kind: 'a'; id: string } | { kind: 'b'; id: string }", "z.discriminatedUnion('kind', [z.object({ kind: z.literal('a'), id: z.string() }), z.object({ kind: z.literal('b'), id: z.string() })])")],
+  ["mutable recursive aliases", nestedContract("interface WireNode { id: string; next?: WireNode } interface Profile { id: string; next?: Profile } const NodeSchema: z.ZodType<WireNode> = z.object({ id: z.string(), next: z.lazy(() => NodeSchema).optional() });", "Profile", "NodeSchema")],
+  ["shared validated class identity", nestedContract("class Profile { constructor(readonly id: string) {} }", "Profile", "z.instanceof(Profile)")],
+] as const;
+
+const PORT_IMPORT = 'import type { DomainView, ReadPort, AsyncReadPort, ReadPropertyPort, GenericReadPort, ReadCallable, ViewPort, AdapterPort } from "./zod-output-port-contracts.js"; import { ReadBase, ViewBase } from "./zod-output-port-contracts.js";';
+const PORT_SCHEMA = `${IMPORT}${PORT_IMPORT} const RowSchema = z.object({ id: z.string() });`;
+const PRESERVED_PORT_CONTRACTS = [
+  ["explicit imported callable binding", `${PORT_SCHEMA} export const read: ReadCallable = (): DomainView => RowSchema.parse({});`],
+  ["explicit function expression callable binding", `${PORT_SCHEMA} const read: ReadCallable = function(): DomainView { return RowSchema.parse({}); };`],
+  ["explicit inline callable binding", `${PORT_SCHEMA} const read: () => DomainView = (): DomainView => RowSchema.parse({});`],
+  ["explicit generic callable binding", `${PORT_SCHEMA} interface Callable<T> { (): T } const read: Callable<DomainView> = (): DomainView => RowSchema.parse({});`],
+  ["readonly property callable binding", `${PORT_SCHEMA} class Adapter { readonly read: ReadCallable = (): DomainView => RowSchema.parse({}); }`],
+  ["contextual callback contract", `${PORT_SCHEMA} declare function consume(read: ReadCallable): void; consume((): DomainView => RowSchema.parse({}));`],
+  ["contextual inline callback contract", `${PORT_SCHEMA} declare function consume(read: () => DomainView): void; consume((): DomainView => RowSchema.parse({}));`],
+  ["contextual readonly object property", `${PORT_SCHEMA} const adapter: AdapterPort = { read: (): DomainView => RowSchema.parse({}) };`],
+  ["contextual object method", `${PORT_SCHEMA} const adapter: ReadPort = { read(): DomainView { return RowSchema.parse({}); } };`],
+  ["contextual returned callable", `${PORT_SCHEMA} function adapter(): ReadCallable { return (): DomainView => RowSchema.parse({}); }`],
+  ["implemented getter property", `${PORT_SCHEMA} class Adapter implements ViewPort { get view(): DomainView { return RowSchema.parse({}); } }`],
+  ["inherited getter contract", `${PORT_SCHEMA} class Adapter extends ViewBase { override get view(): DomainView { return RowSchema.parse({}); } }`],
+  ["contextual object getter", `${PORT_SCHEMA} const adapter: ViewPort = { get view(): DomainView { return RowSchema.parse({}); } };`],
+  ["implemented imported method contract", `${PORT_SCHEMA} class Adapter implements ReadPort { read(): DomainView { return RowSchema.parse({}); } }`],
+  ["implemented asynchronous contract", `${PORT_SCHEMA} class Adapter implements AsyncReadPort { async read(): Promise<DomainView | null> { return RowSchema.parse({}); } }`],
+  ["implemented arrow property contract", `${PORT_SCHEMA} class Adapter implements ReadPropertyPort { read = (): DomainView => RowSchema.parse({}); }`],
+  ["implemented function property contract", `${PORT_SCHEMA} class Adapter implements ReadPropertyPort { read = function(): DomainView { return RowSchema.parse({}); }; }`],
+  ["instantiated generic port contract", `${PORT_SCHEMA} class Adapter implements GenericReadPort<DomainView> { read(): DomainView { return RowSchema.parse({}); } }`],
+  ["inherited interface port contract", `${PORT_SCHEMA} interface InheritedPort extends ReadPort {} class Adapter implements InheritedPort { read(): DomainView { return RowSchema.parse({}); } }`],
+  ["inherited abstract class contract", `${PORT_SCHEMA} class Adapter extends ReadBase { override read(): DomainView { return RowSchema.parse({}); } }`],
+  ["class expression implementing a port", `${PORT_SCHEMA} const Adapter = class implements ReadPort { read(): DomainView { return RowSchema.parse({}); } };`],
+] as const;
+const INDEPENDENT_HELPERS = [
+  ["own return annotation alone is not an external callable contract", `${PORT_SCHEMA} const read = (): DomainView => RowSchema.parse({});`],
+  ["inferred generic callback does not establish ownership", `${PORT_SCHEMA} declare function consume<T>(read: () => T): T; consume((): DomainView => RowSchema.parse({}));`],
+  ["uncontextualized object method", `${PORT_SCHEMA} const adapter = { read(): DomainView { return RowSchema.parse({}); } };`],
+  ["uncontextualized object getter", `${PORT_SCHEMA} const adapter = { get view(): DomainView { return RowSchema.parse({}); } };`],
+  ["unrelated getter on implementing class", `${PORT_SCHEMA} class Adapter implements ReadPort { read(): DomainView { return { id: "known" }; } get view(): DomainView { return RowSchema.parse({}); } }`],
+  ["private getter remains independent", `${PORT_SCHEMA} class Adapter implements ReadPort { read(): DomainView { return { id: "known" }; } private get view(): DomainView { return RowSchema.parse({}); } }`],
+  ["static getter does not fulfill instance port", `${PORT_SCHEMA} class Adapter implements ViewPort { get view(): DomainView { return { id: "known" }; } static get view(): DomainView { return RowSchema.parse({}); } }`],
+  ["class without a port", `${PORT_SCHEMA} class Adapter { read(): DomainView { return RowSchema.parse({}); } }`],
+  ["unrelated member of implementing class", `${PORT_SCHEMA} class Adapter implements ReadPort { read(): DomainView { return { id: "known" }; } load(): DomainView { return RowSchema.parse({}); } }`],
+  ["private helper of implementing class", `${PORT_SCHEMA} class Adapter implements ReadPort { read(): DomainView { return { id: "known" }; } private load(): DomainView { return RowSchema.parse({}); } }`],
+  ["static member does not fulfill instance port", `${PORT_SCHEMA} class Adapter implements ReadPort { read(): DomainView { return { id: "known" }; } static read(): DomainView { return RowSchema.parse({}); } }`],
+  ["independent function beside a port implementation", `${PORT_SCHEMA} class Adapter implements ReadPort { read(): DomainView { return RowSchema.parse({}); } } function load(): DomainView { return RowSchema.parse({}); }`],
+  ["nested helper does not fulfill enclosing method contract", `${PORT_SCHEMA} class Adapter implements ReadPort { read(): DomainView { function load(): DomainView { return RowSchema.parse({}); } return load(); } }`],
+  ["same shape does not establish named ownership", `${PORT_SCHEMA} interface OtherView { id: string } interface OtherPort { read(): OtherView } class Adapter implements OtherPort { read(): DomainView { return RowSchema.parse({}); } }`],
+] as const;
+
 new RuleTester({ languageOptions: { parser: tsParser } }).run(
   "prefer-zod-parse-output-type without type information",
   rule,
@@ -41,6 +131,8 @@ new RuleTester({ languageOptions: { parser: tsParser } }).run(
 
 TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
   valid: [
+    ...PRESERVED_PORT_CONTRACTS.map(([name, code]) => ({ name, filename: "zod-parse-output-port-owner.ts", code })),
+    ...PRESERVED_NESTED_CONTRACTS.map(([name, code]) => ({ name, filename: "zod-parse-output-deep-contract.ts", code })),
     {
       name: "unknown member access does not establish parse identity",
       filename: "zod-parse-output-dynamic-member.ts",
@@ -194,6 +286,8 @@ TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
     },
   ],
   invalid: [
+    ...INDEPENDENT_HELPERS.map(([name, code]) => ({ name, filename: "zod-parse-output-port-owner.ts", code, errors: [{ messageId: "handWrittenParsedOutput" as const }] })),
+    ...EQUIVALENT_NESTED_CONTRACTS.map(([name, code]) => ({ name, filename: "zod-parse-output-deep-contract.ts", code, errors: [{ messageId: "handWrittenParsedOutput" as const }] })),
     {
       name: "preserves outcomes for static member access",
       filename: "zod-parse-output-static-member.ts",
