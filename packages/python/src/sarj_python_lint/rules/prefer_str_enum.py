@@ -361,7 +361,7 @@ class PreferStrEnum(Rule):
             return []
         signals = context.symbol_source
         class_choice_signal = "str" in signals and any(name in signals.lower() for name in CHOICES_ATTR_NAMES)
-        wrapper_signal = "Annotated" in signals or "Optional" in signals
+        wrapper_signal = any(symbol in signals for symbol in ("Annotated", "Optional", "Union"))
         imports = context.imports if class_choice_signal or "assert_never" in signals or wrapper_signal else None
         test_path = is_test_path(path)
         check_clusters = not test_path
@@ -1103,9 +1103,11 @@ def _is_foreign_annotation(
     if _is_literal_annotation(annotation, frozenset()):
         return True
     inner = _strip_optional(annotation)
-    wrapped = _transparent_annotation_member(inner, imports)
+    wrapped = _transparent_annotation_members(inner, imports)
     if wrapped is not None:
-        return _is_foreign_annotation(wrapped, raw_string_aliases, imports=imports)
+        return not wrapped or any(
+            _is_foreign_annotation(member, raw_string_aliases, imports=imports) for member in wrapped
+        )
     if isinstance(inner, ast.Subscript) and _trailing_name(inner.value) == "Annotated":
         first = inner.slice.elts[0] if isinstance(inner.slice, ast.Tuple) and inner.slice.elts else None
         return first is not None and _is_foreign_annotation(first, raw_string_aliases, imports=imports)
@@ -1120,14 +1122,17 @@ def _is_foreign_annotation(
             return False
 
 
-def _transparent_annotation_member(annotation: ast.expr, imports: ImportIndex | None) -> ast.expr | None:
+def _transparent_annotation_members(annotation: ast.expr, imports: ImportIndex | None) -> list[ast.expr] | None:
     if not isinstance(annotation, ast.Subscript) or imports is None:
         return None
     symbol = imports.resolved_symbol(annotation.value, sources=frozenset({"typing", "typing_extensions"}))
     if symbol == "Optional":
-        return annotation.slice
+        return [annotation.slice]
     if symbol == "Annotated" and isinstance(annotation.slice, ast.Tuple) and annotation.slice.elts:
-        return annotation.slice.elts[0]
+        return [annotation.slice.elts[0]]
+    if symbol == "Union":
+        members = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
+        return [member for member in members if not _is_none_annotation(member)]
     return None
 
 

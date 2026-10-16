@@ -2346,6 +2346,11 @@ def render(kind: str) -> str:
         ("from typing_extensions import Annotated as A", "A[str, 'meta']"),
         ("from typing_extensions import Optional as Maybe", "Maybe[str]"),
         ("from typing import Annotated as A, Optional as Maybe", "A[Maybe[str], 'meta']"),
+        ("from typing import Union", "Union[str, None]"),
+        ("from typing import Union as U", "U[str, None]"),
+        ("from typing_extensions import Union as U", "U[None, str]"),
+        ("import typing as t", "t.Union[str, str, None]"),
+        ("from typing import Union as U\ntype Raw = str", "U[str, Raw, None]"),
         ("from typing import Annotated as A", '"A[str, Meta()]"'),
     ],
 )
@@ -2384,6 +2389,26 @@ def test_unproven_typing_aliases_remain_opaque(declaration: str) -> None:
     source = f"""{declaration}
 def render(kind: A[str, 'meta']) -> str:
     if kind not in {{"text", "image"}}:
+        raise ValueError(kind)
+    return kind
+"""
+    assert _check(source, "app/render.py") == []
+
+
+@pytest.mark.parametrize(
+    ("declaration", "annotation"),
+    [
+        ("from typing import Union as U", "U[str, int]"),
+        ("from typing import Union as U", "U[None, None]"),
+        ("from application import Union as U", "U[str, None]"),
+        ("from typing import Union as U\nU = Domain", "U[str, None]"),
+        ("from typing import Union as U, Literal", "U[str, Literal['text', 'image']]"),
+    ],
+)
+def test_nullable_union_proof_keeps_unknown_and_non_string_domains_opaque(declaration: str, annotation: str) -> None:
+    source = f"""{declaration}
+def render(kind: {annotation}) -> str:
+    if kind not in {{'text', 'image'}}:
         raise ValueError(kind)
     return kind
 """
