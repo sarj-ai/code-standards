@@ -38,6 +38,23 @@ def test_public_documentation_examples_are_executable(example: RuleExample, tmp_
     assert len(diagnostics) == example.expected_count
 
 
+@pytest.mark.parametrize("module", ["typing", "typing_extensions"])
+def test_aliased_protocol_still_declares_the_visible_service_port(module: str) -> None:
+    example = next(item for item in _PUBLIC_EXAMPLES if item.example_id == "declared-service-port")
+    source = example.focus_file.source.replace(
+        "from typing import Protocol", f"from {module} import Protocol as Contract"
+    )
+    source = source.replace("ThingServicePort(Protocol)", "ThingServicePort(Contract)")
+    assert _check(source) == []
+
+
+def test_unrelated_protocol_named_import_does_not_prove_a_port() -> None:
+    example = next(item for item in _PUBLIC_EXAMPLES if item.example_id == "declared-service-port")
+    source = example.focus_file.source.replace("from typing import Protocol", "from domain import Protocol as Contract")
+    source = source.replace("ThingServicePort(Protocol)", "ThingServicePort(Contract)")
+    assert len(_check(source)) == 1
+
+
 # The canonical offender: a concrete service, an injected first-party port, two public methods, no abstract base.
 _SERVICE = textwrap.dedent(
     """

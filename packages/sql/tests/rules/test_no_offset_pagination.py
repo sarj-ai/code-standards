@@ -283,3 +283,36 @@ def test_allows_direction_matched_composite_cursor() -> None:
     )
 
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "pagination",
+    [
+        "LIMIT $1 OFFSET GREATEST($2, 0)",
+        "LIMIT $1 OFFSET (($2 + 1) * 20)",
+        "OFFSET $1 LIMIT $2",
+        "OFFSET LEAST(10000, GREATEST($1, 0)) LIMIT 20",
+        "OFFSET (COALESCE(:page, 0) + 1) * 20",
+    ],
+)
+def test_numeric_expression_and_clause_order_preserve_dynamic_offset(pagination: str) -> None:
+    source = f"SELECT id FROM account ORDER BY id {pagination};"  # ruff: ignore[hardcoded-sql-expression] -- static pagination grammar fixtures
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "pagination",
+    [
+        "OFFSET GREATEST(1, 0)",
+        "OFFSET ((1 + 1) * 20)",
+        "OFFSET (SELECT 0 FROM setting WHERE id = $1)",
+        "OFFSET page_size($1)",
+    ],
+)
+def test_numeric_offset_analysis_preserves_fixed_and_opaque_expressions(pagination: str) -> None:
+    source = f"SELECT id FROM account ORDER BY id {pagination};"  # ruff: ignore[hardcoded-sql-expression] -- fixed and opaque pagination grammar fixtures
+    assert _check(source) == []
+
+
+def test_direct_dynamic_offset_does_not_produce_duplicate_diagnostics() -> None:
+    assert len(_check("SELECT id FROM account OFFSET $1 LIMIT 20;")) == 1

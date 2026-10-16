@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_sql_lint.rule_base import (
     AutofixPolicy,
@@ -15,6 +15,7 @@ from sarj_sql_lint.rule_base import (
     RuleExample,
     dollar_quoted_lines,
     is_dump_file,
+    locate,
     mask_sql,
     mask_sql_literals_and_comments,
     normalize_sql_identifier,
@@ -31,18 +32,14 @@ _IDENT = r'(?:[A-Za-z_][\w$]*|"(?:""|[^"\n])+")(?:\s*\.\s*(?:[A-Za-z_][\w$]*|"(?
 
 # A real insert write pattern matching INSERT INTO with optional column list and write verb.
 INSERT_PATTERN = re.compile(
-    rf"\bINSERT\s+(?:OR\s+\w+\s+)?INTO\s+(?:{_IDENT}|[\w.`?$:@-]+)\s*(?:\([^)]*\)\s*)?(?:VALUES|SELECT|DEFAULT\s+VALUES)\b",
+    rf"\bINSERT\s+(?:OR\s+\w+\s+)?INTO\s+(?:{_IDENT}|[\w.`?$:@-]+)\s*"
+    rf"(?:AS\s+{_IDENT}\s*)?(?:\([^)]*\)\s*)?"
+    r"(?:OVERRIDING\s+(?:SYSTEM|USER)\s+VALUE\s+)?(?:VALUES|SELECT|DEFAULT\s+VALUES)\b",
     re.IGNORECASE,
 )
 
-# Matches just the INSERT INTO keyword on one line for locating diagnostic position.
-INSERT_KEYWORD_PATTERN = re.compile(r"\bINSERT\s+(?:OR\s+\w+\s+)?INTO\b", re.IGNORECASE)
-
-# Conflict handling pattern making writes replay-safe across Postgres, MySQL, and SQLite.
-ON_CONFLICT_PATTERN = re.compile(
-    r"\bON\s+CONFLICT\b|\bON\s+DUPLICATE\s+KEY\b|\bINSERT\s+OR\s+(?:IGNORE|REPLACE)\b",
-    re.IGNORECASE,
-)
+_WRITE_EVENTS = re.compile(r"\bINSERT\b|\bON\s+CONFLICT\b|\bON\s+DUPLICATE\s+KEY\b|[()]", re.IGNORECASE)
+_INSERT_OR_POLICY = re.compile(r"^INSERT\s+OR\s+(?:IGNORE|REPLACE)\b", re.IGNORECASE)
 
 # A procedural replay guard inside a `DO $$ ... $$` seed block: the block checks
 # for the row itself and skips, so `ON CONFLICT` would be dead code.
@@ -51,6 +48,59 @@ INSERT_SELECT_TARGET_PATTERN = re.compile(
     rf"\bINSERT\s+INTO\s+(?P<target>{_IDENT})(?=\s|\()[\s\S]*?\bSELECT\b",
     re.IGNORECASE,
 )
+
+
+class _WriteEvent(NamedTuple):
+    offset: int
+    lexeme: str
+    depth: int
+
+
+class _InsertWrite(NamedTuple):
+    offset: int
+    text: str
+    has_conflict_policy: bool
+
+
+def _insert_writes(text: str) -> list[_InsertWrite]:
+    events = _write_events(text)
+    inserts = list(sql_code_matches(INSERT_PATTERN, text))
+    depths = {event.offset: event.depth for event in events if event.lexeme == "INSERT"}
+    writes: list[_InsertWrite] = []
+    for match in inserts:
+        owner_depth = depths.get(match.start(), 0)
+        end = next(
+            (
+                event.offset
+                for event in events
+                if event.offset >= match.end()
+                and (
+                    (event.lexeme == ")" and event.depth < owner_depth)
+                    or (event.lexeme == "INSERT" and event.depth <= owner_depth)
+                )
+            ),
+            len(text),
+        )
+        body = text[match.start() : end]
+        conflict = _INSERT_OR_POLICY.match(body) is not None or any(
+            event.lexeme.startswith("ON") and event.depth == owner_depth and match.end() <= event.offset < end
+            for event in events
+        )
+        writes.append(_InsertWrite(match.start(), body, conflict))
+    return writes
+
+
+def _write_events(text: str) -> list[_WriteEvent]:
+    events: list[_WriteEvent] = []
+    depth = 0
+    for match in sql_code_matches(_WRITE_EVENTS, text):
+        lexeme = match.group().upper()
+        if lexeme == ")":
+            depth = max(0, depth - 1)
+        events.append(_WriteEvent(match.start(), lexeme, depth))
+        if lexeme == "(":
+            depth += 1
+    return events
 
 
 def _guarded_dollar_body_lines(masked: str, source: str) -> frozenset[int]:
@@ -110,6 +160,7 @@ class InsertRequiresOnConflict(Rule):
         limitations=(
             "Developer-authored SQL files are checked regardless of path; database dumps are excluded.",
             "Known PostgreSQL, MySQL, and SQLite upsert forms and a target-specific NOT EXISTS replay guard are recognized.",
+            "Target aliases and OVERRIDING clauses preserve detection. Each INSERT owns its conflict policy, including data-modifying CTEs; neighboring writes do not supply another write policy.",
         ),
         examples=(
             RuleExample(
@@ -149,31 +200,22 @@ class InsertRequiresOnConflict(Rule):
         diags: list[Diagnostic] = []
         for statement in split_statements(masked):
             text = "\n".join(line for _, line in statement)
-            if (
-                next(sql_code_matches(INSERT_PATTERN, text), None) is None
-                or next(sql_code_matches(ON_CONFLICT_PATTERN, text), None)
-                or _select_filters_existing_target(text)
-            ):
-                continue
-            # Point at the line holding `INSERT INTO`; if the keywords are
-            # split across lines, fall back to the statement's first line.
-            lineno, col = statement[0][0], 1
-            for stmt_lineno, line in statement:
-                if match := INSERT_KEYWORD_PATTERN.search(line):
-                    lineno, col = stmt_lineno, match.start() + 1
-                    break
-            if lineno in exempt:
-                continue
-            diags.append(
-                Diagnostic(
-                    path=path,
-                    line=lineno,
-                    col=col,
-                    code=self.code,
-                    message=(
-                        "INSERT has no replay policy; add explicit upsert conflict behavior, or an exact SARJ105 "
-                        "suppression explaining why insert-only failure semantics are intentional."
-                    ),
+            for write in _insert_writes(text):
+                if write.has_conflict_policy or _select_filters_existing_target(write.text):
+                    continue
+                lineno, col = locate(statement, write.offset)
+                if lineno in exempt:
+                    continue
+                diags.append(
+                    Diagnostic(
+                        path=path,
+                        line=lineno,
+                        col=col,
+                        code=self.code,
+                        message=(
+                            "INSERT has no replay policy; add explicit upsert conflict behavior, or an exact SARJ105 "
+                            "suppression explaining why insert-only failure semantics are intentional."
+                        ),
+                    )
                 )
-            )
         return diags

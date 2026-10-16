@@ -300,12 +300,14 @@ def test_nested_auth_function_inside_equality_dunder_still_fires() -> None:
     assert len(_check(source)) == 1
 
 
-def test_chained_equality_is_conservatively_ignored() -> None:
+def test_chained_equality_checks_each_adjacent_pair() -> None:
     assert (
-        _check(
-            "def auth(provided_token, expected_token, other):\n    return provided_token == expected_token == other\n"
+        len(
+            _check(
+                "def auth(provided_token, expected_token, other):\n    return provided_token == expected_token == other\n"
+            )
         )
-        == []
+        == 1
     )
 
 
@@ -344,6 +346,31 @@ def test_generated_header_is_clean() -> None:
 )
 def test_constant_time_comparisons_are_clean(source: str) -> None:
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        'request.headers["X-API-Key"].encode() == settings.api_key.encode()',
+        'request.headers["X-API-Key"].encode("utf-8") != settings.api_key.encode("utf-8")',
+        'request.headers["X-API-Key"] == settings.api_key == "allowed"',
+        '"allowed" == settings.api_key == request.headers["X-API-Key"]',
+    ],
+)
+def test_reports_encoded_credentials_and_adjacent_chain_pairs(expression: str) -> None:
+    assert len(_check(f"def authenticated(request, settings):\n    return {expression}\n")) == 1
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        'request.headers["X-API-Key"].encode() == "MISSING".encode()',
+        'request.headers["X-API-Key"] is settings.api_key is None',
+        'request.headers["X-API-Key"] == "" == settings.api_key',
+    ],
+)
+def test_preserves_sentinel_checks_and_nonadjacent_chain_values(expression: str) -> None:
+    assert _check(f"def authenticated(request, settings):\n    return {expression}\n") == []
 
 
 @pytest.mark.parametrize("source", ["", "# comment\n", "def broken(:\n"])

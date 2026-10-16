@@ -113,6 +113,7 @@ class StoreGetDelegatesToBulkRead(Rule):
             "Wrappers with try/finally or other unsupported compound control flow are not diagnosed.",
             "Singleton implementations with explicit cache or lock identifiers are excluded because their access path differs intentionally.",
             "Signature compatibility is advisory: dynamic helpers and behavior not visible in the two method bodies require review.",
+            "Closed literal starred collection expansions preserve singleton delegation; unknown iterable expansion or additional keys do not prove the singleton contract.",
         ),
         aliases=("get-delegates-to-get-many",),
         examples=(
@@ -689,8 +690,10 @@ def _symbol(expression: ast.expr, bindings: dict[str, str]) -> str:
         return bindings.get(expression.id, f"unknown:{expression.id}")
     if isinstance(expression, ast.Attribute):
         return f"attr:{_qualified_name(expression)}"
-    if isinstance(expression, (ast.List, ast.Tuple, ast.Set)) and len(expression.elts) == 1:
-        return f"one:{_symbol(expression.elts[0], bindings)}"
+    if isinstance(expression, (ast.List, ast.Tuple, ast.Set)):
+        elements = _closed_collection_elements(expression)
+        if elements is not None and len(elements) == 1:
+            return f"one:{_symbol(elements[0], bindings)}"
     if (
         isinstance(expression, ast.Call)
         and isinstance(expression.func, ast.Name)
@@ -700,6 +703,21 @@ def _symbol(expression: ast.expr, bindings: dict[str, str]) -> str:
     ):
         return _symbol(expression.args[0], bindings)
     return f"unknown:{ast.dump(expression, include_attributes=False)}"
+
+
+def _closed_collection_elements(expression: ast.List | ast.Tuple | ast.Set) -> list[ast.expr] | None:
+    elements: list[ast.expr] = []
+    for item in expression.elts:
+        if not isinstance(item, ast.Starred):
+            elements.append(item)
+        elif isinstance(item.value, (ast.List, ast.Tuple, ast.Set)):
+            nested = _closed_collection_elements(item.value)
+            if nested is None:
+                return None
+            elements.extend(nested)
+        else:
+            return None
+    return elements
 
 
 def _compatible_pair(

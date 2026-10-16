@@ -37,6 +37,18 @@ def test_contextual_strings_receive_conditional_review_not_an_enum_requirement()
     assert "dynamic context" in diagnostic.message
 
 
+@pytest.mark.parametrize("message", ["(', '.join)(paths)", "f\"Missing: {('; '.join)(paths)}\""])
+def test_parenthesized_join_and_super_callees_preserve_the_advisory(message: str) -> None:
+    source = (
+        "class MissingFilesError(Exception):\n"
+        "    def __init__(self, paths: list[str]) -> None:\n"
+        f"        (super().__init__)({message})\n"
+    )
+    findings = _check(source)
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.WARNING
+
+
 _PUBLIC_EXAMPLES = TypedErrorReasons.public_examples()
 
 

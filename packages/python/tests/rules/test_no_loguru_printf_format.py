@@ -183,3 +183,18 @@ def test_rule_is_registered_once(tmp_path: Path) -> None:
 
 def test_public_examples() -> None:
     verify_native_rule(NoLoguruPrintfFormat, analyze)
+
+
+@pytest.mark.parametrize("escape", [r"\u0025", r"\x25"])
+def test_decoded_percent_conversions_preserve_loguru_format_diagnostics(escape: str) -> None:
+    source = (
+        "from loguru import logger\n"
+        f'logger.error("Request {escape}s failed with status {escape}d", "request-marker", 503)\n'
+    )
+    diagnostics = NoLoguruPrintfFormat().check(Path("app/service.py"), source)
+    assert [(item.code, item.line) for item in diagnostics] == [("SARJ509", 2)]
+
+
+def test_decoded_literal_percent_signs_do_not_create_a_conversion() -> None:
+    source = 'from loguru import logger\nlogger.info("Progress \\u0025\\u0025", value)\n'
+    assert NoLoguruPrintfFormat().check(Path("app/service.py"), source) == []

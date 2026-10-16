@@ -188,11 +188,21 @@ class RequirePydanticOrdinalLowerBound(Rule):
         tree = context.tree
         if tree is None:
             return []
+        candidates = tuple(
+            node
+            for node in tree.body
+            if isinstance(node, ast.ClassDef) and any(_is_ordinal_field(field) for field in node.body)
+        )
+        if not candidates:
+            return []
         imports = context.module_imports
+        models = tuple(cls for cls in candidates if _is_model(cls, imports))
+        if not models:
+            return []
         aliases = _annotation_aliases(tree)
         source_lines = context.source_lines
         diagnostics: list[Diagnostic] = []
-        for cls in (node for node in tree.body if isinstance(node, ast.ClassDef) and _is_model(node, imports)):
+        for cls in models:
             diagnostics.extend(
                 _ordinal_class_findings(
                     cls,
@@ -209,6 +219,15 @@ class RequirePydanticOrdinalLowerBound(Rule):
 
 def _is_model(cls: ast.ClassDef, imports: ImportIndex) -> bool:
     return any(imports.resolves(base, sources=_PYDANTIC_MODEL_SOURCES, symbol="BaseModel") for base in cls.bases)
+
+
+def _is_ordinal_field(field: ast.stmt) -> bool:
+    return (
+        isinstance(field, ast.AnnAssign)
+        and isinstance(field.target, ast.Name)
+        and not field.target.id.startswith("_")
+        and _is_ordinal_field_name(field.target.id)
+    )
 
 
 def _annotation_aliases(tree: ast.Module) -> dict[str, ast.expr]:

@@ -26,6 +26,17 @@ const PRODUCTION = "json-object-equality.ts";
 
 RULE_TESTER.run("no-json-stringify-object-equality", rule, {
   valid: [
+    { name: "does not infer a serializer destructured from an unknown object", filename: PRODUCTION, code: "const { stringify } = serializer; const same = stringify({a: 1}) === stringify({a: 1});" },
+    { name: "does not infer a serializer destructured from shadowed JSON", filename: PRODUCTION, code: "function compare(JSON: Serializer) { const { stringify } = JSON; return stringify({a: 1}) === stringify({a: 1}); }" },
+    { name: "does not follow a shadowed alias parameter", filename: PRODUCTION, code: "const { stringify } = JSON; function compare(stringify: Serializer) { return stringify({a: 1}) === stringify({a: 1}); }" },
+    { name: "does not follow mutable destructured bindings", filename: PRODUCTION, code: "let { stringify } = JSON; const same = stringify({a: 1}) === stringify({a: 1});" },
+    { name: "does not follow a destructured alias with later writes", filename: PRODUCTION, code: "const { stringify } = JSON; stringify = canonical; const same = stringify({a: 1}) === stringify({a: 1});" },
+    { name: "does not follow defaulted destructuring", filename: PRODUCTION, code: "const { stringify = canonical } = JSON; const same = stringify({a: 1}) === stringify({a: 1});" },
+    { name: "does not infer transitive serializer aliases", filename: PRODUCTION, code: "const { stringify } = JSON; const serialize = stringify; const same = serialize({a: 1}) === serialize({a: 1});" },
+    { name: "preserves primitive array exclusion through a native alias", filename: PRODUCTION, code: "declare const left: string[]; declare const right: readonly string[]; const { stringify: serialize } = JSON; const same = serialize(left) === serialize(right);" },
+    { name: "preserves primitive literal array exclusion through a native alias", code: "const { stringify } = JSON; const same = stringify(['a', 1]) === stringify(['a', 1]);" },
+    { name: "preserves one-sided alias serialization", filename: PRODUCTION, code: "const { stringify } = JSON; const same = stringify({a: 1}) === stored;" },
+
     {
       name: "accepts the documented domain comparator",
       filename: PRODUCTION,
@@ -43,6 +54,14 @@ RULE_TESTER.run("no-json-stringify-object-equality", rule, {
     { name: "ignores generated files", filename: "generated/compare.ts", code: "const same = JSON.stringify({a: 1}) === JSON.stringify({a: 1});" },
   ],
   invalid: [
+    { name: "reports stable const destructured native stringify", filename: PRODUCTION, code: "const { stringify } = JSON; const same = stringify({a: 1}) === stringify({a: 1});", errors: [{ messageId: "serializedObjectEquality" }] },
+    { name: "reports a renamed native stringify binding", filename: PRODUCTION, code: "const { stringify: serialize } = JSON; const same = serialize({a: 1}) !== serialize({a: 1});", errors: [{ messageId: "serializedObjectEquality" }] },
+    { name: "reports a statically computed native destructuring key", filename: PRODUCTION, code: "const { ['stringify']: serialize } = JSON; const same = serialize({a: 1}) === serialize({a: 1});", errors: [{ messageId: "serializedObjectEquality" }] },
+    { name: "reports a native alias compared with a direct call", filename: PRODUCTION, code: "const { stringify } = JSON; const same = stringify({a: 1}) === JSON.stringify({a: 1});", errors: [{ messageId: "serializedObjectEquality" }] },
+    { name: "reports object variables through a native serializer alias", filename: PRODUCTION, code: "declare const left: {id: string}; declare const right: {id: string}; const { stringify } = JSON; const same = stringify(left) === stringify(right);", errors: [{ messageId: "serializedObjectEquality" }] },
+    { name: "reports aliases scoped inside a production function", filename: PRODUCTION, code: "function compare() { const { stringify } = JSON; return stringify({a: 1}) === stringify({a: 1}); }", errors: [{ messageId: "serializedObjectEquality" }] },
+    { name: "preserves native alias provenance through erased wrappers", filename: PRODUCTION, code: "const { stringify } = (JSON satisfies JSON); const same = (stringify as typeof JSON.stringify)({a: 1}) === stringify({a: 1});", errors: [{ messageId: "serializedObjectEquality" }] },
+
     {
       name: "reports the documented object comparison",
       filename: PRODUCTION,

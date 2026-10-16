@@ -11,6 +11,7 @@ import {
 } from "@typescript-eslint/utils";
 
 import { unwrapExpression } from "./_unwrap-expression.js";
+import { nativeFetchReference } from "./_native-fetch-reference.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isScriptFile, isTestFile } from "./_paths.js";
@@ -34,6 +35,7 @@ export const REQUIRE_FETCH_TIMEOUT_DOCUMENTATION = {
   category: "correctness",
   limitations: [
     "Signal presence establishes an explicit cancellation path, not a guaranteed timeout. Literal null, global undefined, and void 0 do not provide a signal. Erased TypeScript wrappers preserve the same analysis. Unknown spreads and dynamic values are not inferred. Forwarded Request objects retain their signal unless an init explicitly resets it to null.",
+    "Unshadowed native fetch members and bounded stable const aliases or destructuring are recognized. Reassigned, defaulted and unknown aliases and arbitrary forwarding functions are excluded.",
     "Accessors and unproved prototypes are excluded because native option conversion can attach or replace a signal before it is read.",
   ],
   examples: [
@@ -67,13 +69,6 @@ export const REQUIRE_FETCH_TIMEOUT_DOCUMENTATION = {
     },
   ],
 } as const satisfies RuleDocumentation;
-
-/** The explicit-global receivers of `<obj>.fetch(...)`. */
-const GLOBAL_OBJECTS: ReadonlySet<string> = new Set([
-  "globalThis",
-  "window",
-  "self",
-]);
 
 function matchesAnyPattern(
   filename: string,
@@ -236,26 +231,6 @@ export default createRule<Options, MessageIds>({
       return variable === null || variable.defs.length === 0;
     }
 
-    /** True for `fetch(...)` / `globalThis.fetch(...)` / `window.fetch(...)` /
-     * `self.fetch(...)` where the receiver resolves to the global scope. */
-    function isGlobalFetchCall(callee: TSESTree.Expression): boolean {
-      callee = unwrapExpression(callee);
-      if (callee.type === AST_NODE_TYPES.Identifier) {
-        return callee.name === "fetch" && resolvesToGlobal(callee);
-      }
-      const receiver =
-        callee.type === AST_NODE_TYPES.MemberExpression
-          ? unwrapExpression(callee.object)
-          : null;
-      return (
-        callee.type === AST_NODE_TYPES.MemberExpression &&
-        ASTUtils.getPropertyName(callee) === "fetch" &&
-        receiver?.type === AST_NODE_TYPES.Identifier &&
-        GLOBAL_OBJECTS.has(receiver.name) &&
-        resolvesToGlobal(receiver)
-      );
-    }
-
     /** Prove a same-scope const object cannot acquire a signal before use. */
     function localConstInitSignalState(
       identifier: TSESTree.Identifier,
@@ -329,7 +304,7 @@ export default createRule<Options, MessageIds>({
     return {
       CallExpression(node: TSESTree.CallExpression): void {
         const unwrappedNodeCallee = unwrapExpression(node.callee);
-        if (!isGlobalFetchCall(unwrappedNodeCallee)) {
+        if (!nativeFetchReference(unwrappedNodeCallee, context.sourceCode)) {
           return;
         }
 

@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
 
 
-_RANDOM_UUID_RE = re.compile(r"\b(?:gen_random_uuid|uuid_generate_v4)\s*\(", re.IGNORECASE)
+_RANDOM_UUID_RE = re.compile(r"(?<![\w$])(?:gen_random_uuid|uuid_generate_v4)\s*\(", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,7 +155,7 @@ def _inside_uuidv7_builder(sql: str, position: int) -> bool:
 
 def _identifier_end(sql: str, index: int, position: int) -> _IdentifierEnd:
     end = index + 1
-    while end < position and (sql[end].isalnum() or sql[end] == "_"):
+    while end < position and (sql[end].isalnum() or sql[end] in {"_", "$"}):
         end += 1
     after = end
     while after < position and sql[after].isspace():

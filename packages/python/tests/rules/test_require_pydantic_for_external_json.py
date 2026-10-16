@@ -1766,3 +1766,38 @@ def test_factory_unknown_operator_or_descriptor_binding_is_excluded(expression: 
         '\ndef fetch():\n    return make(httpx.get("https://example.test").json(), unknown).payload()["version"]\n'
     )
     assert not _check(source)
+
+
+@pytest.mark.parametrize("call", ["response.json ()", "(response.json)()", "(response.json)( )"])
+def test_json_decoder_is_independent_of_source_call_spacing(call: str) -> None:
+    diagnostics = _check(f"""
+        import httpx
+        def fetch():
+            response = httpx.get("https://api.example/report")
+            report = {call}
+            return report.get("version")
+    """)
+    assert len(diagnostics) == 1
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "(response.json # decoder call\n    )()",
+        "(response.\\\n        json)()",
+        "((response.json)\n    )()",
+    ],
+)
+def test_json_decoder_trivia_keeps_a_late_external_boundary_visible(call: str) -> None:
+    unrelated = "\n".join(
+        f"def describe_json_{index}():\n    return 'json loads field {index}'\n" for index in range(100)
+    )
+    source = (
+        "import httpx\n"
+        f"{unrelated}\n"
+        "def fetch():\n"
+        "    response = httpx.get('https://api.example/report')\n"
+        f"    report = {call}\n"
+        "    return report.get('version')\n"
+    )
+    assert len(_check(source)) == 1

@@ -15,6 +15,10 @@ const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
 
 RULE_TESTER.run("no-first-party-module-mock", rule, {
   valid: [
+    { name: "keeps interpolated module specifiers opaque", filename: "action.test.ts", code: 'import { vi } from "vitest"; vi.mock(`./${moduleName}`);' },
+    { name: "keeps a third-party module through a const assertion", filename: "action.test.ts", code: 'import { vi } from "vitest"; vi.mock(("react" as const));' },
+    { name: "keeps unresolved computed mocking methods opaque", filename: "action.test.ts", code: 'import { vi } from "vitest"; vi[method](`./service`);' },
+
     { name: "allows a literal virtual Jest module", filename: "action.test.ts", code: "import { jest } from '@jest/globals'; jest.mock('./virtual', () => ({}), { virtual: true });" },
     { name: "allows virtual doMock through an import alias", filename: "action.test.ts", code: "import { jest as mocks } from '@jest/globals'; mocks.doMock('./virtual', () => ({}), { 'virtual': true });" },
     { name: "excludes unknown Jest options", filename: "action.test.ts", code: "import { jest } from '@jest/globals'; jest.mock('./service', () => ({}), options);" },
@@ -31,6 +35,10 @@ RULE_TESTER.run("no-first-party-module-mock", rule, {
     { name: "ignores generated files", filename: "tests/generated/action.test.ts", code: "import { vi } from 'vitest'; vi.mock('./service');" },
   ],
   invalid: [
+    { name: "retains a relative no-substitution template module", filename: "action.test.ts", code: 'import { vi } from "vitest"; vi.mock(`./service`);', errors: [{ messageId: "noFirstPartyModuleMock", data: { module: "./service" } }] },
+    { name: "retains a relative module through a const assertion", filename: "action.test.ts", code: 'import { vi } from "vitest"; vi.mock(("./service" as const));', errors: [{ messageId: "noFirstPartyModuleMock", data: { module: "./service" } }] },
+    { name: "recognizes imported static computed mocking methods", filename: "action.test.ts", code: 'import { vi } from "vitest"; vi["mock"](`./service`);', errors: [{ messageId: "noFirstPartyModuleMock", data: { module: "./service" } }] },
+
     { name: "reports an explicitly nonvirtual Jest module", filename: "action.test.ts", code: "import { jest } from '@jest/globals'; jest.mock('./service', () => ({}), { virtual: false });", errors: [{ messageId: "noFirstPartyModuleMock", data: { module: "./service" } }] },
     { name: "reports empty Jest options", filename: "action.test.ts", code: "import { jest } from '@jest/globals'; jest.mock('./service', () => ({}), {});", errors: [{ messageId: "noFirstPartyModuleMock", data: { module: "./service" } }] },
     { name: "resolves the vitest export", filename: "action.test.ts", code: "import { vitest as mocks } from 'vitest'; mocks.mock('./service');", errors: [{ messageId: "noFirstPartyModuleMock", data: { module: "./service" } }] },

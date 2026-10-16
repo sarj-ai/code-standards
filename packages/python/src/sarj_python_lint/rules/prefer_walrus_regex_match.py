@@ -128,6 +128,9 @@ class PreferWalrusRegexMatch(Rule):
         tree = context.tree
         if tree is None:
             return []
+        candidate_bodies = _candidate_bodies(tree)
+        if not candidate_bodies:
+            return []
 
         source_lines = context.source_lines
         diags: list[Diagnostic] = []
@@ -153,16 +156,43 @@ class PreferWalrusRegexMatch(Rule):
             self.code,
         )
 
-        for node in walk(tree):
-            raw_body: object = getattr(node, "body", None)
-            if not object_list(raw_body):
-                continue
-            body: list[ast.stmt] = [st for st in raw_body if isinstance(st, ast.stmt)]
+        for node, body in candidate_bodies:
             diags.extend(_check_body(node, body, analysis_context))
 
         if diags and context.session.python_target.has_declared_support_before(path, (3, 8)):
             return []
         return sorted(diags, key=lambda d: (d.line, d.col))
+
+
+def _candidate_bodies(tree: ast.Module) -> list[tuple[ast.AST, list[ast.stmt]]]:
+    candidates: list[tuple[ast.AST, list[ast.stmt]]] = []
+    for node in walk(tree):
+        raw_body: object = getattr(node, "body", None)
+        if not object_list(raw_body):
+            continue
+        body = [statement for statement in raw_body if isinstance(statement, ast.stmt)]
+        if any(_is_candidate_pair(body[index], body[index + 1]) for index in range(len(body) - 1)):
+            candidates.append((node, body))
+    return candidates
+
+
+def _is_candidate_pair(assignment: ast.stmt, condition: ast.stmt) -> bool:
+    match assignment, condition:
+        case (
+            ast.Assign(
+                targets=[ast.Name(id=name)],
+                value=ast.Call(func=ast.Attribute(value=ast.Name(), attr=method)),
+            ),
+            ast.If(test=test),
+        ):
+            return (
+                method in _MATCH_METHODS
+                and assignment.end_lineno == assignment.lineno
+                and condition.lineno == assignment.lineno + 1
+                and _condition_kind(test, name) is not None
+            )
+        case _:
+            return False
 
 
 def _check_body(node: ast.AST, body: list[ast.stmt], context: _AnalysisContext) -> list[Diagnostic]:

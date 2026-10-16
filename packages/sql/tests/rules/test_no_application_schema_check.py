@@ -110,3 +110,38 @@ def test_quoted_column_in_closed_string_set_is_detected() -> None:
 )
 def test_quoted_check_and_function_decoys_are_inert(source: str) -> None:
     assert _check(source) == []
+
+
+@pytest.mark.parametrize("column", ['"status"', '"status)name"', '"state""name"'])
+def test_flags_closed_values_for_a_quoted_column(column: str) -> None:
+    source = f"CREATE TABLE call ({column} TEXT CHECK ({column} IN ('queued', 'completed')));"
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "SELECT \"CHECK (status IN ('queued', 'completed'))\" FROM call;",
+        'CREATE TABLE item ("JSONB_TYPEOF(payload)" TEXT CHECK (quantity > 0));',
+        'CREATE TABLE call (status TEXT CHECK (status IN ("queued", "completed")));',
+        'CREATE TABLE item (payload JSONB CHECK ("JSONB_TYPEOF"(payload) IS NOT NULL));',
+    ],
+)
+def test_quoted_identifiers_do_not_manufacture_schema_checks(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("separator", ["\n", "/* constraint boundary */"])
+def test_check_keyword_guard_allows_comment_and_newline_trivia(separator: str) -> None:
+    source = f"CREATE TABLE call (status TEXT cHeCk{separator}(status IN ('queued', 'completed')));"
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("function", ["json_typeof", "jsonb_typeof", "json_array_length", "jsonb_array_length"])
+def test_quoted_lowercase_json_function_has_the_same_schema_contract(function: str) -> None:
+    source = f'CREATE TABLE item (payload JSONB CHECK ("{function}"(payload) IS NOT NULL));'
+    assert len(_check(source)) == 1
+
+
+def test_dollar_identifier_suffix_does_not_become_a_native_json_function() -> None:
+    assert _check("CREATE TABLE event (payload jsonb CHECK (custom$jsonb_typeof(payload) = 'array'));") == []

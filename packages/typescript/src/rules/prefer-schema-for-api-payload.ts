@@ -7,6 +7,7 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 import type { RuleContext, Scope } from "@typescript-eslint/utils/ts-eslint";
 
+import { nativeFetchReference } from "./_native-fetch-reference.js";
 import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isScriptFile, isTestFile } from "./_paths.js";
@@ -20,7 +21,7 @@ export const PREFER_SCHEMA_FOR_API_PAYLOAD_DOCUMENTATION = {
   category: "correctness",
   limitations: [
     "A JSON.parse call alone does not prove external input; exact native JSON stringify/parse round trips are excluded. Validator implementations and other non-network parsing can still require manual review rather than a schema rewrite.",
-    "JSON.parse must resolve to the global JSON object. json() receivers require an unshadowed global Request/Response annotation or construction, or stable local aliases of global fetch results; imported, inferred and unknown response types are deliberately not inferred.",
+    "JSON.parse must resolve to the global JSON object. json() receivers require an unshadowed global Request/Response annotation or construction, or stable local aliases of global fetch results, including native global members and bounded stable const fetch aliases or destructuring; imported, inferred and unknown response types are deliberately not inferred.",
     "Named validators remain conventions, not proof of their implementation. Their exemptions are confined to a valid branch or a preceding same-block validation statement; ignored predicate results and deferred callbacks do not validate later reads.",
     "Test fixtures, generated clients and recognized local-file reads are excluded. This is bounded local analysis, not a general control-flow or mutation proof.",
   ],
@@ -136,7 +137,7 @@ const isResponseSource = (node: TSESTree.Node, context: Ctx, seen = new Set<TSES
   if (current === null || seen.has(current)) return false;
   seen.add(current);
   const isGlobal = (identifier: TSESTree.Identifier): boolean => (ASTUtils.findVariable(context.sourceCode.getScope(identifier), identifier.name)?.defs.length ?? 0) === 0;
-  if (current.type === AST_NODE_TYPES.CallExpression) return current.callee.type === AST_NODE_TYPES.Identifier && current.callee.name === "fetch" && isGlobal(current.callee);
+  if (current.type === AST_NODE_TYPES.CallExpression) return nativeFetchReference(current.callee, context.sourceCode);
   if (current.type === AST_NODE_TYPES.NewExpression) return current.callee.type === AST_NODE_TYPES.Identifier && ["Request", "Response"].includes(current.callee.name) && isGlobal(current.callee);
   if (current.type !== AST_NODE_TYPES.Identifier) return false;
   const binding = ASTUtils.findVariable(context.sourceCode.getScope(current), current.name);

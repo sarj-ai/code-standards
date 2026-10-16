@@ -18,6 +18,22 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("prefer-constant-time-secret-compare", rule, {
   valid: [
+    { name: "dynamic credential-header names remain opaque", code: "function check(req: Request, expected: string, key: string) { const given = req.headers.get(key); return given === expected; }" },
+    { name: "transformed credential is not inferred sensitive", code: "function check(req: Request, expected: string) { const given = isAllowed(req.headers.get('authorization')); return given === expected; }" },
+    { name: "request reassignment invalidates header provenance", code: "function check(req: Request, expected: string) { req = model; const given = req.headers.get('authorization'); return given === expected; }" },
+    { name: "similarly named custom NextRequest remains opaque", code: "import {NextRequest} from './model'; function check(req: NextRequest, expected: string) { const given = req.headers.get('authorization'); return given === expected; }" },
+    { name: "ordinary request header is not a credential", code: "function check(req: Request, expected: string) { const given = req.headers.get('accept'); return given === expected; }" },
+    { name: "custom header-like object remains opaque", code: "function check(req, expected) { const given = req.headers.get('x-webhook-secret'); return given === expected; }" },
+    { name: "reassigned generic credential alias remains opaque", code: "function check(req: Request, expected: string) { let given = req.headers.get('authorization'); given = label; return given === expected; }" },
+    { name: "credential alias presence checks remain valid", code: "function check(req: Request) { const given = req.headers.get('authorization'); return given !== null; }" },
+    { name: "credential metadata header remains valid", code: "function check(req: Request, expected: string) { const given = req.headers.get('x-token-type'); return given === expected; }" },
+    { name: "locally shadowed Request annotation remains opaque", code: "type Request = {headers: {get(key: string): string}}; function check(req: Request, expected: string) { const given = req.headers.get('authorization'); return given === expected; }" },
+
+    { name: "ordinary template header names remain public", code: 'function check(req: Request, expected: string) { return req.headers.get(`accept`) === expected; }' },
+    { name: "interpolated credential header names remain opaque", code: 'function check(req: Request, expected: string, suffix: string) { return req.headers.get(`x-webhook-${suffix}`) === expected; }' },
+    { name: "computed credential reads on arbitrary objects remain opaque", code: 'function check(req, expected) { return req.headers["get"](`x-webhook-secret`) === expected; }' },
+    { name: "unresolved computed header methods remain opaque", code: 'function check(req: Request, expected: string, method: string) { return req.headers[method](`x-webhook-secret`) === expected; }' },
+
     { name: "does not confuse parser-token identity with authentication", code: "if (firstToken === lastToken || token !== startToken || currentToken !== finalToken) advance();" },
     { name: "does not confuse token navigation metadata with secret bytes", code: "if (firstTokenLine === secondTokenLine || tokenBefore === commentList[index - 1]) advance();" },
     { name: "leaves ambiguous token names to typed or domain-specific analysis", code: "if (token === expectedToken) consume();" },
@@ -87,6 +103,19 @@ RULE_TESTER.run("prefer-constant-time-secret-compare", rule, {
     },
   ],
   invalid: [
+    { name: "imported NextRequest alias proves credential provenance", code: "import {NextRequest as Incoming} from 'next/server'; function check(req: Incoming, expected: string) { const given = req.headers.get('authorization'); return given === expected; }", errors: [{messageId: "preferConstantTimeSecretCompare"}] },
+    { name: "constructed native Request proves credential provenance", code: "const req = new Request('/items'); const given = req.headers.get('authorization'); given === expected;", errors: [{messageId: "preferConstantTimeSecretCompare"}] },
+    { name: "uppercase generic alias retains credential provenance", code: "function check(req: Request, expected: string) { const RECEIVED = req.headers.get('authorization'); return RECEIVED === expected; }", errors: [{messageId: "preferConstantTimeSecretCompare"}] },
+    { name: "configuration secret survives a generic stable alias", code: "const expected = process.env.INTERNAL_AUTH_TOKEN; supplied === expected;", errors: [{messageId: "preferConstantTimeSecretCompare"}] },
+    { name: "explicit credential header survives generic local names", code: "function check(req: Request, expected: string) { const given = req.headers.get('x-webhook-secret'); return given === expected; }", errors: [{messageId: "preferConstantTimeSecretCompare"}] },
+    { name: "authorization credential survives a stable alias", code: "function check(req: Request, expected: string) { const given = req.headers.get('authorization'); const candidate = given; return candidate !== expected; }", errors: [{messageId: "preferConstantTimeSecretCompare"}] },
+    { name: "credential header fallback preserves credential provenance", code: "function check(req: Request, expected: string) { const given = req.headers.get('x-api-key') ?? new URL(req.url).searchParams.get('key'); return given === expected; }", errors: [{messageId: "preferConstantTimeSecretCompare"}] },
+    { name: "direct credential header comparison is checked", code: "function check(req: Request, expected: string) { return req.headers.get('authorization') === expected; }", errors: [{messageId: "preferConstantTimeSecretCompare"}] },
+
+    { name: "retains credential provenance from a no-substitution template header", code: 'function check(req: Request, expected: string) { const given = req.headers.get(`x-webhook-secret`); return given === expected; }', errors: [{ messageId: "preferConstantTimeSecretCompare" }] },
+    { name: "retains credential provenance through a const header assertion", code: 'function check(req: Request, expected: string) { const given = req.headers.get(("x-webhook-secret" as const)); return given === expected; }', errors: [{ messageId: "preferConstantTimeSecretCompare" }] },
+    { name: "recognizes static computed native header access", code: 'function check(req: Request, expected: string) { return req["headers"]["get"](`x-webhook-secret`) === expected; }', errors: [{ messageId: "preferConstantTimeSecretCompare" }] },
+
     { name: "public match example", filename: PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION.examples[1].focusPath, code: PREFER_CONSTANT_TIME_SECRET_COMPARE_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "preferConstantTimeSecretCompare" }] },
     // The sentinel prefix list must stay narrow: a live credential still fires.
     {

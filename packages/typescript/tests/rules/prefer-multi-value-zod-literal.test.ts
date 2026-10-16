@@ -35,6 +35,10 @@ const ERROR = { messageId: "useMultiValueLiteral" as const };
 
 RULE_TESTER.run("prefer-multi-value-zod-literal", rule, {
   valid: [
+    { name: "keeps wrapped all-string domains delegated to the enum owner", code: 'import { z } from "zod/v4"; z.union([z.literal(("a" as const)), z.literal(("b" as const))]);' },
+    { name: "keeps wrapped dynamic literal inputs opaque", code: 'import { z } from "zod/v4"; z.union([z.literal((value as number)), z.literal((2 as const))]);' },
+    { name: "keeps an unspecified bare Zod major version opaque", code: 'import { z } from "zod"; z.union([z.literal((1 as const)), z.literal((2 as const))]);' },
+
     {
       name: "public no-match example",
       filename:
@@ -70,6 +74,9 @@ RULE_TESTER.run("prefer-multi-value-zod-literal", rule, {
     },
   ],
   invalid: [
+    { name: "retains numeric literal domains through const assertions", code: 'import { z } from "zod/v4"; z.union([z.literal((1 as const)), z.literal((2 as const))]);', errors: [ERROR] },
+    { name: "recognizes imported static computed literal schema methods", code: 'import { z } from "zod/v4"; z["union"]([z["literal"]((1 as const)), z["literal"]((2 as const))]);', errors: [ERROR] },
+
     {
       name: "public match example",
       filename:

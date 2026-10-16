@@ -14,7 +14,6 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
-from sarj_python_lint.rules._ast_index import walk
 
 
 if TYPE_CHECKING:
@@ -37,8 +36,8 @@ class NoCorsWildcardWithCredentials(Rule):
         category=RuleCategory.SECURITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            'The rule requires literal `True` for `allow_credentials` and either a literal `"*"` below `allow_origins` or an exact universal `allow_origin_regex` literal.',
-            "Dynamically computed credential flags and origin collections are not resolved.",
+            'The rule requires literal `True` for `allow_credentials` and either a direct `"*"` origin in a literal collection or an exact universal `allow_origin_regex` literal. Literal keyword dictionaries and their effective nested unpacks are inspected.',
+            "Conditional origin collections are checked in each possible branch. Calls, comprehensions, nested non-string elements, dynamic keyword unpacks, computed credential flags, and variable origin collections are not resolved.",
         ),
         examples=(
             RuleExample(
@@ -86,7 +85,7 @@ class NoCorsWildcardWithCredentials(Rule):
         for node in context.nodes(ast.Call):
             if not _is_cors_construction(node, imports):
                 continue
-            keywords = {arg: kw.value for kw in node.keywords if (arg := kw.arg) is not None}
+            keywords = _effective_keywords(node)
             credentials = keywords.get("allow_credentials")
             origins = keywords.get("allow_origins")
             origin_regex = keywords.get("allow_origin_regex")
@@ -121,7 +120,52 @@ def _is_true_literal(node: ast.expr) -> bool:
 
 
 def _contains_star_literal(node: ast.expr) -> bool:
-    return any(isinstance(child, ast.Constant) and child.value == "*" for child in walk(node))
+    match node:
+        case ast.Constant(value="*"):
+            return True
+        case ast.List(elts=elements) | ast.Tuple(elts=elements) | ast.Set(elts=elements):
+            return any(
+                (isinstance(element, ast.Constant) and element.value == "*")
+                or (isinstance(element, ast.Starred) and _contains_star_literal(element.value))
+                for element in elements
+            )
+        case ast.IfExp(body=body, orelse=orelse):
+            return _contains_star_literal(body) or _contains_star_literal(orelse)
+        case ast.BoolOp(values=values):
+            return any(_contains_star_literal(value) for value in values)
+        case _:
+            return False
+
+
+def _effective_keywords(node: ast.Call) -> dict[str, ast.expr]:
+    values: dict[str, ast.expr] = {}
+    for keyword in node.keywords:
+        if keyword.arg is not None:
+            values[keyword.arg] = keyword.value
+        elif isinstance(keyword.value, ast.Dict):
+            literal_values = _literal_dictionary_values(keyword.value)
+            if literal_values is None:
+                values.clear()
+            else:
+                values.update(literal_values)
+        else:
+            values.clear()
+    return values
+
+
+def _literal_dictionary_values(node: ast.Dict) -> dict[str, ast.expr] | None:
+    values: dict[str, ast.expr] = {}
+    for key, value in zip(node.keys, node.values, strict=True):
+        if isinstance(key, ast.Constant) and isinstance(key.value, str):
+            values[key.value] = value
+        elif key is None and isinstance(value, ast.Dict):
+            nested_values = _literal_dictionary_values(value)
+            if nested_values is None:
+                return None
+            values.update(nested_values)
+        else:
+            return None
+    return values
 
 
 def _is_cors_construction(node: ast.Call, imports: ImportIndex) -> bool:

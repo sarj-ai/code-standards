@@ -7,6 +7,7 @@
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { unwrapExpression } from "./_unwrap-expression.js";
+import { staticString } from "./_static-string.js";
 
 import { runtimeTestFrameworkName } from "./_test-mock-provenance.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -41,7 +42,7 @@ export const DUPLICATE_TEST_BODY_DOCUMENTATION = {
     "Consider a case table with one named test or subtest per case; preserve setup lifetime, test modifiers, and each case's assertions rather than deleting coverage.",
   category: "testing",
   limitations: [
-    "The rule compares substantial sibling tests within one suite and skips inline snapshots and materially different comments.",
+    "The rule compares substantial sibling tests within one suite and skips inline snapshots and materially different comments. Short no-substitution strings and const-asserted literals share the existing input normalization; assertion values, property names, multiline strings and long strings retain their contracts.",
     "Matching normalized body shapes do not prove runtime equivalence or independent setup; parameterization is a manual review, not an automatic deletion.",
   ],
   examples: [
@@ -88,9 +89,26 @@ function normalizedAst(value: unknown, sourceCode: Readonly<TSESLint.SourceCode>
     return typeof value === "bigint" ? value.toString() : value;
   }
   const record = value as Record<string, unknown>;
+  if (record["type"] === AST_NODE_TYPES.TSAsExpression) {
+    const literal = constAssertionLiteral(value as TSESTree.TSAsExpression);
+    if (literal !== null) {
+      return normalizedAst(literal, sourceCode, preserveLiteral);
+    }
+  }
+  if (record["type"] === AST_NODE_TYPES.TemplateLiteral) {
+    const text = staticString(value as TSESTree.TemplateLiteral);
+    if (text !== null) {
+      return preserveLiteral ? { type: AST_NODE_TYPES.Literal, value: text } : normalizedStringLiteral(text);
+    }
+  }
   if (record["type"] === AST_NODE_TYPES.Literal && !preserveLiteral) {
     return normalizedLiteral(value as TSESTree.Literal);
   }
+  return normalizedRecord(value, sourceCode, preserveLiteral);
+}
+
+function normalizedRecord(value: object, sourceCode: Readonly<TSESLint.SourceCode>, preserveLiteral: boolean): Readonly<Record<string, unknown>> {
+  const record = value as Record<string, unknown>;
   const normalized: Record<string, unknown> = {};
   const preservesAssertionContract =
     record["type"] === AST_NODE_TYPES.CallExpression && isAssertionCall(value as TSESTree.CallExpression, sourceCode);
@@ -113,6 +131,15 @@ function normalizedAst(value: unknown, sourceCode: Readonly<TSESLint.SourceCode>
     );
   }
   return normalized;
+}
+
+function constAssertionLiteral(node: TSESTree.TSAsExpression): TSESTree.Literal | TSESTree.TemplateLiteral | null {
+  const annotation = node.typeAnnotation;
+  if (annotation.type !== AST_NODE_TYPES.TSTypeReference ||
+    annotation.typeName.type !== AST_NODE_TYPES.Identifier || annotation.typeName.name !== "const") return null;
+  const expression = node.expression;
+  if (expression.type === AST_NODE_TYPES.Literal) return expression;
+  return expression.type === AST_NODE_TYPES.TemplateLiteral && expression.expressions.length === 0 ? expression : null;
 }
 
 function isAssertionCall(node: TSESTree.CallExpression, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
@@ -148,14 +175,18 @@ function normalizedLiteral(node: TSESTree.Literal): readonly string[] {
   }
   const value = node.value;
   if (typeof value === "string") {
-    return value.includes("\n") || value.length > MAX_NORMALIZED_STRING_LENGTH
-      ? ["Literal", "string", value]
-      : ["Literal", "string"];
+    return normalizedStringLiteral(value);
   }
   if (value === null) {
     return ["Literal", "null"];
   }
   return ["Literal", typeof value];
+}
+
+function normalizedStringLiteral(value: string): readonly string[] {
+  return value.includes("\n") || value.length > MAX_NORMALIZED_STRING_LENGTH
+    ? ["Literal", "string", value]
+    : ["Literal", "string"];
 }
 
 export interface DuplicateTestBodyCandidate {

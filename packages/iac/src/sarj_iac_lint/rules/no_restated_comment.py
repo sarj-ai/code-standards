@@ -4,7 +4,7 @@ from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
-from sarj_iac_lint._hcl import header_comment_lines, heredoc_body_mask
+from sarj_iac_lint._hcl import header_comment_lines, heredoc_body_mask, mask_block_comments
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
@@ -264,6 +264,7 @@ def _eligible(body: str, declaration: str, indent: int) -> bool:
 
 
 def _declaration_subject(code: str) -> str | None:
+    code = mask_block_comments(code)
     if (attribute := _ATTRIBUTE_RE.match(code)) is not None:
         return attribute["name"]
     if (block := _BLOCK_RE.match(code)) is not None:
@@ -275,6 +276,7 @@ def _declaration_subject(code: str) -> str | None:
 
 
 def _declaration_words(code: str) -> set[str]:
+    code = mask_block_comments(code)
     if (attribute := _ATTRIBUTE_RE.match(code)) is not None:
         text = attribute["name"]
     elif (block := _BLOCK_RE.match(code)) is not None:

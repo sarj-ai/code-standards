@@ -30,6 +30,13 @@ _OFFSET_PAGINATION = re.compile(
     re.IGNORECASE,
 )
 _MYSQL_OFFSET_PAGINATION = re.compile(rf"\bLIMIT\s+{_DYNAMIC_VALUE}\s*,", re.IGNORECASE)
+_OFFSET_START = re.compile(r"\bOFFSET\b\s+", re.IGNORECASE)
+_NUMERIC_OFFSET_TOKEN = re.compile(
+    rf"{_DYNAMIC_VALUE}|\d+(?:\.\d+)?|(?:GREATEST|LEAST|COALESCE|ABS|CEIL|CEILING|FLOOR)\b|[-()+*/%,]",
+    re.IGNORECASE,
+)
+_DYNAMIC_TOKEN = re.compile(_DYNAMIC_VALUE)
+_OFFSET_END = re.compile(r"\s*(?:ROWS?\b|FETCH\b|FOR\b|LIMIT\b|[);]|$)", re.IGNORECASE)
 _QUERY_SHAPE = re.compile(r"\bSELECT\b[\s\S]*?\bFROM\b", re.IGNORECASE)
 _MIGRATION_PARTS = frozenset({"migration", "migrations"})
 _QUOTED_IDENTIFIER = re.compile(r"`[^`\n]*`|\[[^\]\n]*\]")
@@ -55,6 +62,7 @@ class NoOffsetPagination(Rule):
         limitations=(
             "Only SQL string literals in recognized store modules are analyzed.",
             "Only dynamic OFFSET values in credible SELECT queries are reported; fixed ordinal offsets are excluded.",
+            "Parenthesized arithmetic and common numeric wrappers such as GREATEST, LEAST, and COALESCE preserve the dynamic driver marker. Arbitrary SQL functions and procedural values remain opaque.",
             "Generated files, migrations, docstrings, comments, quoted identifiers, and BigQuery `WITH OFFSET AS` array indexing are excluded.",
             "ORM pagination APIs are outside this embedded-SQL rule.",
         ),
@@ -117,7 +125,7 @@ class NoOffsetPagination(Rule):
 
             sql = _mask_dialect_noise(strip_sql_noise(text))
             if _QUERY_SHAPE.search(sql) is None or (
-                _OFFSET_PAGINATION.search(sql) is None and _MYSQL_OFFSET_PAGINATION.search(sql) is None
+                not _has_dynamic_numeric_offset(sql) and _MYSQL_OFFSET_PAGINATION.search(sql) is None
             ):
                 continue
 
@@ -136,6 +144,27 @@ class NoOffsetPagination(Rule):
             )
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+
+def _has_dynamic_numeric_offset(sql: str) -> bool:
+    if _OFFSET_PAGINATION.search(sql) is not None:
+        return True
+    for start in _OFFSET_START.finditer(sql):
+        cursor, depth, dynamic = start.end(), 0, False
+        while cursor < len(sql):
+            if sql[cursor].isspace():
+                cursor += 1
+                continue
+            token = _NUMERIC_OFFSET_TOKEN.match(sql, cursor)
+            if token is None or (token.group() == ")" and depth == 0):
+                break
+            value = token.group()
+            depth += int(value == "(") - int(value == ")")
+            dynamic |= _DYNAMIC_TOKEN.fullmatch(value) is not None
+            cursor = token.end()
+        if dynamic and depth == 0 and _OFFSET_END.match(sql, cursor) is not None:
+            return True
+    return False
 
 
 def _sql_value(node: ast.expr) -> str | None:

@@ -24,6 +24,9 @@ const FILENAME = "src/user.test.ts";
 
 RULE_TESTER.run("prefer-whole-object-assertion", rule, {
   valid: [
+    { name: "keeps wrapped dynamic expected values separate", filename: FILENAME, code: 'expect(user.id).toBe((expectedId as number)); expect(user.name).toBe((expectedName as string));' },
+    { name: "preserves intervening effects with wrapped expected values", filename: FILENAME, code: 'expect(user.id).toBe((1 as const)); update(); expect(user.name).toBe(("Ada" as const));' },
+
     {
       name: "preserves dotted absent-property assertions",
       filename: FILENAME,
@@ -372,6 +375,9 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
     },
   ],
   invalid: [
+    { name: "retains literal expected values through const assertions", filename: FILENAME, code: 'expect(user.id).toBe((1 as const)); expect(user.name).toBe(("Ada" as const));', errors: [{ messageId: "combineAssertions" }] },
+    { name: "recognizes static computed matchers in a literal property run", filename: FILENAME, code: 'expect(user.id)["toBe"](1); expect(user.name)["toBe"]("Ada");', errors: [{ messageId: "combineAssertions" }] },
+
     {
       name: "renders a non-identifier common prefix as bracket access",
       filename: FILENAME,

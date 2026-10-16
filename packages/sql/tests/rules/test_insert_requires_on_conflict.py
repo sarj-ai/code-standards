@@ -310,3 +310,39 @@ def test_qualified_replay_targets_retain_the_existing_basename_guard(target: str
         f"INSERT INTO {target} SELECT name FROM pending WHERE NOT EXISTS (SELECT 1 FROM {guard} WHERE id = pending.id);"  # ruff: ignore[hardcoded-sql-expression] -- static replay-guard parser fixtures
     )
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "INSERT INTO account AS a (id) VALUES (1);",
+        "INSERT INTO account (id) OVERRIDING SYSTEM VALUE VALUES (1);",
+        "INSERT INTO account (id) OVERRIDING USER VALUE VALUES (1);",
+        'INSERT INTO "account" AS "a" (id) VALUES (1);',
+        "WITH added AS (INSERT INTO account (id) VALUES (1) ON CONFLICT DO NOTHING RETURNING id) INSERT INTO audit (id) SELECT id FROM added;",
+        "WITH added AS (INSERT INTO account (id) VALUES (1) RETURNING id) INSERT INTO audit (id) SELECT id FROM added ON CONFLICT DO NOTHING;",
+    ],
+)
+def test_each_insert_owns_its_header_and_conflict_policy(source: str) -> None:
+    assert len(_check(source)) == 1
+
+
+def test_both_unprotected_cte_writes_report_once() -> None:
+    source = (
+        "WITH added AS (INSERT INTO account (id) VALUES (1) RETURNING id)\nINSERT INTO audit (id) SELECT id FROM added;"
+    )
+    assert [(finding.line, finding.col) for finding in _check(source)] == [(1, 16), (2, 1)]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "INSERT INTO account AS a (id) VALUES (1) ON CONFLICT (id) DO NOTHING;",
+        "INSERT INTO account (id) OVERRIDING SYSTEM VALUE VALUES (1) ON CONFLICT DO NOTHING;",
+        "WITH added AS (INSERT INTO account (id) VALUES (1) ON CONFLICT DO NOTHING RETURNING id) INSERT INTO audit (id) SELECT id FROM added ON CONFLICT DO NOTHING;",
+        "INSERT OR IGNORE INTO account (id) VALUES (1);",
+        'SELECT "INSERT INTO account AS a (id) VALUES (1)";',
+    ],
+)
+def test_valid_replay_policies_and_quoted_text_stay_clean(source: str) -> None:
+    assert _check(source) == []

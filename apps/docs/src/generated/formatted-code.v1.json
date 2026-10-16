@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "1d873eabfd260abc0e888a7f59f5f4fe761517e06abb7af9d3df43334a781412",
-  "cliSha256": "8b5b362dcc9c475483accb63f5b9078efad3aabb5d45a7248620cacafafc2d19",
+  "catalogSha256": "1f07992a9f4f2cd548a9d3ff38daaa0b2a245b0005275d3540492a0c4f8dd520",
+  "cliSha256": "81adb156ef268f9f16a003cd3c304c5e93ed7485e297e6a6a8ce1b951f4a339a",
   "formatterVersions": {
     "prettier": "3.9.6",
     "prettierPluginSh": "0.20.2",
@@ -12679,6 +12679,36 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Naive timestamp column"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/queries/events.sql",
+              "source": "SELECT\n  timestamp::TIMESTAMP\nFROM\n  events;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/queries/events.sql",
+          "id": "timestamp-column-and-naive-cast",
+          "outcome": "reject",
+          "scenarioId": "identifier-type",
+          "title": "A column identifier does not hide a naive cast"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/queries/events.sql",
+              "source": "SELECT\n  timestamp\nFROM\n  events;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/queries/events.sql",
+          "id": "timestamp-column-reference",
+          "outcome": "accept",
+          "scenarioId": "identifier-type",
+          "title": "A column identifier does not declare a naive type"
         },
         {
           "expectedCount": 0,

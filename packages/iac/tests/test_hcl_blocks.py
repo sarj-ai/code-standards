@@ -58,6 +58,35 @@ def test_parses_type_labels_and_position():
     assert block.end_line == 4
 
 
+@pytest.mark.parametrize("label", [r"\u0067oogle_service_account_key", r"\U00000067oogle_service_account_key"])
+def test_resource_labels_decode_hcl_unicode_escapes(label: str) -> None:
+    (block,) = blocks(f'resource "{label}" "app" {{}}')
+    assert block.labels == ("google_service_account_key", "app")
+
+
+def test_label_decoder_preserves_non_ascii_and_literal_backslash_escapes() -> None:
+    (block,) = blocks(r'resource "custom_é" "literal\\u0067" {}')
+    assert block.labels == ("custom_é", r"literal\u0067")
+
+
+@pytest.mark.parametrize("label", [r"\U00110000", r"\uD800"])
+def test_invalid_unicode_scalars_are_rejected_as_resource_labels(label: str) -> None:
+    with pytest.raises(ValueError, match="static strings with valid escapes"):
+        blocks(f'resource "{label}" "app" {{}}')
+
+
+@pytest.mark.parametrize("value", [r'"\u0050REVENT"', r'("\U00000050REVENT")', '(("PREVENT"))'])
+def test_literal_string_decodes_static_hcl_values(value: str) -> None:
+    assert literal_string(value) == "PREVENT"
+
+
+@pytest.mark.parametrize(
+    "value", ['"${var.policy}"', '"%{ if var.protect }PREVENT%{ endif }"', '("PREVENT") + (var.extra)', "var.policy"]
+)
+def test_literal_string_does_not_evaluate_templates_or_expressions(value: str) -> None:
+    assert literal_string(value) is None
+
+
 def test_nested_block_is_a_child_not_a_sibling_attribute():
     src = """
 resource "google_sql_database_instance" "main" {

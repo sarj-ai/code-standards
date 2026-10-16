@@ -313,3 +313,26 @@ def test_ignores_malformed_type_constructor(tmp_path: Path) -> None:
     )
 
     assert diagnostics == []
+
+
+@pytest.mark.parametrize(
+    ("condition", "expected_count"),
+    [
+        pytest.param("can(tostring(var.region))", 1, id="restated-type"),
+        pytest.param("length(var.region) > 0", 0, id="additional-domain-invariant"),
+    ],
+)
+def test_decodes_declared_variable_labels_before_comparing_validation(
+    tmp_path: Path, condition: str, expected_count: int
+) -> None:
+    source = (
+        'variable "\\u0072egion" {\n'
+        "  type = string\n"
+        "  validation {\n"
+        f"    condition = {condition}\n"
+        '    error_message = "Region must satisfy its contract."\n'
+        "  }\n"
+        "}\n"
+    )
+
+    assert len(_check(tmp_path, source)) == expected_count

@@ -20,6 +20,13 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("require-fetch-timeout", rule, {
   valid: [
+    { name: "native fetch alias retains a cancellation signal", code: "const { fetch: request } = globalThis; request('/items', { signal: controller.signal });" },
+    { name: "local global receiver is opaque", code: "function run(globalThis) { const { fetch: request } = globalThis; request('/items'); }" },
+    { name: "unknown computed global property is opaque", code: "globalThis[key]('/items');" },
+    { name: "a defaulted destructuring binding is opaque", code: "const { fetch: request = client } = globalThis; request('/items');" },
+    { name: "an imported fetch alias is opaque", code: "import { fetch as request } from './transport'; request('/items');" },
+    { name: "a reassigned local fetch alias is opaque", code: "let request = globalThis.fetch; request = client; request('/items');" },
+
     {
       name: "accepts shadowed undefined",
       code: "function send(undefined: AbortSignal) { fetch('/x', {signal: undefined}); }",
@@ -243,6 +250,15 @@ RULE_TESTER.run("require-fetch-timeout", rule, {
     },
   ],
   invalid: [
+    { name: "destructured native fetch retains timeout requirement", code: "const { fetch: request } = globalThis; await request('https://api.example.com/items');", errors: [{ messageId: "missingSignal" }] },
+    { name: "unrenamed window fetch is native", code: "const { fetch } = window; fetch('/items');", errors: [{ messageId: "missingSignal" }] },
+    { name: "stable native fetch aliases preserve arguments", code: "const request = fetch; const send = request; send('/items');", errors: [{ messageId: "missingSignal" }] },
+    { name: "stable member alias preserves arguments", code: "const request = globalThis.fetch; request('/items');", errors: [{ messageId: "missingSignal" }] },
+    { name: "computed globalThis fetch is native", code: "await globalThis['fetch']('https://api.example.com/items');", errors: [{ messageId: "missingSignal" }] },
+    { name: "computed window fetch is native", code: "window['fetch']('/items');", errors: [{ messageId: "missingSignal" }] },
+    { name: "computed self fetch is native", code: "self[`fetch`]('/items');", errors: [{ messageId: "missingSignal" }] },
+    { name: "parenthesized fetch preserves the native API", code: "await (fetch)('https://api.example.com/items');", errors: [{ messageId: "missingSignal" }] },
+
     {
       name: "checks computed global fetch",
       code: "globalThis['fetch']('/x');",

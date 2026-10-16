@@ -8,6 +8,7 @@ import { ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
+import { staticString } from "./_static-string.js";
 
 type MessageIds = "corsWildcardWithCredentials";
 type Options = readonly [];
@@ -30,9 +31,9 @@ export const NO_CORS_WILDCARD_WITH_CREDENTIALS_DOCUMENTATION = {
   autofix: "none",
   references: ["https://fetch.spec.whatwg.org/#cors-protocol-and-credentials"],
   limitations: [
-    "Options require a stable official cors default import or hono/cors named or namespace import, one literal object argument, literal origin '*', and credentials true. Custom bindings, callbacks, arrays, conditional origins and dynamic options are excluded.",
+    "Options require a stable official cors default import or hono/cors named or namespace import, one literal object argument, literal origin '*', and credentials true. No-substitution templates and erased TypeScript literal wrappers preserve these values. Custom bindings, callbacks, arrays, conditional origins and dynamic options are excluded.",
     "Literal header maps use effective case-sensitive JavaScript property writes followed by native Headers combination of differently-cased header names. Unknown values/spreads/computed keys, accessors and non-null prototypes lose proof; literals used only inside object spreads are not reported independently.",
-    "Manual set/setHeader/delete/removeHeader calls use direct identifier receivers and literal arguments in straight-line program or function bodies. Control-flow bodies, member receivers, aliases and unknown operations are excluded. Append requires a proven empty native Headers constructor or a preceding known write/removal.",
+    "Manual set/setHeader/delete/removeHeader calls (including static computed method names) use direct identifier receivers and literal arguments in straight-line program or function bodies. Control-flow bodies, member receivers, aliases and unknown operations are excluded. Append requires a proven empty native Headers constructor or a preceding known write/removal.",
     "The rule reviews a local configuration contract, not actual request credentials or a data disclosure. Runtime patches, custom header method implementations, interprocedural mutation and later consumers are not resolved. No autofix.",
   ],
   examples: [
@@ -145,9 +146,9 @@ export default createRule<Options, MessageIds>({
 
     function applyHeaderWrite(node: TSESTree.CallExpression, states: Map<TSESLint.Scope.Variable | string, HeaderState>): boolean {
       const callee = unwrapExpression(node.callee);
-      if (node.optional || callee.type !== "MemberExpression" || callee.optional || callee.computed ||
-        callee.property.type !== "Identifier" || !HEADER_METHODS.has(callee.property.name) || callee.object.type !== "Identifier") return false;
-      const method = callee.property.name;
+      if (node.optional || callee.type !== "MemberExpression" || callee.optional ||
+        !HEADER_METHODS.has(ASTUtils.getPropertyName(callee) ?? "") || callee.object.type !== "Identifier") return false;
+      const method = ASTUtils.getPropertyName(callee);
       const removal = method === "delete" || method === "removeHeader";
       if (node.arguments.length !== (removal ? 1 : 2)) return false;
       const name = literalString(node.arguments[0]);
@@ -241,8 +242,8 @@ function headerReceiverReference(reference: TSESLint.Scope.Reference): boolean {
   if (reference.isValueReference === false || typeName.parent.type === "TSTypeQuery") return true;
   if (reference.isWrite()) return reference.init === true;
   const member = reference.identifier.parent;
-  if (member.type !== "MemberExpression" || member.object !== reference.identifier || member.computed || member.optional ||
-    member.property.type !== "Identifier" || !HEADER_METHODS.has(member.property.name)) return false;
+  if (member.type !== "MemberExpression" || member.object !== reference.identifier || member.optional ||
+    !HEADER_METHODS.has(ASTUtils.getPropertyName(member) ?? "")) return false;
   return member.parent.type === "CallExpression" && member.parent.callee === member && !member.parent.optional;
 }
 
@@ -252,14 +253,14 @@ function appendValue(previous: string | null | undefined, value: string | null):
 }
 
 function literalString(node: TSESTree.Node | undefined): string | null {
-  const value = node === undefined ? undefined : unwrapExpression(node);
-  return value?.type === "Literal" && typeof value.value === "string" ? value.value : null;
+  return staticString(node);
 }
 
 function headerValue(node: TSESTree.Node | undefined): string | null {
   const value = node === undefined ? undefined : unwrapExpression(node);
-  if (value?.type !== "Literal" || !["string", "boolean", "number"].includes(typeof value.value)) return null;
-  return String(value.value).replace(/^[\t\n\r ]+|[\t\n\r ]+$/g, "");
+  const text = staticString(node);
+  if (text === null && (value?.type !== "Literal" || !["boolean", "number"].includes(typeof value.value))) return null;
+  return (text ?? String(value?.type === "Literal" ? value.value : "")).replace(/^[\t\n\r ]+|[\t\n\r ]+$/g, "");
 }
 
 function effectiveProperties(node: TSESTree.ObjectExpression): ReadonlyMap<string, TSESTree.Property> | null {

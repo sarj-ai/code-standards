@@ -23,6 +23,10 @@ const withZod = (code: string): string => `import { z } from "zod"; ${code}`;
 
 RULE_TESTER.run("modern Zod integer and length domains", rule, {
   valid: [
+    { name: "keeps compatible erased numeric bounds", code: withZod('const S = z.number().min((3 as const)).max((3 as const));'), filename: PRODUCTION },
+    { name: "keeps a dynamic bound opaque through a cast", code: withZod('const S = z.number().min((lower as number)).max((0 as const));'), filename: PRODUCTION },
+    { name: "keeps transforms excluded with erased literal bounds", code: withZod('const S = z.number().min((5 as const)).max((4 as const)).transform(String);'), filename: PRODUCTION },
+
     { code: withZod("const S = z.int().gt(0).lte(1);"), filename: PRODUCTION },
     {
       code: withZod("const S = z.int32().gte(2147483647);"),
@@ -85,6 +89,10 @@ RULE_TESTER.run("modern Zod integer and length domains", rule, {
     },
   ],
   invalid: [
+    { name: "retains contradictory literal bounds through const assertions", code: withZod('const S = z.number().min((5 as const)).max((4 as const));'), filename: PRODUCTION, errors: [{ messageId: "impossibleBounds" }] },
+    { name: "retains numeric bounds through satisfies", code: withZod('const S = z.number().min((5 satisfies number)).max((4 satisfies number));'), filename: PRODUCTION, errors: [{ messageId: "impossibleBounds" }] },
+    { name: "retains an erased literal inside a unary bound", code: withZod('const S = z.number().min(-(4 as const)).max((-5 as const));'), filename: PRODUCTION, errors: [{ messageId: "impossibleBounds" }] },
+
     {
       code: withZod("const S = z.int().gt(0).lt(1);"),
       filename: PRODUCTION,

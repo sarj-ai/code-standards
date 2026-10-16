@@ -15,6 +15,19 @@ const RULE_TESTER = new RuleTester();
 
 RULE_TESTER.run("prefer-schema-for-api-payload", rule, {
   valid: [
+    {
+      name: "validates payloads fetched through a destructured native alias",
+      code: "const {fetch: transport} = globalThis; async function load() { const response = await transport('/items'); const body = ItemSchema.parse(await response.json()); return body.id; }",
+    },
+    {
+      name: "does not infer native fetch from a shadowed receiver",
+      code: "async function load(globalThis) { const {fetch: transport} = globalThis; const response = await transport('/items'); const body = await response.json(); return body.id; }",
+    },
+    {
+      name: "does not infer native fetch from a dynamic computed member",
+      code: "async function load(method) { const response = await globalThis[method]('/items'); const body = await response.json(); return body.id; }",
+    },
+
     { name: "native JSON round trip is not an external payload source", code: "function normalize(schema) { const normalized = JSON.parse(JSON.stringify(schema)); return normalized.properties; }" },
     { name: "shadowed Response annotation is not a native response", code: "type Response = { json(): { id: string } }; function render(model: Response) { const value = model.json(); return value.id; }" },
     { name: "reassigned response is not proven native", code: "async function render() { let response = await fetch('/items'); response = model; const value = response.json(); return value.id; }" },
@@ -195,6 +208,22 @@ RULE_TESTER.run("prefer-schema-for-api-payload", rule, {
     },
   ],
   invalid: [
+    {
+      name: "requires validation after a static computed native fetch",
+      code: "async function load() { const response = await globalThis['fetch']('/items'); const body = await response.json(); return body.id; }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "requires validation after a stable native fetch alias",
+      code: "const transport = globalThis.fetch; async function load() { const response = await transport('/items'); const body = await response.json(); return body.id; }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+    {
+      name: "requires validation after a destructured native fetch alias",
+      code: "const {fetch: transport} = globalThis; async function load() { const response = await transport('/items'); const body = await response.json(); return body.id; }",
+      errors: [{ messageId: "unparsedJsonAccess" }],
+    },
+
     { name: "destructured validation in only one branch does not dominate use", code: "async function f(r: Response) { const { id } = await r.json(); if (flag) { if (typeof id !== 'string') throw new Error('bad'); } return id; }", errors: [{ messageId: "unparsedJsonAccess" }] },
     { name: "fetch derived response remains a positive", code: "async function f() { const response = await fetch('/items'); const body = await response.json(); return body.id; }", errors: [{ messageId: "unparsedJsonAccess" }] },
     { name: "Request construction remains a positive", code: "async function f() { const request = new Request('/items'); const body = await request.json(); return body.id; }", errors: [{ messageId: "unparsedJsonAccess" }] },

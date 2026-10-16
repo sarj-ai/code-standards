@@ -151,3 +151,36 @@ def test_quoted_type_and_statement_decoys_are_inert(source: str) -> None:
 
 def test_semicolon_in_quoted_identifier_does_not_create_table_ddl() -> None:
     assert _check('SELECT "notes; CREATE TABLE note (metadata JSON)";') == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "ALTER TABLE document ADD metadata JSON;",
+        "ALTER TABLE document ADD IF NOT EXISTS metadata JSON;",
+        "ALTER TABLE document ALTER metadata TYPE JSON;",
+        'CREATE TABLE document (metadata "json");',
+        "CREATE TABLE document (metadata JSON[]);",
+        "CREATE TABLE document (metadata pg_catalog.json[][]);",
+        'CREATE TABLE document ("metadata" "pg_catalog"."json"[]);',
+    ],
+)
+def test_recognizes_equivalent_builtin_json_column_types(source: str) -> None:
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "CREATE TABLE document (metadata JSONB[]);",
+        'CREATE TABLE document (metadata "JSON");',
+        "CREATE TABLE document (metadata custom.json);",
+        'CREATE TABLE document ("json" TEXT);',
+        'SELECT "json" FROM document;',
+        'SELECT "CREATE TABLE document (metadata JSON)" FROM notes;',
+        'CREATE TABLE document ("text (metadata JSON)" TEXT);',
+        "CREATE TABLE document (metadata TEXT DEFAULT 'JSON[]');",
+    ],
+)
+def test_preserves_custom_types_identifiers_and_non_type_text(source: str) -> None:
+    assert _check(source) == []

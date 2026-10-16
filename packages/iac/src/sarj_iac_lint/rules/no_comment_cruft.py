@@ -5,7 +5,7 @@ from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
-from sarj_iac_lint._hcl import header_comment_lines, heredoc_body_mask
+from sarj_iac_lint._hcl import header_comment_lines, heredoc_body_mask, mask_block_comments, ungrouped_expression
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
@@ -59,6 +59,18 @@ _HCL_CODE_RE = re.compile(
     r"|^[A-Za-z_][\w-]*\s*\{$"  # block opener
     r"|^\}\s*$"  # block closer
 )
+_ATTRIBUTE_VALUE_RE = re.compile(r"^(?P<name>[A-Za-z_][\w-]*)\s*=(?!=)\s*(?P<value>.*)$")
+
+
+def _is_hcl_code(body: str) -> bool:
+    try:
+        code = mask_block_comments(body).strip()
+        if (assignment := _ATTRIBUTE_VALUE_RE.match(code)) is not None:
+            value = ungrouped_expression(assignment["value"])
+            code = f"{assignment['name']} = {value}"
+    except ValueError:
+        return False
+    return _HCL_CODE_RE.match(code) is not None
 
 
 @final
@@ -231,7 +243,7 @@ def _banner_group_leaders(lines: list[str], data_lines: Sequence[bool]) -> froze
 def _classify(body: str, *, in_code_run: bool) -> str | None:
     if _is_banner(body):
         return "Decorative divider comment — remove it or replace it with a concise explanation."
-    if in_code_run and _HCL_CODE_RE.match(body):
+    if in_code_run and _is_hcl_code(body):
         return "Commented-out HCL — delete it; recover prior source from version control if needed."
     return None
 
@@ -299,9 +311,9 @@ def _code_run_leader(run: list[_CommentLine]) -> int | None:
     voting = [(lineno, body) for lineno, body in run if body and not _is_directive(body)]
     if not voting:
         return None
-    code = sum(1 for _, body in voting if _HCL_CODE_RE.match(body))
+    code = sum(1 for _, body in voting if _is_hcl_code(body))
     if code * 2 >= len(voting):
-        return next(lineno for lineno, body in voting if _HCL_CODE_RE.match(body))
+        return next(lineno for lineno, body in voting if _is_hcl_code(body))
     return None
 
 
@@ -328,7 +340,7 @@ def _commented_block_findings(
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     voting = [(lineno, body) for lineno, body in comment_lines if body and not _is_directive(body)]
-    code_lines = [(lineno, body) for lineno, body in voting if _HCL_CODE_RE.match(body)]
+    code_lines = [(lineno, body) for lineno, body in voting if _is_hcl_code(body)]
     if code_lines and len(code_lines) * 2 >= len(voting):
         diagnostics.append(
             Diagnostic(

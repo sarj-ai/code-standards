@@ -65,6 +65,9 @@ def test_flags_compatible_get_by_ids_mapping() -> None:
     [
         "rows = await self.get_many([user_id])\n        return rows[0] if rows else None",
         "rows = await self.get_by_ids([user_id])\n        return rows.get(user_id)",
+        "rows = await self.get_many([*[user_id]])\n        return rows[0] if rows else None",
+        "rows = await self.get_many([*(user_id,)])\n        return rows[0] if rows else None",
+        "rows = await self.get_many([*[], user_id])\n        return rows[0] if rows else None",
     ],
 )
 def test_allows_singleton_delegation(projection: str) -> None:

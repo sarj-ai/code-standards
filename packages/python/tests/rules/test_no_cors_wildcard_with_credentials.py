@@ -77,9 +77,37 @@ def test_flags_when_credentials_before_origins():
     assert _count(src) == 1
 
 
-def test_flags_nested_wildcard_deep_in_subtree():
+def test_allows_nested_non_string_origin_element():
     src = 'app.add_middleware(CORSMiddleware, allow_origins=[extra, ["*"]], allow_credentials=True)\n'
-    assert _count(src) == 1
+    assert _check(src) == []
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        '**{"allow_origins": ["*"], "allow_credentials": True}',
+        '**{**{"allow_credentials": False}, "allow_credentials": True, "allow_origins": ["*"]}',
+        '**{"allow_origin_regex": ".*", "allow_credentials": True}',
+        'allow_origins=[*["*"]], allow_credentials=True',
+        'allow_origins=trusted or ["*"], allow_credentials=True',
+    ],
+)
+def test_reports_literal_unpacking_and_origin_value_branches(arguments: str) -> None:
+    assert _count(f"app.add_middleware(CORSMiddleware, {arguments})\n") == 1
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        'allow_origins=[origin for origin in trusted if origin != "*"], allow_credentials=True',
+        'allow_origins=normalize("*"), allow_credentials=True',
+        'allow_origins={"ignored": "*"}, allow_credentials=True',
+        '**{"allow_origins": ["*"], "allow_credentials": True, "allow_credentials": False}',
+        '**{"allow_origins": ["*"], "allow_credentials": True, **unknown}',
+    ],
+)
+def test_preserves_effective_keyword_values_and_origin_membership(arguments: str) -> None:
+    assert _check(f"app.add_middleware(CORSMiddleware, {arguments})\n") == []
 
 
 def test_message_mentions_credentials():

@@ -21,7 +21,7 @@ export const NO_SILENT_PROMISE_CATCH_DOCUMENTATION = {
   rationale: "A swallowed rejection hides failures and gives callers an indistinguishable fallback value.",
   remediation: "Log, rethrow, or explicitly recover from the rejection; explain intentional teardown suppression.",
   category: "correctness",
-  limitations: ["Test files, teardown calls, explanatory comments, non-function handlers, and handlers that consume or report the error are excluded.", "Recognized imported Zod construction chains and their stable local aliases are excluded, including URL schemas and primitive bigint, boolean, number and string coercion. Other untyped catch-like APIs are not proven to be Promises.", "Computed methods resolve literal syntax and stable local string aliases in lexical scope. Function-derived, object-derived and mutated computed keys remain unproven."],
+  limitations: ["Test files, teardown calls, explanatory comments, non-function handlers, and handlers that consume or report the error are excluded. Empty statements are ignored when proving a whole handler is silent.", "Recognized imported Zod construction chains and their stable local aliases are excluded, including URL schemas and primitive bigint, boolean, number and string coercion. Other untyped catch-like APIs are not proven to be Promises.", "Computed methods resolve literal syntax and stable local string aliases in lexical scope. Function-derived, object-derived and mutated computed keys remain unproven.", "A following then link is accepted as recovery except for directly invoked, nonoptional, one-argument nonasync arrow identities returning the same binding without effects. A later meaningful then handler preserves the recovery exclusion."],
   examples: [
     { id: "reported-rejection", title: "Report the rejection", outcome: "no-match", files: [{ path: "src/load.ts", source: "load().catch((error) => logger.error({ error }, 'load failed'));" }], focusPath: "src/load.ts", expectedCount: 0, public: true },
     { id: "silent-rejection", title: "Do not swallow the rejection", outcome: "match", files: [{ path: "src/load.ts", source: "load().catch(() => null);" }], focusPath: "src/load.ts", expectedCount: 1, public: true },
@@ -106,13 +106,14 @@ function isSilentHandler(
     return isSilentExpression(body);
   }
 
-  if (body.body.length === 0) {
+  const statements = body.body.filter(statement => statement.type !== AST_NODE_TYPES.EmptyStatement);
+  if (statements.length === 0) {
     // `.catch(() => {})` / `.catch(function () {})`
     return true;
   }
 
-  if (body.body.length === 1) {
-    const only = body.body[0];
+  if (statements.length === 1) {
+    const only = statements[0];
     if (only !== undefined && only.type === AST_NODE_TYPES.ReturnStatement) {
       // `.catch(() => { return null; })`
       return only.argument === null || isSilentExpression(only.argument);
@@ -148,6 +149,46 @@ function isSilentExpression(node: TSESTree.Expression): boolean {
     default:
       return false;
   }
+}
+
+function hasRecoveryContinuation(
+  call: TSESTree.CallExpression,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): boolean {
+  let current = call;
+  while (current.parent.type === AST_NODE_TYPES.MemberExpression &&
+    current.parent.object === current && staticPropertyName(current.parent, sourceCode) === "then") {
+    const member = current.parent;
+    const next = member.parent;
+    if (member.optional || next.type !== AST_NODE_TYPES.CallExpression || next.callee !== member ||
+      !isIdentityContinuation(next, sourceCode)) return true;
+    current = next;
+  }
+  return false;
+}
+
+function isIdentityContinuation(
+  call: TSESTree.CallExpression,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): boolean {
+  if (call.optional || call.arguments.length !== 1) return false;
+  const argument = call.arguments[0];
+  if (argument === undefined) return false;
+  const handler = unwrapExpression(argument);
+  if (handler.type !== AST_NODE_TYPES.ArrowFunctionExpression || handler.async || handler.params.length !== 1) return false;
+  const parameter = handler.params[0];
+  if (parameter?.type !== AST_NODE_TYPES.Identifier) return false;
+  let returned: TSESTree.Node | null = handler.body;
+  if (handler.body.type === AST_NODE_TYPES.BlockStatement) {
+    const statements = handler.body.body.filter(statement => statement.type !== AST_NODE_TYPES.EmptyStatement);
+    returned = statements.length === 1 && statements[0]?.type === AST_NODE_TYPES.ReturnStatement
+      ? statements[0].argument : null;
+  }
+  if (returned === null) return false;
+  const value = unwrapExpression(returned);
+  if (value.type !== AST_NODE_TYPES.Identifier) return false;
+  const binding = ASTUtils.findVariable(sourceCode.getScope(parameter), parameter.name);
+  return binding !== null && ASTUtils.findVariable(sourceCode.getScope(value), value.name) === binding;
 }
 
 export default createRule<Options, MessageIds>({
@@ -253,20 +294,9 @@ export default createRule<Options, MessageIds>({
           return;
         }
 
-        // `p.catch(() => null).then(...)` — the next link consumes the fallback,
-        // so it is a recovery step, not a value handed back to an outside caller.
-        if (
-          node.parent.type === AST_NODE_TYPES.MemberExpression &&
-          node.parent.object === node &&
-          staticPropertyName(node.parent, context.sourceCode) === "then"
-        ) {
-          return;
-        }
-
         const expectedArguments = method === "catch" ? 1 : 2;
-        if (node.arguments.length !== expectedArguments) {
-          return;
-        }
+        if (node.arguments.length !== expectedArguments) return;
+        if (hasRecoveryContinuation(node, context.sourceCode)) return;
         const argument = node.arguments[handlerIndex];
         if (argument === undefined) return;
         const handler = unwrapExpression(argument);

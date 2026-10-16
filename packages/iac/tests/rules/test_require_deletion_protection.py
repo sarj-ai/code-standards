@@ -692,3 +692,9 @@ def test_the_curated_set_is_exactly_this():
         "azurerm_cosmosdb_account",
     }
     assert expected == PROTECTED_TYPES
+
+
+@pytest.mark.parametrize("value", [r'"\u0050REVENT"', r'("\U00000050REVENT")'])
+def test_encoded_prevent_policy_preserves_provider_protection(value: str) -> None:
+    source = f'resource "google_sql_database" "main" {{\n  deletion_policy = {value}\n}}'
+    assert _check(source) == []

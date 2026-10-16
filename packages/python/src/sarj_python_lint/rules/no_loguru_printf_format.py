@@ -49,7 +49,7 @@ class NoLoguruPrintfFormat(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only unambiguous module-level Loguru imports and immediate bind/opt chains with a literal message and supplied positional formatting arguments are checked.",
-            "The message must contain a valid percent conversion and no brace fields. Escaped percent signs alone, malformed templates, dynamic messages and expanded arguments are excluded.",
+            "The decoded literal message must contain a valid percent conversion and no brace fields; Unicode and hex escapes preserve conversions. Escaped percent signs alone, malformed templates, dynamic messages and expanded arguments are excluded.",
             "Standard logging, unknown receivers, stored aliases, shadowed or escaped imports, custom wrapper chains, keyword-only fields and generated files are excluded.",
             "Visible namespace or logger mutations invalidate import proof. Interprocedural effects and runtime monkeypatches are not resolved.",
             "Argument types and printf arity are not inferred. The warning requests review; no automatic conversion changes formatting or structured logging contracts.",
@@ -89,7 +89,7 @@ class NoLoguruPrintfFormat(Rule):
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        if "%" not in context.source or "loguru" not in context.source or context.generated or context.tree is None:
+        if "loguru" not in context.source or context.generated or context.tree is None:
             return []
         provenance: ResourceProvenance | None = None
         diagnostics: list[Diagnostic] = []

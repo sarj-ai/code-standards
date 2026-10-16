@@ -18,6 +18,7 @@ from sarj_python_lint.rules._logging import LOG_METHODS, is_logger_expr
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
@@ -53,17 +54,29 @@ def _is_secret_keyword(name: str) -> bool:
 
 
 def _unsafe_message_values(value: ast.expr) -> tuple[ast.expr, ...]:
+    if _is_raw_secret_reference(value):
+        return (value,)
     match value:
         case ast.JoinedStr(values=parts):
             return _unsafe_formatted_values(parts)
+        case ast.BinOp(op=ast.Add(), left=left, right=right):
+            return (*_unsafe_message_values(left), *_unsafe_message_values(right))
+        case ast.List(elts=elements) | ast.Tuple(elts=elements) | ast.Set(elts=elements):
+            return tuple(secret for element in elements for secret in _unsafe_message_values(element))
+        case ast.Dict():
+            return _literal_mapping_secret_values(value)
         case ast.BinOp(op=ast.Mod(), right=right):
             values = right.elts if isinstance(right, (ast.Tuple, ast.List)) else (right,)
-            return tuple(item for item in values if _is_raw_secret_reference(item))
+            return _raw_secret_values(values)
         case ast.Call(func=ast.Attribute(value=ast.Constant(value=str()), attr="format"), args=args, keywords=keywords):
             values = (*args, *(keyword.value for keyword in keywords))
-            return tuple(item for item in values if _is_raw_secret_reference(item))
+            return _raw_secret_values(values)
         case _:
             return ()
+
+
+def _raw_secret_values(values: Iterable[ast.expr]) -> tuple[ast.expr, ...]:
+    return tuple(value for value in values if _is_raw_secret_reference(value))
 
 
 class NoSecretInLog(Rule):
@@ -75,7 +88,7 @@ class NoSecretInLog(Rule):
         remediation="Omit the credential or log only approved non-sensitive metadata through a centralized sanitizer.",
         category=RuleCategory.SECURITY,
         limitations=(
-            "Detection covers direct secret-named names, terminal attributes, constant secret-key subscripts, identity slices, f-string and literal format arguments, nested literal extra mappings, literal keyword unpacking, and immediate structured-logger bindings.",
+            "Detection covers direct secret-named message and argument values, terminal attributes, constant secret-key subscripts, identity slices, f-string and literal format arguments, string concatenation, nested literal containers, literal keyword unpacking, and immediate structured-logger bindings.",
             "Logger recognition and secret classification are lexical; general aliases, arbitrary calls, dynamic containers, and interprocedural dataflow are not inspected.",
         ),
         examples=(
@@ -118,7 +131,7 @@ class NoSecretInLog(Rule):
             if not isinstance(function, ast.Attribute) or not _is_logging_call(node):
                 continue
             message_index = 1 if function.attr == "log" else 0
-            for arg in node.args:
+            for arg in node.args[message_index:]:
                 diags.extend(
                     Diagnostic(
                         path=path,
@@ -129,11 +142,6 @@ class NoSecretInLog(Rule):
                     )
                     for unsafe in _unsafe_message_values(arg)
                 )
-            diags.extend(
-                _diagnostic(path, arg, self.code, "positional logging argument")
-                for arg in node.args[message_index + 1 :]
-                if _is_raw_secret_reference(arg)
-            )
             _collect_keyword_secrets(path, node, self.code, diags)
             diags.extend(
                 _diagnostic(path, value, self.code, "structured logger binding")
@@ -147,7 +155,7 @@ def _bound_logger_values(receiver: ast.expr) -> tuple[ast.expr, ...]:
         return ()
     if receiver.func.attr not in {"bind", "contextualize"}:
         return ()
-    return tuple(keyword.value for keyword in receiver.keywords if _is_raw_secret_reference(keyword.value))
+    return tuple(secret for keyword in receiver.keywords for secret in _unsafe_message_values(keyword.value))
 
 
 def _diagnostic(path: Path, value: ast.expr, code: str, context: str) -> Diagnostic:
@@ -189,22 +197,15 @@ def _collect_keyword_secrets(path: Path, node: ast.Call, code: str, diags: list[
                 _diagnostic(path, value, code, "literal `extra` field")
                 for value in _literal_mapping_secret_values(kw.value)
             )
-        elif _is_raw_secret_reference(kw.value):
-            diags.append(_diagnostic(path, kw.value, code, f"`{kw.arg}` logging field"))
+        else:
+            diags.extend(
+                _diagnostic(path, value, code, f"`{kw.arg}` logging field")
+                for value in _unsafe_message_values(kw.value)
+            )
 
 
 def _literal_mapping_secret_values(mapping: ast.Dict) -> tuple[ast.expr, ...]:
-    return tuple(
-        secret
-        for _, value in _literal_mapping_items(mapping)
-        for secret in (
-            _literal_mapping_secret_values(value)
-            if isinstance(value, ast.Dict)
-            else (value,)
-            if _is_raw_secret_reference(value)
-            else ()
-        )
-    )
+    return tuple(secret for _, value in _literal_mapping_items(mapping) for secret in _unsafe_message_values(value))
 
 
 def _literal_mapping_items(mapping: ast.Dict) -> tuple[tuple[str, ast.expr], ...]:

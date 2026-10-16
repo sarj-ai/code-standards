@@ -355,3 +355,42 @@ def test_proven_literal_roles_preserve_hcl_semantics(source: str, expected: int,
     assert all(finding.code == "SARJ212" for finding in findings)
     assert len({(finding.line, finding.col, finding.code) for finding in findings}) == len(findings)
     assert rule.check(Path(path), source) == findings
+
+
+@pytest.mark.parametrize(
+    ("locals_source", "role", "expected"),
+    [
+        ('locals { role = "roles/editor" }', "local.role", 1),
+        ('locals { first = "roles/owner"\nsecond = local.first }', "local.second", 1),
+        ("", 'join("", ["roles/", "owner"])', 1),
+        ('locals { name = "editor" }', 'join("/", ["roles", local.name])', 1),
+        ("", '("roles/editor")', 1),
+        ("", '(("roles/owner"))', 1),
+        ('locals { role = "roles/editor" }', "(local.role)", 1),
+        ("", '(join("", ["roles/", "owner"]))', 1),
+        ('locals { role = "roles/viewer" }', "local.role", 0),
+        ("locals { role = var.role }", "local.role", 0),
+        ("locals { role = local.other\nother = local.role }", "local.role", 0),
+        ('locals { role = "roles/editor" }\nlocals { role = "roles/viewer" }', "local.role", 0),
+        ("", 'join("", ["roles/", var.role])', 0),
+        ("", 'join("", ["roles/owner"], var.extra)', 0),
+    ],
+)
+def test_proven_static_role_values(locals_source: str, role: str, expected: int) -> None:
+    source = f'{locals_source}\nresource "google_project_iam_member" "app" {{\n  role = {role}\n}}\n'
+    findings = NoProjectBasicPrivilege().check(Path("main.tf"), source)
+    assert len(findings) == expected
+
+
+def test_role_alias_in_an_unrelated_attribute_is_not_a_grant() -> None:
+    source = 'locals { role = "roles/owner" }\nresource "google_project_iam_member" "app" {\n  role = "roles/viewer"\n  member = local.role\n}'
+    assert NoProjectBasicPrivilege().check(Path("main.tf"), source) == []
+
+
+def test_static_role_expression_depth_is_bounded() -> None:
+    depth = 40
+    opening = 'join("", [' * depth
+    closing = "])" * depth
+    role = f'{opening}"roles/editor"{closing}'
+    source = f'resource "google_project_iam_member" "app" {{\nrole = {role}\n}}'
+    assert NoProjectBasicPrivilege().check(Path("main.tf"), source) == []

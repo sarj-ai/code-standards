@@ -146,3 +146,11 @@ def test_generated_migration_is_redirected_not_silenced(tmp_path: Path) -> None:
     diags = PreferTextOverVarchar().check(migration, src)
     assert len(diags) == 1
     assert "schema.prisma" in diags[0].message
+
+
+@pytest.mark.parametrize("type_name", ["VARCHAR", "CHARACTER\nVARYING"])
+def test_flags_multiline_length_limited_type(type_name: str) -> None:
+    source = f"CREATE TABLE users (\n  name {type_name}\n  /* maximum length */ (255) NOT NULL\n);"
+    [finding] = _check(source)
+    assert finding.line == 2
+    assert finding.col == 8

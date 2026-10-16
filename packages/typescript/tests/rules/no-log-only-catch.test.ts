@@ -20,6 +20,11 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-log-only-catch", rule, {
   valid: [
+    {
+      name: "preserves a rethrow after a static computed log call",
+      code: "function execute() { try { run(); } catch (error) { console['error'](error); throw error; } }",
+    },
+
     { name: "preserves an immediate const validation alias", code: "function parse(payload) { try { payload.value = Number(payload.value); } catch {} const input = payload.value; if (typeof input === 'number' && Number.isFinite(input)) return input; throw new Error('invalid'); }" },
     {
       name: "preserves attempted coercion followed by explicit type validation",
@@ -167,6 +172,12 @@ RULE_TESTER.run("no-log-only-catch", rule, {
     },
   ],
   invalid: [
+    {
+      name: "recognizes a static computed console method as logging",
+      code: "try { f(); } catch (e) { console['error'](e); }",
+      errors: [{ messageId: "noLogOnlyCatch" }],
+    },
+
     { name: "does not exempt custom coercion functions", code: "function parse(String) { try { payload.value = String(payload.value); } catch {} if (typeof payload.value === 'string') return payload; }", errors: [{messageId: "emptyCatch"}] },
     { name: "does not infer validation from a later unrelated call", code: "try { payload.value = String(payload.value); } catch {} save(payload);", errors: [{messageId: "emptyCatch"}] },
     { name: "reports the documented swallowed failure", code: NO_LOG_ONLY_CATCH_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noLogOnlyCatch" }] },

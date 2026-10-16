@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+from bisect import bisect_right
 from decimal import Decimal
+from functools import lru_cache
 from itertools import starmap
 import operator
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
+from sqlglot import exp
+from sqlglot.errors import SqlglotError
+
+from sarj_sql_lint._postgres import parse_postgres
 from sarj_sql_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
@@ -38,11 +44,14 @@ class _SectionBoundaryEvent(NamedTuple):
 
 
 DDL_PATTERN = re.compile(
-    r"\b(ALTER\s+(?:TABLE|TYPE)|CREATE\s+(?:UNIQUE\s+)?INDEX|DROP\s+(?:INDEX|TABLE)|REINDEX(?:\s+(?:DATABASE|INDEX|SCHEMA|SYSTEM|TABLE))?|TRUNCATE(?:\s+TABLE)?)\b",
+    r"\b(ALTER\s+(?:TABLE|TYPE)|CREATE\s+(?:UNIQUE\s+)?INDEX|DROP\s+(?:INDEX|TABLE)|REINDEX(?:\s+(?:DATABASE|INDEX|SCHEMA|SYSTEM|TABLE))?|TRUNCATE(?:\s+TABLE)?|REFRESH\s+MATERIALIZED\s+VIEW)\b",
     re.IGNORECASE,
 )
 TX_END_PATTERN = re.compile(r"\b(COMMIT|ROLLBACK)\b", re.IGNORECASE)
 RESET_ALL_PATTERN = re.compile(r"\bRESET\s+ALL\b", re.IGNORECASE)
+_CREATE_TABLE_PATTERN = re.compile(
+    r"\bCREATE\s+(?:(?:GLOBAL|LOCAL)\s+)?(?:(?:TEMP(?:ORARY)?|UNLOGGED)\s+)?TABLE\b", re.IGNORECASE
+)
 SECTION_BOUNDARY_PATTERN = re.compile(
     r"^\s*--\s*\+goose\s+down\s*$",
     re.IGNORECASE | re.MULTILINE,
@@ -50,7 +59,7 @@ SECTION_BOUNDARY_PATTERN = re.compile(
 
 # Match SET/RESET/set_config assignments for lock_timeout or statement_timeout.
 ASSIGNMENT_PATTERN = re.compile(
-    r"\b(?:SET\s+(?:(?:LOCAL|SESSION)\s+)?|RESET\s+)((?:lock_timeout|statement_timeout)\b|(?-i:\"(?:lock_timeout|statement_timeout)\"))(?:\s*(?:=|\bTO\b)\s*('[\s\S]*?'|\"[^\"]*\"|[^\s;]+))?|set_config\s*\(\s*'?(lock_timeout|statement_timeout)'?\s*,\s*('[\s\S]*?'|\"[^\"]*\"|[^\s,;]+)\s*,\s*(true|false)\s*\)",
+    r"\b(?:SET\s+(?:(?:LOCAL|SESSION)\s+)?|RESET\s+)((?:lock_timeout|statement_timeout)\b|\"(?:lock_timeout|statement_timeout)\")(?:\s*(?:=|\bTO\b)\s*('[\s\S]*?'|\"[^\"]*\"|[^\s;]+))?|set_config\s*\(\s*'?(lock_timeout|statement_timeout)'?\s*,\s*('[\s\S]*?'|\"[^\"]*\"|[^\s,;]+)\s*,\s*(true|false)\s*\)",
     re.IGNORECASE,
 )
 POSITIVE_VAL_PATTERN = re.compile(r"^['\"]?\s*(?P<number>[0-9]*\.?[0-9]+)\s*(?:[a-zA-Z]+\s*)?['\"]?$", re.IGNORECASE)
@@ -68,7 +77,8 @@ class RequireLockTimeout(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only PostgreSQL migration paths and explicitly marked PostgreSQL migrations are checked.",
-            "Literal session/local settings, RESET and RESET ALL are tracked. Defaults, rollback of session SET, savepoints and procedural configuration effects are not resolved.",
+            "Materialized-view refreshes and parseable CREATE TABLE LIKE statements touch existing relations. Fresh CREATE TABLE definitions and LIKE comparisons do not establish this additional lock requirement.",
+            "Literal session/local settings, RESET and RESET ALL are tracked, including intervening comments and case-insensitive parameter names. Defaults, rollback of session SET, savepoints and procedural configuration effects are not resolved.",
         ),
         examples=(
             RuleExample(
@@ -164,10 +174,49 @@ def _timeout_events(source: str, masked: str) -> list[tuple[int, str, re.Match[s
     events.extend((match.start(), "RESET_ALL", match) for match in RESET_ALL_PATTERN.finditer(masked))
     events.extend(_section_boundary_events(source))
     events.extend((match.start(), "DDL", match) for match in DDL_PATTERN.finditer(masked))
+    events.extend(_create_table_like_events(source, masked))
 
     events.sort(key=operator.itemgetter(0))
 
     return events
+
+
+@lru_cache(maxsize=8)
+def _create_table_like_events(source: str, masked: str) -> tuple[tuple[int, str, re.Match[str]], ...]:
+    if "LIKE" not in masked.upper():
+        return ()
+    candidates = tuple(_CREATE_TABLE_PATTERN.finditer(masked))
+    if not candidates:
+        return ()
+    try:
+        statements = parse_postgres(source)
+    except SqlglotError, RecursionError:
+        return ()
+    starts = tuple(match.start() for match in candidates)
+    events: list[tuple[int, str, re.Match[str]]] = []
+    for statement in statements:
+        position = _like_target_offset(statement)
+        if position is None:
+            continue
+        index = bisect_right(starts, position) - 1
+        if index >= 0:
+            match = candidates[index]
+            events.append((match.start(), "DDL", match))
+    return tuple(events)
+
+
+def _like_target_offset(statement: exp.Expr | None) -> int | None:
+    if not isinstance(statement, exp.Create) or statement.args.get("kind") != "TABLE":
+        return None
+    schema = statement.find(exp.Schema)
+    if schema is None or not any(isinstance(item, exp.LikeProperty) for item in schema.iter_expressions()):
+        return None
+    target = schema.find(exp.Table)
+    identifier = target.find(exp.Identifier) if target is not None else None
+    if identifier is None:
+        return None
+    position = identifier.meta.get("start")
+    return position if isinstance(position, int) else None
 
 
 def _section_boundary_events(source: str) -> list[_SectionBoundaryEvent]:

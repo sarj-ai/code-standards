@@ -22,7 +22,7 @@ export const REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION = {
   category: "architecture",
   autofix: "none",
   limitations: [
-    "Requires direct construction of both owned consumer and collaborator classes, with a first-statement consumer constructor guard rejecting the exact parameter with if (!(parameter instanceof Contract)) throw.",
+    "Requires direct construction of both owned consumer and collaborator classes, with a first-statement consumer constructor guard rejecting the exact parameter with if (!(parameter instanceof Contract)) throw. Parentheses preserve exact constructor and guard symbol identity; casts remain excluded.",
     "The contract must resolve to an abstract class without decorators, static blocks, unresolved ancestors, or custom computed static members in its resolved hierarchy. Escaped class constructors are checked across every owned module in the typed program.",
     "Structural interfaces, non-rejecting branches, reassignment before the guard, casts, unresolved heritage, dynamic factories, implementation static blocks, explicit implementation constructors or initializers, involved modules referencing prototype-mutator members or assigning prototypes, escaped class constructors, and third-party classes are excluded.",
   ],
@@ -301,6 +301,7 @@ function hasOrdinaryInstanceCheck(checker: ts.TypeChecker, declaration: ts.Class
 }
 
 function canonicalSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undefined {
+  if (ts.isParenthesizedExpression(node)) node = unparenthesized(node);
   const symbol = checker.getSymbolAtLocation(node);
   return symbol === undefined ? undefined : (symbol.flags & ts.SymbolFlags.Alias) !== 0
     ? checker.getAliasedSymbol(symbol) : symbol;

@@ -1032,3 +1032,19 @@ def test_template_trim_markers_preserve_expression_boundaries(expression: str, e
     assert [(finding.code, finding.line, finding.col) for finding in diagnostics] == (
         [("SARJ204", 2, 3)] if expected_count else []
     )
+
+
+@pytest.mark.parametrize("label", ["cache", r"\u0063ache"], ids=["literal", "escaped"])
+def test_environment_diagnostic_uses_decoded_resource_labels(label: str) -> None:
+    source = f'resource "google_storage_bucket" "{label}" {{\n  count = var.environment == "sandbox" ? 1 : 0\n}}\n'
+
+    diagnostics = _check(source)
+
+    assert len(diagnostics) == 1
+    assert 'resource "google_storage_bucket" "cache"' in diagnostics[0].message
+
+
+def test_escaped_resource_label_does_not_turn_capability_input_into_environment_branch() -> None:
+    source = 'resource "google_storage_bucket" "\\u0063ache" {\n  count = var.enable_object_cache ? 1 : 0\n}\n'
+
+    assert _check(source) == []
