@@ -22,4 +22,4 @@ export const MODULE_CONSTANT_NAMING_OPTIONS = [
     format: ["UPPER_CASE", "PascalCase"],
     leadingUnderscore: "allow",
   },
-];
+] as const;

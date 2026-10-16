@@ -70,6 +70,6 @@ def test_python_dogfood_keeps_literal_paths_and_rejects_partial_inventory(
 def test_tsconfig_json_control_rejects_malformed_second_document(tmp_path: Path, *, directory_argument: bool) -> None:
     (tmp_path / "base.json").write_text("{}", encoding="utf-8")
     (tmp_path / "strict.json").write_text("{invalid", encoding="utf-8")
-    argv = ("node", str(_SCRIPTS / "ci-validate-tsconfig.mjs"), *((str(tmp_path),) if directory_argument else ()))
+    argv = ("node", str(_SCRIPTS / "ci-validate-tsconfig.mts"), *((str(tmp_path),) if directory_argument else ()))
     result = subprocess.run(argv, cwd=tmp_path, capture_output=True, check=False, timeout=10)
     assert result.returncode != 0

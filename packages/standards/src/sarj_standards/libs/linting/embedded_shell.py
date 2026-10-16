@@ -299,12 +299,36 @@ def _format_block(
     )
     if formatted.rstrip("\n") == source.rstrip("\n"):
         return None
+    if _only_projected_make_suffix(path, candidate, document, source, formatted):
+        return None
     finding = _map_finding(
         shell_format.format_diagnostic(path=relative, source=source, formatted=formatted), candidate.block, document
     )
     if not fixable(candidate):
         finding = replace(finding, help="Format this embedded shell block manually or extract it to a shell file.")
     return finding
+
+
+def _only_projected_make_suffix(
+    path: Path, candidate: ShellBlock, document: SourceDocument, source: str, formatted: str
+) -> bool:
+    if path.name.casefold() not in {"makefile", "gnumakefile"} or candidate.block.literal is not None:
+        return False
+    if candidate.block.argv or "\n" in source or "\r" in source:
+        return False
+    canonical = formatted.rstrip("\n")
+    if not source.startswith(canonical):
+        return False
+    suffix = source[len(canonical) :]
+    if not suffix or suffix.strip(" \t"):
+        return False
+    lines = re.split(r"\r\n|\r|\n", document.text)
+    line = candidate.block.line
+    if not 1 <= line <= len(lines):
+        return False
+    # Make expansion can leave a separator after an empty optional argument.
+    # Keep authored whitespace and every other native formatting difference.
+    return not lines[line - 1].endswith((" ", "\t", "\\"))
 
 
 def fixable(candidate: ShellBlock) -> bool:

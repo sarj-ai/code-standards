@@ -1497,7 +1497,7 @@ def _check_typescript_wiring(root: Path, typescript_root: Path | None, adopted: 
             "doctor.eslint.ambiguous-config",
             "keep one ESLint flat config and remove the shadowed duplicates",
         )
-    active_entrypoint = entrypoints[0] if entrypoints else typescript_root / "eslint.config.mjs"
+    active_entrypoint = entrypoints[0] if entrypoints else typescript_root / "eslint.config.ts"
     if _eslint_wiring_reaches_strict(active_entrypoint, typescript_root):
         yield Finding(
             Level.OK,
@@ -1755,7 +1755,10 @@ def _eslint_wiring_reaches_strict(path: Path, root: Path, seen: set[Path] | None
         target = (resolved.parent / match.group("path")).resolve()
         if target.name == "eslint.strict.mjs" and target.is_file():
             return True
-        candidates = (target, *(target.with_suffix(suffix) for suffix in (".js", ".mjs", ".cjs", ".ts")))
+        candidates = (
+            target,
+            *(target.with_suffix(suffix) for suffix in (".js", ".mjs", ".cjs", ".ts", ".mts", ".cts")),
+        )
         if any(_eslint_wiring_reaches_strict(candidate, root, visited) for candidate in candidates):
             return True
     return False

@@ -38,7 +38,7 @@ def test_complete_docs_gate_checks_projections_once_and_stops_on_failure(tmp_pat
     npm.chmod(0o755)
     node = tmp_path / "node"
     node.write_text(
-        '#!/bin/sh\ntest "$*" = "scripts/verify-third-party-catalog.mjs --dist" || exit 8\n'
+        '#!/bin/sh\ntest "$*" = "scripts/verify-third-party-catalog.ts --dist" || exit 8\n'
         'printf "distribution\\n" >> "$SIGNALS/order"\n[ "$FAILURE" != distribution ]\n'
     )
     node.chmod(0o755)

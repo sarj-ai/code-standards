@@ -13,11 +13,14 @@ from repo_standards.core.models import (
     InputProvenance,
     Mode,
     RatchetClassification,
+    RatchetComparison,
     SourceLocation as RepositoryLocation,
 )
 from repo_standards.repository import (
     RepositoryAnalysisRequest,
     analyze_repository,
+    git_index_identity,
+    parse_baseline_bytes,
     parse_manifest_bytes,
     read_tracked_blob_contents,
 )
@@ -55,11 +58,13 @@ def analyze(root: Path, *, staged: bool) -> ToolReport | None:
     if not selected_manifest and not selected_adopted:
         return None
     has_baseline = _selected_path_exists(root, _BASELINE, staged=staged)
+    include_warnings = _baseline_includes_warnings(root, staged=staged) if has_baseline else False
     report = analyze_repository(
         RepositoryAnalysisRequest(
             root=root,
             baseline_path=_BASELINE.as_posix() if has_baseline else None,
             mode=Mode.RATCHET if has_baseline else Mode.STRICT,
+            include_warnings=include_warnings,
             staged=staged,
             base_revision=_comparison_base(root) if not staged else None,
             as_of=datetime.now(UTC).date(),
@@ -80,10 +85,12 @@ def analyze(root: Path, *, staged: bool) -> ToolReport | None:
         else frozenset[str]()
     )
     known -= frozenset(item.fingerprint for item in report.diagnostics if str(item.rule_id) == _MAKEFILE_GROWTH_RULE)
+    new_warnings = _rejected_warning_fingerprints(report.ratchet)
     diagnostics = tuple(
         _diagnostic(
             item,
             baselined=item.fingerprint in known,
+            ratchet_warning=item.fingerprint in new_warnings,
             comparison_notes=_comparison_notes(report.input_provenance)
             if str(item.rule_id) == _MAKEFILE_GROWTH_RULE
             else (),
@@ -97,7 +104,34 @@ def analyze(root: Path, *, staged: bool) -> ToolReport | None:
         issues=issues,
         version=version("repo-standards"),
         baselined_count=len(known),
+        policy_failed=bool(new_warnings),
     )
+
+
+def _rejected_warning_fingerprints(ratchet: RatchetComparison | None) -> frozenset[str]:
+    if ratchet is None or not ratchet.include_warnings:
+        return frozenset()
+    return frozenset(
+        entry.fingerprint
+        for entry in ratchet.entries
+        if entry.classification is RatchetClassification.NEW
+        and entry.diagnostic is not None
+        and entry.diagnostic.severity == "warning"
+        and entry.diagnostic.disposition != "excepted"
+    )
+
+
+def _baseline_includes_warnings(root: Path, *, staged: bool) -> bool:
+    selected = read_tracked_blob_contents(
+        root,
+        (_BASELINE.as_posix(),),
+        identity=git_index_identity(root) if staged else None,
+    )
+    try:
+        return parse_baseline_bytes(selected[0].content).include_warnings
+    except TypeError, ValueError:
+        # The native analyzer owns invalid-baseline diagnostics and fails closed.
+        return False
 
 
 def _comparison_notes(provenance: InputProvenance | None) -> tuple[str, ...]:
@@ -112,7 +146,9 @@ def _comparison_notes(provenance: InputProvenance | None) -> tuple[str, ...]:
     )
 
 
-def _diagnostic(item: object, *, baselined: bool, comparison_notes: tuple[str, ...] = ()) -> Diagnostic:
+def _diagnostic(
+    item: object, *, baselined: bool, comparison_notes: tuple[str, ...] = (), ratchet_warning: bool = False
+) -> Diagnostic:
     if not isinstance(item, RepositoryDiagnostic):
         msg = "Repo Standards returned an invalid diagnostic type"
         raise TypeError(msg)
@@ -140,6 +176,7 @@ def _diagnostic(item: object, *, baselined: bool, comparison_notes: tuple[str, .
         f"expected: {item.expected}",
         *comparison_notes,
         *(("ratchet: known",) if baselined else ()),
+        *(("ratchet: new warning rejected by explicit include_warnings baseline",) if ratchet_warning else ()),
         *(f"manifest pointer: {item.location.pointer}" for _ in (0,) if item.location and item.location.pointer),
     )
     return Diagnostic(

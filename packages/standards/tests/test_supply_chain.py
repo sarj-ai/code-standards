@@ -572,7 +572,7 @@ def test_pre_push_keeps_complete_tests_in_ci() -> None:
 
 def test_documentation_deploy_is_revision_bound_self_verifying_and_single_site() -> None:
     workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-    verifier = (REPO_ROOT / "apps/docs/scripts/verify-deployment.mjs").read_text(encoding="utf-8")
+    verifier = (REPO_ROOT / "apps/docs/scripts/verify-deployment.ts").read_text(encoding="utf-8")
 
     assert "branches: [main]" in workflow  # sarj-noqa: SARJ402 -- workflow text is the deployment-policy contract
     assert (
@@ -596,8 +596,10 @@ def test_documentation_deploy_is_revision_bound_self_verifying_and_single_site()
     assert "npm run verify:deployment" in workflow  # sarj-noqa: SARJ402 -- deployment-policy contract
     assert "name: docs-ui-site" not in workflow  # sarj-noqa: SARJ402 -- standalone repository owns this deployment
     assert "Deploy documentation UI first" not in workflow  # sarj-noqa: SARJ402 -- prevent competing production writers
-    assert "assert.equal(health.commit, expectedCommit" in verifier  # sarj-noqa: SARJ402 -- deployment contract
-    assert "health.catalogSha256" in verifier  # sarj-noqa: SARJ402 -- deployment-policy contract
+    assert re.search(
+        r'assert\.equal\(\s*health\["commit"\],\s*expectedCommit\s*,', verifier
+    )  # sarj-noqa: SARJ402 -- exact revision assertion arguments are the deployment contract; formatting is not.
+    assert 'health["catalogSha256"]' in verifier  # sarj-noqa: SARJ402 -- deployment-policy contract
     assert "pagefind/pagefind.js" in verifier  # sarj-noqa: SARJ402 -- deployment-policy contract
     assert "wasm-unsafe-eval" in verifier  # sarj-noqa: SARJ402 -- deployment-policy contract
 

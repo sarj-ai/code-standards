@@ -211,6 +211,39 @@ def test_make_mise_composite_and_shell_argv_share_shellcheck(tmp_path: Path) -> 
     assert all(any(finding.rule_id == "SC2086" for finding in item.diagnostics) for item in reports)
 
 
+@pytest.mark.parametrize(
+    ("recipe", "oneshell", "expected"),
+    [
+        pytest.param("printf ok $(EXTRA)\n", False, False, id="empty-optional-argument"),
+        pytest.param("printf ok $(EXTRA) \n", False, True, id="authored-trailing-space"),
+        pytest.param("printf  ok $(EXTRA)\n", False, True, id="other-formatting-difference"),
+        pytest.param("printf ok\n\tprintf done $(EXTRA)\n", True, True, id="multiline-projection"),
+        pytest.param("printf '%s' 'literal ' $(EXTRA)\n", False, False, id="quoted-space"),
+        pytest.param("printf '%s' literal\\  $(EXTRA)\n", False, False, id="escaped-space"),
+        pytest.param("printf '%s' 'literal ' $(EXTRA) \n", False, True, id="quoted-and-authored-trailing-space"),
+        pytest.param("printf '%s' 'line\u2028text' $(EXTRA) \n", False, True, id="unicode-line-separator"),
+    ],
+)
+def test_make_formatting_distinguishes_projected_and_authored_suffixes(
+    tmp_path: Path, recipe: str, *, oneshell: bool, expected: bool
+) -> None:
+    source = "EXTRA ?=\n" + (".ONESHELL:\n" if oneshell else "") + f"all:\n\t{recipe}"
+    path = _path(tmp_path, "Makefile", source)
+    [report] = embedded_shell.analyze_sources(root=tmp_path, paths=(str(path),), selected=frozenset({"shfmt"}))
+    assert report.completion is Completion.COMPLETE
+    assert bool(report.diagnostics) is expected
+    assert all(finding.rule_id == "format" for finding in report.diagnostics)
+    assert shell_format.fix_sources(tmp_path, (str(path),)) == 0
+    assert path.read_text() == source
+
+
+def test_standalone_shell_keeps_authored_trailing_whitespace_diagnostic(tmp_path: Path) -> None:
+    path = _path(tmp_path, "example.sh", "#!/bin/sh\nprintf ok \n")
+    [report] = shell_format.analyze_sources(root=tmp_path, paths=(str(path),))
+    assert report.completion is Completion.COMPLETE
+    assert [finding.rule_id for finding in report.diagnostics] == ["format"]
+
+
 def test_non_execution_data_and_docker_semantics_do_not_duplicate_shellcheck(tmp_path: Path) -> None:
     sources = {
         "settings.yaml": "note: 'echo $value'\n",

@@ -76,6 +76,10 @@ _REACT_DOCTOR_METADATA = frozenset(
         "doctor.config.json",
         "eslint.config.js",
         "eslint.config.mjs",
+        "eslint.config.cjs",
+        "eslint.config.ts",
+        "eslint.config.mts",
+        "eslint.config.cts",
         "package-lock.json",
         "package.json",
         "pnpm-lock.yaml",
@@ -2972,7 +2976,10 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
         ] = None,
         typescript_dest: Annotated[
             str | None,
-            typer.Option("--typescript-dest", help="the directory that owns the npm lockfile (default: detected)"),
+            typer.Option(
+                "--typescript-dest",
+                help="the directory that owns the npm lockfile (default: detected); new ESLint entrypoints use TypeScript",
+            ),
         ] = None,
         swift_dest: Annotated[
             str | None,

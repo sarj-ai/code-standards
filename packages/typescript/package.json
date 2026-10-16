@@ -1,6 +1,6 @@
 {
   "name": "@sarj/eslint-plugin",
-  "version": "16.16.1",
+  "version": "16.17.0",
   "packageManager": "npm@12.2.0",
   "description": "Custom ESLint rules for hypermodern TypeScript / React / Next.js projects",
   "type": "module",
@@ -35,12 +35,12 @@
   "scripts": {
     "build": "tsup",
     "dogfood": "npm run build && npm run dogfood:built",
-    "lint": "eslint . ../../.github/scripts ../standards/src ../standards/eslint.config.mjs --max-warnings 0",
+    "lint": "eslint . ../../.github/scripts ../standards/src ../standards/eslint.config.mts --max-warnings 0",
     "prepack": "npm run build && npm run verify-package",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --project tsconfig.tools.json",
     "verify-package": "node -e \"const fs=require('node:fs'),p=require('./package.json'),walk=x=>typeof x==='string'?[x]:x&&typeof x==='object'?Object.values(x).flatMap(walk):[];for(const file of new Set([p.main,p.module,p.types,...walk(p.exports)].filter(Boolean).map(x=>x.startsWith('./')?x.slice(2):x))){if(!file.startsWith('dist/'))throw new Error('export must live under dist: '+file);const stat=fs.statSync(file);if(!stat.isFile()||stat.size===0)throw new Error('missing or empty export: '+file)}\"",
-    "dogfood:built": "eslint --config eslint.dogfood.config.mjs src tests eslint.config.mjs eslint.dogfood.config.mjs module-constant-naming-options.mjs tsup.config.ts vitest.config.ts --max-warnings 0 && node -e \"import('./dist/index.js').then(({default:p}) => console.log('dogfood: '+Object.keys(p.rules).length+' TypeScript rules, 0 diagnostics'))\""
+    "dogfood:built": "eslint --config eslint.dogfood.config.ts src tests scripts eslint-rule-setting.ts eslint.config.ts eslint.dogfood.config.ts module-constant-naming-options.ts tsup.config.ts vitest.config.ts --max-warnings 0 && node -e \"import('./dist/index.js').then(({default:p}) => console.log('dogfood: '+Object.keys(p.rules).length+' TypeScript rules, 0 diagnostics'))\""
   },
   "keywords": [
     "eslint",
@@ -90,7 +90,8 @@
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "typescript-eslint": "^8.71.2",
     "vitest": "5.0.4",
-    "zod": "4.6.7"
+    "zod": "4.6.7",
+    "jiti": "2.7.0"
   },
   "peerDependencies": {
     "eslint": ">=9.39.4",

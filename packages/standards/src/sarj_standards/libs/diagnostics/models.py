@@ -377,6 +377,7 @@ class ToolReport:
     file_count: int | None = None
     cache_status: CacheStatus = CacheStatus.DISABLED
     baselined_count: int = 0
+    policy_failed: bool = False
 
     def __post_init__(self) -> None:
         _require_text(self.name, "tool name")
@@ -403,6 +404,10 @@ class ToolReport:
                     msg = f"{label} cannot be negative"
                     raise ValueError(msg)
         _require_instance(self.cache_status, CacheStatus, "cache status")
+        _require_instance(self.policy_failed, bool, "policy failure")
+        if self.policy_failed and not self.diagnostics:
+            msg = "policy failure must retain diagnostic evidence"
+            raise ValueError(msg)
         _require_int(self.baselined_count, "baselined diagnostic count")
         if self.baselined_count < 0:
             msg = "baselined diagnostic count cannot be negative"
@@ -424,6 +429,8 @@ class ToolReport:
             result["fileCount"] = self.file_count
         if self.baselined_count:
             result["baselinedDiagnosticCount"] = self.baselined_count
+        if self.policy_failed:
+            result["policyFailed"] = True
         return result
 
 
@@ -473,7 +480,12 @@ class AnalysisReport:
     def exit_code(self) -> int:
         if self.issues or any(item.blocking for item in self.coverage):
             return 2
-        return 1 if any(item.severity is Severity.ERROR for item in self.diagnostics) else 0
+        return (
+            1
+            if any(tool.policy_failed for tool in self.tools)
+            or any(item.severity is Severity.ERROR for item in self.diagnostics)
+            else 0
+        )
 
     @property
     def ok(self) -> bool:

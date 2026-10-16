@@ -5,10 +5,37 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, extname, resolve } from "node:path";
 import process from "node:process";
 
-import { format as prettierFormat } from "prettier";
+import { format as prettierFormat, type Plugin } from "prettier";
+import type { ExampleFile, Rule, RuleExample } from "../src/lib/catalog.ts";
+import type { CliCommand } from "../src/lib/cli.ts";
+import { validateCatalog } from "../src/lib/catalog-validation.ts";
+import { parseReference } from "../src/lib/parse-reference.ts";
+import { record, text } from "./_json.ts";
 import * as prettierPluginSh from "prettier-plugin-sh";
 import prettierPluginToml from "prettier-plugin-toml";
 import { format as sqlFormat } from "sql-formatter";
+
+const FENCE_PATHS: Readonly<Record<string, string>> = {
+  bash: "example.sh",
+  hcl: "example.hcl",
+  javascript: "example.js",
+  js: "example.js",
+  json: "example.json",
+  markdown: "example.md",
+  md: "example.md",
+  python: "example.py",
+  py: "example.py",
+  sh: "example.sh",
+  shell: "example.sh",
+  sql: "example.sql",
+  terraform: "example.tf",
+  toml: "example.toml",
+  ts: "example.ts",
+  tsx: "example.tsx",
+  typescript: "example.ts",
+  yaml: "example.yml",
+  yml: "example.yml",
+};
 
 const appRoot = resolve(import.meta.dirname, "..");
 const repositoryRoot = resolve(appRoot, "../..");
@@ -28,15 +55,16 @@ const mode = process.argv[2];
 
 if (mode !== "--check" && mode !== "--write") {
   throw new Error(
-    "usage: node scripts/format-code-examples.mjs --check|--write",
+    "usage: node scripts/format-code-examples.ts --check|--write",
   );
 }
 
 const catalogSource = await readFile(catalogPath, "utf8");
 const cliSource = await readFile(cliPath, "utf8");
-const catalog = JSON.parse(catalogSource);
-const cli = JSON.parse(cliSource);
-const cache = new Map();
+const catalog: unknown = JSON.parse(catalogSource);
+validateCatalog(catalog);
+const cli = parseReference(JSON.parse(cliSource) as unknown);
+const cache = new Map<string, string>();
 const ruffVersion = "0.17.0";
 
 assert.equal(
@@ -54,28 +82,41 @@ assert.match(
   "formatted code requires Terraform 1.15.8",
 );
 
-function sha256(source) {
+function sha256(source: string) {
   return hash("sha256", source, "hex");
 }
 
-async function installedVersion(packageName) {
-  const metadata = JSON.parse(
-    await readFile(
-      resolve(appRoot, "node_modules", packageName, "package.json"),
-      "utf8",
-    ),
+async function installedVersion(packageName: string) {
+  const metadata = record(
+    JSON.parse(
+      await readFile(
+        resolve(appRoot, "node_modules", packageName, "package.json"),
+        "utf8",
+      ),
+    ) as unknown,
+    "formatter package",
   );
-  assert.equal(metadata.name, packageName, "formatter package identity mismatch");
-  assert.match(metadata.version, /^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/u);
-  return metadata.version;
+  assert.equal(
+    metadata["name"],
+    packageName,
+    "formatter package identity mismatch",
+  );
+  const version = text(metadata["version"], "formatter version");
+  assert.match(version, /^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/u);
+  return version;
 }
 
-function normalize(source) {
+function normalize(source: string) {
   return `${source.replaceAll("\r\n", "\n").replaceAll("\r", "\n").trimEnd()}\n`;
 }
 
 // eslint-disable-next-line @sarj/stepdown -- adapter helpers precede the dispatcher they make readable.
-function runFormatter(command, args, source, label) {
+function runFormatter(
+  command: string,
+  args: string[],
+  source: string,
+  label: string,
+) {
   try {
     return execFileSync(command, args, {
       cwd: repositoryRoot,
@@ -95,39 +136,17 @@ function runFormatter(command, args, source, label) {
   }
 }
 
-function virtualPath(path) {
+function virtualPath(path: string) {
   const lower = path.toLowerCase();
   if (lower.endsWith(".tftest.hcl")) return "example.tftest.hcl";
   const extension = extname(lower);
   return `example${extension || ".txt"}`;
 }
 
-// eslint-disable-next-line @sarj/stepdown -- the Markdown adapter keeps its language table adjacent.
-function languageForFence(language) {
-  return {
-    bash: "example.sh",
-    hcl: "example.hcl",
-    javascript: "example.js",
-    js: "example.js",
-    json: "example.json",
-    markdown: "example.md",
-    md: "example.md",
-    python: "example.py",
-    py: "example.py",
-    sh: "example.sh",
-    shell: "example.sh",
-    sql: "example.sql",
-    terraform: "example.tf",
-    toml: "example.toml",
-    ts: "example.ts",
-    tsx: "example.tsx",
-    typescript: "example.ts",
-    yaml: "example.yml",
-    yml: "example.yml",
-  }[language.toLowerCase()];
-}
-
-async function formatMarkdownFences(source, context) {
+async function formatMarkdownFences(
+  source: string,
+  context: string,
+): Promise<string> {
   const fencePattern = /```([A-Za-z0-9_-]*)\n([\s\S]*?)```/gu;
   const output = [];
   let offset = 0;
@@ -144,7 +163,7 @@ async function formatMarkdownFences(source, context) {
         `${context}: unsupported Markdown fence language ${language}`,
       );
     const formatted = await formatCode(
-      match[2],
+      match.at(2) ?? "",
       path,
       `${context} fenced ${language}`,
     );
@@ -155,10 +174,18 @@ async function formatMarkdownFences(source, context) {
   return output.join("");
 }
 
-async function formatWithPrettier(source, path, context) {
+function languageForFence(language: string) {
+  return FENCE_PATHS[language.toLowerCase()];
+}
+
+async function formatWithPrettier(
+  source: string,
+  path: string,
+  context: string,
+): Promise<string> {
   const lower = path.toLowerCase();
   let parser;
-  let plugins = [];
+  let plugins: Plugin[] = [];
   if (/\.(?:ts|cts|mts)$/u.test(lower)) parser = "typescript";
   else if (lower.endsWith(".tsx")) parser = "typescript";
   else if (/\.(?:js|cjs|mjs)$/u.test(lower)) parser = "babel";
@@ -189,7 +216,11 @@ async function formatWithPrettier(source, path, context) {
   });
 }
 
-async function formatCode(source, path, context) {
+async function formatCode(
+  source: string,
+  path: string,
+  context: string,
+): Promise<string> {
   if (typeof source !== "string" || source.length === 0)
     throw new TypeError(`${context}: source must be nonempty`);
   if (source.length > 64 * 1024)
@@ -242,7 +273,7 @@ async function formatCode(source, path, context) {
   return normalized;
 }
 
-async function formatFile(file, context) {
+async function formatFile(file: ExampleFile, context: string) {
   const source = await formatCode(
     file.source,
     file.path,
@@ -264,7 +295,7 @@ async function formatFile(file, context) {
   };
 }
 
-async function formatExample(rule, example) {
+async function formatExample(rule: Rule, example: RuleExample) {
   const context = `${rule.key}/${example.id}/${example.outcome}`;
   return {
     ...example,
@@ -279,14 +310,17 @@ async function formatExample(rule, example) {
   };
 }
 
-function flattenCommands(commands) {
+function flattenCommands(commands: CliCommand[]): CliCommand[] {
   return commands.flatMap((command) => [
     command,
     ...flattenCommands(command.commands),
   ]);
 }
 
-const rules = {};
+const rules: Record<
+  string,
+  { examples: RuleExample[]; optionsSchemaSource: string | null }
+> = {};
 let formattedFileCount = 0;
 const sourceFileCount = catalog.rules.reduce(
   (ruleCount, rule) =>
@@ -367,7 +401,7 @@ const quickSetupSource = [
   `${cli.program} doctor`,
   `${cli.program} check`,
 ].join("\n");
-const usage = {};
+const usage: Record<string, string> = {};
 for (const command of flattenCommands(cli.commands)) {
   usage[command.path.join("/")] = normalize(command.usage);
 }
@@ -405,11 +439,11 @@ const docsProjection = {
   },
 };
 
-function render(value) {
+function render(value: unknown) {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-async function sync(path, expected) {
+async function sync(path: string, expected: string) {
   let current = "";
   try {
     current = await readFile(path, "utf8");

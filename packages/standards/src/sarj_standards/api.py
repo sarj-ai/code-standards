@@ -662,6 +662,10 @@ def _without_baselined_diagnostics(
         return False
 
     def filter_tool(item: ToolReport) -> ToolReport:
+        # A native policy ratchet owns its accepted debt independently. A central
+        # diagnostic budget cannot erase its active findings or failed decision.
+        if item.policy_failed:
+            return item
         diagnostics = tuple(diagnostic for diagnostic in item.diagnostics if active(diagnostic))
         return replace(
             item,
@@ -968,22 +972,13 @@ def _filter_report_selectors(
     *,
     upstream_rules: UpstreamESLintRules = _NO_UPSTREAM_ESLINT_RULES,
 ) -> ToolReport:
+    if report.policy_failed:
+        return report
     engine = RuleEngine(report.name) if report.name in {"eslint", "zizmor", "checkov"} else None
     allowed: frozenset[str] = frozenset() if engine is None else selected.native_ids_for(engine)
     if engine is RuleEngine.ESLINT:
         allowed |= upstream_rules.ids
-    return ToolReport(
-        report.name,
-        report.completion,
-        diagnostics=tuple(item for item in report.diagnostics if item.rule_id in allowed),
-        issues=report.issues,
-        analyzer_id=report.analyzer_id,
-        invocation_id=report.invocation_id,
-        version=report.version,
-        duration_ms=report.duration_ms,
-        file_count=report.file_count,
-        cache_status=report.cache_status,
-    )
+    return replace(report, diagnostics=tuple(item for item in report.diagnostics if item.rule_id in allowed))
 
 
 def _warning_rule_keys(mode: AnalysisMode, selected: RuleSelection | None) -> frozenset[RuleSelector]:
@@ -1007,9 +1002,8 @@ def _with_warning_severity(
     if not selectors and not upstream_rules.warning_only:
         return report
     tools = tuple(
-        ToolReport(
-            tool.name,
-            tool.completion,
+        replace(
+            tool,
             diagnostics=tuple(
                 replace(item, severity=Severity.WARNING)
                 if _selector_for_diagnostic(item) in selectors
@@ -1017,13 +1011,6 @@ def _with_warning_severity(
                 else item
                 for item in tool.diagnostics
             ),
-            issues=tool.issues,
-            analyzer_id=tool.analyzer_id,
-            invocation_id=tool.invocation_id,
-            version=tool.version,
-            duration_ms=tool.duration_ms,
-            file_count=tool.file_count,
-            cache_status=tool.cache_status,
         )
         for tool in report.tools
     )
@@ -1084,18 +1071,9 @@ def _policy_report(root: Path, selected: Sequence[str]) -> ToolReport:
 
 
 def _filter_tool_report(report: ToolReport, policy: Policy) -> ToolReport:
-    return ToolReport(
-        report.name,
-        report.completion,
-        diagnostics=policy.filter_diagnostics(report.diagnostics),
-        issues=report.issues,
-        analyzer_id=report.analyzer_id,
-        invocation_id=report.invocation_id,
-        version=report.version,
-        duration_ms=report.duration_ms,
-        file_count=report.file_count,
-        cache_status=report.cache_status,
-    )
+    if report.policy_failed:
+        return report
+    return replace(report, diagnostics=policy.filter_diagnostics(report.diagnostics))
 
 
 def _repository_root(root: str | Path) -> Path:
