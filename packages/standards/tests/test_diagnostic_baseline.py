@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 import json
 import os
+from pathlib import Path
 import shlex
 import subprocess
 import sys
@@ -25,6 +26,7 @@ from sarj_standards.libs.diagnostics import (
     baseline,
 )
 from sarj_standards.libs.diagnostics.serialize import to_github, to_sarif, to_text
+from sarj_standards.libs.json_boundary import parse_unique_json
 from sarj_standards.libs.linting import external
 from sarj_standards.libs.linting.analysis import report_from_tools
 from sarj_standards.libs.linting.policy import Policy
@@ -32,7 +34,6 @@ from sarj_standards.libs.linting.policy import Policy
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from pathlib import Path
 
     from tests.call_contracts import ExternalAnalyzeOptions, StandardsAnalyzeOptions
 
@@ -60,6 +61,75 @@ def _policy_baseline(diagnostics: tuple[Diagnostic, ...]) -> str:
         consumer_base_sha="0" * 40,
         catalog_digest=baseline.bundled_catalog_digest(),
     )
+
+
+@pytest.mark.parametrize("operation", ["merge", "remove"])
+def test_baseline_updates_use_the_validated_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    path = tmp_path / "baseline.json"
+    finding = Diagnostic("X", "existing", Severity.ERROR, "ruff", Location("app.py"), fingerprint="a" * 64)
+    original = baseline.render((finding,))
+    path.write_text(original, encoding="utf-8")
+    invalid = original.replace('"count": 1', '"count": 0')
+
+    def replace_after_parsing(text: str) -> object:
+        document = parse_unique_json(text)
+        path.write_text(invalid, encoding="utf-8")
+        return document
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- replace the file between parsing and later reads to exercise the public update's snapshot contract.
+        "sarj_standards.libs.diagnostics.baseline.parse_unique_json", replace_after_parsing
+    )
+    if operation == "merge":
+        updated = baseline.merge_scoped(
+            path,
+            (),
+            selectors=("eslint:other",),
+            bundle_version=api.__version__,
+            consumer_base_sha="b" * 40,
+            catalog_digest="c" * 64,
+        )
+    else:
+        removal = baseline.remove_rules(
+            path,
+            selectors=("eslint:other",),
+            bundle_version=api.__version__,
+            consumer_base_sha="b" * 40,
+            catalog_digest="c" * 64,
+        )
+        assert removal.removed == 0
+        updated = removal.contents
+    path.write_text(updated, encoding="utf-8")
+
+    assert baseline.load(path) == {"a" * 64: 1}
+
+
+def test_baseline_read_remains_bounded_when_the_file_grows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "baseline.json"
+    path.write_text('{"schemaVersion":1,"diagnostics":[]}', encoding="utf-8")
+    limit = 128
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept the internal limit to exercise the production read boundary with a small fixture.
+        baseline, "_MAX_BYTES", limit
+    )
+    oversized = json.dumps({"schemaVersion": 1, "diagnostics": [], "padding": "x" * limit})
+    original_stat = Path.stat
+    checks = 0
+
+    def grow_after_stat(candidate: Path, *, follow_symlinks: bool = True) -> os.stat_result:
+        nonlocal checks
+        metadata = original_stat(candidate, follow_symlinks=follow_symlinks)
+        if candidate == path and follow_symlinks:
+            checks += 1
+            if checks == 1:
+                path.write_text(oversized, encoding="utf-8")
+        return metadata
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- grow the real file after its metadata check; injection would bypass the filesystem race under test.
+        Path, "stat", grow_after_stat
+    )
+    with pytest.raises(ValueError, match="exceeds"):
+        baseline.load(path)
 
 
 def test_makefile_guard_cannot_be_captured_or_hidden_by_a_diagnostic_baseline(tmp_path: Path) -> None:
@@ -574,6 +644,23 @@ def test_deletion_boundaries_affect_spanning_regions_and_file_level_findings() -
     assert not baseline.touches_changed_lines(distant, scope)
     assert baseline.touches_changed_lines(spanning, scope)
     assert baseline.touches_changed_lines(whole_file, scope)
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "changed", "touches"),
+    [
+        (Position(0, 0, 0), Position(1, 0, 3), 2, False),
+        (Position(0, 0, 0), Position(1, 1, 4), 2, True),
+        (Position(0, 0, 0), Position(1, 0, 3), 1, True),
+        (Position(1, 0, 3), Position(1, 0, 3), 2, True),
+        (Position(1, 0, 3), Position(1, 2, 5), 1, False),
+    ],
+)
+def test_changed_lines_use_exclusive_range_ends(start: Position, end: Position, changed: int, touches: bool) -> None:
+    finding = Diagnostic("X", "existing", Severity.ERROR, "ruff", Location("app.py", region=Region(start, end)))
+    scope = baseline.ChangedLineScope(frozenset({"app.py"}), {"app.py": frozenset({changed})})
+
+    assert baseline.touches_changed_lines(finding, scope) is touches
 
 
 @pytest.mark.parametrize(

@@ -219,25 +219,11 @@ def _sarif_rules(report: AnalysisReport) -> list[dict[str, object]]:
 
 
 def _sarif_result(diagnostic: Diagnostic) -> dict[str, object]:
-    location = diagnostic.location
-    physical: dict[str, object] = {"artifactLocation": {"uri": quote(location.path, safe="/")}}
-    if location.region is not None:
-        physical["region"] = {
-            "startLine": location.region.start.line + 1,
-            "startColumn": location.region.start.character + 1,
-            "endLine": location.region.end.line + 1,
-            "endColumn": location.region.end.character + 1,
-        }
-    elif location.position is not None:
-        physical["region"] = {
-            "startLine": location.position.line + 1,
-            "startColumn": location.position.character + 1,
-        }
     result: dict[str, object] = {
         "ruleId": _sarif_rule_id(diagnostic),
         "level": _sarif_level(diagnostic.severity),
         "message": {"text": diagnostic.message},
-        "locations": [{"physicalLocation": physical}],
+        "locations": [{"physicalLocation": _sarif_physical(diagnostic.location)}],
         "properties": {
             "source": diagnostic.source,
             "code": diagnostic.code,

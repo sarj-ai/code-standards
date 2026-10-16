@@ -45,6 +45,13 @@ class RuleRemoval:
     removed: int
 
 
+@dataclass(frozen=True, slots=True)
+class _LoadedBaseline:
+    text: str
+    entries: list[object]
+    fingerprints: dict[str, int]
+
+
 def changed_line_scope(root: Path, *, staged: bool) -> ChangedLineScope | None:
     base = os.environ.get("SARJ_STANDARDS_BASE", "").strip()  # ruff: ignore[banned-api]
     if not staged and not base:
@@ -143,7 +150,11 @@ def touches_changed_lines(diagnostic: Diagnostic, scope: ChangedLineScope | None
     if location.region is not None:
         start = location.region.start.line + 1
         end = location.region.end.line + 1
-        return any(line in changed for line in range(start, end + 1))
+        if location.region.end.character == 0 and end > start:
+            end -= 1
+        if end - start + 1 <= len(changed):
+            return not changed.isdisjoint(range(start, end + 1))
+        return any(start <= line <= end for line in changed)
     if location.position is not None:
         return location.position.line + 1 in changed
     return True
@@ -165,6 +176,21 @@ def load(
     expected_bundle_version: str | None = None,
     expected_catalog_digest: str | None = None,
 ) -> dict[str, int]:
+    return _load_document(
+        path,
+        require_v2=require_v2,
+        expected_bundle_version=expected_bundle_version,
+        expected_catalog_digest=expected_catalog_digest,
+    ).fingerprints
+
+
+def _load_document(
+    path: Path,
+    *,
+    require_v2: bool = False,
+    expected_bundle_version: str | None = None,
+    expected_catalog_digest: str | None = None,
+) -> _LoadedBaseline:
     if not path.is_file() or is_link_like(path):
         msg = f"diagnostic baseline must be a regular file: {path}"
         raise ValueError(msg)
@@ -172,7 +198,8 @@ def load(
         msg = f"diagnostic baseline exceeds {_MAX_BYTES} bytes: {path}"
         raise ValueError(msg)
     try:
-        parsed = parse_unique_json(path.read_text(encoding="utf-8"))
+        text = _read_baseline_text(path)
+        parsed = parse_unique_json(text)
     except (OSError, UnicodeError, ValueError, RecursionError) as exc:
         msg = f"cannot read diagnostic baseline {path}: {exc}"
         raise ValueError(msg) from exc
@@ -196,7 +223,16 @@ def load(
     if not is_object_list(entries):
         msg = "diagnostic baseline diagnostics must be a list"
         raise TypeError(msg)
-    return _baseline_fingerprints(entries)
+    return _LoadedBaseline(text, entries, _baseline_fingerprints(entries))
+
+
+def _read_baseline_text(path: Path) -> str:
+    with path.open("rb") as stream:
+        content = stream.read(_MAX_BYTES + 1)
+    if len(content) > _MAX_BYTES:
+        msg = f"diagnostic baseline exceeds {_MAX_BYTES} bytes: {path}"
+        raise ValueError(msg)
+    return content.decode("utf-8")
 
 
 def _baseline_fingerprints(entries: list[object]) -> dict[str, int]:
@@ -273,16 +309,10 @@ def merge_scoped(
     if not selected:
         msg = "a scoped baseline merge requires at least one promoted selector"
         raise ValueError(msg)
-    load(path)
-    parsed = parse_unique_json(path.read_text(encoding="utf-8"))
-    root = _string_object_dict(parsed, label="diagnostic baseline")
-    current = root.get("diagnostics")
-    if not is_object_list(current):
-        msg = "diagnostic baseline diagnostics must be a list"
-        raise TypeError(msg)
+    document = _load_document(path)
     preserved = [
         entry
-        for value in current
+        for value in document.entries
         if not _entry_selected(entry := _string_object_dict(value, label="diagnostic baseline entry"), selected)
     ]
     replacement = [entry for entry in _diagnostic_entries(diagnostics) if _entry_selected(entry, selected)]
@@ -297,7 +327,7 @@ def merge_scoped(
         "diagnostics": combined,
     }
     _validate_provenance(payload["provenance"])
-    return json.dumps(payload, indent=_existing_json_indent(path)) + "\n"
+    return json.dumps(payload, indent=_existing_json_indent(document.text)) + "\n"
 
 
 def remove_rules(
@@ -312,14 +342,8 @@ def remove_rules(
     if not selected:
         msg = "a baseline rule removal requires at least one selector"
         raise ValueError(msg)
-    load(path)
-    parsed = parse_unique_json(path.read_text(encoding="utf-8"))
-    root = _string_object_dict(parsed, label="diagnostic baseline")
-    current = root.get("diagnostics")
-    if not is_object_list(current):
-        msg = "diagnostic baseline diagnostics must be a list"
-        raise TypeError(msg)
-    entries = [_string_object_dict(value, label="diagnostic baseline entry") for value in current]
+    document = _load_document(path)
+    entries = [_string_object_dict(value, label="diagnostic baseline entry") for value in document.entries]
     preserved = [entry for entry in entries if not _entry_selected(entry, selected)]
     payload: dict[str, object] = {
         "schemaVersion": SCHEMA_VERSION,
@@ -331,11 +355,13 @@ def remove_rules(
         "diagnostics": preserved,
     }
     _validate_provenance(payload["provenance"])
-    return RuleRemoval(json.dumps(payload, indent=_existing_json_indent(path)) + "\n", len(entries) - len(preserved))
+    return RuleRemoval(
+        json.dumps(payload, indent=_existing_json_indent(document.text)) + "\n", len(entries) - len(preserved)
+    )
 
 
-def _existing_json_indent(path: Path) -> int | str:
-    for line in path.read_text(encoding="utf-8").splitlines():
+def _existing_json_indent(text: str) -> int | str:
+    for line in text.splitlines():
         stripped = line.lstrip(" \t")
         if stripped and stripped != line:
             indentation = line[: len(line) - len(stripped)]
