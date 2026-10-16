@@ -1,0 +1,648 @@
+{
+  "schemaVersion": 1,
+  "campaign": "adversarial-200-passes-20261015",
+  "scope": {
+    "discoveryPasses": 100,
+    "catalogHardeningRounds": 100,
+    "customRulesCovered": 313,
+    "originalRules": 271,
+    "additionalCurrentRules": 42,
+    "changedSourceChecks": 8116,
+    "baselineExamples": 738,
+    "hypothesesReviewed": 245,
+    "confirmedWitnesses": 68,
+    "historicalAffectedOwners": 60,
+    "newRuleIds": 0
+  },
+  "counting": "100 catalog rounds across the rule set, not 100 rounds per individual rule. No-op or parser-rejected transformations are excluded from changed-source checks. Presence-change hypotheses are individually adjudicated and are not all verified full-toolchain escapes.",
+  "integrationBase": "2160e68a0a2d00a649df883039e01b51c4a2e25c",
+  "integration": "Preserve newer mainline policies, parser APIs, severities and provenance. Integrate remaining demonstrated behavior and regression cases, including the two supplemental owners now present on main.",
+  "versions": {
+    "python": "1.41.0",
+    "sql": "0.22.0",
+    "iac": "0.23.0",
+    "typescript": "16.14.0",
+    "standards": "8.69.0"
+  },
+  "limitations": [
+    "Finite static analyses retain each owner contract and conservative handling of unknown dynamic values.",
+    "Existing-main adoptions and intentional newer policy changes are distinguished from new current-main behavior.",
+    "No severity promotion, autofix expansion, consumer rollout or immutable-tag retargeting is included."
+  ],
+  "rules": [
+    {
+      "key": "eslint:duplicate-test-body",
+      "code": null,
+      "summary": "Disallow substantial sibling tests with the same body shape; express their differing inputs as a parameterized case table.",
+      "integration": "narrow-campaign-expansion",
+      "detail": "Preserved current framework/alias provenance and assertion contracts; added bounded no-substitution template and const-literal normalization with cohesive record traversal.",
+      "source": "packages/typescript/src/rules/duplicate-test-body.ts",
+      "test": "packages/typescript/tests/rules/duplicate-test-body.test.ts",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "eslint:no-cors-wildcard-with-credentials",
+      "code": null,
+      "summary": "Review wildcard CORS origins combined with an explicit credentials opt-in.",
+      "integration": "narrow-campaign-expansion",
+      "detail": "Preserved current official imports, effective writes, native header combination, receiver escape analysis, warning level and correctness rationale; added decoded literal values and static computed setter spelling. Three old campaign positives now use the required official cors import.",
+      "source": "packages/typescript/src/rules/no-cors-wildcard-with-credentials.ts",
+      "test": "packages/typescript/tests/rules/no-cors-wildcard-with-credentials.test.ts",
+      "defaultLevel": "warning"
+    },
+    {
+      "key": "eslint:no-duplicate-lifecycle-refresh-listeners",
+      "code": null,
+      "summary": "Do not register one Next.js route-refresh callback for both focus and visibilitychange.",
+      "integration": "already-upstream-preserved",
+      "detail": "Current main already implements the demonstrated campaign behavior; kept its source byte-identical and retained the nonduplicate campaign regressions.",
+      "source": "packages/typescript/src/rules/no-duplicate-lifecycle-refresh-listeners.ts",
+      "test": "packages/typescript/tests/rules/no-duplicate-lifecycle-refresh-listeners.test.ts",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "eslint:no-first-party-module-mock",
+      "code": null,
+      "summary": "Prefer injected collaborators over mocking maintained first-party modules in tests.",
+      "integration": "already-upstream-preserved",
+      "detail": "Current main already implements the demonstrated campaign behavior; kept its source byte-identical and retained the nonduplicate campaign regressions.",
+      "source": "packages/typescript/src/rules/no-first-party-module-mock.ts",
+      "test": "packages/typescript/tests/rules/no-first-party-module-mock.test.ts",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "eslint:no-impossible-zod-literal-bounds",
+      "code": null,
+      "summary": "Disallow same-chain literal Zod bounds whose accepted set is mathematically empty.",
+      "integration": "narrow-campaign-expansion",
+      "detail": "Preserved current discrete-domain, import and schema-chain proof; unwrap the argument of an existing unary numeric literal without evaluation.",
+      "source": "packages/typescript/src/rules/no-impossible-zod-literal-bounds.ts",
+      "test": "packages/typescript/tests/rules/no-impossible-zod-literal-bounds.test.ts",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "eslint:no-json-stringify-error",
+      "code": null,
+      "summary": "Avoid generic JSON serialization that can omit native Error details.",
+      "integration": "already-upstream-preserved",
+      "detail": "Current main already implements the demonstrated campaign behavior; kept its source byte-identical and retained the nonduplicate campaign regressions.",
+      "source": "packages/typescript/src/rules/no-json-stringify-error.ts",
+      "test": "packages/typescript/tests/rules/no-json-stringify-error.test.ts",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "eslint:no-json-stringify-object-equality",
+      "code": null,
+      "summary": "Do not use JSON serialization as structural object equality.",
+      "integration": "narrow-campaign-expansion",
+      "detail": "Preserved current error severity, comparison/array type semantics and global shadowing; added only stable const destructured global JSON.stringify provenance, rejecting defaulted/mutable/shadowed aliases.",
+      "source": "packages/typescript/src/rules/no-json-stringify-object-equality.ts",
+      "test": "packages/typescript/tests/rules/no-json-stringify-object-equality.test.ts",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "eslint:no-log-only-catch",
+      "code": null,
+      "summary": "Disallow `catch` clauses that only log (or silently do nothing) and then swallow the error; rethrow or handle it instead.",
+      "integration": "already-upstream-preserved",
+      "detail": "Current main already implements the demonstrated campaign behavior; kept its source byte-identical and retained the nonduplicate campaign regressions.",
+      "source": "packages/typescript/src/rules/no-log-only-catch.ts",
+      "test": "packages/typescript/tests/rules/no-log-only-catch.test.ts",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "eslint:no-secret-in-log",
+      "code": null,
+      "summary": "Disallow passing a secret-named value or a raw request/response blob to a logging call; both leak to log sinks. Redact or omit.",
+      "integration": "narrow-campaign-expansion",
+      "detail": "Preserved current logging matcher, effective literal property writes, redaction names and fixture exemption. Added transparent native JSON serialization without an effective replacer and direct non-empty truncation. Three obsolete truncation-safe cases moved to invalid; public serializer/replacer/opaque redactor/equal-bound truncation cases remain valid.",
+      "source": "packages/typescript/src/rules/no-secret-in-log.ts",
+      "test": "packages/typescript/tests/rules/no-secret-in-log.test.ts",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "eslint:no-sentinel-return-on-catch",
+      "code": null,
+      "summary": "Disallow swallowing a caught error by returning an empty sentinel unless the error is handled or the sentinel is part of the function contract.",
+      "integration": "already-upstream-preserved",
+      "detail": "Current main already implements the demonstrated campaign behavior; kept its source byte-identical and retained the nonduplicate campaign regressions.",
+      "source": "packages/typescript/src/rules/no-sentinel-return-on-catch.ts",
+      "test": "packages/typescript/tests/rules/no-sentinel-return-on-catch.test.ts",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "eslint:no-silent-promise-catch",
+      "code": null,
+      "summary": "Disallow `.catch()` and second-argument `.then()` handlers that silently swallow a rejection; log, rethrow, or handle the error.",
+      "integration": "narrow-campaign-expansion",
+      "detail": "Preserved current lexical computed-method resolution, imported Zod URL/coercion exclusions, comments and recovery boundaries; ignore EmptyStatement during whole-handler proof and skip only proven effect-free bound arrow identities in subsequent then chains.",
+      "source": "packages/typescript/src/rules/no-silent-promise-catch.ts",
+      "test": "packages/typescript/tests/rules/no-silent-promise-catch.test.ts",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "eslint:no-sleep-in-test-body",
+      "code": null,
+      "summary": "Avoid fixed timed sleeps directly in test bodies; synchronize on observable behavior or use controlled timers.",
+      "integration": "already-upstream-preserved",
+      "detail": "Current main already implements the demonstrated campaign behavior; kept its source byte-identical and retained the nonduplicate campaign regressions.",
+      "source": "packages/typescript/src/rules/no-sleep-in-test-body.ts",
+      "test": "packages/typescript/tests/rules/no-sleep-in-test-body.test.ts",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "eslint:no-tautological-expect",
+      "code": null,
+      "summary": "Disallow supported assertions known to pass from literals or immutable scalar setup.",
+      "integration": "already-upstream-preserved",
+      "detail": "Current main already implements the demonstrated campaign behavior; kept its source byte-identical and retained the nonduplicate campaign regressions.",
+      "source": "packages/typescript/src/rules/no-tautological-expect.ts",
+      "test": "packages/typescript/tests/rules/no-tautological-expect.test.ts",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "eslint:no-unlocalized-toast",
+      "code": null,
+      "summary": "Require translation for literal toast messages in opted-in localized interfaces.",
+      "integration": "already-upstream-preserved",
+      "detail": "Current main already implements the demonstrated campaign behavior; kept its source byte-identical and retained the nonduplicate campaign regressions.",
+      "source": "packages/typescript/src/rules/no-unlocalized-toast.ts",
+      "test": "packages/typescript/tests/rules/no-unlocalized-toast.test.ts",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "eslint:prefer-constant-time-secret-compare",
+      "code": null,
+      "summary": "Prefer a supported constant-time comparison primitive for secret-like values.",
+      "integration": "narrow-campaign-expansion",
+      "detail": "Preserved current public sentinels/name heuristics. Retained campaign bounded native Request/imported NextRequest credential-header provenance across stable locals and literal syntax variants; excludes unknown/shadowed/mutated receivers and public header metadata.",
+      "source": "packages/typescript/src/rules/prefer-constant-time-secret-compare.ts",
+      "test": "packages/typescript/tests/rules/prefer-constant-time-secret-compare.test.ts",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "eslint:prefer-multi-value-zod-literal",
+      "code": null,
+      "summary": "Use the Zod 4 multi-value literal API instead of a union of literal schemas.",
+      "integration": "already-upstream-preserved",
+      "detail": "Current main already implements the demonstrated campaign behavior; kept its source byte-identical and retained the nonduplicate campaign regressions.",
+      "source": "packages/typescript/src/rules/prefer-multi-value-zod-literal.ts",
+      "test": "packages/typescript/tests/rules/prefer-multi-value-zod-literal.test.ts",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "eslint:prefer-node-crypto-hash",
+      "code": null,
+      "summary": "Prefer the modern one-shot node:crypto hash API when streaming state is unnecessary.",
+      "integration": "already-upstream-preserved",
+      "detail": "Current main already implements the demonstrated campaign behavior; kept its source byte-identical and retained the nonduplicate campaign regressions.",
+      "source": "packages/typescript/src/rules/prefer-node-crypto-hash.ts",
+      "test": "packages/typescript/tests/rules/prefer-node-crypto-hash.test.ts",
+      "defaultLevel": "warning"
+    },
+    {
+      "key": "eslint:prefer-schema-for-api-payload",
+      "code": null,
+      "summary": "Require Zod (or similar) schema validation on `response.json()` / `JSON.parse()` results before property access.",
+      "integration": "narrow-campaign-expansion",
+      "detail": "Preserved current native response/source and branch-sensitive validation logic; reuse the narrow native fetch reference helper for global members and stable const aliases/destructuring.",
+      "source": "packages/typescript/src/rules/prefer-schema-for-api-payload.ts",
+      "test": "packages/typescript/tests/rules/prefer-schema-for-api-payload.test.ts",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "eslint:prefer-shared-zod-enum",
+      "code": null,
+      "summary": "Give repeated literal Zod enum domains one reusable module-level schema.",
+      "integration": "narrow-campaign-expansion",
+      "detail": "Preserved current imported Zod, module ownership, order and customization boundaries; decode literal template and erased wrapper enum elements through the existing shared static-string utility.",
+      "source": "packages/typescript/src/rules/prefer-shared-zod-enum.ts",
+      "test": "packages/typescript/tests/rules/prefer-shared-zod-enum.test.ts",
+      "defaultLevel": "warning"
+    },
+    {
+      "key": "eslint:prefer-typed-reflection",
+      "code": null,
+      "summary": "Prefer typed access when Reflect.get or Reflect.apply discards a known contract.",
+      "integration": "narrow-campaign-expansion",
+      "detail": "Preserved current typed closed-object and receiver/argument exclusions; decode literal template and erased wrapper keys using existing shared helpers.",
+      "source": "packages/typescript/src/rules/prefer-typed-reflection.ts",
+      "test": "packages/typescript/tests/rules/prefer-typed-reflection.test.ts",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "eslint:prefer-whole-object-assertion",
+      "code": null,
+      "summary": "Collapse consecutive assertions on one object into a whole-object assertion so related mismatches are reported together.",
+      "integration": "already-upstream-preserved",
+      "detail": "Current main already implements the demonstrated campaign behavior; kept its source byte-identical and retained the nonduplicate campaign regressions.",
+      "source": "packages/typescript/src/rules/prefer-whole-object-assertion.ts",
+      "test": "packages/typescript/tests/rules/prefer-whole-object-assertion.test.ts",
+      "defaultLevel": "warning"
+    },
+    {
+      "key": "eslint:require-fetch-timeout",
+      "code": null,
+      "summary": "Require an explicit abort signal on locally analyzable global fetch calls.",
+      "integration": "narrow-campaign-expansion",
+      "detail": "Preserved current accessor/prototype/init mutation analysis and Request signal inheritance. Replace only direct-fetch recognition with bounded scope-aware stable const native references; do not resurrect the removed general forwarder helper.",
+      "source": "packages/typescript/src/rules/require-fetch-timeout.ts",
+      "test": "packages/typescript/tests/rules/require-fetch-timeout.test.ts",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "iac:no-comment-cruft",
+      "code": "SARJ202",
+      "summary": "Commented-out HCL declarations or decorative divider comments must be removed; retain comments that explain constraints or rationale.",
+      "integration": "integrated",
+      "detail": "Normalize recovered code with current lexical block-comment and full-expression grouping helpers; preserve newer generated-header/heredoc handling and conservative malformed input.",
+      "source": "packages/iac/src/sarj_iac_lint/rules/no_comment_cruft.py",
+      "test": "packages/iac/tests/rules/test_no_comment_cruft.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "iac:no-dead-environment-input",
+      "code": "SARJ205",
+      "summary": "Find undeclared tfvars assignments and potentially redundant scalar values across discovered Terraform environments.",
+      "integration": "adopted-already",
+      "detail": "Source exactly HEAD: current ungrouped_expression and source spans already handle grouped scalar defaults without splitting numeric tokens.",
+      "source": "packages/iac/src/sarj_iac_lint/rules/no_dead_environment_input.py",
+      "test": "packages/iac/tests/rules/test_no_dead_environment_input.py",
+      "defaultLevel": "warning"
+    },
+    {
+      "key": "iac:no-environment-conditional",
+      "code": "SARJ204",
+      "summary": "Warn when Terraform chooses behavior from deployment-identity comparisons; prefer explicit typed capabilities or values.",
+      "integration": "adopted-already",
+      "detail": "Source exactly HEAD: newer shared HCL label decoding and environment/template semantics retained; escaped-label diagnostic regressions added.",
+      "source": "packages/iac/src/sarj_iac_lint/rules/no_environment_conditional.py",
+      "test": "packages/iac/tests/rules/test_no_environment_conditional.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "iac:no-managed-service-account-key",
+      "code": "SARJ211",
+      "summary": "Disallow Terraform-managed Google service-account keys.",
+      "integration": "adopted-already",
+      "detail": "Source exactly HEAD: current shared parser already decodes escaped resource labels; add campaign escaped-label regression.",
+      "source": "packages/iac/src/sarj_iac_lint/rules/no_managed_service_account_key.py",
+      "test": "packages/iac/tests/rules/test_no_managed_service_account_key.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "iac:no-project-basic-privilege",
+      "code": "SARJ212",
+      "summary": "Disallow proven project IAM Owner and Editor grants.",
+      "integration": "integrated",
+      "detail": "Add bounded unique same-file scalar local aliases/literal join on top of current-main immutable local-collection and for_each proof; preserve collection-specific exclusions, policy ownership and current static literal decoding.",
+      "source": "packages/iac/src/sarj_iac_lint/rules/no_project_basic_privilege.py",
+      "test": "packages/iac/tests/rules/test_no_project_basic_privilege.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "iac:no-redundant-variable-validation",
+      "code": "SARJ209",
+      "summary": "Flag Terraform variable validation conditions already guaranteed by the variable's type constraint.",
+      "integration": "adopted-already",
+      "detail": "Source exactly HEAD: current shared parser already decodes escaped labels; add campaign source-equivalence negatives/positives.",
+      "source": "packages/iac/src/sarj_iac_lint/rules/no_redundant_variable_validation.py",
+      "test": "packages/iac/tests/rules/test_no_redundant_variable_validation.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "iac:no-restated-comment",
+      "code": "SARJ207",
+      "summary": "Flag a short comment attached to an HCL declaration when it only repeats that declaration's kind, label, or attribute name.",
+      "integration": "integrated",
+      "detail": "Project block comments out of declaration subject/word recognition using current lexical helper; preserve newer header and comment ownership.",
+      "source": "packages/iac/src/sarj_iac_lint/rules/no_restated_comment.py",
+      "test": "packages/iac/tests/rules/test_no_restated_comment.py",
+      "defaultLevel": "warning"
+    },
+    {
+      "key": "iac:no-terraform-data-condition",
+      "code": "SARJ210",
+      "summary": "Disallow lifecycle conditions attached to terraform_data guard resources.",
+      "integration": "adopted-already",
+      "detail": "H078 escaped terraform_data label witness is already caught by current-main shared HCL Unicode decoding. Rule, shared parser, and owner test file exactly match current main; original and escaped plan guards report once, replacement triggers, literal backslash labels and provider lifecycle conditions remain allowed. No source/test edits required.",
+      "source": "packages/iac/src/sarj_iac_lint/rules/no_terraform_data_condition.py",
+      "test": "packages/iac/tests/rules/test_no_terraform_data_condition.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "iac:require-deletion-protection",
+      "code": "SARJ201",
+      "summary": "Require a curated stateful Terraform resource to declare a proven provider-native deletion guard or literal lifecycle destroy guard.",
+      "integration": "adopted-already",
+      "detail": "Source exactly HEAD: current shared literal semantics already decode escaped PREVENT and grouping; preserve newer template/protection proof.",
+      "source": "packages/iac/src/sarj_iac_lint/rules/require_deletion_protection.py",
+      "test": "packages/iac/tests/rules/test_require_deletion_protection.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "iac:require-prevent-destroy-on-irreplaceable",
+      "code": "SARJ203",
+      "summary": "Require a curated durable-data container to declare a literal provider-side deletion guard or Terraform lifecycle destroy guard.",
+      "integration": "adopted-already",
+      "detail": "Source exactly HEAD: grouped booleans and escaped PREVENT already handled through current HCL literal APIs.",
+      "source": "packages/iac/src/sarj_iac_lint/rules/require_prevent_destroy.py",
+      "test": "packages/iac/tests/rules/test_require_prevent_destroy.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "python:no-cors-wildcard-with-credentials",
+      "code": "SARJ028",
+      "summary": "Credentialed CORS must not allow a wildcard origin.",
+      "integration": "integrated",
+      "detail": "Effective literal keyword dictionaries and actual wildcard origin values; preserve unknown/comprehension boundaries.",
+      "source": "packages/python/src/sarj_python_lint/rules/no_cors_wildcard_with_credentials.py",
+      "test": "packages/python/tests/rules/test_no_cors_wildcard_with_credentials.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "python:no-offset-pagination",
+      "code": "SARJ025",
+      "summary": "Potentially unbounded `OFFSET` pagination in store SQL.",
+      "integration": "integrated",
+      "detail": "Balanced numeric wrappers/arithmetic preserve dynamic driver offsets; current source prefilter and exclusions retained.",
+      "source": "packages/python/src/sarj_python_lint/rules/no_offset_pagination.py",
+      "test": "packages/python/tests/rules/test_no_offset_pagination.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "python:no-secret-in-log",
+      "code": "SARJ012",
+      "summary": "A direct credential-like reference is passed to a recognized logging call.",
+      "integration": "integrated",
+      "detail": "Direct whole-message secrets and nested literal containers/concatenations, without duplicate positional diagnostics; newer current-main logger proof retained.",
+      "source": "packages/python/src/sarj_python_lint/rules/no_secret_in_log.py",
+      "test": "packages/python/tests/rules/test_no_secret_in_log.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "python:no-unused-value-marker",
+      "code": "SARJ452",
+      "summary": "Do not use standalone assignments to `_` to discard values.",
+      "integration": "superseded-by-newer-policy",
+      "detail": "Source exactly HEAD: current-main explicitly reports formal-parameter discard markers. Old campaign parameter-exemption expansion is not imported; starred cases now assert report under the newer contract.",
+      "source": "packages/python/src/sarj_python_lint/rules/no_unused_value_marker.py",
+      "test": "packages/python/tests/rules/test_no_unused_value_marker.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "python:prefer-constant-time-secret-compare",
+      "code": "SARJ011",
+      "summary": "Externally supplied authenticators are compared with timing-sensitive equality.",
+      "integration": "integrated",
+      "detail": "Adjacent chained equality pairs and literal encode normalization; cohesive adjacent-pair helper preserves current-main role/dunder handling.",
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_constant_time_secret_compare.py",
+      "test": "packages/python/tests/rules/test_prefer_constant_time_secret_compare.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "python:prefer-walrus-regex-match",
+      "code": "SARJ081",
+      "summary": "A proven regex Match-or-None result is assigned only for the following condition.",
+      "integration": "adopted-already-plus-performance-hardening",
+      "detail": "Current-main symbol_source and punctuation-independent call regex already catch the adversarial witness. Retain them and add eligible AST call/condition body pruning before expensive parent/scope analysis.",
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_walrus_regex_match.py",
+      "test": "packages/python/tests/rules/test_prefer_walrus_regex_match.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "python:replay-contract-insert-requires-duplicate-policy",
+      "code": "SARJ018",
+      "summary": "A literal INSERT in a replay-named store callable must declare duplicate behavior.",
+      "integration": "integrated",
+      "detail": "Target AS aliases and OVERRIDING clauses; preserve existing embedded SQL lexical duplicate-policy boundary.",
+      "source": "packages/python/src/sarj_python_lint/rules/store_insert_requires_on_conflict.py",
+      "test": "packages/python/tests/rules/test_store_insert_requires_on_conflict.py",
+      "defaultLevel": "warning"
+    },
+    {
+      "key": "python:require-port-for-service",
+      "code": "SARJ071",
+      "summary": "Consider a consumer-owned port when visible service structure suggests a substitution boundary.",
+      "integration": "adopted-already",
+      "detail": "Source exactly HEAD: newer _factory_interface already resolves Protocol/ABC aliases and preserves extended factory/consumer proof. Added campaign alias regressions only.",
+      "source": "packages/python/src/sarj_python_lint/rules/require_port_for_service.py",
+      "test": "packages/python/tests/rules/test_require_port_for_service.py",
+      "defaultLevel": "warning"
+    },
+    {
+      "key": "python:require-pydantic-for-external-json",
+      "code": "SARJ411",
+      "summary": "Proven external JSON record fields are consumed before runtime schema validation.",
+      "integration": "adopted-already-plus-performance-hardening",
+      "detail": "Current-main symbol_source gate already catches wrapped JSON calls. Preserve newer wrapper/factory provenance and add necessary actual-decoder AST call gate before summaries.",
+      "source": "packages/python/src/sarj_python_lint/rules/require_pydantic_for_external_json.py",
+      "test": "packages/python/tests/rules/test_require_pydantic_for_external_json.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "python:require-pydantic-ordinal-lower-bound",
+      "code": "SARJ418",
+      "summary": "A Pydantic ordinal field maps its first position to N but accepts smaller integers.",
+      "integration": "adopted-already-plus-performance-hardening",
+      "detail": "Current-main Field symbol gate already accepts escaped prose. Prune classes by ordinal fields then proven BaseModel before alias work; preserve current-main inert-model ERROR vs executable-model WARNING severity.",
+      "source": "packages/python/src/sarj_python_lint/rules/require_pydantic_ordinal_lower_bound.py",
+      "test": "packages/python/tests/rules/test_require_pydantic_ordinal_lower_bound.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "python:store-get-delegates-to-bulk-read",
+      "code": "SARJ421",
+      "summary": "A store singleton operation should reuse its equivalent bulk implementation.",
+      "integration": "integrated",
+      "detail": "Closed literal starred singleton collections preserve provable bulk delegation; current method/signature contracts retained.",
+      "source": "packages/python/src/sarj_python_lint/rules/store_get_delegates_to_bulk_read.py",
+      "test": "packages/python/tests/rules/test_store_get_delegates_to_bulk_read.py",
+      "defaultLevel": "warning"
+    },
+    {
+      "key": "python:typed-error-reasons",
+      "code": "SARJ435",
+      "summary": "Review joined exception strings for fixed reason identities versus dynamic context.",
+      "integration": "adopted-already",
+      "detail": "Source exactly HEAD: normalized symbol_source gate already handles parenthesized super/join; added campaign regressions only.",
+      "source": "packages/python/src/sarj_python_lint/rules/typed_error_reasons.py",
+      "test": "packages/python/tests/rules/test_typed_error_reasons.py",
+      "defaultLevel": "warning"
+    },
+    {
+      "key": "sql:enforce-timestamptz",
+      "code": "SARJ101",
+      "summary": "TIMESTAMP without TIME ZONE — use TIMESTAMPTZ.",
+      "integration": "integrated-missing-campaign-behavior",
+      "detail": "Current main already handles multiline zoned types. Added parseable PostgreSQL identifier/type disambiguation, exact lowercase quoted and pg_catalog built-ins, bounded immutable identifier-span caching and lexical unsupported-syntax fallback. Kept current dollar-literal masking and diagnostic locations.",
+      "source": "packages/sql/src/sarj_sql_lint/rules/enforce_timestamptz.py",
+      "test": "packages/sql/tests/rules/test_enforce_timestamptz.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "sql:existing-table-check-or-foreign-key-requires-not-valid",
+      "code": "SARJ111",
+      "summary": "CHECK and foreign-key constraints added to existing PostgreSQL tables should defer validation.",
+      "integration": "already-covered-by-current-main-shared-parser-regression-tests-retained",
+      "detail": "Kept current-main implementation and shared scanner byte-for-byte. Quoted semicolons already stay inside identifiers; retained campaign existing-table/fresh-table/NOT VALID regressions.",
+      "source": "packages/sql/src/sarj_sql_lint/rules/add_constraint_requires_not_valid.py",
+      "test": "packages/sql/tests/rules/test_add_constraint_requires_not_valid.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "sql:insert-requires-replay-policy",
+      "code": "SARJ105",
+      "summary": "Every INSERT must declare replay-safe upsert behavior or explicitly document intentional insert-only semantics.",
+      "integration": "integrated-missing-campaign-behavior",
+      "detail": "Kept current quoted targets and normalized target-specific guards. Added target aliases, OVERRIDING clauses and depth-bounded per-INSERT replay policy so CTE sibling policies cannot waive another insert.",
+      "source": "packages/sql/src/sarj_sql_lint/rules/insert_requires_on_conflict.py",
+      "test": "packages/sql/tests/rules/test_insert_requires_on_conflict.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "sql:mixed-migration-phases",
+      "code": "SARJ119",
+      "summary": "Review existing-table migrations that combine backfill, enforcement, and contract phases.",
+      "integration": "already-covered-by-current-main-regression-tests-retained",
+      "detail": "Kept current-main implementation byte-for-byte: identifier delimiters, normalized quoted-case table identity and clause-word masking already cover the campaign cases. Its handling also preserves original internal quoted-identifier whitespace.",
+      "source": "packages/sql/src/sarj_sql_lint/rules/mixed_migration_phases.py",
+      "test": "packages/sql/tests/rules/test_mixed_migration_phases.py",
+      "defaultLevel": "warning"
+    },
+    {
+      "key": "sql:no-application-schema-check",
+      "code": "SARJ118",
+      "summary": "Keep JSON shape and closed application value sets out of database CHECK constraints.",
+      "integration": "integrated-missing-campaign-behavior",
+      "detail": "Added exact lowercase quoted JSON shape functions, dollar-valid simple column names and necessary CHECK gates. Retained current quote-aware structural parsing and its review-first warning/remediation instead of the earlier campaign removal wording. Added a proven dollar-containing custom function negative.",
+      "source": "packages/sql/src/sarj_sql_lint/rules/no_application_schema_check.py",
+      "test": "packages/sql/tests/rules/test_no_application_schema_check.py",
+      "defaultLevel": "warning"
+    },
+    {
+      "key": "sql:no-duplicate-index",
+      "code": "SARJ117",
+      "summary": "Report duplicate and conservatively covered indexes that remain active in one authored migration.",
+      "integration": "already-covered-by-current-main-regression-tests-retained",
+      "detail": "Kept current-main implementation byte-for-byte: the newer index analyzer already normalizes comment trivia. Preserved its exact-duplicate ERROR default and WARNING-only access-path/prefix advice; no earlier warning downgrade or older parser is reintroduced.",
+      "source": "packages/sql/src/sarj_sql_lint/rules/no_duplicate_index.py",
+      "test": "packages/sql/tests/rules/test_no_duplicate_index.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "sql:no-offset-pagination",
+      "code": "SARJ107",
+      "summary": "Dynamic OFFSET pagination in query SQL should use a stable cursor.",
+      "integration": "integrated-missing-campaign-behavior",
+      "detail": "Extended bounded numeric offset token traversal for common numeric wrappers, grouped arithmetic and OFFSET-before-LIMIT while retaining current cast grammar, static-marker comment proof, dollar handling and shared dialect identifier scanner.",
+      "source": "packages/sql/src/sarj_sql_lint/rules/no_offset_pagination.py",
+      "test": "packages/sql/tests/rules/test_no_offset_pagination.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "sql:prefer-jsonb",
+      "code": "SARJ106",
+      "summary": "JSON column type or table-DDL cast — use JSONB.",
+      "integration": "integrated-missing-campaign-behavior",
+      "detail": "Added optional COLUMN syntax, JSON arrays, exact quoted json and pg_catalog-qualified built-in types. Kept quoted-keyword filtering and current scalar dollar masking; restrict alteration patterns to actual ALTER TABLE context.",
+      "source": "packages/sql/src/sarj_sql_lint/rules/prefer_jsonb.py",
+      "test": "packages/sql/tests/rules/test_prefer_jsonb.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "sql:prefer-text-over-varchar",
+      "code": "SARJ104",
+      "summary": "VARCHAR(n) — use TEXT (+ CHECK length if needed).",
+      "integration": "already-covered-by-current-main-regression-tests-retained",
+      "detail": "Kept current-main implementation byte-for-byte: whole-source multiline/comment scanning and current dollar-string semantics already cover the campaign requirement. Retained the additional campaign regression function.",
+      "source": "packages/sql/src/sarj_sql_lint/rules/prefer_text_over_varchar.py",
+      "test": "packages/sql/tests/rules/test_prefer_text_over_varchar.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "sql:prefer-uuidv7-default",
+      "code": "SARJ109",
+      "summary": "`gen_random_uuid()` emits a random UUIDv4 — use `uuidv7()` so keys are time-ordered.",
+      "integration": "negative-boundary-refinement-on-existing-main-coverage",
+      "detail": "Current main already catches quoted and multiline native calls. Retained that implementation and tightened the leading identifier boundary so custom$gen_random_uuid() is not mistaken for the native function.",
+      "source": "packages/sql/src/sarj_sql_lint/rules/prefer_uuidv7_default.py",
+      "test": "packages/sql/tests/rules/test_prefer_uuidv7_default.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "sql:require-lock-timeout",
+      "code": "SARJ110",
+      "summary": "DDL migration missing positive SET [LOCAL] lock_timeout or statement_timeout prior to DDL.",
+      "integration": "integrated-missing-campaign-behavior",
+      "detail": "Current main already has RESET ALL, effective local/session precedence and exact Dbmate section semantics. Added REFRESH MATERIALIZED VIEW and AST-proven CREATE TABLE LIKE operations plus case-insensitive quoted parameter names. Preserved per-event dbmate_transactional, current boundary helpers, source locations and positive Decimal timeout checks.",
+      "source": "packages/sql/src/sarj_sql_lint/rules/require_lock_timeout.py",
+      "test": "packages/sql/tests/rules/test_require_lock_timeout.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "text:declarative-deployment-boundary",
+      "code": "SARJ309",
+      "summary": "recognized control-plane commands bypass Terraform resource ownership",
+      "integration": "integrated",
+      "detail": "Add literal operational config entrypoint/argv mutation inspection; retain newer Terraform local-exec extraction, shell logical line/source attribution, read-only deployment orchestration and all existing boundaries.",
+      "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "test": "packages/standards/tests/test_textlint.py",
+      "defaultLevel": "warning"
+    },
+    {
+      "key": "text:iac-source-coupled-test",
+      "code": "SARJ304",
+      "summary": "shell test asserts on raw IaC source text",
+      "integration": "integrated",
+      "detail": "Normalize static command/env/sudo assertion wrappers without losing bare shell test/[[ builtins; dynamic queries/data stay excluded.",
+      "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "test": "packages/standards/tests/test_textlint.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "text:no-wildcard-secret-read-permission",
+      "code": "SARJ308",
+      "summary": "Claude settings grant wildcard access to secret values",
+      "integration": "integrated",
+      "detail": "Normalize static env/command wrappers around exact recognized secret-value command prefixes before checking wildcard allow scopes; named-secret and unknown dynamic commands stay excluded.",
+      "source": "packages/standards/src/sarj_standards/libs/linting/textlint.py",
+      "test": "packages/standards/tests/test_textlint.py",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "eslint:require-explicit-contract-implementation",
+      "code": null,
+      "summary": "Require nominal inheritance when an injected abstract class is rejected by an instanceof guard.",
+      "integration": "narrow-campaign-expansion",
+      "detail": "Applied the supplemental H244 change to the now-existing current-main owner: exact parenthesized constructor/guard symbols preserve identity; casts, escapes and nominal implementations remain exempt.",
+      "source": "packages/typescript/src/rules/require-explicit-contract-implementation.ts",
+      "test": "packages/typescript/tests/rules/require-explicit-contract-implementation.test.ts",
+      "defaultLevel": "error"
+    },
+    {
+      "key": "python:no-loguru-printf-format",
+      "code": "SARJ509",
+      "summary": "Use brace formatting for positional values passed to Loguru.",
+      "integration": "integrated-mainline-addon",
+      "detail": "H225/H243: remove raw percent source gate; current logger mutation/import proof and decoded literal template semantics retained. Add Unicode/hex conversions and escaped literal-percent safe case.",
+      "source": "packages/python/src/sarj_python_lint/rules/no_loguru_printf_format.py",
+      "test": "packages/python/tests/rules/test_no_loguru_printf_format.py",
+      "defaultLevel": "warning"
+    }
+  ],
+  "integrationAdditionalCorrections": [
+    {
+      "key": "python:no-random-uuid-in-sql",
+      "code": "SARJ053",
+      "detail": "PostgreSQL dollar signs continue identifiers; avoid native-call suffix false positives and recognize real UUID calls inside custom dollar-named wrappers.",
+      "source": "packages/python/src/sarj_python_lint/rules/no_random_uuid_in_sql.py",
+      "test": "packages/python/tests/rules/test_no_random_uuid_in_sql.py",
+      "authority": "https://www.postgresql.org/docs/current/sql-syntax-lexical.html#SQL-SYNTAX-IDENTIFIERS"
+    },
+    {
+      "scope": "docs-formatter",
+      "detail": "Align the Terraform formatter assertion with current-main pinned Terraform1.16.5; required generated-artifact workflow reproduced the stale1.15.8 mismatch."
+    }
+  ]
+}

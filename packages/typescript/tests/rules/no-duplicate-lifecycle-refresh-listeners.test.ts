@@ -16,6 +16,10 @@ const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
 
 RULE_TESTER.run("no-duplicate-lifecycle-refresh-listeners", rule, {
   valid: [
+    { name: "honors static computed removals with template event names", code: 'import { useRouter } from "next/navigation"; const router = useRouter(); const refresh = () => router.refresh(); window["addEventListener"](`focus`, refresh); window["removeEventListener"](`focus`, refresh); document["addEventListener"](`visibilitychange`, refresh);' },
+    { name: "keeps interpolated lifecycle event names opaque", code: 'import { useRouter } from "next/navigation"; const router = useRouter(); const refresh = () => router.refresh(); window.addEventListener(`${focusEvent}`, refresh); document.addEventListener(`visibilitychange`, refresh);' },
+    { name: "preserves browser global shadowing with static computed calls", code: 'import { useRouter } from "next/navigation"; const router = useRouter(); const refresh = () => router.refresh(); function run(window) { window["addEventListener"](`focus`, refresh); document["addEventListener"](`visibilitychange`, refresh); }' },
+
     { name: "reassigned function declaration loses callback provenance", code: 'import { useRouter } from "next/navigation"; const router = useRouter(); function refresh() { router.refresh(); } refresh = trackActivation; window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh);' },
     { name: "reassigned callback is not proven to refresh", code: 'import { useRouter } from "next/navigation"; const router = useRouter(); let refresh = () => router.refresh(); refresh = trackActivation; window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh);' },
     { name: "reassigned router is not proven Next transport", code: 'import { useRouter } from "next/navigation"; let router = useRouter(); router = cache; const refresh = () => router.refresh(); window.addEventListener("focus", refresh); document.addEventListener("visibilitychange", refresh);' },
@@ -35,6 +39,10 @@ RULE_TESTER.run("no-duplicate-lifecycle-refresh-listeners", rule, {
     { name: "ignores removeEventListener cleanup", code: `window.addEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh);` },
   ],
   invalid: [
+    { name: "retains no-substitution lifecycle event names", code: 'import { useRouter } from "next/navigation"; const router = useRouter(); const refresh = () => router.refresh(); window.addEventListener(`focus`, refresh); document.addEventListener(`visibilitychange`, refresh);', errors: [{ messageId: "duplicateLifecycleRefresh" }] },
+    { name: "retains lifecycle event names through const assertions", code: 'import { useRouter } from "next/navigation"; const router = useRouter(); const refresh = () => router.refresh(); window.addEventListener(("focus" as const), refresh); document.addEventListener(("visibilitychange" as const), refresh);', errors: [{ messageId: "duplicateLifecycleRefresh" }] },
+    { name: "recognizes static computed browser and refresh methods", code: 'import { useRouter } from "next/navigation"; const router = useRouter(); const refresh = () => router["refresh"](); window["addEventListener"]("focus", refresh); document["addEventListener"]("visibilitychange", refresh);', errors: [{ messageId: "duplicateLifecycleRefresh" }] },
+
     { name: "reports the documented duplicate lifecycle callback", code: NO_DUPLICATE_LIFECYCLE_REFRESH_LISTENERS_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "duplicateLifecycleRefresh" }] },
     {
       name: "reports listeners nested in one effect callback",

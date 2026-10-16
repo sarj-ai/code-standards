@@ -10,6 +10,7 @@ import { importSpecifierName } from "./_import-specifier-name.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
+import { staticString } from "./_static-string.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
 
@@ -22,7 +23,7 @@ export const PREFER_SHARED_ZOD_ENUM_DOCUMENTATION = {
   rationale: "Repeated literal domains hide a shared contract and allow equivalent fields to drift independently.",
   remediation: "Declare a module-level named Zod enum schema and reuse it at each field or contract site.",
   category: "maintainability",
-  limitations: ["Only two or more exact, same-order direct z.enum calls with string-literal arrays and no customization argument in one module are inspected; one-off, computed, and customized domains require review. Equal values do not prove a shared business domain: retain local schemas when ownership or future evolution differs, and review initialization order before extraction."],
+  limitations: ["Only two or more exact, same-order direct z.enum calls with string-literal arrays (including no-substitution templates and erased TypeScript wrappers) and no customization argument in one module are inspected; one-off, computed, and customized domains require review. Equal values do not prove a shared business domain: retain local schemas when ownership or future evolution differs, and review initialization order before extraction."],
   examples: [
     { id: "shared-provider", title: "Reuse a named enum schema", outcome: "no-match", files: [{ path: "src/provider.ts", source: "import { z } from 'zod'; const ProviderSchema = z.enum(['agy', 'claude', 'sol']); const JobSchema = z.object({ provider: ProviderSchema }); const StatusSchema = z.object({ provider: ProviderSchema.optional() });" }], focusPath: "src/provider.ts", expectedCount: 0, public: true },
     { id: "inline-provider", title: "Do not repeat an inline enum domain", outcome: "match", files: [{ path: "src/provider.ts", source: "import { z } from 'zod'; const JobSchema = z.object({ provider: z.enum(['agy', 'claude', 'sol']) }); const StatusSchema = z.object({ provider: z.enum(['agy', 'claude', 'sol']).optional() });" }], focusPath: "src/provider.ts", expectedCount: 2, public: true },
@@ -35,8 +36,9 @@ function literalDomain(node: TSESTree.CallExpression): readonly string[] | null 
   if (argument?.type !== AST_NODE_TYPES.ArrayExpression || argument.elements.length < 2) return null;
   const values: string[] = [];
   for (const element of argument.elements) {
-    if (element?.type !== AST_NODE_TYPES.Literal || typeof element.value !== "string") return null;
-    values.push(element.value);
+    const value = element === null ? null : staticString(element);
+    if (value === null) return null;
+    values.push(value);
   }
   return values;
 }

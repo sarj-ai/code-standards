@@ -125,6 +125,19 @@ def test_allows(source: str):
     assert _check(source) == []
 
 
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        pytest.param('SQL = "SELECT custom$gen_random_uuid()"\n', 0, id="dollar-prefixed-random-name"),
+        pytest.param('SQL = "SELECT custom$uuid_generate_v4()"\n', 0, id="dollar-prefixed-extension-name"),
+        pytest.param('SQL = "SELECT custom$encode(gen_random_uuid())"\n', 1, id="custom-builder-retains-native-call"),
+        pytest.param('SQL = "SELECT pg_catalog.gen_random_uuid()"\n', 1, id="qualified-native-call"),
+    ],
+)
+def test_postgres_identifier_boundaries(source: str, expected: int) -> None:
+    assert len(_check(source)) == expected
+
+
 def test_flags_once_per_literal_not_once_per_occurrence():
     src = 'SQL = "CREATE TABLE t (a UUID DEFAULT gen_random_uuid(), b UUID DEFAULT gen_random_uuid())"\n'
     assert len(_check(src)) == 1

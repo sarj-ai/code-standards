@@ -118,3 +118,26 @@ def test_quoted_builtin_function_preserves_detection_and_position() -> None:
 )
 def test_case_sensitive_function_and_quoted_call_decoys_are_inert(source: str) -> None:
     assert _check(source) == []
+
+
+@pytest.mark.parametrize("call", ['"gen_random_uuid"()', 'public."gen_random_uuid"\n/* call */ ()'])
+def test_flags_a_quoted_native_function_call(call: str) -> None:
+    [finding] = _check(f"SELECT {call};")
+    assert finding.line == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'SELECT "GEN_RANDOM_UUID"();',
+        'SELECT "gen_random_uuid" FROM item;',
+        'SELECT "gen_random_uuid()" FROM item;',
+        "SELECT 'gen_random_uuid()';",
+    ],
+)
+def test_does_not_confuse_a_quoted_name_or_value_with_the_native_call(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_dollar_identifier_suffix_does_not_become_a_native_uuid_call() -> None:
+    assert _check("SELECT custom$gen_random_uuid();") == []

@@ -48,6 +48,33 @@ def test_flags_commented_out_attribute():
     assert len(_check(src)) == 1
 
 
+@pytest.mark.parametrize("value", ['("legacy")', '(("legacy"))'])
+def test_grouping_does_not_hide_a_code_dominant_disabled_resource(value: str) -> None:
+    source = (
+        '# resource "google_storage_bucket" "old" {\n'
+        f"#   name = {value}\n"
+        '#   location = ("US")\n'
+        "#   force_destroy = (true)\n"
+        "# }\n"
+    )
+    assert len(_check(source)) == 1
+
+
+def test_block_comment_trivia_does_not_hide_recovered_hcl_assignments() -> None:
+    source = (
+        '# resource "google_storage_bucket" "old" {\n'
+        '# name /* attribute boundary */ = "legacy"\n'
+        '# location /* attribute boundary */ = "US"\n'
+        "# force_destroy /* attribute boundary */ = true\n"
+        "# }\n"
+    )
+    assert len(_check(source)) == 1
+
+
+def test_parenthesized_prose_does_not_become_commented_code() -> None:
+    assert _check("# Capacity depends on (regional availability).\n# Keep the recorded rationale.\n") == []
+
+
 def test_flags_section_banner():
     src = "# ============================================\nlocals {}\n"
     assert len(_check(src)) == 1

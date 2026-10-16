@@ -20,6 +20,15 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
   valid: [
+    {
+      name: "recognizes a static computed logger before returning a fallback",
+      code: "function load() { try { return read(); } catch (error) { console['error'](error); return null; } }",
+    },
+    {
+      name: "recognizes a static computed error reporter before returning a fallback",
+      code: "function load() { try { return read(); } catch (error) { telemetry['captureException'](error); return null; } }",
+    },
+
     { name: "preserves injected fallback named undefined", code: "function run(undefined) { try { return load(); } catch { return undefined; } }" },
     { name: "preserves wrapped lexical fallback named undefined", code: "const undefined = fallback; function run() { try { return load(); } catch { return undefined as Value; } }" },
     { name: "accepts the documented reported fallback", code: NO_SENTINEL_RETURN_ON_CATCH_DOCUMENTATION.examples[0].files[0].source },
@@ -404,6 +413,12 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
     },
   ],
   invalid: [
+    {
+      name: "does not infer reporting from an unresolved computed method",
+      code: "function load(method) { try { return read(); } catch (error) { console[method](error); return null; } }",
+      errors: [{ messageId: "noSentinelReturn" }],
+    },
+
     { name: "reports the documented silent fallback", code: NO_SENTINEL_RETURN_ON_CATCH_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noSentinelReturn" }] },
     {
       name: "does not exempt a deliberate Error throw when the caught value is ignored",

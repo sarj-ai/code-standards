@@ -12,6 +12,8 @@ import {
 import ts from "typescript";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
+import { staticString } from "./_static-string.js";
+import { unwrapExpression } from "./_unwrap-expression.js";
 
 export const PREFER_TYPED_REFLECTION_DOCUMENTATION = {
   summary:
@@ -22,7 +24,7 @@ export const PREFER_TYPED_REFLECTION_DOCUMENTATION = {
     "Use direct typed property access or call the typed function, preserving receivers and evaluation semantics.",
   category: "maintainability",
   limitations: [
-    "Requires TypeScript type information. Inspects scope-resolved global Reflect.get with a literal key on a closed object type, and Reflect.apply with a known call signature and a literal argument array.",
+    "Requires TypeScript type information. Inspects scope-resolved global Reflect.get with a literal key (including no-substitution templates and erased TypeScript wrappers) on a closed object type, and Reflect.apply with a known call signature and a literal argument array.",
     "Dynamic keys, open dictionaries, unknown/any/generic targets, explicit Reflect.get receivers, aliases, and nonliteral argument arrays are excluded. Deliberate proxy or metaprogramming calls need a local suppression. No autofix because receiver and evaluation semantics may differ.",
   ],
   examples: [
@@ -117,11 +119,10 @@ export default createRule<[], "avoid">({
       node: TSESTree.CallExpression,
       type: ts.Type,
     ): boolean => {
-      const key = node.arguments[1];
+      const key = node.arguments[1] === undefined ? undefined : unwrapExpression(node.arguments[1]);
       return (
         node.arguments.length === 2 &&
-        key?.type === AST_NODE_TYPES.Literal &&
-        (typeof key.value === "string" || typeof key.value === "number") &&
+        (staticString(key) !== null || (key?.type === AST_NODE_TYPES.Literal && typeof key.value === "number")) &&
         closedObject(type)
       );
     };

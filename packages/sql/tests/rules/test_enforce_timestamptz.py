@@ -159,3 +159,55 @@ def test_non_postgres_timestamp_types_do_not_receive_postgres_advice(dialect: st
 def test_ambiguous_timestamp_without_postgres_evidence_stays_silent() -> None:
     source = "CREATE TABLE event (created_at TIMESTAMP);"
     assert EnforceTimestamptz().check(Path("db/init.sql"), source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "SELECT timestamp FROM events;",
+        "SELECT events.timestamp FROM events ORDER BY timestamp;",
+        "CREATE TABLE events(timestamp text);",
+        "SELECT created_at AS timestamp FROM events;",
+        "SELECT count(timestamp) FROM events;",
+    ],
+)
+def test_timestamp_identifier_is_not_a_type_declaration(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "CREATE TABLE timestamp(created_at TIMESTAMP);",
+        "SELECT timestamp::TIMESTAMP FROM events;",
+        "SELECT CAST(timestamp AS TIMESTAMP) FROM events;",
+        "SELECT TIMESTAMP '2020-01-01';",
+    ],
+)
+def test_timestamp_identifier_does_not_hide_a_real_naive_type(source: str) -> None:
+    assert len(_check(source)) == 1
+
+
+def test_unsupported_syntax_retains_detection_without_logging_source(caplog: pytest.LogCaptureFixture) -> None:
+    findings = _check("CREATE AGGREGATE earliest (timestamptz) (SFUNC = earlier, STYPE = TIMESTAMP);")
+    assert len(findings) == 1
+    assert not caplog.records
+
+
+@pytest.mark.parametrize(
+    "datatype",
+    ['"timestamp"', "pg_catalog.timestamp", '"pg_catalog"."timestamp"', 'pg_catalog."timestamp"'],
+)
+def test_quoted_and_catalog_qualified_builtin_types_still_require_a_zone(datatype: str) -> None:
+    source = f"CREATE TABLE events (created_at {datatype});"
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("datatype", ["custom.timestamp", 'custom."timestamp"', '"TIMESTAMP"'])
+def test_custom_schema_and_quoted_case_sensitive_types_are_not_inferred(datatype: str) -> None:
+    source = f"CREATE TABLE events (created_at {datatype});"
+    assert _check(source) == []
+
+
+def test_quoted_column_name_does_not_hide_a_naive_builtin_type() -> None:
+    assert len(_check('CREATE TABLE events ("timestamp" TIMESTAMP);')) == 1

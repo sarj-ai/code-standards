@@ -379,3 +379,23 @@ def test_unicode_index_name_case_does_not_turn_if_not_exists_into_a_second_index
 def test_unicode_space_in_index_names_and_keys_is_preserved() -> None:
     assert _check("CREATE INDEX a ON event(parent\u00a0id); CREATE INDEX b ON event(parent_id);") == []
     assert _check("CREATE INDEX a\u00a0 ON event(id); CREATE INDEX b ON event(id); DROP INDEX a\u00a0;") == []
+
+
+def test_comments_are_trivia_in_keys_includes_and_predicates() -> None:
+    source = (
+        "CREATE/* creation */ INDEX first_idx ON event(owner_id DESC) INCLUDE(payload) WHERE active;\n"
+        "CREATE INDEX second_idx ON event(owner_id DESC/* ordering */) "
+        "INCLUDE(/* covering */ payload) WHERE /* filter */ active;\n"
+    )
+    [finding] = _check(source)
+    assert finding.line == 2
+
+
+def test_comment_masking_preserves_literal_values_and_authored_source_scope() -> None:
+    distinct_predicates = (
+        "CREATE INDEX first_idx ON event(owner_id) WHERE status = '/* open */';\n"
+        "CREATE INDEX second_idx ON event(owner_id) WHERE status = '/* closed */';\n"
+    )
+    assert _check(distinct_predicates) == []
+    assert _check("-- dialect: mysql\nCREATE INDEX a ON event(id);\nCREATE INDEX b ON event(id);") == []
+    assert _check("--> statement-breakpoint\nCREATE INDEX a ON event(id);\nCREATE INDEX b ON event(id);") == []

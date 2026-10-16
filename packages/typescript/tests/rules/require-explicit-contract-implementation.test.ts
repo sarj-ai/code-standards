@@ -125,6 +125,9 @@ const TESTER = new RuleTester({
 
 TESTER.run("require-explicit-contract-implementation", rule, {
   valid: [
+    { name: "keeps nominal inheritance with parenthesized constructors", code: "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new TypeError('Nominal publisher required'); } } class Fake extends Publisher { publish() {} } new (Consumer)(new (Fake)());" },
+    { name: "keeps explicit casts outside direct collaborator construction", code: "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { publish() {} } new (Consumer)(new (Fake)() as Publisher);" },
+    { name: "keeps constructor escapes through parentheses opaque", code: "declare function configure(value: object): void; abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { publish() {} } configure((Publisher)); new (Consumer)(new (Fake)());" },
     "interface Publisher { publish(): void } class Consumer { constructor(readonly publisher: Publisher) {} } class Fake { publish() {} } new Consumer(new Fake());",
     "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) {} } class Fake { publish() {} } new Consumer(new Fake());",
     "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (publisher instanceof Publisher) publisher.publish(); } } class Fake { publish() {} } new Consumer(new Fake());",
@@ -151,6 +154,9 @@ TESTER.run("require-explicit-contract-implementation", rule, {
     "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { publish() {} } class Real extends Publisher { publish() {} } const Wrapped = new Proxy(Fake, { construct() { return new Real(); } }); new Consumer(new Wrapped());",
   ],
   invalid: [
+    { name: "retains the exact parenthesized consumer constructor", code: "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { publish() {} } new (Consumer)(new Fake());", errors: [{ messageId: "declareActualContract" }] },
+    { name: "retains the exact parenthesized collaborator constructor", code: "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake { publish() {} } new Consumer(new (Fake)());", errors: [{ messageId: "declareActualContract" }] },
+    { name: "retains all parenthesized constructors in the recorded attack", code: "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new (TypeError)('Nominal publisher required'); } } class FakePublisher { publish() {} } new (Consumer)(new (FakePublisher)());", errors: [{ messageId: "declareActualContract" }] },
     {
       code: "abstract class Publisher { abstract publish(): void } class Consumer { constructor(readonly publisher: Publisher) { if (!(publisher instanceof Publisher)) throw new Error(); } } class Fake implements Publisher { publish() {} } new Consumer(new Fake());",
       errors: [{ messageId: "declareActualContract" }],

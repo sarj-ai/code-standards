@@ -325,3 +325,31 @@ class Detail(BaseModel):
 def test_public_examples(example: RuleExample) -> None:
     focus = example.focus_file
     assert len(_check(focus.source, str(focus.path))) == example.expected_count
+
+
+@pytest.mark.parametrize(
+    "description",
+    [r"'1 \u0066or the first attempt'", "'1 for ' 'the first attempt'", "'1 for\\n the first attempt'"],
+)
+def test_ordinal_contract_uses_decoded_literal_value(description: str) -> None:
+    source = (
+        "from pydantic import BaseModel, Field\n"
+        "class Detail(BaseModel):\n"
+        f"    attempt: int = Field(default=1, description={description})\n"
+    )
+    assert len(_check(source)) == 1
+
+
+def test_unrelated_classes_do_not_hide_a_late_decoded_ordinal_contract() -> None:
+    unrelated = "\n".join(
+        f"class PositionRecord{index}:\n    position: int = 1\n    description: str = '1 for the first position'\n"
+        for index in range(150)
+    )
+    source = (
+        "from pydantic import BaseModel as Model, Field as F\n"
+        f"{unrelated}\n"
+        "class Detail(Model):\n"
+        r"    attempt: int = F(default=1, description='1 \u0066or the first attempt')"
+        "\n"
+    )
+    assert len(_check(source)) == 1

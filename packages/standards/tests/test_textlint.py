@@ -791,6 +791,38 @@ def test_declarative_deployment_boundary_flags_parallel_mutation(tmp_path: Path,
 
 
 @pytest.mark.parametrize(
+    ("entrypoint", "arguments", "expected"),
+    [
+        ("gcloud", '["projects", "add-iam-policy-binding", "demo", "--role=roles/editor"]', 1),
+        ("/usr/bin/gcloud", '["sql", "instances", "patch", "main", "--activation-policy=ALWAYS"]', 1),
+        ("gcloud", '["projects", "describe", "demo"]', 0),
+        ("gcloud", '["run", "deploy", "api", "--image=image", "--region=us"]', 0),
+        ("echo", '["gcloud projects add-iam-policy-binding demo --role=roles/editor"]', 0),
+        ("terraform", '["apply", "saved.tfplan"]', 0),
+    ],
+)
+def test_declarative_boundary_reads_cloudbuild_argv(
+    tmp_path: Path, entrypoint: str, arguments: str, expected: int
+) -> None:
+    path = tmp_path / "cloudbuild" / "deploy.yaml"
+    path.parent.mkdir()
+    path.write_text(
+        f"steps:\n  - name: builder:1\n    entrypoint: {entrypoint}\n    args: {arguments}\n", encoding="utf-8"
+    )
+    findings = textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"declarative-deployment-boundary"}))
+    assert len(findings) == expected
+    assert all(finding.code == "SARJ309" and finding.line == 3 for finding in findings)
+
+
+def test_declarative_boundary_preserves_non_executable_argv_shaped_data(tmp_path: Path) -> None:
+    path = tmp_path / "cloudbuild" / "metadata.yaml"
+    path.parent.mkdir()
+    path.write_text("metadata:\n  entrypoint: gcloud\n  args: [projects, add-iam-policy-binding, demo]\n")
+    findings = textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"declarative-deployment-boundary"}))
+    assert findings == []
+
+
+@pytest.mark.parametrize(
     "source",
     [
         "steps:\n  - run: terraform apply saved.tfplan\n",
@@ -1361,6 +1393,34 @@ def test_secret_permission_labeled_evaluation_cases(case: EvaluationCase, tmp_pa
 
 
 @pytest.mark.parametrize(
+    ("permission", "expected"),
+    [
+        ("Bash(env gcloud secrets versions access:*)", 1),
+        ("Bash(env CLOUDSDK_CORE_PROJECT=demo gcloud secrets versions access:*)", 1),
+        ("Bash(command -- /usr/bin/gcloud secrets versions access:*)", 1),
+        ("Bash(env aws secretsmanager get-secret-value:*)", 1),
+        ("Bash(gcloud secrets versions access:projects/*/secrets/name:latest)", 1),
+        ("Bash(env gcloud secrets versions access: --secret=*)", 1),
+        ("Bash(env gcloud secrets versions access --secret=public-config:1)", 0),
+        ("Bash(env gcloud secrets versions access --secret=public-config:*)", 0),
+        ("Bash(env gcloud projects describe:*)", 0),
+        ("Bash(env $GCLOUD secrets versions access:*)", 0),
+        ("Bash(command -v gcloud secrets versions access:*)", 0),
+    ],
+)
+def test_secret_read_permissions_preserve_static_wrappers_and_explicit_scopes(
+    tmp_path: Path, permission: str, expected: int
+) -> None:
+    path = tmp_path / ".claude" / "settings.json"
+    path.parent.mkdir()
+    path.write_text('{"permissions":{"allow":["' + permission + '"]}}\n')
+    findings = textlint.check_paths(
+        [str(path)], root=tmp_path, rule_ids=frozenset({"no-wildcard-secret-read-permission"})
+    )
+    assert len(findings) == expected
+
+
+@pytest.mark.parametrize(
     "case",
     WORKFLOW_EMBEDDED_PROGRAM_CASES,
     ids=tuple(case.case_id for case in WORKFLOW_EMBEDDED_PROGRAM_CASES),
@@ -1414,6 +1474,26 @@ def test_shell_iac_source_rule_runs_when_selected_explicitly(tmp_path: Path) -> 
     )
 
     assert [(finding.line, finding.code) for finding in findings] == [(1, "SARJ304")]
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    [
+        ("command grep -q alert_policy iac/alerts.tf", 1),
+        ("command -- /usr/bin/grep -q alert_policy iac/alerts.tf", 1),
+        ("env LC_ALL=C grep -q alert_policy iac/alerts.tf", 1),
+        ("command -v grep", 0),
+        ("command grep -q main.tf audit.log", 0),
+        ('echo "command grep -q alert_policy iac/alerts.tf"', 0),
+    ],
+)
+def test_iac_source_oracle_normalizes_static_command_wrappers(tmp_path: Path, command: str, expected: int) -> None:
+    path = tmp_path / "tests" / "policy.test.sh"
+    path.parent.mkdir()
+    path.write_text(f"{command}\n")
+    findings = textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"iac-source-coupled-test"}))
+    assert len(findings) == expected
+    assert all(finding.code == "SARJ304" for finding in findings)
 
 
 @pytest.mark.parametrize(

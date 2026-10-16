@@ -294,3 +294,17 @@ def test_generated_modules_are_excluded(path: str, prefix: str) -> None:
 )
 def test_non_candidates_are_clean(source: str) -> None:
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "INSERT INTO account AS a (id) VALUES (%s)",
+        "INSERT INTO account (id) OVERRIDING SYSTEM VALUE VALUES (%s)",
+        "INSERT INTO account (id) OVERRIDING USER VALUE VALUES (%s)",
+    ],
+)
+def test_replay_named_callable_keeps_policy_requirement_for_header_variants(query: str) -> None:
+    source = f"def ensure_account(connection):\n    connection.execute({query!r}, (1,))\n"
+    assert _count(source, "app/account_store.py") == 1
+    assert _check(source.replace(" VALUES (%s)", " VALUES (%s) ON CONFLICT DO NOTHING"), "app/account_store.py") == []

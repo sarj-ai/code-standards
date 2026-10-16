@@ -20,9 +20,42 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-secret-in-log", rule, {
   valid: [
+    { name: "an array replacer may allowlist safe fields", code: "logger.info(JSON.stringify(body, ['id']));" },
+    { name: "a function replacer may redact sensitive fields", code: "logger.info(JSON.stringify({token}, redact));" },
+    { name: "an unknown replacer stays opaque through truncation", code: "logger.info(JSON.stringify(body, replacer).slice(0, 100));" },
+    { name: "a shadowed JSON serializer may redact", code: "function log(JSON) { logger.info(JSON.stringify(body)); }" },
+    { name: "a shadowed undefined may be a replacer", code: "function log(undefined) { logger.info(JSON.stringify(body, undefined)); }" },
+    { name: "spread arguments make serializer positions unknown", code: "logger.info(JSON.stringify(...args));" },
+    { name: "a redactor stays opaque through truncation", code: "logger.info(redact(body).slice(0, 100));" },
+    { name: "truncated ordinary text remains safe", code: "logger.info(title.slice(0, 100));" },
+    { name: "serialized public fields remain safe", code: "logger.info(JSON.stringify({id, count}));" },
+    { name: "equal slice bounds expose no bytes", code: "logger.info(token.slice(0, 0));" },
+    { name: "equal substring bounds expose no bytes", code: "logger.info(token.substring(2, 2));" },
+    { name: "zero substr length exposes no bytes", code: "logger.info(body.substr(0, 0));" },
+    { name: "serialized empty truncation exposes no bytes", code: "logger.info(JSON.stringify(body).slice(0, 0));" },
+    { name: "serialization respects effective literal overrides", code: "logger.info(JSON.stringify({token, ...{token: maskedToken}}));" },
+    { name: "raw-body fixture exemption survives serialization", code: "logger.info(JSON.stringify(body).slice(0, 100));", filename: "src/request.test.ts" },
+    { code: 'logEvent("slack.auth", { botToken });' },
+    {
+      code: "console.log(res.body);",
+      filename: "tests/fixtures/ashby.ts",
+    },
+
+    { name: "a computed logger method preserves redacted values", code: "logger['info']({ token: maskedToken });" },
+    { name: "a computed logger method keeps a custom serializer opaque", code: "logger['info'](JSON['stringify']({ token }, redact));" },
+    { name: "computed truncation with equal bounds exposes no bytes", code: "logger['info'](apiToken['slice'](0, 0));" },
+    { name: "computed calls on an unconfigured receiver are not logging", code: "metrics['info'](apiToken);" },
+    { name: "an unresolved computed logging method stays opaque", code: "logger[method]({ token });" },
+    { name: "a shadowed computed serializer remains opaque", code: "function log(JSON) { logger['info'](JSON['stringify'](body)); }" },
+    {
+      name: "ignores an unresolved computed body property",
+      code: 'logger.info("resp", res[property]);',
+    },
+
     { name: "respects an explicitly redacted property value", code: "logger.info('auth', { token: redactedToken });" },
     { name: "respects a redacted member value under a secret key", code: "logger.info('auth', { token: result.maskedToken });" },
     { name: "accepts the documented redaction", code: NO_SECRET_IN_LOG_DOCUMENTATION.examples[0].files[0].source },
+
     // Innocuous trailing token: usage counter, not the secret.
     { code: 'logger.info("usage", { tokenCount });' },
     // Row-id of a key, not the key material.
@@ -93,16 +126,16 @@ RULE_TESTER.run("no-secret-in-log", rule, {
     { code: 'logger.info("api key rotated");' },
     { code: 'logger.warn("password reset requested for user");' },
     // Redacted object-property values: the key is secret-named but the VALUE is
-    // already truncated / masked / a placeholder, so nothing sensitive leaks.
+    // already masked or replaced by a placeholder.
     { code: 'logger.info("cfg", { apiKey: config.apiKey ? `${config.apiKey.substring(0, 10)}...` : "(missing)" });' },
-    { code: 'logger.info("auth", { token: token.slice(0, 6) });' },
+
     { code: 'logger.info("auth", { password: mask(password) });' },
     { code: 'logger.info("auth", { secret: redact(secret) });' },
     { code: 'logger.info("auth", { apiKey: "***" });' },
-    { code: 'logger.info("auth", { token: `${token.slice(0, 4)}...` });' },
+
     { code: 'logger.info("auth", { credentials: hasCreds ? "set" : "unset" });' },
     // An UNDECLARED free function is not assumed to be a log sink.
-    { code: 'logEvent("slack.auth", { botToken });' },
+
     // A declared logger still respects the innocuous-name and redaction rules.
     {
       code: 'logEvent("slack.auth", { tokenPrefix });',
@@ -139,7 +172,7 @@ RULE_TESTER.run("no-secret-in-log", rule, {
     { code: 'logger.info("resp", { body: redact(body) });' },
     { code: 'logger.info("resp", { body: sanitize(body) });' },
     { code: 'logger.info("resp", { body: pick(body, ["id", "status"]) });' },
-    { code: 'logger.info("resp", { body: JSON.stringify(body).slice(0, 200) });' },
+
     { code: 'logger.info("resp", { payload: summarizeIssues(payload) });' },
     { code: "logger.info(redact(res.body));" },
     // Already a rendered string / template, not the blob.
@@ -184,16 +217,32 @@ RULE_TESTER.run("no-secret-in-log", rule, {
       code: 'logger.info("resp", { body });',
       filename: "src/ashby.test.ts",
     },
-    {
-      code: "console.log(res.body);",
-      filename: "tests/fixtures/ashby.ts",
-    },
+
     {
       name: "ignores unknown member access",
       code: 'logger.info("resp", res[member]);',
     },
   ],
   invalid: [
+    { name: "a token prefix still exposes secret material", code: 'logger.info("auth", { token: token.slice(0, 6) });', errors: [{ messageId: "noSecretInLog" }] },
+    { name: "a rendered token prefix still exposes secret material", code: 'logger.info("auth", { token: `${token.slice(0, 4)}...` });', errors: [{ messageId: "noSecretInLog" }] },
+    { name: "serialization and truncation do not redact a body", code: 'logger.info("resp", { body: JSON.stringify(body).slice(0, 200) });', errors: [{ messageId: "noRawBodyInLog" }] },
+    { name: "a substring exposes a secret member", code: 'logger.info(config.apiKey.substring(0, 10));', errors: [{ messageId: "noSecretInLog" }] },
+    { name: "a substr exposes a raw body", code: 'logger.info(response.body.substr(0, 200));', errors: [{ messageId: "noRawBodyInLog" }] },
+    { name: "a preview property does not hide direct raw-body provenance", code: 'logger.info({bodyPreview: body.slice(0, 200)});', errors: [{ messageId: "noRawBodyInLog" }] },
+    { name: "serialization without an effective replacer exposes a secret", code: 'logger.info(JSON.stringify({token}, null, 2));', errors: [{ messageId: "noSecretInLog" }] },
+    { name: "global undefined is not a replacer", code: 'logger.info(JSON.stringify(body, undefined));', errors: [{ messageId: "noRawBodyInLog" }] },
+    { name: "void is not a replacer", code: 'logger.info(JSON.stringify(body, void 0));', errors: [{ messageId: "noRawBodyInLog" }] },
+    { name: "nested truncation reports the source once", code: 'logger.info(JSON.stringify({tokenBody}).slice(0, 200).substring(0, 10));', errors: [{ messageId: "noSecretInLog" }] },
+    { name: "reversed substring bounds still expose material", code: 'logger.info(token.substring(10, 0));', errors: [{ messageId: "noSecretInLog" }] },
+
+    { name: "a computed logger method still exposes a credential field", code: "logger['info']({ token: apiToken }, 'request');", errors: [{ messageId: "noSecretInLog" }] },
+    { name: "a computed logger method preserves serialization and truncation analysis", code: "logger['info'](JSON.stringify(body).slice(0, 200));", errors: [{ messageId: "noRawBodyInLog" }] },
+    { name: "a computed logger method preserves token-prefix analysis", code: "logger['info']({ token: token.slice(0, 6) });", errors: [{ messageId: "noSecretInLog" }] },
+    { name: "a computed native serializer preserves nested credential analysis", code: "logger['info'](JSON['stringify']({ token }, null));", errors: [{ messageId: "noSecretInLog" }] },
+    { name: "erased casts preserve a computed logging call", code: "((logger as Logger)['info'] as LogMethod)({ token });", errors: [{ messageId: "noSecretInLog" }] },
+    { name: "a computed credential property still exposes the value", code: "logger['info'](config['apiToken']);", errors: [{ messageId: "noSecretInLog" }] },
+
     { name: "reports static bracket access to the whole response body", code: 'logger.info("resp", res["body"]);', errors: [{ messageId: "noRawBodyInLog" }] },
     { name: "unmasked is not a redaction", code: 'logger.info("auth", { unmaskedToken });', errors: [{ messageId: "noSecretInLog" }] },
     { name: "unredacted is not a redaction", code: 'logger.info("request", { unredactedBody });', errors: [{ messageId: "noRawBodyInLog" }] },

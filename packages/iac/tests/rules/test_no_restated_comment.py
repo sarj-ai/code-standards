@@ -156,3 +156,18 @@ def test_commented_out_assignment_is_owned_by_comment_cruft_rule() -> None:
 def test_message_identifies_the_following_declaration() -> None:
     [diagnostic] = _check("# Set instance type\ninstance_type = var.instance_type\n")
     assert "`instance_type` declaration" in diagnostic.message
+
+
+@pytest.mark.parametrize("comment", ["# Set instance type", "/* Set instance type */"])
+def test_declaration_comment_trivia_preserves_the_subject(comment: str) -> None:
+    source = f"{comment}\ninstance_type /* attribute boundary */ = var.instance_type\n"
+    assert len(_check(source)) == 1
+
+
+def test_comment_trivia_preserves_a_sibling_group_heading() -> None:
+    source = (
+        "# Service accounts\n"
+        "api_service_account_email /* first */ = module.iam.api_email\n"
+        "worker_service_account_email /* second */ = module.iam.worker_email\n"
+    )
+    assert _check(source) == []

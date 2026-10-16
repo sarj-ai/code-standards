@@ -40,6 +40,37 @@ def test_flags_regex_search_before_if() -> None:
     assert "Regex result `m` is assigned only for the following condition" in diags[0].message
 
 
+def test_parenthesized_regex_callee_keeps_identical_binding_semantics() -> None:
+    source = (
+        "import re\n"
+        "def first_number(text: str):\n"
+        '    match = (re.search)(r"\\d+", text)\n'
+        "    if match:\n"
+        "        return match.group(0)\n"
+        "    return None\n"
+    )
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("callee", ["(re.search)", "((re.search))", "(re . search)"])
+def test_unrelated_method_words_do_not_hide_a_later_candidate(callee: str) -> None:
+    unrelated = "\n".join(
+        f"def search_label_{index}(record):\n"
+        f"    label = 'match fullmatch search {index}'\n"
+        "    return record.get(label)\n"
+        for index in range(150)
+    )
+    source = (
+        f"import re\n{unrelated}\n"
+        "def parse(text):\n"
+        f"    result = {callee}(r'\\d+', text)\n"
+        "    if result is not None:\n"
+        "        return result.group(0)\n"
+        "    return None\n"
+    )
+    assert len(_check(source)) == 1
+
+
 def test_does_not_flag_non_regex_assignments() -> None:
     source = """
     def f(x):

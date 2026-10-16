@@ -29,9 +29,9 @@ export const NO_JSON_STRINGIFY_OBJECT_EQUALITY_DOCUMENTATION = {
   category: "correctness",
   autofix: "none",
   limitations: [
-    "Only direct binary comparisons between two unshadowed JSON.stringify calls are checked.",
+    "Only direct binary comparisons between two unshadowed global JSON.stringify calls, including stable const destructured aliases of that global, are checked.",
     "Primitive-only arrays are excluded when TypeScript can prove their element types.",
-    "Aliases, stored serialization results, custom JSON objects, tests, generated files, and equality hidden inside helper calls are excluded.",
+    "Mutable, defaulted, reassigned, transitive and unknown aliases, stored serialization results, custom JSON objects, tests, generated files, and equality hidden inside helper calls are excluded.",
   ],
   examples: [
     {
@@ -81,22 +81,44 @@ function jsonStringifyArgument(
 ): TSESTree.Expression | null {
   const expression = unwrapComparisonExpression(node);
   if (expression.type !== AST_NODE_TYPES.CallExpression) return null;
-  const callee = unwrapExpression(expression.callee);
-  const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
-  if (
-    callee.type !== AST_NODE_TYPES.MemberExpression ||
-    calleeReceiver.type !== AST_NODE_TYPES.Identifier ||
-    calleeReceiver.name !== "JSON" ||
-    ASTUtils.getPropertyName(callee) !== "stringify"
-  ) {
-    return null;
-  }
-  const variable = ASTUtils.findVariable(sourceCode.getScope(calleeReceiver), "JSON");
-  if (variable !== null && variable.defs.length > 0) return null;
+  if (expression.callee.type === AST_NODE_TYPES.Super || !isJsonStringify(expression.callee, sourceCode)) return null;
   const argument = expression.arguments[0];
   return argument !== undefined && argument.type !== AST_NODE_TYPES.SpreadElement
     ? argument
     : null;
+}
+
+function isJsonStringify(
+  node: TSESTree.Expression,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): boolean {
+  const expression = unwrapComparisonExpression(node);
+  if (expression.type === AST_NODE_TYPES.MemberExpression) {
+    return ASTUtils.getPropertyName(expression) === "stringify" &&
+      expression.object.type !== AST_NODE_TYPES.Super && isGlobalJson(expression.object, sourceCode);
+  }
+  if (expression.type !== AST_NODE_TYPES.Identifier) return false;
+  const binding = ASTUtils.findVariable(sourceCode.getScope(expression), expression.name);
+  if (binding === null || binding.defs.length !== 1 ||
+    binding.references.some(reference => reference.isWrite() && reference.init !== true)) return false;
+  const [definition] = binding.defs;
+  if (definition?.type !== "Variable" || definition.parent.kind !== "const" ||
+    definition.node.id.type !== AST_NODE_TYPES.ObjectPattern ||
+    definition.node.init === null || !isGlobalJson(definition.node.init, sourceCode)) return false;
+  return definition.node.id.properties.some(property =>
+    property.type === AST_NODE_TYPES.Property && ASTUtils.getPropertyName(property) === "stringify" &&
+    property.value.type === AST_NODE_TYPES.Identifier &&
+    ASTUtils.findVariable(sourceCode.getScope(property.value), property.value.name) === binding);
+}
+
+function isGlobalJson(
+  node: TSESTree.Expression,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): boolean {
+  const expression = unwrapComparisonExpression(node);
+  if (expression.type !== AST_NODE_TYPES.Identifier || expression.name !== "JSON") return false;
+  const binding = ASTUtils.findVariable(sourceCode.getScope(expression), expression.name);
+  return binding === null || binding.defs.length === 0;
 }
 
 function typeMayContainObject(type: ts.Type, checker: ts.TypeChecker): boolean {

@@ -431,10 +431,12 @@ _QUERY_TOKEN_RE: Final = re.compile(
 _QUOTED_ARGUMENT_RE: Final = re.compile(r'(?<![^\s;|&()<>])"\$ARGUMENTS"(?=$|[\s;|&()<>])')
 _MAX_MARKDOWN_FENCE_INDENT: Final = 3
 _MIN_MARKDOWN_FENCE_LENGTH: Final = 3
-_SECRET_READ_PERMISSION_PREFIXES: Final = (
-    "Bash(aws secretsmanager get-secret-value:",
-    "Bash(gcloud secrets versions access:",
-    "Bash(vault kv get:",
+_SECRET_VALUE_READ_COMMANDS: Final = frozenset(
+    {
+        ("aws", "secretsmanager", "get-secret-value"),
+        ("gcloud", "secrets", "versions", "access"),
+        ("vault", "kv", "get"),
+    }
 )
 
 
@@ -628,6 +630,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             ),
             limitations=(
                 "The scanner tokenizes shell quoting, comments, pipelines, direct command substitutions, and local variable flows; sourced helpers and eval remain unreported.",
+                "Static command and environment wrappers preserve the asserted command; command-name queries and ordinary text data remain excluded.",
                 "Heredoc bodies are data rather than independent shell commands. Variable references use complete names; local tracking does not prove all branch or alias behavior.",
                 "Only test-named shell files or shell files below a tests directory are checked.",
             ),
@@ -739,6 +742,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                 "A Terraform diagnostic can be suppressed locally with an exact-code # sarj-noqa: SARJ309 comment on the preceding physical line.",
                 "The bounded scanner reports explicitly recognized commands and deployment Actions; dynamic command construction and unlisted provider surfaces are intentionally unreported.",
                 "Multiline quoted shell data is excluded and command substitutions are not evaluated; function bodies are checked for possible mutations without proving invocation.",
+                "Literal argv execution fields in supported operational configurations, including Cloud Build entrypoint plus args, preserve the command boundary. Image-default entrypoints and non-executable configuration data are not inferred.",
                 "Wrapper-indirected commands are intentionally unreported; full-tree CI scans wrapper files directly only when they live in an operational root.",
                 "Wrangler deploy and versions deploy publish application artifacts and are intentionally not treated as infrastructure mutation; Wrangler resource-creation commands remain reportable.",
                 "Cloud Run image/source-only deploys and updates publish application artifacts; configuration, identity, scaling, networking, secret, and other infrastructure flags remain reportable.",
@@ -1066,6 +1070,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             ),
             limitations=(
                 "Only literal wildcard allow entries for recognized cloud secret-value commands in Claude settings JSON are checked.",
+                "Static environment and command wrappers are normalized before recognizing the exact secret-read command prefix. Named-secret argument scopes and dynamic executables are left to their explicit permission contracts.",
                 "A clean wrapper name does not prove validation; alternate command forms and cloud IAM permissions are not audited by this rule.",
             ),
         ),
@@ -1308,16 +1313,16 @@ def _declarative_deployment_findings(path: Path, relative: str, source: str) -> 
     in_operational_tree = bool(pure.parts) and pure.parts[0].casefold() in _OPERATIONAL_ROOTS
     if (not in_workflow and not in_operational_tree) or path.suffix.casefold() in {".md", ".mdx"}:
         return []
-    for command in _deployment_shell_lines(source, workflow=in_workflow):
-        if _shell_line_mutates_control_plane(command.command):
-            return [
-                Finding(
-                    path,
-                    command.line,
-                    "SARJ309",
-                    "Infrastructure mutation is outside Terraform — model it in Terraform and keep CI to plan/apply orchestration.",
-                )
-            ]
+    mutation_line = _deployment_mutation_line(relative, source, in_workflow=in_workflow)
+    if mutation_line is not None:
+        return [
+            Finding(
+                path,
+                mutation_line,
+                "SARJ309",
+                "Infrastructure mutation is outside Terraform — model it in Terraform and keep CI to plan/apply orchestration.",
+            )
+        ]
     if in_workflow:
         action = next((item for item in _workflow_actions(source) if _workflow_action_mutates(item)), None)
         if action is not None:
@@ -1360,6 +1365,16 @@ def _terraform_local_exec_lines(source: str) -> list[_ShellLogicalLine]:
             for command in parsed
         )
     return commands
+
+
+def _deployment_mutation_line(relative: str, source: str, *, in_workflow: bool) -> int | None:
+    for block in execution_blocks(relative, source):
+        if block.argv and _command_mutates_control_plane(block.argv):
+            return block.line
+    for command in _deployment_shell_lines(source, workflow=in_workflow):
+        if _shell_line_mutates_control_plane(command.command):
+            return command.line
+    return None
 
 
 def _workflow_path(path: Path, relative: str) -> bool:
@@ -2024,9 +2039,10 @@ def _iac_source_token(token: str) -> bool:
 def _shell_asserts_source(tokens: list[str], path_names: set[str], tainted: set[str]) -> bool:
     direct_assert = False
     pipeline_iac = False
-    for separator, segment in _shell_segments(tokens):
+    for separator, raw_segment in _shell_segments(tokens):
         if separator != "|":
             pipeline_iac = False
+        segment = _assertion_argv(raw_segment)
         command = _shell_command(segment[0]) if segment else ""
         if command in _SHELL_SOURCE_ASSERT_COMMANDS and (
             _shell_assertion_reads_iac(segment, path_names) or pipeline_iac
@@ -2039,6 +2055,12 @@ def _shell_asserts_source(tokens: list[str], path_names: set[str], tainted: set[
         pipeline_iac = _shell_reads_iac(segment, path_names) or pipeline_iac
 
     return direct_assert
+
+
+def _assertion_argv(tokens: list[str]) -> list[str]:
+    if tokens and _shell_command(tokens[0]) in {"command", "env", "sudo"}:
+        return _command_argv(tokens)
+    return tokens
 
 
 def _shell_assertion_reads_iac(tokens: Sequence[str], path_names: set[str]) -> bool:
@@ -2270,9 +2292,7 @@ def _claude_settings_secret_permission_findings(path: Path, relative: str, sourc
     findings: list[Finding] = []
     lines = source.splitlines()
     for permission in settings.permissions.allow:
-        if "*" not in permission:
-            continue
-        if not any(permission.startswith(prefix) for prefix in _SECRET_READ_PERMISSION_PREFIXES):
+        if not _wildcard_secret_read_permission(permission):
             continue
         line_number = next((number for number, line in enumerate(lines, start=1) if permission in line), 1)
         findings.append(
@@ -2284,6 +2304,23 @@ def _claude_settings_secret_permission_findings(path: Path, relative: str, sourc
             )
         )
     return findings
+
+
+def _wildcard_secret_read_permission(permission: str) -> bool:
+    if not permission.startswith("Bash(") or not permission.endswith(")"):
+        return False
+    argv = _command_argv(_shell_tokens(permission[len("Bash(") : -1]))
+    if not argv:
+        return False
+    executable = PurePosixPath(argv[0]).name
+    for prefix in _SECRET_VALUE_READ_COMMANDS:
+        index = len(prefix) - 1
+        if len(argv) <= index or (executable, *argv[1:index]) != prefix[:-1]:
+            continue
+        verb, separator, scope = argv[index].partition(":")
+        if separator and verb == prefix[-1]:
+            return "*" in scope or any("*" in argument for argument in argv[index + 1 :])
+    return False
 
 
 def _markdown_prose_lines(source: str) -> list[str]:

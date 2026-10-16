@@ -20,3 +20,9 @@ from sarj_iac_lint.rules.no_managed_service_account_key import NoManagedServiceA
 )
 def test_managed_keys(source: str, count: int) -> None:
     assert len(NoManagedServiceAccountKey().check(Path("main.tf"), source)) == count
+
+
+@pytest.mark.parametrize("label", [r"\u0067oogle_service_account_key", r"\U00000067oogle_service_account_key"])
+def test_escaped_resource_type_keeps_security_semantics(label: str) -> None:
+    source = f'resource "{label}" "app" {{}}'
+    assert len(NoManagedServiceAccountKey().check(Path("main.tf"), source)) == 1

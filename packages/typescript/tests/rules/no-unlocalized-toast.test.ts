@@ -18,6 +18,11 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-unlocalized-toast", rule, {
   valid: [
+    { name: "keeps explicit localization opt-out with an erased literal", code: 'import { toast } from "sonner"; toast.success(("Saved" as const));', options: [{ enabled: false }] },
+    { name: "keeps translation through an erased wrapper", code: 'import { toast } from "sonner"; toast.success((t("saved") as string));' },
+    { name: "keeps unknown computed methods opaque", code: 'import { toast } from "sonner"; toast[method](("Saved" as const));' },
+    { name: "keeps shadowed computed toast methods outside the policy", code: 'import { toast } from "sonner"; function show(toast) { toast["success"](("Saved" as const)); }' },
+
     'import { toast } from "sonner"; toast.success(t("saved"));',
     'const toast = { success() {} }; toast.success("saved");',
     'import { toast } from "sonner"; function show(toast) { toast.success("saved"); }',
@@ -29,6 +34,9 @@ RULE_TESTER.run("no-unlocalized-toast", rule, {
     'import { toast } from "sonner"; toast.promise(operation, { loading: "Loading" });',
   ],
   invalid: [
+    { name: "retains a literal toast message through satisfies", code: 'import { toast } from "sonner"; toast.success(("Saved" satisfies string));', errors: [{ messageId: "unlocalized" }] },
+    { name: "recognizes an imported static computed toast method", code: 'import { toast } from "sonner"; toast["success"](("Saved" as const));', errors: [{ messageId: "unlocalized" }] },
+
     {
       code: 'import { toast as notify } from "sonner"; notify.success("Saved");',
       errors: [{ messageId: "unlocalized" }],

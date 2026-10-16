@@ -14,6 +14,10 @@ const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, source
 
 RULE_TESTER.run("prefer-node-crypto-hash", rule, {
   valid: [
+    { name: "keeps interpolated algorithms opaque", code: 'import { createHash } from "node:crypto"; createHash(`sha${size}`).update(value).digest("hex");' },
+    { name: "keeps incremental hashing with a literal template algorithm", code: 'import { createHash } from "node:crypto"; createHash(`sha256`).update(first).update(second).digest("hex");' },
+    { name: "keeps shadowed constructors outside native provenance", code: 'import { createHash } from "node:crypto"; function digest(createHash) { return createHash(("sha256" as const)).update(value).digest("hex"); }' },
+
     PREFER_NODE_CRYPTO_HASH_DOCUMENTATION.examples[0].files[0].source,
     "import { createHash } from 'node:crypto'; const digest = createHash('sha256').update(first).update(second).digest('hex');",
     "import { createHash } from 'node:crypto'; const stream = createHash('sha256'); stream.write(value);",
@@ -30,6 +34,9 @@ RULE_TESTER.run("prefer-node-crypto-hash", rule, {
     "const crypto = require('node:crypto'); crypto[method]('sha256').update(value).digest('hex');",
   ],
   invalid: [
+    { name: "retains a no-substitution template algorithm", code: 'import { createHash } from "node:crypto"; createHash(`sha256`).update(value).digest(`hex`);', errors: [{ messageId: "preferNodeCryptoHash" }] },
+    { name: "retains a literal algorithm through a const assertion", code: 'import { createHash } from "node:crypto"; createHash(("sha256" as const)).update(value).digest(("hex" as const));', errors: [{ messageId: "preferNodeCryptoHash" }] },
+
     {
       code: PREFER_NODE_CRYPTO_HASH_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "preferNodeCryptoHash" }],

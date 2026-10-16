@@ -24,6 +24,11 @@ const TEST_FILE = "/repo/src/tests/dummy.test.ts";
 
 RULE_TESTER.run("no-tautological-expect", rule, {
   valid: [
+    { name: "keeps failing literal assertions after unwrapping", filename: TEST_FILE, code: 'expect((false as const)).toBe((true as const));' },
+    { name: "preserves structural identity checks after unwrapping", filename: TEST_FILE, code: 'expect(([] as const)).toBe(([] as const));' },
+    { name: "keeps asserted dynamic results opaque", filename: TEST_FILE, code: 'expect((read() as boolean)).toBe((true as const));' },
+    { name: "keeps distinct literal representations after unwrapping", filename: TEST_FILE, code: 'expect((1 as const)).toBe((1.0 as const));' },
+
     ...([
       ["runtime result", "const value = read(); expect(value).toBe(true);"],
       ["mutable binding", "let value = true; run(); expect(value).toBe(true);"],
@@ -155,6 +160,10 @@ RULE_TESTER.run("no-tautological-expect", rule, {
     },
   ],
   invalid: [
+    { name: "retains identical literal assertions through const assertions", filename: TEST_FILE, code: 'expect((true as const)).toBe((true as const));', errors: [{ messageId: "tautologicalComparison" }] },
+    { name: "recognizes static computed literal matchers", filename: TEST_FILE, code: 'expect(true)["toBe"](true);', errors: [{ messageId: "tautologicalComparison" }] },
+    { name: "retains literal zero-argument matcher proofs through erased wrappers", filename: TEST_FILE, code: 'expect((true satisfies boolean)).toBeTruthy();', errors: [{ messageId: "tautologicalMatcher" }] },
+
     ...([
       ["erased scalar setup", "const value = true as const; expect(value as boolean).toBe(true);", "tautologicalComparison"],
       ["bound boolean", "const value = true; expect(value).toBe(true);", "tautologicalComparison"],

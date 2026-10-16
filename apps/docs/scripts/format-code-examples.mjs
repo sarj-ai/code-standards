@@ -50,8 +50,8 @@ assert.equal(
 );
 assert.match(
   execFileSync("terraform", ["version"], { encoding: "utf8" }),
-  /^Terraform v1\.15\.8\b/u,
-  "formatted code requires Terraform 1.15.8",
+  /^Terraform v1\.16\.5\b/u,
+  "formatted code requires Terraform 1.16.5",
 );
 
 function sha256(source) {

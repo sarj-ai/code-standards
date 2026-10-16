@@ -669,3 +669,32 @@ def test_flags_direct_secret_formatting_context_and_identity_slices(source: str)
 )
 def test_allows_non_sensitive_derived_metadata(source: str) -> None:
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "logger.info(api_token)",
+        "logger.log(20, api_token)",
+        'logger.info("credential=" + api_token)',
+        'logger.info("request", extra={"values": [api_token]})',
+        'logger.info("request", extra={"values": ({"nested": api_token},)})',
+        'logger.info("request", fields=[api_token])',
+    ],
+)
+def test_reports_direct_messages_concatenation_and_container_elements(source: str) -> None:
+    assert _codes(source) == ["SARJ012"]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'logger.info("credential=" + token_prefix)',
+        'logger.info("request", extra={"values": [api_token is not None]})',
+        'logger.info("request", extra={"values": [redact(api_token)]})',
+        'logger.info("request", extra={"values": [api_token[:4]]})',
+        'logger.info("request", extra={"value": api_token, "value": "redacted"})',
+    ],
+)
+def test_preserves_derived_values_and_effective_mapping_entries(source: str) -> None:
+    assert _check(source) == []

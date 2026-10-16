@@ -118,6 +118,16 @@ def test_allows_explicit_stub_and_signature_contracts(source: str) -> None:
     assert result.returncode == 0, result.stdout
 
 
+@pytest.mark.parametrize("marker", ["(*(root, manifest),)", "(*[root], manifest)", "(*[*(root,)], manifest)"])
+def test_closed_starred_literal_marker_preserves_the_parameter_discard_policy(marker: str) -> None:
+    assert len(_check(f"def callback(root, manifest):\n    _ = {marker}\n")) == 1
+
+
+@pytest.mark.parametrize("marker", ["(*root, manifest)", "(*(root, read()),)", "(*(root, local),)"])
+def test_unknown_iteration_effects_and_nonparameters_remain_reportable(marker: str) -> None:
+    assert len(_check(f"def callback(root, manifest):\n    _ = {marker}\n")) == 1
+
+
 @pytest.mark.parametrize(
     "source",
     [

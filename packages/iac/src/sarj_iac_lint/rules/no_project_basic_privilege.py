@@ -4,7 +4,7 @@ from collections import Counter
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
 
-from sarj_iac_lint._hcl import literal_string, tokens
+from sarj_iac_lint._hcl import literal_string, strip_outer_parentheses, tokens
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
@@ -28,6 +28,9 @@ if TYPE_CHECKING:
 _BASIC_PRIVILEGES = frozenset({"roles/owner", "roles/editor"})
 _LABEL_COUNT = 2
 _BINDINGS_DEPTH = 2
+_JOIN_ARGUMENT_COUNT = 2
+_MAX_LOCAL_ALIAS_DEPTH = 16
+_MAX_STATIC_EXPRESSION_DEPTH = 32
 _GRANTS = frozenset({"google_project_iam_member", "google_project_iam_binding"})
 
 
@@ -45,6 +48,7 @@ class NoProjectBasicPrivilege(Rule):
         limitations=(
             "Only project IAM member, binding and policy resources in .tf files are checked.",
             "Literal roles, literal for_each role sets, same-file unique local tuples/sets, jsonencode bindings and same-file google_iam_policy data are recognized.",
+            "Scalar role values also follow same-file unique static local aliases and bounded literal join expressions; grouping and HCL string escapes preserve the value. Cycles, duplicate declarations, templates and unknown inputs remain opaque.",
             "Local collections must be literal strings consumed as a set; duplicate declarations, local aliases, dynamic values, maps and comprehensions are excluded.",
             "Unknown expressions, inherited organization/folder access and other roles are not guessed.",
         ),
@@ -92,7 +96,7 @@ class NoProjectBasicPrivilege(Rule):
             return []
         collections = _local_collections(top)
         policies = {
-            f"data.google_iam_policy.{block.labels[1]}.policy_data": _data_policy_roles(block)
+            f"data.google_iam_policy.{block.labels[1]}.policy_data": _data_policy_roles(block, collections)
             for block in top
             if block.type == "data" and len(block.labels) == _LABEL_COUNT and block.labels[0] == "google_iam_policy"
         }
@@ -130,7 +134,7 @@ def _grant_roles(block: Block, collections: Mapping[str, str] | None = None) -> 
     if attr is None:
         return frozenset()
     value = attr.value.strip()
-    literal = None if value.endswith(",") else literal_string(value)
+    literal = None if value.endswith(",") else _static_string(tokens(value), collections or {})
     if literal is not None:
         return frozenset({literal})
     if attr.value.strip() not in {"each.value", "each.key"} or (each := block.attribute("for_each")) is None:
@@ -138,6 +142,59 @@ def _grant_roles(block: Block, collections: Mapping[str, str] | None = None) -> 
     parts = _role_set_items(each.value, collections)
     values = [literal_string(part) for part in parts if part != ","]
     return frozenset(value for value in values if value is not None) if all(values) else frozenset()
+
+
+def _static_string(
+    parts: tuple[str, ...], local_values: Mapping[str, str], seen: frozenset[str] = frozenset(), depth: int = 0
+) -> str | None:
+    if depth >= _MAX_STATIC_EXPRESSION_DEPTH:
+        return None
+    parts = strip_outer_parentheses(parts)
+    if len(parts) == 1:
+        literal = literal_string(parts[0])
+        if literal is not None:
+            return literal
+        alias = parts[0].removeprefix("local.") if parts[0].startswith("local.") else ""
+        if alias in local_values and alias not in seen and len(seen) < _MAX_LOCAL_ALIAS_DEPTH:
+            return _static_string(tokens(local_values[alias]), local_values, seen | {alias}, depth + 1)
+        return None
+    return _static_join(parts, local_values, seen, depth)
+
+
+def _static_join(
+    parts: tuple[str, ...], local_values: Mapping[str, str], seen: frozenset[str], depth: int
+) -> str | None:
+    if parts[:2] != ("join", "(") or parts[-1:] != (")",):
+        return None
+    arguments = _comma_parts(parts[2:-1])
+    if len(arguments) != _JOIN_ARGUMENT_COUNT:
+        return None
+    separator = _static_string(arguments[0], local_values, seen, depth + 1)
+    collection = arguments[1]
+    if separator is None or collection[:1] != ("[",) or collection[-1:] != ("]",):
+        return None
+    elements = [_static_string(element, local_values, seen, depth + 1) for element in _comma_parts(collection[1:-1])]
+    return (
+        separator.join(element for element in elements if element is not None)
+        if all(element is not None for element in elements)
+        else None
+    )
+
+
+def _comma_parts(parts: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
+    values: list[tuple[str, ...]] = []
+    start, depth = 0, 0
+    for index, part in enumerate(parts):
+        if part in {"(", "[", "{"}:
+            depth += 1
+        elif part in {")", "]", "}"}:
+            depth -= 1
+        elif part == "," and depth == 0:
+            values.append(parts[start:index])
+            start = index + 1
+    if start < len(parts):
+        values.append(parts[start:])
+    return tuple(values)
 
 
 def _role_set_items(expression: str, collections: Mapping[str, str] | None) -> tuple[str, ...]:
@@ -158,8 +215,10 @@ def _role_set_items(expression: str, collections: Mapping[str, str] | None) -> t
     return parts[1:-1]
 
 
-def _data_policy_roles(block: Block) -> frozenset[str]:
-    return frozenset(role for binding in block.blocks if binding.type == "binding" for role in _grant_roles(binding))
+def _data_policy_roles(block: Block, collections: Mapping[str, str]) -> frozenset[str]:
+    return frozenset(
+        role for binding in block.blocks if binding.type == "binding" for role in _grant_roles(binding, collections)
+    )
 
 
 def _jsonencode_roles(value: str) -> frozenset[str]:

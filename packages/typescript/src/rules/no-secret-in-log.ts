@@ -31,7 +31,7 @@ export const NO_SECRET_IN_LOG_DOCUMENTATION = {
   rationale: "Logs are widely retained and distributed, so credentials and raw bodies can become durable data leaks.",
   remediation: "Omit the value, log allowlisted non-sensitive context, or use an approved redactor; truncation alone is not a safety guarantee.",
   category: "security",
-  limitations: ["Detection uses configurable logger names and statically recognizable secret names, raw-body names, and redaction markers. Literal containers and template/string concatenation expressions are inspected; unknown spreads, computed properties, aliases, and opaque calls are not followed. Name-based exemptions are policy heuristics, not proof that a value is safely redacted."],
+  limitations: ["Detection uses configurable logger names and statically recognizable secret names, raw-body names, and redaction markers. Literal containers, template/string concatenation expressions, direct slice/substring/substr calls, and unshadowed global JSON.stringify without a replacer are inspected; unknown spreads, computed properties, aliases, replacers, and opaque calls are not followed. Name-based exemptions are policy heuristics, not proof that a value is safely redacted."],
   examples: [
     { id: "redacted-secret", title: "Log non-sensitive context instead of the secret", outcome: "no-match", files: [{ path: "src/auth.ts", source: "logger.info('auth', { requestId });" }], focusPath: "src/auth.ts", expectedCount: 0, public: true },
     { id: "logged-secret", title: "Do not send a secret to logs", outcome: "match", files: [{ path: "src/auth.ts", source: "logger.error('auth failed', { token });" }], focusPath: "src/auth.ts", expectedCount: 1, public: true },
@@ -242,13 +242,20 @@ export default createRule<Options, MessageIds>({
 
 
 
+    function resolvesToGlobal(identifier: TSESTree.Identifier): boolean {
+      const variable = ASTUtils.findVariable(context.sourceCode.getScope(identifier), identifier.name);
+      return variable === null || variable.defs.length === 0;
+    }
+
     function inspectLoggedValue(value: TSESTree.Node): void {
       value = unwrapExpression(value);
+      const input = transparentCallInput(value);
+      if (input !== undefined) {
+        if (input !== null) inspectLoggedValue(input);
+        return;
+      }
       if (value.type === "ObjectExpression") {
-        for (const property of literalProperties(value)) {
-          if (reportSecretProperty(property) || reportRawBlob(property, property.value)) continue;
-          inspectLoggedValue(property.value);
-        }
+        inspectLoggedObject(value);
         return;
       }
       if (value.type === "ArrayExpression") {
@@ -267,6 +274,43 @@ export default createRule<Options, MessageIds>({
         return;
       }
       if (!reportSecretArgument(value)) reportRawBlob(value, value);
+    }
+
+    /** Undefined means opaque; null means a transparent call with no logged bytes. */
+    function transparentCallInput(value: TSESTree.Node): TSESTree.Node | null | undefined {
+      const callee = value.type === "CallExpression" ? unwrapExpression(value.callee) : null;
+      if (value.type !== "CallExpression" || callee?.type !== "MemberExpression" ||
+        value.arguments.some((arg) => arg.type === "SpreadElement")) return undefined;
+      const object = unwrapExpression(callee.object);
+      const method = ASTUtils.getPropertyName(callee);
+      if (method === "stringify" && object.type === "Identifier" && object.name === "JSON" &&
+        resolvesToGlobal(object) && hasNoReplacer(value.arguments[1])) return value.arguments[0] ?? null;
+      if (method === "slice" || method === "substring" || method === "substr") {
+        return isEmptyTruncation(method, value.arguments) ? null : object;
+      }
+      return undefined;
+    }
+
+
+    function hasNoReplacer(replacer: TSESTree.CallExpressionArgument | undefined): boolean {
+      return replacer === undefined ||
+        (replacer.type === "Literal" && replacer.value === null) ||
+        (replacer.type === "Identifier" && replacer.name === "undefined" && resolvesToGlobal(replacer)) ||
+        (replacer.type === "UnaryExpression" && replacer.operator === "void");
+    }
+
+    function isEmptyTruncation(method: string, args: TSESTree.CallExpressionArgument[]): boolean {
+      const [start, end] = args;
+      if (end?.type !== "Literal" || typeof end.value !== "number" || !Number.isFinite(end.value)) return false;
+      if (method === "substr") return end.value <= 0;
+      return start?.type === "Literal" && typeof start.value === "number" && start.value === end.value;
+    }
+
+    function inspectLoggedObject(value: TSESTree.ObjectExpression): void {
+      for (const property of literalProperties(value)) {
+        if (reportSecretProperty(property) || reportRawBlob(property, property.value)) continue;
+        inspectLoggedValue(property.value);
+      }
     }
 
     function literalProperties(value: TSESTree.ObjectExpression): TSESTree.Property[] {

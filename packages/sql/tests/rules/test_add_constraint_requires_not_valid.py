@@ -366,3 +366,41 @@ def test_comments_and_strings_do_not_hide_a_validating_constraint(source: str) -
 )
 def test_constraint_types_that_do_not_support_not_valid_are_excluded(source: str) -> None:
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            'ALTER TABLE "users;archive" ADD CONSTRAINT positive_age CHECK (age > 0);',
+            id="semicolon-in-table-identifier",
+        ),
+        pytest.param(
+            'ALTER TABLE users ADD CONSTRAINT positive_age CHECK ("age;current" > 0);',
+            id="semicolon-in-column-identifier",
+        ),
+    ],
+)
+def test_quoted_identifier_semicolons_do_not_split_an_existing_table_constraint(source: str) -> None:
+    diagnostics = _check(source)
+
+    assert len(diagnostics) == 1
+    assert diagnostics[0].code == "SARJ111"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            'CREATE TABLE "users;archive" (age integer);\n'
+            'ALTER TABLE "users;archive" ADD CONSTRAINT positive_age CHECK (age > 0);',
+            id="fresh-table",
+        ),
+        pytest.param(
+            'ALTER TABLE "users;archive" ADD CONSTRAINT positive_age CHECK (age > 0) NOT VALID;',
+            id="deferred-validation",
+        ),
+    ],
+)
+def test_quoted_identifier_semicolons_preserve_safe_constraint_boundaries(source: str) -> None:
+    assert _check(source) == []

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_sql_lint.rule_base import (
     AutofixPolicy,
@@ -44,7 +44,7 @@ _OFFSET_VALUE = (
     rf"CAST\s*\(\s*{_DYNAMIC_VALUE}\s+AS\s+{_TYPE_NAME}\s*\)|"
     rf"COALESCE\s*\(\s*{_DYNAMIC_VALUE}\s*,\s*\d+\s*\))"
 )
-_CLAUSE_END = r"(?=\s*(?:ROWS?\b|FETCH\b|FOR\b|\)|$))"
+_CLAUSE_END = r"(?=\s*(?:ROWS?\b|FETCH\b|FOR\b|LIMIT\b|\)|$))"
 _OFFSET_PATTERN = re.compile(
     rf"\bOFFSET\b\s+{_OFFSET_VALUE}{_POSTFIX_CAST}{_CLAUSE_END}",
     re.IGNORECASE | re.DOTALL,
@@ -53,6 +53,13 @@ _MYSQL_LIMIT_PATTERN = re.compile(
     rf"\bLIMIT\b\s+{_DYNAMIC_VALUE}\s*,\s*(?:{_DYNAMIC_VALUE}|\d+){_CLAUSE_END}",
     re.IGNORECASE | re.DOTALL,
 )
+_OFFSET_START = re.compile(r"\bOFFSET\b\s+", re.IGNORECASE)
+_NUMERIC_OFFSET_TOKEN = re.compile(
+    rf"{_DYNAMIC_VALUE}|\d+(?:\.\d+)?|(?:GREATEST|LEAST|COALESCE|ABS|CEIL|CEILING|FLOOR)\b|[()+*/%,+-]",
+    re.IGNORECASE,
+)
+_DYNAMIC_TOKEN = re.compile(_DYNAMIC_VALUE)
+_EXPRESSION_END = re.compile(_CLAUSE_END, re.IGNORECASE)
 _QUERY_START = re.compile(r"^\s*(?:SELECT\b|WITH\b)", re.IGNORECASE)
 _FROM = re.compile(r"\bFROM\b", re.IGNORECASE)
 _GENERATED_HEADER = re.compile(
@@ -83,6 +90,31 @@ _NON_PRODUCTION_PARTS = frozenset(
 )
 
 
+class _OffsetSpan(NamedTuple):
+    start: int
+    end: int
+
+
+def _offset_spans(text: str) -> list[_OffsetSpan]:
+    spans = {match.start(): _OffsetSpan(match.start(), match.end()) for match in _OFFSET_PATTERN.finditer(text)}
+    for start in _OFFSET_START.finditer(text):
+        cursor, depth, dynamic = start.end(), 0, False
+        while cursor < len(text):
+            if text[cursor].isspace():
+                cursor += 1
+                continue
+            token = _NUMERIC_OFFSET_TOKEN.match(text, cursor)
+            if token is None or (token.group() == ")" and depth == 0):
+                break
+            value = token.group()
+            depth += int(value == "(") - int(value == ")")
+            dynamic |= _DYNAMIC_TOKEN.fullmatch(value) is not None
+            cursor = token.end()
+        if dynamic and depth == 0 and _EXPRESSION_END.match(text, cursor) is not None:
+            spans[start.start()] = _OffsetSpan(start.start(), cursor)
+    return sorted(spans.values())
+
+
 @final
 class NoOffsetPagination(Rule):
     id = "no-offset-pagination"
@@ -104,7 +136,7 @@ class NoOffsetPagination(Rule):
         limitations=(
             "Only dynamic driver markers in credible SELECT statements are reported; fixed ordinal offsets are preserved.",
             "PostgreSQL, SQLite, and common Python driver markers are recognized, including a postfix cast inside a parenthesized dynamic offset and MySQL LIMIT offset,count syntax.",
-            "The bounded grammar does not resolve casts on later arithmetic operands, quoted or multiword type names, or arbitrary recursive expressions.",
+            "Parenthesized numeric arithmetic and common numeric wrappers preserve dynamic-offset detection. Casts on later arithmetic operands, quoted/multiword type names and arbitrary function bodies remain unresolved.",
             "Dumps, migrations, generated paths or marked files, tests, fixtures, snapshots, ORM calls, bare procedural variables, and ambiguous templates are excluded.",
         ),
         examples=(
@@ -163,16 +195,18 @@ class NoOffsetPagination(Rule):
             if _QUERY_START.search(text) is None or text.count("(") != text.count(")"):
                 continue
             matches = sorted(
-                (*_OFFSET_PATTERN.finditer(text), *_MYSQL_LIMIT_PATTERN.finditer(text)),
-                key=lambda match: match.start(),
+                {
+                    *_offset_spans(text),
+                    *(_OffsetSpan(match.start(), match.end()) for match in _MYSQL_LIMIT_PATTERN.finditer(text)),
+                }
             )
             for match in matches:
-                if _FROM.search(text, 0, match.start()) is None:
+                if _FROM.search(text, 0, match.start) is None:
                     continue
-                suffix = text[match.end() :].lstrip()
-                if suffix.startswith(")") and text[: match.end()].count("(") <= text[: match.end()].count(")"):
+                suffix = text[match.end :].lstrip()
+                if suffix.startswith(")") and text[: match.end].count("(") <= text[: match.end].count(")"):
                     continue
-                offset = statement_start + match.start()
+                offset = statement_start + match.start
                 diags.append(
                     Diagnostic(
                         path=path,

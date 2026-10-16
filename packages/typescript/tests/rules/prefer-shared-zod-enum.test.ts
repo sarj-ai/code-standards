@@ -16,6 +16,10 @@ const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, source
 
 RULE_TESTER.run("prefer-shared-zod-enum", rule, {
   valid: [
+    { name: "keeps interpolated enum domains opaque", code: 'import { z } from "zod"; z.enum([`a${suffix}`, `b`]); z.enum([`a${suffix}`, `b`]);' },
+    { name: "preserves domain order through erased literals", code: 'import { z } from "zod"; z.enum([("a" as const), ("b" as const)]); z.enum([("b" as const), ("a" as const)]);' },
+    { name: "preserves customized errors through erased literals", code: 'import { z } from "zod"; z.enum([("a" as const), ("b" as const)], {error: "first"}); z.enum([("a" as const), ("b" as const)], {error: "second"});' },
+
     { name: "does not treat shadowed Zod as an imported schema builder", code: "import { z } from 'zod'; function build(z) { return z.enum(['a', 'b']); }" },
     { name: "does not inherit imported namespace across nested blocks", code: "import * as schema from 'zod'; { const schema = otherBuilder; schema.enum(['a', 'b']); }" },
     PREFER_SHARED_ZOD_ENUM_DOCUMENTATION.examples[0].files[0].source,
@@ -29,6 +33,10 @@ RULE_TESTER.run("prefer-shared-zod-enum", rule, {
     { filename: "src/schema.test.ts", code: "import { z } from 'zod'; z.enum(['a', 'b']); z.enum(['a', 'b']);" },
   ],
   invalid: [
+    { name: "recognizes repeated no-substitution template enum domains", code: 'import { z } from "zod"; const FirstSchema = z.enum([`a`, `b`]); const SecondSchema = z.enum([`a`, `b`]);', errors: [{ messageId: "shareEnumDomain" }] },
+    { name: "recognizes repeated enum domains through const assertions", code: 'import { z } from "zod"; const FirstSchema = z.enum([("a" as const), ("b" as const)]); const SecondSchema = z.enum([("a" as const), ("b" as const)]);', errors: [{ messageId: "shareEnumDomain" }] },
+    { name: "recognizes a const assertion around a literal enum array", code: 'import { z } from "zod"; const FirstSchema = z.enum(["a", "b"] as const); const SecondSchema = z.enum([`a`, `b`]);', errors: [{ messageId: "shareEnumDomain" }] },
+
     {
       code: PREFER_SHARED_ZOD_ENUM_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "shareEnumDomain" }, { messageId: "shareEnumDomain" }],

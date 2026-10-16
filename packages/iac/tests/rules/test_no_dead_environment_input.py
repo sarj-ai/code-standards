@@ -48,6 +48,23 @@ def _check_env(root: Path, env: str) -> list[Diagnostic]:
     return _check_file(root / "env" / env / _TFVARS_NAME)
 
 
+@pytest.mark.parametrize("default", ["(true)", "((true))", "(true /* literal value */)"])
+def test_grouping_preserves_scalar_default_comparison(tmp_path: Path, default: str) -> None:
+    root = _write_root(
+        tmp_path, f'variable "enabled" {{\n type = bool\n default = {default}\n}}', {"dev": "enabled = true\n"}
+    )
+    findings = _check_env(root, "dev")
+    assert len(findings) == 1
+    assert "equals-default" in findings[0].message
+
+
+def test_grouped_dynamic_default_remains_unknown(tmp_path: Path) -> None:
+    root = _write_root(
+        tmp_path, 'variable "enabled" {\n type = bool\n default = (var.fallback)\n}', {"dev": "enabled = true\n"}
+    )
+    assert _check_env(root, "dev") == []
+
+
 @pytest.mark.parametrize(
     "example",
     _EXAMPLES,

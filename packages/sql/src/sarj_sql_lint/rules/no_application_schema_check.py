@@ -31,14 +31,19 @@ if TYPE_CHECKING:
 
 
 _CHECK_START = re.compile(r"\bCHECK\s*\(", re.IGNORECASE)
-_JSON_SHAPE_FUNCTION = re.compile(r"\bJSONB?_(?:TYPEOF|ARRAY_LENGTH)\s*\(", re.IGNORECASE)
+_JSON_SHAPE_FUNCTION = re.compile(
+    r'(?<![A-Za-z0-9_$])(?:JSONB?_(?:TYPEOF|ARRAY_LENGTH)\b|(?-i:"jsonb?_(?:typeof|array_length)"))\s*\(',
+    re.IGNORECASE,
+)
 _CLOSED_TEXT_VALUES = re.compile(
-    r'^\s*(?:[A-Za-z_][A-Za-z0-9_]*|"(?:""|[^"\n])+")\s+IN\s*\(\s+,\s+(?:,\s+)*\)\s*$',
+    r'^\s*(?:[A-Za-z_][A-Za-z0-9_$]*|"(?:""|[^"\n])+")\s+IN\s*\(\s+,\s+(?:,\s+)*\)\s*$',
     re.IGNORECASE | re.DOTALL,
 )
 
 
 def _application_schema_checks(source: str) -> list[int]:
+    if _CHECK_START.search(source) is None:
+        return []
     findings: list[int] = []
     code = mask_sql(source, mask_dollar_literals=True) if '"' in source else source
     for match in sql_code_matches(_CHECK_START, source):
@@ -159,7 +164,7 @@ class NoApplicationSchemaCheck(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if is_dump_file(source, path) or not is_postgres_source(path, source):
+        if "check" not in source.casefold() or is_dump_file(source, path) or not is_postgres_source(path, source):
             return []
         model_owned = is_generated_migration(path, source)
         diagnostics: list[Diagnostic] = []

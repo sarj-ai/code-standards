@@ -63,6 +63,7 @@ _ENV_CALLS = frozenset({"getenv"})
 _ENV_MAPPINGS = frozenset({"environ"})
 _EQUALITY_DUNDERS = frozenset({"__eq__", "__ne__"})
 _PAIR_OPERAND_COUNT = 2
+_ENCODE_ARGUMENT_LIMIT = 2
 _SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
 
 
@@ -108,7 +109,7 @@ class PreferConstantTimeSecretCompare(Rule):
         category=RuleCategory.SECURITY,
         limitations=(
             "The diagnostic requires evidence of an externally supplied credential and configured or stored secret state.",
-            "Only direct equality and unambiguous same-scope aliases from headers, cookies, settings, or environment are traced.",
+            "Adjacent equality pairs, literal encode normalization, and unambiguous same-scope aliases from headers, cookies, settings, or environment are traced.",
             "Generated files, tests, test-support modules, equality methods, public sentinels, and type-like values are excluded.",
             "`compare_digest` requires compatible ASCII string or bytes-like operands and may still reveal type or length.",
         ),
@@ -162,9 +163,7 @@ class PreferConstantTimeSecretCompare(Rule):
         dunder_compares = _equality_dunder_compares(tree, source, node_index=context.node_index)
         diagnostics: list[Diagnostic] = []
         for comparison in context.nodes(ast.Compare):
-            if id(comparison) in dunder_compares or len(comparison.ops) != 1:
-                continue
-            if not isinstance(comparison.ops[0], (ast.Eq, ast.NotEq)):
+            if id(comparison) in dunder_compares:
                 continue
             operands = [comparison.left, *comparison.comparators]
             if _is_password_confirmation_pair(operands):
@@ -176,7 +175,8 @@ class PreferConstantTimeSecretCompare(Rule):
             position = (comparison.lineno, comparison.col_offset)
             dominant_roles = _dominating_walrus_roles(comparison, parents, roles, position)
             operand_roles = [_operand_role(operand, roles, position, dominant_roles) for operand in operands]
-            if not _has_authentication_pair(operand_roles):
+            unsafe_pair = _unsafe_authentication_pair(comparison, operands, operand_roles)
+            if unsafe_pair is None:
                 continue
             diagnostics.append(
                 Diagnostic(
@@ -185,10 +185,22 @@ class PreferConstantTimeSecretCompare(Rule):
                     col=comparison.col_offset + 1,
                     code=self.code,
                     severity=Severity.ERROR,
-                    message=_message(operand_roles),
+                    message=_message(unsafe_pair),
                 )
             )
         return sorted(diagnostics, key=lambda item: (item.line, item.col))
+
+
+def _unsafe_authentication_pair(
+    comparison: ast.Compare, operands: list[ast.expr], operand_roles: list[_Role]
+) -> list[_Role] | None:
+    for index, operation in enumerate(comparison.ops):
+        if not isinstance(operation, (ast.Eq, ast.NotEq)):
+            continue
+        pair = operand_roles[index : index + 2]
+        if _has_authentication_pair(pair) and not _is_password_confirmation_pair(operands[index : index + 2]):
+            return pair
+    return None
 
 
 def _message(roles: list[_Role]) -> str:
@@ -274,6 +286,11 @@ def _operand_role(
                 for value in node.values
                 if isinstance(value, ast.FormattedValue)
             )
+        case ast.Call(func=ast.Attribute(value=value, attr="encode"), args=arguments, keywords=[]):
+            if len(arguments) <= _ENCODE_ARGUMENT_LIMIT and all(
+                isinstance(argument, ast.Constant) and isinstance(argument.value, str) for argument in arguments
+            ):
+                return _operand_role(value, roles, position, dominant_roles)
         case _:
             pass
     if _is_external_lookup(node):

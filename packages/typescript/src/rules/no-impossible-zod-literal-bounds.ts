@@ -30,7 +30,7 @@ export const NO_IMPOSSIBLE_ZOD_LITERAL_BOUNDS_DOCUMENTATION = {
     "Choose compatible lower and upper bounds, or remove the constraint that does not express the intended domain.",
   category: "correctness",
   limitations: [
-    "Only finite numeric literals in a single schema chain are compared; number().int(), int(), int32(), uint32(), strings and arrays require an admitted integer value or length.",
+    "Only finite numeric literals, including unary signs and erased TypeScript wrappers, in a single schema chain are compared; number().int(), int(), int32(), uint32(), strings and arrays require an admitted integer value or length.",
     "int32() and uint32() include their intrinsic ranges. The managed preset delegates explicit real-bound conflicts to upstream zod/no-conflicting-checks to avoid duplicate findings.",
     "Integer-domain comparisons abstain near the JavaScript safe-integer boundary.",
     "Chains with dynamic bounds, non-bound validators, transforms, pipes, or preprocessors are skipped.",
@@ -134,11 +134,12 @@ function finiteNumber(
   if (
     node?.type === AST_NODE_TYPES.UnaryExpression &&
     (node.operator === "-" || node.operator === "+") &&
-    node.argument.type === AST_NODE_TYPES.Literal &&
-    typeof node.argument.value === "number"
+    unwrapExpression(node.argument).type === AST_NODE_TYPES.Literal
   ) {
+    const argument = unwrapExpression(node.argument);
+    if (argument.type !== AST_NODE_TYPES.Literal || typeof argument.value !== "number") return null;
     const value =
-      node.operator === "-" ? -node.argument.value : node.argument.value;
+      node.operator === "-" ? -argument.value : argument.value;
     return Number.isFinite(value) ? value : null;
   }
   return null;

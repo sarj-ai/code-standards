@@ -407,7 +407,7 @@ def test_comment_normalization_retains_unprotected_ddl(assignment: str) -> None:
     assert len(_check(f"{assignment}\nALTER TABLE users ADD COLUMN note TEXT;\n")) == 1
 
 
-@pytest.mark.parametrize("name", ["lock_timeout", "statement_timeout"])
+@pytest.mark.parametrize("name", ["lock_timeout", "statement_timeout", "LOCK_TIMEOUT", "Statement_Timeout"])
 def test_quoted_timeout_assignment_is_live(name: str) -> None:
     assert _check(f"SET \"{name}\" = '3s'; ALTER TABLE users ADD COLUMN note TEXT;") == []
 
@@ -419,7 +419,7 @@ def test_quoted_timeout_reset_removes_protection() -> None:
 
 @pytest.mark.parametrize(
     "assignment",
-    ["SET \"LOCK_TIMEOUT\" = '3s';", 'SELECT \'SET "lock_timeout" = "3s"\';', 'SELECT "SET lock_timeout = 3s";'],
+    ['SELECT \'SET "lock_timeout" = "3s"\';', 'SELECT "SET lock_timeout = 3s";'],
 )
 def test_quoted_timeout_decoys_do_not_grant_protection(assignment: str) -> None:
     assert len(_check(assignment + " ALTER TABLE users ADD COLUMN note TEXT;")) == 1
@@ -511,3 +511,38 @@ def test_dbmate_whitespace_matches_native_runner(
         assert [item.line for item in findings] == (
             [source.count("\n", 0, source.index("ALTER TABLE")) + 1] if transactional is False else []
         )
+
+
+def test_quoted_parameter_case_does_not_prevent_reset() -> None:
+    source = 'SET "LOCK_TIMEOUT" = \'3s\'; RESET "Lock_Timeout"; ALTER TABLE users ADD COLUMN note TEXT;'
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "REFRESH MATERIALIZED VIEW active_accounts;",
+        "REFRESH /* migration */ MATERIALIZED VIEW CONCURRENTLY active_accounts;",
+        "CREATE TABLE IF NOT EXISTS next_accounts (LIKE accounts INCLUDING ALL);",
+        "CREATE TABLE next_accounts (id integer, LIKE accounts);",
+        'CREATE UNLOGGED TABLE "next accounts" (LIKE "accounts" INCLUDING ALL);',
+        "CREATE TEMPORARY TABLE next_accounts (LIKE accounts);",
+    ],
+)
+def test_existing_relation_refresh_or_like_copy_requires_a_bound(statement: str) -> None:
+    assert len(_check(statement)) == 1
+    assert _check(f"SET lock_timeout = '3s';\n{statement}") == []
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "CREATE TABLE next_accounts(id integer);",
+        "CREATE TABLE next_accounts(id text CHECK(id LIKE 'A%'));",
+        "SELECT 'REFRESH MATERIALIZED VIEW active_accounts';",
+        "-- CREATE TABLE next_accounts (LIKE accounts);\nSELECT 1;",
+        "SELECT name FROM accounts WHERE name LIKE 'A%';",
+    ],
+)
+def test_comparisons_and_fresh_tables_do_not_establish_an_existing_relation_lock(statement: str) -> None:
+    assert _check(statement) == []

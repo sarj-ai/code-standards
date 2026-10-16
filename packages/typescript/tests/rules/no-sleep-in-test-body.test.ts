@@ -19,6 +19,10 @@ const TEST_FILE = "/repo/src/worker.test.ts";
 
 RULE_TESTER.run("no-sleep-in-test-body", rule, {
   valid: [
+    { name: "keeps a wrapped zero-delay yield", filename: TEST_FILE, code: 'it("yield", async () => { await sleep((0 as const)); });' },
+    { name: "keeps a wrapped dynamic delay opaque", filename: TEST_FILE, code: 'it("retry", async () => { await sleep((duration as number)); });' },
+    { name: "keeps a wrapped delay inside a latency fake", filename: TEST_FILE, code: 'it("timeout", async () => { const fake = async () => { await sleep((50 as const)); }; await verify(fake); });' },
+
     { name: "binding ownership: sleep-local-shadow", filename: TEST_FILE, code: "function test(name:string, callback:()=>unknown) { return callback; }test('case',async()=>{await new Promise(resolve => setTimeout(resolve, 5));});" },
     { name: "binding ownership: sleep-unrelated-import", filename: TEST_FILE, code: "import {test} from './application.js';test('case',async()=>{await new Promise(resolve => setTimeout(resolve, 5));});" },
     { name: "binding ownership: sleep-imported-describe-alias", filename: TEST_FILE, code: "import {describe as test} from 'vitest';test('case',async()=>{await new Promise(resolve => setTimeout(resolve, 5));});" },
@@ -126,6 +130,9 @@ RULE_TESTER.run("no-sleep-in-test-body", rule, {
     },
   ],
   invalid: [
+    { name: "retains a fixed delay through a const assertion", filename: TEST_FILE, code: 'it(("retries" as const), async () => { await sleep((50 as const)); });', errors: [{ messageId: "noSleepInTestBody" }] },
+    { name: "retains a fixed Promise timer through a satisfies wrapper", filename: TEST_FILE, code: 'it("retries", async () => { await new Promise(resolve => setTimeout(resolve, (50 satisfies number))); });', errors: [{ messageId: "noSleepInTestBody" }] },
+
     { name: "binding ownership: sleep-global", filename: TEST_FILE, code: "test('case',async()=>{await new Promise(resolve => setTimeout(resolve, 5));});", errors: [{ messageId: "noSleepInTestBody" }] },
     { name: "binding ownership: sleep-named-import", filename: TEST_FILE, code: "import {test} from 'vitest';test('case',async()=>{await new Promise(resolve => setTimeout(resolve, 5));});", errors: [{ messageId: "noSleepInTestBody" }] },
     { name: "binding ownership: sleep-renamed-import", filename: TEST_FILE, code: "import {test as check} from 'vitest';check('case',async()=>{await new Promise(resolve => setTimeout(resolve, 5));});", errors: [{ messageId: "noSleepInTestBody" }] },

@@ -213,6 +213,12 @@ class RequirePydanticForExternalJson(Rule):
         if tree is None:
             return []
         imports = context.imports
+        if not any(
+            _is_json_loads(call, imports)
+            or (isinstance(call.func, ast.Attribute) and call.func.attr == "json" and not call.args)
+            for call in context.nodes(ast.Call)
+        ):
+            return []
         source_lines = context.source_lines
         summaries = _module_summaries(tree, imports, source_lines, node_index=context.node_index)
         findings: list[tuple[ast.expr, ast.Call]] = []

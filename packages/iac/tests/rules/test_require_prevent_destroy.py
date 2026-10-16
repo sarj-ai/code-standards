@@ -383,3 +383,9 @@ def test_lifecycle_limitation_is_documented():
 def test_an_uppercase_force_destroy_false_still_does_not_exempt():
     src = 'resource "aws_s3_bucket" "blob" {\n  bucket        = "blob"\n  force_destroy = FALSE\n}\n'
     assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize("value", [r'"\u0050REVENT"', r'("\U00000050REVENT")'])
+def test_encoded_prevent_policy_preserves_provider_guard(value: str) -> None:
+    source = f'resource "google_storage_bucket" "records" {{\n  deletion_policy = {value}\n}}'
+    assert _check(source) == []

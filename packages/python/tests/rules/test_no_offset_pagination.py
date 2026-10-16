@@ -127,3 +127,25 @@ def test_diagnostic_metadata() -> None:
 @pytest.mark.parametrize("source", ["", "# comment\n", "def (:\n"])
 def test_boundary_inputs_return_no_diagnostics(source: str) -> None:
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "GREATEST(%s, 0)",
+        "(($1 + 1) * 20)",
+        "LEAST(10000, GREATEST(:offset, 0))",
+        "(COALESCE(:page, 0) + 1) * 20",
+    ],
+)
+def test_numeric_wrappers_preserve_dynamic_pagination(expression: str) -> None:
+    source = f'q = "SELECT id FROM account ORDER BY id OFFSET {expression}"\n'  # ruff: ignore[hardcoded-sql-expression] -- numeric pagination parser fixtures
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "expression", ["GREATEST(1, 0)", "((1 + 1) * 20)", "(SELECT 0 FROM setting WHERE id = $1)", "page_size($1)"]
+)
+def test_numeric_offset_scanning_preserves_fixed_and_opaque_values(expression: str) -> None:
+    source = f'q = "SELECT id FROM account ORDER BY id OFFSET {expression}"\n'  # ruff: ignore[hardcoded-sql-expression] -- fixed/opaque pagination parser fixtures
+    assert _check(source) == []

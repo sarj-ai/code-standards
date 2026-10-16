@@ -189,3 +189,32 @@ def test_multiline_constraint_enforcement_remains_a_distinct_phase(separator: st
         'ALTER TABLE "account" ADD CONSTRAINT normalized_unique UNIQUE (normalized);\n'
     ).replace(" ", separator)
     assert len(_check(source)) == 1
+
+
+def test_reports_backfill_and_contract_for_quoted_identifiers() -> None:
+    source = (
+        'ALTER TABLE "credential" ADD COLUMN "token" TEXT;\n'
+        'UPDATE "credential" SET "token" = "legacy_token";\n'
+        'ALTER TABLE "credential" DROP COLUMN "legacy_token";\n'
+    )
+    [finding] = _check(source)
+    assert finding.line == 3
+
+
+def test_quoted_fresh_table_keeps_seed_and_constraints_in_expand() -> None:
+    source = (
+        'CREATE TABLE "status" (id UUID PRIMARY KEY, name TEXT);\n'
+        "INSERT INTO \"status\" VALUES ('value', 'ready');\n"
+        'ALTER TABLE "status" ADD COLUMN "drop" TEXT;\n'
+    )
+    assert _check(source) == []
+
+
+def test_quoted_table_case_and_quoted_clause_words_preserve_distinct_phases() -> None:
+    distinct_table = (
+        'CREATE TABLE "Status" (id UUID PRIMARY KEY);\n'
+        'UPDATE "status" SET value = 1;\n'
+        'ALTER TABLE "status" DROP COLUMN legacy;\n'
+    )
+    assert len(_check(distinct_table)) == 1
+    assert _check('UPDATE "status" SET value = 1;\nALTER TABLE "status" ADD COLUMN "drop" TEXT;\n') == []

@@ -29,7 +29,9 @@ if TYPE_CHECKING:
 
 # Strict keyword adjacency distinguishes SQL writes from prose.
 _INSERT_WRITE = re.compile(
-    r"\bINSERT\s+(?:OR\s+\w+\s+)?INTO\s+[\w.\"'`?$:@-]+\s*(?:\([^)]*\)\s*)?(?:VALUES|SELECT|DEFAULT\s+VALUES)\b",
+    r"\bINSERT\s+(?:OR\s+\w+\s+)?INTO\s+[\w.\"'`?$:@-]+\s*"
+    r"(?:AS\s+(?:[A-Za-z_][\w$]*|\"(?:\"\"|[^\"])+\")\s*)?(?:\([^)]*\)\s*)?"
+    r"(?:OVERRIDING\s+(?:SYSTEM|USER)\s+VALUE\s+)?(?:VALUES|SELECT|DEFAULT\s+VALUES)\b",
     re.IGNORECASE,
 )
 
@@ -86,6 +88,7 @@ class StoreInsertRequiresOnConflict(Rule):
                 "explicitly replay-named callables in recognized store modules are analyzed."
             ),
             "Dynamic SQL policy composition and ordinary create, seed, migration, schedule, and upsert methods are excluded.",
+            "Target AS aliases and OVERRIDING clauses preserve INSERT detection. Conflict detection remains lexical within one SQL statement; per-CTE ownership is not established by this embedded-SQL rule.",
         ),
         examples=(
             RuleExample(

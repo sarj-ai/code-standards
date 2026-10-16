@@ -27,6 +27,11 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-json-stringify-error", rule, {
   valid: [
+    { name: "allows a computed serializer with an explicit error-field replacer", code: "try { f(); } catch (error) { JSON['stringify'](error, ['message', 'stack']); }" },
+    { name: "respects a shadowed JSON API with a computed serializer", code: "function encode(JSON) { return JSON['stringify'](new Error('x')); }" },
+    { name: "does not infer an unresolved computed serialization method", code: "try { f(); } catch (error) { JSON[method](error); }" },
+    { name: "allows a computed serializer selecting only a caught error message", code: "try { f(); } catch (error) { JSON['stringify'](error['message']); }" },
+
     { name: "does not infer Error provenance for catch cause", code: "try { f(); } catch (err) { JSON.stringify(err.cause); }" },
     { name: "does not infer Error provenance for catch inner", code: "try { f(); } catch (err) { JSON.stringify(err.inner); }" },
     { name: "does not infer Error provenance for alternatively named catch cause", code: "try { f(); } catch (error) { JSON.stringify(error.cause); }" },
@@ -187,6 +192,10 @@ RULE_TESTER.run("no-json-stringify-error", rule, {
     },
   ],
   invalid: [
+    { name: "reports a caught error through a computed native serializer", code: "try { f(); } catch (error) { JSON['stringify'](error); }", errors: [{ messageId: "noJsonStringifyError" }] },
+    { name: "reports a computed native serializer behind an erased cast", code: "try { f(); } catch (error) { (JSON['stringify'] as typeof JSON.stringify)(error); }", errors: [{ messageId: "noJsonStringifyError" }] },
+    { name: "reports a computed serializer containing a nested error", code: "try { f(); } catch (error) { JSON['stringify']({ error }); }", errors: [{ messageId: "noJsonStringifyError" }] },
+
     { name: "reports native DOMException serialization", code: "JSON.stringify(new DOMException('cancelled', 'AbortError'));", errors: [{ messageId: "noJsonStringifyError" }] },
     { name: "reports a stable local DOMException inside a payload", code: "const error = new DOMException('cancelled', 'AbortError'); JSON.stringify({ error });", errors: [{ messageId: "noJsonStringifyError" }] },
     { name: "reports the documented Error payload", code: NO_JSON_STRINGIFY_ERROR_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noJsonStringifyError" }] },

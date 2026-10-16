@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-PATTERN = re.compile(r'(?:\bgen_random_uuid|(?-i:"gen_random_uuid"))\s*\(', re.IGNORECASE)
+PATTERN = re.compile(r'(?<![A-Za-z0-9_$])(?:gen_random_uuid\b|(?-i:"gen_random_uuid"))\s*\(', re.IGNORECASE)
 
 _MESSAGE = (
     "`gen_random_uuid()` generates a random UUIDv4 — use `uuidv7()` (Postgres 18). "
