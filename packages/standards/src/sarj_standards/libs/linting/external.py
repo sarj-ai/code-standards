@@ -53,7 +53,7 @@ from .shell_policy import SHELLCHECK_ARGS
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
     from typing import BinaryIO
 
     from .policy import Policy
@@ -62,6 +62,11 @@ if TYPE_CHECKING:
 class _ReactDoctorSelection(NamedTuple):
     project: Path
     projects: tuple[Path, ...]
+
+
+class _DeptryPackage(NamedTuple):
+    path: Path
+    import_root: str
 
 
 class _PreparedInputs(NamedTuple):
@@ -3164,9 +3169,13 @@ def _deptry_scan_roots(project: Path, scoped_files: Sequence[str]) -> tuple[str,
     # DEP002 compares project dependencies with its complete import graph. A
     # selected maintenance script must also scan the package sources explicitly
     # owned by this wheel, even when those sources have a nested pyproject.
-    roots = {path.relative_to(project).as_posix() for path in _deptry_declared_packages(project)}
+    packages = _deptry_declared_packages(project)
+    roots = {package.path.relative_to(project).as_posix() for package in packages}
     for raw_file in scoped_files:
-        relative = Path(raw_file).resolve().relative_to(project)
+        selected = Path(raw_file).resolve()
+        if any(selected.is_relative_to(package.path) for package in packages):
+            continue
+        relative = selected.relative_to(project)
         roots.add("." if len(relative.parts) == 1 else relative.parts[0])
     selected_roots = tuple(PurePosixPath(value) for value in roots)
     return tuple(
@@ -3178,32 +3187,78 @@ def _deptry_scan_roots(project: Path, scoped_files: Sequence[str]) -> tuple[str,
     )
 
 
-def _deptry_declared_packages(project: Path) -> tuple[Path, ...]:
+def _deptry_declared_packages(project: Path) -> tuple[_DeptryPackage, ...]:
     pyproject = project / "pyproject.toml"
     try:
         parsed: object = tomllib.loads(pyproject.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return ()
     table = manifest.as_table(parsed)
-    if manifest.table_field(table, "build-system").get("build-backend") != "hatchling.build":
+    backend = manifest.table_field(table, "build-system").get("build-backend")
+    if backend == "uv_build":
+        return _deptry_uv_packages(project, table)
+    if backend != "hatchling.build":
         return ()
     for key in ("tool", "hatch", "build", "targets", "wheel"):
         table = manifest.table_field(table, key)
-    packages: list[Path] = []
-    for value in manifest.list_field(table, "packages"):
-        if not isinstance(value, str):
-            continue
-        package = (project / value).resolve()
-        if not package.is_relative_to(project):
-            msg = "declared wheel package source must stay within its Python project"
+    return tuple(
+        _deptry_package(project, Path(value))
+        for value in manifest.list_field(table, "packages")
+        if isinstance(value, str)
+    )
+
+
+def _deptry_uv_packages(project: Path, table: Mapping[str, object]) -> tuple[_DeptryPackage, ...]:
+    settings = manifest.table_field(manifest.table_field(table, "tool"), "uv")
+    settings = manifest.table_field(settings, "build-backend")
+    module_root = settings.get("module-root", "src")
+    names = settings.get("module-name")
+    if names is None:
+        project_name = manifest.text_field(manifest.table_field(table, "project"), "name")
+        if project_name is None:
+            msg = "uv_build requires a project name or explicit module-name"
             raise ValueError(msg)
-        packages.append(package)
+        names = re.sub(r"[-_.]+", "_", project_name.lower())
+        if names.endswith("_stubs"):
+            names = f"{names.removesuffix('_stubs')}-stubs"
+    if isinstance(names, str):
+        names = [names]
+    if not isinstance(module_root, str) or not is_object_list(names) or not names:
+        msg = "uv_build module-root must be a string and module-name a nonempty string or list of names"
+        raise ValueError(msg)
+    source_root = _deptry_source_path(project, Path(module_root))
+    packages: list[_DeptryPackage] = []
+    for name in names:
+        if not isinstance(name, str):
+            msg = "uv_build module-name entries must be strings"
+            raise TypeError(msg)
+        first, *rest = name.split(".")
+        import_root = first.removesuffix("-stubs")
+        if not import_root.isidentifier() or not all(part.isidentifier() for part in rest):
+            msg = "uv_build module-name must contain valid dotted module names"
+            raise ValueError(msg)
+        packages.append(_deptry_package(project, source_root.joinpath(first, *rest), import_root))
     return tuple(packages)
+
+
+def _deptry_package(project: Path, relative: Path, import_root: str | None = None) -> _DeptryPackage:
+    package = _deptry_source_path(project, relative)
+    return _DeptryPackage(package, package.name if import_root is None else import_root)
+
+
+def _deptry_source_path(project: Path, relative: Path) -> Path:
+    package = (project / relative).resolve()
+    if not package.is_relative_to(project):
+        msg = "declared wheel package source must stay within its Python project"
+        raise ValueError(msg)
+    return package
 
 
 def _deptry_first_party_modules(project: Path) -> tuple[str, ...]:
     roots = (project / "src", project)
-    names = {path.name for path in _deptry_declared_packages(project) if path.name.isidentifier()}
+    names = {
+        package.import_root for package in _deptry_declared_packages(project) if package.import_root.isidentifier()
+    }
     for source_root in roots:
         if not source_root.is_dir():
             continue
