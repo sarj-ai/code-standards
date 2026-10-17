@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_REVISION = "e10d7dd693dee946921f724e5113ac3db097d4f0"
+_REVISION = "086afabe02f9138a2aa8710d9c162006a35ee2af"
 
 
 def test_repo_standards_dependency_pin_tracks_the_installed_package() -> None:

@@ -54,7 +54,7 @@ SIBLING_PACKAGES: Final = (_PYTHON_LINT, "sarj-sql-lint", "sarj-iac-lint")
 REPO_STANDARDS_VERSION: Final = "6.8.3"
 # Actions can receive delivery fixes independently of the consumer topology policy.
 REPO_STANDARDS_ACTION_VERSION: Final = "6.8.3"
-REPO_STANDARDS_REVISION: Final = "e10d7dd693dee946921f724e5113ac3db097d4f0"
+REPO_STANDARDS_REVISION: Final = "086afabe02f9138a2aa8710d9c162006a35ee2af"
 
 
 def adopted_version() -> str:
