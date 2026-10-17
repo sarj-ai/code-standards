@@ -6,7 +6,7 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Final, TypedDict, TypeGuard
 
 from sarj_standards._meta import CONFIGS_DIR
-from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.json_boundary import parse_unique_json
 from sarj_standards.libs.typed_containers import is_object_mapping
 
 
@@ -47,7 +47,7 @@ def validate(value: object) -> RuleInventory:
     if not _is_object(value) or frozenset(value) != frozenset({"schemaVersion", "rules"}):
         msg = "rule inventory must contain exactly schemaVersion and rules"
         raise ValueError(msg)
-    if value["schemaVersion"] != SCHEMA_VERSION:
+    if type(value["schemaVersion"]) is not int or value["schemaVersion"] != SCHEMA_VERSION:
         msg = f"unsupported rule inventory schemaVersion: {value['schemaVersion']!r}; expected {SCHEMA_VERSION}"
         raise ValueError(msg)
     raw_rules = value["rules"]
@@ -102,8 +102,8 @@ def _relative_repository_path(value: str, *, field: str, index: int) -> str:
 
 def load(path: Path = RULE_INVENTORY_PATH) -> RuleInventory:
     try:
-        payload: object = parse_json(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        payload: object = parse_unique_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError) as exc:
         msg = f"cannot load shipped rule inventory {path}: {exc}"
         raise ValueError(msg) from exc
     return validate(payload)

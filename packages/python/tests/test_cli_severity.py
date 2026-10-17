@@ -293,6 +293,41 @@ def test_invalid_baseline_is_a_concise_operator_error(tmp_path: Path, capsys: py
     assert "Traceback" not in output.err
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param("[]", id="array-root"),
+        pytest.param("null", id="null-root"),
+        pytest.param('{"$TARGET": []}', id="array-count-map"),
+        pytest.param('{"$TARGET": {"SARJ016": true}}', id="boolean-allowance"),
+        pytest.param('{"$TARGET": {"SARJ016": -1}}', id="negative-allowance"),
+        pytest.param('{"$TARGET": {"SARJ016": 1.0}}', id="float-allowance"),
+        pytest.param('{"$TARGET": {"SARJ016": "1"}}', id="string-allowance"),
+        pytest.param('{"$TARGET": {"SARJ016": null}}', id="null-allowance"),
+        pytest.param('{"$TARGET": {"SARJ016": NaN}}', id="non-finite-allowance"),
+        pytest.param('{"$TARGET": {"SARJ016": 0, "SARJ016": 1}}', id="duplicate-selector"),
+        pytest.param('{"$TARGET": {}, "$TARGET": {"SARJ016": 1}}', id="duplicate-path"),
+        pytest.param('{"": {"SARJ016": 1}}', id="empty-path"),
+        pytest.param('{"$TARGET": {"": 1}}', id="empty-selector"),
+        pytest.param("[" * 2000 + "]" * 2000, id="excessive-nesting"),
+    ],
+)
+def test_malformed_baseline_cannot_suppress_a_blocking_finding(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], payload: str
+) -> None:
+    source = tmp_path / "example.py"
+    source.write_text("# ----------------\nvalue = 2\n", encoding="utf-8")
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text(payload.replace('"$TARGET"', json.dumps(str(source))), encoding="utf-8")
+
+    status = main(["check", "--rule", "no-comment-cruft", "--baseline", str(baseline), str(source)])
+
+    output = capsys.readouterr()
+    assert status == 2
+    assert "invalid baseline" in output.err
+    assert "Traceback" not in output.err
+
+
 def test_baseline_update_requires_an_existing_parent(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     source = tmp_path / "example.py"
     source.write_text("value = 1\n", encoding="utf-8")

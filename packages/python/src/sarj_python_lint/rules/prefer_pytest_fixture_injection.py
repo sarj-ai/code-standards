@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
+from functools import cached_property
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
+from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -43,6 +44,34 @@ class _HelperImport(NamedTuple):
     level: int
 
 
+@final
+class _ModuleFacts:
+    def __init__(self, tree: ast.Module) -> None:
+        self.tree = tree
+
+    @cached_property
+    def bindings(self) -> Counter[str]:
+        return _scope_bindings(self.tree)
+
+    @cached_property
+    def writes(self) -> tuple[ast.Attribute | ast.Subscript, ...]:
+        return tuple(
+            node
+            for node in ast.walk(self.tree)
+            if isinstance(node, (ast.Attribute, ast.Subscript)) and isinstance(node.ctx, (ast.Store, ast.Del))
+        )
+
+    @cached_property
+    def mutated_roots(self) -> frozenset[str]:
+        return frozenset(root for node in self.writes if (root := _root_name(node.value)) is not None)
+
+    @cached_property
+    def references(self) -> frozenset[str]:
+        return frozenset(
+            node.id for node in ast.walk(self.tree) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+        )
+
+
 class PreferPytestFixtureInjection(Rule):
     id: str = "prefer-pytest-fixture-injection"
     code: str = "SARJ476"
@@ -70,6 +99,7 @@ class PreferPytestFixtureInjection(Rule):
             "Async pools require an explicit literal open=False, no unpacked arguments, and no calls inside constructor arguments; opened or dynamically configured async pools need lifecycle-specific fixture design.",
             "Setup must be the first executable statement and immediately feed a plain call, or appear inline as a direct argument of that first call.",
             "Class tests, decorated helpers, unknown test decorators, dynamic imports, re-exports, and ambiguous or out-of-bound source paths are excluded.",
+            "Tests with statically visible callable references in any scope are excluded; scope-ambiguous references are handled conservatively.",
             "Command-line conftest discovery overrides and external pytest plugin registrations are not inferred.",
         ),
         examples=(
@@ -167,24 +197,23 @@ class PreferPytestFixtureInjection(Rule):
         ):
             return []
         tree = context.tree
-        helpers = _resource_helpers(context)
+        facts = _ModuleFacts(tree)
+        helpers = _resource_helpers(context, facts)
         if not helpers:
             return []
-        module_bindings = _scope_bindings(tree)
-        if "__test__" in module_bindings or any(
-            isinstance(node, ast.Attribute) and node.attr == "__test__" and isinstance(node.ctx, (ast.Store, ast.Del))
-            for node in ast.walk(tree)
+        if "__test__" in facts.bindings or any(
+            isinstance(node, ast.Attribute) and node.attr == "__test__" for node in facts.writes
         ):
             return []
         diagnostics: list[Diagnostic] = []
         for statement in tree.body:
             if (
                 not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef))
-                or module_bindings[statement.name] != 1
-                or _module_reference(tree, statement.name)
+                or facts.bindings[statement.name] != 1
+                or statement.name in facts.references
             ):
                 continue
-            call = _setup_call(context, statement, helpers)
+            call = _setup_call(context, statement, helpers, facts)
             if call is not None:
                 diagnostics.append(
                     Diagnostic(
@@ -205,17 +234,16 @@ class PreferPytestFixtureInjection(Rule):
         return diagnostics
 
 
-def _resource_helpers(context: PythonFileContext) -> frozenset[str]:
+def _resource_helpers(context: PythonFileContext, facts: _ModuleFacts) -> frozenset[str]:
     tree = context.tree
     if tree is None:
         return frozenset()
     references = tuple(_helper_imports(tree))
     if not references:
         return frozenset()
-    bindings = _scope_bindings(tree)
     helpers: set[str] = set()
     for reference in references:
-        if bindings[reference.local] != 1 or _root_mutated(tree, reference.local):
+        if facts.bindings[reference.local] != 1 or reference.local in facts.mutated_roots:
             continue
         target = context.session.local_source.resolve_module(
             context.path, reference.module, reference.level, facts=context.session.first_party
@@ -249,11 +277,12 @@ def _helper_imports(tree: ast.Module) -> Iterator[_HelperImport]:
 
 
 def _is_resource_helper(module: LocalModule, symbol: str) -> bool:
+    facts = _ModuleFacts(module.tree)
     if (
         is_generated(module.path, module.source)
-        or _scope_bindings(module.tree)[symbol] != 1
+        or facts.bindings[symbol] != 1
         or _has_wildcard(module.tree)
-        or _root_mutated(module.tree, symbol)
+        or symbol in facts.mutated_roots
     ):
         return False
     helper = next(
@@ -275,8 +304,8 @@ def _is_resource_helper(module: LocalModule, symbol: str) -> bool:
     qualified = module.runtime_imports.resolved_qualified_name(constructor)
     return (
         root is not None
-        and _scope_bindings(module.tree)[root] == 1
-        and not _root_mutated(module.tree, root)
+        and facts.bindings[root] == 1
+        and root not in facts.mutated_roots
         and qualified in _POOL_CONSTRUCTORS
         and (qualified != "psycopg_pool.AsyncConnectionPool" or _unopened_async_allocation(allocation))
     )
@@ -294,9 +323,11 @@ def _unopened_async_allocation(allocation: ast.Call) -> bool:
     )
 
 
-def _setup_call(context: PythonFileContext, function: Function, helpers: frozenset[str]) -> ast.Call | None:
+def _setup_call(
+    context: PythonFileContext, function: Function, helpers: frozenset[str], facts: _ModuleFacts
+) -> ast.Call | None:
     if not function.name.startswith("test_") or any(
-        not _pytest_mark(context, decorator) for decorator in function.decorator_list
+        not _pytest_mark(context, decorator, facts) for decorator in function.decorator_list
     ):
         return None
     bindings = _scope_bindings(function)
@@ -313,21 +344,21 @@ def _setup_call(context: PythonFileContext, function: Function, helpers: frozens
     if setup is None:
         return None
     if _helper_call(setup, available):
-        return _assigned_dependency_call(context, body, bindings, setup)
-    if not _unshadowed_consumer(context, setup, bindings):
+        return _assigned_dependency_call(body, bindings, setup, facts)
+    if not _unshadowed_consumer(setup, bindings, facts):
         return None
     inline = [arg for arg in _arguments(setup) if isinstance(arg, ast.Call) and _helper_call(arg, available)]
     return inline[0] if len(inline) == 1 else None
 
 
 def _assigned_dependency_call(
-    context: PythonFileContext, body: list[ast.stmt], bindings: Counter[str], setup: ast.Call
+    body: list[ast.stmt], bindings: Counter[str], setup: ast.Call, facts: _ModuleFacts
 ) -> ast.Call | None:
     resource = _assignment_name(body[0])
     if resource is None or bindings[resource] != 1 or len(body) < _SETUP_AND_CONSUMER:
         return None
     consumer = _plain_call(body[1])
-    if consumer is None or not _unshadowed_consumer(context, consumer, bindings):
+    if consumer is None or not _unshadowed_consumer(consumer, bindings, facts):
         return None
     for argument in _arguments(consumer):
         if isinstance(argument, ast.Name) and argument.id == resource:
@@ -335,7 +366,7 @@ def _assigned_dependency_call(
     return None
 
 
-def _pytest_mark(context: PythonFileContext, decorator: ast.expr) -> bool:
+def _pytest_mark(context: PythonFileContext, decorator: ast.expr, facts: _ModuleFacts) -> bool:
     target = decorator.func if isinstance(decorator, ast.Call) else decorator
     qualified = context.module_imports.resolved_qualified_name(target)
     tree = context.tree
@@ -345,12 +376,10 @@ def _pytest_mark(context: PythonFileContext, decorator: ast.expr) -> bool:
         or not qualified.startswith("pytest.mark.")
         or tree is None
         or root is None
-        or _scope_bindings(tree)[root] != 1
+        or facts.bindings[root] != 1
     ):
         return False
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.Attribute, ast.Subscript)) or not isinstance(node.ctx, (ast.Store, ast.Del)):
-            continue
+    for node in facts.writes:
         if isinstance(node, ast.Subscript) and _root_name(node.value) == root:
             return False
         changed = context.module_imports.resolved_qualified_name(node)
@@ -359,25 +388,9 @@ def _pytest_mark(context: PythonFileContext, decorator: ast.expr) -> bool:
     return True
 
 
-def _unshadowed_consumer(context: PythonFileContext, call: ast.Call, bindings: Counter[str]) -> bool:
+def _unshadowed_consumer(call: ast.Call, bindings: Counter[str], facts: _ModuleFacts) -> bool:
     root = _root_name(call.func)
-    tree = context.tree
-    return (
-        root is not None
-        and root not in bindings
-        and tree is not None
-        and _scope_bindings(tree)[root] <= 1
-        and not _root_mutated(tree, root)
-    )
-
-
-def _module_reference(tree: ast.Module, name: str) -> bool:
-    return any(
-        isinstance(node, ast.Name) and node.id == name and isinstance(node.ctx, ast.Load)
-        for statement in tree.body
-        if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-        for node in ast.walk(statement)
-    )
+    return root is not None and root not in bindings and facts.bindings[root] <= 1 and root not in facts.mutated_roots
 
 
 def _helper_call(call: ast.Call, helpers: frozenset[str] | set[str]) -> bool:
@@ -508,13 +521,4 @@ def _definition_expressions(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.C
 def _has_wildcard(tree: ast.Module) -> bool:
     return any(
         isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names) for node in ast.walk(tree)
-    )
-
-
-def _root_mutated(tree: ast.Module, root: str) -> bool:
-    return any(
-        isinstance(node, (ast.Attribute, ast.Subscript))
-        and isinstance(node.ctx, (ast.Store, ast.Del))
-        and _root_name(node.value) == root
-        for node in ast.walk(tree)
     )

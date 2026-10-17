@@ -4,12 +4,63 @@
   "baselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
   "integration": {
     "calibrationBaselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
-    "integratedBaseRevision": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
+    "integratedBaseRevision": "dbea895605832c4c5fdad79067941358a72e1a6c",
+    "previousIntegration": {
+      "calibrationBaselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
+      "integratedBaseRevision": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
+      "incomingPullRequests": [
+        "https://github.com/sarj-ai/code-standards/pull/1519",
+        "https://github.com/sarj-ai/code-standards/pull/1518"
+      ],
+      "reviewedTypeSafetyPinsUnchanged": 35,
+      "incomingRuntimeAndTestsPreservedByteExact": {
+        "packages/python/src/sarj_python_lint/rules/no_tautological_expect.py": "ecfd1bfbb2820f677704aa1ec9ed180bd30003e6ecb1f7e90ed177f45320ebf4",
+        "packages/python/tests/rules/test_no_tautological_expect.py": "40e8f0641aece2f352daabbe0aede18a263a54bcd1bece2dec8f60b4b4ead69d",
+        "packages/standards/src/sarj_standards/libs/linting/external.py": "a408e16a9affd8e2b1f5aba6d2b2464d8c3169b5895f788388b8c5ae76f7d2d5",
+        "packages/standards/tests/test_external_diagnostics.py": "bacd0636a68f4a8b17577aec0b7c297613ce1f3618285039ab957bfe6e1be4f3",
+        "packages/standards/src/sarj_standards/libs/linting/test_value.py": "fb759a5d2d0f326ce80c91c8e2d59a6f5f6e1df063f328d28706cb8ea84484c0",
+        "packages/standards/tests/test_observe_test_value.py": "cfa4cf39cb4bf35b55f8881d045448ee237b2f4a08f7cf39e988d66deab7597d",
+        "packages/typescript/src/rules/no-tautological-expect.ts": "32d5ab3e9993af6300bea2846c7c92e5b188b96672070c97238a25cc56f31ab0",
+        "packages/typescript/src/rules/source-coupled-test.ts": "42e88a3c05a72bef2063e29d2184495478eb7597c29dd9cf54fd635521a87df5",
+        "packages/typescript/tests/rules/no-tautological-expect.test.ts": "812689db12007db1f0cb2790af28117a88a730736e36f89ca99885b596cd8ed8",
+        "packages/typescript/tests/rules/source-coupled-test.test.ts": "2059205b45718c3d121e221e113d1cb61e2c0a4cb47bb4949399fc43a5d65178",
+        "packages/typescript/tests/tautological-matcher-semantics.test.ts": "3781105871a372f3ae43be45edce8ea7a6fd2392890fb42da340286cd1a9c227"
+      },
+      "resolution": "Keep higher minor versions 16.20.0 / 1.46.0 / 8.77.0, preserve incoming runtime and tests, regenerate the combined catalog, docs, CLI and examples. Dependency graph changes were only exact editable package-version slots.",
+      "evidenceScope": "Selected type-safety corpus and analysis measurements retain the same maintained semantic source pins and dependencies. Prior actual full-plugin bundle hashes remain pre-integration observations, not newly executed integrated artifacts. Final normal performance is refreshed against the integrated bundle; its delta includes incoming unrelated owners. Final canonical verification and latest exact-head CI cover the combined tree.",
+      "priorFullVerificationAttempt": {
+        "command": "make verify",
+        "status": "failed",
+        "exitCode": 2,
+        "startedAt": "2026-10-17T03:30:11.338197+00:00",
+        "finishedAt": "2026-10-17T03:42:44.940700+00:00",
+        "reviewedSourcePinsUnchanged": true,
+        "ownerLocalLog": "make-verify.log"
+      },
+      "offlineNativeToolRecovery": {
+        "cause": "Pinned zizmor 1.31.1 was missing from the offline uv tool cache; the exact offline command reproduced the resolution error.",
+        "action": "Restore exact pinned package online, confirm offline version, rerun all native boundary tests.",
+        "focusedCommand": "uv run --project packages/standards --frozen pytest -q packages/standards/tests/test_zizmor_native_boundaries.py",
+        "focusedResult": "13 passed in 1.44s",
+        "sourceChangesForRecovery": false,
+        "cacheIsolation": "Repeated exact offline checks showed the package disappearing again from the shared task cache. Copy its freshly warmed cache into a new owner-only verification cache, then verify the pinned tool offline before starting. No tool versions, test assertions or skip conditions change.",
+        "confirmedOfflineVersionBeforeFinalRun": "zizmor 1.31.1"
+      }
+    },
     "incomingPullRequests": [
-      "https://github.com/sarj-ai/code-standards/pull/1519",
-      "https://github.com/sarj-ai/code-standards/pull/1518"
+      "https://github.com/sarj-ai/code-standards/pull/1524"
     ],
-    "reviewedTypeSafetyPinsUnchanged": 35,
+    "unchangedMaintainedRuleAndHelperPins": 33,
+    "upstreamLoadedCliPinChanges": {
+      "packages/python/src/sarj_python_lint/__main__.py": {
+        "before": "0f02682b34f54bc46daa3d2502779bcc2df232a27d344e677142a6ed79a7ad83",
+        "after": "bf74c9374c24a8d8f94ef38f04279f064c05be561f7e7cd1e637fa6b9a6a0866"
+      },
+      "packages/python/src/sarj_python_lint/json_boundary.py": {
+        "before": "622e83606277fa5d4bfd59cb906c3dd18bdc956d5665bd844d6c4f19caace17a",
+        "after": "3935c000862d11e96f512aa57d8ccaf0b182fadfdf6833367f5c7588283a39ec"
+      }
+    },
     "incomingRuntimeAndTestsPreservedByteExact": {
       "packages/python/src/sarj_python_lint/rules/no_tautological_expect.py": "ecfd1bfbb2820f677704aa1ec9ed180bd30003e6ecb1f7e90ed177f45320ebf4",
       "packages/python/tests/rules/test_no_tautological_expect.py": "40e8f0641aece2f352daabbe0aede18a263a54bcd1bece2dec8f60b4b4ead69d",
@@ -21,27 +72,66 @@
       "packages/typescript/src/rules/source-coupled-test.ts": "42e88a3c05a72bef2063e29d2184495478eb7597c29dd9cf54fd635521a87df5",
       "packages/typescript/tests/rules/no-tautological-expect.test.ts": "812689db12007db1f0cb2790af28117a88a730736e36f89ca99885b596cd8ed8",
       "packages/typescript/tests/rules/source-coupled-test.test.ts": "2059205b45718c3d121e221e113d1cb61e2c0a4cb47bb4949399fc43a5d65178",
-      "packages/typescript/tests/tautological-matcher-semantics.test.ts": "3781105871a372f3ae43be45edce8ea7a6fd2392890fb42da340286cd1a9c227"
+      "packages/typescript/tests/tautological-matcher-semantics.test.ts": "3781105871a372f3ae43be45edce8ea7a6fd2392890fb42da340286cd1a9c227",
+      ".github/workflows/ci.yml": "818ae4b787ce39625e7786ab4d0a18d9b42b26bf050c942a1ec860502cd0d05a",
+      ".github/workflows/commit-policy.yml": "3bb7af69ba84aef9b770718e0d009c72adf40fc668e5ddb0ef72da5d5352c02c",
+      "packages/python/src/sarj_python_lint/__main__.py": "bf74c9374c24a8d8f94ef38f04279f064c05be561f7e7cd1e637fa6b9a6a0866",
+      "packages/python/src/sarj_python_lint/json_boundary.py": "3935c000862d11e96f512aa57d8ccaf0b182fadfdf6833367f5c7588283a39ec",
+      "packages/python/src/sarj_python_lint/ratchet.py": "b18f52522ef95b2091d2dcc71decc13e650f39d6e22f076155279d69ee181c95",
+      "packages/python/src/sarj_python_lint/rules/prefer_pytest_fixture_injection.py": "df775310fcf733cfaadb5e1129702af496d00903142e9c22bb3b979646614aef",
+      "packages/python/tests/rules/test_prefer_pytest_fixture_injection.py": "a969756a898e09185211b47e563a308bac80e12b280d1b504d8ab27b5f36e74d",
+      "packages/python/tests/test_cli_severity.py": "6118db1571f8ee12238045f0730e540145624fd02c1ce7132a2e8b9c44516f4b",
+      "packages/python/tests/test_ratchet.py": "1a15a2299dc5e1e5443a9b6c2cd4ec94ee34a5c1481ee07de849bfa65e1b8afd",
+      "packages/standards/src/sarj_standards/libs/adoption/manifest.py": "a38c0fb5eedb6abe640ae4f5c4471b24f18dea9bbd1cb67c9083c32327287abf",
+      "packages/standards/src/sarj_standards/libs/repository/cli_reference_artifact.py": "693373ae2c79395a45be93d4f3a8fb480d4c4c443b207ea2961f3046c66a61cf",
+      "packages/standards/src/sarj_standards/libs/repository/rule_catalog_artifact.py": "144fae3a3fec8e2788077ecf35c158321b1e00048ecbb541675b09a94a41a974",
+      "packages/standards/src/sarj_standards/libs/repository/rule_changes.py": "1ce549373a82c766ea34a5b0808c95b0d4d08f1af62dd43a878c2c42ebad6bef",
+      "packages/standards/src/sarj_standards/libs/repository/rule_inventory_artifact.py": "363600befc4b1fdca5602a3183fb9b2207431c3f99d9d2030e264b2a5260d386",
+      "packages/standards/src/sarj_standards/libs/rules/catalog.py": "ad3eb460302c06f9fc6e4a2aec030b2b38ffe517d8d82f2af5861aad92f5346e",
+      "packages/standards/tests/test_cli_reference_artifact.py": "2974450430b5b9a41a13903d472e3371dd9b8252efe3d879422ad9d30dce5980",
+      "packages/standards/tests/test_repo_standards_pins.py": "1e3acfb0f97d027088fd70d9c855abef8bf259d64737cbc0cc497b775cca44d5",
+      "packages/standards/tests/test_rule_catalog_artifact.py": "008d628c69b602b19a5e31880aaeff398a4e25924992757fdc3d533bd1e351bb",
+      "packages/standards/tests/test_rule_changes.py": "57668c1106fae09d0a42b2c4426b29951791435b222869b1bb83a259814d41bd",
+      "packages/standards/tests/test_rule_inventory_artifact.py": "d4a052d40725d9c2f51fafdc3d1b5449da29f486010420ecdc39b0cb0d1c5bd7"
     },
-    "resolution": "Keep higher minor versions 16.20.0 / 1.46.0 / 8.77.0, preserve incoming runtime and tests, regenerate the combined catalog, docs, CLI and examples. Dependency graph changes were only exact editable package-version slots.",
-    "evidenceScope": "Selected type-safety corpus and analysis measurements retain the same maintained semantic source pins and dependencies. Prior actual full-plugin bundle hashes remain pre-integration observations, not newly executed integrated artifacts. Final normal performance is refreshed against the integrated bundle; its delta includes incoming unrelated owners. Final canonical verification and latest exact-head CI cover the combined tree.",
-    "priorFullVerificationAttempt": {
+    "nativePolicy": {
+      "package": "repo-standards==6.8.5",
+      "actionRevision": "947f984d48f27ab96ba805a01fdb94961b579478"
+    },
+    "resolution": "Keep higher minor release versions 16.20.0 / 1.46.0 / 8.77.0, preserve all incoming source/tests/workflows and repo-standards6.8.5 distribution hashes, regenerate combined catalog/docs/CLI/examples.",
+    "typescriptCarryForward": {
+      "previousMeasuredBase": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
+      "subsequentIntegrationBase": "dbea895605832c4c5fdad79067941358a72e1a6c",
+      "equalUpstreamNativePluginTree": "06e822c411addb7da8cae51a4a89c9ecf3c82de5",
+      "campaignNativePluginTree": "e2c0b362294b8995b3f3413d08a588dfdba383b7",
+      "campaignTreeAndDependenciesUnchanged": true,
+      "performanceBundleSha256": "c34b2b0b4da14c4ce8060f7fd3a227cf4df275a9467e00f27787975c727329a3",
+      "actualCorpusBundleSha256": "5a106ea677c472f9c36c289af26c687a2aa04caf431d247cc747864012516330",
+      "qualification": "Retain actual prior measurements and their executed base/artifact identities. They were not rerun on the subsequent whole tree. The entire native TypeScript plugin, dependencies and configs remain byte-exact; the incoming external workflow policy is outside these direct native-plugin panels."
+    },
+    "pythonRefresh": "Replay both baseline and candidate against the same 3339 historical files and 93 seeds under one explicitly recorded integration-context overlay: the maintained Standards project dependency changes only repo-standards 6.8.3 to 6.8.5. Original source inventories, context manifests, seed sidecars and baseline implementation pins remain unchanged. Archive prior receipts, explicitly refresh the two upstream CLI implementation pins, and refresh full-registry performance for the upstream fixture-owner change. Selected analysis owners/core are unchanged; retained process-startup observations describe the earlier tree.",
+    "priorSuccessfulCanonicalVerification": {
       "command": "make verify",
-      "status": "failed",
-      "exitCode": 2,
-      "startedAt": "2026-10-17T03:30:11.338197+00:00",
-      "finishedAt": "2026-10-17T03:42:44.940700+00:00",
+      "status": "passed",
+      "exitCode": 0,
+      "startedAt": "2026-10-17T03:53:03.563700+00:00",
+      "finishedAt": "2026-10-17T04:06:20.317200+00:00",
       "reviewedSourcePinsUnchanged": true,
       "ownerLocalLog": "make-verify.log"
     },
-    "offlineNativeToolRecovery": {
-      "cause": "Pinned zizmor 1.31.1 was missing from the offline uv tool cache; the exact offline command reproduced the resolution error.",
-      "action": "Restore exact pinned package online, confirm offline version, rerun all native boundary tests.",
-      "focusedCommand": "uv run --project packages/standards --frozen pytest -q packages/standards/tests/test_zizmor_native_boundaries.py",
-      "focusedResult": "13 passed in 1.44s",
-      "sourceChangesForRecovery": false,
-      "cacheIsolation": "Repeated exact offline checks showed the package disappearing again from the shared task cache. Copy its freshly warmed cache into a new owner-only verification cache, then verify the pinned tool offline before starting. No tool versions, test assertions or skip conditions change.",
-      "confirmedOfflineVersionBeforeFinalRun": "zizmor 1.31.1"
+    "previousExactHeadCI": {
+      "head": "70e319c2192c7f578e27f948a896dad03ab178ec",
+      "latestCounts": {
+        "success": 27,
+        "skipped": 7,
+        "neutral": 1
+      },
+      "qualification": "All four latest workflows passed, including optional Python3.14. This signoff applies only to that prior head; updated head needs fresh exact-head CI. REST pull-request base.sha was historical, so final merge readiness must check the live main Git ref."
+    },
+    "evidenceRedaction": {
+      "privateContextManifestDigestOmittedFromPublicReceipts": true,
+      "unredactedEvidenceRetainedOwnerOnly": true,
+      "privateReplayRouting": "After measurements, the artifact-only checker input filename points to a separate private overlay copy. Check logic and analyzer source are unchanged. Exact executed checker/overlay snapshots are retained separately; public receipts use the redacted overlay."
     }
   },
   "objective": "Promote precise domain alternatives and persistent runtime evidence, making illegal states unrepresentable while preserving every legitimate input, state and public contract.",
@@ -145,9 +235,9 @@
       "packages/python/src/sarj_python_lint/_file_context.py": "09d5ff9de32c403273e8b2c79b08322d49b322522697008cbb45818b882d03f1",
       "packages/python/src/sarj_python_lint/rule_base.py": "551de78b8dcaf8a58053b0eeac887c45e30166a8fa184eaada3fc52467f59e71",
       "packages/python/src/sarj_python_lint/_source.py": "87ad55ebf30d7ff31d89f12321cdc2f4ee4549b6e22da3d83c116a3d2dae3632",
-      "packages/python/src/sarj_python_lint/__main__.py": "0f02682b34f54bc46daa3d2502779bcc2df232a27d344e677142a6ed79a7ad83",
+      "packages/python/src/sarj_python_lint/__main__.py": "bf74c9374c24a8d8f94ef38f04279f064c05be561f7e7cd1e637fa6b9a6a0866",
       "packages/python/src/sarj_python_lint/_analysis_session.py": "ce12b79d732714233a78482df688966dc1b6aa966909e0e5124676c7e4b97013",
-      "packages/python/src/sarj_python_lint/json_boundary.py": "622e83606277fa5d4bfd59cb906c3dd18bdc956d5665bd844d6c4f19caace17a",
+      "packages/python/src/sarj_python_lint/json_boundary.py": "3935c000862d11e96f512aa57d8ccaf0b182fadfdf6833367f5c7588283a39ec",
       "packages/typescript/src/rules/_discriminated-union-returns.ts": "5d05d3d093d0c9409d1c4cb3514c793250dd63e14c26e09266d59aec0778174f",
       "packages/typescript/src/rules/prefer-discriminated-union.ts": "757c10d77c359d6e3eb6a321eda10aaea61c8c8e7b2199120f38414069c5594d",
       "packages/typescript/src/rules/_contradictory-array-predicate.ts": "8c437ba97ee93c8e5fdfdaa36c3cb79959eb477cb3999bbfb4631367b00915ff",
@@ -1934,9 +2024,9 @@
           "packages/python/src/sarj_python_lint/_file_context.py": "09d5ff9de32c403273e8b2c79b08322d49b322522697008cbb45818b882d03f1",
           "packages/python/src/sarj_python_lint/rule_base.py": "551de78b8dcaf8a58053b0eeac887c45e30166a8fa184eaada3fc52467f59e71",
           "packages/python/src/sarj_python_lint/_source.py": "87ad55ebf30d7ff31d89f12321cdc2f4ee4549b6e22da3d83c116a3d2dae3632",
-          "packages/python/src/sarj_python_lint/__main__.py": "0f02682b34f54bc46daa3d2502779bcc2df232a27d344e677142a6ed79a7ad83",
+          "packages/python/src/sarj_python_lint/__main__.py": "bf74c9374c24a8d8f94ef38f04279f064c05be561f7e7cd1e637fa6b9a6a0866",
           "packages/python/src/sarj_python_lint/_analysis_session.py": "ce12b79d732714233a78482df688966dc1b6aa966909e0e5124676c7e4b97013",
-          "packages/python/src/sarj_python_lint/json_boundary.py": "622e83606277fa5d4bfd59cb906c3dd18bdc956d5665bd844d6c4f19caace17a"
+          "packages/python/src/sarj_python_lint/json_boundary.py": "3935c000862d11e96f512aa57d8ccaf0b182fadfdf6833367f5c7588283a39ec"
         }
       },
       "historical": {
@@ -2025,7 +2115,7 @@
         "baseline": {
           "panel": "historical",
           "variant": "baseline",
-          "observedAt": "2026-10-17T02:37:33.578523+00:00",
+          "observedAt": "2026-10-17T04:27:44.366453+00:00",
           "files": 3339,
           "batches": 21,
           "findings": 1,
@@ -2035,12 +2125,14 @@
           "parseFailures": 0,
           "oversized": 0,
           "sourcePinsCheckedBeforeAfter": true,
-          "corpusPinsVerifiedBeforeAfter": true
+          "corpusPinsVerifiedBeforeAfter": true,
+          "projectContextCheckedBeforeAfter": true,
+          "selected493Only": false
         },
         "candidate": {
           "panel": "historical",
           "variant": "candidate",
-          "observedAt": "2026-10-17T03:22:27.739287+00:00",
+          "observedAt": "2026-10-17T04:27:59.250920+00:00",
           "files": 3339,
           "batches": 21,
           "findings": 1,
@@ -3124,7 +3216,58 @@
         "python-corpus-deltas-private.json"
       ],
       "evidenceReferenceConvention": "These filenames identify retained owner-local evidence; they are not shipped repository links.",
-      "canonicalValidation": "pending parent campaign verification and exact-headCI"
+      "canonicalValidation": "pending parent campaign verification and exact-headCI",
+      "upstreamIntegrationReplay": {
+        "integrationTargetRevision": "dbea895605832c4c5fdad79067941358a72e1a6c",
+        "headBeforeMergeCommit": "70e319c2192c7f578e27f948a896dad03ab178ec",
+        "mergeHead": "dbea895605832c4c5fdad79067941358a72e1a6c",
+        "pullRequest": "https://github.com/sarj-ai/code-standards/pull/1524",
+        "changedPins": {
+          "packages/python/src/sarj_python_lint/__main__.py": {
+            "previousSha256": "0f02682b34f54bc46daa3d2502779bcc2df232a27d344e677142a6ed79a7ad83",
+            "sha256": "bf74c9374c24a8d8f94ef38f04279f064c05be561f7e7cd1e637fa6b9a6a0866"
+          },
+          "packages/python/src/sarj_python_lint/json_boundary.py": {
+            "previousSha256": "622e83606277fa5d4bfd59cb906c3dd18bdc956d5665bd844d6c4f19caace17a",
+            "sha256": "3935c000862d11e96f512aa57d8ccaf0b182fadfdf6833367f5c7588283a39ec"
+          }
+        },
+        "reason": "Incoming strict JSON/suppression-baseline validation changes two loaded CLI modules. The nine selected owners and their proof helpers remain unchanged; replay the current candidate without changing the 294e baseline or any input pins.",
+        "historicalFilesReplayedPerVariant": 3339,
+        "syntheticFilesReplayedPerVariant": 93,
+        "syntheticSupportSidecarsVerifiedPerVariant": 93,
+        "bothVariantsReplayedInSameExplicitCurrentContext": true,
+        "priorBaselineReceiptsPreservedByteExactInArchive": true,
+        "baselineDiagnosticsIdenticalToPriorBaseline": true,
+        "historicalDiagnosticsIdenticalToPriorCandidate": true,
+        "seedLabelsAndDiagnosticCountsIdenticalToPriorCandidate": true,
+        "noOriginalInputContextOrSidecarPinsRefreshed": true,
+        "integrationContextOverlay": {
+          "integrationTargetRevision": "dbea895605832c4c5fdad79067941358a72e1a6c",
+          "mode": "Explicit SARJ_CORPUS_INTEGRATION_CONTEXT=post-1524 for both baseline and candidate; no original historical or seed input pins change.",
+          "markers": {
+            "packages/standards/pyproject.toml": {
+              "previous": {
+                "kind": "file",
+                "sha256": "bbe21f5b08933ef9625236b6bdb96bae26231b2375ca4d107e17285f70cae54c"
+              },
+              "current": {
+                "kind": "file",
+                "sha256": "453dbc38657404af06e566ed5ae4a6922d6794f094694498adc05428b6dc1c8a"
+              }
+            }
+          },
+          "semanticProof": {
+            "onlyParsedTomlDifference": "project.dependencies: repo-standards==6.8.3 -> repo-standards==6.8.5",
+            "allOtherParsedTomlFieldsAndDependenciesIdentical": true,
+            "distributionRootAndBoundaryExistenceUnchanged": true,
+            "directPydanticDependencyUnchanged": true,
+            "historicalFilesUsingThisDistributionRoot": 554
+          },
+          "qualification": "A new public maintained ancestor metadata marker is explicit integration context, not refreshed historical source content or new consumer evidence. Both source versions are replayed in the same frozen current context."
+        },
+        "sourcePinVerificationReceipt": "python-post-1524-source-verification-public.json"
+      }
     },
     "typescript": {
       "schemaVersion": 1,
@@ -3338,18 +3481,18 @@
     "pythonNormal": {
       "panel": "normal",
       "baselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
-      "startedAt": "2026-10-17T03:46:50.520124+00:00",
-      "finishedAt": "2026-10-17T03:49:23.717220+00:00",
+      "startedAt": "2026-10-17T04:28:00.799140+00:00",
+      "finishedAt": "2026-10-17T04:30:25.271954+00:00",
       "files": 20,
       "bytes": 211230,
       "freshWorkersPerMode": 1,
       "warmIterationsPerWorker": 3,
       "modes": {
         "baseline": {
-          "firstAnalysisMedianMs": 12700.337290996686,
-          "warmMedianMs": 11739.868125179783,
-          "warmCpuMedianMs": 11122.656999999997,
-          "maxRssMiB": 903.21875,
+          "firstAnalysisMedianMs": 10863.03187487647,
+          "warmMedianMs": 10886.296499986202,
+          "warmCpuMedianMs": 10659.051000000005,
+          "maxRssMiB": 891.703125,
           "configuredRules": [
             155
           ],
@@ -3358,10 +3501,10 @@
           ]
         },
         "candidate": {
-          "firstAnalysisMedianMs": 14047.675208887085,
-          "warmMedianMs": 11336.537041002885,
-          "warmCpuMedianMs": 10778.852,
-          "maxRssMiB": 902.3125,
+          "firstAnalysisMedianMs": 10955.000416142866,
+          "warmMedianMs": 12013.807957991958,
+          "warmCpuMedianMs": 11561.28499999999,
+          "maxRssMiB": 879.375,
           "configuredRules": [
             156
           ],
@@ -3370,10 +3513,10 @@
           ]
         },
         "parse": {
-          "firstAnalysisMedianMs": 25.13545798137784,
-          "warmMedianMs": 12.73816591128707,
-          "warmCpuMedianMs": 12.740000000000029,
-          "maxRssMiB": 61.796875,
+          "firstAnalysisMedianMs": 17.767792101949453,
+          "warmMedianMs": 12.928582960739732,
+          "warmCpuMedianMs": 12.880000000000003,
+          "maxRssMiB": 61.6875,
           "configuredRules": [
             0
           ],
@@ -3382,24 +3525,54 @@
           ]
         }
       },
-      "candidateBaselineWarmCpuRatio": 0.9690896698513677,
+      "candidateBaselineWarmCpuRatio": 1.0846448712929495,
       "scope": "Native Python engine. Selected families are six model-contract owners (new515 absent in baseline) and three guard owners affected by the native-capability helper extraction; normal runs the entire respective native registry. Project preparation may traverse beyond the named panel. Import/startup time is outside analysis rows and retained separately in raw process timing. Fresh process does not imply cold OS caches. Other team jobs are paused during this final window; unrelated shared-machine load is uncontrolled. One normal worker per mode bounds full-registry cost; no causal speedup or universal throughput claim.",
       "integration": {
-        "integratedBaseRevision": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
+        "integrationTargetRevision": "dbea895605832c4c5fdad79067941358a72e1a6c",
+        "headBeforeMergeCommit": "70e319c2192c7f578e27f948a896dad03ab178ec",
+        "mergeHead": "dbea895605832c4c5fdad79067941358a72e1a6c",
         "incomingPullRequests": [
           "https://github.com/sarj-ai/code-standards/pull/1519",
-          "https://github.com/sarj-ai/code-standards/pull/1518"
+          "https://github.com/sarj-ai/code-standards/pull/1518",
+          "https://github.com/sarj-ai/code-standards/pull/1524"
         ],
-        "reviewedTypeSafetyPinsUnchanged": 35,
-        "incomingRuntimeAndTestPinsVerifiedBeforeAndAfter": 11,
-        "upstreamNoTautologicalExpectSource": {
-          "path": "packages/python/src/sarj_python_lint/rules/no_tautological_expect.py",
-          "baselineSha256": "f4eea1f61b3983e2dfa4463b79b51175e49a14640dec17811421798e94956c61",
-          "candidateSha256": "ecfd1bfbb2820f677704aa1ec9ed180bd30003e6ecb1f7e90ed177f45320ebf4"
+        "sourcePinsVerifiedBeforeAndAfter": 35,
+        "unchangedReviewedPins": 33,
+        "explicitUpstreamCliPinUpdates": 2,
+        "upstreamPythonRuntimePins": {
+          "packages/python/src/sarj_python_lint/__main__.py": "bf74c9374c24a8d8f94ef38f04279f064c05be561f7e7cd1e637fa6b9a6a0866",
+          "packages/python/src/sarj_python_lint/json_boundary.py": "3935c000862d11e96f512aa57d8ccaf0b182fadfdf6833367f5c7588283a39ec",
+          "packages/python/src/sarj_python_lint/ratchet.py": "b18f52522ef95b2091d2dcc71decc13e650f39d6e22f076155279d69ee181c95",
+          "packages/python/src/sarj_python_lint/rules/prefer_pytest_fixture_injection.py": "df775310fcf733cfaadb5e1129702af496d00903142e9c22bb3b979646614aef",
+          "packages/python/src/sarj_python_lint/rules/no_tautological_expect.py": "ecfd1bfbb2820f677704aa1ec9ed180bd30003e6ecb1f7e90ed177f45320ebf4"
         },
-        "normalSourcePinReceipt": "python-normal-integrated-source-verification-public.json",
-        "comparisonQualification": "Whole integrated native registry bundle versus the unchanged 294e calibration baseline; includes upstream test-oracle #1519 and deptry #1518 changes. This is not an isolated causal estimate of type-safety changes.",
-        "selectedReceiptQualification": "Selected type-safety corpus and analysis receipts are retained unchanged because maintained semantic sources and dependencies are unchanged. Their raw process/import startup observations describe the pre-integration tree, not a newly measured integrated startup."
+        "sourcePinVerificationReceipt": "python-post-1524-source-verification-public.json",
+        "comparisonQualification": "Whole integrated native registry bundle versus unchanged 294e calibration baseline; includes upstream test-oracle1519, deptry1518, and strict baseline JSON/fixture-injection1524 changes. It is not an isolated causal estimate of type-safety effects. Measurement records the frozen resolved merge tree via HEAD, MERGE_HEAD and exact maintained/upstream source pins before and after, rather than claiming MERGE_HEAD is the checked-out commit.",
+        "selectedReceiptQualification": "Earlier selected analysis receipts remain unchanged because the nine owners/helpers and baseline-free analyze behavior are unchanged. Raw process/import startup observations describe the pre-integration tree. Both baseline and candidate corpus/seed calibration were freshly replayed in the same explicit current integration metadata context after the two candidate CLI pin updates.",
+        "integrationContextOverlay": {
+          "integrationTargetRevision": "dbea895605832c4c5fdad79067941358a72e1a6c",
+          "mode": "Explicit SARJ_CORPUS_INTEGRATION_CONTEXT=post-1524 for both baseline and candidate; no original historical or seed input pins change.",
+          "markers": {
+            "packages/standards/pyproject.toml": {
+              "previous": {
+                "kind": "file",
+                "sha256": "bbe21f5b08933ef9625236b6bdb96bae26231b2375ca4d107e17285f70cae54c"
+              },
+              "current": {
+                "kind": "file",
+                "sha256": "453dbc38657404af06e566ed5ae4a6922d6794f094694498adc05428b6dc1c8a"
+              }
+            }
+          },
+          "semanticProof": {
+            "onlyParsedTomlDifference": "project.dependencies: repo-standards==6.8.3 -> repo-standards==6.8.5",
+            "allOtherParsedTomlFieldsAndDependenciesIdentical": true,
+            "distributionRootAndBoundaryExistenceUnchanged": true,
+            "directPydanticDependencyUnchanged": true,
+            "historicalFilesUsingThisDistributionRoot": 554
+          },
+          "qualification": "A new public maintained ancestor metadata marker is explicit integration context, not refreshed historical source content or new consumer evidence. Both source versions are replayed in the same frozen current context."
+        }
       }
     },
     "typescript": {
@@ -4789,8 +4962,8 @@
       "command": "make verify",
       "status": "passed",
       "exitCode": 0,
-      "startedAt": "2026-10-17T03:53:03.563700+00:00",
-      "finishedAt": "2026-10-17T04:06:20.317200+00:00",
+      "startedAt": "2026-10-17T04:31:27.862567+00:00",
+      "finishedAt": "2026-10-17T04:41:55.041275+00:00",
       "reviewedSourcePinsUnchanged": true,
       "ownerLocalLog": "make-verify.log"
     },
@@ -4831,12 +5004,63 @@
     },
     "integration": {
       "calibrationBaselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
-      "integratedBaseRevision": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
+      "integratedBaseRevision": "dbea895605832c4c5fdad79067941358a72e1a6c",
+      "previousIntegration": {
+        "calibrationBaselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
+        "integratedBaseRevision": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
+        "incomingPullRequests": [
+          "https://github.com/sarj-ai/code-standards/pull/1519",
+          "https://github.com/sarj-ai/code-standards/pull/1518"
+        ],
+        "reviewedTypeSafetyPinsUnchanged": 35,
+        "incomingRuntimeAndTestsPreservedByteExact": {
+          "packages/python/src/sarj_python_lint/rules/no_tautological_expect.py": "ecfd1bfbb2820f677704aa1ec9ed180bd30003e6ecb1f7e90ed177f45320ebf4",
+          "packages/python/tests/rules/test_no_tautological_expect.py": "40e8f0641aece2f352daabbe0aede18a263a54bcd1bece2dec8f60b4b4ead69d",
+          "packages/standards/src/sarj_standards/libs/linting/external.py": "a408e16a9affd8e2b1f5aba6d2b2464d8c3169b5895f788388b8c5ae76f7d2d5",
+          "packages/standards/tests/test_external_diagnostics.py": "bacd0636a68f4a8b17577aec0b7c297613ce1f3618285039ab957bfe6e1be4f3",
+          "packages/standards/src/sarj_standards/libs/linting/test_value.py": "fb759a5d2d0f326ce80c91c8e2d59a6f5f6e1df063f328d28706cb8ea84484c0",
+          "packages/standards/tests/test_observe_test_value.py": "cfa4cf39cb4bf35b55f8881d045448ee237b2f4a08f7cf39e988d66deab7597d",
+          "packages/typescript/src/rules/no-tautological-expect.ts": "32d5ab3e9993af6300bea2846c7c92e5b188b96672070c97238a25cc56f31ab0",
+          "packages/typescript/src/rules/source-coupled-test.ts": "42e88a3c05a72bef2063e29d2184495478eb7597c29dd9cf54fd635521a87df5",
+          "packages/typescript/tests/rules/no-tautological-expect.test.ts": "812689db12007db1f0cb2790af28117a88a730736e36f89ca99885b596cd8ed8",
+          "packages/typescript/tests/rules/source-coupled-test.test.ts": "2059205b45718c3d121e221e113d1cb61e2c0a4cb47bb4949399fc43a5d65178",
+          "packages/typescript/tests/tautological-matcher-semantics.test.ts": "3781105871a372f3ae43be45edce8ea7a6fd2392890fb42da340286cd1a9c227"
+        },
+        "resolution": "Keep higher minor versions 16.20.0 / 1.46.0 / 8.77.0, preserve incoming runtime and tests, regenerate the combined catalog, docs, CLI and examples. Dependency graph changes were only exact editable package-version slots.",
+        "evidenceScope": "Selected type-safety corpus and analysis measurements retain the same maintained semantic source pins and dependencies. Prior actual full-plugin bundle hashes remain pre-integration observations, not newly executed integrated artifacts. Final normal performance is refreshed against the integrated bundle; its delta includes incoming unrelated owners. Final canonical verification and latest exact-head CI cover the combined tree.",
+        "priorFullVerificationAttempt": {
+          "command": "make verify",
+          "status": "failed",
+          "exitCode": 2,
+          "startedAt": "2026-10-17T03:30:11.338197+00:00",
+          "finishedAt": "2026-10-17T03:42:44.940700+00:00",
+          "reviewedSourcePinsUnchanged": true,
+          "ownerLocalLog": "make-verify.log"
+        },
+        "offlineNativeToolRecovery": {
+          "cause": "Pinned zizmor 1.31.1 was missing from the offline uv tool cache; the exact offline command reproduced the resolution error.",
+          "action": "Restore exact pinned package online, confirm offline version, rerun all native boundary tests.",
+          "focusedCommand": "uv run --project packages/standards --frozen pytest -q packages/standards/tests/test_zizmor_native_boundaries.py",
+          "focusedResult": "13 passed in 1.44s",
+          "sourceChangesForRecovery": false,
+          "cacheIsolation": "Repeated exact offline checks showed the package disappearing again from the shared task cache. Copy its freshly warmed cache into a new owner-only verification cache, then verify the pinned tool offline before starting. No tool versions, test assertions or skip conditions change.",
+          "confirmedOfflineVersionBeforeFinalRun": "zizmor 1.31.1"
+        }
+      },
       "incomingPullRequests": [
-        "https://github.com/sarj-ai/code-standards/pull/1519",
-        "https://github.com/sarj-ai/code-standards/pull/1518"
+        "https://github.com/sarj-ai/code-standards/pull/1524"
       ],
-      "reviewedTypeSafetyPinsUnchanged": 35,
+      "unchangedMaintainedRuleAndHelperPins": 33,
+      "upstreamLoadedCliPinChanges": {
+        "packages/python/src/sarj_python_lint/__main__.py": {
+          "before": "0f02682b34f54bc46daa3d2502779bcc2df232a27d344e677142a6ed79a7ad83",
+          "after": "bf74c9374c24a8d8f94ef38f04279f064c05be561f7e7cd1e637fa6b9a6a0866"
+        },
+        "packages/python/src/sarj_python_lint/json_boundary.py": {
+          "before": "622e83606277fa5d4bfd59cb906c3dd18bdc956d5665bd844d6c4f19caace17a",
+          "after": "3935c000862d11e96f512aa57d8ccaf0b182fadfdf6833367f5c7588283a39ec"
+        }
+      },
       "incomingRuntimeAndTestsPreservedByteExact": {
         "packages/python/src/sarj_python_lint/rules/no_tautological_expect.py": "ecfd1bfbb2820f677704aa1ec9ed180bd30003e6ecb1f7e90ed177f45320ebf4",
         "packages/python/tests/rules/test_no_tautological_expect.py": "40e8f0641aece2f352daabbe0aede18a263a54bcd1bece2dec8f60b4b4ead69d",
@@ -4848,27 +5072,66 @@
         "packages/typescript/src/rules/source-coupled-test.ts": "42e88a3c05a72bef2063e29d2184495478eb7597c29dd9cf54fd635521a87df5",
         "packages/typescript/tests/rules/no-tautological-expect.test.ts": "812689db12007db1f0cb2790af28117a88a730736e36f89ca99885b596cd8ed8",
         "packages/typescript/tests/rules/source-coupled-test.test.ts": "2059205b45718c3d121e221e113d1cb61e2c0a4cb47bb4949399fc43a5d65178",
-        "packages/typescript/tests/tautological-matcher-semantics.test.ts": "3781105871a372f3ae43be45edce8ea7a6fd2392890fb42da340286cd1a9c227"
+        "packages/typescript/tests/tautological-matcher-semantics.test.ts": "3781105871a372f3ae43be45edce8ea7a6fd2392890fb42da340286cd1a9c227",
+        ".github/workflows/ci.yml": "818ae4b787ce39625e7786ab4d0a18d9b42b26bf050c942a1ec860502cd0d05a",
+        ".github/workflows/commit-policy.yml": "3bb7af69ba84aef9b770718e0d009c72adf40fc668e5ddb0ef72da5d5352c02c",
+        "packages/python/src/sarj_python_lint/__main__.py": "bf74c9374c24a8d8f94ef38f04279f064c05be561f7e7cd1e637fa6b9a6a0866",
+        "packages/python/src/sarj_python_lint/json_boundary.py": "3935c000862d11e96f512aa57d8ccaf0b182fadfdf6833367f5c7588283a39ec",
+        "packages/python/src/sarj_python_lint/ratchet.py": "b18f52522ef95b2091d2dcc71decc13e650f39d6e22f076155279d69ee181c95",
+        "packages/python/src/sarj_python_lint/rules/prefer_pytest_fixture_injection.py": "df775310fcf733cfaadb5e1129702af496d00903142e9c22bb3b979646614aef",
+        "packages/python/tests/rules/test_prefer_pytest_fixture_injection.py": "a969756a898e09185211b47e563a308bac80e12b280d1b504d8ab27b5f36e74d",
+        "packages/python/tests/test_cli_severity.py": "6118db1571f8ee12238045f0730e540145624fd02c1ce7132a2e8b9c44516f4b",
+        "packages/python/tests/test_ratchet.py": "1a15a2299dc5e1e5443a9b6c2cd4ec94ee34a5c1481ee07de849bfa65e1b8afd",
+        "packages/standards/src/sarj_standards/libs/adoption/manifest.py": "a38c0fb5eedb6abe640ae4f5c4471b24f18dea9bbd1cb67c9083c32327287abf",
+        "packages/standards/src/sarj_standards/libs/repository/cli_reference_artifact.py": "693373ae2c79395a45be93d4f3a8fb480d4c4c443b207ea2961f3046c66a61cf",
+        "packages/standards/src/sarj_standards/libs/repository/rule_catalog_artifact.py": "144fae3a3fec8e2788077ecf35c158321b1e00048ecbb541675b09a94a41a974",
+        "packages/standards/src/sarj_standards/libs/repository/rule_changes.py": "1ce549373a82c766ea34a5b0808c95b0d4d08f1af62dd43a878c2c42ebad6bef",
+        "packages/standards/src/sarj_standards/libs/repository/rule_inventory_artifact.py": "363600befc4b1fdca5602a3183fb9b2207431c3f99d9d2030e264b2a5260d386",
+        "packages/standards/src/sarj_standards/libs/rules/catalog.py": "ad3eb460302c06f9fc6e4a2aec030b2b38ffe517d8d82f2af5861aad92f5346e",
+        "packages/standards/tests/test_cli_reference_artifact.py": "2974450430b5b9a41a13903d472e3371dd9b8252efe3d879422ad9d30dce5980",
+        "packages/standards/tests/test_repo_standards_pins.py": "1e3acfb0f97d027088fd70d9c855abef8bf259d64737cbc0cc497b775cca44d5",
+        "packages/standards/tests/test_rule_catalog_artifact.py": "008d628c69b602b19a5e31880aaeff398a4e25924992757fdc3d533bd1e351bb",
+        "packages/standards/tests/test_rule_changes.py": "57668c1106fae09d0a42b2c4426b29951791435b222869b1bb83a259814d41bd",
+        "packages/standards/tests/test_rule_inventory_artifact.py": "d4a052d40725d9c2f51fafdc3d1b5449da29f486010420ecdc39b0cb0d1c5bd7"
       },
-      "resolution": "Keep higher minor versions 16.20.0 / 1.46.0 / 8.77.0, preserve incoming runtime and tests, regenerate the combined catalog, docs, CLI and examples. Dependency graph changes were only exact editable package-version slots.",
-      "evidenceScope": "Selected type-safety corpus and analysis measurements retain the same maintained semantic source pins and dependencies. Prior actual full-plugin bundle hashes remain pre-integration observations, not newly executed integrated artifacts. Final normal performance is refreshed against the integrated bundle; its delta includes incoming unrelated owners. Final canonical verification and latest exact-head CI cover the combined tree.",
-      "priorFullVerificationAttempt": {
+      "nativePolicy": {
+        "package": "repo-standards==6.8.5",
+        "actionRevision": "947f984d48f27ab96ba805a01fdb94961b579478"
+      },
+      "resolution": "Keep higher minor release versions 16.20.0 / 1.46.0 / 8.77.0, preserve all incoming source/tests/workflows and repo-standards6.8.5 distribution hashes, regenerate combined catalog/docs/CLI/examples.",
+      "typescriptCarryForward": {
+        "previousMeasuredBase": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
+        "subsequentIntegrationBase": "dbea895605832c4c5fdad79067941358a72e1a6c",
+        "equalUpstreamNativePluginTree": "06e822c411addb7da8cae51a4a89c9ecf3c82de5",
+        "campaignNativePluginTree": "e2c0b362294b8995b3f3413d08a588dfdba383b7",
+        "campaignTreeAndDependenciesUnchanged": true,
+        "performanceBundleSha256": "c34b2b0b4da14c4ce8060f7fd3a227cf4df275a9467e00f27787975c727329a3",
+        "actualCorpusBundleSha256": "5a106ea677c472f9c36c289af26c687a2aa04caf431d247cc747864012516330",
+        "qualification": "Retain actual prior measurements and their executed base/artifact identities. They were not rerun on the subsequent whole tree. The entire native TypeScript plugin, dependencies and configs remain byte-exact; the incoming external workflow policy is outside these direct native-plugin panels."
+      },
+      "pythonRefresh": "Replay both baseline and candidate against the same 3339 historical files and 93 seeds under one explicitly recorded integration-context overlay: the maintained Standards project dependency changes only repo-standards 6.8.3 to 6.8.5. Original source inventories, context manifests, seed sidecars and baseline implementation pins remain unchanged. Archive prior receipts, explicitly refresh the two upstream CLI implementation pins, and refresh full-registry performance for the upstream fixture-owner change. Selected analysis owners/core are unchanged; retained process-startup observations describe the earlier tree.",
+      "priorSuccessfulCanonicalVerification": {
         "command": "make verify",
-        "status": "failed",
-        "exitCode": 2,
-        "startedAt": "2026-10-17T03:30:11.338197+00:00",
-        "finishedAt": "2026-10-17T03:42:44.940700+00:00",
+        "status": "passed",
+        "exitCode": 0,
+        "startedAt": "2026-10-17T03:53:03.563700+00:00",
+        "finishedAt": "2026-10-17T04:06:20.317200+00:00",
         "reviewedSourcePinsUnchanged": true,
         "ownerLocalLog": "make-verify.log"
       },
-      "offlineNativeToolRecovery": {
-        "cause": "Pinned zizmor 1.31.1 was missing from the offline uv tool cache; the exact offline command reproduced the resolution error.",
-        "action": "Restore exact pinned package online, confirm offline version, rerun all native boundary tests.",
-        "focusedCommand": "uv run --project packages/standards --frozen pytest -q packages/standards/tests/test_zizmor_native_boundaries.py",
-        "focusedResult": "13 passed in 1.44s",
-        "sourceChangesForRecovery": false,
-        "cacheIsolation": "Repeated exact offline checks showed the package disappearing again from the shared task cache. Copy its freshly warmed cache into a new owner-only verification cache, then verify the pinned tool offline before starting. No tool versions, test assertions or skip conditions change.",
-        "confirmedOfflineVersionBeforeFinalRun": "zizmor 1.31.1"
+      "previousExactHeadCI": {
+        "head": "70e319c2192c7f578e27f948a896dad03ab178ec",
+        "latestCounts": {
+          "success": 27,
+          "skipped": 7,
+          "neutral": 1
+        },
+        "qualification": "All four latest workflows passed, including optional Python3.14. This signoff applies only to that prior head; updated head needs fresh exact-head CI. REST pull-request base.sha was historical, so final merge readiness must check the live main Git ref."
+      },
+      "evidenceRedaction": {
+        "privateContextManifestDigestOmittedFromPublicReceipts": true,
+        "unredactedEvidenceRetainedOwnerOnly": true,
+        "privateReplayRouting": "After measurements, the artifact-only checker input filename points to a separate private overlay copy. Check logic and analyzer source are unchanged. Exact executed checker/overlay snapshots are retained separately; public receipts use the redacted overlay."
       }
     },
     "testSummaries": {
@@ -4876,7 +5139,7 @@
         {
           "passed": 18,
           "skipped": 0,
-          "duration": "0.30s"
+          "duration": "0.14s"
         },
         {
           "passed": 46,
@@ -4884,24 +5147,24 @@
           "duration": "0.09s"
         },
         {
-          "passed": 18800,
+          "passed": 18820,
           "skipped": 0,
-          "duration": "95.13s (0:01:35)"
+          "duration": "62.89s (0:01:02)"
         },
         {
           "passed": 1755,
           "skipped": 1,
-          "duration": "3.05s"
+          "duration": "3.39s"
         },
         {
           "passed": 1446,
           "skipped": 0,
-          "duration": "4.87s"
+          "duration": "1.79s"
         },
         {
-          "passed": 5892,
+          "passed": 5911,
           "skipped": 9,
-          "duration": "204.65s (0:03:24)"
+          "duration": "158.23s (0:02:38)"
         }
       ],
       "typescriptSummaries": [
@@ -4910,7 +5173,7 @@
           "total": 9755
         }
       ],
-      "totalPassed": 37712,
+      "totalPassed": 37751,
       "totalSkipped": 10
     }
   },

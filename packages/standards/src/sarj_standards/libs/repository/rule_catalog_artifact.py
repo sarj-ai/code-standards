@@ -10,7 +10,7 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed local b
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Protocol, TypeGuard
 
-from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.json_boundary import parse_unique_json
 from sarj_standards.libs.repository import rule_inventory_artifact
 from sarj_standards.libs.rules import (
     AutofixPolicy,
@@ -102,11 +102,16 @@ class _SelectorMetadata:
 
 def load(path: Path = RULE_CATALOG) -> dict[str, object]:
     try:
-        payload: object = parse_json(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        payload: object = parse_unique_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError) as exc:
         msg = f"cannot load shipped rule catalog {path}: {exc}"
         raise ValueError(msg) from exc
-    if not _is_object(payload) or payload.get("schemaVersion") != 1 or not _is_array(payload.get("rules")):
+    if (
+        not _is_object(payload)
+        or type(payload.get("schemaVersion")) is not int
+        or payload.get("schemaVersion") != 1
+        or not _is_array(payload.get("rules"))
+    ):
         msg = "shipped rule catalog must contain schemaVersion 1 and a rules array"
         raise ValueError(msg)
     return payload
@@ -584,7 +589,7 @@ def typescript_specs(root: Path, *, already_built: bool = False) -> tuple[RuleSp
         text=True,
         timeout=_PROCESS_TIMEOUT.total_seconds(),
     )
-    payload: object = parse_json(completed.stdout)
+    payload: object = parse_unique_json(completed.stdout)
     return parse_typescript_projection(payload)
 
 
