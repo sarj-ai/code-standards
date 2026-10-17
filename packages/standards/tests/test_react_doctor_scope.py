@@ -281,3 +281,40 @@ def test_staged_full_fallback_retains_complete_workspace_coverage(workspace: _Wo
     else:
         assert report.completion is Completion.FAILED
         assert "requested project set" in report.issues[0].message
+
+
+@pytest.mark.parametrize("staged", [True, False], ids=["staged", "changed"])
+@pytest.mark.parametrize("root_source_changed", [False, True], ids=["nested-only", "root-source"])
+def test_nested_project_change_does_not_require_enclosing_root_project(
+    workspace: _Workspace, monkeypatch: pytest.MonkeyPatch, staged: bool, root_source_changed: bool
+) -> None:
+    root = workspace.root
+    (root / "package.json").write_text('{"devDependencies":{"react":"19.2.8"}}\n', encoding="utf-8")
+    _git(root, "add", ".")
+    _git(root, "commit", "-m", "Declare React at the repository root")
+    base = _git(root, "rev-parse", "HEAD")
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", base)
+    if root_source_changed:
+        (root / "snippet.tsx").write_text("export const Snippet = () => <div />;\n", encoding="utf-8")
+    _change(root, ("app",), staged=staged)
+    payload = _payload(root, base, ("app",), staged=staged)
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(1, json.dumps(payload), "")
+
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        root,
+        projects=(root, *sorted((root / "packages").iterdir())),
+        root=root,
+        runner=runner,
+        use_local_binary=False,
+        file_count=2 if root_source_changed else 1,
+        staged=staged,
+    )
+
+    if root_source_changed:
+        assert report.completion is Completion.FAILED
+        assert "requested project set" in report.issues[0].message
+    else:
+        assert report.completion is Completion.COMPLETE
+        assert tuple(item.location.path for item in report.diagnostics) == ("packages/app/view.tsx",)
