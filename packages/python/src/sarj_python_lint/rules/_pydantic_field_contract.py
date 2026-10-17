@@ -12,6 +12,7 @@ from packaging.version import InvalidVersion, Version
 from sarj_python_lint.json_boundary import is_object_mapping
 from sarj_python_lint.rules._first_party import distribution_root
 from sarj_python_lint.rules._namespace_access import dynamic_namespace_access
+from sarj_python_lint.rules._native_namespace_capability import native_namespace_capability_escapes
 from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
@@ -35,7 +36,8 @@ def direct_models(context: PythonFileContext, *, methods: bool = False) -> tuple
     if tree is None or context.generated or context.has_wildcard_import:
         return ()
     if (
-        _mutated_imports(context)
+        native_namespace_capability_escapes(context)
+        or _mutated_imports(context)
         or _ambiguous_imports(context)
         or _escaped_imports(context)
         or dynamic_namespace_access(context.nodes(ast.AST), context.imports, context.parents)
@@ -83,7 +85,7 @@ def inert_annotation(node: ast.expr, context: PythonFileContext) -> bool:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         try:
             node = ast.parse(node.value, mode="eval").body
-        except SyntaxError:
+        except SyntaxError, UnicodeError:
             return False
     return _inert_expr(node, context)
 

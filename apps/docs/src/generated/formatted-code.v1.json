@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "b0524d618491fecb924db90ba2a59f522966ee1d37c9b0d207328befb87ab0c6",
-  "cliSha256": "42cbdd5ed3a3ee2d77d07df7c0462aa51fd22c4b23502cf240dd5fbd426e9791",
+  "catalogSha256": "526d233273d105cb35ae296cbddd242f59fca6c3cb2e07172402270ededcafcc",
+  "cliSha256": "7466d94318f4dd1766aafdbb7aee2ac9b509740d8b959d15d8b13f91bf62c304",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -532,6 +532,36 @@
     },
     "eslint:no-contradictory-type-predicate": {
       "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/guard.ts",
+              "source": "function texts(value: unknown): value is string[] {\n  return Array.isArray(value);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/guard.ts",
+          "id": "array-elements-unchecked",
+          "outcome": "reject",
+          "scenarioId": "array-elements",
+          "title": "Array membership alone does not prove text elements"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/guard.ts",
+              "source": "function texts(value: unknown): value is string[] {\n  return (\n    Array.isArray(value) && value.every((item: unknown) => typeof item === \"string\")\n  );\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/guard.ts",
+          "id": "array-elements-validated",
+          "outcome": "accept",
+          "scenarioId": "array-elements",
+          "title": "Establish the element domain at the boundary"
+        },
         {
           "expectedCount": 0,
           "files": [
@@ -3651,6 +3681,21 @@
           "title": "Use explicit result branches"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/job.ts",
+              "source": "function job(\n  command: string,\n): { phase: \"queued\"; ticket: string } | { phase: \"complete\" } {\n  switch (command) {\n    case \"start\":\n      return { phase: \"queued\", ticket: \"t\" };\n    default:\n      return { phase: \"complete\" };\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/job.ts",
+          "id": "explicit-switch-variants",
+          "outcome": "accept",
+          "scenarioId": "switch-producer",
+          "title": "An explicit dispatcher result supports payload narrowing"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -3664,6 +3709,21 @@
           "outcome": "reject",
           "scenarioId": "produced-variants",
           "title": "Preserve producer variant relationships"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/job.ts",
+              "source": "function job(command: string): { phase: \"queued\" | \"complete\"; ticket?: string } {\n  switch (command) {\n    case \"start\":\n      return { phase: \"queued\", ticket: \"t\" };\n    default:\n      return { phase: \"complete\" };\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/job.ts",
+          "id": "flat-switch-producer",
+          "outcome": "reject",
+          "scenarioId": "switch-producer",
+          "title": "A complete dispatcher preserves each returned variant"
         },
         {
           "expectedCount": 1,
@@ -8745,6 +8805,71 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Trusted construction still satisfies the declared vocabulary"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-invalid-pydantic-validator-return": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel, field_validator\n\n\nclass Payload(BaseModel):\n    text: int\n\n    @field_validator(\"text\", mode=\"before\")\n    @classmethod\n    def replace(cls, value: str) -> str:\n        return \"3\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "before-output-is-revalidated",
+          "outcome": "accept",
+          "scenarioId": "validation-phase",
+          "title": "Input conversion is followed by ordinary field validation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel, field_validator\n\n\nclass Payload(BaseModel):\n    text: str\n\n    @field_validator(\"text\", mode=\"after\")\n    @classmethod\n    def replace(cls, value: str) -> int:\n        return 3\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "invalid-after-output",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An after validator stores an incompatible primitive unchanged"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel, field_validator\n\n\nclass Payload(BaseModel):\n    text: str\n\n    @field_validator(\"text\", mode=\"plain\")\n    @classmethod\n    def replace(cls, value: str) -> int:\n        return 3\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "plain-output-is-not-revalidated",
+          "outcome": "reject",
+          "scenarioId": "validation-phase",
+          "title": "A plain validator also bypasses subsequent field validation"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel, field_validator\n\n\nclass Payload(BaseModel):\n    text: str\n\n    @field_validator(\"text\", mode=\"after\")\n    @classmethod\n    def replace(cls, value: str) -> str:\n        return \"ready\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "valid-after-output",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The validator output satisfies the stored field contract"
         }
       ],
       "optionsSchemaSource": null

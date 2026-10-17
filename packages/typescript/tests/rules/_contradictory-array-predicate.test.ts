@@ -1,0 +1,112 @@
+import { join } from "node:path";
+
+import * as parser from "@typescript-eslint/parser";
+import { RuleTester } from "@typescript-eslint/rule-tester";
+import { afterAll, describe, it } from "vitest";
+
+import rule from "../../src/rules/no-contradictory-type-predicate.js";
+
+RuleTester.afterAll = afterAll;
+RuleTester.describe = describe;
+RuleTester.it = it;
+RuleTester.itOnly = it.only;
+const TESTER = new RuleTester({ languageOptions: { parser, parserOptions: {
+  projectService: { allowDefaultProject: ["*.ts*"] }, tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
+} } });
+const CHECK = 'function texts(value: unknown): value is string[] { return Array.isArray(value); }';
+
+TESTER.run("no-contradictory-type-predicate", rule, {
+  valid: [
+    ...[
+      ['unknown elements retain an honest boundary',CHECK.replace('string[]','unknown[]')],
+      ['any elements are outside this proof',CHECK.replace('string[]','any[]')],
+      ['readonly unknown elements are honest',CHECK.replace('string[]','readonly unknown[]')],
+      ['never elements have a different empty-array obligation',CHECK.replace('string[]','never[]')],
+      ['tuple cardinality is a separate obligation',CHECK.replace('string[]','[string]')],
+      ['closed literal elements are not broad primitives',CHECK.replace('string[]','"ready"[]')],
+      ['structural elements remain opaque',CHECK.replace('string[]','{id:string}[]')],
+      ['branded elements remain opaque','type Id=string&{readonly brand:unique symbol};'+CHECK.replace('string[]','Id[]')],
+      ['enum elements are not broad primitives','enum Code{Ready="ready"}'+CHECK.replace('string[]','Code[]')],
+      ['branded container remains opaque','type Texts=string[]&{readonly brand:unique symbol};'+CHECK.replace('string[]','Texts')],
+      ['generic elements remain opaque',CHECK.replace('function texts(','function texts<T>(').replace('string[]','T[]')],
+      ['any input remains with unsafe boundary owners',CHECK.replace('value: unknown','value: any')],
+      ['already validated nullable input carries element evidence',CHECK.replace('value: unknown','value: string[] | null')],
+      ['already validated array input carries evidence',CHECK.replace('value: unknown','value: string[]')],
+      ['generic input remains unresolved','function texts<T>(value:T):value is T&string[]{return Array.isArray(value);}'],
+      ['complete content validator remains legal',CHECK.replace('Array.isArray(value)','Array.isArray(value)&&value.every((item:unknown)=>typeof item==="string")')],
+      ['multiple statements may establish separate evidence',CHECK.replace('return Array.isArray(value);','validate(value);return Array.isArray(value);')],
+      ['boolean membership has no element promise',CHECK.replace('value is string[]','boolean')],
+      ['assertion signatures are separate throwing contracts','function texts(value:unknown):asserts value is string[]{if(!Array.isArray(value))throw Error();}'],
+      ['overload publishes an independent input domain','function texts(value:string[]|null):value is string[];'+CHECK],
+      ['contextual callback publishes an independent domain','const texts:(value:string[]|null)=>boolean=(value:unknown):value is string[]=>Array.isArray(value);'],
+      ['inherited method publishes a separate domain','class Base{texts(value:string[]|null):boolean{return true;}}class Child extends Base{'+CHECK.replace('function ','')+'}'],
+      ['shadowed namespace may validate contents','function scope(Array:{isArray(value:unknown):boolean}){'+CHECK+'}'],
+      ['imported namespace has different ownership','import {Array} from "validator";'+CHECK],
+      ['extracted check has different ownership','const isArray=Array.isArray;'+CHECK.replace('Array.isArray','isArray')],
+      ['tested expression must be the predicate parameter',CHECK.replace('Array.isArray(value)','Array.isArray(other)')],
+      ['later direct replacement disables native proof',CHECK+'Array.isArray=replacement;'],
+      ['earlier computed replacement disables native proof','Array["isArray"]=replacement;'+CHECK],
+      ['deletion disables native proof',CHECK+'delete Array.isArray;'],
+      ['namespace argument can escape ownership','configure(Array);'+CHECK],
+      ['constructor alias may replace method','const Alias=Array;Alias.isArray=replacement;'+CHECK],
+      ['exported constructor may be mutated externally',CHECK+'export const Constructor=Array;'],
+      ['method extraction disables native binding proof',CHECK+'const native=Array.isArray;'],
+      ['reflective replacement disables native proof','Object.defineProperty(Array,"isArray",{value:replacement});'+CHECK],
+      ['direct host replacement disables native proof',CHECK+'globalThis.Array.isArray=replacement;'],
+      ['computed host replacement disables native proof','globalThis["Array"]["isArray"]=replacement;'+CHECK],
+      ['window replacement disables native proof',CHECK+'window.Array.isArray=replacement;'],
+      ['self replacement disables native proof',CHECK+'self.Array.isArray=replacement;'],
+      ['nested host aliases retain the same global constructor',CHECK+'globalThis.window.Array.isArray=replacement;'],
+      ['computed nested host aliases retain global constructor','globalThis["self"]["Array"]["isArray"]=replacement;'+CHECK],
+      ['nested global aliases can reveal constructor','globalThis.globalThis.Array.isArray=replacement;'+CHECK],
+      ['host alias may replace constructor','const host=globalThis;host.Array.isArray=replacement;'+CHECK],
+      ['host escape may replace constructor',CHECK+'configure(globalThis);'],
+      ['unknown host property can reveal constructor','const alias=globalThis[key];'+CHECK],
+      ['literal array constructor can replace the native API','Object.defineProperty([].constructor,"isArray",{value:replacement});'+CHECK],
+      ['later array constructor alias invalidates earlier predicate',CHECK+'const Constructor=[].constructor;'],
+      ['typed tuple constructor shares the array namespace','const value:[string]=["ok"];Object.defineProperty(value.constructor,"isArray",{value:replacement});'+CHECK],
+      ['readonly array constructor can expose native static API','const value:readonly string[]=[];configure(value.constructor);'+CHECK],
+      ['array union constructor can expose native static API','declare const value:string[]|Date;configure(value.constructor);'+CHECK],
+      ['opaque native prototype constructor can expose Array','const Native=Object.getPrototypeOf([]).constructor;const raw:(value:unknown)=>value is unknown[]=Native.isArray;Native.isArray=(value:unknown):value is string[]=>raw(value)&&value.every((item:unknown)=>typeof item==="string");'+CHECK],
+      ['any constructor receiver cannot prove another namespace','declare const value:any;configure(value.constructor);'+CHECK],
+      ['structural object view can retain the native array constructor','const holder:object=[];const Constructor=holder.constructor;Object.defineProperty(Constructor,"isArray",{value:(value:unknown):value is string[]=>value instanceof Constructor&&(value as unknown[]).every((item:unknown)=>typeof item==="string")});'+CHECK],
+      ['empty structural view does not prove a separate constructor','const holder:{}=[];configure(holder.constructor);'+CHECK],
+      ['structural union can conceal the array constructor','declare const holder:object|Date;configure(holder.constructor);'+CHECK],
+      ['generic structural receiver cannot prove a separate constructor','function expose<T extends object>(holder:T){configure(holder.constructor);}'+CHECK],
+      ['even a concrete constructor read conservatively withdraws authority','const item=new Date();void item.constructor;'+CHECK],
+      ['destructuring a structural view can expose the array constructor','const holder:object=[];const {constructor:Native}=holder;const raw=(Native as ArrayConstructor).isArray;const every=(Native as ArrayConstructor).prototype.every;Object.assign(Native,{isArray:(value:unknown):value is string[]=>raw(value)&&every.call(value,(item:unknown)=>typeof item==="string")});'+CHECK],
+      ['constant computed destructuring retains constructor authority','const key="constructor";const {[key]:Native}=[];configure(Native);'+CHECK],
+      ['unresolved computed destructuring may expose constructor','declare const holder:Record<string,unknown>;declare const key:string;const {[key]:Native}=holder;configure(Native);'+CHECK],
+      ['nested destructuring exposes the same constructor','const {item:{constructor:Native}}={item:[]};configure(Native);'+CHECK],
+      ['assignment destructuring exposes constructor','let Native:Function;({constructor:Native}=[]);configure(Native);'+CHECK],
+      ['parameter destructuring can expose constructor','function configure({constructor:Native}:object){patch(Native);}'+CHECK],
+      ['reflective constructor extraction exposes same namespace','const Native=Reflect.get([],"constructor");const raw:(value:unknown)=>value is unknown[]=Native.isArray;Native.isArray=(value:unknown):value is string[]=>raw(value)&&value.every((item:unknown)=>typeof item==="string");'+CHECK],
+      ['reflective constructor extraction through method alias','const get=Reflect.get;const Native=get([],"constructor");configure(Native);'+CHECK],
+      ['host reflective namespace can expose constructor','const Native=globalThis.Reflect.get([],"constructor");configure(Native);'+CHECK],
+      ['Object reflection alias can reveal Array','const object=Object;const Native=object.getPrototypeOf([]).constructor;configure(Native);'+CHECK],
+      ['host Object descriptor capability can expose constructor','globalThis.Object.getOwnPropertyDescriptor([],"constructor");'+CHECK],
+      ['computed opaque property can reveal constructor','declare const value:any;declare const key:string;configure(value[key]);'+CHECK],
+      ['constant computed constructor alias stays visible','const key="constructor";configure([][key]);'+CHECK],
+      ['unrelated Array usage conservatively abstains','const copy=Array.from(items);'+CHECK],
+      ['optional call is outside direct membership proof',CHECK.replace('Array.isArray(value)','Array.isArray?.(value)')],
+      ['extra arguments are outside canonical check',CHECK.replace('Array.isArray(value)','Array.isArray(value,other)')],
+      ['bound methods have different ownership',CHECK.replace('Array.isArray(value)','Array.isArray.call(Array,value)')],
+    ].map(([name,code])=>({name,code:code!})),
+    { name:'generated predicates are excluded',code:'// @generated\n'+CHECK },
+    { name:'declaration contract has no implementation',filename:'types.d.ts',code:'declare function texts(value:unknown):value is string[];' },
+    { name:'exact local suppression preserves owned contract',code:'// eslint-disable-next-line @rule-tester/no-contradictory-type-predicate -- external validation owns contents\n'+CHECK },
+  ],
+  invalid: [
+    ...['string[]','number[]','boolean[]','bigint[]','symbol[]','readonly string[]'].map(target=>({name:`primitive element contract ${target}`,code:CHECK.replace('string[]',target),errors:[{messageId:'uncheckedArrayElements' as const,data:{promised:target}}]})),
+    { name:'canonical alias retains actual primitive domain',code:'type Texts=string[];'+CHECK.replace('string[]','Texts'),errors:[{messageId:'uncheckedArrayElements',data:{promised:'Texts'}}] },
+    { name:'arrow predicate has local membership obligation',code:'const texts=(value:unknown):value is string[]=>Array.isArray(value);',errors:[{messageId:'uncheckedArrayElements'}] },
+    { name:'ordinary class method has local membership obligation',code:'class Validator{'+CHECK.replace('function ','')+'}',errors:[{messageId:'uncheckedArrayElements'}] },
+    { name:'computed canonical method keeps identity',code:CHECK.replace('Array.isArray','Array["isArray"]'),errors:[{messageId:'uncheckedArrayElements'}] },
+    { name:'several checks share immutable namespace cache',code:CHECK+CHECK.replaceAll('texts','numbers').replaceAll('string[]','number[]'),errors:[{messageId:'uncheckedArrayElements'},{messageId:'uncheckedArrayElements'}] },
+    { name:'unrelated host property does not alias constructor',code:'globalThis.console.log("ready");'+CHECK,errors:[{messageId:'uncheckedArrayElements'}] },
+    { name:'native host spelling remains ordinary use',code:CHECK+'globalThis.Array.isArray(null);',errors:[{messageId:'uncheckedArrayElements'}] },
+    { name:'ordinary Object keys call does not expose namespace',code:'Object.keys({ready:true});'+CHECK,errors:[{messageId:'uncheckedArrayElements'}] },
+    { name:'ordinary destructuring does not extract a constructor',code:'const {label}={label:"ready"};void label;'+CHECK,errors:[{messageId:'uncheckedArrayElements'}] },
+    { name:'known computed destructuring retains an ordinary data field',code:'const key="label";const {[key]:label}={label:"ready"};void label;'+CHECK,errors:[{messageId:'uncheckedArrayElements'}] },
+  ],
+});
