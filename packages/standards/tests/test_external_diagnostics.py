@@ -3705,10 +3705,13 @@ def test_deptry_scans_declared_wheel_sources_for_root_scripts_without_unrelated_
     assert "packages/unrelated" not in root_call
 
 
-def test_deptry_declared_sources_overlap_without_duplicate_missing_dependency_findings(tmp_path: Path) -> None:
+@pytest.mark.parametrize("backend", ["hatchling.build", "uv_build"])
+def test_deptry_declared_sources_overlap_without_duplicate_missing_dependency_findings(
+    tmp_path: Path, backend: str
+) -> None:
     (tmp_path / "pyproject.toml").write_text(
         '[project]\nname = "application"\nversion = "1"\ndependencies = []\n'
-        '\n[build-system]\nrequires = ["hatchling"]\nbuild-backend = "hatchling.build"\n'
+        f'\n[build-system]\nrequires = ["hatchling", "uv_build>=0.12.7,<0.13"]\nbuild-backend = "{backend}"\n'
         '\n[tool.hatch.build.targets.wheel]\npackages = ["src/application"]\n',
         encoding="utf-8",
     )
@@ -3729,5 +3732,223 @@ def test_deptry_declared_sources_overlap_without_duplicate_missing_dependency_fi
     assert [(item.code, item.location.path) for item in reports[0].diagnostics] == [
         ("DEP001", "src/application/__init__.py")
     ]
-    assert calls[0][1] == "src"
-    assert "src/application" not in calls[0]
+    assert calls[0][1] == "src/application"
+    assert "src" not in calls[0]
+
+
+@pytest.mark.parametrize("unused", [False, True], ids=("all-used", "true-unused"))
+@pytest.mark.parametrize("select_owned", [False, True], ids=("changed-test", "changed-owned-source"))
+@pytest.mark.parametrize(
+    ("project_name", "settings", "package_paths"),
+    [
+        ("application", 'module-name = "owned_package"\n', ("src/owned_package",)),
+        ("Demo..App---Tool", "", ("src/demo_app_tool",)),
+        ("application", 'module-name = "Application"\nmodule-root = ""\n', ("Application",)),
+        ("application", 'module-name = "owned"\nmodule-root = "src/../lib"\n', ("lib/owned",)),
+        (
+            "application",
+            'module-name = ["shared.alpha", "shared.beta"]\nmodule-root = "lib"\n',
+            ("lib/shared/alpha", "lib/shared/beta"),
+        ),
+    ],
+    ids=(
+        "explicit-name-default-root",
+        "normalized-defaults",
+        "flat-case-sensitive",
+        "normalized-root",
+        "namespace-modules",
+    ),
+)
+def test_deptry_uv_build_owns_only_declared_modules_for_selected_tests(
+    tmp_path: Path,
+    project_name: str,
+    settings: str,
+    package_paths: Sequence[str],
+    *,
+    unused: bool,
+    select_owned: bool,
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        f'[project]\nname = "{project_name}"\nversion = "1"\ndependencies = ["packaging", "typer"]\n'
+        '\n[build-system]\nrequires = ["uv_build>=0.12.7,<0.13"]\nbuild-backend = "uv_build"\n'
+        f"\n[tool.uv.build-backend]\n{settings}",
+        encoding="utf-8",
+    )
+    selected = tmp_path / "tests/test_smoke.py"
+    selected.parent.mkdir()
+    selected.write_text("from pathlib import Path\nassert Path.cwd().is_dir()\n", encoding="utf-8")
+    for relative in package_paths:
+        package = tmp_path / relative
+        package.mkdir(parents=True)
+        package.joinpath("__init__.py").write_text(
+            "from packaging.version import Version\nVERSION = Version('1')\n"
+            + ("" if unused else "import typer\nAPP = typer.Typer()\n"),
+            encoding="utf-8",
+        )
+    if len(package_paths) > 1:
+        first_source = tmp_path / package_paths[0] / "__init__.py"
+        first_source.write_text(first_source.read_text(encoding="utf-8") + "import shared.beta\n", encoding="utf-8")
+    # An independently owned sibling cannot make the parent's unused dependency
+    # look used, even when it lives beside a declared module under the same root.
+    unrelated = tmp_path / Path(package_paths[0]).parent / "unrelated"
+    unrelated.mkdir()
+    unrelated.joinpath("pyproject.toml").write_text(
+        '[project]\nname = "unrelated"\nversion = "1"\ndependencies = ["typer"]\n', encoding="utf-8"
+    )
+    unrelated.joinpath("__init__.py").write_text("import typer\n", encoding="utf-8")
+    if select_owned:
+        selected = tmp_path / package_paths[0] / "__init__.py"
+    calls: list[tuple[str, ...]] = []
+
+    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        calls.append(tuple(argv))
+        return external_module.run_process(argv, cwd=cwd)
+
+    reports = analyze_external(
+        [str(selected)], root=tmp_path, trust=TrustMode.SAFE, capabilities=frozenset({"deptry"}), runner=run
+    )
+    assert len(calls) == len(reports) == 1
+    assert reports[0].completion is Completion.COMPLETE
+    assert [(item.code, item.location.path) for item in reports[0].diagnostics] == (
+        [("DEP002", "pyproject.toml")] if unused else []
+    )
+    if unused:
+        assert "typer" in reports[0].diagnostics[0].message
+    scan_roots = calls[0][1 : calls[0].index("--config")]
+    assert set(scan_roots) == (set(package_paths) if select_owned else {"tests", *package_paths})
+    if len(package_paths) > 1:
+        first_party = {calls[0][index + 1] for index, option in enumerate(calls[0]) if option == "--known-first-party"}
+        assert "shared" in first_party
+        assert first_party.isdisjoint({"alpha", "beta"})
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        "module-name = 1\n",
+        'module-name = ["owned", 1]\n',
+        "module-name = []\n",
+        'module-name = ""\n',
+        'module-name = "owned..child"\n',
+        'module-name = "../outside"\n',
+        'module-name = "/outside"\n',
+        'module-name = "owned"\nmodule-root = ["src"]\n',
+        'module-name = "owned"\nmodule-root = "../outside"\n',
+        'module-name = "owned"\nmodule-root = ".."\n',
+        'module-name = "owned"\nmodule-root = "linked"\n',
+    ],
+    ids=(
+        "integer",
+        "mixed-list",
+        "empty-list",
+        "empty-name",
+        "empty-segment",
+        "parent",
+        "absolute",
+        "root-type",
+        "root-escape",
+        "root-reentry",
+        "symlink-escape",
+    ),
+)
+def test_deptry_uv_build_rejects_invalid_module_ownership_before_running(tmp_path: Path, settings: str) -> None:
+    project = tmp_path / "owned"
+    project.mkdir()
+    (project / "pyproject.toml").write_text(
+        '[project]\nname = "application"\nversion = "1"\ndependencies = []\n'
+        '\n[build-system]\nrequires = ["uv_build>=0.12.7,<0.13"]\nbuild-backend = "uv_build"\n'
+        f"\n[tool.uv.build-backend]\n{settings}",
+        encoding="utf-8",
+    )
+    selected = project / "tests/test_smoke.py"
+    selected.parent.mkdir()
+    selected.write_text("pass\n", encoding="utf-8")
+    if 'module-root = "linked"' in settings:
+        outside = project.with_name(f"{project.name}-outside")
+        outside.mkdir()
+        (project / "linked").symlink_to(outside, target_is_directory=True)
+
+    def unexpected(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        message = f"invalid module ownership reached Deptry: {argv} in {cwd}"
+        raise AssertionError(message)
+
+    reports = analyze_external(
+        [str(selected)], root=project, trust=TrustMode.SAFE, capabilities=frozenset({"deptry"}), runner=unexpected
+    )
+    assert len(reports) == 1
+    assert reports[0].completion is Completion.FAILED
+    assert reports[0].diagnostics == ()
+    assert len(reports[0].issues) == 1
+    assert reports[0].issues[0].kind == "tool-failure"
+    assert any(text in reports[0].issues[0].message for text in ("uv_build", "within its Python project"))
+
+
+def test_deptry_ignores_uv_ownership_settings_for_other_backends(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "application"\nversion = "1"\ndependencies = ["packaging", "typer"]\n'
+        '\n[build-system]\nrequires = ["setuptools"]\nbuild-backend = "setuptools.build_meta"\n'
+        '\n[tool.uv.build-backend]\nmodule-name = "unrelated"\nmodule-root = "../outside"\n',
+        encoding="utf-8",
+    )
+    selected = tmp_path / "tools/verify.py"
+    selected.parent.mkdir()
+    selected.write_text("import packaging\n", encoding="utf-8")
+    reports = analyze_external([str(selected)], root=tmp_path, trust=TrustMode.SAFE, capabilities=frozenset({"deptry"}))
+    assert len(reports) == 1
+    assert reports[0].completion is Completion.COMPLETE
+    assert [(item.code, item.location.path) for item in reports[0].diagnostics] == [("DEP002", "pyproject.toml")]
+    assert "typer" in reports[0].diagnostics[0].message
+
+
+@pytest.mark.parametrize("directory", [".", "tools/scripts"], ids=("root-maintenance", "nested-maintenance"))
+def test_deptry_keeps_unchanged_same_project_maintenance_imports(tmp_path: Path, directory: str) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "application"\nversion = "1"\ndependencies = ["packaging", "typer"]\n'
+        '\n[build-system]\nrequires = ["uv_build>=0.12.7,<0.13"]\nbuild-backend = "uv_build"\n',
+        encoding="utf-8",
+    )
+    package = tmp_path / "src/application"
+    package.mkdir(parents=True)
+    package.joinpath("__init__.py").write_text("import packaging\n", encoding="utf-8")
+    maintenance = tmp_path / directory
+    maintenance.mkdir(parents=True, exist_ok=True)
+    selected = maintenance / "verify.py"
+    selected.write_text("from pathlib import Path\nprint(Path.cwd())\n", encoding="utf-8")
+    maintenance.joinpath("maintenance_helper.py").write_text("import typer\n", encoding="utf-8")
+
+    reports = analyze_external([str(selected)], root=tmp_path, trust=TrustMode.SAFE, capabilities=frozenset({"deptry"}))
+
+    assert len(reports) == 1
+    assert reports[0].completion is Completion.COMPLETE
+    assert reports[0].diagnostics == ()
+
+
+def test_deptry_uv_build_default_stub_package_ownership(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "Demo.App-stubs"\nversion = "1"\ndependencies = ["packaging"]\n'
+        '\n[build-system]\nrequires = ["uv_build>=0.12.7,<0.13"]\nbuild-backend = "uv_build"\n',
+        encoding="utf-8",
+    )
+    package = tmp_path / "src/demo_app-stubs"
+    package.mkdir(parents=True)
+    package.joinpath("__init__.pyi").write_text("def identity(value: int) -> int: ...\n", encoding="utf-8")
+    selected = tmp_path / "tools/verify.py"
+    selected.parent.mkdir()
+    selected.write_text("import packaging\n", encoding="utf-8")
+    calls: list[tuple[str, ...]] = []
+
+    def run(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        calls.append(tuple(argv))
+        return external_module.run_process(argv, cwd=cwd)
+
+    reports = analyze_external(
+        [str(selected)], root=tmp_path, trust=TrustMode.SAFE, capabilities=frozenset({"deptry"}), runner=run
+    )
+
+    assert len(calls) == len(reports) == 1
+    assert reports[0].completion is Completion.COMPLETE
+    assert reports[0].diagnostics == ()
+    assert set(calls[0][1 : calls[0].index("--config")]) == {"src/demo_app-stubs", "tools"}
+    first_party = {calls[0][index + 1] for index, option in enumerate(calls[0]) if option == "--known-first-party"}
+    assert "demo_app" in first_party
+    assert "demo_app-stubs" not in first_party
