@@ -58,7 +58,11 @@ def walk(node: ast.AST, *, index: NodeIndex | None = None) -> Iterator[ast.AST]:
     if index is not None and index.tree is node:
         yield from index.query((ast.AST,))
         return
-    queue = deque((node,))
+    queue = children(node)
+    yield node
+    if not queue:
+        return
+    queue = deque(queue)
     while queue:
         current = queue.popleft()
         queue.extend(children(current))
