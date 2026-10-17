@@ -1399,6 +1399,8 @@ export function createConfig(options = {}) {
       "@sarj/no-invalid-typed-mutation": "warn",
       "@sarj/no-contradictory-type-predicate": "warn",
       "@sarj/no-partial-type-predicate": "warn",
+      "@sarj/no-invalid-zod-custom-parse": "warn",
+      "@sarj/no-contradictory-overload-return": "warn",
       "@sarj/no-broad-return-type": "error",
       "@sarj/prefer-typed-reflection": "error",
       "@sarj/no-conditional-empty-object-spread": "error",

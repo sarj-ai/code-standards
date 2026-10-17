@@ -325,5 +325,5 @@ def _stringized_annotation(annotation: ast.expr) -> ast.expr | None:
         return None
     try:
         return ast.parse(annotation.value, mode="eval").body
-    except SyntaxError:
+    except SyntaxError, UnicodeError:
         return None

@@ -80,3 +80,66 @@ def test_skips_generated_source() -> None:
 
 def test_invalid_source_is_ignored() -> None:
     assert _check("def broken( -> tuple[int, str]:\n") == []
+
+
+@pytest.mark.parametrize(
+    ("imports", "decorator"),
+    [
+        ("from typing import override", "override"),
+        ("from typing import override as inherited", "inherited"),
+        ("import typing as types", "types.override"),
+        ("from typing_extensions import override", "override"),
+    ],
+)
+def test_inherited_override_preserves_public_tuple_protocol(imports: str, decorator: str) -> None:
+    source = (
+        f"{imports}\nfrom external_api import CoordinatePort\n"
+        "class Adapter(CoordinatePort):\n"
+        f"    @{decorator}\n"
+        "    def coordinates(self) -> tuple[int, int]:\n"
+        "        return 3, 4\n"
+    )
+
+    assert _check(source) == []
+    independent = source + "def internal() -> tuple[int, str]: ...\n"
+    assert len(_check(independent)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from foreign import override\nclass Adapter:\n    @override\n    def coordinates(self) -> tuple[int, int]: ...\n",
+        "from typing import override\ndef override(value): return value\nclass Adapter:\n    @override\n    def coordinates(self) -> tuple[int, int]: ...\n",
+    ],
+)
+def test_noncanonical_or_noninherited_override_does_not_hide_owned_tuple(source: str) -> None:
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "def unrelated(inherited: object) -> None: pass\n",
+        "inherited = object()\n",
+    ],
+)
+def test_declaration_time_override_alias_survives_later_or_unrelated_binding(suffix: str) -> None:
+    source = (
+        "from typing import override as inherited\n"
+        "from external_api import CoordinatePort\n"
+        "class Adapter(CoordinatePort):\n"
+        "    @inherited\n"
+        "    def coordinates(self) -> tuple[int, int]:\n"
+        "        return 3, 4\n"
+    )
+
+    assert _check(source + suffix) == []
+
+
+def test_unmarked_inherited_tuple_contract_is_preserved() -> None:
+    source = (
+        "class Port:\n    def coordinates(self) -> tuple[int, int]: ...\n"
+        "class Adapter(Port):\n    def coordinates(self) -> tuple[int, int]:\n        return 3, 4\n"
+        "    def internal(self) -> tuple[int, str]: ...\n"
+    )
+    assert [item.line for item in _check(source)] == [2]

@@ -4,8 +4,9 @@ import ast
 from dataclasses import dataclass
 from itertools import starmap
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, final, override
+from typing import TYPE_CHECKING, Final, TypeIs, final, override
 
+from sarj_python_lint.json_boundary import is_object_mapping
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
@@ -40,6 +41,9 @@ _PASSIVE_CONFIG = frozenset({"frozen", "strict", "validate_default"})
 _MODEL_APIS = frozenset({"model_construct", "model_validate", "model_validate_json", "model_validate_strings"})
 _MAX_ANNOTATION_DEPTH = 64
 _MAX_ANNOTATION_NODES = 1024
+_MAX_LITERAL_TEXT = 65536
+_UNKNOWN_LITERAL: Final = object()
+_PAIR_ARITY = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,11 +79,12 @@ class NoInvalidPydanticBypass(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only plain, direct, module-level Pydantic BaseModel subclasses with supported built-in and typing field annotations are inspected; hooks, inheritance, class decorators and custom methods are excluded.",
-            "Only explicit None conflicts and closed string Literal domains are checked. Numeric Literal equality, bounds, opaque aliases, custom field types and coercions are not inferred.",
+            "Checks explicit None conflicts, closed string Literal domains, and bounded side-effect-free literal values contradicting builtin primitive or container field contracts. Coercible input is not assumed to be validated stored output.",
+            "Container literals preserve their actual construction semantics, including last-wins dictionary keys. Unpacking, calls, unhashable literal containers, opaque values, numeric Literal domains, bounds, aliases and custom field types are not inferred. Bool remains an int subtype, and numeric int-to-float/complex assignability is preserved.",
             "model_construct must use explicit keywords; omitted required fields are checked only when no unpacking or positional argument can supply them.",
             "model_copy requires a fresh exact constructor or a stable unescaped local constructor binding, plus a plain literal update dictionary. Arbitrary annotated receivers and overridden methods are excluded.",
             "Field aliases, non-passive model configuration, class or instance mutation and escape, ambiguous namespaces, tests and generated files are excluded.",
-            "Direct model field annotations exceeding a bounded depth or node budget exclude the file rather than risking recursive analysis failure.",
+            "Direct model field annotations exceeding a bounded depth or node budget exclude the file rather than risking recursive analysis failure. Literal analysis also bounds the value tree and combined string/bytes content to avoid excessive witness work.",
             "Trusted valid construction and copy operations remain legal. No autofix chooses domain values or changes validation behavior.",
         ),
         examples=(
@@ -105,6 +110,36 @@ class NoInvalidPydanticBypass(Rule):
                     ExampleFile.python(
                         "app/models.py",
                         "from typing import Literal\nfrom pydantic import BaseModel\nclass Job(BaseModel):\n    kind: Literal['queued', 'done']\njob = Job.model_construct(kind='queued')\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/models.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="construct-invalid-list-member",
+                scenario="stored-literal-contract",
+                title="Unchecked list elements must satisfy the stored field type",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/models.py",
+                        "from pydantic import BaseModel\nclass Payload(BaseModel):\n    labels: list[str]\npayload = Payload.model_construct(labels=[3])\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/models.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="construct-trusted-list-members",
+                scenario="stored-literal-contract",
+                title="Trusted list elements preserve the field contract",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/models.py",
+                        "from pydantic import BaseModel\nclass Payload(BaseModel):\n    labels: list[str]\npayload = Payload.model_construct(labels=['ready'])\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/models.py"),
@@ -161,7 +196,10 @@ def _bounded_annotation(annotation: ast.expr) -> bool:
         visited += 1
         if depth > _MAX_ANNOTATION_DEPTH or visited > _MAX_ANNOTATION_NODES:
             return False
-        pending.extend((child, depth + 1) for child in ast.iter_child_nodes(node))
+        for child in ast.iter_child_nodes(node):
+            if visited + len(pending) >= _MAX_ANNOTATION_NODES:
+                return False
+            pending.append((child, depth + 1))
     return True
 
 
@@ -423,26 +461,140 @@ def _invalid_values(
         )
     for name, value in values.items():
         field = model.fields.get(name)
-        if field is None or not isinstance(value, ast.Constant):
+        if field is None:
             continue
-        domain = _string_domain(field.annotation, context)
-        if domain is not None and value.value not in domain:
-            findings.append(
-                _diagnostic(
-                    value,
-                    context,
-                    f"Unchecked `{name}={value.value!r}` is outside `{model.node.name}`'s declared string Literal domain; validate a complete input mapping or supply an admitted value.",
-                )
-            )
-        elif value.value is None and _excludes_none(field.annotation, context):
-            findings.append(
-                _diagnostic(
-                    value,
-                    context,
-                    f"Unchecked `{name}=None` contradicts `{model.node.name}`'s non-null field annotation; validate a complete input mapping or supply a non-null value.",
-                )
-            )
+        finding = _invalid_field_value(model, name, field.annotation, value, context)
+        if finding is not None:
+            findings.append(finding)
     return findings
+
+
+def _invalid_field_value(
+    model: _Model, name: str, annotation: ast.expr, value: ast.expr, context: PythonFileContext
+) -> Diagnostic | None:
+    literal = _literal_value(value)
+    if literal is _UNKNOWN_LITERAL:
+        return None
+    if not _bounded_literal_text(annotation, value):
+        return None
+    domain = _string_domain(annotation, context)
+    if domain is not None and not any(literal == member for member in domain):
+        message = f"Unchecked `{name}` is outside `{model.node.name}`'s declared string Literal domain; validate a complete input mapping or supply an admitted value."
+    elif literal is None and _excludes_none(annotation, context):
+        message = f"Unchecked `{name}=None` contradicts `{model.node.name}`'s non-null field annotation; validate a complete input mapping or supply a non-null value."
+    elif _literal_incompatible(annotation, literal, context):
+        message = f"Unchecked `{name}` stores a literal incompatible with `{model.node.name}`'s field type; validate a complete input mapping or supply a value satisfying the stored contract."
+    else:
+        return None
+    return _diagnostic(value, context, message)
+
+
+def _bounded_literal_text(annotation: ast.expr, value: ast.expr) -> bool:
+    length = 0
+    for expression in (annotation, value):
+        for node in ast.walk(expression):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str | bytes):
+                length += len(node.value)
+                if length > _MAX_LITERAL_TEXT:
+                    return False
+    return True
+
+
+def _literal_value(node: ast.expr) -> object:
+    if not _bounded_annotation(node) or any(isinstance(member, ast.Call) for member in ast.walk(node)):
+        return _UNKNOWN_LITERAL
+    try:
+        return ast.literal_eval(node)  # pyright: ignore[reportAny] -- bounded stdlib literal parser boundary exports object.
+    except ValueError, TypeError, SyntaxError, RecursionError:
+        return _UNKNOWN_LITERAL
+
+
+def _literal_incompatible(annotation: ast.expr, value: object, context: PythonFileContext) -> bool:
+    if isinstance(annotation, ast.Constant):
+        return annotation.value is None and value is not None
+    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+        return _literal_incompatible(annotation.left, value, context) and _literal_incompatible(
+            annotation.right, value, context
+        )
+    if isinstance(annotation, ast.Name) and annotation.id in _BUILTINS:
+        return _builtin_incompatible(annotation.id, value)
+    if not isinstance(annotation, ast.Subscript):
+        return False
+    return _subscript_incompatible(annotation, value, context)
+
+
+def _subscript_incompatible(annotation: ast.Subscript, value: object, context: PythonFileContext) -> bool:
+    members = _members(annotation.slice)
+    if _typing_wrapper(annotation, "Annotated", context):
+        return bool(members) and _literal_incompatible(members[0], value, context)
+    if _typing_wrapper(annotation, "Optional", context):
+        return value is not None and _literal_incompatible(annotation.slice, value, context)
+    if _typing_wrapper(annotation, "Union", context):
+        return bool(members) and all(_literal_incompatible(member, value, context) for member in members)
+    domain = _string_domain(annotation, context)
+    if domain is not None:
+        return not any(value == member for member in domain)
+    if isinstance(annotation.value, ast.Name) and annotation.value.id in _GENERICS:
+        return _container_incompatible(annotation.value.id, members, value, context)
+    return False
+
+
+def _builtin_incompatible(kind: str, value: object) -> bool:
+    match kind:
+        case "str":
+            return not isinstance(value, str)
+        case "bytes":
+            return not isinstance(value, bytes)
+        case "bool":
+            return not isinstance(value, bool)
+        case "int":
+            return not isinstance(value, int)
+        case "float":
+            return not isinstance(value, int | float)
+        case "complex":
+            return not isinstance(value, int | float | complex)
+        case "list":
+            return not isinstance(value, list)
+        case "dict":
+            return not isinstance(value, dict)
+        case "set":
+            return not isinstance(value, set)
+        case "frozenset":
+            return not isinstance(value, frozenset)
+        case "tuple":
+            return not isinstance(value, tuple)
+        case _:
+            return False
+
+
+def _container_incompatible(kind: str, members: list[ast.expr], value: object, context: PythonFileContext) -> bool:
+    if _builtin_incompatible(kind, value):
+        return True
+    if kind == "dict" and is_object_mapping(value) and len(members) == _PAIR_ARITY:
+        return any(
+            _literal_incompatible(members[0], key, context) or _literal_incompatible(members[1], item, context)
+            for key, item in value.items()
+        )
+    if _is_literal_items(value):
+        if kind == "tuple" and isinstance(value, tuple):
+            return _tuple_incompatible(members, value, context)
+        if kind in {"list", "set", "frozenset"} and len(members) == 1:
+            return any(_literal_incompatible(members[0], item, context) for item in value)
+    return False
+
+
+def _is_literal_items(value: object) -> TypeIs[list[object] | set[object] | frozenset[object] | tuple[object, ...]]:
+    return isinstance(value, list | set | frozenset | tuple)
+
+
+def _tuple_incompatible(members: list[ast.expr], value: tuple[object, ...], context: PythonFileContext) -> bool:
+    if len(members) == _PAIR_ARITY and _ellipsis(members[1]):
+        return any(_literal_incompatible(members[0], item, context) for item in value)
+    if any(_ellipsis(member) for member in members):
+        return False
+    return len(members) != len(value) or any(
+        _literal_incompatible(member, item, context) for member, item in zip(members, value, strict=False)
+    )
 
 
 def _string_domain(annotation: ast.expr, context: PythonFileContext) -> frozenset[str | None] | None:

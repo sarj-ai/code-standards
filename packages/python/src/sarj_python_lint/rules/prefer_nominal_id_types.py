@@ -21,6 +21,7 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import nodes, walk as walk_ast
+from sarj_python_lint.rules._inherited_contract import inherited_contract
 from sarj_python_lint.rules._nominal_project import NominalSource
 
 
@@ -156,6 +157,7 @@ class PreferNominalIdTypes(Rule):
             "Non-ID role discovery uses exact snake-case names and proven matching carriers; it does not infer brands from names alone. Dependency discovery respects declared workspace members and exclusions, and excludes optional and transitive dependencies.",
             "Rebound aliases, generic aliases, carrier names shadowed by type parameters, and mutated factory namespaces are skipped conservatively across the file.",
             "Generated code, migrations, external adapters, operational context, raw schemas, SQLAlchemy Mapped fields, ambiguous imports, and unlike carrier shapes are excluded.",
+            "Classes with explicit bases, including object, are excluded without requiring an override decorator. Local base declarations do not prove runtime member ownership remains closed; class construction, native hooks and escaped handles can change inheritance. Independent module functions and plain classes remain eligible.",
         ),
         examples=(
             RuleExample(
@@ -344,6 +346,8 @@ def _boundary_nodes(
                 result.append(statement)
             continue
         if not isinstance(statement, ast.ClassDef):
+            continue
+        if inherited_contract(statement):
             continue
         if _name_parts(statement.name) & _OPERATIONAL_NAME_PARTS:
             continue
@@ -719,7 +723,7 @@ def _stringized_annotation(annotation: ast.expr) -> ast.expr | None:
         return None
     try:
         return ast.parse(annotation.value, mode="eval").body
-    except SyntaxError, RecursionError:
+    except SyntaxError, RecursionError, UnicodeError:
         return None
 
 

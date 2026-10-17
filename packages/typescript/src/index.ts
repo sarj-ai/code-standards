@@ -9,6 +9,8 @@ import noKnownValueWidening from "./rules/no-known-value-widening.js";
 import noInvalidTypedMutation from "./rules/no-invalid-typed-mutation.js";
 import noContradictoryTypePredicate from "./rules/no-contradictory-type-predicate.js";
 import noPartialTypePredicate from "./rules/no-partial-type-predicate.js";
+import noInvalidZodCustomParse from "./rules/no-invalid-zod-custom-parse.js";
+import noContradictoryOverloadReturn from "./rules/no-contradictory-overload-return.js";
 /**
  * @fileoverview index — the plugin's rule registry and its two presets; the historical rename map lives in `rules/_renamed-rules.ts`.
  */
@@ -141,6 +143,8 @@ const RULES = {
   "no-invalid-typed-mutation": noInvalidTypedMutation,
   "no-contradictory-type-predicate": noContradictoryTypePredicate,
   "no-partial-type-predicate": noPartialTypePredicate,
+  "no-invalid-zod-custom-parse": noInvalidZodCustomParse,
+  "no-contradictory-overload-return": noContradictoryOverloadReturn,
   "require-button-accessible-name": requireButtonAccessibleName,
   "require-camelcase-properties": requireCamelcaseProperties,
   "require-svg-accessible-name": requireSvgAccessibleName,
@@ -274,10 +278,12 @@ const LIBRARY_IMPORT_POLICY = ["error", {
 const ADVISORY_RULES = [
   "@sarj/excessive-commentary",
   "@sarj/no-bespoke-api-case-conversion",
+  "@sarj/no-contradictory-overload-return",
   "@sarj/no-contradictory-type-predicate",
   "@sarj/no-cors-wildcard-with-credentials",
   "@sarj/no-exception-text-in-5xx-response",
   "@sarj/no-invalid-typed-mutation",
+  "@sarj/no-invalid-zod-custom-parse",
   "@sarj/no-partial-type-predicate",
   "@sarj/no-restated-comment",
   "@sarj/no-restated-jsdoc",
@@ -302,6 +308,8 @@ const RECOMMENDED_RULES = {
   "@sarj/no-invalid-typed-mutation": "warn",
   "@sarj/no-contradictory-type-predicate": "warn",
   "@sarj/no-partial-type-predicate": "warn",
+  "@sarj/no-invalid-zod-custom-parse": "warn",
+  "@sarj/no-contradictory-overload-return": "warn",
   "@sarj/require-button-accessible-name": "error",
   "@sarj/require-camelcase-properties": "error",
   "@sarj/require-svg-accessible-name": "error",
@@ -425,6 +433,8 @@ const STRICT_RULES = {
   "@sarj/no-invalid-typed-mutation": "warn",
   "@sarj/no-contradictory-type-predicate": "warn",
   "@sarj/no-partial-type-predicate": "warn",
+  "@sarj/no-invalid-zod-custom-parse": "warn",
+  "@sarj/no-contradictory-overload-return": "warn",
   "@sarj/require-button-accessible-name": "error",
   "@sarj/require-camelcase-properties": "error",
   "@sarj/require-svg-accessible-name": "error",

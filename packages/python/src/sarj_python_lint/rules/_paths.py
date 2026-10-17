@@ -81,7 +81,7 @@ def _leading_header_bodies(source: str) -> list[str]:
             token = next(tokens)
         except StopIteration:
             break
-        except IndentationError, tokenize.TokenError:
+        except IndentationError, tokenize.TokenError, UnicodeError:
             break
         if token.start[0] > _GENERATED_HEADER_LINES:
             break

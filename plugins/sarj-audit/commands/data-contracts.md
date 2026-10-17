@@ -71,6 +71,64 @@ optional-property semantics accounted for. Runtime input still needs parsing;
 static types, literal tags, and casts do not enforce runtime object validity.
 Do not impose exactness when extra metadata is valid.
 
+Choose identifier types from the entity or established domain role, not the
+parameter's position. A transfer can take the same `AccountId` type for its
+source and destination while rejecting a `WorkspaceId` in either position.
+Reuse the authoritative type from its owning package; independently declaring
+another `UserId` does not make it interchangeable with an existing one. Preserve
+an inherited or external API's primitive representation and adapt it at an owned
+domain boundary. Narrowing an override's parameter to a nominal subtype can
+break callers that the base contract still accepts.
+
+Review collection normalization as an API and ownership decision. Removing
+`None` from a callable can break explicit-null callers even when its body uses
+`items or []`. Replacing that expression with `list(items)` also changes a
+non-empty caller-owned list from an alias to a copy. Establish whether callers
+depend on mutation, identity, omission, or explicit null before choosing a
+required list, an immutable empty default, or a compatible public wrapper.
+
+For dictionary-shaped records, distinguish a closed field contract from an
+extension map and from an API that requires concrete dictionary operations.
+Use `TypedDict` for known required and optional fields, or a named mapping alias
+when extension keys and operations such as `pop`, `update`, or `clear` are part
+of the contract. A `TypedDict` alone does not prove runtime key exactness.
+A dataclass or validation model changes the runtime value; it
+does not preserve dictionary behavior merely by naming the same fields. Keep
+framework serialization hooks and public overrides faithful to their required
+output, including wire keys and normalization.
+
+For positional results, establish whether named fields improve an owned domain
+record or whether a mathematical, tuple, or serialization protocol owns the
+representation. A typed `NamedTuple` can retain tuple operations, but it changes
+exact runtime type identity; a dataclass changes more of the protocol. Check
+construction defaults, positional consumers, and pickling compatibility before
+migrating an established record. Verify the factory's actual authority before
+treating a source-visible factory name as proof of an untyped value.
+
+Make generic outputs follow evidence supplied to the implementation. A caller
+choosing `T` does not prove that a decoded value is `T`; pass a decoder or
+constructor that establishes the result instead of asserting a caller-selected
+return type. Review overloads against their promised input/result pairs. When
+you own callback contracts, function-valued properties can preserve stricter
+parameter variance than methods; keep externally required method APIs intact.
+
+Model collection guarantees that consumers actually require. An open indexed
+map can lack a requested key, and an arbitrary array can be empty. Account for
+the project's indexed-access checks, use a lookup result that represents
+absence, or construct a finite-key or non-empty domain value with evidence.
+Do not assert totality or cardinality merely to remove a caller's check.
+Likewise, optional forbidden fields depend on exact optional-property policy:
+absence and a present `undefined` value need not mean the same thing.
+
+Keep representation, units, and validation separate. A role type such as
+`NewType('NonEmptyText', str)` does not reject empty input. Establish that
+invariant at an owned constructor or parser. Distinct currencies or dimensions
+need compatible operations and explicit conversions as well as distinct input
+types. For time, distinguish an instant from a local wall time that still needs
+a timezone or ambiguity choice. Validate awareness where required; a plain
+`datetime` annotation does not encode it, and local wall times remain legitimate
+domain values.
+
 ## Preserve the evidence after validation
 
 Check the implementation of user-defined type predicates, including both
@@ -107,6 +165,14 @@ or a construction outcome. Choose the contract that carries that evidence to
 the operation that needs it. Changing a predicate's annotation alone does not
 construct a refined value, preserve an external callback contract, or establish
 that mutable data will keep satisfying the check.
+
+A model's construction validation does not establish that later assignments
+rerun field or cross-field validators. Check its assignment policy before
+relying on a persistent invariant. Assignment validation can enforce supported
+field constraints, but a failing after-model validator need not roll back the
+assignment. When every published state must preserve a cross-field invariant,
+use a validated replacement or an atomic transition owner. Preserve intentional
+intermediate mutable states and custom assignment contracts.
 
 Look for escape hatches that can invalidate an established contract: reflective
 property writes, Pydantic `model_construct`, and `model_copy(update=...)` do not

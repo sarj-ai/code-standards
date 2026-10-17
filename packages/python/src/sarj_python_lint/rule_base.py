@@ -167,6 +167,6 @@ class ProjectRule(Rule, ABC):
 def parse_or_none(path: Path, source: str) -> ast.Module | None:
     try:
         tree = ast.parse(source, filename=str(path))
-    except SyntaxError:
+    except SyntaxError, UnicodeError:
         tree = None
     return tree

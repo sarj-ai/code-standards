@@ -16,6 +16,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     parse_or_none,
 )
+from sarj_python_lint.rules._inherited_contract import inherited_contract
 
 
 if TYPE_CHECKING:
@@ -53,6 +54,7 @@ class PreferNamedtupleOverTupleReturn(Rule):
         limitations=(
             "Generated files and documentation examples are excluded.",
             "Explicit provenance-resolved builtin or typing fixed tuple return annotations with at least two slots are reported; variadic tuples remain valid collections.",
+            "Classes with explicit bases, including object, are excluded without requiring an override decorator. Local base declarations do not prove runtime member ownership remains closed; class construction, native hooks and escaped handles can change inheritance. Independent module functions and plain classes remain eligible.",
         ),
         examples=(
             RuleExample(
@@ -107,6 +109,8 @@ class PreferNamedtupleOverTupleReturn(Rule):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or node.returns is None:
                 continue
             if not _is_public_record_tuple(node.returns, imports):
+                continue
+            if inherited_contract(context.parents.get(node)):
                 continue
             diagnostics.append(
                 Diagnostic(

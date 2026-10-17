@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "3008b9cfaee6556b561ec2a827b771832d93209e86f536d550320a1307676eb5",
-  "cliSha256": "de9f52b1a43cdb1d1c6e3738330b1a9327ec090daed532d87f3cf3eb30d67919",
+  "catalogSha256": "925daa2a64a0d3494f27a6b330896870657883f892797afb6a1cb76e6a6d6aee",
+  "cliSha256": "963d2dba6d1cb21510ee871eb8bccdce17c5bda8a30abad860510ce4cb6e809a",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -495,8 +495,73 @@
       ],
       "optionsSchemaSource": null
     },
+    "eslint:no-contradictory-overload-return": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/load.ts",
+              "source": "function load(kind: \"text\"): { kind: \"text\" };\nfunction load(kind: \"count\"): { kind: \"count\" };\nfunction load(kind: \"text\" | \"count\"): { kind: \"text\" | \"count\" } {\n  return kind === \"text\" ? { kind: \"text\" } : { kind: \"count\" };\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/load.ts",
+          "id": "correct-case-results",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Match each literal input with its result"
+        },
+        {
+          "expectedCount": 2,
+          "files": [
+            {
+              "path": "src/load.ts",
+              "source": "function load(kind: \"text\"): { kind: \"text\" };\nfunction load(kind: \"count\"): { kind: \"count\" };\nfunction load(kind: \"text\" | \"count\"): { kind: \"text\" | \"count\" } {\n  return kind === \"text\" ? { kind: \"count\" } : { kind: \"text\" };\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/load.ts",
+          "id": "inverted-case-results",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not swap domain variants behind overloads"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:no-contradictory-type-predicate": {
       "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/guard.ts",
+              "source": "function ready(value: \"ready\" | null): value is \"ready\" {\n  return typeof value === \"string\";\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/guard.ts",
+          "id": "closed-literal-check",
+          "outcome": "accept",
+          "scenarioId": "closed-literal-domain",
+          "title": "A closed input supplies the literal evidence"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/guard.ts",
+              "source": "function nonPrimitive(value: unknown): value is object {\n  return (typeof value === \"object\" && value !== null) || typeof value === \"function\";\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/guard.ts",
+          "id": "complete-object-check",
+          "outcome": "accept",
+          "scenarioId": "intrinsic-null",
+          "title": "Exclude null and recognize non-primitive functions"
+        },
         {
           "expectedCount": 0,
           "files": [
@@ -526,6 +591,66 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not promise a different primitive"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/guard.ts",
+              "source": "function impossible(value: unknown): value is never {\n  return typeof value === \"number\";\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/guard.ts",
+          "id": "empty-domain-check-succeeds",
+          "outcome": "reject",
+          "scenarioId": "empty-domain",
+          "title": "Numbers cannot belong to an empty target"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/guard.ts",
+              "source": "function impossible(value: unknown): value is never {\n  return false;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/guard.ts",
+          "id": "empty-domain-never-succeeds",
+          "outcome": "accept",
+          "scenarioId": "empty-domain",
+          "title": "An empty target has no successful member"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/guard.ts",
+              "source": "function nonPrimitive(value: unknown): value is object {\n  return typeof value === \"object\";\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/guard.ts",
+          "id": "object-check-admits-null",
+          "outcome": "reject",
+          "scenarioId": "intrinsic-null",
+          "title": "A typeof-object check also accepts null"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/guard.ts",
+              "source": "function ready(value: unknown): value is \"ready\" {\n  return typeof value === \"string\";\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/guard.ts",
+          "id": "overclaimed-literal",
+          "outcome": "reject",
+          "scenarioId": "closed-literal-domain",
+          "title": "A string check admits other strings"
         }
       ],
       "optionsSchemaSource": null
@@ -1341,6 +1466,53 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not bypass field compatibility through a generic mutation API"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-invalid-zod-custom-parse": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/value.ts",
+              "source": "import { z } from \"zod\";\nconst value = z.custom<string>().parse(1);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/value.ts",
+          "id": "fabricated-string",
+          "installedDependencies": [
+            {
+              "module": "zod",
+              "version": "4.6.7"
+            }
+          ],
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An unchecked parser returns the number unchanged"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/value.ts",
+              "source": "import { z } from \"zod\";\nconst value = z.custom<string>((value) => typeof value === \"string\").parse(1);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/value.ts",
+          "id": "validated-string",
+          "installedDependencies": [
+            {
+              "module": "zod",
+              "version": "4.6.7"
+            }
+          ],
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Validate a primitive at the boundary"
         }
       ],
       "optionsSchemaSource": null
@@ -8369,6 +8541,21 @@
           "files": [
             {
               "path": "app/models.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Payload(BaseModel):\n    labels: list[str]\n\n\npayload = Payload.model_construct(labels=[3])\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "construct-invalid-list-member",
+          "outcome": "reject",
+          "scenarioId": "stored-literal-contract",
+          "title": "Unchecked list elements must satisfy the stored field type"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
               "source": "from typing import Literal\nfrom pydantic import BaseModel\n\n\nclass Job(BaseModel):\n    kind: Literal[\"queued\", \"done\"]\n\n\njob = Job.model_construct(kind=\"unknown\")\n"
             }
           ],
@@ -8378,6 +8565,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Unchecked construction stores a tag outside the declared vocabulary"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Payload(BaseModel):\n    labels: list[str]\n\n\npayload = Payload.model_construct(labels=[\"ready\"])\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "construct-trusted-list-members",
+          "outcome": "accept",
+          "scenarioId": "stored-literal-contract",
+          "title": "Trusted list elements preserve the field contract"
         },
         {
           "expectedCount": 0,
@@ -9413,6 +9615,71 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A container check does not prove string keys"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-shallow-record-type-guard": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/guards.py",
+              "source": "from typing import TypedDict, TypeGuard\n\n\nclass Payload(TypedDict):\n    text: str\n\n\ndef is_payload(value: object) -> TypeGuard[dict[object, object]]:\n    return isinstance(value, dict)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/guards.py",
+          "id": "honest-container-contract",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Unchecked contents retain a container contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/guards.py",
+              "source": "from typing import NamedTuple, TypeGuard\n\n\nclass Payload(NamedTuple):\n    text: str\n\n\ndef is_payload(value: object) -> TypeGuard[Payload]:\n    return isinstance(value, Payload)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/guards.py",
+          "id": "nominal-named-tuple-membership",
+          "outcome": "accept",
+          "scenarioId": "named-tuple-shape",
+          "title": "Check the actual named tuple class for nominal membership"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/guards.py",
+              "source": "from typing import NamedTuple, TypeGuard\n\n\nclass Payload(NamedTuple):\n    text: str\n\n\ndef is_payload(value: object) -> TypeGuard[Payload]:\n    return isinstance(value, tuple)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/guards.py",
+          "id": "unchecked-named-attribute",
+          "outcome": "reject",
+          "scenarioId": "named-tuple-shape",
+          "title": "Tuple membership does not establish a named record"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/guards.py",
+              "source": "from typing import TypedDict, TypeGuard\n\n\nclass Payload(TypedDict):\n    text: str\n\n\ndef is_payload(value: object) -> TypeGuard[Payload]:\n    return isinstance(value, dict)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/guards.py",
+          "id": "unchecked-required-key",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A dictionary check does not prove a required key"
         }
       ],
       "optionsSchemaSource": null
