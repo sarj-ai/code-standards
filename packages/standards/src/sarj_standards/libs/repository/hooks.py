@@ -15,6 +15,8 @@ from types import MappingProxyType
 from typing import Final
 
 from sarj_standards.libs.adoption import hooks as adoption_hooks, transaction
+from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 _VERSION: Final = "2.2.1"
@@ -61,7 +63,8 @@ def _install_managed_hooks(
     uvx: Path,
 ) -> None:
     subprocess.run([str(binary), "install", "-f"], cwd=root, check=True)  # ruff: ignore[subprocess-without-shell-equals-true]
-    hook_paths = _hook_paths(root)
+    configured = _configured_hooks(root, binary)
+    hook_paths = [path for path in _hook_paths(root) if path.name in configured]
     if hook_paths:
         transaction.atomic_write_bytes(
             durable_binary.parent,
@@ -86,6 +89,17 @@ def _install_managed_hooks(
             transaction.atomic_write_text(hook_path.parent, hook_path, contents)
     subprocess.run([str(binary), "validate"], cwd=root, check=True)  # ruff: ignore[subprocess-without-shell-equals-true]
     subprocess.run([str(binary), "check-install"], cwd=root, check=True)  # ruff: ignore[subprocess-without-shell-equals-true]
+
+
+def _configured_hooks(root: Path, binary: Path) -> frozenset[str]:
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [str(binary), "dump", "--format", "json"], cwd=root, check=True, capture_output=True, text=True
+    )
+    configuration = parse_json(completed.stdout)
+    if not is_object_mapping(configuration):
+        msg = "Lefthook resolved configuration must be a JSON object"
+        raise ValueError(msg)
+    return frozenset(name for name in configuration if isinstance(name, str))
 
 
 def _harden_precommit_entry(contents: str, root: Path) -> str:

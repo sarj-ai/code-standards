@@ -257,6 +257,7 @@ def _upgrade_scaffold(
         profile=adopted.profile,
         hook_manager=adopted.hook_manager,
         allow_existing_nested_eslint=True,
+        resolved_ecosystems=detected_ecosystems,
     )
     if scaffold_plan.errors:
         raise ValueError("; ".join(scaffold_plan.errors))
