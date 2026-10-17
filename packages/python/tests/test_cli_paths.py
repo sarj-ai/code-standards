@@ -14,24 +14,16 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def test_expand_paths_skips_uv_cache(tmp_path: Path) -> None:
+@pytest.mark.parametrize("ignored", ["node_modules", ".venv", ".git", ".uv-cache", "build"])
+def test_expand_paths_never_enters_ignored_directories(tmp_path: Path, ignored: str) -> None:
     source = tmp_path / "src" / "app.py"
     source.parent.mkdir()
     source.write_text("value = 1\n", encoding="utf-8")
-    cached = tmp_path / ".uv-cache" / "archive" / "vendored.py"
-    cached.parent.mkdir(parents=True)
-    cached.write_text("value = 2\n", encoding="utf-8")
-
-    assert expand_paths([tmp_path]) == [source]
-
-
-@pytest.mark.parametrize("ignored", ["node_modules", ".venv", ".git", ".uv-cache", "build"])
-def test_expand_paths_never_enters_ignored_directories(tmp_path: Path, ignored: str) -> None:
-    source = tmp_path / "app.py"
-    source.write_text("value = 1\n", encoding="utf-8")
     excluded = tmp_path / ignored
     excluded.mkdir()
-    (excluded / "dependency.py").write_text("value = 2\n", encoding="utf-8")
+    archive = excluded / "archive"
+    archive.mkdir()
+    (archive / "dependency.py").write_text("value = 2\n", encoding="utf-8")
 
     with cProfile.Profile() as profile:
         paths = expand_paths([tmp_path])
@@ -39,7 +31,7 @@ def test_expand_paths_never_enters_ignored_directories(tmp_path: Path, ignored: 
     scans = sum(
         entry.callcount for entry in profile.getstats() if isinstance(entry.code, str) and "scandir" in entry.code
     )
-    assert scans == 1
+    assert scans == 2
 
 
 def test_explicit_file_inside_ignored_directory_remains_supported(tmp_path: Path) -> None:

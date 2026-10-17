@@ -34,6 +34,7 @@ _FAIL = "fail"
 # Enough of the operand to identify it in the message without pasting a screenful.
 _OPERAND_PREVIEW_CHARS = 40
 _UNKNOWN = object()
+_DEFERRED_TRUTHY = object()
 
 
 class NoTautologicalExpect(Rule):
@@ -53,9 +54,10 @@ class NoTautologicalExpect(Rule):
         category=RuleCategory.TESTING,
         aliases=("no-tautological-expect",),
         limitations=(
-            "Detection covers truthy scalar constants, definitely non-empty list/set/dict displays, and directly asserted generator expressions or lambdas.",
+            "Detection covers truthy scalar constants, definitely non-empty list/set/dict displays, and directly asserted or locally bound generator expressions and lambdas.",
             "Generator consumption, lambda invocation, comprehensions, and runtime iterator/callable values are not inferred; empty universal-quantification contracts remain valid.",
             "Test-local immutable scalar bindings and their aliases are tracked only through straight-line assignments; calls, control flow, mutable values, and global/nonlocal writes invalidate tracking.",
+            "Locally created generator/lambda objects and aliases are tracked for truthiness only; their creation clears earlier setup facts, and comparisons, consumption, invocation, and runtime-created iterators/callables are not inferred.",
             "Pure Boolean conditions, compatible numeric/string/bytes ordering and chained comparisons over known scalar setup are evaluated; proven-true pure assertions retain bindings because their messages do not execute.",
             "Ruff owns asserted strings and tuples, literal comparisons and identity, and unittest-style assertion methods.",
             "Generated files, always-failing assertions, deliberate match-arm success markers, and runtime-value comparisons are excluded.",
@@ -69,7 +71,7 @@ class NoTautologicalExpect(Rule):
                 files=(
                     ExampleFile.python(
                         "tests/test_service.py",
-                        "def test_values(rows):\n    assert (row.is_valid for row in rows)\n",
+                        "def test_values(rows):\n    checks = (row.is_valid for row in rows)\n    assert checks\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_service.py"),
@@ -84,7 +86,7 @@ class NoTautologicalExpect(Rule):
                 files=(
                     ExampleFile.python(
                         "tests/test_service.py",
-                        "def test_values(rows):\n    assert all(row.is_valid for row in rows)\n",
+                        "def test_values(rows):\n    checks = (row.is_valid for row in rows)\n    assert all(checks)\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_service.py"),
@@ -202,7 +204,7 @@ def _function_bound_tautologies(function: ast.FunctionDef | ast.AsyncFunctionDef
                 isinstance(node, ast.Name) and node.id in bindings for node in ast.walk(statement.test)
             )
             if references_setup:
-                found.append(_Tautology(statement, "the condition follows only from unchanged scalar setup"))
+                found.append(_Tautology(statement, "the condition follows only from unchanged test-local setup"))
             continue
         bindings.clear()
     return found
@@ -213,6 +215,11 @@ def _record_scalar_assignment(statement: ast.stmt, bindings: dict[str, object]) 
         case (
             ast.Assign(targets=[ast.Name(id=name)], value=value) | ast.AnnAssign(target=ast.Name(id=name), value=value)
         ) if value is not None:
+            if isinstance(value, (ast.GeneratorExp, ast.Lambda)):
+                # Outer iterables and defaults execute now and can write earlier bindings.
+                bindings.clear()
+                bindings[name] = _DEFERRED_TRUTHY
+                return True
             scalar = _scalar_value(value, bindings)
             if scalar is not _UNKNOWN:
                 bindings[name] = scalar
@@ -258,7 +265,7 @@ def _scalar_condition(node: ast.expr, bindings: dict[str, object]) -> bool | Non
 
 
 def _scalar_relation(left: object, right: object, op: ast.cmpop) -> bool | None:
-    if left is _UNKNOWN or right is _UNKNOWN:
+    if left is _UNKNOWN or right is _UNKNOWN or left is _DEFERRED_TRUTHY or right is _DEFERRED_TRUTHY:
         return None
     match op:
         case ast.Eq():

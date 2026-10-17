@@ -186,32 +186,22 @@ def test_legacy_ruff_config_aliases_have_identical_enforcement() -> None:
     assert 'export { createConfig, default } from "./eslint.strict.mjs";' in ESLINT_APPLICATION.read_text()
 
 
-def test_all_managed_configs_enforce_library_catalog() -> None:
-    application_ruff = manifest.as_table(tomllib.loads(RUFF_STRICT.read_text()))
-    application_lint = manifest.table_field(application_ruff, "lint")
-    application_tidy = manifest.table_field(application_lint, "flake8-tidy-imports")
-    application_bans = manifest.table_field(application_tidy, "banned-api")
-    standard_ruff = manifest.as_table(tomllib.loads(RUFF_STRICT.read_text()))
-    standard_lint = manifest.table_field(standard_ruff, "lint")
-    standard_tidy = manifest.table_field(standard_lint, "flake8-tidy-imports")
-    standard_bans = manifest.table_field(standard_tidy, "banned-api")
-    assert "argparse" in application_bans
-    assert "pandas" in application_bans
-    assert "argparse" in standard_bans
-    assert "pandas" in standard_bans
+def test_canonical_configs_include_library_catalog() -> None:
+    parsed = manifest.as_table(tomllib.loads(RUFF_STRICT.read_text()))
+    lint = manifest.table_field(parsed, "lint")
+    tidy = manifest.table_field(lint, "flake8-tidy-imports")
+    bans = manifest.table_field(tidy, "banned-api")
+    assert "argparse" in bans
+    assert "pandas" in bans
 
-    application_eslint = ESLINT_STRICT.read_text()
-    standard_eslint = ESLINT_STRICT.read_text()
-    assert '"name": "axios"' in application_eslint
-    assert '"name": "lodash"' in application_eslint
-    assert 'name: "@clerk/nextjs"' in application_eslint
-    assert '"group": ["axios/*"]' in application_eslint
-    assert '"@sarj/no-restricted-library-load"' in application_eslint
-    assert '"@sarj/prefer-native-random-uuid": "error"' in application_eslint
-    assert '"module": "axios"' in application_eslint
-    assert '"name": "axios"' in standard_eslint
-    assert '"name": "lodash"' in standard_eslint
-    assert '"@sarj/no-restricted-library-load"' in standard_eslint
+    eslint = ESLINT_STRICT.read_text()
+    assert '"name": "axios"' in eslint
+    assert '"name": "lodash"' in eslint
+    assert 'name: "@clerk/nextjs"' in eslint
+    assert '"group": ["axios/*"]' in eslint
+    assert '"@sarj/no-restricted-library-load"' in eslint
+    assert '"@sarj/prefer-native-random-uuid": "error"' in eslint
+    assert '"module": "axios"' in eslint
 
 
 def test_ruff_config_is_valid_toml() -> None:
@@ -748,7 +738,7 @@ def test_cli_path_ruff() -> None:
     assert proc.stdout.strip() == str(RUFF_STRICT)
 
 
-def test_cli_unknown_subcommand_exits_nonzero(tmp_path: Path) -> None:
+def test_cli_unknown_subcommand_reports_usage_error(tmp_path: Path) -> None:
     proc = subprocess.run(
         [sys.executable, "-m", "sarj_standards", "bogus"],
         capture_output=True,
@@ -756,7 +746,8 @@ def test_cli_unknown_subcommand_exits_nonzero(tmp_path: Path) -> None:
         cwd=tmp_path,
         check=False,
     )
-    assert proc.returncode != 0
+    assert proc.returncode == 2
+    assert "No such command 'bogus'" in proc.stderr
 
 
 def test_ruff_ignores_sections_forbidden_by_typed_docstring_policy() -> None:
