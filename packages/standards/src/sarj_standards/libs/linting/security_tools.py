@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 
 SecurityTool = Literal["zizmor", "checkov"]
-VERSIONS: Final[Mapping[SecurityTool, str]] = MappingProxyType({"zizmor": "1.30.1", "checkov": "3.3.28"})
+VERSIONS: Final[Mapping[SecurityTool, str]] = MappingProxyType({"zizmor": "1.31.1", "checkov": "3.3.28"})
 TOOLS: Final[tuple[SecurityTool, ...]] = ("zizmor", "checkov")
 TERRAFORM_CHECKS: Final = ("CKV_GCP_41", "CKV_GCP_95", "CKV_GCP_97")
 KUBERNETES_CHECKS: Final = ("CKV_K8S_10", "CKV_K8S_12", "CKV_K8S_13", "CKV_K8S_43")
@@ -69,8 +69,8 @@ ZIZMOR_RULES: Final = frozenset(
         "use-trusted-publishing",
     }
 )
-# These v1.30.1 audits return AuditLoadError::Skip when no_online_audits is set.
-# https://github.com/zizmorcore/zizmor/tree/v1.30.1/crates/zizmor/src/audit
+# These v1.31.1 audits return AuditLoadError::Skip when no_online_audits is set.
+# https://github.com/zizmorcore/zizmor/tree/v1.31.1/crates/zizmor/src/audit
 ZIZMOR_ONLINE_ONLY: Final = frozenset(
     {"impostor-commit", "known-vulnerable-actions", "ref-confusion", "ref-version-mismatch", "stale-action-refs"}
 )

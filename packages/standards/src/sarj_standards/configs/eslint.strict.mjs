@@ -154,6 +154,7 @@ const DEFAULT_PLAYWRIGHT_TEST_FILES = [
   "**/*.{playwright,pw}.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
   "**/playwright/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
 ];
+const PLAYWRIGHT_LOCATOR_AWAIT_RULE = ["error", { includePageLocatorMethods: true }];
 const DEFAULT_BUN_TEST_FILES = [
   "**/*.bun.{test,spec}.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
   "**/bun/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
@@ -555,6 +556,32 @@ if (missingUnicornRules.length > 0) {
 // instead of silently weakening the strict configuration on newer ESLint.
 const compatibleReact = fixupPluginRules(react);
 
+// Captured Node values may be functions or other non-serializable objects.
+// Keep upstream browser-scope diagnostics without automatically moving those
+// values into Playwright's serialization boundary.
+const unsafeBrowserReferences = playwright.rules["no-unsafe-references"];
+const manualBrowserReferences = {
+  ...unsafeBrowserReferences,
+  meta: { ...unsafeBrowserReferences.meta, hasSuggestions: false },
+  create(context) {
+    return unsafeBrowserReferences.create(Object.create(context, {
+      report: {
+        value(descriptor) {
+          const diagnostic = { ...descriptor };
+          delete diagnostic.fix;
+          delete diagnostic.suggest;
+          context.report(diagnostic);
+        },
+      },
+    }));
+  },
+};
+delete manualBrowserReferences.meta.fixable;
+const manualPlaywright = {
+  ...playwright,
+  rules: { ...playwright.rules, "no-unsafe-references": manualBrowserReferences },
+};
+
 const SHADCN_IMPLEMENTATION_RULES = new Set([
   "no-restyle",
   "no-arbitrary-values",
@@ -703,7 +730,7 @@ export function createConfig(options = {}) {
       "node-test": nodeTest,
       jest,
       "testing-library": testingLibrary,
-      playwright,
+      playwright: manualPlaywright,
       zod,
     },
     languageOptions: {
@@ -1494,6 +1521,7 @@ export function createConfig(options = {}) {
       "vitest/prefer-called-once": HAS_VITEST ? "error" : "off",
       "vitest/prefer-expect-resolves": HAS_VITEST ? "error" : "off",
       "vitest/prefer-to-be": HAS_VITEST ? "error" : "off",
+      "vitest/require-local-test-context-for-concurrent-snapshots": HAS_VITEST ? "warn" : "off",
 
       // eslint-plugin-jest can parse Bun's Jest-compatible `bun:test` API when
       // globalPackage is set above. These rules intentionally mirror only the
@@ -1504,6 +1532,12 @@ export function createConfig(options = {}) {
       "node-test/no-assert-throws-async": HAS_NODE ? "error" : "off",
       "node-test/no-unneeded-async-rejects-callback": HAS_NODE ? "error" : "off",
       "node-test/no-useless-assertion": HAS_NODE ? "error" : "off",
+      // Upstream does not recognize synchronous mock.timers.runAll() flushing.
+      // Valid fake-clock tests can use a reasoned, exact local suppression.
+      "node-test/no-late-test-activity": HAS_NODE ? "warn" : "off",
+      "node-test/no-callback-and-promise": HAS_NODE ? "warn" : "off",
+      "node-test/no-mock-timers-destructured-import": HAS_NODE ? "warn" : "off",
+      "node-test/no-duplicate-mock-timers-enable": HAS_NODE ? "warn" : "off",
 
       "testing-library/no-unnecessary-act": HAS_TESTING_LIBRARY
         ? ["error", { isStrict: false }]
@@ -1533,7 +1567,19 @@ export function createConfig(options = {}) {
       ...Object.fromEntries(Object.keys(vitest.rules).map((name) => [`vitest/${name}`, "off"])),
       ...Object.fromEntries(Object.keys(jest.rules).map((name) => [`jest/${name}`, "off"])),
       "playwright/no-unnecessary-assertions": "error",
-      "playwright/missing-playwright-await": "error",
+      // Typed locator promises already belong to no-floating-promises. Expand
+      // upstream's syntax-only coverage without reporting that call twice.
+      "playwright/missing-playwright-await": HAS_TYPE_PROJECT ? "error" : PLAYWRIGHT_LOCATOR_AWAIT_RULE,
+      "playwright/no-unsafe-references": "warn",
+    },
+  }] : []),
+
+  ...(HAS_PLAYWRIGHT && HAS_TYPE_PROJECT && SYNTAX_ONLY_CONFIG_FILES.length > 0 ? [{
+    files: PLAYWRIGHT_TEST_FILES.flatMap(testPattern =>
+      SYNTAX_ONLY_CONFIG_FILES.map(syntaxPattern => [testPattern, syntaxPattern])
+    ),
+    rules: {
+      "playwright/missing-playwright-await": PLAYWRIGHT_LOCATOR_AWAIT_RULE,
     },
   }] : []),
 

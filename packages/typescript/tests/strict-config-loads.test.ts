@@ -366,6 +366,20 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       },
       {
         frameworks: ["testing-library"],
+        path: "src/mixed-update.test.tsx",
+        source: 'import { act, render } from "@testing-library/react"; act(() => { render(<main />); });',
+        nearMiss: 'import { act, render } from "@testing-library/react"; act(() => { render(<main />); store.setState({ ready: true }); });',
+        expected: ["testing-library/no-unnecessary-act"],
+      },
+      {
+        frameworks: ["testing-library"],
+        path: "src/custom-query.test.tsx",
+        source: 'import { screen } from "@testing-library/react"; screen.findByText("ready");',
+        nearMiss: 'import { render } from "@testing-library/react"; const elements = new Map([["ready", document.createElement("main")]]); const findByDataCy = key => elements.get(key); render(<main />); findByDataCy("ready");',
+        expected: ["testing-library/await-async-queries"],
+      },
+      {
+        frameworks: ["testing-library"],
         path: "src/query.test.tsx",
         source: 'import { screen } from "@testing-library/react"; void screen.findByText("ready");',
         nearMiss: 'import { screen } from "@testing-library/react"; const pending = screen.findByText("ready"); await pending;',

@@ -7,6 +7,7 @@ from typing import Annotated
 import typer
 
 from sarj_standards.libs.adoption import devops, lifecycle, manifest
+from sarj_standards.libs.linting import security_tools
 from sarj_standards.libs.linting.devops_tools import checked_tool
 
 
@@ -23,7 +24,14 @@ def setup(root: Path) -> int:
     # exercise their tools regardless of the repository's consumer opt-outs.
     files = (root / ".github/workflows/ci.yml",)
     capabilities = (*manifest.DEVOPS_ANALYZERS, "knip")
-    commands = devops.install_commands(root, files, capabilities=capabilities, prepared=True)
+    commands = (
+        *devops.install_commands(root, files, capabilities=capabilities, prepared=True),
+        lifecycle.Command(
+            "Pinned GitHub Actions security integration runtime",
+            (*security_tools.command("zizmor", offline=False), "--version"),
+            root,
+        ),
+    )
     status = lifecycle.execute(commands)
     if status:
         return status
