@@ -570,3 +570,158 @@ def values(flag):
 """
     [diagnostic] = _check(src)
     assert "2 or 3-value record" in diagnostic.message
+
+
+@pytest.mark.parametrize(
+    ("module_setup", "class_setup", "decorator", "expected_count"),
+    [
+        pytest.param("from pytest import fixture", "fixture = custom", "fixture", 0, id="class-shadows-function"),
+        pytest.param("import pytest", "pytest = custom", "pytest.fixture", 0, id="class-shadows-module"),
+        pytest.param("", "from pytest import fixture as shared", "shared", 1, id="class-imports-function"),
+        pytest.param("", "import pytest as shared", "shared.fixture", 1, id="class-imports-module"),
+        pytest.param("", "from pytest_asyncio import fixture as shared", "shared", 1, id="class-imports-asyncio"),
+        pytest.param(
+            "from pytest import fixture",
+            "fixture = custom\n    del fixture",
+            "fixture",
+            1,
+            id="class-delete-restores-module-fallback",
+        ),
+        pytest.param(
+            "from pytest import fixture",
+            "def fixture(self):\n        return custom",
+            "fixture",
+            0,
+            id="earlier-method-shadows-function",
+        ),
+    ],
+)
+def test_class_fixture_decorator_uses_its_definition_namespace(
+    module_setup: str, class_setup: str, decorator: str, expected_count: int
+) -> None:
+    source = f"""\
+{module_setup}
+class TestHelpers:
+    {class_setup}
+    @{decorator}
+    def pair(self):
+        return left, right
+"""
+    diagnostics = _check(source)
+    assert len(diagnostics) == expected_count
+    if diagnostics:
+        assert "fixture `pair` exposes an unnamed 2-value record" in diagnostics[0].message
+
+
+def test_class_name_binds_after_its_decorated_members() -> None:
+    source = """\
+import pytest
+class pytest:
+    @pytest.fixture
+    def pair(self):
+        return left, right
+"""
+    [diagnostic] = _check(source)
+    assert diagnostic.line == 5
+
+
+def test_class_rebinding_does_not_change_module_or_earlier_method_provider() -> None:
+    source = """\
+from pytest import fixture
+class TestHelpers:
+    @fixture
+    def first(self):
+        return left, right
+    fixture = custom
+    @fixture
+    def ordinary_helper(self):
+        return left, right
+@fixture
+def second():
+    return left, right
+"""
+    assert [diagnostic.line for diagnostic in _check(source)] == [5, 12]
+
+
+@pytest.mark.parametrize(
+    ("imports", "decorator", "expected_count"),
+    [
+        pytest.param("from .pytest import fixture", "fixture", 0, id="relative-pytest-is-unrelated"),
+        pytest.param("from .pytest_asyncio import fixture", "fixture", 0, id="relative-asyncio-is-unrelated"),
+        pytest.param("from pytest import fixture, hookimpl as fixture", "fixture", 0, id="last-symbol-wins"),
+        pytest.param("from pytest import hookimpl as fixture, fixture", "fixture", 1, id="last-fixture-wins"),
+        pytest.param("import pytest as shared, framework as shared", "shared.fixture", 0, id="last-module-wins"),
+        pytest.param("import framework as shared, pytest as shared", "shared.fixture", 1, id="last-pytest-wins"),
+    ],
+)
+def test_fixture_import_proof_tracks_absolute_provider_and_final_alias(
+    imports: str, decorator: str, expected_count: int
+) -> None:
+    source = f"{imports}\n@{decorator}\ndef pair():\n    return left, right\n"
+    assert len(_check(source)) == expected_count
+
+
+@pytest.mark.parametrize(
+    ("options", "fixture_name"),
+    [
+        pytest.param("name='stores'", "stores", id="public-name"),
+        pytest.param("name=''", "_build_stores", id="empty-name-fallback"),
+        pytest.param("name=fixture_name", "_build_stores", id="dynamic-name-fallback"),
+        pytest.param("scope='module'", "_build_stores", id="implementation-name"),
+    ],
+)
+def test_diagnostic_identifies_literal_public_fixture_name(options: str, fixture_name: str) -> None:
+    source = f"from pytest import fixture as shared\n@shared({options})\ndef _build_stores():\n    return left, right\n"
+    [diagnostic] = _check(source)
+    assert f"fixture `{fixture_name}` exposes an unnamed 2-value record" in diagnostic.message
+
+
+@pytest.mark.parametrize("mutation", ["pytest.fixture = custom", "del pytest.fixture"])
+def test_explicit_fixture_attribute_replacement_removes_provider_proof(mutation: str) -> None:
+    source = f"import pytest\n{mutation}\n@pytest.fixture\ndef pair():\n    return left, right\n"
+    assert _check(source) == []
+
+
+def test_unrelated_attribute_assignment_preserves_fixture_provider() -> None:
+    source = "import pytest\npytest.cache = custom\n@pytest.fixture\ndef pair():\n    return left, right\n"
+    [diagnostic] = _check(source)
+    assert diagnostic.line == 5
+
+
+@pytest.mark.parametrize(
+    ("setup", "decorator", "expected_count"),
+    [
+        pytest.param("pytest.fixture = custom\nimport pytest", "pytest.fixture", 0, id="cached-module-reimport"),
+        pytest.param("pytest.fixture = custom\nimport pytest as shared", "shared.fixture", 0, id="new-root-alias"),
+        pytest.param("import pytest as shared\npytest.fixture = custom", "shared.fixture", 0, id="existing-root-alias"),
+        pytest.param("pytest.fixture = custom\nfrom pytest import fixture", "fixture", 0, id="new-function-capture"),
+        pytest.param("from pytest import fixture\npytest.fixture = custom", "fixture", 1, id="cached-function-capture"),
+        pytest.param("class Configure:\n    pytest.fixture = custom", "pytest.fixture", 0, id="executed-class-body"),
+        pytest.param(
+            "class Configure:\n    import pytest as shared\n    shared.fixture = custom",
+            "pytest.fixture",
+            0,
+            id="class-local-module-alias",
+        ),
+        pytest.param(
+            "class Configure:\n    pytest = framework\n    pytest.fixture = custom",
+            "pytest.fixture",
+            1,
+            id="class-shadow-does-not-mutate-provider",
+        ),
+        pytest.param(
+            "class Configure:\n    def later(self):\n        pytest.fixture = custom",
+            "pytest.fixture",
+            1,
+            id="method-body-is-deferred",
+        ),
+        pytest.param(
+            "pytest.fixture = custom\nimport pytest_asyncio", "pytest_asyncio.fixture", 1, id="other-provider"
+        ),
+    ],
+)
+def test_provider_mutation_order_preserves_only_captured_native_decorators(
+    setup: str, decorator: str, expected_count: int
+) -> None:
+    source = f"import pytest\n{setup}\n@{decorator}\ndef pair():\n    return left, right\n"
+    assert len(_check(source)) == expected_count

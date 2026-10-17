@@ -3,7 +3,7 @@
   "campaign": "expert-type-design-50-passes-20261016",
   "baselineRevision": "e4d31665407603d2b4d35b0beedfcca9f1b3dba6",
   "integration": {
-    "mainRevision": "87cabae880402a132e630d645fcf76a7def46e28",
+    "mainRevision": "7e0d0db64f82e3e121299827dd15978dd2c1422a",
     "bundleVersion": "8.76.0",
     "semanticEvidence": "All29 reviewed detector/helper/index pins are unchanged by integration. Historical baseline remains e4d31665407603d2b4d35b0beedfcca9f1b3dba6; corpus and native proofs remain scoped to those sources.",
     "typescriptTimingScope": "The normal-preset panel measures the custom plugin strict preset, excluding the shared consumer preset. Concurrent upstream framework safety toggles are outside that measured scope; this is not timing of the final full consumer configuration.",
@@ -16,41 +16,48 @@
     },
     "preservedPullRequests": [
       "https://github.com/sarj-ai/code-standards/pull/1508",
-      "https://github.com/sarj-ai/code-standards/pull/1509"
+      "https://github.com/sarj-ai/code-standards/pull/1509",
+      "https://github.com/sarj-ai/code-standards/pull/1505"
     ],
-    "unchangedPackageSuites": {
-      "typescript": {
-        "fileCount": 379,
-        "treeDigest": "c98648e09bf11765973ced8e581c116e2541cb0cb18437bfe63e9a197290c7a7",
-        "unchangedAfterIntegration": true
-      },
-      "python": {
-        "fileCount": 428,
-        "treeDigest": "8250cd1f1d1c902263dee1402ccc9ffec22037c3e733d6bfc9ec85006a5b43e4",
-        "unchangedAfterIntegration": true
-      },
-      "bootstrap": {
-        "fileCount": 9,
-        "treeDigest": "994c6539790bce45d003fd743b6129b7f3afab24cb168e7db356bb3ff35e7cad",
-        "unchangedAfterIntegration": true
-      },
-      "contracts": {
-        "fileCount": 12,
-        "treeDigest": "65e58f35fc95d6877ed9dcebbf13b21ccb4c1bd5ae1ec731de75f1837e60843f",
-        "unchangedAfterIntegration": true
-      },
-      "sql": {
-        "fileCount": 68,
-        "treeDigest": "f763573160435617bb0c824078a6364771ffae0f709eab615b4b1878e287ae67",
-        "unchangedAfterIntegration": true
-      },
-      "iac": {
-        "fileCount": 47,
-        "treeDigest": "2c0110e3224c91403fd09fd644cad6b411a78576f729d81944aec9e875dacbcc",
-        "unchangedAfterIntegration": true
+    "additionalIntegration": "Adoption/hooks patch8.75.1 changes only Standards runtime/tests and metadata. Six other complete package trees remain byte-identical; carry forward their successful tests and rerun the full Standards wheel suite and affected canonical gates.",
+    "previousIntegrationUnchangedPackageSuites": {
+      "checkpointRevision": "87cabae880402a132e630d645fcf76a7def46e28",
+      "scope": "These trees were byte-identical across the8b-to87adoption integration only. Final7e testing integration reruns all package suites.",
+      "packages": {
+        "typescript": {
+          "fileCount": 379,
+          "treeDigest": "c98648e09bf11765973ced8e581c116e2541cb0cb18437bfe63e9a197290c7a7",
+          "unchangedAfterIntegration": true
+        },
+        "python": {
+          "fileCount": 428,
+          "treeDigest": "8250cd1f1d1c902263dee1402ccc9ffec22037c3e733d6bfc9ec85006a5b43e4",
+          "unchangedAfterIntegration": true
+        },
+        "bootstrap": {
+          "fileCount": 9,
+          "treeDigest": "994c6539790bce45d003fd743b6129b7f3afab24cb168e7db356bb3ff35e7cad",
+          "unchangedAfterIntegration": true
+        },
+        "contracts": {
+          "fileCount": 12,
+          "treeDigest": "65e58f35fc95d6877ed9dcebbf13b21ccb4c1bd5ae1ec731de75f1837e60843f",
+          "unchangedAfterIntegration": true
+        },
+        "sql": {
+          "fileCount": 68,
+          "treeDigest": "f763573160435617bb0c824078a6364771ffae0f709eab615b4b1878e287ae67",
+          "unchangedAfterIntegration": true
+        },
+        "iac": {
+          "fileCount": 47,
+          "treeDigest": "2c0110e3224c91403fd09fd644cad6b411a78576f729d81944aec9e875dacbcc",
+          "unchangedAfterIntegration": true
+        }
       }
     },
-    "additionalIntegration": "Adoption/hooks patch8.75.1 changes only Standards runtime/tests and metadata. Six other complete package trees remain byte-identical; carry forward their successful tests and rerun the full Standards wheel suite and affected canonical gates."
+    "normalPerformanceScope": "Both full-normal panels are pre-7e0d0db6 integration snapshots. They exclude incoming SARJ044 fixture reuse and TypeScript fixture/provider changes in existing test owners, and do not measure the final merged registry/preset. Selected panels remain applicable because all selected owner/helper hashes are unchanged.",
+    "latestIntegration": "Testing-contract patch#1505 changes existing owners outside the selected type-safety families and bumps patch releases to TypeScript16.18.1/Python1.44.1/Standards8.75.2/plugin2.11.1. This campaign retains newer minor versions16.19/1.45/8.76/2.12, preserves the incoming runtime/tests, and reruns full canonical verification on the combined tree."
   },
   "objective": "Promote domain models that preserve valid alternatives and their correlations, establish runtime evidence at owned boundaries, and make invalid states difficult to construct without rejecting legitimate APIs.",
   "passDefinition": "One distinct evidence-backed design question and decision. Fixture vectors, parameter matrices, native versions, repeated contexts, timing observations, closing corrections, carryforward implementations and reused corpus files are not additional design passes or independent precision observations.",
@@ -4421,7 +4428,8 @@
         }
       },
       "candidateBaselineWarmCpuRatio": 0.9398852295690848,
-      "scope": "Native Python engine. Selected families are the two bypass/record owners and five reviewed ID/record/collection families; normal runs the entire respective native registry. Project preparation may traverse beyond the named panel. Import/startup time is outside analysis rows and retained separately in raw process timing. Fresh process does not imply cold OS caches. Other team jobs are paused during this final window; unrelated shared-machine load is uncontrolled. One normal worker per mode bounds full-registry cost; no causal speedup or universal throughput claim."
+      "scope": "Native Python engine. Selected families are the two bypass/record owners and five reviewed ID/record/collection families; normal runs the entire respective native registry. Project preparation may traverse beyond the named panel. Import/startup time is outside analysis rows and retained separately in raw process timing. Fresh process does not imply cold OS caches. Other team jobs are paused during this final window; unrelated shared-machine load is uncontrolled. One normal worker per mode bounds full-registry cost; no causal speedup or universal throughput claim.",
+      "integrationScope": "Both full-normal panels are pre-7e0d0db6 integration snapshots. They exclude incoming SARJ044 fixture reuse and TypeScript fixture/provider changes in existing test owners, and do not measure the final merged registry/preset. Selected panels remain applicable because all selected owner/helper hashes are unchanged."
     },
     "typescriptSelected": {
       "schemaVersion": 1,
@@ -5633,7 +5641,8 @@
         "Native module resolution has unresolved imports under the uniform compiler policy; all setup and unresolved-event counts are retained. Only syntactic input compiler diagnostics are forced; rules query types lazily.",
         "The combined panel measures only this repository plugin full strict preset, not the external consumer preset, upstream ESLint plugins, Python or repository-wide performance.",
         "Warm CPU/wall ratios are small-sample observations for this bounded panel, not general speed or memory guarantees. Peak RSS belongs to the entire mixed-mode process and cannot isolate one detector."
-      ]
+      ],
+      "integrationScope": "Both full-normal panels are pre-7e0d0db6 integration snapshots. They exclude incoming SARJ044 fixture reuse and TypeScript fixture/provider changes in existing test owners, and do not measure the final merged registry/preset. Selected panels remain applicable because all selected owner/helper hashes are unchanged."
     }
   },
   "validation": {
@@ -5669,13 +5678,12 @@
       "status": "passed",
       "commands": [
         "make verify",
-        "make test-standards test-tsconfig repo-check check-no-private-refs shell-check",
-        "make verify -o test-typescript -o test-bootstrap -o test-contracts -o test-python -o test-sql -o test-iac"
+        "make test-standards test-tsconfig repo-check check-no-private-refs shell-check"
       ],
-      "integrationBase": "87cabae880402a132e630d645fcf76a7def46e28",
+      "integrationBase": "7e0d0db64f82e3e121299827dd15978dd2c1422a",
       "packages": {
         "typescript": {
-          "passed": 9522,
+          "passed": 9556,
           "skipped": 0
         },
         "bootstrap": {
@@ -5687,7 +5695,7 @@
           "skipped": 0
         },
         "python": {
-          "passed": 18485,
+          "passed": 18517,
           "skipped": 0
         },
         "sql": {
@@ -5703,43 +5711,87 @@
           "skipped": 9
         }
       },
-      "totalPassed": 37112,
+      "totalPassed": 37178,
       "totalSkipped": 10,
       "otherGates": "Doctor, generated artifacts and executable documentation, formatting, lint, all-rule self-checks, strict native type checking, version synchronization, repository policy, tsconfig, shellcheck and shfmt passed. Private-reference scanning is delegated to trusted CI by the canonical local target.",
-      "counting": "Full-suite package counts only. Focused runs, native versions, corpora and repeated observations are not added to this total.",
-      "unchangedPackageSuiteEvidence": {
-        "typescript": {
-          "fileCount": 379,
-          "treeDigest": "c98648e09bf11765973ced8e581c116e2541cb0cb18437bfe63e9a197290c7a7",
-          "unchangedAfterIntegration": true
+      "counting": "Fresh full-suite counts on the final combined source, one count per package. The five successful Python package suites and TypeScript suite come from the full canonical attempt; the complete successful Standards wheel rerun replaces the failed partial wheel result. Focused runs, native versions, corpora, earlier snapshots and repeated observations are not added.",
+      "priorVerifiedCheckpoint": {
+        "status": "passed",
+        "commands": [
+          "make verify",
+          "make test-standards test-tsconfig repo-check check-no-private-refs shell-check",
+          "make verify -o test-typescript -o test-bootstrap -o test-contracts -o test-python -o test-sql -o test-iac"
+        ],
+        "integrationBase": "87cabae880402a132e630d645fcf76a7def46e28",
+        "packages": {
+          "typescript": {
+            "passed": 9522,
+            "skipped": 0
+          },
+          "bootstrap": {
+            "passed": 18,
+            "skipped": 0
+          },
+          "contracts": {
+            "passed": 46,
+            "skipped": 0
+          },
+          "python": {
+            "passed": 18485,
+            "skipped": 0
+          },
+          "sql": {
+            "passed": 1755,
+            "skipped": 1
+          },
+          "iac": {
+            "passed": 1446,
+            "skipped": 0
+          },
+          "standardsBuiltWheels": {
+            "passed": 5840,
+            "skipped": 9
+          }
         },
-        "python": {
-          "fileCount": 428,
-          "treeDigest": "8250cd1f1d1c902263dee1402ccc9ffec22037c3e733d6bfc9ec85006a5b43e4",
-          "unchangedAfterIntegration": true
+        "totalPassed": 37112,
+        "totalSkipped": 10,
+        "otherGates": "Doctor, generated artifacts and executable documentation, formatting, lint, all-rule self-checks, strict native type checking, version synchronization, repository policy, tsconfig, shellcheck and shfmt passed. Private-reference scanning is delegated to trusted CI by the canonical local target.",
+        "counting": "Full-suite package counts only. Focused runs, native versions, corpora and repeated observations are not added to this total.",
+        "unchangedPackageSuiteEvidence": {
+          "typescript": {
+            "fileCount": 379,
+            "treeDigest": "c98648e09bf11765973ced8e581c116e2541cb0cb18437bfe63e9a197290c7a7",
+            "unchangedAfterIntegration": true
+          },
+          "python": {
+            "fileCount": 428,
+            "treeDigest": "8250cd1f1d1c902263dee1402ccc9ffec22037c3e733d6bfc9ec85006a5b43e4",
+            "unchangedAfterIntegration": true
+          },
+          "bootstrap": {
+            "fileCount": 9,
+            "treeDigest": "994c6539790bce45d003fd743b6129b7f3afab24cb168e7db356bb3ff35e7cad",
+            "unchangedAfterIntegration": true
+          },
+          "contracts": {
+            "fileCount": 12,
+            "treeDigest": "65e58f35fc95d6877ed9dcebbf13b21ccb4c1bd5ae1ec731de75f1837e60843f",
+            "unchangedAfterIntegration": true
+          },
+          "sql": {
+            "fileCount": 68,
+            "treeDigest": "f763573160435617bb0c824078a6364771ffae0f709eab615b4b1878e287ae67",
+            "unchangedAfterIntegration": true
+          },
+          "iac": {
+            "fileCount": 47,
+            "treeDigest": "2c0110e3224c91403fd09fd644cad6b411a78576f729d81944aec9e875dacbcc",
+            "unchangedAfterIntegration": true
+          }
         },
-        "bootstrap": {
-          "fileCount": 9,
-          "treeDigest": "994c6539790bce45d003fd743b6129b7f3afab24cb168e7db356bb3ff35e7cad",
-          "unchangedAfterIntegration": true
-        },
-        "contracts": {
-          "fileCount": 12,
-          "treeDigest": "65e58f35fc95d6877ed9dcebbf13b21ccb4c1bd5ae1ec731de75f1837e60843f",
-          "unchangedAfterIntegration": true
-        },
-        "sql": {
-          "fileCount": 68,
-          "treeDigest": "f763573160435617bb0c824078a6364771ffae0f709eab615b4b1878e287ae67",
-          "unchangedAfterIntegration": true
-        },
-        "iac": {
-          "fileCount": 47,
-          "treeDigest": "2c0110e3224c91403fd09fd644cad6b411a78576f729d81944aec9e875dacbcc",
-          "unchangedAfterIntegration": true
-        }
+        "earlierAttempts": "An initial attempt stopped at stale generated-catalog detection before tests. After regeneration the pre-integration canonical run passed 37,050 tests with 10 skips. Integrated make verify passed every preceding target, then failed exactly 13 incoming Zizmor tests because pinned 1.31.1 was not provisioned in the local offline cache. After provisioning the unchanged pinned runtime, the complete built-wheel suite and every remaining canonical target passed on the same source. A later adoption/hooks patch changed only Standards runtime/tests and metadata. The final canonical invocation repeated all other gates and the full Standards built-wheel suite, carrying forward the six byte-identical package suites proven by the recorded tree digests. All failed and successful logs are retained; the final counts include each package once."
       },
-      "earlierAttempts": "An initial attempt stopped at stale generated-catalog detection before tests. After regeneration the pre-integration canonical run passed 37,050 tests with 10 skips. Integrated make verify passed every preceding target, then failed exactly 13 incoming Zizmor tests because pinned 1.31.1 was not provisioned in the local offline cache. After provisioning the unchanged pinned runtime, the complete built-wheel suite and every remaining canonical target passed on the same source. A later adoption/hooks patch changed only Standards runtime/tests and metadata. The final canonical invocation repeated all other gates and the full Standards built-wheel suite, carrying forward the six byte-identical package suites proven by the recorded tree digests. All failed and successful logs are retained; the final counts include each package once."
+      "earlierAttempts": "An initial attempt stopped at stale generated-catalog detection before tests. After regeneration the pre-integration canonical run passed 37,050 tests with 10 skips. Incoming Zizmor tests initially failed because pinned 1.31.1 was absent from the local offline cache; exact runtime provisioning resolved all 13 failures, confirmed by a complete 5829-pass wheel rerun. The adoption/hooks checkpoint then completed all canonical coverage with 37,112 passes and 10 skips; its recorded package reuse applies only to that checkpoint. The later fixture/provider integration changes other existing owners, so all suites and quality gates were run again. The same 13 Zizmor cases encountered a second missing-cache episode; its cause beyond cache absence is unproven. The exact pinned runtime was then provisioned and verified offline under a dedicated task-owned cache, followed by a complete successful Standards wheel and remaining-gate rerun on unchanged source. Earlier results remain historical observations, and all failed and successful logs are retained."
     },
     "ciAndMerge": {
       "policy": "All latest exact-head CI checks must pass before administrative squash merge. The GitHub pull request records the checks and merge revision; semantic source pins identify the reviewed detector implementations."

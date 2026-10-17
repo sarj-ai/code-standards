@@ -19,6 +19,15 @@ const TEST_FILE = "/repo/src/worker.test.ts";
 
 RULE_TESTER.run("no-sleep-in-test-body", rule, {
   valid: [
+    ...([
+      ["fixture value factory is not a test registration", "import {test as base} from 'vitest'; const fixtureTest = base.extend('latencyFake', async () => { await sleep(50); });"],
+      ["fixture timing fake remains nested", "import {test as base} from 'vitest'; const fixtureTest = base.extend({port: 3000}); fixtureTest('timeout', async () => { const fake = async () => { await sleep(50); }; await consume(fake); });"],
+      ["custom extension keeps its own callback semantics", "const base = custom; const fixtureTest = base.extend({port: 3000}); fixtureTest('custom', async () => { await sleep(50); });"],
+      ["fixture-supplied delay helper is a dependency", "import {test as base} from 'vitest'; const fixtureTest = base.extend({wait: custom}); fixtureTest('custom wait', async ({wait}) => { await wait(50); });"],
+      ["worker lifecycle hooks are outside per-test policy", "import {test as base} from 'vitest'; const fixtureTest = base.extend({port: 3000}); fixtureTest.beforeAll(async () => { await sleep(50); });"],
+      ["mutated fixture API no longer proves hook ownership", "import {test as base} from 'vitest'; const fixtureTest = base.extend({port: 3000}); fixtureTest.beforeEach = custom; fixtureTest.beforeEach(async () => { await sleep(50); });"],
+      ["mutated nested fixture API no longer proves callback ownership", "import {test as base} from 'vitest'; const fixtureTest = base.extend({port: 3000}); fixtureTest.only.each = custom; fixtureTest.only.each([1, 2])('custom', async () => { await sleep(50); });"],
+    ] as const).map(([name, code]) => ({name, code, filename: TEST_FILE})),
     { name: "keeps a wrapped zero-delay yield", filename: TEST_FILE, code: 'it("yield", async () => { await sleep((0 as const)); });' },
     { name: "keeps a wrapped dynamic delay opaque", filename: TEST_FILE, code: 'it("retry", async () => { await sleep((duration as number)); });' },
     { name: "keeps a wrapped delay inside a latency fake", filename: TEST_FILE, code: 'it("timeout", async () => { const fake = async () => { await sleep((50 as const)); }; await verify(fake); });' },
@@ -130,6 +139,13 @@ RULE_TESTER.run("no-sleep-in-test-body", rule, {
     },
   ],
   invalid: [
+    ...([
+      ["fixture test fixed sleep", "import {test as base} from 'vitest'; const fixtureTest = base.extend({port: 3000}); fixtureTest('ready', async () => { await sleep(50); });"],
+      ["fixture-aware beforeEach fixed sleep", "import {test as base} from 'vitest'; const fixtureTest = base.extend('port', 3000); fixtureTest.beforeEach(async () => { await sleep(50); });"],
+      ["fixture-aware afterEach fixed sleep", "import {test as base} from 'vitest'; const fixtureTest = base.extend('port', 3000); fixtureTest.afterEach(async () => { await new Promise(resolve => setTimeout(resolve, 50)); });"],
+      ["fixture for callback fixed sleep", "import {test as base} from 'vitest'; const fixtureTest = base.extend({port: 3000}); fixtureTest.for([1, 2])('ready', async () => { await sleep(50); });"],
+      ["fixture for callback with hook lifecycle", "import {test as base} from 'vitest'; const fixtureTest = base.extend({port: 3000}); fixtureTest.beforeEach(() => prepare()); fixtureTest.for([1, 2])('ready', async () => { await sleep(50); });"],
+    ] as const).map(([name, code]) => ({name, code, filename: TEST_FILE, errors: [{messageId: "noSleepInTestBody" as const}]})),
     { name: "retains a fixed delay through a const assertion", filename: TEST_FILE, code: 'it(("retries" as const), async () => { await sleep((50 as const)); });', errors: [{ messageId: "noSleepInTestBody" }] },
     { name: "retains a fixed Promise timer through a satisfies wrapper", filename: TEST_FILE, code: 'it("retries", async () => { await new Promise(resolve => setTimeout(resolve, (50 satisfies number))); });', errors: [{ messageId: "noSleepInTestBody" }] },
 

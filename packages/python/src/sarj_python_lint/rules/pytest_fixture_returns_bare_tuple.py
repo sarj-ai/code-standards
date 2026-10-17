@@ -31,7 +31,16 @@ _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
 class _FixtureDecorators(NamedTuple):
     names: frozenset[str]
-    roots: frozenset[str]
+    roots: dict[str, str]
+    modified: frozenset[str]
+
+
+class _FixtureFunction(NamedTuple):
+    node: ast.FunctionDef | ast.AsyncFunctionDef
+    owner: ast.ClassDef | None
+
+
+_NO_FIXTURE_DECORATORS = _FixtureDecorators(frozenset(), {}, frozenset())
 
 
 class _TupleResult(NamedTuple):
@@ -58,6 +67,8 @@ class PytestFixtureReturnsBareTuple(Rule):
         category=RuleCategory.TESTING,
         limitations=(
             "Only pytest and pytest-asyncio fixtures in test paths are analyzed.",
+            "Decorator identity follows direct absolute imports and preceding module/class bindings; dynamic provider aliases and plugin registration are not inferred.",
+            "Explicit writes to a proven provider's fixture attribute invalidate later module imports, including through executed class bodies; arbitrary call effects and assignment aliases are not inferred.",
             "Factory closures, single-field tuples, starred tuple literals, and variadic tuple annotations are allowed.",
             "Homogeneous variadic tuple annotations are treated as sequences and excluded; fixed domain tuple protocols require an exact suppression.",
         ),
@@ -142,9 +153,12 @@ class PytestFixtureReturnsBareTuple(Rule):
 
 def _bare_tuple_results(tree: ast.Module) -> list[_TupleResult]:
     hits: list[_TupleResult] = []
-    for node in _discoverable_functions(tree):
-        fixture_names = _fixture_decorator_names(tree, before_line=node.lineno)
-        if not _is_fixture(node, fixture_names):
+    for node, owner in _discoverable_functions(tree):
+        if not node.decorator_list:
+            continue
+        fixture_names = _fixture_decorator_names(tree, before_line=node.lineno, owner=owner)
+        fixture_name = _fixture_name(node, fixture_names)
+        if fixture_name is None:
             continue
         aliases = _type_aliases(tree, before_line=node.lineno)
         has_yield = _has_own_yield(node)
@@ -160,7 +174,7 @@ def _bare_tuple_results(tree: ast.Module) -> list[_TupleResult]:
             hits.append(
                 _TupleResult(
                     first.expression,
-                    node.name,
+                    fixture_name,
                     tuple(sorted({result.field_counts[0] for result in results})),
                 )
             )
@@ -176,31 +190,80 @@ def _bare_tuple_results(tree: ast.Module) -> list[_TupleResult]:
             )
             >= _MIN_FIELDS
         ):
-            hits.append(_TupleResult(node.returns, node.name, (arity,)))
+            hits.append(_TupleResult(node.returns, fixture_name, (arity,)))
     return hits
 
 
-def _discoverable_functions(tree: ast.Module) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]:
-    functions: list[ast.FunctionDef | ast.AsyncFunctionDef] = []
+def _discoverable_functions(tree: ast.Module) -> tuple[_FixtureFunction, ...]:
+    functions: list[_FixtureFunction] = []
     for statement in tree.body:
         if isinstance(statement, _FUNC_NODES):
-            functions.append(statement)
+            functions.append(_FixtureFunction(statement, None))
         elif isinstance(statement, ast.ClassDef):
-            functions.extend(member for member in statement.body if isinstance(member, _FUNC_NODES))
+            functions.extend(
+                _FixtureFunction(member, statement) for member in statement.body if isinstance(member, _FUNC_NODES)
+            )
     return tuple(functions)
 
 
-def _fixture_decorator_names(tree: ast.Module, *, before_line: int) -> _FixtureDecorators:
-    names: set[str] = set()
-    roots: set[str] = set()
-    for statement in tree.body:
+def _fixture_decorator_names(tree: ast.Module, *, before_line: int, owner: ast.ClassDef | None) -> _FixtureDecorators:
+    module = _decorators_before(tree.body, before_line=owner.lineno if owner else before_line)
+    return module if owner is None else _decorators_before(owner.body, before_line=before_line, inherited=module)
+
+
+def _decorators_before(
+    statements: list[ast.stmt],
+    *,
+    before_line: int,
+    inherited: _FixtureDecorators = _NO_FIXTURE_DECORATORS,
+) -> _FixtureDecorators:
+    names = set(inherited.names)
+    roots = dict(inherited.roots)
+    modified = set(inherited.modified)
+    for statement in statements:
         if statement.lineno >= before_line:
             break
+        modified.update(
+            _provider_modifications(statement, _FixtureDecorators(frozenset(names), roots, frozenset(modified)))
+        )
         rebound = _bound_names(statement)
         names.difference_update(rebound)
-        roots.difference_update(rebound)
-        _collect_fixture_imports(statement, names, roots)
-    return _FixtureDecorators(frozenset(names), frozenset(roots))
+        roots = {name: provider for name, provider in roots.items() if name not in rebound and provider not in modified}
+        if isinstance(statement, ast.Delete):
+            # Deleting a class binding restores lookup in the module namespace.
+            names.update(rebound & inherited.names)
+            roots.update(
+                (name, provider)
+                for name, provider in inherited.roots.items()
+                if name in rebound and provider not in modified
+            )
+        _collect_fixture_imports(statement, names, roots, modified)
+    return _FixtureDecorators(frozenset(names), roots, frozenset(modified))
+
+
+def _provider_modifications(statement: ast.stmt, state: _FixtureDecorators) -> frozenset[str]:
+    if isinstance(statement, ast.ClassDef):
+        # Class bodies execute immediately; their local bindings stay local, but
+        # writes through imported provider modules affect subsequent decorators.
+        return _decorators_before(
+            statement.body,
+            before_line=(statement.end_lineno or statement.lineno) + 1,
+            inherited=state,
+        ).modified
+    return frozenset(state.roots[name] for name in _replaced_fixture_attributes(statement) if name in state.roots)
+
+
+def _replaced_fixture_attributes(statement: ast.stmt) -> set[str]:
+    if isinstance(statement, (*_FUNC_NODES, ast.ClassDef)):
+        return set()
+    return {
+        node.value.id
+        for node in walk_ast(statement)
+        if isinstance(node, ast.Attribute)
+        and node.attr == _FIXTURE
+        and isinstance(node.value, ast.Name)
+        and isinstance(node.ctx, (ast.Store, ast.Del))
+    }
 
 
 def _bound_names(statement: ast.stmt) -> set[str]:
@@ -210,7 +273,12 @@ def _bound_names(statement: ast.stmt) -> set[str]:
         case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
             return {statement.name}
         case ast.Delete(targets=targets):
-            return {node.id for target in targets for node in walk_ast(target) if isinstance(node, ast.Name)}
+            return {
+                node.id
+                for target in targets
+                for node in walk_ast(target)
+                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Del)
+            }
         case _:
             return {
                 node.id
@@ -219,14 +287,26 @@ def _bound_names(statement: ast.stmt) -> set[str]:
             }
 
 
-def _is_fixture(
+def _fixture_name(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
     fixture_imports: _FixtureDecorators,
-) -> bool:
-    return any(_names_fixture(dec, fixture_imports.names, fixture_imports.roots) for dec in node.decorator_list)
+) -> str | None:
+    for decorator in node.decorator_list:
+        if not _names_fixture(decorator, fixture_imports.names, fixture_imports.roots):
+            continue
+        if isinstance(decorator, ast.Call):
+            for keyword in decorator.keywords:
+                if (
+                    keyword.arg == "name"
+                    and isinstance(keyword.value, ast.Constant)
+                    and isinstance(keyword.value.value, str)
+                ):
+                    return keyword.value.value or node.name
+        return node.name
+    return None
 
 
-def _names_fixture(dec: ast.expr, fixture_names: frozenset[str], fixture_roots: frozenset[str]) -> bool:
+def _names_fixture(dec: ast.expr, fixture_names: frozenset[str], fixture_roots: dict[str, str]) -> bool:
     # `@pytest.fixture`, `@pytest.fixture(scope=...)`, `@fixture`, `@pytest_asyncio.fixture`.
     target = dec.func if isinstance(dec, ast.Call) else dec
     if isinstance(target, ast.Attribute):
@@ -458,15 +538,26 @@ def _bare_tuple_arity(value: ast.expr) -> int:
     return len(value.elts)
 
 
-def _collect_fixture_imports(statement: ast.stmt, names: set[str], roots: set[str]) -> None:
+def _collect_fixture_imports(statement: ast.stmt, names: set[str], roots: dict[str, str], modified: set[str]) -> None:
     if isinstance(statement, ast.Import):
         for alias in statement.names:
-            if alias.name in {"pytest", "pytest_asyncio"}:
-                roots.add(alias.asname or alias.name)
-    elif isinstance(statement, ast.ImportFrom) and statement.module in {"pytest", "pytest_asyncio"}:
+            local = alias.asname or alias.name.split(".")[0]
+            roots.pop(local, None)
+            names.discard(local)
+            if alias.name in {"pytest", "pytest_asyncio"} and alias.name not in modified:
+                roots[local] = alias.name
+    elif isinstance(statement, ast.ImportFrom):
         for alias in statement.names:
-            if alias.name == "fixture":
-                names.add(alias.asname or alias.name)
+            local = alias.asname or alias.name
+            roots.pop(local, None)
+            names.discard(local)
+            if (
+                statement.level == 0
+                and statement.module in {"pytest", "pytest_asyncio"}
+                and statement.module not in modified
+                and alias.name == "fixture"
+            ):
+                names.add(local)
 
 
 def _string_tuple_arity(

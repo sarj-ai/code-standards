@@ -9,9 +9,14 @@ Run `code-standards observe --test-value --base BASE` for changed tests; omit
 `--base` for the suite. Authorize repository ESLint execution with
 `--trust-repository-code`. Verify candidates in source.
 
+For fixture changes, also run `code-standards check` over shared setup and its
+affected consumers. The observer's candidate list does not establish fixture
+visibility or liveness.
+
 - Name the contract and wrong outcome. Reuse adequate coverage; mechanical edits and review comments do not require tests.
 - Compare inputs, actions, fixtures/marks, runtime, and assertion order/effects before removing duplicated or subsumed oracles. Combine complementary assertions sharing those conditions.
 - Cover inherited behavior at its owner; retain override and composition contracts.
+- Choose reusable setup by provider visibility, configuration, state isolation, and cleanup ownership. Compose fixture dependencies or typed factories while keeping the tested action and oracle visible; see [fixture design and reuse](references/oracles.md#fixture-design-and-reuse).
 - Parameterize independent cases when shorter; preserve ordered scenarios.
 - Observe content, state, access, or effects. Exact interactions belong at real boundaries. Preserve smoke, no-throw, compatibility, enum/property, representation, and assertion-helper contracts.
 - An integration claim must exercise the real boundary it names and observe its externally visible result. Review negative side effects and failure atomicity when those contracts are affected. See [oracles.md](references/oracles.md#integration-boundaries).
