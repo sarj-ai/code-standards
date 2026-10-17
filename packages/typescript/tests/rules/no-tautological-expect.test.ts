@@ -25,6 +25,20 @@ const TEST_FILE = "/repo/src/tests/dummy.test.ts";
 RULE_TESTER.run("no-tautological-expect", rule, {
   valid: [
     ...([
+      ["keeps independent result bindings", "const before=operation(); const after=operation(); expect(before).toBe(after);"],
+      ["keeps repeated property and getter reads", "const result=operation(); expect(result.value).toBe(result.value);"],
+      ["keeps mutable binding identity unproven", "let result=operation(); expect(result).toBe(result);"],
+      ["keeps imported live identity unproven", "import {result} from './state'; expect(result).toBe(result);"],
+      ["keeps parameter identity outside the const proof", "function check(result) {expect(result).toBe(result);}"],
+      ["keeps deep equality reflexivity contracts", "const result=operation(); expect(result).toEqual(result);"],
+      ["keeps a failing negative identity assertion", "const result=operation(); expect(result).not.toBe(result);"],
+      ["keeps customized identity semantics", "expect.extend({toBe:custom}); const result=operation(); expect(result).toBe(result);"],
+      ["keeps captured identity matcher contracts", "const result=operation(); expect(()=>expect(result).toBe(result)).not.toThrow();"],
+      ["keeps forward identity references unproven", "expect(result).toBe(result); const result=operation();"],
+      ["keeps reassigned const identity unproven", "const result=operation(); result=other; expect(result).toBe(result);"],
+      ["keeps destructured binding identity outside the proof", "const {result}=operation(); expect(result).toBe(result);"],
+    ] as const).map(([name, code]) => ({name, code, filename: TEST_FILE})),
+    ...([
       ["retains a replaced built-in matcher contract", "import {expect} from 'vitest'; expect.extend({toBe: () => ({pass: false, message: () => 'changed'})}); expect(true).toBe(true);"],
       ["retains a replaced zero-argument matcher", "import {expect as verify} from 'vitest'; verify['extend']({['toBeTruthy']: () => ({pass: false, message: () => 'changed'})}); verify(true).toBeTruthy();"],
       ["keeps opaque matcher registrations unproven", "import {expect} from 'vitest'; expect.extend(matchers); expect(true).toBe(true);"],
@@ -198,6 +212,13 @@ RULE_TESTER.run("no-tautological-expect", rule, {
     },
   ],
   invalid: [
+    ...([
+      ["reports self identity of a produced result", "const result=operation(); expect(result).toBe(result);"],
+      ["reports self identity of a produced object", "const result={value:read()}; expect(result).toBe(result);"],
+      ["reports NaN self identity", "const result=Number.NaN; expect(result).toBe(result);"],
+      ["reports erased self identity with a diagnostic alias", "import {expect as verify} from 'vitest'; const result=operation(); verify(result as unknown,'observed').toBe(result!);"],
+      ["reports literal const self identity once", "const result=true; expect(result).toBe(result);"],
+    ] as const).map(([name, code]) => ({name, code, filename: TEST_FILE, errors: [{messageId: "tautologicalComparison" as const}]})),
     ...([
       ["reports Vitest static-message literal comparisons", "import {expect} from 'vitest'; expect(true, 'ready').toBe(true);", "tautologicalComparison"],
       ["reports an imported alias with a const diagnostic", "import {expect as verify} from 'vitest'; const note='ready'; verify(false, note).not.toBeTruthy();", "tautologicalMatcher"],

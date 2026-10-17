@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "c0bb53755f22ee3a5ee24c1a6a2232f7dfb4dc770f590468cf0eca2ed39d3cee",
-  "cliSha256": "c2843c78c5b0bd409d6ec972cece39c7c2b6b90a69bcbfbca3d3f78e50caae0a",
+  "catalogSha256": "c30ceb7f827bc80fd8cb73dfb9b67c53c9e7d0240393728777fb98d47279f3ae",
+  "cliSha256": "d7679daec2ecbb71045431d8d7bf0ed322624be25d5409f1af773391138ce6c8",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -2915,6 +2915,21 @@
           "title": "A throwing matcher observes the inner assertion contract"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/service.test.ts",
+              "source": "import { expect } from \"vitest\";\nconst result = serviceStatus();\nexpect(result.status).toBe(\"ready\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.test.ts",
+          "id": "independent-result-oracle",
+          "outcome": "accept",
+          "scenarioId": "immutable-identity",
+          "title": "An independent expected state can reject a wrong result"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -3033,6 +3048,21 @@
           "outcome": "accept",
           "scenarioId": "custom-matcher",
           "title": "A replaced matcher can reject a literal comparison"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/service.test.ts",
+              "source": "import { expect } from \"vitest\";\nconst result = serviceStatus();\nexpect(result).toBe(result);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.test.ts",
+          "id": "self-identity-oracle",
+          "outcome": "reject",
+          "scenarioId": "immutable-identity",
+          "title": "A returned value's identity with itself cannot reject a wrong result"
         },
         {
           "expectedCount": 1,
@@ -9856,7 +9886,7 @@
           "files": [
             {
               "path": "tests/test_service.py",
-              "source": "def test_values(rows):\n    assert all(row.is_valid for row in rows)\n"
+              "source": "def test_values(rows):\n    checks = (row.is_valid for row in rows)\n    assert all(checks)\n"
             }
           ],
           "fixedFiles": [],
@@ -9916,7 +9946,7 @@
           "files": [
             {
               "path": "tests/test_service.py",
-              "source": "def test_values(rows):\n    assert (row.is_valid for row in rows)\n"
+              "source": "def test_values(rows):\n    checks = (row.is_valid for row in rows)\n    assert checks\n"
             }
           ],
           "fixedFiles": [],
