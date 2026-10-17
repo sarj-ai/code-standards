@@ -23,7 +23,10 @@ PATH = ".repo-standards/baseline.json"
 # Policy 26 accepts literal Git paths previously rejected as wildcard syntax.
 # Every previously valid manifest scope and finding identity stays unchanged;
 # retain all recorded warning/error debt and change only the policy metadata.
-_COMPATIBLE_TRANSITIONS = frozenset({(18, 19), (18, 20), (19, 20), (25, 26)})
+# Policy 27 adds a default-disabled local-residue warning. Existing rule
+# definitions, fingerprints and scope serialization are unchanged. Explicitly
+# enabling it still leaves every new finding unaccepted by the warning ratchet.
+_COMPATIBLE_TRANSITIONS = frozenset({(18, 19), (18, 20), (19, 20), (25, 26), (25, 27), (26, 27)})
 _POLICY_VERSION = re.compile(rb'("policy_version"\s*:\s*)[0-9]+(?=\s*[,}])')
 
 

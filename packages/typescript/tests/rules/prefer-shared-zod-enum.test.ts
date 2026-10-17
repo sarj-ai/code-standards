@@ -16,6 +16,9 @@ const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, source
 
 RULE_TESTER.run("prefer-shared-zod-enum", rule, {
   valid: [
+    { name: "does not close an externally supplied value domain", code: "import { z } from 'zod'; declare const externalValues: readonly [string, ...string[]]; z.enum([...externalValues]); z.enum([...externalValues]);" },
+    { name: "does not infer a finite version domain from defaults", code: "import { z } from 'zod'; const first = z.string().default('dev'); const second = z.string().default('dev');" },
+    { name: "keeps finite and flexible version contracts independent", code: "import { z } from 'zod'; const channel = z.enum(['dev', 'stable']); const version = z.string().default('dev');" },
     { name: "keeps interpolated enum domains opaque", code: 'import { z } from "zod"; z.enum([`a${suffix}`, `b`]); z.enum([`a${suffix}`, `b`]);' },
     { name: "preserves domain order through erased literals", code: 'import { z } from "zod"; z.enum([("a" as const), ("b" as const)]); z.enum([("b" as const), ("a" as const)]);' },
     { name: "preserves customized errors through erased literals", code: 'import { z } from "zod"; z.enum([("a" as const), ("b" as const)], {error: "first"}); z.enum([("a" as const), ("b" as const)], {error: "second"});' },

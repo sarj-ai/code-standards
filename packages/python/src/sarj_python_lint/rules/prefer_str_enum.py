@@ -39,6 +39,8 @@ _MIN_TYPE_ALIAS_ARGS = 2
 _CHOICE_PAIR_ARITY = 2
 _CAST_FUNCTION = "cast"
 _STR_CONSTRUCTOR = "str"
+_TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
+_NAMESPACE_ACCESS_MEMBERS = frozenset({"__dict__", "__getattribute__", "__setattr__", "__delattr__"})
 
 
 class _LiteralAliases(NamedTuple):
@@ -60,6 +62,12 @@ class _LocalBinding(NamedTuple):
 class _ClassFieldDiagnostics:
     diagnostics: list[Diagnostic]
     member_keys: dict[int, set[str]]
+
+
+@dataclass(frozen=True, slots=True)
+class _TypingNamespaceOrigins:
+    namespaces: frozenset[str]
+    handles: frozenset[str]
 
 
 #: Sibling class attributes whose presence marks all raw-str fields as choice-like.
@@ -363,6 +371,7 @@ class PreferStrEnum(Rule):
         class_choice_signal = "str" in signals and any(name in signals.lower() for name in CHOICES_ATTR_NAMES)
         wrapper_signal = any(symbol in signals for symbol in ("Annotated", "Optional", "Union"))
         imports = context.imports if class_choice_signal or "assert_never" in signals or wrapper_signal else None
+        rejection_imports = _assert_never_imports(context, imports)
         test_path = is_test_path(path)
         check_clusters = not test_path
         literal_aliases = _module_literal_aliases(tree)
@@ -423,7 +432,9 @@ class PreferStrEnum(Rule):
                 all_clusters.append((child_active, opaque, owned_attributes))
                 cluster_opacity[id(child_active)] = opaque
                 cluster_owned_attributes[id(child_active)] = owned_attributes
-                cluster_closed_nodes[id(child_active)] = _closed_domain_node_ids(node, imports, closed_collections)
+                cluster_closed_nodes[id(child_active)] = _closed_domain_node_ids(
+                    node, rejection_imports, closed_collections
+                )
                 inherited_method = cluster_methods.get(id(active))
                 if not _OWNED_ROOTS.isdisjoint(shadowed):
                     inherited_method = None
@@ -513,7 +524,7 @@ class PreferStrEnum(Rule):
                             elif isinstance(node, ast.Match) and id(node) in cluster_closed_nodes.get(
                                 id(active), frozenset()
                             ):
-                                _accumulate_match(active, node, imports)
+                                _accumulate_match(active, node, rejection_imports)
                 schedule_children(stack, node, active, child_active)
 
         collect_clusters()
@@ -640,6 +651,56 @@ def _has_str_enum_signal(source: str) -> bool:
         and has_rejection
         and ("==" in source or "!=" in source or "in" in source or "match" in source)
     )
+
+
+def _assert_never_imports(context: PythonFileContext, imports: ImportIndex | None) -> ImportIndex | None:
+    if imports is None or "assert_never" not in context.symbol_source:
+        return imports
+    origins = _typing_namespace_origins(context)
+    for node in context.nodes(ast.Name, ast.Attribute):
+        parent = context.parents.get(node)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in origins.handles:
+            return None
+        if _typing_namespace_exposed(node, parent, origins.namespaces):
+            return None
+        if (
+            isinstance(node.ctx, ast.Load)
+            and imports.resolves(node, sources=_TYPING_SOURCES, symbol="assert_never")
+            and (not isinstance(parent, ast.Call) or parent.func is not node)
+        ):
+            return None
+    return imports
+
+
+def _typing_namespace_origins(context: PythonFileContext) -> _TypingNamespaceOrigins:
+    namespaces: set[str] = set()
+    handles: set[str] = set()
+    for node in context.nodes(ast.Import):
+        namespaces.update(alias.asname or alias.name for alias in node.names if alias.name in _TYPING_SOURCES)
+    for node in context.nodes(ast.ImportFrom):
+        if node.level == 0 and node.module in _TYPING_SOURCES:
+            handles.update(
+                alias.asname or alias.name for alias in node.names if alias.name in _NAMESPACE_ACCESS_MEMBERS
+            )
+    return _TypingNamespaceOrigins(frozenset(namespaces), frozenset(handles))
+
+
+def _typing_namespace_exposed(node: ast.AST, parent: ast.AST | None, namespaces: frozenset[str]) -> bool:
+    if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in namespaces:
+        return not isinstance(parent, ast.Attribute) or parent.value is not node
+    if (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id in namespaces
+        and node.attr in _NAMESPACE_ACCESS_MEMBERS
+    ):
+        return True
+    if not isinstance(node, ast.Attribute) or not isinstance(node.ctx, (ast.Store, ast.Del)):
+        return False
+    root: ast.expr = node
+    while isinstance(root, ast.Attribute):
+        root = root.value
+    return isinstance(root, ast.Name) and root.id in namespaces
 
 
 def _enum_like_class_ids(tree: ast.Module, *, node_index: NodeIndex | None = None) -> frozenset[int]:
@@ -1423,13 +1484,7 @@ def _unsafe_attribute_collection_uses(tree: ast.AST, *, node_index: NodeIndex | 
 def _propagate_collection_alias_uses(
     tree: ast.AST, unsafe: dict[str, set[str]], *, node_index: NodeIndex | None = None
 ) -> None:
-    aliases = [
-        (target.id, node.value.id)
-        for node in walk_ast(tree, index=node_index)
-        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name)
-        for target in node.targets
-        if isinstance(target, ast.Name)
-    ]
+    aliases = _collection_owner_aliases(tree, node_index=node_index)
     # Exposure invalidates proof even when an alias has other possible bindings.
     # The finite owner/attribute sets converge without following runtime values.
     for _round in range(len(aliases)):
@@ -1441,6 +1496,16 @@ def _propagate_collection_alias_uses(
                 changed = True
         if not changed:
             break
+
+
+def _collection_owner_aliases(tree: ast.AST, *, node_index: NodeIndex | None) -> list[tuple[str, str]]:
+    aliases: list[tuple[str, str]] = []
+    for node in walk_ast(tree, index=node_index):
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):
+            aliases.extend((target.id, node.value.id) for target in node.targets if isinstance(target, ast.Name))
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and isinstance(node.value, ast.Name):
+            aliases.append((node.target.id, node.value.id))
+    return aliases
 
 
 def _string_collection_values(node: ast.AST | None) -> set[str] | None:
@@ -1792,18 +1857,19 @@ def _str_const(node: ast.AST) -> str | None:
 def _class_choice_fields(
     cls: ast.ClassDef, raw_string_aliases: frozenset[str], imports: ImportIndex
 ) -> list[tuple[ast.AnnAssign, str, str | None]]:
-    candidates: list[tuple[ast.AnnAssign, str, str | None]] = []
+    candidates: dict[str, tuple[ast.AnnAssign, str, str | None] | None] = {}
     for stmt in cls.body:
-        if not isinstance(stmt, ast.AnnAssign):
-            continue
-        if not isinstance(stmt.target, ast.Name):
-            continue
-        if not _is_choice_string_annotation(stmt.annotation, raw_string_aliases, imports):
+        if not isinstance(stmt, ast.AnnAssign) or not isinstance(stmt.target, ast.Name):
             continue
         name = stmt.target.id
+        if not _is_choice_string_annotation(stmt.annotation, raw_string_aliases, imports):
+            candidates[name] = None
+            continue
         default = _str_const(stmt.value) if stmt.value is not None else None
-        candidates.append((stmt, name, default))
-    return candidates
+        previous = candidates.get(name)
+        if previous is None or previous[2] != default:
+            candidates[name] = (stmt, name, default)
+    return [candidate for candidate in candidates.values() if candidate is not None]
 
 
 def _is_wire_call(value: ast.Call, callee: ast.expr, args: list[ast.expr], blocked_call_names: frozenset[str]) -> bool:

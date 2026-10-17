@@ -20,6 +20,9 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-unsafe-mock-casting", rule, {
   valid: [
+    { name: "local types still shadow imported mock types", code: "import type { Mock } from 'vitest'; function fixture(value: () => void) { type Mock = () => void; return value as Mock; }" },
+    { name: "generic types still shadow imported mock types", code: "import type { Mock } from 'vitest'; function fixture<Mock>(value: unknown) { return value as Mock; }" },
+    { name: "local namespaces still shadow imported mock namespaces", code: "import type * as mocks from 'vitest'; namespace Fixtures { export namespace mocks { export type Mock = () => void; } export function fixture(value: () => void) { return value as mocks.Mock; } }" },
     {
       name: "accepts the Vitest typed helper",
       code: NO_UNSAFE_MOCK_CASTING_DOCUMENTATION.examples[0].files[0].source,
@@ -53,6 +56,8 @@ RULE_TESTER.run("no-unsafe-mock-casting", rule, {
     },
   ],
   invalid: [
+    { name: "value parameters do not shadow imported mock types", code: "import type { Mock } from 'vitest'; function fixture(Mock: string, value: () => void) { return value as Mock; }", errors: [{ messageId: "unsafeMockCast" }] },
+    { name: "value locals do not shadow imported mock namespaces", code: "import type * as mocks from 'vitest'; function fixture(value: () => void) { const mocks = 1; return value as mocks.Mock; }", errors: [{ messageId: "unsafeMockCast" }] },
     {
       name: "reports bare Mock assertions",
       code: 'import type { Mock } from "vitest"; const m = myFn as Mock;',

@@ -17,7 +17,7 @@ import * as ts from "typescript";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
 import { isZodModule } from "./_zod.js";
-import { isTestFile } from "./_paths.js";
+import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "nativeEnum" | "enumOfTsEnum";
 type Options = readonly [];
@@ -76,20 +76,6 @@ export const NO_ZOD_NATIVE_ENUM_DOCUMENTATION = {
     },
   ],
 } as const satisfies RuleDocumentation;
-
-const IGNORE_PATTERNS: readonly RegExp[] = [
-  /[\\/]generated[\\/]/,
-  /\.gen\.tsx?$/,
-  /\.generated\.tsx?$/,
-  /\.d\.ts$/,
-];
-
-function isIgnoredFile(filename: string, sourceText: string): boolean {
-  if (IGNORE_PATTERNS.some((re) => re.test(filename))) {
-    return true;
-  }
-  return /@generated\b/.test(sourceText.slice(0, 1024));
-}
 
 /** Unwraps `x as const` / `x satisfies T` / `(x)` down to the inner expression. */
 function unwrap(node: TSESTree.Expression): TSESTree.Expression {
@@ -159,7 +145,7 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     const sourceCode = context.sourceCode;
-    if (isIgnoredFile(context.filename, sourceCode.getText())) {
+    if (isGeneratedFile(context.filename, sourceCode.getText())) {
       return {};
     }
     // A test that covers `z.nativeEnum` must call it; see @fileoverview.

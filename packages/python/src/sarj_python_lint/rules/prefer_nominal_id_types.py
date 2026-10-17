@@ -442,14 +442,23 @@ def _role_keys(roles: list[_IdRole]) -> set[tuple[str, str]]:
 
 
 def _class_id_roles(node: ast.ClassDef, imports: ImportIndex, facts: _TypeFacts) -> list[_IdRole]:
-    return [
-        role
-        for statement in node.body
-        if isinstance(statement, ast.AnnAssign)
-        and isinstance(statement.target, ast.Name)
-        and not _has_pydantic_wire_alias(statement, imports)
-        if (role := _role(statement.target.id, statement.annotation, imports, facts, allow_bare_id=True)) is not None
-    ]
+    roles: dict[str, _IdRole | None] = {}
+    for statement in node.body:
+        if not isinstance(statement, ast.AnnAssign) or not isinstance(statement.target, ast.Name):
+            continue
+        name = statement.target.id
+        role = (
+            None
+            if _has_pydantic_wire_alias(statement, imports)
+            else _role(name, statement.annotation, imports, facts, allow_bare_id=True)
+        )
+        previous = roles.get(name)
+        # The final annotation owns the field. Equivalent redeclarations retain
+        # the existing diagnostic anchor and its exact local suppression.
+        if role is not None and previous is not None and role.carrier == previous.carrier:
+            continue
+        roles[name] = role
+    return [role for role in roles.values() if role is not None]
 
 
 def _has_pydantic_wire_alias(statement: ast.AnnAssign, imports: ImportIndex) -> bool:

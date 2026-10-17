@@ -112,6 +112,42 @@ class Record:
     assert len(_check(src)) == 1
 
 
+@pytest.mark.parametrize("annotation", ["Literal['active', 'disabled']", "object", "int"])
+def test_final_class_annotation_replaces_an_earlier_string_choice(annotation: str) -> None:
+    source = (
+        "from typing import Literal\nclass Record:\n"
+        "    status_choices = ['active', 'disabled']\n    status: str\n"
+        f"    status: {annotation}\n"
+    )
+    assert _check(source) == []
+
+
+def test_repeated_equivalent_string_fields_have_one_stable_diagnostic() -> None:
+    source = "class Record:\n    status_choices = ['active', 'disabled']\n    status: str\n    status: str\n"
+    [finding] = _check(source)
+    assert finding.line == 3
+    suppressed = source.replace("status: str\n", "status: str  # sarj-noqa: SARJ006 -- external contract\n", 1)
+    assert _check(suppressed) == []
+
+
+def test_final_string_field_replaces_a_previously_closed_type() -> None:
+    source = (
+        "from typing import Literal\nclass Record:\n"
+        "    status_choices = ['active', 'disabled']\n    status: Literal['active', 'disabled']\n"
+        "    status: str\n"
+    )
+    [finding] = _check(source)
+    assert finding.line == 5
+
+
+def test_latest_default_controls_a_generic_choice_collection() -> None:
+    source = (
+        "class Record:\n    choices = ['active', 'disabled']\n"
+        "    status: str = 'active'\n    status: str = 'free-form'\n"
+    )
+    assert _check(source) == []
+
+
 def test_choices_attr_name_is_case_insensitive():
     src = """
 from pydantic import BaseModel
@@ -2434,7 +2470,16 @@ def test_single_class_choice_binding_without_alias_retains_closed_evidence() -> 
     assert len(_check(source)) == 1
 
 
-@pytest.mark.parametrize("alias_chain", ["Alias = Record", "First = Record\nAlias = First"])
+@pytest.mark.parametrize(
+    "alias_chain",
+    [
+        "Alias = Record",
+        "First = Record\nAlias = First",
+        "Alias: type[Record] = Record",
+        "First: type[Record] = Record\nAlias = First",
+        "First = Record\nAlias: type[Record] = First",
+    ],
+)
 def test_class_choice_mutation_through_explicit_class_alias_is_open(alias_chain: str) -> None:
     source = f"""class Record:
     status_choices = ['text', 'image']
@@ -2445,25 +2490,105 @@ Alias.status_choices.extend(get_runtime_choices())
     assert _check(source) == []
 
 
-def test_class_alias_without_collection_mutation_preserves_choice_finding() -> None:
-    source = """class Record:
+@pytest.mark.parametrize("alias", ["Alias = Record", "Alias: type[Record] = Record"])
+def test_class_alias_without_collection_mutation_preserves_choice_finding(alias: str) -> None:
+    source = f"""class Record:
     status_choices = ['text', 'image']
     status: str
-Alias = Record
+{alias}
 """
     assert len(_check(source)) == 1
 
 
-def test_unrelated_class_alias_mutation_does_not_hide_choice_finding() -> None:
-    source = """class Record:
+@pytest.mark.parametrize("alias", ["Alias = Other", "Alias: type[Other] = Other"])
+def test_unrelated_class_alias_mutation_does_not_hide_choice_finding(alias: str) -> None:
+    source = f"""class Record:
     status_choices = ['text', 'image']
     status: str
 class Other:
     status_choices = []
-Alias = Other
+{alias}
 Alias.status_choices.extend(get_runtime_choices())
 """
     assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "typing.assert_never = replacement",
+        "del typing.assert_never",
+        "setattr(typing, 'assert_never', replacement)",
+        "vars(typing)['assert_never'] = replacement",
+        "namespace = typing\nnamespace.assert_never = replacement",
+        "namespace: object = typing\nsetattr(namespace, 'assert_never', replacement)",
+        "check = typing.assert_never\ncheck.__code__ = replacement.__code__",
+        "typing.__dict__['assert_never'] = replacement",
+        "namespace = typing.__dict__\nnamespace['assert_never'] = replacement",
+        "typing.__dict__.update(assert_never=replacement)",
+        "typing.__getattribute__('__dict__')['assert_never'] = replacement",
+        "lookup = typing.__getattribute__\nlookup('__dict__')['assert_never'] = replacement",
+        "typing.__setattr__('assert_never', replacement)",
+        "typing.__delattr__('assert_never')",
+        "from typing import __dict__ as namespace\nnamespace['assert_never'] = replacement",
+        "from typing import __getattribute__ as lookup\nlookup('__dict__')['assert_never'] = replacement",
+        "from typing import __setattr__ as setter\nsetter('assert_never', replacement)",
+        "def change():\n    from typing import __dict__ as namespace\n    namespace['assert_never'] = replacement\nchange()",
+        "def change():\n    import typing as namespace\n    namespace.assert_never = replacement\nchange()",
+    ],
+)
+@pytest.mark.parametrize("dispatch", ["if", "match"])
+def test_mutated_assert_never_cannot_close_a_string_domain(mutation: str, dispatch: str) -> None:
+    branches = (
+        "    if kind == 'text':\n        return 'Text'\n"
+        "    elif kind == 'image':\n        return 'Image'\n    else:\n        typing.assert_never(kind)\n"
+        if dispatch == "if"
+        else "    match kind:\n        case 'text':\n            return 'Text'\n"
+        "        case 'image':\n            return 'Image'\n        case _:\n            typing.assert_never(kind)\n"
+    )
+    source = (
+        "import typing\ndef replacement(value):\n    return value\n"
+        f"{mutation}\ndef render(kind: str) -> str:\n{branches}    return kind\n"
+    )
+    ast.parse(source)
+    assert _check(source, "app/render.py") == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "application.assert_never = replacement",
+        "application.__dict__['assert_never'] = replacement",
+        "application.__getattribute__('__dict__')['assert_never'] = replacement",
+        "from application import __dict__ as namespace\nnamespace['assert_never'] = replacement",
+    ],
+)
+def test_unrelated_namespace_mutation_does_not_hide_assert_never_rejection(mutation: str) -> None:
+    source = (
+        f"import typing\nimport application\n{mutation}\ndef render(kind: str) -> str:\n"
+        "    if kind == 'text':\n        return 'Text'\n"
+        "    elif kind == 'image':\n        return 'Image'\n    else:\n        typing.assert_never(kind)\n"
+    )
+    assert len(_check(source, "app/render.py")) == 1
+
+
+def test_readonly_typing_member_does_not_hide_assert_never_rejection() -> None:
+    source = (
+        "import typing\nmodule_name = typing.__name__\n"
+        "def render(kind: str) -> str:\n"
+        "    if kind == 'text':\n        return 'Text'\n"
+        "    elif kind == 'image':\n        return 'Image'\n    else:\n        typing.assert_never(kind)\n"
+    )
+    assert len(_check(source, "app/render.py")) == 1
+
+
+def test_mutated_typing_namespace_does_not_hide_literal_raise_evidence() -> None:
+    source = (
+        "import typing\ntyping.assert_never = replacement\n"
+        "def render(kind: str) -> str:\n"
+        "    if kind not in {'text', 'image'}:\n        raise ValueError(kind)\n    return kind\n"
+    )
+    assert len(_check(source, "app/render.py")) == 1
 
 
 @pytest.mark.parametrize("receiver", ["self", "cls"])

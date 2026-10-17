@@ -803,6 +803,41 @@ def test_duplicate_nominal_then_raw_role_keeps_the_raw_annotation() -> None:
 
 
 @pytest.mark.parametrize(
+    "final_annotation",
+    ["FileId", "object", "int", "list[str]"],
+)
+def test_final_class_annotation_replaces_an_earlier_raw_id(final_annotation: str) -> None:
+    source = (
+        "from typing import NewType\nFileId = NewType('FileId', str)\n"
+        f"class Pair:\n    file_id: str\n    file_id: {final_annotation}\n    folder_id: FileId\n"
+    )
+    assert _check(source) == []
+
+
+def test_final_wire_alias_replaces_an_earlier_domain_field() -> None:
+    source = (
+        "from pydantic import Field\nclass Pair:\n    file_id: str\n"
+        "    file_id: str = Field(alias='fileId')\n    folder_id: str\n"
+    )
+    assert _check(source) == []
+
+
+def test_final_raw_carrier_keeps_its_own_location_after_a_different_declaration() -> None:
+    source = "class Pair:\n    file_id: int\n    file_id: str\n    folder_id: str\n"
+    [finding] = _check(source)
+    assert finding.line == 3
+    assert finding.message.count("`file_id`") == 1
+
+
+def test_equivalent_raw_redeclaration_preserves_exact_suppression() -> None:
+    source = (
+        "class Pair:\n    file_id: str  # sarj-noqa: SARJ093 -- raw external contract\n"
+        "    file_id: str\n    folder_id: str\n"
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
     "mutation",
     [
         "vars(typing)['NewType'] = other\n",

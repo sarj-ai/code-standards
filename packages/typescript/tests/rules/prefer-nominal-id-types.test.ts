@@ -13,6 +13,9 @@ const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
 
 RULE_TESTER.run("prefer-nominal-id-types", rule, {
   valid: [
+    { name: "keeps open operational versions open through aliases", code: "type ServiceVersion = string; function start(serviceVersion: ServiceVersion = 'dev', releaseVersion: ServiceVersion = 'next') {}" },
+    { name: "preserves independently constrained template identifier domains", code: "type AccountId = `account:${string}`; type InvoiceId = `invoice:${string}`; function load(accountId: AccountId, invoiceId: InvoiceId) {}" },
+    { name: "preserves external callable contracts with a local reason in MTS", filename: "src/adapter.mts", code: "// eslint-disable-next-line @rule-tester/prefer-nominal-id-types -- external protocol requires raw positional strings\nfunction load(accountId: string, invoiceId: string) {}" },
     // Defaults alone establish neither identifier roles nor a closed set of values.
     "function start(serviceVersion: string = 'dev', releaseVersion: string = 'dev') {}",
     "function start(serviceVersion = 'dev', releaseVersion = 'prod') {}",
@@ -94,6 +97,8 @@ RULE_TESTER.run("prefer-nominal-id-types", rule, {
     { code: "// eslint-disable-next-line @rule-tester/prefer-nominal-id-types -- raw wire protocol requires positional strings\nfunction load(accountId: string, invoiceId: string) {}" },
   ],
   invalid: [
+    { name: "checks authored MTS boundaries", filename: "src/store.mts", code: "function load(accountId: string, invoiceId: string) {}", errors: [{ messageId: "preferNominalIds" }] },
+    { name: "checks authored CTS boundaries", filename: "src/store.cts", code: "function load(accountId: string, invoiceId: string) {}", errors: [{ messageId: "preferNominalIds" }] },
     // Call and construct signatures are callable contracts too.
     { code: "interface Load { (accountId: string, invoiceId: string): void }", errors: [{ messageId: "preferNominalIds" }] },
     { code: "type Load = { (accountId: string, invoiceId: string): void };", errors: [{ messageId: "preferNominalIds" }] },

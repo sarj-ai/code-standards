@@ -532,12 +532,19 @@ def test_selected_adoption_reports_missing_manifest_when_worktree_marker_is_dele
 
 
 _JAVASCRIPT_RULE = "repository/artifacts/untyped-javascript"
+_LOCAL_RESIDUE_RULE = "repository/artifacts/local-residue"
 
 
-def _typed_policy_repository(repository: Path, *, include_warnings: bool, artifact_kind: str | None = None) -> Path:
+def _typed_policy_repository(
+    repository: Path,
+    *,
+    include_warnings: bool,
+    artifact_kind: str | None = None,
+    rule_id: str = _JAVASCRIPT_RULE,
+) -> Path:
     manifest = _adopt(repository)
     manifest.write_text(
-        f'repository_id = "fixture"\ncomponents = []\nenabled_rules = ["{_JAVASCRIPT_RULE}"]\n'
+        f'repository_id = "fixture"\ncomponents = []\nenabled_rules = ["{rule_id}"]\n'
         + (
             f'\n[[javascript.artifacts]]\npath = "tool.mjs"\nkind = "{artifact_kind}"\nreason = "Reviewed loader compatibility fixture"\n'
             + ('source = "tool.ts"\n' if artifact_kind == "generated" else "")
@@ -603,6 +610,50 @@ def test_canonical_repository_gate_enforces_only_opted_in_new_warnings(
     else:
         arguments.append("tool.mjs")
     assert main(arguments) == int(include_warnings)
+
+
+@pytest.mark.parametrize("filename", ["cache.pyc", ".eslintcache", ".coverage"])
+@pytest.mark.parametrize("staged", [False, True])
+@pytest.mark.parametrize("include_warnings", [False, True])
+def test_local_residue_warning_survives_canonical_routing_for_non_source_extensions(
+    tmp_path: Path, filename: str, capsys: pytest.CaptureFixture[str], *, staged: bool, include_warnings: bool
+) -> None:
+    baseline = _typed_policy_repository(tmp_path, include_warnings=include_warnings, rule_id=_LOCAL_RESIDUE_RULE)
+    original_baseline = baseline.read_bytes()
+    (tmp_path / filename).write_bytes(b"inert artifact fixture: never import or deserialize")
+    if staged:
+        subprocess.run(("git", "add", "--", filename), cwd=tmp_path, check=True)
+    else:
+        _commit(tmp_path)
+
+    report = api.Standards(tmp_path).analyze((), staged=staged)
+
+    assert report.exit_code == int(include_warnings)
+    assert report.completion.value == "complete"
+    assert report.issues == ()
+    assert [(item.rule_id, item.location.path, item.severity.value) for item in report.diagnostics] == [
+        (_LOCAL_RESIDUE_RULE, filename, "warning")
+    ]
+    native = next(tool for tool in report.tools if tool.name == "repo-standards")
+    assert native.policy_failed is include_warnings
+    arguments = ["--root", str(tmp_path), "check", "--format", "json", filename]
+    if staged:
+        arguments.append("--staged")
+    capsys.readouterr()
+    # Explicit unsupported files still fail coverage; native findings remain visible.
+    expected_exit = int(include_warnings) if staged else 2
+    assert main(arguments) == expected_exit
+    payload = adoption_manifest.as_table(parse_json(capsys.readouterr().out))
+    assert payload["completion"] == ("complete" if staged else "partial")
+    diagnostics = tuple(
+        adoption_manifest.as_table(item) for item in adoption_manifest.list_field(payload, "diagnostics")
+    )
+    assert [(item["code"], item["severity"]) for item in diagnostics] == [(_LOCAL_RESIDUE_RULE, "warning")]
+    if not staged:
+        coverage = adoption_manifest.list_field(payload, "coverage")
+        assert len(coverage) == 1
+        assert adoption_manifest.as_table(coverage[0])["disposition"] == "failed"
+    assert baseline.read_bytes() == original_baseline
 
 
 @pytest.mark.parametrize("staged", [False, True])

@@ -8,11 +8,11 @@ import {
   type TSESLint,
   type TSESTree,
   AST_NODE_TYPES,
-  ASTUtils,
 } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
+import { typeBinding } from "./_type-binding.js";
 
 type MessageIds = "unsafeMockCast";
 
@@ -87,10 +87,7 @@ export default createRule<[], MessageIds>({
     const namespaceBindings = new Set<TSESLint.Scope.Variable>();
 
     function resolve(identifier: TSESTree.Identifier): TSESLint.Scope.Variable | null {
-      return ASTUtils.findVariable(
-        context.sourceCode.getScope(identifier),
-        identifier.name,
-      );
+      return typeBinding(context.sourceCode, identifier);
     }
 
     function record(

@@ -242,6 +242,13 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
     selected_swift_dest = _init_destination(swift_dest, adopted, _DestinationKind.SWIFT, manifest.SWIFT_CONFIGS)
     selected_kotlin_dest = _init_destination(kotlin_dest, adopted, _DestinationKind.KOTLIN, manifest.KOTLIN_CONFIGS)
     selected_hook_manager = hook_manager or (adopted.hook_manager if adopted is not None else None)
+    resolved_ecosystems = None
+    if (
+        adopted is not None
+        and configs is None
+        and all(destination is None for destination in (python_dest, typescript_dest, swift_dest, kotlin_dest))
+    ):
+        resolved_ecosystems = scaffold.detect_adopted(resolved, adopted)
     scaffold_plan = scaffold.build_plan(
         resolved,
         force=force,
@@ -258,6 +265,7 @@ def plan_init(  # ruff: ignore[too-many-locals] -- one adoption boundary resolve
         hook_manager=selected_hook_manager,
         allow_existing_nested_eslint=allow_existing_nested_eslint,
         enable_repository_rules=enable_repository_rules,
+        resolved_ecosystems=resolved_ecosystems,
     )
     if scaffold_plan.errors:
         return InitPlan(scaffold_plan, None, ())
