@@ -37,6 +37,15 @@ def test_walk_is_elementwise_identical_to_ast_walk() -> None:
     assert [id(node) for node in walk(tree)] == [id(node) for node in ast.walk(tree)]
 
 
+def test_walk_snapshots_children_before_yielding_the_root() -> None:
+    tree = _tree()
+    expected = list(ast.walk(tree))
+    traversal = walk(tree)
+    assert next(traversal) is tree
+    tree.body.clear()
+    assert list(traversal) == expected[1:]
+
+
 def test_children_is_elementwise_identical_to_iter_child_nodes() -> None:
     tree = _tree()
     walked = list(ast.walk(tree))
