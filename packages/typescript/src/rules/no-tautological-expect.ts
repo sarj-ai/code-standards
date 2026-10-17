@@ -6,7 +6,7 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
-import { unwrapExpression } from "./_unwrap-expression.js";
+import { directArgumentCall, outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 import { runtimeTestFrameworkName } from "./_test-mock-provenance.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -23,9 +23,10 @@ export const NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION = {
   remediation: "Assert on a value produced by the behavior under test against an independently specified expectation, or remove only the redundant assertion while preserving coverage.",
   category: "testing",
   limitations: [
-    "Only supported `expect` matcher calls in recognized test files are inspected, including imported aliases and a single `.not` on zero-argument matchers. Local or type-only bindings, regular expressions, async modifiers and unsupported coercions are excluded; failing constant assertions are not tautologies.",
+    "Only supported `expect` matcher calls in recognized test files are inspected, including imported aliases, static string messages on imported Vitest/Playwright expect calls, and a single `.not` on zero-argument matchers. Local or type-only bindings, regular expressions, async modifiers and unsupported coercions are excluded; failing constant assertions are not tautologies.",
     "Scalar const bindings and aliases resolve through lexical scope; mutable bindings, objects, arrays, destructuring, runtime initializers and forward references are excluded.",
     "Expected-side runtime dependence, including a complete inline snapshot computed from its actual value, remains manual review; independent static interpolation and intentional partial masking are valid.",
+    "Direct framework expect.extend registrations exclude replaced built-in matchers; opaque registrations exclude all supported matchers, and nonempty custom equality testers exclude deep equality. Direct synchronous expect callbacks observed by a throwing matcher retain their assertion contracts. Cross-file or indirect matcher customization is not inferred.",
   ],
   examples: [
     {
@@ -86,6 +87,30 @@ export const NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION = {
       expectedCount: 0,
       public: true,
     },
+    {
+      id: "message-only-oracle", scenarioId: "static-message", title: "A diagnostic string does not make a literal comparison observe behavior", outcome: "match",
+      files: [{path: "src/service.test.ts", source: "import {expect} from 'vitest'; expect(true, 'service ready').toBe(true);"}], focusPath: "src/service.test.ts", expectedCount: 1, public: true,
+    },
+    {
+      id: "message-produced-oracle", scenarioId: "static-message", title: "A diagnostic message can describe an observed result", outcome: "no-match",
+      files: [{path: "src/service.test.ts", source: "import {expect} from 'vitest'; expect(serviceReady(), 'service ready').toBe(true);"}], focusPath: "src/service.test.ts", expectedCount: 0, public: true,
+    },
+    {
+      id: "uncaptured-matcher", scenarioId: "matcher-contract", title: "An uncaptured literal assertion remains redundant", outcome: "match",
+      files: [{path: "src/assertion.test.ts", source: "import {expect} from 'vitest'; expect(true).toBeTruthy();"}], focusPath: "src/assertion.test.ts", expectedCount: 1, public: true,
+    },
+    {
+      id: "captured-matcher", scenarioId: "matcher-contract", title: "A throwing matcher observes the inner assertion contract", outcome: "no-match",
+      files: [{path: "src/assertion.test.ts", source: "import {expect} from 'vitest'; expect(() => expect(true).toBeTruthy()).not.toThrow();"}], focusPath: "src/assertion.test.ts", expectedCount: 0, public: true,
+    },
+    {
+      id: "unrelated-custom-matcher", scenarioId: "custom-matcher", title: "Adding a different matcher preserves the built-in proof", outcome: "match",
+      files: [{path: "src/assertion.test.ts", source: "import {expect} from 'vitest'; expect.extend({toBeReady: custom}); expect(true).toBe(true);"}], focusPath: "src/assertion.test.ts", expectedCount: 1, public: true,
+    },
+    {
+      id: "replaced-custom-matcher", scenarioId: "custom-matcher", title: "A replaced matcher can reject a literal comparison", outcome: "no-match",
+      files: [{path: "src/assertion.test.ts", source: "import {expect} from 'vitest'; expect.extend({toBe: () => ({pass: false, message: () => 'custom contract'})}); expect(true).toBe(true);"}], focusPath: "src/assertion.test.ts", expectedCount: 0, public: true,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -107,6 +132,7 @@ const OPERAND_PREVIEW_CHARS = 40;
 
 /** Sign prefixes: `-1` is a unary expression, not a literal, but it is constant. */
 const NUMERIC_SIGNS: ReadonlySet<string> = new Set(["-", "+"]);
+const THROW_MATCHERS: ReadonlySet<string> = new Set(["toThrow", "toThrowError", "toThrowErrorMatchingSnapshot", "toThrowErrorMatchingInlineSnapshot"]);
 
 function resolveLiteral(
   node: TSESTree.Node,
@@ -192,12 +218,74 @@ function expectOperand(
     receiver.type !== AST_NODE_TYPES.CallExpression ||
     expectCallee?.type !== AST_NODE_TYPES.Identifier ||
     runtimeTestFrameworkName(sourceCode, expectCallee, "assertion") !== "expect" ||
-    receiver.arguments.length !== 1
+    (receiver.arguments.length !== 1 && !hasStaticMessage(receiver, expectCallee, sourceCode))
   ) {
     return null;
   }
   const operand = receiver.arguments[0];
   return operand === undefined ? null : { operand, negated };
+}
+
+function hasStaticMessage(call: TSESTree.CallExpression, callee: TSESTree.Identifier, source: Readonly<TSESLint.SourceCode>): boolean {
+  if (call.arguments.length !== 2) return false;
+  const definition = ASTUtils.findVariable(source.getScope(callee), callee.name)?.defs[0];
+  if (definition?.type !== "ImportBinding" || definition.parent.type !== AST_NODE_TYPES.ImportDeclaration ||
+      !["vitest", "@playwright/test"].includes(definition.parent.source.value)) return false;
+  const message = call.arguments[1];
+  const literal = message === undefined ? null : resolveLiteral(message, source);
+  return literal?.type === AST_NODE_TYPES.Literal && typeof literal.value === "string" || literal?.type === AST_NODE_TYPES.TemplateLiteral;
+}
+
+function isExceptionContract(node: TSESTree.Node, source: Readonly<TSESLint.SourceCode>): boolean {
+  let callback = node.parent;
+  while (callback !== undefined && callback.type !== AST_NODE_TYPES.Program && callback.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
+      callback.type !== AST_NODE_TYPES.FunctionExpression && callback.type !== AST_NODE_TYPES.FunctionDeclaration) callback = callback.parent;
+  if (callback === undefined || callback.type === AST_NODE_TYPES.Program || callback.type === AST_NODE_TYPES.FunctionDeclaration || callback.async || callback.generator) return false;
+  const call = directArgumentCall(callback);
+  if (call === null || call.optional) return false;
+  let member = outerExpression(call).parent;
+  if (member?.type === AST_NODE_TYPES.MemberExpression && ASTUtils.getPropertyName(member) === "not") member = outerExpression(member).parent;
+  if (member?.type !== AST_NODE_TYPES.MemberExpression || member.optional || !THROW_MATCHERS.has(ASTUtils.getPropertyName(member) ?? "")) return false;
+  const invocation = outerExpression(member).parent;
+  return invocation?.type === AST_NODE_TYPES.CallExpression && !invocation.optional &&
+    unwrapExpression(expectOperand(member, source)?.operand ?? member) === callback;
+}
+
+function customizedMatchers(source: Readonly<TSESLint.SourceCode>): ReadonlySet<string> {
+  const customized = new Set<string>();
+  const visit = (node: TSESTree.Node): void => {
+    if (node.type === AST_NODE_TYPES.CallExpression) collectCustomization(node, source, customized);
+    for (const key of source.visitorKeys[node.type] ?? []) {
+      const child = (node as unknown as Record<string, unknown>)[key];
+      for (const value of Array.isArray(child) ? child : [child]) {
+        if (typeof value === "object" && value !== null && "type" in value) visit(value as TSESTree.Node);
+      }
+    }
+  };
+  visit(source.ast);
+  return customized;
+}
+
+function collectCustomization(node: TSESTree.CallExpression, source: Readonly<TSESLint.SourceCode>, customized: Set<string>): void {
+  const member = unwrapExpression(node.callee);
+  if (member.type !== AST_NODE_TYPES.MemberExpression) return;
+  const receiver = unwrapExpression(member.object);
+  if (receiver.type !== AST_NODE_TYPES.Identifier || runtimeTestFrameworkName(source, receiver, "assertion") !== "expect") return;
+  const method = ASTUtils.getPropertyName(member);
+  const argument = node.arguments[0] === undefined ? null : unwrapExpression(node.arguments[0]);
+  if (method === "addEqualityTesters" && !(argument?.type === AST_NODE_TYPES.ArrayExpression && argument.elements.length === 0)) {
+    customized.add("toEqual");
+    customized.add("toStrictEqual");
+  }
+  if (method !== "extend") return;
+  if (argument?.type !== AST_NODE_TYPES.ObjectExpression) {
+    customized.add("*");
+    return;
+  }
+  for (const property of argument.properties) {
+    const name = property.type === AST_NODE_TYPES.Property ? ASTUtils.getPropertyName(property) : null;
+    customized.add(name ?? "*");
+  }
 }
 
 export default createRule<Options, MessageIds>({
@@ -222,6 +310,7 @@ export default createRule<Options, MessageIds>({
     if (!isTestFile(context.filename)) {
       return {};
     }
+    const customized = customizedMatchers(context.sourceCode);
     /** The operand as written, collapsed to one line and elided for the message. */
     const preview = (node: TSESTree.Node): string => {
       const text = context.sourceCode.getText(node).replaceAll(/\s+/gu, " ");
@@ -235,12 +324,13 @@ export default createRule<Options, MessageIds>({
 
         if (callee.type !== AST_NODE_TYPES.MemberExpression) return;
         const matcher = ASTUtils.getPropertyName(callee);
-        if (matcher === null) return;
+        if (matcher === null || (!ZERO_ARG_MATCHERS.has(matcher) && !EQUALITY_MATCHERS.has(matcher)) ||
+            customized.has("*") || customized.has(matcher)) return;
         const assertion = expectOperand(callee, context.sourceCode);
         if (assertion === null) return;
         const writtenOperand = assertion.operand;
         const operand = resolveLiteral(writtenOperand, context.sourceCode);
-        if (operand === null) {
+        if (operand === null || isExceptionContract(node, context.sourceCode)) {
           return;
         }
         const writtenMatcher = `${assertion.negated ? "not." : ""}${matcher}`;

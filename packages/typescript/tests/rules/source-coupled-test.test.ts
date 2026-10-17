@@ -1,8 +1,10 @@
 // vitest: shared-module-graph
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { ESLint } from "eslint";
+import { afterAll, describe, expect, it } from "vitest";
 
+import iacRule from "../../src/rules/iac-source-coupled-test.js";
 import rule from "../../src/rules/source-coupled-test.js";
 
 RuleTester.afterAll = afterAll;
@@ -13,6 +15,28 @@ RuleTester.itOnly = it.only;
 const TESTER = new RuleTester({ languageOptions: { parser: tsParser, parserOptions: { sourceType: "module" } } });
 const NAMED_FS = "import { readFileSync } from 'node:fs';";
 const FS_OBJECT = "import fs from 'node:fs';";
+
+it.each([
+  ["policy.json", "source-coupled-test"],
+  ["main.tf.jsonc", "source-coupled-test"],
+  ["main.tf.json", "iac-source-coupled-test"],
+  ["main.tftest.json", "iac-source-coupled-test"],
+])("assigns %s to its single source-oracle owner", async (path, owner) => {
+  const eslint = new ESLint({
+    overrideConfigFile: true,
+    overrideConfig: [{
+      files: ["**/*.ts"],
+      languageOptions: { parser: tsParser },
+      plugins: { sarj: { rules: { "source-coupled-test": rule, "iac-source-coupled-test": iacRule } } },
+      rules: { "sarj/source-coupled-test": "error", "sarj/iac-source-coupled-test": "error" },
+    }],
+  });
+  const [result] = await eslint.lintText(
+    `${NAMED_FS} test('policy', () => { expect(readFileSync('${path}', 'utf8')).toContain('resource'); });`,
+    { filePath: "policy.test.ts" },
+  );
+  expect(result?.messages.map(message => [message.ruleId, message.line])).toEqual([[`sarj/${owner}`, 1]]);
+});
 
 TESTER.run("source-coupled-test", rule, {
   valid: [
