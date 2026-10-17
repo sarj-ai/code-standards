@@ -6,7 +6,7 @@ from operator import itemgetter
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, TypedDict
 
-from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.json_boundary import parse_unique_json
 from sarj_standards.libs.release.process import (
     ProcessBinaryRunner,
     ProcessFailureError,
@@ -331,15 +331,19 @@ def _inventory_by_key(inventory_entries: list[object]) -> dict[str, dict[str, ob
 
 def _immutable_json(snapshot: ImmutableGit, path: str) -> dict[str, object]:
     try:
-        payload = parse_json(snapshot.text(path))
-    except json.JSONDecodeError as error:
+        payload = parse_unique_json(snapshot.text(path))
+    except (ValueError, RecursionError) as error:
         msg = f"{path} at {snapshot.sha} is not valid JSON"
         raise ValueError(msg) from error
     return _object(payload, label=path)
 
 
 def _rules_array(document: dict[str, object], *, label: str) -> list[object]:
-    if document.get("schemaVersion") != 1 or set(document) != {"schemaVersion", "rules"}:
+    if (
+        type(document.get("schemaVersion")) is not int
+        or document.get("schemaVersion") != 1
+        or set(document) != {"schemaVersion", "rules"}
+    ):
         msg = f"{label} must contain exactly schemaVersion 1 and rules"
         raise ValueError(msg)
     rules = document["rules"]

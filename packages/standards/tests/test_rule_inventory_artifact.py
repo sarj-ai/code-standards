@@ -14,6 +14,20 @@ from sarj_standards.libs.repository import rule_inventory_artifact
 ROOT = Path(__file__).resolve().parents[3]
 
 
+@pytest.mark.parametrize("schema", [True, 1.0, "1", None], ids=("boolean", "float", "string", "null"))
+def test_inventory_requires_an_integer_schema_version(schema: object) -> None:
+    with pytest.raises(ValueError, match="unsupported rule inventory schemaVersion"):
+        rule_inventory_artifact.validate({"schemaVersion": schema, "rules": []})
+
+
+def test_inventory_load_rejects_duplicate_keys(tmp_path: Path) -> None:
+    path = tmp_path / "inventory.json"
+    path.write_text('{"schemaVersion":1,"rules":[],"rules":[]}', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="duplicate JSON key"):
+        rule_inventory_artifact.load(path)
+
+
 def test_shipped_inventory_matches_live_registries() -> None:
     result = rule_inventory_artifact.sync(ROOT, check=True)
 

@@ -237,6 +237,29 @@ def test_changes_fails_when_inventory_and_catalog_disagree(repository: Path) -> 
     assert after != broken
 
 
+@pytest.mark.parametrize("schema", [True, 1.0], ids=("boolean", "float"))
+def test_changes_rejects_non_integer_schema_versions_in_the_selected_tree(repository: Path, schema: object) -> None:
+    before = _write_revision(repository, [], "base")
+    path = repository / _INVENTORY
+    path.write_text(json.dumps({"schemaVersion": schema, "rules": []}), encoding="utf-8")
+    _git(repository, "add", ".")
+    _git(repository, "commit", "-m", "invalid schema tag")
+
+    with pytest.raises(ValueError, match="schemaVersion 1"):
+        rule_changes.compare(repository, before=before, after="HEAD")
+
+
+def test_changes_rejects_duplicate_keys_in_the_selected_tree(repository: Path) -> None:
+    before = _write_revision(repository, [], "base")
+    path = repository / _INVENTORY
+    path.write_text('{"schemaVersion":1,"rules":[],"rules":[]}', encoding="utf-8")
+    _git(repository, "add", ".")
+    _git(repository, "commit", "-m", "ambiguous inventory")
+
+    with pytest.raises(ValueError, match="not valid JSON"):
+        rule_changes.compare(repository, before=before, after="HEAD")
+
+
 @pytest.mark.parametrize("mutation", ["extra", "missing"])
 def test_changes_rejects_inventory_entries_outside_exact_schema(repository: Path, mutation: str) -> None:
     before = _write_revision(repository, [_rule("existing")], "base")

@@ -221,7 +221,7 @@ def seed(measurement: Measurement, baseline: Baseline) -> Baseline:
 def load_baseline(path: Path) -> Baseline:
     raw = parse_json(path.read_text(encoding="utf-8"))
     schema = _get(raw, "schema_version")
-    if schema is not None and schema != BASELINE_SCHEMA_VERSION:
+    if schema is not None and (type(schema) is not int or schema != BASELINE_SCHEMA_VERSION):
         msg = f"unsupported suppression baseline schema_version: {schema!r}"
         raise ValueError(msg)
     files = _get(raw, "files")

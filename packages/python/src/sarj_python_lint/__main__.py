@@ -430,12 +430,26 @@ def _baseline_path(path: Path, *, root: Path | None = None) -> str:
 def _read_baseline(path: Path) -> dict[str, dict[str, int]]:
     raw = parse_json(path.read_text(encoding="utf-8"))
     if not is_object_mapping(raw):
-        return {}
+        msg = "baseline must be an object of file paths and diagnostic counts"
+        raise ValueError(msg)
     counts: dict[str, dict[str, int]] = {}
     for file_key, per_code in raw.items():
-        if not isinstance(file_key, str) or not is_object_mapping(per_code):
-            continue
-        counts[file_key] = {code: n for code, n in per_code.items() if isinstance(code, str) and isinstance(n, int)}
+        if not isinstance(file_key, str) or not file_key or not is_object_mapping(per_code):
+            msg = "baseline entries must map non-empty file paths to diagnostic counts"
+            raise ValueError(msg)
+        validated: dict[str, int] = {}
+        for code, count in per_code.items():
+            if (
+                not isinstance(code, str)
+                or not code
+                or not isinstance(count, int)
+                or isinstance(count, bool)
+                or count < 0
+            ):
+                msg = "baseline counts must map non-empty diagnostic codes to non-negative integers"
+                raise ValueError(msg)
+            validated[code] = count
+        counts[file_key] = validated
     return counts
 
 

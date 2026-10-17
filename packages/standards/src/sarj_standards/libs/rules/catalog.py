@@ -74,7 +74,7 @@ class RuleCatalogDocument:
     schema_version: int = 1
 
     def __post_init__(self) -> None:
-        if self.schema_version != 1:
+        if type(self.schema_version) is not int or self.schema_version != 1:
             msg = "unsupported rule catalog schema version"
             raise ValueError(msg)
         keys = tuple(rule.spec.key for rule in self.rules)
