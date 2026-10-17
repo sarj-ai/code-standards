@@ -56,6 +56,7 @@ class NoTautologicalExpect(Rule):
             "Detection covers truthy scalar constants, definitely non-empty list/set/dict displays, and directly asserted generator expressions or lambdas.",
             "Generator consumption, lambda invocation, comprehensions, and runtime iterator/callable values are not inferred; empty universal-quantification contracts remain valid.",
             "Test-local immutable scalar bindings and their aliases are tracked only through straight-line assignments; calls, control flow, mutable values, and global/nonlocal writes invalidate tracking.",
+            "Pure Boolean conditions, compatible numeric/string/bytes ordering and chained comparisons over known scalar setup are evaluated; proven-true pure assertions retain bindings because their messages do not execute.",
             "Ruff owns asserted strings and tuples, literal comparisons and identity, and unittest-style assertion methods.",
             "Generated files, always-failing assertions, deliberate match-arm success markers, and runtime-value comparisons are excluded.",
         ),
@@ -196,12 +197,13 @@ def _function_bound_tautologies(function: ast.FunctionDef | ast.AsyncFunctionDef
     for statement in function.body:
         if _record_scalar_assignment(statement, bindings):
             continue
-        if isinstance(statement, ast.Assert):
+        if isinstance(statement, ast.Assert) and bindings and _scalar_condition(statement.test, bindings) is True:
             references_setup = any(
                 isinstance(node, ast.Name) and node.id in bindings for node in ast.walk(statement.test)
             )
-            if references_setup and _scalar_condition(statement.test, bindings) is True:
+            if references_setup:
                 found.append(_Tautology(statement, "the condition follows only from unchanged scalar setup"))
+            continue
         bindings.clear()
     return found
 
@@ -239,24 +241,57 @@ def _scalar_value(node: ast.expr, bindings: dict[str, object]) -> object:
 
 
 def _scalar_condition(node: ast.expr, bindings: dict[str, object]) -> bool | None:
-    if isinstance(node, ast.Compare) and len(node.ops) == 1:
-        left = _scalar_value(node.left, bindings)
-        right = _scalar_value(node.comparators[0], bindings)
-        if left is _UNKNOWN or right is _UNKNOWN:
+    if isinstance(node, ast.BoolOp):
+        values = [_scalar_condition(value, bindings) for value in node.values]
+        if None in values:
             return None
-        match node.ops[0]:
-            case ast.Eq():
-                return left == right
-            case ast.NotEq():
-                return left != right
-            case ast.Is() if left is None or isinstance(left, bool):
-                return left is right
-            case ast.IsNot() if left is None or isinstance(left, bool):
-                return left is not right
-            case _:
-                return None
+        return all(values) if isinstance(node.op, ast.And) else any(values)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        value = _scalar_condition(node.operand, bindings)
+        return None if value is None else not value
+    if isinstance(node, ast.Compare):
+        values = [_scalar_value(value, bindings) for value in (node.left, *node.comparators)]
+        results = list(map(_scalar_relation, values[:-1], values[1:], node.ops, strict=True))
+        return None if None in results else all(results)
     value = _scalar_value(node, bindings)
     return None if value is _UNKNOWN else bool(value)
+
+
+def _scalar_relation(left: object, right: object, op: ast.cmpop) -> bool | None:
+    if left is _UNKNOWN or right is _UNKNOWN:
+        return None
+    match op:
+        case ast.Eq():
+            return left == right
+        case ast.NotEq():
+            return left != right
+        case ast.Is() if left is None or right is None or isinstance(left, bool) or isinstance(right, bool):
+            return left is right
+        case ast.IsNot() if left is None or right is None or isinstance(left, bool) or isinstance(right, bool):
+            return left is not right
+        case _:
+            pass
+    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+        return _ordered_relation(left, right, op)
+    if isinstance(left, str) and isinstance(right, str):
+        return _ordered_relation(left, right, op)
+    if isinstance(left, bytes) and isinstance(right, bytes):
+        return _ordered_relation(left, right, op)
+    return None
+
+
+def _ordered_relation[T: (int | float, str, bytes)](left: T, right: T, op: ast.cmpop) -> bool | None:
+    match op:
+        case ast.Lt():
+            return left < right
+        case ast.LtE():
+            return left <= right
+        case ast.Gt():
+            return left > right
+        case ast.GtE():
+            return left >= right
+        case _:
+            return None
 
 
 def _exempt_nodes(tree: ast.Module, *, node_index: NodeIndex | None = None) -> set[ast.AST]:

@@ -247,6 +247,69 @@ def test_observe_checks_execution_and_independent_case_oracles(
             True,
             False,
         ),
+        (
+            (
+                "import {readFileSync} from 'node:fs';\n"
+                "test('policy', () => {expect(readFileSync('workflow.yml', 'utf8')).toMatch(/permissions/);});"
+            ),
+            "",
+            "@sarj/source-coupled-test",
+            False,
+            True,
+        ),
+        (
+            (
+                "import {readFileSync} from 'node:fs';\n"
+                "test('policy', () => {const policy = JSON.parse(readFileSync('policy.json', 'utf8'));"
+                "expect(policy.enabled).toBe(true);});"
+            ),
+            "",
+            None,
+            False,
+            True,
+        ),
+        (
+            (
+                "import {readFileSync} from 'node:fs';\n"
+                "// eslint-disable-next-line @sarj/source-coupled-test -- raw representation is the compatibility contract\n"
+                "test('policy', () => {expect(readFileSync('workflow.yml', 'utf8')).toMatch(/permissions/);});"
+            ),
+            "",
+            None,
+            False,
+            True,
+        ),
+        (
+            (
+                "import {readFileSync} from 'node:fs';\n"
+                "test('policy', () => {expect(readFileSync('main.tf', 'utf8')).toMatch(/prevent_destroy/);});"
+            ),
+            "",
+            "@sarj/iac-source-coupled-test",
+            False,
+            True,
+        ),
+        (
+            (
+                "import {readFileSync} from 'node:fs';\n"
+                "test('policy', () => {const config = JSON.parse(readFileSync('main.tf.json', 'utf8'));"
+                "expect(config.resource).toEqual({});});"
+            ),
+            "",
+            None,
+            False,
+            True,
+        ),
+        (
+            (
+                "import {readFileSync} from 'node:fs';\n"
+                "test('policy', () => {expect(readFileSync('main.tf', 'utf8')).toMatch(/prevent_destroy/);});"
+            ),
+            "",
+            "@sarj/iac-source-coupled-test",
+            True,
+            False,
+        ),
     ],
     ids=[
         "missing-oracle",
@@ -260,6 +323,12 @@ def test_observe_checks_execution_and_independent_case_oracles(
         "duplicate-case",
         "duplicate-body",
         "sarj-bulk-suppressed",
+        "source-oracle",
+        "parsed-source-oracle",
+        "source-representation-suppressed",
+        "iac-source-oracle",
+        "parsed-iac-source-oracle",
+        "iac-source-bulk-suppressed",
     ],
 )
 def test_observe_vitest_oracles_redundancy_and_promise_completion(
@@ -288,6 +357,7 @@ def test_observe_vitest_oracles_redundancy_and_promise_completion(
         "'@sarj/no-tautological-expect':'error','@sarj/no-duplicate-test-case':'error',"
         "'@sarj/duplicate-test-body':'error',"
         "'@sarj/no-bare-return-from-test-catch':'error',"
+        "'@sarj/source-coupled-test':'error','@sarj/iac-source-coupled-test':'error',"
         if registered
         else ""
     )

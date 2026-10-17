@@ -13,7 +13,8 @@ import { isGeneratedFile, isTestFile } from "./_paths.js";
 type MessageIds = "rawSourceOracle";
 type Options = readonly [];
 
-const GENERAL_SOURCE_SUFFIX_RE = /\.(?:bash|sh|ya?ml|jsonc?|toml|py|[cm]?[jt]s)$/iu;
+// Terraform JSON has a dedicated oracle owner; JSONC remains general source.
+const GENERAL_SOURCE_SUFFIX_RE = /\.(?:bash|sh|ya?ml|jsonc|toml|py|[cm]?[jt]s)$|(?<!\.(?:tf|tftest))\.json$/iu;
 const FS_MODULES = new Set(["fs", "node:fs", "fs/promises", "node:fs/promises"]);
 const FS_READERS = new Set(["readFile", "readFileSync"]);
 const TEXT_TRANSFORMS = new Set([

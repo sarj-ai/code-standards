@@ -28,6 +28,8 @@ SELECTORS: Final = frozenset(
         "eslint:no-duplicate-test-case",
         "eslint:no-tautological-expect",
         "eslint:no-bare-return-from-test-catch",
+        "eslint:source-coupled-test",
+        "eslint:iac-source-coupled-test",
     )
 )
 ESLINT_RULES: Final = frozenset({"vitest/expect-expect", "vitest/valid-expect-in-promise"}) | frozenset(
