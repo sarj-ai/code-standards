@@ -9,6 +9,7 @@ import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescr
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
+import { vitestFixtureTestName } from "./_test-mock-provenance.js";
 
 type Options = readonly [];
 type MessageIds = "duplicateCase";
@@ -25,7 +26,7 @@ export const NO_DUPLICATE_TEST_CASE_DOCUMENTATION = {
   category: "testing",
   limitations: [
     "Only literal rows in inline arrays or const tables used exclusively by each or Vitest for calls are compared. Calls, spreads, computed keys, getters, runtime values, tagged tables and mutable or escaped tables are excluded.",
-    "Object property order and all row fields, including names and IDs, remain part of case identity; equivalent quoted and unquoted property names share one identity. Runtime imported test aliases are resolved; type-only imports, custom runners and namespace imports are excluded.",
+    "Object property order and all row fields, including names and IDs, remain part of case identity; equivalent quoted and unquoted property names share one identity. Runtime imports and unchanged local const Vitest test.extend fixture APIs are resolved; type-only imports, escaped or mutated fixture APIs, custom runners and namespace imports are excluded.",
     "The rule reports duplicate values, not runtime equivalence. There is no autofix because repeated invocations may exercise shared state or concurrency.",
   ],
   examples: [
@@ -33,6 +34,8 @@ export const NO_DUPLICATE_TEST_CASE_DOCUMENTATION = {
     {id: "distinct-boundary", title: "Distinct inputs have independent rows", outcome: "no-match", files: [{path: "src/format.test.ts", source: "import {it} from 'vitest'; it.each([[0, '0ms'], [1, '1ms']])('%s', (input, expected) => { expect(format(input)).toBe(expected); });"}], focusPath: "src/format.test.ts", expectedCount: 0, public: true},
     {id: "duplicate-for-row", scenarioId: "for-table", title: "Vitest for tables retain the same case identity", outcome: "match", files: [{path: "src/format.test.ts", source: "import {test} from 'vitest'; test.for([{input: 0, expected: '0ms'}, {'input': 0, expected: '0ms'}])('$input', ({input, expected}) => { expect(format(input)).toBe(expected); });"}], focusPath: "src/format.test.ts", expectedCount: 1, public: true},
     {id: "distinct-for-boundary", scenarioId: "for-table", title: "Vitest for tables preserve distinct boundaries", outcome: "no-match", files: [{path: "src/format.test.ts", source: "import {test} from 'vitest'; test.for([{input: 0, expected: '0ms'}, {'input': 1, expected: '1ms'}])('$input', ({input, expected}) => { expect(format(input)).toBe(expected); });"}], focusPath: "src/format.test.ts", expectedCount: 0, public: true},
+    {id: "fixture-duplicate-row", scenarioId: "fixture-runner", title: "Fixture reuse preserves the literal case check", outcome: "match", files: [{path: "src/format.test.ts", source: "import {test as base} from 'vitest'; const test = base.extend({locale: 'en'}); test.for([1, 1])('formats %s', (value, {locale}) => { expect(format(value, locale)).toBe('1'); });"}], focusPath: "src/format.test.ts", expectedCount: 1, public: true},
+    {id: "fixture-distinct-row", scenarioId: "fixture-runner", title: "Fixture reuse preserves distinct independent cases", outcome: "no-match", files: [{path: "src/format.test.ts", source: "import {test as base} from 'vitest'; const test = base.extend({locale: 'en'}); test.for([1, 2])('formats %s', (value, {locale}) => { expect(format(value, locale)).toBe(String(value)); });"}], focusPath: "src/format.test.ts", expectedCount: 0, public: true},
   ],
 } as const satisfies RuleDocumentation;
 
@@ -48,6 +51,7 @@ function frameworkTable(node: TSESTree.CallExpression, sourceCode: Readonly<TSES
     callee = unwrapExpression(callee.object);
   }
   if (callee.type !== AST_NODE_TYPES.Identifier) return false;
+  if (vitestFixtureTestName(sourceCode, callee) !== null) return true;
   const variable = ASTUtils.findVariable(sourceCode.getScope(callee), callee.name);
   if (variable === null || variable.defs.length === 0) return TEST_NAMES.has(callee.name) && !variable?.references.some(reference => reference.isWrite());
   return variable.defs.length === 1 && variable.defs.every((definition) => {

@@ -8,7 +8,7 @@ import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescr
 
 import { directArgumentCall, outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 
-import { runtimeTestFrameworkName } from "./_test-mock-provenance.js";
+import { runtimeTestFrameworkName, vitestFixtureTestName } from "./_test-mock-provenance.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isTestFile } from "./_paths.js";
@@ -22,10 +22,12 @@ export const NO_SLEEP_IN_TEST_BODY_DOCUMENTATION = {
   remediation: "Await the observable signal, or advance fake timers when supported and restore real timers in finally or a teardown hook.",
   category: "testing",
   filePatterns: ["**/*.test.*", "**/*.spec.*", "**/tests/**", "**/__tests__/**"],
-  limitations: ["Only fixed nonzero sleeps directly inside test and per-test hook callbacks are checked; nested fakes, parameterized delays, local helper bindings, and Promise executors with additional work or rejection callbacks are excluded."],
+  limitations: ["Only fixed nonzero sleeps directly inside test and per-test hook callbacks are checked, including unchanged local const Vitest test.extend fixture APIs and their beforeEach/afterEach hooks. Escaped or mutated fixture APIs, nested fakes, parameterized delays, local helper bindings, and Promise executors with additional work or rejection callbacks are excluded."],
   examples: [
     { id: "fake-timer", title: "Advance controlled time and restore real timers", outcome: "no-match", files: [{ path: "src/retry.test.ts", source: "it('retries', async () => { vi.useFakeTimers(); try { const result = retry(); await vi.advanceTimersByTimeAsync(50); await result; } finally { vi.useRealTimers(); } });" }], focusPath: "src/retry.test.ts", expectedCount: 0, public: true },
     { id: "fixed-sleep", title: "Do not wait for wall-clock time", outcome: "match", files: [{ path: "src/retry.test.ts", source: "it('retries', async () => { await sleep(50); expect(done()).toBe(true); });" }], focusPath: "src/retry.test.ts", expectedCount: 1, public: true },
+    { id: "fixture-fixed-sleep", scenarioId: "fixture-runner", title: "Fixture setup does not make a fixed sleep deterministic", outcome: "match", files: [{ path: "src/retry.test.ts", source: "import {test as base} from 'vitest'; const test = base.extend({port: 3000}); test('retries', async ({port}) => { start(port); await sleep(50); expect(done()).toBe(true); });" }], focusPath: "src/retry.test.ts", expectedCount: 1, public: true },
+    { id: "fixture-observable-signal", scenarioId: "fixture-runner", title: "Await the signal while reusing fixture setup", outcome: "no-match", files: [{ path: "src/retry.test.ts", source: "import {test as base} from 'vitest'; const test = base.extend({port: 3000}); test('retries', async ({port}) => { start(port); await waitForReady(port); expect(done()).toBe(true); });" }], focusPath: "src/retry.test.ts", expectedCount: 0, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -134,16 +136,19 @@ function isTestBody(fn: TSESTree.Node, source: Readonly<TSESLint.SourceCode>): b
 }
 
 /** The base callee name of a call, unwrapping `.only` / `.skip` / `.each` chains. */
-const TEST_MODIFIERS: ReadonlySet<string> = new Set(["only", "skip", "each", "concurrent", "sequential", "fails", "skipIf", "runIf"]);
+const TEST_MODIFIERS: ReadonlySet<string> = new Set(["only", "skip", "each", "for", "concurrent", "sequential", "fails", "skipIf", "runIf"]);
 
 function testCallerName(callee: TSESTree.Node, source: Readonly<TSESLint.SourceCode>): string | null {
   callee = unwrapExpression(callee);
   if (callee.type === AST_NODE_TYPES.Identifier) {
-    const name = runtimeTestFrameworkName(source, callee, "test");
+    const name = runtimeTestFrameworkName(source, callee, "test") ?? vitestFixtureTestName(source, callee);
     return name !== null && TEST_CALLERS.has(name) ? name : null;
   }
   if (callee.type === AST_NODE_TYPES.MemberExpression) {
     const member = ASTUtils.getPropertyName(callee);
+    const receiver = unwrapExpression(callee.object);
+    if ((member === "beforeEach" || member === "afterEach") && receiver.type === AST_NODE_TYPES.Identifier &&
+        vitestFixtureTestName(source, receiver) !== null) return member;
     return member !== null && TEST_MODIFIERS.has(member) ? testCallerName(callee.object, source) : null;
   }
   if (callee.type === AST_NODE_TYPES.CallExpression) return testCallerName(callee.callee, source);
