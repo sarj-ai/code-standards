@@ -515,6 +515,42 @@ def test_flags_a_constant_assert_outside_the_match_that_has_a_failing_arm():
     ("body", "lines"),
     [
         pytest.param("ready = True\nassert ready", [3], id="bound-boolean"),
+        pytest.param("checks = (row.valid for row in rows)\nassert checks", [3], id="bound-generator"),
+        pytest.param("checks = (row.valid async for row in rows)\nassert checks", [3], id="bound-async-generator"),
+        pytest.param("checks = (row.valid for row in rows)\ncopy = checks\nassert copy", [4], id="generator-alias"),
+        pytest.param("check = lambda: validate(rows)\nassert check", [3], id="bound-lambda"),
+        pytest.param("check = lambda: validate(rows)\ncopy = check\nassert copy", [4], id="lambda-alias"),
+        pytest.param(
+            "check = lambda: validate(rows)\nassert check, check()\nassert check",
+            [3, 4],
+            id="deferred-message-not-called",
+        ),
+        pytest.param(
+            "ready = True\ncheck = lambda value=(ready := False): value\nassert ready\nassert check",
+            [],
+            id="lambda-default-clears-setup",
+        ),
+        pytest.param(
+            "ready = True\nchecks = (row for row in (ready := rows))\nassert ready\nassert checks",
+            [],
+            id="generator-iterable-clears-setup",
+        ),
+        pytest.param(
+            "ready = True\ncheck = lambda value=(ready := False): value\nassert check",
+            [4],
+            id="created-object-still-truthy",
+        ),
+        pytest.param("checks = (row.valid for row in rows)\nassert all(checks)\nassert checks", [], id="consumed"),
+        pytest.param("check = lambda: validate(rows)\nassert check()", [], id="invoked"),
+        pytest.param("checks = (row.valid for row in rows)\nchecks = build(rows)\nassert checks", [], id="rebound"),
+        pytest.param(
+            "checks = (row.valid for row in rows)\ncopy = checks\nassert copy == checks",
+            [],
+            id="deferred-equality-contract",
+        ),
+        pytest.param("check = lambda: validate(rows)\nassert check is not None", [], id="deferred-identity-contract"),
+        pytest.param("checks = (row.valid for row in rows)\nassert checks != True", [], id="opaque-marker-not-scalar"),
+        pytest.param("count = 7\nassert (row for row in [count])", [3], id="direct-generator-no-duplicate"),
         pytest.param("count = 7\nassert count == 7", [3], id="bound-equality"),
         pytest.param("original = 'ok'\ncopy = original\nassert copy == 'ok'", [4], id="scalar-alias"),
         pytest.param("missing = None\nassert missing is None", [3], id="none-identity"),
@@ -566,7 +602,7 @@ def test_flags_a_constant_assert_outside_the_match_that_has_a_failing_arm():
         pytest.param("assert 1 == 1", [], id="ruff-owned-comparison"),
     ],
 )
-def test_tracks_only_proven_local_scalar_assertions(body: str, lines: list[int]) -> None:
+def test_tracks_only_proven_local_setup_assertions(body: str, lines: list[int]) -> None:
     source = "def test_result():\n" + "\n".join("    " + line for line in body.splitlines()) + "\n"
     findings = _check(source)
     assert [finding.line for finding in findings] == lines

@@ -17,14 +17,15 @@ type Options = readonly [];
 
 export const NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION = {
   summary:
-    "Disallow supported assertions known to pass from literals or immutable scalar setup.",
+    "Disallow supported assertions fixed by literal setup or immutable self identity.",
   rationale:
-    "An assertion determined entirely by literals does not observe the code under test and can keep passing after that code is removed.",
+    "An assertion fixed by literal setup or one immutable binding's identity cannot distinguish a wrong result from the intended behavior.",
   remediation: "Assert on a value produced by the behavior under test against an independently specified expectation, or remove only the redundant assertion while preserving coverage.",
   category: "testing",
   limitations: [
     "Only supported `expect` matcher calls in recognized test files are inspected, including imported aliases, static string messages on imported Vitest/Playwright expect calls, and a single `.not` on zero-argument matchers. Local or type-only bindings, regular expressions, async modifiers and unsupported coercions are excluded; failing constant assertions are not tautologies.",
-    "Scalar const bindings and aliases resolve through lexical scope; mutable bindings, objects, arrays, destructuring, runtime initializers and forward references are excluded.",
+    "The literal proof resolves scalar const bindings and aliases through lexical scope; mutable bindings, objects, arrays, destructuring, runtime initializers and forward references are excluded from that proof.",
+    "Positive toBe assertions on the same initialized, unreassigned local identifier const binding also have fixed identity, including runtime results. Different bindings, imported live values, property/getter accesses and deep-equality reflexivity remain excluded from this identity proof.",
     "Expected-side runtime dependence, including a complete inline snapshot computed from its actual value, remains manual review; independent static interpolation and intentional partial masking are valid.",
     "Direct framework expect.extend registrations exclude replaced built-in matchers; opaque registrations exclude all supported matchers, and nonempty custom equality testers exclude deep equality. Direct synchronous expect callbacks observed by a throwing matcher retain their assertion contracts. Cross-file or indirect matcher customization is not inferred.",
   ],
@@ -110,6 +111,14 @@ export const NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION = {
     {
       id: "replaced-custom-matcher", scenarioId: "custom-matcher", title: "A replaced matcher can reject a literal comparison", outcome: "no-match",
       files: [{path: "src/assertion.test.ts", source: "import {expect} from 'vitest'; expect.extend({toBe: () => ({pass: false, message: () => 'custom contract'})}); expect(true).toBe(true);"}], focusPath: "src/assertion.test.ts", expectedCount: 0, public: true,
+    },
+    {
+      id: "self-identity-oracle", scenarioId: "immutable-identity", title: "A returned value's identity with itself cannot reject a wrong result", outcome: "match",
+      files: [{path: "src/service.test.ts", source: "import {expect} from 'vitest'; const result = serviceStatus(); expect(result).toBe(result);"}], focusPath: "src/service.test.ts", expectedCount: 1, public: true,
+    },
+    {
+      id: "independent-result-oracle", scenarioId: "immutable-identity", title: "An independent expected state can reject a wrong result", outcome: "no-match",
+      files: [{path: "src/service.test.ts", source: "import {expect} from 'vitest'; const result = serviceStatus(); expect(result.status).toBe('ready');"}], focusPath: "src/service.test.ts", expectedCount: 0, public: true,
     },
   ],
 } as const satisfies RuleDocumentation;
@@ -288,6 +297,19 @@ function collectCustomization(node: TSESTree.CallExpression, source: Readonly<TS
   }
 }
 
+function hasConstSelfIdentity(actual: TSESTree.Node, expected: TSESTree.Node, source: Readonly<TSESLint.SourceCode>): boolean {
+  actual = unwrapExpression(actual);
+  expected = unwrapExpression(expected);
+  if (actual.type !== AST_NODE_TYPES.Identifier || expected.type !== AST_NODE_TYPES.Identifier) return false;
+  const variable = ASTUtils.findVariable(source.getScope(actual), actual.name);
+  if (variable?.defs.length !== 1 || ASTUtils.findVariable(source.getScope(expected), expected.name) !== variable) return false;
+  const definition = variable.defs[0];
+  return definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+    definition.node.id.type === AST_NODE_TYPES.Identifier && definition.node.parent.kind === "const" &&
+    definition.node.init !== null && definition.node.init.range[1] <= Math.min(actual.range[0], expected.range[0]) &&
+    !variable.references.some(reference => reference.isWrite() && !reference.init);
+}
+
 export default createRule<Options, MessageIds>({
   name: "no-tautological-expect",
   documentation: NO_TAUTOLOGICAL_EXPECT_DOCUMENTATION,
@@ -300,7 +322,7 @@ export default createRule<Options, MessageIds>({
     schema: [],
     messages: {
       tautologicalComparison:
-        "`expect({{operand}}).{{matcher}}({{operand}})` is fixed by literal setup and does not observe behavior. Assert on a produced value or remove only the redundant assertion, preserving other coverage.",
+        "`expect({{operand}}).{{matcher}}({{operand}})` is fixed by {{reason}} and does not observe behavior. Assert against an independent expectation or remove only the redundant assertion, preserving the action and other coverage.",
       tautologicalMatcher:
         "`expect({{operand}}).{{matcher}}()` is statically known to pass. Assert on a produced value or remove only the redundant assertion, preserving other coverage.",
     },
@@ -327,10 +349,18 @@ export default createRule<Options, MessageIds>({
         if (matcher === null || (!ZERO_ARG_MATCHERS.has(matcher) && !EQUALITY_MATCHERS.has(matcher)) ||
             customized.has("*") || customized.has(matcher)) return;
         const assertion = expectOperand(callee, context.sourceCode);
-        if (assertion === null) return;
+        if (assertion === null || isExceptionContract(node, context.sourceCode)) return;
         const writtenOperand = assertion.operand;
+        const writtenExpected = node.arguments[0];
+        if (!assertion.negated && matcher === "toBe" && node.arguments.length === 1 && writtenExpected !== undefined &&
+            hasConstSelfIdentity(writtenOperand, writtenExpected, context.sourceCode)) {
+          context.report({
+            node, messageId: "tautologicalComparison", data: {operand: preview(writtenOperand), matcher, reason: "the same immutable binding"},
+          });
+          return;
+        }
         const operand = resolveLiteral(writtenOperand, context.sourceCode);
-        if (operand === null || isExceptionContract(node, context.sourceCode)) {
+        if (operand === null) {
           return;
         }
         const writtenMatcher = `${assertion.negated ? "not." : ""}${matcher}`;
@@ -342,7 +372,6 @@ export default createRule<Options, MessageIds>({
           });
           return;
         }
-        const writtenExpected = node.arguments[0];
         const expected = writtenExpected === undefined ? null : resolveLiteral(writtenExpected, context.sourceCode);
         if (
           assertion.negated || !EQUALITY_MATCHERS.has(matcher) ||
@@ -362,7 +391,7 @@ export default createRule<Options, MessageIds>({
         context.report({
           node,
           messageId: "tautologicalComparison",
-          data: { operand: preview(writtenOperand), matcher },
+          data: { operand: preview(writtenOperand), matcher, reason: "literal setup" },
         });
       },
     };
