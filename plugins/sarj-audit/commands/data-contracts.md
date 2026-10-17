@@ -64,6 +64,26 @@ value distinct when they mean different things. Parse a permissive wire contract
 into a stronger internal model at the trust boundary when the domain requires
 it; do not silently drop valid states or change the public protocol.
 
+For Pydantic migrations, discriminator extraction precedes variant defaults and
+validators. Preserve omitted tags, accepted aliases, and tag normalization in an
+owned input adapter when existing callers depend on them. A non-null payload can
+retain an input default; non-nullability does not imply required input presence.
+Compare the parser behavior callers observe: Python versus JSON validation,
+context, extra fields, `model_fields_set`, `exclude_unset`, and error locations.
+Matching complete `model_dump()` output alone does not establish compatibility.
+A union alias also does not preserve a public model class's construction,
+subclassing, equality, or instance-revalidation behavior. Callable discriminators
+must support the mappings and model instances used during validation and
+serialization. A requirement shared by every tag belongs on the common field;
+it does not establish a need for separate variants.
+
+Choose where alternatives belong in a collection. `list[A | B]` admits mixed
+batches; `list[A] | list[B]` describes homogeneous batches. Preserve the domain's
+actual batch contract. Copy required parsing policies such as `from_attributes`
+into replacement variants when callers supply attribute objects. Validation
+bypasses such as `SkipValidation` do not establish a payload's annotated runtime
+type; keep their separately owned trust contract visible during a union rewrite.
+
 TypeScript object types are structural: a union can still accept extra fields
 from a non-fresh value. If a proven invariant forbids a field in another branch,
 consider an explicit forbidden member such as `error?: never`, with the project's
@@ -206,6 +226,15 @@ Keep unparsed input, opaque boundaries, and generic abstractions when reviewing
 flows outside the deterministic rules.
 
 ## Validation and replacement values
+
+Check the final value a validator establishes. Pydantic after and plain field
+validators can store a value outside the field annotation; a native-clean
+callable signature alone does not prove that coupling. Before output is parsed
+by the field schema, while wrap validators can intentionally return a valid
+value without calling their handler. Account for later validators and ordered
+`Annotated` metadata that repair intermediate values before reporting a final
+contract violation. Serializer output has its own wire contract and can differ
+legitimately from the stored field type.
 
 Preserve caller-owned raw input during normalization, including when validation
 fails. Return normalized mappings or collections and copy modified nested values

@@ -11,9 +11,10 @@ import { hasSeparatePredicateContract } from "./_has-separate-predicate-contract
 import { isGeneratedFile } from "./_paths.js";
 import { staticString } from "./_static-string.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
+import { contradictoryArrayPredicate } from "./_contradictory-array-predicate.js";
 
 type Options = readonly [];
-type MessageIds = "contradictoryPredicate" | "closedLiteralPredicate" | "nullAccepted";
+type MessageIds = "contradictoryPredicate" | "closedLiteralPredicate" | "nullAccepted" | "uncheckedArrayElements";
 type FunctionNode = TSESTree.ArrowFunctionExpression | TSESTree.FunctionDeclaration | TSESTree.FunctionExpression;
 type RuntimeKind = "string" | "number" | "bigint" | "boolean" | "symbol" | "undefined" | "object" | "function";
 
@@ -29,7 +30,7 @@ interface TypeofCheck {
 }
 
 export const NO_CONTRADICTORY_TYPE_PREDICATE_DOCUMENTATION = {
-  summary: "Keep explicit type predicates consistent with the typeof check they return.",
+  summary: "Keep explicit type predicates consistent with their primitive or native array membership check.",
   rationale: "TypeScript trusts an explicit type predicate without verifying its implementation. A contradictory check can admit the wrong primitive, overclaim a closed literal or empty domain, accept null as a non-null object, or remove valid alternatives from the false branch.",
   remediation: "Match the predicate to every value the check accepts and rejects. Check literal membership for a closed domain and exclude null when promising a non-null object. Use a boolean return for an intentional value filter; preserve required public and callback contracts.",
   category: "correctness",
@@ -40,6 +41,7 @@ export const NO_CONTRADICTORY_TYPE_PREDICATE_DOCUMENTATION = {
     "Recognizes broad primitive targets, finite primitive literal/nullish unions and never, with unknown or fully classified primitive/nullish inputs. Closed input domains are checked against the actual target, including finite numeric enum members. Mixed broad-and-literal, branded, unique-symbol, structural, generic, asserted, declaration-only and multi-statement validators are excluded rather than guessed.",
     "For the intrinsic object target, typeof-object also admits null only when the declared input admits null and strictNullChecks is enabled. This narrow check does not infer structural property validation or classify other object/function relationships. Overloaded implementations, contextually typed callbacks and methods with class heritage or contextual object contracts retain their separate callable domain.",
     "Compiler-invalid predicate target/input relations and typeof comparisons impossible for the input remain with existing compiler and unnecessary-condition controls. This rule does not validate arbitrary predicates or runtime refinements. Generated files are excluded; tests remain checked.",
+    "A sole native Array.isArray call on unknown cannot establish a plain primitive-element array target. Standard-library call signatures and an unshadowed Array binding are required. Element validators, any/unknown elements, tuples, enums, branded or opaque elements and independent callable contracts abstain. Visible Array or host-global aliases, mutation, escapes, extracted methods, any value constructor or unresolved computed-property access and unrelated Array namespace uses disable this proof: structural receiver types cannot establish runtime constructor identity. Native Reflect value uses and Object prototype/descriptor reflection or namespace aliases also withdraw authority. Indirect opaque runtime replacements are not inferred.",
   ],
   references: ["https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-5.html#inferred-type-predicates"],
   examples: [
@@ -51,6 +53,8 @@ export const NO_CONTRADICTORY_TYPE_PREDICATE_DOCUMENTATION = {
     { id: "object-check-admits-null", scenarioId: "intrinsic-null", title: "A typeof-object check also accepts null", outcome: "match", files: [{ path: "src/guard.ts", source: 'function nonPrimitive(value: unknown): value is object { return typeof value === "object"; }' }], focusPath: "src/guard.ts", expectedCount: 1, public: true },
     { id: "empty-domain-never-succeeds", scenarioId: "empty-domain", title: "An empty target has no successful member", outcome: "no-match", files: [{ path: "src/guard.ts", source: 'function impossible(value: unknown): value is never { return false; }' }], focusPath: "src/guard.ts", expectedCount: 0, public: true },
     { id: "empty-domain-check-succeeds", scenarioId: "empty-domain", title: "Numbers cannot belong to an empty target", outcome: "match", files: [{ path: "src/guard.ts", source: 'function impossible(value: unknown): value is never { return typeof value === "number"; }' }], focusPath: "src/guard.ts", expectedCount: 1, public: true },
+    { id: "array-elements-unchecked", scenarioId: "array-elements", title: "Array membership alone does not prove text elements", outcome: "match", files: [{ path: "src/guard.ts", source: 'function texts(value: unknown): value is string[] { return Array.isArray(value); }' }], focusPath: "src/guard.ts", expectedCount: 1, public: true },
+    { id: "array-elements-validated", scenarioId: "array-elements", title: "Establish the element domain at the boundary", outcome: "no-match", files: [{ path: "src/guard.ts", source: 'function texts(value: unknown): value is string[] { return Array.isArray(value) && value.every((item: unknown) => typeof item === "string"); }' }], focusPath: "src/guard.ts", expectedCount: 0, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -65,6 +69,7 @@ export default createRule<Options, MessageIds>({
       contradictoryPredicate: "This predicate promises `{{promised}}`, but its typeof check recognizes only `{{checked}}`. Align both true and false branch narrowing with the check, or return boolean for a partial check.",
       closedLiteralPredicate: "This typeof check does not match the closed literal contract `{{promised}}` for its declared input. Check literal membership or return boolean for a value filter.",
       nullAccepted: "This typeof-object check accepts null, but the predicate promises non-null object. Exclude null or declare the actual nullable domain; preserve required callable contracts.",
+      uncheckedArrayElements: "Array.isArray accepts arrays with elements outside `{{promised}}`. Validate each element or retain an honest unknown-element array contract; preserve required callable contracts.",
     },
   },
   defaultOptions: [],
@@ -72,6 +77,8 @@ export default createRule<Options, MessageIds>({
     if (isGeneratedFile(context.filename, context.sourceCode.text) || !context.sourceCode.parserServices?.program) return {};
     const services = ESLintUtils.getParserServices(context);
     const checker = services.program.getTypeChecker();
+    const uncheckedArray = contradictoryArrayPredicate(context.sourceCode, services);
+    const pendingArrays: { readonly annotation: TSESTree.TSTypePredicate; readonly promised: string }[] = [];
 
     function inspect(node: FunctionNode): void {
       const annotation = node.returnType?.typeAnnotation;
@@ -83,10 +90,14 @@ export default createRule<Options, MessageIds>({
       const expression = singleReturn(node);
       if (parameter?.typeAnnotation === undefined || expression === undefined) return;
       const check = typeofCheck(expression);
-      if (check === undefined || !sameParameter(parameter, check.parameter, context.sourceCode)) return;
-      const input = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(check.parameter));
+      if (check !== undefined && !sameParameter(parameter, check.parameter, context.sourceCode)) return;
+      const input = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(check?.parameter ?? parameter));
       const target = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(annotation.typeAnnotation.typeAnnotation));
       if (!checker.isTypeAssignableTo(target, input)) return;
+      if (check === undefined) {
+        if (uncheckedArray.matches(expression, parameter, input, target)) pendingArrays.push({ annotation, promised: checker.typeToString(target) });
+        return;
+      }
       const options = services.program.getCompilerOptions();
       const messageId = contradiction(input, target, check.kind, checker, options.strictNullChecks ?? options.strict ?? false);
       if (messageId === undefined) return;
@@ -95,7 +106,15 @@ export default createRule<Options, MessageIds>({
       } });
     }
 
-    return { FunctionDeclaration: inspect, FunctionExpression: inspect, ArrowFunctionExpression: inspect };
+    return {
+      FunctionDeclaration: inspect, FunctionExpression: inspect, ArrowFunctionExpression: inspect,
+      MemberExpression: uncheckedArray.observeConstructor,
+      "ObjectPattern > Property": uncheckedArray.observeConstructor,
+      "Program:exit"(): void {
+        if (pendingArrays.length === 0 || !uncheckedArray.stable()) return;
+        for (const { annotation, promised } of pendingArrays) context.report({ node: annotation, messageId: "uncheckedArrayElements", data: { promised } });
+      },
+    };
   },
 });
 

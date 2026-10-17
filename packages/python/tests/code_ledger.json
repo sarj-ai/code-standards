@@ -291,5 +291,6 @@
   "SARJ511": "no-invalid-pydantic-bypass",
   "SARJ512": "no-partial-type-is",
   "SARJ513": "no-contradictory-type-guard",
-  "SARJ514": "no-shallow-record-type-guard"
+  "SARJ514": "no-shallow-record-type-guard",
+  "SARJ515": "no-invalid-pydantic-validator-return"
 }
