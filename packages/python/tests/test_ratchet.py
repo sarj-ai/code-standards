@@ -471,9 +471,10 @@ def test_dumped_baseline_declares_its_schema_version(tmp_path: Path):
     assert '"selectors"' in text
 
 
-def test_load_baseline_rejects_an_unknown_schema_version(tmp_path: Path):
+@pytest.mark.parametrize("schema", [999, True, 1.0, "1"], ids=("unknown", "boolean", "float", "string"))
+def test_load_baseline_rejects_an_unknown_schema_version(tmp_path: Path, schema: object):
     path = tmp_path / "b.json"
-    path.write_text('{"schema_version": 999}', encoding="utf-8")
+    path.write_text(json.dumps({"schema_version": schema}), encoding="utf-8")
     with pytest.raises(ValueError, match="unsupported suppression baseline schema_version"):
         load_baseline(path)
 

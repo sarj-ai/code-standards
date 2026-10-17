@@ -9,7 +9,7 @@ from typer.core import TyperArgument, TyperCommand, TyperGroup, TyperOption
 from typer.main import get_command
 
 from sarj_standards._meta import CONFIGS_DIR, __version__
-from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.json_boundary import parse_unique_json
 from sarj_standards.libs.typed_containers import is_object_mapping
 
 
@@ -80,7 +80,7 @@ def validate(value: object) -> CliReference:
     ):
         msg = "CLI reference has an invalid top-level shape"
         raise ValueError(msg)
-    if value["schemaVersion"] != SCHEMA_VERSION:
+    if type(value["schemaVersion"]) is not int or value["schemaVersion"] != SCHEMA_VERSION:
         msg = f"unsupported CLI reference schemaVersion: {value['schemaVersion']!r}; expected {SCHEMA_VERSION}"
         raise ValueError(msg)
     if not isinstance(value["version"], str) or not value["version"]:
@@ -176,8 +176,8 @@ def _is_launcher(value: object) -> TypeGuard[ReferenceLauncher]:
 
 def load(path: Path = CLI_REFERENCE_PATH) -> CliReference:
     try:
-        payload: object = parse_json(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        payload: object = parse_unique_json(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError) as exc:
         msg = f"cannot load shipped CLI reference {path}: {exc}"
         raise ValueError(msg) from exc
     return validate(payload)

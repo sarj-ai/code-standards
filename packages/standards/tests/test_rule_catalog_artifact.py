@@ -16,6 +16,28 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+@pytest.mark.parametrize("schema", [True, 1.0, "1", None], ids=("boolean", "float", "string", "null"))
+def test_shipped_catalog_requires_an_integer_schema_version(tmp_path: Path, schema: object) -> None:
+    path = tmp_path / "catalog.json"
+    path.write_text(json.dumps({"schemaVersion": schema, "rules": []}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="schemaVersion 1"):
+        rule_catalog_artifact.load(path)
+
+
+def test_catalog_document_rejects_boolean_schema_versions() -> None:
+    with pytest.raises(ValueError, match="unsupported rule catalog schema version"):
+        RuleCatalogDocument((), schema_version=True)
+
+
+def test_shipped_catalog_load_rejects_duplicate_keys(tmp_path: Path) -> None:
+    path = tmp_path / "catalog.json"
+    path.write_text('{"schemaVersion":1,"rules":[],"rules":[]}', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="duplicate JSON key"):
+        rule_catalog_artifact.load(path)
+
+
 def _typescript_rule() -> dict[str, object]:
     return {
         "engine": "eslint",
