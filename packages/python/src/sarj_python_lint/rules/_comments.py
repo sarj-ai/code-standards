@@ -338,7 +338,10 @@ def _scan_memo(source: str) -> _Scan:
     global _last_scan  # ruff: ignore[global-statement] — single-slot memo; the CLI runs rules per file sequentially
     if _last_scan is not None and _last_scan[0] is source:
         return _last_scan[1]
-    result = _scan(source)
+    try:
+        result = _scan(source)
+    except UnicodeError:
+        result = _Scan([], [], set(), 1 << 30, [])
     _last_scan = (source, result)
     return result
 

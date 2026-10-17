@@ -56,6 +56,31 @@ def test_syntax_errors_do_not_poison_the_next_context() -> None:
     assert PythonFileContext(path, "answer = 42\n").tree is not None
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        'def route(source_id: "\\ud800", destination_id: "\\ud800") -> None: ...\n',
+        'def normalize(items: "list[\\udfff] | None" = None) -> None: ...\n',
+    ],
+)
+def test_opaque_surrogate_annotations_do_not_crash_any_registered_rule(source: str) -> None:
+    # The outer program is valid Python; only its forward annotation text is unparseable.
+    compile(source, "domain.py", "exec")
+    for rule_type in REGISTRY.values():
+        assert rule_type().check(Path("app/services/domain.py"), source) == []
+
+
+def test_unencodable_source_is_inert_and_does_not_poison_later_checks() -> None:
+    path = Path("app/services/domain.py")
+    source = f"# {chr(0xD800)}\n"
+    assert PythonFileContext(path, source).tree is None
+    for rule_type in REGISTRY.values():
+        assert rule_type().check(path, source) == []
+    rule = REGISTRY["no-dunder-all"]()
+    assert rule.check(path, source) == []
+    assert len(rule.check(path, '__all__ = ["value"]\nvalue = 1\n')) == 1
+
+
 @pytest.mark.parametrize("encoding", ["utf-8", "utf-8-sig"])
 def test_runner_accepts_python_utf8_signature_without_moving_findings(tmp_path: Path, encoding: str) -> None:
     path = tmp_path / "app.py"

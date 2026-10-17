@@ -52,7 +52,7 @@ class AnnotationSemantics:
             return annotation
         try:
             parsed = ast.parse(annotation.value.strip(), mode="eval").body
-        except SyntaxError:
+        except SyntaxError, UnicodeError:
             return None
         ast.copy_location(parsed, annotation)
         return parsed

@@ -40,7 +40,7 @@ class PythonFileContext:
                 return unit.tree
         try:
             return ast.parse(self.source, filename=str(self.path))
-        except SyntaxError:
+        except SyntaxError, UnicodeError:
             return None
 
     @cached_property

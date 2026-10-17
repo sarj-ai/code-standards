@@ -17,6 +17,7 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._namespace_access import dynamic_namespace_access
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -31,6 +32,9 @@ if TYPE_CHECKING:
 _MODULE_FACTORY = "module-factory"
 _NAMED_FACTORY = "named-factory"
 _OTHER_BINDING = "other"
+_MODULE_CAPABILITIES = frozenset(
+    {"__dict__", "__builtins__", "__getattribute__", "__setattr__", "__delattr__", "__class__"}
+)
 
 
 class _BindingEvent(NamedTuple):
@@ -54,6 +58,7 @@ class PreferStructOverNamedtuple(Rule):
         limitations=(
             "Only statically named declarations with non-empty literal fields and proven `collections` provenance are reported.",
             "Tests, generated or vendored code, compatibility branches, dynamic factories, renamed fields, and already annotated records are excluded.",
+            "Visible collections-module mutations, namespace capabilities, and escaped native factory references withdraw identity proof conservatively across the file; opaque external mutation is not inferred.",
         ),
         examples=(
             RuleExample(
@@ -104,6 +109,8 @@ class PreferStructOverNamedtuple(Rule):
             if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
         ]
         events = {id(scope): _scope_binding_events(scope) for scope in scopes}
+        if _factory_identity_ambiguous(context, tree, events):
+            return []
         lines = context.source_lines
         return [
             self._diag(path, call)
@@ -129,6 +136,94 @@ class PreferStructOverNamedtuple(Rule):
             ),
             severity=Severity.ERROR,
         )
+
+
+def _factory_identity_ambiguous(
+    context: PythonFileContext,
+    tree: ast.Module,
+    events: dict[int, dict[str, tuple[_BindingEvent, ...]]],
+) -> bool:
+    indexed = context.nodes(ast.Name, ast.Import, ast.ImportFrom)
+    if dynamic_namespace_access(indexed, context.imports, context.parents):
+        return True
+    if any(
+        alias.name in _MODULE_CAPABILITIES
+        for node in context.nodes(ast.ImportFrom)
+        if node.module == "collections" and node.level == 0
+        for alias in node.names
+    ):
+        return True
+    bindings = _factory_import_bindings(context)
+    return any(
+        _factory_reference_escapes(node, kind, tree, context.parents, events)
+        for node in context.nodes(ast.Name)
+        if isinstance(node.ctx, ast.Load) and node.id in bindings
+        for kind in bindings[node.id]
+    )
+
+
+def _factory_import_bindings(context: PythonFileContext) -> dict[str, set[str]]:
+    bindings: dict[str, set[str]] = {}
+    for node in context.nodes(ast.Import, ast.ImportFrom):
+        for alias in node.names:
+            kind = _factory_import_kind(node, alias)
+            if kind is not None:
+                bindings.setdefault(alias.asname or alias.name, set()).add(kind)
+    return bindings
+
+
+def _factory_import_kind(node: ast.Import | ast.ImportFrom, alias: ast.alias) -> str | None:
+    if isinstance(node, ast.Import):
+        return _MODULE_FACTORY if alias.name == "collections" else None
+    if node.module != "collections" or node.level != 0:
+        return None
+    return _NAMED_FACTORY if alias.name == "namedtuple" else None
+
+
+def _factory_reference_escapes(
+    node: ast.Name,
+    kind: str,
+    tree: ast.Module,
+    parents: Mapping[ast.AST, ast.AST],
+    events: dict[int, dict[str, tuple[_BindingEvent, ...]]],
+) -> bool:
+    if not _resolves_factory_binding(node, kind, tree, parents, events):
+        return False
+    parent = parents.get(node)
+    if kind == _NAMED_FACTORY:
+        return not isinstance(parent, ast.Call) or parent.func is not node
+    if not isinstance(parent, ast.Attribute) or parent.value is not node:
+        return True
+    if isinstance(parent.ctx, (ast.Store, ast.Del)) or parent.attr in _MODULE_CAPABILITIES:
+        return True
+    if parent.attr != "namedtuple":
+        return False
+    use = parents.get(parent)
+    return not isinstance(use, ast.Call) or use.func is not parent
+
+
+def _resolves_factory_binding(
+    node: ast.Name,
+    kind: str,
+    tree: ast.Module,
+    parents: Mapping[ast.AST, ast.AST],
+    events: dict[int, dict[str, tuple[_BindingEvent, ...]]],
+) -> bool:
+    position = (node.lineno, node.col_offset)
+    crossed_function = False
+    left_class_body = False
+    for scope in _enclosing_scopes(node, tree, parents):
+        if isinstance(scope, ast.ClassDef):
+            if _inside_class_header(node, scope, parents):
+                continue
+            if crossed_function or left_class_body:
+                continue
+            left_class_body = True
+        resolved = _scope_factory_resolution(scope, events, node.id, position, kind)
+        if resolved is not None:
+            return resolved
+        crossed_function = crossed_function or isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef))
+    return False
 
 
 def _is_static_owned_declaration(
@@ -252,7 +347,7 @@ def _resolves_collections_namedtuple(
     return False
 
 
-def _inside_class_header(call: ast.Call, scope: ast.ClassDef, parents: Mapping[ast.AST, ast.AST]) -> bool:
+def _inside_class_header(call: ast.AST, scope: ast.ClassDef, parents: Mapping[ast.AST, ast.AST]) -> bool:
     current: ast.AST = call
     while (parent := parents.get(current)) is not None and parent is not scope:
         current = parent

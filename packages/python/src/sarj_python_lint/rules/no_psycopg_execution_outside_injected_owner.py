@@ -848,6 +848,6 @@ def _module_type_aliases(tree: ast.Module, counts: dict[str, int]) -> dict[str, 
 def _string_annotation_kind(value: str, types: _TypeIndex, seen: frozenset[str]) -> str | None:
     try:
         parsed = ast.parse(value, mode="eval")
-    except SyntaxError:
+    except SyntaxError, UnicodeError:
         return None
     return _annotation_kind(parsed.body, types, seen)

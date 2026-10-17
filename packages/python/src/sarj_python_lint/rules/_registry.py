@@ -218,6 +218,7 @@ from sarj_python_lint.rules.no_contradictory_type_guard import NoContradictoryTy
 from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossiblePydanticFieldBounds
 from sarj_python_lint.rules.no_invalid_pydantic_bypass import NoInvalidPydanticBypass
 from sarj_python_lint.rules.no_partial_type_is import NoPartialTypeIs
+from sarj_python_lint.rules.no_shallow_record_type_guard import NoShallowRecordTypeGuard
 from sarj_python_lint.rules.no_unknown_pydantic_validator_field import NoUnknownPydanticValidatorField
 from sarj_python_lint.rules.prefer_discriminated_model_union import PreferDiscriminatedModelUnion
 from sarj_python_lint.rules.redundant_test_constructor_forwarder import RedundantTestConstructorForwarder
@@ -232,6 +233,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoInvalidPydanticBypass.id: NoInvalidPydanticBypass,
         NoPartialTypeIs.id: NoPartialTypeIs,
         NoContradictoryTypeGuard.id: NoContradictoryTypeGuard,
+        NoShallowRecordTypeGuard.id: NoShallowRecordTypeGuard,
         NoConflictingPydanticAliasValidation.id: NoConflictingPydanticAliasValidation,
         NoUnknownPydanticValidatorField.id: NoUnknownPydanticValidatorField,
         NoImpossiblePydanticFieldBounds.id: NoImpossiblePydanticFieldBounds,

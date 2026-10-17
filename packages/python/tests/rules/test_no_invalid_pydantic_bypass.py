@@ -35,6 +35,128 @@ def _check(source: str, path: str = "app/models.py"):
     return NoInvalidPydanticBypass().check(Path(path), source)
 
 
+def _literal_source(annotation: str, value: str, *, copy: bool = False) -> str:
+    operation = f"Payload.model_construct(value={value})"
+    if copy:
+        operation = f"Payload(value='ready').model_copy(update={{'value': {value}}})"
+    return (
+        "from typing import Annotated, Literal, Optional, Union\n"
+        "from pydantic import BaseModel, Field\n"
+        f"class Payload(BaseModel):\n    value: {annotation}\n"
+        f"payload = {operation}\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("annotation", "value", "expected"),
+    [
+        ("str", "23", 1),
+        ("str", "b'ready'", 1),
+        ("str", "'ready'", 0),
+        ("bytes", "'ready'", 1),
+        ("bytes", "b'ready'", 0),
+        ("bool", "1", 1),
+        ("bool", "False", 0),
+        ("int", "True", 0),
+        ("int", "1.0", 1),
+        ("int", "'3'", 1),
+        ("int", "-3", 0),
+        ("float", "3", 0),
+        ("float", "True", 0),
+        ("float", "3.0", 0),
+        ("float", "'3.0'", 1),
+        ("complex", "3", 0),
+        ("complex", "3.0", 0),
+        ("complex", "3j", 0),
+        ("complex", "'3j'", 1),
+        ("None", "None", 0),
+        ("None", "'ready'", 1),
+        ("str | int", "True", 0),
+        ("str | None", "3", 1),
+        ("Union[str, int]", "False", 0),
+        ("Optional[str]", "None", 0),
+        ("Optional[str]", "3", 1),
+        ("Annotated[str, Field()]", "3", 1),
+        ("Literal['ready']", "['ready']", 1),
+        ("list[str]", "[]", 0),
+        ("list[str]", "['ready']", 0),
+        ("list[str]", "[3]", 1),
+        ("list[str]", "('ready',)", 1),
+        ("list[str]", "'ready'", 1),
+        ("list", "[3]", 0),
+        ("list[list[int]]", "[[1], ['wrong']]", 1),
+        ("list[Literal['ready', 'done']]", "['ready', 'other']", 1),
+        ("list[Literal[1, 2]]", "['opaque-numeric-literal-domain']", 0),
+        ("dict[str, int]", "{'ready': 3}", 0),
+        ("dict[str, int]", "{3: 1}", 1),
+        ("dict[str, int]", "{'ready': 'wrong'}", 1),
+        ("dict[str, int]", "{'ready': 'wrong', 'ready': 1}", 0),
+        ("dict[str, int]", "{'ready': 1, 'ready': 'wrong'}", 1),
+        ("dict[int, int]", "{False: 'wrong', 0: 1}", 0),
+        ("dict[str, int]", "{[]: 3}", 0),
+        ("dict[str, int]", "{'ready': 3, **unknown}", 0),
+        ("set[str]", "{'ready'}", 0),
+        ("set[str]", "{3}", 1),
+        ("set[str]", "{[]}", 0),
+        ("set[str]", "set()", 0),
+        ("frozenset[str]", "['ready']", 1),
+        ("tuple[str, int]", "('ready', 3)", 0),
+        ("tuple[str, int]", "('ready', 'wrong')", 1),
+        ("tuple[str, int]", "('ready',)", 1),
+        ("tuple[str, ...]", "('ready', 'done')", 0),
+        ("tuple[str, ...]", "('ready', 3)", 1),
+        ("tuple[()]", "()", 0),
+        ("tuple[()]", "('ready',)", 1),
+        ("list[str] | tuple[int, ...]", "(1, 2)", 0),
+        ("list[str] | tuple[int, ...]", "('wrong',)", 1),
+        ("list[str]", "['ready', *unknown]", 0),
+        ("list[str]", "[make_value()]", 0),
+        ("list[str]", "unknown", 0),
+        ("DomainText", "3", 0),
+    ],
+)
+def test_stored_literal_contracts(annotation: str, value: str, expected: int) -> None:
+    assert len(_check(_literal_source(annotation, value))) == expected
+
+
+@pytest.mark.parametrize("value", ["3", "['wrong']", "{'wrong': 3}"])
+def test_copy_literal_contracts(value: str) -> None:
+    assert len(_check(_literal_source("str", value, copy=True))) == 1
+
+
+def test_large_literal_values_abstain_without_recursion() -> None:
+    value = "[" + ",".join("3" for _ in range(1500)) + "]"
+    assert _check(_literal_source("list[str]", value)) == []
+
+
+def test_large_textual_literal_domains_abstain_without_expensive_witnesses() -> None:
+    large = repr("x" * 100_000)
+    assert _check(_literal_source(f"Literal[{large}]", "'wrong'")) == []
+    assert _check(_literal_source("int", large)) == []
+
+
+class _StoredPayload(BaseModel):
+    text: str
+    count: int
+    tags: list[str]
+
+
+def test_stored_output_differs_from_coercible_validated_input() -> None:
+    unchecked = _StoredPayload.model_construct(text=23, count="4", tags=[3])
+    with pytest.raises(AttributeError, match="upper"):
+        unchecked.text.upper()
+    with pytest.raises(TypeError):
+        assert unchecked.count + 1 == 5
+    with pytest.raises(AttributeError, match="upper"):
+        unchecked.tags[0].upper()
+    validated = _StoredPayload.model_validate({"text": "ready", "count": "4", "tags": ["tag"]})
+    assert validated.count + 1 == 5
+    assert validated.text.upper() == "READY"
+    trusted = _StoredPayload.model_construct(text="ready", count=True, tags=["tag"])
+    assert trusted.count is True
+    assert trusted.tags[0].upper() == "TAG"
+
+
 _CASES = (
     ("invalid-string-tag", _BASE, 1),
     ("valid-tag", _BASE.replace("'unknown'", "'queued'"), 0),

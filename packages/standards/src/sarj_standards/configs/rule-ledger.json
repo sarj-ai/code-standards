@@ -97,6 +97,7 @@
       "no-select-star",
       "no-service-behavior-in-settings",
       "no-shallow-container-type-guard",
+      "no-shallow-record-type-guard",
       "no-statically-truthy-assertion",
       "no-string-concat-in-loop",
       "no-swallowed-asyncio-cancellation",
@@ -227,6 +228,7 @@
       "no-client-side-data-fetching",
       "no-comment-cruft",
       "no-conditional-empty-object-spread",
+      "no-contradictory-overload-return",
       "no-contradictory-type-predicate",
       "no-cors-wildcard-with-credentials",
       "no-dangerously-allow-svg",
@@ -247,6 +249,7 @@
       "no-in-operator-on-built-in-collections",
       "no-insecure-random-id",
       "no-invalid-typed-mutation",
+      "no-invalid-zod-custom-parse",
       "no-json-stringify-error",
       "no-json-stringify-object-equality",
       "no-known-value-widening",
@@ -509,7 +512,8 @@
       "SARJ510",
       "SARJ511",
       "SARJ512",
-      "SARJ513"
+      "SARJ513",
+      "SARJ514"
     ],
     "sql": [
       "SARJ101",

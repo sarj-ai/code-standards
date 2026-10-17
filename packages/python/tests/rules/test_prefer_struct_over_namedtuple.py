@@ -485,6 +485,51 @@ def test_production_file_still_fires():
     assert len(_check(src, path="app/calls/rows.py")) == 1
 
 
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "import collections\ncollections.namedtuple = typed_factory\n",
+        "import collections as records\nrecords.namedtuple = typed_factory\nfrom collections import namedtuple\n",
+        "import collections\nsetattr(collections, 'namedtuple', typed_factory)\n",
+        "import collections\nnamespace = collections.__dict__\nnamespace['namedtuple'] = typed_factory\n",
+        "from collections import __dict__ as namespace\nnamespace['namedtuple'] = typed_factory\n",
+        "import collections\nmodule = collections\n",
+        "from collections import namedtuple as native\nfactory = native\n",
+        "from collections import namedtuple as native\nnamespace = native.__globals__\n",
+        "import collections\nnamespace = collections.namedtuple.__globals__\n",
+        "import collections\ndel collections.namedtuple\n",
+        "import collections\ncollections.__class__ = CustomModule\n",
+        "globals()['collections'].namedtuple = typed_factory\n",
+    ],
+)
+def test_visible_native_factory_identity_changes_abstain(prefix: str) -> None:
+    source = f'{prefix}from collections import namedtuple\nRow = namedtuple("Row", ["id", "name"])\n'
+
+    assert _check(source) == []
+
+
+def test_unrelated_application_module_mutation_preserves_native_factory() -> None:
+    source = (
+        "import application as custom\n"
+        "custom.namedtuple = typed_factory\n"
+        "from collections import namedtuple\n"
+        'Row = namedtuple("Row", ["id", "name"])\n'
+    )
+
+    assert len(_check(source)) == 1
+
+
+def test_factory_alias_kinds_do_not_discard_an_earlier_module_mutation() -> None:
+    source = (
+        "import collections as native\n"
+        "native.namedtuple = typed_factory\n"
+        "from collections import namedtuple as native\n"
+        'Row = native("Row", ["id", "name"])\n'
+    )
+
+    assert _check(source) == []
+
+
 # The two famous-repo sweep hits, verified true and pinned as regressions.    #
 
 

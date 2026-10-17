@@ -84,6 +84,60 @@ def test_invalid_source_is_ignored() -> None:
     assert _check("def broken( -> None:\n") == []
 
 
+@pytest.mark.parametrize(
+    ("imports", "decorator"),
+    [
+        ("from typing import override", "override"),
+        ("from typing import override as inherited", "inherited"),
+        ("import typing as types", "types.override"),
+        ("from typing_extensions import override", "override"),
+    ],
+)
+def test_inherited_override_preserves_public_raw_id_contract(imports: str, decorator: str) -> None:
+    source = (
+        f"{imports}\nfrom external_api import TransportPort\n"
+        "class Adapter(TransportPort):\n"
+        f"    @{decorator}\n"
+        "    def route(self, source_id: str, destination_id: str) -> str:\n"
+        "        return source_id + destination_id\n"
+    )
+
+    assert _check(source) == []
+    independent = source + "def internal(file_id: str, folder_id: str) -> None: ...\n"
+    assert len(_check(independent)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from foreign import override\nclass Adapter:\n    @override\n    def route(self, source_id: str, destination_id: str) -> None: ...\n",
+        "from typing import override\ndef override(value): return value\nclass Adapter:\n    @override\n    def route(self, source_id: str, destination_id: str) -> None: ...\n",
+    ],
+)
+def test_noncanonical_or_noninherited_override_does_not_hide_owned_ids(source: str) -> None:
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "def unrelated(inherited: object) -> None: pass\n",
+        "inherited = object()\n",
+    ],
+)
+def test_declaration_time_override_alias_survives_later_or_unrelated_binding(suffix: str) -> None:
+    source = (
+        "from typing import override as inherited\n"
+        "from external_api import TransportPort\n"
+        "class Adapter(TransportPort):\n"
+        "    @inherited\n"
+        "    def route(self, source_id: str, destination_id: str) -> str:\n"
+        "        return source_id + destination_id\n"
+    )
+
+    assert _check(source + suffix) == []
+
+
 def _project_check(tmp_path: Path, source: str, definitions: str) -> list[Diagnostic]:
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "example"\nversion = "0.1.0"\n')
     package = tmp_path / "example"
@@ -789,3 +843,18 @@ def test_deep_forward_union_preserves_known_carriers_without_recursion(leaf: str
     diagnostics = _check(f"def move(file_id: {annotation!r}, folder_id: str) -> None: ...\n")
     assert len(diagnostics) == expected_count
     assert all(item.severity is Severity.ERROR and item.line == 1 for item in diagnostics)
+
+
+def test_unmarked_inherited_raw_id_contract_is_preserved() -> None:
+    source = (
+        "class Port:\n    def route(self, source_id: str, destination_id: str) -> str: ...\n"
+        "class Adapter(Port):\n"
+        "    def route(self, source_id: str, destination_id: str) -> str:\n        return source_id + destination_id\n"
+        "    def internal(self, file_id: str, folder_id: str) -> None: ...\n"
+    )
+    assert [item.line for item in _check(source)] == [2]
+
+
+def test_unencodable_forward_annotation_is_not_a_nominal_role() -> None:
+    source = "def move(file_id: '\\ud800', folder_id: str) -> None: ...\n"
+    assert _check(source) == []

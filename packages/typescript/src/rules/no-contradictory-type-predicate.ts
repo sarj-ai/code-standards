@@ -13,7 +13,7 @@ import { staticString } from "./_static-string.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
 
 type Options = readonly [];
-type MessageIds = "contradictoryPredicate";
+type MessageIds = "contradictoryPredicate" | "closedLiteralPredicate" | "nullAccepted";
 type FunctionNode = TSESTree.ArrowFunctionExpression | TSESTree.FunctionDeclaration | TSESTree.FunctionExpression;
 type RuntimeKind = "string" | "number" | "bigint" | "boolean" | "symbol" | "undefined" | "object" | "function";
 
@@ -29,21 +29,28 @@ interface TypeofCheck {
 }
 
 export const NO_CONTRADICTORY_TYPE_PREDICATE_DOCUMENTATION = {
-  summary: "Keep explicit primitive type predicates consistent with the typeof check they return.",
-  rationale: "TypeScript trusts an explicit type predicate without verifying its implementation. A contradictory check admits the wrong primitive in the true branch or removes valid primitive alternatives from the false branch.",
-  remediation: "Match the predicate to every primitive the check accepts and rejects, or use a boolean return for an intentionally partial check. Prefer compiler-inferred predicates when inference preserves the required contract.",
+  summary: "Keep explicit type predicates consistent with the typeof check they return.",
+  rationale: "TypeScript trusts an explicit type predicate without verifying its implementation. A contradictory check can admit the wrong primitive, overclaim a closed literal or empty domain, accept null as a non-null object, or remove valid alternatives from the false branch.",
+  remediation: "Match the predicate to every value the check accepts and rejects. Check literal membership for a closed domain and exclude null when promising a non-null object. Use a boolean return for an intentional value filter; preserve required public and callback contracts.",
   category: "correctness",
   defaultLevel: "warning",
   autofix: "none",
   limitations: [
     "Requires type information, an explicit predicate over a directly named parameter and a single returned positive typeof equality for the same scope-resolved parameter. Both strict and loose equality and reversed operands are supported.",
-    "Predicate targets must consist of broad primitive types (including complete boolean), and inputs must be unknown or a fully classified primitive/nullish union. Literal, branded, structural, generic, asserted, declaration-only and multi-statement validators are excluded rather than guessed. Overloaded implementations, contextually typed callbacks and methods with class heritage or contextual object contracts are preserved because they can have a separate callable domain.",
+    "Recognizes broad primitive targets, finite primitive literal/nullish unions and never, with unknown or fully classified primitive/nullish inputs. Closed input domains are checked against the actual target, including finite numeric enum members. Mixed broad-and-literal, branded, unique-symbol, structural, generic, asserted, declaration-only and multi-statement validators are excluded rather than guessed.",
+    "For the intrinsic object target, typeof-object also admits null only when the declared input admits null and strictNullChecks is enabled. This narrow check does not infer structural property validation or classify other object/function relationships. Overloaded implementations, contextually typed callbacks and methods with class heritage or contextual object contracts retain their separate callable domain.",
     "Compiler-invalid predicate target/input relations and typeof comparisons impossible for the input remain with existing compiler and unnecessary-condition controls. This rule does not validate arbitrary predicates or runtime refinements. Generated files are excluded; tests remain checked.",
   ],
   references: ["https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-5.html#inferred-type-predicates"],
   examples: [
     { id: "consistent-primitive-predicate", title: "Agree with the checked primitive", outcome: "no-match", files: [{ path: "src/guard.ts", source: 'function isText(value: unknown): value is string { return typeof value === "string"; }' }], focusPath: "src/guard.ts", expectedCount: 0, public: true },
     { id: "contradictory-primitive-predicate", title: "Do not promise a different primitive", outcome: "match", files: [{ path: "src/guard.ts", source: 'function isText(value: unknown): value is string { return typeof value === "number"; }' }], focusPath: "src/guard.ts", expectedCount: 1, public: true },
+    { id: "closed-literal-check", scenarioId: "closed-literal-domain", title: "A closed input supplies the literal evidence", outcome: "no-match", files: [{ path: "src/guard.ts", source: 'function ready(value: "ready" | null): value is "ready" { return typeof value === "string"; }' }], focusPath: "src/guard.ts", expectedCount: 0, public: true },
+    { id: "overclaimed-literal", scenarioId: "closed-literal-domain", title: "A string check admits other strings", outcome: "match", files: [{ path: "src/guard.ts", source: 'function ready(value: unknown): value is "ready" { return typeof value === "string"; }' }], focusPath: "src/guard.ts", expectedCount: 1, public: true },
+    { id: "complete-object-check", scenarioId: "intrinsic-null", title: "Exclude null and recognize non-primitive functions", outcome: "no-match", files: [{ path: "src/guard.ts", source: 'function nonPrimitive(value: unknown): value is object { return (typeof value === "object" && value !== null) || typeof value === "function"; }' }], focusPath: "src/guard.ts", expectedCount: 0, public: true },
+    { id: "object-check-admits-null", scenarioId: "intrinsic-null", title: "A typeof-object check also accepts null", outcome: "match", files: [{ path: "src/guard.ts", source: 'function nonPrimitive(value: unknown): value is object { return typeof value === "object"; }' }], focusPath: "src/guard.ts", expectedCount: 1, public: true },
+    { id: "empty-domain-never-succeeds", scenarioId: "empty-domain", title: "An empty target has no successful member", outcome: "no-match", files: [{ path: "src/guard.ts", source: 'function impossible(value: unknown): value is never { return false; }' }], focusPath: "src/guard.ts", expectedCount: 0, public: true },
+    { id: "empty-domain-check-succeeds", scenarioId: "empty-domain", title: "Numbers cannot belong to an empty target", outcome: "match", files: [{ path: "src/guard.ts", source: 'function impossible(value: unknown): value is never { return typeof value === "number"; }' }], focusPath: "src/guard.ts", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -54,7 +61,11 @@ export default createRule<Options, MessageIds>({
     type: "problem",
     docs: { description: NO_CONTRADICTORY_TYPE_PREDICATE_DOCUMENTATION.summary },
     schema: [],
-    messages: { contradictoryPredicate: "This predicate promises `{{promised}}`, but its typeof check recognizes only `{{checked}}`. Align both true and false branch narrowing with the check, or return boolean for a partial check." },
+    messages: {
+      contradictoryPredicate: "This predicate promises `{{promised}}`, but its typeof check recognizes only `{{checked}}`. Align both true and false branch narrowing with the check, or return boolean for a partial check.",
+      closedLiteralPredicate: "This typeof check does not match the closed literal contract `{{promised}}` for its declared input. Check literal membership or return boolean for a value filter.",
+      nullAccepted: "This typeof-object check accepts null, but the predicate promises non-null object. Exclude null or declare the actual nullable domain; preserve required callable contracts.",
+    },
   },
   defaultOptions: [],
   create(context) {
@@ -76,13 +87,10 @@ export default createRule<Options, MessageIds>({
       const input = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(check.parameter));
       const target = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(annotation.typeAnnotation.typeAnnotation));
       if (!checker.isTypeAssignableTo(target, input)) return;
-      const promised = primitiveKinds(target, checker, false);
-      const possible = inputKinds(input, checker);
-      if (promised === undefined || possible === undefined || !possible.has(check.kind)) return;
-      const acceptsWrongKind = !promised.has(check.kind);
-      const rejectsPromisedKind = [...promised].some((kind) => kind !== check.kind && possible.has(kind));
-      if (!acceptsWrongKind && !rejectsPromisedKind) return;
-      context.report({ node: annotation, messageId: "contradictoryPredicate", data: {
+      const options = services.program.getCompilerOptions();
+      const messageId = contradiction(input, target, check.kind, checker, options.strictNullChecks ?? options.strict ?? false);
+      if (messageId === undefined) return;
+      context.report({ node: annotation, messageId, data: {
         promised: checker.typeToString(target), checked: check.kind,
       } });
     }
@@ -90,6 +98,36 @@ export default createRule<Options, MessageIds>({
     return { FunctionDeclaration: inspect, FunctionExpression: inspect, ArrowFunctionExpression: inspect };
   },
 });
+
+function contradiction(input: ts.Type, target: ts.Type, checked: RuntimeKind, checker: ts.TypeChecker, strictNulls: boolean): MessageIds | undefined {
+  if (strictNulls && checked === "object" && (target.flags & ts.TypeFlags.NonPrimitive) !== 0 && admitsNull(input)) return "nullAccepted";
+  const possible = inputKinds(input, checker);
+  if (possible === undefined || !possible.has(checked)) return undefined;
+  if ((target.flags & ts.TypeFlags.Never) !== 0) return "contradictoryPredicate";
+  const promised = primitiveKinds(target, checker, false);
+  if (promised !== undefined) {
+    return !promised.has(checked) || [...promised].some((kind) => kind !== checked && possible.has(kind)) ? "contradictoryPredicate" : undefined;
+  }
+  return closedLiteralContradiction(input, target, checked, checker) ? "closedLiteralPredicate" : undefined;
+}
+
+function admitsNull(input: ts.Type): boolean {
+  return (input.flags & ts.TypeFlags.Unknown) !== 0 || (input.isUnion() ? input.types : [input]).some((member) => (member.flags & ts.TypeFlags.Null) !== 0);
+}
+
+function closedLiteralContradiction(input: ts.Type, target: ts.Type, checked: RuntimeKind, checker: ts.TypeChecker): boolean {
+  const members = target.isUnion() ? target.types : [target];
+  const literalFlags = ts.TypeFlags.StringLiteral | ts.TypeFlags.NumberLiteral | ts.TypeFlags.BigIntLiteral | ts.TypeFlags.BooleanLiteral | ts.TypeFlags.Null | ts.TypeFlags.Undefined;
+  if (!members.every((member) => (member.flags & literalFlags) !== 0)) return false;
+  if (members.some((member) => literalKind(member, checker) !== checked)) return true;
+  if ((input.flags & ts.TypeFlags.Unknown) !== 0) return checked !== "undefined";
+  return (input.isUnion() ? input.types : [input]).some((member) => literalKind(member, checker) === checked && !checker.isTypeAssignableTo(member, target));
+}
+
+function literalKind(type: ts.Type, checker: ts.TypeChecker): RuntimeKind | undefined {
+  if ((type.flags & ts.TypeFlags.BooleanLiteral) !== 0) return "boolean";
+  return primitiveKinds(type, checker, true)?.values().next().value;
+}
 
 function singleReturn(node: FunctionNode): TSESTree.Expression | undefined {
   if (node.body === undefined) return undefined;
