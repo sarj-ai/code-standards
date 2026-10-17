@@ -1,7 +1,7 @@
 /**
  * @fileoverview _discriminated-union-returns — find finite, tag-specific producer shapes hidden by flat return contracts.
  */
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 type Producer = TSESTree.ArrowFunctionExpression | TSESTree.FunctionDeclaration | TSESTree.FunctionExpression;
 type Tag = string | number | boolean;
@@ -10,6 +10,16 @@ interface ReturnPaths {
   readonly objects: readonly TSESTree.ObjectExpression[];
   readonly fallsThrough: boolean;
 }
+
+interface PathBudget {
+  readonly sourceCode: TSESLint.SourceCode;
+  visits: number;
+  objects: number;
+}
+
+const MAX_PATH_VISITS = 2048;
+const MAX_RETURN_OBJECTS = 256;
+const MAX_PATH_DEPTH = 64;
 
 interface Contract {
   readonly members: readonly TSESTree.TypeElement[];
@@ -31,8 +41,9 @@ export function discriminatedUnionReturns(node: Producer, sourceCode: TSESLint.S
   if (node.generator || node.body === undefined) return undefined;
   const contract = returnContract(node, sourceCode);
   if (contract === undefined) return undefined;
-  const paths = node.body.type === AST_NODE_TYPES.BlockStatement ? blockPaths(node.body) : {
-    objects: returnedObjects(node.body) ?? [], fallsThrough: false,
+  const budget: PathBudget = { sourceCode, visits: 0, objects: 0 };
+  const paths = node.body.type === AST_NODE_TYPES.BlockStatement ? blockPaths(node.body, budget, 0) : {
+    objects: returnedObjects(node.body, budget, 0) ?? [], fallsThrough: false,
   };
   if (paths === undefined || paths.fallsThrough || paths.objects.length < 2) return undefined;
   const shape = objectContract(contract.members);
@@ -180,19 +191,21 @@ function hasTagSpecificPayload(
 }
 
 /** Only analyze simple paths whose completion and return values are locally explicit. */
-function statementPaths(statement: TSESTree.Statement): ReturnPaths | undefined {
+function statementPaths(statement: TSESTree.Statement, budget: PathBudget, depth: number): ReturnPaths | undefined {
+  if (!withinBudget(budget, depth)) return undefined;
   switch (statement.type) {
     case AST_NODE_TYPES.ReturnStatement: {
       if (statement.argument === null) return undefined;
-      const objects = returnedObjects(statement.argument);
+      const objects = returnedObjects(statement.argument, budget, depth + 1);
       return objects === undefined ? undefined : { objects, fallsThrough: false };
     }
     case AST_NODE_TYPES.ThrowStatement: return { objects: [], fallsThrough: false };
-    case AST_NODE_TYPES.BlockStatement: return blockPaths(statement);
+    case AST_NODE_TYPES.BlockStatement: return blockPaths(statement, budget, depth + 1);
+    case AST_NODE_TYPES.SwitchStatement: return switchPaths(statement, budget, depth + 1);
     case AST_NODE_TYPES.IfStatement: {
       if (statement.test.type === AST_NODE_TYPES.Literal) return undefined;
-      const consequent = statementPaths(statement.consequent);
-      const alternate = statement.alternate === null ? { objects: [], fallsThrough: true } : statementPaths(statement.alternate);
+      const consequent = statementPaths(statement.consequent, budget, depth + 1);
+      const alternate = statement.alternate === null ? { objects: [], fallsThrough: true } : statementPaths(statement.alternate, budget, depth + 1);
       return consequent === undefined || alternate === undefined ? undefined : {
         objects: [...consequent.objects, ...alternate.objects],
         fallsThrough: consequent.fallsThrough || alternate.fallsThrough,
@@ -207,10 +220,82 @@ function statementPaths(statement: TSESTree.Statement): ReturnPaths | undefined 
   }
 }
 
-function blockPaths(block: TSESTree.BlockStatement): ReturnPaths | undefined {
+/** Every switch arm must terminate; only empty labels may share the next body. */
+function switchPaths(statement: TSESTree.SwitchStatement, budget: PathBudget, depth: number): ReturnPaths | undefined {
+  if (!withinBudget(budget, depth) || !reachableSwitch(statement, budget.sourceCode)) return undefined;
   const objects: TSESTree.ObjectExpression[] = [];
-  for (const statement of block.body) {
-    const paths = statementPaths(statement);
+  for (const branch of statement.cases) {
+    if (!withinBudget(budget, depth + 1)) return undefined;
+    if (branch.consequent.length === 0) continue;
+    const paths = switchArmPaths(branch.consequent, budget, depth + 1);
+    if (paths === undefined) return undefined;
+    objects.push(...paths.objects);
+  }
+  return { objects, fallsThrough: false };
+}
+
+/** Broad immutable parameters prove literal cases and an unlisted default input. */
+function reachableSwitch(statement: TSESTree.SwitchStatement, sourceCode: TSESLint.SourceCode): boolean {
+  if (statement.cases.length > MAX_PATH_VISITS) return false;
+  const kind = broadSwitchInput(statement, sourceCode);
+  return kind !== undefined && reachableSwitchLabels(statement, kind);
+}
+
+/** Restrict witnesses to the producer's unchanged broad input, before any narrowing. */
+function broadSwitchInput(statement: TSESTree.SwitchStatement, sourceCode: TSESLint.SourceCode): "string" | "number" | undefined {
+  const body = statement.parent;
+  if (body.type !== AST_NODE_TYPES.BlockStatement || body.body.length !== 1) return undefined;
+  const owner = body.parent;
+  if (owner.type !== AST_NODE_TYPES.FunctionDeclaration || owner.id === null) return undefined;
+  const callable = ASTUtils.findVariable(sourceCode.getScope(owner), owner.id.name);
+  if (callable?.defs.length !== 1 || callable.defs[0]?.type !== "FunctionName" || callable.defs[0].node !== owner) return undefined;
+  const input = statement.discriminant;
+  if (input.type !== AST_NODE_TYPES.Identifier) return undefined;
+  const binding = ASTUtils.findVariable(sourceCode.getScope(input), input.name);
+  const definition = binding?.defs[0];
+  if (binding?.defs.length !== 1 || definition?.type !== "Parameter" || definition.node !== owner ||
+    definition.name.type !== AST_NODE_TYPES.Identifier || binding.references.some(reference => reference.isWrite())) return undefined;
+  const type = definition.name.typeAnnotation?.typeAnnotation.type;
+  return type === AST_NODE_TYPES.TSStringKeyword ? "string" : type === AST_NODE_TYPES.TSNumberKeyword ? "number" : undefined;
+}
+
+/** A finite list of literal cases leaves an admitted broad-input witness for default. */
+function reachableSwitchLabels(statement: TSESTree.SwitchStatement, kind: "string" | "number"): boolean {
+  const labels = new Set<Tag>();
+  let hasDefault = false;
+  for (const branch of statement.cases) {
+    if (branch.test === null) {
+      if (hasDefault) return false;
+      hasDefault = true;
+      continue;
+    }
+    const value = literalTag(branch.test);
+    if (typeof value !== kind || value === undefined || labels.has(value)) return false;
+    labels.add(value);
+  }
+  return hasDefault && statement.cases.at(-1)?.consequent.length !== 0;
+}
+
+/** Nested conditions can contradict their switch label; do not invent another witness. */
+function switchArmPaths(statements: readonly TSESTree.Statement[], budget: PathBudget, depth: number): ReturnPaths | undefined {
+  if (!withinBudget(budget, depth) || statements.length !== 1) return undefined;
+  const statement = statements[0];
+  if (statement?.type === AST_NODE_TYPES.BlockStatement) return switchArmPaths(statement.body, budget, depth + 1);
+  if (statement?.type === AST_NODE_TYPES.ThrowStatement) return { objects: [], fallsThrough: false };
+  if (statement?.type !== AST_NODE_TYPES.ReturnStatement || statement.argument?.type !== AST_NODE_TYPES.ObjectExpression) return undefined;
+  const objects = returnedObjects(statement.argument, budget, depth + 1);
+  return objects === undefined ? undefined : { objects, fallsThrough: false };
+}
+
+function blockPaths(block: TSESTree.BlockStatement, budget: PathBudget, depth: number): ReturnPaths | undefined {
+  return statementsPaths(block.body, budget, depth);
+}
+
+function statementsPaths(statements: readonly TSESTree.Statement[], budget: PathBudget, depth: number): ReturnPaths | undefined {
+  if (!withinBudget(budget, depth)) return undefined;
+  const objects: TSESTree.ObjectExpression[] = [];
+  for (const statement of statements) {
+    const paths = statementPaths(statement, budget, depth + 1);
     if (paths === undefined) return undefined;
     objects.push(...paths.objects);
     if (!paths.fallsThrough) return { objects, fallsThrough: false };
@@ -218,12 +303,21 @@ function blockPaths(block: TSESTree.BlockStatement): ReturnPaths | undefined {
   return { objects, fallsThrough: true };
 }
 
-function returnedObjects(expression: TSESTree.Expression): readonly TSESTree.ObjectExpression[] | undefined {
-  if (expression.type === AST_NODE_TYPES.ObjectExpression) return [expression];
+function returnedObjects(expression: TSESTree.Expression, budget: PathBudget, depth: number): readonly TSESTree.ObjectExpression[] | undefined {
+  if (!withinBudget(budget, depth)) return undefined;
+  if (expression.type === AST_NODE_TYPES.ObjectExpression) {
+    budget.objects += 1;
+    return budget.objects > MAX_RETURN_OBJECTS ? undefined : [expression];
+  }
   if (expression.type !== AST_NODE_TYPES.ConditionalExpression || expression.test.type === AST_NODE_TYPES.Literal) return undefined;
-  const consequent = returnedObjects(expression.consequent);
-  const alternate = returnedObjects(expression.alternate);
+  const consequent = returnedObjects(expression.consequent, budget, depth + 1);
+  const alternate = returnedObjects(expression.alternate, budget, depth + 1);
   return consequent === undefined || alternate === undefined ? undefined : [...consequent, ...alternate];
+}
+
+function withinBudget(budget: PathBudget, depth: number): boolean {
+  budget.visits += 1;
+  return budget.visits <= MAX_PATH_VISITS && depth <= MAX_PATH_DEPTH;
 }
 
 function propertyName(node: TSESTree.Property | TSESTree.TSPropertySignature): string | undefined {

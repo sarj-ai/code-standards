@@ -5,6 +5,7 @@ from collections import Counter
 from typing import TYPE_CHECKING
 
 from sarj_python_lint.rules._imports import TYPING_SOURCES
+from sarj_python_lint.rules._native_namespace_capability import native_namespace_capability_escapes
 
 
 if TYPE_CHECKING:
@@ -14,56 +15,6 @@ if TYPE_CHECKING:
 
 _NAMESPACE_IMPORT_CAPABILITIES = frozenset(
     {"__dict__", "__builtins__", "__getattribute__", "__setattr__", "__delattr__"}
-)
-_NAMESPACE_RETURNING_FUNCTIONS = frozenset({"__lazy_import__"})
-_BUILTIN_NAMESPACE_FUNCTIONS = frozenset(
-    {
-        "__build_class__",
-        "__import__",
-        "__lazy_import__",
-        "abs",
-        "aiter",
-        "all",
-        "anext",
-        "any",
-        "ascii",
-        "bin",
-        "breakpoint",
-        "callable",
-        "chr",
-        "compile",
-        "delattr",
-        "dir",
-        "divmod",
-        "eval",
-        "exec",
-        "format",
-        "getattr",
-        "globals",
-        "hasattr",
-        "hash",
-        "hex",
-        "id",
-        "input",
-        "isinstance",
-        "issubclass",
-        "iter",
-        "len",
-        "locals",
-        "max",
-        "min",
-        "next",
-        "oct",
-        "ord",
-        "pow",
-        "print",
-        "repr",
-        "round",
-        "setattr",
-        "sorted",
-        "sum",
-        "vars",
-    }
 )
 
 
@@ -150,7 +101,7 @@ def _namespace_escapes(context: PythonFileContext, namespace_names: frozenset[st
         for node in context.nodes(ast.ImportFrom)
     ):
         return True
-    if _native_function_escapes(context):
+    if native_namespace_capability_escapes(context):
         return True
     for name in context.nodes(ast.Name):
         if name.id not in namespace_names:
@@ -159,62 +110,6 @@ def _namespace_escapes(context: PythonFileContext, namespace_names: frozenset[st
         if not isinstance(parent, ast.Attribute) or parent.value is not name or parent.attr == "__dict__":
             return True
     return False
-
-
-def _native_function_escapes(context: PythonFileContext) -> bool:
-    function_names = _possible_native_function_names(context)
-    namespace_function_names = _possible_native_function_names(context, symbols=_NAMESPACE_RETURNING_FUNCTIONS)
-    module_names = frozenset(
-        alias.asname or alias.name
-        for node in context.nodes(ast.Import)
-        for alias in node.names
-        if alias.name == "builtins"
-    )
-    for node in context.nodes(ast.Name, ast.Attribute):
-        if isinstance(node, ast.Attribute) and (
-            not isinstance(node.value, ast.Name) or node.attr not in _BUILTIN_NAMESPACE_FUNCTIONS
-        ):
-            continue
-        if not isinstance(node.ctx, ast.Load) or not _possible_native_function(node, function_names, module_names):
-            continue
-        parent = context.parents.get(node)
-        if (
-            not isinstance(parent, ast.Call)
-            or parent.func is not node
-            or _namespace_returning_function(node, namespace_function_names)
-        ):
-            return True
-    return False
-
-
-def _possible_native_function_names(
-    context: PythonFileContext, *, symbols: frozenset[str] = _BUILTIN_NAMESPACE_FUNCTIONS
-) -> frozenset[str]:
-    return symbols | frozenset(
-        alias.asname or alias.name
-        for node in context.nodes(ast.ImportFrom)
-        if node.level == 0 and node.module == "builtins"
-        for alias in node.names
-        if alias.name in symbols
-    )
-
-
-def _namespace_returning_function(node: ast.Name | ast.Attribute, function_names: frozenset[str]) -> bool:
-    if isinstance(node, ast.Name):
-        return node.id in function_names
-    return node.attr in _NAMESPACE_RETURNING_FUNCTIONS
-
-
-def _possible_native_function(
-    node: ast.Name | ast.Attribute,
-    function_names: frozenset[str],
-    module_names: frozenset[str],
-) -> bool:
-    if isinstance(node, ast.Name):
-        return node.id in function_names
-    return (
-        isinstance(node.value, ast.Name) and node.value.id in module_names and node.attr in _BUILTIN_NAMESPACE_FUNCTIONS
-    )
 
 
 def _ambiguous_node(

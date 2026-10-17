@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from sarj_python_lint._file_context import PythonFileContext
-from sarj_python_lint.rules._pydantic_field_contract import inert_annotation
+from sarj_python_lint.rules._pydantic_field_contract import direct_models, inert_annotation
 
 
 def _is_inert(expression: str) -> bool:
@@ -16,6 +16,21 @@ def _is_inert(expression: str) -> bool:
     declaration = context.tree.body[-1]
     assert isinstance(declaration, ast.AnnAssign)
     return inert_annotation(declaration.annotation, context)
+
+
+@pytest.mark.parametrize("escaped", ["\\ud800", "list[\\udfff]"])
+def test_unencodable_forward_annotations_abstain_without_poisoning_valid_types(escaped: str) -> None:
+    assert not _is_inert(repr(escaped.encode().decode("unicode_escape")))
+    assert _is_inert("'str'")
+    assert _is_inert("'Annotated[str, Field(title=\"é\")]'")
+
+
+def test_model_authority_abstains_when_a_native_function_exposes_its_namespace() -> None:
+    model = "from pydantic import BaseModel\nclass Payload(BaseModel):\n    text: str\n"
+    ordinary = PythonFileContext(Path("app/models.py"), f"repr('direct call')\n{model}")
+    escaped = PythonFileContext(Path("app/models.py"), f"native = getattr(repr, '__self__')\n{model}")
+    assert len(direct_models(ordinary)) == 1
+    assert direct_models(escaped) == ()
 
 
 @pytest.mark.parametrize("member", ["str", "build_type()"])

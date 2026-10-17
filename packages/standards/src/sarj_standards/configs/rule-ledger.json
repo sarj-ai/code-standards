@@ -73,6 +73,7 @@
       "no-interpreter-source-arguments",
       "no-invalid-argument-name-suppression",
       "no-invalid-pydantic-bypass",
+      "no-invalid-pydantic-validator-return",
       "no-loguru-exc-info",
       "no-loguru-printf-format",
       "no-mocked-pydantic-value-object",
@@ -513,7 +514,8 @@
       "SARJ511",
       "SARJ512",
       "SARJ513",
-      "SARJ514"
+      "SARJ514",
+      "SARJ515"
     ],
     "sql": [
       "SARJ101",

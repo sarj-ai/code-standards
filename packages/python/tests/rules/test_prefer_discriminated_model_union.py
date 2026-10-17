@@ -246,6 +246,201 @@ def test_multiple_variant_requirements_produce_one_model_review() -> None:
     assert "preserve every other accepted combination" in finding.message
 
 
+@pytest.mark.parametrize(
+    ("tags", "condition"),
+    [
+        ("1, 2", "self.kind == 1"),
+        ("-1, 2", "self.kind == -1"),
+        ("True, False", "self.kind is True"),
+        ("True, False", "self.kind == False"),
+        ("'email', 'sms', 'pickup'", "self.kind in ('email', 'sms')"),
+        ("'email', 'sms', 'pickup'", "self.kind != 'pickup'"),
+        ("'email', 'sms', 'pickup'", "self.kind not in ['pickup']"),
+        ("'email', 'sms', 'pickup'", "self.kind == 'email' or self.kind == 'sms'"),
+        ("'email', 'sms', 'pickup'", "not (self.kind == 'pickup')"),
+    ],
+)
+def test_finite_scalar_tag_subsets(tags: str, condition: str) -> None:
+    source = _BASE.replace("'email', 'pickup'", tags).replace("self.kind == 'email'", f"({condition})")
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        "(self.kind == 'email' and self.address is None)",
+        "not (self.kind != 'email' or self.address is not None)",
+        "self.kind == 'email' and (self.address is None or self.subject is None)",
+        "(self.kind == 'email' and self.address is None) or (self.kind == 'pickup' and self.subject is None)",
+    ],
+)
+def test_exact_rejection_region_algebra(condition: str) -> None:
+    source = _BASE.replace("    @model_validator", "    subject: str | None = None\n    @model_validator")
+    source = source.replace("self.kind == 'email' and self.address is None", condition)
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "        if self.kind == 'email':\n            if self.address is None:\n                raise ValueError('required')\n        return self\n",
+        "        if self.kind != 'email' or self.address is not None:\n            return self\n        raise ValueError('required')\n",
+        "        if self.kind == 'email' and self.address is None:\n            raise ValueError('required')\n        else:\n            return self\n",
+        "        if self.kind == 'email':\n            if self.address is not None:\n                return self\n            raise ValueError('required')\n        return self\n",
+    ],
+)
+def test_nested_and_accepted_paths_prove_the_same_requirement(body: str) -> None:
+    source = _BASE[: _BASE.index("        if self.kind")] + body
+    assert len(_check(source)) == 1
+
+
+def test_independent_pure_after_validators_and_common_constraints() -> None:
+    source = _BASE.replace("    @model_validator", "    subject: str | None = None\n    @model_validator")
+    source += (
+        "    @model_validator(mode='after')\n    def validate_subject(self) -> Self:\n"
+        "        if self.kind == 'pickup' and self.subject is None:\n"
+        "            raise ValueError('required')\n        return self\n"
+    )
+    assert len(_check(source)) == 1
+    common = source.replace("self.kind == 'pickup' and self.subject", "self.kind == 'pickup' and self.address")
+    assert _check(common) == []
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        "self.kind == 'email' and self.address is None and self.subject is None",
+        "self.kind == 'email' and self.address is None and self.subject is not None",
+        "self.kind == 'email' and (self.address is None or helper())",
+        "self.kind == 'email' and self.address is None and enabled",
+        "self.kind == 'email' and self.other_kind == 'email' and self.address is None",
+        "self.kind == 'email' and self.address == None",
+        "self.kind == 'email' and not self.address",
+        "self.kind in allowed and self.address is None",
+        "self.kind in ('email', unknown) and self.address is None",
+    ],
+)
+def test_unknown_or_jointly_missing_conditions_do_not_invent_individual_requirements(condition: str) -> None:
+    source = _BASE.replace(
+        "    @model_validator",
+        "    subject: str | None = None\n    other_kind: Literal['email', 'pickup']\n    @model_validator",
+    ).replace("self.kind == 'email' and self.address is None", condition)
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("annotation", "condition"),
+    [
+        ("Literal[True, 1, 'pickup']", "self.kind == True"),
+        ("Literal[1, 'pickup']", "self.kind == 1"),
+        ("Literal[1.5, 2.5]", "self.kind == 1.5"),
+        ("Literal[1, 2]", "self.kind == True"),
+        ("Literal[True, False]", "self.kind == 1"),
+        ("Literal['email', 'pickup']", "self.kind in 'email'"),
+        ("Literal['email', 'pickup']", "self.kind is 'email'"),
+    ],
+)
+def test_tag_equality_identity_and_literal_domain_boundaries(annotation: str, condition: str) -> None:
+    source = _BASE.replace("Literal['email', 'pickup']", annotation).replace("self.kind == 'email'", condition)
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("option", ["min_length=2, max_length=1", "pattern='(?!)'", "gt=3, lt=2"])
+def test_field_constraints_cannot_supply_a_non_none_inhabitance_proof(option: str) -> None:
+    source = _BASE.replace("from pydantic import", "from pydantic import Field,").replace(
+        "address: str | None = None", f"address: str | None = Field(default=None, {option})"
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("option", ["alias='destination'", "description='Wire address'", "default='ready'"])
+def test_passive_field_metadata_and_defaults_preserve_the_requirement(option: str) -> None:
+    source = _BASE.replace("from pydantic import", "from pydantic import Field,").replace(
+        "address: str | None = None", f"address: str | None = Field({option})"
+    )
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "Delivery.model_fields['kind'].annotation = Literal['pickup']\nDelivery.model_rebuild(force=True)\n",
+        "configure(Delivery)\n",
+        "Alias = Delivery\n",
+        "Delivery = other\n",
+        "Delivery.validate_address = replacement\n",
+        "alias: object = Delivery\n",
+    ],
+)
+def test_mutated_rebuilt_escaped_or_rebound_models_abstain(suffix: str) -> None:
+    assert _check(_BASE + suffix) == []
+
+
+def test_direct_validated_construction_and_type_annotations_preserve_model_identity() -> None:
+    source = _BASE + "value: Delivery = Delivery.model_validate({'kind': 'pickup'})\n"
+    assert len(_check(source)) == 1
+
+
+def test_overridden_validator_definitions_and_implicit_class_binding_abstain() -> None:
+    duplicate = _BASE + (
+        "    @model_validator(mode='after')\n    def validate_address(self) -> Self:\n        return self\n"
+    )
+    assert _check(duplicate) == []
+    assert _check(_BASE.replace("self", "cls")) == []
+
+
+@pytest.mark.parametrize(
+    "annotation", ["tuple[str, int] | None", "tuple[None] | None", "tuple[list[str], tuple[int, bool]] | None"]
+)
+def test_fixed_tuple_payloads_have_a_concrete_non_none_witness(annotation: str) -> None:
+    assert len(_check(_BASE.replace("str | None", annotation))) == 1
+
+
+def test_canonical_union_payload_and_imported_builtin_rejection() -> None:
+    source = _BASE.replace("Literal, Self", "Literal, Self, Union").replace("str | None", "Union[str, None]")
+    source = "from builtins import ValueError as Rejected\n" + source.replace("raise ValueError", "raise Rejected")
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    ["Literal['email'] | Literal['pickup']", "Union[Literal['email'], Literal['pickup']]", "Literal['email', None]"],
+)
+def test_composed_literal_domains_and_explicit_null_tag_state(annotation: str) -> None:
+    source = "from typing import Union\n" + _BASE.replace("Literal['email', 'pickup']", annotation)
+    assert len(_check(source)) == 1
+
+
+def test_null_tag_identity_is_not_missing_input() -> None:
+    source = _BASE.replace("Literal['email', 'pickup']", "Literal['email', None]").replace(
+        "self.kind == 'email'", "self.kind is None"
+    )
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "annotation",
+    ["Literal['email'] | str", "Literal[True] | Literal[1]", "Literal['email'] | Literal['email']", "TagAlias"],
+)
+def test_composed_tag_domains_keep_open_collision_duplicate_and_alias_boundaries(annotation: str) -> None:
+    assert _check(_BASE.replace("Literal['email', 'pickup']", annotation)) == []
+
+
+def test_many_literal_tags_and_boolean_regions_are_bounded() -> None:
+    tags = ",".join(repr(str(index)) for index in range(2000))
+    source = _BASE.replace("Literal['email', 'pickup']", f"Literal[{tags}]").replace("== 'email'", "== '0'")
+    assert _check(source) == []
+
+
+def test_rejection_region_complexity_abstains_without_changing_ordinary_cases() -> None:
+    alternatives = " or ".join("self.address is None" for _ in range(256))
+    source = _BASE.replace("self.address is None:", f"({alternatives}):")
+    assert _check(source) == []
+    nested = "not " * 80 + "(self.address is None)"
+    assert _check(_BASE.replace("self.address is None", nested)) == []
+    assert len(_check(_BASE)) == 1
+
+
 def test_payload_required_for_every_tag_is_a_common_field_constraint() -> None:
     source = _BASE.replace(
         "        return self",
