@@ -4,15 +4,152 @@
   "baselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
   "integration": {
     "calibrationBaselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
-    "integratedBaseRevision": "dbea895605832c4c5fdad79067941358a72e1a6c",
+    "integratedBaseRevision": "ea25aaf474c340da3ecb6314a87a15e2e158b4c4",
     "previousIntegration": {
       "calibrationBaselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
-      "integratedBaseRevision": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
+      "integratedBaseRevision": "5a5d92a0dfebd389f73fbe5fbd8a99f97d7dcc66",
+      "previousIntegration": {
+        "calibrationBaselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
+        "integratedBaseRevision": "dbea895605832c4c5fdad79067941358a72e1a6c",
+        "previousIntegration": {
+          "calibrationBaselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
+          "integratedBaseRevision": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
+          "incomingPullRequests": [
+            "https://github.com/sarj-ai/code-standards/pull/1519",
+            "https://github.com/sarj-ai/code-standards/pull/1518"
+          ],
+          "reviewedTypeSafetyPinsUnchanged": 35,
+          "incomingRuntimeAndTestsPreservedByteExact": {
+            "packages/python/src/sarj_python_lint/rules/no_tautological_expect.py": "ecfd1bfbb2820f677704aa1ec9ed180bd30003e6ecb1f7e90ed177f45320ebf4",
+            "packages/python/tests/rules/test_no_tautological_expect.py": "40e8f0641aece2f352daabbe0aede18a263a54bcd1bece2dec8f60b4b4ead69d",
+            "packages/standards/src/sarj_standards/libs/linting/external.py": "a408e16a9affd8e2b1f5aba6d2b2464d8c3169b5895f788388b8c5ae76f7d2d5",
+            "packages/standards/tests/test_external_diagnostics.py": "bacd0636a68f4a8b17577aec0b7c297613ce1f3618285039ab957bfe6e1be4f3",
+            "packages/standards/src/sarj_standards/libs/linting/test_value.py": "fb759a5d2d0f326ce80c91c8e2d59a6f5f6e1df063f328d28706cb8ea84484c0",
+            "packages/standards/tests/test_observe_test_value.py": "cfa4cf39cb4bf35b55f8881d045448ee237b2f4a08f7cf39e988d66deab7597d",
+            "packages/typescript/src/rules/no-tautological-expect.ts": "32d5ab3e9993af6300bea2846c7c92e5b188b96672070c97238a25cc56f31ab0",
+            "packages/typescript/src/rules/source-coupled-test.ts": "42e88a3c05a72bef2063e29d2184495478eb7597c29dd9cf54fd635521a87df5",
+            "packages/typescript/tests/rules/no-tautological-expect.test.ts": "812689db12007db1f0cb2790af28117a88a730736e36f89ca99885b596cd8ed8",
+            "packages/typescript/tests/rules/source-coupled-test.test.ts": "2059205b45718c3d121e221e113d1cb61e2c0a4cb47bb4949399fc43a5d65178",
+            "packages/typescript/tests/tautological-matcher-semantics.test.ts": "3781105871a372f3ae43be45edce8ea7a6fd2392890fb42da340286cd1a9c227"
+          },
+          "resolution": "Keep higher minor versions 16.20.0 / 1.46.0 / 8.77.0, preserve incoming runtime and tests, regenerate the combined catalog, docs, CLI and examples. Dependency graph changes were only exact editable package-version slots.",
+          "evidenceScope": "Selected type-safety corpus and analysis measurements retain the same maintained semantic source pins and dependencies. Prior actual full-plugin bundle hashes remain pre-integration observations, not newly executed integrated artifacts. Final normal performance is refreshed against the integrated bundle; its delta includes incoming unrelated owners. Final canonical verification and latest exact-head CI cover the combined tree.",
+          "priorFullVerificationAttempt": {
+            "command": "make verify",
+            "status": "failed",
+            "exitCode": 2,
+            "startedAt": "2026-10-17T03:30:11.338197+00:00",
+            "finishedAt": "2026-10-17T03:42:44.940700+00:00",
+            "reviewedSourcePinsUnchanged": true,
+            "ownerLocalLog": "make-verify.log"
+          },
+          "offlineNativeToolRecovery": {
+            "cause": "Pinned zizmor 1.31.1 was missing from the offline uv tool cache; the exact offline command reproduced the resolution error.",
+            "action": "Restore exact pinned package online, confirm offline version, rerun all native boundary tests.",
+            "focusedCommand": "uv run --project packages/standards --frozen pytest -q packages/standards/tests/test_zizmor_native_boundaries.py",
+            "focusedResult": "13 passed in 1.44s",
+            "sourceChangesForRecovery": false,
+            "cacheIsolation": "Repeated exact offline checks showed the package disappearing again from the shared task cache. Copy its freshly warmed cache into a new owner-only verification cache, then verify the pinned tool offline before starting. No tool versions, test assertions or skip conditions change.",
+            "confirmedOfflineVersionBeforeFinalRun": "zizmor 1.31.1"
+          }
+        },
+        "incomingPullRequests": [
+          "https://github.com/sarj-ai/code-standards/pull/1524"
+        ],
+        "unchangedMaintainedRuleAndHelperPins": 33,
+        "upstreamLoadedCliPinChanges": {
+          "packages/python/src/sarj_python_lint/__main__.py": {
+            "before": "0f02682b34f54bc46daa3d2502779bcc2df232a27d344e677142a6ed79a7ad83",
+            "after": "bf74c9374c24a8d8f94ef38f04279f064c05be561f7e7cd1e637fa6b9a6a0866"
+          },
+          "packages/python/src/sarj_python_lint/json_boundary.py": {
+            "before": "622e83606277fa5d4bfd59cb906c3dd18bdc956d5665bd844d6c4f19caace17a",
+            "after": "3935c000862d11e96f512aa57d8ccaf0b182fadfdf6833367f5c7588283a39ec"
+          }
+        },
+        "incomingRuntimeAndTestsPreservedByteExact": {
+          "packages/python/src/sarj_python_lint/rules/no_tautological_expect.py": "ecfd1bfbb2820f677704aa1ec9ed180bd30003e6ecb1f7e90ed177f45320ebf4",
+          "packages/python/tests/rules/test_no_tautological_expect.py": "40e8f0641aece2f352daabbe0aede18a263a54bcd1bece2dec8f60b4b4ead69d",
+          "packages/standards/src/sarj_standards/libs/linting/external.py": "a408e16a9affd8e2b1f5aba6d2b2464d8c3169b5895f788388b8c5ae76f7d2d5",
+          "packages/standards/tests/test_external_diagnostics.py": "bacd0636a68f4a8b17577aec0b7c297613ce1f3618285039ab957bfe6e1be4f3",
+          "packages/standards/src/sarj_standards/libs/linting/test_value.py": "fb759a5d2d0f326ce80c91c8e2d59a6f5f6e1df063f328d28706cb8ea84484c0",
+          "packages/standards/tests/test_observe_test_value.py": "cfa4cf39cb4bf35b55f8881d045448ee237b2f4a08f7cf39e988d66deab7597d",
+          "packages/typescript/src/rules/no-tautological-expect.ts": "32d5ab3e9993af6300bea2846c7c92e5b188b96672070c97238a25cc56f31ab0",
+          "packages/typescript/src/rules/source-coupled-test.ts": "42e88a3c05a72bef2063e29d2184495478eb7597c29dd9cf54fd635521a87df5",
+          "packages/typescript/tests/rules/no-tautological-expect.test.ts": "812689db12007db1f0cb2790af28117a88a730736e36f89ca99885b596cd8ed8",
+          "packages/typescript/tests/rules/source-coupled-test.test.ts": "2059205b45718c3d121e221e113d1cb61e2c0a4cb47bb4949399fc43a5d65178",
+          "packages/typescript/tests/tautological-matcher-semantics.test.ts": "3781105871a372f3ae43be45edce8ea7a6fd2392890fb42da340286cd1a9c227",
+          ".github/workflows/ci.yml": "818ae4b787ce39625e7786ab4d0a18d9b42b26bf050c942a1ec860502cd0d05a",
+          ".github/workflows/commit-policy.yml": "3bb7af69ba84aef9b770718e0d009c72adf40fc668e5ddb0ef72da5d5352c02c",
+          "packages/python/src/sarj_python_lint/__main__.py": "bf74c9374c24a8d8f94ef38f04279f064c05be561f7e7cd1e637fa6b9a6a0866",
+          "packages/python/src/sarj_python_lint/json_boundary.py": "3935c000862d11e96f512aa57d8ccaf0b182fadfdf6833367f5c7588283a39ec",
+          "packages/python/src/sarj_python_lint/ratchet.py": "b18f52522ef95b2091d2dcc71decc13e650f39d6e22f076155279d69ee181c95",
+          "packages/python/src/sarj_python_lint/rules/prefer_pytest_fixture_injection.py": "df775310fcf733cfaadb5e1129702af496d00903142e9c22bb3b979646614aef",
+          "packages/python/tests/rules/test_prefer_pytest_fixture_injection.py": "a969756a898e09185211b47e563a308bac80e12b280d1b504d8ab27b5f36e74d",
+          "packages/python/tests/test_cli_severity.py": "6118db1571f8ee12238045f0730e540145624fd02c1ce7132a2e8b9c44516f4b",
+          "packages/python/tests/test_ratchet.py": "1a15a2299dc5e1e5443a9b6c2cd4ec94ee34a5c1481ee07de849bfa65e1b8afd",
+          "packages/standards/src/sarj_standards/libs/adoption/manifest.py": "a38c0fb5eedb6abe640ae4f5c4471b24f18dea9bbd1cb67c9083c32327287abf",
+          "packages/standards/src/sarj_standards/libs/repository/cli_reference_artifact.py": "693373ae2c79395a45be93d4f3a8fb480d4c4c443b207ea2961f3046c66a61cf",
+          "packages/standards/src/sarj_standards/libs/repository/rule_catalog_artifact.py": "144fae3a3fec8e2788077ecf35c158321b1e00048ecbb541675b09a94a41a974",
+          "packages/standards/src/sarj_standards/libs/repository/rule_changes.py": "1ce549373a82c766ea34a5b0808c95b0d4d08f1af62dd43a878c2c42ebad6bef",
+          "packages/standards/src/sarj_standards/libs/repository/rule_inventory_artifact.py": "363600befc4b1fdca5602a3183fb9b2207431c3f99d9d2030e264b2a5260d386",
+          "packages/standards/src/sarj_standards/libs/rules/catalog.py": "ad3eb460302c06f9fc6e4a2aec030b2b38ffe517d8d82f2af5861aad92f5346e",
+          "packages/standards/tests/test_cli_reference_artifact.py": "2974450430b5b9a41a13903d472e3371dd9b8252efe3d879422ad9d30dce5980",
+          "packages/standards/tests/test_repo_standards_pins.py": "1e3acfb0f97d027088fd70d9c855abef8bf259d64737cbc0cc497b775cca44d5",
+          "packages/standards/tests/test_rule_catalog_artifact.py": "008d628c69b602b19a5e31880aaeff398a4e25924992757fdc3d533bd1e351bb",
+          "packages/standards/tests/test_rule_changes.py": "57668c1106fae09d0a42b2c4426b29951791435b222869b1bb83a259814d41bd",
+          "packages/standards/tests/test_rule_inventory_artifact.py": "d4a052d40725d9c2f51fafdc3d1b5449da29f486010420ecdc39b0cb0d1c5bd7"
+        },
+        "nativePolicy": {
+          "package": "repo-standards==6.8.5",
+          "actionRevision": "947f984d48f27ab96ba805a01fdb94961b579478"
+        },
+        "resolution": "Keep higher minor release versions 16.20.0 / 1.46.0 / 8.77.0, preserve all incoming source/tests/workflows and repo-standards6.8.5 distribution hashes, regenerate combined catalog/docs/CLI/examples.",
+        "typescriptCarryForward": {
+          "previousMeasuredBase": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
+          "subsequentIntegrationBase": "dbea895605832c4c5fdad79067941358a72e1a6c",
+          "equalUpstreamNativePluginTree": "06e822c411addb7da8cae51a4a89c9ecf3c82de5",
+          "campaignNativePluginTree": "e2c0b362294b8995b3f3413d08a588dfdba383b7",
+          "campaignTreeAndDependenciesUnchanged": true,
+          "performanceBundleSha256": "c34b2b0b4da14c4ce8060f7fd3a227cf4df275a9467e00f27787975c727329a3",
+          "actualCorpusBundleSha256": "5a106ea677c472f9c36c289af26c687a2aa04caf431d247cc747864012516330",
+          "qualification": "Retain actual prior measurements and their executed base/artifact identities. They were not rerun on the subsequent whole tree. The entire native TypeScript plugin, dependencies and configs remain byte-exact; the incoming external workflow policy is outside these direct native-plugin panels."
+        },
+        "pythonRefresh": "Replay both baseline and candidate against the same 3339 historical files and 93 seeds under one explicitly recorded integration-context overlay: the maintained Standards project dependency changes only repo-standards 6.8.3 to 6.8.5. Original source inventories, context manifests, seed sidecars and baseline implementation pins remain unchanged. Archive prior receipts, explicitly refresh the two upstream CLI implementation pins, and refresh full-registry performance for the upstream fixture-owner change. Selected analysis owners/core are unchanged; retained process-startup observations describe the earlier tree.",
+        "priorSuccessfulCanonicalVerification": {
+          "command": "make verify",
+          "status": "passed",
+          "exitCode": 0,
+          "startedAt": "2026-10-17T03:53:03.563700+00:00",
+          "finishedAt": "2026-10-17T04:06:20.317200+00:00",
+          "reviewedSourcePinsUnchanged": true,
+          "ownerLocalLog": "make-verify.log"
+        },
+        "previousExactHeadCI": {
+          "head": "70e319c2192c7f578e27f948a896dad03ab178ec",
+          "latestCounts": {
+            "success": 27,
+            "skipped": 7,
+            "neutral": 1
+          },
+          "qualification": "All four latest workflows passed, including optional Python3.14. This signoff applies only to that prior head; updated head needs fresh exact-head CI. REST pull-request base.sha was historical, so final merge readiness must check the live main Git ref."
+        },
+        "evidenceRedaction": {
+          "privateContextManifestDigestOmittedFromPublicReceipts": true,
+          "unredactedEvidenceRetainedOwnerOnly": true,
+          "privateReplayRouting": "After measurements, the artifact-only checker input filename points to a separate private overlay copy. Check logic and analyzer source are unchanged. Exact executed checker/overlay snapshots are retained separately; public receipts use the redacted overlay."
+        }
+      },
       "incomingPullRequests": [
-        "https://github.com/sarj-ai/code-standards/pull/1519",
-        "https://github.com/sarj-ai/code-standards/pull/1518"
+        "https://github.com/sarj-ai/code-standards/pull/1525"
       ],
-      "reviewedTypeSafetyPinsUnchanged": 35,
+      "unchangedCandidateImplementationPinsFromPreviousIntegration": 34,
+      "upstreamTraversalPinChange": {
+        "packages/python/src/sarj_python_lint/rules/_ast_index.py": {
+          "before": "956e231addf5359523c8acf3187b83b91943bb53a922be495636d30aa6830958",
+          "after": "b5e6f6a526a12be3921cdf021eeaac8d920127a4fefc18a30c3d85f1cd982cb7"
+        }
+      },
       "incomingRuntimeAndTestsPreservedByteExact": {
         "packages/python/src/sarj_python_lint/rules/no_tautological_expect.py": "ecfd1bfbb2820f677704aa1ec9ed180bd30003e6ecb1f7e90ed177f45320ebf4",
         "packages/python/tests/rules/test_no_tautological_expect.py": "40e8f0641aece2f352daabbe0aede18a263a54bcd1bece2dec8f60b4b4ead69d",
@@ -24,57 +161,103 @@
         "packages/typescript/src/rules/source-coupled-test.ts": "42e88a3c05a72bef2063e29d2184495478eb7597c29dd9cf54fd635521a87df5",
         "packages/typescript/tests/rules/no-tautological-expect.test.ts": "812689db12007db1f0cb2790af28117a88a730736e36f89ca99885b596cd8ed8",
         "packages/typescript/tests/rules/source-coupled-test.test.ts": "2059205b45718c3d121e221e113d1cb61e2c0a4cb47bb4949399fc43a5d65178",
-        "packages/typescript/tests/tautological-matcher-semantics.test.ts": "3781105871a372f3ae43be45edce8ea7a6fd2392890fb42da340286cd1a9c227"
+        "packages/typescript/tests/tautological-matcher-semantics.test.ts": "3781105871a372f3ae43be45edce8ea7a6fd2392890fb42da340286cd1a9c227",
+        ".github/workflows/ci.yml": "0bcacddf88e571f88c6a983f3805a8deda77be620e44ad5a98842dbb0000fd2e",
+        ".github/workflows/commit-policy.yml": "9aa0769e9e4fe118986163c5c84331afccda431dbe4c523fd33fe5fb99a31593",
+        "packages/python/src/sarj_python_lint/__main__.py": "bf74c9374c24a8d8f94ef38f04279f064c05be561f7e7cd1e637fa6b9a6a0866",
+        "packages/python/src/sarj_python_lint/json_boundary.py": "3935c000862d11e96f512aa57d8ccaf0b182fadfdf6833367f5c7588283a39ec",
+        "packages/python/src/sarj_python_lint/ratchet.py": "b18f52522ef95b2091d2dcc71decc13e650f39d6e22f076155279d69ee181c95",
+        "packages/python/src/sarj_python_lint/rules/prefer_pytest_fixture_injection.py": "df775310fcf733cfaadb5e1129702af496d00903142e9c22bb3b979646614aef",
+        "packages/python/tests/rules/test_prefer_pytest_fixture_injection.py": "a969756a898e09185211b47e563a308bac80e12b280d1b504d8ab27b5f36e74d",
+        "packages/python/tests/test_cli_severity.py": "6118db1571f8ee12238045f0730e540145624fd02c1ce7132a2e8b9c44516f4b",
+        "packages/python/tests/test_ratchet.py": "1a15a2299dc5e1e5443a9b6c2cd4ec94ee34a5c1481ee07de849bfa65e1b8afd",
+        "packages/standards/src/sarj_standards/libs/adoption/manifest.py": "b8aa239e8923260015f96e7bb619ceb33a674ffa6319b9abd0ed74c58a6cde38",
+        "packages/standards/src/sarj_standards/libs/repository/cli_reference_artifact.py": "693373ae2c79395a45be93d4f3a8fb480d4c4c443b207ea2961f3046c66a61cf",
+        "packages/standards/src/sarj_standards/libs/repository/rule_catalog_artifact.py": "144fae3a3fec8e2788077ecf35c158321b1e00048ecbb541675b09a94a41a974",
+        "packages/standards/src/sarj_standards/libs/repository/rule_changes.py": "1ce549373a82c766ea34a5b0808c95b0d4d08f1af62dd43a878c2c42ebad6bef",
+        "packages/standards/src/sarj_standards/libs/repository/rule_inventory_artifact.py": "363600befc4b1fdca5602a3183fb9b2207431c3f99d9d2030e264b2a5260d386",
+        "packages/standards/src/sarj_standards/libs/rules/catalog.py": "ad3eb460302c06f9fc6e4a2aec030b2b38ffe517d8d82f2af5861aad92f5346e",
+        "packages/standards/tests/test_cli_reference_artifact.py": "2974450430b5b9a41a13903d472e3371dd9b8252efe3d879422ad9d30dce5980",
+        "packages/standards/tests/test_repo_standards_pins.py": "9ab49fccf51416bcd90f8751f4c09e90c143e68ff643a7b6ea03eadaee7ebf25",
+        "packages/standards/tests/test_rule_catalog_artifact.py": "008d628c69b602b19a5e31880aaeff398a4e25924992757fdc3d533bd1e351bb",
+        "packages/standards/tests/test_rule_changes.py": "57668c1106fae09d0a42b2c4426b29951791435b222869b1bb83a259814d41bd",
+        "packages/standards/tests/test_rule_inventory_artifact.py": "d4a052d40725d9c2f51fafdc3d1b5449da29f486010420ecdc39b0cb0d1c5bd7",
+        "packages/iac/tests/test_perf.py": "53b90be4951fb730c15f5179e9fc3f28b3c65252faef1cc7f01a4e53d40ccd18",
+        "packages/python/src/sarj_python_lint/rules/_ast_index.py": "b5e6f6a526a12be3921cdf021eeaac8d920127a4fefc18a30c3d85f1cd982cb7",
+        "packages/python/tests/test_perf.py": "48f67a9e501fb7399be80e2b04721ac4d9693e9b0ef0e2f06c144e984a166066",
+        "packages/sql/tests/test_perf.py": "e0bb1b32f728e36cf38526cedb5fee7281cbde717017dfd77f429087bb4f134c"
       },
-      "resolution": "Keep higher minor versions 16.20.0 / 1.46.0 / 8.77.0, preserve incoming runtime and tests, regenerate the combined catalog, docs, CLI and examples. Dependency graph changes were only exact editable package-version slots.",
-      "evidenceScope": "Selected type-safety corpus and analysis measurements retain the same maintained semantic source pins and dependencies. Prior actual full-plugin bundle hashes remain pre-integration observations, not newly executed integrated artifacts. Final normal performance is refreshed against the integrated bundle; its delta includes incoming unrelated owners. Final canonical verification and latest exact-head CI cover the combined tree.",
-      "priorFullVerificationAttempt": {
+      "nativePolicy": {
+        "package": "repo-standards==6.8.6",
+        "actionRevision": "e37ce43c7bc3bd23c34c3896a020eef3dd59ca75"
+      },
+      "resolution": "Keep higher minor versions16.20.0/1.46.0/8.77.0, preserve incoming AST traversal/performance-test changes, workflows and repo-standards6.8.6 distribution hashes; regenerate CLI/docs/examples.",
+      "typescriptCarryForward": {
+        "previousMeasuredBase": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
+        "subsequentIntegrationBase": "5a5d92a0dfebd389f73fbe5fbd8a99f97d7dcc66",
+        "equalUpstreamNativePluginTree": "06e822c411addb7da8cae51a4a89c9ecf3c82de5",
+        "campaignNativePluginTree": "e2c0b362294b8995b3f3413d08a588dfdba383b7",
+        "campaignTreeAndDependenciesUnchanged": true,
+        "performanceBundleSha256": "c34b2b0b4da14c4ce8060f7fd3a227cf4df275a9467e00f27787975c727329a3",
+        "actualCorpusBundleSha256": "5a106ea677c472f9c36c289af26c687a2aa04caf431d247cc747864012516330",
+        "qualification": "Retain actual prior measurements and their executed base/artifact identities. They were not rerun on the subsequent whole tree. The entire native TypeScript plugin, dependencies and configs remain byte-exact; the incoming external workflow policy is outside these direct native-plugin panels."
+      },
+      "pythonRefresh": "The shared AST walk replaces a retained list queue with deque.popleft; breadth-first child order is preserved. Explicitly refresh only that current candidate implementation pin after archiving prior receipts. Replay both baseline and candidate on the same3339 historical files and93 seeds under an explicit maintained-project context overlay changing only repo-standards6.8.3 to6.8.6. Original source/context/sidecar inventories and baseline implementation pins remain unchanged. Refresh both selected and full-registry Python performance because shared traversal changed.",
+      "evidenceRedaction": {
+        "privateContextManifestDigestOmittedFromPublicReceipts": true,
+        "unredactedEvidenceRetainedOwnerOnly": true,
+        "privateReplayRouting": "After measurements, the artifact-only checker input filename points to a separate private overlay copy. Check logic and analyzer source are unchanged. Exact executed checker/overlay snapshots are retained separately; public receipts use the redacted overlay."
+      },
+      "priorSuccessfulCanonicalVerification": {
         "command": "make verify",
-        "status": "failed",
-        "exitCode": 2,
-        "startedAt": "2026-10-17T03:30:11.338197+00:00",
-        "finishedAt": "2026-10-17T03:42:44.940700+00:00",
+        "status": "passed",
+        "exitCode": 0,
+        "startedAt": "2026-10-17T04:31:27.862567+00:00",
+        "finishedAt": "2026-10-17T04:41:55.041275+00:00",
         "reviewedSourcePinsUnchanged": true,
         "ownerLocalLog": "make-verify.log"
       },
-      "offlineNativeToolRecovery": {
-        "cause": "Pinned zizmor 1.31.1 was missing from the offline uv tool cache; the exact offline command reproduced the resolution error.",
-        "action": "Restore exact pinned package online, confirm offline version, rerun all native boundary tests.",
-        "focusedCommand": "uv run --project packages/standards --frozen pytest -q packages/standards/tests/test_zizmor_native_boundaries.py",
-        "focusedResult": "13 passed in 1.44s",
-        "sourceChangesForRecovery": false,
-        "cacheIsolation": "Repeated exact offline checks showed the package disappearing again from the shared task cache. Copy its freshly warmed cache into a new owner-only verification cache, then verify the pinned tool offline before starting. No tool versions, test assertions or skip conditions change.",
-        "confirmedOfflineVersionBeforeFinalRun": "zizmor 1.31.1"
+      "priorHeadScope": {
+        "head": "7f4a3810932e40595573fd8b4e5b935c333eeb49",
+        "localFullTestsPassed": 37751,
+        "localSkipped": 10,
+        "normalHooksPassed": true,
+        "qualification": "Prior head checks do not approve the newly integrated source. Final readiness checks must use latest exact-head CI plus the live main Git ref, because REST pull-request base.sha can be historical."
+      },
+      "nativeOfflineEnvironmentRecovery": {
+        "failedCurrentIntegrationRun": {
+          "command": "make verify",
+          "status": "failed",
+          "exitCode": 2,
+          "startedAt": "2026-10-17T04:55:49.058702+00:00",
+          "finishedAt": "2026-10-17T05:04:50.865796+00:00",
+          "reviewedSourcePinsUnchanged": true,
+          "ownerLocalLog": "make-verify.log"
+        },
+        "observedCause": "The exact required offline uvx command could not resolve zizmor==1.31.1 from its configured cache after the full run. The same version had succeeded online and offline immediately before verification. No cache-cleaning cause is established.",
+        "recovery": "Restore pinned zizmor 1.31.1 using the actual sanitized native-process boundary; confirm exact offline version and all13 native boundary tests. Confirm/provision the same required package during the unmodified full verification if its cache disappears again. No tool version, source, assertion or skip condition changes.",
+        "focusedResult": "13 passed in 1.70s",
+        "ownerLocalFailedLog": "failed-canonical-5a-zizmor/make-verify.log"
       }
     },
     "incomingPullRequests": [
-      "https://github.com/sarj-ai/code-standards/pull/1524"
+      "https://github.com/sarj-ai/code-standards/pull/1527"
     ],
-    "unchangedMaintainedRuleAndHelperPins": 33,
-    "upstreamLoadedCliPinChanges": {
-      "packages/python/src/sarj_python_lint/__main__.py": {
-        "before": "0f02682b34f54bc46daa3d2502779bcc2df232a27d344e677142a6ed79a7ad83",
-        "after": "bf74c9374c24a8d8f94ef38f04279f064c05be561f7e7cd1e637fa6b9a6a0866"
-      },
-      "packages/python/src/sarj_python_lint/json_boundary.py": {
-        "before": "622e83606277fa5d4bfd59cb906c3dd18bdc956d5665bd844d6c4f19caace17a",
-        "after": "3935c000862d11e96f512aa57d8ccaf0b182fadfdf6833367f5c7588283a39ec"
-      }
-    },
+    "unchangedCandidateImplementationPinsFromPreviousIntegration": 35,
     "incomingRuntimeAndTestsPreservedByteExact": {
-      "packages/python/src/sarj_python_lint/rules/no_tautological_expect.py": "ecfd1bfbb2820f677704aa1ec9ed180bd30003e6ecb1f7e90ed177f45320ebf4",
-      "packages/python/tests/rules/test_no_tautological_expect.py": "40e8f0641aece2f352daabbe0aede18a263a54bcd1bece2dec8f60b4b4ead69d",
+      "packages/python/src/sarj_python_lint/rules/no_tautological_expect.py": "a8ea328faf158f460fc2019b622e3ed466b112270bf54b671f31ee7312702595",
+      "packages/python/tests/rules/test_no_tautological_expect.py": "4f162416d3fea6da356caaac23c83d9ace7ccd351c17308312f3f7286e760e9b",
       "packages/standards/src/sarj_standards/libs/linting/external.py": "a408e16a9affd8e2b1f5aba6d2b2464d8c3169b5895f788388b8c5ae76f7d2d5",
       "packages/standards/tests/test_external_diagnostics.py": "bacd0636a68f4a8b17577aec0b7c297613ce1f3618285039ab957bfe6e1be4f3",
       "packages/standards/src/sarj_standards/libs/linting/test_value.py": "fb759a5d2d0f326ce80c91c8e2d59a6f5f6e1df063f328d28706cb8ea84484c0",
       "packages/standards/tests/test_observe_test_value.py": "cfa4cf39cb4bf35b55f8881d045448ee237b2f4a08f7cf39e988d66deab7597d",
-      "packages/typescript/src/rules/no-tautological-expect.ts": "32d5ab3e9993af6300bea2846c7c92e5b188b96672070c97238a25cc56f31ab0",
+      "packages/typescript/src/rules/no-tautological-expect.ts": "f66e8957e75f7ede553d89dffbc9378d146ad381fdcd8128ec3d02452e3eb17c",
       "packages/typescript/src/rules/source-coupled-test.ts": "42e88a3c05a72bef2063e29d2184495478eb7597c29dd9cf54fd635521a87df5",
-      "packages/typescript/tests/rules/no-tautological-expect.test.ts": "812689db12007db1f0cb2790af28117a88a730736e36f89ca99885b596cd8ed8",
+      "packages/typescript/tests/rules/no-tautological-expect.test.ts": "cd5baec2d2117d3e96650dbe57a7c0c47c0467feddaf7907e2ef22a774324544",
       "packages/typescript/tests/rules/source-coupled-test.test.ts": "2059205b45718c3d121e221e113d1cb61e2c0a4cb47bb4949399fc43a5d65178",
       "packages/typescript/tests/tautological-matcher-semantics.test.ts": "3781105871a372f3ae43be45edce8ea7a6fd2392890fb42da340286cd1a9c227",
-      ".github/workflows/ci.yml": "818ae4b787ce39625e7786ab4d0a18d9b42b26bf050c942a1ec860502cd0d05a",
-      ".github/workflows/commit-policy.yml": "3bb7af69ba84aef9b770718e0d009c72adf40fc668e5ddb0ef72da5d5352c02c",
+      ".github/workflows/ci.yml": "0bcacddf88e571f88c6a983f3805a8deda77be620e44ad5a98842dbb0000fd2e",
+      ".github/workflows/commit-policy.yml": "9aa0769e9e4fe118986163c5c84331afccda431dbe4c523fd33fe5fb99a31593",
       "packages/python/src/sarj_python_lint/__main__.py": "bf74c9374c24a8d8f94ef38f04279f064c05be561f7e7cd1e637fa6b9a6a0866",
       "packages/python/src/sarj_python_lint/json_boundary.py": "3935c000862d11e96f512aa57d8ccaf0b182fadfdf6833367f5c7588283a39ec",
       "packages/python/src/sarj_python_lint/ratchet.py": "b18f52522ef95b2091d2dcc71decc13e650f39d6e22f076155279d69ee181c95",
@@ -82,52 +265,90 @@
       "packages/python/tests/rules/test_prefer_pytest_fixture_injection.py": "a969756a898e09185211b47e563a308bac80e12b280d1b504d8ab27b5f36e74d",
       "packages/python/tests/test_cli_severity.py": "6118db1571f8ee12238045f0730e540145624fd02c1ce7132a2e8b9c44516f4b",
       "packages/python/tests/test_ratchet.py": "1a15a2299dc5e1e5443a9b6c2cd4ec94ee34a5c1481ee07de849bfa65e1b8afd",
-      "packages/standards/src/sarj_standards/libs/adoption/manifest.py": "a38c0fb5eedb6abe640ae4f5c4471b24f18dea9bbd1cb67c9083c32327287abf",
+      "packages/standards/src/sarj_standards/libs/adoption/manifest.py": "b8aa239e8923260015f96e7bb619ceb33a674ffa6319b9abd0ed74c58a6cde38",
       "packages/standards/src/sarj_standards/libs/repository/cli_reference_artifact.py": "693373ae2c79395a45be93d4f3a8fb480d4c4c443b207ea2961f3046c66a61cf",
       "packages/standards/src/sarj_standards/libs/repository/rule_catalog_artifact.py": "144fae3a3fec8e2788077ecf35c158321b1e00048ecbb541675b09a94a41a974",
       "packages/standards/src/sarj_standards/libs/repository/rule_changes.py": "1ce549373a82c766ea34a5b0808c95b0d4d08f1af62dd43a878c2c42ebad6bef",
       "packages/standards/src/sarj_standards/libs/repository/rule_inventory_artifact.py": "363600befc4b1fdca5602a3183fb9b2207431c3f99d9d2030e264b2a5260d386",
       "packages/standards/src/sarj_standards/libs/rules/catalog.py": "ad3eb460302c06f9fc6e4a2aec030b2b38ffe517d8d82f2af5861aad92f5346e",
       "packages/standards/tests/test_cli_reference_artifact.py": "2974450430b5b9a41a13903d472e3371dd9b8252efe3d879422ad9d30dce5980",
-      "packages/standards/tests/test_repo_standards_pins.py": "1e3acfb0f97d027088fd70d9c855abef8bf259d64737cbc0cc497b775cca44d5",
+      "packages/standards/tests/test_repo_standards_pins.py": "9ab49fccf51416bcd90f8751f4c09e90c143e68ff643a7b6ea03eadaee7ebf25",
       "packages/standards/tests/test_rule_catalog_artifact.py": "008d628c69b602b19a5e31880aaeff398a4e25924992757fdc3d533bd1e351bb",
       "packages/standards/tests/test_rule_changes.py": "57668c1106fae09d0a42b2c4426b29951791435b222869b1bb83a259814d41bd",
-      "packages/standards/tests/test_rule_inventory_artifact.py": "d4a052d40725d9c2f51fafdc3d1b5449da29f486010420ecdc39b0cb0d1c5bd7"
+      "packages/standards/tests/test_rule_inventory_artifact.py": "d4a052d40725d9c2f51fafdc3d1b5449da29f486010420ecdc39b0cb0d1c5bd7",
+      "packages/iac/tests/test_perf.py": "53b90be4951fb730c15f5179e9fc3f28b3c65252faef1cc7f01a4e53d40ccd18",
+      "packages/python/src/sarj_python_lint/rules/_ast_index.py": "b5e6f6a526a12be3921cdf021eeaac8d920127a4fefc18a30c3d85f1cd982cb7",
+      "packages/python/tests/test_perf.py": "48f67a9e501fb7399be80e2b04721ac4d9693e9b0ef0e2f06c144e984a166066",
+      "packages/sql/tests/test_perf.py": "e0bb1b32f728e36cf38526cedb5fee7281cbde717017dfd77f429087bb4f134c",
+      "packages/python/tests/test_cli_paths.py": "1c20e8a63e4b4c6bb511680e664c8f837f4ff48996dcf735447a356d899226b3",
+      "packages/standards/tests/test_smoke.py": "79dae4a6f69ba03a5e5bd455250e485e9255b4f0851e9a4a37ffee74309acf14"
     },
     "nativePolicy": {
-      "package": "repo-standards==6.8.5",
-      "actionRevision": "947f984d48f27ab96ba805a01fdb94961b579478"
+      "package": "repo-standards==6.8.6",
+      "actionRevision": "e37ce43c7bc3bd23c34c3896a020eef3dd59ca75"
     },
-    "resolution": "Keep higher minor release versions 16.20.0 / 1.46.0 / 8.77.0, preserve all incoming source/tests/workflows and repo-standards6.8.5 distribution hashes, regenerate combined catalog/docs/CLI/examples.",
-    "typescriptCarryForward": {
-      "previousMeasuredBase": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
-      "subsequentIntegrationBase": "dbea895605832c4c5fdad79067941358a72e1a6c",
-      "equalUpstreamNativePluginTree": "06e822c411addb7da8cae51a4a89c9ecf3c82de5",
-      "campaignNativePluginTree": "e2c0b362294b8995b3f3413d08a588dfdba383b7",
-      "campaignTreeAndDependenciesUnchanged": true,
-      "performanceBundleSha256": "c34b2b0b4da14c4ce8060f7fd3a227cf4df275a9467e00f27787975c727329a3",
-      "actualCorpusBundleSha256": "5a106ea677c472f9c36c289af26c687a2aa04caf431d247cc747864012516330",
-      "qualification": "Retain actual prior measurements and their executed base/artifact identities. They were not rerun on the subsequent whole tree. The entire native TypeScript plugin, dependencies and configs remain byte-exact; the incoming external workflow policy is outside these direct native-plugin panels."
+    "resolution": "Replace the pending 5a integration with its newer descendant after archiving the full successful verification and reversible patch. Preserve all incoming runtime/tests, policy 6.8.6 and higher minor release versions 16.20.0 / 1.46.0 / 8.77.0. Regenerate the combined catalog, CLI, docs and examples.",
+    "selectedEvidenceCarryForward": {
+      "actualPreviousPythonExecutionBase": "5a5d92a0dfebd389f73fbe5fbd8a99f97d7dcc66",
+      "actualPreviousTypescriptExecutionBase": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
+      "maintainedSelectedPinsUnchanged": 35,
+      "runtimeDependencyGraphUnchanged": true,
+      "pythonProjectContextAndOverlayUnchanged": true,
+      "wholeNativePluginTreesUnchanged": false,
+      "qualification": "The incoming change is confined to unrelated Python/TypeScript tautological-test owners, their tests and test cleanup. Preserve the original executed corpus, selected-performance artifacts and base identities; they are not new executions on this whole tree. Entire-plugin equality applies only to the previously identified earlier integrations. Normal combined registry performance is refreshed because the incoming unrelated callbacks changed."
     },
-    "pythonRefresh": "Replay both baseline and candidate against the same 3339 historical files and 93 seeds under one explicitly recorded integration-context overlay: the maintained Standards project dependency changes only repo-standards 6.8.3 to 6.8.5. Original source inventories, context manifests, seed sidecars and baseline implementation pins remain unchanged. Archive prior receipts, explicitly refresh the two upstream CLI implementation pins, and refresh full-registry performance for the upstream fixture-owner change. Selected analysis owners/core are unchanged; retained process-startup observations describe the earlier tree.",
     "priorSuccessfulCanonicalVerification": {
       "command": "make verify",
       "status": "passed",
       "exitCode": 0,
-      "startedAt": "2026-10-17T03:53:03.563700+00:00",
-      "finishedAt": "2026-10-17T04:06:20.317200+00:00",
+      "startedAt": "2026-10-17T05:06:54.469341+00:00",
+      "finishedAt": "2026-10-17T05:18:27.329226+00:00",
       "reviewedSourcePinsUnchanged": true,
       "ownerLocalLog": "make-verify.log"
     },
-    "previousExactHeadCI": {
-      "head": "70e319c2192c7f578e27f948a896dad03ab178ec",
-      "latestCounts": {
-        "success": 27,
-        "skipped": 7,
-        "neutral": 1
-      },
-      "qualification": "All four latest workflows passed, including optional Python3.14. This signoff applies only to that prior head; updated head needs fresh exact-head CI. REST pull-request base.sha was historical, so final merge readiness must check the live main Git ref."
+    "priorCanonicalTestSummaries": {
+      "pythonPackageSummaries": [
+        {
+          "passed": 18,
+          "skipped": 0,
+          "duration": "0.38s"
+        },
+        {
+          "passed": 46,
+          "skipped": 0,
+          "duration": "0.08s"
+        },
+        {
+          "passed": 18820,
+          "skipped": 0,
+          "duration": "47.52s"
+        },
+        {
+          "passed": 1755,
+          "skipped": 1,
+          "duration": "3.99s"
+        },
+        {
+          "passed": 1446,
+          "skipped": 0,
+          "duration": "1.63s"
+        },
+        {
+          "passed": 5911,
+          "skipped": 9,
+          "duration": "166.60s (0:02:46)"
+        }
+      ],
+      "typescriptSummaries": [
+        {
+          "passed": 9755,
+          "total": 9755
+        }
+      ],
+      "totalPassed": 37751,
+      "totalSkipped": 10
     },
+    "finalLocalValidationScope": "Incremental integration checks follow a successful full make verify on the 5a combined source. They cover incoming owners, CLI-path and packaged smoke tests plus regenerated artifacts, formatting, lint, dogfood, type, repository, privacy and shell gates. They are not relabeled as a new full make verify on ea25. Normal hooks and every latest exact-head CI job, including optional Python 3.14, must pass before merge.",
     "evidenceRedaction": {
       "privateContextManifestDigestOmittedFromPublicReceipts": true,
       "unredactedEvidenceRetainedOwnerOnly": true,
@@ -226,7 +447,7 @@
       "packages/python/src/sarj_python_lint/rules/_pydantic_field_contract.py": "4a1f85f8b1c9e8d40f4739074b92e25b6208b90d045c39454139572c70045d50",
       "packages/python/src/sarj_python_lint/rules/_imports.py": "38f9ff8628fb0ed7ad690740b27170f9e8c8622189f9088a85027543ea93280c",
       "packages/python/src/sarj_python_lint/rules/_resource_provenance.py": "672282842de990445b98c2d0313e669bc99656b14f282ae25db0a5025c065a33",
-      "packages/python/src/sarj_python_lint/rules/_ast_index.py": "956e231addf5359523c8acf3187b83b91943bb53a922be495636d30aa6830958",
+      "packages/python/src/sarj_python_lint/rules/_ast_index.py": "b5e6f6a526a12be3921cdf021eeaac8d920127a4fefc18a30c3d85f1cd982cb7",
       "packages/python/src/sarj_python_lint/rules/_annotation_semantics.py": "cec2abb23700f9448ed366ad7c78962818702c26179d581f47a9b39bc5fb7ca2",
       "packages/python/src/sarj_python_lint/rules/_paths.py": "73ef0d9ddd6cc4a27a82e641a5c0c15331bde50681fa62665c4fc040a3e3c273",
       "packages/python/src/sarj_python_lint/rules/_comments.py": "8ed41b1c0b5bd398064c3e1cb13827c9d97053ec6c6476da313c232b32270cd0",
@@ -2015,7 +2236,7 @@
           "packages/python/src/sarj_python_lint/rules/_pydantic_field_contract.py": "4a1f85f8b1c9e8d40f4739074b92e25b6208b90d045c39454139572c70045d50",
           "packages/python/src/sarj_python_lint/rules/_imports.py": "38f9ff8628fb0ed7ad690740b27170f9e8c8622189f9088a85027543ea93280c",
           "packages/python/src/sarj_python_lint/rules/_resource_provenance.py": "672282842de990445b98c2d0313e669bc99656b14f282ae25db0a5025c065a33",
-          "packages/python/src/sarj_python_lint/rules/_ast_index.py": "956e231addf5359523c8acf3187b83b91943bb53a922be495636d30aa6830958",
+          "packages/python/src/sarj_python_lint/rules/_ast_index.py": "b5e6f6a526a12be3921cdf021eeaac8d920127a4fefc18a30c3d85f1cd982cb7",
           "packages/python/src/sarj_python_lint/rules/_annotation_semantics.py": "cec2abb23700f9448ed366ad7c78962818702c26179d581f47a9b39bc5fb7ca2",
           "packages/python/src/sarj_python_lint/rules/_paths.py": "73ef0d9ddd6cc4a27a82e641a5c0c15331bde50681fa62665c4fc040a3e3c273",
           "packages/python/src/sarj_python_lint/rules/_comments.py": "8ed41b1c0b5bd398064c3e1cb13827c9d97053ec6c6476da313c232b32270cd0",
@@ -2115,7 +2336,7 @@
         "baseline": {
           "panel": "historical",
           "variant": "baseline",
-          "observedAt": "2026-10-17T04:27:44.366453+00:00",
+          "observedAt": "2026-10-17T04:52:57.142970+00:00",
           "files": 3339,
           "batches": 21,
           "findings": 1,
@@ -2132,7 +2353,7 @@
         "candidate": {
           "panel": "historical",
           "variant": "candidate",
-          "observedAt": "2026-10-17T04:27:59.250920+00:00",
+          "observedAt": "2026-10-17T04:53:12.202740+00:00",
           "files": 3339,
           "batches": 21,
           "findings": 1,
@@ -3217,34 +3438,30 @@
       ],
       "evidenceReferenceConvention": "These filenames identify retained owner-local evidence; they are not shipped repository links.",
       "canonicalValidation": "pending parent campaign verification and exact-headCI",
-      "upstreamIntegrationReplay": {
-        "integrationTargetRevision": "dbea895605832c4c5fdad79067941358a72e1a6c",
-        "headBeforeMergeCommit": "70e319c2192c7f578e27f948a896dad03ab178ec",
-        "mergeHead": "dbea895605832c4c5fdad79067941358a72e1a6c",
-        "pullRequest": "https://github.com/sarj-ai/code-standards/pull/1524",
+      "latestIntegrationReplay": {
+        "integrationTargetRevision": "5a5d92a0dfebd389f73fbe5fbd8a99f97d7dcc66",
+        "headBeforeMergeCommit": "7f4a3810932e40595573fd8b4e5b935c333eeb49",
+        "mergeHead": "5a5d92a0dfebd389f73fbe5fbd8a99f97d7dcc66",
+        "pullRequest": "https://github.com/sarj-ai/code-standards/pull/1525",
         "changedPins": {
-          "packages/python/src/sarj_python_lint/__main__.py": {
-            "previousSha256": "0f02682b34f54bc46daa3d2502779bcc2df232a27d344e677142a6ed79a7ad83",
-            "sha256": "bf74c9374c24a8d8f94ef38f04279f064c05be561f7e7cd1e637fa6b9a6a0866"
-          },
-          "packages/python/src/sarj_python_lint/json_boundary.py": {
-            "previousSha256": "622e83606277fa5d4bfd59cb906c3dd18bdc956d5665bd844d6c4f19caace17a",
-            "sha256": "3935c000862d11e96f512aa57d8ccaf0b182fadfdf6833367f5c7588283a39ec"
+          "packages/python/src/sarj_python_lint/rules/_ast_index.py": {
+            "previousSha256": "956e231addf5359523c8acf3187b83b91943bb53a922be495636d30aa6830958",
+            "sha256": "b5e6f6a526a12be3921cdf021eeaac8d920127a4fefc18a30c3d85f1cd982cb7"
           }
         },
-        "reason": "Incoming strict JSON/suppression-baseline validation changes two loaded CLI modules. The nine selected owners and their proof helpers remain unchanged; replay the current candidate without changing the 294e baseline or any input pins.",
-        "historicalFilesReplayedPerVariant": 3339,
-        "syntheticFilesReplayedPerVariant": 93,
-        "syntheticSupportSidecarsVerifiedPerVariant": 93,
+        "reason": "Upstream replaces the breadth-first walk list queue with deque.popleft; child expansion order and indexed semantics are preserved, but this shared AST implementation requires both calibration variants and both performance panels to be replayed.",
+        "otherMaintainedPinsUnchanged": 34,
+        "priorCliPinsUnchanged": true,
         "bothVariantsReplayedInSameExplicitCurrentContext": true,
-        "priorBaselineReceiptsPreservedByteExactInArchive": true,
-        "baselineDiagnosticsIdenticalToPriorBaseline": true,
-        "historicalDiagnosticsIdenticalToPriorCandidate": true,
-        "seedLabelsAndDiagnosticCountsIdenticalToPriorCandidate": true,
-        "noOriginalInputContextOrSidecarPinsRefreshed": true,
+        "historicalFilesPerVariant": 3339,
+        "syntheticFilesPerVariant": 93,
+        "supportSidecarsPerVariant": 93,
+        "allDiagnosticsIdenticalToPreviousVariants": true,
+        "priorBaselineAndCandidateReceiptsPreservedInArchive": true,
+        "originalInputContextAndSidecarManifestsUnchanged": true,
         "integrationContextOverlay": {
-          "integrationTargetRevision": "dbea895605832c4c5fdad79067941358a72e1a6c",
-          "mode": "Explicit SARJ_CORPUS_INTEGRATION_CONTEXT=post-1524 for both baseline and candidate; no original historical or seed input pins change.",
+          "integrationTargetRevision": "5a5d92a0dfebd389f73fbe5fbd8a99f97d7dcc66",
+          "mode": "Existing explicit owner-local SARJ_CORPUS_INTEGRATION_CONTEXT=post-1524 activation token; current overlay target is the separate integrationTargetRevision. Both source variants share this current context.",
           "markers": {
             "packages/standards/pyproject.toml": {
               "previous": {
@@ -3253,20 +3470,21 @@
               },
               "current": {
                 "kind": "file",
-                "sha256": "453dbc38657404af06e566ed5ae4a6922d6794f094694498adc05428b6dc1c8a"
+                "sha256": "2a3519ac14e77f75ad75b323f0994591b70cb58fcf6851b119de1df8521c877c"
               }
             }
           },
           "semanticProof": {
-            "onlyParsedTomlDifference": "project.dependencies: repo-standards==6.8.3 -> repo-standards==6.8.5",
+            "onlyParsedTomlDifference": "project.dependencies: repo-standards==6.8.3 -> repo-standards==6.8.6",
             "allOtherParsedTomlFieldsAndDependenciesIdentical": true,
             "distributionRootAndBoundaryExistenceUnchanged": true,
             "directPydanticDependencyUnchanged": true,
             "historicalFilesUsingThisDistributionRoot": 554
           },
-          "qualification": "A new public maintained ancestor metadata marker is explicit integration context, not refreshed historical source content or new consumer evidence. Both source versions are replayed in the same frozen current context."
+          "originalContextManifestUnchanged": true,
+          "qualification": "Explicit maintained ancestor metadata integration context is not refreshed historical source content or new consumer evidence. The private manifest digest stays owner-only; public hashes cover maintained metadata only."
         },
-        "sourcePinVerificationReceipt": "python-post-1524-source-verification-public.json"
+        "sourcePinVerificationReceipt": "python-post-1525-source-verification-public.json"
       }
     },
     "typescript": {
@@ -3431,18 +3649,18 @@
     "pythonSelected": {
       "panel": "selected",
       "baselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
-      "startedAt": "2026-10-17T03:23:04.843151+00:00",
-      "finishedAt": "2026-10-17T03:23:19.013153+00:00",
+      "startedAt": "2026-10-17T04:53:13.697600+00:00",
+      "finishedAt": "2026-10-17T04:53:24.094315+00:00",
       "files": 111,
       "bytes": 1385700,
       "freshWorkersPerMode": 3,
       "warmIterationsPerWorker": 3,
       "modes": {
         "baseline": {
-          "firstAnalysisMedianMs": 302.3733750451356,
-          "warmMedianMs": 295.13633297756314,
-          "warmCpuMedianMs": 294.48,
-          "maxRssMiB": 79.0625,
+          "firstAnalysisMedianMs": 289.50908314436674,
+          "warmMedianMs": 284.826833056286,
+          "warmCpuMedianMs": 284.53000000000003,
+          "maxRssMiB": 79.359375,
           "configuredRules": [
             8
           ],
@@ -3451,10 +3669,10 @@
           ]
         },
         "candidate": {
-          "firstAnalysisMedianMs": 322.6029579527676,
-          "warmMedianMs": 327.27283309213817,
-          "warmCpuMedianMs": 325.8380000000001,
-          "maxRssMiB": 78.9375,
+          "firstAnalysisMedianMs": 296.2718748021871,
+          "warmMedianMs": 294.381916988641,
+          "warmCpuMedianMs": 294.201,
+          "maxRssMiB": 79.703125,
           "configuredRules": [
             9
           ],
@@ -3463,10 +3681,10 @@
           ]
         },
         "parse": {
-          "firstAnalysisMedianMs": 112.0558341499418,
-          "warmMedianMs": 111.16458312608302,
-          "warmCpuMedianMs": 110.796,
-          "maxRssMiB": 75.734375,
+          "firstAnalysisMedianMs": 104.99466606415808,
+          "warmMedianMs": 104.13783299736679,
+          "warmCpuMedianMs": 104.12199999999994,
+          "maxRssMiB": 75.75,
           "configuredRules": [
             0
           ],
@@ -3475,83 +3693,38 @@
           ]
         }
       },
-      "candidateBaselineWarmCpuRatio": 1.1064860092366207,
-      "scope": "Native Python engine. Selected families are six model-contract owners (new515 absent in baseline) and three guard owners affected by the native-capability helper extraction; normal runs the entire respective native registry. Project preparation may traverse beyond the named panel. Import/startup time is outside analysis rows and retained separately in raw process timing. Fresh process does not imply cold OS caches. Other team jobs are paused during this final window; unrelated shared-machine load is uncontrolled. One normal worker per mode bounds full-registry cost; no causal speedup or universal throughput claim."
-    },
-    "pythonNormal": {
-      "panel": "normal",
-      "baselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
-      "startedAt": "2026-10-17T04:28:00.799140+00:00",
-      "finishedAt": "2026-10-17T04:30:25.271954+00:00",
-      "files": 20,
-      "bytes": 211230,
-      "freshWorkersPerMode": 1,
-      "warmIterationsPerWorker": 3,
-      "modes": {
-        "baseline": {
-          "firstAnalysisMedianMs": 10863.03187487647,
-          "warmMedianMs": 10886.296499986202,
-          "warmCpuMedianMs": 10659.051000000005,
-          "maxRssMiB": 891.703125,
-          "configuredRules": [
-            155
-          ],
-          "findings": [
-            42
-          ]
-        },
-        "candidate": {
-          "firstAnalysisMedianMs": 10955.000416142866,
-          "warmMedianMs": 12013.807957991958,
-          "warmCpuMedianMs": 11561.28499999999,
-          "maxRssMiB": 879.375,
-          "configuredRules": [
-            156
-          ],
-          "findings": [
-            42
-          ]
-        },
-        "parse": {
-          "firstAnalysisMedianMs": 17.767792101949453,
-          "warmMedianMs": 12.928582960739732,
-          "warmCpuMedianMs": 12.880000000000003,
-          "maxRssMiB": 61.6875,
-          "configuredRules": [
-            0
-          ],
-          "findings": [
-            0
-          ]
-        }
-      },
-      "candidateBaselineWarmCpuRatio": 1.0846448712929495,
+      "candidateBaselineWarmCpuRatio": 1.0339893860049907,
       "scope": "Native Python engine. Selected families are six model-contract owners (new515 absent in baseline) and three guard owners affected by the native-capability helper extraction; normal runs the entire respective native registry. Project preparation may traverse beyond the named panel. Import/startup time is outside analysis rows and retained separately in raw process timing. Fresh process does not imply cold OS caches. Other team jobs are paused during this final window; unrelated shared-machine load is uncontrolled. One normal worker per mode bounds full-registry cost; no causal speedup or universal throughput claim.",
       "integration": {
-        "integrationTargetRevision": "dbea895605832c4c5fdad79067941358a72e1a6c",
-        "headBeforeMergeCommit": "70e319c2192c7f578e27f948a896dad03ab178ec",
-        "mergeHead": "dbea895605832c4c5fdad79067941358a72e1a6c",
-        "incomingPullRequests": [
-          "https://github.com/sarj-ai/code-standards/pull/1519",
-          "https://github.com/sarj-ai/code-standards/pull/1518",
-          "https://github.com/sarj-ai/code-standards/pull/1524"
-        ],
-        "sourcePinsVerifiedBeforeAndAfter": 35,
-        "unchangedReviewedPins": 33,
-        "explicitUpstreamCliPinUpdates": 2,
-        "upstreamPythonRuntimePins": {
+        "integrationTargetRevision": "5a5d92a0dfebd389f73fbe5fbd8a99f97d7dcc66",
+        "headBeforeMergeCommit": "7f4a3810932e40595573fd8b4e5b935c333eeb49",
+        "mergeHead": "5a5d92a0dfebd389f73fbe5fbd8a99f97d7dcc66",
+        "pullRequest": "https://github.com/sarj-ai/code-standards/pull/1525",
+        "changedPins": {
+          "packages/python/src/sarj_python_lint/rules/_ast_index.py": {
+            "previousSha256": "956e231addf5359523c8acf3187b83b91943bb53a922be495636d30aa6830958",
+            "sha256": "b5e6f6a526a12be3921cdf021eeaac8d920127a4fefc18a30c3d85f1cd982cb7"
+          }
+        },
+        "reason": "Upstream replaces the breadth-first walk list queue with deque.popleft; child expansion order and indexed semantics are preserved, but this shared AST implementation requires both calibration variants and both performance panels to be replayed.",
+        "otherMaintainedPinsUnchanged": 34,
+        "priorCliPinsUnchanged": true,
+        "upstreamPythonRuntimeSourcePins": {
+          "packages/python/src/sarj_python_lint/rules/_ast_index.py": "b5e6f6a526a12be3921cdf021eeaac8d920127a4fefc18a30c3d85f1cd982cb7",
           "packages/python/src/sarj_python_lint/__main__.py": "bf74c9374c24a8d8f94ef38f04279f064c05be561f7e7cd1e637fa6b9a6a0866",
           "packages/python/src/sarj_python_lint/json_boundary.py": "3935c000862d11e96f512aa57d8ccaf0b182fadfdf6833367f5c7588283a39ec",
           "packages/python/src/sarj_python_lint/ratchet.py": "b18f52522ef95b2091d2dcc71decc13e650f39d6e22f076155279d69ee181c95",
           "packages/python/src/sarj_python_lint/rules/prefer_pytest_fixture_injection.py": "df775310fcf733cfaadb5e1129702af496d00903142e9c22bb3b979646614aef",
           "packages/python/src/sarj_python_lint/rules/no_tautological_expect.py": "ecfd1bfbb2820f677704aa1ec9ed180bd30003e6ecb1f7e90ed177f45320ebf4"
         },
-        "sourcePinVerificationReceipt": "python-post-1524-source-verification-public.json",
-        "comparisonQualification": "Whole integrated native registry bundle versus unchanged 294e calibration baseline; includes upstream test-oracle1519, deptry1518, and strict baseline JSON/fixture-injection1524 changes. It is not an isolated causal estimate of type-safety effects. Measurement records the frozen resolved merge tree via HEAD, MERGE_HEAD and exact maintained/upstream source pins before and after, rather than claiming MERGE_HEAD is the checked-out commit.",
-        "selectedReceiptQualification": "Earlier selected analysis receipts remain unchanged because the nine owners/helpers and baseline-free analyze behavior are unchanged. Raw process/import startup observations describe the pre-integration tree. Both baseline and candidate corpus/seed calibration were freshly replayed in the same explicit current integration metadata context after the two candidate CLI pin updates.",
+        "allNativePythonSourceTreeSha256": {
+          "baseline": "09d2f495d4f6561ca1e299f1c76e101c058e423986a21a7ad7cee93ac61d19d5",
+          "candidate": "8673e753b3ef52fb74fed2963f483073560c2a26428f675a0b3f6d8bda24bb50"
+        },
+        "sourcePinVerificationReceipt": "python-post-1525-source-verification-public.json",
         "integrationContextOverlay": {
-          "integrationTargetRevision": "dbea895605832c4c5fdad79067941358a72e1a6c",
-          "mode": "Explicit SARJ_CORPUS_INTEGRATION_CONTEXT=post-1524 for both baseline and candidate; no original historical or seed input pins change.",
+          "integrationTargetRevision": "5a5d92a0dfebd389f73fbe5fbd8a99f97d7dcc66",
+          "mode": "Existing explicit owner-local SARJ_CORPUS_INTEGRATION_CONTEXT=post-1524 activation token; current overlay target is the separate integrationTargetRevision. Both source variants share this current context.",
           "markers": {
             "packages/standards/pyproject.toml": {
               "previous": {
@@ -3560,26 +3733,119 @@
               },
               "current": {
                 "kind": "file",
-                "sha256": "453dbc38657404af06e566ed5ae4a6922d6794f094694498adc05428b6dc1c8a"
+                "sha256": "2a3519ac14e77f75ad75b323f0994591b70cb58fcf6851b119de1df8521c877c"
               }
             }
           },
           "semanticProof": {
-            "onlyParsedTomlDifference": "project.dependencies: repo-standards==6.8.3 -> repo-standards==6.8.5",
+            "onlyParsedTomlDifference": "project.dependencies: repo-standards==6.8.3 -> repo-standards==6.8.6",
             "allOtherParsedTomlFieldsAndDependenciesIdentical": true,
             "distributionRootAndBoundaryExistenceUnchanged": true,
             "directPydanticDependencyUnchanged": true,
             "historicalFilesUsingThisDistributionRoot": 554
           },
-          "qualification": "A new public maintained ancestor metadata marker is explicit integration context, not refreshed historical source content or new consumer evidence. Both source versions are replayed in the same frozen current context."
+          "originalContextManifestUnchanged": true,
+          "qualification": "Explicit maintained ancestor metadata integration context is not refreshed historical source content or new consumer evidence. The private manifest digest stays owner-only; public hashes cover maintained metadata only."
+        },
+        "bothCalibrationAndPerformanceVariantsFreshlyReplayed": true,
+        "comparisonQualification": "Whole integrated source bundle versus unchanged294e baseline. Includes upstream1518/1519/1524/1525 changes; not an isolated causal estimate of type-safety effects. Frozen resolved merge tree is identified by HEAD, MERGE_HEAD and exact maintained source pins before and after. Both selected analysis and full-registry normal measurements are fresh for this shared AST implementation; fresh process does not imply cold cache."
+      }
+    },
+    "pythonNormal": {
+      "panel": "normal",
+      "baselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
+      "startedAt": "2026-10-17T05:22:28.036199+00:00",
+      "finishedAt": "2026-10-17T05:24:39.975783+00:00",
+      "files": 20,
+      "bytes": 211230,
+      "freshWorkersPerMode": 1,
+      "warmIterationsPerWorker": 3,
+      "modes": {
+        "baseline": {
+          "firstAnalysisMedianMs": 11284.224500181153,
+          "warmMedianMs": 10299.752457998693,
+          "warmCpuMedianMs": 10272.942000000001,
+          "maxRssMiB": 916.015625,
+          "configuredRules": [
+            155
+          ],
+          "findings": [
+            42
+          ]
+        },
+        "candidate": {
+          "firstAnalysisMedianMs": 10332.627832889557,
+          "warmMedianMs": 10692.007958889008,
+          "warmCpuMedianMs": 10642.143000000004,
+          "maxRssMiB": 905.53125,
+          "configuredRules": [
+            156
+          ],
+          "findings": [
+            42
+          ]
+        },
+        "parse": {
+          "firstAnalysisMedianMs": 11.957874987274408,
+          "warmMedianMs": 11.987334117293358,
+          "warmCpuMedianMs": 11.980000000000018,
+          "maxRssMiB": 61.65625,
+          "configuredRules": [
+            0
+          ],
+          "findings": [
+            0
+          ]
         }
+      },
+      "candidateBaselineWarmCpuRatio": 1.035939169129934,
+      "scope": "Native Python engine. Selected families are six model-contract owners (new515 absent in baseline) and three guard owners affected by the native-capability helper extraction; normal runs the entire respective native registry. Project preparation may traverse beyond the named panel. Import/startup time is outside analysis rows and retained separately in raw process timing. Fresh process does not imply cold OS caches. Other team jobs are paused during this final window; unrelated shared-machine load is uncontrolled. One normal worker per mode bounds full-registry cost; no causal speedup or universal throughput claim.",
+      "integration": {
+        "integrationTargetRevision": "ea25aaf474c340da3ecb6314a87a15e2e158b4c4",
+        "headBeforeMergeCommit": "7f4a3810932e40595573fd8b4e5b935c333eeb49",
+        "mergeHead": "ea25aaf474c340da3ecb6314a87a15e2e158b4c4",
+        "pullRequest": "https://github.com/sarj-ai/code-standards/pull/1527",
+        "upstreamNoTautologicalExpectSource": {
+          "path": "packages/python/src/sarj_python_lint/rules/no_tautological_expect.py",
+          "previousSha256": "ecfd1bfbb2820f677704aa1ec9ed180bd30003e6ecb1f7e90ed177f45320ebf4",
+          "currentSha256": "a8ea328faf158f460fc2019b622e3ed466b112270bf54b671f31ee7312702595",
+          "onlyNativePythonSourceDifferenceFromExecuted1525": true
+        },
+        "allNativePythonSourceTreeSha256": {
+          "baseline": "09d2f495d4f6561ca1e299f1c76e101c058e423986a21a7ad7cee93ac61d19d5",
+          "candidate": "8c3f9b1044b9f79a39a0663818e645fd534a1a6b45221e1beb40566c86f7b4ce"
+        },
+        "all35SelectedSemanticPinsUnchanged": true,
+        "contextPolicy": "Exact same maintained project-context marker as the executed5a integration, with retained versions1.46/8.77 and repo-standards6.8.6; original manifests, private/public overlay bytes and seed sidecars unchanged.",
+        "selectedEvidenceCarryforward": {
+          "actualExecutionIntegrationTargetRevision": "5a5d92a0dfebd389f73fbe5fbd8a99f97d7dcc66",
+          "receiptSha256": {
+            "python-corpus-public.json": "235f1499628f8ba62eb17fd75dd732ee6f4103ec2dd5ce1dd8b80f0f04fd3a53",
+            "python-selected-performance-summary-public.json": "fc79b83b5a239ba4d275ba41997ca761e22be20502b4565738d68eed0b693866"
+          },
+          "retainedByteExact": true,
+          "all35SelectedSemanticPinsUnchanged": true,
+          "nativePythonSourceDifference": {
+            "path": "packages/python/src/sarj_python_lint/rules/no_tautological_expect.py",
+            "previousSha256": "ecfd1bfbb2820f677704aa1ec9ed180bd30003e6ecb1f7e90ed177f45320ebf4",
+            "currentSha256": "a8ea328faf158f460fc2019b622e3ed466b112270bf54b671f31ee7312702595",
+            "onlyNativePythonSourceDifferenceFromExecuted1525": true
+          },
+          "wholeNativePythonBundleIdentical": false,
+          "contextMetadataAndOriginalInputsUnchanged": true,
+          "qualification": "Corpus and selected timing remain actual executions from the prior5a integration. Their selected owner/helper semantics and baseline-free analyze path carry forward; the complete imported native bundle differs in the unrelated test-assertion owner. No fresh selected execution or current selected import/startup timing is claimed."
+        },
+        "sourcePinVerificationReceipt": "python-post-1527-normal-source-verification-public.json",
+        "comparisonQualification": "Whole integrated native registry bundle versus unchanged294e baseline; includes upstream1518/1519/1524/1525/1527 changes. This normal-only refresh is not an isolated causal estimate of type-safety effects. Team jobs are paused; unrelated machine load and OS caches are uncontrolled."
       }
     },
     "typescript": {
       "schemaVersion": 1,
       "baselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
-      "incomingBaseRevision": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
-      "scope": "Two existing expanded TypeScript owners; serial selected-family and full exported custom-plugin strict preset panels. The full preset has 125 custom Sarj rules and the core no-restricted-imports policy, totaling 126 settings. Consumer preset, upstream third-party plugins and Python are excluded.",
+      "incomingBaseRevision": "ea25aaf474c340da3ecb6314a87a15e2e158b4c4",
+      "normalMeasuredIncomingBaseRevision": "ea25aaf474c340da3ecb6314a87a15e2e158b4c4",
+      "selectedMeasuredIncomingBaseRevision": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
+      "scope": "Fresh integrated full strict-preset normal panel and preserved earlier selected-family panel have distinct measured snapshots. The full preset contains 125 custom Sarj rules plus the core no-restricted-imports policy, 126 settings. Consumer preset, upstream third-party plugins and Python are outside these panels.",
       "finalImplementationPins": [
         {
           "file": "packages/typescript/src/rules/_discriminated-union-returns.ts",
@@ -3619,13 +3885,14 @@
         }
       ],
       "integration": {
-        "incomingBaseRevision": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
+        "incomingBaseRevision": "ea25aaf474c340da3ecb6314a87a15e2e158b4c4",
+        "workingTreeHeadBeforeMeasurement": "7f4a3810932e40595573fd8b4e5b935c333eeb49",
+        "pendingMergeHead": "ea25aaf474c340da3ecb6314a87a15e2e158b4c4",
         "baselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
-        "preservedCorpusCandidateArtifactSha256": "5a106ea677c472f9c36c289af26c687a2aa04caf431d247cc747864012516330",
         "integrationPins": [
           {
             "file": "packages/typescript/src/rules/no-tautological-expect.ts",
-            "sha256": "32d5ab3e9993af6300bea2846c7c92e5b188b96672070c97238a25cc56f31ab0"
+            "sha256": "f66e8957e75f7ede553d89dffbc9378d146ad381fdcd8128ec3d02452e3eb17c"
           },
           {
             "file": "packages/typescript/src/rules/source-coupled-test.ts",
@@ -3644,9 +3911,12 @@
             "sha256": "9b31d24441e76a33da571acbcb44145282a53f8a452345f1cd0929f48b4e53c3"
           }
         ],
+        "nativePluginSourceDigestSha256": "9a36798faca9d1f771ec3038bd4920f086f344e250fd6f8431378e09eb771fe6",
+        "nativePluginSourceFiles": 159,
         "typeSafetySemanticPinsUnchanged": 9,
-        "incomingTypeScriptOwnerCount": 2,
-        "note": "Full exported strict-preset candidate includes upstream test-oracle fixes as well as this type-safety campaign. Selected owner source and dependencies remain unchanged."
+        "selectedReceiptPreservedSha256": "ae9b0507c552221dd974f28f50872047f32133f266cae505b7d123b4f80e8db1",
+        "corpusReceiptPreservedSha256": "310343bf6c9e2db3f510667841dc9a13a603d8c63cac68528cbbd5b5bf4e2b83",
+        "note": "The normal full-preset candidate includes upstream test-oracle fixes and the campaign. Selected and corpus receipts remain at their actual prior artifacts/bases; only selected implementation/dependency-graph carry-forward is claimed."
       },
       "normalCustomPreset": {
         "schemaVersion": 1,
@@ -3707,7 +3977,7 @@
           },
           {
             "variant": "candidate",
-            "sha256": "c34b2b0b4da14c4ce8060f7fd3a227cf4df275a9467e00f27787975c727329a3"
+            "sha256": "132ed92108e3ac7bb67edf77f7d09ec32caf76dd1dda1e597211df13f42f4bb4"
           }
         ],
         "workers": [
@@ -3720,17 +3990,17 @@
             "fallbackResolved": 0,
             "unresolvedImports": 187,
             "compilerDiagnostics": 0,
-            "setupMs": 3687.316542,
-            "setupCpuMs": 4676.18,
-            "maxRss": 893888,
+            "setupMs": 3240.927875,
+            "setupCpuMs": 4022.096,
+            "maxRss": 905072,
             "rows": [
               {
                 "mode": "baseline",
                 "warmup": true,
                 "round": -1,
                 "configuredRules": 126,
-                "wallMs": 348.50666699999965,
-                "cpuMs": 711.104,
+                "wallMs": 331.2325000000001,
+                "cpuMs": 669.78,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -3740,8 +4010,8 @@
                 "warmup": true,
                 "round": -1,
                 "configuredRules": 126,
-                "wallMs": 170.38483300000007,
-                "cpuMs": 358.617,
+                "wallMs": 159.5449590000003,
+                "cpuMs": 322.143,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -3751,8 +4021,8 @@
                 "warmup": true,
                 "round": -1,
                 "configuredRules": 0,
-                "wallMs": 67.90900000000056,
-                "cpuMs": 165.515,
+                "wallMs": 63.806666999999834,
+                "cpuMs": 170.117,
                 "findings": 0,
                 "fatal": 0,
                 "unrelated": 0
@@ -3762,8 +4032,8 @@
                 "warmup": false,
                 "round": 0,
                 "configuredRules": 126,
-                "wallMs": 141.15020900000036,
-                "cpuMs": 300.235,
+                "wallMs": 140.14004100000056,
+                "cpuMs": 264.822,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -3773,8 +4043,8 @@
                 "warmup": false,
                 "round": 0,
                 "configuredRules": 126,
-                "wallMs": 143.28179199999977,
-                "cpuMs": 296.813,
+                "wallMs": 134.45337500000005,
+                "cpuMs": 296.593,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -3784,8 +4054,8 @@
                 "warmup": false,
                 "round": 0,
                 "configuredRules": 0,
-                "wallMs": 82.10804199999984,
-                "cpuMs": 174.671,
+                "wallMs": 61.722749999999905,
+                "cpuMs": 142.801,
                 "findings": 0,
                 "fatal": 0,
                 "unrelated": 0
@@ -3795,8 +4065,8 @@
                 "warmup": false,
                 "round": 1,
                 "configuredRules": 126,
-                "wallMs": 148.14604099999997,
-                "cpuMs": 291.661,
+                "wallMs": 136.6337909999993,
+                "cpuMs": 281.406,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -3806,8 +4076,8 @@
                 "warmup": false,
                 "round": 1,
                 "configuredRules": 0,
-                "wallMs": 68.36608400000023,
-                "cpuMs": 174.518,
+                "wallMs": 65.34908300000006,
+                "cpuMs": 152.137,
                 "findings": 0,
                 "fatal": 0,
                 "unrelated": 0
@@ -3817,8 +4087,8 @@
                 "warmup": false,
                 "round": 1,
                 "configuredRules": 126,
-                "wallMs": 147.2979580000001,
-                "cpuMs": 287.469,
+                "wallMs": 139.21183399999973,
+                "cpuMs": 292.598,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -3828,8 +4098,8 @@
                 "warmup": false,
                 "round": 2,
                 "configuredRules": 0,
-                "wallMs": 69.04300000000057,
-                "cpuMs": 178.272,
+                "wallMs": 64.78887500000019,
+                "cpuMs": 150.658,
                 "findings": 0,
                 "fatal": 0,
                 "unrelated": 0
@@ -3839,8 +4109,8 @@
                 "warmup": false,
                 "round": 2,
                 "configuredRules": 126,
-                "wallMs": 141.2604999999994,
-                "cpuMs": 289.274,
+                "wallMs": 136.59595799999988,
+                "cpuMs": 286.422,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -3850,14 +4120,14 @@
                 "warmup": false,
                 "round": 2,
                 "configuredRules": 126,
-                "wallMs": 145.3704170000001,
-                "cpuMs": 269.548,
+                "wallMs": 137.36745800000062,
+                "cpuMs": 259.524,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
               }
             ],
-            "freshProcessWallSeconds": 6.572642165934667
+            "freshProcessWallSeconds": 5.73323587491177
           },
           {
             "ordinal": 1,
@@ -3868,17 +4138,17 @@
             "fallbackResolved": 0,
             "unresolvedImports": 187,
             "compilerDiagnostics": 0,
-            "setupMs": 3259.604125,
-            "setupCpuMs": 4306.208,
-            "maxRss": 899680,
+            "setupMs": 2867.426375,
+            "setupCpuMs": 4023.153,
+            "maxRss": 885280,
             "rows": [
               {
                 "mode": "candidate",
                 "warmup": true,
                 "round": -1,
                 "configuredRules": 126,
-                "wallMs": 334.6695420000001,
-                "cpuMs": 719.559,
+                "wallMs": 316.46916599999986,
+                "cpuMs": 680.441,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -3888,8 +4158,8 @@
                 "warmup": true,
                 "round": -1,
                 "configuredRules": 0,
-                "wallMs": 71.63070900000002,
-                "cpuMs": 182.273,
+                "wallMs": 69.00437499999998,
+                "cpuMs": 185.887,
                 "findings": 0,
                 "fatal": 0,
                 "unrelated": 0
@@ -3899,8 +4169,8 @@
                 "warmup": true,
                 "round": -1,
                 "configuredRules": 126,
-                "wallMs": 166.2123330000004,
-                "cpuMs": 343.555,
+                "wallMs": 151.9873749999997,
+                "cpuMs": 312.765,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -3910,8 +4180,8 @@
                 "warmup": false,
                 "round": 0,
                 "configuredRules": 126,
-                "wallMs": 147.97920900000008,
-                "cpuMs": 277.33,
+                "wallMs": 140.9597920000001,
+                "cpuMs": 286.575,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -3921,8 +4191,8 @@
                 "warmup": false,
                 "round": 0,
                 "configuredRules": 0,
-                "wallMs": 68.81212499999947,
-                "cpuMs": 183.547,
+                "wallMs": 72.64145800000006,
+                "cpuMs": 168.176,
                 "findings": 0,
                 "fatal": 0,
                 "unrelated": 0
@@ -3932,8 +4202,8 @@
                 "warmup": false,
                 "round": 0,
                 "configuredRules": 126,
-                "wallMs": 146.94325000000026,
-                "cpuMs": 293.488,
+                "wallMs": 145.26425000000017,
+                "cpuMs": 290.099,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -3943,8 +4213,8 @@
                 "warmup": false,
                 "round": 1,
                 "configuredRules": 0,
-                "wallMs": 66.16862500000025,
-                "cpuMs": 172.126,
+                "wallMs": 64.32875000000058,
+                "cpuMs": 153.753,
                 "findings": 0,
                 "fatal": 0,
                 "unrelated": 0
@@ -3954,8 +4224,8 @@
                 "warmup": false,
                 "round": 1,
                 "configuredRules": 126,
-                "wallMs": 149.94129199999952,
-                "cpuMs": 286.093,
+                "wallMs": 141.8652919999995,
+                "cpuMs": 302.643,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -3965,8 +4235,8 @@
                 "warmup": false,
                 "round": 1,
                 "configuredRules": 126,
-                "wallMs": 140.65250000000015,
-                "cpuMs": 297.763,
+                "wallMs": 133.1525419999998,
+                "cpuMs": 264.021,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -3976,8 +4246,8 @@
                 "warmup": false,
                 "round": 2,
                 "configuredRules": 126,
-                "wallMs": 144.7044590000005,
-                "cpuMs": 270.975,
+                "wallMs": 134.63487499999974,
+                "cpuMs": 278.815,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -3987,8 +4257,8 @@
                 "warmup": false,
                 "round": 2,
                 "configuredRules": 126,
-                "wallMs": 142.88504199999988,
-                "cpuMs": 293.417,
+                "wallMs": 127.29212499999994,
+                "cpuMs": 257.615,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -3998,14 +4268,14 @@
                 "warmup": false,
                 "round": 2,
                 "configuredRules": 0,
-                "wallMs": 73.90441700000065,
-                "cpuMs": 175.828,
+                "wallMs": 66.10487499999999,
+                "cpuMs": 168.311,
                 "findings": 0,
                 "fatal": 0,
                 "unrelated": 0
               }
             ],
-            "freshProcessWallSeconds": 5.9481622921302915
+            "freshProcessWallSeconds": 5.3904764170292765
           },
           {
             "ordinal": 2,
@@ -4016,17 +4286,17 @@
             "fallbackResolved": 0,
             "unresolvedImports": 187,
             "compilerDiagnostics": 0,
-            "setupMs": 3348.451541,
-            "setupCpuMs": 4343.799,
-            "maxRss": 891584,
+            "setupMs": 2827.104333,
+            "setupCpuMs": 3923.174,
+            "maxRss": 883872,
             "rows": [
               {
                 "mode": "parse",
                 "warmup": true,
                 "round": -1,
                 "configuredRules": 0,
-                "wallMs": 122.04416600000013,
-                "cpuMs": 360.729,
+                "wallMs": 107.76420800000005,
+                "cpuMs": 317.324,
                 "findings": 0,
                 "fatal": 0,
                 "unrelated": 0
@@ -4036,8 +4306,8 @@
                 "warmup": true,
                 "round": -1,
                 "configuredRules": 126,
-                "wallMs": 322.8988330000002,
-                "cpuMs": 631.009,
+                "wallMs": 309.67654200000015,
+                "cpuMs": 613.226,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -4047,8 +4317,8 @@
                 "warmup": true,
                 "round": -1,
                 "configuredRules": 126,
-                "wallMs": 171.77870900000016,
-                "cpuMs": 343.053,
+                "wallMs": 172.35599999999977,
+                "cpuMs": 343.898,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -4058,8 +4328,8 @@
                 "warmup": false,
                 "round": 0,
                 "configuredRules": 0,
-                "wallMs": 66.8531669999993,
-                "cpuMs": 167.058,
+                "wallMs": 71.45204100000001,
+                "cpuMs": 173.906,
                 "findings": 0,
                 "fatal": 0,
                 "unrelated": 0
@@ -4069,8 +4339,8 @@
                 "warmup": false,
                 "round": 0,
                 "configuredRules": 126,
-                "wallMs": 148.31204100000014,
-                "cpuMs": 306.544,
+                "wallMs": 143.82729199999994,
+                "cpuMs": 307.724,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -4080,8 +4350,8 @@
                 "warmup": false,
                 "round": 0,
                 "configuredRules": 126,
-                "wallMs": 144.86158299999988,
-                "cpuMs": 314.617,
+                "wallMs": 150.1331250000003,
+                "cpuMs": 328.405,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -4091,8 +4361,8 @@
                 "warmup": false,
                 "round": 1,
                 "configuredRules": 126,
-                "wallMs": 144.96529200000077,
-                "cpuMs": 302.253,
+                "wallMs": 143.19845900000018,
+                "cpuMs": 289.39,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -4102,8 +4372,8 @@
                 "warmup": false,
                 "round": 1,
                 "configuredRules": 126,
-                "wallMs": 159.30904200000077,
-                "cpuMs": 311,
+                "wallMs": 147.9772499999999,
+                "cpuMs": 297.721,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -4113,8 +4383,8 @@
                 "warmup": false,
                 "round": 1,
                 "configuredRules": 0,
-                "wallMs": 81.61887500000012,
-                "cpuMs": 175.141,
+                "wallMs": 65.36779200000001,
+                "cpuMs": 160.873,
                 "findings": 0,
                 "fatal": 0,
                 "unrelated": 0
@@ -4124,8 +4394,8 @@
                 "warmup": false,
                 "round": 2,
                 "configuredRules": 126,
-                "wallMs": 175.51887499999975,
-                "cpuMs": 301.292,
+                "wallMs": 147.94845799999985,
+                "cpuMs": 308.117,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
@@ -4135,8 +4405,8 @@
                 "warmup": false,
                 "round": 2,
                 "configuredRules": 0,
-                "wallMs": 68.02654100000018,
-                "cpuMs": 165.752,
+                "wallMs": 65.83324999999968,
+                "cpuMs": 158.39,
                 "findings": 0,
                 "fatal": 0,
                 "unrelated": 0
@@ -4146,28 +4416,28 @@
                 "warmup": false,
                 "round": 2,
                 "configuredRules": 126,
-                "wallMs": 145.87129100000038,
-                "cpuMs": 285,
+                "wallMs": 143.91449999999986,
+                "cpuMs": 291.795,
                 "findings": 18,
                 "fatal": 0,
                 "unrelated": 0
               }
             ],
-            "freshProcessWallSeconds": 6.151027416810393
+            "freshProcessWallSeconds": 5.463828041916713
           }
         ],
         "summary": {
           "baseline": {
             "warmPasses": 9,
-            "warmMedianCpuMs": 289.274,
-            "warmMedianWallMs": 145.87129100000038,
-            "warmMinCpuMs": 270.975,
-            "warmMaxCpuMs": 306.544,
-            "warmMinWallMs": 141.15020900000036,
-            "warmMaxWallMs": 149.94129199999952,
+            "warmMedianCpuMs": 290.099,
+            "warmMedianWallMs": 141.8652919999995,
+            "warmMinCpuMs": 264.822,
+            "warmMaxCpuMs": 307.724,
+            "warmMinWallMs": 134.63487499999974,
+            "warmMaxWallMs": 145.26425000000017,
             "firstPasses": 3,
-            "firstMedianCpuMs": 631.009,
-            "firstMedianWallMs": 322.8988330000002,
+            "firstMedianCpuMs": 613.226,
+            "firstMedianWallMs": 309.67654200000015,
             "findingsEachPass": [
               18
             ],
@@ -4178,15 +4448,15 @@
           },
           "candidate": {
             "warmPasses": 9,
-            "warmMedianCpuMs": 296.813,
-            "warmMedianWallMs": 145.3704170000001,
-            "warmMinCpuMs": 269.548,
-            "warmMaxCpuMs": 314.617,
-            "warmMinWallMs": 140.65250000000015,
-            "warmMaxWallMs": 175.51887499999975,
+            "warmMedianCpuMs": 286.575,
+            "warmMedianWallMs": 137.36745800000062,
+            "warmMinCpuMs": 257.615,
+            "warmMaxCpuMs": 328.405,
+            "warmMinWallMs": 127.29212499999994,
+            "warmMaxWallMs": 150.1331250000003,
             "firstPasses": 3,
-            "firstMedianCpuMs": 358.617,
-            "firstMedianWallMs": 171.77870900000016,
+            "firstMedianCpuMs": 343.898,
+            "firstMedianWallMs": 172.35599999999977,
             "findingsEachPass": [
               18
             ],
@@ -4197,15 +4467,15 @@
           },
           "parse": {
             "warmPasses": 9,
-            "warmMedianCpuMs": 174.671,
-            "warmMedianWallMs": 68.81212499999947,
-            "warmMinCpuMs": 165.752,
-            "warmMaxCpuMs": 183.547,
-            "warmMinWallMs": 66.16862500000025,
-            "warmMaxWallMs": 82.10804199999984,
+            "warmMedianCpuMs": 158.39,
+            "warmMedianWallMs": 65.36779200000001,
+            "warmMinCpuMs": 142.801,
+            "warmMaxCpuMs": 173.906,
+            "warmMinWallMs": 61.722749999999905,
+            "warmMaxWallMs": 72.64145800000006,
             "firstPasses": 3,
-            "firstMedianCpuMs": 182.273,
-            "firstMedianWallMs": 71.63070900000002,
+            "firstMedianCpuMs": 185.887,
+            "firstMedianWallMs": 69.00437499999998,
             "findingsEachPass": [
               0
             ],
@@ -4216,8 +4486,8 @@
           }
         },
         "ratios": {
-          "warmCpuCandidateOverBaseline": 1.0260617960826068,
-          "warmWallCandidateOverBaseline": 0.9965663291483429
+          "warmCpuCandidateOverBaseline": 0.9878524227935981,
+          "warmWallCandidateOverBaseline": 0.9682950358287854
         },
         "method": {
           "freshWorkers": 3,
@@ -4260,15 +4530,17 @@
           "The integrated candidate includes upstream test-oracle fixes as well as this type-safety campaign. Whole-preset ratios cannot be attributed solely to the type-safety changes.",
           "Original corpus receipts retain their actually executed pre-integration artifact hash; this refreshed performance artifact is recorded separately."
         ],
+        "nativePluginSourcesVerifiedBeforeAndAfter": true,
         "integrationPinsVerifiedBeforeAndAfter": true,
         "integration": {
-          "incomingBaseRevision": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
+          "incomingBaseRevision": "ea25aaf474c340da3ecb6314a87a15e2e158b4c4",
+          "workingTreeHeadBeforeMeasurement": "7f4a3810932e40595573fd8b4e5b935c333eeb49",
+          "pendingMergeHead": "ea25aaf474c340da3ecb6314a87a15e2e158b4c4",
           "baselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
-          "preservedCorpusCandidateArtifactSha256": "5a106ea677c472f9c36c289af26c687a2aa04caf431d247cc747864012516330",
           "integrationPins": [
             {
               "file": "packages/typescript/src/rules/no-tautological-expect.ts",
-              "sha256": "32d5ab3e9993af6300bea2846c7c92e5b188b96672070c97238a25cc56f31ab0"
+              "sha256": "f66e8957e75f7ede553d89dffbc9378d146ad381fdcd8128ec3d02452e3eb17c"
             },
             {
               "file": "packages/typescript/src/rules/source-coupled-test.ts",
@@ -4287,9 +4559,12 @@
               "sha256": "9b31d24441e76a33da571acbcb44145282a53f8a452345f1cd0929f48b4e53c3"
             }
           ],
+          "nativePluginSourceDigestSha256": "9a36798faca9d1f771ec3038bd4920f086f344e250fd6f8431378e09eb771fe6",
+          "nativePluginSourceFiles": 159,
           "typeSafetySemanticPinsUnchanged": 9,
-          "incomingTypeScriptOwnerCount": 2,
-          "note": "Full exported strict-preset candidate includes upstream test-oracle fixes as well as this type-safety campaign. Selected owner source and dependencies remain unchanged."
+          "selectedReceiptPreservedSha256": "ae9b0507c552221dd974f28f50872047f32133f266cae505b7d123b4f80e8db1",
+          "corpusReceiptPreservedSha256": "310343bf6c9e2db3f510667841dc9a13a603d8c63cac68528cbbd5b5bf4e2b83",
+          "note": "The normal full-preset candidate includes upstream test-oracle fixes and the campaign. Selected and corpus receipts remain at their actual prior artifacts/bases; only selected implementation/dependency-graph carry-forward is claimed."
         },
         "configuredRuleInventory": {
           "customSarjRules": 125,
@@ -4948,12 +5223,24 @@
           "totalSettings": 2
         }
       },
+      "selectedImplementationCarryForward": {
+        "latestIncomingBaseRevision": "ea25aaf474c340da3ecb6314a87a15e2e158b4c4",
+        "measuredIncomingBaseRevision": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
+        "selectedEnginePinsUnchanged": 9,
+        "selectedDependencyGraphUnchanged": true,
+        "qualification": "Only the selected implementation and dependency graph are carried forward. The complete plugin changed in an unrelated test-oracle owner; the selected receipt retains its actual earlier artifact and measured base."
+      },
+      "distinctCandidateArtifacts": {
+        "normalCurrentMeasurement": "132ed92108e3ac7bb67edf77f7d09ec32caf76dd1dda1e597211df13f42f4bb4",
+        "selectedEarlierMeasurement": "c34b2b0b4da14c4ce8060f7fd3a227cf4df275a9467e00f27787975c727329a3",
+        "corpusEarlierExecution": "5a106ea677c472f9c36c289af26c687a2aa04caf431d247cc747864012516330"
+      },
       "archivedObservations": [
-        "Earlier overlapping pilot was discarded in full.",
-        "Intermediate source-version panels before confirmed authority/reachability/callable fixes are preserved as superseded.",
-        "The final pre-integration panel and candidate bundle were archived before this refresh. Original corpus receipts retain their executed pre-integration bundle hash."
+        "Overlapping pilot and intermediate detector-version panels remain discarded or superseded as labeled.",
+        "The prior normal panel and candidate bundle were archived before this normal-only refresh.",
+        "Selected and corpus receipts remain byte-exact at their actual prior artifacts and bases."
       ],
-      "claim": "These small reused pinned panels describe observed cost. The normal integrated candidate includes upstream test-oracle fixes, so whole-preset ratios are not attributable solely to the type-safety campaign. No general speedup, cold-cache, project-wide precision or isolated memory claim is made."
+      "claim": "These small reused pinned panels describe observed cost. Normal full-preset ratios include upstream test-oracle changes and cannot be attributed solely to this type-safety campaign. No general speedup, cold-cache, project-wide precision or isolated memory claim is made."
     },
     "qualification": "Fresh process does not mean cold OS cache. The normal TypeScript panel measures the native custom plugin strict preset, not the complete shared consumer configuration. Normal Python includes full registry and project preparation. Fixed focus-file panels can cause project-context reads beyond the panel. Shared-machine load is uncontrolled; no causal speedup or universal throughput claim."
   },
@@ -4962,8 +5249,8 @@
       "command": "make verify",
       "status": "passed",
       "exitCode": 0,
-      "startedAt": "2026-10-17T04:31:27.862567+00:00",
-      "finishedAt": "2026-10-17T04:41:55.041275+00:00",
+      "startedAt": "2026-10-17T05:06:54.469341+00:00",
+      "finishedAt": "2026-10-17T05:18:27.329226+00:00",
       "reviewedSourcePinsUnchanged": true,
       "ownerLocalLog": "make-verify.log"
     },
@@ -5004,15 +5291,66 @@
     },
     "integration": {
       "calibrationBaselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
-      "integratedBaseRevision": "dbea895605832c4c5fdad79067941358a72e1a6c",
+      "integratedBaseRevision": "5a5d92a0dfebd389f73fbe5fbd8a99f97d7dcc66",
       "previousIntegration": {
         "calibrationBaselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
-        "integratedBaseRevision": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
+        "integratedBaseRevision": "dbea895605832c4c5fdad79067941358a72e1a6c",
+        "previousIntegration": {
+          "calibrationBaselineRevision": "294e0d720c24294f96d824913117207493cb6b5c",
+          "integratedBaseRevision": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
+          "incomingPullRequests": [
+            "https://github.com/sarj-ai/code-standards/pull/1519",
+            "https://github.com/sarj-ai/code-standards/pull/1518"
+          ],
+          "reviewedTypeSafetyPinsUnchanged": 35,
+          "incomingRuntimeAndTestsPreservedByteExact": {
+            "packages/python/src/sarj_python_lint/rules/no_tautological_expect.py": "ecfd1bfbb2820f677704aa1ec9ed180bd30003e6ecb1f7e90ed177f45320ebf4",
+            "packages/python/tests/rules/test_no_tautological_expect.py": "40e8f0641aece2f352daabbe0aede18a263a54bcd1bece2dec8f60b4b4ead69d",
+            "packages/standards/src/sarj_standards/libs/linting/external.py": "a408e16a9affd8e2b1f5aba6d2b2464d8c3169b5895f788388b8c5ae76f7d2d5",
+            "packages/standards/tests/test_external_diagnostics.py": "bacd0636a68f4a8b17577aec0b7c297613ce1f3618285039ab957bfe6e1be4f3",
+            "packages/standards/src/sarj_standards/libs/linting/test_value.py": "fb759a5d2d0f326ce80c91c8e2d59a6f5f6e1df063f328d28706cb8ea84484c0",
+            "packages/standards/tests/test_observe_test_value.py": "cfa4cf39cb4bf35b55f8881d045448ee237b2f4a08f7cf39e988d66deab7597d",
+            "packages/typescript/src/rules/no-tautological-expect.ts": "32d5ab3e9993af6300bea2846c7c92e5b188b96672070c97238a25cc56f31ab0",
+            "packages/typescript/src/rules/source-coupled-test.ts": "42e88a3c05a72bef2063e29d2184495478eb7597c29dd9cf54fd635521a87df5",
+            "packages/typescript/tests/rules/no-tautological-expect.test.ts": "812689db12007db1f0cb2790af28117a88a730736e36f89ca99885b596cd8ed8",
+            "packages/typescript/tests/rules/source-coupled-test.test.ts": "2059205b45718c3d121e221e113d1cb61e2c0a4cb47bb4949399fc43a5d65178",
+            "packages/typescript/tests/tautological-matcher-semantics.test.ts": "3781105871a372f3ae43be45edce8ea7a6fd2392890fb42da340286cd1a9c227"
+          },
+          "resolution": "Keep higher minor versions 16.20.0 / 1.46.0 / 8.77.0, preserve incoming runtime and tests, regenerate the combined catalog, docs, CLI and examples. Dependency graph changes were only exact editable package-version slots.",
+          "evidenceScope": "Selected type-safety corpus and analysis measurements retain the same maintained semantic source pins and dependencies. Prior actual full-plugin bundle hashes remain pre-integration observations, not newly executed integrated artifacts. Final normal performance is refreshed against the integrated bundle; its delta includes incoming unrelated owners. Final canonical verification and latest exact-head CI cover the combined tree.",
+          "priorFullVerificationAttempt": {
+            "command": "make verify",
+            "status": "failed",
+            "exitCode": 2,
+            "startedAt": "2026-10-17T03:30:11.338197+00:00",
+            "finishedAt": "2026-10-17T03:42:44.940700+00:00",
+            "reviewedSourcePinsUnchanged": true,
+            "ownerLocalLog": "make-verify.log"
+          },
+          "offlineNativeToolRecovery": {
+            "cause": "Pinned zizmor 1.31.1 was missing from the offline uv tool cache; the exact offline command reproduced the resolution error.",
+            "action": "Restore exact pinned package online, confirm offline version, rerun all native boundary tests.",
+            "focusedCommand": "uv run --project packages/standards --frozen pytest -q packages/standards/tests/test_zizmor_native_boundaries.py",
+            "focusedResult": "13 passed in 1.44s",
+            "sourceChangesForRecovery": false,
+            "cacheIsolation": "Repeated exact offline checks showed the package disappearing again from the shared task cache. Copy its freshly warmed cache into a new owner-only verification cache, then verify the pinned tool offline before starting. No tool versions, test assertions or skip conditions change.",
+            "confirmedOfflineVersionBeforeFinalRun": "zizmor 1.31.1"
+          }
+        },
         "incomingPullRequests": [
-          "https://github.com/sarj-ai/code-standards/pull/1519",
-          "https://github.com/sarj-ai/code-standards/pull/1518"
+          "https://github.com/sarj-ai/code-standards/pull/1524"
         ],
-        "reviewedTypeSafetyPinsUnchanged": 35,
+        "unchangedMaintainedRuleAndHelperPins": 33,
+        "upstreamLoadedCliPinChanges": {
+          "packages/python/src/sarj_python_lint/__main__.py": {
+            "before": "0f02682b34f54bc46daa3d2502779bcc2df232a27d344e677142a6ed79a7ad83",
+            "after": "bf74c9374c24a8d8f94ef38f04279f064c05be561f7e7cd1e637fa6b9a6a0866"
+          },
+          "packages/python/src/sarj_python_lint/json_boundary.py": {
+            "before": "622e83606277fa5d4bfd59cb906c3dd18bdc956d5665bd844d6c4f19caace17a",
+            "after": "3935c000862d11e96f512aa57d8ccaf0b182fadfdf6833367f5c7588283a39ec"
+          }
+        },
         "incomingRuntimeAndTestsPreservedByteExact": {
           "packages/python/src/sarj_python_lint/rules/no_tautological_expect.py": "ecfd1bfbb2820f677704aa1ec9ed180bd30003e6ecb1f7e90ed177f45320ebf4",
           "packages/python/tests/rules/test_no_tautological_expect.py": "40e8f0641aece2f352daabbe0aede18a263a54bcd1bece2dec8f60b4b4ead69d",
@@ -5024,41 +5362,76 @@
           "packages/typescript/src/rules/source-coupled-test.ts": "42e88a3c05a72bef2063e29d2184495478eb7597c29dd9cf54fd635521a87df5",
           "packages/typescript/tests/rules/no-tautological-expect.test.ts": "812689db12007db1f0cb2790af28117a88a730736e36f89ca99885b596cd8ed8",
           "packages/typescript/tests/rules/source-coupled-test.test.ts": "2059205b45718c3d121e221e113d1cb61e2c0a4cb47bb4949399fc43a5d65178",
-          "packages/typescript/tests/tautological-matcher-semantics.test.ts": "3781105871a372f3ae43be45edce8ea7a6fd2392890fb42da340286cd1a9c227"
+          "packages/typescript/tests/tautological-matcher-semantics.test.ts": "3781105871a372f3ae43be45edce8ea7a6fd2392890fb42da340286cd1a9c227",
+          ".github/workflows/ci.yml": "818ae4b787ce39625e7786ab4d0a18d9b42b26bf050c942a1ec860502cd0d05a",
+          ".github/workflows/commit-policy.yml": "3bb7af69ba84aef9b770718e0d009c72adf40fc668e5ddb0ef72da5d5352c02c",
+          "packages/python/src/sarj_python_lint/__main__.py": "bf74c9374c24a8d8f94ef38f04279f064c05be561f7e7cd1e637fa6b9a6a0866",
+          "packages/python/src/sarj_python_lint/json_boundary.py": "3935c000862d11e96f512aa57d8ccaf0b182fadfdf6833367f5c7588283a39ec",
+          "packages/python/src/sarj_python_lint/ratchet.py": "b18f52522ef95b2091d2dcc71decc13e650f39d6e22f076155279d69ee181c95",
+          "packages/python/src/sarj_python_lint/rules/prefer_pytest_fixture_injection.py": "df775310fcf733cfaadb5e1129702af496d00903142e9c22bb3b979646614aef",
+          "packages/python/tests/rules/test_prefer_pytest_fixture_injection.py": "a969756a898e09185211b47e563a308bac80e12b280d1b504d8ab27b5f36e74d",
+          "packages/python/tests/test_cli_severity.py": "6118db1571f8ee12238045f0730e540145624fd02c1ce7132a2e8b9c44516f4b",
+          "packages/python/tests/test_ratchet.py": "1a15a2299dc5e1e5443a9b6c2cd4ec94ee34a5c1481ee07de849bfa65e1b8afd",
+          "packages/standards/src/sarj_standards/libs/adoption/manifest.py": "a38c0fb5eedb6abe640ae4f5c4471b24f18dea9bbd1cb67c9083c32327287abf",
+          "packages/standards/src/sarj_standards/libs/repository/cli_reference_artifact.py": "693373ae2c79395a45be93d4f3a8fb480d4c4c443b207ea2961f3046c66a61cf",
+          "packages/standards/src/sarj_standards/libs/repository/rule_catalog_artifact.py": "144fae3a3fec8e2788077ecf35c158321b1e00048ecbb541675b09a94a41a974",
+          "packages/standards/src/sarj_standards/libs/repository/rule_changes.py": "1ce549373a82c766ea34a5b0808c95b0d4d08f1af62dd43a878c2c42ebad6bef",
+          "packages/standards/src/sarj_standards/libs/repository/rule_inventory_artifact.py": "363600befc4b1fdca5602a3183fb9b2207431c3f99d9d2030e264b2a5260d386",
+          "packages/standards/src/sarj_standards/libs/rules/catalog.py": "ad3eb460302c06f9fc6e4a2aec030b2b38ffe517d8d82f2af5861aad92f5346e",
+          "packages/standards/tests/test_cli_reference_artifact.py": "2974450430b5b9a41a13903d472e3371dd9b8252efe3d879422ad9d30dce5980",
+          "packages/standards/tests/test_repo_standards_pins.py": "1e3acfb0f97d027088fd70d9c855abef8bf259d64737cbc0cc497b775cca44d5",
+          "packages/standards/tests/test_rule_catalog_artifact.py": "008d628c69b602b19a5e31880aaeff398a4e25924992757fdc3d533bd1e351bb",
+          "packages/standards/tests/test_rule_changes.py": "57668c1106fae09d0a42b2c4426b29951791435b222869b1bb83a259814d41bd",
+          "packages/standards/tests/test_rule_inventory_artifact.py": "d4a052d40725d9c2f51fafdc3d1b5449da29f486010420ecdc39b0cb0d1c5bd7"
         },
-        "resolution": "Keep higher minor versions 16.20.0 / 1.46.0 / 8.77.0, preserve incoming runtime and tests, regenerate the combined catalog, docs, CLI and examples. Dependency graph changes were only exact editable package-version slots.",
-        "evidenceScope": "Selected type-safety corpus and analysis measurements retain the same maintained semantic source pins and dependencies. Prior actual full-plugin bundle hashes remain pre-integration observations, not newly executed integrated artifacts. Final normal performance is refreshed against the integrated bundle; its delta includes incoming unrelated owners. Final canonical verification and latest exact-head CI cover the combined tree.",
-        "priorFullVerificationAttempt": {
+        "nativePolicy": {
+          "package": "repo-standards==6.8.5",
+          "actionRevision": "947f984d48f27ab96ba805a01fdb94961b579478"
+        },
+        "resolution": "Keep higher minor release versions 16.20.0 / 1.46.0 / 8.77.0, preserve all incoming source/tests/workflows and repo-standards6.8.5 distribution hashes, regenerate combined catalog/docs/CLI/examples.",
+        "typescriptCarryForward": {
+          "previousMeasuredBase": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
+          "subsequentIntegrationBase": "dbea895605832c4c5fdad79067941358a72e1a6c",
+          "equalUpstreamNativePluginTree": "06e822c411addb7da8cae51a4a89c9ecf3c82de5",
+          "campaignNativePluginTree": "e2c0b362294b8995b3f3413d08a588dfdba383b7",
+          "campaignTreeAndDependenciesUnchanged": true,
+          "performanceBundleSha256": "c34b2b0b4da14c4ce8060f7fd3a227cf4df275a9467e00f27787975c727329a3",
+          "actualCorpusBundleSha256": "5a106ea677c472f9c36c289af26c687a2aa04caf431d247cc747864012516330",
+          "qualification": "Retain actual prior measurements and their executed base/artifact identities. They were not rerun on the subsequent whole tree. The entire native TypeScript plugin, dependencies and configs remain byte-exact; the incoming external workflow policy is outside these direct native-plugin panels."
+        },
+        "pythonRefresh": "Replay both baseline and candidate against the same 3339 historical files and 93 seeds under one explicitly recorded integration-context overlay: the maintained Standards project dependency changes only repo-standards 6.8.3 to 6.8.5. Original source inventories, context manifests, seed sidecars and baseline implementation pins remain unchanged. Archive prior receipts, explicitly refresh the two upstream CLI implementation pins, and refresh full-registry performance for the upstream fixture-owner change. Selected analysis owners/core are unchanged; retained process-startup observations describe the earlier tree.",
+        "priorSuccessfulCanonicalVerification": {
           "command": "make verify",
-          "status": "failed",
-          "exitCode": 2,
-          "startedAt": "2026-10-17T03:30:11.338197+00:00",
-          "finishedAt": "2026-10-17T03:42:44.940700+00:00",
+          "status": "passed",
+          "exitCode": 0,
+          "startedAt": "2026-10-17T03:53:03.563700+00:00",
+          "finishedAt": "2026-10-17T04:06:20.317200+00:00",
           "reviewedSourcePinsUnchanged": true,
           "ownerLocalLog": "make-verify.log"
         },
-        "offlineNativeToolRecovery": {
-          "cause": "Pinned zizmor 1.31.1 was missing from the offline uv tool cache; the exact offline command reproduced the resolution error.",
-          "action": "Restore exact pinned package online, confirm offline version, rerun all native boundary tests.",
-          "focusedCommand": "uv run --project packages/standards --frozen pytest -q packages/standards/tests/test_zizmor_native_boundaries.py",
-          "focusedResult": "13 passed in 1.44s",
-          "sourceChangesForRecovery": false,
-          "cacheIsolation": "Repeated exact offline checks showed the package disappearing again from the shared task cache. Copy its freshly warmed cache into a new owner-only verification cache, then verify the pinned tool offline before starting. No tool versions, test assertions or skip conditions change.",
-          "confirmedOfflineVersionBeforeFinalRun": "zizmor 1.31.1"
+        "previousExactHeadCI": {
+          "head": "70e319c2192c7f578e27f948a896dad03ab178ec",
+          "latestCounts": {
+            "success": 27,
+            "skipped": 7,
+            "neutral": 1
+          },
+          "qualification": "All four latest workflows passed, including optional Python3.14. This signoff applies only to that prior head; updated head needs fresh exact-head CI. REST pull-request base.sha was historical, so final merge readiness must check the live main Git ref."
+        },
+        "evidenceRedaction": {
+          "privateContextManifestDigestOmittedFromPublicReceipts": true,
+          "unredactedEvidenceRetainedOwnerOnly": true,
+          "privateReplayRouting": "After measurements, the artifact-only checker input filename points to a separate private overlay copy. Check logic and analyzer source are unchanged. Exact executed checker/overlay snapshots are retained separately; public receipts use the redacted overlay."
         }
       },
       "incomingPullRequests": [
-        "https://github.com/sarj-ai/code-standards/pull/1524"
+        "https://github.com/sarj-ai/code-standards/pull/1525"
       ],
-      "unchangedMaintainedRuleAndHelperPins": 33,
-      "upstreamLoadedCliPinChanges": {
-        "packages/python/src/sarj_python_lint/__main__.py": {
-          "before": "0f02682b34f54bc46daa3d2502779bcc2df232a27d344e677142a6ed79a7ad83",
-          "after": "bf74c9374c24a8d8f94ef38f04279f064c05be561f7e7cd1e637fa6b9a6a0866"
-        },
-        "packages/python/src/sarj_python_lint/json_boundary.py": {
-          "before": "622e83606277fa5d4bfd59cb906c3dd18bdc956d5665bd844d6c4f19caace17a",
-          "after": "3935c000862d11e96f512aa57d8ccaf0b182fadfdf6833367f5c7588283a39ec"
+      "unchangedCandidateImplementationPinsFromPreviousIntegration": 34,
+      "upstreamTraversalPinChange": {
+        "packages/python/src/sarj_python_lint/rules/_ast_index.py": {
+          "before": "956e231addf5359523c8acf3187b83b91943bb53a922be495636d30aa6830958",
+          "after": "b5e6f6a526a12be3921cdf021eeaac8d920127a4fefc18a30c3d85f1cd982cb7"
         }
       },
       "incomingRuntimeAndTestsPreservedByteExact": {
@@ -5073,8 +5446,8 @@
         "packages/typescript/tests/rules/no-tautological-expect.test.ts": "812689db12007db1f0cb2790af28117a88a730736e36f89ca99885b596cd8ed8",
         "packages/typescript/tests/rules/source-coupled-test.test.ts": "2059205b45718c3d121e221e113d1cb61e2c0a4cb47bb4949399fc43a5d65178",
         "packages/typescript/tests/tautological-matcher-semantics.test.ts": "3781105871a372f3ae43be45edce8ea7a6fd2392890fb42da340286cd1a9c227",
-        ".github/workflows/ci.yml": "818ae4b787ce39625e7786ab4d0a18d9b42b26bf050c942a1ec860502cd0d05a",
-        ".github/workflows/commit-policy.yml": "3bb7af69ba84aef9b770718e0d009c72adf40fc668e5ddb0ef72da5d5352c02c",
+        ".github/workflows/ci.yml": "0bcacddf88e571f88c6a983f3805a8deda77be620e44ad5a98842dbb0000fd2e",
+        ".github/workflows/commit-policy.yml": "9aa0769e9e4fe118986163c5c84331afccda431dbe4c523fd33fe5fb99a31593",
         "packages/python/src/sarj_python_lint/__main__.py": "bf74c9374c24a8d8f94ef38f04279f064c05be561f7e7cd1e637fa6b9a6a0866",
         "packages/python/src/sarj_python_lint/json_boundary.py": "3935c000862d11e96f512aa57d8ccaf0b182fadfdf6833367f5c7588283a39ec",
         "packages/python/src/sarj_python_lint/ratchet.py": "b18f52522ef95b2091d2dcc71decc13e650f39d6e22f076155279d69ee181c95",
@@ -5082,26 +5455,30 @@
         "packages/python/tests/rules/test_prefer_pytest_fixture_injection.py": "a969756a898e09185211b47e563a308bac80e12b280d1b504d8ab27b5f36e74d",
         "packages/python/tests/test_cli_severity.py": "6118db1571f8ee12238045f0730e540145624fd02c1ce7132a2e8b9c44516f4b",
         "packages/python/tests/test_ratchet.py": "1a15a2299dc5e1e5443a9b6c2cd4ec94ee34a5c1481ee07de849bfa65e1b8afd",
-        "packages/standards/src/sarj_standards/libs/adoption/manifest.py": "a38c0fb5eedb6abe640ae4f5c4471b24f18dea9bbd1cb67c9083c32327287abf",
+        "packages/standards/src/sarj_standards/libs/adoption/manifest.py": "b8aa239e8923260015f96e7bb619ceb33a674ffa6319b9abd0ed74c58a6cde38",
         "packages/standards/src/sarj_standards/libs/repository/cli_reference_artifact.py": "693373ae2c79395a45be93d4f3a8fb480d4c4c443b207ea2961f3046c66a61cf",
         "packages/standards/src/sarj_standards/libs/repository/rule_catalog_artifact.py": "144fae3a3fec8e2788077ecf35c158321b1e00048ecbb541675b09a94a41a974",
         "packages/standards/src/sarj_standards/libs/repository/rule_changes.py": "1ce549373a82c766ea34a5b0808c95b0d4d08f1af62dd43a878c2c42ebad6bef",
         "packages/standards/src/sarj_standards/libs/repository/rule_inventory_artifact.py": "363600befc4b1fdca5602a3183fb9b2207431c3f99d9d2030e264b2a5260d386",
         "packages/standards/src/sarj_standards/libs/rules/catalog.py": "ad3eb460302c06f9fc6e4a2aec030b2b38ffe517d8d82f2af5861aad92f5346e",
         "packages/standards/tests/test_cli_reference_artifact.py": "2974450430b5b9a41a13903d472e3371dd9b8252efe3d879422ad9d30dce5980",
-        "packages/standards/tests/test_repo_standards_pins.py": "1e3acfb0f97d027088fd70d9c855abef8bf259d64737cbc0cc497b775cca44d5",
+        "packages/standards/tests/test_repo_standards_pins.py": "9ab49fccf51416bcd90f8751f4c09e90c143e68ff643a7b6ea03eadaee7ebf25",
         "packages/standards/tests/test_rule_catalog_artifact.py": "008d628c69b602b19a5e31880aaeff398a4e25924992757fdc3d533bd1e351bb",
         "packages/standards/tests/test_rule_changes.py": "57668c1106fae09d0a42b2c4426b29951791435b222869b1bb83a259814d41bd",
-        "packages/standards/tests/test_rule_inventory_artifact.py": "d4a052d40725d9c2f51fafdc3d1b5449da29f486010420ecdc39b0cb0d1c5bd7"
+        "packages/standards/tests/test_rule_inventory_artifact.py": "d4a052d40725d9c2f51fafdc3d1b5449da29f486010420ecdc39b0cb0d1c5bd7",
+        "packages/iac/tests/test_perf.py": "53b90be4951fb730c15f5179e9fc3f28b3c65252faef1cc7f01a4e53d40ccd18",
+        "packages/python/src/sarj_python_lint/rules/_ast_index.py": "b5e6f6a526a12be3921cdf021eeaac8d920127a4fefc18a30c3d85f1cd982cb7",
+        "packages/python/tests/test_perf.py": "48f67a9e501fb7399be80e2b04721ac4d9693e9b0ef0e2f06c144e984a166066",
+        "packages/sql/tests/test_perf.py": "e0bb1b32f728e36cf38526cedb5fee7281cbde717017dfd77f429087bb4f134c"
       },
       "nativePolicy": {
-        "package": "repo-standards==6.8.5",
-        "actionRevision": "947f984d48f27ab96ba805a01fdb94961b579478"
+        "package": "repo-standards==6.8.6",
+        "actionRevision": "e37ce43c7bc3bd23c34c3896a020eef3dd59ca75"
       },
-      "resolution": "Keep higher minor release versions 16.20.0 / 1.46.0 / 8.77.0, preserve all incoming source/tests/workflows and repo-standards6.8.5 distribution hashes, regenerate combined catalog/docs/CLI/examples.",
+      "resolution": "Keep higher minor versions16.20.0/1.46.0/8.77.0, preserve incoming AST traversal/performance-test changes, workflows and repo-standards6.8.6 distribution hashes; regenerate CLI/docs/examples.",
       "typescriptCarryForward": {
         "previousMeasuredBase": "0a9b7e720ed9d5602bfdf8c546e433ce2c00a71a",
-        "subsequentIntegrationBase": "dbea895605832c4c5fdad79067941358a72e1a6c",
+        "subsequentIntegrationBase": "5a5d92a0dfebd389f73fbe5fbd8a99f97d7dcc66",
         "equalUpstreamNativePluginTree": "06e822c411addb7da8cae51a4a89c9ecf3c82de5",
         "campaignNativePluginTree": "e2c0b362294b8995b3f3413d08a588dfdba383b7",
         "campaignTreeAndDependenciesUnchanged": true,
@@ -5109,29 +5486,42 @@
         "actualCorpusBundleSha256": "5a106ea677c472f9c36c289af26c687a2aa04caf431d247cc747864012516330",
         "qualification": "Retain actual prior measurements and their executed base/artifact identities. They were not rerun on the subsequent whole tree. The entire native TypeScript plugin, dependencies and configs remain byte-exact; the incoming external workflow policy is outside these direct native-plugin panels."
       },
-      "pythonRefresh": "Replay both baseline and candidate against the same 3339 historical files and 93 seeds under one explicitly recorded integration-context overlay: the maintained Standards project dependency changes only repo-standards 6.8.3 to 6.8.5. Original source inventories, context manifests, seed sidecars and baseline implementation pins remain unchanged. Archive prior receipts, explicitly refresh the two upstream CLI implementation pins, and refresh full-registry performance for the upstream fixture-owner change. Selected analysis owners/core are unchanged; retained process-startup observations describe the earlier tree.",
-      "priorSuccessfulCanonicalVerification": {
-        "command": "make verify",
-        "status": "passed",
-        "exitCode": 0,
-        "startedAt": "2026-10-17T03:53:03.563700+00:00",
-        "finishedAt": "2026-10-17T04:06:20.317200+00:00",
-        "reviewedSourcePinsUnchanged": true,
-        "ownerLocalLog": "make-verify.log"
-      },
-      "previousExactHeadCI": {
-        "head": "70e319c2192c7f578e27f948a896dad03ab178ec",
-        "latestCounts": {
-          "success": 27,
-          "skipped": 7,
-          "neutral": 1
-        },
-        "qualification": "All four latest workflows passed, including optional Python3.14. This signoff applies only to that prior head; updated head needs fresh exact-head CI. REST pull-request base.sha was historical, so final merge readiness must check the live main Git ref."
-      },
+      "pythonRefresh": "The shared AST walk replaces a retained list queue with deque.popleft; breadth-first child order is preserved. Explicitly refresh only that current candidate implementation pin after archiving prior receipts. Replay both baseline and candidate on the same3339 historical files and93 seeds under an explicit maintained-project context overlay changing only repo-standards6.8.3 to6.8.6. Original source/context/sidecar inventories and baseline implementation pins remain unchanged. Refresh both selected and full-registry Python performance because shared traversal changed.",
       "evidenceRedaction": {
         "privateContextManifestDigestOmittedFromPublicReceipts": true,
         "unredactedEvidenceRetainedOwnerOnly": true,
         "privateReplayRouting": "After measurements, the artifact-only checker input filename points to a separate private overlay copy. Check logic and analyzer source are unchanged. Exact executed checker/overlay snapshots are retained separately; public receipts use the redacted overlay."
+      },
+      "priorSuccessfulCanonicalVerification": {
+        "command": "make verify",
+        "status": "passed",
+        "exitCode": 0,
+        "startedAt": "2026-10-17T04:31:27.862567+00:00",
+        "finishedAt": "2026-10-17T04:41:55.041275+00:00",
+        "reviewedSourcePinsUnchanged": true,
+        "ownerLocalLog": "make-verify.log"
+      },
+      "priorHeadScope": {
+        "head": "7f4a3810932e40595573fd8b4e5b935c333eeb49",
+        "localFullTestsPassed": 37751,
+        "localSkipped": 10,
+        "normalHooksPassed": true,
+        "qualification": "Prior head checks do not approve the newly integrated source. Final readiness checks must use latest exact-head CI plus the live main Git ref, because REST pull-request base.sha can be historical."
+      },
+      "nativeOfflineEnvironmentRecovery": {
+        "failedCurrentIntegrationRun": {
+          "command": "make verify",
+          "status": "failed",
+          "exitCode": 2,
+          "startedAt": "2026-10-17T04:55:49.058702+00:00",
+          "finishedAt": "2026-10-17T05:04:50.865796+00:00",
+          "reviewedSourcePinsUnchanged": true,
+          "ownerLocalLog": "make-verify.log"
+        },
+        "observedCause": "The exact required offline uvx command could not resolve zizmor==1.31.1 from its configured cache after the full run. The same version had succeeded online and offline immediately before verification. No cache-cleaning cause is established.",
+        "recovery": "Restore pinned zizmor 1.31.1 using the actual sanitized native-process boundary; confirm exact offline version and all13 native boundary tests. Confirm/provision the same required package during the unmodified full verification if its cache disappears again. No tool version, source, assertion or skip condition changes.",
+        "focusedResult": "13 passed in 1.70s",
+        "ownerLocalFailedLog": "failed-canonical-5a-zizmor/make-verify.log"
       }
     },
     "testSummaries": {
@@ -5139,32 +5529,32 @@
         {
           "passed": 18,
           "skipped": 0,
-          "duration": "0.14s"
+          "duration": "0.38s"
         },
         {
           "passed": 46,
           "skipped": 0,
-          "duration": "0.09s"
+          "duration": "0.08s"
         },
         {
           "passed": 18820,
           "skipped": 0,
-          "duration": "62.89s (0:01:02)"
+          "duration": "47.52s"
         },
         {
           "passed": 1755,
           "skipped": 1,
-          "duration": "3.39s"
+          "duration": "3.99s"
         },
         {
           "passed": 1446,
           "skipped": 0,
-          "duration": "1.79s"
+          "duration": "1.63s"
         },
         {
           "passed": 5911,
           "skipped": 9,
-          "duration": "158.23s (0:02:38)"
+          "duration": "166.60s (0:02:46)"
         }
       ],
       "typescriptSummaries": [
@@ -5175,6 +5565,91 @@
       ],
       "totalPassed": 37751,
       "totalSkipped": 10
+    },
+    "subsequentIntegration": {
+      "status": "passed",
+      "integratedBaseRevision": "ea25aaf474c340da3ecb6314a87a15e2e158b4c4",
+      "startedAt": "2026-10-17T05:24:52.566732+00:00",
+      "finishedAt": "2026-10-17T05:26:00.703333+00:00",
+      "sourcePinsCheckedBeforeAfter": 69,
+      "commands": [
+        {
+          "check": "incoming-python-tests",
+          "command": [
+            "uv",
+            "run",
+            "--frozen",
+            "pytest",
+            "-q",
+            "tests/rules/test_no_tautological_expect.py",
+            "tests/test_cli_paths.py"
+          ],
+          "cwd": "packages/python",
+          "exitCode": 0,
+          "elapsedSeconds": 1.956
+        },
+        {
+          "check": "incoming-typescript-tests",
+          "command": [
+            "npm",
+            "--prefix",
+            "packages/typescript",
+            "test",
+            "--",
+            "tests/rules/no-tautological-expect.test.ts"
+          ],
+          "cwd": ".",
+          "exitCode": 0,
+          "elapsedSeconds": 1.03
+        },
+        {
+          "check": "packaged-standards-smoke",
+          "command": [
+            "uv",
+            "run",
+            "--project",
+            "packages/standards",
+            "--frozen",
+            "python",
+            "-m",
+            "sarj_standards.libs.release.wheel_tests",
+            "--root",
+            ".",
+            "--jobs",
+            "4",
+            "-k",
+            "test_smoke"
+          ],
+          "cwd": ".",
+          "exitCode": 0,
+          "elapsedSeconds": 18.629
+        },
+        {
+          "check": "integration-artifacts-and-repository-gates",
+          "command": [
+            "make",
+            "doctor",
+            "docs-check",
+            "format-check",
+            "repo-check",
+            "check-no-private-refs",
+            "shell-check"
+          ],
+          "cwd": ".",
+          "exitCode": 0,
+          "elapsedSeconds": 46.483
+        }
+      ],
+      "pythonSummaryLines": [
+        "201 passed in 0.13s",
+        "79 passed in 5.85s"
+      ],
+      "typescriptSummaryLines": [
+        "      Tests  145 passed (145)"
+      ],
+      "actualPriorFullCanonicalBase": "5a5d92a0dfebd389f73fbe5fbd8a99f97d7dcc66",
+      "qualification": "Focused integration checks after the archived full make verify, not a new full local test-suite run on this base. Normal pre-commit hooks separately run staged standards, version/privacy/convention checks, whole-repository dogfood and type checks; normal pre-push runs lint. Every latest exact-head CI job, including optional Python 3.14, remains required before merge.",
+      "ownerLocalLog": "integration-ea-verify.log"
     }
   },
   "passes": [

@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import time
 
+import pytest
+
 from sarj_sql_lint.rules import REGISTRY
 
 
@@ -41,24 +43,27 @@ def _best_time_s(rule_id: str, path: Path, source: str, repeats: int = 5) -> flo
     return best
 
 
-def test_no_rule_exceeds_absolute_budget() -> None:
+@pytest.fixture(scope="module")
+def rule_timings() -> dict[str, float]:
+    # Both gates inspect the same five-repeat measurements; neither needs a second run.
     path = Path("synthetic.sql")
+    return {rid: _best_time_s(rid, path, _SYNTHETIC_SQL) for rid in sorted(REGISTRY)}
+
+
+def test_no_rule_exceeds_absolute_budget(rule_timings: dict[str, float]) -> None:
     loc = _SYNTHETIC_SQL.count("\n") + 1
-    for rule_id in sorted(REGISTRY):
-        seconds = _best_time_s(rule_id, path, _SYNTHETIC_SQL)
+    for rule_id, seconds in rule_timings.items():
         ms_per_kloc = seconds / loc * 1_000_000
         assert ms_per_kloc < _ABSOLUTE_MS_PER_KLOC, (
             f"{rule_id}: {ms_per_kloc:.1f} ms/1k LOC exceeds {_ABSOLUTE_MS_PER_KLOC} ms budget"
         )
 
 
-def test_no_rule_is_algorithmic_outlier() -> None:
-    path = Path("synthetic.sql")
-    timings = {rid: _best_time_s(rid, path, _SYNTHETIC_SQL) for rid in REGISTRY}
-    ordered = sorted(timings.values())
+def test_no_rule_is_algorithmic_outlier(rule_timings: dict[str, float]) -> None:
+    ordered = sorted(rule_timings.values())
     median = ordered[len(ordered) // 2]
     ceiling = median * _RELATIVE_OUTLIER_FACTOR + _RELATIVE_SLACK_S
-    slow = {rid: t for rid, t in timings.items() if t > ceiling}
+    slow = {rid: t for rid, t in rule_timings.items() if t > ceiling}
     assert not slow, (
         "rule(s) more than "
         f"{_RELATIVE_OUTLIER_FACTOR:.0f}x the median ({median * 1000:.2f} ms) — likely an "

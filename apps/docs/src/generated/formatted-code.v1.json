@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "ba5be9b85efcf969c734b63b01b7e6fc981f0921ade48f9dcb0c0f0677d85306",
+  "catalogSha256": "acd6d86c417bc1927d7fd08e7cff04bfd8622ab4c406b8a3dbb145f12a78263f",
   "cliSha256": "7466d94318f4dd1766aafdbb7aee2ac9b509740d8b959d15d8b13f91bf62c304",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -2945,6 +2945,21 @@
           "title": "A throwing matcher observes the inner assertion contract"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/service.test.ts",
+              "source": "import { expect } from \"vitest\";\nconst result = serviceStatus();\nexpect(result.status).toBe(\"ready\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.test.ts",
+          "id": "independent-result-oracle",
+          "outcome": "accept",
+          "scenarioId": "immutable-identity",
+          "title": "An independent expected state can reject a wrong result"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -3063,6 +3078,21 @@
           "outcome": "accept",
           "scenarioId": "custom-matcher",
           "title": "A replaced matcher can reject a literal comparison"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/service.test.ts",
+              "source": "import { expect } from \"vitest\";\nconst result = serviceStatus();\nexpect(result).toBe(result);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/service.test.ts",
+          "id": "self-identity-oracle",
+          "outcome": "reject",
+          "scenarioId": "immutable-identity",
+          "title": "A returned value's identity with itself cannot reject a wrong result"
         },
         {
           "expectedCount": 1,
@@ -9981,7 +10011,7 @@
           "files": [
             {
               "path": "tests/test_service.py",
-              "source": "def test_values(rows):\n    assert all(row.is_valid for row in rows)\n"
+              "source": "def test_values(rows):\n    checks = (row.is_valid for row in rows)\n    assert all(checks)\n"
             }
           ],
           "fixedFiles": [],
@@ -10041,7 +10071,7 @@
           "files": [
             {
               "path": "tests/test_service.py",
-              "source": "def test_values(rows):\n    assert (row.is_valid for row in rows)\n"
+              "source": "def test_values(rows):\n    checks = (row.is_valid for row in rows)\n    assert checks\n"
             }
           ],
           "fixedFiles": [],
