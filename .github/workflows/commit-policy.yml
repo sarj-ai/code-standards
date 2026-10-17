@@ -27,4 +27,4 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: sarj-ai/repo-standards/pull-request-commits@625dfe5897b73f04935fa80effa5f7b616f5d38a # v6.8.0
+      - uses: sarj-ai/repo-standards/pull-request-commits@e10d7dd693dee946921f724e5113ac3db097d4f0 # v6.8.3
