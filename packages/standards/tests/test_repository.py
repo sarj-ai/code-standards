@@ -1023,8 +1023,9 @@ def test_hook_install_resolves_environment_binaries(monkeypatch: pytest.MonkeyPa
         assert path is not None
         return f"/bin/{name}"
 
-    def run(argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> None:
+    def run(argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
         calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, stdout='{"pre-commit": {}}')
 
     def git(_root: Path, *_args: str) -> str:
         return ".git/hooks/pre-commit\n"
@@ -1062,6 +1063,34 @@ def test_hook_install_resolves_environment_binaries(monkeypatch: pytest.MonkeyPa
     assert hook.read_text(encoding="utf-8").count("# sarj-standards: empty-index gate") == 1
     assert hooks.managed_hook_call("pre-commit") in hook.read_text(encoding="utf-8")
     assert hook.read_text(encoding="utf-8").count('export PATH=/bin:"$PATH" # sarj-standards: uvx-path') == 1
+
+
+@pytest.mark.parametrize("count", [0, 2], ids=("missing", "duplicate"))
+def test_configured_pre_push_requires_a_unique_managed_entry_point(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, count: int
+) -> None:
+    hooks_dir = tmp_path / ".git" / "hooks"
+    hooks_dir.mkdir(parents=True)
+    pre_push = hooks_dir / "pre-push"
+    original = "#!/bin/sh\n" + 'call_lefthook run "pre-push" "$@"\n' * count
+    pre_push.write_text(original, encoding="utf-8")
+    (tmp_path / "lefthook.yml").write_text("pre-push: {}\n", encoding="utf-8")
+
+    def run(argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
+        if argv[1] == "rev-parse":
+            return subprocess.CompletedProcess(argv, 0, stdout=f".git/{argv[-1]}\n")
+        contents = '{"pre-push": {}}' if argv[1] == "dump" else ""
+        return subprocess.CompletedProcess(argv, 0, stdout=contents)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the external installer output is the behavior under test.
+        "sarj_standards.libs.repository.hooks.subprocess.run", run
+    )
+
+    with pytest.raises(OSError, match="no unique pre-push entry point"):
+        hooks.install(tmp_path)
+
+    assert pre_push.read_text(encoding="utf-8") == original
+    assert not (hooks_dir / ".sarj-lefthook").exists()
 
 
 def test_managed_hook_environment_requires_one_executable_uvx_path(
@@ -1104,9 +1133,11 @@ def test_managed_hook_environment_requires_one_executable_uvx_path(
     assert not hooks.has_durable_environment(hook)
 
 
+@pytest.mark.parametrize("failure", ["dump", "shape", "validate"])
 def test_hook_install_rolls_back_every_hook_when_validation_fails(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    failure: str,
 ) -> None:
     hooks_dir = tmp_path / ".git" / "hooks"
     hooks_dir.mkdir(parents=True)
@@ -1125,13 +1156,16 @@ def test_hook_install_rolls_back_every_hook_when_validation_fails(
 
     calls = 0
 
-    def run(argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> None:
+    def run(argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
         nonlocal calls
         calls += 1
         if calls == 1:
             original.write_text('#!/bin/sh\nchanged\ncall_lefthook run "pre-commit" "$@"\n', encoding="utf-8")
             (hooks_dir / "commit-msg").write_text("#!/bin/sh\nnew\n", encoding="utf-8")
-            return
+            return subprocess.CompletedProcess(argv, 0)
+        if argv[1] == "dump" and failure != "dump":
+            contents = "[]" if failure == "shape" else '{"pre-commit": {}}'
+            return subprocess.CompletedProcess(argv, 0, stdout=contents)
         raise subprocess.CalledProcessError(1, argv)
 
     def binary(_name: str) -> Path:
@@ -1159,7 +1193,7 @@ def test_hook_install_rolls_back_every_hook_when_validation_fails(
         "sarj_standards.libs.repository.hooks.subprocess.run", run
     )
 
-    with pytest.raises(subprocess.CalledProcessError):
+    with pytest.raises(ValueError if failure == "shape" else subprocess.CalledProcessError):
         hooks.install(tmp_path)
 
     assert original.read_text(encoding="utf-8") == "#!/bin/sh\noriginal\n"
@@ -1248,8 +1282,8 @@ def test_native_hook_binary_matches_the_runtime_platform(
         assert path is not None
         return f"/bin/{name}"
 
-    def run(_argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> None:
-        return None
+    def run(argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0, stdout='{"pre-commit": {}}')
 
     def git(_root: Path, *_args: str) -> str:
         return ".git/hooks/pre-commit\n"

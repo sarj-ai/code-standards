@@ -599,14 +599,17 @@ def build_plan(
     hook_manager: manifest.HookManager | None = None,
     allow_existing_nested_eslint: bool = False,
     enable_repository_rules: Sequence[str] = (),
+    resolved_ecosystems: Ecosystems | None = None,
 ) -> Plan:
-    ecosystems = detect(
-        root,
-        python_dest=python_dest,
-        typescript_dest=typescript_dest,
-        swift_dest=swift_dest,
-        kotlin_dest=kotlin_dest,
-    )
+    ecosystems = resolved_ecosystems
+    if ecosystems is None:
+        ecosystems = detect(
+            root,
+            python_dest=python_dest,
+            typescript_dest=typescript_dest,
+            swift_dest=swift_dest,
+            kotlin_dest=kotlin_dest,
+        )
     selected = (
         tuple(configs)
         if configs is not None

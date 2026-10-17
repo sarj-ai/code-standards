@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -1049,6 +1049,97 @@ def test_upgrade_installs_only_ecosystems_adopted_by_the_manifest(tmp_path: Path
     precommit = next(contents for path, contents in plan.scaffold_plan.writes if path.name == ".pre-commit-config.yaml")
     assert BOOTSTRAP_COMMAND in precommit
     assert "uv run --frozen sarj-standards" not in precommit
+
+
+@dataclass(frozen=True)
+class _IndependentJavaScriptProjects:
+    deploy: Path
+    docs: Path
+
+
+def _independent_javascript_projects(root: Path) -> _IndependentJavaScriptProjects:
+    projects = _IndependentJavaScriptProjects(root / ".github/deploy", root / "apps/docs")
+    for project in (projects.deploy, projects.docs):
+        project.mkdir(parents=True)
+        (project / "package.json").write_text('{"name":"fixture","private":true}\n')
+    return projects
+
+
+def test_update_preserves_disabled_typescript_with_independent_projects(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    projects = _independent_javascript_projects(tmp_path)
+    originals = {
+        project / "package.json": parse_json((project / "package.json").read_text())
+        for project in (projects.deploy, projects.docs)
+    }
+    adopted = manifest.Manifest(
+        version="0.0.1", configs=("ruff",), python_dest=".", typescript_dest="apps/docs", hook_manager="none"
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render())
+
+    assert _main(["update", "--offline", "--no-install", str(tmp_path)]) == 0
+    assert _main(["update", "--check", "--offline", "--no-install", str(tmp_path)]) == 0
+
+    current = manifest.load(tmp_path)
+    assert current is not None
+    assert current.configs == ("ruff",)
+    assert current.typescript_dest == "apps/docs"
+    plan = upgrade.build_plan(tmp_path)
+    assert not plan.ecosystems.typescript
+    assert not plan.scaffold_plan.ecosystems.typescript
+    assert plan.javascript_install_roots == ()
+    assert {path: parse_json(path.read_text()) for path in originals} == originals
+    assert all(set(project.iterdir()) == {project / "package.json"} for project in (projects.deploy, projects.docs))
+
+
+def test_update_uses_enabled_explicit_typescript_destination_with_independent_projects(tmp_path: Path) -> None:
+    projects = _independent_javascript_projects(tmp_path)
+    deploy, docs = projects.deploy, projects.docs
+    adopted = manifest.Manifest(
+        version="0.0.1", configs=("eslint",), python_dest=".", typescript_dest="apps/docs", hook_manager="none"
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render())
+
+    plan = upgrade.build_plan(tmp_path)
+
+    assert plan.ecosystems.typescript_root == docs
+    assert plan.scaffold_plan.ecosystems.typescript_root == docs
+    assert not plan.scaffold_plan.errors
+    assert any(target == docs / "eslint.strict.mjs" for _source, target in plan.config_writes)
+    assert all(not target.is_relative_to(deploy) for _source, target in plan.config_writes)
+
+
+def test_disabled_typescript_upgrade_still_refreshes_existing_owned_package_pins(tmp_path: Path) -> None:
+    _outdated_python_repo(tmp_path)
+    projects = _independent_javascript_projects(tmp_path)
+    deploy, docs = projects.deploy, projects.docs
+    original_deploy = parse_json((deploy / "package.json").read_text())
+    package = docs / "package.json"
+    package.write_text('{"name":"docs","devDependencies":{"@sarj/eslint-plugin":"15.17.0"}}\n')
+    adopted = manifest.Manifest(
+        version="0.0.1", configs=("ruff",), python_dest=".", typescript_dest="apps/docs", hook_manager="none"
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render())
+
+    plan = upgrade.build_plan(tmp_path)
+
+    assert not plan.ecosystems.typescript
+    assert upgrade.apply(plan, install=False) == 0
+    updated = manifest.as_table(parse_json(package.read_text()))
+    dependencies = manifest.table_field(updated, "devDependencies")
+    assert dependencies["@sarj/eslint-plugin"] == manifest.eslint_peers()["@sarj/eslint-plugin"]
+    assert parse_json((deploy / "package.json").read_text()) == original_deploy
+    assert not (docs / "eslint.strict.mjs").exists()
+    assert not (deploy / "eslint.strict.mjs").exists()
+
+
+def test_fresh_setup_still_rejects_ambiguous_typescript_projects(tmp_path: Path) -> None:
+    _independent_javascript_projects(tmp_path)
+
+    plan = scaffold.build_plan(tmp_path, force=False, hook_manager="none")
+
+    assert any("multiple independent TypeScript roots" in error for error in plan.errors)
+    assert not (tmp_path / manifest.MANIFEST_NAME).exists()
 
 
 def test_upgrade_repairs_configs_without_requiring_a_consumer_bundle(tmp_path: Path) -> None:

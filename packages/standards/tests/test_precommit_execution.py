@@ -147,6 +147,68 @@ def test_real_lefthook_runs_without_source_filenames(tmp_path: Path, state: str)
     }
 
 
+def test_real_lefthook_preserves_an_unconfigured_pre_push_hook(tmp_path: Path) -> None:
+    repository = _repository(tmp_path / "repository")
+    (repository / "lefthook.yml").write_text(
+        "pre-commit:\n  commands: {}\ncommit-msg:\n  commands: {}\n", encoding="utf-8"
+    )
+    probe = _probe(tmp_path, status=23)
+    installed = repository / ".git" / "hooks" / "pre-push"
+    installed.write_text(f'#!/bin/sh\nexec {probe.command} "$@"\n', encoding="utf-8")
+    installed.chmod(0o751)
+    before = installed.read_bytes()
+    before_mode = installed.stat().st_mode
+
+    assert repository_hooks.install(repository) == 0
+    assert repository_hooks.install(repository) == 0
+
+    assert installed.read_bytes() == before
+    assert installed.stat().st_mode == before_mode
+    completed = subprocess.run(
+        (str(installed), "origin", "example.invalid/repository"),
+        cwd=repository,
+        check=False,
+        capture_output=True,
+        text=True,
+        env=_environment(tmp_path / "cache"),
+    )
+    assert completed.returncode == 23
+    assert json.loads(probe.receipt.read_text(encoding="utf-8"))["args"] == ["origin", "example.invalid/repository"]
+    assert repository_hooks.has_durable_environment(repository / ".git" / "hooks" / "pre-commit")
+    assert repository_hooks.has_durable_environment(repository / ".git" / "hooks" / "commit-msg")
+
+
+@pytest.mark.parametrize("extended", [False, True], ids=("direct", "extended"))
+def test_real_lefthook_hardens_a_configured_pre_push_hook(tmp_path: Path, extended: bool) -> None:
+    repository = _repository(tmp_path / "repository")
+    probe = _probe(tmp_path, status=0)
+    pre_push = f"pre-push:\n  commands:\n    consumer:\n      run: {probe.command} pushed\n"
+    config = "pre-commit:\n  commands: {}\n"
+    if extended:
+        (repository / "hooks-extra.yml").write_text(pre_push, encoding="utf-8")
+        config += "extends: [hooks-extra.yml]\n"
+    else:
+        config += pre_push
+    (repository / "lefthook.yml").write_text(config, encoding="utf-8")
+
+    assert repository_hooks.install(repository) == 0
+    assert repository_hooks.install(repository) == 0
+
+    installed = repository / ".git" / "hooks" / "pre-push"
+    assert repository_hooks.has_durable_environment(installed)
+    completed = subprocess.run(
+        (str(installed),),
+        cwd=repository,
+        input="",
+        check=False,
+        capture_output=True,
+        text=True,
+        env=_environment(tmp_path / "cache"),
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    assert json.loads(probe.receipt.read_text(encoding="utf-8"))["args"] == ["pushed"]
+
+
 @pytest.mark.parametrize(
     ("scope", "field", "value"),
     [
