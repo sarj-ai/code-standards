@@ -1541,6 +1541,7 @@ def _react_doctor_scoped_project_set(
         reported_base=None if staged or report.diff is None else report.diff.base_branch,
         reported_changed_file_count=None if staged or report.diff is None else report.diff.changed_file_count,
         include_type_changes=True,
+        known_projects=tuple(expected_projects),
     ):
         return reported_projects
     return expected_projects
@@ -1686,6 +1687,7 @@ def _react_doctor_scope_has_no_source(
     reported_base: str | None = None,
     reported_changed_file_count: int | None = None,
     include_type_changes: bool = False,
+    known_projects: Sequence[Path] = (),
 ) -> bool:
     diff_filter = "--diff-filter=ACMRT" if include_type_changes else "--diff-filter=ACMR"
     if staged:
@@ -1713,7 +1715,12 @@ def _react_doctor_scope_has_no_source(
     resolved_projects = tuple(project.resolve() for project in projects)
     changed_paths = tuple(item for item in changed.stdout.split("\0") if item)
     return _changed_scope_has_no_source(
-        changed_paths, resolved_root, resolved_scope, resolved_projects, reported_changed_file_count
+        changed_paths,
+        resolved_root,
+        resolved_scope,
+        resolved_projects,
+        reported_changed_file_count,
+        known_projects=tuple(project.resolve() for project in known_projects),
     )
 
 
@@ -3710,6 +3717,8 @@ def _changed_scope_has_no_source(
     resolved_scope: Path,
     resolved_projects: tuple[Path, ...],
     reported_changed_file_count: int | None,
+    *,
+    known_projects: tuple[Path, ...] = (),
 ) -> bool:
     scoped_changed_file_count = 0
     for relative in changed_paths:
@@ -3721,10 +3730,16 @@ def _changed_scope_has_no_source(
         candidate = resolved_root / relative_path
         if candidate.is_relative_to(resolved_scope):
             scoped_changed_file_count += 1
-        within_project = any(candidate.is_relative_to(project) for project in resolved_projects)
         if candidate.suffix.casefold() not in _REACT_DOCTOR_SOURCE_SUFFIXES:
             continue
-        if within_project:
+        # React Doctor attributes a file only to its nearest enclosing project,
+        # so an enclosing root project neither owns nor reports it.
+        owner = max(
+            (project for project in (*resolved_projects, *known_projects) if candidate.is_relative_to(project)),
+            key=lambda project: len(project.parts),
+            default=None,
+        )
+        if owner in resolved_projects:
             return False
     return reported_changed_file_count is None or scoped_changed_file_count == reported_changed_file_count
 
