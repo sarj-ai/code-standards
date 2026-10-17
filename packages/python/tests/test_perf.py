@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import Path
 import time
+
+import pytest
 
 from sarj_python_lint.rules import REGISTRY
 
@@ -40,6 +43,13 @@ _ACTIVE_RULE_FLOOR_VS_PARSE = 0.17
 # A rule is scored on whichever path flavour makes it do real work.
 _PATHS = (Path("synthetic.py"), Path("tests/test_synthetic.py"))
 
+
+@dataclass(frozen=True, slots=True)
+class _RuleTimings:
+    parse_s: float
+    rules: dict[str, float]
+
+
 # These gates compare CPU work; scheduler pauses belong in the public wall-time benchmark.
 
 
@@ -66,11 +76,18 @@ def _parse_baseline_s(repeats: int = 7) -> float:
     return best
 
 
-def test_no_rule_exceeds_absolute_budget() -> None:
+@pytest.fixture(scope="module")
+def rule_timings() -> _RuleTimings:
+    # Both gates inspect the same five-repeat measurements; neither needs a second run.
     parse_s = _parse_baseline_s()
+    timings = {rid: _worst_path_time_s(rid, _SYNTHETIC_PY) for rid in sorted(REGISTRY)}
+    return _RuleTimings(parse_s, timings)
+
+
+def test_no_rule_exceeds_absolute_budget(rule_timings: _RuleTimings) -> None:
+    parse_s = rule_timings.parse_s
     assert parse_s > 0, "parse baseline did not register — the timer or the source is wrong"
-    for rule_id in sorted(REGISTRY):
-        seconds = _worst_path_time_s(rule_id, _SYNTHETIC_PY)
+    for rule_id, seconds in rule_timings.rules.items():
         ratio = seconds / parse_s
         assert ratio < _MAX_RULE_COST_VS_PARSE, (
             f"{rule_id}: {seconds * 1000:.1f} ms is {ratio:.1f}x the {parse_s * 1000:.1f} ms "
@@ -78,15 +95,14 @@ def test_no_rule_exceeds_absolute_budget() -> None:
         )
 
 
-def test_no_rule_is_algorithmic_outlier() -> None:
+def test_no_rule_is_algorithmic_outlier(rule_timings: _RuleTimings) -> None:
     # Every rule is timed on the path flavour where it does real work (see the
     # module docstring), so the "active" floor below is a canary on the benchmark
     # source rather than a filter on gated rules: with per-path timing there is no
     # rule that legitimately sits at zero, so anything that does means the
     # synthetic module stopped exercising the registry.
-    parse_s = _parse_baseline_s()
+    parse_s, timings = rule_timings.parse_s, rule_timings.rules
     floor = parse_s * _ACTIVE_RULE_FLOOR_VS_PARSE
-    timings = {rid: _worst_path_time_s(rid, _SYNTHETIC_PY) for rid in REGISTRY}
     active = sorted(t for t in timings.values() if t >= floor)
     assert active, "no rule did measurable work — the benchmark source stopped exercising the rules"
     median = active[len(active) // 2]

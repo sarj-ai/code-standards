@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+from collections import deque
 from types import MappingProxyType
 from typing import TYPE_CHECKING, TypeIs, final
 
@@ -57,12 +58,10 @@ def walk(node: ast.AST, *, index: NodeIndex | None = None) -> Iterator[ast.AST]:
     if index is not None and index.tree is node:
         yield from index.query((ast.AST,))
         return
-    queue: list[ast.AST] = [node]
-    i = 0
-    while i < len(queue):
-        current = queue[i]
-        i += 1
-        queue += children(current)
+    queue = deque((node,))
+    while queue:
+        current = queue.popleft()
+        queue.extend(children(current))
         yield current
 
 
