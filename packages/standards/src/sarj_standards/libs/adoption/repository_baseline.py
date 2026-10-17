@@ -20,7 +20,10 @@ PATH = ".repo-standards/baseline.json"
 # Policy 21 changes a baselineable documentation rule's fingerprint version;
 # policy 22 adds baselineable PR-template checks. Preserve rejection of these
 # transitions rather than silently recapturing or dropping existing debt.
-_COMPATIBLE_TRANSITIONS = frozenset({(18, 19), (18, 20), (19, 20)})
+# Policy 26 accepts literal Git paths previously rejected as wildcard syntax.
+# Every previously valid manifest scope and finding identity stays unchanged;
+# retain all recorded warning/error debt and change only the policy metadata.
+_COMPATIBLE_TRANSITIONS = frozenset({(18, 19), (18, 20), (19, 20), (25, 26)})
 _POLICY_VERSION = re.compile(rb'("policy_version"\s*:\s*)[0-9]+(?=\s*[,}])')
 
 

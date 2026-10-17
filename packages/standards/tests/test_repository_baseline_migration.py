@@ -37,7 +37,7 @@ def _baseline(version: int, *, fingerprints: tuple[str, ...] = ()) -> bytes:
     )
 
 
-@pytest.mark.parametrize(("before", "after"), [(18, 19), (18, 20), (19, 20)])
+@pytest.mark.parametrize(("before", "after"), [(18, 19), (18, 20), (19, 20), (25, 26)])
 @pytest.mark.parametrize(
     "fingerprints",
     [pytest.param((), id="empty-baseline"), pytest.param(("f" * 64, "a" * 64), id="retained-fingerprints")],
@@ -51,6 +51,33 @@ def test_known_policy_migration_changes_only_the_version_bytes(
 
     assert migrated == original.replace(f'"policy_version": {before}'.encode(), f'"policy_version": {after}'.encode())
     assert json.loads(migrated)["fingerprints"] == list(fingerprints)
+
+
+@pytest.mark.parametrize(
+    "fingerprints",
+    [
+        pytest.param((), id="empty-warning-ratchet"),
+        pytest.param(("f" * 64, "a" * 64), id="retained-warning-debt"),
+    ],
+)
+def test_policy26_preserves_warning_ratchets_without_recapturing_findings(
+    fingerprints: tuple[str, ...],
+) -> None:
+    original = _baseline(25, fingerprints=fingerprints).replace(
+        b'"schema_version": 2', b'"schema_version": 2,\r\n\t"include_warnings": true'
+    )
+
+    migrated = repository_baseline.migrate(original, _MANIFEST, target_policy_version=26)
+
+    assert migrated == original.replace(b'"policy_version": 25', b'"policy_version": 26')
+
+
+@pytest.mark.parametrize(("before", "after"), [(22, 26), (24, 26), (26, 25), (25, 27)])
+def test_policy26_migration_does_not_allow_unreviewed_jumps_or_downgrades(before: int, after: int) -> None:
+    original = _baseline(before, fingerprints=("b" * 64,))
+
+    with pytest.raises(ValueError, match="requires a separately reviewed compatibility decision"):
+        repository_baseline.migrate(original, _MANIFEST, target_policy_version=after)
 
 
 def test_current_repository_baseline_is_preserved_without_reserialization() -> None:
@@ -125,6 +152,29 @@ def test_setup_preserves_current_policy_baselines_without_recapturing_findings(t
     scaffold.apply(plan.scaffold)
     assert path.read_bytes() == original
     repeated = service.plan_init(tmp_path)
+    assert path not in dict(repeated.scaffold.writes)
+
+
+def test_setup_migrates_policy25_warning_debt_once_without_recapturing_findings(tmp_path: Path) -> None:
+    manifest = tmp_path / ".repo-standards" / "repository.toml"
+    manifest.parent.mkdir()
+    manifest.write_bytes(_MANIFEST)
+    path = tmp_path / repository_baseline.PATH
+    original = _baseline(25, fingerprints=("b" * 64,)).replace(
+        b'"schema_version": 2', b'"schema_version": 2,\r\n\t"include_warnings": true'
+    )
+    path.write_bytes(original)
+
+    plan = service.plan_init(tmp_path)
+
+    expected = original.replace(b'"policy_version": 25', b'"policy_version": 26')
+    assert not plan.scaffold.errors
+    assert dict(plan.scaffold.writes)[path] == expected.decode("utf-8")
+    assert path.read_bytes() == original
+    scaffold.apply(plan.scaffold)
+    assert path.read_bytes() == expected
+    repeated = service.plan_init(tmp_path)
+    assert not repeated.scaffold.errors
     assert path not in dict(repeated.scaffold.writes)
 
 
