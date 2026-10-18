@@ -79,6 +79,14 @@ running or reporting a corpus evaluation.
 6. Run focused tests, Ruff/ESLint, type checking, package tests, and the
    repository's own `code-standards check`. Fix contradictions and diagnostic
    thrashing rather than adding broad suppressions.
+   In this repository, preview the native JSON test plan with
+   `make test-plan BASE=origin/main`, then use
+   `make test-standards-changed BASE=origin/main` for fresh-wheel iteration.
+   Keep the selector's full fallback for shared, unknown, or uncertified changes;
+   a scoped result does not replace the required `make verify` before review.
+   For isolated Python fixture projects, use a private temp root with no Git ancestor.
+   If the VM's default temp path is inside Git, set `TMPDIR` and
+   `PYTEST_DEBUG_TEMPROOT` to that root; preserve normal Git discovery and test gates.
 7. Evaluate against pinned, already-local corpora under the protocol. Inspect
    every match when feasible; otherwise use a deterministic unbiased sample and
    state its seed/selection rule. Classify every inspected hit.
