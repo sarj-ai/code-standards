@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "02c17234993ad3698090a6ab0bb6e7e3167506b7ff7877cf2d268b58d3fb86af",
-  "cliSha256": "eed27a1670e1945e32043e5a2ec9721bb158708248258b225389ba86a5a9704f",
+  "catalogSha256": "bd65aa13f9923505d0afbe5235b30f1dcf61e45a4ca0360db8d87a3783e29522",
+  "cliSha256": "a21d99fa0f49eebddd51cf28bf4e73f1f166349fc2ed09cc30571f15cbabf1a9",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -10360,6 +10360,21 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "app/metadata.py",
+              "source": "from dataclasses import dataclass\nfrom functools import lru_cache\n\n\n@dataclass(frozen=True, slots=True)\nclass Options:\n    \"\"\"Read by dataclass metadata generation.\"\"\"\n\n    limit: int\n\n\n@lru_cache(maxsize=1)\ndef options() -> Options:\n    \"\"\"Copied onto the cache wrapper.\"\"\"\n    return Options(limit=10)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/metadata.py",
+          "id": "canonical-metadata-consumers",
+          "outcome": "accept",
+          "scenarioId": "metadata-copy",
+          "title": "Standard-library decorators mechanically read or copy docstrings"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "app/tools.py",
               "source": "from agents import function_tool\n\n\n@function_tool\ndef lookup_account(account_id: str) -> str:\n    \"\"\"Look up an account for the model.\"\"\"\n    return account_id\n"
             }
@@ -10385,6 +10400,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Human-only module, class, and function prose"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/metadata.py",
+              "source": "from functools import wraps\n\n\ndef original() -> int:\n    \"\"\"This prose is not copied.\"\"\"\n    return 1\n\n\n@wraps(original, assigned=())\ndef wrapped() -> int:\n    return original()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/metadata.py",
+          "id": "wraps-without-doc-copy",
+          "outcome": "reject",
+          "scenarioId": "metadata-copy",
+          "title": "A wrapper excluding __doc__ does not consume input prose"
         }
       ],
       "optionsSchemaSource": null
