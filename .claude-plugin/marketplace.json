@@ -1,0 +1,11 @@
+{
+  "name": "sarj",
+  "description": "Sarj judgment-layer codebase audits",
+  "owner": { "name": "sarj-ai" },
+  "plugins": [
+    {
+      "name": "sarj-audit",
+      "source": "./plugins/sarj-audit"
+    }
+  ]
+}

@@ -286,6 +286,24 @@ def test_repository_generated_documentation_has_no_drift() -> None:
     assert docs.check(REPO_ROOT).status == 0
 
 
+def test_sarj_audit_marketplace_source_is_installable() -> None:
+    marketplace = manifest.as_table(_load_json(REPO_ROOT / ".claude-plugin/marketplace.json"))
+    assert marketplace.get("name") == "sarj", "Consumers install plugins through the public @sarj marketplace."
+    entries = [manifest.as_table(value) for value in manifest.list_field(marketplace, "plugins")]
+    plugins = [entry for entry in entries if entry.get("name") == "sarj-audit"]
+    assert len(plugins) == 1, "Consumers must be able to install sarj-audit@sarj unambiguously."
+    source = plugins[0].get("source")
+    assert isinstance(source, str), "The bundled audit plugin needs a local source."
+    assert source.startswith("./"), "The bundled audit plugin needs a checkout-relative source."
+    plugin_root = (REPO_ROOT / source).resolve()
+    assert plugin_root.is_relative_to(REPO_ROOT), f"Plugin source escapes the checkout: {source}"
+    plugin = manifest.as_table(_load_json(plugin_root / ".claude-plugin/plugin.json"))
+    assert plugin.get("name") == "sarj-audit", f"Marketplace/plugin identity mismatch: {source}"
+    assert any(plugin_root.glob("commands/*.md")) or any(plugin_root.glob("skills/*/SKILL.md")), (
+        f"Plugin source has no discoverable commands or skills: {source}"
+    )
+
+
 def test_docs_lint_dependencies_are_reproducible_and_compatible() -> None:
     raw: object = json.loads((REPO_ROOT / "apps/docs/package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
     assert _is_object_table(raw)
