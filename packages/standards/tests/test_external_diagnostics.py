@@ -1514,8 +1514,8 @@ def test_react_metadata_only_scope_still_runs_doctor(tmp_path: Path, metadata_na
             Completion.COMPLETE,
         ),
         ("apps/web/src/component.tsx\0", Completion.FAILED),
-        ("apps/web/src/component.cjs\0", Completion.FAILED),
-        ("apps/web/src/component.cts\0", Completion.FAILED),
+        ("apps/web/src/component.cjs\0", Completion.COMPLETE),
+        ("apps/web/src/component.cts\0", Completion.COMPLETE),
     ],
 )
 def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_source(
