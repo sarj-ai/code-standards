@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_standards.libs.adoption import manifest
-from sarj_standards.libs.diagnostics import Completion
+from sarj_standards.libs.diagnostics import Completion, TrustMode
 from sarj_standards.libs.linting import external
 from sarj_standards.libs.linting.external import ProcessOutput, run_process
 
@@ -55,7 +55,7 @@ def _change(root: Path, names: Sequence[str], *, staged: bool) -> None:
 
 
 def _payload(root: Path, base: str, names: Sequence[str], *, staged: bool) -> dict[str, object]:
-    changed = _git(root, "diff", "--cached" if staged else f"{base}...HEAD", "--name-only").splitlines()
+    changed = _git(root, "diff", "--cached" if staged else base, "--name-only", "--diff-filter=ACMR").splitlines()
     return {
         "schemaVersion": 3,
         "version": manifest.eslint_peers()["react-doctor"],
@@ -87,14 +87,43 @@ def _payload(root: Path, base: str, names: Sequence[str], *, staged: bool) -> di
     }
 
 
-@pytest.mark.parametrize("staged", [True, False], ids=["staged", "changed"])
+@pytest.mark.parametrize("scope", ["staged", "changed", "current"])
 @pytest.mark.parametrize("names", [("app",), ("app", "engineering")], ids=["one-workspace", "two-workspaces"])
+@pytest.mark.parametrize("metadata_type_changed", [False, True], ids=["untouched", "metadata-type-change"])
 def test_scoped_scan_accepts_untouched_omissions_and_preserves_diagnostics(
-    workspace: _Workspace, staged: bool, names: tuple[str, ...]
+    workspace: _Workspace,
+    monkeypatch: pytest.MonkeyPatch,
+    scope: str,
+    names: tuple[str, ...],
+    metadata_type_changed: bool,
 ) -> None:
     root, base = workspace.root, workspace.base
-    _change(root, names, staged=staged)
+    staged = scope == "staged"
+    current = scope == "current"
+    _change(root, names, staged=staged or current)
+    if metadata_type_changed:
+        metadata = root / "packages" / "qa" / "package.json"
+        metadata.unlink()
+        metadata.symlink_to("../app/package.json")
+        _git(root, "add", ".")
+        if scope == "changed":
+            _git(root, "commit", "-m", "Type-change untouched project metadata")
+        assert (
+            _git(
+                root,
+                "diff",
+                "--cached" if staged else base,
+                "--name-status",
+                "--",
+                "packages/qa/package.json",
+            )
+            == "T\tpackages/qa/package.json"
+        )
     payload = _payload(root, base, names, staged=staged)
+    if current:
+        for key in ("SARJ_STANDARDS_BASE", "SARJ_REACT_DOCTOR_BASE", "GITHUB_EVENT_PATH"):
+            monkeypatch.delenv(key, raising=False)
+        payload["diff"] = {"baseBranch": "main", "changedFileCount": len(names), "isCurrentChanges": True}
 
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(1, json.dumps(payload), "")
@@ -117,12 +146,24 @@ def test_scoped_scan_accepts_untouched_omissions_and_preserves_diagnostics(
     assert all(item.code == "react-doctor/example" for item in report.diagnostics)
 
 
-@pytest.mark.parametrize("staged", [True, False], ids=["staged", "changed"])
+@pytest.mark.parametrize("scope", ["staged", "changed", "current"])
 @pytest.mark.parametrize("failure", ["touched-omission", "git-failure", "unexpected-project", "incomplete"])
-def test_scoped_scan_keeps_coverage_failures_blocking(workspace: _Workspace, staged: bool, failure: str) -> None:
+def test_scoped_scan_keeps_coverage_failures_blocking(
+    workspace: _Workspace, monkeypatch: pytest.MonkeyPatch, scope: str, failure: str
+) -> None:
     root, base = workspace.root, workspace.base
-    _change(root, ("app", "engineering") if failure == "touched-omission" else ("app",), staged=staged)
+    staged = scope == "staged"
+    current = scope == "current"
+    _change(root, ("app", "engineering") if failure == "touched-omission" else ("app",), staged=staged or current)
     payload = _payload(root, base, ("unselected",) if failure == "unexpected-project" else ("app",), staged=staged)
+    if current:
+        for key in ("SARJ_STANDARDS_BASE", "SARJ_REACT_DOCTOR_BASE", "GITHUB_EVENT_PATH"):
+            monkeypatch.delenv(key, raising=False)
+        payload["diff"] = {
+            "baseBranch": "main",
+            "changedFileCount": 2 if failure == "touched-omission" else 1,
+            "isCurrentChanges": True,
+        }
     if failure == "incomplete":
         payload["projects"] = [{"directory": str(root / "packages" / "app"), "complete": False}]
 
@@ -146,17 +187,29 @@ def test_scoped_scan_keeps_coverage_failures_blocking(workspace: _Workspace, sta
     assert expected_message in report.issues[0].message
 
 
-@pytest.mark.parametrize("failure", ["different-base", "wrong-count", "current-changes", "missing-scope"])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "different-base",
+        "wrong-count",
+        "current-count-mismatch",
+        "current-base-mismatch",
+        "missing-scope-kind",
+        "missing-scope",
+    ],
+)
 def test_changed_scan_requires_matching_verified_scope(workspace: _Workspace, failure: str) -> None:
     root, base = workspace.root, workspace.base
     _change(root, ("app",), staged=False)
     payload = _payload(root, base, ("app",), staged=False)
     payload["diff"] = {
-        "baseBranch": "HEAD" if failure == "different-base" else base,
-        "changedFileCount": 0 if failure == "wrong-count" else 1,
-        "isCurrentChanges": failure == "current-changes",
+        "baseBranch": "HEAD" if failure in {"different-base", "current-base-mismatch"} else base,
+        "changedFileCount": 0 if failure in {"wrong-count", "current-count-mismatch"} else 1,
+        "isCurrentChanges": failure in {"current-count-mismatch", "current-base-mismatch"},
     }
-    if failure == "missing-scope":
+    if failure == "missing-scope-kind":
+        payload["diff"] = {"baseBranch": base, "changedFileCount": 1}
+    elif failure == "missing-scope":
         payload["diff"] = None
 
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
@@ -246,10 +299,25 @@ def test_staged_omissions_cannot_hide_source_path_changes(workspace: _Workspace,
 
 
 @pytest.mark.parametrize("full_complete", [True, False], ids=["complete-fallback", "missing-fallback-projects"])
-def test_staged_full_fallback_retains_complete_workspace_coverage(workspace: _Workspace, full_complete: bool) -> None:
+@pytest.mark.parametrize("type_changed_source", [False, True], ids=["modified-source", "type-changed-source"])
+def test_staged_full_fallback_retains_complete_workspace_coverage(
+    workspace: _Workspace, full_complete: bool, type_changed_source: bool
+) -> None:
     root, base = workspace.root, workspace.base
+    if type_changed_source:
+        source = root / "packages" / "engineering" / "view.tsx"
+        source.unlink()
+        source.symlink_to("package.json")
+        _git(root, "add", ".")
+        _git(root, "commit", "-m", "Record source symlink before type change")
+        source.unlink()
+        source.write_text("export const View = () => <span />;\n", encoding="utf-8")
     _change(root, ("app",), staged=True)
-    scoped = _payload(root, base, ("app",), staged=True)
+    if type_changed_source:
+        assert _git(root, "diff", "--cached", "--name-status", "--", "packages/engineering/view.tsx") == (
+            "T\tpackages/engineering/view.tsx"
+        )
+    scoped = _payload(root, base, ("app", "engineering") if type_changed_source else ("app",), staged=True)
     scoped["reactDetected"] = False
     full = _payload(
         root, base, ("app", "engineering", "qa", "ai-dashboard") if full_complete else ("app",), staged=True
@@ -268,7 +336,7 @@ def test_staged_full_fallback_retains_complete_workspace_coverage(workspace: _Wo
         root=root,
         runner=runner,
         use_local_binary=False,
-        file_count=1,
+        file_count=2 if type_changed_source else 1,
         staged=True,
     )
 
@@ -277,7 +345,12 @@ def test_staged_full_fallback_retains_complete_workspace_coverage(workspace: _Wo
     assert doctor_calls[1][doctor_calls[1].index("--scope") + 1] == "full"
     if full_complete:
         assert report.completion is Completion.COMPLETE
-        assert tuple(item.location.path for item in report.diagnostics) == ("packages/app/view.tsx",)
+        expected_paths = (
+            ("packages/app/view.tsx", "packages/engineering/view.tsx")
+            if type_changed_source
+            else ("packages/app/view.tsx",)
+        )
+        assert tuple(item.location.path for item in report.diagnostics) == expected_paths
     else:
         assert report.completion is Completion.FAILED
         assert "requested project set" in report.issues[0].message
@@ -318,3 +391,277 @@ def test_nested_project_change_does_not_require_enclosing_root_project(
     else:
         assert report.completion is Completion.COMPLETE
         assert tuple(item.location.path for item in report.diagnostics) == ("packages/app/view.tsx",)
+
+
+@pytest.mark.parametrize("degraded", [False, True], ids=["ordinary", "degraded"])
+@pytest.mark.parametrize("source_changed", [True, False], ids=["source", "metadata"])
+@pytest.mark.parametrize("reported_count", [0, 1], ids=["native-count", "inconsistent-count"])
+def test_empty_changed_scope_checks_type_changes(
+    workspace: _Workspace, monkeypatch: pytest.MonkeyPatch, degraded: bool, source_changed: bool, reported_count: int
+) -> None:
+    root, base = workspace.root, workspace.base
+    project = root / "packages" / "app"
+    changed = project / ("view.tsx" if source_changed else "policy.json")
+    if not source_changed:
+        changed.write_text("{}\n", encoding="utf-8")
+        _git(root, "add", ".")
+        _git(root, "commit", "-m", "Track project metadata")
+        base = _git(root, "rev-parse", "HEAD")
+        monkeypatch.setenv("SARJ_STANDARDS_BASE", base)
+    changed.unlink()
+    changed.symlink_to("package.json")
+    _git(root, "add", ".")
+    _git(root, "commit", "-m", "Type-change selected file")
+    relative = changed.relative_to(root).as_posix()
+    assert _git(root, "diff", "--name-status", base, "HEAD", "--", relative) == f"T\t{relative}"
+    payload: dict[str, object] = {
+        "schemaVersion": 3,
+        "version": manifest.eslint_peers()["react-doctor"],
+        "ok": True,
+        "baselineDegraded": degraded,
+        "diff": {"baseBranch": base, "changedFileCount": reported_count, "isCurrentChanges": False},
+        "projects": [],
+        "diagnostics": [],
+        "error": None,
+    }
+    native_called = False
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        nonlocal native_called
+        if argv[0] == "git":
+            return run_process(argv, cwd=cwd)
+        native_called = True
+        return ProcessOutput(0, json.dumps(payload), "")
+
+    reports = external.analyze_external(
+        (str(project / "package.json"),),
+        root=root,
+        trust=TrustMode.SAFE,
+        runner=runner,
+        capabilities=frozenset({"react-doctor"}),
+        include_react_doctor=True,
+    )
+
+    assert native_called
+    assert len(reports) == 1
+    if source_changed or reported_count:
+        assert reports[0].completion is Completion.FAILED
+        assert reports[0].diagnostics == ()
+        expected_message = "baseline degraded" if degraded else "no analyzed projects"
+        assert expected_message in reports[0].issues[0].message
+    else:
+        assert reports[0].completion is Completion.COMPLETE
+        assert reports[0].diagnostics == ()
+        assert reports[0].issues == ()
+
+
+def test_empty_degraded_scope_cannot_substitute_selected_base(workspace: _Workspace) -> None:
+    root, base = workspace.root, workspace.base
+    project = root / "packages" / "app"
+    _change(root, ("app",), staged=False)
+    head = _git(root, "rev-parse", "HEAD")
+    assert head != base
+    payload: dict[str, object] = {
+        "schemaVersion": 3,
+        "version": manifest.eslint_peers()["react-doctor"],
+        "ok": True,
+        "baselineDegraded": True,
+        "diff": {"baseBranch": head, "changedFileCount": 0, "isCurrentChanges": False},
+        "projects": [],
+        "diagnostics": [],
+        "error": None,
+    }
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(0, json.dumps(payload), "")
+
+    reports = external.analyze_external(
+        (str(project / "package.json"),),
+        root=root,
+        trust=TrustMode.SAFE,
+        runner=runner,
+        capabilities=frozenset({"react-doctor"}),
+        include_react_doctor=True,
+    )
+
+    assert len(reports) == 1
+    assert reports[0].completion is Completion.FAILED
+    assert "baseline degraded" in reports[0].issues[0].message
+
+
+@pytest.mark.parametrize("scope", ["ordinary", "degraded", "current", "degraded-current"])
+@pytest.mark.parametrize("staged", [False, True], ids=["worktree", "index"])
+@pytest.mark.parametrize("change", ["metadata", "source-type", "metadata-and-source"])
+def test_empty_changed_scope_proves_the_native_tracked_worktree(
+    workspace: _Workspace, monkeypatch: pytest.MonkeyPatch, scope: str, staged: bool, change: str
+) -> None:
+    root = workspace.root
+    degraded = scope in {"degraded", "degraded-current"}
+    current = scope in {"current", "degraded-current"}
+    project = root / "packages" / "app"
+    metadata = project / "policy.json"
+    metadata.write_text("{}\n", encoding="utf-8")
+    _git(root, "add", ".")
+    _git(root, "commit", "-m", "Track project metadata")
+    base = _git(root, "rev-parse", "HEAD")
+    if current:
+        for key in ("SARJ_STANDARDS_BASE", "SARJ_REACT_DOCTOR_BASE", "GITHUB_EVENT_PATH"):
+            monkeypatch.delenv(key, raising=False)
+    else:
+        monkeypatch.setenv("SARJ_STANDARDS_BASE", base)
+    if change != "source-type":
+        metadata.write_text('{"reviewed":true}\n', encoding="utf-8")
+    if change != "metadata":
+        source = project / "view.tsx"
+        source.unlink()
+        source.symlink_to("package.json")
+    if staged:
+        _git(root, "add", ".")
+    reported_count = 0 if change == "source-type" else 1
+    assert len(_git(root, "diff", base, "--name-only", "--diff-filter=ACMR").splitlines()) == reported_count
+    assert not _git(root, "diff", f"{base}...HEAD", "--name-only")
+    payload: dict[str, object] = {
+        "schemaVersion": 3,
+        "version": manifest.eslint_peers()["react-doctor"],
+        "ok": True,
+        "baselineDegraded": degraded,
+        "diff": {
+            "baseBranch": "main" if current else base,
+            "changedFileCount": reported_count,
+            "isCurrentChanges": current,
+        },
+        "projects": [],
+        "diagnostics": [],
+        "error": None,
+    }
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(0, json.dumps(payload), "")
+
+    reports = external.analyze_external(
+        (str(project / "package.json"),),
+        root=root,
+        trust=TrustMode.SAFE,
+        runner=runner,
+        capabilities=frozenset({"react-doctor"}),
+        include_react_doctor=True,
+    )
+
+    assert len(reports) == 1
+    if change == "metadata":
+        assert reports[0].completion is Completion.COMPLETE
+        assert reports[0].issues == ()
+    else:
+        assert reports[0].completion is Completion.FAILED
+        expected_message = "baseline degraded" if degraded else "no analyzed projects"
+        assert expected_message in reports[0].issues[0].message
+
+
+@pytest.mark.parametrize("kind", ["untracked-metadata", "untracked-source", "ignored-source"])
+def test_empty_changed_scope_keeps_native_untracked_exclusions(workspace: _Workspace, kind: str) -> None:
+    root, base = workspace.root, workspace.base
+    project = root / "packages" / "app"
+    local_file = project / ("local/ignored.tsx" if kind == "ignored-source" else "untracked.tsx")
+    if kind == "untracked-metadata":
+        local_file = project / "untracked.json"
+    if kind == "ignored-source":
+        local_file.parent.mkdir()
+        excludes = root / ".git" / "info"
+        excludes.mkdir(exist_ok=True)
+        (excludes / "exclude").write_text("packages/app/local/\n", encoding="utf-8")
+    local_file.write_text(
+        "{}\n" if kind == "untracked-metadata" else "export const Local = () => <div />;\n", encoding="utf-8"
+    )
+    assert not _git(root, "diff", base, "--name-only", "--diff-filter=ACMRT")
+    payload: dict[str, object] = {
+        "schemaVersion": 3,
+        "version": manifest.eslint_peers()["react-doctor"],
+        "ok": True,
+        "diff": {"baseBranch": base, "changedFileCount": 0, "isCurrentChanges": False},
+        "projects": [],
+        "diagnostics": [],
+        "error": None,
+    }
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(0, json.dumps(payload), "")
+
+    reports = external.analyze_external(
+        (str(project / "package.json"),),
+        root=root,
+        trust=TrustMode.SAFE,
+        runner=runner,
+        capabilities=frozenset({"react-doctor"}),
+        include_react_doctor=True,
+    )
+
+    assert len(reports) == 1
+    assert reports[0].completion is Completion.COMPLETE
+    assert reports[0].issues == ()
+
+
+@pytest.mark.parametrize("failure", ["none", "source", "wrong-count", "wrong-base", "unrelated"])
+def test_empty_changed_scope_uses_the_requested_bases_common_ancestor(
+    workspace: _Workspace, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    root, common = workspace.root, workspace.base
+    project = root / "packages" / "app"
+    _git(root, "checkout", "-b", "requested-base")
+    (project / "view.tsx").write_text("export const View = () => <em>Base branch</em>;\n", encoding="utf-8")
+    _git(root, "add", ".")
+    _git(root, "commit", "-m", "Advance requested base with source")
+    requested = _git(root, "rev-parse", "HEAD")
+    _git(root, "checkout", "main")
+    if failure == "source":
+        _change(root, ("app",), staged=False)
+    else:
+        (project / "package.json").write_text(
+            '{"dependencies":{"react":"19.2.8"},"version":"0.0.1"}\n', encoding="utf-8"
+        )
+        _git(root, "add", ".")
+        _git(root, "commit", "-m", "Advance feature branch with metadata")
+    if failure == "unrelated":
+        _git(root, "checkout", "--orphan", "unrelated-base")
+        _git(root, "rm", "-r", "-f", ".")
+        (root / "unrelated.md").write_text("Unrelated history\n", encoding="utf-8")
+        _git(root, "add", ".")
+        _git(root, "commit", "-m", "Create unrelated base")
+        requested = _git(root, "rev-parse", "HEAD")
+        _git(root, "checkout", "main")
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", requested)
+    assert run_process(("git", "merge-base", "--is-ancestor", requested, "HEAD"), cwd=root).returncode == 1
+    if failure != "unrelated":
+        assert _git(root, "merge-base", requested, "HEAD") == common
+    payload: dict[str, object] = {
+        "schemaVersion": 3,
+        "version": manifest.eslint_peers()["react-doctor"],
+        "ok": True,
+        "diff": {
+            "baseBranch": common if failure == "wrong-base" else requested,
+            "changedFileCount": 2 if failure == "wrong-count" else 1,
+            "isCurrentChanges": False,
+        },
+        "projects": [],
+        "diagnostics": [],
+        "error": None,
+    }
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(0, json.dumps(payload), "")
+
+    reports = external.analyze_external(
+        (str(project / "package.json"),),
+        root=root,
+        trust=TrustMode.SAFE,
+        runner=runner,
+        capabilities=frozenset({"react-doctor"}),
+        include_react_doctor=True,
+    )
+
+    assert len(reports) == 1
+    if failure == "none":
+        assert reports[0].completion is Completion.COMPLETE
+        assert reports[0].issues == ()
+    else:
+        assert reports[0].completion is Completion.FAILED
+        assert "no analyzed projects" in reports[0].issues[0].message
