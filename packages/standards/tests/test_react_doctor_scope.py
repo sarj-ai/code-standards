@@ -665,3 +665,156 @@ def test_empty_changed_scope_uses_the_requested_bases_common_ancestor(
     else:
         assert reports[0].completion is Completion.FAILED
         assert "no analyzed projects" in reports[0].issues[0].message
+
+
+@pytest.mark.parametrize("scope", ["staged", "changed", "current"])
+@pytest.mark.parametrize("partial", [False, True], ids=["empty", "omitted-workspace"])
+@pytest.mark.parametrize(
+    ("relative", "eligible"),
+    [
+        pytest.param("view.ts\n", False, id="terminal-lf"),
+        pytest.param("view.ts\r", False, id="terminal-cr"),
+        pytest.param("view.ts\r\n", False, id="terminal-crlf"),
+        pytest.param("view.ts\u2028", False, id="terminal-u2028"),
+        pytest.param("view.ts\u2029", False, id="terminal-u2029"),
+        pytest.param("bundle.min.js\n", False, id="bundle-terminal-lf"),
+        pytest.param("bundle.m\u0131n.js\n", False, id="unicode-bundle-terminal-lf"),
+        pytest.param("view\n.ts", True, id="internal-lf"),
+        ("helper.cts", False),
+        ("helper.cjs", False),
+        ("view.htm", False),
+        ("view.TSX", False),
+        ("view.JS", False),
+        ("view.ASTRO", False),
+        ("bundle.iife.js", False),
+        ("bundle.umd.mjs", False),
+        ("bundle.global.js", False),
+        ("bundle.min.js", False),
+        ("bundle.MiN.mjs", False),
+        ("__generated__/view.tsx", False),
+        ("nested/__generated__/view.tsx", False),
+        ("view.ts", True),
+        ("view.tsx", True),
+        ("view.js", True),
+        ("view.jsx", True),
+        ("view.mts", True),
+        ("view.mjs", True),
+        ("view.astro", True),
+        ("view.html", True),
+        ("view.hTmL", True),
+        ("types.d.ts", True),
+        ("types.d.mts", True),
+        ("eslint.strict.mjs", True),
+        ("bundle.min.tsx", True),
+        ("bundle.minimum.js", True),
+        ("bundle.mın.js", True),
+        ("__generated__prefix/view.tsx", True),
+        ("nested__generated__/view.tsx", True),
+        ("__Generated__/view.tsx", True),
+    ],
+)
+def test_scoped_scan_matches_native_source_eligibility(
+    workspace: _Workspace,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    scope: str,
+    partial: bool,
+    relative: str,
+    eligible: bool,
+) -> None:
+    root, base = workspace.root, workspace.base
+    staged = scope == "staged"
+    current = scope == "current"
+    changed = root / "packages" / "engineering" / relative
+    changed.parent.mkdir(parents=True, exist_ok=True)
+    changed.write_text("export const reviewed = true;\n", encoding="utf-8")
+    names = ("app",) if partial else ()
+    _change(root, names, staged=staged or current)
+    payload = _payload(root, base, names, staged=staged)
+    if current:
+        for key in ("SARJ_STANDARDS_BASE", "SARJ_REACT_DOCTOR_BASE", "GITHUB_EVENT_PATH"):
+            monkeypatch.delenv(key, raising=False)
+        payload["diff"] = {
+            "baseBranch": "main",
+            "changedFileCount": 2 if partial else 1,
+            "isCurrentChanges": True,
+        }
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(0, json.dumps(payload), "")
+
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        root,
+        projects=tuple(sorted((root / "packages").iterdir())),
+        root=root,
+        runner=runner,
+        use_local_binary=False,
+        file_count=2 if partial else 1,
+        staged=staged,
+    )
+
+    if eligible:
+        assert report.completion is Completion.FAILED
+        expected_message = "requested project set" if partial else "no analyzed projects"
+        assert expected_message in report.issues[0].message
+    else:
+        assert report.completion is Completion.COMPLETE
+        assert report.issues == ()
+        assert tuple(item.location.path for item in report.diagnostics) == tuple(
+            f"packages/{name}/view.tsx" for name in names
+        )
+
+
+@pytest.mark.parametrize("failure", ["wrong-count", "wrong-base"])
+def test_native_excluded_source_keeps_changed_scope_guards(workspace: _Workspace, failure: str) -> None:
+    root, base = workspace.root, workspace.base
+    project = root / "packages" / "app"
+    (project / "helper.cts").write_text("export const reviewed = true;\n", encoding="utf-8")
+    _git(root, "add", ".")
+    _git(root, "commit", "-m", "Add source outside the native filter")
+    payload = _payload(root, base, (), staged=False)
+    payload["diff"] = {
+        "baseBranch": "HEAD" if failure == "wrong-base" else base,
+        "changedFileCount": 0 if failure == "wrong-count" else 1,
+        "isCurrentChanges": False,
+    }
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(0, json.dumps(payload), "")
+
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        root,
+        projects=tuple(sorted((root / "packages").iterdir())),
+        root=root,
+        runner=runner,
+        use_local_binary=False,
+        file_count=1,
+        staged=False,
+    )
+
+    assert report.completion is Completion.FAILED
+    assert "no analyzed projects" in report.issues[0].message
+
+
+def test_generated_checkout_parent_does_not_exclude_authored_source(workspace: _Workspace) -> None:
+    root = workspace.root.parent / "__generated__" / workspace.root.name
+    root.parent.mkdir(exist_ok=True)
+    workspace.root.rename(root)
+    _change(root, ("app",), staged=False)
+    payload = _payload(root, workspace.base, (), staged=False)
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(0, json.dumps(payload), "")
+
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        root,
+        projects=tuple(sorted((root / "packages").iterdir())),
+        root=root,
+        runner=runner,
+        use_local_binary=False,
+        file_count=1,
+        staged=False,
+    )
+
+    assert report.completion is Completion.FAILED
+    assert "no analyzed projects" in report.issues[0].message
