@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "acd6d86c417bc1927d7fd08e7cff04bfd8622ab4c406b8a3dbb145f12a78263f",
-  "cliSha256": "ed819e6bc4c07ce20bdce897951523cd266c3c8c393d71498f9e4e525b1214ed",
+  "catalogSha256": "02c17234993ad3698090a6ab0bb6e7e3167506b7ff7877cf2d268b58d3fb86af",
+  "cliSha256": "89306b64dae33075f31aa646d8ae4c5ef64be80986dbf4c93d30293224075b37",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -4350,6 +4350,21 @@
           "files": [
             {
               "path": "src/search.ts",
+              "source": "interface Input {\n  items: string[] | undefined;\n}\nexport type WireInput = Input;\nfunction search({ items = [] }: Input) {\n  return items.length;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/search.ts",
+          "id": "exported-nullish-input",
+          "outcome": "accept",
+          "scenarioId": "exported-input",
+          "title": "Preserve an exported input contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/search.ts",
               "source": "interface Input {\n  items: string[];\n}\nfunction search({ items }: Input) {\n  return items.length;\n}\n"
             }
           ],
@@ -4359,6 +4374,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Model an always-present collection"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/search.ts",
+              "source": "interface Input {\n  items: string[] | undefined;\n}\ntype WireInput = Input;\nfunction search({ items = [] }: Input) {\n  return items.length;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/search.ts",
+          "id": "private-nullish-input",
+          "outcome": "reject",
+          "scenarioId": "exported-input",
+          "title": "Review a private input with an empty default"
         }
       ],
       "optionsSchemaSource": null

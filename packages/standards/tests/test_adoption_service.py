@@ -216,6 +216,145 @@ def test_init_service_remains_python_only_after_adoption(tmp_path: Path) -> None
     assert all(command.argv[0] != "npm" for command in second.install_commands)
 
 
+def _independent_typescript_projects(root: Path) -> list[Path]:
+    projects = [root / name for name in (".github/deploy", "apps/docs", "packages/typescript")]
+    for project in projects:
+        project.mkdir(parents=True)
+        (project / "package.json").write_text('{"name":"fixture","private":true}\n', encoding="utf-8")
+    return projects
+
+
+@pytest.mark.parametrize("typescript_dest", ["packages/typescript", "not-present"], ids=["stored", "disabled-stale"])
+def test_repeated_setup_does_not_discover_disabled_independent_typescript_projects(
+    tmp_path: Path, typescript_dest: str
+) -> None:
+    _python_project(tmp_path)
+    projects = _independent_typescript_projects(tmp_path)
+    originals = {project / "package.json": (project / "package.json").read_bytes() for project in projects}
+    adopted = manifest.Manifest(
+        version=manifest.adopted_version(),
+        configs=("ruff",),
+        python_dest=".",
+        typescript_dest=typescript_dest,
+        hook_manager="none",
+    )
+    adoption = tmp_path / manifest.MANIFEST_NAME
+    original_manifest = adopted.render().encode()
+    adoption.write_bytes(original_manifest)
+
+    plan = plan_init(tmp_path)
+
+    assert not plan.scaffold.errors
+    assert plan.scaffold.configs == ("ruff",)
+    assert plan.scaffold.ecosystems.python_root == tmp_path
+    assert not plan.scaffold.ecosystems.typescript
+    assert plan.scaffold.ecosystems.typescript_root is None
+    assert all(command.label != "ESLint peers" for command in plan.install_commands)
+    assert apply_init(plan, install=False).status == 0
+    assert adoption.read_bytes() == original_manifest
+    assert {path: path.read_bytes() for path in originals} == originals
+    assert all({path.name for path in project.iterdir()} == {"package.json"} for project in projects)
+
+    repeated = plan_init(tmp_path)
+
+    assert not repeated.scaffold.errors
+    assert not repeated.scaffold.ecosystems.typescript
+    assert apply_init(repeated, install=False).status == 0
+    assert adoption.read_bytes() == original_manifest
+    assert {path: path.read_bytes() for path in originals} == originals
+
+
+def test_repeated_setup_reuses_enabled_typescript_owner_among_independent_projects(tmp_path: Path) -> None:
+    projects = _independent_typescript_projects(tmp_path)
+    owner = projects[-1]
+    siblings = {project / "package.json": (project / "package.json").read_bytes() for project in projects[:-1]}
+    adopted = manifest.Manifest(
+        version=manifest.adopted_version(),
+        configs=("eslint",),
+        python_dest=".",
+        typescript_dest="packages/typescript",
+        hook_manager="none",
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+
+    plan = plan_init(tmp_path)
+
+    assert not plan.scaffold.errors
+    assert plan.scaffold.ecosystems.typescript_root == owner
+    assert plan.sync is not None
+    assert any(target.destination == owner / "eslint.strict.mjs" for target in plan.sync.targets)
+    assert any(command.label == "ESLint peers" and command.cwd == owner for command in plan.install_commands)
+    assert apply_init(plan, install=False).status == 0
+    assert (owner / "eslint.strict.mjs").is_file()
+    assert {path: path.read_bytes() for path in siblings} == siblings
+    assert all({path.name for path in project.iterdir()} == {"package.json"} for project in projects[:-1])
+
+
+def test_repeated_setup_explicit_typescript_destination_can_change_owner(tmp_path: Path) -> None:
+    projects = _independent_typescript_projects(tmp_path)
+    owner = projects[1]
+    adopted = manifest.Manifest(
+        version=manifest.adopted_version(),
+        configs=("eslint",),
+        python_dest=".",
+        typescript_dest="packages/typescript",
+        hook_manager="none",
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+
+    plan = plan_init(tmp_path, typescript_dest="apps/docs")
+
+    assert not plan.scaffold.errors
+    assert plan.scaffold.ecosystems.typescript_root == owner
+    assert apply_init(plan, install=False).status == 0
+    current = manifest.load(tmp_path)
+    assert current is not None
+    assert current.typescript_dest == "apps/docs"
+    assert (owner / "eslint.strict.mjs").is_file()
+    assert not (projects[-1] / "eslint.strict.mjs").exists()
+
+
+def test_setup_explicitly_enabled_typescript_keeps_existing_discovery_and_override(tmp_path: Path) -> None:
+    projects = _independent_typescript_projects(tmp_path)
+    adopted = manifest.Manifest(
+        version=manifest.adopted_version(),
+        configs=("yamllint",),
+        python_dest=".",
+        typescript_dest="not-present",
+        hook_manager="none",
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+
+    ambiguous = plan_init(tmp_path, configs=("eslint",))
+
+    assert any("multiple independent TypeScript roots" in error for error in ambiguous.scaffold.errors)
+    assert ambiguous.sync is None
+    assert ambiguous.install_commands == ()
+
+    selected = plan_init(tmp_path, configs=("eslint",), typescript_dest="apps/docs")
+
+    assert not selected.scaffold.errors
+    assert selected.scaffold.ecosystems.typescript_root == projects[1]
+    assert apply_init(selected, install=False).status == 0
+    current = manifest.load(tmp_path)
+    assert current is not None
+    assert current.configs == ("eslint",)
+    assert current.typescript_dest == "apps/docs"
+
+
+def test_fresh_setup_still_rejects_independent_typescript_roots(tmp_path: Path) -> None:
+    projects = _independent_typescript_projects(tmp_path)
+    originals = {project / "package.json": (project / "package.json").read_bytes() for project in projects}
+
+    plan = plan_init(tmp_path, configs=("eslint",), hook_manager="none")
+
+    assert any("multiple independent TypeScript roots" in error for error in plan.scaffold.errors)
+    assert plan.sync is None
+    assert plan.install_commands == ()
+    assert {path: path.read_bytes() for path in originals} == originals
+    assert not (tmp_path / manifest.MANIFEST_NAME).exists()
+
+
 def test_init_service_rejects_absent_target_created_after_planning(tmp_path: Path) -> None:
     _python_project(tmp_path)
     plan = plan_init(tmp_path)
