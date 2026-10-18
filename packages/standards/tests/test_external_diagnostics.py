@@ -1585,7 +1585,7 @@ def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_
     assert (
         "git",
         "diff",
-        f"{base}...HEAD",
+        base,
         "--name-only",
         "--diff-filter=ACMR",
         "-z",
@@ -2002,7 +2002,7 @@ def test_react_doctor_disjoint_preflight_fails_closed_when_head_moves(tmp_path: 
         ),
         pytest.param(
             ("main", ".sarj-standards.toml\0", 1, 0, 1, Completion.FAILED),
-            id="non-ancestor-reported-base",
+            id="no-shared-ancestor-reported-base",
         ),
     ],
 )
@@ -2028,6 +2028,8 @@ def test_react_doctor_validates_reported_degraded_changed_scope_before_allowing_
         if argv[:3] == ("git", "merge-base", "--is-ancestor"):
             assert cwd == tmp_path
             return ProcessOutput(ancestor_status, "", "")
+        if argv[:2] == ("git", "merge-base"):
+            return ProcessOutput(1, "", "No shared ancestor")
         if argv[:2] == ("git", "diff"):
             assert cwd == tmp_path
             return ProcessOutput(0, changed, "")
@@ -2064,7 +2066,7 @@ def test_react_doctor_validates_reported_degraded_changed_scope_before_allowing_
     if expected_completion is Completion.COMPLETE:
         assert report.diagnostics == ()
         assert report.issues == ()
-        assert ("git", "diff", f"{resolved_base}...HEAD", "--name-only", "--diff-filter=ACMR", "-z", "--") in seen
+        assert ("git", "diff", resolved_base, "--name-only", "--diff-filter=ACMR", "-z", "--") in seen
     else:
         assert "baseline degraded" in report.issues[0].message
 
@@ -2112,7 +2114,7 @@ def test_react_doctor_accepts_empty_staged_scope_without_selected_project_source
     assert report.completion is Completion.COMPLETE
     assert report.diagnostics == ()
     assert report.issues == ()
-    assert seen[0] == ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--")
+    assert seen[0] == ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMRT", "-z", "--")
     assert "--staged" in seen[1]
     assert len(seen) == 2
 
@@ -2312,7 +2314,7 @@ def test_react_doctor_staged_non_detection_falls_back_to_full_and_filters_exact_
     assert report.completion is Completion.COMPLETE
     assert tuple(item.location.path for item in report.diagnostics) == ("apps/web/staged.tsx",)
     assert report.diagnostics[0].code == "react-doctor/alt-text"
-    assert seen[0] == ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--")
+    assert seen[0] == ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMRT", "-z", "--")
     assert "--staged" in seen[1]
     assert seen[2] == seen[0]
     scope_index = seen[3].index("--scope")
@@ -2600,7 +2602,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
 
     base_index = seen[3].index("--base")
     assert seen[3][base_index + 1] == "0123456789abcdef"
-    assert ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--") in git_seen
+    assert ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMRT", "-z", "--") in git_seen
     assert ("git", "rev-parse", "--verify", "--end-of-options", f"{event_base}^{{commit}}") in git_seen
     assert (
         "git",
@@ -3952,3 +3954,226 @@ def test_deptry_uv_build_default_stub_package_ownership(tmp_path: Path) -> None:
     first_party = {calls[0][index + 1] for index, option in enumerate(calls[0]) if option == "--known-first-party"}
     assert "demo_app" in first_party
     assert "demo_app-stubs" not in first_party
+
+
+@pytest.mark.parametrize(
+    ("payload_overrides", "changed_paths", "git_returncode", "expected_completion"),
+    [
+        pytest.param(
+            {"diff": {"baseBranch": "a" * 40, "changedFileCount": 3, "isCurrentChanges": False}},
+            ".sarj-standards.toml\0apps/web/package.json\0apps/web/pnpm-lock.yaml\0apps/web/pnpm-workspace.yaml\0",
+            0,
+            Completion.COMPLETE,
+            id="native-baseline-envelope-with-only-project-metadata",
+        ),
+        pytest.param({}, "apps/web/package.json\0", 0, Completion.COMPLETE, id="single-project-metadata-change"),
+        pytest.param(
+            {},
+            "apps/web/package.json\0tools/helper.ts\0",
+            0,
+            Completion.COMPLETE,
+            id="unrelated-source-does-not-belong-to-the-selected-project",
+        ),
+        pytest.param({}, "apps/web/src/page.tsx\0", 0, Completion.FAILED, id="eligible-react-source-remains-required"),
+        pytest.param({}, "apps/web/src/types.d.ts\0", 0, Completion.FAILED, id="declaration-source-remains-required"),
+        pytest.param(
+            {"diff": {"baseBranch": "a" * 40, "changedFileCount": 2, "isCurrentChanges": False}},
+            "apps/web/package.json\0",
+            0,
+            Completion.FAILED,
+            id="reported-change-count-must-match-git",
+        ),
+        pytest.param(
+            {"diff": {"baseBranch": "c" * 40, "changedFileCount": 1, "isCurrentChanges": False}},
+            "apps/web/package.json\0",
+            0,
+            Completion.FAILED,
+            id="reported-base-must-match-selected-base",
+        ),
+        pytest.param(
+            {"diff": {"baseBranch": "a" * 40, "changedFileCount": 1}},
+            "apps/web/package.json\0",
+            0,
+            Completion.FAILED,
+            id="missing-scope-kind-metadata",
+        ),
+        pytest.param(
+            {"diff": {"baseBranch": "a" * 40, "changedFileCount": 1, "isCurrentChanges": True}},
+            "apps/web/package.json\0",
+            0,
+            Completion.COMPLETE,
+            id="native-working-tree-metadata-scope-is-independently-proved",
+        ),
+        pytest.param({"diff": None}, "apps/web/package.json\0", 0, Completion.FAILED, id="missing-diff-proof"),
+        pytest.param({}, "apps/web/package.json\0", 128, Completion.FAILED, id="git-proof-failure"),
+        pytest.param(
+            {},
+            "../package.json\0apps/web/package.json\0",
+            0,
+            Completion.FAILED,
+            id="unsafe-git-path-cannot-establish-source-free-scope",
+        ),
+        pytest.param(
+            {"skippedProjects": [{"directory": "apps/web"}]},
+            "apps/web/package.json\0",
+            0,
+            Completion.FAILED,
+            id="explicit-skipped-project-remains-an-error",
+        ),
+    ],
+)
+def test_react_doctor_validates_empty_baseline_changed_scope_against_git(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    payload_overrides: dict[str, object],
+    changed_paths: str,
+    git_returncode: int,
+    expected_completion: Completion,
+) -> None:
+    base = "a" * 40
+    head = "b" * 40
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", base)
+    project = tmp_path / "apps" / "web"
+    project.mkdir(parents=True)
+    package = project / "package.json"
+    package.write_text('{"dependencies":{"react":"19.0.0"}}\n', encoding="utf-8")
+    adopted = manifest.Manifest("8.79.0", ("eslint",), python_dest="python", typescript_dest="apps/web")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    native_calls: list[tuple[str, ...]] = []
+    # The pinned native serializer omits reactDetected and baselineDegraded
+    # when a committed metadata-only diff has no eligible React source.
+    payload: dict[str, object] = {
+        "schemaVersion": 3,
+        "sourceRevision": head,
+        "mode": "baseline",
+        "baseline": {
+            "baseRef": base,
+            "source": "base",
+            "matchedCount": 0,
+            "newCount": 0,
+            "fixedCount": 0,
+            "baseTotalCount": 0,
+        },
+        "version": manifest.eslint_peers()["react-doctor"],
+        "ok": True,
+        "directory": str(project),
+        "diff": {"baseBranch": base, "changedFileCount": 1, "isCurrentChanges": False},
+        "projects": [],
+        "diagnostics": [],
+        "summary": {
+            "errorCount": 0,
+            "warningCount": 0,
+            "affectedFileCount": 0,
+            "totalDiagnosticCount": 0,
+            "score": None,
+            "scoreLabel": None,
+        },
+        "elapsedMilliseconds": 1,
+        "error": None,
+    }
+    payload.update(payload_overrides)
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        match argv[:2]:
+            case ("git", "rev-parse"):
+                assert cwd == tmp_path
+                reference = argv[-1].removesuffix("^{commit}")
+                return ProcessOutput(git_returncode, f"{head if reference == 'HEAD' else reference}\n", "")
+            case ("git", "merge-base"):
+                assert cwd == tmp_path
+                return ProcessOutput(git_returncode, "", "")
+            case ("git", "diff"):
+                assert cwd == tmp_path
+                return ProcessOutput(git_returncode, changed_paths, "")
+            case ("git", "status"):
+                assert cwd == tmp_path
+                return ProcessOutput(git_returncode, "", "")
+            case _:
+                assert cwd == project
+                assert any("react-doctor" in item for item in argv)
+                native_calls.append(tuple(argv))
+                return ProcessOutput(0, json.dumps(payload), "")
+
+    reports = analyze_external(
+        (str(package),),
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=runner,
+        capabilities=frozenset({"react-doctor"}),
+        include_react_doctor=True,
+    )
+
+    assert len(native_calls) == 1
+    assert [item.name for item in reports] == ["react-doctor"]
+    report = reports[0]
+    assert report.completion is expected_completion
+    assert report.diagnostics == ()
+    if expected_completion is Completion.COMPLETE:
+        assert report.issues == ()
+    else:
+        assert len(report.issues) == 1
+        assert report.issues[0].kind == "tool-failure"
+
+
+@pytest.mark.parametrize(
+    "common_base_output",
+    [
+        pytest.param(ProcessOutput(1, "", "No shared ancestor"), id="unrelated-histories"),
+        pytest.param(ProcessOutput(128, "", "Git failed"), id="git-error"),
+        pytest.param(ProcessOutput(0, "not-a-commit\n", ""), id="malformed-object"),
+        pytest.param(ProcessOutput(0, "c" * 40 + "\n" + "d" * 40 + "\n", ""), id="multiple-objects"),
+    ],
+)
+def test_react_doctor_rejects_invalid_common_ancestor_proof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, common_base_output: ProcessOutput
+) -> None:
+    base = "a" * 40
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", base)
+    project = tmp_path / "apps" / "web"
+    project.mkdir(parents=True)
+    package = project / "package.json"
+    package.write_text('{"dependencies":{"react":"19.0.0"}}\n', encoding="utf-8")
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        manifest.Manifest("8.79.0", ("eslint",), python_dest="python", typescript_dest="apps/web").render(),
+        encoding="utf-8",
+    )
+    seen: list[tuple[str, ...]] = []
+    payload: dict[str, object] = {
+        "schemaVersion": 3,
+        "version": manifest.eslint_peers()["react-doctor"],
+        "ok": True,
+        "diff": {"baseBranch": base, "changedFileCount": 1, "isCurrentChanges": False},
+        "projects": [],
+        "diagnostics": [],
+        "error": None,
+    }
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        seen.append(tuple(argv))
+        match argv[:2]:
+            case ("git", "rev-parse"):
+                return ProcessOutput(0, ("b" * 40 if argv[-1] == "HEAD^{commit}" else base) + "\n", "")
+            case ("git", "merge-base"):
+                return ProcessOutput(1, "", "Not an ancestor") if "--is-ancestor" in argv else common_base_output
+            case ("git", "diff"):
+                return ProcessOutput(0, "apps/web/package.json\0", "")
+            case ("git", "status"):
+                return ProcessOutput(0, "", "")
+            case _:
+                assert cwd == project
+                return ProcessOutput(0, json.dumps(payload), "")
+
+    reports = analyze_external(
+        (str(package),),
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=runner,
+        capabilities=frozenset({"react-doctor"}),
+        include_react_doctor=True,
+    )
+
+    assert len(reports) == 1
+    assert reports[0].completion is Completion.FAILED
+    assert "no analyzed projects" in reports[0].issues[0].message
+    assert ("git", "merge-base", base, "HEAD") in seen
