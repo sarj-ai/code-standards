@@ -436,11 +436,11 @@ def test_deep_elif_chain_preserves_neighboring_function_analysis() -> None:
     assert finding.line == len(source.splitlines()) - 1
 
 
-def test_warning_location_suppression_and_generated_sources() -> None:
+def test_error_location_suppression_and_generated_sources() -> None:
     rule = NoMutatingContainerTransform()
     source = _CASES[0].source
     [finding] = rule.check(Path("app/counts.py"), source)
-    assert (finding.code, finding.line, finding.col, finding.severity.value) == ("SARJ520", 2, 5, "warning")
+    assert (finding.code, finding.line, finding.col, finding.severity.value) == ("SARJ520", 2, 5, "error")
     suppressed = source.replace("values.sort()", "values.sort()  # sarj-noqa: SARJ520 — documented legacy in-place API")
     assert rule.check(Path("app/counts.py"), suppressed) == []
     assert rule.check(Path("generated/counts.py"), source) == []
@@ -455,11 +455,19 @@ def test_existing_model_mutation_owner_has_precedence() -> None:
     assert NoMutatingContainerTransform().check(path, source) == []
 
 
-def test_warning_does_not_block_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+@pytest.mark.parametrize(
+    ("case_id", "expected_exit"),
+    [("borrowed-list-sort", 1), ("fresh-list-builder", 0), ("void-command", 0)],
+)
+def test_blocking_cli_contract(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], case_id: str, expected_exit: int
+) -> None:
     target = tmp_path / "counts.py"
-    target.write_text(_CASES[0].source)
-    assert main(["check", "--rule", NoMutatingContainerTransform.id, str(target)]) == 0
-    assert "SARJ520 warning:" in capsys.readouterr().out
+    target.write_text(next(case.source for case in _CASES if case.case_id == case_id))
+    assert main(["check", "--rule", NoMutatingContainerTransform.id, str(target)]) == expected_exit
+    output = capsys.readouterr().out
+    assert ("SARJ520" in output) == bool(expected_exit)
+    assert "warning:" not in output
 
 
 @pytest.mark.parametrize(

@@ -1,0 +1,628 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-19",
+  "decision": "promote-error",
+  "releaseCandidate": {
+    "python": "1.52.0",
+    "standards": "8.86.0"
+  },
+  "rules": [
+    "python:no-discarded-validation-result",
+    "python:no-mutating-container-transform"
+  ],
+  "codes": [
+    "SARJ519",
+    "SARJ520"
+  ],
+  "problem": "A value-producing validator must not be used only for exception side effects, and a container replacement must not hide mutation of borrowed primitive builtin inputs. Catalog error metadata alone does not block the native CLI when emitted diagnostics remain warnings.",
+  "change": "Promote default and actual diagnostic severity to ERROR for both qualified rules. Recognition logic and ownership boundaries are byte-identical to the published warning release after normalizing those two severity sites per rule. No autofix is offered.",
+  "warningRelease": {
+    "python": "1.51.0",
+    "standards": "8.85.0",
+    "githubRelease": "https://github.com/sarj-ai/code-standards/releases/tag/standards-v8.85.0",
+    "publishedAt": "2026-10-19T10:11:14Z",
+    "tagTarget": "0886b671b7bcd52ce9f02b9006d58e62a509f4da",
+    "distributions": "Exact PyPI versions verified with wheels and source distributions.",
+    "qualification": "packages/standards/benchmarks/container-transform-expansion-20261019.json"
+  },
+  "sourceEquivalence": [
+    {
+      "rule_file": "no_discarded_validation_result.py",
+      "changed_severity_sites": 2,
+      "all_other_source_identical": true,
+      "warning_sha256": "eecda5840ad9e02fc608dfffbe8576534790d4fc6cd91e86ae26c1d6371ce128",
+      "error_sha256": "4569e82e843b18cbe3c43a30524654478f2650b73b5be2bd45d04af528fe4055"
+    },
+    {
+      "rule_file": "no_mutating_container_transform.py",
+      "changed_severity_sites": 2,
+      "all_other_source_identical": true,
+      "warning_sha256": "9955873255259dc6b64a735ecc79b79c351cefa8280a18805fafedc571f9ab76",
+      "error_sha256": "6c93ab01f931af5446f774d6ccabdbd7c87c1e017d7f2493d5875bed3df31b96"
+    }
+  ],
+  "candidateWheel": {
+    "package": "sarj-python-lint",
+    "version": "1.52.0",
+    "candidate_wheel_isolated_from_worktree": true,
+    "cases": [
+      {
+        "case": "discarded-checked-value",
+        "exit": 1,
+        "diagnostic": "SARJ519"
+      },
+      {
+        "case": "consumed-checked-value",
+        "exit": 0,
+        "diagnostic": null
+      },
+      {
+        "case": "explicit-validation-command",
+        "exit": 0,
+        "diagnostic": null
+      },
+      {
+        "case": "native-descriptor-and-immutable-output",
+        "exit": 1,
+        "diagnostic": "SARJ520"
+      },
+      {
+        "case": "copy-before-immutable-output",
+        "exit": 0,
+        "diagnostic": null
+      },
+      {
+        "case": "explicit-mutation-command",
+        "exit": 0,
+        "diagnostic": null
+      },
+      {
+        "case": "identity-helper-and-special-method",
+        "exit": 1,
+        "diagnostic": "SARJ520"
+      },
+      {
+        "case": "original-reproduction",
+        "exit": 1,
+        "diagnostic": "SARJ519",
+        "line": 162,
+        "column": 9
+      }
+    ],
+    "source_equivalence": "Only default and emitted severities changed from the verified warning release; all other rule source bytes are identical.",
+    "sha256": "6345e12345ff329036d559f1d91b2a15f699e2c6b7c5c1b934bf644d99e15663"
+  },
+  "validation": {
+    "focusedRuleTests": 318,
+    "sharedAnnotationTests": 4,
+    "python314": "322 passed",
+    "python315": "322 passed",
+    "cliContract": "Violations exit1 and emit error diagnostics. Consumed checked values, copies before writes and explicit None commands exit0.",
+    "qualificationReuse": "The 3,000-file immutable warning corpus and its 3 inspected true policy matches, 0 known false positives and measured bounded performance remain applicable because recognition source is unchanged. No new corpus precision or performance claim is made.",
+    "fullVerification": {
+      "command": "make verify TEST_JOBS=4",
+      "exitCode": 0,
+      "python315Passed": 19807,
+      "typescriptPassed": 9970,
+      "typescriptFiles": 174,
+      "packagedStandardsPassed": 6294,
+      "packagedStandardsSkipped": 9,
+      "iacPassed": 1448,
+      "bootstrapPassed": 31,
+      "contractsPassed": 46,
+      "nativePythonRules": 161,
+      "nativePythonSourceFiles": 843,
+      "nativeTypeScriptRules": 125,
+      "blockingNativeFindings": 0,
+      "note": "Local private-reference scanning delegates to trusted exact-head CI, which remains required before merge."
+    }
+  },
+  "scope": "Source-proven validation and borrowed primitive builtin-container transformations. Preserve native command/result protocols, framework/exception assertions and unsupported dynamic contracts. This is bounded enforcement, not a proof of arbitrary program purity.",
+  "campaign": {
+    "targetReviews": 100,
+    "recordedReviews": 100,
+    "countingPolicy": "Distinct evidenced defects, maintained-owner reviews, native protocol boundaries, qualification/remediation and packaged enforcement reviews. Repeated tests, generated vectors and cosmetic variants are not passes.",
+    "reviews": [
+      {
+        "number": 1,
+        "topic": "Discarded value-producing validation conversions",
+        "decision": "ship-warning after full verification and calibration corrections"
+      },
+      {
+        "number": 2,
+        "topic": "Exception observation across eagerly executed class bodies",
+        "decision": "revise"
+      },
+      {
+        "number": 3,
+        "topic": "Compiler-scoped runtime callee identity",
+        "decision": "revise"
+      },
+      {
+        "number": 4,
+        "topic": "Runtime import identity for converters and exception assertions",
+        "decision": "revise"
+      },
+      {
+        "number": 5,
+        "topic": "Eager class namespaces and prepared lookup",
+        "decision": "revise"
+      },
+      {
+        "number": 6,
+        "topic": "Bounded import-contract analysis on repeated call sites",
+        "decision": "revise"
+      },
+      {
+        "number": 7,
+        "topic": "Stable callable value aliases",
+        "decision": "expand-existing-rule"
+      },
+      {
+        "number": 8,
+        "topic": "Exception assertions with source-proven unittest receivers",
+        "decision": "revise"
+      },
+      {
+        "number": 9,
+        "topic": "Existing upstream ownership of discarded builtin results in JavaScript/TypeScript",
+        "decision": "retain-existing-upstream-rule"
+      },
+      {
+        "number": 10,
+        "topic": "Returning borrowed Pydantic models after mutation",
+        "decision": "retain-existing-owner"
+      },
+      {
+        "number": 11,
+        "topic": "Borrowed builtin containers returned after mutation",
+        "decision": "new-rule-admission"
+      },
+      {
+        "number": 12,
+        "topic": "Early return/raise guards in container transformations",
+        "decision": "expand-existing-prototype"
+      },
+      {
+        "number": 13,
+        "topic": "Framework before-validator ownership and replacement timing",
+        "decision": "retain-existing-owner"
+      },
+      {
+        "number": 14,
+        "topic": "Implicit class cells override enclosing function locals",
+        "decision": "revise"
+      },
+      {
+        "number": 15,
+        "topic": "Shared imported module identity across aliases and re-exports",
+        "decision": "revise"
+      },
+      {
+        "number": 16,
+        "topic": "String-target standard-library mock replacement invalidates source contracts",
+        "decision": "revise"
+      },
+      {
+        "number": 17,
+        "topic": "Frozen Pydantic after-validator receiver writes",
+        "decision": "retain existing owner; no code change"
+      },
+      {
+        "number": 18,
+        "topic": "Standard replacement and copy-hook results",
+        "decision": "retain existing owner; no code change"
+      },
+      {
+        "number": 19,
+        "topic": "Dummy value markers as an attempted validation-result bypass",
+        "decision": "retain existing owner; no code change"
+      },
+      {
+        "number": 20,
+        "topic": "Container output element types do not change borrowed primitive input ownership",
+        "decision": "expand SARJ517 prototype"
+      },
+      {
+        "number": 21,
+        "topic": "Eager comprehension effects and Python lexical binding isolation",
+        "decision": "expand SARJ517 prototype"
+      },
+      {
+        "number": 22,
+        "topic": "Coroutine execution and discarded async validation",
+        "decision": "retain existing semantic owner; no code change"
+      },
+      {
+        "number": 23,
+        "topic": "Asynchronous cleanup requires callback execution ownership",
+        "decision": "retain existing semantic owner; no code change"
+      },
+      {
+        "number": 24,
+        "topic": "Memoization stores coroutine handles rather than awaited query values",
+        "decision": "retain existing semantic owner; no code change"
+      },
+      {
+        "number": 25,
+        "topic": "Conditional borrowed-container ownership and compatible joins",
+        "decision": "expand or repair SARJ520 prototype"
+      },
+      {
+        "number": 26,
+        "topic": "Bound conditional analysis to avoid fatal recursion",
+        "decision": "expand or repair SARJ520 prototype"
+      },
+      {
+        "number": 27,
+        "topic": "Boolean short-circuit and conditional-expression execution reachability",
+        "decision": "repair SARJ520 prototype"
+      },
+      {
+        "number": 28,
+        "topic": "Resource lifetime APIs have legitimate optional return values",
+        "decision": "retain framework/resource contract exclusions; no code change"
+      },
+      {
+        "number": 29,
+        "topic": "Conditional expression value identity must preserve a single proven borrowed owner",
+        "decision": "expand SARJ520 prototype"
+      },
+      {
+        "number": 30,
+        "topic": "Eager comprehension reachability and evaluation ordering",
+        "decision": "repair SARJ520 prototype"
+      },
+      {
+        "number": 31,
+        "topic": "Return annotations describe top-level values, not every nested annotation member",
+        "decision": "repair and expand SARJ519"
+      },
+      {
+        "number": 32,
+        "topic": "Returned scalar hides a module-state write",
+        "decision": "retain maintained upstream owner; no PR"
+      },
+      {
+        "number": 33,
+        "topic": "Shared function defaults turn returned values into cross-call state",
+        "decision": "retain maintained upstream owner; no PR"
+      },
+      {
+        "number": 34,
+        "topic": "Factory defaults evaluate effects at definition time",
+        "decision": "retain maintained upstream owner; no PR"
+      },
+      {
+        "number": 35,
+        "topic": "Implicit class storage lets one returned value change another instance",
+        "decision": "retain maintained upstream owner; no PR"
+      },
+      {
+        "number": 36,
+        "topic": "Context-local lookups can expose the same mutable default across contexts",
+        "decision": "retain maintained upstream owner; no PR"
+      },
+      {
+        "number": 37,
+        "topic": "Promise-valued calls start work before the caller handles the returned completion",
+        "decision": "retain maintained upstream owner; no PR"
+      },
+      {
+        "number": 38,
+        "topic": "A void callback contract discards async completion and its failures",
+        "decision": "retain maintained upstream owner; no PR"
+      },
+      {
+        "number": 39,
+        "topic": "Synchronous values disappear through a void callback type",
+        "decision": "retain maintained upstream owner; no PR"
+      },
+      {
+        "number": 40,
+        "topic": "A mapper used for writes produces missing replacement elements",
+        "decision": "retain maintained upstream owner; no PR"
+      },
+      {
+        "number": 41,
+        "topic": "Promise executors ignore returned values instead of settling completion",
+        "decision": "retain maintained upstream owner; no PR"
+      },
+      {
+        "number": 42,
+        "topic": "Canonical operator functions expose mutation outside method syntax",
+        "decision": "expand no-mutating-container-transform"
+      },
+      {
+        "number": 43,
+        "topic": "I/O commands return acknowledgements while changing a stream",
+        "decision": "preserve demonstrated native command/result contract; no PR"
+      },
+      {
+        "number": 44,
+        "topic": "Task scheduling returns a completion handle for started work",
+        "decision": "preserve demonstrated native command/result contract; no PR"
+      },
+      {
+        "number": 45,
+        "topic": "Acquisition commands return status while transferring lock ownership",
+        "decision": "preserve demonstrated native command/result contract; no PR"
+      },
+      {
+        "number": 46,
+        "topic": "Iterator queries consume cursor state as part of producing a value",
+        "decision": "preserve demonstrated native command/result contract; no PR"
+      },
+      {
+        "number": 47,
+        "topic": "Registration APIs return a callable while installing future work",
+        "decision": "preserve demonstrated native command/result contract; no PR"
+      },
+      {
+        "number": 48,
+        "topic": "Builder registration returns a descriptor for an owned builder mutation",
+        "decision": "preserve demonstrated native command/result contract; no PR"
+      },
+      {
+        "number": 49,
+        "topic": "Stateful generators advance private state to produce a new value",
+        "decision": "preserve demonstrated native command/result contract; no PR"
+      },
+      {
+        "number": 50,
+        "topic": "Memoized properties own their cache writes while returning the same query result",
+        "decision": "preserve demonstrated native command/result contract; no PR"
+      },
+      {
+        "number": 51,
+        "topic": "Bounded return-annotation analysis preserves runner availability",
+        "decision": "retain existing bounded source analysis; no PR"
+      },
+      {
+        "number": 52,
+        "topic": "Assignment target order and deferred local annotations must not invent writes",
+        "decision": "repair SARJ520 before first publication"
+      },
+      {
+        "number": 53,
+        "topic": "Immediate native consumption turns generator expressions into eager mutations",
+        "decision": "expand SARJ520 in follow-up warning release"
+      },
+      {
+        "number": 54,
+        "topic": "Body-preserving native method markers must not hide borrowed mutations",
+        "decision": "expand SARJ520 in follow-up warning release"
+      },
+      {
+        "number": 55,
+        "topic": "Declared read-only input contracts already reject borrowed writes in native type checkers",
+        "decision": "retain native compiler ownership; no PR"
+      },
+      {
+        "number": 56,
+        "topic": "A narrowing assertion can erase the read-only contract and expose mutation",
+        "decision": "retain maintained upstream error; no PR"
+      },
+      {
+        "number": 57,
+        "topic": "Source-proven typing helpers preserve the borrowed object identity",
+        "decision": "expand SARJ520 identity transfer in follow-up release"
+      },
+      {
+        "number": 58,
+        "topic": "Literal collection truth must prune unreachable mutations",
+        "decision": "repair SARJ520 reachability"
+      },
+      {
+        "number": 59,
+        "topic": "Literal comparisons and comparison chains must short-circuit effects",
+        "decision": "repair SARJ520 comparison reachability"
+      },
+      {
+        "number": 60,
+        "topic": "Render queries must use stable inputs rather than impure clock reads",
+        "decision": "retain maintained native error; no PR"
+      },
+      {
+        "number": 61,
+        "topic": "Returning a rendered value must not synchronously enqueue another render",
+        "decision": "retain maintained native error; no PR"
+      },
+      {
+        "number": 62,
+        "topic": "Mutable ref reads belong outside the render value computation",
+        "decision": "retain maintained native error; no PR"
+      },
+      {
+        "number": 63,
+        "topic": "Memoization callbacks compute values instead of serving as commands",
+        "decision": "retain maintained native error; no PR"
+      },
+      {
+        "number": 64,
+        "topic": "A component must not write its borrowed props while constructing its return value",
+        "decision": "retain maintained native error; no PR"
+      },
+      {
+        "number": 65,
+        "topic": "Value-returning array sort and reverse APIs have maintained nonmutating replacements",
+        "decision": "retain maintained upstream errors; no PR"
+      },
+      {
+        "number": 66,
+        "topic": "An immutable output container does not justify mutating borrowed inputs",
+        "decision": "expand SARJ520 output contracts"
+      },
+      {
+        "number": 67,
+        "topic": "Initializers perform commands and must not return a value",
+        "decision": "retain maintained native error; no PR"
+      },
+      {
+        "number": 68,
+        "topic": "A setter command cannot communicate a replacement through its return value",
+        "decision": "retain native compiler error; no PR"
+      },
+      {
+        "number": 69,
+        "topic": "A returned result must not depend on an optimized-away assertion assignment",
+        "decision": "retain maintained native error; no PR"
+      },
+      {
+        "number": 70,
+        "topic": "A finally return must not replace the checked value or validation exception",
+        "decision": "retain maintained native error; no PR"
+      },
+      {
+        "number": 71,
+        "topic": "An array command return is a length acknowledgement, not a replacement",
+        "decision": "retain demonstrated maintained owner; no PR"
+      },
+      {
+        "number": 72,
+        "topic": "Proxy mutation traps must return the protocol success signal",
+        "decision": "retain demonstrated maintained owner; no PR"
+      },
+      {
+        "number": 73,
+        "topic": "Asynchronous finally callbacks can replace the original completion",
+        "decision": "retain demonstrated maintained owner; no PR"
+      },
+      {
+        "number": 74,
+        "topic": "Multiple settlement commands perform work even after a promise is settled",
+        "decision": "retain demonstrated maintained owner; no PR"
+      },
+      {
+        "number": 75,
+        "topic": "Synchronous iterator filtering does not await asynchronous predicates",
+        "decision": "retain demonstrated maintained owner; no PR"
+      },
+      {
+        "number": 76,
+        "topic": "Replacing a global query changes the meaning of unrelated returned values",
+        "decision": "retain demonstrated maintained owner; no PR"
+      },
+      {
+        "number": 77,
+        "topic": "A silent rejection handler turns failed work into a successful sentinel",
+        "decision": "retain demonstrated maintained owner; no PR"
+      },
+      {
+        "number": 78,
+        "topic": "Synchronous exception conversion must preserve the failure contract",
+        "decision": "retain demonstrated maintained owner; no PR"
+      },
+      {
+        "number": 79,
+        "topic": "A proven promise callback chain has an existing explicit sequencing owner",
+        "decision": "retain demonstrated maintained owner; no PR"
+      },
+      {
+        "number": 80,
+        "topic": "Reflective mutation can invalidate the type of a subsequent returned field",
+        "decision": "retain demonstrated maintained owner; no PR"
+      },
+      {
+        "number": 81,
+        "topic": "Native builtin descriptors preserve the borrowed target identity",
+        "decision": "expand SARJ520 within the existing native-container owner"
+      },
+      {
+        "number": 82,
+        "topic": "Explicit mutation special methods change the same borrowed container",
+        "decision": "expand SARJ520 within the existing native-container owner"
+      },
+      {
+        "number": 83,
+        "topic": "Boolean value selection can preserve a proven borrowed alias",
+        "decision": "expand SARJ520 within the existing native-container owner"
+      },
+      {
+        "number": 84,
+        "topic": "Atomic database commands can return the value of the same write",
+        "decision": "preserve demonstrated command/protocol boundary; no PR"
+      },
+      {
+        "number": 85,
+        "topic": "A queue receive transfers an item while returning it",
+        "decision": "preserve demonstrated command/protocol boundary; no PR"
+      },
+      {
+        "number": 86,
+        "topic": "A process command returns completion and output for work it started",
+        "decision": "preserve demonstrated command/protocol boundary; no PR"
+      },
+      {
+        "number": 87,
+        "topic": "A filesystem rename returns the destination of its explicit command",
+        "decision": "preserve demonstrated command/protocol boundary; no PR"
+      },
+      {
+        "number": 88,
+        "topic": "The context-manager exit result intentionally controls exception propagation",
+        "decision": "preserve demonstrated command/protocol boundary; no PR"
+      },
+      {
+        "number": 89,
+        "topic": "Context assignment returns a restoration token rather than a replacement value",
+        "decision": "preserve demonstrated command/protocol boundary; no PR"
+      },
+      {
+        "number": 90,
+        "topic": "A loop target must not overwrite the container whose value will be returned",
+        "decision": "retain maintained native owner; no PR"
+      },
+      {
+        "number": 91,
+        "topic": "Method memoization can retain receiver lifetime beyond the returned value",
+        "decision": "retain maintained native owner; no PR"
+      },
+      {
+        "number": 92,
+        "topic": "Mutating an iterated container can skip inputs before returning the result",
+        "decision": "retain maintained native owner; no PR"
+      },
+      {
+        "number": 93,
+        "topic": "Returned closures must not silently share a changing loop binding",
+        "decision": "retain maintained native owner; no PR"
+      },
+      {
+        "number": 94,
+        "topic": "A grouped return iterator is invalidated by its first consumption",
+        "decision": "retain maintained native owner; no PR"
+      },
+      {
+        "number": 95,
+        "topic": "A generator value return is separate from its yielded result stream",
+        "decision": "retain maintained native owner; no PR"
+      },
+      {
+        "number": 96,
+        "topic": "A property used only for a write does not produce the expected query value",
+        "decision": "retain maintained native owner; no PR"
+      },
+      {
+        "number": 97,
+        "topic": "Effect analysis must inspect source without invoking the application it checks",
+        "decision": "retain static parsing and source-only native identity; no PR"
+      },
+      {
+        "number": 98,
+        "topic": "Expanded corpus calibration found a dual-output provisioning helper in code-standards",
+        "decision": "split command effects from returned argument derivation; qualify current warning source"
+      },
+      {
+        "number": 99,
+        "topic": "Blocking promotion must change emitted diagnostics as well as catalog metadata",
+        "decision": "promote qualified rules in a separate release and verify actual CLI failure"
+      },
+      {
+        "number": 100,
+        "topic": "The installed wheel must enforce the original defect and preserve valid command/query alternatives",
+        "decision": "ship the separately qualified blocking promotion"
+      }
+    ]
+  }
+}

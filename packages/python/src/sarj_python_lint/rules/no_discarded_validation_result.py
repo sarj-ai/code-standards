@@ -140,7 +140,7 @@ class NoDiscardedValidationResult(Rule):
     id = "no-discarded-validation-result"
     code = "SARJ519"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Consume a value-producing validator's result instead of relying on its exceptions.",
         rationale="Discarding a conversion's returned value makes validation an implicit exception side effect. The caller can continue with unvalidated or unnormalized inputs even after constructing a checked replacement.",
         remediation="Use the checked result in the following operation, or expose a separate validation command returning None. Preserve exception behavior; do not delete the call or add a dummy assignment.",
@@ -212,7 +212,7 @@ class NoDiscardedValidationResult(Rule):
                 col=statement.col_offset + 1,
                 code=self.code,
                 message="This value-producing validator's result is discarded; consume the checked value or use a validation command returning None.",
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for statement, call in calls
             if isinstance(call, ast.Call)

@@ -118,7 +118,7 @@ class NoMutatingContainerTransform(Rule):
     id = "no-mutating-container-transform"
     code = "SARJ520"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Return container replacements without mutating borrowed builtin inputs.",
         rationale="A container-valued transformation can change caller aliases before returning its result. Copying after the write leaves the original input changed.",
         remediation="Copy each changed container before writing, return a fresh replacement, or expose a separate command returning None. Keep documented in-place contracts explicit; do not discard the operation or add a dummy assignment.",
@@ -187,7 +187,7 @@ class NoMutatingContainerTransform(Rule):
                 col=mutation.node.col_offset + 1,
                 code=self.code,
                 message=f"This container-valued transformation mutates borrowed {mutation.owner.kind} input `{mutation.owner.parameter}`; copy before writing or use a command returning None.",
-                severity=Severity.WARNING,
+                severity=Severity.ERROR,
             )
             for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef)
             for mutation in analysis.mutations(function)
