@@ -281,7 +281,7 @@ _CASES = (
         + "case = TestCase()\nwith case.assertRaises(ValueError):\n    checked_count('')\n",
     ),
     EvaluationCase(
-        "unknown-assertion-receiver-keeps-the-converter-warning",
+        "unknown-assertion-receiver-keeps-the-converter-diagnostic",
         Language.PYTHON,
         _VALIDATOR + "def save(case):\n    with case.assertRaises(ValueError):\n        checked_count('2')\n",
         ExpectedOutcome.MATCH,
@@ -403,7 +403,7 @@ def test_imported_validator_result_is_observed_without_importing_application_cod
     target = tmp_path / "store.py"
     target.write_text(f"{imports}\ndef save(raw):\n    {call}(raw)\n    persist(raw)\n")
     [finding] = analyze([NoDiscardedValidationResult.id], [target])
-    assert (finding.code, finding.line, finding.col, finding.severity.value) == ("SARJ519", 3, 5, "warning")
+    assert (finding.code, finding.line, finding.col, finding.severity.value) == ("SARJ519", 3, 5, "error")
 
 
 def test_reexported_validator_and_relative_import(tmp_path: Path) -> None:
@@ -535,11 +535,19 @@ def test_exact_suppression_and_generated_sources() -> None:
     assert rule.check(Path("generated/counts.py"), _CASES[0].source) == []
 
 
-def test_warning_does_not_block_cli(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+@pytest.mark.parametrize(
+    ("case_id", "expected_exit"),
+    [("discarded-replacement", 1), ("passed-result", 0), ("explicit-command", 0)],
+)
+def test_blocking_cli_contract(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], case_id: str, expected_exit: int
+) -> None:
     target = tmp_path / "counts.py"
-    target.write_text(_CASES[0].source)
-    assert main(["check", "--rule", NoDiscardedValidationResult.id, str(target)]) == 0
-    assert "SARJ519 warning:" in capsys.readouterr().out
+    target.write_text(next(case.source for case in _CASES if case.case_id == case_id))
+    assert main(["check", "--rule", NoDiscardedValidationResult.id, str(target)]) == expected_exit
+    output = capsys.readouterr().out
+    assert ("SARJ519" in output) == bool(expected_exit)
+    assert "warning:" not in output
 
 
 @pytest.mark.parametrize(
