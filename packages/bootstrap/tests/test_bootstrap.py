@@ -95,6 +95,7 @@ def test_execs_exact_bundle_and_preserves_environment(
     monkeypatch.setenv("UV_OFFLINE", "1")
     monkeypatch.setenv("UV_INDEX_URL", "https://packages.example/simple")
     monkeypatch.setenv("SSL_CERT_FILE", "/certificates/enterprise.pem")
+    monkeypatch.setenv("SARJ_LOCAL_CHECK_STATE_DIR", str(tmp_path / "state"))
 
     def fake_which(_name: str) -> str:
         return "/tools/uvx"
@@ -193,6 +194,7 @@ def test_fake_uvx_receives_arguments_and_owns_exit_status(tmp_path: Path, fake_u
     nested.mkdir()
     environment = os.environ.copy()  # ruff: ignore[banned-api] — preserve the test runner's Python path.
     environment["PATH"] = f"{fake_uvx.parent}{os.pathsep}{environment['PATH']}"
+    environment["SARJ_LOCAL_CHECK_STATE_DIR"] = str(tmp_path / "state")
     completed = subprocess.run(
         [sys.executable, "-c", "import sarj_standards_bootstrap as b; b.main(['check'])"],
         cwd=nested,
