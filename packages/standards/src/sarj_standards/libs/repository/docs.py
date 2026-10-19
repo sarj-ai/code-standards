@@ -542,6 +542,8 @@ def _allowed_document(relative: Path) -> bool:
     ):
         return True
     match relative.parts:
+        case (".agents" | ".claude", "skills", _skill, "SKILL.md"):
+            return True
         case ("plugins", _plugin, "commands", filename):
             return filename.endswith(".md")
         case ("plugins", _plugin, "skills", _skill, "SKILL.md"):
@@ -559,6 +561,8 @@ def _documentation_paths(root: Path) -> tuple[Path, ...]:
         *(root / path for path in _EXECUTABLE_OR_LEGAL_DOCUMENTS),
     }
     maintained = {
+        *root.glob(".agents/skills/*/SKILL.md"),
+        *root.glob(".claude/skills/*/SKILL.md"),
         *root.glob("plugins/*/commands/*.md"),
         *root.glob("plugins/*/skills/*/SKILL.md"),
         *root.glob("plugins/*/skills/*/references/*.md"),
