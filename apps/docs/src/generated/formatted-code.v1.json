@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "00d4e6c17086bee0c10337ce59ceabc3534383c75946b2f288b53df546e7d243",
-  "cliSha256": "0a69adec42780e5a62bac667e63aaf0d55fe347fa219f7d535a97d1d8153bc84",
+  "catalogSha256": "c32714d5da1fdf67ccb0b9c2da2202ff3b8b54af640e84e7708cd3f4933eebb9",
+  "cliSha256": "09d6f516d72cef1cd0ce4c271e2cff6178cd76c9c39a458b77fe68783f7c2bc7",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -7953,6 +7953,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Construct the desired mapping directly"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-discarded-validation-result": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/counts.py",
+              "source": "def checked_count(raw: str) -> int:\n    if not raw:\n        raise ValueError(\"empty count\")\n    return int(raw)\n\n\ndef save(raw: str) -> int:\n    return checked_count(raw)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/counts.py",
+          "id": "consume-checked-value",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Pass the validated replacement to the next operation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/counts.py",
+              "source": "def checked_count(raw: str) -> int:\n    if not raw:\n        raise ValueError(\"empty count\")\n    return int(raw)\n\n\ndef save(raw: str) -> None:\n    checked_count(raw)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/counts.py",
+          "id": "discarded-checked-value",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A checked replacement is constructed and discarded"
         }
       ],
       "optionsSchemaSource": null
