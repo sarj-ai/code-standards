@@ -8,8 +8,8 @@
     "standards": "8.87.0"
   },
   "request": "50 additional distinct review passes, emphasizing useful coverage and fewer false warnings.",
-  "baselineCommit": "025299fdcaac0b6a0f534f9490fd2b53afc9de54",
-  "sourceSha256": "9dca9fb0c14ba04ab74016551460e8b2ad17660841868010a998bec1473d205e",
+  "baselineCommit": "aab73adbb135da206654533860722fae28a33fdc",
+  "sourceSha256": "b410fa80fbf5430e689c2accf87c1beec6182ae71da27794691321952c3f5a33",
   "passDefinition": "One labeled execution context per pass. These 50 additional focused contexts vary source, wrapper, namespace, analysis bound or runner contract; they are not 50 independent repository audits or a claim of exhaustive semantic coverage.",
   "admission": {
     "existingOwner": "SARJ510 owns this explicit data-union modeling preference.",
@@ -96,8 +96,18 @@
     "coldWarmAndRepeatFingerprintsEqual": true,
     "qualification": "All eight live matches were inspected against the explicit modeling policy; this is not a population precision estimate."
   },
+  "combinedValidation": {
+    "coldWarmAndCrossModeFingerprintsEqual": true,
+    "pairedRepeats": 3,
+    "filesPerRepeat": 30
+  },
   "performanceNotes": {
     "method": "Medians of three paired baseline/candidate repeats, with a fresh linter process per corpus/bounded batch. Cold means the first pass in an interpreter; warm means its second pass, not a cleared OS cache.",
+    "runtime": "CPython 3.15.0 on a shared Linux VM.",
+    "combinedPanelInput": {
+      "files": 30,
+      "bytes": 314167
+    },
     "combinedScope": "All registered per-file rules on the same deterministic 30-file panel across three pinned corpora; project discovery is excluded.",
     "interpretation": "Shared VM contention affects wall time. These measurements support regression review and make no optimization or population-wide speed claim."
   },
@@ -106,23 +116,23 @@
       "mode": "baseline",
       "repeats": 3,
       "files_per_repeat": 3260,
-      "median_cold_cpu_seconds": 10.735362878,
-      "median_warm_cpu_seconds": 10.716134535,
-      "median_cold_wall_seconds": 29.16463832296722,
-      "median_warm_wall_seconds": 29.69049756102322,
-      "median_end_to_end_seconds": 112.80602970399195,
-      "peak_rss_kib": 73556
+      "median_cold_cpu_seconds": 10.799623783,
+      "median_warm_cpu_seconds": 11.127670422000001,
+      "median_cold_wall_seconds": 47.32532023699605,
+      "median_warm_wall_seconds": 48.720568770033424,
+      "median_end_to_end_seconds": 170.36508504199446,
+      "peak_rss_kib": 73468
     },
     {
       "mode": "candidate",
       "repeats": 3,
       "files_per_repeat": 3260,
-      "median_cold_cpu_seconds": 10.497061524,
-      "median_warm_cpu_seconds": 10.286560145000001,
-      "median_cold_wall_seconds": 27.389132100972347,
-      "median_warm_wall_seconds": 23.810777839971706,
-      "median_end_to_end_seconds": 98.56778243099689,
-      "peak_rss_kib": 73368
+      "median_cold_cpu_seconds": 10.89336651,
+      "median_warm_cpu_seconds": 10.800792204,
+      "median_cold_wall_seconds": 38.6422138549824,
+      "median_warm_wall_seconds": 35.91886645300838,
+      "median_end_to_end_seconds": 153.94163341500098,
+      "peak_rss_kib": 73148
     }
   ],
   "combinedPerformance": [
@@ -130,23 +140,23 @@
       "mode": "baseline",
       "repeats": 3,
       "files_per_repeat": 30,
-      "median_cold_cpu_seconds": 23.751954466,
-      "median_warm_cpu_seconds": 22.986132810999997,
-      "median_cold_wall_seconds": 82.61920985000324,
-      "median_warm_wall_seconds": 85.42419033999613,
-      "median_end_to_end_seconds": 194.79118274898792,
-      "peak_rss_kib": 200676
+      "median_cold_cpu_seconds": 24.130400631,
+      "median_warm_cpu_seconds": 23.536983432,
+      "median_cold_wall_seconds": 100.22657099700882,
+      "median_warm_wall_seconds": 86.43023734001326,
+      "median_end_to_end_seconds": 215.8144336080004,
+      "peak_rss_kib": 200748
     },
     {
       "mode": "candidate",
       "repeats": 3,
       "files_per_repeat": 30,
-      "median_cold_cpu_seconds": 24.424382422999997,
-      "median_warm_cpu_seconds": 23.270638483,
-      "median_cold_wall_seconds": 78.73731512100494,
-      "median_warm_wall_seconds": 65.59360864698829,
-      "median_end_to_end_seconds": 149.81742198899155,
-      "peak_rss_kib": 200128
+      "median_cold_cpu_seconds": 23.410334931999998,
+      "median_warm_cpu_seconds": 23.184738318999997,
+      "median_cold_wall_seconds": 86.16228933901584,
+      "median_warm_wall_seconds": 93.45271005100221,
+      "median_end_to_end_seconds": 197.6834959639964,
+      "peak_rss_kib": 199984
     }
   ],
   "passes": [

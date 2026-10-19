@@ -185,6 +185,15 @@ const ESLINT_RECOMMENDED_CONFIG = {
 const ESLINT_CONCISION_ADVISORY_RULES = {
   "arrow-body-style": ["warn", "as-needed"],
   "no-extra-label": "warn",
+  "no-lonely-if": "warn",
+};
+
+// These require a local decision: a constructor may deliberately replace its
+// instance, and a one-iteration loop may deliberately select the first item.
+// Neither upstream rule autofixes the return value or control-flow contract.
+const ESLINT_CORRECTNESS_ADVISORY_RULES = {
+  "no-constructor-return": "warn",
+  "no-unreachable-loop": "warn",
 };
 
 // Unicorn ships a broad rule set. The enabled subset below was selected by
@@ -488,6 +497,8 @@ const UNICORN_CONCISION_ADVISORY_RULES = {
   "unicorn/prefer-single-object-destructuring": "warn",
   "unicorn/iteration-fallback-style": ["warn", "guard"],
   "unicorn/prefer-combined-guards": "warn",
+  "unicorn/no-lonely-if": "warn",
+  "unicorn/prefer-block-statement-over-iife": "warn",
 };
 
 // Semantic advisories require local intent to resolve. Dynamic property reads
@@ -1093,6 +1104,7 @@ export function createConfig(options = {}) {
       ...UNICORN_CORRECTNESS_RULES,
       ...UNICORN_MODERNISATION_RULES,
       ...ESLINT_CONCISION_ADVISORY_RULES,
+      ...ESLINT_CORRECTNESS_ADVISORY_RULES,
       ...UNICORN_CONCISION_ADVISORY_RULES,
       ...UNICORN_SEMANTIC_ADVISORY_RULES,
 

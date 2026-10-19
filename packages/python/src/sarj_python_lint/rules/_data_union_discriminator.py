@@ -140,15 +140,16 @@ class _DataUnions:
                 if node.id in item.aliases:
                     return True
                 pending.append(_Expansion(self.aliases[node.id], item.aliases | {node.id}))
-            elif isinstance(node, ast.Constant) and node.value is None:
                 continue
-            elif self._discriminated_annotation(node):
+            if isinstance(node, ast.Constant) and node.value is None:
+                continue
+            if self._discriminated_annotation(node):
                 covered = True
-            else:
-                children = self._union_members(node)
-                if children is None:
-                    return False
-                pending.extend(_Expansion(child, item.aliases) for child in children)
+                continue
+            children = self._union_members(node)
+            if children is None:
+                return False
+            pending.extend(_Expansion(child, item.aliases) for child in children)
         return True
 
     def _discriminated_annotation(self, node: ast.expr) -> bool:
@@ -266,19 +267,12 @@ class _DataUnions:
             if not isinstance(node, ast.Subscript):
                 break
             symbol = self._typing_symbol(node.value)
-            if symbol in {"Required", "NotRequired"}:
-                required = symbol == "Required"
-                node = node.slice
-            elif symbol == "ClassVar":
-                if field.value is None:
-                    return _Domain()
-                node = node.slice
-            elif symbol in {"ReadOnly", "Final"}:
-                node = node.slice
-            elif symbol == "Annotated" and isinstance(node.slice, ast.Tuple) and node.slice.elts:
-                node = node.slice.elts[0]
-            else:
+            if symbol == "ClassVar" and field.value is None:
+                return _Domain()
+            wrapped = _wrapped_annotation(node, symbol, required=required)
+            if wrapped is None:
                 break
+            node, required = wrapped
         else:
             return _Domain(opaque=True)
         return self._literal_domain(node) if required else _Domain()
@@ -330,30 +324,43 @@ class _DataUnions:
         for _ in range(_MAX_EXPANSION):
             if not pending:
                 return _Domain(frozenset(values))
-            item = pending.pop()
-            member = item.node
-            if isinstance(member, ast.Name) and member.id in self.aliases:
-                if member.id in item.aliases:
-                    return _Domain(opaque=True)
-                parsed = _string_expression(self.aliases[member.id])
-                if parsed is None:
-                    return _Domain(opaque=True)
-                pending.append(_Expansion(parsed, item.aliases | {member.id}))
+            piece = self._literal_piece(pending.pop())
+            if isinstance(piece, list):
+                pending.extend(piece)
                 continue
-            if isinstance(member, ast.Subscript):
-                children = (
-                    _subscript_members(member)
-                    if self._typing_symbol(member.value) == "Literal"
-                    else self._union_members(member)
-                )
-                if children is not None:
-                    pending.extend(_Expansion(child, item.aliases) for child in children)
-                    continue
-            domain = _literal_value(member)
-            if domain.opaque:
-                return domain
-            values.update(domain.values)
+            if piece.opaque:
+                return piece
+            values.update(piece.values)
         return _Domain(opaque=True)
+
+    def _literal_piece(self, item: _Expansion) -> _Domain | list[_Expansion]:
+        member = item.node
+        if isinstance(member, ast.Name) and member.id in self.aliases:
+            if member.id in item.aliases:
+                return _Domain(opaque=True)
+            parsed = _string_expression(self.aliases[member.id])
+            if parsed is None:
+                return _Domain(opaque=True)
+            return [_Expansion(parsed, item.aliases | {member.id})]
+        if isinstance(member, ast.Subscript):
+            children = (
+                _subscript_members(member)
+                if self._typing_symbol(member.value) == "Literal"
+                else self._union_members(member)
+            )
+            if children is not None:
+                return [_Expansion(child, item.aliases) for child in children]
+        return _literal_value(member)
+
+
+def _wrapped_annotation(node: ast.Subscript, symbol: str | None, *, required: bool) -> tuple[ast.expr, bool] | None:
+    if symbol in {"Required", "NotRequired"}:
+        return node.slice, symbol == "Required"
+    if symbol in {"ClassVar", "ReadOnly", "Final"}:
+        return node.slice, required
+    if symbol == "Annotated" and isinstance(node.slice, ast.Tuple) and node.slice.elts:
+        return node.slice.elts[0], required
+    return None
 
 
 def _record(node: ast.ClassDef, context: PythonFileContext, provenance: ResourceProvenance) -> _Record | None:

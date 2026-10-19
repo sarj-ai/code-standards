@@ -270,11 +270,10 @@ def _doubling_aliases() -> str:
 
 
 def _field_wrappers() -> str:
-    alpha = "Literal['alpha']"
-    beta = "Literal['beta']"
-    for _ in range(140):
-        alpha = f"Annotated[{alpha}, 0]"
-        beta = f"Annotated[{beta}, 0]"
+    prefix = ["Annotated["] * 140
+    suffix = [", 0]"] * 140
+    alpha = "".join([*prefix, "Literal['alpha']", *suffix])
+    beta = "".join([*prefix, "Literal['beta']", *suffix])
     return _BOUNDS_TAGGED.replace("Literal['alpha']", alpha).replace("Literal['beta']", beta) + _BOUNDS_ALIAS
 
 
