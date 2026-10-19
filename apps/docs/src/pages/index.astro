@@ -9,19 +9,26 @@ import { formattedStaticCode } from '../lib/display-code';
   description="Opinionated lint rules for concise, correct code."
 >
   <article class="about-page sarj-about-page">
-    <h1>About</h1>
-    <p>Writing code is now much easier than reading and reviewing code.</p>
-    <p>This linter provides <a href="/rules/">100+ opinionated rules</a> that automatically flag violations.</p>
-    <p>Developers can spend less time in code review and write well-structured, correct code faster.</p>
-    <p>Every repository uses one complete policy, including all 41 library policies. There is no standard/application selection. Legacy profile fields and preset filenames are compatibility aliases for the same policy; new manifests omit the profile field.</p>
-    <p>Warning-stage rules keep their reviewed severity. Architectural rules that need repository-specific boundaries still require those explicit options.</p>
-    <p>Use it with a coding agent and pre-commit so the agent automatically catches violations, fixes them, and commits the solution.</p>
+    <header class="about-hero">
+      <h1 class="cs-label">About</h1>
+      <p class="about-hero__statement">Writing code is now much easier than reading and reviewing code.</p>
+      <p class="about-hero__lede">This linter provides <a href="/rules/">100+ opinionated rules</a> that automatically flag violations.</p>
+    </header>
 
-    <section>
-      <h2>Quick setup</h2>
-      <CodeBlock code={formattedStaticCode.quickSetup} lang="bash" frame="terminal" wrap />
-      <p><a href="/cli/">CLI reference</a></p>
-    </section>
+    <div class="about-body">
+      <div class="about-prose">
+        <p>Developers can spend less time in code review and write well-structured, correct code faster.</p>
+        <p>Every repository uses one complete policy, including all 41 library policies. There is no standard/application selection. Legacy profile fields and preset filenames are compatibility aliases for the same policy; new manifests omit the profile field.</p>
+        <p>Warning-stage rules keep their reviewed severity. Architectural rules that need repository-specific boundaries still require those explicit options.</p>
+        <p>Use it with a coding agent and pre-commit so the agent automatically catches violations, fixes them, and commits the solution.</p>
+      </div>
+
+      <section class="about-setup" aria-labelledby="quick-setup">
+        <h2 id="quick-setup">Quick setup</h2>
+        <CodeBlock code={formattedStaticCode.quickSetup} lang="bash" frame="terminal" wrap />
+        <p><a href="/cli/">CLI reference</a></p>
+      </section>
+    </div>
 
     <section class="sarj-related-standards" aria-labelledby="related-standards">
       <h2 id="related-standards">Related standards</h2>
