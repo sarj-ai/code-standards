@@ -1,6 +1,6 @@
 {
   "name": "@sarj/eslint-plugin",
-  "version": "16.20.3",
+  "version": "16.21.0",
   "packageManager": "npm@12.2.0",
   "description": "Custom ESLint rules for hypermodern TypeScript / React / Next.js projects",
   "type": "module",
@@ -57,7 +57,8 @@
     "@typescript-eslint/typescript-estree": "^8.71.2",
     "@typescript-eslint/utils": "^8.71.2",
     "jsonc-parser": "^3.3.1",
-    "ts-api-utils": "2.5.0"
+    "ts-api-utils": "2.5.0",
+    "eslint-plugin-sonarjs": "4.2.2"
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "^4.8.1",
@@ -83,7 +84,6 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-regexp": "3.3.1",
     "eslint-plugin-simple-import-sort": "^14.0.0",
-    "eslint-plugin-sonarjs": "4.2.2",
     "eslint-plugin-testing-library": "7.16.2",
     "eslint-plugin-unicorn": "^78.0.0",
     "eslint-plugin-zod": "^5.0.1",
