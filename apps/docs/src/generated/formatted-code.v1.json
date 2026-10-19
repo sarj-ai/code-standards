@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "bd65aa13f9923505d0afbe5235b30f1dcf61e45a4ca0360db8d87a3783e29522",
-  "cliSha256": "a21d99fa0f49eebddd51cf28bf4e73f1f166349fc2ed09cc30571f15cbabf1a9",
+  "catalogSha256": "1aa97bb5dd6863eb2868857e5e3b8c0039ef03a6a72e5be70948d72f7ec34677",
+  "cliSha256": "2d7230b32e5a92720804dc610b3065f3e10edf4b36f19d7a79c018da89ba9aa0",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -11005,6 +11005,36 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "An after validator encodes a field dependency that its type cannot express"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/access.py",
+              "source": "from dataclasses import dataclass, field\nfrom typing import Literal\n\n\n@dataclass(frozen=True, slots=True)\nclass TeamAccess:\n    scope: Literal[\"team\"] = field(default=\"team\", init=False)\n    team_id: str\n\n\n@dataclass(frozen=True, slots=True)\nclass GlobalAccess:\n    scope: Literal[\"global\"] = field(default=\"global\", init=False)\n    group: str\n\n\ntype Access = TeamAccess | GlobalAccess\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/access.py",
+          "id": "literal-tags-preserve-constructor-calls",
+          "outcome": "accept",
+          "scenarioId": "explicit-data-discriminator",
+          "title": "Explicit tags preserve positional constructor calls with init=False"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/access.py",
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass TeamAccess:\n    team_id: str\n\n\n@dataclass(frozen=True, slots=True)\nclass GlobalAccess:\n    group: str\n\n\ntype Access = TeamAccess | GlobalAccess\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/access.py",
+          "id": "untagged-data-variants",
+          "outcome": "reject",
+          "scenarioId": "explicit-data-discriminator",
+          "title": "Data variants lack a common explicit tag"
         },
         {
           "expectedCount": 0,
