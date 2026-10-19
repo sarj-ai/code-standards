@@ -1,0 +1,1309 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-19",
+  "decision": "ship-warning expansion; retain blocking validator with precision corrections",
+  "releaseCandidate": {
+    "python": "1.58.0",
+    "standards": "8.96.0"
+  },
+  "rules": [
+    "python:no-discarded-validation-result",
+    "python:no-mutating-container-transform"
+  ],
+  "codes": [
+    "SARJ519",
+    "SARJ520"
+  ],
+  "problem": "Container-valued methods must not hide borrowed-input writes, and checked conversions must consume their returned values. Broader coverage must preserve opaque command protocols and native execution/annotation binding semantics.",
+  "changes": [
+    "Narrow SARJ519 returned calls to supported source-resolved construction and exclude opaque returned descriptor/subscript value selections. Nested opaque calls do not become validators merely because a builtin conversion wraps them.",
+    "Exclude ambiguous SARJ520 wildcard, generic type-parameter and prepared/inherited/decorated class annotation identities.",
+    "Track ordered chained assignment/deletion and exact literal destructuring, capturing every right-side origin before rebinding targets.",
+    "Recognize exhaustive terminal if branches; retain bounded control-flow and unknown-ownership abstention.",
+    "Evaluate generator creation outer iterables separately from deferred body/filter/later iterables.",
+    "Recognize canonical typing_extensions identities and native cast keyword binding while preserving positional-only assert_type and patched/escaped-provider boundaries."
+  ],
+  "lifecycle": "SARJ519 remains error. Expanded SARJ520 is staged warning-first and requires a separate source-equivalent promotion after publication. No autofix or consumer edits.",
+  "sourceSha256": {
+    "no_discarded_validation_result.py": "016ce2c464a36cbd1de6f830bda3a8afb2f1645350e0c163d817724d17253d35",
+    "no_mutating_container_transform.py": "31e1b7483b14c04b883fa450937f87ebdccfb34b55223348d6d1cc9c2371fafa",
+    "_resource_provenance.py": "c2e84ce59cd7ce739a01d7ea27283d00260968afa531c376337a18d7aca7209f"
+  },
+  "labeledReviewWitnesses": {
+    "reviews": 50,
+    "match_probes": 19,
+    "no_match_probes": 31,
+    "diagnostics": 20,
+    "changed_decisions": [
+      {
+        "pass": 101,
+        "before": 1,
+        "after": 0
+      },
+      {
+        "pass": 102,
+        "before": 1,
+        "after": 0
+      },
+      {
+        "pass": 103,
+        "before": 1,
+        "after": 0
+      },
+      {
+        "pass": 104,
+        "before": 1,
+        "after": 0
+      },
+      {
+        "pass": 105,
+        "before": 1,
+        "after": 0
+      },
+      {
+        "pass": 106,
+        "before": 1,
+        "after": 0
+      },
+      {
+        "pass": 107,
+        "before": 1,
+        "after": 0
+      },
+      {
+        "pass": 108,
+        "before": 1,
+        "after": 0
+      },
+      {
+        "pass": 109,
+        "before": 1,
+        "after": 0
+      },
+      {
+        "pass": 110,
+        "before": 1,
+        "after": 0
+      },
+      {
+        "pass": 111,
+        "before": 1,
+        "after": 0
+      },
+      {
+        "pass": 112,
+        "before": 0,
+        "after": 1
+      },
+      {
+        "pass": 113,
+        "before": 0,
+        "after": 1
+      },
+      {
+        "pass": 114,
+        "before": 0,
+        "after": 1
+      },
+      {
+        "pass": 116,
+        "before": 0,
+        "after": 1
+      },
+      {
+        "pass": 121,
+        "before": 0,
+        "after": 1
+      },
+      {
+        "pass": 124,
+        "before": 0,
+        "after": 1
+      },
+      {
+        "pass": 127,
+        "before": 0,
+        "after": 1
+      },
+      {
+        "pass": 128,
+        "before": 0,
+        "after": 1
+      },
+      {
+        "pass": 129,
+        "before": 0,
+        "after": 1
+      },
+      {
+        "pass": 130,
+        "before": 0,
+        "after": 1
+      },
+      {
+        "pass": 133,
+        "before": 0,
+        "after": 2
+      },
+      {
+        "pass": 134,
+        "before": 1,
+        "after": 0
+      },
+      {
+        "pass": 138,
+        "before": 0,
+        "after": 1
+      },
+      {
+        "pass": 140,
+        "before": 0,
+        "after": 1
+      },
+      {
+        "pass": 145,
+        "before": 0,
+        "after": 1
+      },
+      {
+        "pass": 146,
+        "before": 0,
+        "after": 1
+      },
+      {
+        "pass": 148,
+        "before": 2,
+        "after": 1
+      },
+      {
+        "pass": 150,
+        "before": 0,
+        "after": 1
+      }
+    ],
+    "mismatches": 0,
+    "duplicate_locations": 0,
+    "limit": "These are review witnesses, not fifty independent coverage dimensions or a fleet precision estimate."
+  },
+  "focusedTests": {
+    "python314": 374,
+    "python315": 374,
+    "ruff": "pass",
+    "basedpyright": "0 errors, 0 warnings"
+  },
+  "corpus": {
+    "rules": [
+      "python:no-mutating-container-transform",
+      "python:no-discarded-validation-result"
+    ],
+    "files": 3000,
+    "bytes": 32895335,
+    "batches": 14,
+    "elapsed_seconds": 494.558231,
+    "diagnostics": 2,
+    "corpora": [
+      {
+        "label": "<private-corpus>",
+        "files": 828,
+        "bytes": 11436116,
+        "findings": 2
+      },
+      {
+        "label": "<private-corpus>",
+        "files": 975,
+        "bytes": 9205180,
+        "findings": 0
+      },
+      {
+        "label": "<private-corpus>",
+        "files": 1092,
+        "bytes": 10433159,
+        "findings": 0
+      },
+      {
+        "label": "pydantic",
+        "files": 105,
+        "bytes": 1820880,
+        "findings": 0
+      }
+    ]
+  },
+  "classification": {
+    "allMatchesInspected": true,
+    "containerPolicyTruePositives": 2,
+    "knownFalsePositives": 0,
+    "duplicates": 0,
+    "previousMatchExcluded": "One previously inspected validation policy match now abstains because its nominal construction contains opaque nested calls. It is not reclassified as a false positive; its command/value behavior cannot be proven by the bounded source contract.",
+    "remediation": "The two pinned historical container writes are the already-remediated provisioning command; current source retains the None command and caller-derived prefix.",
+    "qualificationLimit": "Finite pinned and labeled evidence does not estimate fleet precision or prove general purity."
+  },
+  "performance": {
+    "python": "3.15.0",
+    "method": "Separate process per corpus and mode; first invocation cold, then median of three fresh-session warm invocations; baseline is all shipped Python rules except the candidate, combined adds the candidate.",
+    "corpora": [
+      {
+        "label": "<private-corpus>",
+        "files": 25,
+        "bytes": 190220,
+        "selection": "first 25 sorted pinned Python paths",
+        "modes": [
+          {
+            "mode": "baseline",
+            "cold_seconds": 41.292094344011275,
+            "warm_seconds": [
+              54.267591608004295,
+              65.55684334300167,
+              67.8536865789938
+            ],
+            "warm_median_seconds": 65.55684334300167,
+            "peak_rss_kib": 608152,
+            "diagnostic_counts": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "wall_seconds": 265.1999376849999
+          },
+          {
+            "mode": "candidate",
+            "cold_seconds": 1.782791976002045,
+            "warm_seconds": [
+              1.3902107930043712,
+              0.8265090629865881,
+              1.0362009500095155
+            ],
+            "warm_median_seconds": 1.0362009500095155,
+            "peak_rss_kib": 57476,
+            "diagnostic_counts": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "wall_seconds": 10.27612666299683
+          },
+          {
+            "mode": "combined",
+            "cold_seconds": 47.93143423499714,
+            "warm_seconds": [
+              64.42241241601005,
+              74.75597798099625,
+              168.86794912499317
+            ],
+            "warm_median_seconds": 74.75597798099625,
+            "peak_rss_kib": 601364,
+            "diagnostic_counts": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "wall_seconds": 388.7565404699999
+          }
+        ]
+      }
+    ],
+    "cpuFollowup": {
+      "label": "<private-corpus>",
+      "files": 25,
+      "bytes": 190220,
+      "method": "Follow-up on the same25 pinned files. Separate fresh process per mode; first and second analyze invocation each record process and child CPU plus wall time. No other campaign jobs run concurrently. This diagnoses scheduler/I/O variation rather than replacing the three-warm-invocation qualification.",
+      "modes": [
+        {
+          "mode": "baseline",
+          "measurements": [
+            {
+              "invocation": 1,
+              "wall_seconds": 80.65683977400477,
+              "process_cpu_seconds": 19.904430341999998,
+              "child_cpu_seconds": 0.0,
+              "diagnostics": 0
+            },
+            {
+              "invocation": 2,
+              "wall_seconds": 99.08186851200298,
+              "process_cpu_seconds": 26.149481641999998,
+              "child_cpu_seconds": 0.0,
+              "diagnostics": 0
+            }
+          ],
+          "peak_rss_kib": 560920
+        },
+        {
+          "mode": "combined",
+          "measurements": [
+            {
+              "invocation": 1,
+              "wall_seconds": 46.869930423999904,
+              "process_cpu_seconds": 18.780300274,
+              "child_cpu_seconds": 0.0,
+              "diagnostics": 0
+            },
+            {
+              "invocation": 2,
+              "wall_seconds": 61.35012254600588,
+              "process_cpu_seconds": 23.094258104,
+              "child_cpu_seconds": 0.0,
+              "diagnostics": 0
+            }
+          ],
+          "peak_rss_kib": 561032
+        }
+      ]
+    },
+    "assessment": "Initial combined warm wall median is about14percent above baseline amid high timing variation. A separate two-invocation process-CPU follow-up shows no observed CPU regression and similar peak RSS; wall waiting is substantial. These finite measurements do not establish a speedup or fleet performance.",
+    "measurementTimeoutHistory": "An earlier300-second timeout expired in the unchanged baseline. Retained that failed attempt and used900seconds for completed modes, without changing analysis limits. Final modes and CPU follow-up ran without other campaign jobs."
+  },
+  "verification": {
+    "nativeChangedFiles": "all161registered rules on5files:0blocking;2existingwarnings",
+    "focusedPython314": 374,
+    "focusedPython315": 374,
+    "ruff": "pass",
+    "basedpyright": "0errors0warnings",
+    "makeVerify": "Earlier v5 child completed with exit2: one unchanged TypeScript compiler-policy test exceeded its60000ms timeout;175files/10021tests passed and1test failed. The execution wrapper returned130 on cancellation but left that child running; its final trace was recovered. The unchanged isolated file subsequently passed9tests, and the complete176-file suite passed10022tests at1worker without assertion or timeout changes. Later local attempts were interrupted to correct a Git-marker fixture boundary; final integrated canonical qualification is pending and no literal local full-gate success is claimed.",
+    "exactHeadCI": "pending",
+    "focusedWithUpstreamNeighbors315": 631,
+    "currentBase": "1872744171d4b25f09990d2a3f4f4e6261a15002",
+    "artifactSync": "Fresh native ESM/CJS/declarations build; maintained warning-lifecycle/catalog APIs reuse its actual validated projection. Inventory/catalog/third-party/CLI/docs checks all pass on integrated source.",
+    "candidateWheel": "1.58.0;51cases passed in a fresh isolated environment with marker-free fixtures; all3 source hashes match the qualified implementation",
+    "qualifiedRuleSourceBase": "1bffab09ce611806a9321af0065b94f92b3f8b11",
+    "finalToolingTests": 7,
+    "typescriptFullSuiteRecovery": {
+      "tests": 10022,
+      "files": 176,
+      "exit": 0,
+      "durationSeconds": 3661.27,
+      "workers": 1,
+      "assertionsAndTimeoutUnchanged": true,
+      "base": "1bffab09ce611806a9321af0065b94f92b3f8b11"
+    },
+    "fixtureBoundaryRecovery": {
+      "cause": "Home and default-temp ancestors contain .git directory markers. Existence-based source resolvers therefore see an unintended checkout boundary even where git rev-parse reports no valid repository.",
+      "affectedPreexistingImportCases": 3,
+      "unchangedRegressionCasesPassed": 7,
+      "seconds": 0.64,
+      "remedy": "Use an approved owner-private temporary root with no .git marker in its ancestry; preserve existing markers and all test/source assertions."
+    },
+    "finalPythonSuite": {
+      "runtime": "3.15",
+      "tests": 20147,
+      "exit": 0,
+      "seconds": 439.87,
+      "base": "afb83f2657878174ab20a58ce443ac84f60d22b6",
+      "fixtureBoundary": "approved owner-private root with no .git-marked ancestry"
+    },
+    "otherCanonicalTargets": {
+      "bootstrap": 34,
+      "contracts": 46,
+      "sql": 1752,
+      "sqlSkipped": 4,
+      "iac": 1448,
+      "tsconfig": "pass",
+      "repositoryPolicy": "pass",
+      "privateReferences": "delegated to trusted CI by maintained gate",
+      "shellcheck": "pass with2existingSC2310warnings",
+      "shfmt": "pass"
+    },
+    "normalCommitHooks": {
+      "commit": "33640db6f389c999204d74075fd3b3977952903a",
+      "base": "afb83f2657878174ab20a58ce443ac84f60d22b6",
+      "exit": 0,
+      "seconds": 1521.29,
+      "pythonRules": 162,
+      "pythonFiles": 854,
+      "pythonBlocking": 0,
+      "typescriptRules": 125,
+      "typescriptDiagnostics": 0,
+      "stagedErrors": 0,
+      "stagedWarnings": 2,
+      "stagedExecutionIssues": 0,
+      "types": "All six Python checks and both TypeScript checks passed with zero errors or warnings.",
+      "other": "Version synchronization, file conventions, private-reference policy and commit-message hooks passed.",
+      "scope": "Completed before final integration rebase. Candidate source hashes remain identical; affected post-rebase checks, normal pre-push and exact-head CI remain required."
+    },
+    "postRebaseIntegration": {
+      "base": "1872744171d4b25f09990d2a3f4f4e6261a15002",
+      "focusedPythonCases": 631,
+      "nativeRules": 162,
+      "nativeFiles": 9,
+      "nativeBlocking": 0,
+      "nativeWarnings": 2,
+      "ruff": "all Python source/tests pass",
+      "basedpyright": "full Python project0errors0warnings",
+      "freshNativeBuild": "ESM/CJS/declarations pass under Node24.21.0",
+      "maintainedArtifacts": "inventory/catalog/third-party/CLI/docs check exit0 after supported synchronization",
+      "sourceSha256Unchanged": true
+    },
+    "packagedStandards": {
+      "tests": 6311,
+      "skipped": 9,
+      "exit": 0,
+      "seconds": 1293.5,
+      "freshLocalWheels": 5,
+      "workers": 2,
+      "commit": "33640db6f389c999204d74075fd3b3977952903a",
+      "base": "afb83f2657878174ab20a58ce443ac84f60d22b6",
+      "scope": "Frozen pre-rebase worktree; completed independently while final integration preserved byte-identical candidate rule/helper sources."
+    }
+  },
+  "limitations": [
+    "Unknown descriptors, opaque constructors/commands, scalar command/result APIs, borrowed descendants, receiver state, loops, try/with orchestration and closure bodies remain outside supported ownership analysis.",
+    "Unknown or starred destructuring cannot prove one borrowed identity. Uncertain branch joins lose provenance.",
+    "A source-resolved nominal constructor is a bounded value-construction policy, not a general proof that arbitrary application code has no effects.",
+    "Generated/vendor sources excluded; maintained tests included. No automatic copying, deletion or API rewrite."
+  ],
+  "reviewPasses": [
+    {
+      "number": 101,
+      "topic": "Returned native mutation is not proof of a validator",
+      "decision": "narrow existing owner; preserve valid command/type contracts",
+      "existingOwner": "SARJ519",
+      "publishedBaselineCount": 1,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 102,
+      "topic": "Returned I/O acknowledgement preserves an explicit command protocol",
+      "decision": "narrow existing owner; preserve valid command/type contracts",
+      "existingOwner": "SARJ519",
+      "publishedBaselineCount": 1,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 103,
+      "topic": "A conversion does not erase command effects in its arguments",
+      "decision": "narrow existing owner; preserve valid command/type contracts",
+      "existingOwner": "SARJ519",
+      "publishedBaselineCount": 1,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 104,
+      "topic": "Returned standalone registration function is an opaque command",
+      "decision": "narrow existing owner; preserve valid command/type contracts",
+      "existingOwner": "SARJ519",
+      "publishedBaselineCount": 1,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 105,
+      "topic": "A returned descriptor read can be a stateful operation",
+      "decision": "narrow existing owner; preserve valid command/type contracts",
+      "existingOwner": "SARJ519",
+      "publishedBaselineCount": 1,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 106,
+      "topic": "Opaque subscript reads may advance application state",
+      "decision": "narrow existing owner; preserve valid command/type contracts",
+      "existingOwner": "SARJ519",
+      "publishedBaselineCount": 1,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 107,
+      "topic": "Wildcard providers invalidate primitive container annotation identity",
+      "decision": "narrow existing owner; preserve valid command/type contracts",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 1,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": false,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 108,
+      "topic": "PEP 695 type parameters shadow container annotation names",
+      "decision": "narrow existing owner; preserve valid command/type contracts",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 1,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": false,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 109,
+      "topic": "Enclosing generic class parameters are not primitive element types",
+      "decision": "narrow existing owner; preserve valid command/type contracts",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 1,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": false,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 110,
+      "topic": "Prepared class namespaces control method annotation types",
+      "decision": "narrow existing owner; preserve valid command/type contracts",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 1,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": false,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 111,
+      "topic": "Runtime conversion callee differs from definition-time return annotation",
+      "decision": "keep narrowed constructor classification",
+      "existingOwner": "SARJ519",
+      "publishedBaselineCount": 1,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 112,
+      "topic": "Exhaustive terminal branches are value-returning transformations",
+      "decision": "expand terminal-flow evidence",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 1,
+      "candidateCount": 1,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 113,
+      "topic": "Chained assignment targets execute in order",
+      "decision": "expand ordered assignment flow",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 1,
+      "candidateCount": 1,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 114,
+      "topic": "Literal destructuring captures old origins before ordered target binding",
+      "decision": "expand exact literal destructuring",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 1,
+      "candidateCount": 1,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 115,
+      "topic": "Opaque and starred destructuring do not prove borrowed roots",
+      "decision": "retain documented exclusion",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 116,
+      "topic": "Deletion sequences remove bindings before later targets",
+      "decision": "expand ordered deletion flow",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 1,
+      "candidateCount": 1,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 117,
+      "topic": "Loop-carried ownership needs a fixed-point analysis",
+      "decision": "retain loop exclusion",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 118,
+      "topic": "Exception flow can mutate and then restore caller state",
+      "decision": "retain exception-orchestration exclusion",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 119,
+      "topic": "Context-manager exits can restore borrowed state",
+      "decision": "retain context-manager exclusion",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 120,
+      "topic": "Lambda defaults run now while callback bodies remain deferred",
+      "decision": "retain explicit deferred/callback exclusion",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 121,
+      "topic": "Unconsumed generator creation evaluates only the outer iterable",
+      "decision": "expand generator creation-phase evaluation",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 1,
+      "candidateCount": 1,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 122,
+      "topic": "Async generator creation and native consumption have different phases",
+      "decision": "preserve async generator body deferral",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 123,
+      "topic": "Assignment to an early target can replace later target receivers",
+      "decision": "require ordered target evaluation",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 124,
+      "topic": "Destructuring swaps preserve independent borrowed input identities",
+      "decision": "snapshot RHS identities before rebinding",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 1,
+      "candidateCount": 1,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 125,
+      "topic": "Deleting a root name does not delete the same object through its alias",
+      "decision": "preserve existing alias ownership",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 1,
+      "expectedCount": 1,
+      "candidateCount": 1,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 126,
+      "topic": "Literal destructuring must rebind before evaluating later subscript targets",
+      "decision": "require ordered destructuring target evaluation",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 127,
+      "topic": "typing_extensions exposes the same native identity helper contract",
+      "decision": "expand canonical identity provider ownership",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 1,
+      "candidateCount": 1,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 128,
+      "topic": "Keyword binding must follow each native helper signature",
+      "decision": "expand valid cast binding; preserve positional-only assert_type",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 1,
+      "candidateCount": 1,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 129,
+      "topic": "Chained aliases retain the captured right-side owner",
+      "decision": "retain supported source-proven evidence",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 1,
+      "candidateCount": 1,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 130,
+      "topic": "Nested literal unpacking uses structural ownership, not a blanket reset",
+      "decision": "retain supported source-proven evidence",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 1,
+      "candidateCount": 1,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 131,
+      "topic": "Starred right-side expansion does not prove destructuring arity",
+      "decision": "preserve conservative boundary",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 132,
+      "topic": "Branch joins after ordered assignments preserve fresh ownership",
+      "decision": "preserve conservative boundary",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 133,
+      "topic": "Index effects and item stores are separate evaluated writes",
+      "decision": "retain supported source-proven evidence",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 2,
+      "candidateCount": 2,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 134,
+      "topic": "Opaque result reads remain opaque through value selections",
+      "decision": "preserve conservative boundary",
+      "existingOwner": "SARJ519",
+      "publishedBaselineCount": 1,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 135,
+      "topic": "Deleting a receiver binding prevents later target writes",
+      "decision": "preserve conservative boundary",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 136,
+      "topic": "Exhaustive branch analysis still honors proven literal reachability",
+      "decision": "preserve conservative boundary",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 137,
+      "topic": "All-raising functions do not supply a value-returning query contract",
+      "decision": "preserve conservative boundary",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 138,
+      "topic": "Generator target shadowing starts after its outer iterable",
+      "decision": "retain supported source-proven evidence",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 1,
+      "candidateCount": 1,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 139,
+      "topic": "Creating an outer generator does not consume an inner generator body",
+      "decision": "preserve conservative boundary",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 140,
+      "topic": "An eager consumer inside a lazy outer iterable still executes",
+      "decision": "retain supported source-proven evidence",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 1,
+      "candidateCount": 1,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 141,
+      "topic": "Lazy filters and later generator iterables remain unexecuted",
+      "decision": "preserve conservative boundary",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 142,
+      "topic": "Opaque keyword expansion cannot prove helper argument identity",
+      "decision": "preserve conservative boundary",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 143,
+      "topic": "Duplicate helper arguments fail before subsequent mutations",
+      "decision": "preserve conservative boundary",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 144,
+      "topic": "Backport provider mutation invalidates canonical identity",
+      "decision": "preserve conservative boundary",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 145,
+      "topic": "Keyword identity helpers compose with destructuring snapshots",
+      "decision": "retain supported source-proven evidence",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 1,
+      "candidateCount": 1,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 146,
+      "topic": "Destructured owners preserve distinct builtin mutation kinds",
+      "decision": "retain supported source-proven evidence",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 1,
+      "candidateCount": 1,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 147,
+      "topic": "New terminal-path analysis respects the existing availability bound",
+      "decision": "retain supported source-proven evidence",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 1,
+      "expectedCount": 1,
+      "candidateCount": 1,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 148,
+      "topic": "Constructor aliases stop at the finite resolution boundary",
+      "decision": "retain supported source-proven evidence",
+      "existingOwner": "SARJ519",
+      "publishedBaselineCount": 2,
+      "expectedCount": 1,
+      "candidateCount": 1,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 149,
+      "topic": "Uncertain ownership after a branch remains uncertain through unpacking",
+      "decision": "preserve conservative boundary",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 0,
+      "candidateCount": 0,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    },
+    {
+      "number": 150,
+      "topic": "Remediation must copy before the newly supported effects",
+      "decision": "retain supported source-proven evidence",
+      "existingOwner": "SARJ520",
+      "publishedBaselineCount": 0,
+      "expectedCount": 1,
+      "candidateCount": 1,
+      "runtimeWitness": true,
+      "duplicateLocations": 0
+    }
+  ],
+  "integrationBase": {
+    "sha": "1872744171d4b25f09990d2a3f4f4e6261a15002",
+    "preservedUpstreamPRs": [
+      1586,
+      1589,
+      1587,
+      1569,
+      1593,
+      1590,
+      1592,
+      1597,
+      1596,
+      1601
+    ],
+    "reason": "Preserve upstream callback ownership fixes. Main consumed Python1.57.0/bundle8.94.0; concurrent PR1598 reserves8.95.0. Allocate1.58.0/8.96.0 after checking open proposals. All three qualified candidate rule/helper hashes remain unchanged."
+  },
+  "candidateWheel": {
+    "package": "sarj-python-lint",
+    "version": "1.58.0",
+    "containerSeverity": "warning",
+    "cases": [
+      {
+        "pass": 101,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 102,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 103,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 104,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 105,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 106,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 107,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 108,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 109,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 110,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 111,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 112,
+        "count": 1,
+        "exit": 0
+      },
+      {
+        "pass": 113,
+        "count": 1,
+        "exit": 0
+      },
+      {
+        "pass": 114,
+        "count": 1,
+        "exit": 0
+      },
+      {
+        "pass": 115,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 116,
+        "count": 1,
+        "exit": 0
+      },
+      {
+        "pass": 117,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 118,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 119,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 120,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 121,
+        "count": 1,
+        "exit": 0
+      },
+      {
+        "pass": 122,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 123,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 124,
+        "count": 1,
+        "exit": 0
+      },
+      {
+        "pass": 125,
+        "count": 1,
+        "exit": 0
+      },
+      {
+        "pass": 126,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 127,
+        "count": 1,
+        "exit": 0
+      },
+      {
+        "pass": 128,
+        "count": 1,
+        "exit": 0
+      },
+      {
+        "pass": 129,
+        "count": 1,
+        "exit": 0
+      },
+      {
+        "pass": 130,
+        "count": 1,
+        "exit": 0
+      },
+      {
+        "pass": 131,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 132,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 133,
+        "count": 2,
+        "exit": 0
+      },
+      {
+        "pass": 134,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 135,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 136,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 137,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 138,
+        "count": 1,
+        "exit": 0
+      },
+      {
+        "pass": 139,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 140,
+        "count": 1,
+        "exit": 0
+      },
+      {
+        "pass": 141,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 142,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 143,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 144,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 145,
+        "count": 1,
+        "exit": 0
+      },
+      {
+        "pass": 146,
+        "count": 1,
+        "exit": 0
+      },
+      {
+        "pass": 147,
+        "count": 1,
+        "exit": 0
+      },
+      {
+        "pass": 148,
+        "count": 1,
+        "exit": 1
+      },
+      {
+        "pass": 149,
+        "count": 0,
+        "exit": 0
+      },
+      {
+        "pass": 150,
+        "count": 1,
+        "exit": 0
+      },
+      {
+        "pass": "original",
+        "code": "SARJ519",
+        "line": 162,
+        "column": 9,
+        "exit": 1
+      }
+    ],
+    "casesPassed": 51,
+    "isolatedFromWorktree": true,
+    "installedSourceSha256": {
+      "no_discarded_validation_result.py": "016ce2c464a36cbd1de6f830bda3a8afb2f1645350e0c163d817724d17253d35",
+      "no_mutating_container_transform.py": "31e1b7483b14c04b883fa450937f87ebdccfb34b55223348d6d1cc9c2371fafa",
+      "_resource_provenance.py": "c2e84ce59cd7ce739a01d7ea27283d00260968afa531c376337a18d7aca7209f"
+    }
+  },
+  "verificationTooling": {
+    "problem": "A redundant third-party catalog compiler launch times out120seconds after the canonical fresh build already succeeds.",
+    "fix": "Upstream independently merged explicit prepared-build reuse at the maintained third-party catalog owner. Retain its TypeScriptBuild API and Make prerequisite. Add tool-dispatch regression coverage that default calls build afresh and only the explicit prepared call reuses a build. Projection/drift checks remain active; no timeouts or analysis bounds changed.",
+    "tests": {
+      "focused": 7,
+      "ruff": "pass",
+      "basedpyright": "0errors0warnings",
+      "nativeRules": 161,
+      "nativeFiles": 2,
+      "nativeBlocking": 0
+    },
+    "additionalNumberedReviewPass": false,
+    "upstreamImplementationRetained": true
+  }
+}

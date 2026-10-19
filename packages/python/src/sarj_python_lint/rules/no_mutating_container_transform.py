@@ -84,7 +84,12 @@ _OPERATOR_WRITES: Final[dict[str, tuple[frozenset[_Kind], int]]] = {
     "operator.ixor": (frozenset({"set"}), 2),
     "operator.ior": (frozenset({"dict", "set"}), 2),
 }
-_IDENTITY_ARGUMENTS: Final[dict[str, int]] = {"typing.cast": 1, "typing.assert_type": 0}
+_IDENTITY_ARGUMENTS: Final[dict[str, int]] = {
+    "typing.cast": 1,
+    "typing.assert_type": 0,
+    "typing_extensions.cast": 1,
+    "typing_extensions.assert_type": 0,
+}
 _IDENTITY_CALL_ARITY = 2
 _LINEAR = (ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Delete, ast.Expr, ast.Pass)
 _DEFERRED_OR_REBINDING = (
@@ -113,32 +118,43 @@ class _Evaluation:
     origins: dict[str, _Borrowed]
 
 
+@dataclass(frozen=True, slots=True)
+class _TerminalPaths:
+    terminal: bool
+    returns_value: bool
+
+
+type _AssignedValue = _Borrowed | tuple[_AssignedValue, ...] | None
+
+
 @final
 class NoMutatingContainerTransform(Rule):
     id = "no-mutating-container-transform"
     code = "SARJ520"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.ERROR,
+        default_level=Severity.WARNING,
         summary="Return container replacements without mutating borrowed builtin inputs.",
         rationale="A container-valued transformation can change caller aliases before returning its result. Copying after the write leaves the original input changed.",
         remediation="Copy each changed container before writing, return a fresh replacement, or expose a separate command returning None. Keep documented in-place contracts explicit; do not discard the operation or add a dummy assignment.",
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Checks undecorated functions and methods with a direct builtin list/dict/set/tuple/frozenset return annotation, typed primitive mutable builtin container inputs, and assignments, returns, raises and structured if branches ending in a value return. Returned container kinds and element types do not change borrowed input ownership.",
+            "Checks undecorated functions and methods with a direct builtin list/dict/set/tuple/frozenset return annotation, typed primitive mutable builtin container inputs, and assignments, returns, raises and structured if branches. Terminal paths must return a value or raise, with at least one value return. Returned container kinds and element types do not change borrowed input ownership.",
             "Direct unshadowed builtin staticmethod/classmethod and canonical typing.final markers preserve the method body in plain class namespaces. Custom, patched, inherited or metaclass-prepared namespaces and multiple binding markers remain excluded.",
+            "Wildcard providers, type-parameter names that shadow builtin annotations, and method annotations in inherited, decorated or metaclass-prepared class namespaces do not prove builtin primitive ownership.",
             "Tracks direct aliases and conditional-expression aliases with one proven borrowed owner, item writes/deletions, known builtin mutators and supported in-place operators. Rebinding to a fresh local builder ends the borrowed root's provenance.",
             "Canonical source-resolved operator item writes/deletions and supported in-place functions are checked with positional arity and builtin kind contracts. Patched, escaped or ambiguous operator providers and unknown functional helpers are excluded.",
             "Direct unshadowed builtin list/dict/set mutation descriptors and explicit mutating special methods use the same borrowed-target contract. Unknown classes, read methods and fresh local targets remain excluded.",
-            "Source-proven typing.cast/assert_type calls with two positional arguments preserve the borrowed argument's identity through aliases. They do not allocate a replacement; copying before the helper still ends borrowed provenance.",
+            "Source-proven typing and typing_extensions cast/assert_type calls preserve borrowed identity. Two positional arguments are supported; cast also accepts its native typ/val keyword forms. Positional-only assert_type, duplicate/unknown arguments and opaque expansions are not guessed. Copying before the helper still ends borrowed provenance.",
             "Branches retain only origins shared by every continuing path; uncertain joins lose provenance. Proven literal truth selects reachable statement/expression branches and respects boolean short-circuiting; return/raise paths stop flow. Eager comprehensions isolate target bindings; their outermost iterable uses the enclosing scope.",
             "Boolean value selections preserve aliases only when every reachable result has one proven borrowed owner. Unknown conditions that can return unrelated values lose provenance.",
             "Comprehension operands follow generator/filter order. Empty literal iterables and literal-false filters prevent later operands and bodies from being visited; effects in earlier operands remain checked.",
             "Native collection literals supply truth facts for empty literals, explicit members and directly empty expansions. Contents are still evaluated; unknown spreads and application truth methods remain unresolved.",
             "Literal primitive equality/order and singleton identity comparisons supply branch facts. Comparison chains stop before later operands after a proven false link; unknown application comparisons are never evaluated.",
-            "Synchronous generator expressions passed as the sole argument of a direct unshadowed native list/tuple/set/frozenset constructor are eagerly consumed and share comprehension flow. Unknown, shadowed, patched and asynchronous consumers are excluded.",
+            "Synchronous generator expressions passed as the sole argument of a direct unshadowed native list/tuple/set/frozenset constructor are eagerly consumed and share comprehension flow. Other generator expressions evaluate only their outer iterable at creation; their bodies, filters and later iterables remain deferred, including asynchronous generators.",
             "Local annotated assignments visit their value and evaluated target operands, not deferred annotation expressions; an annotation without a value does not perform an item write.",
-            "Multiple assignment/deletion targets, unpacking assignments, more than 32 nested branches, loops, try/context-manager orchestration, closures, other generators, assignment expressions, opaque type aliases, unknown receivers and dynamic namespaces are excluded.",
+            "Chained assignment and deletion targets execute in order. Exact tuple/list literal destructuring captures right-side origins before binding targets in order; opaque, starred and mismatched destructuring remain excluded.",
+            "More than 32 nested branches, loops, try/context-manager orchestration, closures, assignment expressions, opaque type aliases, unknown receivers and dynamic namespaces are excluded.",
             "Model-valued inputs and framework validators retain their existing rule owners. Mutation of nested descendants, receiver state, I/O and scalar command/result APIs are outside this rule's supported contract.",
             "Generated and vendored sources are excluded; maintained tests are checked. No automatic copying, deletion, or command rewrite is offered.",
         ),
@@ -187,7 +203,7 @@ class NoMutatingContainerTransform(Rule):
                 col=mutation.node.col_offset + 1,
                 code=self.code,
                 message=f"This container-valued transformation mutates borrowed {mutation.owner.kind} input `{mutation.owner.parameter}`; copy before writing or use a command returning None.",
-                severity=Severity.ERROR,
+                severity=Severity.WARNING,
             )
             for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef)
             for mutation in analysis.mutations(function)
@@ -207,7 +223,7 @@ class _ContainerTransforms:
             return {}
         calls: dict[ast.Call, str] = {}
         for call in self.context.nodes(ast.Call):
-            if call.keywords or any(isinstance(argument, ast.Starred) for argument in call.args):
+            if any(isinstance(argument, ast.Starred) for argument in call.args):
                 continue
             qualified = self.provenance.runtime_import_name(call.func)
             if qualified is not None:
@@ -222,7 +238,7 @@ class _ContainerTransforms:
             if contract is None:
                 continue
             kinds, arity = contract
-            if len(call.args) == arity:
+            if len(call.args) == arity and not call.keywords:
                 calls[call] = kinds
         for call in self.context.nodes(ast.Call):
             if not call.args or isinstance(call.args[0], ast.Starred):
@@ -240,11 +256,32 @@ class _ContainerTransforms:
         calls: dict[ast.Call, ast.expr] = {}
         for call, qualified in self.native_calls.items():
             argument = _IDENTITY_ARGUMENTS.get(qualified)
-            if argument is not None and len(call.args) == _IDENTITY_CALL_ARITY:
+            if argument is None:
+                continue
+            if len(call.args) == _IDENTITY_CALL_ARITY and not call.keywords:
                 calls[call] = call.args[argument]
+            elif qualified in {"typing.cast", "typing_extensions.cast"}:
+                value = _cast_value_argument(call)
+                if value is not None:
+                    calls[call] = value
         return calls
 
-    def kind(self, annotation: ast.expr | None, *, primitive_elements: bool) -> _Kind | None:
+    def annotation_builtin(self, name: str, at: _Function) -> bool:
+        if not self.context.imports.builtin_is_unshadowed(name):
+            return False
+        current: ast.AST | None = at
+        while current is not None:
+            if isinstance(current, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) and any(
+                isinstance(parameter, ast.TypeVar | ast.ParamSpec | ast.TypeVarTuple) and parameter.name == name
+                for parameter in current.type_params
+            ):
+                return False
+            if isinstance(current, ast.ClassDef) and (current.bases or current.keywords or current.decorator_list):
+                return False
+            current = self.context.parents.get(current)
+        return True
+
+    def kind(self, annotation: ast.expr | None, at: _Function, *, primitive_elements: bool) -> _Kind | None:
         annotation = AnnotationSemantics.parse(annotation)
         if not isinstance(annotation, ast.Subscript) or not isinstance(annotation.value, ast.Name):
             return None
@@ -253,37 +290,36 @@ class _ContainerTransforms:
                 pass
             case _:
                 return None
-        if not self.context.imports.builtin_is_unshadowed(name):
+        if not self.annotation_builtin(name, at):
             return None
         elements = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
         if len(elements) != (2 if name == "dict" else 1):
             return None
         if primitive_elements and not all(
-            isinstance(element, ast.Name)
-            and element.id in _PRIMITIVES
-            and self.context.imports.builtin_is_unshadowed(element.id)
+            isinstance(element, ast.Name) and element.id in _PRIMITIVES and self.annotation_builtin(element.id, at)
             for element in elements
         ):
             return None
         return name
 
-    def returns_container(self, annotation: ast.expr | None) -> bool:
+    def returns_container(self, annotation: ast.expr | None, at: _Function) -> bool:
         annotation = AnnotationSemantics.parse(annotation)
         if not isinstance(annotation, ast.Subscript) or not isinstance(annotation.value, ast.Name):
             return False
         name = annotation.value.id
         if name not in {"tuple", "frozenset"}:
-            return self.kind(annotation, primitive_elements=False) is not None
-        if not self.context.imports.builtin_is_unshadowed(name):
+            return self.kind(annotation, at, primitive_elements=False) is not None
+        if not self.annotation_builtin(name, at):
             return False
         elements = annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
         return name == "tuple" or len(elements) == 1
 
     def deferred(self, node: ast.AST) -> bool:
-        if not isinstance(node, ast.GeneratorExp):
-            return isinstance(node, _DEFERRED_OR_REBINDING)
+        return isinstance(node, _DEFERRED_OR_REBINDING)
+
+    def eager_generator(self, node: ast.GeneratorExp) -> bool:
         parent = self.context.parents.get(node)
-        return not (
+        return (
             isinstance(parent, ast.Call)
             and parent.args == [node]
             and not parent.keywords
@@ -324,28 +360,31 @@ class _ContainerTransforms:
     def mutations(self, function: _Function) -> list[_Mutation]:
         if (
             not self.decorators_preserve_body(function)
-            or not self.returns_container(function.returns)
+            or not self.returns_container(function.returns, function)
             or self.provenance.dynamic_namespace
+            or self.provenance.wildcard
             or not self.provenance.builtin_namespace_untouched
         ):
-            return []
-        if not function.body or not isinstance(function.body[-1], ast.Return) or function.body[-1].value is None:
-            return []
-        if isinstance(function.body[-1].value, ast.Constant) and function.body[-1].value.value is None:
             return []
         if not _supported_body(function.body) or any(
             self.deferred(node) for statement in function.body for node in ast.walk(statement)
         ):
             return []
+        ending = _terminal_paths(function.body)
+        if not ending.terminal or not ending.returns_value:
+            return []
         parameters = (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
         origins = {
             argument.arg: _Borrowed(argument.arg, kind)
             for argument in parameters
-            if (kind := self.kind(argument.annotation, primitive_elements=True)) is not None
+            if (kind := self.kind(argument.annotation, function, primitive_elements=True)) is not None
         }
         if not origins:
             return []
-        flow = _ContainerFlow(origins, self.argument_writes, self.identity_calls)
+        eager_generators = frozenset(
+            node for node in ast.walk(function) if isinstance(node, ast.GeneratorExp) and self.eager_generator(node)
+        )
+        flow = _ContainerFlow(origins, self.argument_writes, self.identity_calls, eager_generators)
         for statement in function.body:
             flow.statement(statement)
         return flow.events
@@ -358,19 +397,34 @@ class _ContainerFlow:
         origins: dict[str, _Borrowed],
         operator_calls: Mapping[ast.Call, frozenset[_Kind]],
         identity_calls: Mapping[ast.Call, ast.expr],
+        eager_generators: frozenset[ast.GeneratorExp],
     ) -> None:
         self.origins = origins
         self.operator_calls = operator_calls
         self.identity_calls = identity_calls
+        self.eager_generators = eager_generators
         self.events: list[_Mutation] = []
         self.active = True
 
     def statement(self, statement: ast.stmt) -> None:
         if not self.active:
             return
-        if isinstance(statement, ast.If):
-            self._conditional(statement)
-            return
+        match statement:
+            case ast.If():
+                self._conditional(statement)
+                return
+            case ast.Assign():
+                self._evaluate(statement.value)
+                value = self._assigned_value(statement.value)
+                for target in statement.targets:
+                    self._assignment(target, value)
+                return
+            case ast.Delete():
+                for target in statement.targets:
+                    self._assignment(target, None)
+                return
+            case _:
+                pass
         self._evaluate(statement)
         self._bindings(statement)
         if isinstance(statement, ast.Return | ast.Raise):
@@ -383,7 +437,7 @@ class _ContainerFlow:
             event = _mutation(current.node, current.origins, self.operator_calls)
             if event is not None:
                 self.events.append(event)
-            pending.extend(_evaluated_children(current))
+            pending.extend(_evaluated_children(current, self.eager_generators))
 
     def _conditional(self, statement: ast.If) -> None:
         self._evaluate(statement.test)
@@ -408,17 +462,13 @@ class _ContainerFlow:
         }
 
     def _fork(self, statements: list[ast.stmt]) -> _ContainerFlow:
-        branch = _ContainerFlow(self.origins.copy(), self.operator_calls, self.identity_calls)
+        branch = _ContainerFlow(self.origins.copy(), self.operator_calls, self.identity_calls, self.eager_generators)
         for statement in statements:
             branch.statement(statement)
         return branch
 
     def _bindings(self, statement: ast.stmt) -> None:
         match statement:
-            case ast.Assign(targets=targets, value=value):
-                origin = _borrowed_origin(value, self.origins, self.identity_calls)
-                for target in targets:
-                    self._assign(target, origin)
             case ast.AnnAssign(target=target, value=value) if value is not None:
                 self._assign(target, _borrowed_origin(value, self.origins, self.identity_calls))
             case ast.AugAssign(target=ast.Name(id=name), op=operation):
@@ -427,11 +477,24 @@ class _ContainerFlow:
                     self.events.append(_Mutation(statement, owner))
                 else:
                     self.origins.pop(name, None)
-            case ast.Delete(targets=targets):
-                for target in targets:
-                    self._assign(target, None)
             case _:
                 pass
+
+    def _assigned_value(self, value: ast.expr) -> _AssignedValue:
+        if isinstance(value, ast.Tuple | ast.List):
+            return tuple(self._assigned_value(element) for element in value.elts)
+        return _borrowed_origin(value, self.origins, self.identity_calls)
+
+    def _assignment(self, target: ast.expr, value: _AssignedValue) -> None:
+        if isinstance(target, ast.Tuple | ast.List):
+            values = (
+                value if isinstance(value, tuple) and len(value) == len(target.elts) else (None,) * len(target.elts)
+            )
+            for element, assigned in zip(target.elts, values, strict=True):
+                self._assignment(element, assigned)
+            return
+        self._evaluate(target)
+        self._assign(target, value if isinstance(value, _Borrowed) else None)
 
     def _assign(self, target: ast.expr, owner: _Borrowed | None) -> None:
         match target:
@@ -473,7 +536,7 @@ def _mutation(
     return None
 
 
-def _evaluated_children(current: _Evaluation) -> list[_Evaluation]:
+def _evaluated_children(current: _Evaluation, eager_generators: frozenset[ast.GeneratorExp]) -> list[_Evaluation]:
     node, origins = current.node, current.origins
     match node:
         case ast.AnnAssign(target=target, value=value):
@@ -486,6 +549,8 @@ def _evaluated_children(current: _Evaluation) -> list[_Evaluation]:
             return _comparison_operands(node, origins)
         case ast.IfExp():
             return _conditional_operands(node, origins)
+        case ast.GeneratorExp() if node not in eager_generators:
+            return [_Evaluation(node.generators[0].iter, origins)]
         case ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp():
             return _comprehension_operands(node, origins)
         case _:
@@ -721,9 +786,51 @@ def _supported_body(statements: list[ast.stmt]) -> bool:
 
 def _compound_targets(statement: ast.stmt) -> bool:
     match statement:
-        case ast.Assign(targets=targets):
-            return len(targets) != 1 or isinstance(targets[0], ast.Tuple | ast.List)
-        case ast.Delete(targets=targets):
-            return len(targets) != 1
+        case ast.Assign(targets=targets, value=value):
+            return any(not _supported_assignment(target, value) for target in targets)
         case _:
             return False
+
+
+def _supported_assignment(target: ast.expr, value: ast.expr) -> bool:
+    if not isinstance(target, ast.Tuple | ast.List):
+        return not isinstance(target, ast.Starred)
+    if not isinstance(value, ast.Tuple | ast.List) or len(target.elts) != len(value.elts):
+        return False
+    return all(
+        not isinstance(element, ast.Starred)
+        and not isinstance(assigned, ast.Starred)
+        and _supported_assignment(element, assigned)
+        for element, assigned in zip(target.elts, value.elts, strict=True)
+    )
+
+
+def _terminal_paths(statements: list[ast.stmt]) -> _TerminalPaths:
+    if not statements:
+        return _TerminalPaths(terminal=False, returns_value=False)
+    match statements[-1]:
+        case ast.Return(value=value):
+            returns_value = value is not None and not (isinstance(value, ast.Constant) and value.value is None)
+            return _TerminalPaths(terminal=returns_value, returns_value=returns_value)
+        case ast.Raise():
+            return _TerminalPaths(terminal=True, returns_value=False)
+        case ast.If(body=body, orelse=otherwise):
+            first = _terminal_paths(body)
+            second = _terminal_paths(otherwise)
+            return _TerminalPaths(
+                terminal=first.terminal and second.terminal,
+                returns_value=first.returns_value or second.returns_value,
+            )
+        case _:
+            return _TerminalPaths(terminal=False, returns_value=False)
+
+
+def _cast_value_argument(call: ast.Call) -> ast.expr | None:
+    if len(call.args) > _IDENTITY_CALL_ARITY:
+        return None
+    values: dict[str, ast.expr] = dict(zip(("typ", "val"), call.args, strict=False))
+    for keyword in call.keywords:
+        if keyword.arg not in {"typ", "val"} or keyword.arg in values:
+            return None
+        values[keyword.arg] = keyword.value
+    return values.get("val") if values.keys() == {"typ", "val"} else None
