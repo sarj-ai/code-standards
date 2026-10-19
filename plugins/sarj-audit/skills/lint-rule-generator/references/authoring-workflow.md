@@ -84,6 +84,7 @@ running or reporting a corpus evaluation.
    `make test-standards-changed BASE=origin/main` for fresh-wheel iteration.
    Keep the selector's full fallback for shared, unknown, or uncertified changes;
    a scoped result does not replace the required `make verify` before review.
+   Use [native integration preparation](#local-native-integration-preparation) before full tests.
    For isolated Python fixture projects, use a private temp root with no Git ancestor.
    If the VM's default temp path is inside Git, set `TMPDIR` and
    `PYTEST_DEBUG_TEMPROOT` to that root; preserve normal Git discovery and test gates.
@@ -109,6 +110,34 @@ When the task also includes publishing or propagating the resulting Standards
 bundle, run `make rollout VERSION=<published-version>` after publication and
 inspect the controller's status for every registered consumer before reporting
 propagation complete.
+
+## Local native integration preparation
+
+From this repository's root, first enter the command environment providing Node
+from `.node-version`, including any outer `mise exec`. `make setup` already
+installs locked dependencies and authored native tools. Prepared Helm/Kubernetes,
+Knip and offline Zizmor tests also need CI's existing preparation. Reuse its pins
+and consume both private path handoffs in the same shell:
+
+```bash
+(
+  set -eu
+  GITHUB_PATH=$(mktemp)
+  export GITHUB_PATH
+  trap 'rm -f "$GITHUB_PATH"' EXIT
+  uv run --project packages/standards --frozen python -m sarj_standards.libs.adoption.native_bootstrap
+  while IFS= read -r directory; do export PATH="$directory:$PATH"; done < "$GITHUB_PATH"
+  make setup
+  : > "$GITHUB_PATH"
+  uv run --project packages/standards --frozen python -m sarj_standards.libs.release.native_test_setup --root .
+  while IFS= read -r directory; do export PATH="$directory:$PATH"; done < "$GITHUB_PATH"
+  make verify
+)
+```
+
+Keep verification in this prepared shell so later tool wrappers cannot prepend
+unselected shims ahead of attested binaries. Preserve setup and gate failures,
+and the private non-Git fixture temp root described above.
 
 ## Promotion gate
 
