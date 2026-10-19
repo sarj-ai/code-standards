@@ -186,10 +186,10 @@ class _DataUnions:
                 node = self.values[node.id]
                 continue
             if not isinstance(node, ast.Call):
-                return False
+                return self._metadata_aliases_discriminate(seen, callable_metadata=False)
             step = self._metadata_step(node)
             if isinstance(step, bool):
-                return step and self._metadata_aliases_discriminate(seen)
+                return self._metadata_aliases_discriminate(seen, callable_metadata=step)
             node = step
         return True
 
@@ -204,9 +204,9 @@ class _DataUnions:
             return discriminator
         return False
 
-    def _metadata_aliases_discriminate(self, names: set[str]) -> bool:
+    def _metadata_aliases_discriminate(self, names: set[str], *, callable_metadata: bool) -> bool:
         mutations = [self._metadata_mutated(name) for name in names]
-        return any(mutation is None for mutation in mutations) or not any(mutations)
+        return any(mutation is None for mutation in mutations) or (callable_metadata and not any(mutations))
 
     def _metadata_mutated(self, name: str) -> bool | None:
         if name in self.metadata_mutation_cache:

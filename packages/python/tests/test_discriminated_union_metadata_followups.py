@@ -148,3 +148,12 @@ def test_global_string_binding_replaced_by_callable_abstains() -> None:
     )
     source = f"from typing import Callable\n{case.source}"
     assert PreferDiscriminatedModelUnion().check(Path(case.path), source) == []
+
+
+def test_string_metadata_replaced_by_callable_abstains() -> None:
+    case = _case(
+        "string-metadata-rebinding",
+        "ACCESS_FIELD = Field(discriminator='scope')\nACCESS_FIELD.discriminator = Discriminator(scope)\n",
+        "ACCESS_FIELD",
+    )
+    assert PreferDiscriminatedModelUnion().check(Path(case.path), case.source) == []
