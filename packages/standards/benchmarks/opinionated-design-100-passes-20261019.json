@@ -1,0 +1,457 @@
+{
+  "schemaVersion": 1,
+  "campaign": "opinionated-design-100-passes-20261019",
+  "baselineRevision": "aab73adbb135da206654533860722fae28a33fdc",
+  "passDefinition": "One distinct design, ownership, semantic-boundary or delivery question with an explicit reviewed decision. Repeated presets, process repetitions and timing samples are not additional passes or independent precision evidence.",
+  "reviewPasses": 100,
+  "rankingPolicy": "The following ordering is a practical review priority, not an objective ranking of programmers or empirical proof that a style is universally best.",
+  "priorityOrder": [
+    {
+      "rank": 1,
+      "principle": "Reveal behavior in function calls",
+      "decision": "Add the maintained S2301 warning; retain Ruff FBT ownership."
+    },
+    {
+      "rank": 2,
+      "principle": "Make state changes visible",
+      "decision": "Add native no-return-assign at warning with except-parens; preserve intentional grouped memoization."
+    },
+    {
+      "rank": 3,
+      "principle": "Handle asynchronous results and settlement explicitly",
+      "decision": "Retain existing promise and typed void-return owners. Reject the noisy syntactic executor fallback after valid-state review."
+    },
+    {
+      "rank": 4,
+      "principle": "Represent valid alternatives in types",
+      "decision": "Retain existing discriminated unions and exhaustive handling."
+    },
+    {
+      "rank": 5,
+      "principle": "Inject dependencies at owned boundaries",
+      "decision": "Retain existing public contract and injection rules."
+    },
+    {
+      "rank": 6,
+      "principle": "Keep failures observable and typed",
+      "decision": "Retain existing catch and exception owners."
+    },
+    {
+      "rank": 7,
+      "principle": "Reduce nesting while preserving cohesive work",
+      "decision": "Retain semantic complexity and guard clauses; reject arbitrary size limits."
+    },
+    {
+      "rank": 8,
+      "principle": "Test observable behavior with meaningful oracles",
+      "decision": "Retain existing test-quality rules."
+    },
+    {
+      "rank": 9,
+      "principle": "Keep comments useful and remove restatement",
+      "decision": "Retain existing comment owners; preserve rationale."
+    },
+    {
+      "rank": 10,
+      "principle": "Remove duplicated knowledge without forcing abstractions",
+      "decision": "Use advisory evidence and manual design judgment."
+    }
+  ],
+  "references": {
+    "requested-article": "https://understandlegacycode.com/blog/what-is-wrong-with-boolean-parameters/",
+    "fowler-flags": "https://martinfowler.com/bliki/FlagArgument.html",
+    "fowler-command-query": "https://martinfowler.com/bliki/CommandQuerySeparation.html",
+    "martin-organization": "https://blog.cleancoder.com/uncle-bob/2015/04/15/DoesOrganizationMatter.html",
+    "martin-comments": "https://blog.cleancoder.com/uncle-bob/2017/02/23/NecessaryComments.html",
+    "metz-abstraction": "https://sandimetz.com/blog/2016/1/20/the-wrong-abstraction",
+    "fowler-simple-design": "https://martinfowler.com/bliki/BeckDesignRules.html",
+    "fowler-yagni": "https://martinfowler.com/bliki/Yagni.html",
+    "pep20": "https://peps.python.org/pep-0020/",
+    "ruff-FBT001": "https://docs.astral.sh/ruff/rules/boolean-type-hint-positional-argument/",
+    "ruff-FBT002": "https://docs.astral.sh/ruff/rules/boolean-default-value-positional-argument/",
+    "ruff-FBT003": "https://docs.astral.sh/ruff/rules/boolean-positional-value-in-call/",
+    "sonar-S2301": "https://github.com/SonarSource/SonarJS/blob/master/packages/analysis/src/jsts/rules/S2301/rule.ts",
+    "eslint-no-return-assign": "https://eslint.org/docs/latest/rules/no-return-assign",
+    "eslint-no-promise-executor-return": "https://eslint.org/docs/latest/rules/no-promise-executor-return",
+    "eslint-no-restricted-syntax": "https://eslint.org/docs/latest/rules/no-restricted-syntax"
+  },
+  "passes": [
+    {"pass":1,"phase":"Primary-source review","question":"What problem does the requested article describe?","evidence":"References below; sources reviewed on 2026-10-19.","decision":"Opaque positional values and behavior-selection parameters are related but distinct design concerns."},
+    {"pass":2,"phase":"Primary-source review","question":"What does Fowler recommend for flag arguments?","evidence":"References below; sources reviewed on 2026-10-19.","decision":"Prefer intention-revealing operations; retaining a hidden implementation can be reasonable."},
+    {"pass":3,"phase":"Primary-source review","question":"Can naming a boolean remove multiple responsibilities?","evidence":"References below; sources reviewed on 2026-10-19.","decision":"Named options improve calls but do not prove a cohesive implementation."},
+    {"pass":4,"phase":"Primary-source review","question":"Should every input boolean be banned?","evidence":"References below; sources reviewed on 2026-10-19.","decision":"Do not ban all booleans: preserve data, setters, callbacks and required compatibility contracts. Named JSX callbacks require a file-scope exemption with this upstream version."},
+    {"pass":5,"phase":"Primary-source review","question":"Does Clean Code justify a universal small-function cap?","evidence":"References below; sources reviewed on 2026-10-19.","decision":"Use existing semantic complexity evidence; a line count cannot prove a responsibility boundary."},
+    {"pass":6,"phase":"Primary-source review","question":"Should comments be banned categorically?","evidence":"References below; sources reviewed on 2026-10-19.","decision":"Martin explicitly describes necessary comments; preserve explanations of constraints and rationale."},
+    {"pass":7,"phase":"Primary-source review","question":"What does command/query separation add?","evidence":"References below; sources reviewed on 2026-10-19.","decision":"Expose state changes; do not claim every useful modifier can return only void."},
+    {"pass":8,"phase":"Primary-source review","question":"Does eliminating duplication always improve design?","evidence":"References below; sources reviewed on 2026-10-19.","decision":"Metz documents abstractions damaged by accumulating flags; extraction remains a reviewed decision."},
+    {"pass":9,"phase":"Primary-source review","question":"How does simple design order its priorities?","evidence":"References below; sources reviewed on 2026-10-19.","decision":"Working behavior and clear intent take precedence over mechanically minimizing elements."},
+    {"pass":10,"phase":"Primary-source review","question":"Can future extensibility be established from syntax?","evidence":"References below; sources reviewed on 2026-10-19.","decision":"YAGNI is review guidance; a detector cannot establish that a requirement will never exist."},
+    {"pass":11,"phase":"Existing owners and smallest changes","question":"Who owns positional Python boolean annotations?","evidence":"Shipped Ruff/ESLint presets, native catalog and pinned npm metadata.","decision":"Ruff FBT001 is already selected through ALL; add integration evidence instead of another rule."},
+    {"pass":12,"phase":"Existing owners and smallest changes","question":"Who owns Python boolean defaults?","evidence":"Shipped Ruff/ESLint presets, native catalog and pinned npm metadata.","decision":"Ruff FBT002 already owns this syntax."},
+    {"pass":13,"phase":"Existing owners and smallest changes","question":"Who owns literal boolean calls in Python?","evidence":"Shipped Ruff/ESLint presets, native catalog and pinned npm metadata.","decision":"Ruff FBT003 already owns this syntax and its upstream allowed-call exceptions."},
+    {"pass":14,"phase":"Existing owners and smallest changes","question":"Does a Python keyword-only boolean violate FBT?","evidence":"Shipped Ruff/ESLint presets, native catalog and pinned npm metadata.","decision":"No; document that this policy targets positional ambiguity rather than all behavior flags."},
+    {"pass":15,"phase":"Existing owners and smallest changes","question":"Who owns swap-prone positional Python inputs?","evidence":"Shipped Ruff/ESLint presets, native catalog and pinned npm metadata.","decision":"SARJ034 already requires keyword-only swap-prone parameters; preserve its narrower boundary."},
+    {"pass":16,"phase":"Existing owners and smallest changes","question":"Can ESLint core express a syntactic boolean prohibition?","evidence":"Shipped Ruff/ESLint presets, native catalog and pinned npm metadata.","decision":"no-restricted-syntax can match explicit syntax but does not provide S2301 type and usage analysis."},
+    {"pass":17,"phase":"Existing owners and smallest changes","question":"Is there a maintained TypeScript selector rule?","evidence":"Shipped Ruff/ESLint presets, native catalog and pinned npm metadata.","decision":"Use SonarJS no-selector-parameter/S2301 instead of implementing a duplicate."},
+    {"pass":18,"phase":"Existing owners and smallest changes","question":"Does strict-boolean-expressions prevent flag parameters?","evidence":"Shipped Ruff/ESLint presets, native catalog and pinned npm metadata.","decision":"No; condition operand types and API design are different invariants."},
+    {"pass":19,"phase":"Existing owners and smallest changes","question":"Does no-param-reassign expose an assignment to other state in return?","evidence":"Shipped Ruff/ESLint presets, native catalog and pinned npm metadata.","decision":"No; parameter rebinding does not cover hidden local or property assignments."},
+    {"pass":20,"phase":"Existing owners and smallest changes","question":"Who already catches value returns in typed void callbacks?","evidence":"Shipped Ruff/ESLint presets, native catalog and pinned npm metadata.","decision":"strict-void-return owns typed source; preserve that owner when considering the core Promise rule."},
+    {"pass":21,"phase":"Python boolean boundary review","question":"Are typed positional booleans detected?","evidence":"packages/standards/tests/test_ruff_boolean_trap.py; Ruff upstream FBT documentation.","decision":"Native integration reproduces FBT001 using the shipped preset without forcing --select."},
+    {"pass":22,"phase":"Python boolean boundary review","question":"Are inferred boolean defaults detected?","evidence":"packages/standards/tests/test_ruff_boolean_trap.py; Ruff upstream FBT documentation.","decision":"Native integration reproduces FBT002 for an unannotated default."},
+    {"pass":23,"phase":"Python boolean boundary review","question":"Are true and false positional literals both covered?","evidence":"packages/standards/tests/test_ruff_boolean_trap.py; Ruff upstream FBT documentation.","decision":"Native integration checks both FBT003 literal forms."},
+    {"pass":24,"phase":"Python boolean boundary review","question":"What happens when annotation and default coexist?","evidence":"packages/standards/tests/test_ruff_boolean_trap.py; Ruff upstream FBT documentation.","decision":"Retain upstream FBT001 and FBT002 diagnostics for their separate observed constructs."},
+    {"pass":25,"phase":"Python boolean boundary review","question":"Are nullable boolean annotations included?","evidence":"packages/standards/tests/test_ruff_boolean_trap.py; Ruff upstream FBT documentation.","decision":"The bool | None vector reproduces FBT001."},
+    {"pass":26,"phase":"Python boolean boundary review","question":"Can slash syntax bypass the positional check?","evidence":"packages/standards/tests/test_ruff_boolean_trap.py; Ruff upstream FBT documentation.","decision":"The positional-only vector still reproduces FBT001."},
+    {"pass":27,"phase":"Python boolean boundary review","question":"Does async change signature coverage?","evidence":"packages/standards/tests/test_ruff_boolean_trap.py; Ruff upstream FBT documentation.","decision":"The async definition still reproduces FBT001."},
+    {"pass":28,"phase":"Python boolean boundary review","question":"Are explicit keyword calls and keyword-only definitions preserved?","evidence":"packages/standards/tests/test_ruff_boolean_trap.py; Ruff upstream FBT documentation.","decision":"Both remain valid; no destructive signature rewrite is applied."},
+    {"pass":29,"phase":"Python boolean boundary review","question":"Are override and property-setter contracts preserved?","evidence":"packages/standards/tests/test_ruff_boolean_trap.py; Ruff upstream FBT documentation.","decision":"Execute both upstream exemptions with the shipped preset."},
+    {"pass":30,"phase":"Python boolean boundary review","question":"Are return types and established test exemptions preserved?","evidence":"packages/standards/tests/test_ruff_boolean_trap.py; Ruff upstream FBT documentation.","decision":"Boolean-returning functions remain valid, and test-path FBT exclusions remain effective."},
+    {"pass":31,"phase":"TypeScript selector positive review","question":"Does a direct boolean if/else dispatcher warn?","evidence":"packages/typescript/tests/boolean-selector-policy.test.ts; eslint-plugin-sonarjs@4.2.2.","decision":"The shipped typed preset emits the upstream selector warning."},
+    {"pass":32,"phase":"TypeScript selector positive review","question":"Does an inferred boolean default warn?","evidence":"packages/typescript/tests/boolean-selector-policy.test.ts; eslint-plugin-sonarjs@4.2.2.","decision":"The compiler supplies the inferred boolean type."},
+    {"pass":33,"phase":"TypeScript selector positive review","question":"Does a boolean type alias warn?","evidence":"packages/typescript/tests/boolean-selector-policy.test.ts; eslint-plugin-sonarjs@4.2.2.","decision":"The upstream rule uses type information rather than checking only TSBooleanKeyword."},
+    {"pass":34,"phase":"TypeScript selector positive review","question":"Does returned conditional dispatch warn?","evidence":"packages/typescript/tests/boolean-selector-policy.test.ts; eslint-plugin-sonarjs@4.2.2.","decision":"A returned conditional with operation calls is covered; pure value-label transformations remain valid."},
+    {"pass":35,"phase":"TypeScript selector positive review","question":"Does a block-bodied arrow dispatcher warn?","evidence":"packages/typescript/tests/boolean-selector-policy.test.ts; eslint-plugin-sonarjs@4.2.2.","decision":"Block-bodied arrows in owned non-JSX modules are covered; JSX callback contracts remain exempt."},
+    {"pass":36,"phase":"TypeScript selector positive review","question":"Does a method dispatcher warn?","evidence":"packages/typescript/tests/boolean-selector-policy.test.ts; eslint-plugin-sonarjs@4.2.2.","decision":"The class method is checked through its function expression."},
+    {"pass":37,"phase":"TypeScript selector positive review","question":"Does async dispatch warn?","evidence":"packages/typescript/tests/boolean-selector-policy.test.ts; eslint-plugin-sonarjs@4.2.2.","decision":"The async vector retains manual control over await and side effects."},
+    {"pass":38,"phase":"TypeScript selector positive review","question":"Does boolean negation hide the selector?","evidence":"packages/typescript/tests/boolean-selector-policy.test.ts; eslint-plugin-sonarjs@4.2.2.","decision":"A negated selector is still associated with the original parameter."},
+    {"pass":39,"phase":"TypeScript selector positive review","question":"Does a standalone function expression warn?","evidence":"packages/typescript/tests/boolean-selector-policy.test.ts; eslint-plugin-sonarjs@4.2.2.","decision":"The assigned function expression is checked independently of callback exclusions."},
+    {"pass":40,"phase":"TypeScript selector positive review","question":"Are constructor expressions meaningful dispatch?","evidence":"packages/typescript/tests/boolean-selector-policy.test.ts; eslint-plugin-sonarjs@4.2.2.","decision":"Returning different constructed objects is covered without guessing from parameter names."},
+    {"pass":41,"phase":"TypeScript valid states and coverage limits","question":"Can a caller use a named domain mode?","evidence":"SonarJS S2301 source and integration cases; generated Standards documentation.","decision":"String-literal modes remain valid; do not recommend TypeScript enums against the existing enum policy."},
+    {"pass":42,"phase":"TypeScript valid states and coverage limits","question":"Can a boolean be stored as data?","evidence":"SonarJS S2301 source and integration cases; generated Standards documentation.","decision":"The setter function and native property setter preserve their data contracts."},
+    {"pass":43,"phase":"TypeScript valid states and coverage limits","question":"Can a boolean pass through unchanged?","evidence":"SonarJS S2301 source and integration cases; generated Standards documentation.","decision":"Identity and boolean-returning functions remain valid."},
+    {"pass":44,"phase":"TypeScript valid states and coverage limits","question":"Can a boolean render two literal labels?","evidence":"SonarJS S2301 source and integration cases; generated Standards documentation.","decision":"Pure returned conditional value transformations remain valid."},
+    {"pass":45,"phase":"TypeScript valid states and coverage limits","question":"Can options destructuring preserve the input contract?","evidence":"SonarJS S2301 source and integration cases; generated Standards documentation.","decision":"Named options remain valid; the docs distinguish readability from responsibility separation."},
+    {"pass":46,"phase":"TypeScript valid states and coverage limits","question":"Can externally supplied callbacks retain booleans?","evidence":"SonarJS S2301 source and integration cases; generated Standards documentation.","decision":"Inline callbacks are preserved upstream. Eleven named JSX callback findings were valid contracts; disable S2301 in JSX files until upstream can follow those references."},
+    {"pass":47,"phase":"TypeScript valid states and coverage limits","question":"Is an array of booleans itself a selector boolean?","evidence":"SonarJS S2301 source and integration cases; generated Standards documentation.","decision":"The array-input vector remains valid."},
+    {"pass":48,"phase":"TypeScript valid states and coverage limits","question":"Does S2301 cover every function body?","evidence":"SonarJS S2301 source and integration cases; generated Standards documentation.","decision":"Document missed multi-statement bodies, short-circuit dispatch and expression-bodied arrows; do not assert blanket coverage."},
+    {"pass":49,"phase":"TypeScript valid states and coverage limits","question":"Can a required compatibility exception be localized?","evidence":"SonarJS S2301 source and integration cases; generated Standards documentation.","decision":"Exact native suppressions are tested; JSX context exemptions are established from corpus evidence rather than handler names."},
+    {"pass":50,"phase":"TypeScript valid states and coverage limits","question":"Can a project run without type services?","evidence":"SonarJS S2301 source and integration cases; generated Standards documentation.","decision":"Disable S2301 in syntax-only contexts and exercise both preset factories."},
+    {"pass":51,"phase":"Returned assignment review","question":"Can an accidental equals sign in return mutate state?","evidence":"ESLint no-return-assign documentation and upstream integration cases in the follow-up.","decision":"A minimal executable reproduction distinguishes assignment from comparison."},
+    {"pass":52,"phase":"Returned assignment review","question":"When does explicit grouping establish deliberate assignment intent?","evidence":"ESLint no-return-assign documentation and upstream integration cases in the follow-up.","decision":"Native except-parens preserves deliberately grouped assignments, including every memoization expression found in the corpus. The broader always option was rejected."},
+    {"pass":53,"phase":"Returned assignment review","question":"Can compound assignments be hidden in return?","evidence":"ESLint no-return-assign documentation and upstream integration cases in the follow-up.","decision":"Check compound assignment as a separate syntax form."},
+    {"pass":54,"phase":"Returned assignment review","question":"Can concise arrows hide returned assignments?","evidence":"ESLint no-return-assign documentation and upstream integration cases in the follow-up.","decision":"Check concise arrow bodies through the upstream implementation."},
+    {"pass":55,"phase":"Returned assignment review","question":"Can property assignment be hidden in a returned value?","evidence":"ESLint no-return-assign documentation and upstream integration cases in the follow-up.","decision":"Check property writes as well as local rebinding."},
+    {"pass":56,"phase":"Returned assignment review","question":"Can a nested returned expression conceal an assignment?","evidence":"ESLint no-return-assign documentation and upstream integration cases in the follow-up.","decision":"Check a conditional expression containing the write."},
+    {"pass":57,"phase":"Returned assignment review","question":"Are ordinary equality comparisons preserved?","evidence":"ESLint no-return-assign documentation and upstream integration cases in the follow-up.","decision":"Strict comparison returns remain valid; native runtime examples show the difference from accidental assignment."},
+    {"pass":58,"phase":"Returned assignment review","question":"Can deliberate state changes stay explicit?","evidence":"ESLint no-return-assign documentation and upstream integration cases in the follow-up.","decision":"An assignment statement followed by return remains valid and keeps its behavior."},
+    {"pass":59,"phase":"Returned assignment review","question":"Should caches and fluent modifiers be considered broken?","evidence":"ESLint no-return-assign documentation and upstream integration cases in the follow-up.","decision":"No; this is a visibility advisory, not proof that a useful modifier must return void."},
+    {"pass":60,"phase":"Returned assignment review","question":"Is an automatic assignment/comparison rewrite safe?","evidence":"ESLint no-return-assign documentation and upstream integration cases in the follow-up.","decision":"No; keep remediation manual and verify the upstream rule does not autofix intent."},
+    {"pass":61,"phase":"Discarded Promise executor return review","question":"Can returning a literal settle a native Promise?","evidence":"ESLint upstream documentation; inspected corpus counterexamples; native JavaScript settlement reproduction. The proposal was evaluated and rejected.","decision":"A native runtime reproduction shows that returning a value does not invoke resolve or reject."},
+    {"pass":62,"phase":"Discarded Promise executor return review","question":"Can an expression-bodied executor discard its returned value?","evidence":"ESLint upstream documentation; inspected corpus counterexamples; native JavaScript settlement reproduction. The proposal was evaluated and rejected.","decision":"Check this form in the syntax-only fallback."},
+    {"pass":63,"phase":"Discarded Promise executor return review","question":"Can an early returned value leave a Promise pending?","evidence":"ESLint upstream documentation; inspected corpus counterexamples; native JavaScript settlement reproduction. The proposal was evaluated and rejected.","decision":"Check an executor with a conditional early return."},
+    {"pass":64,"phase":"Discarded Promise executor return review","question":"Are explicit resolve and reject operations preserved?","evidence":"ESLint upstream documentation; inspected corpus counterexamples; native JavaScript settlement reproduction. The proposal was evaluated and rejected.","decision":"Void executor bodies that settle explicitly remain valid."},
+    {"pass":65,"phase":"Discarded Promise executor return review","question":"Can a bare return preserve executor control flow?","evidence":"ESLint upstream documentation; inspected corpus counterexamples; native JavaScript settlement reproduction. The proposal was evaluated and rejected.","decision":"A bare return remains valid after an explicit settlement operation."},
+    {"pass":66,"phase":"Discarded Promise executor return review","question":"Should a typed Promise defect produce two equivalent warnings?","evidence":"ESLint upstream documentation; inspected corpus counterexamples; native JavaScript settlement reproduction. The proposal was evaluated and rejected.","decision":"Keep strict-void-return authoritative in typed source and avoid a second equivalent Promise warning."},
+    {"pass":67,"phase":"Discarded Promise executor return review","question":"What about JSX where strict-void-return is intentionally disabled?","evidence":"ESLint upstream documentation; inspected corpus counterexamples; native JavaScript settlement reproduction. The proposal was evaluated and rejected.","decision":"The JSX fallback proposal was rejected: working timer and microtask wrappers receive native warnings despite settling correctly."},
+    {"pass":68,"phase":"Discarded Promise executor return review","question":"What about syntax-only TypeScript or JavaScript?","evidence":"ESLint upstream documentation; inspected corpus counterexamples; native JavaScript settlement reproduction. The proposal was evaluated and rejected.","decision":"Do not enable the syntax-only fallback by default after the same valid-state counterexamples; record the remaining coverage limit."},
+    {"pass":69,"phase":"Discarded Promise executor return review","question":"Does the native rule prove custom constructors are Promises?","evidence":"ESLint upstream documentation; inspected corpus counterexamples; native JavaScript settlement reproduction. The proposal was evaluated and rejected.","decision":"Preserve scope-shadowed constructors; document aliases and native syntactic identity limits."},
+    {"pass":70,"phase":"Discarded Promise executor return review","question":"Is return resolve(value) necessarily a broken Promise?","evidence":"ESLint upstream documentation; inspected corpus counterexamples; native JavaScript settlement reproduction. The proposal was evaluated and rejected.","decision":"return resolve(value), timer handles and microtask wrappers may be intentional. Native runtime proofs confirm these can settle correctly; no default executor-return rule is added."},
+    {"pass":71,"phase":"Prioritized established design principles","question":"How should behavior alternatives be represented?","evidence":"Native catalog and strict presets; primary-source references below.","decision":"Keep discriminated-union guidance and exhaustive-switch checks rather than adding a new boolean-count heuristic."},
+    {"pass":72,"phase":"Prioritized established design principles","question":"How should dependencies be supplied?","evidence":"Native catalog and strict presets; primary-source references below.","decision":"Keep existing injection, public-contract and service-boundary owners rather than requiring new layers everywhere."},
+    {"pass":73,"phase":"Prioritized established design principles","question":"How should failures reach callers?","evidence":"Native catalog and strict presets; primary-source references below.","decision":"Keep no-log-only-catch, no-sentinel-return-on-catch, typed error and native exception checks."},
+    {"pass":74,"phase":"Prioritized established design principles","question":"How should nested control flow be simplified?","evidence":"Native catalog and strict presets; primary-source references below.","decision":"Keep existing cognitive complexity and guard-clause owners; extraction requires a cohesive boundary."},
+    {"pass":75,"phase":"Prioritized established design principles","question":"How should domain values retain meaning?","evidence":"Native catalog and strict presets; primary-source references below.","decision":"Keep nominal-ID, named-return and source-schema guidance; avoid a blanket primitive-type ban."},
+    {"pass":76,"phase":"Prioritized established design principles","question":"How should mutation contracts be expressed?","evidence":"Native catalog and strict presets; primary-source references below.","decision":"Keep input-model and borrowed-container mutation checks; do not reject all local mutation."},
+    {"pass":77,"phase":"Prioritized established design principles","question":"What makes tests useful?","evidence":"Native catalog and strict presets; primary-source references below.","decision":"Keep behavior-sensitive assertions and existing tautology/duplicate-test owners; passing counts alone do not prove a useful oracle."},
+    {"pass":78,"phase":"Prioritized established design principles","question":"How should comments add value?","evidence":"Native catalog and strict presets; primary-source references below.","decision":"Keep restatement and stale-code diagnostics while preserving useful rationale and constraints."},
+    {"pass":79,"phase":"Prioritized established design principles","question":"How should duplicated knowledge be reviewed?","evidence":"Native catalog and strict presets; primary-source references below.","decision":"Keep advisory copy/paste evidence and targeted duplicate owners; do not force one abstraction from textual similarity."},
+    {"pass":80,"phase":"Prioritized established design principles","question":"How should concurrency failures be surfaced?","evidence":"Native catalog and strict presets; primary-source references below.","decision":"Keep no-floating-promises, no-misused-promises and native async executor checks with their different ownership boundaries."},
+    {"pass":81,"phase":"Proposals declined after review","question":"Should every function have at most three parameters?","evidence":"Ruff strict preset rationale, primary design references, valid-state examples.","decision":"Decline: arity alone cannot distinguish clear dependency contracts from positional ambiguity."},
+    {"pass":82,"phase":"Proposals declined after review","question":"Should every function fit an arbitrary line cap?","evidence":"Ruff strict preset rationale, primary design references, valid-state examples.","decision":"Decline: visitors and dispatchers can be cohesive while long; semantic complexity already has an owner."},
+    {"pass":83,"phase":"Proposals declined after review","question":"Should all boolean properties and React props be banned?","evidence":"Ruff strict preset rationale, primary design references, valid-state examples.","decision":"Decline: that rejects genuine data and required component contracts."},
+    {"pass":84,"phase":"Proposals declined after review","question":"Should every number literal be extracted?","evidence":"Ruff strict preset rationale, primary design references, valid-state examples.","decision":"Decline: counts, indexes, protocol values and schema bounds need different context."},
+    {"pass":85,"phase":"Proposals declined after review","question":"Should every comment be deleted?","evidence":"Ruff strict preset rationale, primary design references, valid-state examples.","decision":"Decline: explanation can be necessary even with well-named code."},
+    {"pass":86,"phase":"Proposals declined after review","question":"Should all loops and mutation be banned to enforce purity?","evidence":"Ruff strict preset rationale, primary design references, valid-state examples.","decision":"Decline: syntax does not establish whether mutation is local, borrowed or an intentional contract."},
+    {"pass":87,"phase":"Proposals declined after review","question":"Should dependency inversion force an interface for every helper?","evidence":"Ruff strict preset rationale, primary design references, valid-state examples.","decision":"Decline: preserve existing public-service boundaries without manufacturing abstractions."},
+    {"pass":88,"phase":"Proposals declined after review","question":"Should one return per function be mandatory?","evidence":"Ruff strict preset rationale, primary design references, valid-state examples.","decision":"Decline: it conflicts with guard clauses and can increase nesting."},
+    {"pass":89,"phase":"Proposals declined after review","question":"Should all duplicate snippets be automatically extracted?","evidence":"Ruff strict preset rationale, primary design references, valid-state examples.","decision":"Decline: unrelated responsibilities can share spelling, and the wrong abstraction can be more costly."},
+    {"pass":90,"phase":"Proposals declined after review","question":"Should popularity alone promote a rule to error?","evidence":"Ruff strict preset rationale, primary design references, valid-state examples.","decision":"Decline: warning-release evidence, false-positive review and measured behavior remain necessary."},
+    {"pass":91,"phase":"Delivery and verification review","question":"Are consumer npm peers complete?","evidence":"Final validation and corpus sections are populated from observed run results.","decision":"Pin the SonarJS dependency in both the tested npm package and the shipped peer manifest."},
+    {"pass":92,"phase":"Delivery and verification review","question":"Is the pinned upstream package compatible with ESLint 10?","evidence":"Final validation and corpus sections are populated from observed run results.","decision":"Registry metadata declares ESLint 8, 9 and 10 support; runtime integration executes it on the installed ESLint."},
+    {"pass":93,"phase":"Delivery and verification review","question":"Can documentation discover the upstream provider?","evidence":"Final validation and corpus sections are populated from observed run results.","decision":"Register the SonarJS provider and regenerate the effective catalog with JSX contexts excluded."},
+    {"pass":94,"phase":"Delivery and verification review","question":"Are generated docs and CLI references synchronized?","evidence":"Final validation and corpus sections are populated from observed run results.","decision":"Regenerate docs, CLI and formatted examples with the existing commands and the pinned Terraform formatter."},
+    {"pass":95,"phase":"Delivery and verification review","question":"Are publishable versions and lock references coherent?","evidence":"Final validation and corpus sections are populated from observed run results.","decision":"Preserve incoming main changes, publish fresh 8.88.0/8.89.0 bundle versions and retain exact sibling pins; never retarget existing tags."},
+    {"pass":96,"phase":"Delivery and verification review","question":"Are private corpora kept within the owner boundary?","evidence":"Final validation and corpus sections are populated from observed run results.","decision":"Store roots, pins, hashes and raw diagnostics in an owner-readable task directory; publish only redacted aggregate evidence."},
+    {"pass":97,"phase":"Delivery and verification review","question":"Are corpus processes isolated and bounded?","evidence":"Final validation and corpus sections are populated from observed run results.","decision":"Use the repository runner with a maximum of 250 files per fresh process; verify content and revision pins."},
+    {"pass":98,"phase":"Delivery and verification review","question":"Is performance compared with a baseline?","evidence":"Final validation and corpus sections are populated from observed run results.","decision":"Record fresh-process runs for a fixed public source snapshot; distinguish rule overhead from full consumer-preset cost."},
+    {"pass":99,"phase":"Delivery and verification review","question":"Does canonical verification actually run?","evidence":"Final validation and corpus sections are populated from observed run results.","decision":"Run make verify and report its final result and any material limitations."},
+    {"pass":100,"phase":"Delivery and verification review","question":"Are changes independently reviewable?","evidence":"Final validation and corpus sections are populated from observed run results.","decision":"Prepare one boolean-policy PR and one dependent returned-assignment/audit PR. Canonical verification is recorded for the final combined stack."}
+  ],
+  "validation": {
+    "focused": {
+      "passed": 100,
+      "breakdown": {
+        "pythonBooleanPolicy": 15,
+        "typescriptBooleanPolicy": 48,
+        "returnedAssignmentPolicyAndNativeProof": 37
+      }
+    },
+    "additionalFocusedPythonChecks": {
+      "passed": 22,
+      "scope": "Boolean-policy integration, catalog metadata and existing Make release checks; these include the 15 boolean cases rather than 22 additional independent observations."
+    },
+    "canonicalCommand": "TMPDIR=\"$TASK_TMP\" mise --no-config --no-env --no-hooks exec terraform@1.15.8 -- make verify",
+    "canonicalResult": "See the final combined-stack pull request description and its checks for the completed verification result.",
+    "localSetup": "Use a fresh owner-readable task temp directory because the shared pytest temp root on this VM is a symlink. Select the already-installed Terraform 1.15.8 for the pinned documentation formatter. No global tool selection was changed.",
+    "integration": "Main advanced during authoring. Preserve its Python 1.53.0/bootstrap changes, regenerate derived artifacts and verify the integrated stack."
+  },
+  "decision": "ship-warning; do not promote opinionated checks to error in this change",
+  "limitations": [
+    "This is not a blanket ban on boolean data or every boolean-typed signature.",
+    "Ruff FBT permits keyword-only boolean flags, named calls and its documented compatibility and allowed-call exemptions.",
+    "S2301 covers a narrow typed subset of dispatch shapes. JSX files are excluded because upstream does not resolve named handlers passed to components.",
+    "S2301 misses multi-statement bodies, expression-bodied arrows and short-circuit dispatch; syntax-only projects remain outside its typed coverage.",
+    "Named options improve call-site readability without proving a single responsibility.",
+    "no-return-assign targets unparenthesized ambiguity. Parenthesized assignments and useful memoization remain valid; it does not establish general command/query separation.",
+    "The rejected executor fallback flags useful timer and microtask wrappers. Existing typed void-return coverage and its JSX exception remain authoritative.",
+    "Performance evidence distinguishes warm rule overhead from noisy fresh-process observations and does not claim full consumer-preset timing.",
+    "Warnings require manual review. API-changing rewrites and promotion to errors need separate evidence."
+  ],
+  "integration": {
+    "mainRevision": "1bffab09ce611806a9321af0065b94f92b3f8b11",
+    "evidence": "Incoming Python discriminated-union fixes, bootstrap admission changes, runtime tests and package pins are preserved. The measured TypeScript source snapshot is unchanged by that integration. Bundle versions advance to 8.88.0 and 8.89.0 rather than reusing main version 8.87.0."
+  },
+  "focusedTests": {
+    "pythonBooleanPolicy": 15,
+    "typescriptBooleanPolicyAcrossTwoPresets": 48,
+    "returnedAssignmentPolicyAndNativeRuntime": 37,
+    "total": 100,
+    "interpretation": "Native test executions across explicit language/preset contexts; repeated contexts do not count as independent precision observations or extra review passes."
+  },
+  "nativePromiseProof": {
+    "returnedLiteralSettled": false,
+    "timerWrapperValue": 42,
+    "microtaskWrapperValue": 42
+  },
+  "admission": [
+    {
+      "rule": "sonarjs/no-selector-parameter",
+      "defect": "A positional boolean obscures which operation a call selects.",
+      "owner": "Ruff FBT for Python; upstream SonarJS S2301 for typed JS/TS dispatch.",
+      "gap": "The shared JS/TS preset previously had no selector-parameter owner.",
+      "harm": "Callers cannot see the selected behavior without tracing a boolean and the callee.",
+      "validBoundary": "Preserve data, named options, upstream callback exemptions and JSX files after corpus review.",
+      "smallestFix": "Pin and enable the upstream rule as an advisory in typed non-JSX modules.",
+      "decision": "ship-warning"
+    },
+    {
+      "rule": "no-return-assign",
+      "defect": "An accidental assignment in a returned expression changes state and returns the assigned value.",
+      "owner": "ESLint core; parameter-reassignment checks cover a different construct.",
+      "gap": "The shared preset did not check unparenthesized returned assignments.",
+      "harm": "A comparison can silently become a state change with a different result.",
+      "validBoundary": "Preserve explicitly parenthesized assignments and intentional lazy memoization.",
+      "smallestFix": "Enable the upstream except-parens option as an advisory without intent-changing autofix.",
+      "decision": "ship-warning"
+    },
+    {
+      "rule": "no-promise-executor-return",
+      "defect": "A returned executor value does not settle a native Promise.",
+      "owner": "Existing strict-void-return and promise checks, with a native core rule available for syntax-only analysis.",
+      "gap": "The typed owner is absent in syntax-only and selected JSX contexts.",
+      "harm": "Returning a value without invoking resolve or reject can leave a Promise pending.",
+      "validBoundary": "Working timer and microtask wrappers return ignored values while settling correctly.",
+      "smallestFix": "Keep the existing owner; reject default fallback activation because it cannot distinguish the observed valid wrappers.",
+      "decision": "reject/no PR"
+    }
+  ],
+  "corpus": {
+    "selection": "Tracked, existing TypeScript/TSX source in the declared include subsets; this is not a claim of whole-repository or fleet coverage.",
+    "publicSnapshot": {
+      "name": "code-standards",
+      "revision": "aab73adbb135da206654533860722fae28a33fdc",
+      "digest": "sha256:f18fefe4b2fde93998f432406c701253ebd42a05e7c7b51a52d094dbc4d9f376",
+      "include": [
+        "packages/typescript/src/*.ts"
+      ],
+      "files": 160,
+      "bytes": 1651543
+    },
+    "privateSnapshots": {
+      "sources": 2,
+      "files": 1535,
+      "bytes": 6837070,
+      "pins": "Full revisions, content digests, roots and raw diagnostics remain in owner-readable local evidence."
+    },
+    "final": {
+      "files": 1695,
+      "bytes": 8488613,
+      "freshProcessBatches": 8,
+      "maximumBatchFiles": 250,
+      "wallSeconds": 1141.663,
+      "candidateFindings": 0,
+      "fatalDiagnostics": 0,
+      "outOfScopeDirectiveDiagnostics": 46,
+      "sampling": "All 18 preliminary candidate findings were inspected. Final candidate findings are zero, so precision is not estimated from live positives. Seeded integration vectors establish positive coverage.",
+      "directiveAccounting": "The selected-rule runner cannot resolve every unrelated consumer inline rule directive. Those 46 nonfatal diagnostics were excluded from candidate counts; they are not candidate findings or parser failures."
+    },
+    "initialInspection": [
+      {
+        "rule": "sonarjs/no-selector-parameter",
+        "findings": 11,
+        "classification": "All 11 were legitimate named JSX callback contracts. The final preset exempts JSX files; no handler-name heuristic was added."
+      },
+      {
+        "rule": "no-return-assign with always",
+        "findings": 5,
+        "classification": "All five were explicitly grouped memoization expressions. The final except-parens option preserves them."
+      },
+      {
+        "rule": "no-promise-executor-return",
+        "findings": 2,
+        "classification": "Both were working timer/microtask wrappers. Default activation was rejected."
+      }
+    ]
+  },
+  "performance": {
+    "scope": "The fixed 160-file public TypeScript source snapshot; baseline is the native Sarj plugin strict preset. This does not measure the full shared consumer preset or private projects.",
+    "warmProtocol": "One isolated process for one bounded corpus batch. Warm both variants, then run four pairs with alternating order. Each call discards diagnostic objects after aggregate counts; all variants see identical files.",
+    "warm": {
+      "measurements": [
+        {
+          "label": "baseline",
+          "round": 0,
+          "analysisMs": 102751.387,
+          "diagnostics": 3,
+          "candidateFindings": 0
+        },
+        {
+          "label": "retained",
+          "round": 0,
+          "analysisMs": 48791.24,
+          "diagnostics": 3,
+          "candidateFindings": 0
+        },
+        {
+          "label": "baseline",
+          "round": 1,
+          "analysisMs": 39853.28,
+          "diagnostics": 3,
+          "candidateFindings": 0
+        },
+        {
+          "label": "retained",
+          "round": 1,
+          "analysisMs": 22493.264,
+          "diagnostics": 3,
+          "candidateFindings": 0
+        },
+        {
+          "label": "retained",
+          "round": 2,
+          "analysisMs": 38363.639,
+          "diagnostics": 3,
+          "candidateFindings": 0
+        },
+        {
+          "label": "baseline",
+          "round": 2,
+          "analysisMs": 29887.992,
+          "diagnostics": 3,
+          "candidateFindings": 0
+        },
+        {
+          "label": "baseline",
+          "round": 3,
+          "analysisMs": 34208.51,
+          "diagnostics": 3,
+          "candidateFindings": 0
+        },
+        {
+          "label": "retained",
+          "round": 3,
+          "analysisMs": 23577.72,
+          "diagnostics": 3,
+          "candidateFindings": 0
+        },
+        {
+          "label": "retained",
+          "round": 4,
+          "analysisMs": 19608.656,
+          "diagnostics": 3,
+          "candidateFindings": 0
+        },
+        {
+          "label": "baseline",
+          "round": 4,
+          "analysisMs": 16505.228,
+          "diagnostics": 3,
+          "candidateFindings": 0
+        }
+      ],
+      "baselineMedianSeconds": 32.048,
+      "retainedMedianSeconds": 23.035,
+      "medianRatio": 0.7188,
+      "processPeakRssMiB": 1529.58
+    },
+    "freshProcessObservations": {
+      "baseline": {
+        "wallSeconds": [
+          85.228,
+          49.367,
+          54.545
+        ],
+        "analysisSeconds": [
+          62.965,
+          37.66,
+          43.936
+        ],
+        "peakRssMiB": [
+          725.7,
+          708.61,
+          871.12
+        ]
+      },
+      "initialBroaderCandidate": {
+        "wallSeconds": [
+          74.422,
+          43.506,
+          69.35
+        ],
+        "analysisSeconds": [
+          52.678,
+          34.332,
+          59.721
+        ],
+        "peakRssMiB": [
+          728.93,
+          728.38,
+          873.41
+        ]
+      },
+      "retainedCandidate": {
+        "wallSeconds": [
+          92.518,
+          110.562,
+          83.847
+        ],
+        "analysisSeconds": [
+          70.635,
+          86.44,
+          62.808
+        ],
+        "peakRssMiB": [
+          720.43,
+          692.57,
+          832.71
+        ]
+      }
+    },
+    "interpretation": "No slowdown was observed in the paired warm median. Large VM-load and cache variation in fresh-process and individual paired timings prevents a speedup claim or a precise end-to-end overhead estimate. Keep warning severity; measure representative consumer latency during the warning release. Warm peak RSS includes both ESLint instances and shared parser caches, so it is not an incremental rule-memory estimate."
+  },
+  "implementation": {
+    "parentPullRequest": "https://github.com/sarj-ai/code-standards/pull/1590",
+    "upstreamPresets": "packages/standards/src/sarj_standards/configs/eslint.strict.mjs",
+    "pythonPolicyTests": "packages/standards/tests/test_ruff_boolean_trap.py",
+    "typescriptPolicyTests": "packages/typescript/tests/boolean-selector-policy.test.ts",
+    "assignmentPolicyTests": "packages/typescript/tests/returned-assignment-policy.test.ts",
+    "documentationSource": "packages/standards/src/sarj_standards/libs/repository/docs.py",
+    "verificationBuildReuse": "Make docs-artifacts-check already builds TypeScript. Its third-party catalog check now passes --typescript-built and continues to project/check all artifacts; standalone generation still builds by default. Internal APIs use named required/prepared modes."
+  },
+  "reproduce": [
+    "uv run --project packages/standards --frozen pytest --basetemp=\"$TASK_TMP/focused\" packages/standards/tests/test_ruff_boolean_trap.py packages/standards/tests/test_third_party_catalog_artifact.py packages/standards/tests/release/test_make_checks.py",
+    "cd packages/typescript && npx vitest run tests/boolean-selector-policy.test.ts tests/returned-assignment-policy.test.ts",
+    "code-standards check --rule eslint:sonarjs/no-selector-parameter --rule eslint:no-return-assign src/",
+    "TMPDIR=\"$TASK_TMP\" mise --no-config --no-env --no-hooks exec terraform@1.15.8 -- make verify"
+  ]
+}

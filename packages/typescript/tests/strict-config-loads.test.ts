@@ -746,6 +746,7 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       "no-constructor-return",
       "no-unreachable-loop",
       "sonarjs/no-selector-parameter",
+      "no-return-assign",
       "better-tailwindcss/enforce-consistent-variable-syntax",
       "@typescript-eslint/strict-void-return",
       ...recommendedCoreWarnings,

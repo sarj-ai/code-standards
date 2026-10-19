@@ -198,6 +198,9 @@ const ESLINT_CONCISION_ADVISORY_RULES = {
 const ESLINT_CORRECTNESS_ADVISORY_RULES = {
   "no-constructor-return": "warn",
   "no-unreachable-loop": "warn",
+  // An unparenthesized assignment can be an accidental comparison. Explicitly
+  // grouped assignments, including lazy memoization with ??=, remain allowed.
+  "no-return-assign": ["warn", "except-parens"],
 };
 
 // Unicorn ships a broad rule set. The enabled subset below was selected by
