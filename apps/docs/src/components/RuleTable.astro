@@ -25,7 +25,7 @@ const showFilters = categories.length > 1 || languages.length > 1;
     </div>}
   </div>
 
-  <div class="rule-table-wrap">
+  <div class="rule-table-wrap" data-rule-table>
     <table class="rule-table">
       <thead>
         <tr>
@@ -46,6 +46,12 @@ const showFilters = categories.length > 1 || languages.length > 1;
       </tbody>
     </table>
   </div>
+
+  {showFilters && <div class="rule-directory__empty" data-rule-empty hidden>
+    <strong>No rules match these filters</strong>
+    <p>Choose another category or language, or clear the filters to see every rule.</p>
+    <button type="button" data-filter-reset>Clear filters</button>
+  </div>}
 </section>
 
 {showFilters && <script>
@@ -58,6 +64,9 @@ const showFilters = categories.length > 1 || languages.length > 1;
     const rows = [...directory.querySelectorAll('tbody tr')];
     const count = directory.querySelector('[data-rule-count]');
     const noun = directory.querySelector('[data-rule-noun]');
+    const table = directory.querySelector('[data-rule-table]');
+    const empty = directory.querySelector('[data-rule-empty]');
+    const reset = directory.querySelector('[data-filter-reset]');
     const params = new URLSearchParams(location.search);
     if (category instanceof HTMLSelectElement) category.value = params.get('category') ?? '';
     if (language instanceof HTMLSelectElement) language.value = params.get('language') ?? '';
@@ -75,6 +84,8 @@ const showFilters = categories.length > 1 || languages.length > 1;
       if (count) count.textContent = String(visible);
       if (noun) noun.textContent = visible === 1 ? 'rule' : 'rules';
       if (clear instanceof HTMLButtonElement) clear.hidden = !(selectedCategory || selectedLanguage);
+      if (table instanceof HTMLElement) table.hidden = visible === 0;
+      if (empty instanceof HTMLElement) empty.hidden = visible !== 0;
       const next = new URL(location.href);
       selectedCategory ? next.searchParams.set('category', selectedCategory) : next.searchParams.delete('category');
       selectedLanguage ? next.searchParams.set('language', selectedLanguage) : next.searchParams.delete('language');
@@ -82,10 +93,15 @@ const showFilters = categories.length > 1 || languages.length > 1;
     };
     category?.addEventListener('change', apply);
     language?.addEventListener('change', apply);
-    clear?.addEventListener('click', () => {
+    const clearFilters = () => {
       if (category instanceof HTMLSelectElement) category.value = '';
       if (language instanceof HTMLSelectElement) language.value = '';
       apply();
+    };
+    clear?.addEventListener('click', clearFilters);
+    reset?.addEventListener('click', () => {
+      clearFilters();
+      if (category instanceof HTMLSelectElement) category.focus();
     });
     apply();
   }
