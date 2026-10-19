@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Unpack
 
 import pytest
 
-from sarj_standards.libs.repository import rule_catalog_artifact
+from sarj_standards.libs.repository import rule_catalog_artifact, third_party_catalog_artifact
 
 
 if TYPE_CHECKING:
@@ -46,4 +46,37 @@ def test_full_verification_shares_one_typescript_build_between_catalog_docs_and_
     )
     assert sum(line.strip() == "npm --prefix packages/typescript run build" for line in result.stdout.splitlines()) == 1
     assert "maintain catalog check --typescript-built" in result.stdout
+    assert (
+        "python -m sarj_standards.libs.repository.third_party_catalog_artifact --root . --check --typescript-built"
+        in result.stdout
+    )
     assert "run dogfood:built" in result.stdout
+
+
+class _ProjectionReachedError(Exception):
+    pass
+
+
+def test_third_party_projection_requires_an_explicit_build_for_reuse(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    commands: list[tuple[str, ...]] = []
+
+    def run(argv: Sequence[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
+        commands.append(tuple(argv))
+        if argv[0] == "/tools/node":
+            raise _ProjectionReachedError
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    def executable(name: str) -> str:
+        return f"/tools/{name}"
+
+    monkeypatch.setattr(shutil, "which", executable)  # sarj-noqa: SARJ445 -- observe the actual native tool boundary
+    monkeypatch.setattr(subprocess, "run", run)  # sarj-noqa: SARJ445 -- count compiler and projection launches
+    with pytest.raises(_ProjectionReachedError):
+        third_party_catalog_artifact.build(tmp_path)
+    with pytest.raises(_ProjectionReachedError):
+        third_party_catalog_artifact.build(tmp_path, typescript_build="prepared")
+    with pytest.raises(_ProjectionReachedError):
+        third_party_catalog_artifact.build(tmp_path)
+    assert [argv[0] for argv in commands] == ["/tools/npm", "/tools/node", "/tools/node", "/tools/npm", "/tools/node"]

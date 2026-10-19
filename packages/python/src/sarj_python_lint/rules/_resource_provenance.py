@@ -37,7 +37,7 @@ _RESOURCE_OWNERS = MappingProxyType(
         "operator": frozenset({"setitem", "delitem", "iadd", "iconcat", "imul", "iand", "isub", "ixor", "ior"}),
         "unittest": frozenset({"mock.Mock", "mock.MagicMock", "mock.AsyncMock"}),
         "typing": frozenset({"final", "Literal", "Annotated", "cast", "assert_type"}),
-        "typing_extensions": frozenset({"final", "Literal", "Annotated"}),
+        "typing_extensions": frozenset({"final", "Literal", "Annotated", "cast", "assert_type"}),
         "pydantic": frozenset(
             {
                 "BaseModel",
