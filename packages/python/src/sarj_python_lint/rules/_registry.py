@@ -189,6 +189,7 @@ from sarj_python_lint.rules.require_public_dependency_contract import RequirePub
 from sarj_python_lint.rules.require_pydantic_for_external_json import (
     RequirePydanticForExternalJson,
 )
+from sarj_python_lint.rules.require_pydantic_for_mapping_shape import RequirePydanticForMappingShape
 from sarj_python_lint.rules.require_pydantic_for_structured_payload import RequirePydanticForStructuredPayload
 from sarj_python_lint.rules.require_pydantic_ordinal_lower_bound import (
     RequirePydanticOrdinalLowerBound,
@@ -305,6 +306,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferMatchAssertNever.id: PreferMatchAssertNever,
         RequireKeywordOnlySwapProneParams.id: RequireKeywordOnlySwapProneParams,
         RequirePydanticForExternalJson.id: RequirePydanticForExternalJson,
+        RequirePydanticForMappingShape.id: RequirePydanticForMappingShape,
         PreferModuleLevelConstant.id: PreferModuleLevelConstant,
         PreferImmutableModuleConstant.id: PreferImmutableModuleConstant,
         PreferInjectedDependencyOverMonkeypatch.id: PreferInjectedDependencyOverMonkeypatch,
