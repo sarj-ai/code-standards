@@ -294,7 +294,7 @@ def _run_native(
         diagnostics=diagnostics,
         analyzer_id=AnalyzerId(name),
         invocation_id=InvocationId(name),
-        duration_ms=round((time.monotonic() - started) * 1_000),
+        duration_ms=_timed(name, started),
         file_count=len(files),
     )
 
@@ -468,3 +468,11 @@ def _relative_path(path: Path, root: Path) -> str:
     except ValueError as exc:
         msg = "analyzer reported a path outside the repository root"
         raise ValueError(msg) from exc
+
+
+def _timed(name: str, started: float) -> int:
+    from sarj_standards.libs import timing  # ruff: ignore[import-outside-top-level]
+
+    elapsed = time.monotonic() - started
+    timing.report(f"native/{name}", elapsed)
+    return round(elapsed * 1_000)
