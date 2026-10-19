@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
+from concurrent.futures import ProcessPoolExecutor
 from contextlib import suppress
 from dataclasses import dataclass
 from fnmatch import fnmatch
 import json
+import multiprocessing
+import os
 from pathlib import Path
 import sys
 from types import MappingProxyType
@@ -49,6 +52,11 @@ SKIP_DIR_NAMES = frozenset(
 # Skip files larger than this — they are almost always generated/vendored, not
 # hand-written source worth linting.
 _MAX_FILE_BYTES = 500_000
+
+# Per-file rule evaluation dominates large trees and is independent once the
+# project index exists, so large inputs fan out to worker processes.
+_PARALLEL_MIN_FILES = 200
+_PARALLEL_CHUNK_FILES = 32
 
 
 def expand_paths(paths: list[Path]) -> list[Path]:
@@ -96,13 +104,14 @@ def _canonical_rule_ids(rule_ids: list[str]) -> list[str]:
     return list(dict.fromkeys(rid if rid in REGISTRY else aliases.get(rid, rid) for rid in rule_ids))
 
 
-def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
-    rule_ids = _canonical_rule_ids(rule_ids)
-    unknown = [rid for rid in rule_ids if rid not in REGISTRY]
-    if unknown:
-        sys.stderr.write(f"unknown rule(s): {', '.join(unknown)}\n")
-        sys.stderr.write(f"available: {', '.join(sorted(REGISTRY))}\n")
-        raise SystemExit(2)
+@dataclass(slots=True)
+class _PreparedCheck:
+    rules: list[Rule]
+    session: AnalysisSession
+    loaded: dict[Path, str]
+
+
+def _prepare_check(rule_ids: list[str], paths: list[Path]) -> _PreparedCheck:
     rules = [REGISTRY[rid]() for rid in rule_ids]
     session = AnalysisSession()
     for rule in rules:
@@ -121,10 +130,65 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
         session.project = indexes
         for rule in project_rules:
             rule.prepare(indexes)
+    return _PreparedCheck(rules, session, loaded)
+
+
+def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
+    rule_ids = _canonical_rule_ids(rule_ids)
+    unknown = [rid for rid in rule_ids if rid not in REGISTRY]
+    if unknown:
+        sys.stderr.write(f"unknown rule(s): {', '.join(unknown)}\n")
+        sys.stderr.write(f"available: {', '.join(sorted(REGISTRY))}\n")
+        raise SystemExit(2)
+    expanded = expand_paths(paths)
+    workers = _worker_count(len(expanded))
+    if workers > 1:
+        return _check_in_processes(rule_ids, paths, expanded, workers)
+    prepared = _prepare_check(rule_ids, paths)
     diags: list[Diagnostic] = []
-    for p, source in loaded.items():
-        diags.extend(check_source(rules, p, source, session=session))
+    for p, source in prepared.loaded.items():
+        diags.extend(check_source(prepared.rules, p, source, session=prepared.session))
     return diags
+
+
+def _worker_count(file_count: int) -> int:
+    configured = os.environ.get("SARJ_PYTHON_LINT_JOBS", "")  # ruff: ignore[banned-api] -- explicit operator override.
+    available = int(configured) if configured.isdigit() else os.process_cpu_count() or 1
+    if file_count < _PARALLEL_MIN_FILES:
+        return 1
+    return max(1, min(available, file_count // _PARALLEL_CHUNK_FILES))
+
+
+_worker_state: _PreparedCheck | None = None
+
+
+def _initialize_worker(rule_ids: list[str], paths: list[Path]) -> None:
+    global _worker_state  # noqa: PLW0603 -- one prepared analysis per worker process.
+    _worker_state = _prepare_check(rule_ids, paths)
+
+
+def _check_chunk(files: list[Path]) -> list[Diagnostic]:
+    state = _worker_state
+    if state is None:
+        msg = "worker analysis was not prepared"
+        raise RuntimeError(msg)
+    diags: list[Diagnostic] = []
+    for p in files:
+        source = state.loaded.get(p)
+        if source is not None:
+            diags.extend(check_source(state.rules, p, source, session=state.session))
+    return diags
+
+
+def _check_in_processes(rule_ids: list[str], paths: list[Path], files: list[Path], workers: int) -> list[Diagnostic]:
+    chunks = [files[start : start + _PARALLEL_CHUNK_FILES] for start in range(0, len(files), _PARALLEL_CHUNK_FILES)]
+    with ProcessPoolExecutor(
+        max_workers=workers,
+        mp_context=multiprocessing.get_context("spawn"),
+        initializer=_initialize_worker,
+        initargs=(rule_ids, paths),
+    ) as pool:
+        return [diagnostic for chunk in pool.map(_check_chunk, chunks) for diagnostic in chunk]
 
 
 def check_source(
