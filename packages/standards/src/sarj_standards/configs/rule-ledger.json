@@ -78,6 +78,7 @@
       "no-loguru-exc-info",
       "no-loguru-printf-format",
       "no-mocked-pydantic-value-object",
+      "no-mutating-container-transform",
       "no-nested-pydantic-field-validator",
       "no-nullable-dependency-fallback",
       "no-offset-pagination",
@@ -523,7 +524,8 @@
       "SARJ516",
       "SARJ517",
       "SARJ518",
-      "SARJ519"
+      "SARJ519",
+      "SARJ520"
     ],
     "sql": [
       "SARJ101",

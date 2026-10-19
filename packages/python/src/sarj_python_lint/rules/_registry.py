@@ -70,6 +70,7 @@ from sarj_python_lint.rules.no_invalid_argument_name_suppression import NoInvali
 from sarj_python_lint.rules.no_loguru_exc_info import NoLoguruExcInfo
 from sarj_python_lint.rules.no_loguru_printf_format import NoLoguruPrintfFormat
 from sarj_python_lint.rules.no_mocked_pydantic_value_object import NoMockedPydanticValueObject
+from sarj_python_lint.rules.no_mutating_container_transform import NoMutatingContainerTransform
 from sarj_python_lint.rules.no_nested_pydantic_field_validator import NoNestedPydanticFieldValidator
 from sarj_python_lint.rules.no_nullable_dependency_fallback import NoNullableDependencyFallback
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
@@ -251,6 +252,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoInterpreterSourceArguments.id: NoInterpreterSourceArguments,
         NoUnusedCopyResult.id: NoUnusedCopyResult,
         NoDiscardedValidationResult.id: NoDiscardedValidationResult,
+        NoMutatingContainerTransform.id: NoMutatingContainerTransform,
         NoBeforeValidatorInputMutation.id: NoBeforeValidatorInputMutation,
         NoInputModelMutation.id: NoInputModelMutation,
         NoDatabaseProgrammability.id: NoDatabaseProgrammability,

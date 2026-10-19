@@ -296,5 +296,6 @@
   "SARJ516": "prefer-bulk-upsert",
   "SARJ517": "store-field-update-reuses-upsert",
   "SARJ518": "prefer-psycopg-executemany",
-  "SARJ519": "no-discarded-validation-result"
+  "SARJ519": "no-discarded-validation-result",
+  "SARJ520": "no-mutating-container-transform"
 }

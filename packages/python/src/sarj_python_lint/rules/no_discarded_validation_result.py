@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
+from enum import Enum, auto
 from functools import cached_property
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, final, override
@@ -18,7 +19,8 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
+from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
+from sarj_python_lint.rules._resource_provenance import ResourceProvenance, import_name_for_binding
 
 
 if TYPE_CHECKING:
@@ -30,6 +32,81 @@ if TYPE_CHECKING:
 type _Function = ast.FunctionDef | ast.AsyncFunctionDef
 _MAX_REEXPORTS = 8
 _MAX_ALIASES = 8
+_MAX_ANNOTATION_DEPTH = 32
+_VALUE_BUILTINS = frozenset(
+    {
+        "bool",
+        "bytes",
+        "bytearray",
+        "complex",
+        "dict",
+        "float",
+        "frozenset",
+        "int",
+        "list",
+        "memoryview",
+        "range",
+        "set",
+        "str",
+        "tuple",
+        "type",
+    }
+)
+_VALUE_TYPING = frozenset(
+    {
+        "AbstractSet",
+        "AsyncContextManager",
+        "AsyncGenerator",
+        "AsyncIterable",
+        "AsyncIterator",
+        "Awaitable",
+        "Callable",
+        "Collection",
+        "Container",
+        "ContextManager",
+        "Coroutine",
+        "Counter",
+        "DefaultDict",
+        "Deque",
+        "Dict",
+        "FrozenSet",
+        "Generator",
+        "Iterable",
+        "Iterator",
+        "List",
+        "Mapping",
+        "Match",
+        "MutableMapping",
+        "MutableSequence",
+        "MutableSet",
+        "Pattern",
+        "Sequence",
+        "Set",
+        "Sized",
+        "Tuple",
+        "Type",
+        "TypeGuard",
+        "TypeIs",
+    }
+)
+_NOMINAL_BASES = frozenset(
+    {
+        "abc.ABC",
+        "enum.Enum",
+        "enum.Flag",
+        "enum.IntEnum",
+        "enum.IntFlag",
+        "enum.StrEnum",
+        "pydantic.BaseModel",
+        "pydantic.main.BaseModel",
+        "typing.Generic",
+        "typing.NamedTuple",
+        "typing.TypedDict",
+        "typing_extensions.Generic",
+        "typing_extensions.NamedTuple",
+        "typing_extensions.TypedDict",
+    }
+)
 _TEST_CASES = frozenset(
     {
         "unittest.TestCase",
@@ -39,6 +116,10 @@ _TEST_CASES = frozenset(
     }
 )
 _EXCEPTION_ASSERTIONS = frozenset({"assertRaises", "assertRaisesRegex"})
+
+
+class _UnboundTypeName(Enum):
+    NAME = auto()
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,7 +156,8 @@ class NoDiscardedValidationResult(Rule):
             "Direct execution in class bodies is excluded because sequential lookup and metaclass-prepared namespaces can supply different callees. Method bodies remain checked.",
             "Functions with explicit mutation, standalone command calls, generators, nested definitions, or context-manager/try/loop orchestration are excluded. This is not a general purity proof.",
             "Import-resolved pytest.raises and source-proven unittest exception assertion blocks observe the exception contract and are excluded. Generated and vendored sources are excluded; maintained tests are checked.",
-            "Optional, Any, Never, and NoReturn return contracts are excluded. No automatic assignment, deletion, or validation rewrite is offered.",
+            "Top-level return contracts follow stable lexical aliases, first-party type imports, unions, and Annotated type content through a bounded source-only analysis. Nullable collection elements and annotation metadata do not make the returned collection nullable.",
+            "Nullable, object, Any, Never, NoReturn, generic type-parameter, structural protocol, and unresolved return contracts are excluded. No automatic assignment, deletion, or validation rewrite is offered.",
         ),
         examples=(
             RuleExample(
@@ -146,6 +228,7 @@ class _ValidationResults:
         self.provenance = ResourceProvenance(context, require_static_namespace=True)
         self.owners: dict[Path, tuple[PythonFileContext, ResourceProvenance]] = {}
         self.contracts: dict[_Function, bool] = {}
+        self.annotations: dict[ast.Module, AnnotationSemantics] = {}
 
     def discarded(self, statement: ast.Expr, call: ast.Call) -> bool:
         if self.provenance.dynamic_namespace or self.provenance.wildcard or self._expected_exception(statement):
@@ -157,7 +240,13 @@ class _ValidationResults:
         if isinstance(function, ast.AsyncFunctionDef) != isinstance(statement.value, ast.Await):
             return False
         if function not in self.contracts:
-            self.contracts[function] = not owner.generated and _value_validator(function)
+            provenance = self._source_provenance(owner.path)
+            self.contracts[function] = (
+                not owner.generated
+                and _value_validator(function)
+                and provenance is not None
+                and self._value_annotation(provenance, function.returns, function, _MAX_ANNOTATION_DEPTH, frozenset())
+            )
         return self.contracts[function] and not any(
             _namespace_uncertain(provenance, owner.path) or _namespace_uncertain(provenance, provenance.context.path)
             for provenance in resolved.namespaces
@@ -238,8 +327,6 @@ class _ValidationResults:
         return (path, name) if path is not None else None
 
     def _imported_function(self, location: tuple[Path, str]) -> _ResolvedValidation | None:
-        from sarj_python_lint._file_context import PythonFileContext  # ruff: ignore[import-outside-top-level] -- avoid the registry and analysis-session import cycle.
-
         seen: set[tuple[Path, str]] = set()
         namespaces = [self.provenance]
         for _ in range(_MAX_REEXPORTS):
@@ -247,13 +334,10 @@ class _ValidationResults:
                 return None
             seen.add(location)
             path, name = location
-            module = self.context.session.local_source.read_module(path)
-            if module is None:
+            provenance = self._source_provenance(path)
+            if provenance is None:
                 return None
-            if path not in self.owners:
-                owner = PythonFileContext(path, module.source, self.context.session)
-                self.owners[path] = owner, ResourceProvenance(owner, require_static_namespace=True)
-            owner, provenance = self.owners[path]
+            owner = provenance.context
             if provenance.dynamic_namespace or provenance.wildcard or name in provenance.mutated:
                 return None
             namespaces.append(provenance)
@@ -272,6 +356,187 @@ class _ValidationResults:
                 return None
             location = next_location
         return None
+
+    def _source_provenance(self, path: Path) -> ResourceProvenance | None:
+        from sarj_python_lint._file_context import PythonFileContext  # ruff: ignore[import-outside-top-level] -- avoid the registry and analysis-session import cycle.
+
+        if path == self.context.path:
+            return self.provenance
+        if path not in self.owners:
+            module = self.context.session.local_source.read_module(path)
+            if module is None:
+                return None
+            owner = PythonFileContext(path, module.source, self.context.session)
+            self.owners[path] = owner, ResourceProvenance(owner, require_static_namespace=True)
+        return self.owners[path][1]
+
+    def _value_annotation(
+        self,
+        provenance: ResourceProvenance,
+        annotation: ast.expr | None,
+        at: ast.AST,
+        remaining: int,
+        seen: frozenset[ast.AST],
+    ) -> bool:
+        if remaining <= 0 or provenance.context.tree is None or provenance.wildcard:
+            return False
+        tree = provenance.context.tree
+        if tree not in self.annotations:
+            self.annotations[tree] = AnnotationSemantics.from_tree(tree)
+        annotation = self.annotations[tree].parse(annotation)
+        match annotation:
+            case ast.BinOp(left=left, op=ast.BitOr(), right=right):
+                return self._value_annotation(provenance, left, at, remaining - 1, seen) and self._value_annotation(
+                    provenance, right, at, remaining - 1, seen
+                )
+            case ast.Subscript():
+                return self._subscript_annotation(provenance, annotation, at, remaining - 1, seen)
+            case ast.Name() | ast.Attribute():
+                return self._annotation_atom(provenance, annotation, at, remaining - 1, seen)
+            case _:
+                return False
+
+    def _subscript_annotation(
+        self,
+        provenance: ResourceProvenance,
+        annotation: ast.Subscript,
+        at: ast.AST,
+        remaining: int,
+        seen: frozenset[ast.AST],
+    ) -> bool:
+        qualified = self._annotation_import(provenance, annotation.value, at)
+        content = annotation.slice
+        arguments = content.elts if isinstance(content, ast.Tuple) else [content]
+        match qualified:
+            case "typing.Annotated" | "typing_extensions.Annotated":
+                return bool(arguments) and self._value_annotation(provenance, arguments[0], at, remaining, seen)
+            case "typing.Union" | "typing_extensions.Union":
+                return bool(arguments) and all(
+                    self._value_annotation(provenance, item, at, remaining, seen) for item in arguments
+                )
+            case "typing.Literal" | "typing_extensions.Literal":
+                return bool(arguments) and all(
+                    isinstance(item, ast.Constant) and item.value is not None for item in arguments
+                )
+            case _:
+                return self._value_annotation(provenance, annotation.value, at, remaining, seen)
+
+    def _annotation_atom(
+        self,
+        provenance: ResourceProvenance,
+        annotation: ast.Name | ast.Attribute,
+        at: ast.AST,
+        remaining: int,
+        seen: frozenset[ast.AST],
+    ) -> bool:
+        root = annotation
+        attributes: list[str] = []
+        while isinstance(root, ast.Attribute):
+            attributes.append(root.attr)
+            root = root.value
+        if not isinstance(root, ast.Name):
+            return False
+        binding = _annotation_binding(provenance, root.id, at)
+        if binding is _UnboundTypeName.NAME:
+            return not attributes and root.id in _VALUE_BUILTINS and provenance.builtin_namespace_untouched
+        if binding is None or binding in seen:
+            return False
+        seen |= {binding}
+        if isinstance(binding, ast.alias):
+            return self._imported_annotation(
+                provenance, annotation, binding, attributes, remaining=remaining, seen=seen
+            )
+        if attributes:
+            return False
+        if isinstance(binding, ast.ClassDef):
+            return all(self._nominal_base(provenance, base, binding, remaining, seen) for base in binding.bases)
+        parent = provenance.context.parents.get(binding)
+        match parent:
+            case ast.TypeAlias(value=value):
+                return self._value_annotation(provenance, value, parent, remaining - 1, seen)
+            case ast.Assign(targets=[target], value=value) if target is binding:
+                return self._value_annotation(provenance, value, parent, remaining - 1, seen)
+            case ast.AnnAssign(annotation=declaration, value=value) if self._annotation_import(
+                provenance, declaration, parent
+            ) in {"typing.TypeAlias", "typing_extensions.TypeAlias"}:
+                return self._value_annotation(provenance, value, parent, remaining - 1, seen)
+            case _:
+                return False
+
+    def _imported_annotation(
+        self,
+        provenance: ResourceProvenance,
+        annotation: ast.expr,
+        binding: ast.alias,
+        attributes: list[str],
+        *,
+        remaining: int,
+        seen: frozenset[ast.AST],
+    ) -> bool:
+        qualified = import_name_for_binding(annotation, binding, provenance.context.parents.get(binding))
+        if qualified is not None and qualified.partition(".")[0] in {"typing", "typing_extensions"}:
+            return qualified.rpartition(".")[2] in _VALUE_TYPING
+        if qualified is not None and qualified.startswith("builtins."):
+            return qualified.rpartition(".")[2] in _VALUE_BUILTINS and provenance.builtin_namespace_untouched
+        location = self._import_location(provenance.context, binding, tuple(reversed(attributes)))
+        if location is None or remaining <= 0:
+            return False
+        path, name = location
+        provider = self._source_provenance(path)
+        return (
+            provider is not None
+            and provider.context.tree is not None
+            and self._value_annotation(
+                provider, ast.Name(id=name, ctx=ast.Load()), provider.context.tree, remaining - 1, seen
+            )
+        )
+
+    def _annotation_import(self, provenance: ResourceProvenance, annotation: ast.expr, at: ast.AST) -> str | None:
+        root = annotation
+        while isinstance(root, ast.Attribute):
+            root = root.value
+        if not isinstance(root, ast.Name):
+            return None
+        binding = _annotation_binding(provenance, root.id, at)
+        return (
+            import_name_for_binding(annotation, binding, provenance.context.parents.get(binding))
+            if isinstance(binding, ast.alias)
+            else None
+        )
+
+    def _nominal_base(
+        self, provenance: ResourceProvenance, base: ast.expr, at: ast.AST, remaining: int, seen: frozenset[ast.AST]
+    ) -> bool:
+        if remaining <= 0:
+            return False
+        if isinstance(base, ast.Subscript):
+            base = base.value
+        qualified = self._annotation_import(provenance, base, at)
+        if qualified in _NOMINAL_BASES:
+            return True
+        if isinstance(base, ast.Name):
+            binding = _annotation_binding(provenance, base.id, at)
+            if isinstance(binding, ast.ClassDef):
+                return True
+            if binding is _UnboundTypeName.NAME:
+                return base.id in (_VALUE_BUILTINS | {"object"}) and provenance.builtin_namespace_untouched
+            if isinstance(binding, ast.alias) and binding not in seen:
+                location = self._import_location(provenance.context, binding)
+                if location is not None:
+                    path, name = location
+                    provider = self._source_provenance(path)
+                    return (
+                        provider is not None
+                        and provider.context.tree is not None
+                        and self._nominal_base(
+                            provider,
+                            ast.Name(id=name, ctx=ast.Load()),
+                            provider.context.tree,
+                            remaining - 1,
+                            seen | {binding},
+                        )
+                    )
+        return False
 
     def _expected_exception(self, node: ast.AST) -> bool:
         parent = self.context.parents.get(node)
@@ -384,7 +649,7 @@ def _namespace_uncertain(provenance: ResourceProvenance, path: Path) -> bool:
 
 
 def _value_validator(function: _Function) -> bool:
-    if function.decorator_list or not _value_annotation(function.returns):
+    if function.decorator_list or function.returns is None:
         return False
     statements = list(function.body)
     raised = returned = False
@@ -407,21 +672,35 @@ def _value_validator(function: _Function) -> bool:
     return raised and returned
 
 
-def _value_annotation(annotation: ast.expr | None) -> bool:
-    if annotation is None:
-        return False
-    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
-        try:
-            annotation = ast.parse(annotation.value, mode="eval").body
-        except SyntaxError:
-            return False
-    excluded = {"Any", "Never", "NoReturn", "Optional"}
-    return not any(
-        (isinstance(node, ast.Constant) and node.value is None)
-        or (isinstance(node, ast.Name) and node.id in excluded)
-        or (isinstance(node, ast.Attribute) and node.attr in excluded)
-        for node in ast.walk(annotation)
-    )
+def _annotation_binding(provenance: ResourceProvenance, name: str, at: ast.AST) -> ast.AST | _UnboundTypeName | None:
+    if name in provenance.external_bindings:
+        return None
+    parameter = _annotation_parameter(at, name)
+    if parameter is not None:
+        return parameter
+    scope = at if isinstance(at, ast.Module) else provenance.scope(at)
+    first = True
+    while scope is not None:
+        if isinstance(scope, ast.ClassDef) and not first:
+            scope = provenance.scope(scope)
+            continue
+        parameter = _annotation_parameter(scope, name)
+        if parameter is not None:
+            return parameter
+        bindings = provenance.bindings.get(scope, {}).get(name, ())
+        if bindings:
+            return bindings[0] if len(bindings) == 1 else None
+        first = False
+        scope = provenance.scope(scope)
+    return _UnboundTypeName.NAME
+
+
+def _annotation_parameter(at: ast.AST, name: str) -> ast.AST | None:
+    if isinstance(at, ast.FunctionDef | ast.AsyncFunctionDef | ast.TypeAlias | ast.ClassDef):
+        for parameter in at.type_params:
+            if isinstance(parameter, ast.TypeVar | ast.ParamSpec | ast.TypeVarTuple) and parameter.name == name:
+                return parameter
+    return None
 
 
 def _expression_effect(value: ast.expr, *, allow_calls: bool = False) -> bool:

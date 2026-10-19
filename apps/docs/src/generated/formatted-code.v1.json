@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "c32714d5da1fdf67ccb0b9c2da2202ff3b8b54af640e84e7708cd3f4933eebb9",
-  "cliSha256": "c9070de72fcd8fee253b04556506b3dfcd185aa781fd6ef22e8c7c18adf204ac",
+  "catalogSha256": "7c0976bca1232d80d4b1300e53e42a369298011d3e0ca6f648ea105f1adb5fea",
+  "cliSha256": "0ba0b902bace6a6c77180695f3215d597e7cea9ef6987afee4646c5715c80b67",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -9070,6 +9070,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Real model fixtures retain validation and defaults"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-mutating-container-transform": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/counts.py",
+              "source": "def ordered(values: list[int]) -> list[int]:\n    values.sort()\n    return values\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/counts.py",
+          "id": "sorts-borrowed-input",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Returning a list does not hide its mutation"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/counts.py",
+              "source": "def ordered(values: list[int]) -> list[int]:\n    result = list(values)\n    result.sort()\n    return result\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/counts.py",
+          "id": "sorts-local-copy",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Build the replacement before changing it"
         }
       ],
       "optionsSchemaSource": null
