@@ -54,7 +54,8 @@ def _is_narrowed(config: pytest.Config) -> bool:
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    if exitstatus != 0 or _is_narrowed(session.config):
+    collecting: object = session.config.option.collectonly  # pyright: ignore[reportAny] — pytest's option namespace is untyped
+    if exitstatus != 0 or collecting or _is_narrowed(session.config):
         return
 
     unexercised = sorted(
