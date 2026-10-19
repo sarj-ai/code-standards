@@ -19,6 +19,15 @@ Keep network calls and long computation outside lock-holding transactions when
 the business invariant permits it. Coordinate durable state and outbound effects
 with the established outbox or idempotent delivery mechanism.
 
+Make commit ownership explicit when chunking a large write: bounded memory does
+not require committing every chunk. Separate chunk transactions expose partial
+completion and need an intentional resume/idempotency contract. With Psycopg,
+an ordinary read can start an implicit transaction; a nested
+[`transaction()` context](https://www.psycopg.org/psycopg3/docs/basic/transactions.html#transaction-contexts)
+then manages a savepoint and leaves the outer transaction open. Verify the real
+commit/rollback boundary and avoid leaving borrowed connections idle in a
+transaction.
+
 An upsert's conflict target must match the real identity and tenant boundary,
 including nullable keys, soft deletion and partial uniqueness where applicable.
 Do not replace a database constraint with check-then-insert application code.
@@ -35,6 +44,12 @@ rendered error text. PostgreSQL's
 [serialization-failure guidance](https://www.postgresql.org/docs/current/mvcc-serialization-failure-handling.html)
 explains why retrying the complete transaction includes the logic that selected
 its statements and values.
+
+A lost connection while committing can leave the outcome unknown. Reconcile
+through the durable operation key or receipt before replaying a non-idempotent
+write; a transport exception alone does not prove rollback. Report confirmed
+rollback, confirmed success and unknown outcome distinctly where callers need
+different recovery behavior.
 
 Exercise insertion, conflict updates, omitted/cleared fields, repeated requests,
 empty batches, duplicate keys, missing rows, tenant isolation and failure rollback

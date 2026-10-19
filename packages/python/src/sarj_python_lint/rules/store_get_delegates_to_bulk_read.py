@@ -116,6 +116,7 @@ class StoreGetDelegatesToBulkRead(Rule):
             "Singleton implementations with explicit cache or lock identifiers are excluded because their access path differs intentionally.",
             "Signature compatibility is advisory: dynamic helpers and behavior not visible in the two method bodies require review.",
             "Closed literal starred collection expansions preserve singleton delegation; unknown iterable expansion or additional keys do not prove the singleton contract.",
+            "Straight-line command and singleton-collection aliases preserve delegation; reassigned inputs and unsupported alias mutations do not prove that the original command reaches the bulk primitive.",
         ),
         aliases=("get-delegates-to-get-many",),
         examples=(
@@ -543,8 +544,8 @@ def _delegation_targets(
     expectation: _WriteExpectation,
 ) -> _DelegationTargets:
     next_states: list[_DelegationState] = []
-    for call, awaited in _delegation_calls(method):
-        resolved = _resolve_delegation_call(call, methods, bindings, awaited=awaited)
+    for call, awaited, call_bindings in _delegation_calls(method, bindings):
+        resolved = _resolve_delegation_call(call, methods, call_bindings, awaited=awaited)
         if resolved is None:
             continue
         if resolved.method == bulk.name:
@@ -635,19 +636,93 @@ def _expectation_with_status(
     return _WriteExpectation(bulk_key, expected_key, status_parameter, expected_status)
 
 
-def _delegation_calls(method: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[ast.Call, bool]]:
-    calls: list[tuple[ast.Call, bool]] = []
+def _delegation_calls(
+    method: ast.FunctionDef | ast.AsyncFunctionDef, bindings: dict[str, str]
+) -> list[tuple[ast.Call, bool, dict[str, str]]]:
+    calls: list[tuple[ast.Call, bool, dict[str, str]]] = []
+    symbols = _DelegationSymbols(dict(bindings), {})
     for statement in method.body:
         candidate = _statement_delegation_call(statement)
         if candidate is not None:
             if _call_count(statement) != 1:
                 return []
-            calls.append(candidate)
-        elif not isinstance(statement, ast.Raise) and _call_count(statement):
+            calls.append((*candidate, dict(symbols.bindings)))
+        elif (not isinstance(statement, ast.Raise) and _call_count(statement)) or (
+            not calls and not symbols.advance(statement)
+        ):
             return []
         if isinstance(statement, (ast.Return, ast.Raise)):
             break
     return calls if len(calls) == 1 else []
+
+
+@dataclass(slots=True)
+class _DelegationSymbols:
+    bindings: dict[str, str]
+    collections: dict[str, ast.expr]
+
+    def advance(self, statement: ast.stmt) -> bool:
+        match statement:
+            case ast.Assign() | ast.AnnAssign():
+                return self._bind_assignment(statement)
+            case ast.AugAssign(target=target):
+                self._augment(target)
+            case ast.Delete(targets=targets):
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        self.bindings.pop(target.id, None)
+                        self.collections.pop(target.id, None)
+                    else:
+                        self._invalidate_collection(target)
+            case _:
+                pass
+        return True
+
+    def _augment(self, target: ast.expr) -> None:
+        if not isinstance(target, ast.Name):
+            self._invalidate_collection(target)
+            return
+        if not isinstance(self.collections.get(target.id), ast.Tuple):
+            self._invalidate_collection(target)
+        self.collections.pop(target.id, None)
+        self.bindings[target.id] = "unknown:augmented-assignment"
+
+    def _bind_assignment(self, statement: ast.Assign | ast.AnnAssign) -> bool:
+        if statement.value is None:
+            return True
+        targets = statement.targets if isinstance(statement, ast.Assign) else [statement.target]
+        symbol = _symbol(statement.value, self.bindings)
+        for target in targets:
+            match target:
+                case ast.Name(id=name):
+                    self.bindings[name] = symbol
+                    self._bind_collection(name, statement.value)
+                case ast.Attribute():
+                    continue
+                case ast.Subscript():
+                    self._invalidate_collection(target)
+                case _:
+                    return False
+        return True
+
+    def _bind_collection(self, name: str, expression: ast.expr) -> None:
+        origin = self.collections.get(expression.id) if isinstance(expression, ast.Name) else None
+        if origin is not None:
+            self.collections[name] = origin
+        elif isinstance(expression, (ast.List, ast.Tuple, ast.Set)):
+            self.collections[name] = expression
+        else:
+            self.collections.pop(name, None)
+
+    def _invalidate_collection(self, expression: ast.expr) -> None:
+        root = expression
+        while isinstance(root, (ast.Attribute, ast.Subscript)):
+            root = root.value
+        origin = self.collections.get(root.id) if isinstance(root, ast.Name) else None
+        if origin is not None:
+            for name, value in self.collections.items():
+                if value is origin:
+                    self.bindings[name] = "unknown:mutated-collection"
 
 
 def _statement_delegation_call(statement: ast.stmt) -> tuple[ast.Call, bool] | None:

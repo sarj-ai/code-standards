@@ -44,6 +44,12 @@ owning store when a new ordinary field is added; avoid a separate `set_*` or
 and privileged fields outside a caller's writable contract. Share implementation
 without broadening authorization.
 
+Trace each proposed field through validation, bound parameters, INSERT values
+and conflict assignments. A field on the command type, or `SET field =
+EXCLUDED.field`, does not prove that the SQL accepts the caller's value: the
+insert can omit it, supply a default, or apply a different transformation.
+Keep explicit normalization and policy checks when consolidating methods.
+
 Make the update contract explicit: omitted means leave unchanged, explicit null
 means clear when allowed, and a supplied value means replace. A nullable default
 or `COALESCE` alone cannot express all three states. Use the established unset
@@ -57,6 +63,11 @@ with a one-element collection when observable semantics match. A bulk method
 that loops over the singleton leaves the repeated database work in place;
 reversing both methods' delegation creates recursion. Preserve row conversion,
 conflict identity, missing-row behavior, audit fields and caller-visible results.
+
+Check that bulk authorization covers every requested key and tenant, including
+missing or inaccessible rows. Preserve the established reject/skip contract;
+silently dropping unauthorized rows can hide a partial write. Keep dependent
+operations serial when a later command requires an earlier result or effect.
 
 An upsert can create a missing row. Keep update-only behavior explicit, including
 not-found results and required creation fields. Retain specialized operations

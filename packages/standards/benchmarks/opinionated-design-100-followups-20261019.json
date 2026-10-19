@@ -1,0 +1,1330 @@
+{
+  "schemaVersion": 1,
+  "campaign": "opinionated-design-100-followups-20261019",
+  "status": "100 reviewed coded questions complete; calibrated runtime, corpus, package and metadata checks passed; delivery gates tracked on the follow-up PRs.",
+  "baselineRevision": "5d6b1581822b8c83554e445d9ae110d59d08ebb1",
+  "originalPullRequests": [
+    {
+      "number": 1590,
+      "url": "https://github.com/sarj-ai/code-standards/pull/1590",
+      "mergeRevision": "37e64eaa920fa46a971d99e4122bb90539003a04"
+    },
+    {
+      "number": 1592,
+      "url": "https://github.com/sarj-ai/code-standards/pull/1592",
+      "mergeRevision": "5d6b1581822b8c83554e445d9ae110d59d08ebb1"
+    }
+  ],
+  "reviewPasses": 100,
+  "passDefinition": "One reviewed coded source/binding/contract question with an observed baseline and explicit decision. These 100 questions are not 100 independent precision observations. Some source semantics overlap across deliberately different presets, files or ownership contexts. Formatter reruns, adversarial refinements, repeated presets, timing samples and test counts do not create additional review passes.",
+  "composition": {
+    "selectorCoverageQuestions": 30,
+    "selectorContractQuestions": 30,
+    "returnedAssignmentQuestions": 20,
+    "pythonBooleanQuestions": 20
+  },
+  "routing": "sarj-ai/code-standards, because the findings depend on typed source semantics, native lint behavior and shared preset configuration.",
+  "ownership": [
+    {
+      "scope": "TypeScript/JavaScript boolean selectors",
+      "baseline": "sonarjs/no-selector-parameter/S2301 at warning, with all JSX files exempt and no typed services in syntax-only configurations.",
+      "tuned": "@sarj/no-boolean-selector-parameter at warning adapts maintained S2301 on original nodes/services, filters demonstrated false positives and adds concise-arrow conditional coverage. Disable the parallel direct upstream rule so one owned warning remains.",
+      "fixPolicy": "No automatic API-changing rewrite. Changing methods, mode domains or callback contracts needs manual design review."
+    },
+    {
+      "scope": "Returned assignments",
+      "baseline": "ESLint core no-return-assign at warning with except-parens.",
+      "tuned": "Same maintained native rule, severity and option; expand useful regression coverage and clarify formatter/chain limits rather than add a second mutation rule.",
+      "fixPolicy": "No automatic intent-changing fix. Preserve grouped memoization and deliberate mutation contracts."
+    },
+    {
+      "scope": "Python boolean traps",
+      "baseline": "Ruff FBT001, FBT002 and FBT003 in the existing strict preset.",
+      "tuned": "Retain native ownership, test observed alias/decorator/keyword boundaries and document limits; no duplicate Python rule.",
+      "fixPolicy": "Do not automatically change public signatures or infer callback ownership from names."
+    }
+  ],
+  "admission": [
+    {
+      "defect": "Equivalent operation dispatch can escape S2301 by using an expression-bodied arrow.",
+      "existingOwner": "Maintained SonarJS S2301.",
+      "gap": "The native arrow visitor collects only BlockStatement bodies; concise conditionals have no suspect body/return parent.",
+      "noChangeHarm": "Call-site ambiguity remains the same while equivalent syntax receives inconsistent guidance.",
+      "validStateBoundary": "Check only an unchanged broad-boolean parameter or direct negation, with effects; preserve data, actual callback/member contracts and documented native boundaries.",
+      "smallestFix": "One concise conditional listener sharing a semantic filter with the native adapter; warning only, original AST identity retained."
+    },
+    {
+      "defect": "Named callbacks, required members, pure mappings and predicate-data reads can receive inappropriate split-method guidance.",
+      "existingOwner": "S2301 detector plus native TypeScript checker, scope bindings and independent declaration contracts.",
+      "gap": "Upstream syntactic callback exemptions miss named references and if-statement value mappings; BooleanLike also includes single literals.",
+      "noChangeHarm": "Valid data and framework contracts can require wrappers or changed APIs solely to silence a design warning.",
+      "validStateBoundary": "Require independent annotations/exact members or bounded proven references; preserve constant-condition, setter and data ownership without claiming universal purity.",
+      "smallestFix": "Filter demonstrably unowned reports at the same adapter boundary; restore independent JSX helper coverage after semantic callback exemptions are available."
+    },
+    {
+      "defect": "A deliberately grouped chained mutation loses inner parentheses under the installed formatter and becomes advisory despite no behavioral change; multiple writes also produce repeated-span reports.",
+      "existingOwner": "ESLint core no-return-assign except-parens; Prettier owns formatting.",
+      "gap": "No chain/formatter interaction fixture currently documents this boundary; original docs could be read as accepting every grouped assignment.",
+      "noChangeHarm": "Consumers can follow a grouping suggestion only to have formatting reintroduce the warning, and may mistake duplicate reports for independent defects.",
+      "validStateBoundary": "Preserve deliberate memoization, callback contracts and grouped non-chained assignments. Do not broaden into a purity or blanket callback prohibition.",
+      "smallestFix": "Document formatter/chain limits, test accepted stable remedies and keep native warning/except-parens ownership without fixing an incidental duplicate-report count."
+    }
+  ],
+  "observedBaseline": {
+    "selectorCoverage": {
+      "cases": 30,
+      "nativeDiagnostics": 14,
+      "fatalDiagnostics": 0,
+      "labels": {
+        "positive": 9,
+        "gap": 5,
+        "boundary": 7,
+        "interaction": 1,
+        "false-positive-risk": 4,
+        "negative": 4
+      },
+      "interpretation": "Labels are reviewed policy questions; a false-positive-risk label is not proof of author intent or an automatic required zero result."
+    },
+    "selectorContracts": {
+      "cases": 30,
+      "shippedPresetDiagnostics": 17,
+      "rawUpstreamDiagnostics": 19,
+      "desiredReportCases": 5,
+      "shippedDesiredReports": 3,
+      "shippedWarningsOnPreserveOrAbstain": 14,
+      "method": "Focused shipped strict factory versus the same detector forced on in JSX. Raw upstream and shipped results differ because the baseline excludes JSX."
+    },
+    "returnedAssignments": {
+      "distinctGeneratedReviewCases": 20,
+      "allObservedNativeContractsMatch": true,
+      "rawRuleDiagnostics": 12,
+      "formattedRuleDiagnostics": 3,
+      "fatalErrors": 0,
+      "rawRepeatedSpanExtraReports": 2,
+      "formatterChangesFindingCases": 10
+    },
+    "pythonBooleans": {
+      "cases": 20,
+      "nativeFindingsByCode": {
+        "FBT001": 9,
+        "FBT002": 1
+      },
+      "parserErrors": 0,
+      "owner": "Ruff 0.17.0 shipped strict preset"
+    }
+  },
+  "observedCandidate": {
+    "status": "Final corrected built-artifact matrix passed under Node24.21.0; source and artifact checks match before/after.",
+    "contractProbe": {
+      "cases": 30,
+      "desiredReports": 5,
+      "ownedDesiredReports": 4,
+      "ownedWarningsOnPreserveOrAbstain": 0
+    },
+    "interpretation": "Four of five desired selector reports and all25 preserve/abstain states match the intended contract. The remaining desired report is the inherited block-body onX exemption. Four concise-arrow native coverage gaps are detected. These selected synthetic cases do not estimate corpus precision.",
+    "finalCombinedMatrix": {
+      "coverage": {
+        "inputs": 30,
+        "diagnosticsByRule": {
+          "@sarj/no-boolean-selector-parameter": 14,
+          "no-return-assign": 0
+        },
+        "fatalErrors": 0,
+        "duplicateDiagnosticLocations": 0
+      },
+      "valid-states": {
+        "inputs": 30,
+        "diagnosticsByRule": {
+          "@sarj/no-boolean-selector-parameter": 4,
+          "no-return-assign": 0
+        },
+        "fatalErrors": 0,
+        "duplicateDiagnosticLocations": 0
+      },
+      "assignment": {
+        "inputs": 20,
+        "diagnosticsByRule": {
+          "@sarj/no-boolean-selector-parameter": 2,
+          "no-return-assign": 12
+        },
+        "fatalErrors": 0,
+        "duplicateDiagnosticLocations": 2
+      }
+    },
+    "assertions": {
+      "inputs": 80,
+      "parserFailures": 0,
+      "fatalErrors": 0,
+      "validStatesPreserved": 25,
+      "desiredSelectorPositivesDetected": 4,
+      "desiredSelectorPositives": 5,
+      "intentionalBlindSpot": "event-name-heuristic (upstream block onX exemption)",
+      "assignmentExactNativeContractsMatched": 20,
+      "conciseGapsDetected": [
+        "concise-arrow-dispatch",
+        "parenthesized-concise-arrow",
+        "negated-concise-arrow",
+        "async-concise-arrow"
+      ],
+      "intentionalBodyMisses": [
+        "leading-directive",
+        "multiple-statements"
+      ]
+    },
+    "crossPolicyInteractions": [
+      {
+        "group": "assignment",
+        "id": "assignment-02",
+        "perRuleCounts": {
+          "@sarj/no-boolean-selector-parameter": 1,
+          "no-return-assign": 2
+        },
+        "classification": "Additional selector advisory: boolean chooses between assignment targets; native returned-assignment count is checked independently."
+      },
+      {
+        "group": "assignment",
+        "id": "assignment-06",
+        "perRuleCounts": {
+          "@sarj/no-boolean-selector-parameter": 1,
+          "no-return-assign": 0
+        },
+        "classification": "Additional selector advisory: boolean chooses between assignment targets; native returned-assignment count is checked independently."
+      }
+    ],
+    "upstreamDuplicateDiagnostics": {
+      "owner": "no-return-assign",
+      "duplicateLocations": 2,
+      "extraDiagnostics": 2,
+      "cases": [
+        {
+          "id": "assignment-01",
+          "duplicateLocations": [
+            {
+              "location": "no-return-assign:1:48:1:68",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "id": "assignment-02",
+          "duplicateLocations": [
+            {
+              "location": "no-return-assign:1:64:1:98",
+              "count": 2
+            }
+          ]
+        }
+      ],
+      "classification": "Known native ESLint core behavior retained; not duplicate selector ownership."
+    },
+    "historicalPrecalibrationPerformance": {
+      "scope": "Immutable public160-file corpus, isolated rule-only panel; no full-linter latency claim.",
+      "files": 160,
+      "bytes": 1651543,
+      "warmAlternatingPairs": 4,
+      "warmMedianSeconds": {
+        "baseline": 8.459626392500002,
+        "candidate": 9.503107533999994
+      },
+      "candidateToBaselineMedianRatio": 1.1233483717939488,
+      "warmMedianDeltaSeconds": 1.043481141499992,
+      "coldFreshProcessWallSeconds": {
+        "baseline": 77.985427,
+        "candidate": 60.461674
+      },
+      "coldPeakRssMiB": {
+        "baseline": 797.39453125,
+        "candidate": 678.921875
+      },
+      "combinedWarmPeakRssMiB": 1559.39453125,
+      "availableParallelism": 8,
+      "loadAverageObserved": "approximately49–66",
+      "diagnostics": 0,
+      "sourcePinVerifiedAfter": true,
+      "limitations": [
+        "Root corpus/canonical checks run concurrently; VM scheduling and CPU load are not controlled.",
+        "Fresh processes reset parser/JIT process state but do not reset the OS filesystem cache.",
+        "Warm results share one process and parser services; both configurations are warmed first, then four pairs alternate their execution order.",
+        "Warm peak RSS includes both configurations and caches and cannot be attributed solely to the candidate.",
+        "This panel does not establish a speedup, production end-to-end latency, or a strict regression budget."
+      ]
+    },
+    "runtime": {
+      "node": "v24.21.0",
+      "eslint": "10.12.0",
+      "typescript": "6.0.2",
+      "typescriptCompiler": "6.0.3",
+      "platform": "linux",
+      "arch": "x64"
+    },
+    "finalPerformance": {
+      "scope": "Exact corrected artifact, immutable public160-file corpus; isolated rule-only panel, no full-linter latency claim.",
+      "runtime": "Node24.21.0",
+      "files": 160,
+      "bytes": 1651543,
+      "warmAlternatingPairs": 4,
+      "warmMedianSeconds": {
+        "baseline": 8.255586128000003,
+        "candidate": 8.997076638
+      },
+      "candidateToBaselineMedianRatio": 1.0898168220285567,
+      "warmMedianDeltaSeconds": 0.7414905099999967,
+      "coldFreshProcessWallSeconds": {
+        "baseline": 38.560701,
+        "candidate": 40.911225
+      },
+      "coldPeakRssMiB": {
+        "baseline": 825.64453125,
+        "candidate": 833.359375
+      },
+      "combinedWarmPeakRssMiB": 1523.8671875,
+      "availableParallelism": 8,
+      "oneMinuteLoadAverageRange": [
+        40.72,
+        43.43
+      ],
+      "diagnostics": 0,
+      "sourcePinAndArtifactVerifiedAfter": true,
+      "limitations": [
+        "Root corpus/canonical checks run concurrently; VM scheduling and CPU load are not controlled.",
+        "Fresh processes reset parser/JIT process state but do not reset the OS filesystem cache.",
+        "Warm results share one process and parser services; both configurations are warmed first, then four pairs alternate their execution order.",
+        "Warm peak RSS includes both configurations and caches and cannot be attributed solely to the candidate.",
+        "This panel does not establish a speedup, production end-to-end latency, or a strict regression budget."
+      ]
+    },
+    "finalNativeCorpus": {
+      "schemaVersion": 1,
+      "status": "complete; selected live candidate findings require no further calibration",
+      "runtime": {
+        "selectedAndVerifiedNode": "v24.21.0",
+        "directlyAttestedChildNodeVersions": [
+          "v24.21.0"
+        ],
+        "childrenWithDirectVersionCapture": 6,
+        "selectionCommand": "mise --no-config --no-env --no-hooks exec node@24.21.0 --"
+      },
+      "files": 1695,
+      "bytes": 8488613,
+      "sources": {
+        "public": 1,
+        "private": 2
+      },
+      "batches": 8,
+      "maximumBatchFiles": 250,
+      "wallSeconds": 677.663397,
+      "peakChildRssMiB": 1694.28515625,
+      "candidateFindings": 0,
+      "candidateByRule": {},
+      "liveTruePositives": 0,
+      "liveFalsePositives": 0,
+      "liveFalseNegatives": null,
+      "fatalDiagnostics": 0,
+      "outOfScopeDirectiveDiagnostics": 46,
+      "directiveCategories": {
+        "missing-inline-rule-definition": 38,
+        "unused-disable-directive": 8
+      },
+      "directiveDiagnosticMultisetUnchanged": true,
+      "fullPinsVerifiedBeforeAndAfter": true,
+      "sourceDigestsMatchedBeforeAndAfter": true,
+      "artifactUnchanged": true,
+      "pinFileUnchanged": true,
+      "processResourceUsage": {
+        "User time (seconds)": "241.25",
+        "System time (seconds)": "31.11",
+        "Elapsed (wall clock) time (h:mm:ss or m:ss)": "11:36.47",
+        "Maximum resident set size (kbytes)": "1735460",
+        "Exit status": "0"
+      },
+      "interpretation": "Zero selected live findings does not estimate precision or false-negative prevalence. Seeded source-policy fixtures separately prove positive reach. Known native block-body onX and other documented blind spots remain. First trial3FP and focused250-file triage are retained separately; they do not add unique corpus files or review-pass counts. Wall times across initial Node24.22 and final Node24.21 runs are observations, not a performance speedup comparison."
+    }
+  },
+  "assignmentFormatterEvidence": {
+    "versions": {
+      "eslint": "10.12.0",
+      "typescript-eslint-parser": "8.71.2",
+      "prettier": "3.9.10"
+    },
+    "cases": 20,
+    "nativeDiagnostics": 12,
+    "afterPrettierDiagnostics": 3,
+    "casesWithChangedFindings": 10,
+    "extraRepeatedSpanReportsBeforeFormatting": 2,
+    "groupedChain": {
+      "before": "return (first = (second = next));",
+      "nativeFindingsBefore": 0,
+      "formatted": "return (first = second = next);",
+      "nativeFindingsAfter": 1,
+      "stableLocalVariableRemedy": "second = next; first = second; return first;"
+    },
+    "remedyRoundTrips": {
+      "observedCases": 4,
+      "allFormatterIdempotent": true,
+      "nativeDiagnosticsAfterFormatting": 0,
+      "scope": "Local chain, grouped memoization, a void callback block and grouped conditional branches. These are interactions of reviewed boundaries, not additional passes."
+    },
+    "interpretation": "Grouping is syntactic visibility, not proven intent: the formatter can add it without changing execution, and remove inner chain grouping. Native reports can share a return location. Preserve the warning and manual review; do not claim general command/query separation or create a duplicate custom mutation detector."
+  },
+  "validation": {
+    "status": "Completed checks and a timestamped canonical checkpoint are recorded below. Current GitHub checks and the PR descriptions carry subsequent delivery results.",
+    "observedAssignmentSuite": {
+      "testsPassed": 72,
+      "command": "cd packages/typescript && npx vitest run tests/returned-assignment-policy.test.ts",
+      "scope": "Strict/application native policy fixtures and runtime semantic proofs; repeated contexts do not count as independent observations."
+    },
+    "observedAssignmentLint": "Targeted package ESLint passed; documentation Python parse and git diff --check passed.",
+    "observedSelectorUnitSuite": {
+      "nativeFocusedBehaviorTests": 100,
+      "reportedPassed": 100,
+      "reportedFailed": 0,
+      "command": "npx vitest run tests/rules/no-boolean-selector-parameter.test.ts --testTimeout=180000",
+      "typecheck": "Native TypeScript noEmit passed for owned rule/helper integration.",
+      "lint": "Native ESLint passed under Node24.21.0 for owned rule, helper and expanded100-case regression file.",
+      "exitCode": 0
+    },
+    "finalCombinedCaseMatrix": {
+      "reviewInputs": 80,
+      "pythonReviewInputs": 20,
+      "parserOrFatalErrors": 0,
+      "nativeAssignmentContractsMatched": 20,
+      "sourceAndArtifactUnchanged": true
+    },
+    "finalFocusedSuites": {
+      "ownedSelector": 100,
+      "sharedSelectorProfiles": 54,
+      "returnedAssignmentProfiles": 72,
+      "totalPassed": 226,
+      "interpretation": "Native behavior tests include repeated presets and regressions beyond the100 review questions; test count is not an independent precision denominator."
+    },
+    "ruleChangeReview": {
+      "exitCode": 0,
+      "comparison": "afb83f2657878174ab20a58ce443ac84f60d22b6 to 78b389138f93644303ed0e493180df2810657b50",
+      "added": [
+        "eslint:no-boolean-selector-parameter"
+      ],
+      "dependentTestFingerprintsChanged": [
+        "eslint:no-excessive-cognitive-complexity",
+        "eslint:prefer-zod-parse-output-type"
+      ],
+      "interpretation": "The two existing implementations are unchanged; their tests import the modified plugin registry, so the comparison correctly tracks that transitive test dependency. Canonical full TypeScript verification includes them."
+    },
+    "makeVerify": {
+      "checkpointAt": "2026-10-19T17:22:43.526944+00:00",
+      "method": "Incremental verification plus resumed canonical targets; no claim of one uninterrupted final-head make verify run.",
+      "initial": {
+        "command": "make verify",
+        "exitCode": 2,
+        "failure": "Two unsafe-any uses in a new configuration assertion; repaired without casts or suppressions."
+      },
+      "completedEarlierTreeGates": "See canonicalPreRebaseGates; unchanged UI/tooling source checks retain their original scope.",
+      "latestTreeGates": "See latestStaticChecks and upstreamIntegrationDelta; the added campaign entry also passed both focused consistency tests and inventory/catalog validation.",
+      "resume": {
+        "command": "make -o doctor -o docs-check -o format-check -o typescript-build -o lint -o dogfood-python verify",
+        "stateAtCheckpoint": "Both full registry scans, all package typechecks and version policy passed. Full Vitest remains active without failure output; remaining package/wheel/repository checks follow."
+      },
+      "deliveryHistory": "Checkpoint commit history is consolidated without changing the checked file tree; later repository/history gates run against the consolidated history.",
+      "subsequentResults": "Follow-up PR descriptions and checks are the live delivery record.",
+      "firstResume": {
+        "command": "make -o doctor -o docs-check -o format-check -o typescript-build -o lint verify",
+        "exitCode": 2,
+        "completed": "Python dogfood: 162 rules across 854 source/test files; zero blocking diagnostics.",
+        "failure": "One private helper declaration ordering diagnostic in full built TypeScript dogfood; corrected without suppression or logic change."
+      },
+      "verificationTree": "Source-complete checkpoint 80902336, with final selector artifact. The fixed main #1601 delta and final audit metadata receive separate checks to avoid mutating an in-progress verification tree."
+    },
+    "exactRevisionCI": {
+      "authoritativeRecord": "Current head checks on each PR; an artifact cannot encode the status of its own future commit.",
+      "selector": "https://github.com/sarj-ai/code-standards/pull/1598/checks",
+      "audit": "https://github.com/sarj-ai/code-standards/pull/1600/checks",
+      "priorHeadFindings": "Five-commit history limit and missing owned-rule calibration task, corrected before final review. Aggregate package/CI failures reflected the same task failure."
+    },
+    "followupPullRequests": [
+      {
+        "scope": "Selector runtime and false-positive calibration",
+        "url": "https://github.com/sarj-ai/code-standards/pull/1598",
+        "mergedRevision": "3c3068cfe15785c668a44d1bbfca166ff98abdec",
+        "reviewedHead": "ee35bdfc252c2a663c46275bf574396528ec94a5",
+        "status": "merged"
+      },
+      {
+        "scope": "100examples, assignment boundaries and combined evidence",
+        "url": "https://github.com/sarj-ai/code-standards/pull/1600"
+      }
+    ],
+    "additionalCalibrationRegressions": {
+      "newFocusedCases": 18,
+      "includedInOwnedSelectorSuite": true,
+      "additionalReviewPasses": 0,
+      "boundaries": [
+        "Unchanged one-hop boolean callback forwarding at a different argument index",
+        "Immutable conditional callback value aliases",
+        "Independently fixed generic callable component props",
+        "Literal, transformed, captured, member, reassigned, spread and callback-inferred generic near misses"
+      ]
+    },
+    "calibratedFrameworkProbe": {
+      "inputs": 10,
+      "expectedCountsMatched": 10,
+      "parserAndTypeScriptSemanticErrors": 0,
+      "fixedConcreteCallbackFalsePositives": 3,
+      "coveredContracts": [
+        "React.FC<Props>",
+        "React.ForwardRefExoticComponent<Props>",
+        "React.MemoExoticComponent<React.FC<Props>>"
+      ],
+      "remainingWarnings": [
+        "Callback-inferred generic domain",
+        "Computed literal property mapping (documented conservative boundary)",
+        "Computed dynamic property mapping (documented conservative boundary)"
+      ],
+      "sourceAndArtifactUnchanged": true,
+      "additionalReviewPasses": 0
+    },
+    "finalReadOnlyReview": {
+      "materialImplementationDefectsFound": 0,
+      "syntheticExampleRecordsMatched": 100,
+      "privateConsumerSourceOrIdentityLeakFound": false,
+      "wordingCorrectionsApplied": [
+        "Unresolved subscriber example does not independently establish a callback contract",
+        "Data selection wording matches the documented syntax boundary"
+      ]
+    },
+    "releaseCausality": {
+      "exitCode": 0,
+      "publishableTargets": [
+        "typescript",
+        "standards"
+      ],
+      "comparison": "Fixed main 1872744171d4b25f09990d2a3f4f4e6261a15002 to selector 4234908bbbbd1ced6f467be915be33ccfeeeab15",
+      "priorReleaseEvidence": "The immutable standards-v8.94.0 tag was absent locally, verified remotely to peel to the exact fixed main checkpoint, then fetched without force. The unchanged native causality retry passed.",
+      "scope": "Historical main187/A423/C58 result; final reconciled-head causality is checked separately and recorded on the PR."
+    },
+    "stackedReleaseCausality": {
+      "exitCode": 0,
+      "publishableTargets": [
+        "standards"
+      ],
+      "base": "4234908bbbbd1ced6f467be915be33ccfeeeab15",
+      "comparison": "Final audit standards 8.96.0 versus selector standards 8.95.0.",
+      "scope": "Historical main187/A423/C58 result; final reconciled-head causality is checked separately and recorded on the PR."
+    },
+    "packedRuntimeConsumerSmoke": {
+      "schemaVersion": 1,
+      "status": "passed",
+      "scope": "Targeted packed production-consumer import smoke; canonical full lint/typecheck/tests are separate.",
+      "versions": {
+        "node": "v24.21.0",
+        "plugin": "16.21.0",
+        "eslint": "10.12.0",
+        "typescript": "6.0.2",
+        "typescriptPackage": "@typescript/typescript6",
+        "sonarjs": "4.2.2"
+      },
+      "archiveVerification": {
+        "helper": "pack_typescript",
+        "npmOperation": "pack --ignore-scripts",
+        "existingVerifierChecks": [
+          "package identity",
+          "declared ESM/CJS/type export paths",
+          "nonempty license",
+          "safe archive members",
+          "no source maps/install lifecycle scripts"
+        ]
+      },
+      "freshConsumer": {
+        "gitMarkerFreeAncestors": true,
+        "directDependencies": [
+          "@sarj/eslint-plugin",
+          "eslint",
+          "typescript"
+        ],
+        "installScriptsIgnored": true,
+        "devDependenciesOmitted": true,
+        "offlineAttempt": "Unavailable cached TypeScript alias metadata (ENOTCACHED), a cache availability issue before runtime probing.",
+        "fallback": "--prefer-offline install succeeded; no package/runtime defect was observed."
+      },
+      "runtimeProbes": {
+        "formatsChecked": 2,
+        "formatsLoaded": 2,
+        "formats": [
+          "ESM import",
+          "CJS require"
+        ],
+        "formatsWithOwnedSelectorRule": 2,
+        "formatsWithStrictPresetWarning": 2,
+        "rule": "@sarj/no-boolean-selector-parameter",
+        "severity": "warn",
+        "sonarRuntimeDependencyDeclared": "4.2.2",
+        "sonarAbsentFromPackedDevDependencies": true,
+        "sonarExternalReferenceInBothFormats": true,
+        "allImportsResolveInsideFreshConsumer": true
+      },
+      "sourceAndBuiltArtifactsUnchanged": true,
+      "sharedDependenciesUnchanged": true,
+      "published": false,
+      "interpretation": "This closes the external SonarJS runtime dependency/import distribution check without repeating the full suite or relying on development dependencies."
+    },
+    "canonicalInitialLintFinding": {
+      "diagnostics": 2,
+      "codes": [
+        "@typescript-eslint/no-unsafe-assignment",
+        "@typescript-eslint/no-unsafe-member-access"
+      ],
+      "scope": "New shared-selector configuration test assertion only.",
+      "repair": "Treat calculateConfigForFile result as unknown and assert the nested rules shape with toMatchObject; no casts or suppressions.",
+      "runtimeSourceChanged": false,
+      "status": "Repair committed; both focused configuration assertions, targeted ESLint and the full package ESLint retry passed. Subsequent integration results are recorded separately."
+    },
+    "canonicalPreRebaseGates": {
+      "scope": "Combined follow-up tree before upstream#1597/#1596integration: standards8.93,TS16.21,Python1.55.",
+      "passed": [
+        "doctor (22sites,0drift)",
+        "inventory/catalog/CLI/docs artifacts",
+        "formatted examples",
+        "docs types and lint",
+        "441-page static docs build/distribution",
+        "855-file Python formatting",
+        "full package ESLint after test-only repair",
+        "all Ruff gates",
+        "native Standards lint"
+      ],
+      "nativeStandardsLint": {
+        "errors": 0,
+        "advisoryWarnings": 34,
+        "warningCodes": {
+          "SARJ521": 32,
+          "SARJ068": 1,
+          "SARJ468": 1
+        },
+        "executionIssues": 0
+      },
+      "interpretation": "Completed earlier-tree gates are recorded honestly. They are not an overall latest-tree make verify result; upstream policy/file deltas and remaining canonical gates are checked separately."
+    },
+    "selectorMetadataChecks": {
+      "inventory": 0,
+      "ownedCatalog": 0,
+      "cliReference": 0,
+      "readme": 0,
+      "reconciledBundleVersion": "8.93.0"
+    },
+    "upstreamIntegrationDelta": {
+      "typescript": {
+        "analyzedFiles": 349,
+        "policyDiagnostics": 0,
+        "fatalErrors": 0,
+        "errors": 0,
+        "explicitFileIgnoreNotices": 2,
+        "rules": [
+          "preserve-caught-error",
+          "regexp/no-missing-g-flag",
+          "vitest/valid-expect",
+          "vitest/no-focused-tests"
+        ],
+        "fullPolicyChangedFiles": 5,
+        "fullPolicyChangedFileLintExitCode": 0
+      },
+      "python": {
+        "newPolicy": "SARJ510",
+        "standardsFiles": 304,
+        "diagnostics": 0,
+        "newPythonAndStandardsRuffExitCode": 0
+      },
+      "exitCode": 0,
+      "interpretation": "The harness preserves native global ignores and typed parser/project scope. Warning-level success is supported by the retained zero diagnostic counts, independently of the process exit code. The standalone Python policy scan overlaps canonical dogfood and adds no independent corpus or pass counts.",
+      "scope": "Policies introduced by #1597 and #1596 at the afb83f26 integration checkpoint. The subsequent #1601 delta is recorded separately."
+    },
+    "canonicalMetadataFinding": {
+      "test": "test_every_live_rule_has_exactly_one_calibration_task",
+      "scope": "CI Standards tests on Python 3.15 and Python 3.14",
+      "diagnostic": "The owned selector was present in the live inventory but missing its calibration campaign task.",
+      "runtimeSourceChanged": false,
+      "status": "Authoritative calibration task added; both focused consistency tests, rule inventory and owned catalog checks passed. Full canonical and exact-head CI rechecks remain pending.",
+      "focusedTestsPassed": 2,
+      "metadataValidatorExitCode": 0
+    },
+    "canonicalHelperOrderingFinding": {
+      "diagnostics": 1,
+      "rule": "@sarj/stepdown",
+      "scope": "Owned selector helper only",
+      "repair": "Relocate the unchanged hoisted declaration below its caller.",
+      "runtimeLogicChanged": false,
+      "targetedDogfoodLintExitCode": 0,
+      "status": "Corrected source and rebuilt bundles propagated; full TypeScript dogfood and remaining canonical gates resumed."
+    },
+    "completedPythonDogfood": {
+      "rules": 162,
+      "sourceAndTestFiles": 854,
+      "blockingDiagnostics": 0,
+      "exitCode": 0,
+      "scope": "Full shipped Python registry at verification checkpoint 80902336, before main #1601; later mapping-ownership source changes are covered separately by the incoming-main delta."
+    },
+    "preMain187StaticChecks": {
+      "exitCode": 0,
+      "doctor": {
+        "sites": 22,
+        "drift": 0,
+        "warnings": 0
+      },
+      "pythonFormattedFiles": 858,
+      "checks": [
+        "rule inventory",
+        "owned catalog",
+        "third-party catalog",
+        "CLI reference",
+        "README/docs projection",
+        "formatted examples",
+        "third-party source contract"
+      ],
+      "scope": "Reconciled delivery tree with standards 8.94.0, TypeScript 16.21.0 and Python 1.56.0; earlier unchanged docs UI/build checks are recorded separately."
+    },
+    "additionalUpstreamIntegrationDelta": {
+      "revision": "1872744171d4b25f09990d2a3f4f4e6261a15002",
+      "scope": "Two existing Python runtime files and their focused test module; no TypeScript runtime/dependency changes.",
+      "nativeRuffExitCode": 0,
+      "ruffFormattedFilesUnchanged": 3,
+      "basedpyright": {
+        "errors": 0,
+        "warnings": 0,
+        "notes": 0
+      },
+      "testsPassed": 160,
+      "testSeconds": 2.23,
+      "sourceCopiesPreserveIncomingMainExactly": true,
+      "interpretation": "These are incoming-main regression checks, not additional review questions, unique corpus files or a replacement for the explicitly scoped earlier full-registry scan."
+    },
+    "completedTypeScriptDogfood": {
+      "rules": 126,
+      "diagnostics": 0,
+      "exitCode": 0,
+      "scope": "Complete built-rule scan against the final selector helper and compiled artifact; the later main rebase leaves those bytes unchanged."
+    },
+    "completedTypechecks": {
+      "packages": [
+        "bootstrap",
+        "contracts",
+        "python",
+        "sql",
+        "iac",
+        "standards",
+        "typescript source",
+        "typescript tools"
+      ],
+      "errors": 0,
+      "warnings": 0,
+      "scope": "Complete canonical typecheck sequence at verification checkpoint 80902336. The subsequent incoming Python delta has its own clean targeted typecheck."
+    },
+    "latestStaticChecks": {
+      "exitCode": 0,
+      "versions": {
+        "selectorBundle": "8.99.0",
+        "auditBundle": "8.100.0",
+        "typescript": "16.21.0",
+        "python": "1.60.0",
+        "auditPlugin": "2.14.5"
+      },
+      "checks": [
+        "native repository/version policy",
+        "live rule inventory",
+        "prepared owned catalog",
+        "catalog/CLI/README/formatted/third-party projection synchronization",
+        "exact preservation of100 raw review/example records and assignment docs/README/test",
+        "incoming Python/plugin/campaign/catalog byte preservation",
+        "all10 prepared TypeScript outputs unchanged",
+        "upstream exact-Node CI policy preserved with no own workflow delta"
+      ],
+      "scope": "Current delivery reconciliation on merged selector 3c3068cfe15785c668a44d1bbfca166ff98abdec and fixed main 8bca94471805029d13f9e29b1ef0e9453f928723; no repeated full suite, dogfood or corpus and no claim of one uninterrupted final-head make verify."
+    },
+    "historicalC58StaticChecks": {
+      "exitCode": 0,
+      "versions": {
+        "selectorBundle": "8.95.0",
+        "auditBundle": "8.96.0",
+        "typescript": "16.21.0",
+        "python": "1.57.0",
+        "auditPlugin": "2.14.1"
+      },
+      "checks": [
+        "native repository/version policy",
+        "live rule inventory",
+        "prepared owned catalog",
+        "catalog/CLI/README/formatted/third-party projection synchronization",
+        "exact 100-record and assignment doc/test preservation",
+        "incoming Python source/campaign/catalog preservation",
+        "all ten final built outputs match selector parent"
+      ],
+      "scope": "Final audit delivery worktree on selector 4234908b and fixed main 18727441; separate from the unchanged canonical verification worktree.",
+      "revision": "58e5386ef6bc0497637af4380e1224751369e5e9"
+    },
+    "historicalC58LocalWheelDiagnostic": {
+      "revision": "58e5386ef6bc0497637af4380e1224751369e5e9",
+      "scope": "Historical C58 on main187/Python1.57.0. This is not a full local pass or a check of the later mainf865/Python1.58.0 delta.",
+      "originalNativeWheelRun": {
+        "passed": 5152,
+        "skipped": 9,
+        "failed": 1,
+        "pytestSeconds": 545.67,
+        "makeExitCode": 2,
+        "stoppedAfterFirstFailure": true
+      },
+      "failingNodeId": "tests/test_prepared_kubernetes.py::test_native_security_decisions_and_pinned_message_grammars[secure]",
+      "nativeFailure": "The kube-linter mise shim was unselected from the private temporary fixture cwd: return code1, empty stdout, stderr No version is set for shim: kube-linter.",
+      "correction": "Select the already installed official pinned kube-linter0.8.3 binary with task-local PATH after Node/Terraform activation; no repository/global configuration, source, dependency, skip or suppression change.",
+      "affectedNativeModule": {
+        "passed": 51,
+        "failed": 0,
+        "pytestSeconds": 5.01,
+        "nativeVersion": "0.8.3"
+      },
+      "headTreeAndCleanStatusUnchanged": true,
+      "completeWheelCoverage": "Exact C58 GitHub CI passed its complete wheel/integration lane and minimum Python3.14 lane; current final-head PR checks remain the live delivery record."
+    },
+    "latestUpstreamIntegrationDelta": {
+      "revision": "8bca94471805029d13f9e29b1ef0e9453f928723",
+      "selectorReviewedHead": "ee35bdfc252c2a663c46275bf574396528ec94a5",
+      "selectorMergedRevision": "3c3068cfe15785c668a44d1bbfca166ff98abdec",
+      "scope": "Four incoming SQL-related Python test modules and nine changed runtime/test files; no full-suite, TypeScript, dogfood or corpus repetition.",
+      "pythonTests": {
+        "passed": 330,
+        "modules": 4,
+        "pytestSeconds": 1.57,
+        "wallSeconds": 3.572
+      },
+      "ruffCheck": {
+        "files": 9,
+        "exitCode": 0
+      },
+      "ruffFormat": {
+        "filesUnchanged": 9,
+        "exitCode": 0
+      },
+      "basedpyright": {
+        "files": 9,
+        "errors": 0,
+        "warnings": 0,
+        "notes": 0
+      },
+      "runtime": {
+        "python": "3.15.0",
+        "pydantic": "2.14.1",
+        "pytest": "9.1.1",
+        "ruff": "0.17.0",
+        "basedpyright": "1.40.2"
+      },
+      "sourcePinsAndHeadUnchanged": true,
+      "mergedSelectorTreeEqualsReviewedHead": true,
+      "interpretation": "Incoming-main regression qualification plus unchanged selector runtime/assignment source connects the historical full-suite evidence to the current delivery. These checks add no review questions or independent corpus observations."
+    },
+    "historicalC980MinimumPythonCI": {
+      "revision": "98028bd4930fd117833d3c771bb545f87d711626",
+      "job": "Python 3.14 compatibility",
+      "python": "3.14.8",
+      "standards": "8.98.0",
+      "pythonPolicy": "1.58.0",
+      "selectedNode": "24.22.0",
+      "requiredAuthoringNode": "24.21.0",
+      "failed": 58,
+      "passed": 6238,
+      "skipped": 24,
+      "pytestSeconds": 197.13,
+      "failure": "All58 failures were rule_changes parser-dependency tests: the authoring frontend rejected the selected Node runtime because it differs from the exact repository pin. The compiler existed and the rule sources were unchanged.",
+      "comparison": {
+        "revision": "1afcbe5770cb3ac812f5d33c28125e556e05b417",
+        "selectedNode": "24.21.0",
+        "passed": 6296,
+        "skipped": 24,
+        "workflowFrontendAndTestsByteIdentical": true
+      },
+      "cause": "The identical setup-node node-version:'24' request selected different cached patch releases on the two runners.",
+      "correction": "Read .node-version in this minimum-Python CI lane so its real authoring parser receives the required runtime. Preserve the broader TypeScript compatibility matrix and exact parser attestation.",
+      "scope": "Historical C980 job result and successful selector-parent comparison; subsequent exact-head CI remains the live delivery record. No Python/TypeScript rule source, dependency or prepared output changed."
+    },
+    "compatibilityWorkflowPinValidation": {
+      "workflow": ".github/workflows/ci.yml",
+      "job": "python-compatibility",
+      "existingWorkflowAndParserContractTests": {
+        "passed": 21,
+        "pytestSeconds": 15.67,
+        "node": "24.21.0"
+      },
+      "nativeActionlint": {
+        "version": "1.7.12",
+        "exitCode": 0
+      },
+      "scope": "Historical a5ea targeted workflow/parser controls and native actionlint. Main8bca independently includes the exact authoring-runtime pins; the final audit PR has no own workflow change.",
+      "revision": "a5ea2338dbcf526add5c09cd548133fe86720654"
+    },
+    "currentReleaseAndHistoryPolicy": {
+      "selectorMergedRevision": "3c3068cfe15785c668a44d1bbfca166ff98abdec",
+      "selectorReviewedHead": "ee35bdfc252c2a663c46275bf574396528ec94a5",
+      "selectorScope": "The reviewed pre-squash tree received repository/version/catalog/campaign and release-policy qualification; the actual merge tree is identical.",
+      "selectorPublishableTargets": [
+        "typescript",
+        "standards"
+      ],
+      "auditScope": "Root checks final standards-only release causality and pinned strict commit history against the consolidated audit head before the authorized admin merge."
+    },
+    "historicalA5StaticChecks": {
+      "exitCode": 0,
+      "versions": {
+        "selectorBundle": "8.97.0",
+        "auditBundle": "8.98.0",
+        "typescript": "16.21.0",
+        "python": "1.58.0",
+        "auditPlugin": "2.14.1"
+      },
+      "checks": [
+        "native repository/version policy",
+        "live rule inventory",
+        "prepared owned catalog",
+        "catalog/CLI/README/formatted/third-party projection synchronization",
+        "exact preservation of100 raw review/example records and assignment docs/tests",
+        "incoming Python/plugin/campaign/catalog byte preservation",
+        "all10 prepared TypeScript outputs unchanged"
+      ],
+      "scope": "Current delivery reconciliation on selector 1afcbe5770cb3ac812f5d33c28125e556e05b417 and fixed main f865d7237a6ec4838385b6cc5a2a62acf943653c; no repeated full suites, dogfood or corpus and no claim of one uninterrupted final-head make verify.",
+      "revision": "a5ea2338dbcf526add5c09cd548133fe86720654"
+    },
+    "historicalF865UpstreamIntegrationDelta": {
+      "revision": "f865d7237a6ec4838385b6cc5a2a62acf943653c",
+      "selectorRevision": "1afcbe5770cb3ac812f5d33c28125e556e05b417",
+      "scope": "Existing Python value/side-effect owner/shared-helper files and focused Python/Standards tests only; no repeated full suite, dogfood or corpus.",
+      "pythonTests": {
+        "passed": 378,
+        "modules": 3,
+        "pytestSeconds": 2.18,
+        "wallSeconds": 5.087
+      },
+      "standardsTests": {
+        "passed": 5,
+        "modules": 2,
+        "pytestSeconds": 1.19,
+        "wallSeconds": 2.763
+      },
+      "ruffCheck": {
+        "files": 6,
+        "exitCode": 0
+      },
+      "ruffFormat": {
+        "filesUnchanged": 6,
+        "exitCode": 0
+      },
+      "basedpyright": {
+        "pythonFiles": 5,
+        "standardsFiles": 1,
+        "errors": 0,
+        "warnings": 0,
+        "notes": 0
+      },
+      "runtime": {
+        "python": "3.15.0",
+        "pydantic": "2.14.1",
+        "pytest": "9.1.1",
+        "basedpyright": "1.40.2",
+        "ruff": "0.17.0"
+      },
+      "initialHarnessAttempt": "Initial missing private fixture-parent directories caused setup errors; corrected only the private harness and retained first logs. The scoped retries above pass without source changes.",
+      "sourcePinsAndHeadUnchanged": true,
+      "interpretation": "These are incoming-main regression checks, not additional review questions or unique precision observations."
+    },
+    "historicalA1afcReleaseAndHistoryPolicy": {
+      "selectorRevision": "1afcbe5770cb3ac812f5d33c28125e556e05b417",
+      "selectorCausalityExitCode": 0,
+      "selectorCommitPolicyExitCode": 0,
+      "selectorPublishableTargets": [
+        "typescript",
+        "standards"
+      ],
+      "auditScope": "Root validates causality and pinned strict commit history against the final consolidated audit head; current PR descriptions/checks hold that live result."
+    },
+    "historicalA5ExactHeadCI": {
+      "revision": "a5ea2338dbcf526add5c09cd548133fe86720654",
+      "scope": "Historical full CI qualification on mainf865/Python1.58.0 and Standards8.98.0; not a full CI run on the subsequent main8bca/Python1.60.0 delivery.",
+      "latestChecks": {
+        "success": 34,
+        "skipped": 3,
+        "failed": 0,
+        "pending": 0
+      },
+      "successorRun": "https://github.com/sarj-ai/code-standards/actions/runs/39302007257",
+      "successorJobs": {
+        "success": 28,
+        "skipped": 2,
+        "failed": 0,
+        "pending": 0
+      },
+      "coverage": "Full wheel/integration, TypeScript22/24/26, Python3.14 compatibility, repository/release gates, static analysis, native policy scans and other required checks passed.",
+      "correctedMinimumPython": {
+        "versionFile": ".node-version",
+        "resolvedNode": "24.21.0",
+        "actualNode": "v24.21.0",
+        "standardsPassed": 6296,
+        "standardsSkipped": 24,
+        "pytestSeconds": 240.84
+      },
+      "supersededAttempt": "A duplicate run was cancelled during routing; its downstream guards failed before setup/tests. The successor completed successfully on the same exact head."
+    }
+  },
+  "corpusAndPerformance": {
+    "status": "Final corrected pinned corpus passed under Node24.21.0.",
+    "privacy": "Public evidence may contain aggregate labels and counts only. Private corpus identities, roots, source, revisions, content digests and raw diagnostics stay in owner-readable local evidence.",
+    "protocol": "Use verified pinned tracked-existing source selections and sarj_standards.libs.rules.run_isolated_corpora; each repository/batch gets a fresh process, at most 250 files unless a smaller measured batch is necessary.",
+    "candidateFindings": 0,
+    "inspectedFindings": 0,
+    "truePositives": 0,
+    "falsePositives": 0,
+    "falseNegatives": null,
+    "duplicateLocations": 0,
+    "parserOrFatalDiagnostics": 0,
+    "outOfScopeDiagnostics": 46,
+    "files": 1695,
+    "bytes": 8488613,
+    "freshProcessBatches": 8,
+    "baselineAndCandidateTiming": {
+      "scope": "Exact corrected artifact, immutable public160-file corpus; isolated rule-only panel, no full-linter latency claim.",
+      "runtime": "Node24.21.0",
+      "files": 160,
+      "bytes": 1651543,
+      "warmAlternatingPairs": 4,
+      "warmMedianSeconds": {
+        "baseline": 8.255586128000003,
+        "candidate": 8.997076638
+      },
+      "candidateToBaselineMedianRatio": 1.0898168220285567,
+      "warmMedianDeltaSeconds": 0.7414905099999967,
+      "coldFreshProcessWallSeconds": {
+        "baseline": 38.560701,
+        "candidate": 40.911225
+      },
+      "coldPeakRssMiB": {
+        "baseline": 825.64453125,
+        "candidate": 833.359375
+      },
+      "combinedWarmPeakRssMiB": 1523.8671875,
+      "availableParallelism": 8,
+      "oneMinuteLoadAverageRange": [
+        40.72,
+        43.43
+      ],
+      "diagnostics": 0,
+      "sourcePinAndArtifactVerifiedAfter": true,
+      "limitations": [
+        "Root corpus/canonical checks run concurrently; VM scheduling and CPU load are not controlled.",
+        "Fresh processes reset parser/JIT process state but do not reset the OS filesystem cache.",
+        "Warm results share one process and parser services; both configurations are warmed first, then four pairs alternate their execution order.",
+        "Warm peak RSS includes both configurations and caches and cannot be attributed solely to the candidate.",
+        "This panel does not establish a speedup, production end-to-end latency, or a strict regression budget."
+      ]
+    },
+    "peakMemory": {
+      "finalCorpusPeakChildRssMiB": 1694.28515625,
+      "publicWarmPanelIncludesBothConfigurationsMiB": 1523.8671875
+    },
+    "interpretation": "All3 live calibration findings were inspected and corrected; the final replay has no retained-rule findings. The46 directive diagnostics exactly match the earlier multiset. Zero findings does not estimate precision or broad false-negative coverage. Timing is a contended rule-only panel, not an end-to-end budget or speedup claim. No error promotion.",
+    "calibrationTrial": {
+      "schemaVersion": 1,
+      "status": "revise:three inspected valid callback states require correction before final replay",
+      "trial": "first complete candidate evaluation after initial implementation",
+      "summary": {
+        "files": 1695,
+        "bytes": 8488613,
+        "batches": 8,
+        "maximumBatchFiles": 250,
+        "wallSeconds": 805.185415,
+        "peakChildRssMiB": 1690.828125,
+        "candidateFindings": 3,
+        "truePositives": 0,
+        "falsePositives": 3,
+        "returnedAssignmentFindings": 0,
+        "fatalDiagnostics": 0,
+        "excludedDirectiveDiagnostics": 46,
+        "sameDirectiveDiagnosticMultisetAsPrevious": true,
+        "directiveCategories": {
+          "missing-inline-rule-definition": 38,
+          "unused-disable-directive": 8
+        },
+        "markerAndSourceDigestsVerifiedBeforeAndAfter": true,
+        "artifactUnchanged": true,
+        "fullSourcePinsVerifiedByBoundedRunnerBeforeAndAfter": true,
+        "precisionInterpretation": "All3 live candidate matches inspected and classified FP; no broad precision or false-negative estimate."
+      },
+      "findings": [
+        {
+          "classification": "false-positive",
+          "count": 2,
+          "boundary": "Direct one-hop JSX callback forwarding into an adapter parameter at another argument index."
+        },
+        {
+          "classification": "false-positive",
+          "count": 1,
+          "boundary": "Immutable conditional alias selecting a callable later passed to an independently declared JSX callback input."
+        }
+      ],
+      "focusedTriageReplay": {
+        "filesExecuted": 250,
+        "wallSeconds": 102.706035,
+        "peakChildRssMiB": 1695.140625,
+        "sameFullSourcePinVerifiedBeforeAndAfter": true,
+        "samePolicyAndArtifact": true,
+        "extraUniqueCorpusFiles": 0,
+        "extraReviewPasses": 0,
+        "purpose": "Explain the one new batch4 diagnostic while the full run continued."
+      },
+      "countsInterpretation": "The main corpus contains1695 unique selected files. The focused250-file replay overlaps that selection and adds no unique files or review questions. Synthetic100-pass review and regression executions are separate evidence. All3 candidate findings were inspected; retained warning severity and no promotion."
+    },
+    "publicCorpus": {
+      "repository": "https://github.com/sarj-ai/code-standards",
+      "revision": "aab73adbb135da206654533860722fae28a33fdc",
+      "files": 160,
+      "bytes": 1651543
+    },
+    "privateCorpusCount": 2
+  },
+  "limitations": [
+    "This is not a ban on every boolean parameter or boolean data. Optional, nullable, literal-only, generic, destructured, indirect-predicate and changed-binding inputs remain outside the owned direct broad-boolean check.",
+    "Arbitrary multi-statement bodies, leading directives, short-circuit guards, local predicate aliases and arbitrary flow are not inferred. A call may be pure; a warning remains manual design guidance.",
+    "The native block-body detector retains its on[A-Z] object-property exemption. The concise-arrow extension does not infer a callback contract from that name. This known false negative remains documented rather than hidden in precision claims.",
+    "Noncomputed property reads count as syntactic data without proving getter effects. Computed reads, including literal keys, remain outside that exemption and can still warn in block mappings. No universal getter or function purity proof is claimed.",
+    "Immutable identifier aliases are bounded; mutated bindings are not flow-tracked. A function used as a callback and direct operation may retain the independent callback signature without proving all API design optimal.",
+    "Member callback-reference analysis is conservative. Property replacement, dynamic access, escaping receivers and arbitrary aliases can prevent or weaken proof; no whole-program ownership guarantee is claimed.",
+    "Same-operation data selection requires a stable resolved callable/simple target and selected data within the documented syntax boundary. Matching text or familiar formatting-function names alone is insufficient.",
+    "No-return-assign preserves individual grouping and common memoization, but formatters may change advisory coverage and native chained assignments may produce repeated-span reports. Update/delete and other returned mutations are outside its assignment-specific scope.",
+    "Ruff FBT remains syntax-oriented: Annotated/literal/alias spellings and lambda defaults have documented gaps; protocol/abstract/overload declarations are not blanket exempt. Existing keyword-only, named-data, allowed-call and compatibility boundaries remain authoritative.",
+    "Every new design diagnostic remains warning severity with no intent-changing autofix. Error promotion requires separate warning-release evidence and metadata review.",
+    "The owned selector warning uses @sarj/no-boolean-selector-parameter. Existing direct sonarjs/no-selector-parameter suppression comments target the previous rule ID; reasoned exceptions need review against the new owned ID. No consumers or suppression comments were rewritten automatically."
+  ],
+  "passes": [
+    {"id":"selector-coverage/block-if-dispatch","question":"Does the maintained detector retain ordinary block if/else dispatch?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":1},"decision":"Retain maintained S2301 block coverage through one owned warning.","newValidation":{"selectorWarnings":1,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function select(flag: boolean) { if (flag) { a(); } else { b(); } }"}},
+    {"id":"selector-coverage/returned-conditional","question":"Does the maintained detector retain returned effectful conditionals?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":1},"decision":"Retain maintained effectful conditional coverage through one owned warning.","newValidation":{"selectorWarnings":1,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function select(flag: boolean) { return flag ? a() : b(); }"}},
+    {"id":"selector-coverage/concise-arrow-dispatch","question":"Can concise-arrow syntax hide equivalent operation dispatch?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":0},"decision":"Add one expression-bodied arrow listener sharing the typed eligibility and contract filters.","newValidation":{"selectorWarnings":1,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"const select = (flag: boolean) => flag ? a() : b();"}},
+    {"id":"selector-coverage/parenthesized-concise-arrow","question":"Do parentheses around a concise conditional change dispatch ownership?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":0},"decision":"Cover the equivalent concise arrow without rewriting AST nodes or parent identities.","newValidation":{"selectorWarnings":1,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"const select = (flag: boolean) => (flag ? a() : b());"}},
+    {"id":"selector-coverage/negated-concise-arrow","question":"Does negating the concise-arrow test preserve operation selection?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":0},"decision":"Cover direct logical negation of the same boolean parameter.","newValidation":{"selectorWarnings":1,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"const select = (flag: boolean) => !flag ? b() : a();"}},
+    {"id":"selector-coverage/async-concise-arrow","question":"Does async concise-arrow dispatch need the same warning boundary?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":0},"decision":"Cover effectful async concise conditionals; keep manual remediation.","newValidation":{"selectorWarnings":1,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"const select = async (flag: boolean) => flag ? await a() : await b();"}},
+    {"id":"selector-coverage/multiple-statements","question":"Should arbitrary multi-statement functions be inferred as dispatchers?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":0},"decision":"Defer arbitrary control-flow analysis; multiple responsibilities and surrounding work need separate evidence.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function select(flag: boolean) { record(); if (flag) { a(); } else { b(); } }"}},
+    {"id":"selector-coverage/leading-directive","question":"Should a leading directive cause an unsupported control-flow expansion?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":0},"decision":"Document the leading-directive blind spot; do not synthesize an upstream function body.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function select(flag: boolean) { \"use strict\"; return flag ? a() : b(); }"}},
+    {"id":"selector-coverage/negated-block-if","question":"Is direct negated block dispatch already covered?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":1},"decision":"Retain the direct negated test and unchanged-binding boundary.","newValidation":{"selectorWarnings":1,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function select(flag: boolean) { if (!flag) { b(); } else { a(); } }"}},
+    {"id":"selector-coverage/literal-comparison","question":"Should boolean-literal comparisons be added to the direct-test scope?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":1},"decision":"Abstain on comparisons; the owned rule deliberately checks only a direct identifier or its logical negation.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function select(flag: boolean) { if (flag === true) { a(); } else { b(); } }"}},
+    {"id":"selector-coverage/inferred-default","question":"Does an inferred boolean default retain typed selector ownership?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":1},"decision":"Resolve the inferred broad boolean with the native checker; retain warning coverage.","newValidation":{"selectorWarnings":1,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function select(flag = false) { if (flag) { a(); } else { b(); } }"}},
+    {"id":"selector-coverage/boolean-type-alias","question":"Does a boolean type alias retain typed selector ownership?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":1},"decision":"Resolve aliases by type and binding rather than matching bool annotation spelling.","newValidation":{"selectorWarnings":1,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"type Flag = boolean; function select(flag: Flag) { if (flag) { a(); } else { b(); } }"}},
+    {"id":"selector-coverage/optional-boolean","question":"Should an optional input be treated as a two-state selector?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":0},"decision":"Abstain on optional three-state contracts rather than infer two-state ownership.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function select(flag?: boolean) { if (flag) { a(); } else { b(); } }"}},
+    {"id":"selector-coverage/nullable-boolean","question":"Should a nullable input be treated as a two-state selector?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":0},"decision":"Abstain on nullable three-state contracts rather than infer two-state ownership.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function select(flag: boolean | null) { if (flag) { a(); } else { b(); } }"}},
+    {"id":"selector-coverage/boolean-literal-union","question":"Does a true-or-false literal union normalize to broad boolean?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":1},"decision":"Retain normalized broad-boolean ownership.","newValidation":{"selectorWarnings":1,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function select(flag: true | false) { if (flag) { a(); } else { b(); } }"}},
+    {"id":"selector-coverage/single-boolean-literal","question":"Should a single boolean literal receive a duplicate design warning?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":1},"decision":"Abstain on literal-only inputs; constant-condition checks retain their existing ownership.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function select(flag: true) { if (flag) { a(); } else { b(); } }"}},
+    {"id":"selector-coverage/generic-boolean-constraint","question":"Can a generic constrained input be treated as an owned broad boolean?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":0},"decision":"Abstain on constrained generic inputs; do not derive independent ownership from inference.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function select<T extends boolean>(flag: T) { if (flag) { a(); } else { b(); } }"}},
+    {"id":"selector-coverage/class-method","question":"Does an independent class method retain selector coverage?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":1},"decision":"Retain coverage unless the exact member or a proven callback reference establishes a separate contract.","newValidation":{"selectorWarnings":1,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"class Service { select(flag: boolean) { if (flag) { a(); } else { b(); } } }"}},
+    {"id":"selector-coverage/generator-conditional","question":"Does generator syntax preserve effectful operation selection?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":1},"decision":"Retain native generator effect coverage; no API-changing autofix.","newValidation":{"selectorWarnings":1,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function* select(flag: boolean) { return flag ? yield a() : yield b(); }"}},
+    {"id":"selector-coverage/short-circuit-call","question":"Is short-circuit optional work proof of alternate-operation dispatch?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":0},"decision":"Defer guard-only short-circuit work; optional work does not establish alternate operations.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function select(flag: boolean) { flag && a(); }"}},
+    {"id":"selector-coverage/guard-return","question":"Is a guard-return clause proof of alternate-operation dispatch?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":0},"decision":"Preserve guard clauses; no arbitrary function-size or one-return policy is introduced.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function select(flag: boolean) { if (!flag) return; a(); }"}},
+    {"id":"selector-coverage/predicate-argument-condition","question":"Does using a boolean as predicate input make it the direct selector test?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":1},"decision":"Filter the upstream report when the boolean merely supplies data to another predicate.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function observe(flag: boolean) { if (validate(flag)) { a(); } else { b(); } }"}},
+    {"id":"selector-coverage/same-callee-data-argument","question":"Do unresolved same-name calls establish one stable operation with selected data?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":1},"decision":"Keep the warning when format is unresolved. Independently resolved stable same-operation calls with selected data are preserved in the owned regression suite.","newValidation":{"selectorWarnings":1,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function label(flag: boolean) { return flag ? format(\"yes\") : format(\"no\"); }"}},
+    {"id":"selector-coverage/pure-if-value-transform","question":"Should pure if/else value mapping differ from a pure conditional expression?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":1},"decision":"Preserve syntactically proven pure mappings consistently across equivalent source shapes.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function label(flag: boolean) { if (flag) { return \"yes\"; } else { return \"no\"; } }"}},
+    {"id":"selector-coverage/pure-conditional-transform","question":"Does a pure returned conditional remain accepted?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":0},"decision":"Preserve pure boolean-to-value conversion.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function label(flag: boolean) { return flag ? \"yes\" : \"no\"; }"}},
+    {"id":"selector-coverage/destructured-options","question":"Does a destructured named-options contract remain outside direct parameters?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":0},"decision":"Retain the structured-options exclusion; named arguments do not prove single responsibility.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function select({flag}: {flag: boolean}) { if (flag) { a(); } else { b(); } }"}},
+    {"id":"selector-coverage/inline-callback","question":"Does an inline callback preserve its external boolean-input contract?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":0},"decision":"Preserve direct callback identity, including runtime-erased wrappers.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"events.subscribe((flag: boolean) => { if (flag) { a(); } else { b(); } });"}},
+    {"id":"selector-coverage/named-callback-reference","question":"Does an unresolved named subscriber establish an independent boolean callback contract?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":1},"decision":"Keep the warning when events.subscribe is unresolved. The independently typed preserved counterpart is selector-contract/named-arrow-contract.","newValidation":{"selectorWarnings":1,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function onState(flag: boolean) { if (flag) { a(); } else { b(); } } events.subscribe(onState);"}},
+    {"id":"selector-coverage/on-property-callback","question":"Is an onX property name alone semantic evidence of a callback contract?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":0},"decision":"Document the inherited native block-body exemption as a blind spot; concise extension does not adopt the name heuristic.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"const handlers = { onState: (flag: boolean) => { if (flag) { a(); } else { b(); } } };"}},
+    {"id":"selector-coverage/local-boolean-alias","question":"Should local aliases and extra statements trigger inferred dispatch ownership?","baselineObservation":{"rule":"sonarjs/no-selector-parameter","findings":0},"decision":"Defer local predicate aliases and added statements rather than infer intent from matching names.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"function select(flag: boolean) { const enabled = flag; return enabled ? a() : b(); }"}},
+    {"id":"selector-contract/inline-arrow-contract","question":"Does the selector policy honor the inline arrow contract boundary?","baselineObservation":{"shippedPresetFindings":0,"rawUpstreamFindings":0},"decision":"preserve: Direct callback argument independently establishes a boolean-input contract.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nsubscribe((value: boolean) => { if (value) { left(); } else { right(); } });"}},
+    {"id":"selector-contract/inline-function-contract","question":"Does the selector policy honor the inline function contract boundary?","baselineObservation":{"shippedPresetFindings":0,"rawUpstreamFindings":0},"decision":"preserve: Direct function-expression callback retains its boolean input.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nsubscribe(function(value: boolean) { if (value) { left(); } else { right(); } });"}},
+    {"id":"selector-contract/named-arrow-contract","question":"Does the selector policy honor the named arrow contract boundary?","baselineObservation":{"shippedPresetFindings":1,"rawUpstreamFindings":1},"decision":"preserve: Named callback is passed to a separately declared boolean callback parameter.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nconst handler = (value: boolean) => { if (value) { left(); } else { right(); } }; subscribe(handler);"}},
+    {"id":"selector-contract/aliased-callback-contract","question":"Does the selector policy honor the aliased callback contract boundary?","baselineObservation":{"shippedPresetFindings":1,"rawUpstreamFindings":1},"decision":"preserve: Immutable alias passes the same callback to a separately declared contract.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nconst handler = (value: boolean) => { if (value) { left(); } else { right(); } }; const alias = handler; subscribe(alias);"}},
+    {"id":"selector-contract/annotated-callable-binding","question":"Does the selector policy honor the annotated callable binding boundary?","baselineObservation":{"shippedPresetFindings":1,"rawUpstreamFindings":1},"decision":"preserve: An independently declared callable type owns the parameter domain.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\ntype Handler = (value: boolean) => void; const handler: Handler = value => { if (value) { left(); } else { right(); } };"}},
+    {"id":"selector-contract/contextual-object-property","question":"Does the selector policy honor the contextual object property boundary?","baselineObservation":{"shippedPresetFindings":1,"rawUpstreamFindings":1},"decision":"preserve: Contextually typed object method fulfills a boolean input contract without onX naming.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\ninterface Options { accept: (value: boolean) => void } const options: Options = { accept(value) { if (value) { left(); } else { right(); } } };"}},
+    {"id":"selector-contract/event-name-heuristic","question":"Does the selector policy honor the event name heuristic boundary?","baselineObservation":{"shippedPresetFindings":0,"rawUpstreamFindings":0},"decision":"Desired report remains a documented native block-body blind spot; a property name alone is not independent contract proof.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nconst options = { onReady: (value: boolean) => { if (value) { left(); } else { right(); } } }; options.onReady(true);"}},
+    {"id":"selector-contract/ordinary-property-selector","question":"Does the selector policy honor the ordinary property selector boundary?","baselineObservation":{"shippedPresetFindings":1,"rawUpstreamFindings":1},"decision":"report: Ordinary object operation selects behavior and has no separate contract.","newValidation":{"selectorWarnings":1,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nconst options = { choose: (value: boolean) => { if (value) { left(); } else { right(); } } }; options.choose(true);"}},
+    {"id":"selector-contract/interface-object-method","question":"Does the selector policy honor the interface object method boundary?","baselineObservation":{"shippedPresetFindings":1,"rawUpstreamFindings":1},"decision":"preserve: Interface method owns the boolean method signature.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\ninterface Adapter { update(value: boolean): void } const adapter: Adapter = { update(value) { if (value) { left(); } else { right(); } } };"}},
+    {"id":"selector-contract/class-implements-contract","question":"Does the selector policy honor the class implements contract boundary?","baselineObservation":{"shippedPresetFindings":1,"rawUpstreamFindings":1},"decision":"preserve: A class implementing a declared boolean method must preserve its contract.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\ninterface Adapter { update(value: boolean): void } class Concrete implements Adapter { update(value: boolean) { if (value) { left(); } else { right(); } } }"}},
+    {"id":"selector-contract/class-override-contract","question":"Does the selector policy honor the class override contract boundary?","baselineObservation":{"shippedPresetFindings":1,"rawUpstreamFindings":1},"decision":"preserve: Overriding an inherited method is constrained by a separately declared contract.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nabstract class Adapter { abstract update(value: boolean): void } class Concrete extends Adapter { override update(value: boolean) { if (value) { left(); } else { right(); } } }"}},
+    {"id":"selector-contract/unrelated-heritage-method","question":"Does the selector policy honor the unrelated heritage method boundary?","baselineObservation":{"shippedPresetFindings":1,"rawUpstreamFindings":1},"decision":"report: Unrelated inheritance does not establish ownership for this method.","newValidation":{"selectorWarnings":1,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nclass Parent {} class Concrete extends Parent { choose(value: boolean) { if (value) { left(); } else { right(); } } }"}},
+    {"id":"selector-contract/setter-operation-adapter","question":"Does the selector policy honor the setter operation adapter boundary?","baselineObservation":{"shippedPresetFindings":1,"rawUpstreamFindings":1},"decision":"preserve: Property setter accepts boolean data by language contract; multiple methods would change that API.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nclass Adapter { set enabled(value: boolean) { if (value) { left(); } else { right(); } } }"}},
+    {"id":"selector-contract/getter-has-no-selector","question":"Does the selector policy honor the getter has no selector boundary?","baselineObservation":{"shippedPresetFindings":0,"rawUpstreamFindings":0},"decision":"preserve: Boolean return alone does not create a selector parameter.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nclass Adapter { get enabled(): boolean { return true; } }"}},
+    {"id":"selector-contract/pure-boolean-if-return","question":"Does the selector policy honor the pure boolean if return boundary?","baselineObservation":{"shippedPresetFindings":1,"rawUpstreamFindings":1},"decision":"preserve: Boolean algebra transforms data; both branches return pure expressions.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nfunction combine(value: boolean, other: boolean) { if (value) { return other; } else { return !other; } }"}},
+    {"id":"selector-contract/pure-label-if-return","question":"Does the selector policy honor the pure label if return boundary?","baselineObservation":{"shippedPresetFindings":1,"rawUpstreamFindings":1},"decision":"preserve: Pure value conversion has the same behavior as the already-exempt returned conditional.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nfunction label(value: boolean) { if (value) { return \"enabled\"; } else { return \"disabled\"; } }"}},
+    {"id":"selector-contract/pure-label-conditional-return","question":"Does the selector policy honor the pure label conditional return boundary?","baselineObservation":{"shippedPresetFindings":0,"rawUpstreamFindings":0},"decision":"preserve: No operation is dispatched by a pure conditional expression.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nfunction label(value: boolean) { return value ? \"enabled\" : \"disabled\"; }"}},
+    {"id":"selector-contract/data-assignment-branches","question":"Does the selector policy honor the data assignment branches boundary?","baselineObservation":{"shippedPresetFindings":1,"rawUpstreamFindings":1},"decision":"preserve: This stores boolean data and can simplify to one assignment; split-method remediation is not appropriate.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nconst state = { enabled: false }; function update(value: boolean) { if (value) { state.enabled = true; } else { state.enabled = false; } }"}},
+    {"id":"selector-contract/array-inline-predicate","question":"Does the selector policy honor the array inline predicate boundary?","baselineObservation":{"shippedPresetFindings":0,"rawUpstreamFindings":0},"decision":"preserve: Native filter callback contract operates on boolean data.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nconst flags = [true, false]; flags.filter(value => { if (value) { return true; } else { return false; } });"}},
+    {"id":"selector-contract/array-named-predicate","question":"Does the selector policy honor the array named predicate boundary?","baselineObservation":{"shippedPresetFindings":1,"rawUpstreamFindings":1},"decision":"preserve: Named predicate is semantically the same value filter as the inline callback.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nconst flags = [true, false]; function keep(value: boolean) { if (value) { return true; } else { return false; } } flags.filter(keep);"}},
+    {"id":"selector-contract/boolean-pure-comparison","question":"Does the selector policy honor the boolean pure comparison boundary?","baselineObservation":{"shippedPresetFindings":0,"rawUpstreamFindings":0},"decision":"preserve: Pure expressions transform data without dispatching operations.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nfunction compare(value: boolean, a: number, b: number) { return value ? a === b : a !== b; }"}},
+    {"id":"selector-contract/nullable-boolean-contract","question":"Does the selector policy honor the nullable boolean contract boundary?","baselineObservation":{"shippedPresetFindings":0,"rawUpstreamFindings":0},"decision":"abstain: Three-state input needs an explicit policy; extending a broad-boolean rule requires separate evidence.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nfunction choose(value: boolean | undefined) { if (value) { left(); } else { right(); } }"}},
+    {"id":"selector-contract/literal-boolean-input","question":"Does the selector policy honor the literal boolean input boundary?","baselineObservation":{"shippedPresetFindings":1,"rawUpstreamFindings":1},"decision":"abstain: A one-value type cannot select between two reachable behaviors; compiler owns unreachable contracts.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nfunction choose(value: true) { if (value) { left(); } else { right(); } }"}},
+    {"id":"selector-contract/generic-boolean-input","question":"Does the selector policy honor the generic boolean input boundary?","baselineObservation":{"shippedPresetFindings":0,"rawUpstreamFindings":0},"decision":"abstain: A generic input can be independently constrained; do not infer broad boolean ownership.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nfunction choose<T extends boolean>(value: T) { if (value) { left(); } else { right(); } }"}},
+    {"id":"selector-contract/destructured-options","question":"Does the selector policy honor the destructured options boundary?","baselineObservation":{"shippedPresetFindings":0,"rawUpstreamFindings":0},"decision":"abstain: Options-object design is outside a direct-parameter selector rule.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nfunction choose({ value }: { value: boolean }) { if (value) { left(); } else { right(); } }"}},
+    {"id":"selector-contract/object-member-options","question":"Does the selector policy honor the object member options boundary?","baselineObservation":{"shippedPresetFindings":0,"rawUpstreamFindings":0},"decision":"abstain: The parameter is a structured options contract rather than a direct boolean.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nfunction choose(options: { value: boolean }) { if (options.value) { left(); } else { right(); } }"}},
+    {"id":"selector-contract/tsx-independent-helper","question":"Does the selector policy honor the tsx independent helper boundary?","baselineObservation":{"shippedPresetFindings":0,"rawUpstreamFindings":1},"decision":"report: TSX extension must not exempt an unrelated standalone selector helper.","newValidation":{"selectorWarnings":1,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"widget.tsx","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nexport function choose(value: boolean) { if (value) { left(); } else { right(); } }"}},
+    {"id":"selector-contract/tsx-named-component-callback","question":"Does the selector policy honor the tsx named component callback boundary?","baselineObservation":{"shippedPresetFindings":0,"rawUpstreamFindings":1},"decision":"preserve: Actual JSX attribute callback contract establishes the boolean input.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"widget.tsx","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\ndeclare const Toggle: (props: { onChange: (value: boolean) => void }) => unknown; export function View() { const handler = (value: boolean) => { if (value) { left(); } else { right(); } }; return <Toggle onChange={handler}/>; }"}},
+    {"id":"selector-contract/bound-receiver-callback","question":"Does the selector policy honor the bound receiver callback boundary?","baselineObservation":{"shippedPresetFindings":1,"rawUpstreamFindings":1},"decision":"preserve: A receiver method is used through bind as an externally owned boolean callback; safe analysis may conservatively abstain on escape.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nclass Adapter { update(value: boolean) { if (value) { left(); } else { right(); } } } const adapter = new Adapter(); subscribe(adapter.update.bind(adapter));"}},
+    {"id":"selector-contract/ordinary-receiver-selector","question":"Does the selector policy honor the ordinary receiver selector boundary?","baselineObservation":{"shippedPresetFindings":1,"rawUpstreamFindings":1},"decision":"report: A receiver alone establishes no independent signature contract.","newValidation":{"selectorWarnings":1,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"declare function left(): number; declare function right(): number; declare function subscribe(callback: (value: boolean) => void): void;\nclass Adapter { choose(value: boolean) { if (value) { left(); } else { right(); } } } new Adapter().choose(true);"}},
+    {"id":"returned-assignment/assignment-01","question":"Does the advisory preserve its documented boundary for chained returned assignments?","baselineObservation":{"nativeFindings":2,"afterPrettierFindings":1,"repeatedSpanExtraReports":1},"decision":"Retain native per-assignment warning semantics without freezing duplicate counts; document grouping/formatter limits and the separate-statement remedy for local-variable chains.","newValidation":{"selectorWarnings":0,"assignmentWarnings":2,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"let a=0,b=0; export function set(next:number){ return a = b = next; }"}},
+    {"id":"returned-assignment/assignment-02","question":"Does the advisory preserve its documented boundary for both conditional branches assign?","baselineObservation":{"nativeFindings":2,"afterPrettierFindings":0,"repeatedSpanExtraReports":1},"decision":"Retain native per-assignment warning semantics without freezing duplicate counts; document grouping/formatter limits and the separate-statement remedy for local-variable chains.","newValidation":{"selectorWarnings":1,"assignmentWarnings":2,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"let a=0,b=0; export function choose(flag:boolean,next:number){ return flag ? a = next : b = next; }"}},
+    {"id":"returned-assignment/assignment-03","question":"Does the advisory preserve its documented boundary for grouped outer chain does not group inner assignment?","baselineObservation":{"nativeFindings":1,"afterPrettierFindings":1,"repeatedSpanExtraReports":0},"decision":"Retain native per-assignment warning semantics without freezing duplicate counts; document grouping/formatter limits and the separate-statement remedy for local-variable chains.","newValidation":{"selectorWarnings":0,"assignmentWarnings":1,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"let a=0,b=0; export function set(next:number){ return (a = b = next); }"}},
+    {"id":"returned-assignment/assignment-04","question":"Does the advisory preserve its documented boundary for all chained assignments grouped?","baselineObservation":{"nativeFindings":0,"afterPrettierFindings":1,"repeatedSpanExtraReports":0},"decision":"Retain native per-assignment warning semantics without freezing duplicate counts; document grouping/formatter limits and the separate-statement remedy for local-variable chains.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"let a=0,b=0; export function set(next:number){ return (a = (b = next)); }"}},
+    {"id":"returned-assignment/assignment-05","question":"Does the advisory preserve its documented boundary for logical fallback grouped assignment?","baselineObservation":{"nativeFindings":0,"afterPrettierFindings":0,"repeatedSpanExtraReports":0},"decision":"Intentional lazy initialization is allowed.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"let value:number|undefined; export function read(){ return value ?? (value = load()); }"}},
+    {"id":"returned-assignment/assignment-06","question":"Does the advisory preserve its documented boundary for conditional grouped branches?","baselineObservation":{"nativeFindings":0,"afterPrettierFindings":0,"repeatedSpanExtraReports":0},"decision":"Per-branch explicit grouping should pass.","newValidation":{"selectorWarnings":1,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"let a=0,b=0; export function choose(flag:boolean,next:number){ return flag ? (a = next) : (b = next); }"}},
+    {"id":"returned-assignment/assignment-07","question":"Does the advisory preserve its documented boundary for async returned assignment?","baselineObservation":{"nativeFindings":1,"afterPrettierFindings":0,"repeatedSpanExtraReports":0},"decision":"Async does not remove mutation-return ambiguity.","newValidation":{"selectorWarnings":0,"assignmentWarnings":1,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"let value=0; export async function set(next:number){ return value = next; }"}},
+    {"id":"returned-assignment/assignment-08","question":"Does the advisory preserve its documented boundary for async concise assignment arrow?","baselineObservation":{"nativeFindings":1,"afterPrettierFindings":0,"repeatedSpanExtraReports":0},"decision":"Async concise arrow remains in rule scope.","newValidation":{"selectorWarnings":0,"assignmentWarnings":1,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"let value=0; export const set = async (next:number) => value = next;"}},
+    {"id":"returned-assignment/assignment-09","question":"Does the advisory preserve its documented boundary for declared void callback assignment arrow?","baselineObservation":{"nativeFindings":1,"afterPrettierFindings":0,"repeatedSpanExtraReports":0},"decision":"Native syntax rule cannot infer intended ignored callback result; explicit grouping remains the available intent marker.","newValidation":{"selectorWarnings":0,"assignmentWarnings":1,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"let value=0; export const callback: (next:number)=>void = next => value = next;"}},
+    {"id":"returned-assignment/assignment-10","question":"Does the advisory preserve its documented boundary for forEach callback writes captured state?","baselineObservation":{"nativeFindings":1,"afterPrettierFindings":0,"repeatedSpanExtraReports":0},"decision":"A valid mutation callback still warns because its concise body implicitly returns; intentional grouping is accepted.","newValidation":{"selectorWarnings":0,"assignmentWarnings":1,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"let value=0; export function total(values:number[]){ values.forEach(next=>value += next); return value; }"}},
+    {"id":"returned-assignment/assignment-11","question":"Does the advisory preserve its documented boundary for returned callback object with mutation statement?","baselineObservation":{"nativeFindings":0,"afterPrettierFindings":0,"repeatedSpanExtraReports":0},"decision":"Nested function boundary should prevent outer-return false positives.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"let value=0; export function factory(){ return {set(next:number){value=next;return value;}}; }"}},
+    {"id":"returned-assignment/assignment-12","question":"Does the advisory preserve its documented boundary for callback function expression with explicit return assignment?","baselineObservation":{"nativeFindings":1,"afterPrettierFindings":0,"repeatedSpanExtraReports":0},"decision":"Function expression should report only its own returned assignment.","newValidation":{"selectorWarnings":0,"assignmentWarnings":1,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"let value=0; export const set = function(next:number){return value=next;};"}},
+    {"id":"returned-assignment/assignment-13","question":"Does the advisory preserve its documented boundary for assignment inside returned object literal?","baselineObservation":{"nativeFindings":1,"afterPrettierFindings":0,"repeatedSpanExtraReports":0},"decision":"Nested value expression remains in scope, with grouped property value as an explicit escape.","newValidation":{"selectorWarnings":0,"assignmentWarnings":1,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"let value=0; export function set(next:number){return {value: value=next};}"}},
+    {"id":"returned-assignment/assignment-14","question":"Does the advisory preserve its documented boundary for returned call argument assignment?","baselineObservation":{"nativeFindings":0,"afterPrettierFindings":0,"repeatedSpanExtraReports":0},"decision":"A syntactically single call argument is accepted by upstream parentheses detection; this is not complete mutation detection.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"let value=0; export function set(next:number){return consume(value=next);}"}},
+    {"id":"returned-assignment/assignment-15","question":"Does the advisory preserve its documented boundary for postfix update return?","baselineObservation":{"nativeFindings":0,"afterPrettierFindings":0,"repeatedSpanExtraReports":0},"decision":"UpdateExpression is deliberately outside this assignment-specific rule; not general purity enforcement.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"let value=0; export function next(){return value++;}"}},
+    {"id":"returned-assignment/assignment-16","question":"Does the advisory preserve its documented boundary for delete property return?","baselineObservation":{"nativeFindings":0,"afterPrettierFindings":0,"repeatedSpanExtraReports":0},"decision":"Unary delete is outside assignment-specific rule; not general purity enforcement.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"export function remove(value: {optional?:number}){return delete value.optional;}"}},
+    {"id":"returned-assignment/assignment-17","question":"Does the advisory preserve its documented boundary for object destructuring assignment?","baselineObservation":{"nativeFindings":0,"afterPrettierFindings":0,"repeatedSpanExtraReports":0},"decision":"Required grouping of destructuring assignment is accepted.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"let value=0; export function set(next:{value:number}){return ({value}=next);}"}},
+    {"id":"returned-assignment/assignment-18","question":"Does the advisory preserve its documented boundary for await grouped assignment?","baselineObservation":{"nativeFindings":0,"afterPrettierFindings":0,"repeatedSpanExtraReports":0},"decision":"Explicit grouping inside await is preserved.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"let task:Promise<number>; export async function read(next:Promise<number>){return await (task=next);}"}},
+    {"id":"returned-assignment/assignment-19","question":"Does the advisory preserve its documented boundary for returned immediately invoked function with assignment statement?","baselineObservation":{"nativeFindings":0,"afterPrettierFindings":0,"repeatedSpanExtraReports":0},"decision":"Function-expression boundary should contain assignment statement and not flag the outer return.","newValidation":{"selectorWarnings":0,"assignmentWarnings":0,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"let value=0; export function read(next:number){return (function(){value=next;return value;})();}"}},
+    {"id":"returned-assignment/assignment-20","question":"Does the advisory preserve its documented boundary for logical assignment inside concise arrow?","baselineObservation":{"nativeFindings":1,"afterPrettierFindings":0,"repeatedSpanExtraReports":0},"decision":"Unparenthesized logical assignment remains in scope; grouped memoization passes.","newValidation":{"selectorWarnings":0,"assignmentWarnings":1,"parserOrFatalErrors":0},"example":{"language":"typescript","path":"example.ts","source":"let value:number|undefined; export const read=()=>value ??= load();"}},
+    {"id":"python-boolean/annotated-boolean","question":"Does Annotated retain native boolean ownership?","baselineObservation":{"nativeFindingsByCode":{},"parserErrors":0},"decision":"Document the native syntax/alias blind spot; do not add a second partial Python type resolver solely to enforce this shape.","newValidation":{"ruffFindingsByCode":{},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"from typing import Annotated\ndef run(flag: Annotated[bool, \"contract\"]): ...\n"}},
+    {"id":"python-boolean/optional-boolean","question":"Does typing.Optional match the nullable spelling?","baselineObservation":{"nativeFindingsByCode":{"FBT001":1},"parserErrors":0},"decision":"Retain Ruff FBT ownership and its observed diagnostic/decorator boundary; no duplicate Python rule or unproved blanket exemption.","newValidation":{"ruffFindingsByCode":{"FBT001":1},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"from typing import Optional\ndef run(flag: Optional[bool]): ...\n"}},
+    {"id":"python-boolean/mixed-boolean-union","question":"How is a boolean/string union treated?","baselineObservation":{"nativeFindingsByCode":{"FBT001":1},"parserErrors":0},"decision":"Retain Ruff FBT ownership and its observed diagnostic/decorator boundary; no duplicate Python rule or unproved blanket exemption.","newValidation":{"ruffFindingsByCode":{"FBT001":1},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"def run(flag: bool | str): ...\n"}},
+    {"id":"python-boolean/boolean-literal-union","question":"Are literal boolean domains recognized syntactically?","baselineObservation":{"nativeFindingsByCode":{},"parserErrors":0},"decision":"Document the native syntax/alias blind spot; do not add a second partial Python type resolver solely to enforce this shape.","newValidation":{"ruffFindingsByCode":{},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"from typing import Literal\ndef run(flag: Literal[True, False]): ...\n"}},
+    {"id":"python-boolean/imported-boolean-alias","question":"Does an imported spelling retain bool ownership?","baselineObservation":{"nativeFindingsByCode":{},"parserErrors":0},"decision":"Document the native syntax/alias blind spot; do not add a second partial Python type resolver solely to enforce this shape.","newValidation":{"ruffFindingsByCode":{},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"from builtins import bool as Flag\ndef run(flag: Flag): ...\n"}},
+    {"id":"python-boolean/declared-boolean-alias","question":"Does a separately declared type alias change ownership?","baselineObservation":{"nativeFindingsByCode":{},"parserErrors":0},"decision":"Document the native syntax/alias blind spot; do not add a second partial Python type resolver solely to enforce this shape.","newValidation":{"ruffFindingsByCode":{},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"type Flag = bool\ndef run(flag: Flag): ...\n"}},
+    {"id":"python-boolean/protocol-contract","question":"Are protocol input declarations exempt upstream?","baselineObservation":{"nativeFindingsByCode":{"FBT001":1},"parserErrors":0},"decision":"Retain Ruff FBT ownership and its observed diagnostic/decorator boundary; no duplicate Python rule or unproved blanket exemption.","newValidation":{"ruffFindingsByCode":{"FBT001":1},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"from typing import Protocol\nclass Listener(Protocol):\n    def changed(self, checked: bool) -> None: ...\n"}},
+    {"id":"python-boolean/abstract-method-contract","question":"Are abstract boolean contracts exempt upstream?","baselineObservation":{"nativeFindingsByCode":{"FBT001":1},"parserErrors":0},"decision":"Retain Ruff FBT ownership and its observed diagnostic/decorator boundary; no duplicate Python rule or unproved blanket exemption.","newValidation":{"ruffFindingsByCode":{"FBT001":1},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"from abc import ABC, abstractmethod\nclass Listener(ABC):\n    @abstractmethod\n    def changed(self, checked: bool) -> None: ...\n"}},
+    {"id":"python-boolean/boolean-overload-contract","question":"Does the upstream decorator handling preserve overload declarations?","baselineObservation":{"nativeFindingsByCode":{"FBT001":2},"parserErrors":0},"decision":"Retain Ruff FBT ownership and its observed diagnostic/decorator boundary; no duplicate Python rule or unproved blanket exemption.","newValidation":{"ruffFindingsByCode":{"FBT001":2},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"from typing import overload\n@overload\ndef run(flag: bool) -> str: ...\n@overload\ndef run(flag: str) -> str: ...\ndef run(flag: bool | str) -> str: return str(flag)\n"}},
+    {"id":"python-boolean/classmethod-input","question":"Are boolean classmethod inputs checked consistently?","baselineObservation":{"nativeFindingsByCode":{"FBT001":1},"parserErrors":0},"decision":"Retain Ruff FBT ownership and its observed diagnostic/decorator boundary; no duplicate Python rule or unproved blanket exemption.","newValidation":{"ruffFindingsByCode":{"FBT001":1},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"class Service:\n    @classmethod\n    def run(cls, flag: bool): ...\n"}},
+    {"id":"python-boolean/staticmethod-input","question":"Are boolean staticmethod inputs checked consistently?","baselineObservation":{"nativeFindingsByCode":{"FBT001":1},"parserErrors":0},"decision":"Retain Ruff FBT ownership and its observed diagnostic/decorator boundary; no duplicate Python rule or unproved blanket exemption.","newValidation":{"ruffFindingsByCode":{"FBT001":1},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"class Service:\n    @staticmethod\n    def run(flag: bool): ...\n"}},
+    {"id":"python-boolean/singledispatch-input","question":"Are registration contracts treated specially?","baselineObservation":{"nativeFindingsByCode":{"FBT001":1},"parserErrors":0},"decision":"Retain Ruff FBT ownership and its observed diagnostic/decorator boundary; no duplicate Python rule or unproved blanket exemption.","newValidation":{"ruffFindingsByCode":{"FBT001":1},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"from functools import singledispatch\n@singledispatch\ndef convert(value): return str(value)\n@convert.register\ndef _(value: bool): return str(value)\n"}},
+    {"id":"python-boolean/lambda-default","question":"Are boolean lambda defaults covered by the upstream rule?","baselineObservation":{"nativeFindingsByCode":{},"parserErrors":0},"decision":"Document the native syntax/alias blind spot; do not add a second partial Python type resolver solely to enforce this shape.","newValidation":{"ruffFindingsByCode":{},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"run = lambda flag=False: flag\n"}},
+    {"id":"python-boolean/keyword-only-default","question":"Does a keyword-only inferred default remain valid?","baselineObservation":{"nativeFindingsByCode":{},"parserErrors":0},"decision":"Preserve the maintained native keyword/data/compatibility exemption; no Python policy expansion.","newValidation":{"ruffFindingsByCode":{},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"def run(*, flag=False): ...\n"}},
+    {"id":"python-boolean/dunder-equality-input","question":"Does a required comparison signature remain native-owned?","baselineObservation":{"nativeFindingsByCode":{},"parserErrors":0},"decision":"Preserve the maintained native keyword/data/compatibility exemption; no Python policy expansion.","newValidation":{"ruffFindingsByCode":{},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"class Flag:\n    def __eq__(self, other: bool) -> bool: return False\n"}},
+    {"id":"python-boolean/dunder-item-assignment","question":"Does an item mutation contract receive a boolean-parameter finding?","baselineObservation":{"nativeFindingsByCode":{},"parserErrors":0},"decision":"Preserve the maintained native keyword/data/compatibility exemption; no Python policy expansion.","newValidation":{"ruffFindingsByCode":{},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"class Flags:\n    def __setitem__(self, key: str, enabled: bool) -> None: ...\n"}},
+    {"id":"python-boolean/builtin-setattr-literal","question":"Does native allowed-call policy recognize setattr data?","baselineObservation":{"nativeFindingsByCode":{},"parserErrors":0},"decision":"Preserve the maintained native keyword/data/compatibility exemption; no Python policy expansion.","newValidation":{"ruffFindingsByCode":{},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"setattr(target, \"enabled\", True)\n"}},
+    {"id":"python-boolean/builtin-getattr-default","question":"Does a builtin boolean fallback remain native-owned?","baselineObservation":{"nativeFindingsByCode":{},"parserErrors":0},"decision":"Preserve the maintained native keyword/data/compatibility exemption; no Python policy expansion.","newValidation":{"ruffFindingsByCode":{},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"enabled = getattr(target, \"enabled\", False)\n"}},
+    {"id":"python-boolean/keyword-data-literal","question":"Does a named boolean field remain accepted?","baselineObservation":{"nativeFindingsByCode":{},"parserErrors":0},"decision":"Preserve the maintained native keyword/data/compatibility exemption; no Python policy expansion.","newValidation":{"ruffFindingsByCode":{},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"settings = dict(enabled=True)\n"}},
+    {"id":"python-boolean/nonboolean-annotated-default","question":"Does the native default check operate independently of annotation?","baselineObservation":{"nativeFindingsByCode":{"FBT002":1},"parserErrors":0},"decision":"Retain Ruff FBT ownership and its observed diagnostic/decorator boundary; no duplicate Python rule or unproved blanket exemption.","newValidation":{"ruffFindingsByCode":{"FBT002":1},"parserErrors":0},"example":{"language":"python","path":"example.py","source":"def run(mode: str = False): ...\n"}}
+  ],
+  "references": {
+    "requested-article": "https://understandlegacycode.com/blog/what-is-wrong-with-boolean-parameters/",
+    "fowler-flags": "https://martinfowler.com/bliki/FlagArgument.html",
+    "fowler-command-query": "https://martinfowler.com/bliki/CommandQuerySeparation.html",
+    "martin-organization": "https://blog.cleancoder.com/uncle-bob/2015/04/15/DoesOrganizationMatter.html",
+    "martin-comments": "https://blog.cleancoder.com/uncle-bob/2017/02/23/NecessaryComments.html",
+    "metz-abstraction": "https://sandimetz.com/blog/2016/1/20/the-wrong-abstraction",
+    "fowler-simple-design": "https://martinfowler.com/bliki/BeckDesignRules.html",
+    "fowler-yagni": "https://martinfowler.com/bliki/Yagni.html",
+    "pep20": "https://peps.python.org/pep-0020/",
+    "ruff-FBT001": "https://docs.astral.sh/ruff/rules/boolean-type-hint-positional-argument/",
+    "ruff-FBT002": "https://docs.astral.sh/ruff/rules/boolean-default-value-positional-argument/",
+    "ruff-FBT003": "https://docs.astral.sh/ruff/rules/boolean-positional-value-in-call/",
+    "sonar-S2301": "https://github.com/SonarSource/SonarJS/blob/master/packages/analysis/src/jsts/rules/S2301/rule.ts",
+    "eslint-no-return-assign": "https://eslint.org/docs/latest/rules/no-return-assign",
+    "eslint-no-promise-executor-return": "https://eslint.org/docs/latest/rules/no-promise-executor-return",
+    "eslint-no-restricted-syntax": "https://eslint.org/docs/latest/rules/no-restricted-syntax"
+  },
+  "reproduce": [
+    "cd packages/typescript && npx vitest run tests/rules/no-boolean-selector-parameter.test.ts tests/boolean-selector-policy.test.ts tests/returned-assignment-policy.test.ts --testTimeout=180000",
+    "uv run --project packages/standards --frozen pytest --basetemp=\"$TASK_TMP/python-boolean\" packages/standards/tests/test_ruff_boolean_trap.py",
+    "code-standards check --rule eslint:no-boolean-selector-parameter --rule eslint:no-return-assign src/",
+    "code-standards --root . maintain rules changes --before \"$BASE_REVISION\" --after HEAD",
+    "TMPDIR=\"$TASK_TMP\" mise --no-config --no-env --no-hooks exec terraform@1.15.8 -- make verify"
+  ],
+  "releaseRecommendation": "Ship at warning severity after final delivery gates pass on the follow-up PRs. Preserve documented blind spots; do not promote to error in this change.",
+  "exampleScope": "All100reviewed questions include synthetic source examples. They are authored fixtures; no private consumer source or identity is reproduced. Some TypeScript probes intentionally leave operations unresolved to test conservative ownership boundaries.",
+  "deliveryReconciliation": {
+    "status": "Merged selector3c3068 on fixed main8bca and versions8.99/8.100/Python1.60 reconciled; canonical projections and current metadata/static checks pass. Final consolidated-head release/history checks precede the authorized admin merge; historical full-suite qualification retains its explicit scope.",
+    "upstreamRevision": "8bca94471805029d13f9e29b1ef0e9453f928723",
+    "upstreamChanges": [
+      "#1597native test/error/regexp warning policies",
+      "#1596Python discriminator scope and metadata refinement",
+      "#1601 existing Python mapping callback ownership, Python 1.57.0 and audit plugin 2.14.1",
+      "Main f865d723 existing Python value/side-effect enforcement expansion, Python1.58.0 and standards8.96.0; incoming native delta checked separately.",
+      "Main8bca9447 (#1605): existing SQL-related Python enforcement, Python1.60.0, audit plugin2.14.5 and Standards8.98.0; minimum-Python/wheel/release authoring Node pins are already upstream."
+    ],
+    "experimentBaselineRevision": "5d6b1581822b8c83554e445d9ae110d59d08ebb1",
+    "interpretation": "Isolated corpus and timing evidence concerns the unchanged selector/returned-assignment policies. New upstream policies and files receive separate delivery integration checks; historical source pins are not silently refreshed.",
+    "selectorRevision": "3c3068cfe15785c668a44d1bbfca166ff98abdec",
+    "auditDeliveryScope": {
+      "changedFilesAgainstSelectorParent": 10,
+      "contents": "Returned-assignment documentation/tests and100 examples; four version/lock files and CLI/formatted projections.",
+      "upstreamWorkflowOwnership": "Main8bca already owns the exact minimum-Python authoring-runtime pin plus wheel/release pins. The audit commit has no workflow delta.",
+      "sourceBoundary": "No Python/TypeScript rule source or dependency change; all10 prepared TypeScript outputs remain byte-identical.",
+      "qualification": "Prior exact a5ea full CI plus unchanged owned source, the separately qualified incoming-main delta, and current metadata/static gates; no claim that historical full suites ran again on this final integration head."
+    },
+    "ownedRuntimeSourceAndArtifactUnchangedFromPinnedReplay": false,
+    "versions": {
+      "selectorBundle": "8.99.0",
+      "auditBundle": "8.100.0",
+      "typescript": "16.21.0",
+      "python": "1.60.0",
+      "auditPlugin": "2.14.5"
+    },
+    "historyPolicy": {
+      "maximumUnnumberedCommits": 5,
+      "selectorCommits": 1,
+      "auditHistory": "One own audit commit above merged main3c3068; root checks pinned strict history on the final consolidated head.",
+      "auditCommitsAtConsolidation": 1,
+      "selectorHistory": "PR1598 merged as one squash commit3c3068 with the reviewed ee35 tree."
+    },
+    "postReplayDeliveryAdjustment": {
+      "trigger": "The full built TypeScript repository scan found the existing @sarj/stepdown helper-ordering requirement.",
+      "sourceChange": "Move the unchanged hoisted returnedExpression declaration below its sole external caller isPureMapping. No predicate, body, binding or contract logic changed.",
+      "sourceProof": "All 23 top-level statements have exactly identical text/bodies; only the two hoisted declaration positions swap.",
+      "buildChanges": [
+        "The corresponding declaration positions swap in both JavaScript bundles.",
+        "The fresh build also embeds an already-present eslint-plugin-regexp 3.3.1 devDependency previously absent from the frozen artifact."
+      ],
+      "bundleProof": {
+        "esmTopLevelStatements": 2015,
+        "cjsTopLevelStatements": 2029,
+        "allOtherStatementsIdenticalAfterSeparatelyRecordingMetadataRefresh": true,
+        "declarationExportsByteIdentical": true
+      },
+      "metadataReachability": "src/index.ts reads packageMetadata.version only. The refreshed development dependency key has no read/use.",
+      "validation": {
+        "singleBuildExitCode": 0,
+        "targetedBuiltDogfoodLintExitCode": 0,
+        "ruleInventoryExitCode": 0,
+        "ownedCatalogExitCode": 0,
+        "bothBranchDistCopiesByteIdentical": true
+      },
+      "evidenceScope": "The pinned corpus, focused matrix, performance and packed-consumer measurements concern the earlier frozen artifact. They remain explicit historical measurements; source/bundle equivalence connects the unchanged selector logic to this delivery adjustment. Final canonical targets and current PR CI verify the delivery artifact separately."
+    },
+    "additionalUpstreamProof": {
+      "pythonAndPluginFilesMatchMainExactly": true,
+      "selectorRuntimeSourcesAndAllTenDistFilesUnchangedByMainRebase": true,
+      "freshTypeScriptBuildNeeded": false
+    },
+    "historicalC58Delivery": {
+      "revision": "58e5386ef6bc0497637af4380e1224751369e5e9",
+      "selectorRevision": "4234908bbbbd1ced6f467be915be33ccfeeeab15",
+      "upstreamRevision": "1872744171d4b25f09990d2a3f4f4e6261a15002",
+      "versions": {
+        "selectorBundle": "8.95.0",
+        "auditBundle": "8.96.0",
+        "typescript": "16.21.0",
+        "python": "1.57.0",
+        "auditPlugin": "2.14.1"
+      },
+      "scope": "Preserved historical delivery and CI/local evidence; superseded versions are not the current publish plan."
+    },
+    "historicalA5Delivery": {
+      "revision": "a5ea2338dbcf526add5c09cd548133fe86720654",
+      "selectorRevision": "1afcbe5770cb3ac812f5d33c28125e556e05b417",
+      "upstreamRevision": "f865d7237a6ec4838385b6cc5a2a62acf943653c",
+      "versions": {
+        "selectorBundle": "8.97.0",
+        "auditBundle": "8.98.0",
+        "typescript": "16.21.0",
+        "python": "1.58.0",
+        "auditPlugin": "2.14.1"
+      },
+      "historyPolicy": {
+        "maximumUnnumberedCommits": 5,
+        "selectorCommits": 2,
+        "auditHistory": "One own audit commit above the reviewed selector parent; root checks the pinned strict history policy against the final consolidated head.",
+        "auditCommitsAtConsolidation": 1
+      },
+      "auditDeliveryScope": {
+        "changedFilesAgainstSelectorParent": 11,
+        "contents": "Returned-assignment documentation/tests and100 examples; four version/lock files and CLI/formatted projections; one minimum-Python CI Node selection fix.",
+        "workflowFile": ".github/workflows/ci.yml",
+        "workflowChange": "python-compatibility uses node-version-file:.node-version instead of the floating Node24 major. The TypeScript runtime matrix remains unchanged.",
+        "sourceBoundary": "No Python/TypeScript rule source or dependency change; all10 prepared TypeScript outputs remain byte-identical."
+      },
+      "scope": "Historical a5ea delivery and completed CI qualification. Its exact-Node workflow fix is now upstream and is absent from the current audit-only diff."
+    },
+    "selectorReviewedHead": "ee35bdfc252c2a663c46275bf574396528ec94a5"
+  }
+}

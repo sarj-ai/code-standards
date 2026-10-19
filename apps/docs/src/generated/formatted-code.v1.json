@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "681f9a630633961341e8d9eee2811a036590f7f1cf20cf866f8773b409ed4aae",
-  "cliSha256": "95c6305771acac1fc18413383408c9975c76160fda9e906ce9d282d5104a02e5",
+  "catalogSha256": "6bd43191e3dc7ee5b8b75c2ff10b10496f554af58f6df437d4d26b70b1ca67ed",
+  "cliSha256": "fbd9cd76fac15a0373d39af1fd3ddca7aa31110527964e568c964ad27ba53e0c",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -347,6 +347,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Use the generated client's application-facing property names"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-boolean-selector-parameter": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/label.ts",
+              "source": "function label(enabled: boolean) {\n  if (enabled) {\n    return \"Enabled\";\n  } else {\n    return \"Disabled\";\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/label.ts",
+          "id": "boolean-value-mapping",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Boolean data may select a pure value"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/book.ts",
+              "source": "const book = (premium: boolean) => (premium ? premiumBook() : regularBook());\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/book.ts",
+          "id": "concise-boolean-dispatch",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Name the selected operation explicitly"
         }
       ],
       "optionsSchemaSource": null

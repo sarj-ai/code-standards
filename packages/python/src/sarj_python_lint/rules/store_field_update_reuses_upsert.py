@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from pathlib import PurePosixPath
+from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, final, override
 
 from sqlglot import exp
@@ -19,12 +20,14 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, scope_bound_names
 from sarj_python_lint.rules._sql import is_store_module
 from sarj_python_lint.rules._store_writes import (
     StoreOwners,
     executed_queries,
     method_parameters,
     methods,
+    own_nodes,
     same_type,
     sql_arg,
     sql_args,
@@ -35,6 +38,7 @@ from sarj_python_lint.rules._store_writes import (
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._imports import ImportIndex
     from sarj_python_lint.rules._store_writes import Function
 
 
@@ -54,8 +58,9 @@ class StoreFieldUpdateReusesUpsert(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only a single literal PostgreSQL UPDATE on the same table as a literal upsert is checked, with equality predicates exactly matching the conflict key and direct bound-value assignments already covered by EXCLUDED field assignments.",
-            "The command's fields must resolve from a source-declared class, and the setter and upsert must declare the same result type. SQL composition, inherited fields, dynamic commands, conditional upserts, guarded transitions, arithmetic, joins, CTEs and multiple statements are excluded.",
+            "The command's fields must resolve from a source-declared class and flow directly into one INSERT VALUES row through literal positional or named parameters. Shadowed annotations, explicit descriptors and class keywords do not prove writable fields. The setter and upsert must declare the same result type, RETURNING projection and updated_at policy. SQL composition, inherited fields, dynamic commands, conditional or transformed upserts, unknown decorators, Python branching, arithmetic, joins, CTEs and multiple statements are excluded.",
             "The finding is a consolidation review, not proof that INSERT ON CONFLICT preserves update-only behavior. A missing row must not be created accidentally; omitted fields must not be overwritten by defaults.",
+            "Context-manager behavior and other surrounding effects are not proven equivalent. Share ordinary write implementation behind existing authorization or transaction wrappers while preserving those contracts.",
             "Generated and test sources are excluded. There is no automatic replacement and no requirement to expose immutable or privileged model fields.",
         ),
         examples=(
@@ -100,12 +105,14 @@ class StoreFieldUpdateReusesUpsert(Rule):
         owners = StoreOwners(context)
         findings: list[Diagnostic] = []
         for owner in (node for node in context.tree.body if isinstance(node, ast.ClassDef)):
+            if owner.keywords:
+                continue
             declared = methods(owner)
             upsert = declared.get("upsert")
             contract = _upsert_contract(upsert, owners, context) if upsert is not None else None
             if contract is None:
                 continue
-            for method in _redundant_updates(declared, contract, context):
+            for method in _redundant_updates(declared, contract, context, owners):
                 name = method.name
                 if is_suppressed(context.source_lines, method.lineno, self.code):
                     continue
@@ -127,15 +134,22 @@ class _UpsertContract:
     table: tuple[str | None, ...]
     keys: frozenset[str]
     fields: frozenset[str]
+    updated_at_policy: exp.Expr | None
+    returning: exp.Expr | None
 
 
 def _upsert_contract(method: Function, owners: StoreOwners, context: PythonFileContext) -> _UpsertContract | None:
     parameters = method_parameters(method)
-    if parameters is None or len(parameters) != 1 or parameters[0].annotation is None:
+    if (
+        parameters is None
+        or len(parameters) != 1
+        or parameters[0].annotation is None
+        or not _ordinary_method(method, context)
+    ):
         return None
     command = owners.annotation(parameters[0].annotation)
     queries = executed_queries(method, context.imports)
-    if command is None or len(queries) != 1 or not isinstance(queries[0], exp.Insert):
+    if command is None or command[0].keywords or len(queries) != 1 or not isinstance(queries[0], exp.Insert):
         return None
     query = queries[0]
     conflict = sql_arg(query, "conflict")
@@ -149,20 +163,193 @@ def _upsert_contract(method: Function, owners: StoreOwners, context: PythonFileC
         or sql_arg(query, "with_")
     ):
         return None
-    command_fields = {
-        node.target.id
-        for node in command[0].body
-        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
-    }
+    command_fields = _command_fields(*command)
     keys = _key_columns(sql_args(conflict, "conflict_keys"))
     fields = frozenset(
         column
         for assignment in sql_args(conflict, "expressions")
         if (column := _excluded_field(assignment)) is not None
     )
-    if not keys or not fields or not (keys | fields) <= command_fields:
+    timestamps = tuple(
+        assignment for assignment in sql_args(conflict, "expressions") if _timestamp_assignment(assignment)
+    )
+    if len(timestamps) > 1:
         return None
-    return _UpsertContract(table, keys, fields)
+    if (
+        not keys
+        or not fields
+        or len(fields) + len(timestamps) != len(sql_args(conflict, "expressions"))
+        or not (keys | fields) <= command_fields
+        or not (keys | fields) <= _command_insert_fields(method, parameters[0], query, owners)
+    ):
+        return None
+    timestamp_policy = sql_arg(timestamps[0], "expression") if timestamps else None
+    return _UpsertContract(table, keys, fields, timestamp_policy, sql_arg(query, "returning"))
+
+
+def _command_fields(owner: ast.ClassDef, imports: ImportIndex) -> frozenset[str]:
+    declared: set[str] = set()
+    shadowed: set[str] = set()
+    for statement in owner.body:
+        if not isinstance(statement, ast.AnnAssign) or not isinstance(statement.target, ast.Name):
+            shadowed.update(scope_bound_names([statement]))
+            continue
+        name = statement.target.id
+        if name in declared:
+            shadowed.add(name)
+        declared.add(name)
+        if not _instance_field(statement.annotation, imports) or _descriptor_default(statement.value, imports):
+            shadowed.add(name)
+    return frozenset(declared - shadowed)
+
+
+def _descriptor_default(value: ast.expr | None, imports: ImportIndex) -> bool:
+    if not isinstance(value, ast.Call):
+        return False
+    if imports.resolved_qualified_name(value.func) in {
+        "builtins.property",
+        "builtins.classmethod",
+        "builtins.staticmethod",
+    }:
+        return True
+    return (
+        isinstance(value.func, ast.Name)
+        and value.func.id in {"property", "classmethod", "staticmethod"}
+        and imports.builtin_is_unshadowed(value.func.id)
+    )
+
+
+def _instance_field(annotation: ast.expr, imports: ImportIndex) -> bool:
+    parsed = AnnotationSemantics(imports, MappingProxyType({})).parse(annotation)
+    return parsed is not None and not any(
+        isinstance(node, ast.Subscript)
+        and imports.resolved_qualified_name(node.value)
+        in {"typing.ClassVar", "typing_extensions.ClassVar", "dataclasses.InitVar"}
+        for node in own_nodes(parsed)
+    )
+
+
+def _ordinary_method(method: Function, context: PythonFileContext) -> bool:
+    if any(
+        context.imports.resolved_qualified_name(decorator) not in {"typing.override", "typing_extensions.override"}
+        for decorator in method.decorator_list
+    ):
+        return False
+    return not any(
+        isinstance(
+            node,
+            ast.If
+            | ast.IfExp
+            | ast.Match
+            | ast.Try
+            | ast.TryStar
+            | ast.For
+            | ast.AsyncFor
+            | ast.While
+            | ast.Raise
+            | ast.Assert
+            | ast.BoolOp
+            | ast.comprehension,
+        )
+        for statement in method.body
+        if not isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+        for node in own_nodes(statement)
+    )
+
+
+def _execute_call(method: Function) -> ast.Call | None:
+    calls = [
+        node
+        for statement in method.body
+        if not isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+        for node in own_nodes(statement)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in {"execute", "executemany"}
+    ]
+    if len(calls) != 1:
+        return None
+    call = calls[0]
+    return call if isinstance(call.func, ast.Attribute) and call.func.attr == "execute" else None
+
+
+def _bound_values(call: ast.Call) -> ast.expr | None:
+    match call.args:
+        case [_, parameters] if not any(keyword.arg == "params" for keyword in call.keywords):
+            return parameters
+        case [_]:
+            return next((keyword.value for keyword in call.keywords if keyword.arg == "params"), None)
+        case _:
+            return None
+
+
+def _command_insert_fields(
+    method: Function, parameter: ast.arg, query: exp.Insert, owners: StoreOwners
+) -> frozenset[str]:
+    row = _insert_row(query)
+    call = _execute_call(method)
+    bound = _bound_values(call) if call is not None else None
+    if row is None or bound is None:
+        return frozenset()
+    columns, expressions = row
+    arguments = _insert_arguments(bound, expressions)
+    if arguments is None:
+        return frozenset()
+    return frozenset(
+        name
+        for column, value in zip(columns, arguments, strict=True)
+        if (name := sql_identifier(column)) is not None
+        and isinstance(value, ast.Attribute)
+        and isinstance(value.value, ast.Name)
+        and value.attr == name
+        and owners.provenance.binding(value.value.id, value) is parameter
+        and value.value.id not in owners.provenance.mutated
+    )
+
+
+def _insert_row(query: exp.Insert) -> tuple[tuple[exp.Expr, ...], tuple[exp.Expr, ...]] | None:
+    schema = sql_arg(query, "this")
+    values = sql_arg(query, "expression")
+    rows = sql_args(values, "expressions") if isinstance(values, exp.Values) else ()
+    columns = sql_args(schema, "expressions") if isinstance(schema, exp.Schema) else ()
+    if len(rows) != 1 or not isinstance(rows[0], exp.Tuple):
+        return None
+    expressions = sql_args(rows[0], "expressions")
+    return (columns, expressions) if len(columns) == len(expressions) else None
+
+
+def _insert_arguments(bound: ast.expr, expressions: tuple[exp.Expr, ...]) -> tuple[ast.expr, ...] | None:
+    if isinstance(bound, ast.Tuple | ast.List):
+        if len(bound.elts) != len(expressions):
+            return None
+        if any(not isinstance(value, exp.Placeholder) or sql_arg(value, "this") is not None for value in expressions):
+            return None
+        return tuple(bound.elts)
+    return _named_insert_arguments(bound, expressions) if isinstance(bound, ast.Dict) else None
+
+
+def _named_insert_arguments(bound: ast.Dict, expressions: tuple[exp.Expr, ...]) -> tuple[ast.expr, ...] | None:
+    names = _placeholder_names(expressions)
+    bindings = {
+        key.value: value
+        for key, value in zip(bound.keys, bound.values, strict=True)
+        if isinstance(key, ast.Constant) and isinstance(key.value, str)
+    }
+    if names is None or len(bindings) != len(bound.keys) or any(name not in bindings for name in names):
+        return None
+    return tuple(bindings[name] for name in names)
+
+
+def _placeholder_names(expressions: tuple[exp.Expr, ...]) -> tuple[str, ...] | None:
+    names: list[str] = []
+    for expression in expressions:
+        if not isinstance(expression, exp.Placeholder):
+            return None
+        name = sql_arg(expression, "this")
+        if not isinstance(name, exp.Identifier):
+            return None
+        names.append(name.name)
+    return tuple(names)
 
 
 def _key_columns(expressions: tuple[exp.Expr, ...]) -> frozenset[str]:
@@ -183,11 +370,17 @@ def _excluded_field(assignment: exp.Expr) -> str | None:
 
 
 def _redundant_updates(
-    declared: dict[str, Function], contract: _UpsertContract, context: PythonFileContext
+    declared: dict[str, Function], contract: _UpsertContract, context: PythonFileContext, owners: StoreOwners
 ) -> list[Function]:
     result: list[Function] = []
     for name, method in declared.items():
-        if not name.startswith(("set_", "update_")) or not same_type(method.returns, declared["upsert"].returns):
+        if (
+            not name.startswith(("set_", "update_"))
+            or not same_type(method.returns, declared["upsert"].returns)
+            or isinstance(method, ast.AsyncFunctionDef) != isinstance(declared["upsert"], ast.AsyncFunctionDef)
+            or not _ordinary_method(method, context)
+            or not _direct_setter_parameters(method, owners)
+        ):
             continue
         queries = executed_queries(method, context.imports)
         if len(queries) == 1 and isinstance(queries[0], exp.Update) and _plain_update(queries[0], contract):
@@ -195,8 +388,41 @@ def _redundant_updates(
     return result
 
 
+def _direct_setter_parameters(method: Function, owners: StoreOwners) -> bool:
+    call = _execute_call(method)
+    bound = _bound_values(call) if call is not None else None
+    parameters = method_parameters(method)
+    if parameters is None:
+        return False
+    if isinstance(bound, ast.Tuple | ast.List):
+        values = bound.elts
+    elif isinstance(bound, ast.Dict) and all(isinstance(key, ast.Constant) for key in bound.keys):
+        values = bound.values
+    else:
+        return False
+    return bool(values) and all(
+        isinstance(value, ast.Name) and owners.provenance.binding(value.id, value) in parameters for value in values
+    )
+
+
 def _plain_update(query: exp.Update, contract: _UpsertContract) -> bool:
-    if sql_table(sql_arg(query, "this")) != contract.table or sql_arg(query, "with_") or sql_arg(query, "from_"):
+    table = sql_arg(query, "this")
+    if (
+        sql_table(table) != contract.table
+        or (isinstance(table, exp.Table) and table.args.get("only"))
+        or sql_arg(query, "with_")
+        or sql_arg(query, "from_")
+    ):
+        return False
+    timestamps = tuple(
+        sql_arg(assignment, "expression")
+        for assignment in sql_args(query, "expressions")
+        if _timestamp_assignment(assignment)
+    )
+    if len(timestamps) > 1:
+        return False
+    timestamp_policy = timestamps[0] if timestamps else None
+    if sql_arg(query, "returning") != contract.returning or timestamp_policy != contract.updated_at_policy:
         return False
     where = sql_arg(query, "where")
     if not isinstance(where, exp.Where):
@@ -220,7 +446,7 @@ def _assigned_fields(query: exp.Update) -> frozenset[str]:
         left, right = sql_arg(assignment, "this"), sql_arg(assignment, "expression")
         if not isinstance(assignment, exp.EQ) or not isinstance(left, exp.Column):
             return frozenset()
-        if sql_identifier(left) == "updated_at" and isinstance(right, exp.CurrentTimestamp):
+        if _timestamp_assignment(assignment):
             continue
         if not isinstance(right, exp.Placeholder):
             return frozenset()
@@ -229,6 +455,15 @@ def _assigned_fields(query: exp.Update) -> frozenset[str]:
             return frozenset()
         assigned.add(name)
     return frozenset(assigned)
+
+
+def _timestamp_assignment(assignment: exp.Expr) -> bool:
+    left, right = sql_arg(assignment, "this"), sql_arg(assignment, "expression")
+    return (
+        isinstance(assignment, exp.EQ)
+        and sql_identifier(left) == "updated_at"
+        and isinstance(right, exp.CurrentTimestamp)
+    )
 
 
 def _bound_column(node: exp.Expr) -> str | None:
