@@ -354,6 +354,7 @@ def analyze_external(
     upstream_rules: UpstreamESLintRules = _NO_UPSTREAM_ESLINT_RULES,
     security_selection: RuleSelection | None = None,
     python_type_check: bool = True,
+    eslint: bool = True,
 ) -> tuple[ToolReport, ...]:
     execute = run_process if runner is None else runner
     try:
@@ -440,7 +441,7 @@ def analyze_external(
         from .devops_schema import analyze_source_schemas  # ruff: ignore[import-outside-top-level] -- schema validation is a selected local runtime adapter.
 
         reports.extend(analyze_source_schemas(root=root, paths=tuple(routed.text)))
-    if capabilities is not None and "eslint" not in capabilities:
+    if not eslint or (capabilities is not None and "eslint" not in capabilities):
         eslint_commands = ()
         unowned_eslint = 0
     else:

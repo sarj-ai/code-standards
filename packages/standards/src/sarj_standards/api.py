@@ -261,6 +261,7 @@ class Standards:
         prepared_targets: Sequence[str] = (),
         prepared_only: bool = False,
         python_type_check: bool = True,
+        eslint: bool = True,
     ) -> AnalysisReport:
         if jobs not in {1, 2}:
             return _failed_analysis(self.root, "invalid-input", "analysis jobs must be 1 or 2")
@@ -332,6 +333,15 @@ class Standards:
                     CoverageDisposition.NOT_REQUESTED,
                 )
             )
+        elif selected_groups.typescript and not eslint:
+            coverage.append(
+                CoverageNotice(
+                    "eslint",
+                    "ESLint is left to the repository's own CI",
+                    len(selected_groups.typescript),
+                    CoverageDisposition.NOT_REQUESTED,
+                )
+            )
         if selected_groups.python and not python_type_check:
             coverage.append(
                 CoverageNotice(
@@ -357,6 +367,7 @@ class Standards:
                 react_doctor_full_scan=react_doctor_full_scan,
                 pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
                 python_type_check=python_type_check,
+                eslint=eslint,
                 upstream_rules=upstream_rules,
             )
 
@@ -729,6 +740,7 @@ def _selected_external_analysis(
     react_doctor_full_scan: bool,
     pass_on_unpruned_eslint_suppressions: bool,
     python_type_check: bool,
+    eslint: bool,
     upstream_rules: UpstreamESLintRules,
 ) -> tuple[ToolReport, ...]:
     rule_ids = (
@@ -764,6 +776,7 @@ def _selected_external_analysis(
                 react_doctor_full_scan=react_doctor_full_scan,
                 pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
                 python_type_check=python_type_check,
+                eslint=eslint,
             )
             if adopted is not None
             else analyze_external(
@@ -781,6 +794,7 @@ def _selected_external_analysis(
                 react_doctor_full_scan=react_doctor_full_scan,
                 pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
                 python_type_check=python_type_check,
+                eslint=eslint,
             )
         )
         if run_external
