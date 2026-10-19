@@ -157,7 +157,7 @@
     "basedPyrightQualification": "Targeted strict project check with the worktree virtual-environment Python path; 0 errors, 0 warnings, 0 notes.",
     "localMakeVerify": {
       "result": "incomplete",
-      "reason": "At report freeze, the full local run had passed doctor, source/catalog/CLI/docs synchronization and formatted-example checks, and was continuing through documentation checks. Final-revision CI is required before merge; tracked on PR 1596."
+      "reason": "The latest full local run passed doctor, source/catalog/CLI/docs synchronization, formatted examples, documentation checks, lint, and the ordinary standards check (0 errors, 34 existing warnings). It was interrupted during full Python dogfood to integrate newer TypeScript-only main. This snapshot is incomplete; final-revision gates and status are tracked on PR 1596."
     },
     "committedRuleComparison": {
       "result": "pass",
@@ -177,7 +177,7 @@
     "coldWarmDefinition": "First and second analysis passes within each interpreter; this does not mean clearing OS caches.",
     "combinedSelection": "Ten tracked Python files per corpus, taking every ceil(file_count / 10) entry from the sorted pinned inventory.",
     "combinedInputBytes": 314167,
-    "baselineQualification": "The baseline helper is byte-identical at f39ae8ae and the integrated main commit 5d6b1581. Both modes use the same current Python engine and canonical per-file registry.",
+    "baselineQualification": "The calibration helper originates at f39ae8ae and is byte-identical at the labeled ledger baseline 5d6b1581 and integrated main commit 98b73b68. The packages/python trees at 5d6b1581 and 98b73b68 are identical. Both modes use the same current Python engine and canonical per-file registry.",
     "combinedCpuObservation": "Candidate combined CPU medians were 3.5% higher cold and 6.4% higher warm; rule-only medians were lower. These three repetitions on a shared VM do not establish a speed improvement.",
     "interpretation": "Three paired repetitions support regression review; no speed improvement or population precision claim is made."
   },
@@ -270,7 +270,7 @@
   },
   "reproduce": [
     "uv run --project packages/standards --frozen pytest -q packages/python/tests/test_discriminated_data_unions.py packages/python/tests/test_discriminated_data_union_followups.py packages/python/tests/test_discriminated_data_union_runtime.py packages/python/tests/test_discriminated_union_metadata_followups.py packages/python/tests/test_discriminated_union_scope_followups.py packages/python/tests/test_discriminated_union_round2_*.py packages/python/tests/rules/test_prefer_discriminated_model_union.py",
-    "code-standards --root . maintain rules changes --before 5d6b1581822b8c83554e445d9ae110d59d08ebb1 --after HEAD",
+    "code-standards --root . maintain rules changes --before 98b73b689235754a1f36fe23282f706f8968fd12 --after HEAD",
     "make verify"
   ]
 }
