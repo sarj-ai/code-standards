@@ -346,3 +346,32 @@ def test_both_unprotected_cte_writes_report_once() -> None:
 )
 def test_valid_replay_policies_and_quoted_text_stay_clean(source: str) -> None:
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "INSERT INTO live.plan SELECT id FROM pending WHERE NOT EXISTS (SELECT 1 FROM archive.plan WHERE id = pending.id);\n",
+        'INSERT INTO "Live".plan SELECT id FROM pending WHERE NOT EXISTS (SELECT 1 FROM live.plan WHERE id = pending.id);',
+        'INSERT INTO live."Plan" SELECT id FROM pending WHERE NOT EXISTS (SELECT 1 FROM archive."Plan" WHERE id = pending.id);',
+        'INSERT INTO "live.plan" SELECT id FROM pending WHERE NOT EXISTS (SELECT 1 FROM live.plan WHERE id = pending.id);',
+    ],
+)
+def test_different_explicit_relation_owners_do_not_prove_replay(source: str) -> None:
+    diagnostics = _check(source)
+    assert len(diagnostics) == 1
+    assert diagnostics[0].code == "SARJ105"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "INSERT INTO live.plan SELECT id FROM pending WHERE NOT EXISTS (SELECT 1 FROM live.plan WHERE id = pending.id);\n",
+        'INSERT INTO "live"."plan" SELECT id FROM pending WHERE NOT EXISTS (SELECT 1 FROM live.plan WHERE id = pending.id);',
+        "INSERT INTO live.plan SELECT id FROM pending WHERE NOT EXISTS (SELECT 1 FROM plan WHERE id = pending.id);",
+        "INSERT INTO plan SELECT id FROM pending WHERE NOT EXISTS (SELECT 1 FROM live.plan WHERE id = pending.id);",
+        'INSERT INTO "live.plan" SELECT id FROM pending WHERE NOT EXISTS (SELECT 1 FROM "live.plan" WHERE id = pending.id);',
+    ],
+)
+def test_same_owner_and_legacy_unqualified_replay_guards_are_retained(source: str) -> None:
+    assert _check(source) == []

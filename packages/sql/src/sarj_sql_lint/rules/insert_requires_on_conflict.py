@@ -131,11 +131,15 @@ def _select_filters_existing_target(statement: str) -> bool:
     match = next(sql_code_matches(INSERT_SELECT_TARGET_PATTERN, statement), None)
     if match is None:
         return False
-    target = normalize_sql_identifier(match.group("target"), unqualified=True)
+    target = normalize_sql_identifier(match.group("target"))
+    target_name = normalize_sql_identifier(match.group("target"), unqualified=True)
     guard = re.compile(rf"\bWHERE\s+NOT\s+EXISTS\s*\([\s\S]*?\bFROM\s+(?P<target>{_IDENT})(?=\s|\)|$)", re.IGNORECASE)
     for candidate in sql_code_matches(guard, statement[match.end() :]):
-        existing = normalize_sql_identifier(candidate.group("target"), unqualified=True)
-        if existing == target:
+        existing = normalize_sql_identifier(candidate.group("target"))
+        existing_name = normalize_sql_identifier(candidate.group("target"), unqualified=True)
+        if existing == target or (
+            existing_name == target_name and (existing == existing_name or target == target_name)
+        ):
             return True
     return False
 
@@ -185,6 +189,36 @@ class InsertRequiresOnConflict(Rule):
                 focus_path=PurePosixPath("queries/create_plan.sql"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="different-explicit-schema-cannot-prove-replay",
+                title="A replay guard for a different explicit schema is insufficient",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "queries/create_plan.sql",
+                        "INSERT INTO live.plan SELECT id FROM pending WHERE NOT EXISTS (SELECT 1 FROM archive.plan WHERE id = pending.id);\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("queries/create_plan.sql"),
+                expected_count=1,
+                public=True,
+                scenario="explicit-schema-replay",
+            ),
+            RuleExample(
+                example_id="same-explicit-schema-proves-replay",
+                title="A replay guard for the exact qualified target is retained",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "queries/create_plan.sql",
+                        "INSERT INTO live.plan SELECT id FROM pending WHERE NOT EXISTS (SELECT 1 FROM live.plan WHERE id = pending.id);\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("queries/create_plan.sql"),
+                expected_count=0,
+                public=True,
+                scenario="explicit-schema-replay",
             ),
         ),
     )

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "772f2760a8fc70b9870dd1ab772486081aecf98ede4590d498482d3c158b5a87",
-  "cliSha256": "323aeacacc4425957d01fe83f818b498068488b3563f57f152a76ae943575b78",
+  "catalogSha256": "804aad0c032e8a4730a12b26880f640cd4f51cf175c9d8029fae2779ee3b18ba",
+  "cliSha256": "ac03691b0430bef15279ae46e3f1e76b1ce47b107a3d0c3dc1910a16e7bb3e5d",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -2100,6 +2100,21 @@
     "eslint:no-positional-tuple-return": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/keys.ts",
+              "source": "const userKeys = {\n  all: [\"users\"],\n  detail: (id: string) => [...userKeys.all, id] as const,\n};\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/keys.ts",
+          "id": "mutable-query-key-object",
+          "outcome": "reject",
+          "scenarioId": "query-key-const-anchor",
+          "title": "Keep a mutable tuple-return object checked"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -2113,6 +2128,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Return named fields"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/keys.ts",
+              "source": "const userKeys = {\n  all: [\"users\"],\n  detail: (id: string) => [...userKeys.all, id] as const,\n} as const;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/keys.ts",
+          "id": "query-key-outer-const",
+          "outcome": "accept",
+          "scenarioId": "query-key-const-anchor",
+          "title": "Inherit the query-key anchor const context"
         },
         {
           "expectedCount": 1,
@@ -7430,6 +7460,36 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "app/service.py",
+              "source": "from typing import Any\n\n\nclass Rows[Any]:\n    rows: dict[str, Any]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "generic-any-binding",
+          "outcome": "accept",
+          "scenarioId": "provider-identity",
+          "title": "A generic parameter named Any keeps its own identity"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from typing import Any\n\n\nclass Rows[T]:\n    rows: dict[str, Any]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "generic-typing-any",
+          "outcome": "reject",
+          "scenarioId": "provider-identity",
+          "title": "An unrelated generic parameter preserves actual Any erasure"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "app/offers.py",
               "source": "from typing import TypedDict\n\n\nclass OfferDetails(TypedDict):\n    id: str\n\n\ndef details() -> OfferDetails: ...\n"
             }
@@ -9556,6 +9616,36 @@
     },
     "python:no-raw-source-text-test-oracle": {
       "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_policy.py",
+              "source": "__test__ = False\nfrom pathlib import Path\n\n\ndef test_policy():\n    source = Path(\"workflow.yml\").read_text()\n    assert \"permissions:\" in source\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_policy.py",
+          "id": "disabled-module-source-oracle",
+          "outcome": "accept",
+          "scenarioId": "module-collection",
+          "title": "An explicitly disabled module has no collected source oracle"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_policy.py",
+              "source": "__test__ = True\nfrom pathlib import Path\n\n\ndef test_policy():\n    source = Path(\"workflow.yml\").read_text()\n    assert \"permissions:\" in source\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_policy.py",
+          "id": "enabled-module-source-oracle",
+          "outcome": "reject",
+          "scenarioId": "module-collection",
+          "title": "An enabled module still needs a parsed source contract"
+        },
         {
           "expectedCount": 0,
           "files": [
@@ -12398,6 +12488,36 @@
     "python:prefer-str-enum": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Order[T]:\n    statuses = (\"pending\", \"shipped\")\n    status: str\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "generic-builtin-string",
+          "outcome": "reject",
+          "scenarioId": "provider-identity",
+          "title": "An unrelated generic parameter preserves the builtin string field"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Order[str]:\n    statuses = (\"pending\", \"shipped\")\n    status: str\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "generic-string-binding",
+          "outcome": "accept",
+          "scenarioId": "provider-identity",
+          "title": "A generic parameter does not become the builtin string type"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -14353,6 +14473,66 @@
           "title": "Constraint validation is deferred to a later migration"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_boundary.sql",
+              "source": "CREATE TABLE \"users\" (age integer);\n\nALTER TABLE users\nADD CHECK (age >= 18);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_boundary.sql",
+          "id": "quoted-lowercase-fresh-table",
+          "outcome": "accept",
+          "scenarioId": "semantic-boundary",
+          "title": "Quoted lowercase names retain the fresh empty-table exemption"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001_boundary.sql",
+              "source": "CREATE TABLE \"Users\" (age integer);\n\nALTER TABLE users\nADD CHECK (age >= 18);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_boundary.sql",
+          "id": "quoted-mixed-case-distinct-table",
+          "outcome": "reject",
+          "scenarioId": "semantic-boundary",
+          "title": "A mixed-case quoted name does not exempt a different existing table"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_renamed.sql",
+              "source": "CREATE TABLE scratch (id bigint);\n\nALTER TABLE scratch\nRENAME TO scratch_empty;\n\nALTER TABLE old_existing\nRENAME TO scratch;\n\nALTER TABLE scratch\nADD CONSTRAINT positive_id CHECK (id > 0) NOT VALID;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_renamed.sql",
+          "id": "renamed-existing-relation-defers-validation",
+          "outcome": "accept",
+          "scenarioId": "relation-rename-ownership",
+          "title": "A reused relation name safely defers constraint validation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001_renamed.sql",
+              "source": "CREATE TABLE scratch (id bigint);\n\nALTER TABLE scratch\nRENAME TO scratch_empty;\n\nALTER TABLE old_existing\nRENAME TO scratch;\n\nALTER TABLE scratch\nADD CONSTRAINT positive_id CHECK (id > 0);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_renamed.sql",
+          "id": "renamed-existing-relation-reuses-fresh-name",
+          "outcome": "reject",
+          "scenarioId": "relation-rename-ownership",
+          "title": "An existing relation cannot inherit a former fresh spelling"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -14473,6 +14653,21 @@
     "sql:insert-requires-replay-policy": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "queries/create_plan.sql",
+              "source": "INSERT INTO\n  live.plan\nSELECT\n  id\nFROM\n  pending\nWHERE\n  NOT EXISTS (\n    SELECT\n      1\n    FROM\n      archive.plan\n    WHERE\n      id = pending.id\n  );\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "queries/create_plan.sql",
+          "id": "different-explicit-schema-cannot-prove-replay",
+          "outcome": "reject",
+          "scenarioId": "explicit-schema-replay",
+          "title": "A replay guard for a different explicit schema is insufficient"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -14501,6 +14696,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Insert without declared replay behavior"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "queries/create_plan.sql",
+              "source": "INSERT INTO\n  live.plan\nSELECT\n  id\nFROM\n  pending\nWHERE\n  NOT EXISTS (\n    SELECT\n      1\n    FROM\n      live.plan\n    WHERE\n      id = pending.id\n  );\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "queries/create_plan.sql",
+          "id": "same-explicit-schema-proves-replay",
+          "outcome": "accept",
+          "scenarioId": "explicit-schema-replay",
+          "title": "A replay guard for the exact qualified target is retained"
         }
       ],
       "optionsSchemaSource": null
@@ -14906,12 +15116,72 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Text column whose closed values are application-owned"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001_boundary.sql",
+              "source": "BEGIN;\n\nALTER TYPE call_status\nADD VALUE 'archived';\n\nCOMMIT;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_boundary.sql",
+          "id": "transactional-enum-evolution",
+          "outcome": "reject",
+          "scenarioId": "semantic-boundary",
+          "title": "Transactional enum evolution still couples application values to database migrations"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_boundary.sql",
+              "source": "BEGIN;\n\nALTER TABLE\nCALL\nADD COLUMN status TEXT;\n\nCOMMIT;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_boundary.sql",
+          "id": "transactional-text-column",
+          "outcome": "accept",
+          "scenarioId": "semantic-boundary",
+          "title": "A transaction adds an application-owned text value column"
         }
       ],
       "optionsSchemaSource": null
     },
     "sql:prefer-jsonb": {
       "examples": [
+        {
+          "expectedCount": 2,
+          "files": [
+            {
+              "path": "supabase/migrations/001_boundary.sql",
+              "source": "ALTER TABLE document\nALTER COLUMN metadata TYPE json USING metadata::json;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_boundary.sql",
+          "id": "alter-json-type-with-using",
+          "outcome": "reject",
+          "scenarioId": "semantic-boundary",
+          "title": "An ALTER USING conversion still declares a plain JSON type"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_boundary.sql",
+              "source": "ALTER TABLE document\nALTER COLUMN metadata TYPE jsonb USING metadata::jsonb;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_boundary.sql",
+          "id": "alter-jsonb-type-with-using",
+          "outcome": "accept",
+          "scenarioId": "semantic-boundary",
+          "title": "The target type and conversion both use JSONB"
+        },
         {
           "expectedCount": 1,
           "files": [

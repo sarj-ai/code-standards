@@ -184,3 +184,26 @@ def test_recognizes_equivalent_builtin_json_column_types(source: str) -> None:
 )
 def test_preserves_custom_types_identifiers_and_non_type_text(source: str) -> None:
     assert _check(source) == []
+
+
+@pytest.mark.parametrize("target", ["json", "json[]", 'pg_catalog."json"[]'])
+def test_alter_using_reports_both_json_target_type_and_conversion(target: str) -> None:
+    source = f"ALTER TABLE document ALTER COLUMN metadata TYPE {target} USING metadata::{target};"
+
+    diagnostics = _check(source)
+
+    assert len(diagnostics) == 2
+    assert diagnostics[0].col < diagnostics[1].col
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "ALTER TABLE document ALTER COLUMN metadata TYPE jsonb USING metadata::jsonb;",
+        "ALTER TABLE document ALTER COLUMN metadata TYPE app.json USING metadata::app.json;",
+        'ALTER TABLE document ALTER COLUMN metadata TYPE "JSON" USING metadata::"JSON";',
+        "SELECT metadata::json FROM document;",
+    ],
+)
+def test_using_does_not_turn_custom_types_or_query_casts_into_builtin_json(source: str) -> None:
+    assert _check(source) == []

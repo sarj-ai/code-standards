@@ -355,3 +355,72 @@ RULE_TESTER.run("no-positional-tuple-return", rule, {
     },
   ],
 });
+
+RULE_TESTER.run("no-positional-tuple-return outer const query-key anchor", rule, {
+  valid: [
+    {
+      name: "allows a direct all array whose outer object provides const context",
+      code: "const userKeys = { all: ['users'], detail: (id: string) => [...userKeys.all, id] as const } as const;",
+    },
+    {
+      name: "keeps both representative query-key arrow returns exempt after redundant anchor assertion removal",
+      code: "export const healthKeys = { all: ['health'], system: () => [...healthKeys.all, 'system'] as const, voice: () => [...healthKeys.all, 'voice'] as const } as const;",
+    },
+    {
+      name: "accepts a static string-literal all property with outer const context",
+      code: "const userKeys = { 'all': ['users'], detail: (id: string) => [...userKeys.all, id] as const } as const;",
+    },
+  ],
+  invalid: [
+    {
+      name: "does not exempt an ordinary binding from a direct all array",
+      code: "const userResults = { all: ['users'], detail: (id: string) => [...userResults.all, id] as const } as const;",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "does not exempt a mutable outer object",
+      code: "const userKeys = { all: ['users'], detail: (id: string) => [...userKeys.all, id] as const };",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "does not exempt a let binding with an outer const assertion",
+      code: "let userKeys = { all: ['users'], detail: (id: string) => [...userKeys.all, id] as const } as const;",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "does not infer an array anchor through a separate binding",
+      code: "const all = ['users'] as const; const userKeys = { all, detail: (id: string) => [...userKeys.all, id] as const } as const;",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "does not infer an array anchor from a call",
+      code: "const userKeys = { all: makeKeys(), detail: (id: string) => [...userKeys.all, id] as const } as const;",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "does not mistake an arrow-valued all member for an array anchor",
+      code: "const userKeys = { all: () => ['users'] as const, detail: (id: string) => ['users', id] as const } as const;",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "does not mistake an all method for an array anchor",
+      code: "const userKeys = { all() { return ['users'] as const; }, detail: (id: string) => ['users', id] as const } as const;",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "does not treat a computed identifier named all as the static anchor",
+      code: "const all = 'different'; const userKeys = { [all]: ['users'], detail: (id: string) => ['users', id] as const } as const;",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "does not infer const context from a satisfies wrapper",
+      code: "const userKeys = { all: ['users'], detail: (id: string) => [...userKeys.all, id] as const } satisfies KeyFactory;",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+    {
+      name: "keeps an unrelated named tuple arrow nested inside a factory method checked",
+      code: "const userKeys = { all: ['users'], detail: (id: string) => { const pair = () => [id, 1] as const; return [id] as const; } } as const;",
+      errors: [{ messageId: "noPositionalTupleReturn" }],
+    },
+  ],
+});

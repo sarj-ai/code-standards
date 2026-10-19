@@ -369,3 +369,76 @@ def test_explicit_mapping_provider_alias_runtime_mutation_is_unproven(alias: str
 def test_clean_explicit_provider_alias_chain_preserves_unrelated_erasure() -> None:
     source = "from typing import Any, Dict, TypeAlias\nProvider: TypeAlias = Dict\nOther: TypeAlias = Provider\ndef consume(value: Other) -> None: ...\ndef value() -> Dict[str, Any]: ...\n"
     assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from typing import Any\nclass Rows[Any]:\n    rows: dict[str, Any]\n",
+        "from typing import Any\ndef read[Any](rows: dict[str, Any]): ...\n",
+        "from typing import Any\ndef read[Any]() -> dict[str, Any]: ...\n",
+        "from typing import Any\ntype Rows[Any] = dict[str, Any]\n",
+        "from typing import Any\ndef outer[Any]():\n    def read(rows: dict[str, Any]): ...\n",
+        "from typing import Any\nclass Rows[Any]:\n    def read(self) -> dict[str, Any]: ...\n",
+    ],
+)
+def test_generic_type_parameter_is_not_the_outer_any_provider(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from typing import Any\nclass Rows[T]:\n    rows: dict[str, Any]\n",
+        "from typing import Any\ndef read[T](rows: dict[str, Any]): ...\n",
+        "from typing import Any\ndef read[T]() -> dict[str, Any]: ...\n",
+        "from typing import Any\nclass Rows[Any]: pass\nrows: dict[str, Any]\n",
+    ],
+)
+def test_unrelated_or_sibling_generic_parameters_preserve_actual_any_findings(source: str) -> None:
+    [finding] = _check(source)
+    assert finding.code == "SARJ447"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from typing import Any\ndef read[T](value: tuple[T, dict[str, Any]]): ...\n",
+        "from typing import Any\ndef read[T](value: dict[str, tuple[T, Any]]): ...\n",
+    ],
+)
+def test_unrelated_generic_member_does_not_hide_independent_any_erasure(source: str) -> None:
+    [finding] = _check(source)
+    assert finding.code == "SARJ447"
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("from typing import Any, cast\ndef read[Any](value=cast(dict[str, Any], {})): ...\n", 1),
+        ("from typing import Any, cast\n@decorate(cast(dict[str, Any], {}))\ndef read[Any](): ...\n", 1),
+        ("from typing import Any\ndef read[Any]() -> dict[str, Any]: ...\n", 0),
+        ("from typing import Any, cast\ndef read[Any]():\n    value = cast(dict[str, Any], {})\n", 0),
+        ("from typing import Any, cast\ndef outer[Any]():\n    def read(value=cast(dict[str, Any], {})): ...\n", 0),
+        ("from typing import Any\nclass Rows[Any](Base[dict[str, Any]]): ...\n", 0),
+        ("from typing import Any, cast\n@decorate(cast(dict[str, Any], {}))\nclass Rows[Any]: ...\n", 1),
+        ("from typing import Any\ndef read[Any](value: dict[str, Any]): ...\n", 0),
+        ("from typing import Any\nT = Any\ndef read[T](value: tuple[T, dict[str, Any]]): ...\n", 1),
+        ("from typing import Any\ntype T = Any\ndef read[T](value: tuple[T, dict[str, Any]]): ...\n", 1),
+        ("from typing import Any, Annotated\nT = Any\ndef read[T](value: Annotated[dict[str, Any], T]): ...\n", 1),
+        ("import typing\nfrom typing import Any\ntype Rows[Any] = tuple[Any, dict[str, typing.Any]]\n", 1),
+        (
+            "from typing import Any\ntype T = Any\ntype Actual = T\ndef read[T](value: tuple[T, dict[str, Actual]]): ...\n",
+            1,
+        ),
+        ("from typing import Any as Dynamic\ndef read[Dynamic](value: dict[str, Dynamic]): ...\n", 0),
+        ("import typing\ndef read[typing](value: dict[str, typing.Any]): ...\n", 0),
+        ("from typing import Any, cast\nclass Rows[Any](cast(dict[str, Any], {})): ...\n", 0),
+        (
+            "from typing import Any, cast\ndef outer[Any]():\n    read = lambda value=cast(dict[str, Any], {}): value\n",
+            0,
+        ),
+    ],
+)
+def test_native_generic_annotation_scope_preserves_provider_identity(source: str, expected: int) -> None:
+    assert len(_check(source)) == expected

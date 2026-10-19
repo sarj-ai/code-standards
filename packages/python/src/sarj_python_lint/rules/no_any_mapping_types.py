@@ -117,6 +117,34 @@ class NoAnyMappingTypes(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="generic-any-binding",
+                scenario="provider-identity",
+                title="A generic parameter named Any keeps its own identity",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py", "from typing import Any\nclass Rows[Any]:\n    rows: dict[str, Any]\n"
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="generic-typing-any",
+                scenario="provider-identity",
+                title="An unrelated generic parameter preserves actual Any erasure",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py", "from typing import Any\nclass Rows[T]:\n    rows: dict[str, Any]\n"
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+            ),
         ),
     )
     description = documentation.summary
@@ -236,11 +264,12 @@ def _unshadowed_any_mappings(
     if parsed is None:
         return []
     names = {node.id for node in walk_ast(parsed) if isinstance(node, ast.Name)}
-    if not names.isdisjoint(_shadowed_names(owner, parents, scope_cache)):
+    type_parameters = frozenset(_generic_scope_names(owner, parents))
+    if not names.isdisjoint(_shadowed_names(owner, parents, scope_cache) - type_parameters):
         return []
     return [
         (mapping, expression if isinstance(expression, ast.Constant) else mapping)
-        for mapping in _any_mappings(expression, semantics)
+        for mapping in _any_mappings(expression, semantics, shadowed=type_parameters)
     ]
 
 
@@ -546,12 +575,39 @@ def _unshadowed_type_expression(
     return names.isdisjoint(_shadowed_names(node, parents, scope_cache))
 
 
+def _generic_scope_names(node: ast.AST, parents: dict[int, ast.AST]) -> set[str]:
+    names = _type_parameter_names(node)
+    below = node
+    parent = parents.get(id(below))
+    function_default = False
+    while parent is not None:
+        match parent:
+            case ast.arguments():
+                function_default = below in parent.defaults or below in parent.kw_defaults
+            case ast.FunctionDef() | ast.AsyncFunctionDef():
+                if not function_default and below not in parent.decorator_list:
+                    names.update(_type_parameter_names(parent))
+                function_default = False
+            case ast.Lambda():
+                function_default = False
+            case ast.ClassDef():
+                if below not in parent.decorator_list:
+                    names.update(_type_parameter_names(parent))
+            case ast.TypeAlias():
+                names.update(_type_parameter_names(parent))
+            case _:
+                pass
+        below = parent
+        parent = parents.get(id(below))
+    return names
+
+
 def _shadowed_names(
     node: ast.AST,
     parents: dict[int, ast.AST],
     scope_cache: dict[int, frozenset[str]],
 ) -> set[str]:
-    shadowed: set[str] = set()
+    shadowed = _generic_scope_names(node, parents)
     crossed_function_body = False
     below = node
     parent = parents.get(id(below))
@@ -565,6 +621,16 @@ def _shadowed_names(
         below = parent
         parent = parents.get(id(below))
     return shadowed
+
+
+def _type_parameter_names(node: ast.AST) -> set[str]:
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.TypeAlias)):
+        return {
+            parameter.name
+            for parameter in node.type_params
+            if isinstance(parameter, (ast.TypeVar, ast.ParamSpec, ast.TypeVarTuple))
+        }
+    return set()
 
 
 def _scope_names(
@@ -628,7 +694,9 @@ def _type_comment(comment: str, owner: ast.AST) -> ast.expr | None:
     return expression
 
 
-def _any_mappings(annotation: ast.expr, semantics: AnnotationSemantics) -> list[ast.Subscript]:
+def _any_mappings(
+    annotation: ast.expr, semantics: AnnotationSemantics, *, shadowed: frozenset[str] = frozenset()
+) -> list[ast.Subscript]:
     resolved = semantics.parse(annotation)
     if resolved is None:
         return []
@@ -636,24 +704,30 @@ def _any_mappings(annotation: ast.expr, semantics: AnnotationSemantics) -> list[
     mappings: list[ast.Subscript] = []
     while pending:
         node = pending.pop()
-        if isinstance(node, ast.Subscript) and _is_any_mapping(node, semantics):
+        if isinstance(node, ast.Subscript) and _is_any_mapping(node, semantics, shadowed=shadowed):
             mappings.append(node)
-        pending.extend(_type_children(node, semantics))
+        pending.extend(_type_children(node, semantics, shadowed=shadowed))
     return mappings
 
 
-def _is_any_mapping(node: ast.Subscript, semantics: AnnotationSemantics) -> bool:
+def _is_any_mapping(node: ast.Subscript, semantics: AnnotationSemantics, *, shadowed: frozenset[str]) -> bool:
     if not isinstance(node.slice, ast.Tuple) or len(node.slice.elts) != _MAPPING_ARGUMENT_COUNT:
         return False
     imports = semantics.imports
     target = node.value
+    if _expression_root(target) in shadowed:
+        return False
     mapping = (isinstance(target, ast.Name) and target.id == "dict" and imports.builtin_is_unshadowed("dict")) or any(
         imports.resolves(target, sources=_MAPPING_SOURCES, symbol=name) for name in _MAPPING_NAMES
     )
     if not mapping:
         return False
     key, value = node.slice.elts
-    return _is_builtin_str(key, imports) and _contains_any(value, semantics, seen=frozenset())
+    return (
+        _expression_root(key) not in shadowed
+        and _is_builtin_str(key, imports)
+        and _contains_any(value, semantics, seen=frozenset(), shadowed=shadowed)
+    )
 
 
 def _is_builtin_str(node: ast.expr, imports: ImportIndex) -> bool:
@@ -665,20 +739,30 @@ def _contains_any(
     semantics: AnnotationSemantics,
     *,
     seen: frozenset[str],
+    shadowed: frozenset[str] = frozenset(),
 ) -> bool:
     parsed = semantics.parse(node)
-    if parsed is None:
+    if parsed is None or _expression_root(parsed) in shadowed:
         return False
     imports = semantics.imports
     if imports.resolves(parsed, sources=_TYPING_SOURCES, symbol="Any"):
         return True
     if isinstance(parsed, ast.Name) and parsed.id in semantics.aliases and parsed.id not in seen:
+        # Module aliases retain their declaration scope, independent of a
+        # generic name at this annotation's use site.
         return _contains_any(semantics.aliases[parsed.id], semantics, seen=seen | {parsed.id})
-    return any(_contains_any(child, semantics, seen=seen) for child in _type_children(parsed, semantics))
+    return any(
+        _contains_any(child, semantics, seen=seen, shadowed=shadowed)
+        for child in _type_children(parsed, semantics, shadowed=shadowed)
+    )
 
 
-def _type_children(node: ast.expr, semantics: AnnotationSemantics) -> tuple[ast.expr, ...]:
+def _type_children(
+    node: ast.expr, semantics: AnnotationSemantics, *, shadowed: frozenset[str] = frozenset()
+) -> tuple[ast.expr, ...]:
     if isinstance(node, ast.Subscript):
+        if _expression_root(node.value) in shadowed:
+            return ()
         imports = semantics.imports
         symbol = imports.resolved_symbol(node.value, sources=_TYPING_SOURCES | _MAPPING_SOURCES)
         if symbol == "Literal":

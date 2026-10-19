@@ -2633,3 +2633,73 @@ def test_nested_rebound_receiver_has_its_own_closed_domain() -> None:
         return inner
 """
     assert [finding.line for finding in _check(source, "app/render.py")] == [3, 7]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "class Order[str]:\n    statuses = ('pending', 'shipped')\n    status: str\n",
+        "class Order[*str]:\n    statuses = ('pending', 'shipped')\n    status: str\n",
+        "class Order[**str]:\n    statuses = ('pending', 'shipped')\n    status: str\n",
+        "def build[str]():\n    class Order:\n        statuses = ('pending', 'shipped')\n        status: str\n",
+        "from typing import Optional\nclass Order[Optional]:\n    statuses = ('pending', 'shipped')\n    status: Optional[str]\n",
+        "Raw = str\nclass Order[Raw]:\n    statuses = ('pending', 'shipped')\n    status: Raw\n",
+    ],
+)
+def test_generic_annotation_bindings_do_not_borrow_outer_string_identity(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "class Order[T]:\n    statuses = ('pending', 'shipped')\n    status: str\n",
+        "import builtins\nclass Order[str]:\n    statuses = ('pending', 'shipped')\n    status: builtins.str\n",
+        "class Generic[str]: pass\nclass Order:\n    statuses = ('pending', 'shipped')\n    status: str\n",
+    ],
+)
+def test_generic_scope_does_not_hide_proven_builtin_string_fields(source: str) -> None:
+    [finding] = _check(source)
+    assert finding.code == "SARJ006"
+    assert finding.severity is Severity.ERROR
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("def render[str](kind: str):\n    if kind not in {'text', 'image'}:\n        raise ValueError(kind)\n", 0),
+        ("def render[T](kind: T):\n    if kind not in {'text', 'image'}:\n        raise ValueError(kind)\n", 0),
+        ("def render[T](kind: str):\n    if kind not in {'text', 'image'}:\n        raise ValueError(kind)\n", 1),
+        (
+            "import builtins\ndef render[str](kind: builtins.str):\n    if kind not in {'text', 'image'}:\n        raise ValueError(kind)\n",
+            1,
+        ),
+        (
+            "def outer[str]():\n    def render(kind: str):\n        if kind not in {'text', 'image'}:\n            raise ValueError(kind)\n",
+            0,
+        ),
+        (
+            "class Renderer[str]:\n    def render(self, kind: str):\n        if kind not in {'text', 'image'}:\n            raise ValueError(kind)\n",
+            0,
+        ),
+        (
+            "from typing import Annotated\ndef render[Annotated](kind: Annotated[str, 'metadata']):\n    if kind not in {'text', 'image'}:\n        raise ValueError(kind)\n",
+            0,
+        ),
+        (
+            "Raw = str\ndef render[Raw](kind: Raw):\n    if kind not in {'text', 'image'}:\n        raise ValueError(kind)\n",
+            0,
+        ),
+        (
+            "def outer[T]():\n    def render(kind: str):\n        if kind not in {'text', 'image'}:\n            raise ValueError(kind)\n",
+            1,
+        ),
+        (
+            "from typing import Annotated\ndef render[T](kind: Annotated[str, T]):\n    if kind not in {'text', 'image'}: raise ValueError(kind)\n",
+            1,
+        ),
+        ("def render[T](kind: str | T):\n    if kind not in {'text', 'image'}: raise ValueError(kind)\n", 0),
+    ],
+)
+def test_native_generic_annotation_scope_preserves_provider_identity(source: str, expected: int) -> None:
+    assert len(_check(source)) == expected

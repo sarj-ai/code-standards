@@ -20,7 +20,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
-from sarj_python_lint.rules._ast_index import nodes, walk as walk_ast
+from sarj_python_lint.rules._ast_index import nodes, parent_map, walk as walk_ast
 from sarj_python_lint.rules._inherited_contract import inherited_contract
 from sarj_python_lint.rules._nominal_project import NominalSource
 
@@ -155,7 +155,7 @@ class PreferNominalIdTypes(Rule):
             "The rule checks functions, methods, constructors, and classes for at least two ID-shaped roles with the same proven carrier. Existing coverage remains an error.",
             "Imported first-party carriers and non-ID roles backed by a unique matching NewType in the owning distribution or a declared local dependency are warnings. Ambiguous exports, conditional or relative imports, cycles, and unresolved ownership are skipped.",
             "Non-ID role discovery uses exact snake-case names and proven matching carriers; it does not infer brands from names alone. Dependency discovery respects declared workspace members and exclusions, and excludes optional and transitive dependencies.",
-            "Rebound aliases, generic aliases, carrier names shadowed by type parameters, and mutated factory namespaces are skipped conservatively across the file.",
+            "Rebound aliases, generic aliases, carrier names shadowed by type parameters, and mutated or escaped canonical provider namespaces are skipped conservatively across the file.",
             "Generated code, migrations, external adapters, operational context, raw schemas, SQLAlchemy Mapped fields, ambiguous imports, and unlike carrier shapes are excluded.",
             "Classes with explicit bases, including object, are excluded without requiring an override decorator. Local base declarations do not prove runtime member ownership remains closed; class construction, native hooks and escaped handles can change inheritance. Independent module functions and plain classes remain eligible.",
         ),
@@ -215,6 +215,21 @@ class PreferNominalIdTypes(Rule):
                     ExampleFile.python(
                         "app/service.py",
                         "RoomName = 'ＮｅｗＴｙｐｅ'\ndef record(room_name: str, call_id: str) -> None: ...\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=False,
+            ),
+            RuleExample(
+                example_id="escaped-canonical-provider",
+                scenario="provider-identity",
+                title="An escaped factory namespace does not establish canonical domain roles",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "import typing\ndef replace(namespace):\n    namespace.NewType = lambda name, value: value\nreplace(typing)\nRoomName = typing.NewType('RoomName', str)\nCallId = typing.NewType('CallId', str)\ndef record(room_name: str, call_id: str) -> None: ...\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/service.py"),
@@ -611,20 +626,101 @@ def _carrier_shadowed_names(
 ) -> frozenset[str]:
     # Match ImportIndex's conservative whole-file treatment of ambiguous bindings.
     # PEP 695 parameters and mutations of imported namespaces also defeat identity.
-    shadowed: set[str] = set()
+    shadowed = _escaped_provider_names(tree, imports, node_index=node_index)
     for node in nodes(tree, ast.TypeVar, ast.ParamSpec, ast.TypeVarTuple, ast.Attribute, ast.Call, index=node_index):
-        if isinstance(node, (ast.TypeVar, ast.ParamSpec, ast.TypeVarTuple)):
-            shadowed.add(node.name)
-        elif isinstance(node, ast.Attribute):
-            if isinstance(node.ctx, (ast.Store, ast.Del)) or node.attr in {"__dict__", "__setattr__", "__delattr__"}:
-                shadowed.add(ast.unparse(node).partition(".")[0])
-        elif node.args and any(
-            (isinstance(node.func, ast.Name) and node.func.id == symbol and imports.builtin_is_unshadowed(symbol))
-            or imports.resolves(node.func, sources=_BUILTIN_SOURCES, symbol=symbol)
-            for symbol in ("setattr", "delattr", "vars")
-        ):
-            shadowed.add(ast.unparse(node.args[0]).partition(".")[0])
+        match node:
+            case ast.TypeVar() | ast.ParamSpec() | ast.TypeVarTuple():
+                shadowed.add(node.name)
+            case ast.Attribute():
+                shadowed.update(_attribute_provider_shadowed_names(node, imports))
+            case ast.Call():
+                shadowed.update(_call_provider_shadowed_names(node, imports))
     return frozenset(shadowed)
+
+
+def _attribute_provider_shadowed_names(node: ast.Attribute, imports: ImportIndex) -> set[str]:
+    if not isinstance(node.ctx, (ast.Store, ast.Del)) and node.attr not in {
+        "__dict__",
+        "__setattr__",
+        "__delattr__",
+        "__getattribute__",
+    }:
+        return set()
+    shadowed = {ast.unparse(node).partition(".")[0]}
+    if isinstance(node.value, ast.Name):
+        shadowed.update(_mutated_builtin_names(node.value, node.attr, imports))
+    return shadowed
+
+
+def _call_provider_shadowed_names(node: ast.Call, imports: ImportIndex) -> set[str]:
+    if not node.args or not _is_builtin_namespace_call(node, imports):
+        return set()
+    shadowed = {ast.unparse(node.args[0]).partition(".")[0]}
+    member = (
+        node.args[1].value
+        if len(node.args) > 1 and isinstance(node.args[1], ast.Constant) and isinstance(node.args[1].value, str)
+        else None
+    )
+    shadowed.update(_mutated_builtin_names(node.args[0], member, imports))
+    return shadowed
+
+
+def _is_builtin_namespace_call(node: ast.Call, imports: ImportIndex) -> bool:
+    return any(
+        (isinstance(node.func, ast.Name) and node.func.id == symbol and imports.builtin_is_unshadowed(symbol))
+        or imports.resolves(node.func, sources=_BUILTIN_SOURCES, symbol=symbol)
+        for symbol in ("setattr", "delattr", "vars")
+    )
+
+
+def _escaped_provider_names(tree: ast.Module, imports: ImportIndex, *, node_index: NodeIndex | None) -> set[str]:
+    providers = _TYPING_SOURCES | _BUILTIN_SOURCES | _UUID_SOURCES
+    namespaces = {
+        name: binding.module
+        for name, binding in imports.bindings.items()
+        if binding.module in providers and binding.symbol is None
+    }
+    if not namespaces:
+        return set()
+    parents = parent_map(tree, index=node_index)
+    shadowed: set[str] = set()
+    for node in nodes(tree, ast.Name, index=node_index):
+        if not isinstance(node.ctx, ast.Load) or node.id not in namespaces:
+            continue
+        if _direct_provider_access(node, parents.get(node), imports):
+            continue
+        provider = namespaces[node.id]
+        shadowed.update(name for name, binding in imports.bindings.items() if binding.module == provider)
+        shadowed.update(_mutated_builtin_names(node, None, imports))
+    return shadowed
+
+
+def _direct_provider_access(node: ast.Name, parent: ast.AST | None, imports: ImportIndex) -> bool:
+    if isinstance(parent, ast.Attribute) and parent.value is node:
+        return True
+    return (
+        isinstance(parent, ast.Call)
+        and bool(parent.args)
+        and parent.args[0] is node
+        and _is_builtin_namespace_call(parent, imports)
+    )
+
+
+def _mutated_builtin_names(node: ast.expr, member: str | None, imports: ImportIndex) -> set[str]:
+    if not isinstance(node, ast.Name):
+        return set()
+    binding = imports.bindings.get(node.id)
+    if binding is None or binding.module != "builtins" or binding.symbol is not None:
+        return set()
+    carriers = {"str", "int"} | _BUILTIN_COLLECTIONS
+    changed = carriers if member is None or member.startswith("__") else carriers & {member}
+    if not changed:
+        return set()
+    return changed | {
+        name
+        for name, imported in imports.bindings.items()
+        if imported.module == "builtins" and (imported.symbol is None or imported.symbol in changed)
+    }
 
 
 def _expression_is_shadowed(expression: ast.expr, names: frozenset[str]) -> bool:
