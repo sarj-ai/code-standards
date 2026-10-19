@@ -105,6 +105,71 @@ def test_same_version_verification_failure_still_retries() -> None:
     assert outcome.state is rollout.OutcomeState.WOULD_CREATE
 
 
+CONTROLLER_SHA = "e" * 40
+
+
+def failed_verification_runner(*, live_base_sha: str, controller_sha: str = CONTROLLER_SHA) -> FakeRolloutRunner:
+    verified_base_sha, tree_sha = "b" * 40, "c" * 40
+    markers = "\n".join(
+        (
+            rollout.desired_marker("8.2.1"),
+            f"{rollout.CONTROLLER_MARKER_PREFIX}={controller_sha} -->",
+            rollout.VERIFICATION_FAILED_MARKER,
+        )
+    )
+    commit = json.dumps(
+        {
+            "parents": [{"sha": verified_base_sha}],
+            "commit": {"message": rollout.managed_commit_message("8.2.1", tree_sha), "tree": {"sha": tree_sha}},
+        }
+    )
+    return FakeRolloutRunner(
+        [
+            (0, pull_payload(markers)),
+            (0, commit),
+            (0, json.dumps({"object": {"type": "commit", "sha": live_base_sha}})),
+        ]
+    )
+
+
+def test_failed_verification_on_unchanged_inputs_is_not_replanned(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_SHA", CONTROLLER_SHA)
+    outcome = rollout.status_one(consumer(), "8.2.1", failed_verification_runner(live_base_sha="b" * 40))
+
+    assert outcome.state is rollout.OutcomeState.BLOCKED
+    assert outcome.detail == rollout.VERIFICATION_UNCHANGED_DETAIL
+    assert rollout.pending_matrix((outcome,)) == []
+
+
+def test_failed_verification_is_replanned_after_the_consumer_base_moves(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_SHA", CONTROLLER_SHA)
+    outcome = rollout.status_one(consumer(), "8.2.1", failed_verification_runner(live_base_sha="d" * 40))
+
+    assert outcome.state is rollout.OutcomeState.BLOCKED
+    assert outcome.detail == rollout.VERIFICATION_RETRY_DETAIL
+    assert rollout.pending_matrix((outcome,)) == [{"name": consumer().name, "identity": consumer().identity}]
+
+
+@pytest.mark.parametrize("controller", ["f" * 40, ""])
+def test_failed_verification_is_replanned_when_the_controller_changes_or_is_unknown(
+    monkeypatch: pytest.MonkeyPatch, controller: str
+) -> None:
+    monkeypatch.setenv("GITHUB_SHA", controller)
+
+    outcome = rollout.status_one(consumer(), "8.2.1", failed_verification_runner(live_base_sha="b" * 40))
+
+    assert outcome.detail == rollout.VERIFICATION_RETRY_DETAIL
+
+
+def test_explicit_apply_still_retries_failed_verification_on_unchanged_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GITHUB_SHA", CONTROLLER_SHA)
+    runner = failed_verification_runner(live_base_sha="b" * 40)
+
+    assert rollout.apply_one(consumer(), "8.2.1", runner, dry_run=True).state is rollout.OutcomeState.WOULD_CREATE
+
+
 @pytest.mark.parametrize(
     ("requested", "desired"),
     [("8.2.2", "8.2.1"), ("8.10.0", "8.9.0"), ("8.2.1", "8.2.1rc1")],
@@ -256,6 +321,34 @@ def test_publisher_can_advance_or_refresh_owned_pr_metadata(previous: str) -> No
     assert outcome.state is rollout.OutcomeState.PR_OPEN
     edit = next(command for command in runner.commands if command[:3] == ("gh", "pr", "edit"))
     assert rollout.desired_marker("8.2.1") in edit[edit.index("--body") + 1]
+
+
+def test_failed_verification_pr_records_the_controller_revision(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_SHA", CONTROLLER_SHA)
+    base_sha, tree_sha = "b" * 40, "c" * 40
+    commit = json.dumps(
+        {
+            "parents": [{"sha": base_sha}],
+            "commit": {"message": rollout.managed_commit_message("8.2.1", tree_sha), "tree": {"sha": tree_sha}},
+        }
+    )
+    owned = pull_payload(rollout.desired_marker("8.2.1"))
+    runner = FakeRolloutRunner(
+        [(0, owned), (0, ""), (0, owned), (0, commit), (0, json.dumps({"object": {"type": "commit", "sha": base_sha}}))]
+    )
+
+    outcome = rollout._publish_rollout_pull(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- isolate the transport boundary
+        consumer(),
+        "8.2.1",
+        runner,
+        "standards-rollout/current",
+        pushed_head_sha="a" * 40,
+        verification_failure="lint failed",
+    )
+
+    assert outcome.state is rollout.OutcomeState.BLOCKED
+    edit = next(command for command in runner.commands if command[:3] == ("gh", "pr", "edit"))
+    assert f"{rollout.CONTROLLER_MARKER_PREFIX}={CONTROLLER_SHA} -->" in edit[edit.index("--body") + 1]
 
 
 @pytest.mark.parametrize("stage", ["before-edit", "after-edit", "empty-read"])
