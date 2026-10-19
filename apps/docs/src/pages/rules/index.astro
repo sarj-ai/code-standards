@@ -2,12 +2,14 @@
 import ReferencePage from '../../components/ReferencePage.astro';
 import RuleTable from '../../components/RuleTable.astro';
 import { catalog } from '../../lib/catalog';
+
+const description = 'Browse rule contracts and tested examples.';
 ---
 
-<ReferencePage
-  title="Rules"
-  description="Browse rule contracts and tested examples."
->
-  <h1 class="sarj-visually-hidden">Rules</h1>
+<ReferencePage title="Rules" {description}>
+  <header class="directory-header">
+    <h1>Rules</h1>
+    <p class="lede">{description}</p>
+  </header>
   <RuleTable rules={catalog.rules} />
 </ReferencePage>
