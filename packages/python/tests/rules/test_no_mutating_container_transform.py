@@ -463,6 +463,60 @@ def test_warning_does_not_block_cli(tmp_path: Path, capsys: pytest.CaptureFixtur
 
 
 @pytest.mark.parametrize(
+    ("declarations", "annotation", "operation", "expected_count"),
+    [
+        ("import operator\n", "list[int]", "operator.setitem(values, 0, 2)", 1),
+        ("import operator\n", "list[int]", "operator.delitem(values, 0)", 1),
+        ("import operator\n", "list[int]", "operator.iadd(values, [2])", 1),
+        ("from operator import iconcat as extend\n", "list[int]", "extend(values, [2])", 1),
+        ("import operator as op\n", "list[int]", "op.imul(values, 2)", 1),
+        ("import operator\n", "dict[str, int]", "operator.ior(values, {'other': 2})", 1),
+        ("import operator\n", "set[int]", "operator.isub(values, {1})", 1),
+        ("import operator\n", "list[int]", "operator.add(values, [2])", 0),
+        ("import operator\n", "list[int]", "values = list(values)\n    operator.setitem(values, 0, 2)", 0),
+        (
+            "import operator\noperator.setitem = command\n",
+            "list[int]",
+            "operator.setitem(values, 0, 2)",
+            0,
+        ),
+        (
+            "import operator as changed\nfrom operator import setitem\nchanged.setitem = command\n",
+            "list[int]",
+            "setitem(values, 0, 2)",
+            0,
+        ),
+        (
+            "def setitem(values, index, value):\n    pass\n",
+            "list[int]",
+            "setitem(values, 0, 2)",
+            0,
+        ),
+    ],
+    ids=[
+        "setitem",
+        "delitem",
+        "inplace-add",
+        "import-alias",
+        "module-alias",
+        "dict-inplace-union",
+        "set-inplace-subtraction",
+        "fresh-functional-add",
+        "copy-before-functional-write",
+        "patched-provider",
+        "provider-alias-write",
+        "unrelated-local-name",
+    ],
+)
+def test_source_proven_operator_mutation(
+    declarations: str, annotation: str, operation: str, expected_count: int
+) -> None:
+    source = f"{declarations}def transform(values: {annotation}) -> {annotation}:\n    {operation}\n    return values\n"
+    diagnostics = NoMutatingContainerTransform().check(Path("app/counts.py"), source)
+    assert len(diagnostics) == expected_count
+
+
+@pytest.mark.parametrize(
     ("statement", "expected_count"),
     [
         ("values = values[:] = []", 0),
@@ -487,4 +541,437 @@ def test_warning_does_not_block_cli(tmp_path: Path, capsys: pytest.CaptureFixtur
 )
 def test_assignment_execution_contract(statement: str, expected_count: int) -> None:
     source = f"def transform(values: list[int]) -> list[int]:\n    {statement}\n    return values\n"
+    assert len(NoMutatingContainerTransform().check(Path("app/counts.py"), source)) == expected_count
+
+
+@pytest.mark.parametrize(
+    ("source", "expected_count"),
+    [
+        (
+            f"def ordered(values: list[int]) -> list[int]:\n    return list({consumer}(values.pop() for _ in [0]))\n",
+            1,
+        )
+        for consumer in ("list", "tuple", "set", "frozenset")
+    ]
+    + [
+        (
+            "def ordered(values: list[int]) -> list[int]:\n    pending = (values.pop() for _ in [0])\n    return values\n",
+            0,
+        ),
+        (
+            "def ordered(values: list[int], consume) -> list[int]:\n    return consume(values.pop() for _ in [0])\n",
+            0,
+        ),
+        (
+            "def tuple(iterable):\n    return []\ndef ordered(values: list[int]) -> list[int]:\n    return list(tuple(values.pop() for _ in [0]))\n",
+            0,
+        ),
+        (
+            "from unittest.mock import patch\ndef defer(iterable):\n    return []\npatch('builtins.tuple', new=defer).start()\ndef ordered(values: list[int]) -> list[int]:\n    return list(tuple(values.pop() for _ in [0]))\n",
+            0,
+        ),
+        (
+            "async def ordered(values: list[int], source) -> list[int]:\n    return list(values.pop() async for _ in source)\n",
+            0,
+        ),
+        ("def ordered(values: list[int]) -> list[int]:\n    return list(values.pop() for _ in [])\n", 0),
+        (
+            "def ordered(values: list[int]) -> list[int]:\n    return list(values.pop() for _ in [0] if False)\n",
+            0,
+        ),
+        (
+            "def ordered(values: list[int]) -> list[int]:\n    return list(values.pop() for values in [[1, 2]])\n",
+            0,
+        ),
+        (
+            "def ordered(values: list[int]) -> list[int]:\n    return list(1 for _ in range(values.pop()) if False)\n",
+            1,
+        ),
+    ],
+    ids=[
+        "native-list",
+        "native-tuple",
+        "native-set",
+        "native-frozenset",
+        "deferred-generator",
+        "unknown-consumer",
+        "shadowed-consumer",
+        "patched-consumer",
+        "async-generator",
+        "empty-generator",
+        "false-filter",
+        "target-shadows-borrowed-root",
+        "outer-iterable-evaluates-before-filter",
+    ],
+)
+def test_eager_generator_consumption(source: str, expected_count: int) -> None:
+    assert len(NoMutatingContainerTransform().check(Path("app/counts.py"), source)) == expected_count
+
+
+_COMMAND_MARKER = "def command(function):\n    return lambda *args: None\n"
+_PREPARED_CLASS_NAMESPACE = (
+    _COMMAND_MARKER
+    + "class Meta(type):\n    @classmethod\n    def __prepare__(cls, name, bases):\n        return {'staticmethod': command}\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("declarations", "class_header", "markers", "parameters", "expected_count"),
+    [
+        ("", "class Mapper:", "@staticmethod", "", 1),
+        ("", "class Mapper:", "@classmethod", "cls, ", 1),
+        ("from typing import final\n", "class Mapper:", "@final", "self, ", 1),
+        ("from typing import final\n", "class Mapper:", "@staticmethod\n@final", "", 1),
+        ("import typing as t\n", "class Mapper:", "@t.final", "self, ", 1),
+        (_COMMAND_MARKER, "class Mapper:", "@command", "self, ", 0),
+        (_COMMAND_MARKER + "staticmethod = command\n", "class Mapper:", "@staticmethod", "", 0),
+        (_PREPARED_CLASS_NAMESPACE, "class Mapper(metaclass=Meta):", "@staticmethod", "", 0),
+        (
+            _PREPARED_CLASS_NAMESPACE + "class Base(metaclass=Meta):\n    pass\n",
+            "class Mapper(Base):",
+            "@staticmethod",
+            "",
+            0,
+        ),
+        (
+            _COMMAND_MARKER + "from unittest.mock import patch\npatch('builtins.staticmethod', new=command).start()\n",
+            "class Mapper:",
+            "@staticmethod",
+            "",
+            0,
+        ),
+        ("", "class Mapper:", "@staticmethod\n@classmethod", "cls, ", 0),
+        (
+            _COMMAND_MARKER + "def final(function):\n    return command(function)\n",
+            "class Mapper:",
+            "@final",
+            "self, ",
+            0,
+        ),
+    ],
+    ids=[
+        "native-staticmethod",
+        "native-classmethod",
+        "native-final-method",
+        "static-final-composition",
+        "module-alias-final",
+        "custom-command-marker",
+        "shadowed-staticmethod",
+        "metaclass-prepared-marker",
+        "inherited-prepared-marker",
+        "patched-staticmethod",
+        "ambiguous-binder-composition",
+        "unrelated-final-name",
+    ],
+)
+def test_body_preserving_method_markers(
+    declarations: str, class_header: str, markers: str, parameters: str, expected_count: int
+) -> None:
+    decorators = "\n".join("    " + marker for marker in markers.splitlines())
+    source = (
+        f"{declarations}{class_header}\n{decorators}\n"
+        f"    def ordered({parameters}values: list[int]) -> list[int]:\n"
+        "        values.sort()\n        return values\n"
+    )
+    assert len(NoMutatingContainerTransform().check(Path("app/counts.py"), source)) == expected_count
+
+
+@pytest.mark.parametrize(
+    ("declarations", "annotation", "assignment", "operation", "expected_count"),
+    [
+        ("from typing import assert_type\n", "list[int]", "assert_type(values, list[int])", "result.reverse()", 1),
+        ("from typing import cast\n", "list[int]", "cast(list[int], values)", "result.reverse()", 1),
+        (
+            "from typing import assert_type as checked\n",
+            "list[int]",
+            "checked(values, list[int])",
+            "result.reverse()",
+            1,
+        ),
+        ("import typing as t\n", "list[int]", "t.assert_type(values, list[int])", "result.reverse()", 1),
+        (
+            "from typing import assert_type, cast\n",
+            "list[int]",
+            "assert_type(cast(list[int], values), list[int])",
+            "result.reverse()",
+            1,
+        ),
+        (
+            "from typing import assert_type\n",
+            "list[int]",
+            "assert_type(values, list[int])",
+            "values = []\n    result.reverse()",
+            1,
+        ),
+        (
+            "from typing import assert_type\n",
+            "dict[str, int]",
+            "assert_type(values, dict[str, int])",
+            "result.update({'count': 2})",
+            1,
+        ),
+        ("from typing import assert_type\n", "set[int]", "assert_type(values, set[int])", "result.add(2)", 1),
+        (
+            "from typing import assert_type\n",
+            "list[int]",
+            "assert_type(list(values), list[int])",
+            "result.reverse()",
+            0,
+        ),
+        (
+            "def assert_type(values, typ):\n    return list(values)\n",
+            "list[int]",
+            "assert_type(values, list[int])",
+            "result.reverse()",
+            0,
+        ),
+        (
+            "import typing as t\nt.assert_type = clone\n",
+            "list[int]",
+            "t.assert_type(values, list[int])",
+            "result.reverse()",
+            0,
+        ),
+        (
+            "import typing as t\nt.assert_type = clone\nfrom typing import assert_type\n",
+            "list[int]",
+            "assert_type(values, list[int])",
+            "result.reverse()",
+            0,
+        ),
+        (
+            "import typing as t\nfrom plugin import external\nexternal(t.assert_type)\n",
+            "list[int]",
+            "t.assert_type(values, list[int])",
+            "result.reverse()",
+            0,
+        ),
+        (
+            "from unittest.mock import patch\npatch('typing.assert_type', new=clone).start()\nfrom typing import assert_type\n",
+            "list[int]",
+            "assert_type(values, list[int])",
+            "result.reverse()",
+            0,
+        ),
+        (
+            "from typing import assert_type\n",
+            "list[int]",
+            "assert_type(values, list[int], unexpected)",
+            "result.reverse()",
+            0,
+        ),
+    ],
+    ids=[
+        "assert-type",
+        "cast",
+        "import-alias",
+        "module-alias",
+        "nested-identities",
+        "root-rebind-retains-alias",
+        "dict-identity",
+        "set-identity",
+        "identity-of-fresh-copy",
+        "unrelated-local-helper",
+        "provider-write",
+        "provider-alias-write",
+        "opaque-qualified-function-escape",
+        "mock-patched-provider",
+        "invalid-arity-does-not-call-helper",
+    ],
+)
+def test_typing_helper_identity(
+    declarations: str, annotation: str, assignment: str, operation: str, expected_count: int
+) -> None:
+    source = (
+        f"{declarations}def transform(values: {annotation}) -> {annotation}:\n"
+        f"    result = {assignment}\n    {operation}\n    return result\n"
+    )
+    assert len(NoMutatingContainerTransform().check(Path("app/counts.py"), source)) == expected_count
+
+
+@pytest.mark.parametrize(
+    ("statement", "expected_count"),
+    [(f"if {literal}:\n        values.sort()", 0) for literal in ("[]", "()", "{}", "[*()]", "{**{}}", "{*()}")]
+    + [
+        (
+            f"if {literal}:\n        values = list(values)\n    else:\n        values.reverse()",
+            0,
+        )
+        for literal in ("[0]", "(0,)", "{'count': 0}", "{0}")
+    ]
+    + [
+        ("[] and values.pop()", 0),
+        ("if [values.pop()]:\n        pass", 1),
+        ("if {'count': values.pop()}:\n        pass", 1),
+        ("if [*values]:\n        values.sort()", 1),
+    ],
+    ids=[
+        "empty-list",
+        "empty-tuple",
+        "empty-dict",
+        "empty-sequence-expansion",
+        "empty-dict-expansion",
+        "empty-set-expansion",
+        "nonempty-list",
+        "nonempty-tuple",
+        "nonempty-dict",
+        "nonempty-set",
+        "empty-literal-short-circuits",
+        "list-content-is-evaluated",
+        "dict-content-is-evaluated",
+        "unknown-spread-remains-uncertain",
+    ],
+)
+def test_literal_collection_reachability(statement: str, expected_count: int) -> None:
+    source = f"def ordered(values: list[int]) -> list[int]:\n    {statement}\n    return values\n"
+    assert len(NoMutatingContainerTransform().check(Path("app/counts.py"), source)) == expected_count
+
+
+@pytest.mark.parametrize(
+    ("statement", "expected_count"),
+    [
+        ("if 0 > 1:\n        values.sort()", 0),
+        ("0 > 1 < values.pop()", 0),
+        ("values.pop() if 0 > 1 else None", 0),
+        ("if 1 <= 2:\n        values = list(values)\n    else:\n        values.reverse()", 0),
+        ("'a' > 'b' < str(values.pop())", 0),
+        ("if b'a' != b'a':\n        values.reverse()", 0),
+        ("values.pop() < 0 > 1 < values.pop()", 1),
+        ("0 < 1 < values.pop()", 1),
+        ("values.pop() < 4", 1),
+        ("0 > values[0] < values.pop()", 1),
+        ("if None is False:\n        values.sort()", 0),
+    ],
+    ids=[
+        "false-comparison-branch",
+        "false-comparison-chain",
+        "false-comparison-expression",
+        "true-comparison-branch",
+        "string-order-chain",
+        "bytes-equality",
+        "earlier-effect-before-false-link",
+        "true-link-continues",
+        "left-operand-effect",
+        "unknown-comparison-remains-uncertain",
+        "known-singleton-identity",
+    ],
+)
+def test_literal_comparison_reachability(statement: str, expected_count: int) -> None:
+    source = f"def ordered(values: list[int]) -> list[int]:\n    {statement}\n    return values\n"
+    assert len(NoMutatingContainerTransform().check(Path("app/counts.py"), source)) == expected_count
+
+
+@pytest.mark.parametrize(
+    ("declarations", "annotation", "statements", "expected_count"),
+    [
+        ("", "tuple[int, ...]", "values.reverse()\n    return tuple(values)", 1),
+        ("", "frozenset[int]", "values.reverse()\n    return frozenset(values)", 1),
+        ("", "frozenset[int,]", "values.reverse()\n    return frozenset(values)", 1),
+        ("", "tuple[()]", "values.reverse()\n    return ()", 1),
+        ("", "'tuple[int, ...]'", "values.reverse()\n    return tuple(values)", 1),
+        ("", "tuple[int, ...]", "result = list(values)\n    result.reverse()\n    return tuple(result)", 0),
+        ("", "frozenset[int]", "result = list(values)\n    result.reverse()\n    return frozenset(result)", 0),
+        ("class tuple:\n    pass\n", "tuple[int, ...]", "values.reverse()\n    return tuple(values)", 0),
+        ("class frozenset:\n    pass\n", "frozenset[int]", "values.reverse()\n    return frozenset(values)", 0),
+    ],
+    ids=[
+        "tuple-replacement",
+        "frozenset-replacement",
+        "frozenset-trailing-comma",
+        "empty-tuple-result",
+        "quoted-immutable-output",
+        "copy-before-tuple",
+        "copy-before-frozenset",
+        "shadowed-tuple",
+        "shadowed-frozenset",
+    ],
+)
+def test_immutable_container_output(declarations: str, annotation: str, statements: str, expected_count: int) -> None:
+    source = f"{declarations}def replaced(values: list[int]) -> {annotation}:\n    {statements}\n"
+    assert len(NoMutatingContainerTransform().check(Path("app/counts.py"), source)) == expected_count
+
+
+@pytest.mark.parametrize(
+    ("declarations", "annotation", "statement", "expected_count"),
+    [
+        ("", "list[int]", "list.sort(values)", 1),
+        ("", "list[int]", "list.reverse(values)", 1),
+        ("", "dict[str, int]", "dict.update(values, count=2)", 1),
+        ("", "set[int]", "set.add(values, 2)", 1),
+        ("", "list[int]", "values.__setitem__(0, 2)", 1),
+        ("", "dict[str, int]", "values.__delitem__('count')", 1),
+        ("", "list[int]", "values.__iadd__([2])", 1),
+        ("", "dict[str, int]", "values.__ior__({'count': 2})", 1),
+        ("", "set[int]", "values.__iand__({2})", 1),
+        ("", "set[int]", "values.__init__({2})", 1),
+        ("", "list[int]", "list.__setitem__(values, 0, 2)", 1),
+        ("", "list[int]", "result = list(values)\n    list.sort(result)", 0),
+        ("", "list[int]", "result = list(values)\n    result.__setitem__(0, 2)", 0),
+        ("", "dict[str, int]", "dict.get(values, 'count')", 0),
+        (
+            "class Handler:\n    @staticmethod\n    def sort(values):\n        return list(values)\n",
+            "list[int]",
+            "Handler.sort(values)",
+            0,
+        ),
+    ],
+    ids=[
+        "list-sort-descriptor",
+        "list-reverse-descriptor",
+        "dict-update-descriptor",
+        "set-add-descriptor",
+        "list-item-special-method",
+        "dict-delete-special-method",
+        "list-inplace-special-method",
+        "dict-inplace-special-method",
+        "set-inplace-special-method",
+        "set-reinitialize",
+        "unbound-item-special-method",
+        "unbound-fresh-copy",
+        "bound-fresh-copy",
+        "unbound-query",
+        "custom-descriptor",
+    ],
+)
+def test_native_mutation_dispatch(declarations: str, annotation: str, statement: str, expected_count: int) -> None:
+    source = f"{declarations}def changed(values: {annotation}) -> {annotation}:\n    {statement}\n    return values\n"
+    assert len(NoMutatingContainerTransform().check(Path("app/counts.py"), source)) == expected_count
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected_count"),
+    [
+        ("True and values", 1),
+        ("False or values", 1),
+        ("[] or values", 1),
+        ("values or values", 1),
+        ("values and values", 1),
+        ("True and (False or values)", 1),
+        ("False and values", 0),
+        ("True or values", 0),
+        ("values or list(values)", 0),
+        ("flag and values", 0),
+        ("values and list(values)", 0),
+        ("list(values) or list(values)", 0),
+    ],
+    ids=[
+        "true-and",
+        "false-or",
+        "empty-or",
+        "same-owner-or",
+        "same-owner-and",
+        "nested-selection",
+        "false-and",
+        "true-or",
+        "ambiguous-copy-or",
+        "ambiguous-condition-and",
+        "ambiguous-copy-and",
+        "all-fresh",
+    ],
+)
+def test_boolean_value_identity(expression: str, expected_count: int) -> None:
+    source = (
+        "def changed(values: list[int], flag: bool) -> list[int]:\n"
+        f"    result = {expression}\n    result.reverse()\n    return values\n"
+    )
     assert len(NoMutatingContainerTransform().check(Path("app/counts.py"), source)) == expected_count
