@@ -85,6 +85,11 @@ const PROVIDERS: Record<string, readonly [string, string, string]> = {
     "eslint-plugin-unicorn",
     "https://github.com/sindresorhus/eslint-plugin-unicorn",
   ],
+  regexp: [
+    "RegExp",
+    "eslint-plugin-regexp",
+    "https://ota-meshi.github.io/eslint-plugin-regexp/",
+  ],
   "eslint-comments": [
     "ESLint Comments",
     "@eslint-community/eslint-plugin-eslint-comments",

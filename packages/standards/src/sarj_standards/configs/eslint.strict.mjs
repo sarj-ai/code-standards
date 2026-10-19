@@ -8,6 +8,7 @@ import react from "eslint-plugin-react";
 import { fixupPluginRules } from "@eslint/compat";
 import reactHooks from "eslint-plugin-react-hooks";
 import unicorn from "eslint-plugin-unicorn";
+import regexp from "eslint-plugin-regexp";
 import eslintComments from "@eslint-community/eslint-plugin-eslint-comments";
 import node from "eslint-plugin-n";
 import perfectionist from "eslint-plugin-perfectionist";
@@ -180,6 +181,7 @@ const ESLINT_RECOMMENDED_CONFIG = {
     "no-constant-binary-expression": "error",
     "no-unsafe-finally": "error",
     "no-unsafe-optional-chaining": "error",
+    "preserve-caught-error": ["warn", { requireCatchParameter: true }],
   },
 };
 
@@ -201,6 +203,13 @@ const ESLINT_CORRECTNESS_ADVISORY_RULES = {
   // An unparenthesized assignment can be an accidental comparison. Explicitly
   // grouped assignments, including lazy memoization with ??=, remain allowed.
   "no-return-assign": ["warn", "except-parens"],
+};
+
+// Keep regex analysis focused on native String API failures. Defer the current
+// backtracking rule's accepting-suffix false positives and disjunction-rule
+// removal suggestions that can change backreference-dependent matching.
+const REGEXP_ADVISORY_RULES = {
+  "regexp/no-missing-g-flag": ["warn", { strictTypes: true }],
 };
 
 // Unicorn ships a broad rule set. The enabled subset below was selected by
@@ -575,6 +584,34 @@ if (missingUnicornRules.length > 0) {
 // instead of silently weakening the strict configuration on newer ESLint.
 const compatibleReact = fixupPluginRules(react);
 
+// Upstream's async checks report stored assertion promises even when awaited
+// later. Keep its structural checks and leave promise handling to typed
+// no-floating-promises, including explicit void expressions.
+const validExpect = vitest.rules["valid-expect"];
+const scopedVitest = {
+  ...vitest,
+  rules: {
+    ...vitest.rules,
+    "valid-expect": {
+      ...validExpect,
+      meta: { ...validExpect.meta, fixable: undefined },
+      create(context) {
+        return validExpect.create(Object.create(context, {
+          report: {
+            value(descriptor) {
+              if (descriptor.messageId === "asyncMustBeAwaited" ||
+                  descriptor.messageId === "promisesWithAsyncAssertionsMustBeAwaited") {
+                return;
+              }
+              context.report(descriptor);
+            },
+          },
+        }));
+      },
+    },
+  },
+};
+
 // Captured Node values may be functions or other non-serializable objects.
 // Keep upstream browser-scope diagnostics without automatically moving those
 // values into Playwright's serialization boundary.
@@ -737,6 +774,7 @@ export function createConfig(options = {}) {
       react: compatibleReact,
       "react-hooks": reactHooks,
       unicorn,
+      regexp,
       "@eslint-community/eslint-comments": eslintComments,
       n: node,
       perfectionist,
@@ -746,7 +784,7 @@ export function createConfig(options = {}) {
       jsdoc,
       shadcn: scopedShadcn,
       "@sarj": sarj,
-      vitest,
+      vitest: scopedVitest,
       "node-test": nodeTest,
       jest,
       "testing-library": testingLibrary,
@@ -1113,6 +1151,7 @@ export function createConfig(options = {}) {
       ...UNICORN_MODERNISATION_RULES,
       ...ESLINT_CONCISION_ADVISORY_RULES,
       ...ESLINT_CORRECTNESS_ADVISORY_RULES,
+      ...REGEXP_ADVISORY_RULES,
       ...UNICORN_CONCISION_ADVISORY_RULES,
       ...UNICORN_SEMANTIC_ADVISORY_RULES,
 
@@ -1559,6 +1598,10 @@ export function createConfig(options = {}) {
       "vitest/prefer-expect-resolves": HAS_VITEST ? "error" : "off",
       "vitest/prefer-to-be": HAS_VITEST ? "error" : "off",
       "vitest/require-local-test-context-for-concurrent-snapshots": HAS_VITEST ? "warn" : "off",
+      // Preserve Vitest's optional assertion message while catching missing
+      // matchers and accidental focused suites before the runner executes.
+      "vitest/valid-expect": HAS_VITEST ? ["warn", { maxArgs: 2 }] : "off",
+      "vitest/no-focused-tests": HAS_VITEST ? "warn" : "off",
 
       // eslint-plugin-jest can parse Bun's Jest-compatible `bun:test` API when
       // globalPackage is set above. These rules intentionally mirror only the
