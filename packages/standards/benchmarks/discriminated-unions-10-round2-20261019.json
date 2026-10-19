@@ -1,0 +1,276 @@
+{
+  "schemaVersion": 1,
+  "rule": "python:prefer-discriminated-model-union",
+  "code": "SARJ510",
+  "decision": "ship-warning",
+  "versions": {
+    "python": "1.56.0",
+    "standards": "8.92.0"
+  },
+  "request": "10 further focused passes to improve usefulness and precision.",
+  "baselineCommit": "5d6b1581822b8c83554e445d9ae110d59d08ebb1",
+  "sourceSha256": "8138d9b729e3bfb12ea8b57883640cd1670f15f5d61aef646a04cbbff3a70c78",
+  "baselineHelperSha256": "c49b5cf06605f71b037508284e2f131d6bfe47350108d139236ec5a4fd36c2bb",
+  "passDefinition": "One distinct labeled source/path execution context per pass. These ten contexts are focused regressions, not ten independent repository audits or an exhaustive coverage claim. Supplemental controls and native witnesses are outside this ledger.",
+  "admission": {
+    "existingOwner": "SARJ510 owns the requested explicit data-union discriminator policy; no new rule or severity change is needed.",
+    "demonstratedGap": "Native-valid metadata in a plain local class namespace or an immutable tuple warned. Unrelated parameter attribute writes hid module bindings, and constructor-only InitVar annotations suppressed missing-tag warnings.",
+    "harm": "False warnings encourage unnecessary constructor or serialization changes; missed warnings undermine the requested modeling policy.",
+    "boundary": "Nominal unions remain valid Python. This warning expresses a modeling preference and has no universally safe autofix.",
+    "smallestFix": "Extend only the existing bounded SARJ510 AST helper. Leave shared provenance and other rules unchanged."
+  },
+  "labeled": {
+    "contexts": 10,
+    "positiveContexts": 5,
+    "negativeContexts": 5,
+    "baselineFalseWarningContexts": 2,
+    "baselineMissedSupportedContexts": 5,
+    "falsePositives": 0,
+    "falseNegativesWithinDeclaredScope": 0,
+    "duplicateContexts": 0,
+    "duplicateDiagnosticLocations": 0
+  },
+  "passes": [
+    {
+      "pass": 1,
+      "id": "expansion-01-callable-metadata-on-single-records",
+      "expectedCount": 0,
+      "baselineCount": 0,
+      "candidateCount": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 2,
+      "id": "expansion-02-callable-metadata-on-collapsed-duplicate-aliases",
+      "expectedCount": 0,
+      "baselineCount": 0,
+      "candidateCount": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 3,
+      "id": "expansion-03-shared-initvar-is-constructor-only",
+      "expectedCount": 1,
+      "baselineCount": 0,
+      "candidateCount": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 4,
+      "id": "expansion-04-initvar-literals-are-not-instance-tags",
+      "expectedCount": 1,
+      "baselineCount": 0,
+      "candidateCount": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 5,
+      "id": "round2-fp-01-class-namespace-metadata",
+      "expectedCount": 0,
+      "baselineCount": 1,
+      "candidateCount": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 6,
+      "id": "round2-fp-02-immutable-tuple-metadata",
+      "expectedCount": 0,
+      "baselineCount": 1,
+      "candidateCount": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 7,
+      "id": "round2-fp-03-initvar-real-classvar-tag",
+      "expectedCount": 0,
+      "baselineCount": 0,
+      "candidateCount": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 8,
+      "id": "round2-scope-01-module-base-local-attribute-write",
+      "expectedCount": 1,
+      "baselineCount": 0,
+      "candidateCount": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 9,
+      "id": "round2-scope-02-literal-module-local-attribute-write",
+      "expectedCount": 1,
+      "baselineCount": 0,
+      "candidateCount": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 10,
+      "id": "round2-scope-03-metadata-name-local-attribute-write",
+      "expectedCount": 1,
+      "baselineCount": 0,
+      "candidateCount": 1,
+      "result": "pass"
+    }
+  ],
+  "refinements": [
+    "Respect bounded metadata projections from single-value plain local class namespaces and immutable tuples.",
+    "Invalidate projection proof on carrier mutation, rebinding, escape or unsupported class behavior; retain finite budgets.",
+    "Keep module bindings independent of unrelated parameter attribute writes while preserving real global writes and escapes.",
+    "Treat direct import-proven no-default dataclass InitVar annotations as constructor inputs rather than persistent discriminators.",
+    "Preserve real ClassVar Literal tags alongside InitVar and Pydantic callable metadata on single-record or duplicate-collapsed aliases."
+  ],
+  "nativeEvidence": {
+    "runtimeWitnesses": 10,
+    "typeCheckedContexts": 10,
+    "failures": 0,
+    "qualification": "Native runtime and BasedPyright witnesses cover all ten ledger contexts. Two proposed cardinality gaps were rejected because Pydantic routes these valid schemas; they remain negative controls."
+  },
+  "upstreamReview": [
+    {
+      "owner": "Python dataclasses",
+      "url": "https://docs.python.org/3/library/dataclasses.html#init-only-variables",
+      "result": "InitVar annotations identify constructor inputs; they do not provide persistent instance discriminator fields."
+    },
+    {
+      "owner": "Pydantic",
+      "url": "https://docs.pydantic.dev/latest/api/types/#pydantic.types.Discriminator",
+      "result": "Installed Pydantic 2.14.1 native witnesses validate class/tuple metadata and singleton or duplicate-collapsed callable discriminator schemas. A proposed cardinality restriction was rejected."
+    },
+    {
+      "owner": "Ruff",
+      "url": "https://docs.astral.sh/ruff/rules/",
+      "result": "Existing upstream review remains applicable: SARJ510 owns this shared data-union modeling preference."
+    }
+  ],
+  "limitations": [
+    "All prior inherited, generic, behavior-bearing, runtime TypeAliasType union, dynamic namespace and configuration-heavy record exclusions remain in place.",
+    "Metadata projection support is bounded and local. Class namespaces have one plain value binding and no bases, decorators or methods. Cross-file metadata is not resolved. Opaque mutation, carrier escapes and unsupported projections can abstain.",
+    "InitVar handling is limited to direct import-proven annotations without defaults on admitted dataclasses. Wrapped, locally aliased and defaulted forms remain conservative; no constructor or serializer rewrite is offered.",
+    "No interprocedural effect inference is claimed. Binding-sensitive mutation proof remains local to SARJ510; ambiguous or excessive forms can remain intentional false negatives.",
+    "The ten cases and inspected corpora establish bounded evidence, not population-wide precision or complete recall."
+  ],
+  "validation": {
+    "focusedTests": 456,
+    "focusedResult": "pass",
+    "ruff": "pass",
+    "basedPyright": "pass",
+    "basedPyrightQualification": "Targeted strict project check with the worktree virtual-environment Python path; 0 errors, 0 warnings, 0 notes.",
+    "localMakeVerify": {
+      "result": "incomplete",
+      "reason": "The latest full local run passed doctor, source/catalog/CLI/docs synchronization, formatted examples, documentation checks, lint, and the ordinary standards check (0 errors, 34 existing warnings). It was interrupted during full Python dogfood to integrate newer TypeScript-only main. This snapshot is incomplete; final-revision gates and status are tracked on PR 1596."
+    },
+    "committedRuleComparison": {
+      "result": "pass",
+      "implementationSelectorsChanged": 174,
+      "rulesAdded": 0,
+      "rulesRemoved": 0,
+      "policyChanges": 0,
+      "severity": "warning"
+    },
+    "canonicalPerFileRules": 145,
+    "changedPythonFiles": 5,
+    "perFileFindings": 0
+  },
+  "performanceNotes": {
+    "runtime": "CPython 3.15.0 on a shared Linux VM.",
+    "isolation": "Fresh interpreter per corpus and bounded batch; 250-file batch limit, verified private pins before and after.",
+    "coldWarmDefinition": "First and second analysis passes within each interpreter; this does not mean clearing OS caches.",
+    "combinedSelection": "Ten tracked Python files per corpus, taking every ceil(file_count / 10) entry from the sorted pinned inventory.",
+    "combinedInputBytes": 314167,
+    "baselineQualification": "The calibration helper originates at f39ae8ae and is byte-identical at the labeled ledger baseline 5d6b1581 and integrated main commit 98b73b68. The packages/python trees at 5d6b1581 and 98b73b68 are identical. Both modes use the same current Python engine and canonical per-file registry.",
+    "combinedCpuObservation": "Candidate combined CPU medians were 3.5% higher cold and 6.4% higher warm; rule-only medians were lower. These three repetitions on a shared VM do not establish a speed improvement.",
+    "interpretation": "Three paired repetitions support regression review; no speed improvement or population precision claim is made."
+  },
+  "calibration": {
+    "decision": "ship-warning",
+    "baseline_strategy": "Same current Python engine/registry; substitute the SARJ510 data-union helper from f39ae8ae.",
+    "source_guard_verified": true,
+    "pinned_corpora_verified_before_and_after": true,
+    "rule_only": {
+      "corpora": 3,
+      "files": 3260,
+      "bytes": 33757679,
+      "batches_per_pass": 15,
+      "batch_limit": 250,
+      "paired_repeats": 3,
+      "baseline_findings": 8,
+      "candidate_findings": 8,
+      "added_findings": 0,
+      "removed_findings": 0,
+      "unchanged_findings": 8,
+      "duplicate_locations": 0,
+      "exact_repeat_fingerprints_equal_within_each_mode": true,
+      "cross_mode_fingerprints_equal": true,
+      "cold_warm_fingerprints_equal": true,
+      "candidate_findings_reviewed": 8,
+      "policy_matches": 8,
+      "known_false_positives": 0,
+      "performance": [
+        {
+          "mode": "baseline",
+          "repeats": 3,
+          "files_per_repeat": 3260,
+          "median_cold_cpu_seconds": 11.045484313,
+          "median_warm_cpu_seconds": 10.554323295,
+          "median_cold_wall_seconds": 44.39526981700328,
+          "median_warm_wall_seconds": 36.39176307701564,
+          "median_end_to_end_seconds": 154.82277937501203,
+          "peak_rss_kib": 73284
+        },
+        {
+          "mode": "candidate",
+          "repeats": 3,
+          "files_per_repeat": 3260,
+          "median_cold_cpu_seconds": 9.64698293,
+          "median_warm_cpu_seconds": 9.896236846,
+          "median_cold_wall_seconds": 22.86595156902331,
+          "median_warm_wall_seconds": 25.272311107008136,
+          "median_end_to_end_seconds": 101.22695751900028,
+          "peak_rss_kib": 72704
+        }
+      ]
+    },
+    "combined": {
+      "scope": "All 145 canonical per-file Python rules through check_source; excludes project rules and discovery.",
+      "corpora": 3,
+      "files": 30,
+      "paired_repeats": 3,
+      "canonical_rule_count": 145,
+      "cold_warm_fingerprints_equal": true,
+      "cross_mode_and_repeat_fingerprints_equal": true,
+      "performance": [
+        {
+          "mode": "baseline",
+          "repeats": 3,
+          "files_per_repeat": 30,
+          "median_cold_cpu_seconds": 23.260071314999998,
+          "median_warm_cpu_seconds": 22.289230874,
+          "median_cold_wall_seconds": 64.62590410100529,
+          "median_warm_wall_seconds": 63.00902033699094,
+          "median_end_to_end_seconds": 142.108927031004,
+          "peak_rss_kib": 197188
+        },
+        {
+          "mode": "candidate",
+          "repeats": 3,
+          "files_per_repeat": 30,
+          "median_cold_cpu_seconds": 24.077131084,
+          "median_warm_cpu_seconds": 23.709991717,
+          "median_cold_wall_seconds": 93.3758156469994,
+          "median_warm_wall_seconds": 100.61566301800485,
+          "median_end_to_end_seconds": 216.38854829700722,
+          "peak_rss_kib": 196828
+        }
+      ]
+    },
+    "limitations": [
+      "Shared VM load affects wall time; these measurements do not establish a speed improvement.",
+      "No observed false positives in this reviewed sample is not a population false-positive-rate estimate."
+    ]
+  },
+  "reproduce": [
+    "uv run --project packages/standards --frozen pytest -q packages/python/tests/test_discriminated_data_unions.py packages/python/tests/test_discriminated_data_union_followups.py packages/python/tests/test_discriminated_data_union_runtime.py packages/python/tests/test_discriminated_union_metadata_followups.py packages/python/tests/test_discriminated_union_scope_followups.py packages/python/tests/test_discriminated_union_round2_*.py packages/python/tests/rules/test_prefer_discriminated_model_union.py",
+    "code-standards --root . maintain rules changes --before 98b73b689235754a1f36fe23282f706f8968fd12 --after HEAD",
+    "make verify"
+  ]
+}
