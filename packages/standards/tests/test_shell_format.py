@@ -353,3 +353,26 @@ def test_api_warns_on_legacy_drift_but_requires_selected_file_formatting(tmp_pat
     commands = lifecycle.selected_format_commands(tmp_path, (str(path),))
     assert lifecycle.execute(commands) == 0
     assert "\n  echo ok\n" in path.read_text()
+
+
+def test_concurrent_formatting_reports_files_in_sorted_order(tmp_path: Path) -> None:
+    names = [f"scripts/run-{index:02}.sh" for index in range(10)]
+    for index, name in enumerate(names):
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("#!/bin/sh\nprintf  ok\n" if index % 2 else "#!/bin/sh\nprintf ok\n")
+    [report] = shell_format.analyze_sources(root=tmp_path, paths=tuple(reversed(names)))
+    assert report.completion is Completion.COMPLETE
+    assert report.file_count == len(names)
+    assert [finding.location.path for finding in report.diagnostics] == names[1::2]
+
+
+def test_concurrent_formatter_failure_fails_the_report(tmp_path: Path) -> None:
+    names = [f"scripts/run-{index}.sh" for index in range(6)]
+    for index, name in enumerate(names):
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("#!/bin/sh\nif true; then\n" if index == 3 else "#!/bin/sh\nprintf ok\n")
+    [report] = shell_format.analyze_sources(root=tmp_path, paths=tuple(names))
+    assert report.completion is Completion.FAILED
+    assert report.issues[0].kind == "formatting-failure"
