@@ -35,6 +35,41 @@ requirements, enforcement, and generated security schema. The same provider
 callable does not make FastAPI `Security` and `Depends` interchangeable. Intentional
 empty scopes remain valid; names and cache behavior do not establish authorization.
 
+## Persistence commands
+
+For ordinary model writes, prefer one existing typed `upsert` command that can
+express every field the caller is allowed to change. Extend that command at its
+owning store when a new ordinary field is added; avoid a separate `set_*` or
+`update_*` SQL path per field. Keep immutable identifiers, server-owned values
+and privileged fields outside a caller's writable contract. Share implementation
+without broadening authorization.
+
+Make the update contract explicit: omitted means leave unchanged, explicit null
+means clear when allowed, and a supplied value means replace. A nullable default
+or `COALESCE` alone cannot express all three states. Use the established unset
+sentinel or fields-set mechanism, preserve existing values on partial writes,
+and validate replacement values and cross-field invariants. Do not dump a read
+model into an upsert if it exposes fields the caller cannot change.
+
+Prefer an available `upsert_many` for independent model writes. Implement the
+bulk method as the canonical database operation and delegate a singleton upsert
+with a one-element collection when observable semantics match. A bulk method
+that loops over the singleton leaves the repeated database work in place;
+reversing both methods' delegation creates recursion. Preserve row conversion,
+conflict identity, missing-row behavior, audit fields and caller-visible results.
+
+An upsert can create a missing row. Keep update-only behavior explicit, including
+not-found results and required creation fields. Retain specialized operations
+when they implement atomic increments, compare-and-swap/version checks, guarded
+state transitions, authorization, uniqueness changes, relationship operations,
+or a different locking/return contract. They can share lower-level persistence
+code without being replaced by an unrestricted model write. Extra method names
+alone do not prove redundancy.
+
+`prefer-bulk-upsert`, `store-field-update-reuses-upsert`,
+`store-get-delegates-to-bulk-read` and `prefer-psycopg-executemany` own their
+deterministic cases. Review additional source-proven contracts and flows here.
+
 ## Input ownership and transformations
 
 Prefer pure transformations that return replacement values. Report mutation of

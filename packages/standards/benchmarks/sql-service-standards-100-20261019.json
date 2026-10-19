@@ -1,0 +1,957 @@
+{
+  "schema": 1,
+  "date": "2026-10-19",
+  "baseRevision": "f1d891bdc0d6d272fcc390bb1819607727e9be82",
+  "requestedReviewPasses": 100,
+  "completedReviewPasses": 100,
+  "scope": "100 distinct scoped review passes across existing SQL controls, model write contracts, adversarial cases, judgment guidance and release integration. These are not 100 exhaustive rereads of every repository file.",
+  "saturation": "After 100 distinct scoped passes, no reproduced actionable gap remains within the implemented source/type/SQL proof boundaries. Dynamic or unresolved APIs, specialized domain transitions and database execution plans remain judgment work; this is not a completeness claim for arbitrary SQL services.",
+  "rules": [
+    {
+      "key": "python:prefer-bulk-upsert",
+      "code": "SARJ516",
+      "change": "new",
+      "level": "warning",
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_bulk_upsert.py",
+      "test": "packages/python/tests/rules/test_prefer_bulk_upsert.py",
+      "admission": {
+        "failure": "Discarded serial upserts despite a declared compatible bulk API.",
+        "owner": "Typed store command contract; no existing Sarj or Ruff rule proves this relationship.",
+        "gap": "Existing canonical-method checks did not inspect batch callers.",
+        "harm": "Repeated client/database work and independently maintained conflict policy.",
+        "validBoundary": "Unknown, incompatible, dependent, result-consuming and per-row failure contracts remain valid.",
+        "smallestFix": "A syntax/provenance-aware advisory requiring an existing typed bulk method; no autofix."
+      }
+    },
+    {
+      "key": "python:store-field-update-reuses-upsert",
+      "code": "SARJ517",
+      "change": "new",
+      "level": "warning",
+      "source": "packages/python/src/sarj_python_lint/rules/store_field_update_reuses_upsert.py",
+      "test": "packages/python/tests/rules/test_store_field_update_reuses_upsert.py",
+      "admission": {
+        "failure": "A plain same-table field UPDATE duplicates fields already writable through a typed upsert.",
+        "owner": "The model's typed write command.",
+        "gap": "No previous control related setter SQL assignments to the existing command and conflict key.",
+        "harm": "Duplicated persistence policy and drift in validation, timestamps and supported fields.",
+        "validBoundary": "Guards, increments, distinct results, unresolved SQL and immutable/privileged fields are excluded or retained.",
+        "smallestFix": "A PostgreSQL parser and AST advisory; explicitly preserve update-only and unset/null behavior."
+      }
+    },
+    {
+      "key": "python:prefer-psycopg-executemany",
+      "code": "SARJ518",
+      "change": "new",
+      "level": "warning",
+      "source": "packages/python/src/sarj_python_lint/rules/prefer_psycopg_executemany.py",
+      "test": "packages/python/tests/rules/test_prefer_psycopg_executemany.py",
+      "admission": {
+        "failure": "A bare cursor loop repeats one literal parameterized write without row results.",
+        "owner": "Psycopg cursor batching API and store operation.",
+        "gap": "No existing control checks driver provenance, invariant SQL and discarded per-row writes together.",
+        "harm": "Repeated client calls where the driver already supplies batch execution.",
+        "validBoundary": "RETURNING, result consumption, dynamic SQL, execute options and per-row transaction/failure handling remain valid.",
+        "smallestFix": "A driver-proven warning recommending an existing store bulk API or bounded executemany; no autofix."
+      }
+    },
+    {
+      "key": "python:store-get-delegates-to-bulk-read",
+      "code": "SARJ421",
+      "change": "expanded",
+      "level": "warning",
+      "source": "packages/python/src/sarj_python_lint/rules/store_get_delegates_to_bulk_read.py",
+      "test": "packages/python/tests/rules/test_store_get_delegates_to_bulk_read.py",
+      "admission": {
+        "failure": "Singleton upsert maintains a separate path or delegates into a bulk method that loops back.",
+        "owner": "Existing SARJ421 canonical singleton/bulk control.",
+        "gap": "Only read/status pairs were covered.",
+        "harm": "Write-policy drift, repeated singleton work and possible mutual-delegation recursion.",
+        "validBoundary": "Only compatible required command/result signatures qualify; documented access and concurrency differences remain valid.",
+        "smallestFix": "Extend the existing owner and its delegation proof, retaining warning severity."
+      }
+    }
+  ],
+  "upstream": {
+    "searched": [
+      "Ruff rule catalog",
+      "Existing Sarj Python/SQL/TypeScript catalogs",
+      "Psycopg cursor and pipeline API",
+      "PostgreSQL INSERT/ON CONFLICT documentation"
+    ],
+    "reasonForCustomRules": "The new findings require relationships between Python method contracts, bindings, driver provenance and parsed SQL. Generic syntax/performance rules do not establish those relationships.",
+    "references": [
+      "https://docs.astral.sh/ruff/rules/",
+      "https://www.psycopg.org/psycopg3/docs/api/cursors.html",
+      "https://www.psycopg.org/psycopg3/docs/advanced/pipeline.html",
+      "https://www.postgresql.org/docs/current/sql-insert.html",
+      "https://www.postgresql.org/docs/current/mvcc-serialization-failure-handling.html"
+    ]
+  },
+  "release": {
+    "python": "1.48.0",
+    "standards": "8.81.0",
+    "newWarningRules": 3,
+    "errorPromotions": 0,
+    "autofixes": 0,
+    "decision": "ship-warning"
+  },
+  "verification": {
+    "status": "passed-local-qualification",
+    "focusedCases": 192,
+    "commands": [
+      "TMPDIR=<isolated-task-directory> PYTEST_DEBUG_TEMPROOT=<isolated-task-directory> uv run --project packages/standards --frozen pytest -q packages/python/tests/rules/test_prefer_bulk_upsert.py packages/python/tests/rules/test_store_field_update_reuses_upsert.py packages/python/tests/rules/test_prefer_psycopg_executemany.py packages/python/tests/rules/test_store_get_delegates_to_bulk_read.py",
+      "TMPDIR=<isolated-task-directory> PYTEST_DEBUG_TEMPROOT=<isolated-task-directory> mise exec node@24.21.0 terraform@1.15.8 aqua:stackrox/kube-linter@0.8.3 npm:knip@6.41.0 -- make -j4 verify PYTEST_ARGS=--maxfail=1"
+    ],
+    "supersededExploration": "Preliminary scans were stopped for import, syntax and mutual-delegation refinements; incomplete runs are excluded from final corpus/performance counts. An integrated gate was deliberately interrupted for the final locking-contract regression; its partial results are not counted as a passing gate.",
+    "environmentFindings": [
+      {
+        "issue": "Shared ancestor Git markers caused independent temporary fixture projects to be indexed together.",
+        "evidence": "537 affected Python cases pass with task temporary files outside ancestor Git roots; source for those detectors is unchanged.",
+        "resolution": "Use TMPDIR and PYTEST_DEBUG_TEMPROOT pointing to an isolated task directory for final qualification."
+      },
+      {
+        "issue": "The unchanged IaC cross-rule median performance gate rejects legitimate full scans next to inactive prefilters.",
+        "evidence": "The same failure reproduces on the untouched base revision.",
+        "resolution": "The updated main already replaces the median gate with the same-rule warm CPU growth check and a measured quadratic control. Preserve that upstream fix; this change does not modify IaC tests or runtime source."
+      },
+      {
+        "issue": "The packaged test lane found unselected Kubernetes/Knip shims and an unpinned Node interpreter.",
+        "evidence": "Ninety-two packaged failures require installed kube-linter 0.8.3, Knip 6.41.0 and exactly Node 24.21.0 for parser attestation. Other language and docs lanes passed.",
+        "resolution": "Select the already-installed exact tools per command with mise exec; do not change global tool configuration or weaken parser attestation."
+      }
+    ],
+    "probes": {
+      "cases": 18,
+      "truePositives": 6,
+      "trueNegatives": 12,
+      "falsePositives": 0,
+      "falseNegatives": 0,
+      "note": "Includes authored public examples and additional synthetic boundary probes; counts are evidence, not a claim of independent semantic coverage.",
+      "problem": "sql-service-write-contracts"
+    },
+    "performance": {
+      "baseline": {
+        "firstProcess": {
+          "wallSeconds": 21.801417737995507,
+          "cpuSeconds": 11.370874782,
+          "peakRssKiB": 484420,
+          "findings": 0,
+          "files": 50,
+          "bytes": 783999
+        },
+        "warmMedian": {
+          "wallSeconds": 29.50932788299542,
+          "cpuSeconds": 12.095063492000001,
+          "peakRssKiB": 484620
+        },
+        "files": 50,
+        "bytes": 783999
+      },
+      "candidate": {
+        "firstProcess": {
+          "wallSeconds": 19.3255876070034,
+          "cpuSeconds": 11.072893462000001,
+          "peakRssKiB": 484288,
+          "findings": 0,
+          "files": 50,
+          "bytes": 783999
+        },
+        "warmMedian": {
+          "wallSeconds": 37.44644478600094,
+          "cpuSeconds": 13.026325682,
+          "peakRssKiB": 484624
+        },
+        "files": 50,
+        "bytes": 783999
+      },
+      "cpuRatio": 1.076995229550962,
+      "method": "50 tracked Python files selected by sorted sha256(relative path), first process plus three fresh-process warm repeats, alternating baseline/candidate order; OS caches were not flushed; canonical-upsert expansion is included in both groups",
+      "interpretation": "Warm CPU increased about 7.7%; peak RSS was effectively unchanged. Warm wall time increased about 26.9% while other validation was running, so no speed improvement or isolated wall-time comparison is claimed. This measurement preceded the final narrowing of the canonical-upsert cycle condition; it is not presented as an exact-final-tree benchmark."
+    },
+    "focusedResult": "192 passed in 11.10s after the final locking-contract refinement.",
+    "integrationRepairs": [
+      "Reserve SARJ516-SARJ518 in the Python code ledger as well as the combined rule ledger.",
+      "Add one calibration task per new live rule; the full packaged suite caught the missing entries.",
+      "Retain a distinct singleton locking contract while rejecting mutual upsert delegation."
+    ],
+    "repositoryGate": {
+      "status": "passed",
+      "exitCode": 0,
+      "sourceBaseRevision": "2eec87cd22cf15b06b3960e5063f0d96fc8d422a",
+      "passedCases": {
+        "bootstrap": 31,
+        "contracts": 46,
+        "python": 19475,
+        "sql": 1752,
+        "iac": 1448,
+        "typescript": 9970,
+        "packagedStandards": 6263
+      },
+      "existingSkips": {
+        "sql": 4,
+        "packagedStandards": 9
+      },
+      "otherChecks": "Docs formatting/catalog/lint/types/build/distribution, Ruff, BasedPyright/TypeScript, all-rule self-linting, shell, version and repository checks pass. The local private-reference gate delegates to trusted CI as configured by the repository."
+    },
+    "affectedStandardsCases": {
+      "passed": 234,
+      "elapsedSeconds": 206.48
+    },
+    "requiredBeforeMerge": [
+      "code-standards --root . maintain rules changes --before origin/main --after HEAD",
+      "code-standards --root . maintain release causality --before origin/main --after HEAD",
+      "Green exact-head CI before merge."
+    ],
+    "upstreamSyncs": [
+      {
+        "revision": "05125e167a98f15c35b33ef970ad77e8834552f8",
+        "scope": "Unrelated rollout retry-state fix and release metadata. Python source/tests are byte-identical to the successful full gate.",
+        "focusedCases": 88,
+        "elapsedSeconds": 6.23,
+        "result": "passed; formatted examples also pass their native check"
+      },
+      {
+        "revision": "93c191c1e6f49032c2c74ff8c4fa9edcb3661a59",
+        "scope": "CI scaffolding and CLI-page update retained during rebase. Python rule source/tests remain byte-identical to the successful full gate. The upstream CLI artifact differs only in release-version text; the 8.81.0 parser graph and formatted inputs are unchanged.",
+        "focusedCases": 377,
+        "expectedSkips": 9,
+        "elapsedSeconds": 274.56,
+        "result": "passed"
+      }
+    ]
+  },
+  "corpora": {
+    "status": "complete",
+    "privacy": "Private repository names, paths, digests, revisions and matches remain in an owner-readable local overlay. Only aggregate evidence is committed.",
+    "limitations": "No additional mature public checkout was available locally; no external repository was cloned or fetched for calibration. Zero new natural matches does not measure recall; synthetic positives verify the supported proof boundary.",
+    "corpora": 3,
+    "batches": 16,
+    "files": 3713,
+    "bytes": 36790305,
+    "elapsedSeconds": 1012.372,
+    "counts": {
+      "SARJ421": 3
+    },
+    "batchSize": 250,
+    "classification": {
+      "legacyUnchanged": 3,
+      "newCandidateMatches": 0,
+      "duplicateLocations": 0,
+      "inspected": 3
+    },
+    "fieldRuleFollowup": {
+      "corpora": 3,
+      "batches": 16,
+      "files": 3713,
+      "bytes": 36790305,
+      "elapsedSeconds": 81.052,
+      "counts": {},
+      "batchSize": 250
+    },
+    "revisionScope": "The combined four-rule run used the pinned source inputs. After restricting SQL extraction to method bodies, the affected field-update rule was requalified over the same inputs. The subsequent main sync changes generated release artifacts and unrelated detector source; the final repository gate evaluates the integrated tree. The final canonical-upsert refinement only narrows write diagnostics when the singleton has a distinct lock contract; it cannot add new corpus matches. The unchanged read diagnostics were classified against the original rule."
+  },
+  "passes": [
+    {
+      "pass": 1,
+      "group": "discovery",
+      "focus": "Referenced-loop API availability",
+      "evidence": "Checked the supplied review's store contract; no bulk API is invented when it is absent.",
+      "result": "checked"
+    },
+    {
+      "pass": 2,
+      "group": "discovery",
+      "focus": "Existing SQL controls",
+      "evidence": "Reviewed conflict policy, transaction ownership, row factories, pagination and SQL architecture controls before adding rules.",
+      "result": "checked"
+    },
+    {
+      "pass": 3,
+      "group": "discovery",
+      "focus": "Canonical-write gap",
+      "evidence": "SARJ421 covered reads and status writes but omitted compatible upsert/upsert_many contracts.",
+      "result": "checked"
+    },
+    {
+      "pass": 4,
+      "group": "discovery",
+      "focus": "Upstream overlap",
+      "evidence": "Ruff's syntax/performance rules cannot prove a source-declared compatible model bulk API; no upstream rule is duplicated.",
+      "result": "checked"
+    },
+    {
+      "pass": 5,
+      "group": "discovery",
+      "focus": "Driver batch semantics",
+      "evidence": "Verified Psycopg cursor executemany and pipeline behavior against official driver documentation.",
+      "result": "checked"
+    },
+    {
+      "pass": 6,
+      "group": "discovery",
+      "focus": "PostgreSQL conflict semantics",
+      "evidence": "Verified ON CONFLICT duplicate-key cardinality and conditional RETURNING behavior against PostgreSQL documentation.",
+      "result": "checked"
+    },
+    {
+      "pass": 7,
+      "group": "discovery",
+      "focus": "Owning repository",
+      "evidence": "Routed source/configuration semantics to code-standards rather than Git-tree policy.",
+      "result": "checked"
+    },
+    {
+      "pass": 8,
+      "group": "discovery",
+      "focus": "Field-setter admission",
+      "evidence": "Reproduced duplicate same-table bound field UPDATEs already represented by an upsert command.",
+      "result": "checked"
+    },
+    {
+      "pass": 9,
+      "group": "discovery",
+      "focus": "Domain-operation boundary",
+      "evidence": "Separated plain assignments from increments, guarded transitions, tenant predicates and version checks.",
+      "result": "checked"
+    },
+    {
+      "pass": 10,
+      "group": "discovery",
+      "focus": "Adoption policy",
+      "evidence": "Selected warning-first diagnostics and no autofix because batch/failure and insert-versus-update contracts require review.",
+      "result": "checked"
+    },
+    {
+      "pass": 11,
+      "group": "bulk-upsert",
+      "focus": "Missing bulk method",
+      "evidence": "Negative fixtures require an actual upsert_many declaration.",
+      "result": "checked"
+    },
+    {
+      "pass": 12,
+      "group": "bulk-upsert",
+      "focus": "Matching input item",
+      "evidence": "Reject mismatched scalar and collection item annotations.",
+      "result": "checked"
+    },
+    {
+      "pass": 13,
+      "group": "bulk-upsert",
+      "focus": "Matching result item",
+      "evidence": "Reject mismatched scalar and bulk result annotations.",
+      "result": "checked"
+    },
+    {
+      "pass": 14,
+      "group": "bulk-upsert",
+      "focus": "Sync/async compatibility",
+      "evidence": "Match synchronous and asynchronous method contracts and call forms.",
+      "result": "checked"
+    },
+    {
+      "pass": 15,
+      "group": "bulk-upsert",
+      "focus": "Extra required context",
+      "evidence": "Reject bulk methods requiring additional context instead of guessing argument values.",
+      "result": "checked"
+    },
+    {
+      "pass": 16,
+      "group": "bulk-upsert",
+      "focus": "Loop-dependent command",
+      "evidence": "Recognize both direct loop items and constructed commands depending on the item.",
+      "result": "checked"
+    },
+    {
+      "pass": 17,
+      "group": "bulk-upsert",
+      "focus": "Invariant command",
+      "evidence": "Skip repeated fixed commands whose relationship to the loop is not proven.",
+      "result": "checked"
+    },
+    {
+      "pass": 18,
+      "group": "bulk-upsert",
+      "focus": "Discarded results",
+      "evidence": "Skip writes whose result is assigned or consumed within the loop.",
+      "result": "checked"
+    },
+    {
+      "pass": 19,
+      "group": "bulk-upsert",
+      "focus": "Additional effects",
+      "evidence": "Skip loop bodies with notifications or additional statements.",
+      "result": "checked"
+    },
+    {
+      "pass": 20,
+      "group": "bulk-upsert",
+      "focus": "Conditional execution",
+      "evidence": "Preserve conditional upsert branches rather than inferring independent work.",
+      "result": "checked"
+    },
+    {
+      "pass": 21,
+      "group": "bulk-upsert",
+      "focus": "Per-row exception contracts",
+      "evidence": "Preserve try/except and per-row error handling.",
+      "result": "checked"
+    },
+    {
+      "pass": 22,
+      "group": "bulk-upsert",
+      "focus": "Loop exits and else",
+      "evidence": "Skip break/else and other unsupported control flow.",
+      "result": "checked"
+    },
+    {
+      "pass": 23,
+      "group": "bulk-upsert",
+      "focus": "Async input streams",
+      "evidence": "Exclude async for rather than materializing an unbounded stream.",
+      "result": "checked"
+    },
+    {
+      "pass": 24,
+      "group": "bulk-upsert",
+      "focus": "Keyword argument binding",
+      "evidence": "Recognize the declared singleton input keyword.",
+      "result": "checked"
+    },
+    {
+      "pass": 25,
+      "group": "bulk-upsert",
+      "focus": "Starred call arguments",
+      "evidence": "Reject unknown positional/keyword expansions.",
+      "result": "checked"
+    },
+    {
+      "pass": 26,
+      "group": "bulk-upsert",
+      "focus": "Rebound store variables",
+      "evidence": "Do not treat a rebound variable's old annotation as current API availability.",
+      "result": "checked"
+    },
+    {
+      "pass": 27,
+      "group": "bulk-upsert",
+      "focus": "Constructor injection",
+      "evidence": "Resolve a uniquely assigned constructor-injected store attribute.",
+      "result": "checked"
+    },
+    {
+      "pass": 28,
+      "group": "bulk-upsert",
+      "focus": "Receiver and attribute ownership",
+      "evidence": "Review unique self-attribute injection and reject rebound self receivers.",
+      "result": "checked"
+    },
+    {
+      "pass": 29,
+      "group": "bulk-upsert",
+      "focus": "Imported contract stability",
+      "evidence": "Resolve first-party aliases without importing application code; reject rebound or mutated source owners.",
+      "result": "checked"
+    },
+    {
+      "pass": 30,
+      "group": "bulk-upsert",
+      "focus": "Generated and trivial iteration",
+      "evidence": "Exclude generated/vendor code and statically empty/single-item literal loops.",
+      "result": "checked"
+    },
+    {
+      "pass": 31,
+      "group": "field-updates",
+      "focus": "Declared command fields",
+      "evidence": "Require locally source-resolved writable command fields.",
+      "result": "checked"
+    },
+    {
+      "pass": 32,
+      "group": "field-updates",
+      "focus": "Existing upsert coverage",
+      "evidence": "Do not flag a field absent from the upsert command or its EXCLUDED assignments.",
+      "result": "checked"
+    },
+    {
+      "pass": 33,
+      "group": "field-updates",
+      "focus": "Same target identity",
+      "evidence": "Require the same table and explicit schema identity.",
+      "result": "checked"
+    },
+    {
+      "pass": 34,
+      "group": "field-updates",
+      "focus": "Quoted table case",
+      "evidence": "Preserve PostgreSQL quoted identifier case.",
+      "result": "checked"
+    },
+    {
+      "pass": 35,
+      "group": "field-updates",
+      "focus": "Quoted column case",
+      "evidence": "Do not collapse distinct quoted/unquoted column names.",
+      "result": "checked"
+    },
+    {
+      "pass": 36,
+      "group": "field-updates",
+      "focus": "Bound field assignments",
+      "evidence": "Require direct placeholder assignments rather than arbitrary expressions.",
+      "result": "checked"
+    },
+    {
+      "pass": 37,
+      "group": "field-updates",
+      "focus": "EXCLUDED correspondence",
+      "evidence": "Require the same source and target field in upsert assignments.",
+      "result": "checked"
+    },
+    {
+      "pass": 38,
+      "group": "field-updates",
+      "focus": "Omission/null transformations",
+      "evidence": "Preserve COALESCE and other partial-update contracts.",
+      "result": "checked"
+    },
+    {
+      "pass": 39,
+      "group": "field-updates",
+      "focus": "Conditional upsert",
+      "evidence": "Exclude conflict WHERE predicates and partial conflict inference.",
+      "result": "checked"
+    },
+    {
+      "pass": 40,
+      "group": "field-updates",
+      "focus": "Optimistic concurrency",
+      "evidence": "Preserve version predicates in UPDATE.",
+      "result": "checked"
+    },
+    {
+      "pass": 41,
+      "group": "field-updates",
+      "focus": "Tenant predicates",
+      "evidence": "Preserve additional tenant/authorization predicates instead of discarding them.",
+      "result": "checked"
+    },
+    {
+      "pass": 42,
+      "group": "field-updates",
+      "focus": "Changed-row predicates",
+      "evidence": "Preserve IS DISTINCT FROM and changed-row return semantics.",
+      "result": "checked"
+    },
+    {
+      "pass": 43,
+      "group": "field-updates",
+      "focus": "Atomic increments",
+      "evidence": "Exclude read-modify-write arithmetic and increment operations.",
+      "result": "checked"
+    },
+    {
+      "pass": 44,
+      "group": "field-updates",
+      "focus": "Value transformations",
+      "evidence": "Exclude normalization/function expressions rather than claiming equivalent writes.",
+      "result": "checked"
+    },
+    {
+      "pass": 45,
+      "group": "field-updates",
+      "focus": "Joins, CTEs and statement ownership",
+      "evidence": "Reject joins, CTEs and multiple executable statements. Definition-time SQL in defaults is not a method-body write.",
+      "result": "checked"
+    },
+    {
+      "pass": 46,
+      "group": "field-updates",
+      "focus": "Unbounded writes",
+      "evidence": "An UPDATE without a key predicate cannot establish equivalence.",
+      "result": "checked"
+    },
+    {
+      "pass": 47,
+      "group": "field-updates",
+      "focus": "Scalar versus bulk identity",
+      "evidence": "Exclude ANY predicates, OR predicates and unsupported key relationships.",
+      "result": "checked"
+    },
+    {
+      "pass": 48,
+      "group": "field-updates",
+      "focus": "Unsupported conflict identity",
+      "evidence": "Leave ON CONSTRAINT, expression keys and unresolved identity to explicit review.",
+      "result": "checked"
+    },
+    {
+      "pass": 49,
+      "group": "field-updates",
+      "focus": "Result contract",
+      "evidence": "Require matching setter and upsert result annotations.",
+      "result": "checked"
+    },
+    {
+      "pass": 50,
+      "group": "field-updates",
+      "focus": "Update-only behavior",
+      "evidence": "Keep an explicit warning about missing rows, creation and unset/null behavior; never autofix into accidental insertion.",
+      "result": "checked"
+    },
+    {
+      "pass": 51,
+      "group": "driver-batching",
+      "focus": "Driver provenance",
+      "evidence": "Require a typed, import-proven Psycopg cursor.",
+      "result": "checked"
+    },
+    {
+      "pass": 52,
+      "group": "driver-batching",
+      "focus": "Aliases and sync cursors",
+      "evidence": "Exercise imported aliases and synchronous cursor calls.",
+      "result": "checked"
+    },
+    {
+      "pass": 53,
+      "group": "driver-batching",
+      "focus": "Cursor rebinding",
+      "evidence": "Invalidate an earlier annotation when the cursor variable is rebound.",
+      "result": "checked"
+    },
+    {
+      "pass": 54,
+      "group": "driver-batching",
+      "focus": "Dynamic query text",
+      "evidence": "Exclude f-strings, row-dependent SQL and runtime fragments.",
+      "result": "checked"
+    },
+    {
+      "pass": 55,
+      "group": "driver-batching",
+      "focus": "Static SQL wrapper",
+      "evidence": "Recognize import-proven psycopg.sql.SQL literal wrappers.",
+      "result": "checked"
+    },
+    {
+      "pass": 56,
+      "group": "driver-batching",
+      "focus": "Shadowed wrapper/namespace",
+      "evidence": "Reject unrelated/local SQL wrappers and mutated driver namespaces.",
+      "result": "checked"
+    },
+    {
+      "pass": 57,
+      "group": "driver-batching",
+      "focus": "Statement kind",
+      "evidence": "Only literal INSERT/UPDATE/DELETE writes qualify; SELECT and comment text do not.",
+      "result": "checked"
+    },
+    {
+      "pass": 58,
+      "group": "driver-batching",
+      "focus": "RETURNING ownership",
+      "evidence": "Do not transform per-row result-set contracts.",
+      "result": "checked"
+    },
+    {
+      "pass": 59,
+      "group": "driver-batching",
+      "focus": "Row result consumption",
+      "evidence": "Skip loops that fetch rows or perform additional cursor operations.",
+      "result": "checked"
+    },
+    {
+      "pass": 60,
+      "group": "driver-batching",
+      "focus": "Per-row transaction/failure boundaries",
+      "evidence": "Preserve transaction and exception blocks inside the loop.",
+      "result": "checked"
+    },
+    {
+      "pass": 61,
+      "group": "driver-batching",
+      "focus": "Streaming and backpressure",
+      "evidence": "Exclude async streams and document bounded parameter batches.",
+      "result": "checked"
+    },
+    {
+      "pass": 62,
+      "group": "driver-batching",
+      "focus": "Execute options",
+      "evidence": "Do not infer equivalence for unsupported execute options such as prepare overrides.",
+      "result": "checked"
+    },
+    {
+      "pass": 63,
+      "group": "driver-batching",
+      "focus": "Bound parameter shapes",
+      "evidence": "Cover positional tuples and named placeholder mappings.",
+      "result": "checked"
+    },
+    {
+      "pass": 64,
+      "group": "driver-batching",
+      "focus": "Parameter dependence",
+      "evidence": "Require bound values to depend on the loop target.",
+      "result": "checked"
+    },
+    {
+      "pass": 65,
+      "group": "driver-batching",
+      "focus": "Malformed/generated source",
+      "evidence": "Keep malformed input and generated/vendor boundaries quiet.",
+      "result": "checked"
+    },
+    {
+      "pass": 66,
+      "group": "canonical-upsert",
+      "focus": "Compatible model contracts",
+      "evidence": "Add upsert/upsert_many to the existing singleton-to-bulk owner.",
+      "result": "checked"
+    },
+    {
+      "pass": 67,
+      "group": "canonical-upsert",
+      "focus": "Independent write paths",
+      "evidence": "Diagnose separately maintained singleton implementations.",
+      "result": "checked"
+    },
+    {
+      "pass": 68,
+      "group": "canonical-upsert",
+      "focus": "Awaited delegation",
+      "evidence": "Accept an awaited one-element delegation to the canonical bulk method.",
+      "result": "checked"
+    },
+    {
+      "pass": 69,
+      "group": "canonical-upsert",
+      "focus": "Scalar result projection",
+      "evidence": "Accept supported result extraction after a bulk write.",
+      "result": "checked"
+    },
+    {
+      "pass": 70,
+      "group": "canonical-upsert",
+      "focus": "Keyword delegation",
+      "evidence": "Preserve input binding when the bulk parameter uses a different name.",
+      "result": "checked"
+    },
+    {
+      "pass": 71,
+      "group": "canonical-upsert",
+      "focus": "Wrong command forwarding",
+      "evidence": "Reject a delegation that forwards another command.",
+      "result": "checked"
+    },
+    {
+      "pass": 72,
+      "group": "canonical-upsert",
+      "focus": "Multiple-row forwarding",
+      "evidence": "Do not treat an arbitrary/multiple-row call as a singleton wrapper.",
+      "result": "checked"
+    },
+    {
+      "pass": 73,
+      "group": "canonical-upsert",
+      "focus": "Unawaited forwarding",
+      "evidence": "Reject an unawaited async bulk call as proof of delegation.",
+      "result": "checked"
+    },
+    {
+      "pass": 74,
+      "group": "canonical-upsert",
+      "focus": "Dead forwarding",
+      "evidence": "Do not accept a dead conditional call as the canonical implementation.",
+      "result": "checked"
+    },
+    {
+      "pass": 75,
+      "group": "canonical-upsert",
+      "focus": "Inverted and cyclic delegation",
+      "evidence": "Require a real batch primitive; detect bulk-to-singleton loops even when the singleton also delegates back.",
+      "result": "checked"
+    },
+    {
+      "pass": 76,
+      "group": "judgment-guidance",
+      "focus": "Three-state update contract",
+      "evidence": "Document omitted, explicit null and supplied values as separate states.",
+      "result": "checked"
+    },
+    {
+      "pass": 77,
+      "group": "judgment-guidance",
+      "focus": "Writable versus privileged fields",
+      "evidence": "Keep immutable/server-owned/privileged fields out of general caller write commands.",
+      "result": "checked"
+    },
+    {
+      "pass": 78,
+      "group": "judgment-guidance",
+      "focus": "Batch bounds and fan-out",
+      "evidence": "Review parameter, payload, pool and lock budgets without prescribing a universal batch size.",
+      "result": "checked"
+    },
+    {
+      "pass": 79,
+      "group": "judgment-guidance",
+      "focus": "Duplicate conflict keys",
+      "evidence": "Require an explicit deterministic reject/merge policy before set-based upsert.",
+      "result": "checked"
+    },
+    {
+      "pass": 80,
+      "group": "judgment-guidance",
+      "focus": "Result mapping and empty input",
+      "evidence": "Document key-based result association, empty batches, partial failure and atomicity.",
+      "result": "checked"
+    },
+    {
+      "pass": 81,
+      "group": "judgment-guidance",
+      "focus": "Transaction ownership",
+      "evidence": "Require the actual shared connection/transaction boundary for logical multi-write operations.",
+      "result": "checked"
+    },
+    {
+      "pass": 82,
+      "group": "judgment-guidance",
+      "focus": "Complete-transaction retry",
+      "evidence": "Use structured error classification and retry the complete transaction with bounded backoff.",
+      "result": "checked"
+    },
+    {
+      "pass": 83,
+      "group": "judgment-guidance",
+      "focus": "Atomic domain transitions",
+      "evidence": "Retain increments, compare-and-swap and guarded state transitions.",
+      "result": "checked"
+    },
+    {
+      "pass": 84,
+      "group": "judgment-guidance",
+      "focus": "Access-path evidence",
+      "evidence": "Use representative query plans, tenant filters, index selectivity and referencing-side foreign-key costs.",
+      "result": "checked"
+    },
+    {
+      "pass": 85,
+      "group": "judgment-guidance",
+      "focus": "Resource/result semantics",
+      "evidence": "Review streaming, backpressure, deadlines, pool waits, RETURNING and no-op audit effects.",
+      "result": "checked"
+    },
+    {
+      "pass": 86,
+      "group": "integration-and-closure",
+      "focus": "Exact suppression",
+      "evidence": "Exercise local exact-code waivers without suppressing unrelated rules.",
+      "result": "checked"
+    },
+    {
+      "pass": 87,
+      "group": "integration-and-closure",
+      "focus": "Warning CLI behavior",
+      "evidence": "Verify positive warning findings retain exit status zero.",
+      "result": "checked"
+    },
+    {
+      "pass": 88,
+      "group": "integration-and-closure",
+      "focus": "Native documentation examples",
+      "evidence": "Execute source-owned positive and negative public examples through native rule adapters.",
+      "result": "checked"
+    },
+    {
+      "pass": 89,
+      "group": "integration-and-closure",
+      "focus": "Registry and derived artifacts",
+      "evidence": "Synchronize warning lifecycle, rule inventory, ledger, public catalog and formatted examples.",
+      "result": "checked"
+    },
+    {
+      "pass": 90,
+      "group": "integration-and-closure",
+      "focus": "Release consistency",
+      "evidence": "Update Python/root versions, bundle/compatibility pins, adoption metadata and lockfiles together.",
+      "result": "checked"
+    },
+    {
+      "pass": 91,
+      "group": "integration-and-closure",
+      "focus": "Focused regression closure",
+      "evidence": "All final focused write-rule tests must pass.",
+      "result": "checked"
+    },
+    {
+      "pass": 92,
+      "group": "integration-and-closure",
+      "focus": "Implementation self-checks",
+      "evidence": "Ruff, BasedPyright and all shipped custom rules must accept the implementation.",
+      "result": "checked"
+    },
+    {
+      "pass": 93,
+      "group": "integration-and-closure",
+      "focus": "Standards corpus closure",
+      "evidence": "Verify the pinned tracked Python/SQL source corpus and its exact content digest.",
+      "result": "checked"
+    },
+    {
+      "pass": 94,
+      "group": "integration-and-closure",
+      "focus": "First consumer corpus closure",
+      "evidence": "Evaluate the first private corpus in isolated bounded native processes.",
+      "result": "checked"
+    },
+    {
+      "pass": 95,
+      "group": "integration-and-closure",
+      "focus": "Second consumer corpus closure",
+      "evidence": "Evaluate the second private corpus independently with verified pins.",
+      "result": "checked"
+    },
+    {
+      "pass": 96,
+      "group": "integration-and-closure",
+      "focus": "Recall and inspected findings",
+      "evidence": "Use positive seeds and classify every inspected candidate finding; retain deliberate false negatives.",
+      "result": "checked"
+    },
+    {
+      "pass": 97,
+      "group": "integration-and-closure",
+      "focus": "Diagnostic interaction",
+      "evidence": "Check duplicate locations and separate existing advisories from new write-rule findings.",
+      "result": "checked"
+    },
+    {
+      "pass": 98,
+      "group": "integration-and-closure",
+      "focus": "Performance closure",
+      "evidence": "Compare first-process and repeated warm baseline/candidate CPU, wall time and peak RSS.",
+      "result": "checked"
+    },
+    {
+      "pass": 99,
+      "group": "integration-and-closure",
+      "focus": "Canonical repository gate",
+      "evidence": "The complete make verify gate exits zero with exact installed tools, all native and packaged test lanes, docs, type/lint/self-lint and repository checks. Runtime selection and both code/calibration ledgers are resolved without weakening the checks.",
+      "result": "checked"
+    },
+    {
+      "pass": 100,
+      "group": "integration-and-closure",
+      "focus": "Final supported-scope review",
+      "evidence": "The final diff review reproduced and fixed a false warning for a distinct singleton lock contract while retaining cycle detection. All 192 focused cases pass. No further reproduced gap remains in the supported boundaries. Upstream syncs pass 88 rollout/calibration cases and 377 adoption cases, preserving byte-identical Python rule source/tests from the green full gate.",
+      "result": "checked"
+    }
+  ],
+  "integrationRevision": "93c191c1e6f49032c2c74ff8c4fa9edcb3661a59"
+}

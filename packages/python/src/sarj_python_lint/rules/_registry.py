@@ -221,14 +221,20 @@ from sarj_python_lint.rules.no_invalid_pydantic_validator_return import NoInvali
 from sarj_python_lint.rules.no_partial_type_is import NoPartialTypeIs
 from sarj_python_lint.rules.no_shallow_record_type_guard import NoShallowRecordTypeGuard
 from sarj_python_lint.rules.no_unknown_pydantic_validator_field import NoUnknownPydanticValidatorField
+from sarj_python_lint.rules.prefer_bulk_upsert import PreferBulkUpsert
 from sarj_python_lint.rules.prefer_discriminated_model_union import PreferDiscriminatedModelUnion
+from sarj_python_lint.rules.prefer_psycopg_executemany import PreferPsycopgExecutemany
 from sarj_python_lint.rules.redundant_test_constructor_forwarder import RedundantTestConstructorForwarder
 from sarj_python_lint.rules.repeated_unimplemented_test_contract import RepeatedUnimplementedTestContract
+from sarj_python_lint.rules.store_field_update_reuses_upsert import StoreFieldUpdateReusesUpsert
 from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOracle
 
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        PreferBulkUpsert.id: PreferBulkUpsert,
+        PreferPsycopgExecutemany.id: PreferPsycopgExecutemany,
+        StoreFieldUpdateReusesUpsert.id: StoreFieldUpdateReusesUpsert,
         NoExplicitTestOracle.id: NoExplicitTestOracle,
         PreferDiscriminatedModelUnion.id: PreferDiscriminatedModelUnion,
         NoInvalidPydanticBypass.id: NoInvalidPydanticBypass,
