@@ -231,6 +231,7 @@
       "named-child-schema-type",
       "no-bare-return-from-test-catch",
       "no-bespoke-api-case-conversion",
+      "no-boolean-selector-parameter",
       "no-broad-return-type",
       "no-client-side-data-fetching",
       "no-comment-cruft",

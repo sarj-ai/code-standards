@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/typescript/no-boolean-selector-parameter",
+      "family": "typescript",
+      "ruleId": "no-boolean-selector-parameter",
+      "state": "complete",
+      "evidence": "Scoped opinionated-design follow-up on 2026-10-19. One hundred reviewed coded questions cover selector syntax, independently authored callback and inherited contracts, returned assignments and existing Python policy; they are not one hundred independent precision observations. Native typed regression cases exercise boolean data mappings, stable same-operation data selection, callback forwarding and immutable callback aliases, including TSX contracts and effectful near misses. The first bounded corpus trial exposed three legitimate callback-contract false positives; exact-shape regressions and conservative contract proof remove them. A fresh final replay under Node 24.21.0 inspects 1,695 files / 8,488,613 bytes in eight fresh processes capped at 250 files: zero candidate diagnostics or fatal errors. All 46 unchanged inline-directive diagnostics are classified separately. Positive fixtures prove activation; zero natural positives do not establish empirical precision or recall. Corpus identities, source and immutable pins remain private. Canonical verification and latest exact-head CI remain required.",
+      "outcome": "Retain WARNING without autofix. Adapt maintained SonarJS S2301 and add concise-arrow coverage while preserving boolean data, syntactic value mappings, setters and independently proven callback or inherited contracts. Preserve the native block-body on[A-Z] property exemption as a documented blind spot. Property/getter effects, mutable aliases and unsupported member-reference or control-flow proof remain explicit limits; no claim that every boolean parameter is a design defect, and no intent-changing API rewrite."
+    },
+    {
       "task": "rule-audit/python/require-pydantic-for-mapping-shape",
       "family": "python",
       "ruleId": "require-pydantic-for-mapping-shape",

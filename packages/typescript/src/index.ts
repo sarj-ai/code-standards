@@ -9,6 +9,7 @@ import noKnownValueWidening from "./rules/no-known-value-widening.js";
 import noInvalidTypedMutation from "./rules/no-invalid-typed-mutation.js";
 import noContradictoryTypePredicate from "./rules/no-contradictory-type-predicate.js";
 import noPartialTypePredicate from "./rules/no-partial-type-predicate.js";
+import noBooleanSelectorParameter from "./rules/no-boolean-selector-parameter.js";
 import noInvalidZodCustomParse from "./rules/no-invalid-zod-custom-parse.js";
 import noContradictoryOverloadReturn from "./rules/no-contradictory-overload-return.js";
 /**
@@ -143,6 +144,7 @@ const RULES = {
   "no-invalid-typed-mutation": noInvalidTypedMutation,
   "no-contradictory-type-predicate": noContradictoryTypePredicate,
   "no-partial-type-predicate": noPartialTypePredicate,
+  "no-boolean-selector-parameter": noBooleanSelectorParameter,
   "no-invalid-zod-custom-parse": noInvalidZodCustomParse,
   "no-contradictory-overload-return": noContradictoryOverloadReturn,
   "require-button-accessible-name": requireButtonAccessibleName,
@@ -278,6 +280,7 @@ const LIBRARY_IMPORT_POLICY = ["error", {
 const ADVISORY_RULES = [
   "@sarj/excessive-commentary",
   "@sarj/no-bespoke-api-case-conversion",
+  "@sarj/no-boolean-selector-parameter",
   "@sarj/no-contradictory-overload-return",
   "@sarj/no-contradictory-type-predicate",
   "@sarj/no-cors-wildcard-with-credentials",
@@ -308,6 +311,7 @@ const RECOMMENDED_RULES = {
   "@sarj/no-invalid-typed-mutation": "warn",
   "@sarj/no-contradictory-type-predicate": "warn",
   "@sarj/no-partial-type-predicate": "warn",
+  "@sarj/no-boolean-selector-parameter": "warn",
   "@sarj/no-invalid-zod-custom-parse": "warn",
   "@sarj/no-contradictory-overload-return": "warn",
   "@sarj/require-button-accessible-name": "error",
@@ -433,6 +437,7 @@ const STRICT_RULES = {
   "@sarj/no-invalid-typed-mutation": "warn",
   "@sarj/no-contradictory-type-predicate": "warn",
   "@sarj/no-partial-type-predicate": "warn",
+  "@sarj/no-boolean-selector-parameter": "warn",
   "@sarj/no-invalid-zod-custom-parse": "warn",
   "@sarj/no-contradictory-overload-return": "warn",
   "@sarj/require-button-accessible-name": "error",

@@ -10,6 +10,7 @@ export default defineConfig({
   shims: true,
   external: [
     "eslint",
+    "eslint-plugin-sonarjs",
     "typescript",
     "@typescript-eslint/utils",
     "@typescript-eslint/parser",

@@ -85,9 +85,9 @@ const UNTYPED_RULE_OVERRIDES = Object.fromEntries(
     .filter(([, rule]) => rule.meta?.docs?.requiresTypeChecking === true)
     .map(([name]) => [`@typescript-eslint/${name}`, "off"]),
 );
-// S2301 needs the compiler's parameter type, including inferred boolean defaults
+// Boolean selector detection requires compiler parameter types, including inferred defaults
 // and aliases. Keep syntax-only configuration files independent of a TS project.
-UNTYPED_RULE_OVERRIDES["sonarjs/no-selector-parameter"] = "off";
+UNTYPED_RULE_OVERRIDES["@sarj/no-boolean-selector-parameter"] = "off";
 const UNTYPED_DYNAMIC_EXECUTION_RULES = {
   "no-implied-eval": "error",
   "no-new-func": "error",
@@ -1393,7 +1393,6 @@ export function createConfig(options = {}) {
       // A boolean that selects between operations hides intent at the call site.
       // This upstream advisory preserves boolean data and named options. It is
       // deliberately narrower than banning every boolean in a signature.
-      "sonarjs/no-selector-parameter": "warn",
       "array-callback-return": "error",
       "no-fallthrough": "error",
       "no-console": ["error", { allow: ["warn", "error"] }],
@@ -1473,6 +1472,9 @@ export function createConfig(options = {}) {
       "@sarj/no-invalid-typed-mutation": "warn",
       "@sarj/no-contradictory-type-predicate": "warn",
       "@sarj/no-partial-type-predicate": "warn",
+      // One calibrated owner prevents duplicate native selector reports.
+      "sonarjs/no-selector-parameter": "off",
+      "@sarj/no-boolean-selector-parameter": "warn",
       "@sarj/no-invalid-zod-custom-parse": "warn",
       "@sarj/no-contradictory-overload-return": "warn",
       "@sarj/no-broad-return-type": "error",
@@ -1697,10 +1699,8 @@ export function createConfig(options = {}) {
       // This rule has no JSX exception and would undo the async-handler policy.
       // no-misused-promises still checks non-JSX promise callback boundaries.
       "@typescript-eslint/strict-void-return": "off",
-      // S2301 exempts inline callbacks but reports the same required boolean
-      // contract when a named handler is passed to a component. Keep JSX files
-      // exempt until upstream can establish those references as callbacks.
-      "sonarjs/no-selector-parameter": "off",
+      // The boolean selector adapter checks JSX helpers while preserving
+      // independently declared component callback contracts.
     },
   },
   // React component IDENTIFIERS must be PascalCase for JSX to distinguish them
