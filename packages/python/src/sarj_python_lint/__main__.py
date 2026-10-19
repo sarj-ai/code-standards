@@ -171,10 +171,15 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
         "SARJ094": frozenset({"SARJ008", "SARJ447"}),
         "SARJ095": frozenset({"SARJ468"}),
         "SARJ099": frozenset({"SARJ420"}),
+        # A proven external or nested request boundary already requires schema
+        # validation at this field read. Retain standalone shape advice when
+        # that more specific rule is unselected or locally suppressed.
+        "SARJ411": frozenset({"SARJ521"}),
         # Any-valued mappings are the stronger correctness failure. SARJ008
         # still owns every fixed dictionary return when selected alone, while
         # an all-rules run emits one actionable diagnostic for this overlap.
         "SARJ447": frozenset({"SARJ008"}),
+        "SARJ450": frozenset({"SARJ521"}),
         "SARJ457": frozenset({"SARJ045"}),
         "SARJ465": frozenset({"SARJ071"}),
         "SARJ491": frozenset({"SARJ400"}),

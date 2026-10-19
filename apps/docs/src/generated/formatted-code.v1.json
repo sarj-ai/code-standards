@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "5862926399f7f128d4392bfa68a45131485098b18612a2752e70df8e6845471d",
-  "cliSha256": "3612ebde5e10bf18007f5ff74a489d90cb3d319239035d0c73cb7e621cc79f1a",
+  "catalogSha256": "a80b9e52779e2d3962c0182acfebd367965675b0709c63d5743c4aa09888149b",
+  "cliSha256": "23f2a21564540f57099e8bbfee3d3f35104faee11ef7b2c0b358cfb2b3c21146",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -13617,6 +13617,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "External JSON validated by a boundary model"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-pydantic-for-mapping-shape": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/claims.py",
+              "source": "from typing import Annotated\nfrom pydantic import BaseModel, Field, StrictInt, ValidationError\n\n\nclass FactorClaim(BaseModel):\n    factor_age: tuple[StrictInt, Annotated[StrictInt, Field(ge=0)]]\n\n\ndef verified(raw: object) -> bool:\n    try:\n        FactorClaim.model_validate(raw)\n    except ValidationError:\n        return False\n    return True\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/claims.py",
+          "id": "declared-mapping-shape",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Strict fields and bounds declare the accepted shape"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/claims.py",
+              "source": "def verified(raw: dict[str, object]) -> bool:\n    match raw.get(\"factor_age\"):\n        case [int(), int(age)] if not isinstance(age, bool):\n            return age >= 0\n        case _:\n            return False\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/claims.py",
+          "id": "manual-mapping-shape",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A match statement parses an opaque field by hand"
         }
       ],
       "optionsSchemaSource": null
