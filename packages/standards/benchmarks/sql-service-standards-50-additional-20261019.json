@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "date": "2026-10-19",
-  "baseRevision": "1872744171d4b25f09990d2a3f4f4e6261a15002",
+  "baseRevision": "f865d7237a6ec4838385b6cc5a2a62acf943653c",
   "previousReport": "sql-service-standards-100-20261019.json",
   "requestedAdditionalReviewPasses": 50,
   "completedAdditionalReviewPasses": 48,
@@ -100,7 +100,7 @@
         "qualificationBaseRevision": "1bffab09ce611806a9321af0065b94f92b3f8b11"
       }
     },
-    "mainCarryForward": "Broad qualification uses main revision 1bffab09 and its 161-rule registry. The prior 98b73b68 integration carried the same nine frozen SQL source/test files and four audit-command diffs and reserved Python 1.56.0, Standards 8.92.0 and audit plugin 2.14.1. Its 330 focused cases on each runtime and 162-rule nine-file checks remain explicitly checked at 98b73b68 under finalIntegration. A later historical AFB-based carry-forward reserved Python 1.57.0, Standards 8.93.0 and audit plugin 2.14.1; its artifact/repository checks and all normal commit hooks passed, creating checkpoint 7f614699. Main then advanced to 18727441, consuming Python 1.57.0, Standards 8.94.0 and audit plugin 2.14.1 and changing raw-mapping callback ownership. No owned SQL source, SQL audit command, registry or shared SQL analysis dependency changed upstream. The current carry-forward reserves Python 1.60.0, Standards 8.98.0 and audit plugin 2.14.5. Current controls belong under latestCarryForward; historical checks do not replace normal hooks and full exact-head CI for the combined latest tree.",
+    "mainCarryForward": "Broad corpus, performance and local component qualification uses main revision 1bffab09 and its 161-rule registry. Earlier 330-case controls on both runtimes and the 162-rule nine-file scan remain checked at 98b73b68 under finalIntegration. Historical normal-hook checkpoints are 7f614699 on the AFB-based tree and a88fb249 on the 18727441-based tree; priorCarryForwards preserves those records. Main f865d723 allocates Python 1.58.0 and Standards 8.96.0 and changes the shared resource-provenance owner set for typing_extensions.cast/assert_type. The combined f865-based tree preserves our frozen SQL source/guidance and both workflow fixes. The current combined tree keeps Python 1.60.0, Standards 8.98.0 and audit plugin 2.14.5. Current source, artifact and repository requalification belongs under latestCarryForward; historical performance/corpus results do not establish qualification of the changed shared helper.",
     "finalAdversarialFixes": {
       "field": "Exclude imported or qualified builtin property/classmethod/staticmethod defaults; nine alias-form negatives and one ordinary factory positive.",
       "canonical": "Tuple augmented assignment rebinds only the target alias; preserve original tuple delegation while retaining direct-target and mutable-list controls.",
@@ -455,16 +455,69 @@
           "commitMessage": "passed",
           "meaning": "Historical AFB-based qualification; exact-head CI for the later combined tree remains required."
         }
+      },
+      {
+        "baseRevision": "1872744171d4b25f09990d2a3f4f4e6261a15002",
+        "priorQualifiedCheckpoint": "7f6146994f11e4faff9da7f66ce0204b4ede9618",
+        "priorIntegrationCheckedRevision": "98b73b689235754a1f36fe23282f706f8968fd12",
+        "status": "historical-normal-hooks-passed",
+        "upstreamChange": "Main 18727441 consumes Python 1.57.0, Standards 8.94.0 and audit plugin 2.14.1 while refining raw-mapping callback ownership. Preserve its mapping helper, rule, tests, evidence and data-contracts guidance.",
+        "ownedPythonOrAuditCommandOverlap": [],
+        "sharedSqlDependenciesChanged": false,
+        "registryChanged": false,
+        "ownedFrozenPythonFiles": 9,
+        "ownedFrozenBytesMatch": true,
+        "reservedVersions": {
+          "python": "1.60.0",
+          "standards": "8.98.0",
+          "auditPlugin": "2.14.5"
+        },
+        "versionReservation": "Use unallocated higher stable versions to avoid repeated collisions while mandatory normal hooks run. Current release controls require synchronized manifests and immutable release tags, with no adjacent-minor requirement. Exact proposed Python/Standards tags were absent and all three corresponding PyPI versions returned 404 at reservation time.",
+        "qualification": "The nine frozen SQL source/test files, four SQL audit commands and shared SQL dependencies did not change upstream. Historical focused controls retain checkedRevision 98b73b68; the full normal-hook result retains checkpoint 7f614699. Artifacts were regenerated against the 18727441 combined tree, and all artifact, pin, repository and formatted-example checks passed. Focused cases were not repeated for this unchanged SQL carry-forward. New normal hooks and full exact-head CI remain required for the combined tree.",
+        "regeneration": {
+          "commands": [
+            "code-standards --root . maintain rules sync",
+            "code-standards --root . maintain catalog sync",
+            "code-standards --root . maintain cli-reference sync",
+            "code-standards --root . maintain docs sync",
+            "make docs-code-sync"
+          ],
+          "exitCode": 0
+        },
+        "artifactConsistency": {
+          "commands": [
+            "code-standards --root . maintain rules check",
+            "code-standards --root . maintain catalog check --typescript-built",
+            "python -m sarj_standards.libs.repository.third_party_catalog_artifact --root . --check --typescript-built",
+            "code-standards --root . maintain cli-reference check",
+            "code-standards --root . maintain docs check",
+            "npm --prefix apps/docs run code-examples:check"
+          ],
+          "exitCode": 0
+        },
+        "repositoryPolicy": {
+          "command": "make check-versions-synced repo-check check-file-conventions check-no-private-refs",
+          "exitCode": 0,
+          "privateReferences": "Existing local Make target delegates private-reference scanning to trusted CI."
+        },
+        "diffWhitespace": "passed",
+        "checkedCommit": "a88fb24955ee2697623dac8ee471ad65c547b520",
+        "normalCommitHooks": {
+          "commit": "a88fb24955ee2697623dac8ee471ad65c547b520",
+          "result": "passed all normal hooks",
+          "meaning": "Historical 187-based SQL and workflow-fix checkpoint; not qualification of the later merged f865 tree."
+        }
       }
     ],
     "latestCarryForward": {
-      "baseRevision": "1872744171d4b25f09990d2a3f4f4e6261a15002",
-      "priorQualifiedCheckpoint": "7f6146994f11e4faff9da7f66ce0204b4ede9618",
-      "priorIntegrationCheckedRevision": "98b73b689235754a1f36fe23282f706f8968fd12",
-      "status": "local-artifact-controls-passed",
-      "upstreamChange": "Main 18727441 consumes Python 1.57.0, Standards 8.94.0 and audit plugin 2.14.1 while refining raw-mapping callback ownership. Preserve its mapping helper, rule, tests, evidence and data-contracts guidance.",
+      "baseRevision": "f865d7237a6ec4838385b6cc5a2a62acf943653c",
+      "ourQualifiedParent": "a88fb24955ee2697623dac8ee471ad65c547b520",
+      "status": "local-source-and-artifact-controls-passed",
+      "integration": "Normal no-commit, no-fast-forward merge of immutable main f865d723 into a88fb249. Resolve eleven overlapping version/lock/generated files while preserving the reserved versions and all upstream source, tests, report and calibration evidence.",
       "ownedPythonOrAuditCommandOverlap": [],
-      "sharedSqlDependenciesChanged": false,
+      "workflowOverlap": [],
+      "sharedSqlDependenciesChanged": true,
+      "sharedSqlDependencyChange": "Upstream _resource_provenance.py adds typing_extensions.cast and assert_type to the known resource owners; typing already had these owners. The SQL store and Psycopg helpers import this shared module, so fresh combined-tree controls are required.",
       "registryChanged": false,
       "ownedFrozenPythonFiles": 9,
       "ownedFrozenBytesMatch": true,
@@ -473,8 +526,40 @@
         "standards": "8.98.0",
         "auditPlugin": "2.14.5"
       },
-      "versionReservation": "Use unallocated higher stable versions to avoid repeated collisions while mandatory normal hooks run. Current release controls require synchronized manifests and immutable release tags, with no adjacent-minor requirement. Exact proposed Python/Standards tags were absent and all three corresponding PyPI versions returned 404 at reservation time.",
-      "qualification": "The nine frozen SQL source/test files, four SQL audit commands and shared SQL dependencies did not change upstream. Historical focused controls retain checkedRevision 98b73b68; the full normal-hook result retains checkpoint 7f614699. Artifacts were regenerated against the 18727441 combined tree, and all artifact, pin, repository and formatted-example checks passed. Focused cases were not repeated for this unchanged SQL carry-forward. New normal hooks and full exact-head CI remain required for the combined tree.",
+      "upstreamVersions": {
+        "python": "1.58.0",
+        "standards": "8.96.0"
+      },
+      "qualification": "Fresh checks on this merged source snapshot passed all 330 focused cases on each supported runtime, all 162 current native Python rules on the nine frozen files with zero diagnostics, Ruff/formatting/types, and all artifact, formatted-example, version and repository controls. An independent helper review passed 264 authored diagnostic-count/parity cases on each runtime with no expectation or namespace-parity mismatch. That review found no current direct SQL calls to the owner-resolution methods consulting the changed set; this is a direct-call audit, not proof about all transitive consumers or wrapper semantics. The broad corpus/performance evidence collected on 1bffab09 remains historical. Fresh corpus/performance qualification, normal hooks, full exact-head CI and merge readback remain pending and will be recorded in the pull request and final private audit after execution.",
+      "focused": {
+        "casesPerRuntime": 330,
+        "runtimes": {
+          "3.14": {
+            "passed": 330,
+            "seconds": 1.87
+          },
+          "3.15": {
+            "passed": 330,
+            "seconds": 1.5
+          }
+        },
+        "isolation": "Separate frozen Python environments and isolated non-Git fixture roots for this merged source snapshot."
+      },
+      "changedPythonSelfLint": {
+        "files": 9,
+        "nativeRules": 162,
+        "findings": 0,
+        "blocking": 0
+      },
+      "focusedRuffFormattingAndTypes": {
+        "ruff": "passed",
+        "formatting": "9 files already formatted",
+        "basedpyright": {
+          "errors": 0,
+          "warnings": 0,
+          "notes": 0
+        }
+      },
       "regeneration": {
         "commands": [
           "code-standards --root . maintain rules sync",
@@ -501,7 +586,20 @@
         "exitCode": 0,
         "privateReferences": "Existing local Make target delegates private-reference scanning to trusted CI."
       },
-      "diffWhitespace": "passed"
+      "diffWhitespace": "passed",
+      "sharedHelperProbes": {
+        "casesPerRuntime": 264,
+        "runtimes": [
+          "3.14",
+          "3.15"
+        ],
+        "bareControls": 8,
+        "namespacePairs": 128,
+        "expectedCountMismatches": 0,
+        "namespaceParityMismatches": 0,
+        "sourceProvenance": "The shared helper hash matches the merged upstream f865d723 source.",
+        "meaning": "Distinct authored diagnostic-count and typing/typing_extensions namespace-parity cases. These do not establish general wrapper support, production precision, recall or performance."
+      }
     }
   },
   "limitations": [
@@ -988,7 +1086,7 @@
       "scope": "integration-and-guidance",
       "focus": "Immutable real-code corpus",
       "criterion": "Verify prior consumer digests and commit pins, isolate each repository and bounded batch, inspect every match.",
-      "outcome": "The final frozen source completed 16 isolated batches across 3 corpora (3,722 files). All 3 matches are unchanged SARJ421 read advisories reproduced by the immutable baseline. There are no new candidate matches, duplicates, or unreviewed hits. Legacy precision was not adjudicated.",
+      "outcome": "The historical 1bffab09 qualification source completed 16 isolated batches across 3 corpora (3,722 files). All 3 matches are unchanged SARJ421 read advisories reproduced by the immutable baseline. There are no new candidate matches, duplicates, or unreviewed hits. Legacy precision was not adjudicated.",
       "evidence": "Owner-readable corpus overlay and run_isolated_corpora with 250-file batches.",
       "status": "checked"
     },
@@ -1006,7 +1104,7 @@
       "scope": "integration-and-guidance",
       "focus": "Release and packaged verification",
       "criterion": "Synchronize code, source-derived artifacts, exact sibling pins and validate a fresh wheel/full repository.",
-      "outcome": "The current carry-forward reserves Python 1.60.0, Standards 8.98.0 and audit plugin 2.14.5; its actual controls are recorded under latestCarryForward. Historical finalIntegration checks retain checkedRevision 98b73b68, and all normal commit hooks passed for the AFB-based checkpoint 7f614699. The old qualification full make verify retained one TypeScript timeout with a passing unchanged retry; its independent fresh-wheel run completed with 6,294 passed and nine skipped tests, followed by tsconfig, repository and shell checks. Full exact-head CI and final combined-tree qualification remain required before this pass is complete.",
+      "outcome": "The current merged tree retains Python 1.60.0, Standards 8.98.0 and audit plugin 2.14.5 and preserves upstream f865d723 source and evidence. A shared resource-provenance change requires fresh combined-tree controls under latestCarryForward. Historical finalIntegration checks retain checkedRevision 98b73b68, and prior normal-hook checkpoints remain recorded separately. The old full make verify retained one TypeScript timeout with a passing unchanged retry; its independent fresh-wheel run completed with 6,294 passed and nine skipped tests, followed by tsconfig, repository and shell checks. Fresh requalification, full exact-head CI and final merged-head readback remain pending in this pre-CI snapshot.",
       "evidence": "Native preparation, artifact synchronization, local component results and rule/release checks; exact-head CI and final outcome are recorded in the pull request and final private audit.",
       "status": "pending"
     },

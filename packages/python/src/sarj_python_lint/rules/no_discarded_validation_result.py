@@ -155,6 +155,7 @@ class NoDiscardedValidationResult(Rule):
             "Stable local callable aliases with prior direct assignments are followed through bounded chains. Conditional assignments and unresolved callable escapes are excluded.",
             "Direct execution in class bodies is excluded because sequential lookup and metaclass-prepared namespaces can supply different callees. Method bodies remain checked.",
             "Functions with explicit mutation, standalone command calls, generators, nested definitions, or context-manager/try/loop orchestration are excluded. This is not a general purity proof.",
+            "Calls inside returned values must resolve to supported builtin or source-resolved nominal value construction. Opaque command functions, receiver calls, and direct returned attribute/subscript reads are excluded; a conversion around an unknown command does not prove validation.",
             "Import-resolved pytest.raises and source-proven unittest exception assertion blocks observe the exception contract and are excluded. Generated and vendored sources are excluded; maintained tests are checked.",
             "Top-level return contracts follow stable lexical aliases, first-party type imports, unions, and Annotated type content through a bounded source-only analysis. Nullable collection elements and annotation metadata do not make the returned collection nullable.",
             "Nullable, object, Any, Never, NoReturn, generic type-parameter, structural protocol, and unresolved return contracts are excluded. No automatic assignment, deletion, or validation rewrite is offered.",
@@ -246,11 +247,25 @@ class _ValidationResults:
                 and _value_validator(function)
                 and provenance is not None
                 and self._value_annotation(provenance, function.returns, function, _MAX_ANNOTATION_DEPTH, frozenset())
+                and self._returned_constructions(provenance, function)
             )
         return self.contracts[function] and not any(
             _namespace_uncertain(provenance, owner.path) or _namespace_uncertain(provenance, provenance.context.path)
             for provenance in resolved.namespaces
         )
+
+    def _returned_constructions(self, provenance: ResourceProvenance, function: _Function) -> bool:
+        for statement in ast.walk(function):
+            if not isinstance(statement, ast.Return) or statement.value is None:
+                continue
+            if _opaque_return_selection(statement.value):
+                return False
+            for node in ast.walk(statement.value):
+                if isinstance(node, ast.Call) and not self._value_annotation(
+                    provenance, node.func, node, _MAX_ANNOTATION_DEPTH, frozenset()
+                ):
+                    return False
+        return True
 
     def _resolve(self, expression: ast.expr) -> _ResolvedValidation | None:
         if isinstance(self.provenance.scope(expression), ast.ClassDef):
@@ -710,6 +725,21 @@ def _expression_effect(value: ast.expr, *, allow_calls: bool = False) -> bool:
         else (ast.Call, ast.Await, ast.Yield, ast.YieldFrom, ast.NamedExpr)
     )
     return any(isinstance(node, effects) for node in ast.walk(value))
+
+
+def _opaque_return_selection(value: ast.expr) -> bool:
+    pending = [value]
+    while pending:
+        match pending.pop():
+            case ast.Attribute() | ast.Subscript():
+                return True
+            case ast.IfExp(body=body, orelse=otherwise):
+                pending.extend((body, otherwise))
+            case ast.BoolOp(values=values):
+                pending.extend(values)
+            case _:
+                pass
+    return False
 
 
 def _returned_value(value: ast.expr | None) -> bool:
