@@ -193,9 +193,8 @@ _CASES = (
     ),
     _case("41-none-tag", _TAGGED.replace("Literal['organization']", "Literal[None]")),
     _case(
-        "42-boolean-integer-collision",
+        "42-boolean-integer-static-distinction",
         _TAGGED.replace("Literal['organization']", "Literal[True]").replace("Literal['platform']", "Literal[1]"),
-        match=True,
     ),
     _case(
         "43-bytes-tags",
