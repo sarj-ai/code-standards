@@ -18,6 +18,7 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
 from sarj_python_lint.rules._imports import ImportIndex
+from sarj_python_lint.rules._mapping_shape_callbacks import RawMappingCallbacks
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
@@ -39,23 +40,6 @@ _MAPPINGS = frozenset(
     }
 )
 _WRAPPERS = frozenset({"Annotated", "Final", "ClassVar", "Required", "NotRequired", "ReadOnly", "Optional"})
-_VALIDATORS = frozenset(
-    {
-        "pydantic.model_validator",
-        "pydantic.field_validator",
-        "pydantic.functional_validators.model_validator",
-        "pydantic.functional_validators.field_validator",
-    }
-)
-_DISCRIMINATORS = frozenset({"pydantic.Discriminator", "pydantic.types.Discriminator"})
-_RAW_METADATA = frozenset(
-    {
-        "pydantic.BeforeValidator",
-        "pydantic.WrapValidator",
-        "pydantic.functional_validators.BeforeValidator",
-        "pydantic.functional_validators.WrapValidator",
-    }
-)
 _MAX_DEPTH = 32
 _MAPPING_ARITY = 2
 _BAD = (
@@ -102,8 +86,8 @@ class RequirePydanticForMappingShape(Rule):
         limitations=(
             "Checks literal-string get/subscript reads on parameters or local names annotated as standard string mappings with object, Any or pydantic.JsonValue values. Stable module type aliases, quoted annotations, wrappers and local value aliases are recognized with bounded resolution.",
             "A field must feed builtin isinstance/type checks, literal comparisons, truth tests or a constrained match pattern. Ordinary reads/forwarding, dynamic keys, homogeneous typed maps, imported application aliases, attributes and ambiguous/rebound assignments are excluded.",
-            "Import-resolved Pydantic before/wrap decorator or metadata validators and explicitly registered Discriminator callbacks own raw input normalization and are excluded. Stable callback function aliases and simple local callable instances/bound __call__ methods are recognized. Prefer declarative fields before introducing such callbacks.",
-            "Callable classes must be unique undecorated local declarations with no bases, class options, custom constructor or descriptor hooks; only an undecorated __call__ method and inert class data are admitted. Imported, inherited, decorated, rebound and directly mutated callback classes/instances abstain.",
+            "Import-resolved Pydantic before/wrap decorators with literal or stable local mode aliases, metadata validators and registered Discriminator callbacks own raw normalization. Stable function aliases, functools.partial binding only keyword-only configuration and simple bound/static/class methods are recognized. Prefer declarative fields before introducing callbacks.",
+            "Callback classes must be stable direct local declarations with no bases, class options, custom constructor or descriptor hooks. Import-proven typing.final and empty __slots__ preserve ownership. Other decorators, imported/inherited classes and directly mutated callback owners abstain. Nonescaping direct local helpers inherit raw ownership; escaped helpers remain checked. Generic type parameters shadow matching builtin/import annotation names.",
             "Parsing helpers in authored tests are checked, but assert-contained test oracles are excluded. Generated/vendor sources and dynamic namespaces are excluded. This is a warning with no automatic rewrite because coercion, missing-field handling and error policy can differ.",
         ),
         examples=(
@@ -168,58 +152,20 @@ class _Facts:
             node: ImportIndex.from_tree(ast.Module(body=[node], type_ignores=[]))
             for node in context.nodes(ast.Import, ast.ImportFrom)
         }
-        self.callbacks = {
-            binding
-            for call in context.nodes(ast.Call)
-            if (qualified := self.qualified(call.func, call)) in _DISCRIMINATORS | _RAW_METADATA
-            if (argument := _callback_argument(call, qualified)) is not None
-            if (binding := self.callback(argument)) is not None
-        }
+        self.callbacks = RawMappingCallbacks(context, self.provenance, self.qualified, self.builtin, self.shadowed)
 
-    def callback(self, node: ast.expr, *, seen: frozenset[ast.AST] = frozenset()) -> ast.AST | None:
-        if len(seen) >= _MAX_DEPTH:
-            return None
-        if isinstance(node, ast.Call):
-            return self.callable_method(node, seen=seen)
-        if isinstance(node, ast.Attribute) and node.attr == "__call__":
-            return self.callable_method(node.value, seen=seen)
-        if not isinstance(node, ast.Name) or node.id in self.provenance.mutated | self.provenance.external_bindings:
-            return None
-        binding = self.provenance.binding(node.id, node)
-        if isinstance(binding, ast.FunctionDef | ast.AsyncFunctionDef):
-            return binding if not binding.decorator_list else None
-        if not isinstance(binding, ast.Name) or binding in seen:
-            return None
-        value = self.provenance.assignment_value(binding, node)
-        return self.callback(value, seen=seen | {binding}) if value is not None else None
-
-    def callable_method(self, node: ast.expr, *, seen: frozenset[ast.AST]) -> ast.FunctionDef | None:
-        if len(seen) >= _MAX_DEPTH:
-            return None
-        if isinstance(node, ast.Name):
-            if node.id in self.provenance.mutated | self.provenance.external_bindings:
-                return None
-            binding = self.provenance.binding(node.id, node)
-            if not isinstance(binding, ast.Name) or binding in seen:
-                return None
-            value = self.provenance.assignment_value(binding, node)
-            return self.callable_method(value, seen=seen | {binding}) if value is not None else None
-        if not isinstance(node, ast.Call) or node.args or node.keywords or not isinstance(node.func, ast.Name):
-            return None
-        if node.func.id in self.provenance.mutated | self.provenance.external_bindings:
-            return None
-        binding = self.provenance.binding(node.func.id, node)
-        if not isinstance(binding, ast.ClassDef) or not isinstance(
-            self.context.parents.get(binding), ast.Module | ast.FunctionDef | ast.AsyncFunctionDef
-        ):
-            return None
-        return _plain_callable_method(binding)
+    def shadowed(self, name: str, at: ast.AST) -> bool:
+        return _type_parameter_shadow(name, at, self.context)
 
     def qualified(self, node: ast.expr, at: ast.AST) -> str | None:
         root = node
         while isinstance(root, ast.Attribute):
             root = root.value
-        if not isinstance(root, ast.Name) or root.id in self.provenance.mutated | self.provenance.external_bindings:
+        if (
+            not isinstance(root, ast.Name)
+            or root.id in self.provenance.mutated | self.provenance.external_bindings
+            or _type_parameter_shadow(root.id, at, self.context)
+        ):
             return None
         binding = self.provenance.binding(root.id, at)
         parent = self.context.parents.get(binding) if binding is not None else None
@@ -231,6 +177,7 @@ class _Facts:
             self.provenance.builtin_namespace_untouched
             and isinstance(node, ast.Name)
             and node.id == name
+            and not _type_parameter_shadow(name, at, self.context)
             and self.provenance.binding(name, at) is None
         )
 
@@ -239,6 +186,8 @@ class _Facts:
             return False
         parsed = self.semantics.parse(node)
         if parsed is None:
+            return False
+        if isinstance(parsed, ast.Name) and _type_parameter_shadow(parsed.id, at, self.context):
             return False
         if isinstance(parsed, ast.Name) and parsed.id in self.semantics.aliases:
             return self.alias_annotation(parsed, at, mapping=mapping, depth=depth)
@@ -320,27 +269,34 @@ class _Facts:
         return None
 
     def raw_boundary(self, node: ast.AST) -> bool:
-        current: ast.AST | None = node
-        while current is not None:
-            if isinstance(current, ast.FunctionDef | ast.AsyncFunctionDef) and self.raw_validator(current):
-                return True
-            current = self.context.parents.get(current)
-        return False
+        return self.callbacks.owns(node)
 
-    def raw_validator(self, function: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-        if function in self.callbacks:
+
+def _type_parameter_shadow(name: str, at: ast.AST, context: PythonFileContext) -> bool:
+    outside: set[ast.AST] = set()
+    current = at
+    while (parent := context.parents.get(current)) is not None:
+        if (
+            isinstance(parent, ast.arguments)
+            and (current in parent.defaults or current in parent.kw_defaults)
+            and (owner := context.parents.get(parent)) is not None
+        ):
+            outside.add(owner)
+        if (
+            isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.TypeAlias)
+            and parent not in outside
+            and not (
+                isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+                and current in parent.decorator_list
+            )
+            and any(
+                isinstance(parameter, ast.TypeVar | ast.ParamSpec | ast.TypeVarTuple) and parameter.name == name
+                for parameter in parent.type_params
+            )
+        ):
             return True
-        for decorator in function.decorator_list:
-            if not isinstance(decorator, ast.Call) or self.qualified(decorator.func, decorator) not in _VALIDATORS:
-                continue
-            if any(
-                keyword.arg == "mode"
-                and isinstance(keyword.value, ast.Constant)
-                and keyword.value.value in {"before", "wrap"}
-                for keyword in decorator.keywords
-            ):
-                return True
-        return False
+        current = parent
+    return False
 
 
 def _string(node: ast.expr) -> bool:
@@ -366,40 +322,6 @@ def _get_receiver(node: ast.expr) -> ast.expr | None:
     if len(node.args) not in {1, 2} or node.keywords or not _string(node.args[0]):
         return None
     return node.func.value
-
-
-def _callback_argument(call: ast.Call, qualified: str | None) -> ast.expr | None:
-    if call.args:
-        return call.args[0]
-    parameter = "discriminator" if qualified in _DISCRIMINATORS else "func"
-    return next((keyword.value for keyword in call.keywords if keyword.arg == parameter), None)
-
-
-def _plain_callable_method(node: ast.ClassDef) -> ast.FunctionDef | None:
-    if node.bases or node.keywords or node.decorator_list or node.type_params:
-        return None
-    method: ast.FunctionDef | None = None
-    for statement in node.body:
-        match statement:
-            case ast.FunctionDef(name="__call__", decorator_list=[]) if method is None:
-                method = statement
-            case ast.Assign(value=ast.Constant(), targets=targets) if all(
-                isinstance(target, ast.Name) and _inert_callable_attribute(target.id) for target in targets
-            ):
-                continue
-            case ast.AnnAssign(target=ast.Name(id=name), value=None | ast.Constant()) if _inert_callable_attribute(
-                name
-            ):
-                continue
-            case ast.Pass() | ast.Expr(value=ast.Constant(value=str())):
-                continue
-            case _:
-                return None
-    return method
-
-
-def _inert_callable_attribute(name: str) -> bool:
-    return name == "__name__" or not (name.startswith("__") and name.endswith("__"))
 
 
 def _probe_sources(node: ast.AST, facts: _Facts) -> Iterator[ast.expr]:

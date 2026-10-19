@@ -125,6 +125,13 @@ For Pydantic migrations, discriminator extraction precedes variant defaults and
 validators. Preserve omitted tags, accepted aliases, and tag normalization in an
 owned input adapter when existing callers depend on them. A non-null payload can
 retain an input default; non-nullability does not imply required input presence.
+Preserve identity-sensitive boolean tags explicitly: `Literal[True]` can accept
+`1` even with `ConfigDict(strict=True)` because [literal matching has a Python
+equality fallback](https://github.com/pydantic/pydantic-core/blob/main/src/validators/literal.rs#L160).
+When the current parser requires `is True`, verify that boundary and retain an
+owned input adapter around the union if needed. Pydantic [rejects before, wrap
+and plain validators on the discriminator field](https://pydantic.dev/docs/validation/latest/errors/usage_errors/#invalid-discriminator-validator);
+validate the raw envelope before tagged dispatch instead.
 Compare the parser behavior callers observe: Python versus JSON validation,
 context, extra fields, `model_fields_set`, `exclude_unset`, and error locations.
 Matching complete `model_dump()` output alone does not establish compatibility.
