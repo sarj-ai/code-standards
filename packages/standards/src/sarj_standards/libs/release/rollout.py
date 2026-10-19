@@ -1176,7 +1176,8 @@ def provision_consumer_tools(
     prepared = dict(environment)
     has_mise_config = any((repo / relative).is_file() for relative in MISE_CONFIG_PATHS)
     workflow_tools = declared_workflow_tools(repo)
-    mise_prefix = _provision_mise(repo, runner, prepared, workflow_tools, has_mise_config=has_mise_config)
+    _provision_mise(repo, runner, prepared, workflow_tools, has_mise_config=has_mise_config)
+    mise_prefix = ("mise", "exec", *workflow_tools, "--") if has_mise_config or workflow_tools else ()
 
     # Tool provisioning happens before `code-standards update`, so consumers
     # may still use the immediately preceding manifest schema here.
@@ -2377,8 +2378,7 @@ def _provision_mise(
     workflow_tools: tuple[str, ...],
     *,
     has_mise_config: bool,
-) -> tuple[str, ...]:
-    mise_prefix: tuple[str, ...] = ()
+) -> None:
     if has_mise_config or workflow_tools:
         prepared["MISE_YES"] = "1"
         prepared["MISE_TRUSTED_CONFIG_PATHS"] = str(repo.resolve())
@@ -2392,9 +2392,6 @@ def _provision_mise(
             if installed.returncode != 0:
                 msg = "could not provision workflow-declared tools:\n" + verification_detail(installed)
                 raise RolloutError(msg)
-        mise_prefix = ("mise", "exec", *workflow_tools, "--")
-
-    return mise_prefix
 
 
 def _publish_rollout_pull(

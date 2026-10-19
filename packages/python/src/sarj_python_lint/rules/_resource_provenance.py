@@ -34,8 +34,9 @@ _RESOURCE_OWNERS = MappingProxyType(
         "contextlib": frozenset({"ExitStack", "AsyncExitStack", "_BaseExitStack"}),
         "subprocess": frozenset({"Popen", "TimeoutExpired"}),
         "re": frozenset({"compile", "Match", "Pattern"}),
+        "operator": frozenset({"setitem", "delitem", "iadd", "iconcat", "imul", "iand", "isub", "ixor", "ior"}),
         "unittest": frozenset({"mock.Mock", "mock.MagicMock", "mock.AsyncMock"}),
-        "typing": frozenset({"final", "Literal", "Annotated"}),
+        "typing": frozenset({"final", "Literal", "Annotated", "cast", "assert_type"}),
         "typing_extensions": frozenset({"final", "Literal", "Annotated"}),
         "pydantic": frozenset(
             {
