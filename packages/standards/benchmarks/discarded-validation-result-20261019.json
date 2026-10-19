@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-19",
+  "rule": "python:no-discarded-validation-result",
+  "code": "SARJ519",
+  "decision": "ship-warning",
+  "autofix": "none",
+  "release": {
+    "python": "1.49.0",
+    "standards": "8.83.0"
+  },
+  "problem": "A source-resolved value-producing converter is invoked only for validation exceptions and its checked replacement is discarded.",
+  "remediation": "Consume the checked result or expose a validation command returning None; preserve exception behavior.",
+  "validation": {
+    "focusedCases": 94,
+    "labeledNativeCases": {
+      "total": 68,
+      "truePositives": 23,
+      "trueNegatives": 45,
+      "falsePositives": 0,
+      "falseNegatives": 0
+    },
+    "fullPython315": {
+      "passed": 19575
+    },
+    "fullPython314": {
+      "passed": 19562,
+      "skipped": 13
+    },
+    "typecheck": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "nativeSelfLint": {
+      "rules": 160,
+      "sourceFiles": 841,
+      "blockingFindings": 0
+    }
+  },
+  "source": {
+    "validatedCommit": "fdc32219895e8d61831d0f08f1cdb97e76a59090",
+    "files": [
+      {
+        "path": "packages/python/src/sarj_python_lint/rules/no_discarded_validation_result.py",
+        "sha256": "3c5389276d6c931b025552dc89e6feb1db36341e3e677a865856a325ba4d6083"
+      },
+      {
+        "path": "packages/python/src/sarj_python_lint/rules/_runtime_bindings.py",
+        "sha256": "f4d199573ac51ae04e0e853ffca29b189bbd84dfdc1efc377a4988bee3a88530"
+      },
+      {
+        "path": "packages/python/src/sarj_python_lint/rules/_resource_provenance.py",
+        "sha256": "4c4c9ebc71c07c03293f3162ebd163496410a5a611b46df769baa0da5d38ffbb"
+      },
+      {
+        "path": "packages/python/tests/rules/test_no_discarded_validation_result.py",
+        "sha256": "178a502a7ff9d24d678a5e58234241ed238346f09ee6d292c7b0d4026a9c0b35"
+      }
+    ]
+  },
+  "corpus": {
+    "rule": "python:no-discarded-validation-result",
+    "files": 3000,
+    "bytes": 32895335,
+    "batches": 14,
+    "elapsed_seconds": 68.17764,
+    "diagnostics": 1,
+    "corpora": [
+      {
+        "label": "<private-corpus>",
+        "files": 828,
+        "bytes": 11436116,
+        "findings": 0
+      },
+      {
+        "label": "<private-corpus>",
+        "files": 975,
+        "bytes": 9205180,
+        "findings": 0
+      },
+      {
+        "label": "<private-corpus>",
+        "files": 1092,
+        "bytes": 10433159,
+        "findings": 1
+      },
+      {
+        "label": "pydantic",
+        "files": 105,
+        "bytes": 1820880,
+        "findings": 0
+      }
+    ]
+  },
+  "classification": {
+    "inspected": 1,
+    "truePositives": 1,
+    "falsePositives": 0,
+    "privatePins": "Immutable source revisions, digests and raw diagnostics are retained in an owner-only overlay; no application modules were imported."
+  },
+  "performance": {
+    "python": "3.15.0",
+    "method": "Separate process per corpus and mode; first invocation cold, then median of three fresh-session warm invocations; baseline is all shipped Python rules except the candidate, combined adds the candidate.",
+    "corpora": [
+      {
+        "label": "<private-corpus>",
+        "files": 25,
+        "bytes": 190220,
+        "selection": "first 25 sorted pinned Python paths",
+        "modes": [
+          {
+            "mode": "baseline",
+            "cold_seconds": 13.289086851997126,
+            "warm_seconds": [
+              18.281569064005453,
+              18.786070868001843,
+              20.645071781997103
+            ],
+            "warm_median_seconds": 18.786070868001843,
+            "peak_rss_kib": 605484,
+            "diagnostic_counts": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "wall_seconds": 77.88406444600696
+          },
+          {
+            "mode": "candidate",
+            "cold_seconds": 0.25412881599913817,
+            "warm_seconds": [
+              0.23665945100219687,
+              0.2571831969980849,
+              0.24122318899753736
+            ],
+            "warm_median_seconds": 0.24122318899753736,
+            "peak_rss_kib": 58336,
+            "diagnostic_counts": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "wall_seconds": 1.5679136230028234
+          },
+          {
+            "mode": "combined",
+            "cold_seconds": 12.759297892000177,
+            "warm_seconds": [
+              14.0180592589968,
+              16.308543079001538,
+              19.040000145003432
+            ],
+            "warm_median_seconds": 16.308543079001538,
+            "peak_rss_kib": 606392,
+            "diagnostic_counts": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "wall_seconds": 69.12612107400491
+          }
+        ]
+      }
+    ]
+  },
+  "limitations": [
+    "This is a bounded validation-result rule, not a general purity proof. Unknown receivers, descriptors, decorated callables, dynamic namespaces, unsupported bodies and ambiguous bindings abstain.",
+    "Observed namespace mutations, source-proven mock patches and pytest/unittest exception assertions abstain. There is no assignment, deletion or validation rewrite autofix.",
+    "Labeled fixture counts and reused corpora are not independent precision observations. The motivating source call is separately reproduced.",
+    "Performance covers the first 25 sorted files of one frozen corpus on a contended VM. Baseline and combined timing differences do not establish a speedup or a fleet-wide budget.",
+    "The campaign of 100 review passes is ongoing; this artifact qualifies its seed detector and does not claim 100 completed passes."
+  ]
+}
