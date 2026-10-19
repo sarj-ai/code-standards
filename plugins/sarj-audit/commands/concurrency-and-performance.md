@@ -37,17 +37,32 @@ Keep returned rows associated with their keys; SQL result order is not the
 input order unless the query establishes it. Specify empty-input behavior,
 which rows are returned, partial failure and whether a whole batch is atomic.
 
+Preserve cursor observations when replacing an execute loop. Psycopg
+[`executemany`](https://www.psycopg.org/psycopg3/docs/api/cursors.html#psycopg.Cursor.executemany)
+without `returning=True` accumulates affected-row counts; the last singleton
+execute reports only its own count. With `returning=True`, consume each result
+set using the installed version's `nextset()` or `results()` API; one
+`fetchall()` reads only the current set. Keep result-dependent parameter
+generation and per-row failure handling explicit.
+
 Return database-generated values through `RETURNING` when it replaces a redundant
 read without changing the result contract. Review no-op conflict updates when
 they cause measured write amplification, but preserve timestamps, audit/trigger
 effects and returned-row behavior: a conflict update filtered by `WHERE` can
 return no row even when the row exists.
+`DO NOTHING RETURNING` also omits conflicting rows. Do not zip these results
+with every input or treat a missing returned row as proof that no row exists.
 
 Keep pool ownership at the application composition boundary, bound acquisition
 waits and query time to the caller's deadline, and release borrowed connections
 promptly. Reusing a pool does not make unbounded concurrency safe. For operations
 that lock several rows, review a consistent lock order and deadlock behavior;
 preserve domain-required ordering when batching.
+
+Distinguish pool wait, execution and commit latency when investigating slow
+writes. Use measured queueing, batch sizes and affected rows to choose a change;
+do not add connections solely because queries are slow. Close or fully consume
+streaming results before returning their connection, including on early exit.
 
 Inspect representative query plans and production cardinality when proposing
 indexes or query rewrites. Bound result sets, project required columns, and use

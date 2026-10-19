@@ -47,6 +47,7 @@ class PreferPsycopgExecutemany(Rule):
             "RETURNING, queries, dynamic SQL, extra execute options, async streams, loop else clauses, additional statements and per-row exception or transaction contexts are excluded. Connection.execute is excluded because connections do not expose the same executemany API.",
             "No automatic batching or performance claim is made for a particular workload. Advisory severity preserves deliberately sequential database effects; exact suppressions document those contracts.",
             "Generated/vendor sources are excluded; maintained tests are checked. Stable aliases and cursors acquired through context managers are intentionally outside the initial proof boundary.",
+            "Cursor state reads, iteration and opaque cursor escapes are excluded: executemany accumulates rowcount and can change observable execution interleaving.",
         ),
         examples=(
             RuleExample(
@@ -80,7 +81,7 @@ class PreferPsycopgExecutemany(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if context.generated or "execute" not in context.symbol_source or context.tree is None:
             return []
-        provenance = ResourceProvenance(context)
+        provenance = ResourceProvenance(context, require_static_namespace=True)
         findings: list[Diagnostic] = []
         for loop in context.nodes(ast.For):
             candidate = discarded_call(loop)
@@ -99,6 +100,8 @@ class PreferPsycopgExecutemany(Rule):
             if qualified not in {"psycopg.Cursor", "psycopg.AsyncCursor"} or awaited != (
                 qualified == "psycopg.AsyncCursor"
             ):
+                continue
+            if not _cursor_uses_are_batch_safe(call.func.value, call, context, provenance):
                 continue
             query = sql_query(call.args[0], context.imports)
             if (
@@ -124,11 +127,32 @@ class PreferPsycopgExecutemany(Rule):
         return findings
 
 
+def _cursor_uses_are_batch_safe(
+    receiver: ast.Name, call: ast.Call, context: PythonFileContext, provenance: ResourceProvenance
+) -> bool:
+    binding = provenance.binding(receiver.id, call)
+    for read in provenance.reads.get(receiver.id, ()):
+        if provenance.binding(receiver.id, read) is not binding:
+            continue
+        attribute = context.parents.get(read)
+        if not isinstance(attribute, ast.Attribute):
+            return False
+        invocation = context.parents.get(attribute)
+        if (
+            attribute.value is not read
+            or attribute.attr not in {"execute", "executemany", "close"}
+            or not isinstance(invocation, ast.Call)
+            or invocation.func is not attribute
+        ):
+            return False
+    return True
+
+
 def _cursor_contract(
     receiver: ast.Name, call: ast.Call, context: PythonFileContext, provenance: ResourceProvenance
 ) -> str | None:
     binding = provenance.binding(receiver.id, call)
-    if not isinstance(binding, ast.arg) or context.tree is None or provenance.dynamic_namespace:
+    if not isinstance(binding, ast.arg) or context.tree is None or provenance.dynamic_namespace or provenance.wildcard:
         return None
     annotation = AnnotationSemantics.from_tree(context.tree).parse(binding.annotation)
     if isinstance(annotation, ast.Subscript):

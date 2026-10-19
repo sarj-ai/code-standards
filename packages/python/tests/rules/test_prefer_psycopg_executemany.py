@@ -161,3 +161,65 @@ def test_mutated_driver_namespace_is_not_import_proof() -> None:
         )
         == []
     )
+
+
+@pytest.mark.parametrize(
+    "namespace",
+    [
+        "globals()['AsyncCursor'] = CustomCursor",
+        "locals()['AsyncCursor'] = CustomCursor",
+        "exec('AsyncCursor = CustomCursor')",
+        "from app.custom_cursors import *",
+    ],
+    ids=["globals", "locals", "exec", "wildcard"],
+)
+def test_dynamic_driver_namespace_is_not_import_proof(namespace: str) -> None:
+    assert (
+        _check(
+            'for row in rows:\n    await cursor.execute("DELETE FROM users WHERE id=%s", (row.id,))',
+            imports=f"from psycopg import AsyncCursor\n{namespace}",
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        'for row in rows:\n    await cursor.execute("UPDATE users SET prior=%s WHERE id=%s", (cursor.rowcount, row.id))',
+        'for row in rows:\n    await cursor.execute("DELETE FROM users WHERE id=%s", (row.id,))\nreturn cursor.rowcount',
+        'for row in rows:\n    await cursor.execute("DELETE FROM users WHERE id=%s", (row.id,))\nreturn cursor.statusmessage',
+        'for row in cursor:\n    await cursor.execute("DELETE FROM users WHERE id=%s", (row.id,))',
+        'for row in rows:\n    await cursor.execute("DELETE FROM users WHERE id=%s", (row.id,))\ninspect_cursor(cursor)',
+        'alias = cursor\nfor row in rows:\n    await cursor.execute("DELETE FROM users WHERE id=%s", (row.id,))\nreturn alias.rowcount',
+        'for row in rows:\n    await cursor.execute("DELETE FROM users WHERE id=%s", lookup(cursor, row.id))',
+    ],
+    ids=["interleaved-state", "rowcount", "status", "iteration", "opaque-escape", "alias-escape", "nested-read"],
+)
+def test_preserves_observable_cursor_state_and_cursor_escapes(body: str) -> None:
+    assert _check(body) == []
+
+
+def test_cursor_close_and_other_direct_writes_preserve_batch_candidate() -> None:
+    assert (
+        len(
+            _check(
+                'await cursor.execute("DELETE FROM stale_users")\n'
+                'for row in rows:\n    await cursor.execute("DELETE FROM users WHERE id=%s", (row.id,))\n'
+                "await cursor.close()"
+            )
+        )
+        == 1
+    )
+
+
+def test_shadowed_nested_cursor_state_does_not_escape_outer_cursor() -> None:
+    assert (
+        len(
+            _check(
+                "def count(cursor):\n    return cursor.rowcount\n"
+                'for row in rows:\n    await cursor.execute("DELETE FROM users WHERE id=%s", (row.id,))'
+            )
+        )
+        == 1
+    )

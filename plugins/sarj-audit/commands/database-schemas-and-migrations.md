@@ -24,3 +24,11 @@ the driver's identifier API or an established allowlist; values and identifiers
 have different quoting rules. Keep named, validated row conversion at the store
 boundary and return only the fields the consumer needs. Preserve SQL NULL's
 three-valued logic when replacing predicates or optional update behavior.
+
+For pooled connections, give tenant, role and other session settings an explicit
+lifetime. PostgreSQL [`SET LOCAL`](https://www.postgresql.org/docs/current/sql-set.html)
+lasts only for the current transaction; a session-level `SET` can survive a
+successful commit and affect the next borrower. Establish context before the
+protected query on that same connection and preserve the pool's reset contract.
+Do not require session settings when tenant isolation already uses another
+verified mechanism.
