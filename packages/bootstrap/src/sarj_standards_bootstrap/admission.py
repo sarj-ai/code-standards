@@ -32,7 +32,9 @@ def check_slot(environment: dict[str, str]) -> Generator[None]:
     if slots < 1 or not math.isfinite(timeout) or timeout < 0:
         message = "local check slots must be positive; wait timeout must be finite and nonnegative"
         raise ValueError(message)
-    cache = Path(environment.get("XDG_CACHE_HOME", str(Path.home() / ".cache")))
+    cache = Path(environment.get("XDG_CACHE_HOME", ""))
+    if not cache.is_absolute():
+        cache = Path.home() / ".cache"
     directory = Path(environment.get("SARJ_LOCAL_CHECK_STATE_DIR", str(cache / "sarj" / "local-checks"))).resolve()
     if _inherited_lease(directory, environment.get(LEASE_ENV)):
         yield
