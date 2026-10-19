@@ -215,6 +215,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Rule
 from sarj_python_lint.rules.duplicate_adjacent_exception_handler import DuplicateAdjacentExceptionHandler
 from sarj_python_lint.rules.duplicate_closed_pure_helper import DuplicateClosedPureHelper
+from sarj_python_lint.rules.fastapi_route_declares_security import FastapiRouteDeclaresSecurity
 from sarj_python_lint.rules.no_conflicting_pydantic_alias_validation import NoConflictingPydanticAliasValidation
 from sarj_python_lint.rules.no_contradictory_type_guard import NoContradictoryTypeGuard
 from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossiblePydanticFieldBounds
@@ -234,6 +235,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        FastapiRouteDeclaresSecurity.id: FastapiRouteDeclaresSecurity,
         PreferBulkUpsert.id: PreferBulkUpsert,
         PreferPsycopgExecutemany.id: PreferPsycopgExecutemany,
         StoreFieldUpdateReusesUpsert.id: StoreFieldUpdateReusesUpsert,

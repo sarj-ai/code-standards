@@ -36,6 +36,7 @@
       "fakes-in-shared-location",
       "fastapi-class-router-contract",
       "fastapi-explicit-openapi-contract",
+      "fastapi-route-declares-security",
       "iac-source-coupled-test",
       "invalid-pydantic-field-default",
       "mock-without-spec",
@@ -525,7 +526,8 @@
       "SARJ517",
       "SARJ518",
       "SARJ519",
-      "SARJ520"
+      "SARJ520",
+      "SARJ521"
     ],
     "sql": [
       "SARJ101",
