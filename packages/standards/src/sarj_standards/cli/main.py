@@ -160,6 +160,7 @@ class _Args:
     external: bool = False
     jobs: int = 1
     python_type_check: bool = True
+    eslint: bool = True
     trust: str = "safe"
     trust_repository_code: bool = False
     before: str = ""
@@ -1060,6 +1061,7 @@ def cmd_verify(args: _Args) -> int:
         jobs=args.jobs,
         trusted=args.trust_repository_code,
         python_type_check=args.python_type_check,
+        eslint=args.eslint,
     )
 
 
@@ -1161,7 +1163,9 @@ def _check_text_output(args: _Args, root: Path, scope: _CheckScope) -> int:
         check_options: dict[str, bool] = {"trusted": args.trust_repository_code, "staged": True}
         if scope.react_doctor_triggered:
             check_options["react_doctor_triggered"] = True
-        return _run_canonical_check(root, (), jobs=args.jobs, python_type_check=args.python_type_check, **check_options)
+        return _run_canonical_check(
+            root, (), jobs=args.jobs, python_type_check=args.python_type_check, eslint=args.eslint, **check_options
+        )
     if scope.pull_request_scoped:
         adoption_report = _machine_adoption_gate(root)
         if adoption_report is not None:
@@ -1175,6 +1179,7 @@ def _check_text_output(args: _Args, root: Path, scope: _CheckScope) -> int:
                     react_doctor_triggered=True,
                     jobs=args.jobs,
                     python_type_check=args.python_type_check,
+                    eslint=args.eslint,
                 )
             return _run_canonical_check(
                 root,
@@ -1182,6 +1187,7 @@ def _check_text_output(args: _Args, root: Path, scope: _CheckScope) -> int:
                 trusted=args.trust_repository_code,
                 jobs=args.jobs,
                 python_type_check=args.python_type_check,
+                eslint=args.eslint,
             )
     if not args.files:
         return cmd_verify(args)
@@ -1192,7 +1198,12 @@ def _check_text_output(args: _Args, root: Path, scope: _CheckScope) -> int:
     if scope.react_doctor_triggered:
         check_options["react_doctor_triggered"] = True
     return _run_canonical_check(
-        root, list(args.files), jobs=args.jobs, python_type_check=args.python_type_check, **check_options
+        root,
+        list(args.files),
+        jobs=args.jobs,
+        python_type_check=args.python_type_check,
+        eslint=args.eslint,
+        **check_options,
     )
 
 
@@ -1308,6 +1319,7 @@ def _check_machine_output(args: _Args, root: Path, scope: _CheckScope) -> int:
             staged=args.staged,
             react_doctor_triggered=scope.react_doctor_triggered,
             python_type_check=args.python_type_check,
+            eslint=args.eslint,
         )
         return _emit_analysis_report(args, root, report)
     args.react_doctor_triggered = scope.react_doctor_triggered
@@ -1386,6 +1398,7 @@ def _run_canonical_check(
     react_doctor_triggered: bool = False,
     jobs: int = 1,
     python_type_check: bool = True,
+    eslint: bool = True,
 ) -> int:
     from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
     from sarj_standards.libs.diagnostics import to_text  # ruff: ignore[import-outside-top-level]
@@ -1399,6 +1412,7 @@ def _run_canonical_check(
         staged=staged,
         react_doctor_triggered=react_doctor_triggered,
         python_type_check=python_type_check,
+        eslint=eslint,
     )
     rendered = to_text(report)
     if rendered:
@@ -1432,6 +1446,7 @@ def cmd_analyze(args: _Args) -> int:
         prepared_targets=args.prepared_targets,
         prepared_only=args.prepared_only,
         python_type_check=args.python_type_check,
+        eslint=args.eslint,
     )
     return _emit_analysis_report(args, root, report)
 
@@ -3113,6 +3128,13 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 help="leave BasedPyright to the repository's own required CI; configs stay managed",
             ),
         ] = False,
+        skip_eslint: Annotated[
+            bool,
+            typer.Option(
+                "--skip-eslint",
+                help="leave ESLint to the repository's own required CI; configs stay managed and React Doctor still runs",
+            ),
+        ] = False,
         staged: Annotated[
             bool,
             typer.Option(
@@ -3139,6 +3161,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 cmd="check",
                 jobs=jobs,
                 python_type_check=not skip_python_type_check,
+                eslint=not skip_eslint,
                 trust_repository_code=trust_repository_code,
                 staged=staged,
                 selected_rules=selected_rules if selected_rules is not None else [],
