@@ -69,7 +69,7 @@ typescript-build:
 docs-artifacts-check: typescript-build
 	@$(STANDARDS) --root . maintain rules check
 	@$(STANDARDS) --root . maintain catalog check --typescript-built
-	@uv run --project packages/standards --frozen python -m sarj_standards.libs.repository.third_party_catalog_artifact --root . --check
+	@uv run --project packages/standards --frozen python -m sarj_standards.libs.repository.third_party_catalog_artifact --root . --check --typescript-built
 	@$(STANDARDS) --root . maintain cli-reference check
 	@$(STANDARDS) --root . maintain docs check
 
