@@ -71,6 +71,36 @@ class AddConstraintRequiresNotValid(Rule):
         ),
         examples=(
             RuleExample(
+                example_id="quoted-lowercase-fresh-table",
+                title="Quoted lowercase names retain the fresh empty-table exemption",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "supabase/migrations/001_boundary.sql",
+                        'CREATE TABLE "users" (age integer);\nALTER TABLE users ADD CHECK (age >= 18);\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_boundary.sql"),
+                expected_count=0,
+                public=True,
+                scenario="semantic-boundary",
+            ),
+            RuleExample(
+                example_id="quoted-mixed-case-distinct-table",
+                title="A mixed-case quoted name does not exempt a different existing table",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "supabase/migrations/001_boundary.sql",
+                        'CREATE TABLE "Users" (age integer);\nALTER TABLE users ADD CHECK (age >= 18);\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_boundary.sql"),
+                expected_count=1,
+                public=True,
+                scenario="semantic-boundary",
+            ),
+            RuleExample(
                 example_id="validating-check-constraint",
                 title="Constraint validated while it is added",
                 outcome=ExampleOutcome.MATCH,
@@ -253,9 +283,9 @@ def _identifier(tokens: list[_Token], cursor: int) -> tuple[_TableKey, int] | No
             return None
         if token.quoted:
             decoded = token.text[1:-1].replace('""', '"')
-            parts.append(f"q:{decoded}")
+            parts.append(decoded)
         else:
-            parts.append(f"u:{token.text.lower()}")
+            parts.append(token.text.lower())
         cursor += 1
         if cursor >= len(tokens) or tokens[cursor].text != ".":
             break

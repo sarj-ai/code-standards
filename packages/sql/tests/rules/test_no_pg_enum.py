@@ -110,3 +110,13 @@ def test_postgres_dumps_are_excluded(path: Path) -> None:
     source = "-- PostgreSQL database dump\nCREATE TYPE public.status AS ENUM ('open', 'closed');\n"
 
     assert NoPgEnum().check(path, source) == []
+
+
+def test_transactional_enum_evolution_retains_the_architecture_advisory() -> None:
+    source = "BEGIN;\nALTER TYPE call_status ADD VALUE 'archived';\nCOMMIT;"
+
+    diagnostics = _check(source)
+
+    assert len(diagnostics) == 1
+    assert diagnostics[0].line == 2
+    assert "application changes" in diagnostics[0].message

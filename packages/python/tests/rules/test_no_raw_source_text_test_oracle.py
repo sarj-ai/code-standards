@@ -795,3 +795,113 @@ def test_enclosing_expression_shadows_module_tuple(binding: str) -> None:
         check(f"PATHS = (Path('android.yml'), Path('ios.yml'))\ndef test_policy():\n{textwrap.indent(body, '    ')}")
         == []
     )
+
+
+@pytest.mark.parametrize(
+    ("declaration", "expected"),
+    [
+        ("__test__ = False", 0),
+        ("__test__: bool = False", 0),
+        ("__test__ = True", 1),
+        ("__test__ = False\n__test__ = True", 1),
+        ("__test__ = True\n__test__ = False", 0),
+        ("__test__ = False\n__test__: bool", 0),
+        ("__test__ = False\ndel __test__", 1),
+        ("__test__ = False\n__test__ |= True", 1),
+        ("__test__ = False\ndef __test__():\n    pass", 1),
+        ("__test__ = False\ndef configure():\n    __test__ = True", 0),
+        ("__test__ = False\nclass Other:\n    __test__ = True", 0),
+    ],
+)
+def test_module_collection_flag_preserves_binding_and_scope(declaration: str, expected: int) -> None:
+    source = (
+        declaration + "\n"
+        "def test_policy():\n"
+        "    source = Path('workflow.yml').read_text()\n"
+        "    assert 'permissions:' in source\n"
+    )
+    assert len(check(source)) == expected
+
+
+@pytest.mark.parametrize(
+    ("declaration", "expected"),
+    [
+        pytest.param("__test__ = False\nclass Configure:\n    __test__ = True", 0, id="class-local"),
+        pytest.param(
+            "__test__ = False\nclass Configure:\n    global __test__\n    __test__ = True", 1, id="class-global"
+        ),
+        pytest.param(
+            "__test__ = False\nclass Configure:\n    class Nested:\n        global __test__\n        __test__ = True",
+            1,
+            id="nested-class-global",
+        ),
+        pytest.param(
+            "__test__ = False\nclass Configure:\n    global __test__\n    class Nested:\n        __test__ = True",
+            0,
+            id="outer-global-nested-local",
+        ),
+        pytest.param(
+            "__test__ = False\nclass Configure:\n    global __test__\n    import builtins as __test__",
+            1,
+            id="class-global-import",
+        ),
+        pytest.param("__test__ = False\ndef configure(flag=(__test__ := True)):\n    pass", 1, id="function-default"),
+        pytest.param(
+            "__test__ = False\ndef configure(*, flag=(__test__ := True)):\n    pass", 1, id="function-keyword-default"
+        ),
+        pytest.param(
+            "__test__ = False\nasync def configure(flag=(__test__ := True)):\n    pass", 1, id="async-function-default"
+        ),
+        pytest.param(
+            "__test__ = False\n@(__test__ := lambda value: value)\ndef configure():\n    pass",
+            1,
+            id="function-decorator",
+        ),
+        pytest.param("__test__ = False\nclass Configure((__test__ := object)):\n    pass", 1, id="class-base"),
+        pytest.param(
+            "__test__ = False\nclass Configure(metaclass=(__test__ := type)):\n    pass", 1, id="class-keyword"
+        ),
+        pytest.param(
+            "__test__ = False\n@(__test__ := lambda value: value)\nclass Configure:\n    pass", 1, id="class-decorator"
+        ),
+        pytest.param(
+            "__test__ = False\nclass Configure:\n    def configure(flag=(__test__ := True)):\n        pass",
+            0,
+            id="class-local-method-default",
+        ),
+        pytest.param(
+            "__test__ = False\nclass Configure:\n    global __test__\n    def configure(flag=(__test__ := True)):\n        pass",
+            1,
+            id="class-global-method-default",
+        ),
+        pytest.param(
+            "__test__ = False\ndef configure():\n    global __test__\n    __test__ = True",
+            0,
+            id="deferred-function-global",
+        ),
+        pytest.param(
+            "__test__ = False\nclass Configure:\n    def configure(self):\n        global __test__\n        __test__ = True",
+            0,
+            id="deferred-method-global",
+        ),
+        pytest.param("__test__ = False\nconfigure = lambda flag=(__test__ := True): flag", 1, id="lambda-default"),
+        pytest.param("__test__ = False\nconfigure = lambda: (__test__ := True)", 0, id="deferred-lambda"),
+        pytest.param("__test__ = False\n[(__test__ := True) for item in (0,)]", 1, id="eager-comprehension"),
+        pytest.param("__test__ = False\n[__test__ for __test__ in (True,)]", 0, id="comprehension-local-target"),
+        pytest.param("__test__ = False\n((__test__ := True) for item in (0,))", 0, id="deferred-generator"),
+        pytest.param("__test__ = False\nmatch True:\n    case __test__:\n        pass", 1, id="module-pattern-capture"),
+        pytest.param(
+            "__test__ = False\ntry:\n    raise ValueError\nexcept ValueError as __test__:\n    pass",
+            1,
+            id="module-exception-capture",
+        ),
+    ],
+)
+def test_module_collection_eager_writes_respect_scopes(declaration: str, expected: int) -> None:
+    source = (
+        declaration + "\n"
+        "def test_policy():\n"
+        "    source = Path('workflow.yml').read_text()\n"
+        "    assert 'permissions:' in source\n"
+    )
+    assert len(check(source)) == expected

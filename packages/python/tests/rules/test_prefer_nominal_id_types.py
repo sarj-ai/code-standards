@@ -860,7 +860,6 @@ def test_builtin_vars_exposure_cannot_prove_factory_identity(mutation: str) -> N
     "unrelated",
     [
         "vars(other)['NewType'] = replacement\n",
-        "from foreign import vars\nvars(typing)['NewType'] = replacement\n",
     ],
 )
 def test_unrelated_or_unproven_vars_calls_do_not_shadow_typing(unrelated: str) -> None:
@@ -893,3 +892,72 @@ def test_unmarked_inherited_raw_id_contract_is_preserved() -> None:
 def test_unencodable_forward_annotation_is_not_a_nominal_role() -> None:
     source = "def move(file_id: '\\ud800', folder_id: str) -> None: ...\n"
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "exposure",
+    [
+        "def replace(ns): ns.NewType = lambda name, value: value\nreplace(typing)\n",
+        "from foreign import vars\nvars(typing)['NewType'] = replacement\n",
+        "typing.__getattribute__('__dict__')['NewType'] = replacement\n",
+        "namespace = typing\nnamespace.NewType = replacement\n",
+    ],
+)
+def test_escaped_canonical_factory_cannot_establish_named_domain_roles(exposure: str) -> None:
+    source = (
+        f"import typing\n{exposure}RoomName = typing.NewType('RoomName', str)\n"
+        "CallId = typing.NewType('CallId', str)\n"
+        "def record(room_name: str, call_id: str) -> None: ...\n"
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "builtins.str = Carrier",
+        "setattr(builtins, 'str', Carrier)",
+        "delattr(builtins, 'str')",
+        "vars(builtins)['str'] = Carrier",
+        "builtins.__getattribute__('__dict__')['str'] = Carrier",
+    ],
+)
+def test_builtin_provider_mutation_invalidates_bare_carrier_identity(mutation: str) -> None:
+    source = f"import builtins\nclass Carrier: pass\n{mutation}\ndef move(file_id: str, folder_id: str): ...\n"
+    assert _check(source) == []
+
+
+def test_unrelated_builtin_member_write_preserves_primitive_identity() -> None:
+    source = "import builtins\nsetattr(builtins, 'audit_marker', True)\ndef move(file_id: str, folder_id: str): ...\n"
+    [finding] = _check(source)
+    assert finding.code == "SARJ093"
+    assert finding.severity is Severity.ERROR
+
+
+def test_unescaped_canonical_factory_still_establishes_named_domain_roles() -> None:
+    source = (
+        "import typing\nRoomName = typing.NewType('RoomName', str)\n"
+        "CallId = typing.NewType('CallId', str)\n"
+        "def record(room_name: str, call_id: str) -> None: ...\n"
+    )
+    [finding] = _check(source)
+    assert finding.code == "SARJ093"
+    assert finding.severity is Severity.WARNING
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import builtins\nclass Carrier: pass\nsetattr(builtins, 'str', Carrier)\nfrom builtins import str as Raw\ndef move(file_id: Raw, folder_id: Raw): ...\n",
+        "import builtins as native\nimport builtins as other\nclass Carrier: pass\nsetattr(native, 'str', Carrier)\ndef move(file_id: other.str, folder_id: other.str): ...\n",
+    ],
+)
+def test_replaced_builtin_carrier_cannot_reenter_through_imported_aliases(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_replacing_string_provider_does_not_hide_an_unchanged_bare_integer() -> None:
+    source = "import builtins\nclass Carrier: pass\nsetattr(builtins, 'str', Carrier)\ndef move(file_id: int, folder_id: int): ...\n"
+    [finding] = _check(source)
+    assert finding.code == "SARJ093"
+    assert finding.severity is Severity.ERROR

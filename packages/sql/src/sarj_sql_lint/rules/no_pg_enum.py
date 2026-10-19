@@ -52,6 +52,36 @@ class NoPgEnum(Rule):
         ),
         examples=(
             RuleExample(
+                example_id="transactional-text-column",
+                title="A transaction adds an application-owned text value column",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "supabase/migrations/001_boundary.sql",
+                        "BEGIN;\nALTER TABLE call ADD COLUMN status TEXT;\nCOMMIT;\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_boundary.sql"),
+                expected_count=0,
+                public=True,
+                scenario="semantic-boundary",
+            ),
+            RuleExample(
+                example_id="transactional-enum-evolution",
+                title="Transactional enum evolution still couples application values to database migrations",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "supabase/migrations/001_boundary.sql",
+                        "BEGIN;\nALTER TYPE call_status ADD VALUE 'archived';\nCOMMIT;\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_boundary.sql"),
+                expected_count=1,
+                public=True,
+                scenario="semantic-boundary",
+            ),
+            RuleExample(
                 example_id="postgres-enum-type",
                 title="PostgreSQL enum type",
                 outcome=ExampleOutcome.MATCH,
@@ -133,7 +163,10 @@ class NoPgEnum(Rule):
                         line=line,
                         col=col,
                         code=self.code,
-                        message=("Use TEXT with a typed application enum — PG enums can't be altered transactionally."),
+                        message=(
+                            "Use TEXT with a typed application enum — database enum values couple "
+                            "application changes to type migrations."
+                        ),
                     )
                 )
         return redirect_to_model(diags, model_owned=model_owned)

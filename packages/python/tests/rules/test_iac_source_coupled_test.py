@@ -399,3 +399,41 @@ def test_local_binding_invalidates_module_iac_tuple(binding: str) -> None:
         check(f"PATHS = (Path('first.tf'), Path('second.tf'))\ndef test_policy():\n{textwrap.indent(body, '    ')}")
         == []
     )
+
+
+@pytest.mark.parametrize(("declaration", "expected"), [("__test__ = False", 0), ("__test__ = True", 1)])
+def test_module_collection_flag_is_shared_with_iac_oracles(declaration: str, expected: int) -> None:
+    source = (
+        declaration + "\n"
+        "def test_policy():\n"
+        "    source = Path('main.tf').read_text()\n"
+        "    assert 'prevent_destroy' in source\n"
+    )
+    assert len(check(source)) == expected
+
+
+@pytest.mark.parametrize(
+    ("declaration", "expected"),
+    [
+        pytest.param("__test__ = False\nclass Configure:\n    __test__ = True", 0, id="class-local"),
+        pytest.param(
+            "__test__ = False\nclass Configure:\n    global __test__\n    __test__ = True", 1, id="class-global"
+        ),
+        pytest.param("__test__ = False\ndef configure(flag=(__test__ := True)):\n    pass", 1, id="function-default"),
+        pytest.param("__test__ = False\nclass Configure((__test__ := object)):\n    pass", 1, id="class-base"),
+        pytest.param(
+            "__test__ = False\ndef configure():\n    global __test__\n    __test__ = True",
+            0,
+            id="deferred-function-global",
+        ),
+        pytest.param("__test__ = False\n((__test__ := True) for item in (0,))", 0, id="deferred-generator"),
+    ],
+)
+def test_module_collection_eager_writes_respect_scopes(declaration: str, expected: int) -> None:
+    source = (
+        declaration + "\n"
+        "def test_policy():\n"
+        "    source = Path('main.tf').read_text()\n"
+        "    assert 'prevent_destroy' in source\n"
+    )
+    assert len(check(source)) == expected

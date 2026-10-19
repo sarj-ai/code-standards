@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "bd65aa13f9923505d0afbe5235b30f1dcf61e45a4ca0360db8d87a3783e29522",
-  "cliSha256": "a21d99fa0f49eebddd51cf28bf4e73f1f166349fc2ed09cc30571f15cbabf1a9",
+  "catalogSha256": "8f7dfc7022078bd1295134de6d673751aa7a57609522aac274fdcb91ab404123",
+  "cliSha256": "7b3e4e0e0886d3fe588cf4c3da1a02181204108cd8c9b16fb4726e42b4c4a1aa",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -7395,6 +7395,36 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "app/service.py",
+              "source": "from typing import Any\n\n\nclass Rows[Any]:\n    rows: dict[str, Any]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "generic-any-binding",
+          "outcome": "accept",
+          "scenarioId": "provider-identity",
+          "title": "A generic parameter named Any keeps its own identity"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from typing import Any\n\n\nclass Rows[T]:\n    rows: dict[str, Any]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "generic-typing-any",
+          "outcome": "reject",
+          "scenarioId": "provider-identity",
+          "title": "An unrelated generic parameter preserves actual Any erasure"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "app/offers.py",
               "source": "from typing import TypedDict\n\n\nclass OfferDetails(TypedDict):\n    id: str\n\n\ndef details() -> OfferDetails: ...\n"
             }
@@ -9451,6 +9481,36 @@
     },
     "python:no-raw-source-text-test-oracle": {
       "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_policy.py",
+              "source": "__test__ = False\nfrom pathlib import Path\n\n\ndef test_policy():\n    source = Path(\"workflow.yml\").read_text()\n    assert \"permissions:\" in source\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_policy.py",
+          "id": "disabled-module-source-oracle",
+          "outcome": "accept",
+          "scenarioId": "module-collection",
+          "title": "An explicitly disabled module has no collected source oracle"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_policy.py",
+              "source": "__test__ = True\nfrom pathlib import Path\n\n\ndef test_policy():\n    source = Path(\"workflow.yml\").read_text()\n    assert \"permissions:\" in source\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_policy.py",
+          "id": "enabled-module-source-oracle",
+          "outcome": "reject",
+          "scenarioId": "module-collection",
+          "title": "An enabled module still needs a parsed source contract"
+        },
         {
           "expectedCount": 0,
           "files": [
@@ -12193,6 +12253,36 @@
     "python:prefer-str-enum": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Order[T]:\n    statuses = (\"pending\", \"shipped\")\n    status: str\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "generic-builtin-string",
+          "outcome": "reject",
+          "scenarioId": "provider-identity",
+          "title": "An unrelated generic parameter preserves the builtin string field"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class Order[str]:\n    statuses = (\"pending\", \"shipped\")\n    status: str\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "generic-string-binding",
+          "outcome": "accept",
+          "scenarioId": "provider-identity",
+          "title": "A generic parameter does not become the builtin string type"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -14078,6 +14168,36 @@
           "title": "Constraint validation is deferred to a later migration"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_boundary.sql",
+              "source": "CREATE TABLE \"users\" (age integer);\n\nALTER TABLE users\nADD CHECK (age >= 18);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_boundary.sql",
+          "id": "quoted-lowercase-fresh-table",
+          "outcome": "accept",
+          "scenarioId": "semantic-boundary",
+          "title": "Quoted lowercase names retain the fresh empty-table exemption"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001_boundary.sql",
+              "source": "CREATE TABLE \"Users\" (age integer);\n\nALTER TABLE users\nADD CHECK (age >= 18);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_boundary.sql",
+          "id": "quoted-mixed-case-distinct-table",
+          "outcome": "reject",
+          "scenarioId": "semantic-boundary",
+          "title": "A mixed-case quoted name does not exempt a different existing table"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -14631,12 +14751,72 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Text column whose closed values are application-owned"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001_boundary.sql",
+              "source": "BEGIN;\n\nALTER TYPE call_status\nADD VALUE 'archived';\n\nCOMMIT;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_boundary.sql",
+          "id": "transactional-enum-evolution",
+          "outcome": "reject",
+          "scenarioId": "semantic-boundary",
+          "title": "Transactional enum evolution still couples application values to database migrations"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_boundary.sql",
+              "source": "BEGIN;\n\nALTER TABLE\nCALL\nADD COLUMN status TEXT;\n\nCOMMIT;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_boundary.sql",
+          "id": "transactional-text-column",
+          "outcome": "accept",
+          "scenarioId": "semantic-boundary",
+          "title": "A transaction adds an application-owned text value column"
         }
       ],
       "optionsSchemaSource": null
     },
     "sql:prefer-jsonb": {
       "examples": [
+        {
+          "expectedCount": 2,
+          "files": [
+            {
+              "path": "supabase/migrations/001_boundary.sql",
+              "source": "ALTER TABLE document\nALTER COLUMN metadata TYPE json USING metadata::json;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_boundary.sql",
+          "id": "alter-json-type-with-using",
+          "outcome": "reject",
+          "scenarioId": "semantic-boundary",
+          "title": "An ALTER USING conversion still declares a plain JSON type"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_boundary.sql",
+              "source": "ALTER TABLE document\nALTER COLUMN metadata TYPE jsonb USING metadata::jsonb;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_boundary.sql",
+          "id": "alter-jsonb-type-with-using",
+          "outcome": "accept",
+          "scenarioId": "semantic-boundary",
+          "title": "The target type and conversion both use JSONB"
+        },
         {
           "expectedCount": 1,
           "files": [

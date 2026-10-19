@@ -20,15 +20,16 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import children, walk, walk as walk_ast
+from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._ast_index import NodeIndex
-    from sarj_python_lint.rules._imports import ImportIndex
 
 
 #: Per-variable accumulator containing location and literals grouped by comparison operator.
@@ -351,6 +352,34 @@ class PreferStrEnum(Rule):
                 public=True,
                 scenario="rejecting-dispatch",
             ),
+            RuleExample(
+                example_id="generic-string-binding",
+                scenario="provider-identity",
+                title="A generic parameter does not become the builtin string type",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py", "class Order[str]:\n    statuses = ('pending', 'shipped')\n    status: str\n"
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="generic-builtin-string",
+                scenario="provider-identity",
+                title="An unrelated generic parameter preserves the builtin string field",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py", "class Order[T]:\n    statuses = ('pending', 'shipped')\n    status: str\n"
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+            ),
         ),
     )
     description = documentation.summary
@@ -425,6 +454,7 @@ class PreferStrEnum(Rule):
                         module_func_names,
                         closed_collections=frozenset(closed_collections),
                         imports=imports,
+                        type_parameters=_annotation_type_parameters(node, context.parents),
                     )
                     | method_closed_attributes.get(id(node), frozenset())
                 )
@@ -536,6 +566,7 @@ class PreferStrEnum(Rule):
             enum_like_classes,
             imports,
             unsafe_attribute_collections=unsafe_attribute_collections,
+            parents=context.parents,
         )
         diags: list[Diagnostic] = []
 
@@ -583,18 +614,20 @@ class PreferStrEnum(Rule):
         imports: ImportIndex | None,
         *,
         unsafe_attribute_collections: dict[str, set[str]],
+        parents: Mapping[ast.AST, ast.AST],
     ) -> _ClassFieldDiagnostics:
         diagnostics: list[Diagnostic] = []
         member_keys: dict[int, set[str]] = {}
         if imports is None:
             return _ClassFieldDiagnostics(diagnostics, member_keys)
         for cls in classes:
+            annotation_scope = _class_annotation_imports(cls, imports, parents)
             current = self._class_field_diags(
                 path,
                 cls,
-                raw_string_aliases,
+                raw_string_aliases - annotation_scope.shadowed_names,
                 enum_like_classes,
-                imports,
+                annotation_scope.imports,
                 unsafe_attribute_collections=unsafe_attribute_collections,
             )
             diagnostics.extend(current)
@@ -849,12 +882,13 @@ def _opaque_names(
     *,
     closed_collections: frozenset[str],
     imports: ImportIndex | None,
+    type_parameters: frozenset[str],
 ) -> frozenset[str]:
     base = (
         _literal_typed_names(func, alias_names)
         | _explicitly_open_literal_union_names(func, raw_string_aliases)
         | _dynamically_constrained_names(func, closed_collections)
-        | _foreign_typed_names(func, raw_string_aliases, imports=imports)
+        | _foreign_typed_names(func, raw_string_aliases, imports=imports, type_parameters=type_parameters)
         | _wire_bound_names(func, literal_funcs, module_func_names)
         | _fallback_consumed_names(func)
     )
@@ -1129,11 +1163,14 @@ def _foreign_typed_names(
     raw_string_aliases: frozenset[str],
     *,
     imports: ImportIndex | None,
+    type_parameters: frozenset[str],
 ) -> frozenset[str]:
     names: set[str] = set()
     args = func.args
     for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs):
-        if _is_foreign_annotation(arg.annotation, raw_string_aliases, imports=imports):
+        if _uses_type_parameter(arg.annotation, type_parameters, imports) or _is_foreign_annotation(
+            arg.annotation, raw_string_aliases, imports=imports
+        ):
             names.add(arg.arg)
     stack: list[ast.AST] = list(func.body)
     while stack:
@@ -1143,11 +1180,35 @@ def _foreign_typed_names(
         if (
             isinstance(node, ast.AnnAssign)
             and isinstance(node.target, ast.Name)
-            and _is_foreign_annotation(node.annotation, raw_string_aliases, imports=imports)
+            and (
+                _uses_type_parameter(node.annotation, type_parameters, imports)
+                or _is_foreign_annotation(node.annotation, raw_string_aliases, imports=imports)
+            )
         ):
             names.add(node.target.id)
         stack.extend(children(node))
     return frozenset(names)
+
+
+def _uses_type_parameter(annotation: ast.expr | None, names: frozenset[str], imports: ImportIndex | None) -> bool:
+    if not names or annotation is None:
+        return False
+    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
+        parsed = _parse_string_annotation(annotation.value)
+        return parsed is not None and _uses_type_parameter(parsed, names, imports)
+    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+        return _uses_type_parameter(annotation.left, names, imports) or _uses_type_parameter(
+            annotation.right, names, imports
+        )
+    root = annotation.value if isinstance(annotation, ast.Subscript) else annotation
+    while isinstance(root, ast.Attribute):
+        root = root.value
+    if isinstance(root, ast.Name) and root.id in names:
+        return True
+    wrapped = _transparent_annotation_members(annotation, imports)
+    if wrapped is not None:
+        return any(_uses_type_parameter(member, names, imports) for member in wrapped)
+    return False
 
 
 def _is_foreign_annotation(
@@ -1852,6 +1913,39 @@ def _str_const(node: ast.AST) -> str | None:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     return None
+
+
+def _annotation_type_parameters(owner: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> frozenset[str]:
+    names: set[str] = set()
+    node: ast.AST | None = owner
+    while node is not None:
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            names.update(
+                parameter.name
+                for parameter in node.type_params
+                if isinstance(parameter, (ast.TypeVar, ast.ParamSpec, ast.TypeVarTuple))
+            )
+        node = parents.get(node)
+    return frozenset(names)
+
+
+@dataclass(frozen=True, slots=True)
+class _ClassAnnotationScope:
+    imports: ImportIndex
+    shadowed_names: frozenset[str]
+
+
+def _class_annotation_imports(
+    cls: ast.ClassDef, imports: ImportIndex, parents: Mapping[ast.AST, ast.AST]
+) -> _ClassAnnotationScope:
+    shadowed = _annotation_type_parameters(cls, parents)
+    return _ClassAnnotationScope(
+        imports=ImportIndex(
+            {name: binding for name, binding in imports.bindings.items() if name not in shadowed},
+            imports.shadowed_names | shadowed,
+        ),
+        shadowed_names=shadowed,
+    )
 
 
 def _class_choice_fields(

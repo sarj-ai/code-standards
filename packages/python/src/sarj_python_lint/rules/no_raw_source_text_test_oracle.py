@@ -148,6 +148,7 @@ class NoRawSourceTextTestOracle(Rule):
         autofix=AutofixPolicy.NONE,
         aliases=("source-coupled-test",),
         limitations=(
+            "A literal module-level __test__ = False disables pytest collection. Later bindings in eager module expressions or explicitly global class scopes clear that proof; class-local names, deferred bodies, and annotation-only names do not rebind it.",
             "The rule recognizes source-like suffixes, shell templates ending in .sh.tftpl, and the exact Dockerfile basename; it follows local aliases, context-managed reads, and common normalization.",
             "Direct generator/list-comprehension reads unpacked from stable module-level path tuples are followed; mutable collections, rebinding, filtered comprehensions, and interprocedural flows remain unreported.",
             "Literal shebang startswith checks are representation contracts and remain unreported; other text compatibility sentinels require an exact suppression.",
@@ -180,6 +181,38 @@ class NoRawSourceTextTestOracle(Rule):
                     ExampleFile.python(
                         "tests/test_policy.py",
                         "from pathlib import Path\n\ndef test_policy():\n    source = Path('workflow.yml').read_text()\n    assert 'permissions:' in source\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_policy.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="disabled-module-source-oracle",
+                scenario="module-collection",
+                title="An explicitly disabled module has no collected source oracle",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_policy.py",
+                        "__test__ = False\nfrom pathlib import Path\ndef test_policy():\n"
+                        "    source = Path('workflow.yml').read_text()\n    assert 'permissions:' in source\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_policy.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="enabled-module-source-oracle",
+                scenario="module-collection",
+                title="An enabled module still needs a parsed source contract",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_policy.py",
+                        "__test__ = True\nfrom pathlib import Path\ndef test_policy():\n"
+                        "    source = Path('workflow.yml').read_text()\n    assert 'permissions:' in source\n",
                     ),
                 ),
                 focus_path=PurePosixPath("tests/test_policy.py"),
@@ -233,6 +266,8 @@ class NoRawSourceTextTestOracle(Rule):
 
 
 def top_level_test_functions(tree: ast.Module, imports: ImportIndex | None = None) -> list[TestFunction]:
+    if _module_collection_disabled(tree):
+        return []
     resolved_imports = imports or ImportIndex.from_tree(tree, module_scope_only=True)
     opted_out = _module_test_opt_outs(tree)
     functions: list[TestFunction] = []
@@ -247,6 +282,116 @@ def top_level_test_functions(tree: ast.Module, imports: ImportIndex | None = Non
         elif isinstance(statement, ast.ClassDef):
             functions.extend(_class_test_functions(statement, resolved_imports, opted_out))
     return functions
+
+
+def _module_collection_disabled(tree: ast.Module) -> bool:
+    disabled = False
+    for statement in tree.body:
+        match statement:
+            case ast.Assign(targets=targets) if any(
+                isinstance(target, ast.Name) and target.id == "__test__" for target in targets
+            ):
+                disabled = _assignment_disables_module_tests(statement)
+            case ast.AnnAssign(target=ast.Name(id="__test__"), value=value):
+                if value is not None:
+                    disabled = isinstance(value, ast.Constant) and value.value is False
+            case _:
+                if disabled and _eagerly_binds_module_test(statement):
+                    disabled = False
+    return disabled
+
+
+def _assignment_disables_module_tests(statement: ast.Assign) -> bool:
+    value = statement.value
+    if not isinstance(value, ast.Constant) or value.value is not False:
+        return False
+    return not any(
+        _eagerly_binds_module_test(target) for target in statement.targets if not isinstance(target, ast.Name)
+    )
+
+
+def _eagerly_binds_module_test(node: ast.AST) -> bool:
+    pending = [(node, True)]
+    while pending:
+        current, module_scope = pending.pop()
+        if module_scope and _eager_node_binds_test(current):
+            return True
+        if isinstance(current, ast.ClassDef):
+            class_module_scope = _class_declares_global_test(current)
+            pending.extend((child, class_module_scope) for child in current.body)
+        pending.extend((child, module_scope) for child in _eager_scope_children(current))
+    return False
+
+
+def _eager_node_binds_test(node: ast.AST) -> bool:
+    match node:
+        case (
+            ast.FunctionDef(name="__test__")
+            | ast.AsyncFunctionDef(name="__test__")
+            | ast.ClassDef(name="__test__")
+            | ast.TypeAlias(name=ast.Name(id="__test__"))
+            | ast.ExceptHandler(name="__test__")
+            | ast.MatchAs(name="__test__")
+            | ast.MatchStar(name="__test__")
+            | ast.MatchMapping(rest="__test__")
+            | ast.Name(id="__test__", ctx=(ast.Store() | ast.Del()))
+        ):
+            return True
+        case ast.Import(names=aliases) | ast.ImportFrom(names=aliases):
+            return any((alias.asname or alias.name.partition(".")[0]) in {"__test__", "*"} for alias in aliases)
+        case _:
+            return False
+
+
+def _eager_scope_children(node: ast.AST) -> list[ast.AST]:
+    match node:
+        case ast.FunctionDef() | ast.AsyncFunctionDef():
+            # Headers run now; annotations and the body are deferred.
+            return [*node.decorator_list, *_eager_argument_defaults(node.args)]
+        case ast.ClassDef():
+            return [*node.decorator_list, *node.bases, *(keyword.value for keyword in node.keywords)]
+        case ast.Lambda():
+            return _eager_argument_defaults(node.args)
+        case ast.ListComp() | ast.SetComp() | ast.DictComp():
+            return _comprehension_eager_children(node)
+        case ast.GeneratorExp():
+            return [node.generators[0].iter]
+        case ast.TypeAlias() | ast.Import() | ast.ImportFrom():
+            return []
+        case ast.AnnAssign():
+            return _annotated_assignment_eager_children(node)
+        case _:
+            return list(ast.iter_child_nodes(node))
+
+
+def _eager_argument_defaults(arguments: ast.arguments) -> list[ast.AST]:
+    return [*arguments.defaults, *filter(None, arguments.kw_defaults)]
+
+
+def _comprehension_eager_children(node: ast.ListComp | ast.SetComp | ast.DictComp) -> list[ast.AST]:
+    # Iteration targets stay local; walrus bindings use the enclosing scope.
+    children: list[ast.AST] = [node.key, node.value] if isinstance(node, ast.DictComp) else [node.elt]
+    children.extend(generator.iter for generator in node.generators)
+    children.extend(condition for generator in node.generators for condition in generator.ifs)
+    return children
+
+
+def _annotated_assignment_eager_children(node: ast.AnnAssign) -> list[ast.AST]:
+    if node.value is None:
+        return [] if isinstance(node.target, ast.Name) else [node.target]
+    return [node.target, node.value]
+
+
+def _class_declares_global_test(node: ast.ClassDef) -> bool:
+    pending: list[ast.AST] = list(node.body)
+    while pending:
+        current = pending.pop()
+        if isinstance(current, ast.Global) and "__test__" in current.names:
+            return True
+        if isinstance(current, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda):
+            continue
+        pending.extend(ast.iter_child_nodes(current))
+    return False
 
 
 def _class_test_functions(

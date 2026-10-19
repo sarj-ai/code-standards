@@ -404,3 +404,28 @@ def test_quoted_identifier_semicolons_do_not_split_an_existing_table_constraint(
 )
 def test_quoted_identifier_semicolons_preserve_safe_constraint_boundaries(source: str) -> None:
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("created", "altered", "expected"),
+    [
+        ('"users"', "users", 0),
+        ("USERS", '"users"', 0),
+        ('"app"."users"', "app.users", 0),
+        ('"Users"', "users", 1),
+        ('"app.users"', "app.users", 1),
+        ('"user""accounts"', '"user""accounts"', 0),
+    ],
+)
+def test_fresh_table_identity_obeys_postgres_identifier_folding(created: str, altered: str, expected: int) -> None:
+    source = f"CREATE TABLE {created} (age integer);\nALTER TABLE {altered} ADD CHECK (age >= 18);"
+
+    assert len(_check(source)) == expected
+
+
+def test_equivalent_quoted_name_does_not_preserve_freshness_after_a_write() -> None:
+    source = (
+        'CREATE TABLE "users" (age integer);\nINSERT INTO users VALUES (21);\nALTER TABLE users ADD CHECK (age >= 18);'
+    )
+
+    assert len(_check(source)) == 1
