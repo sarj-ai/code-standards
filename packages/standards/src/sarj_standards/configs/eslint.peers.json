@@ -19,7 +19,7 @@
     "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
     "@eslint/compat": "2.1.1",
     "@eslint/js": "10.0.1",
-    "@sarj/eslint-plugin": "16.20.1",
+    "@sarj/eslint-plugin": "16.20.2",
     "@shadcn/lint": "0.2.1",
     "@typescript/native": "npm:typescript@7.0.2",
     "@vitest/eslint-plugin": "1.6.27",
@@ -35,6 +35,7 @@
     "eslint-plugin-react": "7.37.5",
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-simple-import-sort": "14.0.0",
+    "eslint-plugin-sonarjs": "4.2.2",
     "eslint-plugin-testing-library": "7.16.2",
     "eslint-plugin-unicorn": "78.0.0",
     "eslint-plugin-zod": "5.0.1",
@@ -44,7 +45,7 @@
     "jiti": "2.7.0"
   },
   "ageGatePreapprovals": {
-    "@sarj/eslint-plugin": "16.20.1"
+    "@sarj/eslint-plugin": "16.20.2"
   },
   "yarnIdentityPins": {
     "@typescript-eslint/eslint-plugin": "8.71.2",
