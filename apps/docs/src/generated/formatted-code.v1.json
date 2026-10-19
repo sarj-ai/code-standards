@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "1aa97bb5dd6863eb2868857e5e3b8c0039ef03a6a72e5be70948d72f7ec34677",
-  "cliSha256": "d4e3e5f140c84d0b6c3214528daf6372c0e18e0a0612d350b5b64399cda37544",
+  "catalogSha256": "00d4e6c17086bee0c10337ce59ceabc3534383c75946b2f288b53df546e7d243",
+  "cliSha256": "7a9a9f65e440bd4e6ac1f34c6add109828be46f288ffa6f5b2d8b0121a838601",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -10789,6 +10789,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:prefer-bulk-upsert": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class UserStore:\n    async def upsert(self, user: UserInput) -> User: ...\n    async def upsert_many(self, users: list[UserInput]) -> list[User]: ...\n\n\nasync def save(store: UserStore, users: list[UserInput]):\n    await store.upsert_many(users)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "bulk-upsert",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use the existing bulk command"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class UserStore:\n    async def upsert(self, user: UserInput) -> User: ...\n    async def upsert_many(self, users: list[UserInput]) -> list[User]: ...\n\n\nasync def save(store: UserStore, users: list[UserInput]):\n    for user in users:\n        await store.upsert(user)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "serial-upserts",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Collect writes for an available bulk command"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:prefer-class-row": {
       "examples": [
         {
@@ -11819,6 +11854,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "One or-pattern owns the shared body"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-psycopg-executemany": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/user_store.py",
+              "source": "from psycopg import AsyncCursor\n\n\nasync def save(cursor: AsyncCursor, rows):\n    await cursor.executemany(\n        \"INSERT INTO users (id) VALUES (%s)\", [(row.id,) for row in rows]\n    )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/user_store.py",
+          "id": "batch-execute",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use the cursor's batch API"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/user_store.py",
+              "source": "from psycopg import AsyncCursor\n\n\nasync def save(cursor: AsyncCursor, rows):\n    for row in rows:\n        await cursor.execute(\"INSERT INTO users (id) VALUES (%s)\", (row.id,))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/user_store.py",
+          "id": "serial-execute",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Batch the same parameterized statement"
         }
       ],
       "optionsSchemaSource": null
@@ -13682,6 +13752,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Private helper appears before its sole caller"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:store-field-update-reuses-upsert": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/user_store.py",
+              "source": "from pydantic import BaseModel\n\n\nclass UserInput(BaseModel):\n    id: str\n    name: str\n\n\nclass UserStore:\n    async def upsert(self, data: UserInput) -> User:\n        await self.cursor.execute(\n            \"INSERT INTO users (id, name) VALUES (%s, %s) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name\",\n            (data.id, data.name),\n        )\n\n    async def set_name(self, id_: str, name: str) -> User:\n        await self.cursor.execute(\n            \"UPDATE users SET name = %s WHERE id = %s\", (name, id_)\n        )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/user_store.py",
+          "id": "duplicate-field-update",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Consolidate an ordinary field write"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/user_store.py",
+              "source": "from pydantic import BaseModel\n\n\nclass UserInput(BaseModel):\n    id: str\n    name: str\n\n\nclass UserStore:\n    async def upsert(self, data: UserInput) -> User:\n        await self.cursor.execute(\n            \"INSERT INTO users (id, name) VALUES (%s, %s) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name\",\n            (data.id, data.name),\n        )\n\n    async def set_name(self, id_: str, name: str, version: int) -> User:\n        await self.cursor.execute(\n            \"UPDATE users SET name = %s WHERE id = %s AND version = %s\",\n            (name, id_, version),\n        )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/user_store.py",
+          "id": "guarded-field-update",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Keep an update with a distinct concurrency contract"
         }
       ],
       "optionsSchemaSource": null

@@ -18,6 +18,7 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._sql import is_store_module
+from sarj_python_lint.rules._store_writes import upsert_pair
 
 
 if TYPE_CHECKING:
@@ -110,6 +111,7 @@ class StoreGetDelegatesToBulkRead(Rule):
             "Concrete wrappers declared with a canonical bulk method in a production Store class are inspected; the canonical method may be abstract.",
             "Reads retain the strict get/get_many contract. Writes require a typed collection key, compatible context and result types, and a recognizable many-method name.",
             "The canonical write topology is the exact set_many_to_status(..., status) shape, with wrappers binding the matching status enum member.",
+            "A source-declared upsert/upsert_many pair with one matching typed model input and scalar/collection result also shares one canonical write implementation. Preserve conflict, tenant, null/omission and missing-row behavior; implement a real batch primitive before delegating to avoid recursion.",
             "Wrappers with try/finally or other unsupported compound control flow are not diagnosed.",
             "Singleton implementations with explicit cache or lock identifiers are excluded because their access path differs intentionally.",
             "Signature compatibility is advisory: dynamic helpers and behavior not visible in the two method bodies require review.",
@@ -216,6 +218,9 @@ class StoreGetDelegatesToBulkRead(Rule):
             methods = _methods_by_name(statement)
             read_pair = _compatible_pair(statement)
             pairs = ([] if read_pair is None else [read_pair]) + _compatible_write_pairs(statement)
+            upserts = upsert_pair(statement, context.module_imports)
+            if upserts is not None and _is_concrete(upserts[0]):
+                pairs.append(_MethodPair(*upserts))
             for singleton, bulk in pairs:
                 is_read = singleton.name == "get"
                 if _already_canonical(singleton, bulk, methods, is_read=is_read):
@@ -231,7 +236,7 @@ class StoreGetDelegatesToBulkRead(Rule):
                             f"Annotated signatures suggest that `{statement.name}.{singleton.name}` and `{bulk.name}` "
                             f"expose the same {operation} through separate paths. Route the singleton through the bulk "
                             "implementation when observable semantics match; otherwise suppress SARJ421 with the "
-                            "concrete difference."
+                            "concrete difference. Implement batch SQL before delegating; the bulk method must not loop back through the singleton."
                         ),
                         severity=Severity.WARNING,
                     )
@@ -246,6 +251,8 @@ def _already_canonical(
     *,
     is_read: bool,
 ) -> bool:
+    if singleton.name == "upsert" and _calls_method(singleton, bulk.name) and _calls_method(bulk, "upsert"):
+        return False
     if _has_distinct_access_semantics(singleton, bulk):
         return True
     if is_read:
@@ -586,7 +593,11 @@ def _write_expectation(
     if len(bulk_keys) != 1:
         return None
     bulk_key = bulk_keys[0]
-    expected_key = _expected_wrapper_key(wrapper_parameters, bulk_key)
+    expected_key = (
+        f"one:name:{wrapper_parameters[0].arg}"
+        if wrapper.name == "upsert" and bulk.name == "upsert_many" and len(wrapper_parameters) == 1
+        else _expected_wrapper_key(wrapper_parameters, bulk_key)
+    )
     if expected_key is None:
         return None
     return _expectation_with_status(wrapper, bulk, bulk_key, expected_key)

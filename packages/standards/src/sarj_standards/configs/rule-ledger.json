@@ -115,6 +115,7 @@
       "opaque-parametrize-case-needs-id",
       "over-mocked-test",
       "prefer-autospec-for-callable-mock",
+      "prefer-bulk-upsert",
       "prefer-class-row",
       "prefer-collection-comprehension",
       "prefer-constant-time-secret-compare",
@@ -135,6 +136,7 @@
       "prefer-nominal-id-types",
       "prefer-non-nullable-collection",
       "prefer-or-pattern",
+      "prefer-psycopg-executemany",
       "prefer-pydantic-json-value",
       "prefer-pytest-fixture-injection",
       "prefer-regex-fullmatch",
@@ -174,6 +176,7 @@
       "restated-test-docstring",
       "shared-mutable-pydantic-factory",
       "stepdown",
+      "store-field-update-reuses-upsert",
       "store-get-delegates-to-bulk-read",
       "subprocess-kill-without-reap",
       "test-without-explicit-oracle",
@@ -515,7 +518,10 @@
       "SARJ512",
       "SARJ513",
       "SARJ514",
-      "SARJ515"
+      "SARJ515",
+      "SARJ516",
+      "SARJ517",
+      "SARJ518"
     ],
     "sql": [
       "SARJ101",

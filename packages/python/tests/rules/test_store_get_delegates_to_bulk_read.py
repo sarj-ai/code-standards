@@ -13,6 +13,80 @@ if TYPE_CHECKING:
 
 PATH = Path("app/user_store.py")
 
+_UPSERTS = """class UserStore:
+    async def upsert(self, data: UserInput) -> User:
+        return await self.write_one(data)
+    async def upsert_many(self, rows: list[UserInput]) -> list[User]:
+        return await self.write_batch(rows)
+"""
+
+
+def test_upsert_uses_bulk_as_the_canonical_primitive() -> None:
+    findings = _check(_UPSERTS)
+    assert len(findings) == 1
+    assert findings[0].line == 2
+    assert "upsert_many" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "return (await self.upsert_many([data]))[0]",
+        "rows = await self.upsert_many([data])\n        return rows[0]",
+        "rows = await self.upsert_many(rows=[data])\n        return rows[0]",
+    ],
+)
+def test_single_upsert_delegates_without_duplicate_write_path(body: str) -> None:
+    assert _check(_UPSERTS.replace("return await self.write_one(data)", body)) == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "return (await self.upsert_many([other]))[0]",
+        "return (await self.upsert_many([data, other]))[0]",
+        "return self.upsert_many([data])",
+        "if False:\n            return (await self.upsert_many([data]))[0]\n        return await self.write_one(data)",
+    ],
+)
+def test_upsert_delegation_preserves_the_same_command(body: str) -> None:
+    assert len(_check(_UPSERTS.replace("return await self.write_one(data)", body))) == 1
+
+
+def test_bulk_upsert_must_not_be_a_loop_over_singletons() -> None:
+    source = _UPSERTS.replace("return await self.write_batch(rows)", "return [await self.upsert(row) for row in rows]")
+    assert len(_check(source)) == 1
+
+
+def test_mutual_upsert_delegation_does_not_satisfy_canonical_write_contract() -> None:
+    source = _UPSERTS.replace(
+        "return await self.write_one(data)", "return (await self.upsert_many([data]))[0]"
+    ).replace("return await self.write_batch(rows)", "return [await self.upsert(row) for row in rows]")
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("delegates", [False, True], ids=["distinct-lock-contract", "cycle-with-lock"])
+def test_upsert_retains_distinct_locking_without_accepting_a_delegation_cycle(delegates: bool) -> None:
+    write = "return (await self.upsert_many([data]))[0]" if delegates else "return await self.write_one(data)"
+    source = _UPSERTS.replace(
+        "return await self.write_one(data)", f"async with self.lock:\n            {write}"
+    ).replace("return await self.write_batch(rows)", "return [await self.upsert(row) for row in rows]")
+    assert len(_check(source)) == int(delegates)
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        ("list[UserInput]", "list[OtherInput]"),
+        ("list[User]", "list[Other]"),
+        ("async def upsert_many", "def upsert_many"),
+        ("rows: list[UserInput]", "rows: list[UserInput], tenant: str"),
+    ],
+    ids=["different-input", "different-output", "sync-mismatch", "extra-context"],
+)
+def test_upsert_signatures_must_prove_compatible_models(replacement: tuple[str, str]) -> None:
+    assert _check(_UPSERTS.replace(*replacement)) == []
+
 
 def _check(source: str, path: Path = PATH) -> list[Diagnostic]:
     return StoreGetDelegatesToBulkRead().check(path, source)
