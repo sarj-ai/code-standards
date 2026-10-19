@@ -1,0 +1,205 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-19",
+  "decision": "ship-warning",
+  "autofix": "none",
+  "rules": [
+    "python:no-mutating-container-transform",
+    "python:no-discarded-validation-result"
+  ],
+  "codes": [
+    "SARJ520",
+    "SARJ519"
+  ],
+  "release": {
+    "python": "1.50.0",
+    "standards": "8.84.0"
+  },
+  "problem": "Container-valued transformations mutate borrowed primitive builtin inputs before returning a replacement; exception-only validation must distinguish actual values from nullable command return contracts.",
+  "existingOwners": {
+    "borrowed_models": "SARJ481",
+    "before_validators": "SARJ482",
+    "discarded_model_copies": "SARJ483",
+    "python_unawaited_coroutines": "BasedPyright reportUnusedCoroutine",
+    "typescript_unused_builtin_returns": "unicorn/no-unused-builtins"
+  },
+  "scope": "Undecorated functions/methods with direct builtin container return/input annotations and primitive input elements. Track bounded aliases, item/method/in-place mutation, structured if joins, literal reachability and eager comprehension scope/evaluation order. Preserve command/result scalar APIs, decorated frameworks, receiver state, I/O, opaque types and unsupported orchestration. Compound assignment/deletion targets and unpacking are excluded. Local annotations do not execute in a function and annotation-only targets do not perform writes; their evaluated receiver/index operands remain checked.",
+  "returnContractCorrection": "SARJ519 now follows stable source return aliases and first-party type imports, while distinguishing top-level unions and Annotated type content from collection elements/metadata. Nullable, generic, object, structural-protocol and unresolved contracts abstain.",
+  "validation": {
+    "focusedTests": 201,
+    "python315": "201 passed",
+    "python314": "201 passed",
+    "nativeFocusedSelfLint": {
+      "rules": 161,
+      "modules": 3,
+      "blockingFindings": 0,
+      "preExistingUnchangedWarnings": 1
+    },
+    "typecheck": "0 errors,0 warnings,0 notes",
+    "seedPositive": "Original motivating expression remains detected at line162,column9.",
+    "containerFocusedCases": 88,
+    "assignmentExecutionControls": 8
+  },
+  "labeledCases": {
+    "no_discarded_validation_result": {
+      "total": 68,
+      "truePositives": 23,
+      "trueNegatives": 45,
+      "falsePositives": 0,
+      "falseNegatives": 0
+    },
+    "no_mutating_container_transform": {
+      "total": 75,
+      "truePositives": 32,
+      "trueNegatives": 43,
+      "falsePositives": 0,
+      "falseNegatives": 0
+    }
+  },
+  "source": {
+    "files": [
+      {
+        "path": "packages/python/src/sarj_python_lint/rules/no_discarded_validation_result.py",
+        "sha256": "eecda5840ad9e02fc608dfffbe8576534790d4fc6cd91e86ae26c1d6371ce128"
+      },
+      {
+        "path": "packages/python/src/sarj_python_lint/rules/no_mutating_container_transform.py",
+        "sha256": "8c810c264c4980673f1ead5aeae5d32c72e0def971e136b626f87858a1598dfb"
+      },
+      {
+        "path": "packages/python/src/sarj_python_lint/rules/_resource_provenance.py",
+        "sha256": "caaac5e88a3fd5080657364e2b1bcf032ac072c8e57b1ae4cc86578f1eb29f65"
+      },
+      {
+        "path": "packages/python/tests/rules/test_no_discarded_validation_result.py",
+        "sha256": "7ec3e723728d8fe75379a95f78376824e24d272df40436aa66619f730b2efb8d"
+      },
+      {
+        "path": "packages/python/tests/rules/test_no_mutating_container_transform.py",
+        "sha256": "d2d7e7673030162ebcba96b93732c89255caf26f61aed582dbf51efad2a384ae"
+      }
+    ]
+  },
+  "corpus": {
+    "rules": [
+      "python:no-mutating-container-transform",
+      "python:no-discarded-validation-result"
+    ],
+    "files": 3000,
+    "bytes": 32895335,
+    "batches": 14,
+    "elapsed_seconds": 52.962336,
+    "diagnostics": 1,
+    "corpora": [
+      {
+        "label": "<private-corpus>",
+        "files": 828,
+        "bytes": 11436116,
+        "findings": 0
+      },
+      {
+        "label": "<private-corpus>",
+        "files": 975,
+        "bytes": 9205180,
+        "findings": 0
+      },
+      {
+        "label": "<private-corpus>",
+        "files": 1092,
+        "bytes": 10433159,
+        "findings": 1
+      },
+      {
+        "label": "pydantic",
+        "files": 105,
+        "bytes": 1820880,
+        "findings": 0
+      }
+    ]
+  },
+  "classification": {
+    "inspected": 1,
+    "truePositives": 1,
+    "falsePositives": 0,
+    "containerFindings": 0,
+    "note": "The sole diagnostic is byte-identical to the previously inspected validation true positive. No unseeded container positives means empirical precision cannot be estimated."
+  },
+  "performance": {
+    "python": "3.15.0",
+    "method": "Separate process per corpus and mode; first invocation cold, then median of three fresh-session warm invocations; baseline is all shipped Python rules except the candidate, combined adds the candidate.",
+    "corpora": [
+      {
+        "label": "<private-corpus>",
+        "files": 25,
+        "bytes": 190220,
+        "selection": "first 25 sorted pinned Python paths",
+        "modes": [
+          {
+            "mode": "baseline",
+            "cold_seconds": 9.346706654003356,
+            "warm_seconds": [
+              11.927320132002933,
+              14.320239886001218,
+              16.658601068003918
+            ],
+            "warm_median_seconds": 14.320239886001218,
+            "peak_rss_kib": 605660,
+            "diagnostic_counts": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "wall_seconds": 58.83343906899972
+          },
+          {
+            "mode": "candidate",
+            "cold_seconds": 0.2653707220015349,
+            "warm_seconds": [
+              0.26350202199682826,
+              0.2600420629969449,
+              0.24796512700413587
+            ],
+            "warm_median_seconds": 0.2600420629969449,
+            "peak_rss_kib": 59376,
+            "diagnostic_counts": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "wall_seconds": 1.5770410650002304
+          },
+          {
+            "mode": "combined",
+            "cold_seconds": 9.008036405000894,
+            "warm_seconds": [
+              12.090949613993871,
+              13.345157513998856,
+              16.2445899680024
+            ],
+            "warm_median_seconds": 13.345157513998856,
+            "peak_rss_kib": 608652,
+            "diagnostic_counts": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "wall_seconds": 57.11844148099772
+          }
+        ]
+      }
+    ]
+  },
+  "performanceLimit": "First25 sorted pinned self-source files,190220bytes. Host contention; medians are observations and imply neither speedup nor fleet performance. Baseline excludes both reviewed rules; candidate measures both; combined includes161 rules.",
+  "privacy": "Immutable private source identities, digests, raw findings and exact local replay commands remain in an owner-only overlay. Public report includes only aggregate private labels. Application modules were never imported.",
+  "commands": [
+    "PYTEST_DEBUG_TEMPROOT=<private-non-git-temp-root> packages/python/.venv/bin/python -m pytest packages/python/tests/rules/test_no_discarded_validation_result.py packages/python/tests/rules/test_no_mutating_container_transform.py -q",
+    "packages/python/.venv/bin/basedpyright --project packages/python/pyrightconfig.json <changed-rule-modules>",
+    "make verify",
+    "code-standards --root . maintain rules changes --before origin/main --after HEAD"
+  ],
+  "recommendation": "Keep both rules at warning with no autofix. Promotion requires a separate metadata change after the warning release and qualifying evidence. Consumer changes go through the rollout controller after publication.",
+  "precisionFollowup": "Four runtime counterexamples showed false warnings from compound targets and local annotations. Final source excludes compound/unpacking target ownership and visits only actual annotated values/target operands. All four now produce no warning; four controls retain genuine item/index/value/alias mutations."
+}

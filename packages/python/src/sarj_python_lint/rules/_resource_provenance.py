@@ -154,7 +154,7 @@ class ResourceProvenance:
         binding = self.runtime_binding(root, node)
         if not isinstance(binding, ast.alias):
             return None
-        qualified = _runtime_import_name(node, binding, self.context.parents.get(binding))
+        qualified = import_name_for_binding(node, binding, self.context.parents.get(binding))
         if qualified is None or not self._owner_namespace_untouched(qualified.partition(".")[0]):
             return None
         if binding not in self.runtime_import_cache:
@@ -528,7 +528,7 @@ def _root_name(node: ast.expr) -> str | None:
     return node.id if isinstance(node, ast.Name) else None
 
 
-def _runtime_import_name(expression: ast.expr, binding: ast.alias, parent: ast.AST | None) -> str | None:
+def import_name_for_binding(expression: ast.expr, binding: ast.alias, parent: ast.AST | None) -> str | None:
     attributes: list[str] = []
     while isinstance(expression, ast.Attribute):
         attributes.append(expression.attr)

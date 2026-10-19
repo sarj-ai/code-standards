@@ -589,3 +589,101 @@ def test_provider_mock_patching_invalidates_reexport_contract(tmp_path: Path) ->
     target = tmp_path / "store.py"
     target.write_text("from public import checked_count\nchecked_count('2')\n")
     assert analyze([NoDiscardedValidationResult.id], [target]) == []
+
+
+@pytest.mark.parametrize(
+    ("declarations", "annotation"),
+    [
+        ("type NoValue = None\n", "NoValue"),
+        ("from typing import TypeAlias\nNoValue: TypeAlias = None\n", "NoValue"),
+        ("from typing import Optional as Maybe\n", "Maybe[int]"),
+        ("from typing import Any as Payload\n", "Payload"),
+        ("", "object"),
+    ],
+    ids=["pep695-none-alias", "pep613-none-alias", "optional-import-alias", "any-import-alias", "object-contract"],
+)
+def test_return_contract_can_include_none(declarations: str, annotation: str) -> None:
+    source = (
+        f"{declarations}def record(raw: str) -> None:\n    pass\n"
+        f"def require(raw: str) -> {annotation}:\n"
+        "    if not raw:\n        raise ValueError('empty')\n"
+        "    return record(raw)\nrequire('2')\n"
+    )
+    assert NoDiscardedValidationResult().check(Path("app/counts.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    ("declarations", "annotation", "result"),
+    [
+        ("", "list[int | None]", "[int(raw), None]"),
+        ("from typing import Any\n", "list[Any]", "[int(raw)]"),
+        ("from typing import Annotated\n", "Annotated[int, None]", "int(raw)"),
+        ("type Checked = int\n", "Checked", "int(raw)"),
+        ("class Optional:\n    pass\n", "Optional", "Optional()"),
+    ],
+    ids=[
+        "nullable-container-elements",
+        "opaque-container-elements",
+        "annotation-metadata",
+        "value-alias",
+        "local-optional-class",
+    ],
+)
+def test_non_none_return_value_is_distinct_from_nested_annotation_metadata(
+    declarations: str, annotation: str, result: str
+) -> None:
+    source = (
+        f"{declarations}def checked(raw: str) -> {annotation}:\n"
+        "    if not raw:\n        raise ValueError('empty')\n"
+        f"    return {result}\nchecked('2')\n"
+    )
+    assert len(NoDiscardedValidationResult().check(Path("app/counts.py"), source)) == 1
+
+
+def test_imported_none_return_alias_is_resolved_from_source(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text('[project]\nname="sample"\nversion="0.0.0"\n')
+    (tmp_path / "contracts.py").write_text("type NoValue = None\n")
+    target = tmp_path / "store.py"
+    target.write_text(
+        "from contracts import NoValue\ndef record(raw: str) -> None:\n    pass\n"
+        "def require(raw: str) -> NoValue:\n    if not raw:\n        raise ValueError('empty')\n"
+        "    return record(raw)\nrequire('2')\n"
+    )
+    assert analyze([NoDiscardedValidationResult.id], [target]) == []
+
+
+@pytest.mark.parametrize(
+    ("declarations", "annotation"),
+    [
+        ("type Checked[T] = T\n", "Checked[int]"),
+        ("type First = Second\ntype Second = First\n", "First"),
+        ("from typing import Protocol\nclass Result(Protocol):\n    pass\n", "Result"),
+        ("from typing import Annotated, Optional\n", "Annotated[Optional[int], 'checked']"),
+        ("from typing import Union\n", "Union[int, None]"),
+    ],
+    ids=["generic-alias", "cyclic-alias", "empty-protocol", "annotated-nullable", "union-nullable"],
+)
+def test_opaque_and_nullable_annotation_boundaries(declarations: str, annotation: str) -> None:
+    source = declarations + _VALIDATOR.replace("-> int", f"-> {annotation}") + "checked_count('2')\n"
+    assert NoDiscardedValidationResult().check(Path("app/counts.py"), source) == []
+
+
+def test_return_annotation_uses_definition_scope_instead_of_function_locals() -> None:
+    source = _VALIDATOR.replace("checked_count(raw: str)", "checked_count(raw: str, int=command)")
+    source += "checked_count('2')\n"
+    assert len(NoDiscardedValidationResult().check(Path("app/counts.py"), source)) == 1
+
+
+def test_return_annotation_type_parameter_shadows_builtin() -> None:
+    source = _VALIDATOR.replace("def checked_count(", "def checked_count[int](") + "checked_count('2')\n"
+    assert NoDiscardedValidationResult().check(Path("app/counts.py"), source) == []
+
+
+def test_nested_definition_uses_enclosing_type_alias() -> None:
+    source = (
+        "def save(raw):\n    type Checked = int\n"
+        "    def checked_count(raw: str) -> Checked:\n"
+        "        if not raw:\n            raise ValueError('empty')\n"
+        "        return int(raw)\n    checked_count(raw)\n"
+    )
+    assert len(NoDiscardedValidationResult().check(Path("app/counts.py"), source)) == 1
