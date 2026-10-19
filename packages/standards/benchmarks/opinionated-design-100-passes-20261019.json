@@ -453,5 +453,14 @@
     "cd packages/typescript && npx vitest run tests/boolean-selector-policy.test.ts tests/returned-assignment-policy.test.ts",
     "code-standards check --rule eslint:sonarjs/no-selector-parameter --rule eslint:no-return-assign src/",
     "TMPDIR=\"$TASK_TMP\" mise --no-config --no-env --no-hooks exec terraform@1.15.8 -- make verify"
-  ]
+  ],
+  "deliveryReconciliation": {
+    "mainRevision": "37e64eaa920fa46a971d99e4122bb90539003a04",
+    "pythonVersion": "1.55.0",
+    "bundleVersions": [
+      "8.90.0",
+      "8.91.0"
+    ],
+    "note": "Admin-merge preparation preserves incoming discriminator precision fixes and fresh publishable versions. Original experiment pins and observations above are unchanged."
+  }
 }

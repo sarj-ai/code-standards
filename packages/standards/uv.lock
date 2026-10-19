@@ -65,7 +65,7 @@ wheels = [
 
 [[package]]
 name = "code-standards"
-version = "8.90.0"
+version = "8.91.0"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },
