@@ -678,6 +678,7 @@ def test_opaque_and_nullable_annotation_boundaries(declarations: str, annotation
 
 def test_return_annotation_uses_definition_scope_instead_of_function_locals() -> None:
     source = _VALIDATOR.replace("checked_count(raw: str)", "checked_count(raw: str, int=command)")
+    source = source.replace("return int(raw)", "return 1")
     source += "checked_count('2')\n"
     assert len(NoDiscardedValidationResult().check(Path("app/counts.py"), source)) == 1
 
@@ -695,3 +696,52 @@ def test_nested_definition_uses_enclosing_type_alias() -> None:
         "        return int(raw)\n    checked_count(raw)\n"
     )
     assert len(NoDiscardedValidationResult().check(Path("app/counts.py"), source)) == 1
+
+
+@pytest.mark.parametrize(
+    "returned",
+    [
+        "values.pop()",
+        "sink.write(raw)",
+        "register(raw)",
+        "int(values.pop())",
+        "values.count",
+        "values[0]",
+        "values.count if raw else 0",
+        "values[0] or 0",
+    ],
+    ids=[
+        "native-command",
+        "io-acknowledgement",
+        "opaque-function",
+        "nested-command",
+        "descriptor",
+        "subscription",
+        "conditional-descriptor",
+        "boolean-subscription",
+    ],
+)
+def test_opaque_returned_operations_do_not_prove_validation(returned: str) -> None:
+    source = _VALIDATOR.replace("return int(raw)", f"return {returned}") + "checked_count('2')\n"
+    assert NoDiscardedValidationResult().check(Path("app/counts.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    ("declarations", "returned", "expected_count"),
+    [
+        ("convert = int\n", "convert(raw)", 1),
+        ("class Count: pass\n", "Count(raw)", 1),
+        ("class Count: pass\nconvert = Count\n", "convert(raw)", 1),
+        ("def int(value):\n    return command(value)\n", "int(raw)", 0),
+    ],
+    ids=["builtin-alias", "nominal-construction", "nominal-alias", "shadowed-conversion"],
+)
+def test_returned_construction_uses_source_bindings(declarations: str, returned: str, expected_count: int) -> None:
+    source = declarations + _VALIDATOR.replace("return int(raw)", f"return {returned}") + "checked_count('2')\n"
+    assert len(NoDiscardedValidationResult().check(Path("app/counts.py"), source)) == expected_count
+
+
+def test_function_local_callee_is_distinct_from_the_return_annotation() -> None:
+    source = _VALIDATOR.replace("checked_count(raw: str)", "checked_count(raw: str, int=command)")
+    source += "checked_count('2')\n"
+    assert NoDiscardedValidationResult().check(Path("app/counts.py"), source) == []

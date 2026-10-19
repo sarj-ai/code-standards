@@ -436,11 +436,11 @@ def test_deep_elif_chain_preserves_neighboring_function_analysis() -> None:
     assert finding.line == len(source.splitlines()) - 1
 
 
-def test_error_location_suppression_and_generated_sources() -> None:
+def test_warning_location_suppression_and_generated_sources() -> None:
     rule = NoMutatingContainerTransform()
     source = _CASES[0].source
     [finding] = rule.check(Path("app/counts.py"), source)
-    assert (finding.code, finding.line, finding.col, finding.severity.value) == ("SARJ520", 2, 5, "error")
+    assert (finding.code, finding.line, finding.col, finding.severity.value) == ("SARJ520", 2, 5, "warning")
     suppressed = source.replace("values.sort()", "values.sort()  # sarj-noqa: SARJ520 — documented legacy in-place API")
     assert rule.check(Path("app/counts.py"), suppressed) == []
     assert rule.check(Path("generated/counts.py"), source) == []
@@ -456,18 +456,17 @@ def test_existing_model_mutation_owner_has_precedence() -> None:
 
 
 @pytest.mark.parametrize(
-    ("case_id", "expected_exit"),
-    [("borrowed-list-sort", 1), ("fresh-list-builder", 0), ("void-command", 0)],
+    ("case_id", "expected_warning"),
+    [("borrowed-list-sort", True), ("fresh-list-builder", False), ("void-command", False)],
 )
-def test_blocking_cli_contract(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], case_id: str, expected_exit: int
+def test_warning_cli_contract(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], case_id: str, expected_warning: bool
 ) -> None:
     target = tmp_path / "counts.py"
     target.write_text(next(case.source for case in _CASES if case.case_id == case_id))
-    assert main(["check", "--rule", NoMutatingContainerTransform.id, str(target)]) == expected_exit
+    assert main(["check", "--rule", NoMutatingContainerTransform.id, str(target)]) == 0
     output = capsys.readouterr().out
-    assert ("SARJ520" in output) == bool(expected_exit)
-    assert "warning:" not in output
+    assert ("SARJ520 warning:" in output) == expected_warning
 
 
 @pytest.mark.parametrize(
@@ -981,5 +980,176 @@ def test_boolean_value_identity(expression: str, expected_count: int) -> None:
     source = (
         "def changed(values: list[int], flag: bool) -> list[int]:\n"
         f"    result = {expression}\n    result.reverse()\n    return values\n"
+    )
+    assert len(NoMutatingContainerTransform().check(Path("app/counts.py"), source)) == expected_count
+
+
+@pytest.mark.parametrize(
+    ("source", "expected_count"),
+    [
+        (
+            "from plugin import *\ndef changed(values: list[int]) -> list[int]:\n    values.sort()\n    return values\n",
+            0,
+        ),
+        ("def changed[list](values: list[int]) -> list[int]:\n    values.sort()\n    return values\n", 0),
+        ("def changed[int](values: list[int]) -> list[int]:\n    values.sort()\n    return values\n", 0),
+        (
+            "class Mapper[int]:\n    def changed(self, values: list[int]) -> list[int]:\n        values.sort()\n        return values\n",
+            0,
+        ),
+        (
+            "class Mapper(metaclass=Factory):\n    def changed(self, values: list[int]) -> list[int]:\n        values.sort()\n        return values\n",
+            0,
+        ),
+        (
+            "class Mapper(Base):\n    def changed(self, values: list[int]) -> list[int]:\n        values.sort()\n        return values\n",
+            0,
+        ),
+        (
+            "@replace\nclass Mapper:\n    def changed(self, values: list[int]) -> list[int]:\n        values.sort()\n        return values\n",
+            0,
+        ),
+        (
+            "class Mapper[T]:\n    def changed(self, values: list[int]) -> list[int]:\n        values.sort()\n        return values\n",
+            1,
+        ),
+        ("def changed[T](values: list[int]) -> list[int]:\n    values.sort()\n    return values\n", 1),
+    ],
+    ids=[
+        "wildcard",
+        "container-parameter",
+        "element-parameter",
+        "class-parameter",
+        "prepared-namespace",
+        "inherited-namespace",
+        "decorated-namespace",
+        "unrelated-class-parameter",
+        "unrelated-function-parameter",
+    ],
+)
+def test_annotation_identity_requires_supported_builtin_names(source: str, expected_count: int) -> None:
+    assert len(NoMutatingContainerTransform().check(Path("app/counts.py"), source)) == expected_count
+
+
+@pytest.mark.parametrize(
+    ("statements", "expected_count"),
+    [
+        ("values[0] = other = 4", 1),
+        ("alias = values = values\n    alias.reverse()", 1),
+        ("copy, alias = list(values), values\n    alias.reverse()", 1),
+        ("copy, (alias, other) = [], [values, 0]\n    alias.reverse()", 1),
+        ("alias, other = source\n    alias.reverse()", 0),
+        ("alias, *rest = [values, 0]\n    alias.reverse()", 0),
+        ("alias, other = [*source, values]\n    other.reverse()", 0),
+        ("alias = values\n    del alias, values[0]", 1),
+        ("alias = values\n    del values\n    alias.reverse()", 1),
+        ("del values, values[0]", 0),
+        ("values, values[0] = list(values), 4", 0),
+    ],
+    ids=[
+        "chain-item-write",
+        "chain-alias",
+        "literal-alias",
+        "nested-literal-alias",
+        "opaque-unpack",
+        "starred-target",
+        "starred-value",
+        "delete-sequence",
+        "deleted-root-live-alias",
+        "deleted-receiver",
+        "ordered-unpack-targets",
+    ],
+)
+def test_ordered_assignment_and_deletion(statements: str, expected_count: int) -> None:
+    source = f"def changed(values: list[int], source) -> list[int]:\n    {statements}\n    return values\n"
+    assert len(NoMutatingContainerTransform().check(Path("app/counts.py"), source)) == expected_count
+
+
+def test_destructuring_captures_all_right_side_origins_before_rebinding() -> None:
+    source = (
+        "def changed(first: list[int], second: list[int]) -> list[int]:\n"
+        "    first, second = second, first\n    first.reverse()\n    return second\n"
+    )
+    [finding] = NoMutatingContainerTransform().check(Path("app/counts.py"), source)
+    assert "`second`" in finding.message
+
+
+@pytest.mark.parametrize(
+    ("ending", "expected_count"),
+    [
+        ("if flag:\n        values.reverse()\n        return values\n    else:\n        return list(values)", 1),
+        (
+            "if flag:\n        values.reverse()\n        return values\n    else:\n        raise ValueError('missing')",
+            1,
+        ),
+        ("if flag:\n        values.reverse()\n        return values", 0),
+        ("if flag:\n        values.reverse()\n        return None\n    else:\n        return None", 0),
+    ],
+    ids=["exhaustive-values", "value-or-raise", "fallthrough", "none-commands"],
+)
+def test_terminal_branch_contract(ending: str, expected_count: int) -> None:
+    source = f"def changed(values: list[int], flag: bool) -> list[int]:\n    {ending}\n"
+    assert len(NoMutatingContainerTransform().check(Path("app/counts.py"), source)) == expected_count
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected_count"),
+    [
+        ("(item for item in range(values.pop()))", 1),
+        ("(values for values in [values.pop()])", 1),
+        ("(values.pop() for item in [0])", 0),
+        ("(item for item in [0] if values.pop())", 0),
+        ("(item for item in [0] for other in [values.pop()])", 0),
+        ("(item for item in (values.pop() for other in [0]))", 0),
+        ("(item for item in list(values.pop() for other in [0]))", 1),
+        ("(values.pop() async for item in source)", 0),
+    ],
+    ids=[
+        "creation-operand",
+        "enclosing-binding",
+        "deferred-body",
+        "deferred-filter",
+        "deferred-inner-iterable",
+        "nested-deferred",
+        "nested-eager",
+        "async-body",
+    ],
+)
+def test_generator_creation_phase(expression: str, expected_count: int) -> None:
+    source = f"def changed(values: list[int], source) -> list[int]:\n    deferred = {expression}\n    return values\n"
+    assert len(NoMutatingContainerTransform().check(Path("app/counts.py"), source)) == expected_count
+
+
+@pytest.mark.parametrize(
+    ("declarations", "expression", "expected_count"),
+    [
+        ("from typing import cast\n", "cast(typ=list[int], val=values)", 1),
+        ("from typing import cast\n", "cast(list[int], val=values)", 1),
+        ("from typing import cast\n", "cast(list[int], typ=list[int], val=values)", 0),
+        ("from typing import cast\n", "cast(list[int], value=values)", 0),
+        ("from typing import cast\n", "cast(**options)", 0),
+        ("from typing import assert_type\n", "assert_type(val=values, typ=list[int])", 0),
+        ("from typing_extensions import assert_type as identity\n", "identity(values, list[int])", 1),
+        ("from typing_extensions import cast\n", "cast(list[int], values)", 1),
+        ("import typing_extensions as t\nt.assert_type = clone\n", "t.assert_type(values, list[int])", 0),
+        ("import typing_extensions as t\nfrom external import escape\nescape(t)\n", "t.cast(list[int], values)", 0),
+    ],
+    ids=[
+        "cast-keywords",
+        "cast-mixed",
+        "duplicate",
+        "unknown-keyword",
+        "opaque-expansion",
+        "positional-only",
+        "backport-assertion",
+        "backport-cast",
+        "patched-backport",
+        "escaped-backport",
+    ],
+)
+def test_native_helper_argument_contract(declarations: str, expression: str, expected_count: int) -> None:
+    source = declarations + (
+        f"def changed(values: list[int], options) -> list[int]:\n    alias = {expression}\n"
+        "    alias.reverse()\n    return alias\n"
     )
     assert len(NoMutatingContainerTransform().check(Path("app/counts.py"), source)) == expected_count
