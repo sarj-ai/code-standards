@@ -10,3 +10,11 @@ reported once; remaining judgments need a concrete contract and wrong outcome.
 
 Return the location, contract, evidence, smallest useful change, and focused
 command. Preserve valid smoke, no-throw, compatibility, and property contracts.
+
+Vitest's upstream `valid-expect` and `no-focused-tests` checks start as warnings
+in Vitest files. A bare `expect(value)` needs a matcher; the optional assertion
+message remains valid. Focused tests receive editor feedback before execution,
+while Vitest's CI guard remains authoritative at runtime. Assertion promises
+belong to typed `no-floating-promises`. The syntax-only async check is excluded
+because it reports stored assertions even when they are awaited later. Bun and
+Playwright retain their own rules.

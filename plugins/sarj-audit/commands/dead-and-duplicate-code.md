@@ -51,6 +51,24 @@ nullish `using` bindings. Zod length/size simplifiers change observable validati
 issues, and removing `.readonly()` from a Date schema changes freezing behavior.
 Method-name-only rules must also preserve unrelated methods and shadowed globals.
 
+The RegExp warning trial uses `no-missing-g-flag` for native
+`matchAll`/`replaceAll` failures. Its autofix adds the flag only when the regex
+is defined directly in the call argument, preserving shared regex state.
+
+Defer `no-super-linear-backtracking` at the pinned upstream version: even
+`report: "certain"` flags `/^\s*([\s\S]*)$/.exec(input)`, which accepts every
+string without a rejecting suffix. Its suffix check is a heuristic, and the
+rule exposes no option to exclude this false positive safely. Reevaluate after
+an upstream fix.
+
+Also defer `no-dupe-disjunctions`: even with speculative backtracking reports
+disabled, it offers to remove the second alternative in `/^(?:(a)|a)\1$/`.
+The original accepts both `a` and `aa` through different alternatives; the
+suggested removal rejects `a`. Captures and backreferences invalidate the
+native removal claim, so suggestion availability is not a safe admission filter.
+Deferring these rules leaves duplicate alternatives and genuine repetition
+hazards uncovered.
+
 The opt-in `knip` capability reports native production-mode unused-file evidence
 for an application declared with `application = true` under `[knip]` in the existing
 manifest. Its initial adapter accepts one private

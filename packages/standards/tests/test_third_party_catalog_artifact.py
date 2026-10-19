@@ -110,6 +110,7 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
         "ktlint",
         "mobsfscan",
         "react-doctor",
+        "regexp",
         "ruff",
         "swiftformat",
         "swiftlint",
