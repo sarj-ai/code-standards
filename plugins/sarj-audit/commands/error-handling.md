@@ -14,3 +14,8 @@ Audit exception and failure handling using the shared [audit protocol](../skills
   boolean-only negation and intentional recovery remain valid.
 
 Do not demand local logging when a higher boundary records the error once with context. Avoid duplicate logging and catch/rethrow wrappers that add no information.
+
+The upstream `preserve-caught-error` warning also checks error wrappers in
+parameterless catches. When adding context with `throw new Error(message)`,
+retain the original exception as `{ cause }`. Ordinary recovery catches and
+errors created inside a separate nested function keep their own contracts.

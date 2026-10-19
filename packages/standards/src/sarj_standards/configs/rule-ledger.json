@@ -173,6 +173,7 @@
       "require-precise-factory-signature",
       "require-public-dependency-contract",
       "require-pydantic-for-external-json",
+      "require-pydantic-for-mapping-shape",
       "require-pydantic-for-structured-payload",
       "require-pydantic-ordinal-lower-bound",
       "restated-test-docstring",
@@ -525,7 +526,8 @@
       "SARJ517",
       "SARJ518",
       "SARJ519",
-      "SARJ520"
+      "SARJ520",
+      "SARJ521"
     ],
     "sql": [
       "SARJ101",

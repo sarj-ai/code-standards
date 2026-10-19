@@ -80,13 +80,29 @@ class _DataUnions:
             if isinstance(node, ast.ClassDef)
             and len(bindings.get(node.name, ())) == 1
             and node.name not in self.provenance.mutated
+            and node.name not in self.provenance.external_bindings
         }
         self.aliases: dict[str, ast.expr] = {}
         self.declarations: dict[str, ast.stmt] = {}
+        self.values: dict[str, ast.expr] = {}
+        self.metadata_aliases = _metadata_alias_graph(tree, bindings)
+        self.metadata_mutation_cache: dict[str, bool | None] = {}
+        self.metadata_writes = _metadata_attribute_writes(context, tree, self.provenance)
         for node in tree.body:
-            value = _alias_value(node, context)
+            binding = _value_binding(node)
+            if binding is not None:
+                bound_name, bound_value = binding
+                if len(bindings.get(bound_name, ())) == 1:
+                    self.values[bound_name] = bound_value
+            value = _alias_value(node, context, self.provenance)
             name = _alias_name(node)
-            if value is not None and name is not None and len(bindings.get(name, ())) == 1:
+            if (
+                value is not None
+                and name is not None
+                and len(bindings.get(name, ())) == 1
+                and name not in self.provenance.external_bindings
+                and name not in self.provenance.mutated
+            ):
                 self.aliases[name] = value
                 self.declarations[name] = node
         self.records: dict[str, _Record | None] = {}
@@ -161,25 +177,119 @@ class _DataUnions:
         )
 
     def _discriminator_metadata(self, node: ast.expr) -> bool:
-        if not isinstance(node, ast.Call) or not _untouched(node.func, self.provenance):
+        seen: set[str] = set()
+        for _ in range(_MAX_EXPANSION):
+            if isinstance(node, ast.Name) and node.id in self.values:
+                if node.id in seen:
+                    return True
+                seen.add(node.id)
+                node = self.values[node.id]
+                continue
+            if not isinstance(node, ast.Call):
+                return self._metadata_aliases_discriminate(seen, callable_metadata=False)
+            step = self._metadata_step(node)
+            if isinstance(step, bool):
+                return self._metadata_aliases_discriminate(seen, callable_metadata=step)
+            node = step
+        return True
+
+    def _metadata_step(self, node: ast.Call) -> ast.expr | bool:
+        if not _untouched(node.func, self.provenance):
             return False
-        if self.context.module_imports.resolves(node.func, sources=_DISCRIMINATOR_SOURCES, symbol="Discriminator"):
-            discriminator = (
-                node.args[0]
-                if node.args
-                else next((keyword.value for keyword in node.keywords if keyword.arg == "discriminator"), None)
-            )
-            return discriminator is not None and not (
-                isinstance(discriminator, ast.Constant) and isinstance(discriminator.value, str)
-            )
-        return self.context.module_imports.resolves(node.func, sources=_FIELD_SOURCES, symbol="Field") and any(
-            keyword.arg == "discriminator" and self._discriminator_metadata(keyword.value) for keyword in node.keywords
+        discriminator = next((keyword.value for keyword in node.keywords if keyword.arg == "discriminator"), None)
+        if self._metadata_constructor(node.func, _DISCRIMINATOR_SOURCES, "Discriminator"):
+            argument = node.args[0] if node.args else discriminator
+            return argument is not None and not self._string_discriminator(argument)
+        if self._metadata_constructor(node.func, _FIELD_SOURCES, "Field") and discriminator is not None:
+            return discriminator
+        return False
+
+    def _metadata_aliases_discriminate(self, names: set[str], *, callable_metadata: bool) -> bool:
+        mutations = [self._metadata_mutated(name) for name in names]
+        return any(mutation is None for mutation in mutations) or (callable_metadata and not any(mutations))
+
+    def _metadata_mutated(self, name: str) -> bool | None:
+        if name in self.metadata_mutation_cache:
+            return self.metadata_mutation_cache[name]
+        pending = [name]
+        seen: set[str] = set()
+        mutated = False
+        for _ in range(_MAX_EXPANSION):
+            if not pending:
+                self.metadata_mutation_cache.update(dict.fromkeys(seen, mutated))
+                return mutated
+            current = pending.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            if current in self.provenance.external_bindings or self._metadata_escaped(current):
+                return None
+            if current in self.provenance.mutated:
+                if not self._metadata_string_writes(current):
+                    return None
+                mutated = True
+            pending.extend(self.metadata_aliases.get(current, set()).difference(seen))
+        return None
+
+    def _metadata_string_writes(self, name: str) -> bool:
+        writes = self.metadata_writes.get(name, ())
+        return (
+            bool(writes)
+            and len(writes) <= _MAX_EXPANSION
+            and all(attribute == "discriminator" and self._string_discriminator(value) for attribute, value in writes)
         )
+
+    def _metadata_escaped(self, name: str) -> bool:
+        reads = self.provenance.reads.get(name, ())
+        if len(reads) > _MAX_EXPANSION:
+            return True
+        for read in reads:
+            node: ast.AST | None = read
+            for _ in range(_MAX_EXPANSION):
+                node = self.context.parents.get(node)
+                if isinstance(node, ast.Call):
+                    return True
+                if node is None or isinstance(node, ast.stmt):
+                    break
+            else:
+                return True
+        return False
+
+    def _metadata_constructor(self, node: ast.expr, sources: frozenset[str], symbol: str) -> bool:
+        imports = self.context.module_imports
+        return imports.resolves(node, sources=sources, symbol=symbol) or (
+            isinstance(node, ast.Attribute)
+            and node.attr == symbol
+            and imports.resolved_qualified_name(node.value) in sources
+        )
+
+    def _string_discriminator(self, node: ast.expr) -> bool:
+        pending = [_Expansion(node)]
+        for _ in range(_MAX_EXPANSION):
+            if not pending:
+                return True
+            item = pending.pop()
+            node = item.node
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                continue
+            if (
+                isinstance(node, ast.Name)
+                and node.id in self.values
+                and node.id not in item.aliases
+                and node.id not in self.provenance.mutated
+                and node.id not in self.provenance.external_bindings
+            ):
+                pending.append(_Expansion(self.values[node.id], item.aliases | {node.id}))
+            elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+                pending.extend(_Expansion(child, item.aliases) for child in (node.left, node.right))
+            else:
+                return False
+        return False
 
     def _typing_symbol(self, node: ast.expr) -> str | None:
         if not _untouched(node, self.provenance):
             return None
-        return self.context.imports.resolved_symbol(node, sources=TYPING_SOURCES)
+        return self.context.module_imports.resolved_symbol(node, sources=TYPING_SOURCES)
 
     def _variants(self, expression: ast.expr) -> set[str] | None:
         leaves = self._leaves(expression)
@@ -296,13 +406,17 @@ class _DataUnions:
             return _Domain(frozenset({_tag(None)}))
         if isinstance(node, ast.Name | ast.Attribute) and (
             (isinstance(node, ast.Name) and node.id in self.classes)
-            or self.context.imports.resolved_qualified_name(node) is not None
+            or (
+                _untouched(node, self.provenance)
+                and self.context.module_imports.resolved_qualified_name(node) is not None
+            )
         ):
             return _Domain(unresolved=True)
         if (
             isinstance(node, ast.Name)
             and node.id in _NON_LITERAL_BUILTINS
-            and self.context.imports.builtin_is_unshadowed(node.id)
+            and self.context.module_imports.builtin_is_unshadowed(node.id)
+            and _untouched(node, self.provenance)
         ):
             return _Domain()
         if not isinstance(node, ast.Subscript):
@@ -313,7 +427,8 @@ class _DataUnions:
         if symbol is not None or (
             isinstance(node.value, ast.Name)
             and node.value.id in {"list", "dict", "tuple", "set", "frozenset", "type"}
-            and self.context.imports.builtin_is_unshadowed(node.value.id)
+            and self.context.module_imports.builtin_is_unshadowed(node.value.id)
+            and _untouched(node.value, self.provenance)
         ):
             return _Domain()
         return _Domain(opaque=True)
@@ -381,7 +496,35 @@ def _record(node: ast.ClassDef, context: PythonFileContext, provenance: Resource
             continue
         else:
             return None
+    field_names = frozenset(fields)
+    if any(_class_annotation_shadowed(field.annotation, field_names, context) for field in fields.values()):
+        return None
     return _Record(fields, required)
+
+
+def _class_annotation_shadowed(annotation: ast.expr, names: frozenset[str], context: PythonFileContext) -> bool:
+    pending = [(annotation, True)]
+    for _ in range(_MAX_EXPANSION):
+        if not pending:
+            return False
+        node, forward = pending.pop()
+        parsed = _string_expression(node) if forward else node
+        if parsed is None or (isinstance(parsed, ast.Name) and parsed.id in names):
+            return True
+        pending.extend(_class_annotation_children(parsed, forward=forward, context=context))
+    return True
+
+
+def _class_annotation_children(
+    node: ast.expr, *, forward: bool, context: PythonFileContext
+) -> list[tuple[ast.expr, bool]]:
+    if not isinstance(node, ast.Subscript):
+        return [(child, forward) for child in ast.iter_child_nodes(node) if isinstance(child, ast.expr)]
+    members = _subscript_members(node)
+    symbol = context.module_imports.resolved_symbol(node.value, sources=TYPING_SOURCES)
+    if symbol == "Annotated" and members:
+        return [(node.value, False), (members[0], True)]
+    return [(node.value, False), *((member, symbol != "Literal") for member in members)]
 
 
 def _record_required(node: ast.ClassDef, context: PythonFileContext, provenance: ResourceProvenance) -> bool | None:
@@ -394,16 +537,16 @@ def _record_required(node: ast.ClassDef, context: PythonFileContext, provenance:
         for decorator in node.decorator_list
         if not (
             _untouched(decorator, provenance)
-            and context.imports.resolves(decorator, sources=TYPING_SOURCES, symbol="final")
+            and context.module_imports.resolves(decorator, sources=TYPING_SOURCES, symbol="final")
         )
     ]
     if decorators:
         return _direct_dataclass(node, context, provenance, decorators)
     if len(node.bases) != 1:
         return None
-    if context.imports.resolves(node.bases[0], sources=MODEL_SOURCES, symbol="BaseModel"):
+    if context.module_imports.resolves(node.bases[0], sources=MODEL_SOURCES, symbol="BaseModel"):
         return True if not node.keywords else None
-    if not context.imports.resolves(node.bases[0], sources=TYPING_SOURCES, symbol="TypedDict"):
+    if not context.module_imports.resolves(node.bases[0], sources=TYPING_SOURCES, symbol="TypedDict"):
         return None
     required = True
     for keyword in node.keywords:
@@ -422,7 +565,7 @@ def _direct_dataclass(
         return None
     decorator = decorators[0]
     target = decorator.func if isinstance(decorator, ast.Call) else decorator
-    if not _untouched(target, provenance) or not context.imports.resolves(
+    if not _untouched(target, provenance) or not context.module_imports.resolves(
         target, sources=_DATACLASS_SOURCES, symbol="dataclass"
     ):
         return None
@@ -479,12 +622,60 @@ def _alias_name(node: ast.stmt) -> str | None:
             return None
 
 
-def _alias_value(node: ast.stmt, context: PythonFileContext) -> ast.expr | None:
+def _metadata_alias_graph(tree: ast.Module, bindings: dict[str, list[ast.AST]]) -> dict[str, set[str]]:
+    graph: dict[str, set[str]] = {}
+    for node in tree.body:
+        binding = _value_binding(node)
+        if binding is None:
+            continue
+        name, value = binding
+        if len(bindings.get(name, ())) != 1 or not isinstance(value, ast.Name):
+            continue
+        graph.setdefault(name, set()).add(value.id)
+        graph.setdefault(value.id, set()).add(name)
+    return graph
+
+
+def _metadata_attribute_writes(
+    context: PythonFileContext, tree: ast.Module, provenance: ResourceProvenance
+) -> dict[str, list[tuple[str, ast.expr]]]:
+    writes: dict[str, list[tuple[str, ast.expr]]] = {}
+    for target in context.nodes(ast.Attribute):
+        if not isinstance(target.ctx, ast.Store) or not isinstance(target.value, ast.Name):
+            continue
+        binding = provenance.binding(target.value.id, target)
+        if binding is None or provenance.scope(binding) is not tree or provenance.scope(target) is not tree:
+            continue
+        parent = context.parents.get(target)
+        if isinstance(parent, ast.Assign | ast.AnnAssign) and parent.value is not None:
+            writes.setdefault(target.value.id, []).append((target.attr, parent.value))
+    return writes
+
+
+def _value_binding(node: ast.stmt) -> tuple[str, ast.expr] | None:
+    match node:
+        case (
+            ast.Assign(targets=[ast.Name(id=name)], value=value)
+            | ast.AnnAssign(target=ast.Name(id=name), value=ast.expr() as value)
+        ):
+            return name, value
+        case _:
+            return None
+
+
+def _alias_value(
+    node: ast.stmt, context: PythonFileContext, provenance: ResourceProvenance | None = None
+) -> ast.expr | None:
     match node:
         case ast.TypeAlias(type_params=[]):
             return node.value
         case ast.AnnAssign(target=ast.Name(), annotation=annotation, value=value):
-            return value if context.imports.resolves(annotation, sources=TYPING_SOURCES, symbol="TypeAlias") else None
+            return (
+                value
+                if context.module_imports.resolves(annotation, sources=TYPING_SOURCES, symbol="TypeAlias")
+                and (provenance is None or _untouched(annotation, provenance))
+                else None
+            )
         case ast.Assign(targets=[ast.Name()], value=value):
             return None if isinstance(value, ast.Constant) and isinstance(value.value, str) else value
         case _:
@@ -503,7 +694,10 @@ def _string_expression(node: ast.expr) -> ast.expr | None:
 def _untouched(node: ast.expr, provenance: ResourceProvenance) -> bool:
     while isinstance(node, ast.Attribute):
         node = node.value
-    return isinstance(node, ast.Name) and node.id not in provenance.mutated
+    if not isinstance(node, ast.Name) or node.id in provenance.mutated or node.id in provenance.external_bindings:
+        return False
+    binding = provenance.binding(node.id, node)
+    return binding is None or isinstance(binding, ast.alias)
 
 
 def _union_expression(node: ast.expr, context: PythonFileContext) -> bool:
@@ -516,7 +710,7 @@ def _union_expression(node: ast.expr, context: PythonFileContext) -> bool:
             return True
         if not isinstance(node, ast.Subscript):
             return False
-        symbol = context.imports.resolved_symbol(node.value, sources=TYPING_SOURCES)
+        symbol = context.module_imports.resolved_symbol(node.value, sources=TYPING_SOURCES)
         if symbol == "Union":
             return True
         if symbol == "Optional":
