@@ -10,6 +10,8 @@ import sys
 import tomllib
 from typing import TYPE_CHECKING, Final, NoReturn, TypeIs
 
+from sarj_standards_bootstrap.admission import check_slot
+
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -170,8 +172,11 @@ def run(arguments: Sequence[str], *, cwd: Path) -> NoReturn:
     if tuple(int(part) for part in selected_bundle.split(".")) >= _PYTHON315_BUNDLE:
         environment.setdefault("UV_PYTHON_DOWNLOADS_JSON_URL", _PYTHON_DOWNLOADS)
     try:
+        if parsed.forwarded[:1] == ("check",):
+            with check_slot(environment):
+                execute(exact_command, environment)
         execute(exact_command, environment)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         message = f"could not execute Standards {selected_bundle}: {exc}"
         raise BootstrapError(message) from exc
 
@@ -182,3 +187,5 @@ def main(argv: Sequence[str] | None = None) -> int:
     except BootstrapError as exc:
         sys.stderr.write(f"code-standards bootstrap: {exc}\n")
         return 2
+    except KeyboardInterrupt:
+        return 130

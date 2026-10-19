@@ -123,6 +123,8 @@ const workflow = [
         so leave it unset there. Swift repositories keep <code>macos-15</code> for Standards. On a
         <code>blacksmith-</code> label both workflows omit Harden Runner: it installs no agent there unless the
         organization enables StepSecurity TLS inspection, so it would only add a 10-second post step.
+        On a <code>blacksmith-&lt;n&gt;vcpu-ubuntu-&lt;release&gt;</code> label, <code>commit-policy.yml</code> runs on
+        <code>blacksmith-2vcpu-ubuntu-&lt;release&gt;-arm</code>, which Blacksmith bills at 0.625 of x64.
       </p>
     </div>
   </section>
