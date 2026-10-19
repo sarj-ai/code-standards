@@ -230,7 +230,7 @@ def test_labeled_domain_states(label: str, source: str, *, matches: bool) -> Non
 
 def test_native_spec_and_public_examples() -> None:
     assert _PROBLEM.bad_examples == (_BASE,)
-    assert verify_native_rule(PreferDiscriminatedModelUnion, analyze) == 2
+    assert verify_native_rule(PreferDiscriminatedModelUnion, analyze) == 4
 
 
 def test_multiple_variant_requirements_produce_one_model_review() -> None:
