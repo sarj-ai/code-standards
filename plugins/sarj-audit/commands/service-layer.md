@@ -79,6 +79,20 @@ persistence, network access, time, and randomness at an explicit orchestration
 boundary when this makes the transformation easier to reason about and test.
 Returning a copy does not make an I/O operation pure.
 
+Separate value-producing queries and conversions from commands that change
+observable state. Consume a returned value; do not call a conversion solely for
+validation exceptions and then continue with its original inputs. A validation
+command should return `None` (or `void` in TypeScript), while a conversion should
+return the checked value its caller uses. Do not hide input mutation, persistence,
+network writes, or event publication inside a value-producing transformation.
+An exception assertion explicitly observes validation behavior and is valid.
+
+`no-discarded-validation-result` owns source-resolved Python conversions with an
+explicit exception branch and a discarded value. Audit additional effect flows
+with concrete ownership and call-site evidence. Keep documented stateful owners,
+framework contracts, and third-party command/result APIs; require an explicit
+effect boundary when application code wraps them in a transformation.
+
 Copy each changed ancestor before updating nested values. A copied list still
 shares its elements; a shallow model copy or object spread still shares nested
 objects. Readonly types and frozen fields do not guarantee deep immutability.

@@ -43,6 +43,7 @@ from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
 )
 from sarj_python_lint.rules.no_database_programmability import NoDatabaseProgrammability
 from sarj_python_lint.rules.no_delete_statement import NoDeleteStatement
+from sarj_python_lint.rules.no_discarded_validation_result import NoDiscardedValidationResult
 from sarj_python_lint.rules.no_dunder_all import NoDunderAll
 from sarj_python_lint.rules.no_duplicate_dunder_all_entry import NoDuplicateDunderAllEntry
 from sarj_python_lint.rules.no_excessive_cognitive_complexity import NoExcessiveCognitiveComplexity
@@ -249,6 +250,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoFixedSleepInLoop.id: NoFixedSleepInLoop,
         NoInterpreterSourceArguments.id: NoInterpreterSourceArguments,
         NoUnusedCopyResult.id: NoUnusedCopyResult,
+        NoDiscardedValidationResult.id: NoDiscardedValidationResult,
         NoBeforeValidatorInputMutation.id: NoBeforeValidatorInputMutation,
         NoInputModelMutation.id: NoInputModelMutation,
         NoDatabaseProgrammability.id: NoDatabaseProgrammability,

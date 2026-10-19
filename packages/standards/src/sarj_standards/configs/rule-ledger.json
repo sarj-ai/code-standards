@@ -55,6 +55,7 @@
       "no-cors-wildcard-with-credentials",
       "no-database-programmability",
       "no-delete-statement",
+      "no-discarded-validation-result",
       "no-docstring-type-restatement",
       "no-dunder-all",
       "no-duplicate-dunder-all-entry",
@@ -521,7 +522,8 @@
       "SARJ515",
       "SARJ516",
       "SARJ517",
-      "SARJ518"
+      "SARJ518",
+      "SARJ519"
     ],
     "sql": [
       "SARJ101",
