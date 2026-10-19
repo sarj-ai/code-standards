@@ -170,7 +170,7 @@
     {"pass":92,"phase":"Delivery and verification review","question":"Is the pinned upstream package compatible with ESLint 10?","evidence":"Final validation and corpus sections are populated from observed run results.","decision":"Registry metadata declares ESLint 8, 9 and 10 support; runtime integration executes it on the installed ESLint."},
     {"pass":93,"phase":"Delivery and verification review","question":"Can documentation discover the upstream provider?","evidence":"Final validation and corpus sections are populated from observed run results.","decision":"Register the SonarJS provider and regenerate the effective catalog with JSX contexts excluded."},
     {"pass":94,"phase":"Delivery and verification review","question":"Are generated docs and CLI references synchronized?","evidence":"Final validation and corpus sections are populated from observed run results.","decision":"Regenerate docs, CLI and formatted examples with the existing commands and the pinned Terraform formatter."},
-    {"pass":95,"phase":"Delivery and verification review","question":"Are publishable versions and lock references coherent?","evidence":"Final validation and corpus sections are populated from observed run results.","decision":"Preserve incoming main changes, publish fresh 8.88.0/8.89.0 bundle versions and retain exact sibling pins; never retarget existing tags."},
+    {"pass":95,"phase":"Delivery and verification review","question":"Are publishable versions and lock references coherent?","evidence":"Final validation and corpus sections are populated from observed run results.","decision":"Preserve incoming main changes, publish fresh 8.89.0/8.90.0 bundle versions and retain exact sibling pins; never retarget existing tags."},
     {"pass":96,"phase":"Delivery and verification review","question":"Are private corpora kept within the owner boundary?","evidence":"Final validation and corpus sections are populated from observed run results.","decision":"Store roots, pins, hashes and raw diagnostics in an owner-readable task directory; publish only redacted aggregate evidence."},
     {"pass":97,"phase":"Delivery and verification review","question":"Are corpus processes isolated and bounded?","evidence":"Final validation and corpus sections are populated from observed run results.","decision":"Use the repository runner with a maximum of 250 files per fresh process; verify content and revision pins."},
     {"pass":98,"phase":"Delivery and verification review","question":"Is performance compared with a baseline?","evidence":"Final validation and corpus sections are populated from observed run results.","decision":"Record fresh-process runs for a fixed public source snapshot; distinguish rule overhead from full consumer-preset cost."},
@@ -193,7 +193,7 @@
     "canonicalCommand": "TMPDIR=\"$TASK_TMP\" mise --no-config --no-env --no-hooks exec terraform@1.15.8 -- make verify",
     "canonicalResult": "See the final combined-stack pull request description and its checks for the completed verification result.",
     "localSetup": "Use a fresh owner-readable task temp directory because the shared pytest temp root on this VM is a symlink. Select the already-installed Terraform 1.15.8 for the pinned documentation formatter. No global tool selection was changed.",
-    "integration": "Main advanced during authoring. Preserve its Python 1.53.0/bootstrap changes, regenerate derived artifacts and verify the integrated stack."
+    "integration": "Main advanced during authoring. Preserve its Python 1.54.0/bootstrap changes, regenerate derived artifacts and verify the integrated stack."
   },
   "decision": "ship-warning; do not promote opinionated checks to error in this change",
   "limitations": [
@@ -208,8 +208,8 @@
     "Warnings require manual review. API-changing rewrites and promotion to errors need separate evidence."
   ],
   "integration": {
-    "mainRevision": "1bffab09ce611806a9321af0065b94f92b3f8b11",
-    "evidence": "Incoming Python discriminated-union fixes, bootstrap admission changes, runtime tests and package pins are preserved. The measured TypeScript source snapshot is unchanged by that integration. Bundle versions advance to 8.88.0 and 8.89.0 rather than reusing main version 8.87.0."
+    "mainRevision": "627f79ee2bfe3c72a9433396853302c13a1d7e4b",
+    "evidence": "Incoming Python discriminated-union fixes, declarative record parsing, bootstrap admission changes, runtime tests and Python 1.54.0 package pins are preserved. The measured TypeScript source snapshot is unchanged by those integrations. Bundle versions advance to 8.89.0 and 8.90.0 rather than reusing main version 8.88.0."
   },
   "focusedTests": {
     "pythonBooleanPolicy": 15,
