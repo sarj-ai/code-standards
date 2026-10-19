@@ -482,6 +482,88 @@ def test_commit_policy_edit_skip_never_carries_the_required_check_name() -> None
     assert "concurrency" not in _workflow_document(scaffold.commit_policy_github_workflow())
 
 
+def _embedded_commit_policy_repo(root: Path) -> None:
+    (root / manifest.MANIFEST_NAME).write_text(
+        'schema = 4\nbundle = "1.2.3"\n[ci]\ncommit_policy = "embedded"\nrunner = "blacksmith-2vcpu-ubuntu-2404"\n',
+        encoding="utf-8",
+    )
+
+
+def test_embedded_commit_policy_manifest_round_trips(tmp_path: Path) -> None:
+    _embedded_commit_policy_repo(tmp_path)
+
+    adopted = manifest.load(tmp_path)
+
+    assert adopted is not None
+    assert adopted.ci_commit_policy == "embedded"
+    assert 'commit_policy = "embedded"\n' in adopted.render()
+
+
+def test_manifest_rejects_unknown_commit_policy_mode(tmp_path: Path) -> None:
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        'schema = 4\nbundle = "1.2.3"\n[ci]\ncommit_policy = "off"\n', encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match=r"\[ci\]\.commit_policy must be one of: workflow, embedded"):
+        manifest.load(tmp_path)
+
+
+def test_embedded_commit_policy_workflow_only_answers_merge_groups(tmp_path: Path) -> None:
+    _embedded_commit_policy_repo(tmp_path)
+
+    rendered = scaffold.managed_commit_policy_workflow(tmp_path)
+    workflow = _workflow_document(rendered)
+    job = _commit_policy_job(rendered)
+
+    assert "on:\n  merge_group:\n    types: [checks_requested]\n\n" in rendered
+    assert "pull_request" not in rendered
+    assert workflow["permissions"] == {}
+    assert job["if"] is False
+    assert job["runs-on"] == "blacksmith-2vcpu-ubuntu-2404-arm"
+
+
+def test_doctor_requires_an_embedded_commit_policy_status_step(tmp_path: Path) -> None:
+    _embedded_commit_policy_repo(tmp_path)
+    (tmp_path / ".repo-standards").mkdir()
+    (tmp_path / ".repo-standards" / "repository.toml").write_text(
+        'repository_id = "example"\ncomponents = []\n[commit_message]\nenforcement = "strict"\n', encoding="utf-8"
+    )
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    (workflows / "commit-policy.yml").write_text(scaffold.managed_commit_policy_workflow(tmp_path), encoding="utf-8")
+    action = f"sarj-ai/repo-standards/pull-request-commits@{manifest.REPO_STANDARDS_REVISION}"
+    step = f"on: pull_request\njobs:\n  check:\n    steps:\n      - uses: {action}\n"
+    policy = workflows / "pr-policy.yml"
+
+    policy.write_text(step, encoding="utf-8")
+    missing = _embedded_findings(tmp_path)
+    reporting = step + "        with:\n          status-context: commit-policy-v1\n"
+    policy.write_text(reporting + "        if: github.actor != 'renovate[bot]'\n", encoding="utf-8")
+    conditional = _embedded_findings(tmp_path)
+    policy.write_text(reporting, encoding="utf-8")
+    present = _embedded_findings(tmp_path)
+
+    assert {(finding.id, finding.level) for finding in missing} == {
+        ("doctor.ci.commit-policy-embedded", doctor.Level.DRIFT),
+        ("doctor.ci.commit-policy", doctor.Level.OK),
+    }
+    assert {(finding.id, finding.level) for finding in conditional} == {
+        (finding.id, finding.level) for finding in missing
+    }
+    assert {(finding.level, finding.where) for finding in present} == {
+        (doctor.Level.OK, ".github/workflows/pr-policy.yml"),
+        (doctor.Level.OK, ".github/workflows/commit-policy.yml"),
+    }
+
+
+def _embedded_findings(root: Path) -> list[doctor.Finding]:
+    return [
+        finding
+        for finding in doctor.diagnose_commit_policy(root)
+        if finding.id in {"doctor.ci.commit-policy-embedded", "doctor.ci.commit-policy"}
+    ]
+
+
 def _commit_policy_job(workflow: str) -> dict[str, object]:
     return manifest.as_table(manifest.as_table(_workflow_document(workflow)["jobs"])["commit-policy-v1"])
 
