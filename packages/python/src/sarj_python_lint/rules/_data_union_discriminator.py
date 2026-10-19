@@ -73,6 +73,7 @@ class _DataUnions:
     def __init__(self, context: PythonFileContext, tree: ast.Module) -> None:
         self.context = context
         self.provenance = ResourceProvenance(context, require_static_namespace=True)
+        self.provenance.mutated = _scoped_module_mutations(self.provenance, tree)
         bindings = self.provenance.bindings.get(tree, {})
         self.classes = {
             node.name: node
@@ -177,13 +178,13 @@ class _DataUnions:
         )
 
     def _discriminator_metadata(self, node: ast.expr) -> bool:
-        seen: set[str] = set()
+        seen: frozenset[str] = frozenset()
         for _ in range(_MAX_EXPANSION):
-            if isinstance(node, ast.Name) and node.id in self.values:
-                if node.id in seen:
-                    return True
-                seen.add(node.id)
-                node = self.values[node.id]
+            reference = self._metadata_reference(node, seen)
+            if isinstance(reference, bool):
+                return reference
+            if reference is not None:
+                node, seen = reference.node, reference.aliases
                 continue
             if not isinstance(node, ast.Call):
                 return self._metadata_aliases_discriminate(seen, callable_metadata=False)
@@ -192,6 +193,81 @@ class _DataUnions:
                 return self._metadata_aliases_discriminate(seen, callable_metadata=step)
             node = step
         return True
+
+    def _metadata_reference(self, node: ast.expr, seen: frozenset[str]) -> _Expansion | bool | None:
+        if isinstance(node, ast.Name) and node.id in self.values:
+            return True if node.id in seen else _Expansion(self.values[node.id], seen | {node.id})
+        projected = self._metadata_projection(node)
+        if projected is None or isinstance(projected, bool):
+            return projected
+        if not projected.aliases.isdisjoint(seen) or any(
+            self._metadata_projection_escaped(name) for name in projected.aliases
+        ):
+            return True
+        return _Expansion(projected.node, seen | projected.aliases)
+
+    def _metadata_projection(self, node: ast.expr) -> _Expansion | bool | None:
+        if isinstance(node, ast.Subscript):
+            return self._metadata_tuple_item(node)
+        if not isinstance(node, ast.Attribute) or not isinstance(node.value, ast.Name):
+            return None
+        bindings = self.provenance.bindings.get(self.context.tree, {}).get(node.value.id, ())
+        if len(bindings) != 1 or not isinstance(bindings[0], ast.ClassDef):
+            return None
+        value = _namespace_metadata_value(bindings[0], node.attr)
+        return _Expansion(value, frozenset({node.value.id})) if value is not None else None
+
+    def _metadata_tuple_item(self, node: ast.Subscript) -> _Expansion | bool | None:
+        value = node.value
+        names: frozenset[str] = frozenset()
+        for _ in range(_MAX_EXPANSION):
+            if not isinstance(value, ast.Name) or value.id not in self.values:
+                break
+            if value.id in names:
+                return True
+            names |= {value.id}
+            value = self.values[value.id]
+        else:
+            return True
+        if not isinstance(value, ast.Tuple):
+            return None
+        if len(value.elts) > _MAX_EXPANSION:
+            return True
+        if any(isinstance(item, ast.Starred) for item in value.elts):
+            return None
+        index = _metadata_tuple_index(node.slice)
+        if index is None:
+            return True
+        if not -len(value.elts) <= index < len(value.elts):
+            return None
+        return _Expansion(value.elts[index], names)
+
+    def _metadata_projection_escaped(self, name: str) -> bool:
+        bindings = self.provenance.bindings.get(self.context.tree, {}).get(name, ())
+        reads = self.provenance.reads.get(name, ())
+        if len(bindings) != 1 or len(reads) > _MAX_EXPANSION:
+            return True
+        for read in reads:
+            if self.provenance.binding(name, read) is not bindings[0]:
+                continue
+            projection = self.context.parents.get(read)
+            if not isinstance(projection, ast.Attribute | ast.Subscript) or projection.value is not read:
+                return True
+            if not self._metadata_annotation_member(projection):
+                return True
+        return False
+
+    def _metadata_annotation_member(self, node: ast.expr) -> bool:
+        parent = self.context.parents.get(node)
+        if not isinstance(parent, ast.Tuple) or len(parent.elts) > _MAX_EXPANSION:
+            return False
+        owner = self.context.parents.get(parent)
+        return (
+            isinstance(owner, ast.Subscript)
+            and owner.slice is parent
+            and self._typing_symbol(owner.value) == "Annotated"
+            and node in parent.elts[1:]
+        )
 
     def _metadata_step(self, node: ast.Call) -> ast.expr | bool:
         if not _untouched(node.func, self.provenance):
@@ -204,7 +280,7 @@ class _DataUnions:
             return discriminator
         return False
 
-    def _metadata_aliases_discriminate(self, names: set[str], *, callable_metadata: bool) -> bool:
+    def _metadata_aliases_discriminate(self, names: frozenset[str], *, callable_metadata: bool) -> bool:
         mutations = [self._metadata_mutated(name) for name in names]
         return any(mutation is None for mutation in mutations) or (callable_metadata and not any(mutations))
 
@@ -243,7 +319,12 @@ class _DataUnions:
         reads = self.provenance.reads.get(name, ())
         if len(reads) > _MAX_EXPANSION:
             return True
+        bindings = self.provenance.bindings.get(self.context.tree, {}).get(name, ())
+        if len(bindings) != 1:
+            return True
         for read in reads:
+            if self.provenance.binding(name, read) is not bindings[0]:
+                continue
             node: ast.AST | None = read
             for _ in range(_MAX_EXPANSION):
                 node = self.context.parents.get(node)
@@ -361,6 +442,8 @@ class _DataUnions:
         return uncertain
 
     def _field_domain(self, field: ast.AnnAssign, *, required: bool) -> _Domain:
+        if _direct_initvar_field(field, self.context, self.provenance):
+            return _Domain()
         node = field.annotation
         aliases: set[str] = set()
         for _ in range(_MAX_EXPANSION):
@@ -476,6 +559,26 @@ def _wrapped_annotation(node: ast.Subscript, symbol: str | None, *, required: bo
     if symbol == "Annotated" and isinstance(node.slice, ast.Tuple) and node.slice.elts:
         return node.slice.elts[0], required
     return None
+
+
+def _direct_initvar_field(field: ast.AnnAssign, context: PythonFileContext, provenance: ResourceProvenance) -> bool:
+    if field.value is not None or not isinstance(field.annotation, ast.Subscript):
+        return False
+    target = field.annotation.value
+    if not _untouched(target, provenance) or not context.module_imports.resolves(
+        target, sources=_DATACLASS_SOURCES, symbol="InitVar"
+    ):
+        return False
+    owner = context.parents.get(field)
+    if not isinstance(owner, ast.ClassDef):
+        return False
+    for decorator in owner.decorator_list:
+        target = decorator.func if isinstance(decorator, ast.Call) else decorator
+        if _untouched(target, provenance) and context.module_imports.resolves(
+            target, sources=_DATACLASS_SOURCES, symbol="dataclass"
+        ):
+            return True
+    return False
 
 
 def _record(node: ast.ClassDef, context: PythonFileContext, provenance: ResourceProvenance) -> _Record | None:
@@ -622,6 +725,37 @@ def _alias_name(node: ast.stmt) -> str | None:
             return None
 
 
+def _namespace_metadata_value(node: ast.ClassDef, attribute: str) -> ast.expr | None:
+    if node.bases or node.keywords or node.decorator_list or node.type_params or len(node.body) > _MAX_EXPANSION:
+        return None
+    values: list[tuple[str, ast.expr]] = []
+    for member in node.body:
+        binding = _value_binding(member)
+        if binding is not None and not binding[0].startswith("__"):
+            values.append(binding)
+        elif isinstance(member, ast.Pass | ast.Expr) and (
+            isinstance(member, ast.Pass)
+            or (isinstance(member.value, ast.Constant) and isinstance(member.value.value, str))
+        ):
+            continue
+        else:
+            return None
+    if len(values) != 1 or values[0][0] != attribute:
+        return None
+    return values[0][1]
+
+
+def _metadata_tuple_index(node: ast.expr) -> int | None:
+    if isinstance(node, ast.Constant) and type(node.value) is int:
+        return node.value
+    if isinstance(node, ast.UnaryOp) and isinstance(node.operand, ast.Constant) and type(node.operand.value) is int:
+        if isinstance(node.op, ast.USub):
+            return -node.operand.value
+        if isinstance(node.op, ast.UAdd):
+            return node.operand.value
+    return None
+
+
 def _metadata_alias_graph(tree: ast.Module, bindings: dict[str, list[ast.AST]]) -> dict[str, set[str]]:
     graph: dict[str, set[str]] = {}
     for node in tree.body:
@@ -689,6 +823,86 @@ def _string_expression(node: ast.expr) -> ast.expr | None:
         return ast.parse(node.value, mode="eval").body
     except SyntaxError, UnicodeError, RecursionError:
         return None
+
+
+def _scoped_module_mutations(provenance: ResourceProvenance, tree: ast.Module) -> set[str]:
+    original = provenance.mutated
+    if not original:
+        return original
+    bindings = provenance.bindings.get(tree, {})
+    owners = {name: bindings[name][0] for name in original if len(bindings.get(name, ())) == 1}
+    writes = _module_attribute_mutations(provenance, owners)
+    if writes is None:
+        return original
+    return {
+        name
+        for name in original
+        if name not in owners or name in writes or _module_binding_escaped(name, owners[name], provenance)
+    }
+
+
+def _module_attribute_mutations(provenance: ResourceProvenance, owners: dict[str, ast.AST]) -> set[str] | None:
+    changed: set[str] = set()
+    count = 0
+    for target in provenance.context.nodes(ast.Attribute):
+        if not isinstance(target.ctx, ast.Store | ast.Del):
+            continue
+        count += 1
+        if count > _MAX_EXPANSION:
+            return None
+        root: ast.expr = target
+        while isinstance(root, ast.Attribute):
+            root = root.value
+        if not isinstance(root, ast.Name) or root.id not in owners:
+            continue
+        binding = provenance.binding(root.id, target)
+        if binding is None or binding is owners[root.id]:
+            changed.add(root.id)
+    return changed
+
+
+def _module_binding_escaped(name: str, owner: ast.AST, provenance: ResourceProvenance) -> bool:
+    reads = provenance.reads.get(name, ())
+    if len(reads) > _MAX_EXPANSION:
+        return True
+    return any(
+        provenance.binding(name, read) is owner and _module_read_escapes(read, provenance.context) for read in reads
+    )
+
+
+def _module_read_escapes(read: ast.Name, context: PythonFileContext) -> bool:
+    current: ast.AST = read
+    for _ in range(_MAX_EXPANSION):
+        parent = context.parents.get(current)
+        if parent is None:
+            return False
+        step = _module_escape_step(parent, current, context)
+        if step is not None:
+            return step
+        current = parent
+    return True
+
+
+def _module_escape_step(parent: ast.AST, current: ast.AST, context: PythonFileContext) -> bool | None:
+    match parent:
+        case ast.Call():
+            return parent.func is not current
+        case ast.Return() | ast.Yield() | ast.YieldFrom() | ast.NamedExpr():
+            return True
+        case ast.arguments():
+            return True if current in parent.defaults or current in parent.kw_defaults else None
+        case ast.Assign() | ast.AnnAssign() | ast.AugAssign():
+            value = parent.value
+            return value is not None and value is current and not _union_expression(value, context)
+        case ast.Subscript() if parent.value is not current:
+            symbol = context.module_imports.resolved_symbol(parent.value, sources=TYPING_SOURCES)
+            if symbol is None:
+                return True
+        case ast.withitem():
+            return parent.context_expr is current
+        case _:
+            pass
+    return False if isinstance(parent, ast.stmt) else None
 
 
 def _untouched(node: ast.expr, provenance: ResourceProvenance) -> bool:
