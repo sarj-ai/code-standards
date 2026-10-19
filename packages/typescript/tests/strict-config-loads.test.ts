@@ -739,6 +739,7 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     expect(warnings.toSorted()).toEqual([
       ...ADVISORY_RULES,
       "arrow-body-style",
+      "no-extra-label",
       "better-tailwindcss/enforce-consistent-variable-syntax",
       "@typescript-eslint/strict-void-return",
       ...recommendedCoreWarnings,
