@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
+from functools import cache, partial
 from pathlib import Path
 import re
 import shlex
@@ -36,7 +38,7 @@ from .shell_policy import ACTION_EXCLUSIONS, SHELLCHECK_ARGS
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
 
 _SHELLS: Final = {"bash": "bash", "sh": "posix", "dash": "posix", "ksh": "mksh", "zsh": "zsh"}
@@ -122,7 +124,8 @@ def _checked_source(candidate: ShellBlock) -> str:
 def analyze_sources(*, root: Path, paths: Sequence[str], selected: frozenset[str]) -> tuple[ToolReport, ...]:
     root = root.resolve()
     policy = Policy.from_manifest(root, manifest.load(root))
-    reports: list[ToolReport] = []
+    executable = cache(partial(_executable, root=root))
+    work: list[tuple[ToolReport, ...] | tuple[Path, frozenset[str], tuple[ShellBlock, ...], SourceDocument]] = []
     for raw in sorted(set(paths)):
         path = Path(raw)
         path = (path if path.is_absolute() else root / path).resolve()
@@ -136,13 +139,24 @@ def analyze_sources(*, root: Path, paths: Sequence[str], selected: frozenset[str
             if not candidates:
                 continue
         except (OSError, UnicodeError, ValueError, UnprovableCommandError) as error:
-            reports.extend(_failed(name, error, root, path) for name in sorted(active))
+            work.append(tuple(_failed(name, error, root, path) for name in sorted(active)))
             continue
+        work.append((path, active, candidates, document))
+
+    def analyze(item: tuple[ToolReport, ...] | tuple[Path, frozenset[str], tuple[ShellBlock, ...], SourceDocument]) -> tuple[ToolReport, ...]:
+        if not item or isinstance(item[0], ToolReport):
+            return item  # pyright: ignore[reportReturnType]
+        path, active, candidates, document = item  # pyright: ignore[reportAssignmentType]
+        reports: list[ToolReport] = []
         if "shellcheck" in active and not _dockerfile(path):
-            reports.append(_shellcheck_report(root, path, candidates, document))
+            reports.append(_shellcheck_report(root, path, candidates, document, executable))
         if "shfmt" in active:
-            reports.append(_format_report(root, path, candidates, document, policy))
-    return tuple(reports)
+            reports.append(_format_report(root, path, candidates, document, policy, executable))
+        return tuple(reports)
+
+    # Each block is an independent subprocess; overlapping them hides process start-up latency.
+    with ThreadPoolExecutor(thread_name_prefix="embedded-shell") as workers:
+        return tuple(report for reports in workers.map(analyze, work) for report in reports)
 
 
 def _selected_analyzers(root: Path, path: Path, selected: frozenset[str], policy: Policy) -> frozenset[str]:
@@ -167,13 +181,17 @@ def _failed(name: str, error: BaseException, root: Path, path: Path) -> ToolRepo
 
 
 def _shellcheck_report(
-    root: Path, path: Path, candidates: tuple[ShellBlock, ...], document: SourceDocument
+    root: Path,
+    path: Path,
+    candidates: tuple[ShellBlock, ...],
+    document: SourceDocument,
+    executable: Callable[[str], Path],
 ) -> ToolReport:
     diagnostics: list[Diagnostic] = []
     try:
-        executable = _executable("shellcheck", root)
+        shellcheck = executable("shellcheck")
         for candidate in candidates:
-            diagnostics.extend(_check_block(root, path, candidate, document, executable))
+            diagnostics.extend(_check_block(root, path, candidate, document, shellcheck))
     except (OSError, UnicodeError, ValueError, subprocess.SubprocessError) as error:
         return _failed("shellcheck", error, root, path)
     return ToolReport(
@@ -265,13 +283,18 @@ def _map_position(position: Position, block: ExecutionBlock, document: SourceDoc
 
 
 def _format_report(
-    root: Path, path: Path, candidates: tuple[ShellBlock, ...], document: SourceDocument, policy: Policy
+    root: Path,
+    path: Path,
+    candidates: tuple[ShellBlock, ...],
+    document: SourceDocument,
+    policy: Policy,
+    executable: Callable[[str], Path],
 ) -> ToolReport:
     diagnostics: list[Diagnostic] = []
     try:
-        executable = _executable("shfmt", root)
+        shfmt = executable("shfmt")
         for candidate in candidates:
-            finding = _format_block(root, path, candidate, document, executable)
+            finding = _format_block(root, path, candidate, document, shfmt)
             if finding is not None and policy.allows_rule(finding):
                 diagnostics.append(finding)
     except (OSError, UnicodeError, ValueError, subprocess.SubprocessError) as error:
@@ -281,7 +304,7 @@ def _format_report(
     )
 
 
-def _executable(name: str, root: Path) -> Path:
+def _executable(name: str, *, root: Path) -> Path:
     tool = checked_tool(name, root=root)
     if tool.executable is None:
         message = f"{name} has no attested executable"
