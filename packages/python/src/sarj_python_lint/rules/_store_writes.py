@@ -8,7 +8,7 @@ import sqlglot
 from sqlglot import exp
 from sqlglot.errors import SqlglotError
 
-from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
+from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, scope_bound_names
 from sarj_python_lint.rules._ast_index import walk
 from sarj_python_lint.rules._paths import is_generated
 from sarj_python_lint.rules._project_index import ProjectIndexSet
@@ -55,10 +55,20 @@ def methods(owner: ast.ClassDef) -> dict[str, Function]:
             if node.name in result:
                 ambiguous.add(node.name)
             result[node.name] = node
+        else:
+            ambiguous.update(scope_bound_names([node]))
+    ambiguous.update(
+        node.attr
+        for method in result.values()
+        for node in own_nodes(method)
+        if isinstance(node, ast.Attribute) and _writes_self_attribute(node, node.attr)
+    )
     return {name: method for name, method in result.items() if name not in ambiguous}
 
 
 def upsert_pair(owner: ast.ClassDef, imports: ImportIndex) -> tuple[Function, Function] | None:
+    if owner.keywords:
+        return None
     declared = methods(owner)
     single, bulk = declared.get("upsert"), declared.get("upsert_many")
     if (
@@ -101,6 +111,7 @@ def collection_item(annotation: ast.expr | None, imports: ImportIndex) -> ast.ex
 
 
 def same_type(left: ast.expr | None, right: ast.expr | None) -> bool:
+    left, right = AnnotationSemantics.parse(left), AnnotationSemantics.parse(right)
     return (
         left is not None
         and right is not None
@@ -129,6 +140,10 @@ def discarded_call(loop: ast.For) -> tuple[ast.Call, bool] | None:
         and not any(isinstance(item, ast.Starred) for item in loop.iter.elts)
     ):
         return None
+    if isinstance(loop.iter, ast.Dict) and len(loop.iter.keys) <= 1 and None not in loop.iter.keys:
+        return None
+    if isinstance(loop.iter, ast.Constant) and isinstance(loop.iter.value, str | bytes) and len(loop.iter.value) <= 1:
+        return None
     value = loop.body[0].value
     awaited = isinstance(value, ast.Await)
     value = value.value if awaited else value
@@ -136,20 +151,53 @@ def discarded_call(loop: ast.For) -> tuple[ast.Call, bool] | None:
 
 
 def depends_on_target(expression: ast.expr, target: ast.expr) -> bool:
-    names = {node.id for node in walk(target) if isinstance(node, ast.Name)}
-    return any(isinstance(node, ast.Name) and node.id in names for node in own_nodes(expression))
+    names = _target_names(target)
+    return any(name in names for name in _free_names(expression))
+
+
+def _target_names(target: ast.expr) -> frozenset[str]:
+    return frozenset(node.id for node in walk(target) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store))
+
+
+def _free_names(expression: ast.expr) -> Iterator[str]:
+    pending: list[tuple[ast.AST, frozenset[str]]] = [(expression, frozenset())]
+    while pending:
+        node, shadowed = pending.pop()
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id not in shadowed:
+            yield node.id
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda):
+            continue
+        if isinstance(node, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
+            pending.extend(_comprehension_scopes(node, shadowed))
+            continue
+        pending.extend((child, shadowed) for child in ast.iter_child_nodes(node))
+
+
+def _comprehension_scopes(
+    node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp, shadowed: frozenset[str]
+) -> Iterator[tuple[ast.AST, frozenset[str]]]:
+    for generator in node.generators:
+        yield generator.iter, shadowed
+        shadowed |= _target_names(generator.target)
+        yield from ((condition, shadowed) for condition in generator.ifs)
+    values = (node.key, node.value) if isinstance(node, ast.DictComp) else (node.elt,)
+    yield from ((value, shadowed) for value in values)
 
 
 class StoreOwners:
     def __init__(self, context: PythonFileContext) -> None:
         self.context = context
-        self.provenance = ResourceProvenance(context)
+        self.provenance = ResourceProvenance(context, require_static_namespace=True)
         self.project = context.session.project
 
     def receiver(self, expression: ast.expr, at: ast.AST) -> tuple[ast.ClassDef, ImportIndex] | None:
         if isinstance(expression, ast.Name):
             binding = self.provenance.binding(expression.id, at)
-            if isinstance(binding, ast.arg) and binding.annotation is not None:
+            if (
+                isinstance(binding, ast.arg)
+                and binding.annotation is not None
+                and not self._receiver_method_replaced(expression, binding)
+            ):
                 return self.annotation(binding.annotation)
             return None
         if (
@@ -158,10 +206,35 @@ class StoreOwners:
             or expression.value.id != "self"
         ):
             return None
-        if not isinstance(self.provenance.binding("self", at), ast.arg):
+        binding = self.provenance.binding("self", at)
+        if not isinstance(binding, ast.arg):
+            return None
+        arguments = self.context.parents.get(binding)
+        method = self.context.parents.get(arguments) if arguments is not None else None
+        if (
+            not isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef)
+            or not isinstance(self.context.parents.get(method), ast.ClassDef)
+            or not (positional := [*method.args.posonlyargs, *method.args.args])
+            or positional[0] is not binding
+            or any(
+                self.context.module_imports.resolved_qualified_name(decorator) not in _NEUTRAL_DECORATORS
+                for decorator in method.decorator_list
+            )
+        ):
             return None
         annotation = self._injected_annotation(expression.attr, at)
         return self.annotation(annotation) if annotation is not None else None
+
+    def _receiver_method_replaced(self, receiver: ast.Name, binding: ast.arg) -> bool:
+        for node in self.context.nodes(ast.Attribute, ast.Call):
+            target = _replaced_receiver(node, self.context.imports)
+            if (
+                isinstance(target, ast.Name)
+                and target.id == receiver.id
+                and self.provenance.binding(receiver.id, target) is binding
+            ):
+                return True
+        return False
 
     def _injected_annotation(self, attribute: str, at: ast.AST) -> ast.expr | None:
         parent = self.context.parents.get(at)
@@ -169,28 +242,21 @@ class StoreOwners:
             parent = self.context.parents.get(parent)
         if parent is None:
             return None
-        constructor = methods(parent).get("__init__")
+        constructor = _injection_constructor(parent, attribute)
         if constructor is None:
             return None
+        declared_methods = [node for node in parent.body if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)]
         assignments = [
-            node
-            for method in methods(parent).values()
-            for node in own_nodes(method)
-            if _writes_self_attribute(node, attribute)
+            node for method in declared_methods for node in own_nodes(method) if _writes_self_attribute(node, attribute)
         ]
-        if len(assignments) != 1:
+        if len(assignments) != 1 or _injected_receiver_replaced(declared_methods, attribute, self.context.imports):
             return None
-        for statement in constructor.body:
-            if (
-                not isinstance(statement, ast.Assign)
-                or not isinstance(statement.value, ast.Name)
-                or assignments[0] not in statement.targets
-            ):
-                continue
-            return _injected_parameter(constructor, statement.value, self.provenance)
-        return None
+        value = _constructor_injected_value(constructor, assignments[0])
+        return _injected_parameter(constructor, value, self.provenance) if value is not None else None
 
     def annotation(self, expression: ast.expr | None) -> tuple[ast.ClassDef, ImportIndex] | None:
+        if self.provenance.dynamic_namespace or self.provenance.wildcard:
+            return None
         original = expression
         expression = AnnotationSemantics(self.context.module_imports, MappingProxyType({})).parse(expression)
         if expression is None or self.context.tree is None:
@@ -224,8 +290,13 @@ class StoreOwners:
         from sarj_python_lint._file_context import PythonFileContext  # ruff: ignore[import-outside-top-level] -- defer to avoid the rule registry's context import cycle.
 
         definition = PythonFileContext(owner.path, owner.source, self.context.session)
-        provenance = ResourceProvenance(definition)
-        if provenance.binding(symbol.name, declaration) is not declaration or symbol.name in provenance.mutated:
+        provenance = ResourceProvenance(definition, require_static_namespace=True)
+        if (
+            provenance.dynamic_namespace
+            or provenance.wildcard
+            or provenance.binding(symbol.name, declaration) is not declaration
+            or symbol.name in provenance.mutated
+        ):
             return None
         return declaration, definition.module_imports
 
@@ -238,6 +309,52 @@ def _writes_self_attribute(node: ast.AST, attribute: str) -> bool:
         and node.value.id == "self"
         and isinstance(node.ctx, ast.Store | ast.Del)
     )
+
+
+def _injection_constructor(owner: ast.ClassDef, attribute: str) -> Function | None:
+    runtime_statements = [
+        statement for statement in owner.body if not (isinstance(statement, ast.AnnAssign) and statement.value is None)
+    ]
+    return None if attribute in scope_bound_names(runtime_statements) else methods(owner).get("__init__")
+
+
+def _injected_receiver_replaced(declared: list[Function], attribute: str, imports: ImportIndex) -> bool:
+    return any(
+        isinstance(target := _replaced_receiver(node, imports), ast.Attribute)
+        and target.attr == attribute
+        and isinstance(target.value, ast.Name)
+        and target.value.id == "self"
+        for method in declared
+        for node in own_nodes(method)
+    )
+
+
+def _constructor_injected_value(constructor: Function, assignment: ast.AST) -> ast.Name | None:
+    for statement in constructor.body:
+        match statement:
+            case ast.Assign(value=ast.Name() as value, targets=targets) if assignment in targets:
+                return value
+            case ast.AnnAssign(value=ast.Name() as value, target=target) if target is assignment:
+                return value
+            case _:
+                pass
+    return None
+
+
+def _replaced_receiver(node: ast.AST, imports: ImportIndex) -> ast.expr | None:
+    members = {"upsert", "upsert_many", "__class__"}
+    if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store | ast.Del) and node.attr in members:
+        return node.value
+    if not isinstance(node, ast.Call) or node.keywords:
+        return None
+    name = imports.resolved_qualified_name(node.func)
+    if isinstance(node.func, ast.Name) and imports.builtin_is_unshadowed(node.func.id):
+        name = "builtins." + node.func.id
+    required = {"builtins.setattr": 3, "builtins.delattr": 2}.get(name or "")
+    if required is None or len(node.args) != required:
+        return None
+    member = node.args[1]
+    return node.args[0] if isinstance(member, ast.Constant) and member.value in members else None
 
 
 def _injected_parameter(constructor: Function, value: ast.Name, provenance: ResourceProvenance) -> ast.expr | None:

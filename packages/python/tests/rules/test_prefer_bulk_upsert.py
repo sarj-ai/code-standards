@@ -270,7 +270,7 @@ def test_rebound_or_mutated_class_is_not_an_available_bulk_contract(change: str)
     )
 
 
-@pytest.mark.parametrize("iterable", ["[]", "[only]", "()", "(only,)"])
+@pytest.mark.parametrize("iterable", ["[]", "[only]", "()", "(only,)", "{}", "{only: value}", "''", "'x'", "b'x'"])
 def test_known_zero_or_one_iteration_is_not_a_batch_problem(iterable: str) -> None:
     assert (
         _check(
@@ -291,5 +291,199 @@ def test_rebound_self_does_not_resolve_an_injected_store() -> None:
             for user in users:
                 await self.store.upsert(user)
     """)
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "    upsert_many = None\n",
+        "    if enabled:\n        upsert_many = None\n",
+        "    if enabled:\n        async def upsert_many(self, users):\n            ...\n",
+        "    def __init__(self):\n        self.upsert_many = None\n",
+    ],
+    ids=["class-assignment", "conditional-assignment", "conditional-definition", "instance-method-shadow"],
+)
+def test_declared_bulk_method_must_not_be_shadowed(change: str) -> None:
+    assert (
+        _check(
+            "async def save(store: UserStore, users):\n    for user in users:\n        await store.upsert(user)",
+            CONTRACT + change,
+        )
+        == []
+    )
+
+
+def test_explicit_metaclass_can_replace_the_declared_bulk_method() -> None:
+    contract = (
+        "class Meta(type):\n"
+        "    def __new__(cls, name, bases, namespace):\n"
+        "        namespace['upsert_many'] = None\n"
+        "        return super().__new__(cls, name, bases, namespace)\n"
+        + CONTRACT.replace("class UserStore:", "class UserStore(metaclass=Meta):")
+    )
+    assert (
+        _check(
+            "async def save(store: UserStore, users):\n    for user in users:\n        await store.upsert(user)",
+            contract,
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize("member", ["upsert", "upsert_many", "__class__"])
+def test_receiver_method_replacement_invalidates_the_contract(member: str) -> None:
+    assert (
+        _check(f"""
+        async def save(store: UserStore, users):
+            store.{member} = replacement
+            for user in users:
+                await store.upsert(user)
+        """)
+        == []
+    )
+
+
+@pytest.mark.parametrize("mutation", ["setattr(store, 'upsert_many', None)", "delattr(store, 'upsert_many')"])
+def test_explicit_builtin_method_replacement_invalidates_the_receiver(mutation: str) -> None:
+    assert (
+        _check(f"""
+        async def save(store: UserStore, users):
+            {mutation}
+            for user in users:
+                await store.upsert(user)
+        """)
+        == []
+    )
+
+
+def test_annotation_only_class_field_does_not_intercept_constructor_injection() -> None:
+    assert (
+        len(
+            _check("""
+        class Service:
+            store: UserStore
+            def __init__(self, store: UserStore):
+                self.store = store
+            async def save(self, users):
+                for user in users:
+                    await self.store.upsert(user)
+        """)
+        )
+        == 1
+    )
+
+
+def test_mutation_of_an_unrelated_parameter_binding_does_not_invalidate_the_receiver() -> None:
+    assert (
+        len(
+            _check("""
+        def customize(store):
+            store.upsert_many = replacement
+        async def save(store: UserStore, users):
+            for user in users:
+                await store.upsert(user)
+        """)
+        )
+        == 1
+    )
+
+
+@pytest.mark.parametrize("change", ['globals()["UserStore"] = OtherStore\n', "from adapter import *\n"])
+def test_dynamic_owner_namespace_is_not_a_proven_bulk_contract(change: str) -> None:
+    assert (
+        _check(
+            f"{change}async def save(store: UserStore, users):\n    for user in users:\n        await store.upsert(user)",
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    ("argument", "expected"),
+    [
+        ("[user for user in fixed]", 0),
+        ("{user for user in fixed}", 0),
+        ("{user: user for user in fixed}", 0),
+        ("(user for user in fixed)", 0),
+        ("[part for part in user]", 1),
+        ("[user for part in fixed]", 1),
+        ("[user for user in user]", 1),
+    ],
+)
+def test_comprehension_locals_do_not_prove_outer_loop_dependence(argument: str, expected: int) -> None:
+    assert (
+        len(
+            _check(f"""
+        async def save(store: UserStore, users):
+            for user in users:
+                await store.upsert(UserInput(parts={argument}))
+        """)
+        )
+        == expected
+    )
+
+
+def test_matching_quoted_scalar_annotations_are_equivalent() -> None:
+    contract = CONTRACT.replace("user: UserInput", 'user: "UserInput"').replace(" -> User:", ' -> "User":')
+    assert (
+        len(
+            _check(
+                "async def save(store: UserStore, users):\n    for user in users:\n        await store.upsert(user)",
+                contract,
+            )
+        )
+        == 1
+    )
+
+
+def test_annotated_constructor_assignment_preserves_injection_provenance() -> None:
+    assert (
+        len(
+            _check("""
+        class Service:
+            def __init__(self, store: UserStore):
+                self.store: UserStore = store
+            async def save(self, users, optional=None):
+                for user in users:
+                    await self.store.upsert(user)
+        """)
+        )
+        == 1
+    )
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "    @property\n    def store(self):\n        return OtherStore()\n",
+        "    def customize(self):\n        self.store.upsert_many = replacement\n",
+    ],
+    ids=["descriptor-receiver", "replaced-injected-method"],
+)
+def test_injected_receiver_descriptor_or_method_replacement_is_excluded(extra: str) -> None:
+    assert (
+        _check(
+            "class Service:\n"
+            "    def __init__(self, store: UserStore):\n        self.store = store\n"
+            + extra
+            + "    async def save(self, users):\n        for user in users:\n            await self.store.upsert(user)\n"
+        )
+        == []
+    )
+
+
+def test_nested_unrelated_self_parameter_is_not_the_service_instance() -> None:
+    assert (
+        _check("""
+        class Service:
+            def __init__(self, store: UserStore):
+                self.store = store
+            async def save(self, users):
+                async def nested(self):
+                    for user in users:
+                        await self.store.upsert(user)
+        """)
         == []
     )

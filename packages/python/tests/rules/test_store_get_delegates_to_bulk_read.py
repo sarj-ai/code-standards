@@ -88,6 +88,106 @@ def test_upsert_signatures_must_prove_compatible_models(replacement: tuple[str, 
     assert _check(_UPSERTS.replace(*replacement)) == []
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        "command = data\n        return (await self.upsert_many([command]))[0]",
+        "batch = [data]\n        return (await self.upsert_many(batch))[0]",
+        "command: UserInput = data\n        batch = (command,)\n        return (await self.upsert_many(batch))[0]",
+        "command = data\n        data = other\n        return (await self.upsert_many([command]))[0]",
+        "data.name = name\n        return (await self.upsert_many([data]))[0]",
+        "batch = [data]\n        rows = await self.upsert_many(batch)\n        del batch\n        return rows[0]",
+        "batch = [data]\n        other = [data]\n        other[0] = replacement\n        return (await self.upsert_many(batch))[0]",
+        "command = data\n        del data\n        return (await self.upsert_many([command]))[0]",
+        "data.fields += fields\n        return (await self.upsert_many([data]))[0]",
+    ],
+    ids=[
+        "command",
+        "batch",
+        "annotated-chain",
+        "captured-command",
+        "model-field",
+        "after-delegation",
+        "other-batch",
+        "deleted-original-binding",
+        "augmented-model-field",
+    ],
+)
+def test_stable_aliases_preserve_original_upsert_command(body: str) -> None:
+    assert _check(_UPSERTS.replace("return await self.write_one(data)", body)) == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "data = other\n        return (await self.upsert_many([data]))[0]",
+        "command = other\n        return (await self.upsert_many([command]))[0]",
+        "batch = [data]\n        batch = []\n        return (await self.upsert_many(batch))[0]",
+        "batch = [data]\n        batch[0] = other\n        return (await self.upsert_many(batch))[0]",
+        "batch = [data]\n        alias = batch\n        alias[0] = other\n        return (await self.upsert_many(batch))[0]",
+        "batch = [data]\n        batch += [other]\n        return (await self.upsert_many(batch))[0]",
+        "batch = [data]\n        alias = batch\n        alias += [other]\n        return (await self.upsert_many(batch))[0]",
+        "batch = [data]\n        del batch[0]\n        return (await self.upsert_many(batch))[0]",
+    ],
+    ids=[
+        "rebound-command",
+        "wrong-command",
+        "rebound-batch",
+        "subscript",
+        "mutated-alias",
+        "augmented",
+        "augmented-alias",
+        "deletion",
+    ],
+)
+def test_rebound_and_mutated_aliases_do_not_prove_upsert_delegation(body: str) -> None:
+    assert len(_check(_UPSERTS.replace("return await self.write_one(data)", body))) == 1
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        (
+            (
+                "batch = (data,)\n        alias = batch\n        alias += (other,)\n"
+                "        return (await self.upsert_many(batch))[0]"
+            ),
+            0,
+        ),
+        (
+            "batch = (data,)\n        batch += (other,)\n        return (await self.upsert_many(batch))[0]",
+            1,
+        ),
+        (
+            (
+                "batch = (data,)\n        alias = batch\n        alias += (other,)\n"
+                "        return (await self.upsert_many(alias))[0]"
+            ),
+            1,
+        ),
+        (
+            (
+                "batch = [data]\n        alias = batch\n        alias += [other]\n"
+                "        return (await self.upsert_many(batch))[0]"
+            ),
+            1,
+        ),
+        (
+            (
+                "batch = (data,)\n        alias = batch\n        alias = [data]\n        alias += [other]\n"
+                "        return (await self.upsert_many(batch))[0]"
+            ),
+            0,
+        ),
+    ],
+    ids=["tuple-alias", "tuple-rebound", "rebound-alias", "shared-list", "independent-list"],
+)
+def test_augmented_tuple_aliases_rebind_without_mutating_other_references(body: str, expected: int) -> None:
+    upserts = _UPSERTS.replace("rows: list[UserInput]", "rows: Sequence[UserInput]")
+    source = f"from collections.abc import Sequence\n{upserts}"
+    assert len(_check(source.replace("return await self.write_one(data)", body))) == expected
+
+
 def _check(source: str, path: Path = PATH) -> list[Diagnostic]:
     return StoreGetDelegatesToBulkRead().check(path, source)
 

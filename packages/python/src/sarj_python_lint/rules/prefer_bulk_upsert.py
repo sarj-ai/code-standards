@@ -45,7 +45,7 @@ class PreferBulkUpsert(ProjectRule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only a synchronous for loop containing one discarded upsert call is considered. Its receiver must resolve to a typed parameter or a constructor-injected attribute with source-declared compatible upsert/upsert_many methods.",
-            "Signatures must have one required command argument and matching scalar/collection input and output types. Annotated first-party imports use the existing project index; unresolved, inherited, overloaded, decorated, rebound and dynamic contracts are excluded.",
+            "Signatures must have one required command argument and matching scalar/collection input and output types, including equivalent quoted annotations. Annotated first-party imports use the existing project index; unresolved, inherited, overloaded, decorated, rebound, reassigned and dynamic contracts are excluded, as are explicit metaclasses and class keywords.",
             "Result-dependent loops, comprehensions, async streams, loop else clauses, extra statements and per-row exception or transaction blocks are excluded. A batch can change duplicate-key and failure semantics, so this remains an advisory without an autofix.",
             "Maintained tests are checked; generated/vendor sources are excluded. A bulk method is not invented when none is declared.",
         ),

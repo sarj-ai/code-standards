@@ -1,0 +1,1154 @@
+{
+  "schema": 1,
+  "date": "2026-10-19",
+  "baseRevision": "1872744171d4b25f09990d2a3f4f4e6261a15002",
+  "previousReport": "sql-service-standards-100-20261019.json",
+  "requestedAdditionalReviewPasses": 50,
+  "completedAdditionalReviewPasses": 48,
+  "scope": "50 distinct scoped reviews across call contracts, SQL value/predicate/result semantics, driver observations, guidance and integrated qualification. These are not 50 complete repository rereads.",
+  "status": "qualification-in-progress",
+  "rules": [
+    "python:prefer-bulk-upsert",
+    "python:store-field-update-reuses-upsert",
+    "python:prefer-psycopg-executemany",
+    "python:store-get-delegates-to-bulk-read"
+  ],
+  "release": {
+    "python": "1.60.0",
+    "standards": "8.98.0",
+    "newRuleIds": 0,
+    "errorPromotions": 0,
+    "autofixes": 0,
+    "recommendation": "retain-warning",
+    "auditPlugin": "2.14.5"
+  },
+  "verification": {
+    "superseded": "Initial corpus preparation and catalog generation were repeated after the final boundary fixes and a TypeScript build timeout. The first full make verify found four complexity findings, one type-dispatch ladder and duplicated fixture structure in changed code; remaining jobs and the concurrent pilot performance run were stopped for cohesive refactoring. Partial attempts are not final passing evidence. Later partial qualification runs were stopped for upstream carry-forward and two final adversarial precision fixes. A focused invocation using the default temporary root hit fixture setup errors; the final passing runs use explicit isolated fixture roots and separate runtime environments. The pre-merge main advance consuming the reserved Python/Standards versions required a second clean carry-forward and repeat of integrated qualification.",
+    "focused": {
+      "casesPerRuntime": 330,
+      "runtimes": {
+        "3.14": {
+          "passed": 330,
+          "seconds": 4.66
+        },
+        "3.15": {
+          "passed": 330,
+          "seconds": 10.43
+        }
+      },
+      "meaning": "Authored examples and boundary regressions, including maintained legacy read/status cases; counts are not independent semantic coverage.",
+      "qualificationBaseRevision": "1bffab09ce611806a9321af0065b94f92b3f8b11"
+    },
+    "finalReportReview": "Independent reviewers verified source/guidance proof boundaries, all 50 distinct planned scoped-review IDs, all 16 process measurements and their derived medians/ratios, historical artifact hashes/sibling versions and private corpus redaction. Final integration checks are recorded separately as they complete. No further blocking source findings after the two final precision fixes; packaged qualification, full exact-head CI and merge readback remain pending in this pre-CI snapshot.",
+    "preRefactorCorpus": {
+      "corpora": 3,
+      "batches": 16,
+      "files": 3720,
+      "bytes": 37020159,
+      "elapsedSeconds": 1159.708,
+      "counts": {
+        "SARJ421": 3
+      },
+      "batchSize": 250,
+      "privatePins": "owner-readable local overlay; omitted from committed report",
+      "oversizedInputsSkipped": 0
+    },
+    "preRefactorCorpusClassification": {
+      "complete": true,
+      "status": "complete",
+      "observedBatches": 16,
+      "observedMatches": 3,
+      "classifiedMatches": 3,
+      "legacyReadReviewAdvisories": 3,
+      "newCandidateMatches": 0,
+      "duplicateLocations": 0,
+      "unreviewedMatches": 0,
+      "knownNewFalsePositives": 0,
+      "establishedTruePositives": 0,
+      "legacyPrecisionNotAdjudicated": true,
+      "freshBaselineSource": "detached base package via explicit PYTHONPATH; existing task interpreter dependencies",
+      "freshBaselineRevision": "025299fdcaac0b6a0f534f9490fd2b53afc9de54",
+      "summary": {
+        "corpora": 3,
+        "batches": 16,
+        "files": 3720,
+        "bytes": 37020159,
+        "elapsedSeconds": 1159.708,
+        "counts": {
+          "SARJ421": 3
+        },
+        "batchSize": 250,
+        "privatePins": "owner-readable local overlay; omitted from committed report"
+      }
+    },
+    "changedPythonSelfLint": {
+      "files": 9,
+      "nativeRules": 161,
+      "findings": 0,
+      "blocking": 0,
+      "qualificationBaseRevision": "1bffab09ce611806a9321af0065b94f92b3f8b11"
+    },
+    "refactor": {
+      "reason": "Repository self-lint identified excessive cognitive complexity, an implicit type dispatch ladder and duplicated binding fixtures.",
+      "resolution": "Separate comprehension scope, constructor/receiver proof and SQL binding responsibilities; own canonical symbol/collection state in one cohesive class; use explicit match dispatch and parameterized named bindings. No suppressions.",
+      "parity": "Refactoring preserved the stored bulk-probe results and driver/canonical expectations available at that checkpoint. Later adversarial cases bring the final focused test totals to 77 bulk, 108 field, and 145 driver/canonical cases per runtime (330 total).",
+      "nativeSelfLint": {
+        "files": 9,
+        "rules": 161,
+        "findings": 0,
+        "blocking": 0,
+        "qualificationBaseRevision": "1bffab09ce611806a9321af0065b94f92b3f8b11"
+      }
+    },
+    "mainCarryForward": "Broad qualification uses main revision 1bffab09 and its 161-rule registry. The prior 98b73b68 integration carried the same nine frozen SQL source/test files and four audit-command diffs and reserved Python 1.56.0, Standards 8.92.0 and audit plugin 2.14.1. Its 330 focused cases on each runtime and 162-rule nine-file checks remain explicitly checked at 98b73b68 under finalIntegration. A later historical AFB-based carry-forward reserved Python 1.57.0, Standards 8.93.0 and audit plugin 2.14.1; its artifact/repository checks and all normal commit hooks passed, creating checkpoint 7f614699. Main then advanced to 18727441, consuming Python 1.57.0, Standards 8.94.0 and audit plugin 2.14.1 and changing raw-mapping callback ownership. No owned SQL source, SQL audit command, registry or shared SQL analysis dependency changed upstream. The current carry-forward reserves Python 1.60.0, Standards 8.98.0 and audit plugin 2.14.5. Current controls belong under latestCarryForward; historical checks do not replace normal hooks and full exact-head CI for the combined latest tree.",
+    "finalAdversarialFixes": {
+      "field": "Exclude imported or qualified builtin property/classmethod/staticmethod defaults; nine alias-form negatives and one ordinary factory positive.",
+      "canonical": "Tuple augmented assignment rebinds only the target alias; preserve original tuple delegation while retaining direct-target and mutable-list controls.",
+      "focusedComposition": {
+        "bulk": 77,
+        "field": 108,
+        "driverAndCanonical": 145
+      },
+      "countedAsExtraPasses": false
+    },
+    "resourceRetries": {
+      "observedVmLoad": "Load average 66 on an 8-CPU VM during parallel qualification.",
+      "corpus": "Six batches completed before a 250-file batch exceeded the private 180-second wall budget. Retry identical pinned inputs/checks with bounded 360 seconds per batch and 2,700 seconds total; no passing completion claim for the aborted attempt.",
+      "fullGate": "A synchronous TypeScript compiler-policy test exceeded its existing 60-second timeout (68.055 seconds). Stop the parallel gate and repeat all checks with one Make job, one Vitest worker and one packaged-test worker. No tests, assertions or native timeouts changed.",
+      "performance": "The bounded microbenchmark spans variable concurrent VM load; retain CPU/wall/RSS and avoid speedup claims.",
+      "sequentialFullGate": "The single-worker full TypeScript suite completed with 10,021 passing tests and one authored-example timeout at the existing 60-second limit. An unchanged isolated retry passed in 38.467 seconds. The original failure is retained; final integration still requires full exact-head CI."
+    },
+    "performance": {
+      "beforeSelected": {
+        "firstProcess": {
+          "wallSeconds": 38.918647083002725,
+          "cpuSeconds": 12.085902018,
+          "peakRssKiB": 495508,
+          "findings": 0,
+          "diagnosticDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "files": 50,
+          "bytes": 796954,
+          "rules": 4,
+          "sourceProvenanceVerified": true
+        },
+        "warmMedian": {
+          "wallSeconds": 54.215504456005874,
+          "cpuSeconds": 13.239003386,
+          "peakRssKiB": 495940
+        },
+        "diagnosticsStable": true
+      },
+      "afterSelected": {
+        "firstProcess": {
+          "wallSeconds": 43.89206016599201,
+          "cpuSeconds": 12.083579787,
+          "peakRssKiB": 495728,
+          "findings": 0,
+          "diagnosticDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "files": 50,
+          "bytes": 796954,
+          "rules": 4,
+          "sourceProvenanceVerified": true
+        },
+        "warmMedian": {
+          "wallSeconds": 71.39072287800082,
+          "cpuSeconds": 13.025569793999999,
+          "peakRssKiB": 495752
+        },
+        "diagnosticsStable": true
+      },
+      "withoutSelected": {
+        "firstProcess": {
+          "wallSeconds": 46.84281050399295,
+          "cpuSeconds": 16.159483481,
+          "peakRssKiB": 517768,
+          "findings": 0,
+          "diagnosticDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "files": 12,
+          "bytes": 200505,
+          "rules": 157,
+          "sourceProvenanceVerified": true
+        },
+        "warmMedian": {
+          "wallSeconds": 72.70771105099993,
+          "cpuSeconds": 17.451513356,
+          "peakRssKiB": 517468
+        },
+        "diagnosticsStable": true
+      },
+      "combined": {
+        "firstProcess": {
+          "wallSeconds": 49.6707287409954,
+          "cpuSeconds": 15.83136996,
+          "peakRssKiB": 517724,
+          "findings": 0,
+          "diagnosticDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+          "files": 12,
+          "bytes": 200505,
+          "rules": 161,
+          "sourceProvenanceVerified": true
+        },
+        "warmMedian": {
+          "wallSeconds": 61.87492913901224,
+          "cpuSeconds": 16.968567266,
+          "peakRssKiB": 517428
+        },
+        "diagnosticsStable": true
+      },
+      "selectedCpuRatio": 0.9838784245477493,
+      "combinedCpuRatio": 0.9723264063036713,
+      "method": "Same current input paths selected by sorted sha256(relative path), 50 files for before/after four-rule comparison and 12 for current full-registry omission/combined comparison. First fresh process plus three warm fresh-process repeats with alternating order; OS caches not flushed. Baseline rule source is immutable 025299fd; input bytes are held constant. Workers run sequentially, alongside the independent full make verify gate and other VM activity; wall times are load-sensitive and no speedup claim is made."
+    },
+    "corpus": {
+      "corpora": 3,
+      "batches": 16,
+      "files": 3722,
+      "bytes": 37052454,
+      "elapsedSeconds": 1216.326,
+      "counts": {
+        "SARJ421": 3
+      },
+      "batchSize": 250,
+      "batchTimeoutSeconds": 360,
+      "totalTimeoutSeconds": 2700,
+      "privatePins": "owner-readable local overlay; omitted from committed report"
+    },
+    "corpusClassification": {
+      "complete": true,
+      "status": "complete",
+      "observedBatches": 16,
+      "observedMatches": 3,
+      "classifiedMatches": 3,
+      "legacyReadReviewAdvisories": 3,
+      "newCandidateMatches": 0,
+      "duplicateLocations": 0,
+      "unreviewedMatches": 0,
+      "knownNewFalsePositives": 0,
+      "establishedTruePositives": 0,
+      "legacyPrecisionNotAdjudicated": true,
+      "freshBaselineSource": "detached base package via explicit PYTHONPATH; existing task interpreter dependencies",
+      "freshBaselineRevision": "025299fdcaac0b6a0f534f9490fd2b53afc9de54",
+      "summary": {
+        "corpora": 3,
+        "batches": 16,
+        "files": 3722,
+        "bytes": 37052454,
+        "elapsedSeconds": 1216.326,
+        "counts": {
+          "SARJ421": 3
+        },
+        "batchSize": 250,
+        "batchTimeoutSeconds": 360,
+        "totalTimeoutSeconds": 2700,
+        "privatePins": "owner-readable local overlay; omitted from committed report"
+      }
+    },
+    "corpusInputBounds": {
+      "files": 3722,
+      "maximumInputBytes": 234862,
+      "nativeMaximumFileBytes": 500000,
+      "oversizedInputsSkipped": 0
+    },
+    "repositoryPythonDogfood": {
+      "rules": 161,
+      "files": 845,
+      "blockingDiagnostics": 0,
+      "qualificationBaseRevision": "1bffab09ce611806a9321af0065b94f92b3f8b11",
+      "meaning": "Complete Python custom-rule gate at the qualification base. Existing advisory warnings are retained; this is not a zero-findings claim."
+    },
+    "finalIntegration": {
+      "status": "in-progress",
+      "baseRevision": "98b73b689235754a1f36fe23282f706f8968fd12",
+      "qualificationBaseRevision": "1bffab09ce611806a9321af0065b94f92b3f8b11",
+      "ownedPythonFiles": 9,
+      "ownedPythonBytesMatchFrozenInventory": true,
+      "upstreamOwnedPythonOrAuditCommandOverlap": [],
+      "qualificationScope": "The 161-rule native checks, pinned-corpus scan, performance measurements and broad gate evidence were collected on the qualification tree based on 1bffab09. They do not establish a full gate or full-registry performance result for this newer integration tree.",
+      "newMainPythonChanges": [
+        "__main__.py",
+        "rules/_registry.py",
+        "rules/_data_union_discriminator.py",
+        "rules/prefer_discriminated_model_union.py",
+        "rules/require_pydantic_for_mapping_shape.py"
+      ],
+      "focused": {
+        "casesPerRuntime": 330,
+        "runtimes": {
+          "3.14": {
+            "passed": 330,
+            "seconds": 4.37
+          },
+          "3.15": {
+            "passed": 330,
+            "seconds": 5.41
+          }
+        },
+        "isolation": "Separate frozen dependency environments and isolated non-Git fixture roots; original qualification environments untouched."
+      },
+      "changedPythonSelfLint": {
+        "files": 9,
+        "nativeRules": 162,
+        "findings": 0,
+        "blocking": 0
+      },
+      "focusedRuffFormattingAndTypes": {
+        "ruff": "passed",
+        "formatting": "9 files already formatted",
+        "basedpyright": {
+          "errors": 0,
+          "warnings": 0,
+          "notes": 0
+        }
+      },
+      "regeneration": {
+        "commands": [
+          "code-standards --root . maintain rules sync",
+          "code-standards --root . maintain catalog sync",
+          "code-standards --root . maintain cli-reference sync",
+          "code-standards --root . maintain docs sync",
+          "make docs-code-sync"
+        ],
+        "exitCode": 0
+      },
+      "repositoryPolicy": {
+        "command": "make check-versions-synced repo-check check-file-conventions check-no-private-refs",
+        "exitCode": 0,
+        "versionRepositoryAndFileConventions": "passed",
+        "privateReferences": "Local gate delegates scanning to trusted CI; public report was independently reviewed for redaction."
+      },
+      "diffWhitespace": "passed",
+      "artifactConsistency": {
+        "commands": [
+          "code-standards --root . maintain rules check",
+          "code-standards --root . maintain catalog check --typescript-built",
+          "python -m sarj_standards.libs.repository.third_party_catalog_artifact --root . --check --typescript-built",
+          "code-standards --root . maintain cli-reference check",
+          "code-standards --root . maintain docs check",
+          "npm --prefix apps/docs run code-examples:check"
+        ],
+        "exitCode": 0
+      },
+      "integrationChecks": "The current-registry native checks, focused tests on both supported Python runtimes, Ruff/types, artifacts, versions and repository policy passed on the historical integration snapshot based on 98b73b68. They are not attributed to the later AFB or 18727441 carry-forwards. Full exact-head CI remains required.",
+      "checkedRevision": "98b73b689235754a1f36fe23282f706f8968fd12"
+    },
+    "localRepositoryQualification": {
+      "baseRevision": "1bffab09ce611806a9321af0065b94f92b3f8b11",
+      "canonicalMakeVerify": {
+        "exitCode": 2,
+        "result": "All preparation, artifact, lint and type gates passed. TypeScript completed with one resource timeout; make stopped at that target, so this is not a clean full-gate pass."
+      },
+      "typescript": {
+        "testFiles": 176,
+        "passedFiles": 175,
+        "passedTests": 10021,
+        "failedTests": 1,
+        "durationSeconds": 4472.95,
+        "failure": "no-json-stringify-error authored examples exceeded the unchanged 60,000 ms timeout (61,689 ms).",
+        "unchangedRetry": {
+          "passed": 1,
+          "failed": 0,
+          "seconds": 38.466719261,
+          "timeoutMilliseconds": 60000,
+          "meaning": "Only the failed case was retried; the original failed full run remains recorded. Assertions, source and timeout were unchanged.",
+          "unselectedCases": 256
+        }
+      },
+      "independentRemainingComponents": {
+        "bootstrap": {
+          "passed": 34,
+          "seconds": 15.89
+        },
+        "contracts": {
+          "passed": 46,
+          "seconds": 1.43
+        },
+        "python": {
+          "passed": 20009,
+          "seconds": 714.93
+        },
+        "sql": {
+          "passed": 1752,
+          "skipped": 4,
+          "seconds": 20.49
+        },
+        "iac": {
+          "passed": 1448,
+          "seconds": 26.8
+        },
+        "standardsFreshWheel": {
+          "passed": 6294,
+          "skipped": 9,
+          "seconds": 4223.44,
+          "exitCode": 0,
+          "qualificationBaseRevision": "1bffab09ce611806a9321af0065b94f92b3f8b11"
+        },
+        "remainingRepositoryChecks": "Passed tsconfig, repository and shell checks after the historical fresh-wheel run."
+      },
+      "finalIntegrationRequirement": "Require successful full ci.yml workflow_dispatch on the exact final branch head before merge. A path-scoped PR workflow can skip TypeScript test steps despite green job names; manual dispatch forces all language scopes and full packaged-wheel selection."
+    },
+    "interruptedCommitAttempt": {
+      "baseRevision": "98b73b689235754a1f36fe23282f706f8968fd12",
+      "reason": "Main advanced to afb83f26 and consumed the reserved Python/Standards versions while the normal pre-commit hook was running.",
+      "nativeCheckExitCode": 130,
+      "hookRunnerExitCode": 1,
+      "commitCreated": false,
+      "outcome": "Interrupted normal commit attempt is partial evidence, not a passing hook or full-gate result.",
+      "oldStandardsFreshWheel": "The separate old qualification fresh-wheel run was not interrupted by this commit cancellation."
+    },
+    "priorCarryForwards": [
+      {
+        "baseRevision": "afb83f2657878174ab20a58ce443ac84f60d22b6",
+        "priorIntegrationCheckedRevision": "98b73b689235754a1f36fe23282f706f8968fd12",
+        "status": "historical-full-normal-hooks-passed",
+        "upstreamChange": "Main afb83f26 consumes Python 1.56.0 and Standards 8.92.0 and refines SARJ510 discriminator analysis. Preserve its source, tests, report and generated records.",
+        "ownedPythonOrAuditCommandOverlap": [],
+        "sharedSqlDependenciesChanged": false,
+        "registryChanged": false,
+        "ownedFrozenPythonFiles": 9,
+        "ownedFrozenBytesMatch": true,
+        "reservedVersions": {
+          "python": "1.57.0",
+          "standards": "8.93.0",
+          "auditPlugin": "2.14.1"
+        },
+        "qualification": "Artifacts and all repository/version/formatted-example checks passed on the AFB-based carry-forward. All normal commit hooks then passed in 1,609 seconds and created checkpoint 7f614699. These results qualify that historical checkpoint, not the later 18727441 combined tree. The earlier 330-case checks on both runtimes and nine-file native checks retain checkedRevision 98b73b68.",
+        "regeneration": {
+          "commands": [
+            "code-standards --root . maintain rules sync",
+            "code-standards --root . maintain catalog sync",
+            "code-standards --root . maintain cli-reference sync",
+            "code-standards --root . maintain docs sync",
+            "make docs-code-sync"
+          ],
+          "exitCode": 0
+        },
+        "artifactConsistency": {
+          "commands": [
+            "code-standards --root . maintain rules check",
+            "code-standards --root . maintain catalog check --typescript-built",
+            "python -m sarj_standards.libs.repository.third_party_catalog_artifact --root . --check --typescript-built",
+            "code-standards --root . maintain cli-reference check",
+            "code-standards --root . maintain docs check",
+            "npm --prefix apps/docs run code-examples:check"
+          ],
+          "exitCode": 0
+        },
+        "repositoryPolicy": {
+          "command": "make check-versions-synced repo-check check-file-conventions check-no-private-refs",
+          "exitCode": 0,
+          "privateReferences": "Existing local Make target delegates private-reference scanning to trusted CI."
+        },
+        "diffWhitespace": "passed",
+        "checkedCommit": "7f6146994f11e4faff9da7f66ce0204b4ede9618",
+        "normalCommitHooks": {
+          "commit": "7f6146994f11e4faff9da7f66ce0204b4ede9618",
+          "seconds": 1609,
+          "result": "passed all normal pre-commit and commit-message hooks",
+          "pythonNativeRules": 162,
+          "pythonFiles": 854,
+          "pythonBlockingDiagnostics": 0,
+          "typescriptRules": 125,
+          "typescriptBlockingDiagnostics": 0,
+          "stagedChecks": "passed",
+          "types": "passed",
+          "versions": "passed",
+          "commitMessage": "passed",
+          "meaning": "Historical AFB-based qualification; exact-head CI for the later combined tree remains required."
+        }
+      }
+    ],
+    "latestCarryForward": {
+      "baseRevision": "1872744171d4b25f09990d2a3f4f4e6261a15002",
+      "priorQualifiedCheckpoint": "7f6146994f11e4faff9da7f66ce0204b4ede9618",
+      "priorIntegrationCheckedRevision": "98b73b689235754a1f36fe23282f706f8968fd12",
+      "status": "local-artifact-controls-passed",
+      "upstreamChange": "Main 18727441 consumes Python 1.57.0, Standards 8.94.0 and audit plugin 2.14.1 while refining raw-mapping callback ownership. Preserve its mapping helper, rule, tests, evidence and data-contracts guidance.",
+      "ownedPythonOrAuditCommandOverlap": [],
+      "sharedSqlDependenciesChanged": false,
+      "registryChanged": false,
+      "ownedFrozenPythonFiles": 9,
+      "ownedFrozenBytesMatch": true,
+      "reservedVersions": {
+        "python": "1.60.0",
+        "standards": "8.98.0",
+        "auditPlugin": "2.14.5"
+      },
+      "versionReservation": "Use unallocated higher stable versions to avoid repeated collisions while mandatory normal hooks run. Current release controls require synchronized manifests and immutable release tags, with no adjacent-minor requirement. Exact proposed Python/Standards tags were absent and all three corresponding PyPI versions returned 404 at reservation time.",
+      "qualification": "The nine frozen SQL source/test files, four SQL audit commands and shared SQL dependencies did not change upstream. Historical focused controls retain checkedRevision 98b73b68; the full normal-hook result retains checkpoint 7f614699. Artifacts were regenerated against the 18727441 combined tree, and all artifact, pin, repository and formatted-example checks passed. Focused cases were not repeated for this unchanged SQL carry-forward. New normal hooks and full exact-head CI remain required for the combined tree.",
+      "regeneration": {
+        "commands": [
+          "code-standards --root . maintain rules sync",
+          "code-standards --root . maintain catalog sync",
+          "code-standards --root . maintain cli-reference sync",
+          "code-standards --root . maintain docs sync",
+          "make docs-code-sync"
+        ],
+        "exitCode": 0
+      },
+      "artifactConsistency": {
+        "commands": [
+          "code-standards --root . maintain rules check",
+          "code-standards --root . maintain catalog check --typescript-built",
+          "python -m sarj_standards.libs.repository.third_party_catalog_artifact --root . --check --typescript-built",
+          "code-standards --root . maintain cli-reference check",
+          "code-standards --root . maintain docs check",
+          "npm --prefix apps/docs run code-examples:check"
+        ],
+        "exitCode": 0
+      },
+      "repositoryPolicy": {
+        "command": "make check-versions-synced repo-check check-file-conventions check-no-private-refs",
+        "exitCode": 0,
+        "privateReferences": "Existing local Make target delegates private-reference scanning to trusted CI."
+      },
+      "diffWhitespace": "passed"
+    }
+  },
+  "limitations": [
+    "Warning-only consolidation does not prove bulk/singleton behavioral equivalence. Preserve update-only, missing rows, omission/null, authorization, transaction, duplicate-key and effect-order contracts.",
+    "Unresolved/inherited APIs, hidden alias monkeypatches, command model_dump bindings, unknown context-manager behavior and arbitrary interprocedural state remain outside proof. Conservative exclusions can omit useful candidates.",
+    "Any/object signatures remain permissive declared API contracts, not proof of atomicity or tenant isolation.",
+    "Seed counts are authored boundary evidence and do not establish production precision or semantic coverage. Zero natural new-rule matches does not establish recall.",
+    "Performance applies only to bounded measured samples; OS caches are not flushed."
+  ],
+  "references": [
+    "https://docs.astral.sh/ruff/rules/",
+    "https://www.psycopg.org/psycopg3/docs/api/cursors.html",
+    "https://www.psycopg.org/psycopg3/docs/basic/transactions.html",
+    "https://www.psycopg.org/psycopg3/docs/advanced/pool.html",
+    "https://www.postgresql.org/docs/current/sql-insert.html",
+    "https://www.postgresql.org/docs/current/sql-set.html",
+    "https://www.postgresql.org/docs/current/protocol-flow.html"
+  ],
+  "passes": [
+    {
+      "pass": 1,
+      "scope": "bulk",
+      "focus": "Instance replacement",
+      "criterion": "A source-typed parameter must not acquire a replacement upsert/upsert_many/__class__ before or after the loop in the same binding scope.",
+      "outcome": "improved",
+      "evidence": "Reproducible synthetic source probe plus maintained regression cases in test_prefer_bulk_upsert.py.",
+      "status": "checked"
+    },
+    {
+      "pass": 2,
+      "scope": "bulk",
+      "focus": "Class namespace shadowing",
+      "criterion": "A function declaration alone does not prove a callable bulk method after a class-body replacement; explicit metaclasses can also replace members.",
+      "outcome": "improved",
+      "evidence": "Reproducible synthetic source probe plus maintained regression cases in test_prefer_bulk_upsert.py.",
+      "status": "checked"
+    },
+    {
+      "pass": 3,
+      "scope": "bulk",
+      "focus": "Conditional class shadowing",
+      "criterion": "Conditional assignments or alternate function definitions in class scope make a direct method declaration ambiguous.",
+      "outcome": "improved",
+      "evidence": "Reproducible synthetic source probe plus maintained regression cases in test_prefer_bulk_upsert.py.",
+      "status": "checked"
+    },
+    {
+      "pass": 4,
+      "scope": "bulk",
+      "focus": "Constructor method shadowing",
+      "criterion": "An instance assignment can mask a class-declared method despite compatible type signatures.",
+      "outcome": "improved",
+      "evidence": "Reproducible synthetic source probe plus maintained regression cases in test_prefer_bulk_upsert.py.",
+      "status": "checked"
+    },
+    {
+      "pass": 5,
+      "scope": "bulk",
+      "focus": "Dynamic namespace hazards",
+      "criterion": "globals/locals/exec-like access or wildcard imports can replace otherwise source-resolved owners.",
+      "outcome": "improved",
+      "evidence": "Reproducible synthetic source probe plus maintained regression cases in test_prefer_bulk_upsert.py.",
+      "status": "checked"
+    },
+    {
+      "pass": 6,
+      "scope": "bulk",
+      "focus": "Nested self ownership",
+      "criterion": "An unrelated nested self parameter does not inherit a surrounding service class constructor contract.",
+      "outcome": "improved",
+      "evidence": "Reproducible synthetic source probe plus maintained regression cases in test_prefer_bulk_upsert.py.",
+      "status": "checked"
+    },
+    {
+      "pass": 7,
+      "scope": "bulk",
+      "focus": "Injected descriptor ambiguity",
+      "criterion": "A property/class binding named store can intercept constructor assignment and return an unrelated receiver.",
+      "outcome": "improved",
+      "evidence": "Reproducible synthetic source probe plus maintained regression cases in test_prefer_bulk_upsert.py.",
+      "status": "checked"
+    },
+    {
+      "pass": 8,
+      "scope": "bulk",
+      "focus": "Comprehension scope",
+      "criterion": "A comprehension-local name equal to a loop target does not prove per-row command dependence.",
+      "outcome": "improved",
+      "evidence": "Reproducible synthetic source probe plus maintained regression cases in test_prefer_bulk_upsert.py.",
+      "status": "checked"
+    },
+    {
+      "pass": 9,
+      "scope": "bulk",
+      "focus": "Known single-iteration loops",
+      "criterion": "Zero/one-item literal dictionaries and strings/bytes do not represent repeat-write batching opportunities.",
+      "outcome": "improved",
+      "evidence": "Reproducible synthetic source probe plus maintained regression cases in test_prefer_bulk_upsert.py.",
+      "status": "checked"
+    },
+    {
+      "pass": 10,
+      "scope": "bulk",
+      "focus": "Equivalent quoted signatures",
+      "criterion": "Equivalent quoted scalar command/result annotations should not hide a declared compatible bulk API.",
+      "outcome": "improved",
+      "evidence": "Reproducible synthetic source probe plus maintained regression cases in test_prefer_bulk_upsert.py.",
+      "status": "checked"
+    },
+    {
+      "pass": 11,
+      "scope": "bulk",
+      "focus": "Annotated injection",
+      "criterion": "An annotated self.store assignment still proves constructor injection when its assigned value is the uniquely bound typed parameter.",
+      "outcome": "improved",
+      "evidence": "Reproducible synthetic source probe plus maintained regression cases in test_prefer_bulk_upsert.py.",
+      "status": "checked"
+    },
+    {
+      "pass": 12,
+      "scope": "bulk",
+      "focus": "Absent and permissive contracts",
+      "criterion": "The rule must not invent a bulk method, infer a contract from method names alone, or turn Any/object annotations into semantic atomicity proof.",
+      "outcome": "retained-valid-boundary",
+      "evidence": "Reproducible synthetic source probe plus maintained regression cases in test_prefer_bulk_upsert.py.",
+      "status": "checked"
+    },
+    {
+      "pass": 13,
+      "scope": "field",
+      "focus": "Plain duplicate field-write admission",
+      "criterion": "Require a source-declared model command and existing direct upsert field, same table/key/result contract; preserve positive coverage.",
+      "outcome": "retained; ordinary single-field case and matching SQL shapes warn",
+      "evidence": [
+        "test_flags_redundant_plain_field_assignment",
+        "test_static_equivalent_assignment_shapes"
+      ],
+      "status": "checked"
+    },
+    {
+      "pass": 14,
+      "scope": "field",
+      "focus": "INSERT column coverage",
+      "criterion": "An EXCLUDED assignment does not prove the command supplies a column omitted from INSERT.",
+      "outcome": "fixed; omitted INSERT fields no longer warn",
+      "evidence": [
+        "test_requires_command_fields_to_supply_inserted_values_directly"
+      ],
+      "status": "checked"
+    },
+    {
+      "pass": 15,
+      "scope": "field",
+      "focus": "INSERT row and SQL expression proof",
+      "criterion": "Only one literal VALUES tuple with direct placeholders proves direct command writes; SELECT/default/computed expressions remain unresolved.",
+      "outcome": "fixed; INSERT SELECT, DEFAULT and transformed SQL values excluded",
+      "evidence": [
+        "test_requires_command_fields_to_supply_inserted_values_directly"
+      ],
+      "status": "checked"
+    },
+    {
+      "pass": 16,
+      "scope": "field",
+      "focus": "Python value provenance and mutation",
+      "criterion": "Require the exact bound command parameter attribute for each conflict key/updated field; reject constants, swapped fields, transformations, rebinding or mutation.",
+      "outcome": "fixed; direct parameter ownership and mutation checks prevent unsupported consolidation findings",
+      "evidence": [
+        "test_requires_command_fields_to_supply_inserted_values_directly",
+        "test_command_rebinding_or_mutation_is_not_direct_input",
+        "test_python_transformed_setter_value_has_distinct_policy"
+      ],
+      "status": "checked"
+    },
+    {
+      "pass": 17,
+      "scope": "field",
+      "focus": "Named and positional driver bindings",
+      "criterion": "Keep literal list/tuple and named dictionary bindings useful; placeholders are case-sensitive data keys rather than SQL identifiers. Reject missing, duplicate and expanded dictionary keys.",
+      "outcome": "expanded supported proof for direct named/keyword/list bindings while rejecting ambiguity",
+      "evidence": [
+        "test_named_parameters_prove_command_to_column_bindings",
+        "test_ambiguous_named_command_bindings_are_excluded",
+        "test_keyword_params_and_list_bindings_are_supported"
+      ],
+      "status": "checked"
+    },
+    {
+      "pass": 18,
+      "scope": "field",
+      "focus": "Writable instance-field proof",
+      "criterion": "ClassVar and InitVar annotations do not prove a writable instance command field, including quoted annotations.",
+      "outcome": "fixed ClassVar false positives; inherited/dynamic fields remain excluded",
+      "evidence": [
+        "test_class_variables_do_not_prove_writable_command_fields",
+        "test_requires_field_in_existing_command"
+      ],
+      "status": "checked"
+    },
+    {
+      "pass": 19,
+      "scope": "field",
+      "focus": "Python guards and method contracts",
+      "criterion": "Explicit branching, short circuit conditions, comprehensions, exception/iteration control, unknown decorators and sync/async mismatches can carry distinct behavior.",
+      "outcome": "fixed; excludes explicit guarded operations and unknown decorators while preserving proven @override and unused nested-helper behavior",
+      "evidence": [
+        "test_python_guarded_writes_have_distinct_contracts",
+        "test_decorated_writes_preserve_distinct_contracts",
+        "test_known_override_decorator_does_not_hide_duplicate_write",
+        "test_short_circuit_and_comprehension_guards_are_preserved",
+        "test_distinct_async_contract_is_preserved",
+        "test_nested_helper_guards_do_not_change_the_executed_write"
+      ],
+      "status": "checked"
+    },
+    {
+      "pass": 20,
+      "scope": "field",
+      "focus": "Additional upsert effects and timestamp parity",
+      "criterion": "An ordinary setter must not be conflated with arithmetic/extra bind effects; matching updated_at=NOW() is accepted only when both operations share that timestamp policy.",
+      "outcome": "fixed; unmatched side effects/timestamp changes excluded; matching NOW() stays useful",
+      "evidence": [
+        "test_upsert_with_additional_write_policy_is_excluded",
+        "test_distinct_timestamp_policy_is_preserved",
+        "test_static_equivalent_assignment_shapes"
+      ],
+      "status": "checked"
+    },
+    {
+      "pass": 21,
+      "scope": "field",
+      "focus": "Identity and concurrency predicates",
+      "criterion": "All and only the literal conflict columns must be equated to bound values. Preserve tenant/version guards, partial/conditional upserts and alternate identities.",
+      "outcome": "retained exclusions and added composite tenant-key positive; no extra tenant guard is dropped",
+      "evidence": [
+        "test_preserves_domain_operations_and_ambiguous_sql",
+        "test_conditional_upsert_has_distinct_write_semantics",
+        "test_composite_tenant_conflict_key_is_supported_without_dropping_scope"
+      ],
+      "status": "checked"
+    },
+    {
+      "pass": 22,
+      "scope": "field",
+      "focus": "Table and identifier semantics",
+      "criterion": "Preserve schema/quoted-case identity and explicit UPDATE ONLY table scope; aliases and joins remain unresolved.",
+      "outcome": "fixed UPDATE ONLY false positive; existing table/schema/quoted-case exclusions retained",
+      "evidence": [
+        "test_update_only_table_scope_is_preserved",
+        "test_quoted_case_sensitive_tables_do_not_collapse",
+        "test_quoted_case_sensitive_columns_do_not_collapse",
+        "test_preserves_domain_operations_and_ambiguous_sql"
+      ],
+      "status": "checked"
+    },
+    {
+      "pass": 23,
+      "scope": "field",
+      "focus": "Result contract and RETURNING projection",
+      "criterion": "Same Python return annotation does not imply different SQL RETURNING projections return the same rows; require equal parsed projection and compatible sync form.",
+      "outcome": "fixed; different projection/order/aliases/wildcard excluded, matching projections stay positive",
+      "evidence": [
+        "test_distinct_returning_projection_is_preserved",
+        "test_distinct_result_contract_is_preserved",
+        "test_static_equivalent_assignment_shapes"
+      ],
+      "status": "checked"
+    },
+    {
+      "pass": 24,
+      "scope": "field",
+      "focus": "Developer experience and advisory boundaries",
+      "criterion": "Keep exact suppression, malformed-input safety, generated/test exclusions, native public examples and no automatic replacement. Avoid claiming insert/update equivalence.",
+      "outcome": "retained; documentation explicitly preserves update-only, omitted/null, authorization/context-manager and transaction contracts",
+      "evidence": [
+        "test_exact_suppression_preserves_intentional_update_only_contract",
+        "test_generated_and_test_modules_are_excluded",
+        "test_definition_time_sql_is_not_a_method_body_write",
+        "test_malformed_source_does_not_crash",
+        "test_native_examples"
+      ],
+      "status": "checked"
+    },
+    {
+      "pass": 25,
+      "scope": "driver",
+      "focus": "driver-contract-provenance",
+      "criterion": "Require real Psycopg Cursor/AsyncCursor import and matching await; exclude unknown driver, Connection.execute, rebinding and mutated imports.",
+      "outcome": "tightened-import-proof",
+      "evidence": "Existing unproven_driver/rebound_cursor/sync_cursor_and_import_alias/connection_execute/mutated_driver tests pass. Crossreview reproduced globals rebinding and wildcard import false positives (baseline 1, candidate 0 each); require_static_namespace plus wildcard guard now match StoreOwners. Four globals/locals/exec/wildcard regressions and plain-positive control passed.",
+      "status": "checked"
+    },
+    {
+      "pass": 26,
+      "scope": "driver",
+      "focus": "driver-query-and-control-flow",
+      "criterion": "Require one literal parameterized INSERT/UPDATE/DELETE and bare loop; retain RETURNING/read/dynamic SQL/async stream/per-row transaction and error exclusions.",
+      "outcome": "retained-boundary",
+      "evidence": "Existing preserves_result_consumption_row_transactions_and_dynamic_queries, execute_text_in_comments, static_SQL_wrapper, malformed_generated tests pass.",
+      "status": "checked"
+    },
+    {
+      "pass": 27,
+      "scope": "driver",
+      "focus": "driver-interleaved-state",
+      "criterion": "Do not suggest batching when bound parameter evaluation uses cursor state or opaque cursor callbacks.",
+      "outcome": "fixed-false-positive",
+      "evidence": "driver-interleaved-state baseline1 candidate0; new interleaved-state and nested-read cases pass.",
+      "status": "checked"
+    },
+    {
+      "pass": 28,
+      "scope": "driver",
+      "focus": "driver-observed-results",
+      "criterion": "Preserve rowcount/status consumption after loop because executemany cumulates affected rows.",
+      "outcome": "fixed-false-positive",
+      "evidence": "driver-post-loop-rowcount baseline1 candidate0; new rowcount/status cases pass; official Psycopg executemany docs confirm cumulative rowcount.",
+      "status": "checked"
+    },
+    {
+      "pass": 29,
+      "scope": "driver",
+      "focus": "driver-escapes-and-iteration",
+      "criterion": "Exclude cursor iteration and alias/opaque escapes, where result or ordering dependencies cannot be ruled out.",
+      "outcome": "fixed-false-positive",
+      "evidence": "driver-cursor-iteration and driver-alias-escape baseline1 candidate0; new iteration, opaque-escape, alias-escape cases pass.",
+      "status": "checked"
+    },
+    {
+      "pass": 30,
+      "scope": "driver",
+      "focus": "driver-lexical-and-lifecycle",
+      "criterion": "Preserve plain batch candidates, direct close/other writes, and nested shadowed cursor parameters.",
+      "outcome": "interaction-verified",
+      "evidence": "driver-plain-loop baseline1 candidate1; new close/direct-writes and shadowed_nested_cursor tests pass.",
+      "status": "checked"
+    },
+    {
+      "pass": 31,
+      "scope": "driver",
+      "focus": "canonical-command-alias",
+      "criterion": "Recognize stable straight-line aliases of the original typed command.",
+      "outcome": "fixed-false-positive",
+      "evidence": "canonical-command-alias baseline1 candidate0; command, annotated-chain, captured-command, deleted-original-binding cases pass.",
+      "status": "checked"
+    },
+    {
+      "pass": 32,
+      "scope": "driver",
+      "focus": "canonical-collection-alias",
+      "criterion": "Recognize one-element list/tuple aliases that preserve the original command.",
+      "outcome": "fixed-false-positive",
+      "evidence": "canonical-batch-alias baseline1 candidate0; batch and annotated-chain cases pass.",
+      "status": "checked"
+    },
+    {
+      "pass": 33,
+      "scope": "driver",
+      "focus": "canonical-reassignment",
+      "criterion": "Do not accept a call with a rebound input merely because the parameter name is unchanged.",
+      "outcome": "fixed-false-negative",
+      "evidence": "canonical-reassigned-input baseline0 candidate1; rebound-command, wrong-command, rebound-batch cases pass.",
+      "status": "checked"
+    },
+    {
+      "pass": 34,
+      "scope": "driver",
+      "focus": "canonical-alias-mutation",
+      "criterion": "Track literal collection identity so mutable alias changes invalidate delegation proof, while independent collections, model-field updates and immutable tuple alias rebinding retain it.",
+      "outcome": "mutation-boundary-verified",
+      "evidence": "Mutable collection subscript, alias augmentation and deletion cases warn; independent collections, model-field updates, post-delegation changes and tuple alias rebinding preserve delegation. Augmenting the tuple name passed to the bulk method still warns. Fresh full-package baseline tuple-alias probe: 1 finding before, 0 after; other controls retain their expected results.",
+      "status": "checked"
+    },
+    {
+      "pass": 35,
+      "scope": "driver",
+      "focus": "canonical-cycle-and-signature",
+      "criterion": "Retain direct mutual-cycle detection without overriding legitimate distinct locking contracts; preserve input/output/sync/context compatibility.",
+      "outcome": "retained-boundary",
+      "evidence": "Existing upsert signatures, bulk inversion, mutual delegation, distinct-lock-contract and cycle-with-lock tests pass.",
+      "status": "checked"
+    },
+    {
+      "pass": 36,
+      "scope": "driver",
+      "focus": "canonical-read-and-status-compatibility",
+      "criterion": "Preserve legacy get/get_many and status-wrapper behavior, including helper delegation, status/context mapping, missing/dead/unawaited calls and exact suppression.",
+      "outcome": "compatibility-verified",
+      "evidence": "The complete driver and canonical test files pass 145 cases, including legacy read/status contracts. Selected current-main SARJ520 no-mutating-container-transform check returns zero findings on both owned rule files; scalar bool success result on explicit mutable analysis state is outside its container-valued transform contract.",
+      "status": "checked"
+    },
+    {
+      "pass": 37,
+      "scope": "integration-and-guidance",
+      "focus": "Existing owners and upstream overlap",
+      "criterion": "Improve SARJ516/SARJ517/SARJ518/SARJ421 rather than create another overlapping code or blanket SQL policy.",
+      "outcome": "No new rule IDs, default errors or autofixes; maintained API/SQL relationships remain the owner.",
+      "evidence": "Existing Sarj registry and Ruff catalog; original qualification report.",
+      "status": "checked"
+    },
+    {
+      "pass": 38,
+      "scope": "integration-and-guidance",
+      "focus": "Command capability guidance",
+      "criterion": "Distinguish typed field declaration from actual command-to-INSERT/conflict value flow.",
+      "outcome": "Added trace-through-validation/parameters/INSERT guidance while retaining normalization.",
+      "evidence": "plugins/sarj-audit/commands/service-layer.md",
+      "status": "checked"
+    },
+    {
+      "pass": 39,
+      "scope": "integration-and-guidance",
+      "focus": "Bulk authorization and dependence",
+      "criterion": "Bulk operations must retain each key/tenant authorization and dependent command order.",
+      "outcome": "Added reject/skip/missing-key and result/effect-dependence guidance; no new name-based detector.",
+      "evidence": "plugins/sarj-audit/commands/service-layer.md",
+      "status": "checked"
+    },
+    {
+      "pass": 40,
+      "scope": "integration-and-guidance",
+      "focus": "Driver result contracts",
+      "criterion": "Changing execute loops must preserve observed rowcount and multiple result sets on the installed driver.",
+      "outcome": "Documented cumulative rowcount, nextset/results version capability and current-set fetch behavior.",
+      "evidence": "Official Psycopg cursor API and concurrency-and-performance command.",
+      "status": "checked"
+    },
+    {
+      "pass": 41,
+      "scope": "integration-and-guidance",
+      "focus": "Sparse RETURNING mapping",
+      "criterion": "Skipped conflicts and filtered updates do not produce one row per input.",
+      "outcome": "Added DO NOTHING result omission and key-based mapping guidance; retained duplicate-key policy.",
+      "evidence": "PostgreSQL INSERT documentation; concurrency-and-performance command.",
+      "status": "checked"
+    },
+    {
+      "pass": 42,
+      "scope": "integration-and-guidance",
+      "focus": "Chunking and actual commit ownership",
+      "criterion": "Bound memory without accidentally splitting an atomic transaction; distinguish savepoints from outer commit.",
+      "outcome": "Added chunk transaction/resume contracts and Psycopg implicit-transaction/savepoint guidance.",
+      "evidence": "Official Psycopg transaction contexts; idempotency-and-atomicity command.",
+      "status": "checked"
+    },
+    {
+      "pass": 43,
+      "scope": "integration-and-guidance",
+      "focus": "Unknown commit outcome",
+      "criterion": "A transport failure during commit does not establish that the write rolled back.",
+      "outcome": "Added durable operation-key/receipt reconciliation before replaying non-idempotent work.",
+      "evidence": "PostgreSQL protocol transaction/response boundaries; idempotency-and-atomicity command.",
+      "status": "checked"
+    },
+    {
+      "pass": 44,
+      "scope": "integration-and-guidance",
+      "focus": "Pooled tenant context lifetime",
+      "criterion": "Session context can survive commit and leak into later pool borrowers.",
+      "outcome": "Added same-connection setup, transaction-local settings and reset-ownership guidance; retain other proven isolation mechanisms.",
+      "evidence": "PostgreSQL SET documentation; database-schemas-and-migrations command.",
+      "status": "checked"
+    },
+    {
+      "pass": 45,
+      "scope": "integration-and-guidance",
+      "focus": "Performance evidence and resource lifetime",
+      "criterion": "Do not prescribe connection counts without distinguishing queue, query and commit latency; release incomplete streams.",
+      "outcome": "Added measured pool/latency and streaming-result lifetime guidance.",
+      "evidence": "Official Psycopg pool stats/cursor streaming documentation; concurrency-and-performance command.",
+      "status": "checked"
+    },
+    {
+      "pass": 46,
+      "scope": "integration-and-guidance",
+      "focus": "Native examples and interactions",
+      "criterion": "Updated detectors must preserve positive/negative examples, exact suppression, malformed-input handling and neighboring rules.",
+      "outcome": "330 combined cases pass on both Python 3.14 and 3.15, including native examples, exact suppression, malformed source and legacy read/status cases.",
+      "evidence": "Combined four-rule focused tests on both supported runtimes; full make verify is tracked separately in pass 49.",
+      "status": "checked"
+    },
+    {
+      "pass": 47,
+      "scope": "integration-and-guidance",
+      "focus": "Immutable real-code corpus",
+      "criterion": "Verify prior consumer digests and commit pins, isolate each repository and bounded batch, inspect every match.",
+      "outcome": "The final frozen source completed 16 isolated batches across 3 corpora (3,722 files). All 3 matches are unchanged SARJ421 read advisories reproduced by the immutable baseline. There are no new candidate matches, duplicates, or unreviewed hits. Legacy precision was not adjudicated.",
+      "evidence": "Owner-readable corpus overlay and run_isolated_corpora with 250-file batches.",
+      "status": "checked"
+    },
+    {
+      "pass": 48,
+      "scope": "integration-and-guidance",
+      "focus": "Before/after and combined overhead",
+      "criterion": "Use identical inputs and fresh processes to measure changed rules and omission/combined full-registry overhead.",
+      "outcome": "All 16 fresh-process measurements completed with stable diagnostics. The selected warm-median CPU ratio was 0.984; the combined/omission CPU ratio was 0.972. CPU time and peak RSS did not increase materially on these bounded samples. Variable VM load and unflushed caches do not support a wall-time improvement or regression claim.",
+      "evidence": "Immutable 025299fd source; deterministic 50/12-file samples, first run and three repeats.",
+      "status": "checked"
+    },
+    {
+      "pass": 49,
+      "scope": "integration-and-guidance",
+      "focus": "Release and packaged verification",
+      "criterion": "Synchronize code, source-derived artifacts, exact sibling pins and validate a fresh wheel/full repository.",
+      "outcome": "The current carry-forward reserves Python 1.60.0, Standards 8.98.0 and audit plugin 2.14.5; its actual controls are recorded under latestCarryForward. Historical finalIntegration checks retain checkedRevision 98b73b68, and all normal commit hooks passed for the AFB-based checkpoint 7f614699. The old qualification full make verify retained one TypeScript timeout with a passing unchanged retry; its independent fresh-wheel run completed with 6,294 passed and nine skipped tests, followed by tsconfig, repository and shell checks. Full exact-head CI and final combined-tree qualification remain required before this pass is complete.",
+      "evidence": "Native preparation, artifact synchronization, local component results and rule/release checks; exact-head CI and final outcome are recorded in the pull request and final private audit.",
+      "status": "pending"
+    },
+    {
+      "pass": 50,
+      "scope": "integration-and-guidance",
+      "focus": "Final adversarial and merge review",
+      "criterion": "Resolve reproduced precision/recall gaps, record deliberate proof limits and require green exact-head CI.",
+      "outcome": "Cross review resolved builtin descriptor aliases and immutable tuple alias rebinding. All source reviewers found no further blocking issue. Completion still requires final integrated qualification, successful full exact-head CI and merged-head readback; no completeness claim for arbitrary SQL services.",
+      "evidence": "Final source diff, boundary regressions and deliberate proof limits; final check runs and merged-head readback are recorded in the pull request and owner-readable final audit after execution.",
+      "status": "pending"
+    }
+  ],
+  "scopedReviewEvidence": {
+    "bulk": {
+      "scope": "12 distinct bounded source-semantics passes; not 12 whole-repository reviews",
+      "probes": {
+        "cases": 12,
+        "baseline_expected": 1,
+        "baseline_mismatches": 11,
+        "candidate_expected": 12,
+        "candidate_mismatches": 0,
+        "baseline_false_positive_probes": 9,
+        "baseline_false_negative_probes": 2
+      },
+      "limits": [
+        "These are scoped semantic reviews and labeled synthetic probes, not proof of all production behavior.",
+        "No new error severity or autofix; declared API signature compatibility does not prove identical side effects, duplicate handling, atomicity, ordering, tenant scope, or subclass behavior.",
+        "Unknown inherited implementations, monkeypatches hidden behind arbitrary aliases, dynamic descriptors/metaclasses and unresolved types stay outside proof.",
+        "Full corpus, performance, generated metadata and make verify belong to root integration."
+      ],
+      "comparison": "Fresh detached whole-package baseline selected by PYTHONPATH; loaded shared-helper provenance verified. An intermediate module-replacement rerun and its stale retained labels were discarded."
+    },
+    "field": {
+      "scope": "12 distinct scoped passes, not 12 exhaustive repository sweeps",
+      "probes": {
+        "true_positives": 3,
+        "true_negatives": 9,
+        "false_positives": 0,
+        "false_negatives": 0,
+        "baseline_false_positive_examples_removed": 8
+      },
+      "limits": [
+        "Advisory consolidation review cannot prove INSERT preserves update-only/missing-row or omission/null behavior; wrappers and accepted values must be preserved.",
+        "Unknown context-manager behavior and other surrounding effects are not proven equivalent; documentation requires retaining authorization and transaction contracts.",
+        "Dynamic/model_dump bindings, SQL composition, inherited command fields, indirect aliases and transformed values remain deliberate false negatives.",
+        "No autofix; no requirement to expose immutable or privileged fields; warning severity retained.",
+        "Equal source snippets and case counts are not independent semantic coverage or proof of completeness."
+      ],
+      "comparison": "Original SARJ517 owning module loaded from immutable base against identical candidate shared helpers. This is a scoped module comparison, not a whole prior-release package/corpus run."
+    },
+    "driver": {
+      "scope": "12 distinct scoped passes on SARJ518 and SARJ421, not12whole-repository reviews",
+      "probes": {
+        "baseline": "025299fdcaac0b6a0f534f9490fd2b53afc9de54",
+        "comparison": "The first 13 baseline owning modules come from immutable base 025299fdcaac0b6a0f534f9490fd2b53afc9de54 with identical candidate shared dependencies. The final tuple probe uses the full immutable base package, as labeled.",
+        "cases": [
+          {
+            "id": "driver-interleaved-state",
+            "baseline": 1,
+            "candidate": 0
+          },
+          {
+            "id": "driver-post-loop-rowcount",
+            "baseline": 1,
+            "candidate": 0
+          },
+          {
+            "id": "driver-cursor-iteration",
+            "baseline": 1,
+            "candidate": 0
+          },
+          {
+            "id": "driver-alias-escape",
+            "baseline": 1,
+            "candidate": 0
+          },
+          {
+            "id": "driver-plain-loop",
+            "baseline": 1,
+            "candidate": 1
+          },
+          {
+            "id": "canonical-command-alias",
+            "baseline": 1,
+            "candidate": 0
+          },
+          {
+            "id": "canonical-batch-alias",
+            "baseline": 1,
+            "candidate": 0
+          },
+          {
+            "id": "canonical-reassigned-input",
+            "baseline": 0,
+            "candidate": 1
+          },
+          {
+            "id": "canonical-field-update",
+            "baseline": 0,
+            "candidate": 0
+          },
+          {
+            "id": "canonical-plain-delegation",
+            "baseline": 0,
+            "candidate": 0
+          },
+          {
+            "id": "canonical-independent-write",
+            "baseline": 1,
+            "candidate": 1
+          },
+          {
+            "id": "driver-globals-rebind",
+            "baseline": 1,
+            "candidate": 0
+          },
+          {
+            "id": "driver-wildcard",
+            "baseline": 1,
+            "candidate": 0
+          },
+          {
+            "id": "canonical-immutable-tuple-alias-augmentation",
+            "baseline": 1,
+            "candidate": 0,
+            "comparison": "Fresh immutable025299fd whole-package baseline via explicit PYTHONPATH; module provenance verified."
+          }
+        ]
+      },
+      "limits": [
+        "Cursor-state proof is conservative and can skip loops with unrelated earlier state reads or harmless opaque uses.",
+        "The detector cannot prove arbitrary helper calls or database triggers have no ordering dependencies; warning remains advisory.",
+        "Canonical alias tracking covers straight-line assignments and literal collections; arbitrary control flow, dynamic mutation and interprocedural alias state remain outside proof.",
+        "Existing canonical direct-cycle detection retained; no speculative broader graph rule.",
+        "The first13probes compare immutable025299fd owning modules against identical candidate shared dependencies; the final tuple probe uses the full base package. These scoped comparisons do not establish production precision.",
+        "No corpus or whole-repository make verify claim in this subtask; root performs integrated validation."
+      ],
+      "comparison": "The first 13 baseline owning modules come from immutable base 025299fdcaac0b6a0f534f9490fd2b53afc9de54 with identical candidate shared dependencies. The final tuple probe uses the full immutable base package, as labeled."
+    }
+  },
+  "reviewStartedAtRevision": "025299fdcaac0b6a0f534f9490fd2b53afc9de54",
+  "qualificationBaseRevision": "1bffab09ce611806a9321af0065b94f92b3f8b11",
+  "snapshotMeaning": "This committed artifact records the pre-CI snapshot: 48 scoped passes are checked. Pass 49 requires packaged/repository qualification and pass 50 requires exact-head CI plus merged-head readback. Their actual completion is recorded in the pull request and owner-readable final audit after those events; this snapshot does not predict them."
+}
