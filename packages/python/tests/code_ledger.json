@@ -295,5 +295,6 @@
   "SARJ515": "no-invalid-pydantic-validator-return",
   "SARJ516": "prefer-bulk-upsert",
   "SARJ517": "store-field-update-reuses-upsert",
-  "SARJ518": "prefer-psycopg-executemany"
+  "SARJ518": "prefer-psycopg-executemany",
+  "SARJ519": "no-discarded-validation-result"
 }
