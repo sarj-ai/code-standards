@@ -1,0 +1,796 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-19",
+  "decision": "promote qualified expanded SARJ520 to error; retain SARJ519 at error",
+  "additionalReviews": 50,
+  "reviewRange": [
+    101,
+    150
+  ],
+  "totalCampaignReviews": 150,
+  "versions": {
+    "python": "1.61.0",
+    "standards": "8.101.0"
+  },
+  "warningRelease": {
+    "pullRequest": 1604,
+    "head": "25a2894edca1d9e63d1582967a4376eb307e47f8",
+    "merge": "f865d7237a6ec4838385b6cc5a2a62acf943653c",
+    "exactHeadChecks": 36,
+    "failedChecks": 0,
+    "mainCI": 39297604577,
+    "mainCIConclusion": "success",
+    "releaseWorkflow": 39297604515,
+    "releaseConclusion": "success",
+    "tag": "standards-v8.96.0",
+    "annotatedTagObject": "3aad4cf94c21e3dac5a1fe094790dbec4c784db0",
+    "tagTargetsMerge": true,
+    "verifiedArtifacts": {
+      "versions": {
+        "sarj-python-lint": "1.58.0",
+        "code-standards": "8.96.0",
+        "sarj-standards": "8.96.0"
+      },
+      "verifiedArtifacts": [
+        {
+          "package": "sarj-python-lint",
+          "version": "1.58.0",
+          "filename": "sarj_python_lint-1.58.0-py3-none-any.whl",
+          "format": "bdist_wheel",
+          "sha256": "46c2e295c0b8e25e192fa411d3546eac7711f49622d8102696dd46aa6755b341",
+          "exactSiblingPin": null
+        },
+        {
+          "package": "sarj-python-lint",
+          "version": "1.58.0",
+          "filename": "sarj_python_lint-1.58.0.tar.gz",
+          "format": "sdist",
+          "sha256": "846fd198bc998a616fb904e02cc446689fcb2af8046826fa3c8a627bdbef7a41",
+          "exactSiblingPin": null
+        },
+        {
+          "package": "code-standards",
+          "version": "8.96.0",
+          "filename": "code_standards-8.96.0-py3-none-any.whl",
+          "format": "bdist_wheel",
+          "sha256": "eacf22eface91f8efcd1749c83af15b061f381edc27ef5cdafc106ff6319fbb6",
+          "exactSiblingPin": "sarj-python-lint==1.58.0"
+        },
+        {
+          "package": "code-standards",
+          "version": "8.96.0",
+          "filename": "code_standards-8.96.0.tar.gz",
+          "format": "sdist",
+          "sha256": "d570074f635d53f137a5063f96739dca9eebead93b0cc6b140cd43ce4ef4c5bb",
+          "exactSiblingPin": "sarj-python-lint==1.58.0"
+        },
+        {
+          "package": "sarj-standards",
+          "version": "8.96.0",
+          "filename": "sarj_standards-8.96.0-py3-none-any.whl",
+          "format": "bdist_wheel",
+          "sha256": "0373735b8f36c5742e934d87dadeae1aba722753c3e2666deb7f57db04c8a167",
+          "exactSiblingPin": "code-standards==8.96.0"
+        },
+        {
+          "package": "sarj-standards",
+          "version": "8.96.0",
+          "filename": "sarj_standards-8.96.0.tar.gz",
+          "format": "sdist",
+          "sha256": "f65e366f7834cfb8e42f4a7306d68b21d14c38eaa6013751f921b1d243ce05cd",
+          "exactSiblingPin": "code-standards==8.96.0"
+        }
+      ],
+      "allHashesAndMetadataVerified": true
+    },
+    "installedProvenance": {
+      "versions": {
+        "sarj-python-lint": "1.58.0",
+        "code-standards": "8.96.0",
+        "sarj-standards": "8.96.0"
+      },
+      "catalogLevels": {
+        "python:no-discarded-validation-result": "error",
+        "python:no-mutating-container-transform": "warning"
+      },
+      "exactSiblingPins": {
+        "code-standards": "sarj-python-lint==1.58.0",
+        "sarj-standards": "code-standards==8.96.0"
+      },
+      "sourceSha256": {
+        "no_discarded_validation_result.py": "016ce2c464a36cbd1de6f830bda3a8afb2f1645350e0c163d817724d17253d35",
+        "no_mutating_container_transform.py": "31e1b7483b14c04b883fa450937f87ebdccfb34b55223348d6d1cc9c2371fafa",
+        "_resource_provenance.py": "c2e84ce59cd7ce739a01d7ea27283d00260968afa531c376337a18d7aca7209f"
+      },
+      "isolatedPublishedInstall": true
+    },
+    "installedCLICases": 51
+  },
+  "sourceEquivalence": {
+    "rule": "SARJ520",
+    "warningMerge": "f865d7237a6ec4838385b6cc5a2a62acf943653c",
+    "severitySites": 2,
+    "allOtherSourceByteIdentical": true,
+    "warningSha256": "31e1b7483b14c04b883fa450937f87ebdccfb34b55223348d6d1cc9c2371fafa",
+    "errorSha256": "f4fc1948b9bc4800ec5a17dafd86e554512ab414888503083197ae931b46ae29"
+  },
+  "sourceSha256": {
+    "no_discarded_validation_result.py": "016ce2c464a36cbd1de6f830bda3a8afb2f1645350e0c163d817724d17253d35",
+    "no_mutating_container_transform.py": "f4fc1948b9bc4800ec5a17dafd86e554512ab414888503083197ae931b46ae29",
+    "_resource_provenance.py": "c2e84ce59cd7ce739a01d7ea27283d00260968afa531c376337a18d7aca7209f"
+  },
+  "priorQualification": "packages/standards/benchmarks/side-effect-precision-50-20261019.json",
+  "reusedRecognitionQualification": {
+    "focusedCasesPerSupportedRuntime": 374,
+    "currentMainIntegrationCases": 631,
+    "corpusFiles": 3000,
+    "freshProcessBatches": 14,
+    "allFindingsInspected": true,
+    "historicalPolicyTruePositives": 2,
+    "knownFalsePositives": 0,
+    "duplicateLocations": 0,
+    "scope": "Recognition is byte-identical after normalizing only two severity constants. Prior finite corpus, runtime and performance evidence is reused with its original scope; it is not a new independent scan or review pass."
+  },
+  "promotionChecks": {
+    "focused314": {
+      "passed": 374,
+      "exit": 0,
+      "seconds": 30.81
+    },
+    "focused315": {
+      "passed": 374,
+      "exit": 0,
+      "seconds": 2.18
+    },
+    "nativeCLIErrorBehavior": "51 isolated-wheel contracts pass, including the original SARJ519 violation, SARJ520 error exits and preserved command/abstention controls.",
+    "installedCandidateWheel": {
+      "package": "sarj-python-lint",
+      "version": "1.61.0",
+      "containerSeverity": "error",
+      "cases": [
+        {
+          "pass": 101,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 102,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 103,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 104,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 105,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 106,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 107,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 108,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 109,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 110,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 111,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 112,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 113,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 114,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 115,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 116,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 117,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 118,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 119,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 120,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 121,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 122,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 123,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 124,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 125,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 126,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 127,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 128,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 129,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 130,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 131,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 132,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 133,
+          "count": 2,
+          "exit": 1
+        },
+        {
+          "pass": 134,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 135,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 136,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 137,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 138,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 139,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 140,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 141,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 142,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 143,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 144,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 145,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 146,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 147,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 148,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 149,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 150,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": "original",
+          "code": "SARJ519",
+          "line": 162,
+          "column": 9,
+          "exit": 1
+        }
+      ],
+      "casesPassed": 51,
+      "isolatedFromWorktree": true,
+      "installedSourceSha256": {
+        "no_discarded_validation_result.py": "016ce2c464a36cbd1de6f830bda3a8afb2f1645350e0c163d817724d17253d35",
+        "no_mutating_container_transform.py": "f4fc1948b9bc4800ec5a17dafd86e554512ab414888503083197ae931b46ae29",
+        "_resource_provenance.py": "c2e84ce59cd7ce739a01d7ea27283d00260968afa531c376337a18d7aca7209f"
+      }
+    },
+    "maintainedArtifacts": "Inventory/catalog/third-party/CLI/docs, version synchronization and repository checks pass on integrated base8bca9447.",
+    "localCanonicalGate": {
+      "command": "make verify TEST_JOBS=2",
+      "exit": 0,
+      "base": "f865d7237a6ec4838385b6cc5a2a62acf943653c",
+      "candidateVersions": {
+        "python": "1.59.0",
+        "standards": "8.97.0"
+      },
+      "typescript": {
+        "files": 180,
+        "tests": 10192,
+        "seconds": 440.5,
+        "workers": 2
+      },
+      "python": {
+        "tests": 20190,
+        "seconds": 171.52
+      },
+      "bootstrap": 34,
+      "contracts": 46,
+      "sql": {
+        "tests": 1752,
+        "skipped": 4
+      },
+      "iac": 1448,
+      "packagedStandards": {
+        "tests": 6311,
+        "skipped": 9,
+        "seconds": 536.15,
+        "freshWheels": 5,
+        "workers": 2
+      },
+      "nativeDogfood": {
+        "pythonRules": 162,
+        "pythonFiles": 855,
+        "pythonBlocking": 0,
+        "typescriptRules": 125,
+        "typescriptDiagnostics": 0
+      },
+      "other": "Doctor, all maintained artifacts/docs/build/format/lint/types, repository/private-reference and shell gates pass. Two preexisting SC2310 warnings remain. Assertions and timeouts unchanged."
+    },
+    "normalHooks": {
+      "commit": "90df38988f928eeb4963e672b9bf43d39de63059",
+      "base": "8bca94471805029d13f9e29b1ef0e9453f928723",
+      "exit": 0,
+      "seconds": 586.61,
+      "pythonRules": 162,
+      "pythonFiles": 855,
+      "pythonBlocking": 0,
+      "typescriptRules": 125,
+      "typescriptDiagnostics": 0,
+      "stagedErrors": 0,
+      "stagedWarnings": 0,
+      "stagedExecutionIssues": 0,
+      "allStrictTypes": "0errors0warnings",
+      "scope": "Completed before metadata/derived-artifact integration rebase. Candidate source remains identical; affected frontend checks, normal pre-push and exact-head CI qualify final revision."
+    },
+    "exactHeadCI": "pending",
+    "preIntegrationCandidateWheel": {
+      "package": "sarj-python-lint",
+      "version": "1.59.0",
+      "containerSeverity": "error",
+      "cases": [
+        {
+          "pass": 101,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 102,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 103,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 104,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 105,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 106,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 107,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 108,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 109,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 110,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 111,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 112,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 113,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 114,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 115,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 116,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 117,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 118,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 119,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 120,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 121,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 122,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 123,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 124,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 125,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 126,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 127,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 128,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 129,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 130,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 131,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 132,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 133,
+          "count": 2,
+          "exit": 1
+        },
+        {
+          "pass": 134,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 135,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 136,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 137,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 138,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 139,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 140,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 141,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 142,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 143,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 144,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 145,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 146,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 147,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 148,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": 149,
+          "count": 0,
+          "exit": 0
+        },
+        {
+          "pass": 150,
+          "count": 1,
+          "exit": 1
+        },
+        {
+          "pass": "original",
+          "code": "SARJ519",
+          "line": 162,
+          "column": 9,
+          "exit": 1
+        }
+      ],
+      "casesPassed": 51,
+      "isolatedFromWorktree": true,
+      "installedSourceSha256": {
+        "no_discarded_validation_result.py": "016ce2c464a36cbd1de6f830bda3a8afb2f1645350e0c163d817724d17253d35",
+        "no_mutating_container_transform.py": "f4fc1948b9bc4800ec5a17dafd86e554512ab414888503083197ae931b46ae29",
+        "_resource_provenance.py": "c2e84ce59cd7ce739a01d7ea27283d00260968afa531c376337a18d7aca7209f"
+      }
+    }
+  },
+  "limitations": [
+    "No autofix or new recognition logic. Existing unsupported ownership and execution boundaries remain unchanged.",
+    "Finite zero-known-false-positive evidence does not prove universal purity or precision.",
+    "Consumer approval boundaries remain in force; package publication does not establish fleet adoption."
+  ],
+  "integration": {
+    "base": "faaebf937d8c9d8cb22a63abd2adec9c135b0777",
+    "preservedUpstreamPR": 1605,
+    "reason": "Preserve the source-qualified SQL and selector owners plus latest upstream documentation/test calibration. Main allocated8.100.0; allocate8.101.0. Python1.61.0 and all three candidate source hashes remain unchanged.",
+    "affectedChecks": {
+      "focusedCases": 704,
+      "exit": 0,
+      "seconds": 2.91,
+      "modules": 6,
+      "candidateWheelCases": 51,
+      "candidateWheelVersion": "1.61.0",
+      "candidateSourceHashesUnchanged": true
+    },
+    "sourceEquivalenceStillExact": true,
+    "priorBase": "8bca94471805029d13f9e29b1ef0e9453f928723",
+    "preservedUpstreamPRs": [
+      1605,
+      1598,
+      1600
+    ],
+    "postFrontendChecks": {
+      "typescript": "16.21.0",
+      "freshNativeBuild": "ESM/CJS/declarations passed under pinned Node24.21.0",
+      "affectedTestFiles": 3,
+      "affectedTests": 201,
+      "seconds": 19.2,
+      "exit": 0,
+      "maintainedArtifacts": "inventory/catalog/third-party/CLI/docs checks pass",
+      "versions": "pass",
+      "pythonInputs": "No Python source changed between SQL-owner integration and frontend integration; candidate source hashes remain identical."
+    },
+    "priorFrontendBase": "3c3068cfe15785c668a44d1bbfca166ff98abdec",
+    "latestDocumentationChecks": {
+      "base": "faaebf937d8c9d8cb22a63abd2adec9c135b0777",
+      "affectedTests": 72,
+      "files": 1,
+      "seconds": 6.99,
+      "exit": 0,
+      "allMaintainedArtifacts": "pass",
+      "versions": "pass",
+      "runtimeInputs": "No Python runtime or TypeScript runtime/package inputs changed from the preceding qualified integration."
+    }
+  }
+}
