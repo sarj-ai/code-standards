@@ -1,0 +1,273 @@
+{
+  "schemaVersion": 1,
+  "rule": "python:prefer-discriminated-model-union",
+  "code": "SARJ510",
+  "decision": "ship-warning",
+  "versions": {
+    "python": "1.55.0",
+    "standards": "8.89.0"
+  },
+  "request": "10 additional focused passes to improve usefulness and precision.",
+  "baselineCommit": "627f79ee2bfe3c72a9433396853302c13a1d7e4b",
+  "sourceSha256": "c49b5cf06605f71b037508284e2f131d6bfe47350108d139236ec5a4fd36c2bb",
+  "baselineHelperSha256": "b410fa80fbf5430e689c2accf87c1beec6182ae71da27794691321952c3f5a33",
+  "passDefinition": "One distinct labeled source/path execution context per pass. These ten cases are focused regressions, not ten independent repository audits or an exhaustive coverage claim. Supplemental controls and native witnesses are outside this ledger.",
+  "admission": {
+    "existingOwner": "SARJ510 owns the requested explicit data-union discriminator policy; no new rule or severity change is needed.",
+    "demonstratedGap": "Native-valid reusable Pydantic metadata and imported types constructors warned. String field-name bindings bypassed the tag check, and unrelated local parameters hid module-level imports.",
+    "harm": "False warnings encourage unnecessary constructor or serialization changes; scope and metadata false negatives undermine the requested modeling policy.",
+    "boundary": "Nominal unions remain valid Python. This is a warning-first modeling preference with no universally safe autofix.",
+    "smallestFix": "Extend the existing bounded AST helper with stable runtime-value proof and scope-aware import resolution."
+  },
+  "labeled": {
+    "contexts": 10,
+    "positiveContexts": 6,
+    "negativeContexts": 4,
+    "baselineFalseWarningContexts": 3,
+    "baselineMissedSupportedContexts": 5,
+    "falsePositives": 0,
+    "falseNegativesWithinDeclaredScope": 0,
+    "duplicateContexts": 0,
+    "duplicateDiagnosticLocations": 0
+  },
+  "passes": [
+    {
+      "pass": 1,
+      "id": "fp-01-reusable-discriminator-object",
+      "expectedCount": 0,
+      "baselineCount": 1,
+      "candidateCount": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 2,
+      "id": "fp-02-imported-pydantic-types-module",
+      "expectedCount": 0,
+      "baselineCount": 1,
+      "candidateCount": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 3,
+      "id": "fp-03-annotated-reusable-field-info",
+      "expectedCount": 0,
+      "baselineCount": 1,
+      "candidateCount": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 4,
+      "id": "expansion-01-field-name-string-binding",
+      "expectedCount": 1,
+      "baselineCount": 0,
+      "candidateCount": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 5,
+      "id": "expansion-02-final-field-name-alias-chain",
+      "expectedCount": 1,
+      "baselineCount": 0,
+      "candidateCount": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 6,
+      "id": "expansion-03-concatenated-field-name-literals",
+      "expectedCount": 1,
+      "baselineCount": 0,
+      "candidateCount": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 7,
+      "id": "expansion-04-mutated-field-discriminator-control",
+      "expectedCount": 1,
+      "baselineCount": 1,
+      "candidateCount": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 8,
+      "id": "scope-unrelated-decorator-parameter",
+      "expectedCount": 1,
+      "baselineCount": 0,
+      "candidateCount": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 9,
+      "id": "scope-unrelated-union-parameter",
+      "expectedCount": 1,
+      "baselineCount": 0,
+      "candidateCount": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 10,
+      "id": "scope-real-global-decorator-rebinding",
+      "expectedCount": 0,
+      "baselineCount": 0,
+      "candidateCount": 0,
+      "result": "pass"
+    }
+  ],
+  "refinements": [
+    "Accept bounded stable Discriminator and annotated FieldInfo metadata bindings without requiring extra literal fields.",
+    "Resolve exact imported pydantic.types constructors while preserving rebinding and mutation controls.",
+    "Prove string field-name arguments through unique local runtime bindings and string-only concatenation; retain the Literal-tag requirement.",
+    "Keep module-level imports independent of unrelated function parameters, with class-namespace and actual global-rebinding exclusions.",
+    "Invalidate callable metadata coverage after proven string discriminator writes through stable aliases; opaque mutation, helper escape and excessive alias graphs abstain.",
+    "Bound expansion and alias-component traversal; reuse the class field-name set rather than rebuilding it per annotation."
+  ],
+  "nativeEvidence": {
+    "runtimeWitnesses": 10,
+    "typeCheckedContexts": 9,
+    "failures": 0,
+    "qualification": "The global-decorator-rebinding control is runtime-only. A separate bare Final inference proposal was rejected because it failed static union narrowing; it is excluded from the ten-case improvement ledger."
+  },
+  "upstreamReview": [
+    {
+      "owner": "Ruff",
+      "url": "https://docs.astral.sh/ruff/rules/",
+      "result": "No upstream shared data-union modeling preference replaces the existing SARJ510 owner."
+    },
+    {
+      "owner": "Pydantic",
+      "url": "https://docs.pydantic.dev/latest/concepts/unions/#discriminated-unions-with-callable-discriminator",
+      "result": "Callable discriminator metadata can route variants without a shared Literal field."
+    },
+    {
+      "owner": "Python typing",
+      "url": "https://typing.python.org/en/latest/spec/literal.html",
+      "result": "Literal fields remain the declared static discriminator contract; runtime string field-name configuration is a separate mechanism."
+    }
+  ],
+  "limitations": [
+    "All prior inherited, generic, behavior-bearing, runtime TypeAliasType union, dynamic namespace and configuration-heavy record exclusions remain in place.",
+    "Imported field domains are not resolved across files. Unknown callable arguments, opaque mutation and helper escapes can abstain; no interprocedural effect inference is claimed.",
+    "Alias expansion, string proof, class-annotation inspection and metadata alias components use finite budgets. Large or uncertain forms can remain intentional false negatives.",
+    "The labeled cases and inspected corpora establish bounded evidence, not population-wide precision or complete recall. No automatic constructor or wire-format change is offered."
+  ],
+  "validation": {
+    "focusedTests": 404,
+    "focusedResult": "pass",
+    "canonicalPerFileRules": 145,
+    "changedPythonFiles": 4,
+    "perFileFindings": 0,
+    "ruff": "pass",
+    "basedPyright": "pass",
+    "localMakeVerify": {
+      "result": "incomplete",
+      "reason": "Existing 120-second TypeScript artifact-build timeout on the shared VM; final-revision CI is tracked on PR 1593."
+    },
+    "committedRuleComparison": {
+      "result": "pass",
+      "implementationSelectorsChanged": 174,
+      "rulesAdded": 0,
+      "rulesRemoved": 0,
+      "policyChanges": 0,
+      "severity": "warning"
+    }
+  },
+  "performanceNotes": {
+    "runtime": "CPython 3.15.0 on a shared Linux VM.",
+    "isolation": "Fresh interpreter per corpus and bounded batch; 250-file batch limit, verified private pins before and after.",
+    "coldWarmDefinition": "First and second analysis passes within each interpreter; this does not mean clearing OS caches.",
+    "combinedSelection": "Ten tracked Python files per corpus, taking every ceil(file_count / 10) entry from the sorted pinned inventory.",
+    "combinedInputBytes": 314167,
+    "baselineQualification": "The baseline helper is byte-identical at 1bffab09 and the integrated baseline commit 627f79ee. Both modes use the same current canonical per-file registry.",
+    "interpretation": "Three paired repetitions support regression review; no speed improvement or population precision claim is made."
+  },
+  "calibration": {
+    "decision": "ship-warning",
+    "baseline_strategy": "Same current Python engine/registry; substitute the SARJ510 data-union helper from 1bffab09.",
+    "source_guard_verified": true,
+    "pinned_corpora_verified_before_and_after": true,
+    "rule_only": {
+      "corpora": 3,
+      "files": 3260,
+      "bytes": 33757679,
+      "batches_per_pass": 15,
+      "batch_limit": 250,
+      "paired_repeats": 3,
+      "baseline_findings": 8,
+      "candidate_findings": 8,
+      "added_findings": 0,
+      "removed_findings": 0,
+      "unchanged_findings": 8,
+      "duplicate_locations": 0,
+      "exact_repeat_fingerprints_equal_within_each_mode": true,
+      "cold_warm_fingerprints_equal": true,
+      "candidate_findings_reviewed": 8,
+      "policy_matches": 8,
+      "known_false_positives": 0,
+      "performance": [
+        {
+          "mode": "baseline",
+          "repeats": 3,
+          "files_per_repeat": 3260,
+          "median_cold_cpu_seconds": 11.775388441,
+          "median_warm_cpu_seconds": 12.085022417000001,
+          "median_cold_wall_seconds": 36.67361459303356,
+          "median_warm_wall_seconds": 38.72350034501869,
+          "median_end_to_end_seconds": 139.24847845399927,
+          "peak_rss_kib": 72952
+        },
+        {
+          "mode": "candidate",
+          "repeats": 3,
+          "files_per_repeat": 3260,
+          "median_cold_cpu_seconds": 11.170466365000001,
+          "median_warm_cpu_seconds": 11.291665727,
+          "median_cold_wall_seconds": 33.542654571996536,
+          "median_warm_wall_seconds": 38.41432308300864,
+          "median_end_to_end_seconds": 128.49975015399104,
+          "peak_rss_kib": 73176
+        }
+      ]
+    },
+    "combined": {
+      "scope": "All 145 canonical per-file Python rules through check_source; excludes project rules and discovery.",
+      "corpora": 3,
+      "files": 30,
+      "paired_repeats": 3,
+      "canonical_rule_count": 145,
+      "cold_warm_fingerprints_equal": true,
+      "cross_mode_and_repeat_fingerprints_equal": true,
+      "performance": [
+        {
+          "mode": "baseline",
+          "repeats": 3,
+          "files_per_repeat": 30,
+          "median_cold_cpu_seconds": 25.313554912,
+          "median_warm_cpu_seconds": 24.968104206,
+          "median_cold_wall_seconds": 82.3534490190068,
+          "median_warm_wall_seconds": 82.10587845799455,
+          "median_end_to_end_seconds": 179.81232890000683,
+          "peak_rss_kib": 197348
+        },
+        {
+          "mode": "candidate",
+          "repeats": 3,
+          "files_per_repeat": 30,
+          "median_cold_cpu_seconds": 24.655715764,
+          "median_warm_cpu_seconds": 24.043534555,
+          "median_cold_wall_seconds": 79.17769777000649,
+          "median_warm_wall_seconds": 71.54953244701028,
+          "median_end_to_end_seconds": 172.61252804999822,
+          "peak_rss_kib": 197176
+        }
+      ]
+    },
+    "limitations": [
+      "Shared VM load affects wall time; these measurements do not establish a speed improvement.",
+      "No observed false positives in this reviewed sample is not a population false-positive-rate estimate."
+    ]
+  },
+  "reproduce": [
+    "uv run --project packages/standards --frozen pytest -q packages/python/tests/test_discriminated_data_unions.py packages/python/tests/test_discriminated_data_union_followups.py packages/python/tests/test_discriminated_data_union_runtime.py packages/python/tests/test_discriminated_union_metadata_followups.py packages/python/tests/test_discriminated_union_scope_followups.py packages/python/tests/rules/test_prefer_discriminated_model_union.py",
+    "code-standards --root . maintain rules changes --before 627f79ee2bfe3c72a9433396853302c13a1d7e4b --after HEAD",
+    "make verify"
+  ]
+}
