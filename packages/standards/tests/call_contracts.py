@@ -48,6 +48,7 @@ class StandardsAnalyzeOptions(TypedDict, total=False):
     prepared_targets: Sequence[str]
     prepared_only: bool
     python_type_check: bool
+    eslint: bool
 
 
 class NativeAnalyzeOptions(TypedDict, total=False):
@@ -74,6 +75,7 @@ class ExternalAnalyzeOptions(TypedDict, total=False):
     upstream_rules: UpstreamESLintRules
     security_selection: RuleSelection | None
     python_type_check: bool
+    eslint: bool
 
 
 class CorpusProcessOptions(TypedDict):
@@ -96,6 +98,7 @@ class CanonicalCheckOptions(TypedDict, total=False):
     react_doctor_triggered: bool
     jobs: int
     python_type_check: bool
+    eslint: bool
 
 
 class EslintSelectionOptions(TypedDict, total=False):

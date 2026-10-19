@@ -184,6 +184,16 @@ const ESLINT_RECOMMENDED_CONFIG = {
 // expression or object literal into an explicit `return` block.
 const ESLINT_CONCISION_ADVISORY_RULES = {
   "arrow-body-style": ["warn", "as-needed"],
+  "no-extra-label": "warn",
+  "no-lonely-if": "warn",
+};
+
+// These require a local decision: a constructor may deliberately replace its
+// instance, and a one-iteration loop may deliberately select the first item.
+// Neither upstream rule autofixes the return value or control-flow contract.
+const ESLINT_CORRECTNESS_ADVISORY_RULES = {
+  "no-constructor-return": "warn",
+  "no-unreachable-loop": "warn",
 };
 
 // Unicorn ships a broad rule set. The enabled subset below was selected by
@@ -487,6 +497,8 @@ const UNICORN_CONCISION_ADVISORY_RULES = {
   "unicorn/prefer-single-object-destructuring": "warn",
   "unicorn/iteration-fallback-style": ["warn", "guard"],
   "unicorn/prefer-combined-guards": "warn",
+  "unicorn/no-lonely-if": "warn",
+  "unicorn/prefer-block-statement-over-iife": "warn",
 };
 
 // Semantic advisories require local intent to resolve. Dynamic property reads
@@ -930,7 +942,10 @@ export function createConfig(options = {}) {
         { ignoreArrowShorthand: true },
       ],
       "@typescript-eslint/no-non-null-asserted-optional-chain": "error",
-      "@typescript-eslint/no-unnecessary-type-assertion": "error",
+      "@typescript-eslint/no-unnecessary-type-assertion": [
+        "error",
+        { checkLiteralConstAssertions: true },
+      ],
       "@typescript-eslint/no-redundant-type-constituents": "error",
       "@typescript-eslint/require-array-sort-compare": "error",
       "@typescript-eslint/no-unsafe-type-assertion": "error",
@@ -1089,6 +1104,7 @@ export function createConfig(options = {}) {
       ...UNICORN_CORRECTNESS_RULES,
       ...UNICORN_MODERNISATION_RULES,
       ...ESLINT_CONCISION_ADVISORY_RULES,
+      ...ESLINT_CORRECTNESS_ADVISORY_RULES,
       ...UNICORN_CONCISION_ADVISORY_RULES,
       ...UNICORN_SEMANTIC_ADVISORY_RULES,
 
@@ -1198,6 +1214,13 @@ export function createConfig(options = {}) {
       // so each concern fires exactly one diagnostic.
       "no-restricted-syntax": [
         "error",
+        {
+          // The typed upstream rule skips literal assertions in object/array
+          // members. Restrict direct values only: calls, returns, spreads and
+          // satisfies expressions can establish independent inference contexts.
+          selector: ":matches(TSAsExpression, TSTypeAssertion)[typeAnnotation.typeName.name='const'] > ObjectExpression > Property > :matches(TSAsExpression, TSTypeAssertion).value[typeAnnotation.typeName.name='const'], :matches(TSAsExpression, TSTypeAssertion)[typeAnnotation.typeName.name='const'] > ArrayExpression > :matches(TSAsExpression, TSTypeAssertion)[typeAnnotation.typeName.name='const']",
+          message: "This member already inherits the enclosing as const assertion. Remove the member's redundant const assertion.",
+        },
         {
           selector: "UnaryExpression[operator='typeof']:not([parent.type='BinaryExpression'][parent.operator=/^(===|!==|==|!=)$/][parent.right.type='Literal'][parent.right.value='undefined']):not([parent.type='BinaryExpression'][parent.operator=/^(===|!==|==|!=)$/][parent.left.type='Literal'][parent.left.value='undefined'])",
           message: "Avoid runtime typeof representation checks. Preserve a known domain type or validate external input with the existing schema. Existence checks against \"undefined\" and TypeScript type queries remain allowed.",

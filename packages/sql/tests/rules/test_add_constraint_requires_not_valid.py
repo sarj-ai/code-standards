@@ -429,3 +429,32 @@ def test_equivalent_quoted_name_does_not_preserve_freshness_after_a_write() -> N
     )
 
     assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "CREATE TABLE scratch (id bigint);\nALTER TABLE scratch RENAME TO scratch_empty;\nALTER TABLE old_existing RENAME TO scratch;\nALTER TABLE scratch ADD CONSTRAINT positive_id CHECK (id > 0);\n",
+        "CREATE TABLE app.scratch (id bigint);\nALTER TABLE app.scratch RENAME TO scratch_empty;\nALTER TABLE app.old_existing RENAME TO scratch;\nALTER TABLE app.scratch ADD CHECK (id > 0);",
+        'CREATE TABLE "Scratch" (id bigint);\nALTER TABLE "Scratch" RENAME TO scratch_empty;\nALTER TABLE old_existing RENAME TO "Scratch";\nALTER TABLE "Scratch" ADD CHECK (id > 0);',
+    ],
+)
+def test_relation_rename_reuse_does_not_lend_freshness(source: str) -> None:
+    diagnostics = _check(source)
+    assert len(diagnostics) == 1
+    assert diagnostics[0].code == "SARJ111"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "CREATE TABLE scratch (id bigint);\nALTER TABLE scratch RENAME TO scratch_empty;\nALTER TABLE old_existing RENAME TO scratch;\nALTER TABLE scratch ADD CONSTRAINT positive_id CHECK (id > 0) NOT VALID;\n",
+        "CREATE TABLE scratch (id bigint);\nALTER TABLE scratch RENAME TO scratch_empty;\nALTER TABLE scratch_empty ADD CHECK (id > 0);",
+        "CREATE TABLE app.scratch (id bigint);\nALTER TABLE app.scratch RENAME TO scratch_empty;\nALTER TABLE app.scratch_empty ADD CHECK (id > 0);",
+        "CREATE TABLE scratch (id bigint);\nALTER TABLE scratch RENAME COLUMN id TO renamed_id;\nALTER TABLE scratch ADD CHECK (renamed_id > 0);",
+        "CREATE TABLE scratch (id bigint);\nALTER TABLE IF EXISTS old_missing RENAME TO scratch;\nALTER TABLE scratch ADD CHECK (id > 0);",
+        "CREATE TABLE scratch (id bigint CONSTRAINT positive CHECK (id > 0));\nALTER TABLE scratch RENAME CONSTRAINT positive TO renamed_positive;\nALTER TABLE scratch ADD CHECK (id < 10);",
+    ],
+)
+def test_fresh_relation_rename_and_nonrelation_renames_keep_safe_ownership(source: str) -> None:
+    assert _check(source) == []

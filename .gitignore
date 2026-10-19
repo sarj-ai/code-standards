@@ -32,7 +32,18 @@ Thumbs.db
 .zed/
 *.swp
 
-.claude/
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/audit-protocol/
+.claude/skills/audit-protocol/*
+!.claude/skills/audit-protocol/SKILL.md
+!.claude/skills/lint-rule-generator/
+.claude/skills/lint-rule-generator/*
+!.claude/skills/lint-rule-generator/SKILL.md
+!.claude/skills/test-value/
+.claude/skills/test-value/*
+!.claude/skills/test-value/SKILL.md
 apps/docs/.wrangler/
 apps/docs/.dev.vars*
 !apps/docs/.dev.vars.example

@@ -64,9 +64,11 @@ def test_staged_check_routes_additions_renames_and_only_requested_files(
         staged: bool = False,
         jobs: int = 1,
         python_type_check: bool = True,
+        eslint: bool = True,
     ) -> int:
         assert jobs == 2
         assert python_type_check
+        assert eslint
         assert root == repository.resolve()
         assert not raw
         assert not trusted
@@ -105,9 +107,11 @@ def test_staged_check_uses_repository_relative_hook_paths_from_a_nested_cwd(
         staged: bool = False,
         jobs: int = 1,
         python_type_check: bool = True,
+        eslint: bool = True,
     ) -> int:
         assert jobs == 2
         assert python_type_check
+        assert eslint
         assert root == repository.resolve()
         assert not raw
         assert not trusted
@@ -161,9 +165,11 @@ def test_staged_check_still_runs_repository_policy_without_source_selections(
         staged: bool = False,
         jobs: int = 1,
         python_type_check: bool = True,
+        eslint: bool = True,
     ) -> int:
         assert jobs == 2
         assert python_type_check
+        assert eslint
         assert not raw
         assert not trusted
         routed.append((paths, staged))

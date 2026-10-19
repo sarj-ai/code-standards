@@ -27,6 +27,8 @@ Profile = Literal["standard", "application"]
 PROFILES: Final[tuple[Profile, ...]] = ("standard", "application")
 HookManager = Literal["pre-commit", "lefthook", "none"]
 HOOK_MANAGERS: Final[tuple[HookManager, ...]] = ("pre-commit", "lefthook", "none")
+CommitPolicyCi = Literal["workflow", "embedded"]
+COMMIT_POLICY_CI_MODES: Final[tuple[CommitPolicyCi, ...]] = ("workflow", "embedded")
 
 PEERS_JSON: Final = CONFIGS_DIR / "eslint.peers.json"
 _ESLINT_RULE_KEY: Final = re.compile(
@@ -51,10 +53,10 @@ class _UpstreamRuleEngine(StrEnum):
 LINT_CONFIGS: Final = "code-standards"
 _PYTHON_LINT: Final = "sarj-python-lint"
 SIBLING_PACKAGES: Final = (_PYTHON_LINT, "sarj-sql-lint", "sarj-iac-lint")
-REPO_STANDARDS_VERSION: Final = "6.10.1"
+REPO_STANDARDS_VERSION: Final = "6.11.0"
 # Actions can receive delivery fixes independently of the consumer topology policy.
-REPO_STANDARDS_ACTION_VERSION: Final = "6.10.1"
-REPO_STANDARDS_REVISION: Final = "3b285f6da1ba9e92200806fc5577ca5cf78f4a40"
+REPO_STANDARDS_ACTION_VERSION: Final = "6.11.0"
+REPO_STANDARDS_REVISION: Final = "aed2501dc09aa5701c984544d4fa20bea91661f9"
 
 
 def adopted_version() -> str:
@@ -161,6 +163,7 @@ class Manifest:
     prepared_targets: tuple[PreparedTarget, ...] = ()
     compose_version: str | None = None
     ci_runner: str | None = None
+    ci_commit_policy: CommitPolicyCi = "workflow"
     knip_application: bool = False
 
     @property
@@ -209,8 +212,10 @@ class Manifest:
             sections.append(f"\n[doctor]\n{_array_field('exclude', self.doctor_excluded_paths)}")
         if self.diagnostic_baseline is not None:
             sections.append(f"\n[baseline]\ndiagnostics = {_toml_string(self.diagnostic_baseline)}\n")
-        if self.ci_bootstrap or self.ci_runner is not None:
+        if self.ci_bootstrap or self.ci_runner is not None or self.ci_commit_policy != "workflow":
             ci_fields = _array_field("bootstrap", self.ci_bootstrap) if self.ci_bootstrap else ""
+            if self.ci_commit_policy != "workflow":
+                ci_fields += f"commit_policy = {_toml_string(self.ci_commit_policy)}\n"
             if self.ci_runner is not None:
                 ci_fields += f"runner = {_toml_string(self.ci_runner)}\n"
             sections.append(f"\n[ci]\n{ci_fields}")
@@ -377,6 +382,7 @@ def _load_schema(  # ruff: ignore[too-many-locals] - one validation boundary kee
         prepared_targets=_prepared_targets(root, _manifest_table(data, "devops")),
         compose_version=_compose_version(_manifest_table(data, "devops")),
         ci_runner=_ci_runner(ci_table),
+        ci_commit_policy=_ci_commit_policy(ci_table),
         knip_application=_knip_application(_manifest_table(data, "knip")),
     )
 
@@ -594,6 +600,14 @@ def _ci_bootstrap(table: Mapping[str, object]) -> tuple[str, ...]:
         msg = "manifest [ci].bootstrap commands must be trimmed single-line strings"
         raise ValueError(msg)
     return commands
+
+
+def _ci_commit_policy(table: Mapping[str, object]) -> CommitPolicyCi:
+    mode = table.get("commit_policy", "workflow")
+    if not isinstance(mode, str) or mode not in COMMIT_POLICY_CI_MODES:
+        msg = f"manifest [ci].commit_policy must be one of: {', '.join(COMMIT_POLICY_CI_MODES)}"
+        raise ValueError(msg)
+    return mode
 
 
 def _ci_runner(table: Mapping[str, object]) -> str | None:

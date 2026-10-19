@@ -77,6 +77,8 @@ const STRICT_CONFIG_FACTORY = createStrictConfig as unknown as ConfigFactory;
 const UNICORN_CONCISION_ADVISORY_RULES = [
   "unicorn/iteration-fallback-style",
   "unicorn/logical-assignment-operators",
+  "unicorn/no-lonely-if",
+  "unicorn/prefer-block-statement-over-iife",
   "unicorn/prefer-combined-guards",
   "unicorn/prefer-single-object-destructuring",
   "unicorn/single-line-block-comment-style",
@@ -739,6 +741,10 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     expect(warnings.toSorted()).toEqual([
       ...ADVISORY_RULES,
       "arrow-body-style",
+      "no-extra-label",
+      "no-lonely-if",
+      "no-constructor-return",
+      "no-unreachable-loop",
       "better-tailwindcss/enforce-consistent-variable-syntax",
       "@typescript-eslint/strict-void-return",
       ...recommendedCoreWarnings,

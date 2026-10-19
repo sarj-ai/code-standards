@@ -106,6 +106,7 @@ class Plan:
 
 
 DEFAULT_CI_RUNNER: Final = "ubuntu-latest"
+_BLACKSMITH_X64_UBUNTU_RUNNER: Final = re.compile(r"blacksmith-\d+vcpu-ubuntu-(?P<release>\d{4})")
 _ESLINT_CONFIG: Final = "eslint.config.ts"
 _ESLINT_CONFIG_NAMES: Final = (
     "eslint.config.js",
@@ -961,7 +962,7 @@ def _plan_lefthook_commit_message(root: Path, plan: Plan) -> None:
 
 def _plan_commit_policy_workflow(root: Path, plan: Plan, *, force: bool) -> None:
     path = root / ".github" / "workflows" / "commit-policy.yml"
-    contents = commit_policy_github_workflow(managed_ci_runner(root))
+    contents = managed_commit_policy_workflow(root)
     if path.is_file() and path.read_text(encoding="utf-8").startswith("# Managed by code-standards commit policy;"):
         if path.read_text(encoding="utf-8") == contents:
             plan.skips.append((path, "already runs the canonical commit policy"))
@@ -1184,6 +1185,7 @@ def _desired_manifest(root: Path, plan: Plan, current: manifest.Manifest | None)
         prepared_targets=() if current is None else current.prepared_targets,
         compose_version=_new_compose_version(root) if current is None else current.compose_version,
         ci_runner=None if current is None else current.ci_runner,
+        ci_commit_policy="workflow" if current is None else current.ci_commit_policy,
         knip_application=False if current is None else current.knip_application,
     )
 
@@ -2669,6 +2671,19 @@ def managed_ci_runner(root: Path) -> str:
     return _configured_runner(manifest.load_for_setup(root))
 
 
+def commit_policy_is_embedded(root: Path) -> bool:
+    adopted = manifest.load_for_setup(root)
+    return adopted is not None and adopted.ci_commit_policy == "embedded"
+
+
+def managed_commit_policy_workflow(root: Path) -> str:
+    adopted = manifest.load_for_setup(root)
+    runner = _configured_runner(adopted)
+    if adopted is not None and adopted.ci_commit_policy == "embedded":
+        return commit_policy_merge_group_workflow(runner)
+    return commit_policy_github_workflow(runner)
+
+
 def _configured_runner(adopted: manifest.Manifest | None) -> str:
     if adopted is None or adopted.ci_runner is None:
         return DEFAULT_CI_RUNNER
@@ -2706,14 +2721,22 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: commit-policy-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
+  # The verdict depends only on the base, the head and the base manifest, so a title or body edit cannot change
+  # it and skips the runner. A skipped check of the required name would replace a failure on the same commit, so
+  # the skipped job must never be named commit-policy-v1. GitHub reports a skipped job under its unevaluated name
+  # expression, and the expression itself evaluates to another name, so both readings stay distinct. Merge groups
+  # keep running: their skipped check would carry that unevaluated name and never satisfy the required context.
   commit-policy-v1:
+    name: >-
+      ${{ github.event.action == 'edited' && !github.event.changes.base
+      && 'commit-policy-v1 (unchanged by edit)' || 'commit-policy-v1' }}
+    if: github.event.action != 'edited' || github.event.changes.base
+    concurrency:
+      group: commit-policy-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
 """
-        f"    runs-on: {runner}\n"
+        f"    runs-on: {_commit_policy_runner(runner)}\n"
         """\
     timeout-minutes: 5
     steps:
@@ -2728,6 +2751,41 @@ jobs:
         f"      - uses: sarj-ai/repo-standards/pull-request-commits@{manifest.REPO_STANDARDS_REVISION}"
         f" # v{manifest.REPO_STANDARDS_ACTION_VERSION}\n"
     )
+
+
+def commit_policy_merge_group_workflow(runner: str = DEFAULT_CI_RUNNER) -> str:
+    return (
+        """\
+# Managed by code-standards commit policy; regenerate with `code-standards setup`.
+name: Commit policy
+
+# With [ci] commit_policy = "embedded", an existing pull-request job runs
+# sarj-ai/repo-standards/pull-request-commits with status-context: commit-policy-v1.
+# A merge group commit has no earlier verdict and aggregates already-evaluated pull
+# requests, so a skipped check satisfies the required context without a runner.
+on:
+  merge_group:
+    types: [checks_requested]
+
+permissions: {}
+
+jobs:
+  commit-policy-v1:
+    if: false
+"""
+        f"    runs-on: {_commit_policy_runner(runner)}\n"
+        """\
+    steps:
+      - run: "true"
+"""
+    )
+
+
+def _commit_policy_runner(runner: str) -> str:
+    # Commit policy reads Git history in under a minute, so it never needs more than the smallest runner, and
+    # Blacksmith bills ARM minutes at 0.625 of x64.
+    match = _BLACKSMITH_X64_UBUNTU_RUNNER.fullmatch(runner)
+    return f"blacksmith-2vcpu-ubuntu-{match['release']}-arm" if match else runner
 
 
 def _migrate_legacy_workflow_gate(path: Path) -> str | None:

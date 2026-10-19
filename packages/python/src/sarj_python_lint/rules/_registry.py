@@ -43,6 +43,7 @@ from sarj_python_lint.rules.no_cors_wildcard_with_credentials import (
 )
 from sarj_python_lint.rules.no_database_programmability import NoDatabaseProgrammability
 from sarj_python_lint.rules.no_delete_statement import NoDeleteStatement
+from sarj_python_lint.rules.no_discarded_validation_result import NoDiscardedValidationResult
 from sarj_python_lint.rules.no_dunder_all import NoDunderAll
 from sarj_python_lint.rules.no_duplicate_dunder_all_entry import NoDuplicateDunderAllEntry
 from sarj_python_lint.rules.no_excessive_cognitive_complexity import NoExcessiveCognitiveComplexity
@@ -69,6 +70,7 @@ from sarj_python_lint.rules.no_invalid_argument_name_suppression import NoInvali
 from sarj_python_lint.rules.no_loguru_exc_info import NoLoguruExcInfo
 from sarj_python_lint.rules.no_loguru_printf_format import NoLoguruPrintfFormat
 from sarj_python_lint.rules.no_mocked_pydantic_value_object import NoMockedPydanticValueObject
+from sarj_python_lint.rules.no_mutating_container_transform import NoMutatingContainerTransform
 from sarj_python_lint.rules.no_nested_pydantic_field_validator import NoNestedPydanticFieldValidator
 from sarj_python_lint.rules.no_nullable_dependency_fallback import NoNullableDependencyFallback
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
@@ -221,14 +223,20 @@ from sarj_python_lint.rules.no_invalid_pydantic_validator_return import NoInvali
 from sarj_python_lint.rules.no_partial_type_is import NoPartialTypeIs
 from sarj_python_lint.rules.no_shallow_record_type_guard import NoShallowRecordTypeGuard
 from sarj_python_lint.rules.no_unknown_pydantic_validator_field import NoUnknownPydanticValidatorField
+from sarj_python_lint.rules.prefer_bulk_upsert import PreferBulkUpsert
 from sarj_python_lint.rules.prefer_discriminated_model_union import PreferDiscriminatedModelUnion
+from sarj_python_lint.rules.prefer_psycopg_executemany import PreferPsycopgExecutemany
 from sarj_python_lint.rules.redundant_test_constructor_forwarder import RedundantTestConstructorForwarder
 from sarj_python_lint.rules.repeated_unimplemented_test_contract import RepeatedUnimplementedTestContract
+from sarj_python_lint.rules.store_field_update_reuses_upsert import StoreFieldUpdateReusesUpsert
 from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOracle
 
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        PreferBulkUpsert.id: PreferBulkUpsert,
+        PreferPsycopgExecutemany.id: PreferPsycopgExecutemany,
+        StoreFieldUpdateReusesUpsert.id: StoreFieldUpdateReusesUpsert,
         NoExplicitTestOracle.id: NoExplicitTestOracle,
         PreferDiscriminatedModelUnion.id: PreferDiscriminatedModelUnion,
         NoInvalidPydanticBypass.id: NoInvalidPydanticBypass,
@@ -243,6 +251,8 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoFixedSleepInLoop.id: NoFixedSleepInLoop,
         NoInterpreterSourceArguments.id: NoInterpreterSourceArguments,
         NoUnusedCopyResult.id: NoUnusedCopyResult,
+        NoDiscardedValidationResult.id: NoDiscardedValidationResult,
+        NoMutatingContainerTransform.id: NoMutatingContainerTransform,
         NoBeforeValidatorInputMutation.id: NoBeforeValidatorInputMutation,
         NoInputModelMutation.id: NoInputModelMutation,
         NoDatabaseProgrammability.id: NoDatabaseProgrammability,

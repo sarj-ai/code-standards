@@ -348,6 +348,7 @@ starlight-menu-button button {
 }
 
 .main-frame {
+  position: relative;
   min-height: 100vh;
   min-height: 100dvh;
 }
@@ -1924,14 +1925,27 @@ a.third-party-rule-row__official:hover {
   }
 }
 
-@media (min-width: 85rem) {
-  .main-pane {
-    background-image: var(--cs-hatch);
+@media screen and (min-width: 85rem) {
+  .main-frame::before {
+    position: absolute;
+    z-index: -1;
+    inset: var(--sl-nav-height) 0 0 var(--sl-content-inline-start, 0px);
+    background:
+      linear-gradient(var(--cs-page), var(--cs-page)) 50% 0 / var(--cs-frame-width) 100% no-repeat,
+      linear-gradient(var(--cs-line), var(--cs-line)) 50% 0 / calc(var(--cs-frame-width) + 2px) 100% no-repeat,
+      var(--cs-hatch);
+    content: '';
+    pointer-events: none;
+  }
+
+  .main-pane,
+  .main-pane .content-panel,
+  .main-pane > main > .content-panel:last-child {
+    background: transparent;
   }
 
   .main-pane > main > .content-panel:last-child {
     padding-inline: var(--cs-space-7);
-    border-inline: 1px solid var(--cs-line);
   }
 }
 

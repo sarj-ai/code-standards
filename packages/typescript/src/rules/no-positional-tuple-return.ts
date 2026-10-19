@@ -29,6 +29,8 @@ export const NO_POSITIONAL_TUPLE_RETURN_DOCUMENTATION = {
   examples: [
     { id: "named-object-return", title: "Return named fields", outcome: "no-match", files: [{ path: "src/download.ts", source: "export function download(): { body: string; status: number } { return impl(); }" }], focusPath: "src/download.ts", expectedCount: 0, public: true },
     { id: "tuple-return", title: "Do not expose positional fields", outcome: "match", files: [{ path: "src/download.ts", source: "export function download(): [string, number] { return impl(); }" }], focusPath: "src/download.ts", expectedCount: 1, public: true },
+    { id: "query-key-outer-const", scenarioId: "query-key-const-anchor", title: "Inherit the query-key anchor const context", outcome: "no-match", files: [{ path: "src/keys.ts", source: "const userKeys = { all: ['users'], detail: (id: string) => [...userKeys.all, id] as const } as const;" }], focusPath: "src/keys.ts", expectedCount: 0, public: true },
+    { id: "mutable-query-key-object", scenarioId: "query-key-const-anchor", title: "Keep a mutable tuple-return object checked", outcome: "match", files: [{ path: "src/keys.ts", source: "const userKeys = { all: ['users'], detail: (id: string) => [...userKeys.all, id] as const };" }], focusPath: "src/keys.ts", expectedCount: 1, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -137,7 +139,8 @@ function functionName(node: TSESTree.Node): string | null {
  * TanStack Query key factories intentionally return readonly arrays as opaque
  * cache identities, not positional records.  Recognize only the conventional,
  * syntax-proven factory shape: a const object named `*Keys`, frozen with
- * `as const`, and anchored by an `all: [...] as const` key.
+ * `as const`, and anchored by an `all` array literal. The outer assertion
+ * supplies its const context; an explicit inner assertion is also supported.
  */
 function isQueryKeyFactory(node: FunctionNode): boolean {
   let wrapped: TSESTree.Node = node;
@@ -169,6 +172,7 @@ function isQueryKeyFactory(node: FunctionNode): boolean {
   ) return false;
   return object.properties.some((candidate) => {
     if (candidate.type !== AST_NODE_TYPES.Property || staticMemberName(candidate.key) !== "all") return false;
+    if (candidate.value.type === AST_NODE_TYPES.ArrayExpression) return !candidate.computed;
     return candidate.value.type === AST_NODE_TYPES.TSAsExpression &&
       candidate.value.expression.type === AST_NODE_TYPES.ArrayExpression &&
       candidate.value.typeAnnotation.type === AST_NODE_TYPES.TSTypeReference &&

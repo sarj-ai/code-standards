@@ -72,6 +72,13 @@ DESIRED_MARKER_PREFIX = "<!-- sarj-standards-rollout:desired"
 REPOSITORY_VERSION_PIN = re.compile(r"^(STANDARDS_VERSION[ \t]*:?=[ \t]*)\S+[ \t]*$", re.MULTILINE)
 PYRIGHT_COMMAND = re.compile(r"(?m)^(?P<indent>[ \t]*)cd python && uv run pyright[ \t]*$")
 VERIFICATION_FAILED_MARKER = "<!-- sarj-standards-rollout:verification-failed -->"
+VERIFICATION_FAILED_DETAIL = "consumer verification failed"
+VERIFICATION_RETRY_DETAIL = f"{VERIFICATION_FAILED_DETAIL}; reconcile will retry this managed PR"
+VERIFICATION_UNCHANGED_DETAIL = (
+    f"{VERIFICATION_FAILED_DETAIL} for the current release, consumer base and controller; "
+    "reconcile retries once one of them changes"
+)
+CONTROLLER_MARKER_PREFIX = "<!-- sarj-standards-rollout:controller"
 RETIRED_ESLINT_SELECTORS = ("@sarj/prefer-single-sentence-comment", "@sarj/prefer-string-literal-union")
 SOURCE_SUFFIXES = frozenset(
     {".py", ".pyi", ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".go", ".rs", ".sql"}
@@ -439,6 +446,11 @@ def desired_marker(version: str) -> str:
     return f"{DESIRED_MARKER_PREFIX}={validate_version(version)} -->"
 
 
+def controller_marker() -> str | None:
+    revision = os.environ.get("GITHUB_SHA", "")  # ruff: ignore[banned-api] — Actions names the controller revision.
+    return f"{CONTROLLER_MARKER_PREFIX}={revision} -->" if re.fullmatch(r"[0-9a-f]{40}", revision) else None
+
+
 def desired_version(body: str) -> str:
     markers = [line for line in body.splitlines() if DESIRED_MARKER_PREFIX in line]
     match = re.fullmatch(rf"{re.escape(DESIRED_MARKER_PREFIX)}=(.+) -->", markers[0]) if len(markers) == 1 else None
@@ -693,6 +705,18 @@ def open_pull_commit_provenance(
     return None
 
 
+def failed_verification_outcome(consumer: Consumer, pull: Mapping[str, object], runner: CommandRunner) -> Outcome:
+    # Rebuilding the patch from the same release, base and controller reruns the same failing verification.
+    marker = controller_marker()
+    unchanged = (
+        marker is not None
+        and marker in str(pull.get("body", ""))
+        and open_pull_commit_provenance(consumer, pull, runner) is None
+    )
+    detail = VERIFICATION_UNCHANGED_DETAIL if unchanged else VERIFICATION_RETRY_DETAIL
+    return Outcome(consumer, OutcomeState.BLOCKED, str(pull.get("url", "")), detail)
+
+
 def status_one(consumer: Consumer, version: str, runner: CommandRunner) -> Outcome:
     pull = pull_request(consumer, version, runner)
     if pull is not None:
@@ -716,12 +740,7 @@ def status_one(consumer: Consumer, version: str, runner: CommandRunner) -> Outco
                 "open managed PR targets an older Standards release",
             )
         if VERIFICATION_FAILED_MARKER in str(pull.get("body", "")):
-            return Outcome(
-                consumer,
-                OutcomeState.BLOCKED,
-                str(pull.get("url", "")),
-                "consumer verification failed; reconcile will retry this managed PR",
-            )
+            return failed_verification_outcome(consumer, pull, runner)
         if (
             pull.get("mergedAt") is None
             and (provenance := open_pull_commit_provenance(consumer, pull, runner)) is not None
@@ -1157,7 +1176,8 @@ def provision_consumer_tools(
     prepared = dict(environment)
     has_mise_config = any((repo / relative).is_file() for relative in MISE_CONFIG_PATHS)
     workflow_tools = declared_workflow_tools(repo)
-    mise_prefix = _provision_mise(repo, runner, prepared, workflow_tools, has_mise_config=has_mise_config)
+    _provision_mise(repo, runner, prepared, workflow_tools, has_mise_config=has_mise_config)
+    mise_prefix = ("mise", "exec", *workflow_tools, "--") if has_mise_config or workflow_tools else ()
 
     # Tool provisioning happens before `code-standards update`, so consumers
     # may still use the immediately preceding manifest schema here.
@@ -1507,7 +1527,7 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
     existing = status_one(consumer, version, runner)
     _require_new_activation_patch(existing, enable_repository_rules)
     retry_verification = existing.state is OutcomeState.BLOCKED and existing.detail.startswith(
-        "consumer verification failed"
+        VERIFICATION_FAILED_DETAIL
     )
     if existing.state is OutcomeState.BLOCKED and not retry_verification:
         msg = f"{consumer.name}: {existing.detail}: {existing.url}"
@@ -1722,7 +1742,7 @@ def update_consumer_bundle(
 
 def _require_new_activation_patch(existing: Outcome, requested: Sequence[str]) -> None:
     retry_verification = existing.state is OutcomeState.BLOCKED and existing.detail.startswith(
-        "consumer verification failed"
+        VERIFICATION_FAILED_DETAIL
     )
     if requested and existing.state is not OutcomeState.MISSING and not retry_verification:
         msg = (
@@ -1913,7 +1933,7 @@ def pending_matrix(outcomes: Sequence[Outcome]) -> list[dict[str, str]]:
         if ROLLOUT_CHANNELS.index(item.consumer.channel) == first_wave
         and (
             item.state in {OutcomeState.MISSING, OutcomeState.ERROR}
-            or (item.state is OutcomeState.BLOCKED and item.detail.startswith("consumer verification failed"))
+            or (item.state is OutcomeState.BLOCKED and item.detail == VERIFICATION_RETRY_DETAIL)
         )
     ]
 
@@ -2358,8 +2378,7 @@ def _provision_mise(
     workflow_tools: tuple[str, ...],
     *,
     has_mise_config: bool,
-) -> tuple[str, ...]:
-    mise_prefix: tuple[str, ...] = ()
+) -> None:
     if has_mise_config or workflow_tools:
         prepared["MISE_YES"] = "1"
         prepared["MISE_TRUSTED_CONFIG_PATHS"] = str(repo.resolve())
@@ -2373,9 +2392,6 @@ def _provision_mise(
             if installed.returncode != 0:
                 msg = "could not provision workflow-declared tools:\n" + verification_detail(installed)
                 raise RolloutError(msg)
-        mise_prefix = ("mise", "exec", *workflow_tools, "--")
-
-    return mise_prefix
 
 
 def _publish_rollout_pull(
@@ -2412,6 +2428,8 @@ def _publish_rollout_pull(
             return Outcome(consumer, OutcomeState.BLOCKED, str(pull.get("url", "")), str(exc))
     body = f"{pr_marker(consumer, version)}\n{desired_marker(version)}\n\n"
     if verification_failure:
+        if (marker := controller_marker()) is not None:
+            body += f"{marker}\n"
         body += (
             f"{VERIFICATION_FAILED_MARKER}\n\n"
             f"Consumer verification is blocked:\n\n```text\n{verification_failure}\n```\n\n"
@@ -2498,7 +2516,7 @@ def _publish_rollout_pull(
             check=False,
         )
     if verification_failure:
-        return Outcome(consumer, OutcomeState.BLOCKED, url, "consumer verification failed; PR opened for remediation")
+        return Outcome(consumer, OutcomeState.BLOCKED, url, f"{VERIFICATION_FAILED_DETAIL}; PR opened for remediation")
     return Outcome(consumer, OutcomeState.PR_OPEN, url)
 
 
@@ -2811,10 +2829,9 @@ def canonical_commit_policy_workflow_paths(repo: Path, paths: Sequence[str]) -> 
     if workflow.is_symlink() or not workflow.is_file():
         return frozenset()
     try:
-        runner = adoption_scaffold.managed_ci_runner(repo)
+        expected = adoption_scaffold.managed_commit_policy_workflow(repo).encode()
     except OSError, TypeError, ValueError:
         return frozenset()
-    expected = adoption_scaffold.commit_policy_github_workflow(runner).encode()
     return frozenset({COMMIT_POLICY_WORKFLOW_PATH}) if workflow.read_bytes() == expected else frozenset()
 
 

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "f685fadc1a88a5319031ca3c9e1659184b9b359a82db4888169750c748a8144f",
-  "cliSha256": "0e18050dc2eedec41bda1320434aae742b20902619eab1c21d0e876fb6a2a641",
+  "catalogSha256": "cce3b8ba3ffdd2b69becca59a766919c07c11f5ffdbf81c0c2ccd2c64b3cbc62",
+  "cliSha256": "1d90e7240cac342ce4c5dc044355eda8552c66425923c15cf0cd8eadda79249d",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -2065,6 +2065,21 @@
     "eslint:no-positional-tuple-return": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/keys.ts",
+              "source": "const userKeys = {\n  all: [\"users\"],\n  detail: (id: string) => [...userKeys.all, id] as const,\n};\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/keys.ts",
+          "id": "mutable-query-key-object",
+          "outcome": "reject",
+          "scenarioId": "query-key-const-anchor",
+          "title": "Keep a mutable tuple-return object checked"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -2078,6 +2093,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Return named fields"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/keys.ts",
+              "source": "const userKeys = {\n  all: [\"users\"],\n  detail: (id: string) => [...userKeys.all, id] as const,\n} as const;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/keys.ts",
+          "id": "query-key-outer-const",
+          "outcome": "accept",
+          "scenarioId": "query-key-const-anchor",
+          "title": "Inherit the query-key anchor const context"
         },
         {
           "expectedCount": 1,
@@ -7987,6 +8017,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-discarded-validation-result": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/counts.py",
+              "source": "def checked_count(raw: str) -> int:\n    if not raw:\n        raise ValueError(\"empty count\")\n    return int(raw)\n\n\ndef save(raw: str) -> int:\n    return checked_count(raw)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/counts.py",
+          "id": "consume-checked-value",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Pass the validated replacement to the next operation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/counts.py",
+              "source": "def checked_count(raw: str) -> int:\n    if not raw:\n        raise ValueError(\"empty count\")\n    return int(raw)\n\n\ndef save(raw: str) -> None:\n    checked_count(raw)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/counts.py",
+          "id": "discarded-checked-value",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A checked replacement is constructed and discarded"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-docstring-type-restatement": {
       "examples": [
         {
@@ -9065,6 +9130,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Real model fixtures retain validation and defaults"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-mutating-container-transform": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/counts.py",
+              "source": "def ordered(values: list[int]) -> list[int]:\n    values.sort()\n    return values\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/counts.py",
+          "id": "sorts-borrowed-input",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Returning a list does not hide its mutation"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/counts.py",
+              "source": "def ordered(values: list[int]) -> list[int]:\n    result = list(values)\n    result.sort()\n    return result\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/counts.py",
+          "id": "sorts-local-copy",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Build the replacement before changing it"
         }
       ],
       "optionsSchemaSource": null
@@ -10849,6 +10949,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:prefer-bulk-upsert": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class UserStore:\n    async def upsert(self, user: UserInput) -> User: ...\n    async def upsert_many(self, users: list[UserInput]) -> list[User]: ...\n\n\nasync def save(store: UserStore, users: list[UserInput]):\n    await store.upsert_many(users)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "bulk-upsert",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use the existing bulk command"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class UserStore:\n    async def upsert(self, user: UserInput) -> User: ...\n    async def upsert_many(self, users: list[UserInput]) -> list[User]: ...\n\n\nasync def save(store: UserStore, users: list[UserInput]):\n    for user in users:\n        await store.upsert(user)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "serial-upserts",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Collect writes for an available bulk command"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:prefer-class-row": {
       "examples": [
         {
@@ -11879,6 +12014,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "One or-pattern owns the shared body"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-psycopg-executemany": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/user_store.py",
+              "source": "from psycopg import AsyncCursor\n\n\nasync def save(cursor: AsyncCursor, rows):\n    await cursor.executemany(\n        \"INSERT INTO users (id) VALUES (%s)\", [(row.id,) for row in rows]\n    )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/user_store.py",
+          "id": "batch-execute",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use the cursor's batch API"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/user_store.py",
+              "source": "from psycopg import AsyncCursor\n\n\nasync def save(cursor: AsyncCursor, rows):\n    for row in rows:\n        await cursor.execute(\"INSERT INTO users (id) VALUES (%s)\", (row.id,))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/user_store.py",
+          "id": "serial-execute",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Batch the same parameterized statement"
         }
       ],
       "optionsSchemaSource": null
@@ -13776,6 +13946,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:store-field-update-reuses-upsert": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/user_store.py",
+              "source": "from pydantic import BaseModel\n\n\nclass UserInput(BaseModel):\n    id: str\n    name: str\n\n\nclass UserStore:\n    async def upsert(self, data: UserInput) -> User:\n        await self.cursor.execute(\n            \"INSERT INTO users (id, name) VALUES (%s, %s) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name\",\n            (data.id, data.name),\n        )\n\n    async def set_name(self, id_: str, name: str) -> User:\n        await self.cursor.execute(\n            \"UPDATE users SET name = %s WHERE id = %s\", (name, id_)\n        )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/user_store.py",
+          "id": "duplicate-field-update",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Consolidate an ordinary field write"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/user_store.py",
+              "source": "from pydantic import BaseModel\n\n\nclass UserInput(BaseModel):\n    id: str\n    name: str\n\n\nclass UserStore:\n    async def upsert(self, data: UserInput) -> User:\n        await self.cursor.execute(\n            \"INSERT INTO users (id, name) VALUES (%s, %s) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name\",\n            (data.id, data.name),\n        )\n\n    async def set_name(self, id_: str, name: str, version: int) -> User:\n        await self.cursor.execute(\n            \"UPDATE users SET name = %s WHERE id = %s AND version = %s\",\n            (name, id_, version),\n        )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/user_store.py",
+          "id": "guarded-field-update",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Keep an update with a distinct concurrency contract"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:store-get-delegates-to-bulk-read": {
       "examples": [
         {
@@ -14228,6 +14433,36 @@
           "title": "A mixed-case quoted name does not exempt a different existing table"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_renamed.sql",
+              "source": "CREATE TABLE scratch (id bigint);\n\nALTER TABLE scratch\nRENAME TO scratch_empty;\n\nALTER TABLE old_existing\nRENAME TO scratch;\n\nALTER TABLE scratch\nADD CONSTRAINT positive_id CHECK (id > 0) NOT VALID;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_renamed.sql",
+          "id": "renamed-existing-relation-defers-validation",
+          "outcome": "accept",
+          "scenarioId": "relation-rename-ownership",
+          "title": "A reused relation name safely defers constraint validation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001_renamed.sql",
+              "source": "CREATE TABLE scratch (id bigint);\n\nALTER TABLE scratch\nRENAME TO scratch_empty;\n\nALTER TABLE old_existing\nRENAME TO scratch;\n\nALTER TABLE scratch\nADD CONSTRAINT positive_id CHECK (id > 0);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_renamed.sql",
+          "id": "renamed-existing-relation-reuses-fresh-name",
+          "outcome": "reject",
+          "scenarioId": "relation-rename-ownership",
+          "title": "An existing relation cannot inherit a former fresh spelling"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -14348,6 +14583,21 @@
     "sql:insert-requires-replay-policy": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "queries/create_plan.sql",
+              "source": "INSERT INTO\n  live.plan\nSELECT\n  id\nFROM\n  pending\nWHERE\n  NOT EXISTS (\n    SELECT\n      1\n    FROM\n      archive.plan\n    WHERE\n      id = pending.id\n  );\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "queries/create_plan.sql",
+          "id": "different-explicit-schema-cannot-prove-replay",
+          "outcome": "reject",
+          "scenarioId": "explicit-schema-replay",
+          "title": "A replay guard for a different explicit schema is insufficient"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -14376,6 +14626,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Insert without declared replay behavior"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "queries/create_plan.sql",
+              "source": "INSERT INTO\n  live.plan\nSELECT\n  id\nFROM\n  pending\nWHERE\n  NOT EXISTS (\n    SELECT\n      1\n    FROM\n      live.plan\n    WHERE\n      id = pending.id\n  );\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "queries/create_plan.sql",
+          "id": "same-explicit-schema-proves-replay",
+          "outcome": "accept",
+          "scenarioId": "explicit-schema-replay",
+          "title": "A replay guard for the exact qualified target is retained"
         }
       ],
       "optionsSchemaSource": null
@@ -15840,7 +16105,7 @@
       "doctor": "code-standards doctor [-h] [--format OUTPUT_FORMAT] [--repair] [--no-install]\n",
       "setup": "code-standards setup [-h] [--hooks HOOKS] [--python-dest PYTHON_DEST] [--typescript-dest TYPESCRIPT_DEST] [--swift-dest SWIFT_DEST] [--kotlin-dest KOTLIN_DEST] [--dry-run] [--force] [--no-install] [--tools-only] [--commit-policy-only] [--config ONLY ...] [--enable-repository-rule ENABLE_REPOSITORY_RULE ...]\n",
       "analyze": "code-standards analyze [-h] [--external] [--prepared-only] [--trust-repository-code] [--prepared-devops PREPARED_DEVOPS ...] [--prepared-target PREPARED_TARGET ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [FILES ...]\n",
-      "check": "code-standards check [-h] [--trust-repository-code] [--jobs JOBS] [--skip-python-type-check] [--staged] [--rule SELECTED_RULES ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
+      "check": "code-standards check [-h] [--trust-repository-code] [--jobs JOBS] [--skip-python-type-check] [--skip-eslint] [--staged] [--rule SELECTED_RULES ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
       "validate-slack-automations": "code-standards validate-slack-automations [-h] PATH\n",
       "observe": "code-standards observe [-h] [--rule SELECTED_RULES ...] [--test-value] [--base BASE] [--format OUTPUT_FORMAT] [--output OUTPUT] [--trust-repository-code] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
       "fix": "code-standards fix [-h] [--staged] [FILES ...]\n",

@@ -132,6 +132,36 @@ class AddConstraintRequiresNotValid(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="renamed-existing-relation-reuses-fresh-name",
+                title="An existing relation cannot inherit a former fresh spelling",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "supabase/migrations/001_renamed.sql",
+                        "CREATE TABLE scratch (id bigint);\nALTER TABLE scratch RENAME TO scratch_empty;\nALTER TABLE old_existing RENAME TO scratch;\nALTER TABLE scratch ADD CONSTRAINT positive_id CHECK (id > 0);\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_renamed.sql"),
+                expected_count=1,
+                public=True,
+                scenario="relation-rename-ownership",
+            ),
+            RuleExample(
+                example_id="renamed-existing-relation-defers-validation",
+                title="A reused relation name safely defers constraint validation",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "supabase/migrations/001_renamed.sql",
+                        "CREATE TABLE scratch (id bigint);\nALTER TABLE scratch RENAME TO scratch_empty;\nALTER TABLE old_existing RENAME TO scratch;\nALTER TABLE scratch ADD CONSTRAINT positive_id CHECK (id > 0) NOT VALID;\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("supabase/migrations/001_renamed.sql"),
+                expected_count=0,
+                public=True,
+                scenario="relation-rename-ownership",
+            ),
         ),
     )
     description = documentation.summary
@@ -162,9 +192,13 @@ class AddConstraintRequiresNotValid(Rule):
 
             altered = _alter_table(tokens)
             if altered is not None:
-                table, actions, can_attach_existing_rows = altered
-                if can_attach_existing_rows:
-                    fresh_tables.discard(table)
+                table, actions, can_attach_existing_rows, renamed_to = altered
+                _update_fresh_tables_after_alter(
+                    fresh_tables,
+                    table,
+                    renamed_to=renamed_to,
+                    can_attach_existing_rows=can_attach_existing_rows,
+                )
                 diags.extend(_constraint_action_findings(actions, table, fresh_tables, statement, path, code=self.code))
                 continue
 
@@ -179,6 +213,20 @@ class AddConstraintRequiresNotValid(Rule):
                 fresh_tables.clear()
 
         return diags
+
+
+def _update_fresh_tables_after_alter(
+    fresh_tables: set[_TableKey],
+    table: _TableKey,
+    *,
+    renamed_to: _TableKey | None,
+    can_attach_existing_rows: bool,
+) -> None:
+    if renamed_to is not None and table in fresh_tables:
+        fresh_tables.discard(table)
+        fresh_tables.add(renamed_to)
+    if can_attach_existing_rows:
+        fresh_tables.discard(table)
 
 
 def _tokenize(text: str) -> list[_Token] | None:
@@ -241,7 +289,7 @@ def _fresh_create_table(tokens: list[_Token]) -> _TableKey | None:
     return table if cursor < len(tokens) and tokens[cursor].text == "(" else None
 
 
-def _alter_table(tokens: list[_Token]) -> tuple[_TableKey, list[list[_Token]], bool] | None:
+def _alter_table(tokens: list[_Token]) -> tuple[_TableKey, list[list[_Token]], bool, _TableKey | None] | None:
     if not _sequence(tokens, 0, ("ALTER", "TABLE")):
         return None
     cursor = 2
@@ -258,10 +306,18 @@ def _alter_table(tokens: list[_Token]) -> tuple[_TableKey, list[list[_Token]], b
     segments = _split_actions(tokens[cursor:])
     if segments is None:
         return None
+    renamed_to: _TableKey | None = None
+    if len(segments) == 1 and _sequence(segments[0], 0, ("RENAME", "TO")):
+        renamed = _identifier(segments[0], 2)
+        if renamed is not None:
+            name, end = renamed
+            if len(name) == 1 and end == len(segments[0]):
+                renamed_to = (*table[:-1], *name)
     return (
         table,
         [segment for segment in segments if _is_validating_add_action(segment)],
         any(_sequence(segment, 0, ("ATTACH", "PARTITION")) for segment in segments),
+        renamed_to,
     )
 
 

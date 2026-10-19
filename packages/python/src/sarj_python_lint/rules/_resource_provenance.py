@@ -8,9 +8,12 @@ from typing import TYPE_CHECKING, final
 
 from sarj_python_lint.rules._ast_index import has_own_yield
 from sarj_python_lint.rules._namespace_access import dynamic_namespace_access
+from sarj_python_lint.rules._runtime_bindings import RuntimeBindings
 
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from sarj_python_lint._file_context import PythonFileContext
 
 
@@ -31,8 +34,9 @@ _RESOURCE_OWNERS = MappingProxyType(
         "contextlib": frozenset({"ExitStack", "AsyncExitStack", "_BaseExitStack"}),
         "subprocess": frozenset({"Popen", "TimeoutExpired"}),
         "re": frozenset({"compile", "Match", "Pattern"}),
+        "operator": frozenset({"setitem", "delitem", "iadd", "iconcat", "imul", "iand", "isub", "ixor", "ior"}),
         "unittest": frozenset({"mock.Mock", "mock.MagicMock", "mock.AsyncMock"}),
-        "typing": frozenset({"final", "Literal", "Annotated"}),
+        "typing": frozenset({"final", "Literal", "Annotated", "cast", "assert_type"}),
         "typing_extensions": frozenset({"final", "Literal", "Annotated"}),
         "pydantic": frozenset(
             {
@@ -76,6 +80,7 @@ class ResourceProvenance:
         self.escape_cache: dict[tuple[ast.AST, bool], bool] = {}
         self.async_contract_cache: dict[ast.AsyncFunctionDef, bool] = {}
         self.import_contract_cache: dict[str, bool] = {}
+        self.runtime_import_cache: dict[ast.alias, bool] = {}
         self.wildcard = False
         self.mutated: set[str] = set()
         self.external_bindings: set[str] = set()
@@ -132,6 +137,113 @@ class ResourceProvenance:
                 return nodes[0] if len(nodes) == 1 or self._same_import_bindings(nodes) else None
             scope = self.scope(scope)
         return None
+
+    @cached_property
+    def runtime_bindings(self) -> RuntimeBindings:
+        return RuntimeBindings(self.context, self.bindings)
+
+    def runtime_binding(self, name: str, at: ast.AST) -> ast.AST | None:
+        nodes = self.runtime_bindings.lookup(self.scope(at), name)
+        if not nodes:
+            return None
+        return nodes[0] if len(nodes) == 1 or self._same_import_bindings(list(nodes)) else None
+
+    def runtime_import_name(self, node: ast.expr) -> str | None:
+        root = _root_name(node)
+        if self.wildcard or self.dynamic_namespace or root is None or root in self.mutated:
+            return None
+        binding = self.runtime_binding(root, node)
+        if not isinstance(binding, ast.alias):
+            return None
+        qualified = import_name_for_binding(node, binding, self.context.parents.get(binding))
+        if qualified is None or not self._owner_namespace_untouched(qualified.partition(".")[0]):
+            return None
+        if binding not in self.runtime_import_cache:
+            self.runtime_import_cache[binding] = all(
+                self.runtime_binding(root, read) is not binding or self._safe_import_use(read)
+                for read in self.reads.get(root, ())
+            )
+        return qualified if self.runtime_import_cache[binding] else None
+
+    @cached_property
+    def mock_namespace_patching(self) -> bool:
+        return any(
+            self.runtime_import_name(node.func)
+            in {
+                "unittest.mock.patch",
+                "unittest.mock.patch.object",
+                "unittest.mock.patch.multiple",
+                "unittest.mock.patch.dict",
+            }
+            for node in self.context.nodes(ast.Call)
+        )
+
+    @cached_property
+    def imported_namespace_hazards(self) -> frozenset[Path]:
+        hazards: set[Path] = set()
+        for node in self.context.nodes(ast.Name, ast.Attribute):
+            match node:
+                case ast.Attribute(value=value, ctx=ast.Store() | ast.Del()):
+                    hazards.update(self._namespace_paths(value, include_root=True))
+                case ast.Name(ctx=ast.Load()) | ast.Attribute(ctx=ast.Load()) if not self._safe_import_use(node):
+                    hazards.update(self._namespace_paths(node, include_root=False))
+                case _:
+                    pass
+        return frozenset(hazards)
+
+    @cached_property
+    def _namespace_aliases(self) -> dict[str, tuple[ast.alias, ...]]:
+        aliases: dict[str, list[ast.alias]] = defaultdict(list)
+        for binding in self.context.nodes(ast.alias):
+            parent = self.context.parents.get(binding)
+            name = binding.asname or (
+                binding.name.partition(".")[0] if isinstance(parent, ast.Import) else binding.name
+            )
+            aliases[name].append(binding)
+        return {name: tuple(bindings) for name, bindings in aliases.items()}
+
+    def _namespace_paths(self, expression: ast.expr, *, include_root: bool) -> set[Path]:
+        attributes: list[str] = []
+        root = expression
+        while isinstance(root, ast.Attribute):
+            attributes.append(root.attr)
+            root = root.value
+        if not isinstance(root, ast.Name):
+            return set()
+        binding = self.runtime_binding(root.id, expression)
+        aliases: tuple[ast.alias, ...]
+        match binding:
+            case ast.alias():
+                aliases = (binding,)
+            case None:
+                aliases = self._namespace_aliases.get(root.id, ())
+            case _:
+                return set()
+        paths: set[Path] = set()
+        for alias in aliases:
+            path = self._namespace_module_path(alias, tuple(reversed(attributes)))
+            if path is not None:
+                paths.add(path)
+            if include_root and attributes:
+                base = self._namespace_module_path(alias, ())
+                if base is not None:
+                    paths.add(base)
+        return paths
+
+    def _namespace_module_path(self, binding: ast.alias, attributes: tuple[str, ...]) -> Path | None:
+        parent = self.context.parents.get(binding)
+        match parent:
+            case ast.Import():
+                prefix = binding.name if binding.asname else binding.name.partition(".")[0]
+                level = 0
+            case ast.ImportFrom(module=module, level=level):
+                prefix = ".".join(part for part in (module, binding.name) if part)
+            case _:
+                return None
+        module = ".".join((prefix, *attributes))
+        return self.context.session.local_source.resolve_module(
+            self.context.path, module, level, facts=self.context.session.first_party
+        )
 
     def _same_import_bindings(self, nodes: list[ast.AST]) -> bool:
         targets: set[tuple[str, str | None, int, str]] = set()
@@ -415,6 +527,21 @@ def _root_name(node: ast.expr) -> str | None:
     while isinstance(node, ast.Attribute):
         node = node.value
     return node.id if isinstance(node, ast.Name) else None
+
+
+def import_name_for_binding(expression: ast.expr, binding: ast.alias, parent: ast.AST | None) -> str | None:
+    attributes: list[str] = []
+    while isinstance(expression, ast.Attribute):
+        attributes.append(expression.attr)
+        expression = expression.value
+    match parent:
+        case ast.Import():
+            prefix = binding.name if binding.asname else binding.name.partition(".")[0]
+        case ast.ImportFrom(module=str(module), level=0):
+            prefix = f"{module}.{binding.name}"
+        case _:
+            return None
+    return ".".join((prefix, *reversed(attributes)))
 
 
 def _bound_names(node: ast.AST) -> tuple[str, ...]:

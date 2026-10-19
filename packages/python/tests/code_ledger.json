@@ -292,5 +292,10 @@
   "SARJ512": "no-partial-type-is",
   "SARJ513": "no-contradictory-type-guard",
   "SARJ514": "no-shallow-record-type-guard",
-  "SARJ515": "no-invalid-pydantic-validator-return"
+  "SARJ515": "no-invalid-pydantic-validator-return",
+  "SARJ516": "prefer-bulk-upsert",
+  "SARJ517": "store-field-update-reuses-upsert",
+  "SARJ518": "prefer-psycopg-executemany",
+  "SARJ519": "no-discarded-validation-result",
+  "SARJ520": "no-mutating-container-transform"
 }

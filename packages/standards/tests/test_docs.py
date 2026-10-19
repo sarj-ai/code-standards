@@ -248,6 +248,22 @@ def test_broken_local_link_fails_loudly(tmp_path: Path) -> None:
         docs.check(tmp_path)
 
 
+@pytest.mark.parametrize("harness", [".agents", ".claude"])
+def test_skill_discovery_documents_validate_their_links(tmp_path: Path, harness: str) -> None:
+    _repository(tmp_path)
+    adapter = tmp_path / harness / "skills" / "audit-protocol" / "SKILL.md"
+    adapter.parent.mkdir(parents=True)
+    adapter.write_text(
+        "[Canonical skill](../../../plugins/sarj-audit/skills/audit-protocol/SKILL.md)\n", encoding="utf-8"
+    )
+
+    docs.check(tmp_path)
+
+    adapter.write_text("[Missing skill](missing.md)\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="missing local target"):
+        docs.check(tmp_path)
+
+
 def test_broken_local_heading_link_fails_loudly(tmp_path: Path) -> None:
     _repository(tmp_path)
     (tmp_path / "AGENTS.md").write_text("[missing](README.md#absent-heading)\n", encoding="utf-8")

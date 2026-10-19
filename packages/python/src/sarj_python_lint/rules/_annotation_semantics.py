@@ -47,7 +47,8 @@ class AnnotationSemantics:
         aliases = {name: value for name, value in candidates.items() if name not in ambiguous and name not in rebound}
         return cls(imports, MappingProxyType(aliases))
 
-    def parse(self, annotation: ast.expr | None) -> ast.expr | None:
+    @staticmethod
+    def parse(annotation: ast.expr | None) -> ast.expr | None:
         if not isinstance(annotation, ast.Constant) or not isinstance(annotation.value, str):
             return annotation
         try:

@@ -142,6 +142,30 @@ def test_explicit_capacity_allows_two_commands(tmp_path: Path, environment: dict
         _started(second)
 
 
+@pytest.mark.parametrize("cache", ["", "relative-cache", "absolute"])
+def test_invalid_cache_home_uses_the_shared_default(tmp_path: Path, environment: dict[str, str], cache: str) -> None:
+    environment.pop("SARJ_LOCAL_CHECK_STATE_DIR")
+    environment.pop("XDG_CACHE_HOME", None)
+    environment["HOME"] = str(tmp_path / "home")
+    first, second = tmp_path / "first", tmp_path / "second"
+    with _launch(first, environment):
+        _started(first)
+        options = {
+            "XDG_CACHE_HOME": str(tmp_path / "cache") if cache == "absolute" else cache,
+            "SARJ_LOCAL_CHECK_WAIT_SECONDS": "0",
+        }
+        with _launch(second, {**environment, **options}) as two:
+            if cache == "absolute":
+                _started(second)
+                (second / "release").touch()
+                assert two.wait(timeout=10) == 7
+            else:
+                _, stderr = two.communicate(timeout=10)
+                assert two.returncode == 2
+                assert "no shared slot" in stderr
+                assert not (second / "started").exists()
+
+
 def test_cancelled_waiter_never_executes_and_terminated_owner_releases_the_slot(
     tmp_path: Path, environment: dict[str, str]
 ) -> None:
@@ -189,24 +213,3 @@ def test_invalid_capacity_fails_before_execution(
         process.communicate(timeout=10)
         assert process.returncode == 2
         assert not (root / "started").exists()
-
-
-@pytest.mark.parametrize("cache_home", ["", "relative-cache"])
-def test_invalid_xdg_cache_roots_share_admission(
-    tmp_path: Path, environment: dict[str, str], cache_home: str
-) -> None:
-    home = tmp_path / "home"
-    home.mkdir()
-    options = {**environment, "HOME": str(home), "XDG_CACHE_HOME": cache_home}
-    options.pop("SARJ_LOCAL_CHECK_STATE_DIR")
-    first, second = tmp_path / "first", tmp_path / "second"
-    with _launch(first, options) as one:
-        _started(first)
-        with _launch(second, options) as two:
-            _waiting(two)
-            assert not (second / "started").exists()
-            (first / "release").touch()
-            assert one.wait(timeout=10) == 7
-            _started(second)
-            (second / "release").touch()
-            assert two.wait(timeout=10) == 7

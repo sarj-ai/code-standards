@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 1,
+  "rule": "python:prefer-discriminated-model-union",
+  "code": "SARJ510",
+  "decision": "ship-warning",
+  "versions": {
+    "python": "1.53.0",
+    "standards": "8.87.0"
+  },
+  "request": "50 additional distinct review passes, emphasizing useful coverage and fewer false warnings.",
+  "baselineCommit": "aab73adbb135da206654533860722fae28a33fdc",
+  "sourceSha256": "b410fa80fbf5430e689c2accf87c1beec6182ae71da27794691321952c3f5a33",
+  "passDefinition": "One labeled execution context per pass. These 50 additional focused contexts vary source, wrapper, namespace, analysis bound or runner contract; they are not 50 independent repository audits or a claim of exhaustive semantic coverage.",
+  "admission": {
+    "existingOwner": "SARJ510 owns this explicit data-union modeling preference.",
+    "demonstratedGap": "Native-valid Final and public dunder tags, qualified imported aliases and callable Pydantic discriminators could warn; transparent final records and nested Literal overlaps could be missed.",
+    "harm": "False warnings pressure developers to change valid constructor or serialization contracts; missed supported unions weaken the requested policy.",
+    "boundary": "Nominal unions remain valid Python. Preserve the warning severity, conservative unsupported-form exclusions and no-autofix contract.",
+    "smallestFix": "Refine the existing bounded AST helper; add no overlapping rule or name-based type heuristic."
+  },
+  "labeled": {
+    "positiveContexts": 17,
+    "negativeContexts": 33,
+    "falsePositives": 0,
+    "falseNegativesWithinDeclaredScope": 0,
+    "duplicateContexts": 0,
+    "duplicateDiagnosticLocations": 0,
+    "baselineFalseWarningContexts": 14,
+    "baselineMissedSupportedContexts": 5,
+    "qualification": "Unsupported forms are explicitly labeled abstentions rather than counted as supported positive coverage."
+  },
+  "refinements": [
+    "Unwrap bounded local aliases and transparent Final qualifiers before evaluating candidate fields.",
+    "Preserve public __dunder__ tag names while excluding name-mangled private fields.",
+    "Keep primitive type identity in Literal keys: False and 0 are distinct static literal types. Native identity-branch narrowing verifies the distinction.",
+    "Expand nested Literal operands and local literal aliases under a shared finite expansion budget; overlapping domains still warn.",
+    "Recognize import-proven typing final decorators around direct data records while preserving unknown-decorator and rebinding exclusions.",
+    "Respect import-proven Pydantic callable Discriminator metadata, including Field nesting and optional union wrappers; require coverage of every non-None branch.",
+    "Resolve module-level discriminator metadata independently of unrelated local parameter shadowing; preserve module mutation/rebinding controls.",
+    "Keep qualified imported/computed tag domains uncertain and retain finite evidence in partially unresolved domains, preventing a missing-tag conclusion from discarded information."
+  ],
+  "nativeEvidence": [
+    "Runtime construction, asdict output and BasedPyright assert_type narrowing pass for Final instance tags, ClassVar[Final] tags, public dunder tags and TypeAliasType field aliases.",
+    "Boolean/integer identity dispatch passes both runtime and BasedPyright; the prior bool/int-equality assumption is corrected in the original fixture.",
+    "Owner-private Pydantic TypeAdapter runtime and BasedPyright witnesses pass for direct and Field-wrapped callable discriminators. Additional optional-wrapper witnesses pass native runtime validation."
+  ],
+  "supplementalControls": "Seven callable scope/coverage controls and two field-name discriminator controls sit outside the 50-pass ledger. String Discriminator field names still require Literal tags; an uncovered third record still warns.",
+  "upstreamReview": [
+    {
+      "owner": "Ruff",
+      "url": "https://docs.astral.sh/ruff/rules/",
+      "result": "No maintained shared data-union discriminator design rule replaces SARJ510."
+    },
+    {
+      "owner": "Python typing",
+      "url": "https://typing.python.org/en/latest/spec/literal.html",
+      "result": "Nested Literal aliases are valid; literal equivalence preserves primitive type identity."
+    },
+    {
+      "owner": "Python typing",
+      "url": "https://typing.python.org/en/latest/spec/qualifiers.html",
+      "result": "Final dataclass fields and nested ClassVar/Final are valid contracts."
+    },
+    {
+      "owner": "Pydantic",
+      "url": "https://docs.pydantic.dev/latest/concepts/unions/#discriminated-unions-with-callable-discriminator",
+      "result": "Callable discriminators can identify variants without a shared literal field."
+    }
+  ],
+  "limitations": [
+    "Runtime TypeAliasType union declarations, closed TypedDict keyword configurations and Pydantic ConfigDict-bearing record bodies remain intentional abstentions; field aliases using TypeAliasType are treated as uncertain.",
+    "Inherited, generic, behavior-bearing or dynamically modified records and unresolved imported variants remain excluded.",
+    "Imported tag domains are not resolved across files. Uncertainty handling avoids claiming proof where a candidate finite discriminator may already exist.",
+    "Literal expansion, record alias expansion and subgroup discrimination are bounded; complex or opaque domains abstain. No autofix changes constructors or wire formats.",
+    "The 50-case ledger and inspected local corpora do not establish population-wide precision or complete recall."
+  ],
+  "reproduce": [
+    "uv run --project packages/standards --frozen pytest -q packages/python/tests/test_discriminated_data_unions.py packages/python/tests/test_discriminated_data_union_followups.py packages/python/tests/test_discriminated_data_union_runtime.py packages/python/tests/rules/test_prefer_discriminated_model_union.py",
+    "code-standards --root . maintain rules changes --before origin/main --after HEAD",
+    "make verify"
+  ],
+  "corpus": {
+    "visibility": "Owner-readable pinned local overlay; identities, paths, revisions, source and private hashes are omitted.",
+    "corpora": 3,
+    "files": 3260,
+    "bytes": 33757679,
+    "batchSize": 250,
+    "batchesPerRepeat": 15,
+    "repeatsPerMode": 3,
+    "pinsVerifiedBeforeAndAfter": true,
+    "inspectedPolicyMatches": 8,
+    "knownFalsePositives": 0,
+    "addedDiagnostics": 0,
+    "removedDiagnostics": 0,
+    "duplicateLocations": 0,
+    "coldWarmAndRepeatFingerprintsEqual": true,
+    "qualification": "All eight live matches were inspected against the explicit modeling policy; this is not a population precision estimate."
+  },
+  "combinedValidation": {
+    "coldWarmAndCrossModeFingerprintsEqual": true,
+    "pairedRepeats": 3,
+    "filesPerRepeat": 30
+  },
+  "performanceNotes": {
+    "method": "Medians of three paired baseline/candidate repeats, with a fresh linter process per corpus/bounded batch. Cold means the first pass in an interpreter; warm means its second pass, not a cleared OS cache.",
+    "runtime": "CPython 3.15.0 on a shared Linux VM.",
+    "combinedPanelInput": {
+      "files": 30,
+      "bytes": 314167
+    },
+    "combinedScope": "All registered per-file rules on the same deterministic 30-file panel across three pinned corpora; project discovery is excluded.",
+    "interpretation": "Shared VM contention affects wall time. These measurements support regression review and make no optimization or population-wide speed claim."
+  },
+  "corpusPerformance": [
+    {
+      "mode": "baseline",
+      "repeats": 3,
+      "files_per_repeat": 3260,
+      "median_cold_cpu_seconds": 10.799623783,
+      "median_warm_cpu_seconds": 11.127670422000001,
+      "median_cold_wall_seconds": 47.32532023699605,
+      "median_warm_wall_seconds": 48.720568770033424,
+      "median_end_to_end_seconds": 170.36508504199446,
+      "peak_rss_kib": 73468
+    },
+    {
+      "mode": "candidate",
+      "repeats": 3,
+      "files_per_repeat": 3260,
+      "median_cold_cpu_seconds": 10.89336651,
+      "median_warm_cpu_seconds": 10.800792204,
+      "median_cold_wall_seconds": 38.6422138549824,
+      "median_warm_wall_seconds": 35.91886645300838,
+      "median_end_to_end_seconds": 153.94163341500098,
+      "peak_rss_kib": 73148
+    }
+  ],
+  "combinedPerformance": [
+    {
+      "mode": "baseline",
+      "repeats": 3,
+      "files_per_repeat": 30,
+      "median_cold_cpu_seconds": 24.130400631,
+      "median_warm_cpu_seconds": 23.536983432,
+      "median_cold_wall_seconds": 100.22657099700882,
+      "median_warm_wall_seconds": 86.43023734001326,
+      "median_end_to_end_seconds": 215.8144336080004,
+      "peak_rss_kib": 200748
+    },
+    {
+      "mode": "candidate",
+      "repeats": 3,
+      "files_per_repeat": 30,
+      "median_cold_cpu_seconds": 23.410334931999998,
+      "median_warm_cpu_seconds": 23.184738318999997,
+      "median_cold_wall_seconds": 86.16228933901584,
+      "median_warm_wall_seconds": 93.45271005100221,
+      "median_end_to_end_seconds": 197.6834959639964,
+      "peak_rss_kib": 199984
+    }
+  ],
+  "passes": [
+    {"pass":1,"case":"fp01-qualified-imported-tag","expected":0,"baseline":1,"candidate":0,"result":"pass"},
+    {"pass":2,"case":"fp02-runtime-type-alias-type-tag","expected":0,"baseline":1,"candidate":0,"result":"pass"},
+    {"pass":3,"case":"fp03-final-literal-tag","expected":0,"baseline":1,"candidate":0,"result":"pass"},
+    {"pass":4,"case":"fp04-public-dunder-tag","expected":0,"baseline":1,"candidate":0,"result":"pass"},
+    {"pass":5,"case":"fp05-callable-discriminator","expected":0,"baseline":1,"candidate":0,"result":"pass"},
+    {"pass":6,"case":"fp06-renamed-callable-discriminator","expected":0,"baseline":1,"candidate":0,"result":"pass"},
+    {"pass":7,"case":"fp07-qualified-callable-discriminator","expected":0,"baseline":1,"candidate":0,"result":"pass"},
+    {"pass":8,"case":"fp08-types-module-discriminator","expected":0,"baseline":1,"candidate":0,"result":"pass"},
+    {"pass":9,"case":"fp09-shadowed-discriminator-near-miss","expected":1,"baseline":1,"candidate":1,"result":"pass"},
+    {"pass":10,"case":"fp10-unrelated-discriminator-name","expected":1,"baseline":1,"candidate":1,"result":"pass"},
+    {"pass":11,"case":"fp11-callable-discriminator-metadata-order","expected":0,"baseline":1,"candidate":0,"result":"pass"},
+    {"pass":12,"case":"fp12-callable-field-discriminator","expected":0,"baseline":1,"candidate":0,"result":"pass"},
+    {"pass":13,"case":"fp13-known-scalar-alias-control","expected":1,"baseline":1,"candidate":1,"result":"pass"},
+    {"pass":14,"case":"fp14-known-container-alias-control","expected":1,"baseline":1,"candidate":1,"result":"pass"},
+    {"pass":15,"case":"fp15-final-class-var-tag","expected":0,"baseline":1,"candidate":0,"result":"pass"},
+    {"pass":16,"case":"fp16-annotated-qualified-imported-tag","expected":0,"baseline":1,"candidate":0,"result":"pass"},
+    {"pass":17,"case":"fp17-overlapping-final-tag-control","expected":1,"baseline":1,"candidate":1,"result":"pass"},
+    {"pass":18,"case":"fp18-tags-without-discriminator-control","expected":1,"baseline":1,"candidate":1,"result":"pass"},
+    {"pass":19,"case":"e01-final-outside-dataclass","expected":1,"baseline":0,"candidate":1,"result":"pass"},
+    {"pass":20,"case":"e02-final-inside-dataclass","expected":1,"baseline":0,"candidate":1,"result":"pass"},
+    {"pass":21,"case":"e03-final-direct-pydantic","expected":1,"baseline":0,"candidate":1,"result":"pass"},
+    {"pass":22,"case":"e04-unproven-final-decorator","expected":0,"baseline":0,"candidate":0,"result":"pass"},
+    {"pass":23,"case":"e05-reassigned-final-decorator","expected":0,"baseline":0,"candidate":0,"result":"pass"},
+    {"pass":24,"case":"e06-explicit-runtime-type-alias-excluded","expected":0,"baseline":0,"candidate":0,"result":"pass"},
+    {"pass":25,"case":"e07-qualified-runtime-type-alias-tagged","expected":0,"baseline":0,"candidate":0,"result":"pass"},
+    {"pass":26,"case":"e08-custom-runtime-alias-constructor","expected":0,"baseline":0,"candidate":0,"result":"pass"},
+    {"pass":27,"case":"e09-generic-runtime-type-alias","expected":0,"baseline":0,"candidate":0,"result":"pass"},
+    {"pass":28,"case":"e10-nested-literal-overlap","expected":1,"baseline":0,"candidate":1,"result":"pass"},
+    {"pass":29,"case":"e11-nested-literal-disjoint","expected":0,"baseline":0,"candidate":0,"result":"pass"},
+    {"pass":30,"case":"e12-pep695-alias-inside-literal-overlap","expected":1,"baseline":0,"candidate":1,"result":"pass"},
+    {"pass":31,"case":"e13-legacy-alias-inside-literal-disjoint","expected":0,"baseline":0,"candidate":0,"result":"pass"},
+    {"pass":32,"case":"e14-closed-typed-dict-excluded","expected":0,"baseline":0,"candidate":0,"result":"pass"},
+    {"pass":33,"case":"e15-boolean-integer-static-literal-distinction","expected":0,"baseline":1,"candidate":0,"result":"pass"},
+    {"pass":34,"case":"e16-frozen-pydantic-config-excluded","expected":0,"baseline":0,"candidate":0,"result":"pass"},
+    {"pass":35,"case":"e17-keyword-only-pseudo-field","expected":1,"baseline":1,"candidate":1,"result":"pass"},
+    {"pass":36,"case":"bounds-01-linear-record-alias-budget","expected":0,"baseline":0,"candidate":0,"result":"pass"},
+    {"pass":37,"case":"bounds-02-exponential-alias-dag-budget","expected":0,"baseline":0,"candidate":0,"result":"pass"},
+    {"pass":38,"case":"bounds-03-recursive-literal-alias","expected":0,"baseline":0,"candidate":0,"result":"pass"},
+    {"pass":39,"case":"bounds-04-field-annotation-wrapper-budget","expected":0,"baseline":0,"candidate":0,"result":"pass"},
+    {"pass":40,"case":"bounds-05-wide-finite-literal-domain","expected":0,"baseline":0,"candidate":0,"result":"pass"},
+    {"pass":41,"case":"bounds-06-two-partially-unresolved-tag-domains","expected":0,"baseline":1,"candidate":0,"result":"pass"},
+    {"pass":42,"case":"bounds-07-cyclic-overlap-without-secondary-axis","expected":1,"baseline":1,"candidate":1,"result":"pass"},
+    {"pass":43,"case":"bounds-08-cyclic-overlap-with-subgroup-axes","expected":0,"baseline":0,"candidate":0,"result":"pass"},
+    {"pass":44,"case":"bounds-09-multiline-declaration-line-suppression","expected":0,"baseline":0,"candidate":0,"result":"pass"},
+    {"pass":45,"case":"bounds-10-multiline-closing-line-not-owner","expected":1,"baseline":1,"candidate":1,"result":"pass"},
+    {"pass":46,"case":"bounds-11-marker-inside-annotation-string","expected":1,"baseline":1,"candidate":1,"result":"pass"},
+    {"pass":47,"case":"bounds-12-two-aliases-on-one-line","expected":2,"baseline":2,"candidate":2,"result":"pass"},
+    {"pass":48,"case":"bounds-13-type-checking-only-declarations","expected":0,"baseline":0,"candidate":0,"result":"pass"},
+    {"pass":49,"case":"bounds-14-deep-source-union-budget","expected":0,"baseline":0,"candidate":0,"result":"pass"},
+    {"pass":50,"case":"bounds-15-combined-runner-repeated-invocation","expected":1,"baseline":1,"candidate":1,"result":"pass"}
+  ]
+}
