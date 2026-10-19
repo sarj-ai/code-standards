@@ -4,13 +4,70 @@ Audit weak or duplicated data contracts using the shared [audit protocol](../ski
 
 ## Judgment checks
 
-- External input used before parsing at HTTP, message, database, file, environment, or third-party API boundaries.
+- External input used before declarative Pydantic parsing at Python HTTP, message, database, file, environment, or third-party API boundaries.
 - Structured values represented by untyped dictionaries, broad objects, positional tuples, or repeated primitive parameters.
+- Dictionary `get`/subscription checks used to discover a Python record's type, shape, or variant instead of parsing its declared schema.
 - Manual TypeScript interfaces duplicated beside a Zod schema instead of inferred from it.
 - Stringly typed finite sets and multiple optional fields that permit illegal state combinations.
 - Attribute bags accessed through unchecked dynamic lookup when an explicit protocol or schema would clarify the contract.
 
-Use the lightest suitable contract. Do not introduce runtime schemas for private, already-trusted local values, component props, ORM-generated types, or useful generic abstractions.
+Prefer named Pydantic models for Python runtime input and keep the parsed domain
+type through its consumers. Already trusted local values, component props,
+ORM-generated types, and useful generic abstractions can retain their existing
+precise contracts without redundant parsing.
+
+## Parse Python records declaratively
+
+Treat hand-written record discovery as a missing parser. Domain code must not
+use `payload.get("type") == "message"`, `isinstance(payload.get("items"), list)`,
+or `match payload.get("items")` with a typed sequence pattern to establish an
+open mapping's record type or shape. Equivalent subscription, membership, and
+key-presence probes have the same problem. A matching tag, a present key, or a list
+container does not establish the other required fields or their item types.
+Parse the complete input into a named Pydantic model once, then dispatch through
+the parsed variant and read typed attributes. Moving the same probes into an
+`is_payload` helper, `TypeGuard`, cast, or `TypedDict` annotation does not add
+runtime validation.
+
+For known records, keep raw `object` values confined to the parser entry point. Do not use
+`dict[str, object]`, `dict[str, Any]`, `Mapping[str, object]`, or an equivalent
+open record as the application contract for a known set of fields. In
+TypeScript, apply the same distinction to `Record<string, unknown>` and parse
+external records with the owned Zod schema. Renaming an open dictionary with a
+type alias or substituting `JsonValue` does not establish a fixed record schema.
+Use a precise named contract for trusted internal records; use Pydantic when
+runtime input needs validation.
+
+Make parsing declarative wherever the schema can express it. Put requiredness,
+defaults, nullability, aliases, nested records, collection item types, and
+constraints in model fields, `Annotated`, and `Field`. Use model variants with
+`Literal` tags and `Field(discriminator="type")` for alternative record shapes.
+Declare exact tuple shapes for positional wire fields and strict integer fields
+when the existing parser rejects booleans; preserve both item types and bounds.
+For a union, list, or other collection at the root, define a named `RootModel`;
+do not assemble a parser from repeated `.get` checks and `isinstance` ladders.
+Use collection validation when one schema can own the per-item parsing policy.
+Prefer `model_validate_json`
+for raw JSON and `model_validate` for an already decoded value. The strict
+preset directs application code to named models rather than `TypeAdapter`.
+
+Custom validators are for constraints or normalization that the declarative
+schema cannot express. Preserve the accepted input, coercion and strictness
+policies, omitted versus null fields, extra-field handling, aliases, and error
+behavior when replacing manual parsing. Collection models must state whether a
+bad item rejects the batch or is intentionally omitted, and retain required
+rejection reports and logging.
+
+Keep exceptions tied to a concrete owning contract. Dynamic-key registries,
+opaque extension maps, parser infrastructure, Pydantic before validators, and
+callable `Discriminator` extractors can legitimately inspect dictionaries.
+Prefer a field discriminator when the wire format supplies one; a callable
+extractor must support the mapping and model forms used during validation and
+serialization. These adapters must feed the declared schema instead of exposing
+an unchecked record to domain consumers. Ordinary lookup on a precisely typed
+dynamic map is valid. Explain an exceptional fixed-record boundary locally and
+use an exact suppression when a deterministic rule applies; a broad annotation
+or a helper's name is insufficient evidence for the exception.
 
 ## Model the legal domain states
 
@@ -109,9 +166,11 @@ required list, an immutable empty default, or a compatible public wrapper.
 
 For dictionary-shaped records, distinguish a closed field contract from an
 extension map and from an API that requires concrete dictionary operations.
-Use `TypedDict` for known required and optional fields, or a named mapping alias
-when extension keys and operations such as `pop`, `update`, or `clear` are part
-of the contract. A `TypedDict` alone does not prove runtime key exactness.
+Use `TypedDict` for already trusted known fields, or a named mapping alias when
+extension keys and operations such as `pop`, `update`, or `clear` are part of
+the contract. Parse untrusted fixed records with Pydantic before choosing an
+internal representation. A `TypedDict` alone does not prove runtime field
+validity or key exactness.
 A dataclass or validation model changes the runtime value; it
 does not preserve dictionary behavior merely by naming the same fields. Keep
 framework serialization hooks and public overrides faithful to their required
@@ -224,6 +283,15 @@ annotation erases a known value. `prefer-typed-reflection` owns reflection over
 proven property and callable contracts. Do not duplicate their diagnostics.
 Keep unparsed input, opaque boundaries, and generic abstractions when reviewing
 flows outside the deterministic rules.
+
+For Python parsing, `require-pydantic-for-external-json` owns proven external
+JSON field access, `require-pydantic-for-structured-payload` owns nested route
+payload access, and `require-pydantic-for-mapping-shape` owns type and shape
+probes on open mapping contracts. `no-any-mapping-types` owns value-erasing
+`Any` mappings; `named-record-at-boundaries` owns unnamed fixed-record returns.
+`prefer-declarative-batch-validation` and `prefer-discriminated-model-union`
+cover their proven collection and variant patterns. Review additional parsing
+flows here with concrete producer and consumer evidence.
 
 ## Validation and replacement values
 
