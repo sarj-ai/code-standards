@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "5862926399f7f128d4392bfa68a45131485098b18612a2752e70df8e6845471d",
-  "cliSha256": "3612ebde5e10bf18007f5ff74a489d90cb3d319239035d0c73cb7e621cc79f1a",
+  "catalogSha256": "bda1ecdf0a6f2367f441bf31c5e4df2f47eaf2375c336988b7800f935665e4ba",
+  "cliSha256": "23f2a21564540f57099e8bbfee3d3f35104faee11ef7b2c0b358cfb2b3c21146",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -7100,6 +7100,41 @@
           "outcome": "reject",
           "scenarioId": "unannotated-record",
           "title": "Unnamed record leaves the response schema implicit"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:fastapi-route-declares-security": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/routes.py",
+              "source": "from fastapi import APIRouter, Security\n\nrouter = APIRouter()\n\n\n@router.get(\n    \"/items\", dependencies=[Security(require_permission(Permission.ITEMS_READ))]\n)\ndef items() -> Items: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/routes.py",
+          "id": "decorator-security",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The decorator declares a `Security` dependency"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/routes.py",
+              "source": "from fastapi import APIRouter, Depends\n\nrouter = APIRouter()\n\n\n@router.get(\"/items\", dependencies=[Depends(require_user)])\ndef items() -> Items: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/routes.py",
+          "id": "depends-only",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A route whose only access dependency uses `Depends`"
         }
       ],
       "optionsSchemaSource": null
