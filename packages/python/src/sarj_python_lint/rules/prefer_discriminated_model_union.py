@@ -17,6 +17,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._data_union_discriminator import data_union_diagnostics
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._pydantic_field_contract import (
     DECORATOR_SOURCES,
@@ -87,13 +88,16 @@ class PreferDiscriminatedModelUnion(Rule):
     code = "SARJ510"
     documentation = RuleDocumentation(
         default_level=Severity.WARNING,
-        summary="Represent literal-tag-dependent required fields with discriminated model variants.",
+        summary="Give data unions explicit Literal discriminators and express tag-dependent payloads as variants.",
         rationale=(
+            "An explicit shared tag identifies data variants and supports field-based narrowing. "
             "A nullable field remains statically nullable even when an after validator requires it for a literal "
             "tag. A union of models with distinct Literal tags carries that dependency in the type and supports "
             "safe narrowing without repeating runtime guards."
         ),
         remediation=(
+            "Give every data variant a common field with disjoint Literal values. For dataclasses, "
+            "field(default=..., init=False) can preserve existing constructor calls; review serialized contracts. "
             "Consider a discriminated union of model variants. Make the payload non-nullable only in variants "
             "proven to reject None, and preserve every other accepted field combination, defaults, aliases and wire shape. "
             "Independent optional fields can remain optional within each variant."
@@ -101,7 +105,10 @@ class PreferDiscriminatedModelUnion(Rule):
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only stable direct module-level import-proven Pydantic BaseModel subclasses with pure direct after model validators are inspected.",
+            "Declared module-level unions of at least two source-visible direct dataclasses, Pydantic BaseModels or TypedDicts require a shared disjoint Literal field. PEP 604, typing Union, Optional, Annotated, forward references and bounded local aliases are supported; a None branch is allowed.",
+            "The explicit-tag policy is a modeling preference: nominal variants already support isinstance narrowing. Scalar/container unions, inline annotations, generic or inherited variants, behavior classes, unresolved variants and dynamic or ambiguous namespaces are excluded. Imported tag aliases are not resolved; an explicit literal field paired with an unresolved imported or local class domain abstains, as do opaque explicit Literal domains.",
+            "String, bytes, integer, Boolean and None tag values are supported. Boolean/integer equality collisions overlap. A bounded hierarchy of shared literal fields may distinguish nested groups; overlapping tags without a further discriminator still warn. TypedDict tags must be required; dataclass ClassVar tags must have a value. Runtime discriminator configuration and default correctness remain separate contracts. No automatic field addition is safe for every constructor or serializer.",
+            "For nullable-field dependencies, only stable direct module-level import-proven Pydantic BaseModel subclasses with pure direct after model validators are inspected.",
             "Bounded paths may contain finite tag comparisons or literal-container membership, None identity tests, Boolean combinations, nested guards and returns of the same instance. Every rejection region must prove one tag-dependent nullable-field requirement; joint missing-field or independent-tag-axis conditions abstain.",
             "Tags must use imported Literal domains, optionally composed through direct unions, with at least two distinct homogeneous string, integer or Boolean values, optionally including an explicit None state. Mixed primitive families, bool/int equality collisions, open or computed tags abstain. Payloads must explicitly include None in a union, imported Union or Optional.",
             "Every non-null payload member must have a source-proven inhabited built-in scalar or container type; opaque aliases, custom types and None-only or bottom-type unions are excluded.",
@@ -146,19 +153,55 @@ class PreferDiscriminatedModelUnion(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="untagged-data-variants",
+                scenario="explicit-data-discriminator",
+                title="Data variants lack a common explicit tag",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/access.py",
+                        "from dataclasses import dataclass\n"
+                        "@dataclass(frozen=True, slots=True)\nclass TeamAccess:\n    team_id: str\n"
+                        "@dataclass(frozen=True, slots=True)\nclass GlobalAccess:\n    group: str\n"
+                        "type Access = TeamAccess | GlobalAccess\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/access.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="literal-tags-preserve-constructor-calls",
+                scenario="explicit-data-discriminator",
+                title="Explicit tags preserve positional constructor calls with init=False",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/access.py",
+                        "from dataclasses import dataclass, field\nfrom typing import Literal\n"
+                        "@dataclass(frozen=True, slots=True)\nclass TeamAccess:\n"
+                        "    scope: Literal['team'] = field(default='team', init=False)\n    team_id: str\n"
+                        "@dataclass(frozen=True, slots=True)\nclass GlobalAccess:\n"
+                        "    scope: Literal['global'] = field(default='global', init=False)\n    group: str\n"
+                        "type Access = TeamAccess | GlobalAccess\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/access.py"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description = documentation.summary
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        if (
-            is_test_path(context.path)
-            or "None" not in context.symbol_source
-            or "model_validator" not in context.symbol_source
-        ):
+        if is_test_path(context.path):
             return []
-        diagnostics: list[Diagnostic] = []
+        diagnostics = data_union_diagnostics(context, self.code)
+        if "None" not in context.symbol_source or "model_validator" not in context.symbol_source:
+            return diagnostics
         provenance = ResourceProvenance(context, require_static_namespace=True)
         for model in direct_models(context, methods=True):
             if not _stable_model(model, context, provenance):
