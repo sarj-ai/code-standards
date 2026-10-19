@@ -43,6 +43,7 @@ from sarj_standards.libs.diagnostics import (
     ToolReport,
     TrustMode,
 )
+from sarj_standards.libs import timing
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml
@@ -362,6 +363,7 @@ def analyze_external(
     except (OSError, ValueError) as exc:
         issue = ExecutionIssue("external", "invalid-input", str(exc))
         return (ToolReport("external", Completion.FAILED, issues=(issue,)),)
+    clock = timing.Clock("external")
     reports: list[ToolReport] = []
     reports.extend(
         _security_reports(
@@ -372,11 +374,13 @@ def analyze_external(
             security_selection=security_selection,
         )
     )
+    clock.mark("security")
     reports.extend(
         _shell_source_reports(
             routed, root=root, runner=execute, capabilities=capabilities, attest_version=runner is None
         )
     )
+    clock.mark("shell")
     try:
         reports.extend(
             _mobile_source_reports(
@@ -390,6 +394,7 @@ def analyze_external(
     except (OSError, TypeError, ValueError, RecursionError, yaml.YAMLError, zipfile.BadZipFile) as exc:
         issue = ExecutionIssue("mobile-tools", "provisioning-failure", redact_message(str(exc), root))
         reports.append(ToolReport("mobile-tools", Completion.FAILED, issues=(issue,)))
+    clock.mark("mobile")
 
     def collect_python_reports() -> None:
         if routed.python:
@@ -421,6 +426,7 @@ def analyze_external(
                 )
 
     collect_python_reports()
+    clock.mark("python")
     from .devops_source import SUPPORTED, analyze_sources  # ruff: ignore[import-outside-top-level] -- native catalog uses the bounded runner defined in this module.
 
     reports.extend(
@@ -433,13 +439,16 @@ def analyze_external(
             shared_shellcheck=capabilities is None or "shellcheck" in capabilities,
         )
     )
+    clock.mark("devops-sources")
     reports.extend(
         _quality_reports(root, capabilities=capabilities, policy=policy, trust=normalized_trust, runner=execute)
     )
+    clock.mark("quality")
     if capabilities is None or "devops-schema" in capabilities:
         from .devops_schema import analyze_source_schemas  # ruff: ignore[import-outside-top-level] -- schema validation is a selected local runtime adapter.
 
         reports.extend(analyze_source_schemas(root=root, paths=tuple(routed.text)))
+    clock.mark("devops-schema")
     if capabilities is not None and "eslint" not in capabilities:
         eslint_commands = ()
         unowned_eslint = 0
@@ -477,6 +486,8 @@ def analyze_external(
         )
         reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
         eslint_commands = ()
+
+    clock.mark("eslint-select")
 
     def collect_eslint_reports() -> None:
         analysis_started = time.monotonic()
@@ -547,12 +558,14 @@ def analyze_external(
                     file_count=_argv_file_count(command.argv),
                 )
             )
+            clock.mark(f"eslint:{invocation_id}:{_argv_file_count(command.argv)}files")
             if time.monotonic() - analysis_started >= _ANALYSIS_DEADLINE.total_seconds():
                 issue = ExecutionIssue("eslint", "aggregate-timeout", "ESLint aggregate analysis exceeded 300 seconds")
                 reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
                 break
 
     collect_eslint_reports()
+    clock.mark("eslint-done")
     react_selection = _selected_react_doctor_projects(
         root,
         enabled=include_react_doctor,
@@ -575,6 +588,7 @@ def analyze_external(
                 full_scan=react_doctor_full_scan,
             )
         )
+    clock.mark("react-doctor")
     if policy is None:
         return tuple(reports)
     return tuple(

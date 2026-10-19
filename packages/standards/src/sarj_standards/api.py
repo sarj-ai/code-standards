@@ -264,6 +264,9 @@ class Standards:
     ) -> AnalysisReport:
         if jobs not in {1, 2}:
             return _failed_analysis(self.root, "invalid-input", "analysis jobs must be 1 or 2")
+        from .libs import timing  # ruff: ignore[import-outside-top-level]
+
+        setup_clock = timing.Clock("setup")
         external = external or bool(upstream_rules.ids)
         try:
             normalized_trust = TrustMode(trust)
@@ -282,11 +285,13 @@ class Standards:
             selection_policy = _selection_policy(self.root, adopted, normalized_mode)
             rule_selection = _rule_selection(rules)
             selected = _analysis_inputs(self.root, paths, mode=normalized_mode)
+            setup_clock.mark(f"selection:{len(selected)}files")
         except (OSError, TypeError, ValueError) as exc:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         try:
             baseline_counts = _analysis_baseline(self.root, adopted, normalized_mode)
             changed_scope = diagnostic_baseline.changed_line_scope(self.root, staged=staged)
+            setup_clock.mark("baseline")
         except (OSError, TypeError, ValueError) as exc:
             return _failed_analysis(self.root, "baseline-failure", str(exc))
         try:
@@ -295,8 +300,10 @@ class Standards:
         except (OSError, TypeError, ValueError) as exc:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         react_doctor_full_scan = _react_doctor_full_scan(adopted, paths, staged=staged)
+        setup_clock.mark("grouping")
 
         def native_analysis() -> tuple[ToolReport, ...]:
+            native_clock = timing.Clock("native")
             native = analyze_paths(
                 active_selected,
                 root=self.root,
@@ -304,11 +311,15 @@ class Standards:
                 grouped=selected_groups,
                 rule_selection=rule_selection,
             )
+            native_clock.mark("analyze-paths")
             if rule_selection is None:
                 native = _with_library_policy(self.root, native, active_selected, selection_policy)
+            native_clock.mark("library-policy")
             if rule_selection is None and normalized_mode is AnalysisMode.POLICY:
                 native = _with_repository_analysis(self.root, native, staged=staged)
+            native_clock.mark("repository-analysis")
             prepared = _prepared_reports(self.root, adopted, prepared_devops, prepared_targets)
+            native_clock.mark("prepared")
             return (*native.tools, *prepared)
 
         coverage = _selection_coverage(
@@ -363,6 +374,7 @@ class Standards:
         combined = report_from_tools(
             self.root, analyze_groups(self.root, native_analysis, external_analysis, jobs=jobs)
         )
+        setup_clock.mark("groups")
         combined = _with_shell_format_severity(combined, paths=paths, staged=staged, changed_scope=changed_scope)
         combined = _with_warning_severity(
             combined,

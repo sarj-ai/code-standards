@@ -58,10 +58,14 @@ def analyze_sources(
     shared_shellcheck: bool = False,
 ) -> tuple[ToolReport, ...]:
     root = root.resolve()
+    from sarj_standards.libs import timing  # ruff: ignore[import-outside-top-level]
+
+    clock = timing.Clock("devops")
     sources = _select_sources(root, paths)
     reports: list[ToolReport] = []
     if "actionlint" in selected and sources.workflows:
         reports.append(_actionlint_report(root, sources.workflows, runner, shared_shellcheck=shared_shellcheck))
+    clock.mark(f"actionlint:{len(sources.workflows)}")
     if "hadolint" in selected and sources.dockerfiles:
         reports.append(
             _json_tool(
@@ -81,12 +85,16 @@ def analyze_sources(
                 runner=runner,
             )
         )
+    clock.mark(f"hadolint:{len(sources.dockerfiles)}")
     if "terraform" in selected and sources.terraform:
         reports.extend(_terraform_reports(root, sources.terraform, runner, trust_repository_code=trust_repository_code))
+    clock.mark(f"terraform:{len(sources.terraform)}")
     if "tflint" in selected and sources.terraform:
         reports.extend(_tflint_reports(root, sources.terraform, runner, trust_repository_code=trust_repository_code))
+    clock.mark("tflint")
     if "compose" in selected:
         reports.extend(_compose_reports(root, sources.compose, runner, version=compose_version))
+    clock.mark("compose")
     return tuple(reports)
 
 
