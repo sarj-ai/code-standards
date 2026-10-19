@@ -253,13 +253,13 @@ def test_planner_skips_settled_consumers_and_closed_waves() -> None:
 
 
 def test_planner_retries_failed_verification_but_preserves_unowned_prs() -> None:
-    failed = rollout.Outcome(
-        FLEET[0], rollout.OutcomeState.BLOCKED, detail="consumer verification failed; reconcile will retry"
-    )
+    failed = rollout.Outcome(FLEET[0], rollout.OutcomeState.BLOCKED, detail=rollout.VERIFICATION_RETRY_DETAIL)
+    unchanged = rollout.Outcome(FLEET[0], rollout.OutcomeState.BLOCKED, detail=rollout.VERIFICATION_UNCHANGED_DETAIL)
     unowned = rollout.Outcome(FLEET[0], rollout.OutcomeState.BLOCKED, detail="ownership marker does not match")
 
     assert rollout.pending_matrix((failed,)) == [{"name": FLEET[0].name, "identity": FLEET[0].identity}]
     assert rollout.pending_matrix((unowned,)) == []
+    assert rollout.pending_matrix((unchanged,)) == []
 
 
 def test_plan_cli_appends_a_valid_pending_matrix(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
