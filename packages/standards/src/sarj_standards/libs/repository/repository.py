@@ -31,6 +31,8 @@ _ESLINT_MAP_RE: Final = re.compile(
     r"^const (?:RULES|rules) = \{$(?P<body>.*?)^\}(?: as const)?;$", re.MULTILINE | re.DOTALL
 )
 _MARKDOWN_LOCATIONS: Final = (
+    ".agents/skills/*/SKILL.md",
+    ".claude/skills/*/SKILL.md",
     ".github/SECURITY.md",
     ".github/PULL_REQUEST_TEMPLATE.md",
     "CODE_OF_CONDUCT.md",

@@ -538,8 +538,16 @@ def test_file_conventions_allow_audit_records(tmp_path: Path) -> None:
     assert not findings
 
 
-@pytest.mark.parametrize("document", ["CODE_OF_CONDUCT.md", "CONTRIBUTING.md"])
-def test_file_conventions_allow_essential_community_documents(tmp_path: Path, document: str) -> None:
+@pytest.mark.parametrize(
+    "document",
+    [
+        "CODE_OF_CONDUCT.md",
+        "CONTRIBUTING.md",
+        ".agents/skills/audit-protocol/SKILL.md",
+        ".claude/skills/audit-protocol/SKILL.md",
+    ],
+)
+def test_file_conventions_allow_maintained_policy_documents(tmp_path: Path, document: str) -> None:
     _git_repo(tmp_path, {document: "# Project policy\n"})
     (tmp_path / "configs").mkdir()
 
