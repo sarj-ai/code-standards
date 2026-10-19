@@ -106,6 +106,7 @@ class Plan:
 
 
 DEFAULT_CI_RUNNER: Final = "ubuntu-latest"
+_BLACKSMITH_X64_UBUNTU_RUNNER: Final = re.compile(r"blacksmith-\d+vcpu-ubuntu-(?P<release>\d{4})")
 _ESLINT_CONFIG: Final = "eslint.config.ts"
 _ESLINT_CONFIG_NAMES: Final = (
     "eslint.config.js",
@@ -2706,14 +2707,22 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: commit-policy-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 jobs:
+  # The verdict depends only on the base, the head and the base manifest, so a title or body edit cannot change
+  # it and skips the runner. A skipped check of the required name would replace a failure on the same commit, so
+  # the skipped job must never be named commit-policy-v1. GitHub reports a skipped job under its unevaluated name
+  # expression, and the expression itself evaluates to another name, so both readings stay distinct. Merge groups
+  # keep running: their skipped check would carry that unevaluated name and never satisfy the required context.
   commit-policy-v1:
+    name: >-
+      ${{ github.event.action == 'edited' && !github.event.changes.base
+      && 'commit-policy-v1 (unchanged by edit)' || 'commit-policy-v1' }}
+    if: github.event.action != 'edited' || github.event.changes.base
+    concurrency:
+      group: commit-policy-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
 """
-        f"    runs-on: {runner}\n"
+        f"    runs-on: {_commit_policy_runner(runner)}\n"
         """\
     timeout-minutes: 5
     steps:
@@ -2728,6 +2737,13 @@ jobs:
         f"      - uses: sarj-ai/repo-standards/pull-request-commits@{manifest.REPO_STANDARDS_REVISION}"
         f" # v{manifest.REPO_STANDARDS_ACTION_VERSION}\n"
     )
+
+
+def _commit_policy_runner(runner: str) -> str:
+    # Commit policy reads Git history in under a minute, so it never needs more than the smallest runner, and
+    # Blacksmith bills ARM minutes at 0.625 of x64.
+    match = _BLACKSMITH_X64_UBUNTU_RUNNER.fullmatch(runner)
+    return f"blacksmith-2vcpu-ubuntu-{match['release']}-arm" if match else runner
 
 
 def _migrate_legacy_workflow_gate(path: Path) -> str | None:

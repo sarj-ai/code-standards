@@ -411,8 +411,9 @@ def test_setup_renders_managed_workflows_on_the_configured_runner(tmp_path: Path
 
     assert rerun.returncode == 0, rerun.stdout + rerun.stderr
     workflows = tmp_path / ".github" / "workflows"
-    for name in ("standards.yml", "commit-policy.yml"):
-        assert "    runs-on: blacksmith-2vcpu-ubuntu-2404\n" in (workflows / name).read_text(encoding="utf-8")
+    assert "    runs-on: blacksmith-2vcpu-ubuntu-2404\n" in (workflows / "standards.yml").read_text(encoding="utf-8")
+    commit_policy = (workflows / "commit-policy.yml").read_text(encoding="utf-8")
+    assert "    runs-on: blacksmith-2vcpu-ubuntu-2404-arm\n" in commit_policy
     assert 'runner = "blacksmith-2vcpu-ubuntu-2404"' in manifest_file.read_text(encoding="utf-8")
 
 
@@ -449,6 +450,45 @@ def test_generated_workflows_on_blacksmith_start_at_checkout(tmp_path: Path) -> 
     for workflow in (scaffold.github_ci_workflow(tmp_path), scaffold.commit_policy_github_workflow(runner)):
         assert "harden-runner" not in workflow
         assert _first_step(workflow).startswith("      - uses: actions/checkout@")
+
+
+@pytest.mark.parametrize(
+    ("runner", "expected"),
+    [
+        ("ubuntu-latest", "ubuntu-latest"),
+        ("blacksmith-2vcpu-ubuntu-2404", "blacksmith-2vcpu-ubuntu-2404-arm"),
+        ("blacksmith-4vcpu-ubuntu-2204", "blacksmith-2vcpu-ubuntu-2204-arm"),
+        ("blacksmith-2vcpu-ubuntu-2404-arm", "blacksmith-2vcpu-ubuntu-2404-arm"),
+        ("blacksmith-6vcpu-macos-15", "blacksmith-6vcpu-macos-15"),
+    ],
+)
+def test_commit_policy_runs_on_the_smallest_blacksmith_arm_runner(runner: str, expected: str) -> None:
+    job = _commit_policy_job(scaffold.commit_policy_github_workflow(runner))
+
+    assert job["runs-on"] == expected
+
+
+def test_commit_policy_edit_skip_never_carries_the_required_check_name() -> None:
+    job = _commit_policy_job(scaffold.commit_policy_github_workflow())
+    condition = job["if"]
+    name = str(job["name"])
+
+    assert condition == "github.event.action != 'edited' || github.event.changes.base"
+    assert name.startswith("${{ ")
+    assert name.endswith(" }}")
+    unevaluated = name.removeprefix("${{ ").removesuffix(" }}")
+    assert unevaluated != "commit-policy-v1"
+    assert "'commit-policy-v1 (unchanged by edit)'" in unevaluated
+    assert "concurrency" not in _workflow_document(scaffold.commit_policy_github_workflow())
+
+
+def _commit_policy_job(workflow: str) -> dict[str, object]:
+    return manifest.as_table(manifest.as_table(_workflow_document(workflow)["jobs"])["commit-policy-v1"])
+
+
+def _workflow_document(workflow: str) -> dict[str, object]:
+    parsed: object = yaml.safe_load(workflow)  # pyright: ignore[reportAny] -- narrowed below.
+    return manifest.as_table(parsed)
 
 
 def _first_step(workflow: str) -> str:
