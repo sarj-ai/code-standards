@@ -962,7 +962,7 @@ def _plan_lefthook_commit_message(root: Path, plan: Plan) -> None:
 
 def _plan_commit_policy_workflow(root: Path, plan: Plan, *, force: bool) -> None:
     path = root / ".github" / "workflows" / "commit-policy.yml"
-    contents = commit_policy_github_workflow(managed_ci_runner(root))
+    contents = managed_commit_policy_workflow(root)
     if path.is_file() and path.read_text(encoding="utf-8").startswith("# Managed by code-standards commit policy;"):
         if path.read_text(encoding="utf-8") == contents:
             plan.skips.append((path, "already runs the canonical commit policy"))
@@ -1185,6 +1185,7 @@ def _desired_manifest(root: Path, plan: Plan, current: manifest.Manifest | None)
         prepared_targets=() if current is None else current.prepared_targets,
         compose_version=_new_compose_version(root) if current is None else current.compose_version,
         ci_runner=None if current is None else current.ci_runner,
+        ci_commit_policy="workflow" if current is None else current.ci_commit_policy,
         knip_application=False if current is None else current.knip_application,
     )
 
@@ -2670,6 +2671,19 @@ def managed_ci_runner(root: Path) -> str:
     return _configured_runner(manifest.load_for_setup(root))
 
 
+def commit_policy_is_embedded(root: Path) -> bool:
+    adopted = manifest.load_for_setup(root)
+    return adopted is not None and adopted.ci_commit_policy == "embedded"
+
+
+def managed_commit_policy_workflow(root: Path) -> str:
+    adopted = manifest.load_for_setup(root)
+    runner = _configured_runner(adopted)
+    if adopted is not None and adopted.ci_commit_policy == "embedded":
+        return commit_policy_merge_group_workflow(runner)
+    return commit_policy_github_workflow(runner)
+
+
 def _configured_runner(adopted: manifest.Manifest | None) -> str:
     if adopted is None or adopted.ci_runner is None:
         return DEFAULT_CI_RUNNER
@@ -2736,6 +2750,34 @@ jobs:
 """
         f"      - uses: sarj-ai/repo-standards/pull-request-commits@{manifest.REPO_STANDARDS_REVISION}"
         f" # v{manifest.REPO_STANDARDS_ACTION_VERSION}\n"
+    )
+
+
+def commit_policy_merge_group_workflow(runner: str = DEFAULT_CI_RUNNER) -> str:
+    return (
+        """\
+# Managed by code-standards commit policy; regenerate with `code-standards setup`.
+name: Commit policy
+
+# With [ci] commit_policy = "embedded", an existing pull-request job runs
+# sarj-ai/repo-standards/pull-request-commits with status-context: commit-policy-v1.
+# A merge group commit has no earlier verdict and aggregates already-evaluated pull
+# requests, so a skipped check satisfies the required context without a runner.
+on:
+  merge_group:
+    types: [checks_requested]
+
+permissions: {}
+
+jobs:
+  commit-policy-v1:
+    if: false
+"""
+        f"    runs-on: {_commit_policy_runner(runner)}\n"
+        """\
+    steps:
+      - run: "true"
+"""
     )
 
 

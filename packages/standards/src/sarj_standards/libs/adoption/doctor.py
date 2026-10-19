@@ -138,6 +138,7 @@ _HOOK_ID = re.compile(r"(?m)^\s*-\s+id:\s*(?P<id>[^\s#]+)")
 #: A `rev:` that is a raw commit, not a release tag.
 _SHA_REV = re.compile(r"^[0-9a-f]{7,40}$")
 
+_COMMIT_POLICY_CONTEXT: Final = "commit-policy-v1"
 _ESLINT_PLUGIN: Final = "@sarj/eslint-plugin"
 _ESLINT_CONFIG_NAMES: Final = (
     "eslint.config.js",
@@ -673,11 +674,13 @@ def _check_commit_policy_ci(root: Path) -> Iterator[Finding]:
     if configured.commit_message is None:
         return
     try:
-        runner = scaffold.managed_ci_runner(root)
+        expected = scaffold.managed_commit_policy_workflow(root)
+        embedded = scaffold.commit_policy_is_embedded(root)
     except OSError, TypeError, ValueError:
         return
+    if embedded:
+        yield _embedded_commit_policy_finding(root)
     path = root / ".github" / "workflows" / "commit-policy.yml"
-    expected = scaffold.commit_policy_github_workflow(runner)
     try:
         actual = path.read_text(encoding="utf-8")
     except OSError:
@@ -697,6 +700,60 @@ def _check_commit_policy_ci(root: Path) -> Iterator[Finding]:
         "doctor.ci.commit-policy",
         "run `code-standards doctor --repair`",
     )
+
+
+def _embedded_commit_policy_finding(root: Path) -> Finding:
+    action = f"sarj-ai/repo-standards/pull-request-commits@{manifest.REPO_STANDARDS_REVISION}"
+    workflows = root / ".github" / "workflows"
+    for path in sorted((*workflows.glob("*.yml"), *workflows.glob("*.yaml"))):
+        if path.name == "commit-policy.yml" or is_link_like(path):
+            continue
+        try:
+            source = path.read_text(encoding="utf-8")
+        except OSError, UnicodeError:
+            continue
+        if any(_reports_commit_policy_status(step, action) for step in _workflow_steps(source)):
+            return Finding(
+                Level.OK,
+                f".github/workflows/{path.name}",
+                f"embeds the commit policy and reports {_COMMIT_POLICY_CONTEXT}",
+                "doctor.ci.commit-policy-embedded",
+            )
+    return Finding(
+        Level.DRIFT,
+        ".github/workflows",
+        f"[ci] commit_policy is embedded, but no workflow step runs {action} with status-context: "
+        f"{_COMMIT_POLICY_CONTEXT}",
+        "doctor.ci.commit-policy-embedded",
+        "add the step to a job that runs on every pull_request event, or remove [ci] commit_policy",
+    )
+
+
+def _reports_commit_policy_status(step: MappingNode, action: str) -> bool:
+    uses = _yaml_field(step, "uses")
+    inputs = _yaml_field(step, "with")
+    context = _yaml_field(inputs, "status-context")
+    return (
+        isinstance(uses, ScalarNode)
+        and _yaml_scalar_text(uses) == action
+        and isinstance(context, ScalarNode)
+        and _yaml_scalar_text(context) == _COMMIT_POLICY_CONTEXT
+        and _yaml_field(step, "if") is None
+    )
+
+
+def _workflow_steps(source: str) -> Iterator[MappingNode]:
+    try:
+        document: object = yaml.compose(source, Loader=yaml.SafeLoader)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType] -- PyYAML parser boundary.
+    except yaml.YAMLError:
+        return
+    jobs = _yaml_field(document if isinstance(document, MappingNode) else None, "jobs")
+    if not isinstance(jobs, MappingNode):
+        return
+    for _, job in mapping_items(jobs):
+        steps = _yaml_field(job, "steps")
+        if isinstance(steps, SequenceNode):
+            yield from (step for step in sequence_items(steps) if isinstance(step, MappingNode))
 
 
 def _git_worktree(root: Path) -> bool:

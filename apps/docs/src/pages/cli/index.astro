@@ -129,6 +129,23 @@ const workflow = [
     </div>
   </section>
 
+  <section class="command-block" aria-labelledby="embedded-commit-policy">
+    <div>
+      <h2 id="embedded-commit-policy">Embedded commit policy</h2>
+      <p>
+        Blacksmith bills every job for at least a minute, so a repository that already runs a pull-request job on
+        every <code>opened</code>, <code>synchronize</code>, <code>reopened</code> and <code>edited</code> event can
+        run the commit policy inside it instead. Set <code>commit_policy = "embedded"</code> under <code>[ci]</code>
+        and add a full-history checkout plus a <code>sarj-ai/repo-standards/pull-request-commits</code> step with
+        <code>status-context: commit-policy-v1</code> and a token with <code>statuses: write</code> to that job. The
+        step posts the verdict as the <code>commit-policy-v1</code> commit status on every run, so branch rules that
+        require that context need no change. <code>commit-policy.yml</code> then answers only merge groups, with a
+        skipped check and no runner. <code>doctor</code> reports drift until a workflow carries the step. The status
+        needs a write token, so repositories that accept fork pull requests keep the standalone workflow.
+      </p>
+    </div>
+  </section>
+
   <section class="command-block" aria-labelledby="python-type-check">
     <div>
       <h2 id="python-type-check">Repository-owned Python type checking</h2>
