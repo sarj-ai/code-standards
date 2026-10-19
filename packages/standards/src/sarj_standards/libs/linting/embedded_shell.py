@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
+from functools import partial
 from pathlib import Path
 import re
 import shlex
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- catches bounded native analyzer failures.
+import threading
 from typing import TYPE_CHECKING, Final
 
 from sarj_python_lint.interpreter_argv import UnprovableCommandError, classify_interpreter, unwrap_command
@@ -36,7 +39,7 @@ from .shell_policy import ACTION_EXCLUSIONS, SHELLCHECK_ARGS
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
 
 _SHELLS: Final = {"bash": "bash", "sh": "posix", "dash": "posix", "ksh": "mksh", "zsh": "zsh"}
@@ -119,10 +122,25 @@ def _checked_source(candidate: ShellBlock) -> str:
     )
 
 
-def analyze_sources(*, root: Path, paths: Sequence[str], selected: frozenset[str]) -> tuple[ToolReport, ...]:
+@dataclass(frozen=True, slots=True)
+class _ShellFile:
+    path: Path
+    active: frozenset[str]
+    candidates: tuple[ShellBlock, ...]
+    document: SourceDocument
+
+
+def analyze_sources(
+    *,
+    root: Path,
+    paths: Sequence[str],
+    selected: frozenset[str],
+    executables: AttestedExecutables | None = None,
+) -> tuple[ToolReport, ...]:
     root = root.resolve()
     policy = Policy.from_manifest(root, manifest.load(root))
-    reports: list[ToolReport] = []
+    executable = executables or AttestedExecutables(partial(_executable, root=root))
+    work: list[_ShellFile | tuple[ToolReport, ...]] = []
     for raw in sorted(set(paths)):
         path = Path(raw)
         path = (path if path.is_absolute() else root / path).resolve()
@@ -136,13 +154,41 @@ def analyze_sources(*, root: Path, paths: Sequence[str], selected: frozenset[str
             if not candidates:
                 continue
         except (OSError, UnicodeError, ValueError, UnprovableCommandError) as error:
-            reports.extend(_failed(name, error, root, path) for name in sorted(active))
+            work.append(tuple(_failed(name, error, root, path) for name in sorted(active)))
             continue
-        if "shellcheck" in active and not _dockerfile(path):
-            reports.append(_shellcheck_report(root, path, candidates, document))
-        if "shfmt" in active:
-            reports.append(_format_report(root, path, candidates, document, policy))
-    return tuple(reports)
+        work.append(_ShellFile(path, active, candidates, document))
+
+    def analyze(item: _ShellFile | tuple[ToolReport, ...]) -> tuple[ToolReport, ...]:
+        if not isinstance(item, _ShellFile):
+            return item
+        reports: list[ToolReport] = []
+        if "shellcheck" in item.active and not _dockerfile(item.path):
+            reports.append(_shellcheck_report(root, item.path, item.candidates, item.document, executable=executable))
+        if "shfmt" in item.active:
+            reports.append(
+                _format_report(root, item.path, item.candidates, item.document, policy=policy, executable=executable)
+            )
+        return tuple(reports)
+
+    # Every block is a separate short-lived analyzer process; overlapping files
+    # hides process start-up latency while map() keeps the serial report order.
+    with ThreadPoolExecutor(thread_name_prefix="embedded-shell") as workers:
+        return tuple(report for reports in workers.map(analyze, work) for report in reports)
+
+
+class AttestedExecutables:
+    # Attest each tool once per analysis. Failures stay uncached, so every file
+    # still reports its own provisioning issue exactly as the serial loop did.
+    def __init__(self, resolve: Callable[[str], Path]) -> None:
+        self._resolve = resolve
+        self._resolved: dict[str, Path] = {}
+        self._lock = threading.Lock()
+
+    def __call__(self, name: str) -> Path:
+        with self._lock:
+            if name not in self._resolved:
+                self._resolved[name] = self._resolve(name)
+            return self._resolved[name]
 
 
 def _selected_analyzers(root: Path, path: Path, selected: frozenset[str], policy: Policy) -> frozenset[str]:
@@ -167,13 +213,18 @@ def _failed(name: str, error: BaseException, root: Path, path: Path) -> ToolRepo
 
 
 def _shellcheck_report(
-    root: Path, path: Path, candidates: tuple[ShellBlock, ...], document: SourceDocument
+    root: Path,
+    path: Path,
+    candidates: tuple[ShellBlock, ...],
+    document: SourceDocument,
+    *,
+    executable: Callable[[str], Path],
 ) -> ToolReport:
     diagnostics: list[Diagnostic] = []
     try:
-        executable = _executable("shellcheck", root)
+        shellcheck = executable("shellcheck")
         for candidate in candidates:
-            diagnostics.extend(_check_block(root, path, candidate, document, executable))
+            diagnostics.extend(_check_block(root, path, candidate, document, shellcheck))
     except (OSError, UnicodeError, ValueError, subprocess.SubprocessError) as error:
         return _failed("shellcheck", error, root, path)
     return ToolReport(
@@ -265,13 +316,19 @@ def _map_position(position: Position, block: ExecutionBlock, document: SourceDoc
 
 
 def _format_report(
-    root: Path, path: Path, candidates: tuple[ShellBlock, ...], document: SourceDocument, policy: Policy
+    root: Path,
+    path: Path,
+    candidates: tuple[ShellBlock, ...],
+    document: SourceDocument,
+    *,
+    policy: Policy,
+    executable: Callable[[str], Path],
 ) -> ToolReport:
     diagnostics: list[Diagnostic] = []
     try:
-        executable = _executable("shfmt", root)
+        shfmt = executable("shfmt")
         for candidate in candidates:
-            finding = _format_block(root, path, candidate, document, executable)
+            finding = _format_block(root, path, candidate, document, shfmt)
             if finding is not None and policy.allows_rule(finding):
                 diagnostics.append(finding)
     except (OSError, UnicodeError, ValueError, subprocess.SubprocessError) as error:
@@ -281,7 +338,7 @@ def _format_report(
     )
 
 
-def _executable(name: str, root: Path) -> Path:
+def _executable(name: str, *, root: Path) -> Path:
     tool = checked_tool(name, root=root)
     if tool.executable is None:
         message = f"{name} has no attested executable"

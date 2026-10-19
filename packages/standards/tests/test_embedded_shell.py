@@ -6,7 +6,7 @@ import pytest
 
 from sarj_standards.libs.adoption import lifecycle, manifest
 from sarj_standards.libs.diagnostics import Completion, TrustMode
-from sarj_standards.libs.linting import devops_source, embedded_shell, shell_format
+from sarj_standards.libs.linting import devops_source, devops_tools, embedded_shell, shell_format
 from sarj_standards.libs.linting.devops_programs import execution_blocks
 from sarj_standards.libs.linting.external import analyze_external
 from sarj_standards.libs.rules import EvaluationCase, ExpectedOutcome, Language, RuleProblem
@@ -364,3 +364,49 @@ def test_projected_shell_analysis_accepts_a_root_directory_alias(tmp_path: Path)
     assert any(
         item.rule_id == "SC2086" and item.location.path == ".github/workflows/checks.yml" for item in report.diagnostics
     )
+
+
+def _attested(root: Path, calls: list[str], *, failing: str | None = None) -> embedded_shell.AttestedExecutables:
+    def resolve(name: str) -> Path:
+        calls.append(name)
+        if name == failing:
+            message = f"{name} 0.0.0 is installed; exact version is required"
+            raise devops_tools.NativeToolError(message)
+        executable = devops_tools.checked_tool(name, root=root).executable
+        assert executable is not None
+        return executable
+
+    return embedded_shell.AttestedExecutables(resolve)
+
+
+def test_concurrent_files_keep_sorted_report_order_and_attest_each_tool_once(tmp_path: Path) -> None:
+    names = [f".github/workflows/check-{index:02}.yml" for index in range(12)]
+    paths = [str(_path(tmp_path, name, _workflow("echo $value\n"))) for name in reversed(names)]
+    calls: list[str] = []
+    reports = embedded_shell.analyze_sources(
+        root=tmp_path,
+        paths=paths,
+        selected=frozenset({"shellcheck", "shfmt"}),
+        executables=_attested(tmp_path, calls),
+    )
+    assert sorted(calls) == ["shellcheck", "shfmt"]
+    shellcheck = [report for report in reports if report.name == "shellcheck"]
+    assert [report.diagnostics[0].location.path for report in shellcheck] == names
+    assert [report.name for report in reports] == ["shellcheck", "shfmt"] * len(names)
+
+
+def test_concurrent_attestation_failure_reports_every_file(tmp_path: Path) -> None:
+    paths = [str(_path(tmp_path, f".github/workflows/check-{index}.yml", _workflow("echo ok\n"))) for index in range(6)]
+    calls: list[str] = []
+    reports = embedded_shell.analyze_sources(
+        root=tmp_path,
+        paths=paths,
+        selected=frozenset({"shellcheck", "shfmt"}),
+        executables=_attested(tmp_path, calls, failing="shfmt"),
+    )
+    assert calls.count("shellcheck") == 1
+    assert calls.count("shfmt") == len(paths)
+    assert [report.completion for report in reports if report.name == "shellcheck"] == [Completion.COMPLETE] * 6
+    failed = [report for report in reports if report.name == "shfmt"]
+    assert [report.completion for report in failed] == [Completion.FAILED] * 6
+    assert all("exact version is required" in report.issues[0].message for report in failed)
