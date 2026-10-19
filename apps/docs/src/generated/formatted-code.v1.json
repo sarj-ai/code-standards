@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "catalogSha256": "00d4e6c17086bee0c10337ce59ceabc3534383c75946b2f288b53df546e7d243",
-  "cliSha256": "d33e341f8156d7b384f49c42798ab67c731f10249f255b8a8c2b9317436e4e45",
+  "cliSha256": "7754a9c8ae2a32ca0c31b312e1276588e53a0cfcc7706ac5343094750cd7cf60",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -15765,7 +15765,7 @@
       "doctor": "code-standards doctor [-h] [--format OUTPUT_FORMAT] [--repair] [--no-install]\n",
       "setup": "code-standards setup [-h] [--hooks HOOKS] [--python-dest PYTHON_DEST] [--typescript-dest TYPESCRIPT_DEST] [--swift-dest SWIFT_DEST] [--kotlin-dest KOTLIN_DEST] [--dry-run] [--force] [--no-install] [--tools-only] [--commit-policy-only] [--config ONLY ...] [--enable-repository-rule ENABLE_REPOSITORY_RULE ...]\n",
       "analyze": "code-standards analyze [-h] [--external] [--prepared-only] [--trust-repository-code] [--prepared-devops PREPARED_DEVOPS ...] [--prepared-target PREPARED_TARGET ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [FILES ...]\n",
-      "check": "code-standards check [-h] [--trust-repository-code] [--jobs JOBS] [--skip-python-type-check] [--staged] [--rule SELECTED_RULES ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
+      "check": "code-standards check [-h] [--trust-repository-code] [--jobs JOBS] [--skip-python-type-check] [--skip-eslint] [--staged] [--rule SELECTED_RULES ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
       "validate-slack-automations": "code-standards validate-slack-automations [-h] PATH\n",
       "observe": "code-standards observe [-h] [--rule SELECTED_RULES ...] [--test-value] [--base BASE] [--format OUTPUT_FORMAT] [--output OUTPUT] [--trust-repository-code] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
       "fix": "code-standards fix [-h] [--staged] [FILES ...]\n",

@@ -79,6 +79,11 @@ def test_check_runs_python_type_checking_unless_skipped() -> None:
     assert _parse(("check", "--skip-python-type-check"))["python_type_check"] is False
 
 
+def test_check_runs_eslint_unless_skipped() -> None:
+    assert _parse(("check",))["eslint"] is True
+    assert _parse(("check", "--skip-eslint"))["eslint"] is False
+
+
 def test_promote_error_selector_is_typed_at_the_parser_boundary() -> None:
     args = _parse(("maintain", "rules", "promote-error", "python:no-print"))
 

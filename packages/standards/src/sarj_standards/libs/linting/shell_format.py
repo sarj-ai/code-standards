@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from io import StringIO
 from itertools import zip_longest
 from pathlib import Path
@@ -125,13 +126,15 @@ def _format_diagnostics(root: Path, sources: tuple[tuple[Path, str, str], ...]) 
     if not sources:
         return []
     executable = _executable(root)
-    diagnostics: list[Diagnostic] = []
-    for path, source, dialect in sources:
+
+    def diagnose(item: tuple[Path, str, str]) -> Diagnostic | None:
+        path, source, dialect = item
         relative = path.relative_to(root).as_posix()
         formatted = format_source(source, dialect=dialect, filename=relative, executable=executable, root=root)
-        if formatted != source:
-            diagnostics.append(format_diagnostic(path=relative, source=source, formatted=formatted))
-    return diagnostics
+        return None if formatted == source else format_diagnostic(path=relative, source=source, formatted=formatted)
+
+    with ThreadPoolExecutor(thread_name_prefix="shfmt") as workers:
+        return [diagnostic for diagnostic in workers.map(diagnose, sources) if diagnostic is not None]
 
 
 def format_diagnostic(*, path: str, source: str, formatted: str, line: int = 0) -> Diagnostic:
