@@ -13,6 +13,7 @@ import node from "eslint-plugin-n";
 import perfectionist from "eslint-plugin-perfectionist";
 import promise from "eslint-plugin-promise";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
+import sonarjs from "eslint-plugin-sonarjs";
 import betterTailwindcss from "eslint-plugin-better-tailwindcss";
 import { plugin as shadcn, project as shadcnProject } from "@shadcn/lint";
 import jsdoc from "eslint-plugin-jsdoc";
@@ -83,6 +84,9 @@ const UNTYPED_RULE_OVERRIDES = Object.fromEntries(
     .filter(([, rule]) => rule.meta?.docs?.requiresTypeChecking === true)
     .map(([name]) => [`@typescript-eslint/${name}`, "off"]),
 );
+// S2301 needs the compiler's parameter type, including inferred boolean defaults
+// and aliases. Keep syntax-only configuration files independent of a TS project.
+UNTYPED_RULE_OVERRIDES["sonarjs/no-selector-parameter"] = "off";
 const UNTYPED_DYNAMIC_EXECUTION_RULES = {
   "no-implied-eval": "error",
   "no-new-func": "error",
@@ -194,6 +198,9 @@ const ESLINT_CONCISION_ADVISORY_RULES = {
 const ESLINT_CORRECTNESS_ADVISORY_RULES = {
   "no-constructor-return": "warn",
   "no-unreachable-loop": "warn",
+  // An unparenthesized assignment can be an accidental comparison. Explicitly
+  // grouped assignments, including lazy memoization with ??=, remain allowed.
+  "no-return-assign": ["warn", "except-parens"],
 };
 
 // Unicorn ships a broad rule set. The enabled subset below was selected by
@@ -735,6 +742,7 @@ export function createConfig(options = {}) {
       perfectionist,
       promise,
       "simple-import-sort": simpleImportSort,
+      sonarjs,
       jsdoc,
       shadcn: scopedShadcn,
       "@sarj": sarj,
@@ -1343,6 +1351,10 @@ export function createConfig(options = {}) {
       eqeqeq: ["error", "always", { null: "ignore" }],
       "no-await-in-loop": "error",
       "no-param-reassign": "error",
+      // A boolean that selects between operations hides intent at the call site.
+      // This upstream advisory preserves boolean data and named options. It is
+      // deliberately narrower than banning every boolean in a signature.
+      "sonarjs/no-selector-parameter": "warn",
       "array-callback-return": "error",
       "no-fallthrough": "error",
       "no-console": ["error", { allow: ["warn", "error"] }],
@@ -1642,6 +1654,10 @@ export function createConfig(options = {}) {
       // This rule has no JSX exception and would undo the async-handler policy.
       // no-misused-promises still checks non-JSX promise callback boundaries.
       "@typescript-eslint/strict-void-return": "off",
+      // S2301 exempts inline callbacks but reports the same required boolean
+      // contract when a named handler is passed to a component. Keep JSX files
+      // exempt until upstream can establish those references as callbacks.
+      "sonarjs/no-selector-parameter": "off",
     },
   },
   // React component IDENTIFIERS must be PascalCase for JSX to distinguish them

@@ -52,6 +52,7 @@ _DETEKT_RULE_SETS: Final = frozenset(
     }
 )
 
+type TypeScriptBuild = Literal["required", "prepared"]
 type ProfileName = Literal["application", "standard"]
 type ProviderEngine = Literal[
     "checkov",
@@ -215,13 +216,14 @@ def parse_enabled_ruff_rules(settings: str) -> frozenset[str]:
     raise ValueError(msg)
 
 
-def build(root: Path) -> _CatalogArtifact:
+def build(root: Path, *, typescript_build: TypeScriptBuild = "required") -> _CatalogArtifact:
     resolved = root.resolve()
     node = _required_tool("node")
-    npm = _required_tool("npm")
     ruff = _required_tool("ruff")
     deptry = _required_tool("deptry")
-    _run((npm, "run", "build", "--silent"), cwd=resolved / "packages/typescript")
+    if typescript_build == "required":
+        npm = _required_tool("npm")
+        _run((npm, "run", "build", "--silent"), cwd=resolved / "packages/typescript")
     eslint = _eslint_projection(resolved, node)
     react_doctor = _react_doctor_projection(resolved, node)
     ruff_projection = _ruff_projection(resolved, ruff)
@@ -294,15 +296,15 @@ def _required_tool(name: str) -> str:
     return executable
 
 
-def render(root: Path) -> str:
-    payload = build(root).model_dump(mode="json", by_alias=True)
+def render(root: Path, *, typescript_build: TypeScriptBuild = "required") -> str:
+    payload = build(root, typescript_build=typescript_build).model_dump(mode="json", by_alias=True)
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True) + "\n"
 
 
-def sync(root: Path, *, check: bool) -> SyncResult:
+def sync(root: Path, *, check: bool, typescript_build: TypeScriptBuild = "required") -> SyncResult:
     resolved = root.resolve()
     destination = resolved / _DESTINATION
-    expected = render(resolved)
+    expected = render(resolved, typescript_build=typescript_build)
     current = destination.read_text(encoding="utf-8") if destination.is_file() else ""
     if current == expected:
         return SyncResult(0, "ok: third-party-rules.v1.json matches resolved tool policy")
@@ -323,11 +325,15 @@ def main() -> int:
         root: Annotated[Path, typer.Option("--root")] = Path(),
         check: Annotated[bool, typer.Option("--check")] = False,
         synchronize: Annotated[bool, typer.Option("--sync")] = False,
+        typescript_built: Annotated[
+            bool, typer.Option("--typescript-built", help="reuse the TypeScript build completed by the caller")
+        ] = False,
     ) -> None:
         if check == synchronize:
             msg = "choose exactly one of --check or --sync"
             raise typer.BadParameter(msg)
-        result = sync(root, check=check)
+        typescript_build: TypeScriptBuild = "prepared" if typescript_built else "required"
+        result = sync(root, check=check, typescript_build=typescript_build)
         sys.stdout.write(f"{result.message}\n")
         raise typer.Exit(result.status)
 
