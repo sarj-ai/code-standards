@@ -70,6 +70,9 @@ _ERROR_FIRST_APPROVALS: Final = frozenset(
         # User-approved architecture policy: literal/import-proven interpreter source
         # bypasses the requested independently linted file/module boundary.
         "python:no-interpreter-source-arguments",
+        # User-approved security policy: a FastAPI route that declares no access decision is
+        # reachable by every caller; the motivating consumer migrated to zero findings first.
+        "python:fastapi-route-declares-security",
     }
 )
 
