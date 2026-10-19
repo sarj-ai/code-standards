@@ -17,8 +17,13 @@ if TYPE_CHECKING:
 _DATACLASS_SOURCES = frozenset({"dataclasses"})
 _MAX_EXPANSION = 128
 _MIN_VARIANTS = 2
+_DISCRIMINATOR_SOURCES = frozenset({"pydantic", "pydantic.types"})
+_FIELD_SOURCES = frozenset({"pydantic", "pydantic.fields"})
+_NON_LITERAL_BUILTINS = frozenset(
+    {"str", "bytes", "int", "bool", "float", "complex", "object", "list", "dict", "tuple", "set", "frozenset", "type"}
+)
 
-type _Tag = str | bytes | int | None
+type _Tag = tuple[str, str | bytes | int | None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,7 +112,7 @@ class _DataUnions:
         return findings
 
     def _untagged_union(self, value: ast.expr) -> bool:
-        if not _union_expression(value, self.context):
+        if not _union_expression(value, self.context) or self._explicit_discriminator(value):
             return False
         variants = self._variants(value)
         if variants is None or len(variants) < _MIN_VARIANTS:
@@ -119,6 +124,57 @@ class _DataUnions:
                 return False
             records.append(record)
         return not self._has_discriminator(records, _Budget())
+
+    def _explicit_discriminator(self, node: ast.expr) -> bool:
+        pending = [_Expansion(node)]
+        covered = False
+        for _ in range(_MAX_EXPANSION):
+            if not pending:
+                return covered
+            item = pending.pop()
+            parsed = _string_expression(item.node)
+            if parsed is None:
+                return True
+            node = parsed
+            if isinstance(node, ast.Name) and node.id in self.aliases:
+                if node.id in item.aliases:
+                    return True
+                pending.append(_Expansion(self.aliases[node.id], item.aliases | {node.id}))
+                continue
+            if isinstance(node, ast.Constant) and node.value is None:
+                continue
+            if self._discriminated_annotation(node):
+                covered = True
+                continue
+            children = self._union_members(node)
+            if children is None:
+                return False
+            pending.extend(_Expansion(child, item.aliases) for child in children)
+        return True
+
+    def _discriminated_annotation(self, node: ast.expr) -> bool:
+        return (
+            isinstance(node, ast.Subscript)
+            and self._typing_symbol(node.value) == "Annotated"
+            and isinstance(node.slice, ast.Tuple)
+            and any(self._discriminator_metadata(item) for item in node.slice.elts[1:])
+        )
+
+    def _discriminator_metadata(self, node: ast.expr) -> bool:
+        if not isinstance(node, ast.Call) or not _untouched(node.func, self.provenance):
+            return False
+        if self.context.module_imports.resolves(node.func, sources=_DISCRIMINATOR_SOURCES, symbol="Discriminator"):
+            discriminator = (
+                node.args[0]
+                if node.args
+                else next((keyword.value for keyword in node.keywords if keyword.arg == "discriminator"), None)
+            )
+            return discriminator is not None and not (
+                isinstance(discriminator, ast.Constant) and isinstance(discriminator.value, str)
+            )
+        return self.context.module_imports.resolves(node.func, sources=_FIELD_SOURCES, symbol="Field") and any(
+            keyword.arg == "discriminator" and self._discriminator_metadata(keyword.value) for keyword in node.keywords
+        )
 
     def _typing_symbol(self, node: ast.expr) -> str | None:
         if not _untouched(node, self.provenance):
@@ -184,7 +240,7 @@ class _DataUnions:
             return True
         budget.remaining -= 1
         common = set(records[0].fields).intersection(*(record.fields for record in records[1:]))
-        common.difference_update({name for name in common if name.startswith("__")})
+        common.difference_update({name for name in common if name.startswith("__") and not name.endswith("__")})
         uncertain = False
         for name in sorted(common):
             domains = [self._field_domain(record.fields[name], required=record.required) for record in records]
@@ -196,27 +252,29 @@ class _DataUnions:
 
     def _field_domain(self, field: ast.AnnAssign, *, required: bool) -> _Domain:
         node = field.annotation
+        aliases: set[str] = set()
         for _ in range(_MAX_EXPANSION):
             parsed = _string_expression(node)
             if parsed is None:
                 return _Domain(opaque=True)
             node = parsed
+            if isinstance(node, ast.Name) and node.id in self.aliases:
+                if node.id in aliases:
+                    return _Domain(opaque=True)
+                aliases.add(node.id)
+                node = self.aliases[node.id]
+                continue
             if not isinstance(node, ast.Subscript):
                 break
             symbol = self._typing_symbol(node.value)
-            if symbol in {"Required", "NotRequired"}:
-                required = symbol == "Required"
-                node = node.slice
-            elif symbol == "ClassVar":
-                if field.value is None:
-                    return _Domain()
-                node = node.slice
-            elif symbol == "ReadOnly":
-                node = node.slice
-            elif symbol == "Annotated" and isinstance(node.slice, ast.Tuple) and node.slice.elts:
-                node = node.slice.elts[0]
-            else:
+            if symbol == "ClassVar" and field.value is None:
+                return _Domain()
+            wrapped = _wrapped_annotation(node, symbol, required=required)
+            if wrapped is None:
                 break
+            node, required = wrapped
+        else:
+            return _Domain(opaque=True)
         return self._literal_domain(node) if required else _Domain()
 
     def _literal_domain(self, expression: ast.expr) -> _Domain:
@@ -226,24 +284,32 @@ class _DataUnions:
         domains = [self._leaf_domain(node) for node in leaves]
         if any(domain.opaque for domain in domains):
             return _Domain(opaque=True)
+        values = frozenset(value for domain in domains for value in domain.values)
         if any(domain.unresolved for domain in domains):
-            return _Domain(unresolved=True)
+            return _Domain(values, unresolved=True)
         if any(not domain.values for domain in domains):
             return _Domain()
-        return _Domain(frozenset(value for domain in domains for value in domain.values))
+        return _Domain(values)
 
     def _leaf_domain(self, node: ast.expr) -> _Domain:
         if isinstance(node, ast.Constant) and node.value is None:
-            return _Domain(frozenset({None}))
-        if isinstance(node, ast.Name) and (
-            node.id in self.classes or self.context.imports.resolved_qualified_name(node) is not None
+            return _Domain(frozenset({_tag(None)}))
+        if isinstance(node, ast.Name | ast.Attribute) and (
+            (isinstance(node, ast.Name) and node.id in self.classes)
+            or self.context.imports.resolved_qualified_name(node) is not None
         ):
             return _Domain(unresolved=True)
-        if not isinstance(node, ast.Subscript):
+        if (
+            isinstance(node, ast.Name)
+            and node.id in _NON_LITERAL_BUILTINS
+            and self.context.imports.builtin_is_unshadowed(node.id)
+        ):
             return _Domain()
+        if not isinstance(node, ast.Subscript):
+            return _Domain(opaque=True)
         symbol = self._typing_symbol(node.value)
         if symbol == "Literal":
-            return _literal_values(node)
+            return self._literal_values(node)
         if symbol is not None or (
             isinstance(node.value, ast.Name)
             and node.value.id in {"list", "dict", "tuple", "set", "frozenset", "type"}
@@ -251,6 +317,50 @@ class _DataUnions:
         ):
             return _Domain()
         return _Domain(opaque=True)
+
+    def _literal_values(self, node: ast.Subscript) -> _Domain:
+        values: set[_Tag] = set()
+        pending = [_Expansion(member) for member in _subscript_members(node)]
+        for _ in range(_MAX_EXPANSION):
+            if not pending:
+                return _Domain(frozenset(values))
+            piece = self._literal_piece(pending.pop())
+            if isinstance(piece, list):
+                pending.extend(piece)
+                continue
+            if piece.opaque:
+                return piece
+            values.update(piece.values)
+        return _Domain(opaque=True)
+
+    def _literal_piece(self, item: _Expansion) -> _Domain | list[_Expansion]:
+        member = item.node
+        if isinstance(member, ast.Name) and member.id in self.aliases:
+            if member.id in item.aliases:
+                return _Domain(opaque=True)
+            parsed = _string_expression(self.aliases[member.id])
+            if parsed is None:
+                return _Domain(opaque=True)
+            return [_Expansion(parsed, item.aliases | {member.id})]
+        if isinstance(member, ast.Subscript):
+            children = (
+                _subscript_members(member)
+                if self._typing_symbol(member.value) == "Literal"
+                else self._union_members(member)
+            )
+            if children is not None:
+                return [_Expansion(child, item.aliases) for child in children]
+        return _literal_value(member)
+
+
+def _wrapped_annotation(node: ast.Subscript, symbol: str | None, *, required: bool) -> tuple[ast.expr, bool] | None:
+    if symbol in {"Required", "NotRequired"}:
+        return node.slice, symbol == "Required"
+    if symbol in {"ClassVar", "ReadOnly", "Final"}:
+        return node.slice, required
+    if symbol == "Annotated" and isinstance(node.slice, ast.Tuple) and node.slice.elts:
+        return node.slice.elts[0], required
+    return None
 
 
 def _record(node: ast.ClassDef, context: PythonFileContext, provenance: ResourceProvenance) -> _Record | None:
@@ -279,8 +389,16 @@ def _record_required(node: ast.ClassDef, context: PythonFileContext, provenance:
         return None
     if any(not _untouched(base, provenance) for base in node.bases):
         return None
-    if node.decorator_list:
-        return _direct_dataclass(node, context, provenance)
+    decorators = [
+        decorator
+        for decorator in node.decorator_list
+        if not (
+            _untouched(decorator, provenance)
+            and context.imports.resolves(decorator, sources=TYPING_SOURCES, symbol="final")
+        )
+    ]
+    if decorators:
+        return _direct_dataclass(node, context, provenance, decorators)
     if len(node.bases) != 1:
         return None
     if context.imports.resolves(node.bases[0], sources=MODEL_SOURCES, symbol="BaseModel"):
@@ -297,10 +415,12 @@ def _record_required(node: ast.ClassDef, context: PythonFileContext, provenance:
     return required
 
 
-def _direct_dataclass(node: ast.ClassDef, context: PythonFileContext, provenance: ResourceProvenance) -> bool | None:
-    if node.bases or node.keywords or len(node.decorator_list) != 1:
+def _direct_dataclass(
+    node: ast.ClassDef, context: PythonFileContext, provenance: ResourceProvenance, decorators: list[ast.expr]
+) -> bool | None:
+    if node.bases or node.keywords or len(decorators) != 1:
         return None
-    decorator = node.decorator_list[0]
+    decorator = decorators[0]
     target = decorator.func if isinstance(decorator, ast.Call) else decorator
     if not _untouched(target, provenance) or not context.imports.resolves(
         target, sources=_DATACLASS_SOURCES, symbol="dataclass"
@@ -309,26 +429,30 @@ def _direct_dataclass(node: ast.ClassDef, context: PythonFileContext, provenance
     return True
 
 
-def _literal_values(node: ast.Subscript) -> _Domain:
-    values: set[_Tag] = set()
-    members = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
-    for member in members:
-        match member:
-            case ast.Constant(value=(str() | bytes() | int()) as value):
-                values.add(value)
-            case ast.Constant(value=None):
-                values.add(None)
-            case ast.UnaryOp(op=op, operand=ast.Constant(value=int() as number)) if (
-                isinstance(op, ast.USub | ast.UAdd) and type(number) is int
-            ):
-                values.add(-number if isinstance(op, ast.USub) else number)
-            case _:
-                return _Domain(opaque=True)
-    return _Domain(frozenset(values))
+def _literal_value(node: ast.expr) -> _Domain:
+    match node:
+        case ast.Constant(value=(str() | bytes() | int()) as value):
+            return _Domain(frozenset({_tag(value)}))
+        case ast.Constant(value=None):
+            return _Domain(frozenset({_tag(None)}))
+        case ast.UnaryOp(op=op, operand=ast.Constant(value=int() as number)) if (
+            isinstance(op, ast.USub | ast.UAdd) and type(number) is int
+        ):
+            return _Domain(frozenset({_tag(-number if isinstance(op, ast.USub) else number)}))
+        case _:
+            return _Domain(opaque=True)
+
+
+def _subscript_members(node: ast.Subscript) -> tuple[ast.expr, ...]:
+    return tuple(node.slice.elts) if isinstance(node.slice, ast.Tuple) else (node.slice,)
+
+
+def _tag(value: str | bytes | int | None) -> _Tag:
+    return type(value).__name__, value
 
 
 def _tag_groups(records: list[_Record], domains: list[_Domain]) -> list[list[_Record]]:
-    if any(not domain.values or domain.opaque for domain in domains):
+    if any(not domain.values or domain.opaque or domain.unresolved for domain in domains):
         return []
     groups: dict[_Tag, list[_Record]] = {}
     for record, domain in zip(records, domains, strict=True):
