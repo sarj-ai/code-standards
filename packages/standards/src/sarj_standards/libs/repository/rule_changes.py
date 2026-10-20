@@ -70,6 +70,9 @@ _ERROR_FIRST_APPROVALS: Final = frozenset(
         # User-approved architecture policy: literal/import-proven interpreter source
         # bypasses the requested independently linted file/module boundary.
         "python:no-interpreter-source-arguments",
+        # User-approved blocking suppression integrity, qualified with native
+        # checker repros, labeled cases, and pinned-corpus/performance evidence.
+        "python:no-blanket-suppression",
     }
 )
 

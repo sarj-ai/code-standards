@@ -382,12 +382,12 @@ jobs:
           version: '0.13.0'
       - run: npm ci --ignore-scripts --no-audit --no-fund
         if: needs.changes.outputs.typescript != 'false'
+      - run: npm run build
+        if: needs.changes.outputs.typescript != 'false'
       # Static analysis uses the canonical development runtime. Build, tests,
       # and packed-artifact verification still exercise each matrix runtime.
       - if: needs.changes.outputs.typescript != 'false' && matrix.node == '24'
         run: npm run lint
-      - run: npm run build
-        if: needs.changes.outputs.typescript != 'false'
       - if: needs.changes.outputs.typescript != 'false' && matrix.node == '24'
         run: npm run typecheck
       - run: npm test
@@ -668,6 +668,9 @@ jobs:
         run: uv sync --locked --dev
       - if: needs.changes.outputs.reviewed-wheels != 'true'
         run: npm --prefix ../typescript ci --ignore-scripts --no-audit --no-fund
+      - name: Build the plugin for native ESLint integration tests
+        if: needs.changes.outputs.reviewed-wheels != 'true'
+        run: npm --prefix ../typescript run build
       - name: Install pinned formatter for generated-manifest integration tests
         if: needs.changes.outputs.reviewed-wheels != 'true'
         run: bash ../../.github/scripts/ci-install-taplo.sh
@@ -821,6 +824,8 @@ jobs:
         run: uv sync --project packages/standards --locked --dev --python 3.14
       - name: Install the rule authoring parser
         run: npm --prefix packages/typescript ci --ignore-scripts --no-audit --no-fund
+      - name: Build the plugin for native ESLint integration tests
+        run: npm --prefix packages/typescript run build
       - name: Install the manifest formatter
         run: bash .github/scripts/ci-install-taplo.sh
       - name: Install the pinned native tool bootstrap

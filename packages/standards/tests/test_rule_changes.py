@@ -419,6 +419,7 @@ def test_cli_rejects_missing_revision(repository: Path, capsys: pytest.CaptureFi
         ("python", "no-excessive-cognitive-complexity", "off", 1),
         ("sql", "no-excessive-cognitive-complexity", "error", 1),
         ("python", "no-excessive-cognitive-complexity-extra", "error", 1),
+        ("python", "no-blanket-suppression", "off", 1),
     ],
 )
 def test_error_first_approval_is_exact_and_does_not_allow_disabled_rules(
@@ -456,6 +457,7 @@ def test_error_first_approval_is_exact_and_does_not_allow_disabled_rules(
         "iac:no-project-basic-privilege",
         "text:cloudbuild-contract",
         "python:no-interpreter-source-arguments",
+        "python:no-blanket-suppression",
     ],
 )
 def test_explicit_devops_error_first_admission_preserves_exact_selector_scope(
