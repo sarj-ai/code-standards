@@ -298,5 +298,6 @@
   "SARJ518": "prefer-psycopg-executemany",
   "SARJ519": "no-discarded-validation-result",
   "SARJ520": "no-mutating-container-transform",
-  "SARJ521": "require-pydantic-for-mapping-shape"
+  "SARJ521": "require-pydantic-for-mapping-shape",
+  "SARJ522": "no-dual-shape-model-field-reader"
 }

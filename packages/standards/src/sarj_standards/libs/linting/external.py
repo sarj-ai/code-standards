@@ -6,6 +6,7 @@ from dataclasses import dataclass, replace
 from datetime import timedelta
 from enum import StrEnum
 from functools import partial
+import io
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -18,6 +19,7 @@ import sys
 import tempfile
 import threading
 import time
+import tokenize
 import tomllib
 from typing import TYPE_CHECKING, ClassVar, Final, Literal, NamedTuple, Protocol
 import zipfile
@@ -1922,19 +1924,136 @@ def _invoke_ruff_projects(
     reports: list[ToolReport] = []
     for project, config, scoped_files in _group_ruff_projects(files, root):
         project_id = None if project == root else project.relative_to(root).as_posix()
-        reports.append(
-            _invoke(
+        report = _invoke(
+            "ruff",
+            _ruff_argv(scoped_files, config=config),
+            cwd=project,
+            root=root,
+            runner=runner,
+            parser=parse_ruff,
+            invocation_id=project_id,
+            file_count=len(scoped_files),
+        )
+        cast_files = _ruff_cast_files(scoped_files)
+        if cast_files:
+            cast_report = _invoke(
                 "ruff",
-                _ruff_argv(scoped_files, config=config),
+                _ruff_cast_argv(cast_files),
                 cwd=project,
                 root=root,
                 runner=runner,
                 parser=parse_ruff,
                 invocation_id=project_id,
-                file_count=len(scoped_files),
+                file_count=len(cast_files),
             )
-        )
+            cast_report = _with_indirect_cast_findings(cast_report, cast_files, root=root)
+            report = _merge_ruff_reports(report, cast_report)
+        reports.append(report)
     return tuple(reports)
+
+
+def _ruff_cast_files(files: Sequence[str]) -> tuple[str, ...]:
+    selected: list[str] = []
+    for raw_path in files:
+        try:
+            # This is only a cheap prefilter; native Ruff owns imports, aliases and scopes.
+            source = Path(raw_path).read_bytes()
+            if source.isascii() and b"cast" not in source and b"typing" not in source:
+                continue
+        except OSError:
+            pass
+        selected.append(raw_path)
+    return tuple(selected)
+
+
+def _merge_ruff_reports(report: ToolReport, cast_report: ToolReport) -> ToolReport:
+    complete = report.completion is cast_report.completion is Completion.COMPLETE
+    protected = tuple(
+        replace(finding, tags=(*finding.tags, "non-baselineable", "required-cast-policy"))
+        if finding.rule_id in {"TID251", "banned-api"}
+        else finding
+        for finding in cast_report.diagnostics
+    )
+    protected_starts = {_ruff_finding_start(finding) for finding in protected}
+    findings = {
+        (finding.code, finding.location): finding
+        for finding in (
+            *(
+                finding
+                for finding in report.diagnostics
+                if finding.rule_id not in {"B009", "getattr-with-constant", "F403", "wildcard-import"}
+                or _ruff_finding_start(finding) is None
+                or _ruff_finding_start(finding) not in protected_starts
+            ),
+            *protected,
+        )
+    }
+    return replace(
+        report,
+        completion=Completion.COMPLETE if complete else Completion.FAILED,
+        diagnostics=tuple(findings.values()),
+        issues=tuple(dict.fromkeys((*report.issues, *cast_report.issues))),
+        duration_ms=(report.duration_ms or 0) + (cast_report.duration_ms or 0),
+    )
+
+
+def _ruff_finding_start(finding: Diagnostic) -> tuple[str, int, int] | None:
+    region = finding.location.region
+    return None if region is None else (finding.location.path, region.start.line, region.start.character)
+
+
+def _with_indirect_cast_findings(report: ToolReport, files: Sequence[str], *, root: Path) -> ToolReport:
+    if report.completion is not Completion.COMPLETE:
+        return report
+    try:
+        findings = _indirect_cast_findings(files, root=root)
+    except (OSError, SyntaxError, UnicodeError, ValueError, RecursionError) as exc:
+        issue = ExecutionIssue("ruff", "source-proof-failure", redact_message(str(exc), root))
+        return replace(report, completion=Completion.FAILED, issues=(*report.issues, issue))
+    return replace(report, diagnostics=(*report.diagnostics, *findings))
+
+
+def _indirect_cast_findings(files: Sequence[str], *, root: Path) -> tuple[Diagnostic, ...]:
+    from sarj_python_lint.cast_access import indirect_typing_cast_accesses  # ruff: ignore[import-outside-top-level] -- only Python cast-policy inputs need source facts.
+
+    findings: list[Diagnostic] = []
+    for raw_path in files:
+        path = Path(raw_path)
+        raw = path.read_bytes()
+        encoding, _ = tokenize.detect_encoding(io.BytesIO(raw).readline)
+        source = raw.decode(encoding)
+        document = SourceDocument(path, source)
+        for access in indirect_typing_cast_accesses(path, source):
+            node = access.node
+            start = document.byte_point(line=node.lineno, column=node.col_offset + 1)
+            end = document.byte_point(
+                line=node.end_lineno or node.lineno,
+                column=(node.end_col_offset if node.end_col_offset is not None else node.col_offset + 1) + 1,
+            )
+            if start is None or end is None:
+                msg = "indirect cast access did not have a valid source region"
+                raise ValueError(msg)
+            if encoding != "utf-8":
+                utf8 = source.encode("utf-8")
+                start = replace(start, byte_offset=len(utf8[: start.byte_offset].decode("utf-8").encode(encoding)))
+                end = replace(end, byte_offset=len(utf8[: end.byte_offset].decode("utf-8").encode(encoding)))
+            message = (
+                f"Wildcard import also imports prohibited `{access.qualified_api}`; import the required names explicitly."
+                if access.kind == "wildcard"
+                else f"`{access.qualified_api}` is banned even through a literal getattr lookup; use explicit narrowing or a typed contract."
+            )
+            findings.append(
+                Diagnostic(
+                    "banned-api",
+                    message,
+                    Severity.ERROR,
+                    "ruff",
+                    Location(_relative(path, root), region=Region(start, end)),
+                    rule_id="banned-api",
+                    notes=("Standards source proof supplements native Ruff resolution for this indirect access.",),
+                )
+            )
+    return tuple(findings)
 
 
 def _invoke_deptry_projects(
@@ -3187,6 +3306,20 @@ def _react_doctor_location(
 def _ruff_argv(files: Sequence[str], *, config: Path | None = None) -> tuple[str, ...]:
     config_args = () if config is None else ("--config", str(config))
     return ("ruff", "check", "--output-format", "json", *config_args, "--", *files)
+
+
+def _ruff_cast_argv(files: Sequence[str]) -> tuple[str, ...]:
+    return (
+        "ruff",
+        "check",
+        "--output-format",
+        "json",
+        "--ignore-noqa",
+        "--config",
+        str(_PACKAGED_MOBILE_CONFIGS / "ruff.cast.toml"),
+        "--",
+        *files,
+    )
 
 
 def _deptry_argv(project: Path, scoped_files: Sequence[str]) -> tuple[str, ...]:

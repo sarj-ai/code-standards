@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/no-dual-shape-model-field-reader",
+      "family": "python",
+      "ruleId": "no-dual-shape-model-field-reader",
+      "state": "complete",
+      "evidence": "Fifty ordered scenario-driven reviews reproduce twelve bypass cases and close all twelve, with each replay and valid-state control recorded in packages/python/benchmarks/cast-model-loophole-audit.json. Fifty-eight model-reader cases preserve raw validators, genuine dynamic reflection, escaped and ambiguous bindings, and Pydantic ClassVar metadata; seventeen source-fact cases prove static cast identity or abstention. Thirty-two native Ruff regressions cover source/config/manifest suppression, aliases, wildcards, literal reflection, Unicode/BOM/CRLF positions, baseline export, precedence and failure reporting. Corrected frozen calibration inspects 3,410 Python files / 35,805,880 bytes across eight sources in fresh processes capped at 250 files, with no execution errors. The two known positives are the incident regression source and a positive seed, not independent unseeded observations; no unexpected candidate warnings were observed. Three fresh-process pairs show 17.5% median overhead against a shipped-rule control. The complete 163-rule native registry is separately paired on 47 deterministically sampled files across the same eight sources, within the 25% budget. Discarded import-path measurements and the stopped full-corpus combined run are explicitly excluded. Private pins and source remain in an owner-readable overlay. Redacted evidence: packages/python/benchmarks/model-field-reader-calibration.json. Canonical verification remains required before merge.",
+      "outcome": "Ship SARJ522 at WARNING without autofix. Normalize known model input and read typed attributes when a closed private accessor erases the field contract, including standard Mapping branches, reordered parameters and stable literal selector aliases. Preserve opaque boundaries, dynamic keys, class metadata and unproved/imported/inherited models. Native Ruff owns direct casts; binding-proven indirect source facts close demonstrated wildcard/reflection gaps. Active cast findings cannot be waived by source comments, consumer Ruff configuration, manifest rule exceptions or diagnostic baselines. New advisory promotion requires a warning release and separate metadata change. Finite calibration and a bounded combined-run performance sample do not establish universal precision, recall or full-corpus combined overhead."
+    },
+    {
       "task": "rule-audit/typescript/no-boolean-selector-parameter",
       "family": "typescript",
       "ruleId": "no-boolean-selector-parameter",
