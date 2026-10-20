@@ -24,8 +24,20 @@ const RULE_TESTER = new RuleTester({
 });
 const PRODUCTION = "json-object-equality.ts";
 
+new RuleTester({ languageOptions: { parser: tsParser } }).run("no-json-stringify-object-equality without type services", rule, {
+  valid: [
+    { name: "excludes syntactically primitive array values", code: 'const same = JSON.stringify([1 as number, -2, `value ${1}`]) === JSON.stringify([1, -2, "value 1"]);' },
+  ],
+  invalid: [
+    { name: "preserves detection for opaque array elements", code: "const same = JSON.stringify([left]) === JSON.stringify([right]);", errors: [{ messageId: "serializedObjectEquality" }] },
+  ],
+});
+
 RULE_TESTER.run("no-json-stringify-object-equality", rule, {
   valid: [
+    { name: "excludes typed primitive array expressions", filename: PRODUCTION, code: "declare const value: number; const same = JSON.stringify([value]) === JSON.stringify([value]);" },
+    { name: "excludes wrapped primitive array elements", filename: PRODUCTION, code: "const same = JSON.stringify([1 as number, -2, `value ${1}`]) === JSON.stringify([1, -2, 'value 1']);" },
+    { name: "excludes nested primitive arrays", filename: PRODUCTION, code: "const same = JSON.stringify([[1, 2]]) === JSON.stringify([[1, 2]]);" },
     { name: "does not infer a serializer destructured from an unknown object", filename: PRODUCTION, code: "const { stringify } = serializer; const same = stringify({a: 1}) === stringify({a: 1});" },
     { name: "does not infer a serializer destructured from shadowed JSON", filename: PRODUCTION, code: "function compare(JSON: Serializer) { const { stringify } = JSON; return stringify({a: 1}) === stringify({a: 1}); }" },
     { name: "does not follow a shadowed alias parameter", filename: PRODUCTION, code: "const { stringify } = JSON; function compare(stringify: Serializer) { return stringify({a: 1}) === stringify({a: 1}); }" },
@@ -54,6 +66,8 @@ RULE_TESTER.run("no-json-stringify-object-equality", rule, {
     { name: "ignores generated files", filename: "generated/compare.ts", code: "const same = JSON.stringify({a: 1}) === JSON.stringify({a: 1});" },
   ],
   invalid: [
+    { name: "reports regular-expression objects inside literal arrays", filename: PRODUCTION, code: "const same = JSON.stringify([/left/]) === JSON.stringify([/right/]);", errors: [{ messageId: "serializedObjectEquality" }] },
+    { name: "reports objects inside nested literal arrays", filename: PRODUCTION, code: "const same = JSON.stringify([[{ a: 1 }]]) === JSON.stringify([[{ a: 1 }]]);", errors: [{ messageId: "serializedObjectEquality" }] },
     { name: "reports stable const destructured native stringify", filename: PRODUCTION, code: "const { stringify } = JSON; const same = stringify({a: 1}) === stringify({a: 1});", errors: [{ messageId: "serializedObjectEquality" }] },
     { name: "reports a renamed native stringify binding", filename: PRODUCTION, code: "const { stringify: serialize } = JSON; const same = serialize({a: 1}) !== serialize({a: 1});", errors: [{ messageId: "serializedObjectEquality" }] },
     { name: "reports a statically computed native destructuring key", filename: PRODUCTION, code: "const { ['stringify']: serialize } = JSON; const same = serialize({a: 1}) === serialize({a: 1});", errors: [{ messageId: "serializedObjectEquality" }] },

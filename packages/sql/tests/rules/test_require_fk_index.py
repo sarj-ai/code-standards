@@ -110,6 +110,38 @@ def test_in_memory_source_is_judged_on_its_own_content() -> None:
     assert len(_check(src)) == 1
 
 
+@pytest.mark.parametrize(
+    ("child", "column", "parent"),
+    [
+        ('"child;archive"', "parent_id", "parent"),
+        ("child", '"parent;id"', "parent"),
+        ("child", '"parent,id"', "parent"),
+        ("child", "parent_id", '"parent;archive"'),
+        ('"child;archive"', '"parent,id"', '"parent;archive"'),
+    ],
+)
+@pytest.mark.parametrize("indexed", [False, True])
+def test_quoted_delimiters_preserve_foreign_key_identity_and_index_coverage(
+    child: str, column: str, parent: str, *, indexed: bool
+) -> None:
+    source = f"SELECT 1;\nCREATE TABLE {child} (\n  {column} INT REFERENCES {parent}(id) ON DELETE CASCADE\n);\n"
+    if indexed:
+        source += f"CREATE INDEX parent_idx ON {child}({column});\n"
+    findings = _check(source)
+    if indexed:
+        assert findings == []
+    else:
+        [finding] = findings
+        assert (finding.line, finding.col) == (3, 3)
+        assert f"`{column}`" in finding.message
+        assert f"`{child}`" in finding.message
+
+
+def test_quoted_delimiters_preserve_primary_key_coverage() -> None:
+    source = 'CREATE TABLE "child;archive" ("parent,id" INT PRIMARY KEY REFERENCES parent(id) ON DELETE CASCADE);'
+    assert _check(source) == []
+
+
 def test_reports_the_line_of_the_fk_it_names() -> None:
     src = """CREATE TABLE membership (
     account_id INT,

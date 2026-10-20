@@ -10,7 +10,7 @@ import { unwrapExpression } from "./_unwrap-expression.js";
 import { staticString } from "./_static-string.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { sqlSingleQuotedRanges, stripSqlNoise } from "./_sql.js";
+import { sqlNoiseInfo, stripSqlNoise } from "./_sql.js";
 
 type MessageIds = "dynamicSql" | "dynamicFragment";
 
@@ -114,8 +114,7 @@ function runtimeInterpolations(
 ): SqlInterpolation[] {
   const parts = template.quasis.map((quasi) => quasi.value.cooked ?? quasi.value.raw);
   const statement = parts.join(RUNTIME_MARKER);
-  const ranges = sqlSingleQuotedRanges(statement);
-  const visible = stripSqlNoise(statement);
+  const { singleQuotedRanges: ranges, text: visible } = sqlNoiseInfo(statement);
   let offset = 0;
   return template.expressions.flatMap<SqlInterpolation>(
     (expression, index) => {
@@ -137,20 +136,13 @@ function runtimeConcatOperands(node: TSESTree.Node): SqlInterpolation[] {
     return [];
   }
   const operands = concatOperands(node);
-  const hasStringLiteral = operands.some(
-    (operand) =>
-      (operand.type === AST_NODE_TYPES.Literal &&
-        typeof operand.value === "string") ||
-      (operand.type === AST_NODE_TYPES.TemplateLiteral &&
-        operand.expressions.length === 0),
-  );
+  const hasStringLiteral = operands.some((operand) => staticString(operand) !== null);
   if (!hasStringLiteral) {
     return [];
   }
   const parts = operands.map((operand) => staticString(operand) ?? RUNTIME_MARKER);
   const statement = parts.join("");
-  const ranges = sqlSingleQuotedRanges(statement);
-  const visible = stripSqlNoise(statement);
+  const { singleQuotedRanges: ranges, text: visible } = sqlNoiseInfo(statement);
   let offset = 0;
   return operands.flatMap<SqlInterpolation>((operand, index) => {
     const inValue = ranges.some(([start, end]) => start < offset && offset < end);
@@ -165,10 +157,17 @@ function runtimeConcatOperands(node: TSESTree.Node): SqlInterpolation[] {
 }
 
 function concatOperands(node: TSESTree.Expression): TSESTree.Expression[] {
-  if (node.type === AST_NODE_TYPES.BinaryExpression && node.operator === "+") {
-    return [...concatOperands(node.left), ...concatOperands(node.right)];
+  const operands: TSESTree.Expression[] = [];
+  const pending = [node];
+  while (pending.length > 0) {
+    const next = pending.pop();
+    if (next === undefined) continue;
+    const value = unwrapExpression(next);
+    if (value.type === AST_NODE_TYPES.BinaryExpression && value.operator === "+") {
+      pending.push(value.right, value.left);
+    } else operands.push(value);
   }
-  return [node];
+  return operands;
 }
 
 const SQL_STATEMENT_RE =
@@ -183,6 +182,7 @@ function looksLikeSql(node: TSESTree.Node): boolean {
 }
 
 function staticStatementText(node: TSESTree.Node): string {
+  node = unwrapExpression(node);
   if (node.type === AST_NODE_TYPES.TemplateLiteral) {
     return node.quasis.map((quasi) => quasi.value.cooked ?? quasi.value.raw).join(RUNTIME_MARKER);
   }

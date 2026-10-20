@@ -198,9 +198,15 @@ def _is_candidate_pair(assignment: ast.stmt, condition: ast.stmt) -> bool:
 def _check_body(node: ast.AST, body: list[ast.stmt], context: _AnalysisContext) -> list[Diagnostic]:
     owner = _lexical_owner(node, context.parents)
     state = _body_state(node, owner, body, context)
+    last_uses = {
+        child.id: index
+        for index, statement in enumerate(body)
+        for child in walk(statement)
+        if isinstance(child, ast.Name)
+    }
     diagnostics: list[Diagnostic] = []
     for index in range(len(body) - 1):
-        diagnostic = _diagnostic_for_pair(body, index, state, context)
+        diagnostic = _diagnostic_for_pair(body, index, state, context, last_uses)
         if diagnostic is not None:
             diagnostics.append(diagnostic)
     return diagnostics
@@ -262,6 +268,7 @@ def _diagnostic_for_pair(
     index: int,
     state: _BodyState,
     context: _AnalysisContext,
+    last_uses: Mapping[str, int],
 ) -> Diagnostic | None:
     assignment, condition = body[index], body[index + 1]
     if not (
@@ -282,9 +289,7 @@ def _diagnostic_for_pair(
         annotated_names=state.annotated_names,
     ):
         return None
-    if _is_name_used_after(body, index + 2, name) or is_suppressed(
-        context.source_lines, assignment.lineno, context.code
-    ):
+    if last_uses.get(name, -1) >= index + 2 or is_suppressed(context.source_lines, assignment.lineno, context.code):
         return None
     return Diagnostic(
         path=context.path,
@@ -314,23 +319,6 @@ def _is_regex_call(
         and isinstance(func.value, ast.Name)
         and func.value.id in module_names | compiled_names | annotated_names
     )
-
-
-def _is_name_used_after(stmts: list[ast.stmt], start_idx: int, name: str) -> bool:
-    class UsageVisitor(ast.NodeVisitor):
-        used: bool = False
-
-        def visit_Name(self, node: ast.Name) -> None:
-            if node.id == name:
-                self.used = True
-            self.generic_visit(node)
-
-    visitor = UsageVisitor()
-    for st in stmts[start_idx:]:
-        visitor.visit(st)
-        if visitor.used:
-            return True
-    return False
 
 
 def _environment_before(body: list[ast.stmt], index: int, state: _BodyState) -> _RegexEnvironment:

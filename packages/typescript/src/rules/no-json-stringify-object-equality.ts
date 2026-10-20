@@ -144,18 +144,17 @@ function typeMayContainObject(type: ts.Type, checker: ts.TypeChecker): boolean {
 function syntaxMayContainObject(node: TSESTree.Expression): boolean | null {
   const expression = unwrapComparisonExpression(node);
   if (expression.type === AST_NODE_TYPES.ObjectExpression) return true;
+  if (expression.type === AST_NODE_TYPES.Literal) return "regex" in expression;
+  if (expression.type === AST_NODE_TYPES.TemplateLiteral || expression.type === AST_NODE_TYPES.UnaryExpression) return false;
   if (expression.type !== AST_NODE_TYPES.ArrayExpression) return null;
+  let unknown = false;
   for (const element of expression.elements) {
     if (element === null) continue;
-    if (element.type === AST_NODE_TYPES.SpreadElement) return null;
-    if (
-      element.type !== AST_NODE_TYPES.Literal &&
-      !(element.type === AST_NODE_TYPES.TemplateLiteral && element.expressions.length === 0)
-    ) {
-      return true;
-    }
+    const result = element.type === AST_NODE_TYPES.SpreadElement ? null : syntaxMayContainObject(element);
+    if (result === true) return true;
+    if (result === null) unknown = true;
   }
-  return false;
+  return unknown ? null : false;
 }
 
 export default createRule<Options, MessageIds>({
@@ -190,7 +189,7 @@ export default createRule<Options, MessageIds>({
     function mayContainObject(node: TSESTree.Expression): boolean {
       const syntax = syntaxMayContainObject(node);
       if (syntax !== null) return syntax;
-      if (services === null || checker === undefined) return false;
+      if (services === null || checker === undefined) return unwrapComparisonExpression(node).type === AST_NODE_TYPES.ArrayExpression;
       const type = checker.getTypeAtLocation(
         services.esTreeNodeToTSNodeMap.get(node),
       );

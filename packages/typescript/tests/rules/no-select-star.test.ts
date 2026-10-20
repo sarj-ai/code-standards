@@ -18,6 +18,7 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-select-star", rule, {
   valid: [
+    { name: "accepts a wrapped explicit projection", code: 'db.query(("SEL" as string) + ("ECT id FROM users" satisfies string));' },
     { name: "does not treat an unused join separator as SQL", code: "const note = ['ready'].join('SELECT * FROM users');" },
     { name: "abstains from joined fragments with an unknown separator", code: "db.query(['SELECT * FROM users', 'WHERE id = 1'].join(separator));" },
     { name: "ignores stars in PostgreSQL dollar strings", code: "db.query(`SELECT $$ * FROM $$`);" },
@@ -81,6 +82,7 @@ RULE_TESTER.run("no-select-star", rule, {
     },
   ],
   invalid: [
+    { name: "reconstructs a wildcard through erased SQL fragments", code: 'db.query(("SEL" as string) + ("ECT * FROM users" satisfies string));', errors: [{ messageId: "noSelectStar" }] },
     { name: "inspects SQL reconstructed with an empty join separator", code: "db.query(['SEL', 'ECT * FROM users'].join(''));", errors: [{ messageId: "noSelectStar" }] },
     { name: "keeps executed queries inside outer template substitutions", code: 'logger.info(`value ${db.query("SELECT * FROM users")}`);', errors: [{ messageId: "noSelectStar" }] },
     { name: "retains a wildcard following a dollar-quoted literal", code: "db.query(`SELECT $$ literal $$, * FROM users`);", errors: [{ messageId: "noSelectStar" }] },

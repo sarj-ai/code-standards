@@ -24,13 +24,15 @@ from sarj_sql_lint.rule_base import (
     is_mysql,
     mask_sql_literals_and_comments,
     normalize_sql_identifier,
+    source_location,
+    sql_code_matches,
     sql_relation_key,
 )
 from sarj_sql_lint.rules._index_analysis import parse_indexes
 
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Generator, Iterator
 
 
 RESERVED_KEYWORDS = frozenset({"foreign", "key", "constraint", "alter", "table", "create", "add", "column"})
@@ -108,6 +110,9 @@ INLINE_PK_OR_UNIQUE_PATTERN = re.compile(
 _FK_CLEAN_PATTERN = re.compile(
     rf"\bFOREIGN\s+KEY\s*\([^)]*\)\s*REFERENCES\s+{_QUALIFIED_IDENTIFIER}(?:\([^)]*\))?", re.IGNORECASE
 )
+_STATEMENT_DELIMITER = re.compile(r";")
+_COLUMN_DELIMITER = re.compile(r",")
+_CLAUSE_DELIMITER = re.compile(r"[(),]")
 _INDEX_REQUIRING_ACTION_RE = re.compile(
     r"\bON\s+(?:DELETE|UPDATE)\s+(?:CASCADE|SET\s+NULL|SET\s+DEFAULT)\b",
     re.IGNORECASE,
@@ -135,7 +140,7 @@ def _collect_indexes(source: str) -> dict[_TableKey, set[tuple[str, ...]]]:
             indexed_cols.setdefault(full_table, set()).add(cols)
 
     masked = mask_sql_literals_and_comments(source, mask_dollar_literals=True)
-    for stmt in masked.split(";"):
+    for _, stmt in _segments(masked, _STATEMENT_DELIMITER):
         _collect_constraint_indexes(stmt, indexed_cols)
     return indexed_cols
 
@@ -337,8 +342,7 @@ class RequireFkIndex(Rule):
         indexed_cols_by_table = _collect_indexes(source)
         is_dump = is_dump_file(source, path)
 
-        char_offset = 0
-        for stmt in masked.split(";"):
+        for char_offset, stmt in _segments(masked, _STATEMENT_DELIMITER):
             if "REFERENCES" in stmt.upper() and (table_match := TABLE_SCOPE_PATTERN.search(stmt)):
                 full_table = normalize_sql_identifier(table_match.group(1))
                 table = sql_relation_key(table_match.group(1))
@@ -353,7 +357,6 @@ class RequireFkIndex(Rule):
                 ctx = _StmtContext(path, masked, stmt, char_offset, full_table, table_match.end(), is_dump)
                 diags.extend(self._check_fk_constraints(ctx, table_indexes))
 
-            char_offset += len(stmt) + 1
         return diags
 
     def _check_fk_constraints(
@@ -376,13 +379,12 @@ class RequireFkIndex(Rule):
                 # identical one, mis-attributing the line and so making the
                 # finding unsuppressable by the line-keyed `-- sarj-noqa`.
                 match_offset = ctx.char_offset + fk_match.start()
-                lineno = ctx.masked[:match_offset].count("\n") + 1
-                col_pos = match_offset - ctx.masked.rfind("\n", 0, match_offset)
+                location = source_location(ctx.masked, match_offset)
                 diags.append(
                     Diagnostic(
                         path=ctx.path,
-                        line=lineno,
-                        col=max(1, col_pos),
+                        line=location.line,
+                        col=location.column,
                         code=self.code,
                         message=_message(", ".join(fk_cols), ctx.full_table, is_dump=ctx.is_dump),
                     )
@@ -393,26 +395,24 @@ class RequireFkIndex(Rule):
         body = _FK_CLEAN_PATTERN.sub(lambda m: " " * len(m.group(0)), body)
 
         # Align segment_start with source using header_end and fixed-length substitutions.
-        segment_start = ctx.header_end
-        for segment in body.split(","):
+        for relative_start, segment in _segments(body, _COLUMN_DELIMITER):
+            segment_start = ctx.header_end + relative_start
             if _is_index_requiring_inline_reference(segment) and (col_match := INLINE_COLUMN_PATTERN.search(segment)):
                 col_name = _normalize_name(col_match.group(1))
                 if col_name not in RESERVED_KEYWORDS and not _has_covering_index(indexes, (col_name,)):
                     # Point at the column token itself, not the segment start,
                     # so a multi-line column definition lands on its own line.
                     col_offset = ctx.char_offset + segment_start + col_match.start(1)
-                    lineno = ctx.masked[:col_offset].count("\n") + 1
-                    col_pos = col_offset - ctx.masked.rfind("\n", 0, col_offset)
+                    location = source_location(ctx.masked, col_offset)
                     diags.append(
                         Diagnostic(
                             path=ctx.path,
-                            line=lineno,
-                            col=max(1, col_pos),
+                            line=location.line,
+                            col=location.column,
                             code=self.code,
                             message=_message(col_name, ctx.full_table, is_dump=ctx.is_dump),
                         )
                     )
-            segment_start += len(segment) + 1
         return diags
 
 
@@ -428,8 +428,11 @@ def _message(column: str, table: str, *, is_dump: bool) -> str:
 
 def _clause_end(statement: str, start: int) -> int:
     depth = 0
-    for position in range(start, len(statement)):
-        char = statement[position]
+    for match in sql_code_matches(_CLAUSE_DELIMITER, statement):
+        position = match.start()
+        if position < start:
+            continue
+        char = match.group()
         if char == "(":
             depth += 1
         elif char == ")":
@@ -462,7 +465,7 @@ def _collect_constraint_indexes(stmt: str, indexed_cols: dict[_TableKey, set[tup
         if pk_cols:
             indexed_cols.setdefault(full_table, set()).add(pk_cols)
     body = stmt[table_match.end() :]
-    for segment in body.split(","):
+    for _, segment in _segments(body, _COLUMN_DELIMITER):
         if TABLE_PK_OR_UNIQUE_PATTERN.search(segment):
             continue
         inline_match = INLINE_PK_OR_UNIQUE_PATTERN.search(segment)
@@ -472,3 +475,11 @@ def _collect_constraint_indexes(stmt: str, indexed_cols: dict[_TableKey, set[tup
         if column in RESERVED_KEYWORDS:
             continue
         indexed_cols.setdefault(full_table, set()).add((column,))
+
+
+def _segments(source: str, delimiter: re.Pattern[str]) -> Iterator[tuple[int, str]]:
+    start = 0
+    for match in sql_code_matches(delimiter, source):
+        yield start, source[start : match.start()]
+        start = match.end()
+    yield start, source[start:]

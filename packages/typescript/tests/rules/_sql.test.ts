@@ -42,6 +42,7 @@ describe("createSqlListener hands each whole statement over exactly once", () =>
     'void "SELECT * FROM users";',
     'void ("SELECT " + "* FROM users");',
     'void ("SELECT * FROM users" as string);',
+    'void (("SELECT * FROM users" as string) satisfies string);',
     'void `SELECT * FROM users`;',
   ])("ignores discarded SQL text: %s", code => {
     expect(dispatched(code)).toEqual([]);
@@ -62,6 +63,22 @@ describe("createSqlListener hands each whole statement over exactly once", () =>
     expect(dispatched(`db.prepare("SELECT a " + "FROM t " + "WHERE id = ?");`)).toEqual([
       "SELECT a FROM t WHERE id = ?",
     ]);
+  });
+
+  it("reconstructs erased concatenation operands as one statement", () => {
+    expect(dispatched('db.query(("SEL" as string) + ("ECT * FROM users" satisfies string));')).toEqual(["SELECT * FROM users"]);
+  });
+
+  it("reconstructs wrapped fragment arrays and computed native joins", () => {
+    expect(dispatched('db.query((( (["SEL", ("ECT * FROM users" as string)] as string[]))["join"] as Function)(""));')).toEqual(["SELECT * FROM users"]);
+  });
+
+  it("does not infer custom or unknown join members", () => {
+    expect(dispatched('db.query(["SEL", "ECT * FROM users"][method](""));')).toEqual(["SEL", "ECT * FROM users", ""]);
+  });
+
+  it("keeps nested query calls visible in wrapped joined fragments", () => {
+    expect(dispatched('logger.info(([`value ${db.query("SELECT * FROM audit")}`] as string[]).join(" "));')).toEqual(["value ?", "SELECT * FROM audit"]);
   });
 
   it("reports a joined fragment array once, not once per element", () => {
@@ -102,6 +119,10 @@ describe("createSqlListener hands each whole statement over exactly once", () =>
 
   it("does not infer native nested-array coercion from the standalone fragment-builder contract", () => {
     expect(dispatched(`db.query([["SELECT * FROM users"], ["WHERE id = 1"]].join(" "));`)).toEqual([]);
+  });
+
+  it("does not infer native nested-array coercion through erased wrappers", () => {
+    expect(dispatched('db.query([(["SELECT * FROM users"] as string[])].join(" "));')).toEqual([]);
   });
 
   it("does not consume executed queries inside a template substitution", () => {

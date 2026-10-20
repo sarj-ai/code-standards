@@ -49,6 +49,12 @@ def test_flags_parenthesized_true_condition() -> None:
     assert len(_check(source)) == 1
 
 
+@pytest.mark.parametrize("condition", ["(\n    True\n)", "\\\n True", "(\n    False\n)"])
+def test_multiline_loop_headers_preserve_the_constant_condition(condition: str) -> None:
+    source = f"while {condition}:\n    chunk = stream.read()\n    if not chunk:\n        break\n    consume(chunk)\n"
+    assert len(_check(source)) == (0 if "False" in condition else 1)
+
+
 def test_flags_none_sentinel_break_after_assignment() -> None:
     source = """
     while True:

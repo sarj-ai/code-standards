@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 import re
 import textwrap
-from typing import Final, TypeIs
+from typing import Final
 
 from . import _hcl
 
@@ -61,26 +60,32 @@ def _balanced_structure(source: str) -> bool:
 def _shell_interpreter(attribute: _hcl.Attribute | None) -> bool:
     if attribute is None:
         return True
-    try:
-        value: object = json.loads(attribute.value)  # pyright: ignore[reportAny] -- JSON decoder boundary.
-    except json.JSONDecodeError:
+    arguments = _literal_arguments(attribute.value)
+    if not arguments:
         return False
-    if not _is_object_list(value):
-        return False
-    arguments: list[object] = value
-    if not arguments or not all(isinstance(argument, str) for argument in arguments):
-        return False
-    executable = arguments[0]
     return (
-        isinstance(executable, str)
-        and executable.rsplit("/", 1)[-1] in _SHELLS
+        arguments[0].rsplit("/", 1)[-1] in _SHELLS
         and arguments[-1] == "-c"
-        and all(isinstance(option, str) and _SHELL_OPTION.fullmatch(option) for option in arguments[1:-1])
+        and all(_SHELL_OPTION.fullmatch(option) for option in arguments[1:-1])
     )
 
 
-def _is_object_list(value: object) -> TypeIs[list[object]]:
-    return isinstance(value, list)
+def _literal_arguments(value: str) -> tuple[str, ...]:
+    parts = _hcl.strip_outer_parentheses(_hcl.tokens(value))
+    if parts[:1] != ("[",) or parts[-1:] != ("]",):
+        return ()
+    arguments: list[str] = []
+    expect_value = True
+    for part in parts[1:-1]:
+        if expect_value:
+            argument = _hcl.literal_string(part)
+            if argument is None:
+                return ()
+            arguments.append(argument)
+        elif part != ",":
+            return ()
+        expect_value = not expect_value
+    return tuple(arguments)
 
 
 def _command_literal(attribute: _hcl.Attribute, lines: list[str]) -> CommandLiteral | None:
@@ -96,14 +101,8 @@ def _command_literal(attribute: _hcl.Attribute, lines: list[str]) -> CommandLite
         if attribute.value.startswith("<<-"):
             body = textwrap.dedent(body)
         return _literal_template(body, value_line + 1, physical_lines=True)
-    if len(_hcl.tokens(attribute.value)) != 1 or not attribute.value.startswith('"'):
-        return None
-    try:
-        # HCL quoted strings use JSON escapes; templates require separate evaluation.
-        value: object = json.loads(attribute.value)  # pyright: ignore[reportAny] -- JSON decoder boundary.
-    except json.JSONDecodeError:
-        return None
-    return _literal_template(value, value_line, physical_lines=False) if isinstance(value, str) else None
+    value = _hcl.literal_string(attribute.value)
+    return CommandLiteral(value, value_line, physical_lines=False) if value is not None else None
 
 
 def _literal_template(source: str, line: int, *, physical_lines: bool) -> CommandLiteral | None:

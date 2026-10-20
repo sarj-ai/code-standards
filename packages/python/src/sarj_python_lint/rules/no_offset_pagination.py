@@ -60,7 +60,7 @@ class NoOffsetPagination(Rule):
         category=RuleCategory.PERFORMANCE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only SQL string literals in recognized store modules are analyzed.",
+            "Only SQL string literals, f-strings, and their static concatenations in recognized store modules are analyzed.",
             "Only dynamic OFFSET values in credible SELECT queries are reported; fixed ordinal offsets are excluded.",
             "Parenthesized arithmetic and common numeric wrappers such as GREATEST, LEAST, and COALESCE preserve the dynamic driver marker. Arbitrary SQL functions and procedural values remain opaque.",
             "Generated files, migrations, docstrings, comments, quoted identifiers, and BigQuery `WITH OFFSET AS` array indexing are excluded.",
@@ -93,6 +93,36 @@ class NoOffsetPagination(Rule):
                 ),
                 focus_path=PurePosixPath("app/task_store.py"),
                 expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="concatenated-dynamic-offset",
+                title="Concatenation retains a dynamic offset",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/task_store.py",
+                        "QUERY = 'SELECT id FROM task ORDER BY id ' + f'LIMIT 10 OFFSET {offset}'\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/task_store.py"),
+                expected_count=1,
+                scenario="concatenated-sql",
+                public=True,
+            ),
+            RuleExample(
+                example_id="concatenated-static-offset",
+                title="A dynamic limit does not make the offset dynamic",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/task_store.py",
+                        "QUERY = f'SELECT id FROM task LIMIT {limit} ' + 'OFFSET 2'\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/task_store.py"),
+                expected_count=0,
+                scenario="concatenated-sql",
                 public=True,
             ),
         ),
@@ -168,15 +198,7 @@ def _has_dynamic_numeric_offset(sql: str) -> bool:
 
 
 def _sql_value(node: ast.expr) -> str | None:
-    if isinstance(node, ast.JoinedStr):
-        pieces: list[str] = []
-        for value in node.values:
-            if isinstance(value, ast.Constant) and isinstance(value.value, str):
-                pieces.append(value.value)
-            elif isinstance(value, ast.FormattedValue):
-                pieces.append(":__sarj_dynamic__")
-        return "".join(pieces)
-    return sql_string_value(node)
+    return sql_string_value(node, interpolation_placeholder=":__sarj_dynamic__")
 
 
 def _mask_dialect_noise(sql: str) -> str:
