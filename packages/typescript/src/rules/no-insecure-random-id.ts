@@ -40,14 +40,6 @@ const STRONG_SECURITY_WORDS: ReadonlySet<string> = new Set([
   "verificationcode",
 ]);
 
-function nameWords(name: string): string[] {
-  return name
-    .replaceAll(/([a-z0-9])([A-Z])/gu, "$1 $2")
-    .split(/[^A-Za-z0-9]+/u)
-    .filter(Boolean)
-    .map((word) => word.toLowerCase());
-}
-
 function isStrongSecurityName(name: string): boolean {
   const words = nameWords(name);
   return (
@@ -58,6 +50,14 @@ function isStrongSecurityName(name: string): boolean {
       (word === "verification" && words[index + 1] === "code"),
     )
   );
+}
+
+function nameWords(name: string): string[] {
+  return name
+    .replaceAll(/([a-z0-9])([A-Z])/gu, "$1 $2")
+    .split(/[^A-Za-z0-9]+/u)
+    .filter(Boolean)
+    .map((word) => word.toLowerCase());
 }
 
 /**

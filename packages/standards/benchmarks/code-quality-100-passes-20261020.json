@@ -764,6 +764,12 @@
       "gap": "Literal shell/flag expressions wrapped in parentheses were still skipped by token-by-token list decoding.",
       "fix": "Move the existing depth-aware comma splitter into the shared HCL module and decode complete elements. Dynamic/functions and invalid separators remain opaque.",
       "validation": "Eight additional public extractor cases; 141 focused local-exec/IAM tests, Ruff, formatting and strict types passed."
+    },
+    {
+      "boundary": "TypeScript helper declaration order after dead-code removal",
+      "gap": "Removing the other caller made nameWords a single-caller private helper above isStrongSecurityName, which the full @sarj/stepdown dogfood gate rejects.",
+      "fix": "Move the unchanged declaration below its sole caller.",
+      "validation": "The initial canonical gate reproduced the error; scoped ESLint with the built dogfood config passes after the move. The affected and remaining canonical stages are resumed separately."
     }
   ],
   "initialCorpusValidation": {
