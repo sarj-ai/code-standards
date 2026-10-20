@@ -127,6 +127,29 @@ def test_hadolint_json_strict_severity(tmp_path: Path) -> None:
         parse_hadolint(payload.replace("warning", "unknown"), tmp_path)
 
 
+def test_native_reports_keep_per_file_positions_and_refresh_changed_sources(tmp_path: Path) -> None:
+    first = _file(tmp_path, "Dockerfile", "é x\n")
+    _file(tmp_path, "build.dockerfile", "😀 z\n")
+    payload = json.dumps(
+        [
+            {"code": "DL3008", "message": "pin", "file": name, "line": 1, "column": 3, "level": "warning"}
+            for name in ("Dockerfile", "build.dockerfile", "Dockerfile")
+        ]
+    )
+
+    def positions() -> list[tuple[str, int, int | None]]:
+        findings = parse_hadolint(payload, tmp_path)
+        return [
+            (finding.location.path, finding.location.position.character, finding.location.position.byte_offset)
+            for finding in findings
+            if finding.location.position is not None
+        ]
+
+    assert positions() == [("Dockerfile", 2, 3), ("build.dockerfile", 3, 5), ("Dockerfile", 2, 3)]
+    first.write_text("😀 x\n", encoding="utf-8")
+    assert positions() == [("Dockerfile", 3, 5), ("build.dockerfile", 3, 5), ("Dockerfile", 3, 5)]
+
+
 @pytest.mark.parametrize(
     ("name", "selected"),
     [

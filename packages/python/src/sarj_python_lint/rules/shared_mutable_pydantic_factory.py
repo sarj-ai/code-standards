@@ -17,7 +17,6 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
-from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._inert_model_annotation import inert_model_annotation
 
 
@@ -25,6 +24,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 _MODEL_SOURCES = frozenset({"pydantic", "pydantic.main"})
@@ -98,7 +98,7 @@ class SharedMutablePydanticFactory(Rule):
         if "default_factory" not in context.symbol_source or context.generated or context.tree is None:
             return []
         tree = context.tree
-        imports = ImportIndex.from_tree(tree)
+        imports = context.imports
         bindings = _stable_bindings(tree)
         models = {
             model for model in tree.body if isinstance(model, ast.ClassDef) and _unconfigured_model(model, imports)

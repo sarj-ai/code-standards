@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "127e793d79c69c3c2b5708893cf25d699c8bef00269641f0e965308df803e638",
-  "cliSha256": "e988f38e8171ced797ecd9a3c17137919876348f78eb39176b20a2e4c2800d23",
+  "catalogSha256": "d2c07011dc31e291f751476ba659ce6c3a25d596a4300f1cb23210fc7c2782c8",
+  "cliSha256": "3ff2adb19b83b715db0b26be45c36976c75cb079e0e34329bf2e490aa6f51502",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -9731,6 +9731,36 @@
     },
     "python:no-offset-pagination": {
       "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/task_store.py",
+              "source": "QUERY = \"SELECT id FROM task ORDER BY id \" + f\"LIMIT 10 OFFSET {offset}\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/task_store.py",
+          "id": "concatenated-dynamic-offset",
+          "outcome": "reject",
+          "scenarioId": "concatenated-sql",
+          "title": "Concatenation retains a dynamic offset"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/task_store.py",
+              "source": "QUERY = f\"SELECT id FROM task LIMIT {limit} \" + \"OFFSET 2\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/task_store.py",
+          "id": "concatenated-static-offset",
+          "outcome": "accept",
+          "scenarioId": "concatenated-sql",
+          "title": "A dynamic limit does not make the offset dynamic"
+        },
         {
           "expectedCount": 0,
           "files": [

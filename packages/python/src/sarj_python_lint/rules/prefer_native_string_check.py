@@ -241,14 +241,7 @@ def _plain_string_adapter(
     value = _single_value(node, "type")
     if value is None:
         return False
-    return (
-        isinstance(value, ast.Name)
-        and value.id == "str"
-        and context.imports.builtin_is_unshadowed("str")
-        and _lexical_binding("str", value, provenance) is None
-        and "builtins" not in unsafe_imports
-        and "builtins.str" not in unsafe_imports
-    ) or _resolves(value, context, provenance, imports, unsafe_imports, sources=_BUILTINS, symbol="str")
+    return _builtin_type(value, context, provenance, imports, unsafe_imports, symbol="str")
 
 
 def _single_value(call: ast.Call, keyword: str) -> ast.expr | None:

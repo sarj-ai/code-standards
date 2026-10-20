@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-import re
 from typing import TYPE_CHECKING, ClassVar, Literal, override
 
 from sarj_python_lint.rule_base import (
@@ -24,7 +23,6 @@ if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
 
 
-_LOOP_CANDIDATE_RE = re.compile(r"\bwhile\b[^\n:]*\bTrue\b[^\n:]*:")
 _MIN_BODY_LEN = 3
 _MAX_REWRITE_COLUMNS = 100
 
@@ -123,7 +121,8 @@ class PreferWalrusStreamLoop(Rule):
         path = context.path
         source = context.source
         if (
-            _LOOP_CANDIDATE_RE.search(source) is None
+            "while" not in source
+            or "True" not in source
             or "break" not in source
             or is_test_path(path)
             or context.generated

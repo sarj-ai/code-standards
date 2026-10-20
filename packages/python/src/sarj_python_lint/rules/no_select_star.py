@@ -15,7 +15,7 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
-from sarj_python_lint.rules._ast_index import walk, walk as walk_ast
+from sarj_python_lint.rules._ast_index import walk
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._sql import sql_string_value, strip_sql_noise
 
@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from sarj_python_lint._file_context import PythonFileContext
-    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _SQL_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*|\d+(?:\.\d+)?|[(),.*;]")
@@ -179,7 +178,7 @@ class NoSelectStar(Rule):
 
         diags: list[Diagnostic] = []
         parents = context.parents
-        docstrings = _docstring_value_ids(tree, node_index=context.node_index)
+        docstrings = context.docstring_node_ids
         consumed: set[int] = set()
         for node in context.nodes(ast.Constant, ast.BinOp, ast.JoinedStr):
             if id(node) in consumed or id(node) in docstrings or not _is_query_context(node, parents):
@@ -208,19 +207,6 @@ class NoSelectStar(Rule):
             )
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
-
-
-def _docstring_value_ids(tree: ast.AST, *, node_index: NodeIndex | None = None) -> set[int]:
-    owners = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
-    return {
-        id(owner.body[0].value)
-        for owner in walk_ast(tree, index=node_index)
-        if isinstance(owner, owners)
-        and owner.body
-        and isinstance(owner.body[0], ast.Expr)
-        and isinstance(owner.body[0].value, ast.Constant)
-        and isinstance(owner.body[0].value.value, str)
-    }
 
 
 def _is_query_context(node: ast.expr, parents: Mapping[ast.AST, ast.AST]) -> bool:

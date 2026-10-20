@@ -20,6 +20,8 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-dynamic-sql", rule, {
   valid: [
+    { name: "preserves wrapped static concatenations", code: 'db.query(("SELECT " as string) + (("id FROM users" as string) + " WHERE id = ?"));' },
+    { name: "preserves wrapped runtime text inside a SQL comment", code: 'db.query(("SELECT id FROM users /* " as string) + ((note as string) + " */"));' },
     { name: "preserves a type-erased literal inside a LIKE pattern", code: "db.query(`SELECT id FROM users WHERE name LIKE '%${'fixed' as const}%'`);" },
     { name: "preserves a type-erased literal in a concatenated value", code: 'db.query("SELECT id FROM users WHERE name = \'prefix_" + ("fixed" as const) + "_suffix\'");' },
     { name: "binds a complete LIKE pattern separately", code: "db.query('SELECT id FROM users WHERE name LIKE ?', ['%' + term + '%']);" },
@@ -133,6 +135,8 @@ RULE_TESTER.run("no-dynamic-sql", rule, {
     },
   ],
   invalid: [
+    { name: "reports a runtime operand inside a nested erased concatenation", code: 'db.query(("SELECT id FROM users WHERE id = " as string) + ((userId as string) + " "));', errors: [{ messageId: "dynamicFragment" }] },
+    { name: "preserves quote context across wrapped static operands", code: 'db.query(("SELECT id FROM users WHERE id = \'" as string) + ((userId as string) + "\'"));', errors: [{ messageId: "dynamicSql" }] },
     { name: "reports a type-erased runtime value inside a LIKE pattern", code: "db.query(`SELECT id FROM users WHERE name LIKE '%${term as string}%'`);", errors: [{ messageId: "dynamicSql" }] },
     { name: "reports a runtime value inside a LIKE pattern", code: "db.query(`SELECT id FROM users WHERE name LIKE '%${term}%'`);", errors: [{ messageId: "dynamicSql" }] },
     { name: "reports a runtime suffix in a quoted value", code: "db.query(`SELECT id FROM users WHERE name = 'prefix_${name}'`);", errors: [{ messageId: "dynamicSql" }] },
