@@ -2695,6 +2695,54 @@
       "state": "pending",
       "evidence": "RuleTester cases cover default, named and subpath ky imports after a use server directive, type-only imports, directives after statements, use client modules, similarly named packages and native fetch. A survey of one private Next.js corpus found 3 server action modules importing ky.",
       "outcome": "Keep the rule warning-only without autofix. ky reached through shared client modules is not followed."
+    },
+    {
+      "task": "rule-audit/python/no-create-verb-in-post-path",
+      "family": "python",
+      "ruleId": "no-create-verb-in-post-path",
+      "state": "pending",
+      "evidence": "Focused cases cover create, add and new as whole or first words of the final segment, trailing slashes, multiline and path-keyword decorators, api_route, final path parameters, word prefixes such as addresses, other methods, dynamic paths and unknown receivers. A scan of one private application corpus reported 3 findings, each a POST path ending in an RPC-style create or add segment.",
+      "outcome": "Keep SARJ500 warning-only without autofix. Deliberate RPC-style integration endpoints keep a reasoned local suppression."
+    },
+    {
+      "task": "rule-audit/python/no-work-verb-get-route",
+      "family": "python",
+      "ruleId": "no-work-verb-get-route",
+      "state": "pending",
+      "evidence": "Focused cases cover each of the eight work verbs, verb-first segments, api_route with GET, trailing slashes, plural nouns, longer words, final path parameters, earlier segments and POST routes. A scan of one private application corpus reported 1 finding, a GET retry route, reviewed as a true positive.",
+      "outcome": "Keep SARJ502 warning-only without autofix. GET routes that dispatch work under other names stay in review."
+    },
+    {
+      "task": "rule-audit/python/no-slash-collection-root-under-prefix",
+      "family": "python",
+      "ruleId": "no-slash-collection-root-under-prefix",
+      "state": "pending",
+      "evidence": "Focused cases cover module and method-built routers with literal prefixes, multiline and path-keyword decorators, empty and item paths, missing, empty and dynamic prefixes, and application roots. A scan of one private application corpus reported 9 findings on routers with literal prefixes.",
+      "outcome": "Keep SARJ503 warning-only without autofix. Prefixes supplied through include_router in another file are not visible."
+    },
+    {
+      "task": "rule-audit/python/require-exp-on-jwt-decode",
+      "family": "python",
+      "ruleId": "require-exp-on-jwt-decode",
+      "state": "pending",
+      "evidence": "Focused cases cover positional algorithms, missing options, options without require, require without exp, aliases, decode_complete and api_jwt imports, plus literal, tuple, named, spread and unverified options, keyword unpacking, python-jose and unrelated decode calls. A scan of one private application corpus reported 2 findings among 3 decode sites; one verifier bounds lifetime from iat instead and needs a reasoned suppression.",
+      "outcome": "Keep SARJ504 warning-only without autofix. PyJWT instance decoders and minting-side lifetimes stay in review."
+    },
+    {
+      "task": "rule-audit/python/no-exception-text-in-500-detail",
+      "family": "python",
+      "ruleId": "no-exception-text-in-500-detail",
+      "state": "pending",
+      "evidence": "Focused cases cover str, repr, f-string, concatenation and mapping details, integer, Starlette and HTTPStatus 500 statuses, traceback.format_exc and __file__, plus fixed details, other statuses, exception attributes, dynamic statuses, unbound names and other exception types. A scan of one private application corpus reported 0 findings; one exception message copied into a model before the 500 is a documented false negative.",
+      "outcome": "Keep SARJ505 warning-only without autofix. Exception text that passes through another variable stays in review."
+    },
+    {
+      "task": "rule-audit/python/delete-route-returns-no-content",
+      "family": "python",
+      "ruleId": "delete-route-returns-no-content",
+      "state": "pending",
+      "evidence": "Focused cases cover implicit and explicit 200, Starlette and HTTPStatus statuses, DELETE-only api_route, multiline decorators, 204 in each spelling, unresolved status names, keyword unpacking, shared GET and DELETE decorators and POST routes. A scan of one private application corpus reported 11 findings among 25 DELETE routes.",
+      "outcome": "Keep SARJ506 warning-only without autofix. Consumers baseline existing findings before promotion."
     }
   ]
 }

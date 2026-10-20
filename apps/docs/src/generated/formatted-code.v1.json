@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "31af3a6f1491d0887437be8305c84134fb7afc1128402815f3bd69f897078755",
-  "cliSha256": "e988f38e8171ced797ecd9a3c17137919876348f78eb39176b20a2e4c2800d23",
+  "catalogSha256": "7622aaf0b668f7fe0feb2f7c51bf32fdf76a3953638c578ff1424738de71daeb",
+  "cliSha256": "3ff2adb19b83b715db0b26be45c36976c75cb079e0e34329bf2e490aa6f51502",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -7004,6 +7004,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:delete-route-returns-no-content": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.delete(\"/keys/{key_id}\")\nasync def revoke(key_id: str) -> None:\n    return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "implicit-200",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A DELETE route answers 200 with a null body"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter, status\n\nrouter = APIRouter()\n\n\n@router.delete(\"/keys/{key_id}\", status_code=status.HTTP_204_NO_CONTENT)\nasync def revoke(key_id: str) -> None:\n    return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "no-content",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A DELETE route declares 204"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:docstring-args-restate-signature": {
       "examples": [
         {
@@ -8157,6 +8192,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-create-verb-in-post-path": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.post(\"/tickets\")\nasync def create_ticket() -> None:\n    return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "collection-path",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A POST route names its collection"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.post(\"/tickets/create\")\nasync def create_ticket() -> None:\n    return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "create-segment",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A POST route repeats the verb in its path"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-database-programmability": {
       "examples": [
         {
@@ -8463,6 +8533,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "One validator names every field that shares the rule"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-exception-text-in-500-detail": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import HTTPException\n\n\ndef load(store) -> None:\n    try:\n        store.load()\n    except Exception as exc:\n        raise HTTPException(status_code=500, detail=f\"load failed: {exc}\") from exc\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "exception-text",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A 500 detail returns the exception message"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import HTTPException\n\n\ndef load(store) -> None:\n    try:\n        store.load()\n    except Exception as exc:\n        raise HTTPException(status_code=500, detail=\"load failed\") from exc\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "fixed-detail",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A 500 detail is a fixed message"
         }
       ],
       "optionsSchemaSource": null
@@ -10529,6 +10634,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-slash-collection-root-under-prefix": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter(prefix=\"/tasks\")\n\n\n@router.get(\"\")\nasync def list_tasks() -> list[str]:\n    return []\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "empty-root",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The collection root is registered as an empty path"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter(prefix=\"/tasks\")\n\n\n@router.get(\"/\")\nasync def list_tasks() -> list[str]:\n    return []\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "slash-root",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The collection root is registered as a slash"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-statically-truthy-assertion": {
       "examples": [
         {
@@ -11190,6 +11330,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Whole response payload passed to a logger"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-work-verb-get-route": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.get(\"/batches/{batch_id}/retry\")\nasync def retry(batch_id: str) -> None:\n    return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "get-retry",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A GET route retries a batch"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.post(\"/batches/{batch_id}/retry\")\nasync def retry(batch_id: str) -> None:\n    return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "post-retry",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The retry is a POST"
         }
       ],
       "optionsSchemaSource": null
@@ -13599,6 +13774,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Replay-named store callable omits duplicate behavior"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-exp-on-jwt-decode": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "auth.py",
+              "source": "import jwt\n\n\ndef claims(token: str, key: str) -> dict[str, object]:\n    return jwt.decode(token, key, algorithms=[\"HS256\"])\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "auth.py",
+          "id": "exp-optional",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A token without exp is accepted"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "auth.py",
+              "source": "import jwt\n\n\ndef claims(token: str, key: str) -> dict[str, object]:\n    return jwt.decode(token, key, algorithms=[\"HS256\"], options={\"require\": [\"exp\"]})\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "auth.py",
+          "id": "exp-required",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The verifier requires exp"
         }
       ],
       "optionsSchemaSource": null
