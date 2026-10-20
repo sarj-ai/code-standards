@@ -50,31 +50,6 @@ export default defineConfig({
         replacesTitle: true,
       },
       disable404Route: true,
-      expressiveCode: {
-        styleOverrides: {
-          borderRadius: "4px",
-          borderColor: "var(--cs-line)",
-          codeFontFamily: "var(--cs-font-mono)",
-          codeFontSize: "0.8125rem",
-          codeLineHeight: "1.7",
-          uiFontFamily: "var(--cs-font-sans)",
-          uiFontSize: "0.8125rem",
-          frames: {
-            editorActiveTabIndicatorTopColor: "transparent",
-            editorActiveTabIndicatorBottomColor: "transparent",
-            editorTabBarBorderBottomColor: "var(--cs-line)",
-            terminalTitlebarBorderBottomColor: "var(--cs-line)",
-          },
-          textMarkers: {
-            delBackground: "var(--cs-diff-del-bg)",
-            delBorderColor: "var(--cs-diff-del-line)",
-            delDiffIndicatorColor: "var(--cs-report)",
-            insBackground: "var(--cs-diff-ins-bg)",
-            insBorderColor: "var(--cs-diff-ins-line)",
-            insDiffIndicatorColor: "var(--cs-pass)",
-          },
-        },
-      },
       customCss: ["@sarj/design/starlight.css", "./src/styles/global.css"],
       sidebar: [
         { label: "About", link: "/" },

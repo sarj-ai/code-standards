@@ -27,7 +27,6 @@ interface Props {
 }
 const { rule, previousRule, nextRule } = Astro.props;
 const displayed = displayRule(rule);
-const idSegments = rule.id.split(/(?<=-)/u);
 const exampleScenarios = [...new Set(displayed.examples.map((example) => example.scenarioId))].map((scenarioId) => ({
   scenarioId,
   before: displayed.examples.find((example) => example.scenarioId === scenarioId && example.outcome === 'reject')!,
@@ -49,7 +48,7 @@ const exampleScenarios = [...new Set(displayed.examples.map((example) => example
           next={nextRule ? { href: ruleHref(nextRule), label: nextRule.id } : null}
         />
       </div>
-      <h1>{idSegments.map((segment) => <>{segment}<wbr /></>)}</h1>
+      <h1>{rule.id}</h1>
       <p class="lede"><InlineCodeText text={rule.summary} /></p>
       <div class="rule-header-links">
         {rule.code && <code>{rule.code}</code>}

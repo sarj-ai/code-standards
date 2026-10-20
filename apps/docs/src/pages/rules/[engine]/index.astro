@@ -14,17 +14,13 @@ export function getStaticPaths() {
 interface Props { engine: Engine }
 const { engine } = Astro.props;
 const rules = rulesForEngine(engine);
-const description = `Browse ${engineLabel(engine)} rule contracts and tested examples.`;
 ---
 
 <ReferencePage
   title={`${engineLabel(engine)} rules`}
-  {description}
+  description={`Browse ${engineLabel(engine)} rule contracts and tested examples.`}
   sidebar={[...referenceSidebar]}
 >
-  <header class="directory-header">
-    <h1>{engineLabel(engine)} rules</h1>
-    <p class="lede">{description}</p>
-  </header>
+  <h1 class="sarj-visually-hidden">{engineLabel(engine)} rules</h1>
   <RuleTable rules={rules} />
 </ReferencePage>
