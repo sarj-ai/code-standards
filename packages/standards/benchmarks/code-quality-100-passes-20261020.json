@@ -737,7 +737,7 @@
     },
     "immutableRuleComparison": {
       "command": "mise exec node@24.21.0 -- uv run --project packages/standards --frozen code-standards --root . maintain rules changes --before origin/main --after HEAD",
-      "sourceRevision": "46400770742f28f871acb7290a742c5e34c77732",
+      "sourceRevision": "3d53fb15450ae4e34dc23b2f3066681c997fd0a0",
       "beforeRevision": "350a941affdae9b81f45a0baa3d09e366e1b61df",
       "result": "passed",
       "implementationChanged": 211,
@@ -770,6 +770,21 @@
       "gap": "Removing the other caller made nameWords a single-caller private helper above isStrongSecurityName, which the full @sarj/stepdown dogfood gate rejects.",
       "fix": "Move the unchanged declaration below its sole caller.",
       "validation": "The initial canonical gate reproduced the error; scoped ESLint with the built dogfood config passes after the move. The affected and remaining canonical stages are resumed separately."
+    },
+    {
+      "boundary": "Reachable-history secret scan across other remote branches",
+      "gap": "The hosted all-ref scan flagged a published source SHA-256 in another branch audit, while this branch and main history passed.",
+      "evidence": {
+        "commit": "7288d1e8a301d87d6a6dca4524c7697286220faa",
+        "reportPath": "packages/standards/benchmarks/checking-strength-50-passes-20261020.json",
+        "line": 519,
+        "field": "sourceSha256",
+        "sourcePath": "packages/python/src/sarj_python_lint/cast_access.py",
+        "sha256": "f89e15c036d1ccb6d2be2022c32530c836646d972410453a8f23ef94cb4d515e",
+        "proof": "Hash equals SHA-256 of the source file bytes at the recorded repository commit."
+      },
+      "fix": "Restrict a generic-api-key exception to this exact public digest AND exact audit path. Other rules and values remain subject to scanning.",
+      "validation": "Pinned Gitleaks8.30.1 controls: the exact digest/path passes; the same digest at another path and a different digest at the same path both fail as expected. Full tracked-tree/all-ref scan results are recorded in the PR."
     }
   ],
   "initialCorpusValidation": {

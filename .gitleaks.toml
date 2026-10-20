@@ -17,3 +17,11 @@ condition = "AND"
 regexTarget = "secret"
 paths = ['''^packages/standards/src/sarj_standards/configs/devops-verification\.v1\.json$''']
 regexes = ['''^5b61f4ec8a921f407e2fae598166fb3679b41d18a9b528bc6720c2043b3638c0$''']
+
+[[allowlists]]
+description = "Published SHA-256 of cast_access.py in checking-strength audit evidence"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+paths = ['''^packages/standards/benchmarks/checking-strength-50-passes-20261020\.json$''']
+regexes = ['''^f89e15c036d1ccb6d2be2022c32530c836646d972410453a8f23ef94cb4d515e$''']
