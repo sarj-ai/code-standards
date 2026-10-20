@@ -696,5 +696,88 @@
       "validation": "Existing Kubernetes/schema reuse controls and canonical full verification; native executable selected from pinned local install."
     }
   ],
-  "integrationBaseCommit": "350a941affdae9b81f45a0baa3d09e366e1b61df"
+  "integrationBaseCommit": "350a941affdae9b81f45a0baa3d09e366e1b61df",
+  "validationEvidence": {
+    "preIntegrationPython": {
+      "passedInFullRun": 20532,
+      "transientFailures": 8,
+      "passedOnIsolatedRerun": 8,
+      "sourceChangesBetweenRuns": false,
+      "lint": "passed",
+      "types": "passed"
+    },
+    "preIntegrationSql": {
+      "passed": 1806,
+      "skipped": 4,
+      "lint": "passed",
+      "types": "passed"
+    },
+    "preIntegrationIac": {
+      "passed": 1468,
+      "lint": "passed",
+      "types": "passed"
+    },
+    "postIntegrationTypescriptFocused": {
+      "files": 7,
+      "passed": 397,
+      "lint": "passed",
+      "types": "passed"
+    },
+    "independentReview": "Native report caching and TypeScript diffs reviewed separately after the 100 source-boundary inspections; no correctness regression found.",
+    "canonicalVerification": "Final make verify and exact-head hosted checks are recorded in the pull request.",
+    "postIntegrationJsonEquality": {
+      "passed": 47,
+      "lint": "passed"
+    },
+    "postIntegrationHclGroupedLiterals": {
+      "passed": 141,
+      "lint": "passed",
+      "format": "passed",
+      "types": "passed"
+    }
+  },
+  "supplementaryReviewFindings": [
+    {
+      "boundary": "JSON equality without type information",
+      "gap": "Unknown spread arrays acquired a diagnostic in the initial fallback change.",
+      "fix": "Keep spreads opaque recursively while retaining direct opaque/object evidence and the typed path.",
+      "validation": "Two negative cases failed before the correction; 47 tests and scoped ESLint passed afterward."
+    },
+    {
+      "boundary": "HCL grouped literal interpreter elements",
+      "gap": "Literal shell/flag expressions wrapped in parentheses were still skipped by token-by-token list decoding.",
+      "fix": "Move the existing depth-aware comma splitter into the shared HCL module and decode complete elements. Dynamic/functions and invalid separators remain opaque.",
+      "validation": "Eight additional public extractor cases; 141 focused local-exec/IAM tests, Ruff, formatting and strict types passed."
+    }
+  ],
+  "initialCorpusValidation": {
+    "corpus": "reviewed-repository",
+    "revision": "0c9cee7de2478bad7f28cb28b2ffa2458bb9055b",
+    "digest": "sha256:74468af2a0f8f07ea0ec10960317aeabf6105981b20876f2e10826ac6853f78a",
+    "files": 419,
+    "bytes": 6070345,
+    "batches": 2,
+    "stdoutLines": 0,
+    "returncodes": [
+      0,
+      0
+    ],
+    "elapsedSeconds": 121.056344,
+    "include": [
+      "packages/*/src/**/*.py"
+    ],
+    "batchSize": 250,
+    "rules": [
+      "no-fixed-sleep-in-loop",
+      "no-offset-pagination",
+      "no-select-star",
+      "prefer-native-string-check",
+      "prefer-walrus-regex-match",
+      "prefer-walrus-stream-loop",
+      "shared-mutable-pydantic-factory"
+    ],
+    "diagnostics": 0,
+    "method": "run_isolated_corpora: verified tracked existing files at the recorded revision and digest, one fresh process per batch, inventory verified again after execution.",
+    "limitations": "Repository implementation corpus only; no external consumer or third-party corpus evaluation."
+  }
 }

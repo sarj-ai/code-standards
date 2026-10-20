@@ -157,6 +157,16 @@ function syntaxMayContainObject(node: TSESTree.Expression): boolean | null {
   return unknown ? null : false;
 }
 
+function untypedArrayMayContainObject(node: TSESTree.ArrayExpression): boolean {
+  return node.elements.some(element => {
+    if (element === null || element.type === AST_NODE_TYPES.SpreadElement) return false;
+    const value = unwrapComparisonExpression(element);
+    return value.type === AST_NODE_TYPES.ArrayExpression
+      ? untypedArrayMayContainObject(value)
+      : syntaxMayContainObject(value) !== false;
+  });
+}
+
 export default createRule<Options, MessageIds>({
   name: "no-json-stringify-object-equality",
   documentation: NO_JSON_STRINGIFY_OBJECT_EQUALITY_DOCUMENTATION,
@@ -189,7 +199,10 @@ export default createRule<Options, MessageIds>({
     function mayContainObject(node: TSESTree.Expression): boolean {
       const syntax = syntaxMayContainObject(node);
       if (syntax !== null) return syntax;
-      if (services === null || checker === undefined) return unwrapComparisonExpression(node).type === AST_NODE_TYPES.ArrayExpression;
+      if (services === null || checker === undefined) {
+        const expression = unwrapComparisonExpression(node);
+        return expression.type === AST_NODE_TYPES.ArrayExpression && untypedArrayMayContainObject(expression);
+      }
       const type = checker.getTypeAtLocation(
         services.esTreeNodeToTSNodeMap.get(node),
       );

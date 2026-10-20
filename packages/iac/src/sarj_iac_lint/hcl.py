@@ -75,16 +75,11 @@ def _literal_arguments(value: str) -> tuple[str, ...]:
     if parts[:1] != ("[",) or parts[-1:] != ("]",):
         return ()
     arguments: list[str] = []
-    expect_value = True
-    for part in parts[1:-1]:
-        if expect_value:
-            argument = _hcl.literal_string(part)
-            if argument is None:
-                return ()
-            arguments.append(argument)
-        elif part != ",":
+    for element in _hcl.comma_parts(parts[1:-1]):
+        argument = _hcl.literal_string("".join(element))
+        if argument is None:
             return ()
-        expect_value = not expect_value
+        arguments.append(argument)
     return tuple(arguments)
 
 

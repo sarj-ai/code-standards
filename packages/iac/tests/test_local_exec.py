@@ -41,6 +41,9 @@ def test_local_exec_uses_hcl_literal_semantics(command: str, expected: str) -> N
         '(["/bin/sh", "-c"])',
         r'["/bin/\U00000062ash", "-eu", "-c"]',
         '[\n      "/bin/bash",\n      "-c",\n    ]',
+        '[("sh"), "-c"]',
+        '["sh", ("-c")]',
+        '(([(("/bin/bash")), (("-eu")), (("-c")),]))',
     ],
 )
 def test_static_hcl_shell_interpreters_allow_command_analysis(interpreter: str) -> None:
@@ -56,7 +59,12 @@ def test_static_hcl_shell_interpreters_allow_command_analysis(interpreter: str) 
         ('("gcloud services enable " + var.api)', None),
         ('"echo ready"', '[var.shell, "-c"]'),
         ('"echo ready"', '["/bin/${var.shell}", "-c"]'),
+        ('"echo ready"', '["sh", (var.flag)]'),
+        ('"echo ready"', '[(var.shell), "-c"]'),
+        ('"echo ready"', '["sh", upper("-c")]'),
         ('"echo ready"', '["/bin/bash" "-c"]'),
+        ('"echo ready"', '["sh",, "-c"]'),
+        ('"echo ready"', '[, "sh", "-c"]'),
         ('"echo ready"', '["/bin/bash", "--unknown", "-c"]'),
         ('"echo ready"', '["python", "-c"]'),
         (r'"\U00110000"', None),

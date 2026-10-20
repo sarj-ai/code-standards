@@ -27,14 +27,18 @@ const PRODUCTION = "json-object-equality.ts";
 new RuleTester({ languageOptions: { parser: tsParser } }).run("no-json-stringify-object-equality without type services", rule, {
   valid: [
     { name: "excludes syntactically primitive array values", code: 'const same = JSON.stringify([1 as number, -2, `value ${1}`]) === JSON.stringify([1, -2, "value 1"]);' },
+    { name: "preserves abstention for untyped array spreads", code: "const numericValues = [1, 2]; const otherValues = [1, 2]; const same = JSON.stringify([...numericValues]) === JSON.stringify([...otherValues]);" },
+    { name: "preserves abstention for nested untyped array spreads", code: "const same = JSON.stringify([[...numericValues]]) === JSON.stringify([[...otherValues]]);" },
   ],
   invalid: [
     { name: "preserves detection for opaque array elements", code: "const same = JSON.stringify([left]) === JSON.stringify([right]);", errors: [{ messageId: "serializedObjectEquality" }] },
+    { name: "retains direct object evidence beside an untyped spread", code: "const same = JSON.stringify([{a: 1}, ...values]) === JSON.stringify([{a: 2}, ...values]);", errors: [{ messageId: "serializedObjectEquality" }] },
   ],
 });
 
 RULE_TESTER.run("no-json-stringify-object-equality", rule, {
   valid: [
+    { name: "excludes typed primitive array spreads", filename: PRODUCTION, code: "declare const left: number[]; declare const right: number[]; const same = JSON.stringify([...left]) === JSON.stringify([...right]);" },
     { name: "excludes typed primitive array expressions", filename: PRODUCTION, code: "declare const value: number; const same = JSON.stringify([value]) === JSON.stringify([value]);" },
     { name: "excludes wrapped primitive array elements", filename: PRODUCTION, code: "const same = JSON.stringify([1 as number, -2, `value ${1}`]) === JSON.stringify([1, -2, 'value 1']);" },
     { name: "excludes nested primitive arrays", filename: PRODUCTION, code: "const same = JSON.stringify([[1, 2]]) === JSON.stringify([[1, 2]]);" },
@@ -66,6 +70,7 @@ RULE_TESTER.run("no-json-stringify-object-equality", rule, {
     { name: "ignores generated files", filename: "generated/compare.ts", code: "const same = JSON.stringify({a: 1}) === JSON.stringify({a: 1});" },
   ],
   invalid: [
+    { name: "reports typed object array spreads", filename: PRODUCTION, code: "declare const left: {a: number}[]; declare const right: {a: number}[]; const same = JSON.stringify([...left]) === JSON.stringify([...right]);", errors: [{ messageId: "serializedObjectEquality" }] },
     { name: "reports regular-expression objects inside literal arrays", filename: PRODUCTION, code: "const same = JSON.stringify([/left/]) === JSON.stringify([/right/]);", errors: [{ messageId: "serializedObjectEquality" }] },
     { name: "reports objects inside nested literal arrays", filename: PRODUCTION, code: "const same = JSON.stringify([[{ a: 1 }]]) === JSON.stringify([[{ a: 1 }]]);", errors: [{ messageId: "serializedObjectEquality" }] },
     { name: "reports stable const destructured native stringify", filename: PRODUCTION, code: "const { stringify } = JSON; const same = stringify({a: 1}) === stringify({a: 1});", errors: [{ messageId: "serializedObjectEquality" }] },
