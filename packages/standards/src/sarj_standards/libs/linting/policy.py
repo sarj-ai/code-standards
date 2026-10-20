@@ -84,6 +84,8 @@ class Policy:
         return not self.excluded_paths.match_file(relative)
 
     def allows_rule(self, diagnostic: Diagnostic) -> bool:
+        if "required-cast-policy" in diagnostic.tags:
+            return True
         engine = _SOURCE_ENGINES.get(diagnostic.source, diagnostic.source)
         selectors = frozenset(
             {

@@ -3,10 +3,10 @@ from __future__ import annotations
 import ast
 import builtins
 from pathlib import PurePosixPath
+from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
     ClassVar,
-    cast,  # ruff: ignore[banned-api] -- vars exposes Any; the object view permits isinstance narrowing.
     final,
     override,
 )
@@ -31,14 +31,12 @@ from sarj_python_lint.rules._suppression_comments import scan_comments
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._project_index import SourceUnit, SymbolRef
     from sarj_python_lint.rules._suppression_comments import Comment
 
 
-_BUILTIN_NAMESPACE = cast("Mapping[str, object]", vars(builtins))
+_BUILTIN_NAMESPACE = MappingProxyType[str, object](vars(builtins))
 _BUILTIN_EXCEPTIONS = frozenset(
     name for name, value in _BUILTIN_NAMESPACE.items() if isinstance(value, type) and issubclass(value, Exception)
 )

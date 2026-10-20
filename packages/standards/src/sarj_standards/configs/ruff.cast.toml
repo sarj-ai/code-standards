@@ -1,0 +1,8 @@
+# Casts keep Ruff's native binding analysis and cannot be waived in consumer source.
+[lint]
+preview = true
+select = ["banned-api"]
+
+[lint.flake8-tidy-imports.banned-api]
+"typing.cast".msg = "Prefer discriminated unions or `isinstance` narrowing over `cast`."
+"typing_extensions.cast".msg = "Prefer discriminated unions or `isinstance` narrowing over `cast`."

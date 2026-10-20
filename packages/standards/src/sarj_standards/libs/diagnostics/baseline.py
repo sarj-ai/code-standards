@@ -161,6 +161,8 @@ def touches_changed_lines(diagnostic: Diagnostic, scope: ChangedLineScope | None
 
 
 def is_baselineable(diagnostic: Diagnostic) -> bool:
+    if "non-baselineable" in diagnostic.tags:
+        return False
     if diagnostic.source == "shfmt" and diagnostic.rule_id == "format" and diagnostic.severity.value == "error":
         return False
     return not (

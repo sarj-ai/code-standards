@@ -57,6 +57,7 @@
       "no-delete-statement",
       "no-discarded-validation-result",
       "no-docstring-type-restatement",
+      "no-dual-shape-model-field-reader",
       "no-dunder-all",
       "no-duplicate-dunder-all-entry",
       "no-excessive-cognitive-complexity",
@@ -528,7 +529,8 @@
       "SARJ518",
       "SARJ519",
       "SARJ520",
-      "SARJ521"
+      "SARJ521",
+      "SARJ522"
     ],
     "sql": [
       "SARJ101",

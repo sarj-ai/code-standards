@@ -1,0 +1,151 @@
+{
+  "schema": 1,
+  "rule": "python:no-dual-shape-model-field-reader",
+  "code": "SARJ522",
+  "decision": "ship-warning",
+  "labeled_cases": {
+    "true_positives": 20,
+    "true_negatives": 38,
+    "false_positives": 0,
+    "false_negatives": 0
+  },
+  "native_cast_policy_regressions": 32,
+  "corpus": {
+    "sources": 8,
+    "files": 3410,
+    "bytes": 35805880,
+    "new_rule_matches": 2,
+    "inspected_true_positives": 2,
+    "known_false_positives": 0,
+    "selection": "All matching tracked existing Python files from four frozen local Git corpora, a frozen private regression source, positive and negative seeds, Pydantic 2.14.1 and Typer 0.27.3. Every new-rule match was inspected. Private identities, source pins and digests remain in an owner-readable local overlay.",
+    "batch_size": 250,
+    "process_isolation": "A fresh native linter process per corpus and bounded batch. The already-shipped no-duplicate-dunder-all-entry rule ran in every baseline and candidate process; the positive seed exercises both rules. Python -P prevents a corpus working directory from shadowing the standard library. Every batch must return diagnostics on exit 1, return no stderr, and account for every selected file.",
+    "execution_errors": 0
+  },
+  "performance": {
+    "repeats": 3,
+    "baseline_seconds": [
+      6.853218,
+      6.643594,
+      6.625439
+    ],
+    "candidate_seconds": [
+      8.025003,
+      7.796248,
+      7.808006
+    ],
+    "candidate_alone_seconds": [
+      8.046912,
+      7.752421,
+      7.769056
+    ],
+    "median_slowdown": 1.1752683863583475,
+    "maximum_slowdown_budget": 1.25,
+    "peak_child_rss_bytes": 932331520,
+    "measurement": "Each batch starts a fresh linter process. Operating-system caches were not flushed; earlier discarded and stopped runs may have warmed them. This is not a cold-filesystem measurement.",
+    "normal_combined_sample": {
+      "sources": 8,
+      "files": 47,
+      "bytes": 556108,
+      "candidate_rule_count": 163,
+      "baseline_seconds": [
+        29.363609,
+        28.611712,
+        28.607118
+      ],
+      "candidate_seconds": [
+        28.600331,
+        28.625064,
+        28.528532
+      ],
+      "candidate_alone_seconds": [
+        1.552542,
+        1.556008,
+        1.534028
+      ],
+      "median_slowdown": 0.9996022258297581,
+      "selection": "At most eight evenly spaced files from each frozen source; every selected file is accounted for. The same sample and full native Python registry run in baseline and candidate, with only SARJ522 omitted from baseline. Both known positive fixtures remain active. This paired sample does not measure a full 3,410-file combined gate."
+    },
+    "discarded_experiments": [
+      "Earlier measurements without Python -P suffered a public-package types.py import-path failure. Their timings and apparent zero findings for that source are invalid and superseded.",
+      "An all-registry run over the full 3,410-file corpus was stopped for excessive duration before completion; no completed full-corpus combined overhead claim is made. The bounded paired sample is reported separately."
+    ]
+  },
+  "commands": [
+    "uv --directory packages/python run pytest -q",
+    "uv run --project packages/standards --frozen pytest -q packages/standards/tests/test_ruff_cast_policy.py",
+    "uv --directory packages/python run pytest -q tests/test_cast_access.py tests/rules/test_no_dual_shape_model_field_reader.py",
+    "code-standards --root . maintain rules stage-warning python:no-dual-shape-model-field-reader",
+    "code-standards --root . maintain rules evaluate --rule python:no-dual-shape-model-field-reader --scope corpus --corpus-manifest <public-manifest> --private-overlay <owner-readable-overlay>",
+    "make verify"
+  ],
+  "limitations": [
+    "The rule recognizes closed private module readers over stable direct local Pydantic models, builtin dict or import-proven standard Mapping branches, either parameter order, and literal declared fields or bounded stable constant aliases at every visible direct caller. Imported and inherited models, escaped helpers, dynamic selectors and ambiguous bindings abstain.",
+    "Labeled false-negative counts describe the declared recognition boundary, not exhaustive recall over arbitrary Python programs.",
+    "There is no automatic rewrite: validation rejection, coercion, defaults and error timing require review.",
+    "New advisory promotion requires a warning release and separate reviewed metadata change.",
+    "The cast-only policy keeps native Ruff import/member ownership and adds binding-proven wildcard/literal-reflection source facts where Ruff has a demonstrated gap. Protected cast findings bypass source suppressions, consumer Ruff configuration, manifest rule exceptions and diagnostic baselines; other API exception policies remain intact. Dynamic runtime discovery without a proven API identity remains outside static proof."
+  ],
+  "phase": "final implementation after 50 ordered audit passes",
+  "indirect_cast_source_fact_regressions": 17,
+  "audit": {
+    "report": "packages/python/benchmarks/cast-model-loophole-audit.json",
+    "passes": 50,
+    "initial_failing_scenarios": 12,
+    "remaining_failing_scenarios": 0
+  },
+  "verification": {
+    "canonical_command": "make verify",
+    "canonical_result": "Final source passes doctor, generated docs/build, formatting, lint, both dogfood scans, all package typechecks and the TypeScript/bootstrap/contracts/Python/SQL/IaC suites. Fresh-wheel Standards tests initially had 19 failures: six existing case-insensitive-filesystem fixtures and thirteen missing-offline-cache Zizmor failures. All thirteen setup failures pass in a fresh-wheel replay after restoring the exact pinned tool cache. The six remaining fixture failures are independently reproduced against unchanged initial main sources.",
+    "focused_regressions": {
+      "python": 75,
+      "native_cast_policy": 32,
+      "passed": 107
+    },
+    "python_suite_passed": 20524,
+    "typescript_suite_passed": 10362,
+    "bootstrap_suite_passed": 34,
+    "contracts_suite_passed": 46,
+    "sql_suite": {
+      "passed": 1798,
+      "skipped": 1
+    },
+    "iac_suite_passed": 1448,
+    "standards_fresh_wheel_initial": {
+      "passed": 6325,
+      "failed": 19,
+      "skipped": 9
+    },
+    "restored_cache_fresh_wheel_replay": {
+      "command": "make test-standards PYTEST_ARGS=\"-k zizmor_native_boundaries\"",
+      "passed": 13,
+      "failed": 0
+    },
+    "remaining_baseline_failures": [
+      "tests/test_react_doctor_scope.py::test_scoped_scan_matches_native_source_eligibility[view.TSX-False-empty-staged]",
+      "tests/test_react_doctor_scope.py::test_scoped_scan_matches_native_source_eligibility[view.TSX-False-empty-changed]",
+      "tests/test_react_doctor_scope.py::test_scoped_scan_matches_native_source_eligibility[view.TSX-False-empty-current]",
+      "tests/test_react_doctor_scope.py::test_scoped_scan_matches_native_source_eligibility[view.TSX-False-omitted-workspace-staged]",
+      "tests/test_react_doctor_scope.py::test_scoped_scan_matches_native_source_eligibility[view.TSX-False-omitted-workspace-changed]",
+      "tests/test_react_doctor_scope.py::test_scoped_scan_matches_native_source_eligibility[view.TSX-False-omitted-workspace-current]"
+    ],
+    "baseline_reproduction": {
+      "source": "unchanged initial main, archived outside Git and explicitly selected through PYTHONPATH",
+      "failed": 6,
+      "passed": 36,
+      "deselected": 279,
+      "cause": "The case-insensitive macOS filesystem treats view.TSX as the existing tracked view.tsx file; the fixture changes that file instead of creating the distinct case-sensitive filename it expects."
+    },
+    "additional_commands": [
+      {
+        "command": "make test-tsconfig repo-check",
+        "result": "passed"
+      },
+      {
+        "command": "make check-no-private-refs shell-check",
+        "result": "passed; private-reference scanning is delegated to trusted CI; ShellCheck reports existing SC2310 warnings"
+      }
+    ],
+    "release_state": "Local changes only; SARJ522 remains warning-stage and there is no autofix. A release and consumer upgrade are required to apply the new gate to existing pull requests."
+  }
+}

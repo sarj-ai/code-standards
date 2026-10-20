@@ -3,11 +3,11 @@ from __future__ import annotations
 import ast
 import builtins
 from pathlib import PurePosixPath
+from types import MappingProxyType
 from typing import (
     TYPE_CHECKING,
     ClassVar,
     NamedTuple,
-    cast,  # ruff: ignore[banned-api] -- vars exposes Any; the object view permits native exception narrowing.
     override,
 )
 
@@ -29,14 +29,14 @@ from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Iterator
 
     from sarj_python_lint._file_context import PythonFileContext
 
 
 # The two attributes that *configure* what a mock does when called.
 _CONFIG_ATTRS = frozenset({"return_value", "side_effect"})
-_BUILTIN_NAMESPACE = cast("Mapping[str, object]", vars(builtins))
+_BUILTIN_NAMESPACE = MappingProxyType[str, object](vars(builtins))
 _EXCEPTION_TYPES = frozenset(
     name for name, value in _BUILTIN_NAMESPACE.items() if isinstance(value, type) and issubclass(value, BaseException)
 )
