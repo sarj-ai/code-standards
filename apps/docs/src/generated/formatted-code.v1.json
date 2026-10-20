@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "5e1636d69b82768212aea7ea372116d45cbd3afb4884839a6018006d3bc7a665",
-  "cliSha256": "6ad6bd1969b07c32a2824d65a0e7587d27e6dd62fb44bbccadbfef44884a83c8",
+  "catalogSha256": "127e793d79c69c3c2b5708893cf25d699c8bef00269641f0e965308df803e638",
+  "cliSha256": "e988f38e8171ced797ecd9a3c17137919876348f78eb39176b20a2e4c2800d23",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -751,6 +751,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Review a wildcard that blocks access to credentialed responses"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-credential-in-browser-storage": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/theme.ts",
+              "source": "localStorage.setItem(\"sidebar-collapsed\", \"true\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/theme.ts",
+          "id": "server-cookie",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Store a non-credential preference in localStorage"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/session.ts",
+              "source": "export function remember(token: string): void {\n  localStorage.setItem(\"accessToken\", token);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/session.ts",
+          "id": "token-in-local-storage",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not store an access token in localStorage"
         }
       ],
       "optionsSchemaSource": null
@@ -1993,6 +2028,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Paragraphs separate a component's durable constraints"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-numeric-search-param-coercion": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/page.ts",
+              "source": "export function page(params: URLSearchParams): number {\n  return parseInt(params.get(\"page\") ?? \"1\", 10);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/page.ts",
+          "id": "parse-int-page",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not coerce a search parameter with parseInt"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/page.ts",
+              "source": "declare const z: { coerce: { number(): { parse(value: unknown): number } } };\nexport function page(params: URLSearchParams): number {\n  return z.coerce.number().parse(params.get(\"page\") ?? undefined);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/page.ts",
+          "id": "schema-parsed-page",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Parse the page number with a schema"
         }
       ],
       "optionsSchemaSource": null
@@ -4253,6 +4323,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "eslint:prefer-native-fetch-in-server-actions": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/app/actions.ts",
+              "source": "\"use server\";\n\nimport ky from \"ky\";\n\nexport async function upload(url: string, body: Blob): Promise<void> {\n  await ky.put(url, { body });\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/app/actions.ts",
+          "id": "ky-in-action",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A server action imports ky"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/app/actions.ts",
+              "source": "\"use server\";\n\nexport async function upload(url: string, body: Blob): Promise<void> {\n  const response = await fetch(url, {\n    method: \"PUT\",\n    body,\n    signal: AbortSignal.timeout(30_000),\n  });\n  if (!response.ok) throw new Error(`upload failed: ${response.status}`);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/app/actions.ts",
+          "id": "native-fetch-action",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A server action uploads with native fetch"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:prefer-native-random-uuid": {
       "examples": [
         {
@@ -6239,6 +6344,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "iac:no-plaintext-secret-env": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"google_cloud_run_v2_service\" \"api\" {\n  template {\n    containers {\n      env {\n        name  = \"API_KEY\"\n        value = var.api_key\n      }\n    }\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "plain-api-key",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An API key is injected as a plain value"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"google_cloud_run_v2_service\" \"api\" {\n  template {\n    containers {\n      env {\n        name = \"API_KEY\"\n        value_source {\n          secret_key_ref {\n            secret  = google_secret_manager_secret.api_key.secret_id\n            version = \"latest\"\n          }\n        }\n      }\n    }\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "secret-reference",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "An API key is read from Secret Manager"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "iac:no-project-basic-privilege": {
       "examples": [
         {
@@ -6270,6 +6410,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A specific role stays scoped"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "iac:no-project-secret-access-for-service-account": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"google_secret_manager_secret_iam_member\" \"api\" {\n  secret_id = google_secret_manager_secret.api_key.id\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = \"serviceAccount:${google_service_account.api.email}\"\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "per-secret-accessor",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A service account reads only the secret it needs"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"google_project_iam_member\" \"api\" {\n  role   = \"roles/secretmanager.secretAccessor\"\n  member = \"serviceAccount:${google_service_account.api.email}\"\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "project-secret-accessor",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A service account can read every project secret"
         }
       ],
       "optionsSchemaSource": null
@@ -6825,6 +7000,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Unexpected pass fails the suite"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:delete-route-returns-no-content": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.delete(\"/keys/{key_id}\")\nasync def revoke(key_id: str) -> None:\n    return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "implicit-200",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A DELETE route answers 200 with a null body"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter, status\n\nrouter = APIRouter()\n\n\n@router.delete(\"/keys/{key_id}\", status_code=status.HTTP_204_NO_CONTENT)\nasync def revoke(key_id: str) -> None:\n    return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "no-content",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A DELETE route declares 204"
         }
       ],
       "optionsSchemaSource": null
@@ -7982,6 +8192,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-create-verb-in-post-path": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.post(\"/tickets\")\nasync def create_ticket() -> None:\n    return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "collection-path",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A POST route names its collection"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.post(\"/tickets/create\")\nasync def create_ticket() -> None:\n    return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "create-segment",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A POST route repeats the verb in its path"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-database-programmability": {
       "examples": [
         {
@@ -8013,6 +8258,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Procedural fault fixture"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-defaulted-environment-setting": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service/settings.py",
+              "source": "from pydantic import Field\nfrom pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    environment: str = Field(default=\"local\", alias=\"ENVIRONMENT\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service/settings.py",
+          "id": "defaulted-environment",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A defaulted environment pretends to be local"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service/settings.py",
+              "source": "from pydantic import Field\nfrom pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    environment: str = Field(alias=\"ENVIRONMENT\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service/settings.py",
+          "id": "required-environment",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A required environment fails at startup when missing"
         }
       ],
       "optionsSchemaSource": null
@@ -8253,6 +8533,76 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Unique names in a package export list"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-duplicate-field-validator-body": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "models/contact.py",
+              "source": "from pydantic import BaseModel, field_validator\n\n\nclass Contact(BaseModel):\n    first_name: str\n    last_name: str\n\n    @field_validator(\"first_name\", mode=\"before\")\n    @classmethod\n    def strip_first(cls, value: str) -> str:\n        return value.strip()\n\n    @field_validator(\"last_name\", mode=\"before\")\n    @classmethod\n    def strip_last(cls, raw: str) -> str:\n        return raw.strip()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "models/contact.py",
+          "id": "duplicate-strip-validators",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Two validators repeat one strip rule"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "models/contact.py",
+              "source": "from pydantic import BaseModel, field_validator\n\n\nclass Contact(BaseModel):\n    first_name: str\n    last_name: str\n\n    @field_validator(\"first_name\", \"last_name\", mode=\"before\")\n    @classmethod\n    def strip_names(cls, value: str) -> str:\n        return value.strip()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "models/contact.py",
+          "id": "one-multi-field-validator",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "One validator names every field that shares the rule"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-exception-text-in-500-detail": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import HTTPException\n\n\ndef load(store) -> None:\n    try:\n        store.load()\n    except Exception as exc:\n        raise HTTPException(status_code=500, detail=f\"load failed: {exc}\") from exc\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "exception-text",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A 500 detail returns the exception message"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import HTTPException\n\n\ndef load(store) -> None:\n    try:\n        store.load()\n    except Exception as exc:\n        raise HTTPException(status_code=500, detail=\"load failed\") from exc\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "fixed-detail",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A 500 detail is a fixed message"
         }
       ],
       "optionsSchemaSource": null
@@ -8605,6 +8955,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-folded-bad-request-not-found": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "client/records.py",
+              "source": "def fetch(response):\n    if response.status_code in (400, 404):\n        return None\n    return response.json()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "client/records.py",
+          "id": "folded-membership",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A 400 is treated as not found"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "client/records.py",
+              "source": "def fetch(response):\n    if response.status_code == 404:\n        return None\n    if response.status_code == 400:\n        raise ValueError(response.text)\n    return response.json()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "client/records.py",
+          "id": "separate-branches",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Not found and bad request are separate outcomes"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-frozen-after-validator-field-write": {
       "examples": [
         {
@@ -8671,6 +9056,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Specific module contains one public definition"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-hasattr": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service/agent.py",
+              "source": "def model_name(settings: object) -> str:\n    return settings.model if hasattr(settings, \"model\") else \"default\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service/agent.py",
+          "id": "hasattr-probe",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A hasattr probe hides a loose type"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service/agent.py",
+              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass LLMSettings:\n    model: str\n\n\ndef model_name(settings: LLMSettings) -> str:\n    return settings.model\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service/agent.py",
+          "id": "typed-access",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A typed parameter states which attributes exist"
         }
       ],
       "optionsSchemaSource": null
@@ -10249,6 +10669,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-slash-collection-root-under-prefix": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter(prefix=\"/tasks\")\n\n\n@router.get(\"\")\nasync def list_tasks() -> list[str]:\n    return []\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "empty-root",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The collection root is registered as an empty path"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter(prefix=\"/tasks\")\n\n\n@router.get(\"/\")\nasync def list_tasks() -> list[str]:\n    return []\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "slash-root",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The collection root is registered as a slash"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-statically-truthy-assertion": {
       "examples": [
         {
@@ -10910,6 +11365,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Whole response payload passed to a logger"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-work-verb-get-route": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.get(\"/batches/{batch_id}/retry\")\nasync def retry(batch_id: str) -> None:\n    return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "get-retry",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A GET route retries a batch"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.post(\"/batches/{batch_id}/retry\")\nasync def retry(batch_id: str) -> None:\n    return None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "post-retry",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The retry is a POST"
         }
       ],
       "optionsSchemaSource": null
@@ -13319,6 +13809,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Replay-named store callable omits duplicate behavior"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-exp-on-jwt-decode": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "auth.py",
+              "source": "import jwt\n\n\ndef claims(token: str, key: str) -> dict[str, object]:\n    return jwt.decode(token, key, algorithms=[\"HS256\"])\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "auth.py",
+          "id": "exp-optional",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A token without exp is accepted"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "auth.py",
+              "source": "import jwt\n\n\ndef claims(token: str, key: str) -> dict[str, object]:\n    return jwt.decode(token, key, algorithms=[\"HS256\"], options={\"require\": [\"exp\"]})\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "auth.py",
+          "id": "exp-required",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The verifier requires exp"
         }
       ],
       "optionsSchemaSource": null

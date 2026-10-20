@@ -220,6 +220,16 @@ CATALOG: Final[tuple[LibraryMapping, ...]] = (
     _mapping("LIB021", "python", "obsolete", "nose", "pytest", "Nose is unmaintained; use pytest."),
     _mapping("LIB022", "python", "platform-redundant", "mock", "unittest.mock", "Python 3.14 provides unittest.mock."),
     _mapping(
+        "LIB023",
+        "python",
+        "preferred-stack",
+        "logging",
+        "loguru",
+        "Standards standardizes application logging on loguru, whose bound context carries correlation fields to "
+        "every line; a second stdlib logger splits the logs. A loguru bridge that intercepts third-party stdlib "
+        "records needs a local, reasoned TID251 suppression.",
+    ),
+    _mapping(
         "LIB101",
         "typescript",
         "preferred-stack",
