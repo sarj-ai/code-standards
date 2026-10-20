@@ -109,7 +109,6 @@ const groupedContexts = (contexts: ThirdPartyContext[]) => {
     </div>
   </div>
 
-  <p class="third-party-loading" data-third-party-loading hidden aria-hidden="true">Loading {providerLabel} rules…</p>
   <p class="third-party-empty" data-third-party-empty hidden>No enabled {providerLabel} rules match this search.</p>
   <ul class="third-party-search-results" data-third-party-search-results hidden aria-label={`${providerLabel} search results`}></ul>
   <ul class="third-party-rule-list" data-third-party-rule-list role="list">
@@ -171,7 +170,6 @@ const groupedContexts = (contexts: ThirdPartyContext[]) => {
     const count = directory.querySelector('[data-third-party-count]');
     const noun = directory.querySelector('[data-third-party-noun]');
     const empty = directory.querySelector('[data-third-party-empty]');
-    const loading = directory.querySelector('[data-third-party-loading]');
     const results = directory.querySelector('[data-third-party-search-results]');
     const ruleList = directory.querySelector('[data-third-party-rule-list]');
     const catalog = directory.closest('.third-party-catalog');
@@ -185,11 +183,6 @@ const groupedContexts = (contexts: ThirdPartyContext[]) => {
     ) continue;
     container.hidden = false;
     let indexPromise: Promise<SearchEntry[]> | undefined;
-    let indexReady = false;
-    const showLoading = (pending: boolean) => {
-      if (loading instanceof HTMLElement) loading.hidden = !pending;
-      results.setAttribute('aria-busy', String(pending));
-    };
     const loadIndex = () => {
       indexPromise ??= fetch(indexHref).then(async (response) => {
         if (!response.ok) throw new Error(`Search index returned ${String(response.status)}.`);
@@ -200,7 +193,6 @@ const groupedContexts = (contexts: ThirdPartyContext[]) => {
           || !('entries' in payload)
           || !Array.isArray(payload.entries)
         ) throw new TypeError('Search index has an invalid shape.');
-        indexReady = true;
         return (payload.entries as SearchPayloadEntry[]).map((entry) => ({
           ...entry,
           searchText: [entry.displayId, entry.summary, entry.family]
@@ -246,7 +238,6 @@ const groupedContexts = (contexts: ThirdPartyContext[]) => {
       results.hidden = !searching;
       catalog?.classList.toggle('third-party-catalog--searching', searching);
       if (!searching) {
-        showLoading(false);
         results.replaceChildren();
         if (empty instanceof HTMLElement) empty.hidden = true;
         const pageCount = ruleList.querySelectorAll('[data-third-party-rule]').length;
@@ -255,10 +246,8 @@ const groupedContexts = (contexts: ThirdPartyContext[]) => {
         return;
       }
       try {
-        showLoading(!indexReady);
         const entries = await loadIndex();
         if (currentRequest !== request) return;
-        showLoading(false);
         const matches = entries.filter((entry) => entry.searchText.includes(query));
         const rendered = renderResults(matches);
         if (empty instanceof HTMLElement) empty.hidden = matches.length !== 0;
@@ -272,7 +261,6 @@ const groupedContexts = (contexts: ThirdPartyContext[]) => {
         queueMicrotask(() => count?.parentElement?.setAttribute('aria-live', 'polite'));
       } catch {
         if (currentRequest !== request) return;
-        showLoading(false);
         results.replaceChildren();
         results.hidden = true;
         ruleList.hidden = false;
