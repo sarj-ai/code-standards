@@ -254,7 +254,7 @@ def _download(artifact: _Artifact, destination: Path) -> None:
         temporary = Path(stream.name)
         try:  # ruff: ignore[too-many-statements-in-try-clause] -- atomic bounded stream copy.
             while True:
-                chunk = response.read(_READ_BYTES)  # pyright: ignore[reportAny]
+                chunk = response.read(_READ_BYTES)  # pyright: ignore[reportAny] -- urllib leaves download chunks untyped; size and digest checks validate the downloaded bytes.
                 if not isinstance(chunk, bytes):
                     msg = f"{artifact.name} returned a non-bytes response"
                     raise OSError(msg)  # ruff: ignore[raise-within-try] -- cleanup is required before propagation.

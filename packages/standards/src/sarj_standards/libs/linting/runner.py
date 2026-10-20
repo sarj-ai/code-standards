@@ -223,7 +223,7 @@ def _run_tool(
         return 0
     checker, registry = _load_tool(package)
     if selected is None and package == "sarj_python_lint":
-        from sarj_python_lint.rule_base import Rule  # ruff: ignore[import-outside-top-level]
+        from sarj_python_lint.rule_base import Rule  # ruff: ignore[import-outside-top-level] -- load sarj_python_lint.rule_base only when this selected operation executes.
 
         registry = {
             name: rule for name, rule in registry.items() if not issubclass(rule, Rule) or rule.enabled_by_default
@@ -453,7 +453,7 @@ def _route_unique_path(grouped: GroupedPaths, path: Path, raw_path: str, seen: s
 
 def _path_key(path: Path) -> Path:
     # resolve() performs a filesystem lookup for every discovered file.
-    return Path(os.path.abspath(path))  # ruff: ignore[os-path-abspath]
+    return Path(os.path.abspath(path))  # ruff: ignore[os-path-abspath] -- normalize dot segments without resolving symlinks before routing source paths.
 
 
 def _route_path(grouped: GroupedPaths, path: Path, raw_path: str) -> None:

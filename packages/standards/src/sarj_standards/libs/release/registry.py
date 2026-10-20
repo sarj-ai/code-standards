@@ -144,7 +144,7 @@ def _request_publication(request: Request, requirement: RegistryRequirement) -> 
 
 def _read_publication(request: Request, requirement: RegistryRequirement) -> bool:
     with urlopen(request, timeout=15) as response:  # ruff: ignore[suspicious-url-open-usage]  # pyright: ignore[reportAny] -- fixed registry origins
-        if response.status != _HTTP_OK:  # pyright: ignore[reportAny]
+        if response.status != _HTTP_OK:  # pyright: ignore[reportAny] -- urllib's response status is untyped; registry success is checked against the required HTTP status.
             return False
         if requirement.registry == "npm":
             return True

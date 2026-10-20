@@ -15,8 +15,8 @@ ARTIFACT = REPO_ROOT / "apps/docs/src/generated/third-party-rules.v1.json"
 
 def _object(value: object) -> dict[str, object]:
     assert isinstance(value, dict)
-    assert all(isinstance(key, str) for key in value)  # pyright: ignore[reportUnknownVariableType]
-    return value  # pyright: ignore[reportUnknownVariableType]
+    assert all(isinstance(key, str) for key in value)  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
+    return value  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
 
 
 def _is_array(value: object) -> TypeGuard[list[object]]:
@@ -74,7 +74,7 @@ def test_parse_ruff_metadata_indexes_name_only_preview_metadata() -> None:
 
 
 def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> None:
-    payload = _object(json.loads(ARTIFACT.read_text(encoding="utf-8")))  # pyright: ignore[reportAny]
+    payload = _object(json.loads(ARTIFACT.read_text(encoding="utf-8")))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     assert set(payload) == {"profiles", "providers", "rules", "schemaVersion"}
     assert payload["schemaVersion"] == 1
     assert payload["profiles"] == ["application", "standard"]

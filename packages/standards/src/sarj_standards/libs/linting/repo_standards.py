@@ -219,7 +219,7 @@ def _is_git_worktree(root: Path) -> bool:
     git = shutil.which("git")
     if git is None:
         return False
-    worktree = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+    worktree = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
         (git, *_GIT_READ_OPTIONS, "rev-parse", "--is-inside-work-tree"),
         cwd=root,
         check=False,
@@ -234,7 +234,7 @@ def _has_committed_tree(root: Path) -> bool:
     git = shutil.which("git")
     if git is None or not _is_git_worktree(root):
         return False
-    head = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+    head = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
         (git, *_GIT_READ_OPTIONS, "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"),
         cwd=root,
         check=False,
@@ -244,7 +244,7 @@ def _has_committed_tree(root: Path) -> bool:
     )
     if head.returncode == 0:
         return True
-    symbolic_head = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+    symbolic_head = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
         (git, *_GIT_READ_OPTIONS, "symbolic-ref", "--quiet", "HEAD"),
         cwd=root,
         check=False,
@@ -254,7 +254,7 @@ def _has_committed_tree(root: Path) -> bool:
     )
     if symbolic_head.returncode != 0:
         return True
-    referenced = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+    referenced = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
         (git, *_GIT_READ_OPTIONS, "show-ref", "--verify", "--quiet", symbolic_head.stdout.strip()),
         cwd=root,
         check=False,
@@ -325,7 +325,7 @@ def _selected_path_exists(root: Path, path: Path, *, staged: bool) -> bool:
         if staged
         else (git, *_GIT_READ_OPTIONS, "ls-tree", "--name-only", "HEAD", "--", path.as_posix())
     )
-    selected = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+    selected = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
         command,
         cwd=root,
         check=True,

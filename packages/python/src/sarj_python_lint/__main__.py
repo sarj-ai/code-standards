@@ -23,6 +23,7 @@ from sarj_python_lint.rule_base import Diagnostic, ProjectRule, Rule, Severity, 
 from sarj_python_lint.rules import REGISTRY
 from sarj_python_lint.rules._paths import clear_path_caches
 from sarj_python_lint.rules._project_index import ProjectIndexSet
+from sarj_python_lint.suppression_policy import PROTECTED_SUPPRESSION_CODES
 
 
 SKIP_DIR_NAMES = frozenset(
@@ -46,9 +47,15 @@ SKIP_DIR_NAMES = frozenset(
     }
 )
 
-# Skip files larger than this — they are almost always generated/vendored, not
-# hand-written source worth linting.
+# Bound resource use, but never turn an unanalyzed selected file into success.
 _MAX_FILE_BYTES = 500_000
+
+
+def _checked_size(path: Path) -> Path:
+    if path.stat().st_size > _MAX_FILE_BYTES:
+        msg = f"selected Python source exceeds {_MAX_FILE_BYTES} bytes: {path}; use an explicit path exclusion for generated source"
+        raise ValueError(msg)
+    return path
 
 
 def expand_paths(paths: list[Path]) -> list[Path]:
@@ -58,11 +65,7 @@ def expand_paths(paths: list[Path]) -> list[Path]:
             msg = f"input does not exist: {p}"
             raise ValueError(msg)
         if p.is_file():
-            try:
-                if p.stat().st_size <= _MAX_FILE_BYTES:
-                    out.append(p)
-            except OSError:
-                pass
+            out.append(_checked_size(p))
             continue
         out.extend(_python_files(p))
     return out
@@ -78,11 +81,8 @@ def _python_files(p: Path) -> list[Path]:
             if not fnmatch(name, "*.py"):
                 continue
             child = directory / name
-            try:
-                if child.is_file() and child.stat().st_size <= _MAX_FILE_BYTES:
-                    out.append(child)
-            except OSError:
-                continue
+            if child.is_file():
+                out.append(_checked_size(child))
     return sorted(out)
 
 
@@ -109,12 +109,7 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
         rule.prepare_session(session)
     clear_path_caches()
     expanded = expand_paths(paths)
-    loaded: dict[Path, str] = {}
-    for path in expanded:
-        try:
-            loaded[path] = read_python_source(path)
-        except OSError:
-            continue
+    loaded = {path: read_python_source(path) for path in expanded}
     project_rules = [rule for rule in rules if isinstance(rule, ProjectRule)]
     if project_rules:
         indexes = ProjectIndexSet.build(expanded, loaded, facts=session.first_party)
@@ -131,14 +126,13 @@ def check_source(
     rules: list[Rule], p: Path, source: str, *, session: AnalysisSession | None = None
 ) -> list[Diagnostic]:
     context = PythonFileContext(p, source, session)
+    if rules and context.tree is None:
+        msg = f"selected Python source could not be parsed: {p}"
+        raise ValueError(msg)
     source_lines = context.source_lines
     raw = [diagnostic for rule in rules for diagnostic in rule.check_context(context)]
     return deduplicate_diagnostics(
-        [
-            diagnostic
-            for diagnostic in raw
-            if diagnostic.code == "SARJ419" or not is_suppressed(source_lines, diagnostic.line, diagnostic.code)
-        ],
+        [diagnostic for diagnostic in raw if not is_suppressed(source_lines, diagnostic.line, diagnostic.code)],
         source=source,
         context=context,
     )
@@ -157,6 +151,9 @@ def analyze(
 
 _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
     {
+        "SARJ054": frozenset({"SARJ419"}),
+        "SARJ448": frozenset({"SARJ419"}),
+        "SARJ523": frozenset({"SARJ419"}),
         "SARJ050": frozenset({"SARJ420"}),
         "SARJ084": frozenset({"SARJ050", "SARJ420"}),
         "SARJ085": frozenset({"SARJ420"}),
@@ -417,7 +414,7 @@ def _explain(wanted: str) -> int:
 def _baseline_counts(diags: list[Diagnostic]) -> dict[str, dict[str, int]]:
     counts: dict[str, dict[str, int]] = {}
     for d in diags:
-        if d.severity is Severity.WARNING:
+        if d.severity is Severity.WARNING or d.code in PROTECTED_SUPPRESSION_CODES:
             continue
         key = _baseline_path(d.path)
         counts.setdefault(key, {})
@@ -467,7 +464,7 @@ def _apply_baseline(
     seen: Counter[tuple[str, str]] = Counter()
     out: list[Diagnostic] = []
     for d in diags:
-        if d.severity is Severity.WARNING:
+        if d.severity is Severity.WARNING or d.code in PROTECTED_SUPPRESSION_CODES:
             out.append(d)
             continue
         path_key = _baseline_path(d.path, root=root)

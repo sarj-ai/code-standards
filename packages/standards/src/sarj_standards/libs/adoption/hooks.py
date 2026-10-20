@@ -68,7 +68,7 @@ def _construct_unique_mapping(
     for key_node, _value_node in mapping_items(node):
         if key_node.tag == "tag:yaml.org,2002:merge":
             continue
-        key: object = loader.construct_object(  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+        key: object = loader.construct_object(  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType] -- PyYAML's constructor and lifecycle stubs are untyped; this loader controls their runtime node contract.
             key_node,
             deep=deep,
         )
@@ -96,11 +96,11 @@ def _construct_unique_mapping(
     loader.flatten_mapping(node)
     mapping: dict[object, object] = {}
     for key_node, value_node in mapping_items(node):
-        key = loader.construct_object(  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType]
+        key = loader.construct_object(  # pyright: ignore[reportUnknownMemberType,reportUnknownVariableType] -- PyYAML's constructor and lifecycle stubs are untyped; this loader controls their runtime node contract.
             key_node,
             deep=deep,
         )
-        mapping[key] = loader.construct_object(  # pyright: ignore[reportUnknownMemberType]
+        mapping[key] = loader.construct_object(  # pyright: ignore[reportUnknownMemberType] -- PyYAML's constructor and lifecycle stubs are untyped; this loader controls their runtime node contract.
             value_node,
             deep=deep,
         )
@@ -108,7 +108,7 @@ def _construct_unique_mapping(
 
 
 _UniqueKeyLoader.add_constructor(
-    BaseResolver.DEFAULT_MAPPING_TAG,  # pyright: ignore[reportAny]
+    BaseResolver.DEFAULT_MAPPING_TAG,  # pyright: ignore[reportAny] -- PyYAML's constructor and lifecycle stubs are untyped; this loader controls their runtime node contract.
     _construct_unique_mapping,
 )
 
@@ -213,7 +213,7 @@ def _parse_hook_configuration(text: str) -> object:
     try:
         return loader.get_single_data()  # pyright: ignore[reportAny] -- parser boundary
     finally:
-        loader.dispose()  # pyright: ignore[reportUnknownMemberType]
+        loader.dispose()  # pyright: ignore[reportUnknownMemberType] -- PyYAML's constructor and lifecycle stubs are untyped; this loader controls their runtime node contract.
 
 
 def _line_offsets(lines: list[str]) -> list[int]:

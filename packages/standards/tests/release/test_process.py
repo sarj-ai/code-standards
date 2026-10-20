@@ -22,12 +22,12 @@ def test_process_result_rejects_boolean_return_codes(returncode: bool) -> None:
 
 def test_process_result_rejects_non_text_stdout() -> None:
     with pytest.raises(TypeError, match="process stdout must be text"):
-        ProcessResult(0, b"output")  # pyright: ignore[reportArgumentType]
+        ProcessResult(0, b"output")  # pyright: ignore[reportArgumentType] -- deliberately pass an invalid value to verify runtime validation.
 
 
 def test_process_result_rejects_non_text_stderr() -> None:
     with pytest.raises(TypeError, match="process stderr must be text"):
-        ProcessResult(0, stderr=b"error")  # pyright: ignore[reportArgumentType]
+        ProcessResult(0, stderr=b"error")  # pyright: ignore[reportArgumentType] -- deliberately pass an invalid value to verify runtime validation.
 
 
 def test_process_result_accepts_signal_return_codes_and_text_streams() -> None:
@@ -98,4 +98,4 @@ def test_binary_result_rejects_text_and_boolean_status() -> None:
     with pytest.raises(TypeError, match="return code must be an integer"):
         ProcessBinaryResult(True)
     with pytest.raises(TypeError, match="binary process output must be bytes"):
-        ProcessBinaryResult(0, "text")  # pyright: ignore[reportArgumentType]
+        ProcessBinaryResult(0, "text")  # pyright: ignore[reportArgumentType] -- deliberately pass an invalid value to verify runtime validation.

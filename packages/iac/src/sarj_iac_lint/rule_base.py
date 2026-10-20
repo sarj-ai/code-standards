@@ -45,7 +45,7 @@ def is_suppressed(
     if m is None:
         return False
     if m.group("colon") is None:
-        return True
+        return False
     codes_str = m.group("codes")
     if not codes_str:
         return False

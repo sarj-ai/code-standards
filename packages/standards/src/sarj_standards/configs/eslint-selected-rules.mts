@@ -21,6 +21,9 @@ const configPath = rawRequest["config"];
 if (configPath !== null && typeof configPath !== "string")
   throw new Error("Selected ESLint config must be a path or null");
 const request = {
+  full: rawRequest["full"] === true,
+  consoleOutput: rawRequest["consoleOutput"] === true,
+  failOnWarnings: rawRequest["failOnWarnings"] === true,
   rules: strings(rawRequest["rules"], "Selected ESLint rules"),
   config: configPath,
   upstreamRules: strings(
@@ -42,18 +45,24 @@ const options: NativeESLint.Options = {
   ...(request.config === null ? {} : { overrideConfigFile: request.config }),
   // A partial rule run cannot validate whether unrelated inline directives are
   // needed. Full lint owns those checks; live selected suppressions still apply.
-  overrideConfig: {
-    linterOptions: {
-      reportUnusedDisableDirectives: "off",
-      reportUnusedInlineConfigs: "off",
-    },
-  },
+  ...(request.full
+    ? {}
+    : {
+        overrideConfig: {
+          linterOptions: {
+            reportUnusedDisableDirectives: "off",
+            reportUnusedInlineConfigs: "off",
+          },
+        },
+      }),
   cache: false,
   warnIgnored: false,
   applySuppressions: true,
   // Preserve repository parsers, plugins, options, and suppressions;
   // the predicate prevents unrelated rule visitors from running.
-  ruleFilter: ({ ruleId }) => selected.has(ruleId),
+  ...(request.full
+    ? {}
+    : { ruleFilter: ({ ruleId }: { ruleId: string }) => selected.has(ruleId) }),
 };
 const eslint = new ESLint(options);
 const files = process.argv.slice(4);
@@ -151,7 +160,7 @@ if (!request.passOnUnpruned) {
     ];
     return [...(suppressions.get(file) ?? [])].some(
       ([ruleId, entry]) =>
-        selected.has(ruleId) &&
+        (request.full || selected.has(ruleId)) &&
         entry.count >
           actual.filter(
             (message) => message.ruleId === ruleId && message.severity === 2,
@@ -159,7 +168,51 @@ if (!request.passOnUnpruned) {
     );
   });
 }
-process.stdout.write(format(results));
+if (request.full) {
+  const { requiredSuppressionResults } =
+    await import("./eslint-required-policy.mts");
+  const required = new Map(
+    (
+      await requiredSuppressionResults(results.map((result) => result.filePath))
+    ).map((result) => [resolve(result.filePath), result]),
+  );
+  results = results.map((result) => {
+    const policy = required.get(resolve(result.filePath));
+    if (policy === undefined)
+      throw new Error(
+        "Required suppression policy missed a linted source file",
+      );
+    const key = (
+      message: NativeESLint.LintResult["messages"][number],
+    ): string =>
+      JSON.stringify([
+        message.ruleId,
+        message.line,
+        message.column,
+        message.endLine,
+        message.endColumn,
+        message.message,
+      ]);
+    const messages = new Map(
+      result.messages.map((message) => [key(message), message]),
+    );
+    for (const message of policy.messages) messages.set(key(message), message);
+    const combined = [...messages.values()];
+    return {
+      ...result,
+      messages: combined,
+      errorCount: combined.filter((message) => message.severity === 2).length,
+      warningCount: combined.filter((message) => message.severity === 1).length,
+      fatalErrorCount: combined.filter((message) => message.fatal === true)
+        .length,
+    };
+  });
+}
+process.stdout.write(
+  request.consoleOutput
+    ? await (await eslint.loadFormatter("stylish")).format(results)
+    : format(results),
+);
 if (unused)
   process.stderr.write(
     "Selected ESLint rules have unused bulk suppressions; prune them or pass --pass-on-unpruned-suppressions.\n",
@@ -167,6 +220,10 @@ if (unused)
 process.exitCode =
   unused || results.some((result) => result.fatalErrorCount > 0)
     ? 2
-    : results.some((result) => result.errorCount > 0)
+    : results.some(
+          (result) =>
+            result.errorCount > 0 ||
+            (request.failOnWarnings && result.warningCount > 0),
+        )
       ? 1
       : 0;

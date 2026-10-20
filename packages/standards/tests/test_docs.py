@@ -37,7 +37,7 @@ def _is_string_table(value: object) -> TypeGuard[dict[str, str]]:
 
 
 def _load_json(path: Path) -> object:
-    return json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    return json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
 
 
 def _repository(root: Path) -> None:
@@ -321,7 +321,7 @@ def test_sarj_audit_marketplace_source_is_installable() -> None:
 
 
 def test_docs_lint_dependencies_are_reproducible_and_compatible() -> None:
-    raw: object = json.loads((REPO_ROOT / "apps/docs/package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    raw: object = json.loads((REPO_ROOT / "apps/docs/package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     assert _is_object_table(raw)
     dependencies = raw.get("devDependencies")
     assert _is_string_table(dependencies)

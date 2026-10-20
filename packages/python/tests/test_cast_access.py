@@ -15,6 +15,11 @@ from sarj_python_lint.cast_access import indirect_typing_cast_accesses
         'import typing\ncoerce = getattr(typing, "cast")\n',
         'import typing_extensions as t\ncoerce = getattr(t, "cast", None)\n',
         'def coerce():\n    import typing as t\n    return getattr(t, "ca" "st")\n',
+        'import typing\ncoerce = getattr(typing, "ca" + "st")\n',
+        'import typing\ncoerce = getattr(typing, f"cast")\n',
+        'import typing\ncoerce = typing.__dict__["cast"]\n',
+        'import typing_extensions as t\ncoerce = vars(t)["cast"]\n',
+        'import typing\ncoerce = typing.__getattribute__("cast")\n',
     ],
 )
 def test_proves_indirect_static_typing_cast_access(source: str) -> None:
@@ -38,6 +43,13 @@ def test_proves_indirect_static_typing_cast_access(source: str) -> None:
         'import typing\ncoerce = getattr(typing, "cast", **options)\n',
         'import typing\ndef read():\n    global typing\n    return getattr(typing, "cast")\n',
         "broken !!!",
+        'import typing\ncoerce = getattr(typing, f"ca{suffix}")\n',
+        "import typing\ndef read(name):\n    return typing.__dict__[name]\n",
+        'import typing\nvars = custom\ncoerce = vars(typing)["cast"]\n',
+        'import typing\ntyping.__dict__["cast"] = other\ncoerce = vars(typing)["cast"]\n',
+        'import typing\nnamespace = vars(typing)\ncoerce = getattr(typing, "cast")\n',
+        'import typing\ncoerce = getattr(typing, "cast", vars(other))\n',
+        'import typing\nother.__dict__["cast"]\ncoerce = getattr(typing, "cast")\n',
     ],
 )
 def test_abstains_without_a_stable_native_api_identity(source: str) -> None:

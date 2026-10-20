@@ -213,7 +213,7 @@ def test_peer_pins_are_exact_versions_or_official_compiler_aliases() -> None:
 
 
 def test_react_doctor_config_is_offline_blocking_and_non_overlapping() -> None:
-    parsed: object = json.loads((CONFIGS_DIR / "doctor.config.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    parsed: object = json.loads((CONFIGS_DIR / "doctor.config.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     config = manifest.as_table(parsed)
 
     assert config["blocking"] == "error"
@@ -1618,7 +1618,7 @@ def test_setup_converges_peers_duplicated_across_dependency_sections(tmp_path: P
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
 
     assert proc.returncode == 0, proc.stderr
-    parsed: object = json.loads(package_path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    parsed: object = json.loads(package_path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     package = manifest.as_table(parsed)
     runtime = manifest.table_field(package, "dependencies")
     development = manifest.table_field(package, "devDependencies")
@@ -2346,7 +2346,7 @@ def test_pull_request_change_scope_selects_only_files_changed_from_the_exact_bas
     subprocess.run(("git", "add", "."), cwd=tmp_path, check=True)
     subprocess.run(("git", "commit", "-qm", "change"), cwd=tmp_path, check=True)
 
-    selected = cli._changed_file_paths(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    selected = cli._changed_file_paths(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _changed_file_paths contract directly with controlled fixture data.
         tmp_path,
         base,
     )
@@ -4034,7 +4034,7 @@ def test_doctor_json_has_a_stable_schema_and_actionable_ids(tmp_path: Path) -> N
     proc = _cli("--root", str(tmp_path), "doctor", "--format", "json")
 
     assert proc.returncode == 1
-    payload: dict[str, object] = json.loads(proc.stdout)  # pyright: ignore[reportAny]
+    payload: dict[str, object] = json.loads(proc.stdout)  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     assert payload["schema"] == 1
     assert manifest.as_table(payload["summary"]) == {
         "checked": 1,
@@ -4169,7 +4169,7 @@ def test_doctor_rejects_zero_warning_budget_for_an_adopted_eslint_consumer(tmp_p
     _typescript_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--config", "eslint", "--no-install").returncode == 0
     package = tmp_path / "package.json"
-    parsed = manifest.as_table(json.loads(package.read_text(encoding="utf-8")))  # pyright: ignore[reportAny]
+    parsed = manifest.as_table(json.loads(package.read_text(encoding="utf-8")))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     parsed["scripts"] = {"lint": "eslint . --max-warnings 0"}
     package.write_text(json.dumps(parsed), encoding="utf-8")
 
@@ -4182,7 +4182,7 @@ def test_doctor_allows_eslint_warnings_to_remain_nonblocking(tmp_path: Path) -> 
     _typescript_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--config", "eslint", "--no-install").returncode == 0
     package = tmp_path / "package.json"
-    parsed = manifest.as_table(json.loads(package.read_text(encoding="utf-8")))  # pyright: ignore[reportAny]
+    parsed = manifest.as_table(json.loads(package.read_text(encoding="utf-8")))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     parsed["scripts"] = {
         "lint": "eslint .",
         "unrelated": "echo eslint-config && other-tool --max-warnings 0",
@@ -4279,7 +4279,7 @@ def test_init_safely_wires_existing_python_and_typescript_configs(tmp_path: Path
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
 
     assert proc.returncode == 0, proc.stderr
-    pyright: dict[str, object] = json.loads(  # pyright: ignore[reportAny]
+    pyright: dict[str, object] = json.loads(  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
         (tmp_path / "pyrightconfig.json").read_text()
     )
     assert pyright == {

@@ -456,7 +456,7 @@ def build(
     typescript: tuple[RuleSpec, ...] | None = None,
     levels: Mapping[str, DefaultLevel] | None = None,
 ) -> RuleCatalogDocument:
-    from sarj_standards.libs.linting import textlint  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting import textlint  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting only when this selected operation executes.
 
     resolved = root.resolve()
     inventory = rule_inventory_artifact.build(resolved)
@@ -518,7 +518,7 @@ def build(
 
 
 def _python_specs() -> tuple[RuleSpec, ...]:
-    from sarj_python_lint.rules import REGISTRY  # ruff: ignore[import-outside-top-level]
+    from sarj_python_lint.rules import REGISTRY  # ruff: ignore[import-outside-top-level] -- load sarj_python_lint.rules only when this selected operation executes.
 
     specs: list[RuleSpec] = []
     for rule_id, rule in REGISTRY.items():
@@ -531,7 +531,7 @@ def _python_specs() -> tuple[RuleSpec, ...]:
 
 
 def _sql_specs() -> tuple[RuleSpec, ...]:
-    from sarj_sql_lint.rules import REGISTRY  # ruff: ignore[import-outside-top-level]
+    from sarj_sql_lint.rules import REGISTRY  # ruff: ignore[import-outside-top-level] -- load sarj_sql_lint.rules only when this selected operation executes.
 
     specs: list[RuleSpec] = []
     for rule_id, rule in REGISTRY.items():
@@ -544,7 +544,7 @@ def _sql_specs() -> tuple[RuleSpec, ...]:
 
 
 def _iac_specs() -> tuple[RuleSpec, ...]:
-    from sarj_iac_lint.rules import REGISTRY  # ruff: ignore[import-outside-top-level]
+    from sarj_iac_lint.rules import REGISTRY  # ruff: ignore[import-outside-top-level] -- load sarj_iac_lint.rules only when this selected operation executes.
 
     specs: list[RuleSpec] = []
     for rule_id, rule in REGISTRY.items():
@@ -610,7 +610,7 @@ def sync(
     levels: Mapping[str, DefaultLevel] | None = None,
     writer: Callable[[Path, str], None] | None = None,
 ) -> CatalogSyncResult:
-    from sarj_standards.libs.adoption import transaction  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import transaction  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     resolved = root.resolve()
     destination = resolved / _CATALOG_PATH

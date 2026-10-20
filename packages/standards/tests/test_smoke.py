@@ -855,19 +855,23 @@ def test_eslint_async_and_void_rules_have_single_authorities() -> None:
         pytest.param(
             "app/models.py",
             "from collections import namedtuple\nRow = namedtuple(\n",
+            None,
             0,
-            0,
-            id="malformed-abstain",
+            id="malformed-incomplete",
         ),
     ],
 )
 def test_namedtuple_policy_has_one_owner_per_source_type(
-    tmp_path: Path, *, config: Path, filename: str, source: str, custom_count: int, native_count: int
+    tmp_path: Path, *, config: Path, filename: str, source: str, custom_count: int | None, native_count: int
 ) -> None:
     fixture = tmp_path / filename
     fixture.parent.mkdir(parents=True, exist_ok=True)
     fixture.write_text(source, encoding="utf-8")
-    assert len(analyze(["prefer-struct-over-namedtuple"], [fixture])) == custom_count
+    if custom_count is None:
+        with pytest.raises(ValueError, match="selected Python source could not be parsed"):
+            analyze(["prefer-struct-over-namedtuple"], [fixture])
+    else:
+        assert len(analyze(["prefer-struct-over-namedtuple"], [fixture])) == custom_count
     result = subprocess.run(
         [
             sys.executable,

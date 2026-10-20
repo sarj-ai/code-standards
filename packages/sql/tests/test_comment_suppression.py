@@ -33,7 +33,7 @@ if TYPE_CHECKING:
         pytest.param("); -- sarj-noqa: SARJ104 -- required by external field contract", 0, id="reasoned-comment"),
         pytest.param("); -- SARJ-NOQA: sarj104 -- external field contract", 0, id="case-insensitive-code"),
         pytest.param("); -- sarj-noqa: SARJ101, SARJ104 -- external field contract", 0, id="exact-code-list"),
-        pytest.param("); -- sarj-noqa -- retained legacy bare waiver", 0, id="legacy-bare"),
+        pytest.param("); -- sarj-noqa -- obsolete bare waiver is ineffective", 1, id="legacy-bare"),
         pytest.param("); -- sarj-noqa: SARJ101 -- unrelated rule", 1, id="other-code"),
         pytest.param("); -- sarj-noqax: SARJ104", 1, id="directive-prefix-near-miss"),
         pytest.param("); -- prose explains -- sarj-noqa: SARJ104", 1, id="quoted-comment-documentation"),

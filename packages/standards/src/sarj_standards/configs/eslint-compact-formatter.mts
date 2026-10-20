@@ -6,8 +6,8 @@ export default function eslintCompactFormatter(
   return JSON.stringify(
     results.map(({ filePath, messages }) => ({
       filePath,
-      messages: messages.map(
-        ({
+      messages: messages.map((entry) => {
+        const {
           ruleId,
           severity,
           fatal,
@@ -16,7 +16,8 @@ export default function eslintCompactFormatter(
           column,
           endLine,
           endColumn,
-        }) => ({
+        } = entry;
+        return {
           ruleId,
           severity,
           fatal,
@@ -25,8 +26,12 @@ export default function eslintCompactFormatter(
           column,
           endLine,
           endColumn,
-        }),
-      ),
+          ...("sarjRequiredSourcePolicy" in entry &&
+          entry.sarjRequiredSourcePolicy === true
+            ? { sarjRequiredSourcePolicy: true }
+            : {}),
+        };
+      }),
     })),
   );
 }

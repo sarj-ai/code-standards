@@ -7,11 +7,24 @@ import pytest
 
 from sarj_python_lint.__main__ import (
     expand_paths,
+    main,
 )
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+@pytest.mark.parametrize("rule", ["prefer-match-exception-dispatch", "prefer-match-value-dispatch"])
+def test_advisory_cli_rules_still_fail_unparseable_source(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], rule: str
+) -> None:
+    path = tmp_path / "broken.py"
+    path.write_text("if value ==\n", encoding="utf-8")
+    assert main(["check", "--rule", rule, str(path)]) == 2
+    output = capsys.readouterr()
+    assert not output.out
+    assert "selected Python source could not be parsed" in output.err
 
 
 @pytest.mark.parametrize("ignored", ["node_modules", ".venv", ".git", ".uv-cache", "build"])
@@ -44,16 +57,21 @@ def test_explicit_file_inside_ignored_directory_remains_supported(tmp_path: Path
     assert expand_paths([source]) == [source]
 
 
-def test_expand_paths_preserves_file_size_limit_and_suffix_matching(tmp_path: Path) -> None:
+def test_expand_paths_preserves_suffix_matching(tmp_path: Path) -> None:
     ordinary = tmp_path / "app.py"
     ordinary.write_text("value = 1\n", encoding="utf-8")
-    oversized = tmp_path / "generated.py"
-    oversized.write_bytes(b" " * 500_001)
     (tmp_path / "notes.txt").write_text("value = 2\n", encoding="utf-8")
     (tmp_path / "directory.py").mkdir()
 
     assert expand_paths([tmp_path]) == [ordinary]
-    assert expand_paths([oversized]) == []
+
+
+@pytest.mark.parametrize("directory", [False, True])
+def test_selected_oversized_file_cannot_silently_escape_analysis(tmp_path: Path, *, directory: bool) -> None:
+    oversized = tmp_path / "service.py"
+    oversized.write_bytes(b"# pyright: basic\n#" + b"x" * 500_001)
+    with pytest.raises(ValueError, match="selected Python source exceeds"):
+        expand_paths([tmp_path if directory else oversized])
 
 
 def test_expand_paths_keeps_file_symlinks_without_following_directory_symlinks(tmp_path: Path) -> None:

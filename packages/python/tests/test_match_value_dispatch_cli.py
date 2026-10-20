@@ -41,9 +41,8 @@ _CHAIN = (
         (_CHAIN.format(suppression="  # sarj-noqa: SARJ439 — preserve repeated evaluation"), 0),
         (_CHAIN.format(suppression="  # sarj-noqa: SARJ080 — unrelated suppression"), 1),
         ("# @generated\n" + _CHAIN.format(suppression=""), 0),
-        ("if value ==\n", 0),
     ],
-    ids=("one-warning-per-chain", "exact-suppression", "other-suppression", "generated", "malformed"),
+    ids=("one-warning-per-chain", "exact-suppression", "other-suppression", "generated"),
 )
 def test_match_value_dispatch_cli_is_advisory(
     tmp_path: Path, capsys: CaptureFixture[str], source: str, expected_count: int

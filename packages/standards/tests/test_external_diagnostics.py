@@ -67,8 +67,8 @@ def _eslint_clean_payload(argv: Sequence[str], cwd: Path) -> str:
 def test_eslint_passes_on_unpruned_suppressions_only_when_requested() -> None:
     command = ("npx", "eslint", "--", "app.ts")
 
-    strict = external_module._eslint_json_argv(command)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-    scoped_baseline = external_module._eslint_json_argv(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    strict = external_module._eslint_json_argv(command)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _eslint_json_argv contract directly with controlled fixture data.
+    scoped_baseline = external_module._eslint_json_argv(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _eslint_json_argv contract directly with controlled fixture data.
         command, pass_on_unpruned_suppressions=True
     )
 
@@ -298,7 +298,7 @@ def test_eslint_large_batches_are_bounded_by_encoded_arguments(monkeypatch: pyte
     )
     prefix = ("eslint", "--")
     paths = tuple(f"src/{'unicode-λ-' * 20}{index}.ts" for index in range(1_200))
-    batches = external_module._eslint_path_batches(prefix, paths)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    batches = external_module._eslint_path_batches(prefix, paths)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _eslint_path_batches contract directly with controlled fixture data.
     assert tuple(path for batch in batches for path in batch) == paths
     encoding = "utf-16-le" if platform == "win32" else "utf-8"
     assert all(len(batch) <= 1_000 for batch in batches)
@@ -306,7 +306,7 @@ def test_eslint_large_batches_are_bounded_by_encoded_arguments(monkeypatch: pyte
         sum(len(value.encode(encoding)) + 2 for value in (*prefix, *batch)) + 8 * 1024 <= 24 * 1024 for batch in batches
     )
     with pytest.raises(ValueError, match="command-line budget"):
-        external_module._eslint_path_batches(prefix, ("x" * (24 * 1024),))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        external_module._eslint_path_batches(prefix, ("x" * (24 * 1024),))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _eslint_path_batches contract directly with controlled fixture data.
 
 
 def test_eslint_batch_failure_keeps_partial_findings_and_fails_closed(
@@ -422,7 +422,9 @@ def test_eslint_batches_pass_only_remaining_time_to_subprocess(monkeypatch: pyte
 
     def run(argv: Sequence[str], *, cwd: Path, environment: dict[str, str], timeout_seconds: float) -> ProcessOutput:
         nonlocal elapsed
-        assert argv[0] == str(binary)
+        assert Path(argv[0]).name == "node"
+        assert Path(argv[1]).name == "eslint-selected-rules.mts"
+        assert json.loads(argv[2])["full"] is True
         assert cwd == tmp_path
         assert environment["NODE_OPTIONS"] == "--max-old-space-size=4096"
         timeouts.append(timeout_seconds)
@@ -438,7 +440,7 @@ def test_eslint_batches_pass_only_remaining_time_to_subprocess(monkeypatch: pyte
 
 def test_eslint_subprocess_obeys_remaining_timeout(tmp_path: Path) -> None:
     with pytest.raises(subprocess.TimeoutExpired) as caught:
-        external_module._run_eslint_process(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        external_module._run_eslint_process(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _run_eslint_process contract directly with controlled fixture data.
             (sys.executable, "-c", "import time; time.sleep(10)"), cwd=tmp_path, timeout_seconds=0.05
         )
     assert caught.value.timeout == pytest.approx(0.05)
@@ -872,7 +874,7 @@ def test_managed_mobsf_config_translates_strict_filters_and_exclusions(tmp_path:
         encoding="utf-8",
     )
 
-    argv = external_module._mobsfscan_argv(Path("rules"), config=config)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    argv = external_module._mobsfscan_argv(Path("rules"), config=config)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _mobsfscan_argv contract directly with controlled fixture data.
 
     assert argv[:2] == ("semgrep", "scan")
     assert argv.count("--severity") == 2
@@ -892,7 +894,7 @@ def test_managed_mobsf_config_cannot_weaken_the_strict_rule_floor(config: str, m
     path.write_text(config, encoding="utf-8")
 
     with pytest.raises(ValueError, match=message):
-        external_module._mobsfscan_argv(Path("rules"), config=path)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        external_module._mobsfscan_argv(Path("rules"), config=path)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _mobsfscan_argv contract directly with controlled fixture data.
 
 
 def test_managed_swift_commands_ignore_repository_mintfiles(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -906,7 +908,7 @@ def test_managed_swift_commands_ignore_repository_mintfiles(monkeypatch: pytest.
         external_module.mobile_tools, "command", managed_command
     )
 
-    command = external_module._swift_command(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    command = external_module._swift_command(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _swift_command contract directly with controlled fixture data.
         tmp_path, "swiftlint", managed=True
     )
 
@@ -956,7 +958,7 @@ def test_managed_mobsf_config_rejects_symlinks_and_oversized_files(
     linked.symlink_to(target)
 
     with pytest.raises(OSError, match="not a regular file"):
-        external_module._mobsfscan_argv(Path("rules"), config=linked)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        external_module._mobsfscan_argv(Path("rules"), config=linked)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _mobsfscan_argv contract directly with controlled fixture data.
 
     oversized = tmp_path / "mobsf.strict.yml"
     oversized.write_text("12345", encoding="utf-8")
@@ -964,7 +966,7 @@ def test_managed_mobsf_config_rejects_symlinks_and_oversized_files(
         external_module, "_MAX_MOBILE_CONFIG_BYTES", 4
     )
     with pytest.raises(external_module.OutputLimitError, match="exceeds 4 bytes"):
-        external_module._mobsfscan_argv(Path("rules"), config=oversized)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        external_module._mobsfscan_argv(Path("rules"), config=oversized)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _mobsfscan_argv contract directly with controlled fixture data.
 
 
 def test_shellcheck_json_preserves_native_rule_and_warning_rollout(tmp_path: Path) -> None:
@@ -1116,7 +1118,7 @@ def test_shellcheck_exact_version_is_attested(monkeypatch: pytest.MonkeyPatch, t
         old_version,
     )
 
-    issue = external_module._shellcheck_version_issue(tmp_path)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    issue = external_module._shellcheck_version_issue(tmp_path)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _shellcheck_version_issue contract directly with controlled fixture data.
 
     assert issue is not None
     assert issue.kind == "version-mismatch"
@@ -1426,7 +1428,7 @@ def test_react_doctor_discovers_independent_react_projects(tmp_path: Path) -> No
             encoding="utf-8",
         )
 
-    assert external_module._react_project_roots(tmp_path) == (  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert external_module._react_project_roots(tmp_path) == (  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _react_project_roots contract directly with controlled fixture data.
         react_project.resolve(),
         next_project.resolve(),
     )
@@ -1448,7 +1450,7 @@ def test_react_doctor_honors_manifest_doctor_project_exclusions(tmp_path: Path) 
     )
     (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
 
-    selection = external_module._selected_react_doctor_projects(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    selection = external_module._selected_react_doctor_projects(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _selected_react_doctor_projects contract directly with controlled fixture data.
         tmp_path,
         enabled=True,
         has_typescript=True,
@@ -1567,7 +1569,7 @@ def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_
             "",
         )
 
-    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         project,
         projects=(project,),
         root=tmp_path,
@@ -1619,7 +1621,7 @@ def test_react_doctor_skips_changed_scope_without_selected_project_source(
             return ProcessOutput(0, "apps/worker/src/job.ts\0apps/worker/test/job.test.ts\0", "")
         pytest.fail(f"React Doctor must not run for an unrelated changed scope: {argv!r}")
 
-    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         tmp_path,
         projects=(project,),
         root=tmp_path,
@@ -1691,7 +1693,7 @@ def test_react_doctor_retries_one_valid_upstream_baseline_degradation() -> None:
             return ProcessOutput(0, "", "")
         pytest.fail(f"unexpected command: {argv!r}")
 
-    bounded = external_module._react_doctor_baseline_retry_runner(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    bounded = external_module._react_doctor_baseline_retry_runner(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _react_doctor_baseline_retry_runner contract directly with controlled fixture data.
         command,
         root=Path("/repo"),
         runner=runner,
@@ -1718,7 +1720,7 @@ def test_react_doctor_repeated_baseline_degradation_is_not_retried_twice() -> No
             return ProcessOutput(0, f"{base if argv[-1].startswith(base) else head}\n", "")
         return ProcessOutput(0, "", "")
 
-    bounded = external_module._react_doctor_baseline_retry_runner(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    bounded = external_module._react_doctor_baseline_retry_runner(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _react_doctor_baseline_retry_runner contract directly with controlled fixture data.
         command,
         root=Path("/repo"),
         runner=runner,
@@ -1750,7 +1752,7 @@ def test_react_doctor_baseline_retry_stops_when_head_moves() -> None:
             return ProcessOutput(0, f"{initial_head if head_reads == 1 else moved_head}\n", "")
         pytest.fail(f"unexpected command: {argv!r}")
 
-    bounded = external_module._react_doctor_baseline_retry_runner(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    bounded = external_module._react_doctor_baseline_retry_runner(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _react_doctor_baseline_retry_runner contract directly with controlled fixture data.
         command,
         root=Path("/repo"),
         runner=runner,
@@ -1795,7 +1797,7 @@ def test_react_doctor_disjoint_preflight_fails_closed_for_dirty_deleted_or_renam
             return ProcessOutput(0, changed, "")
         pytest.fail(f"unexpected command: {argv!r}")
 
-    assert not external_module._react_doctor_changed_scope_is_disjoint(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert not external_module._react_doctor_changed_scope_is_disjoint(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _react_doctor_changed_scope_is_disjoint contract directly with controlled fixture data.
         (project,),
         root=tmp_path,
         runner=runner,
@@ -1882,7 +1884,7 @@ def test_react_doctor_changed_scope_runs_for_project_or_ancestor_metadata(
             "",
         )
 
-    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         tmp_path,
         projects=(project,),
         root=tmp_path,
@@ -1919,7 +1921,7 @@ def test_react_doctor_disjoint_preflight_checks_every_selected_project(tmp_path:
             return ProcessOutput(0, "apps/admin/src/page.tsx\0", "")
         pytest.fail(f"unexpected command: {argv!r}")
 
-    assert not external_module._react_doctor_changed_scope_is_disjoint(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert not external_module._react_doctor_changed_scope_is_disjoint(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _react_doctor_changed_scope_is_disjoint contract directly with controlled fixture data.
         (web, admin),
         root=tmp_path,
         runner=runner,
@@ -1953,7 +1955,7 @@ def test_react_doctor_disjoint_preflight_fails_closed_when_head_moves(tmp_path: 
             return ProcessOutput(0, "", "")
         pytest.fail(f"unexpected command: {argv!r}")
 
-    assert not external_module._react_doctor_changed_scope_is_disjoint(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert not external_module._react_doctor_changed_scope_is_disjoint(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _react_doctor_changed_scope_is_disjoint contract directly with controlled fixture data.
         (project,),
         root=tmp_path,
         runner=runner,
@@ -2052,7 +2054,7 @@ def test_react_doctor_validates_reported_degraded_changed_scope_before_allowing_
             "",
         )
 
-    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         project,
         projects=(project,),
         root=tmp_path,
@@ -2101,7 +2103,7 @@ def test_react_doctor_accepts_empty_staged_scope_without_selected_project_source
             "",
         )
 
-    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         tmp_path,
         projects=(project,),
         root=tmp_path,
@@ -2155,7 +2157,7 @@ def test_react_doctor_rejects_empty_staged_scope_with_candidate_or_unsafe_path(
             "",
         )
 
-    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         tmp_path,
         projects=(project,),
         root=tmp_path,
@@ -2193,7 +2195,7 @@ def test_react_doctor_empty_staged_scope_fails_closed_when_git_diff_fails(tmp_pa
             "",
         )
 
-    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         tmp_path,
         projects=(project,),
         root=tmp_path,
@@ -2235,7 +2237,7 @@ def test_react_doctor_empty_degraded_scope_fails_closed_when_git_diff_fails(
             "",
         )
 
-    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         tmp_path,
         projects=(project,),
         root=tmp_path,
@@ -2301,7 +2303,7 @@ def test_react_doctor_staged_non_detection_falls_back_to_full_and_filters_exact_
             "",
         )
 
-    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         tmp_path,
         projects=(project,),
         root=tmp_path,
@@ -2349,7 +2351,7 @@ def test_react_doctor_full_scan_still_rejects_non_detection(tmp_path: Path) -> N
             "",
         )
 
-    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         tmp_path,
         projects=(project,),
         root=tmp_path,
@@ -2388,7 +2390,7 @@ def test_react_doctor_staged_fallback_rejects_malformed_scoped_coverage(tmp_path
             "",
         )
 
-    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         tmp_path,
         projects=(project,),
         root=tmp_path,
@@ -2454,7 +2456,7 @@ def test_react_doctor_staged_fallback_failures_remain_blocking(
             "",
         )
 
-    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         tmp_path,
         projects=(project,),
         root=tmp_path,
@@ -2533,7 +2535,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
             "",
         )
 
-    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         tmp_path,
         projects=(tmp_path,),
         root=tmp_path,
@@ -2553,7 +2555,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
     assert seen[0][blocking_index + 1] == "error"
     assert "--no-warnings" in seen[0]
 
-    changed_report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    changed_report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         tmp_path,
         projects=(tmp_path,),
         root=tmp_path,
@@ -2572,7 +2574,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
     event = tmp_path / "event.json"
     event.write_text(json.dumps({"pull_request": {"base": {"sha": event_base}}}), encoding="utf-8")
     monkeypatch.setenv("GITHUB_EVENT_PATH", str(event))
-    github_report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    github_report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         tmp_path,
         projects=(tmp_path,),
         root=tmp_path,
@@ -2587,7 +2589,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
     assert seen[2][github_base_index + 1] == event_base
 
     monkeypatch.setenv("SARJ_REACT_DOCTOR_BASE", "0123456789abcdef")
-    ci_report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    ci_report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         tmp_path,
         projects=(tmp_path,),
         root=tmp_path,
@@ -2668,7 +2670,7 @@ def test_external_analyzers_do_not_inherit_caller_credentials(monkeypatch: pytes
     monkeypatch.setenv("PATH", "/usr/bin")
     monkeypatch.setenv("LC_ALL", "C")
 
-    environment = external_module._analysis_environment()  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    environment = external_module._analysis_environment()  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _analysis_environment contract directly with controlled fixture data.
 
     assert "SARJ_AUDIT_SECRET" not in environment
     assert "NODE_OPTIONS" not in environment
@@ -2698,7 +2700,7 @@ def test_only_eslint_receives_the_bounded_node_heap_limit(
     )
 
     generic = external_module.run_process(command, cwd=tmp_path)
-    eslint = external_module._run_eslint_process(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    eslint = external_module._run_eslint_process(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _run_eslint_process contract directly with controlled fixture data.
         command,
         cwd=tmp_path,
     )
@@ -2721,7 +2723,7 @@ def test_external_analyzers_prefer_the_isolated_python_environment(
     monkeypatch.setattr(sys, "executable", str(interpreter))  # sarj-noqa: SARJ445 -- intercepts external tool routing
     monkeypatch.setattr(shutil, "which", which)  # sarj-noqa: SARJ445 -- intercepts external tool routing
 
-    assert external_module._analyzer_executable("basedpyright") == str(tmp_path / "bin" / "basedpyright")  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert external_module._analyzer_executable("basedpyright") == str(tmp_path / "bin" / "basedpyright")  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _analyzer_executable contract directly with controlled fixture data.
     assert calls == [("basedpyright", str(tmp_path / "bin"))]
 
 
@@ -2737,7 +2739,7 @@ def test_external_analyzers_prefer_the_isolated_python_environment(
                 "--",
                 "eslint",
                 "--format",
-                str(external_module._ESLINT_FORMATTER),  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+                str(external_module._ESLINT_FORMATTER),  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _ESLINT_FORMATTER contract directly with controlled fixture data.
                 "--no-warn-ignored",
                 "--no-cache",
                 "--",
@@ -2752,7 +2754,7 @@ def test_external_analyzers_prefer_the_isolated_python_environment(
                 "exec",
                 "eslint",
                 "--format",
-                str(external_module._ESLINT_FORMATTER),  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+                str(external_module._ESLINT_FORMATTER),  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _ESLINT_FORMATTER contract directly with controlled fixture data.
                 "--no-warn-ignored",
                 "--no-cache",
                 "--",
@@ -2765,8 +2767,8 @@ def test_external_analyzers_prefer_the_isolated_python_environment(
 def test_eslint_json_flags_follow_the_executable_not_the_package_manager_delimiter(
     argv: tuple[str, ...], expected: tuple[str, ...]
 ) -> None:
-    assert external_module._eslint_json_argv(argv) == expected  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-    assert external_module._argv_file_count(argv) == 1  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert external_module._eslint_json_argv(argv) == expected  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _eslint_json_argv contract directly with controlled fixture data.
+    assert external_module._argv_file_count(argv) == 1  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _argv_file_count contract directly with controlled fixture data.
 
 
 def test_eslint_fatal_message_is_an_execution_failure(tmp_path: Path) -> None:
@@ -2861,13 +2863,9 @@ def test_hoisted_eslint_above_analysis_root_is_accepted(monkeypatch: pytest.Monk
     reports = analyze_external([str(source)], root=root, trust=TrustMode.TRUSTED)
 
     assert called
-    assert called[0][0] == str(binary)
-    assert called[0][1:5] == (
-        "--format",
-        str(external_module._ESLINT_FORMATTER),  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-        "--no-warn-ignored",
-        "--no-cache",
-    )
+    assert Path(called[0][0]).name == "node"
+    assert Path(called[0][1]).name == "eslint-selected-rules.mts"
+    assert json.loads(called[0][2])["full"] is True
     assert reports[0].completion is Completion.COMPLETE
 
 
@@ -3652,7 +3650,7 @@ def test_eslint_heap_respects_host_and_process_container_limits(
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- root and nested limits all belong to the fixture
         external_module, "_CGROUP_MEMORY_LIMIT_FILES", (root / "memory.max", root / "memory/memory.limit_in_bytes")
     )
-    assert external_module._eslint_node_options() == f"--max-old-space-size={expected}"  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert external_module._eslint_node_options() == f"--max-old-space-size={expected}"  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _eslint_node_options contract directly with controlled fixture data.
 
 
 @pytest.mark.parametrize("unused", [False, True], ids=("declared-used", "seeded-unused"))

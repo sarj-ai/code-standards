@@ -82,7 +82,7 @@ def test_header_and_settings_aliases_fire() -> None:
 
 def test_scope_roles_are_reused_across_comparisons(monkeypatch: pytest.MonkeyPatch) -> None:
     # Count internal scope fact construction without replacing its behavior.
-    original = secret_compare._roles_for_scope  # pyright: ignore[reportPrivateUsage]  # ruff: ignore[private-member-access]
+    original = secret_compare._roles_for_scope  # pyright: ignore[reportPrivateUsage]  # ruff: ignore[private-member-access] -- exercise the internal _roles_for_scope contract directly with controlled fixture data.
     built: list[ast.Module | ast.FunctionDef | ast.AsyncFunctionDef] = []
 
     def counted(scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef, names: frozenset[str]) -> object:

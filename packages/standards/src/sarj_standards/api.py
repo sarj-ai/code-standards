@@ -324,33 +324,15 @@ class Standards:
             return _with_coverage(
                 _without_baselined_diagnostics(native, baseline_counts, changed_scope=changed_scope), coverage
             )
-        if selected_groups.typescript and adopted is not None and "eslint" not in adopted.configs:
-            coverage.append(
-                CoverageNotice(
-                    "eslint",
-                    "disabled by repository capabilities",
-                    len(selected_groups.typescript),
-                    CoverageDisposition.NOT_REQUESTED,
-                )
+        coverage.extend(
+            _source_analyzer_coverage(
+                selected_groups,
+                adopted,
+                full=rule_selection is None and not upstream_rules.ids,
+                python_type_check=python_type_check,
+                eslint=eslint,
             )
-        elif selected_groups.typescript and not eslint:
-            coverage.append(
-                CoverageNotice(
-                    "eslint",
-                    "ESLint is left to the repository's own CI",
-                    len(selected_groups.typescript),
-                    CoverageDisposition.NOT_REQUESTED,
-                )
-            )
-        if selected_groups.python and not python_type_check:
-            coverage.append(
-                CoverageNotice(
-                    "basedpyright",
-                    "Python type checking is left to the repository's own CI",
-                    len(selected_groups.python),
-                    CoverageDisposition.NOT_REQUESTED,
-                )
-            )
+        )
 
         def external_analysis() -> tuple[ToolReport, ...]:
             return _selected_external_analysis(
@@ -571,6 +553,57 @@ def _operation_result(
         case _:
             status = Status.FAILED
     return Result(status, findings, changes, exit_code)
+
+
+def _source_analyzer_coverage(
+    selected_groups: GroupedPaths,
+    adopted: Manifest | None,
+    *,
+    full: bool,
+    python_type_check: bool,
+    eslint: bool,
+) -> list[CoverageNotice]:
+    coverage: list[CoverageNotice] = []
+    if full and selected_groups.python and adopted is not None:
+        requested_python_tools = ("ruff", "pyright") if python_type_check else ("ruff",)
+        coverage.extend(
+            CoverageNotice(
+                "basedpyright" if tool == "pyright" else tool,
+                "disabled by repository capabilities",
+                len(selected_groups.python),
+                CoverageDisposition.NOT_REQUESTED,
+            )
+            for tool in requested_python_tools
+            if tool not in adopted.enabled_capabilities
+        )
+    if selected_groups.typescript and not eslint:
+        coverage.append(
+            CoverageNotice(
+                "eslint",
+                "ESLint is left to the repository's own CI",
+                len(selected_groups.typescript),
+                CoverageDisposition.NOT_REQUESTED,
+            )
+        )
+    elif selected_groups.typescript and adopted is not None and "eslint" not in adopted.configs:
+        coverage.append(
+            CoverageNotice(
+                "eslint",
+                "disabled by repository capabilities",
+                len(selected_groups.typescript),
+                CoverageDisposition.NOT_REQUESTED,
+            )
+        )
+    if selected_groups.python and not python_type_check:
+        coverage.append(
+            CoverageNotice(
+                "basedpyright",
+                "Python type checking is left to the repository's own CI",
+                len(selected_groups.python),
+                CoverageDisposition.NOT_REQUESTED,
+            )
+        )
+    return coverage
 
 
 def _prepared_only_analysis(
@@ -820,7 +853,7 @@ def _with_library_policy(
 
 
 def _with_repository_analysis(root: Path, native: AnalysisReport, *, staged: bool) -> AnalysisReport:
-    from .libs.linting.repo_standards import (  # ruff: ignore[import-outside-top-level]
+    from .libs.linting.repo_standards import (  # ruff: ignore[import-outside-top-level] -- load libs.linting.repo_standards only when this selected operation executes.
         analyze as analyze_repository,
     )
 
@@ -926,7 +959,7 @@ def _rule_selection(values: Sequence[str | RuleSelector] | None) -> RuleSelectio
     from sarj_standards.libs.linting import (  # ruff: ignore[import-outside-top-level] -- load the upstream selectors with the catalog.
         security_tools,
     )
-    from sarj_standards.libs.repository import (  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.repository import (  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.repository only when this selected operation executes.
         rule_catalog_artifact,
     )
 
@@ -953,7 +986,7 @@ def _rule_selection(values: Sequence[str | RuleSelector] | None) -> RuleSelectio
 
 
 def _routed_for_selection(grouped: object, selected: RuleSelection | None) -> set[str]:
-    from sarj_standards.libs.linting.runner import (  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.runner import (  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting.runner only when this selected operation executes.
         GroupedPaths,
     )
 
@@ -996,10 +1029,10 @@ def _filter_report_selectors(
 
 
 def _warning_rule_keys(mode: AnalysisMode, selected: RuleSelection | None) -> frozenset[RuleSelector]:
-    from sarj_standards.libs.linting.policy import (  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.policy import (  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting.policy only when this selected operation executes.
         warning_selectors,
     )
-    from sarj_standards.libs.linting.test_value import SELECTORS  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.test_value import SELECTORS  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting.test_value only when this selected operation executes.
 
     warnings = warning_selectors()
     if mode is AnalysisMode.OBSERVE and selected is not None:
@@ -1020,8 +1053,11 @@ def _with_warning_severity(
             tool,
             diagnostics=tuple(
                 replace(item, severity=Severity.WARNING)
-                if _selector_for_diagnostic(item) in selectors
-                or (tool.name == "eslint" and upstream_rules.warning_only and item.rule_id in upstream_rules.ids)
+                if "required-source-policy" not in item.tags
+                and (
+                    _selector_for_diagnostic(item) in selectors
+                    or (tool.name == "eslint" and upstream_rules.warning_only and item.rule_id in upstream_rules.ids)
+                )
                 else item
                 for item in tool.diagnostics
             ),

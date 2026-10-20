@@ -186,7 +186,7 @@ def _inspect_package_manifest(
         msg = "could not read package/package.json from package archive"
         raise ValueError(msg)
     try:
-        manifest: object = json.load(manifest_file)  # pyright: ignore[reportAny]
+        manifest: object = json.load(manifest_file)  # pyright: ignore[reportAny] -- the stdlib decoder is untyped; validate this payload before using it as release metadata.
     except json.JSONDecodeError as exc:
         msg = "package archive contains invalid package/package.json"
         raise ValueError(msg) from exc

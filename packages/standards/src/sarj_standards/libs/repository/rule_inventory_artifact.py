@@ -110,7 +110,7 @@ def load(path: Path = RULE_INVENTORY_PATH) -> RuleInventory:
 
 
 def build(root: Path) -> RuleInventory:
-    from sarj_standards.libs.repository import rule_maintenance  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.repository import rule_maintenance  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.repository only when this selected operation executes.
 
     return validate({"schemaVersion": SCHEMA_VERSION, "rules": rule_maintenance.inventory(root)})
 
@@ -128,7 +128,7 @@ def render(root: Path) -> str:
 
 
 def sync(root: Path, *, check: bool, writer: Callable[[Path, str], None] | None = None) -> InventorySyncResult:
-    from sarj_standards.libs.adoption import transaction  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import transaction  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     destination = root.resolve() / _REPOSITORY_INVENTORY_PATH
     expected = render(root)

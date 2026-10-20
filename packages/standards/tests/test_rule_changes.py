@@ -306,7 +306,7 @@ def test_cli_emits_versioned_json(repository: Path, capsys: pytest.CaptureFixtur
     )
 
     assert status == 0
-    payload: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
+    payload: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     assert payload["schemaVersion"] == 1
     assert payload["changes"]
 

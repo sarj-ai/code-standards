@@ -52,7 +52,7 @@ def test_cast_ban_cannot_be_waived_by_source_comments(tmp_path: Path, source: st
 
     assert len(reports) == 1
     assert reports[0].completion is Completion.COMPLETE
-    findings = reports[0].diagnostics
+    findings = tuple(item for item in reports[0].diagnostics if "cast` is banned" in item.message)
     assert len(findings) == 1
     assert "cast` is banned" in findings[0].message
     assert findings[0].source == "ruff"
@@ -134,8 +134,25 @@ def test_cast_policy_execution_failure_is_not_a_clean_result(tmp_path: Path) -> 
         'import typing_extensions as t\nvalue = getattr(t, "cast")(object, 1)\n',
         'import typing\nvalue = getattr(typing, "cast", None)(object, 1)\n',
         'import typing\nvalue = getattr(typing, "ca" "st")(object, 1)\n',
+        'import typing\nvalue = getattr(typing, "ca" + "st")(object, 1)\n',
+        'import typing\nvalue = getattr(typing, f"cast")(object, 1)\n',
+        'import typing\nvalue = typing.__dict__["cast"](object, 1)\n',
+        'import typing_extensions as t\nvalue = vars(t)["cast"](object, 1)\n',
+        'import typing\nvalue = typing.__getattribute__("cast")(object, 1)\n',
     ],
-    ids=["wildcard", "extensions-wildcard", "literal-reflection", "extensions-alias", "fallback", "concatenation"],
+    ids=[
+        "wildcard",
+        "extensions-wildcard",
+        "literal-reflection",
+        "extensions-alias",
+        "fallback",
+        "concatenation",
+        "literal-addition",
+        "static-fstring",
+        "module-dict",
+        "module-vars",
+        "module-getattribute",
+    ],
 )
 def test_indirect_static_cast_access_cannot_bypass_native_policy(tmp_path: Path, source: str) -> None:
     path = tmp_path / "app.py"

@@ -35,7 +35,7 @@ def _policy(**changes: Unpack[RepositoryPolicyOptions]) -> repository.Repository
         "known_locks": (),
     }
     values.update(changes)
-    return repository.RepositoryPolicy(**values)  # pyright: ignore[reportArgumentType]
+    return repository.RepositoryPolicy(**values)  # pyright: ignore[reportArgumentType] -- assemble dynamic policy constructor keywords to exercise validation.
 
 
 def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -1368,7 +1368,7 @@ def test_retired_rename_sync_preserves_historical_aliases_outside_live_source(tm
         ]
     }
 
-    retired = rule_maintenance._retired(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    retired = rule_maintenance._retired(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _retired contract directly with controlled fixture data.
         previous,
         tmp_path,
         {("iac", "live-alias"): "live-rule"},

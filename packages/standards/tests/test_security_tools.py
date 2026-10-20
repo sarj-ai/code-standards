@@ -370,7 +370,7 @@ def test_security_process_preserves_environment_allowlist_and_timeout(
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept the production process boundary; injected runners bypass the environment and timeout controls being tested.
         external, "_run_process", bounded
     )
-    assert external._security_runner(external.run_process, ("checkov",), cwd=tmp_path, name="checkov") == expected  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert external._security_runner(external.run_process, ("checkov",), cwd=tmp_path, name="checkov") == expected  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _security_runner contract directly with controlled fixture data.
 
 
 def test_upstream_selectors_and_exclusions_use_canonical_ids(tmp_path: Path) -> None:

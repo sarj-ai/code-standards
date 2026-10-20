@@ -81,7 +81,7 @@ def test_diagnostic_identity_normalizes_only_known_custom_rule_selectors(
         rule_id=rule_id,
     )
 
-    selector = api._selector_for_diagnostic(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    selector = api._selector_for_diagnostic(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _selector_for_diagnostic contract directly with controlled fixture data.
         diagnostic
     )
     assert selector == expected
@@ -94,7 +94,7 @@ def test_canonical_analysis_routes_the_repository_only_once(
     source = tmp_path / "service.py"
     source.write_text("value = 1\n", encoding="utf-8")
     routed: list[GroupedPaths] = []
-    original_group_paths = api.group_paths  # pyright: ignore[reportPrivateLocalImportUsage]
+    original_group_paths = api.group_paths  # pyright: ignore[reportPrivateLocalImportUsage] -- capture the dispatcher's existing import binding so this test can verify path routing.
 
     def route_once(paths: Sequence[str], *, policy: Policy | None = None) -> GroupedPaths:
         grouped = original_group_paths(paths, policy=policy)

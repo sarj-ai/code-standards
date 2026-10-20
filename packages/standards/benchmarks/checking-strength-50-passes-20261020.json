@@ -1,0 +1,523 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-20",
+  "requestedPasses": 50,
+  "reviewedPasses": 50,
+  "scope": "Fifty distinct checking-strength questions, not fifty repeated test invocations or fifty newly discovered bugs.",
+  "decision": "Ship blocking suppression-integrity policy for the explicitly authorized bypasses; retain declared tool and path boundaries. No autofix or consumer rollout.",
+  "releaseCandidate": {
+    "python": "1.64.0",
+    "typescript": "16.23.0",
+    "sql": "0.23.0",
+    "iac": "0.25.0",
+    "standards": "8.104.0"
+  },
+  "passes": [
+    {
+      "pass": 1,
+      "id": "ruff-inline-cast",
+      "question": "Can a local Ruff ignore re-enable typing.cast?",
+      "classification": "existing-control",
+      "result": "Required cast policy already ignores source waivers.",
+      "regression": "packages/standards/tests/test_ruff_cast_policy.py::test_cast_ban_cannot_be_waived_by_source_comments"
+    },
+    {
+      "pass": 2,
+      "id": "ruff-consumer-select",
+      "question": "Can a consumer clear Ruff's selected rules to allow cast?",
+      "classification": "existing-control",
+      "result": "Packaged cast policy remains authoritative.",
+      "regression": "packages/standards/tests/test_ruff_cast_policy.py::test_cast_ban_uses_packaged_policy_despite_consumer_per_file_ignore"
+    },
+    {
+      "pass": 3,
+      "id": "ruff-per-file-cast",
+      "question": "Can a per-file Ruff exclusion permit new cast uses?",
+      "classification": "existing-control",
+      "result": "The required pass runs independently of per-file ignores.",
+      "regression": "packages/standards/tests/test_ruff_cast_policy.py::test_cast_ban_uses_packaged_policy_despite_consumer_per_file_ignore"
+    },
+    {
+      "pass": 4,
+      "id": "ruff-blanket-noqa",
+      "question": "Does a bare noqa continue hiding unrelated future findings?",
+      "classification": "required-ruff-hygiene",
+      "result": "Mandatory PGH004 runs with --ignore-noqa.",
+      "regression": "packages/standards/tests/test_required_suppression_policy.py::test_upstream_blanket_checks_are_required_despite_source_and_consumer_config"
+    },
+    {
+      "pass": 5,
+      "id": "ruff-blanket-type-ignore",
+      "question": "Does a bare type: ignore waive every checker diagnostic?",
+      "classification": "required-ruff-hygiene",
+      "result": "Mandatory PGH003 requires a named code.",
+      "regression": "packages/standards/tests/test_required_suppression_policy.py::test_upstream_blanket_checks_are_required_despite_source_and_consumer_config"
+    },
+    {
+      "pass": 6,
+      "id": "ruff-hygiene-self-waiver",
+      "question": "Can Ruff suppression comments suppress the blanket-suppression rules?",
+      "classification": "required-ruff-hygiene",
+      "result": "Independent packaged pass ignores inline and file waivers.",
+      "regression": "packages/standards/tests/test_required_suppression_policy.py::test_upstream_blanket_checks_are_required_despite_source_and_consumer_config"
+    },
+    {
+      "pass": 7,
+      "id": "ruff-scoped-file-disable",
+      "question": "Can a named Ruff rule be disabled for the entire file?",
+      "classification": "broad-python-waivers",
+      "result": "SARJ523 rejects scoped file disables; SARJ054 keeps banned-api ownership.",
+      "regression": "packages/python/tests/rules/test_no_blanket_suppression.py::test_blocks_unscoped_or_file_wide_type_suppression"
+    },
+    {
+      "pass": 8,
+      "id": "ruff-range-disable",
+      "question": "Can a disable/enable region authorize future unrelated debt?",
+      "classification": "broad-python-waivers",
+      "result": "SARJ523 rejects source range disables.",
+      "regression": "packages/python/tests/rules/test_no_blanket_suppression.py::test_blocks_unscoped_or_file_wide_type_suppression"
+    },
+    {
+      "pass": 9,
+      "id": "sarj-blanket",
+      "question": "Can bare sarj-noqa waive every Python rule on a line?",
+      "classification": "broad-python-waivers",
+      "result": "Bare markers are ineffective and SARJ523 reports them.",
+      "regression": "packages/python/tests/rules/test_no_blanket_suppression.py::test_bare_sarj_marker_cannot_waive_an_unrelated_rule"
+    },
+    {
+      "pass": 10,
+      "id": "pyright-blanket",
+      "question": "Can an unscoped pyright: ignore hide all errors on a line?",
+      "classification": "broad-python-waivers",
+      "result": "SARJ523 requires an explicit reporter list.",
+      "regression": "packages/python/tests/rules/test_no_blanket_suppression.py::test_blocks_unscoped_or_file_wide_type_suppression"
+    },
+    {
+      "pass": 11,
+      "id": "pyright-file-mode",
+      "question": "Can basic/standard file directives weaken the strict preset?",
+      "classification": "pyright-downgrades",
+      "result": "SARJ523 rejects the weaker file modes.",
+      "regression": "packages/python/tests/rules/test_no_blanket_suppression.py::test_blocks_unscoped_or_file_wide_type_suppression"
+    },
+    {
+      "pass": 12,
+      "id": "pyright-disabled-diagnostic",
+      "question": "Can reportReturnType=false/none erase a real type error?",
+      "classification": "pyright-downgrades",
+      "result": "Native probes confirm erasure; SARJ523 rejects these directives.",
+      "regression": "packages/python/tests/rules/test_no_blanket_suppression.py::test_blocks_unscoped_or_file_wide_type_suppression"
+    },
+    {
+      "pass": 13,
+      "id": "pyright-nonblocking-severity",
+      "question": "Can warning/information retain visible output while making a real error pass?",
+      "classification": "pyright-downgrades",
+      "result": "Native information probe exits 0; all supported sub-error source severities are guarded.",
+      "regression": "packages/python/tests/rules/test_no_blanket_suppression.py::test_blocks_unscoped_or_file_wide_type_suppression"
+    },
+    {
+      "pass": 14,
+      "id": "pyright-implicit-optional",
+      "question": "Can a non-report boolean switch weaken an annotation contract?",
+      "classification": "pyright-downgrades",
+      "result": "Native strictParameterNoneValue=false accepts int=None; the exact demonstrated switch is guarded.",
+      "regression": "packages/python/tests/rules/test_no_blanket_suppression.py::test_blocks_unscoped_or_file_wide_type_suppression"
+    },
+    {
+      "pass": 15,
+      "id": "pyright-feature-and-native-syntax",
+      "question": "Would a broad settings ban reject harmless flags or valid scoped syntax?",
+      "classification": "boundary-control",
+      "result": "Unrelated features and named reporter lists with trailing commas remain accepted; unsupported spellings fail upstream.",
+      "regression": "packages/python/tests/rules/test_no_blanket_suppression.py::test_preserves_scoped_exceptions_and_comment_provenance"
+    },
+    {
+      "pass": 16,
+      "id": "python-comment-provenance",
+      "question": "Can strings/docstrings or prose be mistaken for effective directives?",
+      "classification": "boundary-control",
+      "result": "Only real comment tokens with directive provenance are checked.",
+      "regression": "packages/python/tests/rules/test_no_blanket_suppression.py::test_preserves_scoped_exceptions_and_comment_provenance"
+    },
+    {
+      "pass": 17,
+      "id": "python-missing-description",
+      "question": "Can a code-scoped local exception omit its reason?",
+      "classification": "local-accountability",
+      "result": "SARJ419 now reports missing explanations as well as generic ones.",
+      "regression": "packages/python/tests/rules/test_no_vague_suppression_description.py::test_requires_an_explanation_for_scoped_suppressions"
+    },
+    {
+      "pass": 18,
+      "id": "python-generic-description",
+      "question": "Can same/n/a/legacy mechanically satisfy an explanation requirement?",
+      "classification": "local-accountability",
+      "result": "The bounded generic-reason vocabulary includes these demonstrated non-reasons.",
+      "regression": "packages/python/tests/rules/test_no_vague_suppression_description.py::test_flags_closed_generic_reasons"
+    },
+    {
+      "pass": 19,
+      "id": "python-combined-directives",
+      "question": "Do chained tool directives, separators or issue hashes hide a missing/vague reason or reject a concrete one?",
+      "classification": "boundary-control",
+      "result": "Each directive is inspected, while shared trailing boundary explanations and issue references remain valid.",
+      "regression": "packages/python/tests/rules/test_no_vague_suppression_description.py::test_combined_tool_directives_can_share_a_boundary_explanation"
+    },
+    {
+      "pass": 20,
+      "id": "native-self-suppression",
+      "question": "Can suppression-integrity rules waive themselves through sarj-noqa?",
+      "classification": "protected-accountability",
+      "result": "SARJ054/419/448/523 cannot be locally waived.",
+      "regression": "packages/python/tests/rules/test_no_blanket_suppression.py::test_suppression_integrity_checks_cannot_suppress_themselves"
+    },
+    {
+      "pass": 21,
+      "id": "native-count-baseline",
+      "question": "Can legacy file/code baseline counts grandfather future suppression bypasses?",
+      "classification": "protected-accountability",
+      "result": "Protected findings are neither recorded nor removed by native baselines.",
+      "regression": "packages/python/tests/rules/test_no_blanket_suppression.py::test_native_legacy_baseline_cannot_hide_suppression_policy"
+    },
+    {
+      "pass": 22,
+      "id": "canonical-baseline",
+      "question": "Can a saved canonical fingerprint hide required hygiene after source changes?",
+      "classification": "protected-accountability",
+      "result": "Required findings carry non-baselineable tags even against existing entries.",
+      "regression": "packages/standards/tests/test_required_suppression_policy.py::test_native_suppression_policy_cannot_be_excluded_or_baselined"
+    },
+    {
+      "pass": 23,
+      "id": "global-rule-exclusion",
+      "question": "Can excluded_rules turn off the suppression policy?",
+      "classification": "protected-accountability",
+      "result": "Required-source-policy findings survive rule exclusions.",
+      "regression": "packages/standards/tests/test_required_suppression_policy.py::test_native_suppression_policy_cannot_be_excluded_or_baselined"
+    },
+    {
+      "pass": 24,
+      "id": "per-path-rule-exclusion",
+      "question": "Can an exclusion override waive required hygiene for one maintained source file?",
+      "classification": "protected-accountability",
+      "result": "Rule-specific path overrides cannot erase the floor.",
+      "regression": "packages/standards/tests/test_required_suppression_policy.py::test_native_suppression_policy_cannot_be_excluded_or_baselined"
+    },
+    {
+      "pass": 25,
+      "id": "whole-path-exclusion",
+      "question": "Are explicitly excluded generated/vendor sources still a valid analysis boundary?",
+      "classification": "boundary-control",
+      "result": "Whole-path exclusions are retained; the policy does not claim to analyze excluded source.",
+      "regression": "packages/standards/tests/test_required_suppression_policy.py::test_explicit_whole_path_exclusion_remains_a_boundary"
+    },
+    {
+      "pass": 26,
+      "id": "generated-marker",
+      "question": "Can a new @generated header or generated-looking filename authorize its own waiver?",
+      "classification": "generated-self-waiver",
+      "result": "Critical Python/TypeScript suppression checks no longer skip source-declared generated files.",
+      "regression": "packages/python/tests/rules/test_no_blanket_suppression.py::test_source_cannot_self_authorize_a_generated_or_vendor_waiver"
+    },
+    {
+      "pass": 27,
+      "id": "exact-code-scope",
+      "question": "Can one named exception disable other rules or adjacent source lines?",
+      "classification": "existing-control",
+      "result": "Exact-code and line boundaries remain intact; code prefixes do not match.",
+      "regression": "packages/python/tests/test_noqa.py"
+    },
+    {
+      "pass": 28,
+      "id": "eslint-inline-meta-config",
+      "question": "Can eslint configuration comments turn off every suppression-policing rule before a blanket disable?",
+      "classification": "eslint-independent-floor",
+      "result": "Reproduced clean ordinary lint; a separate noInlineConfig pass now reports the hygiene violation.",
+      "regression": "packages/standards/tests/test_required_eslint_policy.py::test_full_eslint_cannot_disable_its_suppression_policy[inline-config-meta-disable]"
+    },
+    {
+      "pass": 29,
+      "id": "eslint-range-scope",
+      "question": "Can described file/range disables waive future code?",
+      "classification": "eslint-independent-floor",
+      "result": "Required eslint-comments/no-use permits only line-local disable forms.",
+      "regression": "packages/standards/tests/test_required_eslint_policy.py::test_full_eslint_cannot_disable_its_suppression_policy[range-disable]"
+    },
+    {
+      "pass": 30,
+      "id": "eslint-local-blanket",
+      "question": "Can a local disable omit rule names?",
+      "classification": "eslint-independent-floor",
+      "result": "Mandatory no-unlimited-disable rejects it independently of source config.",
+      "regression": "packages/standards/tests/test_required_eslint_policy.py::test_full_eslint_cannot_disable_its_suppression_policy[blanket-local]"
+    },
+    {
+      "pass": 31,
+      "id": "eslint-missing-description",
+      "question": "Can an exact local rule disable omit the boundary reason?",
+      "classification": "eslint-independent-floor",
+      "result": "Mandatory require-description preserves the explanation requirement.",
+      "regression": "packages/standards/tests/test_required_eslint_policy.py::test_full_eslint_cannot_disable_its_suppression_policy[missing-reason]"
+    },
+    {
+      "pass": 32,
+      "id": "eslint-meta-rule-disable",
+      "question": "Can a named line-local exception turn off the checks for exceptions?",
+      "classification": "eslint-independent-floor",
+      "result": "The independent no-restricted-disable rule protects the hygiene owners.",
+      "regression": "packages/standards/tests/test_required_eslint_policy.py::test_full_eslint_cannot_disable_its_suppression_policy[self-disable]"
+    },
+    {
+      "pass": 33,
+      "id": "typescript-ts-ignore",
+      "question": "Can @ts-ignore hide unrelated diagnostics even with a description?",
+      "classification": "eslint-independent-floor",
+      "result": "Required ban-ts-comment rejects ts-ignore.",
+      "regression": "packages/standards/tests/test_required_eslint_policy.py::test_full_eslint_cannot_disable_its_suppression_policy[ts-ignore]"
+    },
+    {
+      "pass": 34,
+      "id": "typescript-ts-nocheck",
+      "question": "Can @ts-nocheck opt an entire file out of checking?",
+      "classification": "eslint-independent-floor",
+      "result": "Required ban-ts-comment rejects ts-nocheck.",
+      "regression": "packages/standards/tests/test_required_eslint_policy.py::test_full_eslint_cannot_disable_its_suppression_policy[ts-nocheck]"
+    },
+    {
+      "pass": 35,
+      "id": "typescript-expect-error-description",
+      "question": "Can @ts-expect-error omit a reason while retaining native suppression semantics?",
+      "classification": "eslint-independent-floor",
+      "result": "A local expect-error needs a description; concrete local exceptions are retained.",
+      "regression": "packages/standards/tests/test_required_eslint_policy.py::test_full_eslint_cannot_disable_its_suppression_policy[expect-error-description]"
+    },
+    {
+      "pass": 36,
+      "id": "typescript-vague-and-generated",
+      "question": "Can a generic expect-error reason escape through @generated or inline rule configuration?",
+      "classification": "generated-self-waiver",
+      "result": "The custom reason check has no generated-source self-waiver and runs in the independent floor.",
+      "regression": "packages/standards/tests/test_required_eslint_policy.py::test_full_eslint_cannot_disable_its_suppression_policy[inline-config-vague-disable]"
+    },
+    {
+      "pass": 37,
+      "id": "eslint-consumer-config",
+      "question": "Can a consumer remove the hygiene plugins/rules from its flat config?",
+      "classification": "eslint-independent-floor",
+      "result": "The required syntax-only pass supplies its own rule configuration.",
+      "regression": "packages/standards/tests/test_required_eslint_policy.py::test_required_eslint_findings_survive_consumer_config_bulk_baseline_and_rule_exclusions[False]"
+    },
+    {
+      "pass": 38,
+      "id": "eslint-bulk-debt",
+      "question": "Can eslint-suppressions.json or canonical debt hide the checks that police suppressions?",
+      "classification": "eslint-independent-floor",
+      "result": "Required pass disables bulk suppressions; tagged findings survive baselines and rule exclusions.",
+      "regression": "packages/standards/tests/test_required_eslint_policy.py::test_required_eslint_findings_survive_consumer_config_bulk_baseline_and_rule_exclusions[True]"
+    },
+    {
+      "pass": 39,
+      "id": "selected-rule-scope",
+      "question": "Does hardening accidentally run unrelated rules during explicitly partial checks?",
+      "classification": "boundary-control",
+      "result": "Selected ESLint retains configured parser/options/live exceptions; full-only policy is dynamically imported.",
+      "regression": "packages/standards/tests/test_selected_eslint_execution.py::test_selected_eslint_preserves_parser_options_and_suppressions_without_running_other_rules"
+    },
+    {
+      "pass": 40,
+      "id": "bulk-unused-scope",
+      "question": "Can unused-suppression relaxation hide actual required findings, or can partial checks falsely prune unselected debt?",
+      "classification": "boundary-control",
+      "result": "Unused counts are computed from ordinary selected/full results before adding the independent floor.",
+      "regression": "packages/standards/tests/test_selected_eslint_execution.py::test_selected_eslint_preserves_parser_options_and_suppressions_without_running_other_rules"
+    },
+    {
+      "pass": 41,
+      "id": "python-parse-coverage",
+      "question": "Does an unparseable selected Python file yield clean native analysis?",
+      "classification": "native-incomplete-coverage",
+      "result": "Reproduced complete/passed/zero findings; the runner now fails analysis while individual rule APIs may abstain.",
+      "regression": "packages/standards/tests/test_required_suppression_policy.py::test_unanalyzed_python_cannot_be_reported_as_clean[parse-failure]"
+    },
+    {
+      "pass": 42,
+      "id": "python-size-coverage",
+      "question": "Can padding a file over 500000 bytes silently omit its checks?",
+      "classification": "native-incomplete-coverage",
+      "result": "The resource cap now reports incomplete analysis instead of silently dropping the file.",
+      "regression": "packages/standards/tests/test_required_suppression_policy.py::test_unanalyzed_python_cannot_be_reported_as_clean[file-size-limit]"
+    },
+    {
+      "pass": 43,
+      "id": "python-read-coverage",
+      "question": "Can a source read failure after selection look like successful empty analysis?",
+      "classification": "native-incomplete-coverage",
+      "result": "Read errors now propagate to the failed analyzer report.",
+      "regression": "packages/standards/tests/test_required_suppression_policy.py::test_python_read_failure_cannot_be_reported_as_clean"
+    },
+    {
+      "pass": 44,
+      "id": "disabled-python-capabilities",
+      "question": "Can disabling Ruff/Pyright make a complete source gate pass a real type error?",
+      "classification": "tool-scope-visibility",
+      "result": "A blanket capability ban was rejected because explicit tool delegation is a supported boundary, including this preset provider's authored CI. Omitted Python analyzers now receive explicit NOT_REQUESTED coverage notices instead of disappearing.",
+      "regression": "packages/standards/tests/test_required_suppression_policy.py::test_disabled_source_analyzers_remain_explicit_scope_boundaries"
+    },
+    {
+      "pass": 45,
+      "id": "disabled-eslint-capability",
+      "question": "Can disabling ESLint make a complete TypeScript source gate pass @ts-nocheck?",
+      "classification": "boundary-control",
+      "result": "Existing NOT_REQUESTED ESLint coverage correctly declares this configured tool boundary. Source-level hygiene is enforced whenever ESLint runs; independent own-CI and partial scopes remain explicit.",
+      "regression": "packages/standards/tests/test_required_suppression_policy.py::test_disabled_source_analyzers_remain_explicit_scope_boundaries"
+    },
+    {
+      "pass": 46,
+      "id": "eslint-selected-file-coverage",
+      "question": "Could guard output conceal missing ordinary ESLint file results?",
+      "classification": "existing-control",
+      "result": "Ordinary coverage validation is retained; guard results merge only into ordinary results and assert their own selected coverage.",
+      "regression": "packages/standards/tests/test_external_diagnostics.py::test_eslint_ignored_selected_file_is_incomplete_coverage"
+    },
+    {
+      "pass": 47,
+      "id": "eslint-fatal-parse",
+      "question": "Can a fatal parser/configuration message become baselineable ordinary lint debt?",
+      "classification": "existing-control",
+      "result": "Fatal messages remain execution failures, including in the independent pass.",
+      "regression": "packages/standards/tests/test_external_diagnostics.py::test_eslint_fatal_message_is_an_execution_failure"
+    },
+    {
+      "pass": 48,
+      "id": "sql-blanket",
+      "question": "Does bare SQL sarj-noqa waive all current and future rules on a line?",
+      "classification": "cross-language-blanket",
+      "result": "Bare SQL markers no longer suppress findings; named exact local codes retain their behavior.",
+      "regression": "packages/sql/tests/test_noqa.py::test_bare_noqa_cannot_waive_all_rules"
+    },
+    {
+      "pass": 49,
+      "id": "iac-blanket",
+      "question": "Does bare HCL sarj-noqa waive all current and future rules on a resource?",
+      "classification": "cross-language-blanket",
+      "result": "Bare IaC markers no longer suppress findings; native comment provenance and exact code boundaries are retained.",
+      "regression": "packages/iac/tests/test_noqa.py::test_bare_noqa_cannot_waive_all_rules"
+    },
+    {
+      "pass": 50,
+      "id": "static-cast-extraction",
+      "question": "Can static string folding or read-only module namespace extraction bypass the existing cast ban?",
+      "classification": "static-cast-reflection",
+      "result": "Native repros escaped the floor. Bounded literal addition/static f-strings and proven typing __dict__/vars/__getattribute__ reads now produce unwaivable cast findings; dynamic/shadowed/mutated identities remain excluded.",
+      "regression": "packages/standards/tests/test_ruff_cast_policy.py::test_indirect_static_cast_access_cannot_bypass_native_policy"
+    }
+  ],
+  "limitations": [
+    "A concrete explanation is not proof that a local exception is justified; only missing and bounded generic reasons are mechanically checked.",
+    "Explicit whole-path exclusions, tool delegation, native-only APIs and selected/own-CI checks retain their declared scope. A passing scoped check is not evidence that a delegated analyzer ran.",
+    "Runtime-created reflection names, escaped/mutated provider identities and general executable configuration are outside finite static proof.",
+    "The independent ESLint pass checks source suppression hygiene; it is not a separate complete TypeScript compiler or arbitrary consumer-configuration equivalence checker.",
+    "Checkov and ShellCheck retain native named local suppression ownership. This campaign does not introduce a universal prose validator for every upstream tool.",
+    "SQL and IaC exact-code local exceptions retain their native description policy; this campaign removes their bare all-rule waivers."
+  ],
+  "qualification": {
+    "status": "qualified",
+    "labels": {
+      "cases": 30,
+      "truePositives": 17,
+      "trueNegatives": 13,
+      "falsePositives": 0,
+      "falseNegatives": 0,
+      "duplicateLocations": 0,
+      "decision": "error",
+      "performanceBudget": 1.25,
+      "withinBudget": true
+    },
+    "pythonCorpus": {
+      "sources": 7,
+      "files": 3446,
+      "bytes": 35964394,
+      "batchSize": 250,
+      "batchesPerFullRun": 19,
+      "errors": 0,
+      "selfFindings": 0,
+      "broadFindings": 15,
+      "missingReasonFindings": 3064,
+      "shippedIsolationControlFindings": 2,
+      "seedBroadFindings": 1,
+      "seedMissingReasonFindings": 1
+    },
+    "typescriptCorpus": {
+      "sources": 6,
+      "files": 3373,
+      "bytes": 29298875,
+      "batchSize": 250,
+      "batches": 16,
+      "errors": 0,
+      "selfFindings": 0,
+      "findings": 76,
+      "locations": 32,
+      "seedFindings": 7,
+      "seedLocations": 3
+    },
+    "inspection": "Inspected every natural SARJ523 location and every TypeScript finding location, plus deterministic explanation-omission samples across all corpus batches. Two initial Python prose matches were corrected with native-checker probes and negative regressions. Missing explanations are raw syntactic policy counts, not proof of unsafe exceptions. TypeScript findings include existing upstream no-use policy violations, including inline rule configuration in public ESLint source; those are policy conformance findings, not claims of defects in that project.",
+    "privateEvidence": "Four private Git corpus identities, revisions, digests, source text and full observations remain in owner-readable local reports. Public output contains aggregate counts only.",
+    "corpusProtocol": "Pinned tracked existing Git content, installed mature public Python/JavaScript packages and positive/negative seeds. Fresh linter process per repository and bounded batch; no process holds multiple repositories.",
+    "pythonPerformance": {
+      "baselineRevision": "350a941affdae9b81f45a0baa3d09e366e1b61df",
+      "repeats": 3,
+      "seconds": {
+        "baseline": [10.285656, 9.724056, 9.292071],
+        "candidate": [10.224541, 9.992643, 9.155994],
+        "candidate_alone": [8.895594, 8.891246, 8.77023],
+        "combined_baseline": [32.632466, 31.432422, 32.004448],
+        "combined_candidate": [31.871333, 30.253212, 32.515667]
+      },
+      "combinedSampleFiles": 48,
+      "maximumSlowdown": 1.25,
+      "peakChildRssBytes": 931594240,
+      "scope": "The paired native-runner timings cover final directive-recognition source. Integration-only protected-code casing/severity guards and a behavior-preserving cast-phase/loader-comprehension refactor followed; focused regressions and the full gate provide closure. These are native-runner timings, not end-to-end Ruff/BasedPyright fleet latency measurements."
+    },
+    "typescriptPerformance": {
+      "repeats": 3,
+      "files": 100,
+      "seconds": {
+        "ordinary": [5.958836, 5.823635, 5.682514],
+        "complete": [5.77907, 6.40009, 6.318299]
+      },
+      "maximumSlowdown": 1.25,
+      "scope": "Ordinary authored ESLint config versus the same config plus required suppression floor, in fresh processes."
+    },
+    "verification": {
+      "result": "All repository verification targets pass, with final full package/component reruns after legacy fixture expectations and local tool preparation were repaired.",
+      "commands": [
+        "make verify (initial complete-gate attempts exposed obsolete malformed/bare-waiver fixture expectations)",
+        "make test-sql test-iac",
+        "make test-standards (five freshly built local wheels)",
+        "make test-tsconfig repo-check check-no-private-refs shell-check"
+      ],
+      "tests": {
+        "typescript": 10441,
+        "bootstrap": 34,
+        "contracts": 46,
+        "python": 20826,
+        "sql": 1798,
+        "iac": 1486,
+        "standardsFreshWheels": 6403,
+        "skips": 10
+      },
+      "strictTyping": "All Python packages, registry verifier and TypeScript project/tooling: zero errors.",
+      "dogfood": "174 Python rules on890 source files:0 blocking diagnostics;129 TypeScript rules:0 diagnostics.",
+      "existingAdvisories": "Existing warning-stage native and ShellCheck findings remain visible. The local private-reference gate delegates its private catalog scan to trusted CI; public file/convention/version checks pass."
+    }
+  },
+  "sourceSha256": {
+    "packages/python/src/sarj_python_lint/rules/no_blanket_suppression.py": "f7437760536edbb136e7aba68aa98d1f2cd2ec834ec5db030672f6b9985098bf",
+    "packages/python/src/sarj_python_lint/rules/no_vague_suppression_description.py": "231c35e8d54b52782ccc01bac329e7cb7695a9c0c1b3c8776c64c6e8d782195f",
+    "packages/python/src/sarj_python_lint/cast_access.py": "f89e15c036d1ccb6d2be2022c32530c836646d972410453a8f23ef94cb4d515e",
+    "packages/standards/src/sarj_standards/configs/eslint-required-policy.mts": "7f7d195b6dfe1df07f58aa915c15d39e17aff583e23775423ecc2453bb9d4b2d",
+    "packages/standards/src/sarj_standards/configs/eslint-selected-rules.mts": "8730aded6177f77c163f87af000a7beb17316e341ce8f25cc65c6a99a43f485f"
+  }
+}

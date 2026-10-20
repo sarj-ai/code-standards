@@ -430,7 +430,7 @@ def test_pnpm_11_workspace_overrides_are_merged_in_the_workspace_yaml(tmp_path: 
     assert '"eslint-plugin-react>eslint"' in text
     assert "rollup@<4" in text
     assert "allowBuilds" in text
-    package: dict[str, object] = json.loads(  # pyright: ignore[reportAny]
+    package: dict[str, object] = json.loads(  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
         (tmp_path / "package.json").read_text(encoding="utf-8")
     )
     assert "pnpm" not in package
@@ -501,7 +501,7 @@ def test_init_pins_nested_yarn_eslint_configs_to_the_canonical_plugin_identity(t
     proc = _cli("init", "--dest", str(tmp_path))
 
     assert proc.returncode == 0, proc.stderr
-    root: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    root: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     resolutions = manifest.table_field(manifest.as_table(root), "resolutions")
     identity_pins = manifest.eslint_yarn_identity_pins()
     assert resolutions["typescript-eslint"] == identity_pins["typescript-eslint"]
@@ -514,7 +514,7 @@ def test_init_writes_bun_override_without_npm_nested_syntax(tmp_path: Path) -> N
     proc = _cli("init", "--dest", str(tmp_path))
     assert proc.returncode == 0, proc.stderr
 
-    parsed: object = json.loads(  # pyright: ignore[reportAny]
+    parsed: object = json.loads(  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
         (tmp_path / "package.json").read_text(encoding="utf-8")
     )
     overrides = manifest.table_field(manifest.as_table(parsed), "overrides")
@@ -531,7 +531,7 @@ def test_npm_repairs_a_scalar_direct_peer_override_and_preserves_child_overrides
     proc = _cli("init", "--dest", str(tmp_path))
 
     assert proc.returncode == 0, proc.stderr
-    parsed: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    parsed: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     overrides = manifest.table_field(manifest.as_table(parsed), "overrides")
     react = manifest.table_field(overrides, "eslint-plugin-react")
     assert react["."] == "$eslint-plugin-react"
@@ -554,7 +554,7 @@ def test_npm_direct_peer_override_tracks_the_exact_pin_without_escaping_unicode(
 
     assert proc.returncode == 0, proc.stderr
     package_text = (tmp_path / "package.json").read_text(encoding="utf-8")
-    parsed: object = json.loads(package_text)  # pyright: ignore[reportAny]
+    parsed: object = json.loads(package_text)  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     package = manifest.as_table(parsed)
     assert manifest.table_field(package, "devDependencies")["typescript"] == "npm:@typescript/typescript6@6.0.2"
     assert manifest.table_field(package, "overrides")["typescript"] == "$typescript"

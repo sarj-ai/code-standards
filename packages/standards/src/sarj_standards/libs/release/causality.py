@@ -80,7 +80,7 @@ def check_release_causality(
     tag_checker: ReleaseTagChecker = has_verified_release_tag,
     publication_checker: PublicationChecker | None = None,
 ) -> ReleaseCausalityReport:
-    from .registry import publication_exists  # ruff: ignore[import-outside-top-level]
+    from .registry import publication_exists  # ruff: ignore[import-outside-top-level] -- load registry only when this selected operation executes.
 
     result = runner(("git", "diff", "--name-only", "-z", before, after, "--"), cwd=root, capture_output=True)
     changed_paths = tuple(sorted(path for path in result.stdout.split("\0") if path))
@@ -194,7 +194,7 @@ def _publications_are_absent(
     version: str,
     publication_checker: PublicationChecker,
 ) -> bool:
-    from .registry import RegistryRequirement  # ruff: ignore[import-outside-top-level]
+    from .registry import RegistryRequirement  # ruff: ignore[import-outside-top-level] -- load registry only when this selected operation executes.
 
     requirements: tuple[RegistryRequirement, ...] = tuple(
         RegistryRequirement(publication.registry, publication.name, version) for publication in target.publications

@@ -80,7 +80,7 @@ def _ledger() -> dict[str, tuple[str, ...] | None]:
         "code_ledger.json must map SARJ### to null, one rule id, or an ordered rule-id history"
     )
     entries: dict[str, tuple[str, ...] | None] = {}
-    raw_items: list[tuple[object, object]] = list(raw.items())  # pyright: ignore[reportUnknownArgumentType]
+    raw_items: list[tuple[object, object]] = list(raw.items())  # pyright: ignore[reportUnknownArgumentType] -- inspect dynamically loaded registry entries before validating their metadata.
     for code, value in raw_items:
         assert isinstance(code, str), f"ledger key {code!r} is not a string"
         assert _CODE_RE.match(code), f"ledger key {code!r} is not a SARJ### code"
@@ -93,8 +93,8 @@ def _ledger() -> dict[str, tuple[str, ...] | None]:
         assert isinstance(value, list), f"ledger[{code}] rename history must be an array"
         assert value, f"ledger[{code}] rename history must not be empty"
         history_items: list[str] = []
-        for index in range(len(value)):  # pyright: ignore[reportUnknownArgumentType]
-            rule_id: object = value[index]  # pyright: ignore[reportUnknownVariableType]
+        for index in range(len(value)):  # pyright: ignore[reportUnknownArgumentType] -- inspect dynamically loaded registry entries before validating their metadata.
+            rule_id: object = value[index]  # pyright: ignore[reportUnknownVariableType] -- inspect dynamically loaded registry entries before validating their metadata.
             assert isinstance(rule_id, str), f"ledger[{code}] rename history must contain rule ids"
             assert rule_id, f"ledger[{code}] rename history must not contain empty ids"
             history_items.append(rule_id)

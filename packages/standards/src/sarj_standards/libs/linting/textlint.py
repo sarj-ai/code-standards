@@ -1496,7 +1496,7 @@ def _workflow_actions(source: str) -> list[_WorkflowAction]:
 
 def _workflow_document(source: str) -> MappingNode | None:
     try:
-        document: object = yaml.compose(source)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType]
+        document: object = yaml.compose(source)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType] -- PyYAML leaves node/token values and span attributes untyped; this parser checks their runtime classes.
     except yaml.YAMLError:
         return None
     return document if isinstance(document, MappingNode) else None
@@ -1515,7 +1515,7 @@ def _mapping_value(node: Node | None, key: str) -> Node | None:
 def _scalar_value(node: Node | None) -> str:
     if not isinstance(node, ScalarNode):
         return ""
-    value: object = node.value  # pyright: ignore[reportAny]
+    value: object = node.value  # pyright: ignore[reportAny] -- PyYAML leaves node/token values and span attributes untyped; this parser checks their runtime classes.
     return value if isinstance(value, str) else ""
 
 
@@ -2637,15 +2637,15 @@ def _config_literal_lines(path: Path, lines: list[str]) -> set[int]:
     source = "\n".join(lines)
     if path.suffix.lower() in {".yaml", ".yml"}:
         try:
-            tokens: list[object] = list(yaml.scan(source))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+            tokens: list[object] = list(yaml.scan(source))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType] -- PyYAML leaves node/token values and span attributes untyped; this parser checks their runtime classes.
         except yaml.YAMLError:
             return set(range(len(lines)))
         literal_lines: set[int] = set()
         for token in tokens:
             if not isinstance(token, ScalarToken):
                 continue
-            start: Mark = token.start_mark  # pyright: ignore[reportAny]
-            end: Mark = token.end_mark  # pyright: ignore[reportAny]
+            start: Mark = token.start_mark  # pyright: ignore[reportAny] -- PyYAML leaves node/token values and span attributes untyped; this parser checks their runtime classes.
+            end: Mark = token.end_mark  # pyright: ignore[reportAny] -- PyYAML leaves node/token values and span attributes untyped; this parser checks their runtime classes.
             if end.line > start.line:
                 literal_lines.update(range(start.line, end.line + (end.column > 0)))
         return literal_lines
@@ -2668,7 +2668,7 @@ def _validated_config_literal_lines(path: Path, source: str, lines: list[str]) -
     match suffix:
         case ".yaml" | ".yml":
             try:
-                list(yaml.compose_all(source))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
+                list(yaml.compose_all(source))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType] -- PyYAML leaves node/token values and span attributes untyped; this parser checks their runtime classes.
             except yaml.YAMLError:
                 return None
             return _config_literal_lines(path, lines)

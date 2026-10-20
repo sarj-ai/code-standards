@@ -34,6 +34,7 @@ from sarj_python_lint.rules.no_analytical_aggregation_in_postgres_store import (
 from sarj_python_lint.rules.no_any_mapping_types import NoAnyMappingTypes
 from sarj_python_lint.rules.no_async_function_cache import NoAsyncFunctionCache
 from sarj_python_lint.rules.no_before_validator_input_mutation import NoBeforeValidatorInputMutation
+from sarj_python_lint.rules.no_blanket_suppression import NoBlanketSuppression
 from sarj_python_lint.rules.no_broad_keyword_capture import NoBroadKeywordCapture
 from sarj_python_lint.rules.no_comment_cruft import NoCommentCruft
 from sarj_python_lint.rules.no_conftest_test_module_import import NoConftestTestModuleImport
@@ -329,6 +330,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         RequirePydanticForExternalJson.id: RequirePydanticForExternalJson,
         RequirePydanticForMappingShape.id: RequirePydanticForMappingShape,
         NoDualShapeModelFieldReader.id: NoDualShapeModelFieldReader,
+        NoBlanketSuppression.id: NoBlanketSuppression,
         PreferModuleLevelConstant.id: PreferModuleLevelConstant,
         PreferImmutableModuleConstant.id: PreferImmutableModuleConstant,
         PreferInjectedDependencyOverMonkeypatch.id: PreferInjectedDependencyOverMonkeypatch,

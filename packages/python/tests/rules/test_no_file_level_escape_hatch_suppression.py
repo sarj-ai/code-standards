@@ -120,10 +120,10 @@ def test_unparsable_source_yields_no_diagnostics():
     assert _check("# ruff: noqa: TID251\ndef (:\n") == []
 
 
-def test_reasoned_sarj_noqa_suppresses_a_deliberate_file_level_hatch():
+def test_sarj_noqa_cannot_suppress_the_suppression_policy():
     src = "# ruff: noqa: TID251  # sarj-noqa: SARJ054 — vendored SDK test harness\n"
     diagnostic = _check(src)[0]
-    assert is_suppressed(src.splitlines(), diagnostic.line, diagnostic.code)
+    assert not is_suppressed(src.splitlines(), diagnostic.line, diagnostic.code)
 
 
 def test_sarj_noqa_for_another_rule_does_not_suppress_the_hatch():

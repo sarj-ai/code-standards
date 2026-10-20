@@ -568,7 +568,7 @@ def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
         msg = "git is required for repository checks"
         raise OSError(msg)
     environment = os.environ.copy()  # ruff: ignore[banned-api] -- preserve user Git configuration, but not a hook's repository binding.
-    local_names = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+    local_names = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
         [executable, "rev-parse", "--local-env-vars"],
         check=True,
         capture_output=True,
@@ -576,7 +576,7 @@ def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
     ).stdout.splitlines()
     for name in local_names:
         environment.pop(name, None)
-    return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+    return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
         [executable, *args],
         cwd=root,
         check=check,

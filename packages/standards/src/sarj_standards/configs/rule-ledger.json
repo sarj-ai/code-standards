@@ -47,6 +47,7 @@
       "no-async-function-cache",
       "no-bare-test-phase-comments",
       "no-before-validator-input-mutation",
+      "no-blanket-suppression",
       "no-broad-keyword-capture",
       "no-comment-cruft",
       "no-conflicting-pydantic-alias-validation",
@@ -555,7 +556,8 @@
       "SARJ519",
       "SARJ520",
       "SARJ521",
-      "SARJ522"
+      "SARJ522",
+      "SARJ523"
     ],
     "sql": [
       "SARJ101",

@@ -13,9 +13,9 @@ def test_sarj_noqa_suppresses_diag():
     assert is_suppressed(src.splitlines(), _diagnostic().line, "SARJ021")
 
 
-def test_bare_sarj_noqa_also_suppresses():
+def test_bare_sarj_noqa_cannot_suppress_every_rule():
     src = "query = 'SELECT * FROM calls'  # sarj-noqa\n"
-    assert is_suppressed(src.splitlines(), _diagnostic().line, "SARJ021")
+    assert not is_suppressed(src.splitlines(), _diagnostic().line, "SARJ021")
 
 
 def test_sarj_noqa_with_different_code_does_not_suppress():
@@ -64,7 +64,7 @@ _CASES = (
         3,
         True,
     ),
-    ("bare-comment-preserved", "query = 'value' # sarj-noqa\n", 1, True),
+    ("bare-comment-rejected", "query = 'value' # sarj-noqa\n", 1, False),
     ("different-code-comment", "query = 'value' # sarj-noqa: SARJ999 -- external protocol contract\n", 1, False),
     ("comma-list-comment", "query = 'value' # sarj-noqa: SARJ999, SARJ021 -- external protocol contract\n", 1, True),
     ("lowercase-code-comment", "query = 'value' # SARJ-NOQA: sarj021 -- external protocol contract\n", 1, True),
@@ -204,7 +204,7 @@ _GRAMMAR_CASES = (
     ("invalid-selector-suffix", "value = 1 # sarj-noqa: SARJ484-extra", False),
     ("invalid-empty-list-item", "value = 1 # sarj-noqa: SARJ484,,SARJ021", False),
     ("invalid-unicode-selector-suffix", "value = 1 # sarj-noqa: SARJ484é", False),
-    ("bare-compatible", "value = 1 # sarj-noqa", True),
+    ("bare-rejected", "value = 1 # sarj-noqa", False),
     ("reasoned-exact", "value = 1 # sarj-noqa: SARJ484 -- public contract", True),
     ("single-dash-reason", "value = 1 # sarj-noqa: SARJ484 - public contract", True),
     ("single-dash-reason-without-following-space", "value = 1 # sarj-noqa: SARJ484 -public contract", True),

@@ -2751,6 +2751,14 @@
       "state": "pending",
       "evidence": "Focused cases cover implicit and explicit 200, Starlette and HTTPStatus statuses, DELETE-only api_route, multiline decorators, 204 in each spelling, unresolved status names, keyword unpacking, shared GET and DELETE decorators and POST routes. A scan of one private application corpus reported 11 findings among 25 DELETE routes.",
       "outcome": "Keep SARJ506 warning-only without autofix. Consumers baseline existing findings before promotion."
+    },
+    {
+      "task": "rule-audit/python/no-blanket-suppression",
+      "family": "python",
+      "ruleId": "no-blanket-suppression",
+      "state": "complete",
+      "evidence": "Fifty distinct checking-strength reviews are recorded in packages/standards/benchmarks/checking-strength-50-passes-20261020.json. Thirty labeled directive cases:17 TP,13 TN,0 FP/FN/duplicate locations. Verified isolated Python corpus:3446 files,19 batches per run; TypeScript corpus:3373 files,16 batches; positive/negative seeds fire and self-source has0 findings. Every natural broad-Python and TypeScript finding location was inspected; explanation omissions retain raw syntactic counts with representative review. Native probes corrected2 prose false matches. Three paired measurements remain inside the1.25x budget; normal Python combined sample48 files and ESLint sample100 files. Required findings resist source/rule/baseline waivers and severity demotion; exact local exceptions, explicit paths and tool delegation remain bounded. All verification targets pass after final full package/component reruns:41034 tests,10 skips; strict typechecks,174 Python/129 TypeScript rule dogfood, artifacts, repository policy and shell checks. Five fresh wheels pass6403 Standards tests. Expected legacy malformed/bare-waiver fixture assumptions were updated, the Yarn fixture asserts the full-policy driver, and real local offline/native tool preparation was restored. Local private-reference catalog scanning remains delegated to trusted CI.",
+      "outcome": "Ship ERROR for unambiguous, explicitly authorized suppression-integrity violations without autofix. Preserve explicit tool/path scope and native local-exception ownership outside the reason-checking languages; no publication or consumer rollout."
     }
   ]
 }
