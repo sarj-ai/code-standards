@@ -2722,16 +2722,9 @@ permissions:
   contents: read
 
 jobs:
-  # The verdict depends only on the base, the head and the base manifest, so a title or body edit cannot change
-  # it and skips the runner. A skipped check of the required name would replace a failure on the same commit, so
-  # the skipped job must never be named commit-policy-v1. GitHub reports a skipped job under its unevaluated name
-  # expression, and the expression itself evaluates to another name, so both readings stay distinct. Merge groups
-  # keep running: their skipped check would carry that unevaluated name and never satisfy the required context.
+  # GitHub can select the newest workflow run for a commit after a metadata edit, so every event needs
+  # a real verifier result under the stable required name, even when the base and head are unchanged.
   commit-policy-v1:
-    name: >-
-      ${{ github.event.action == 'edited' && !github.event.changes.base
-      && 'commit-policy-v1 (unchanged by edit)' || 'commit-policy-v1' }}
-    if: github.event.action != 'edited' || github.event.changes.base
     concurrency:
       group: commit-policy-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
