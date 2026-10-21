@@ -4,6 +4,8 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/source-coupled-test.test.ts
  */
 
+import { posix } from "node:path";
+
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -14,7 +16,9 @@ type MessageIds = "rawSourceOracle";
 type Options = readonly [];
 
 // Terraform JSON has a dedicated oracle owner; JSONC remains general source.
-const GENERAL_SOURCE_SUFFIX_RE = /\.(?:bash|sh|ya?ml|jsonc|toml|py|[cm]?[jt]s)$|(?<!\.(?:tf|tftest))\.json$/iu;
+const GENERAL_SOURCE_SUFFIX_RE = /\.(?:bash|sh|ya?ml|jsonc|toml|py|css|html|[cm]?[jt]s|[jt]sx)$|(?<!\.(?:tf|tftest))\.json$/iu;
+const REPRESENTATION_DIR_RE = /(?:^|\/)(?:__fixtures__|fixtures?|goldens?|snapshots?)(?:\/|$)/iu;
+const PATH_MODULES = new Set(["path", "node:path"]);
 const FS_MODULES = new Set(["fs", "node:fs", "fs/promises", "node:fs/promises"]);
 const FS_READERS = new Set(["readFile", "readFileSync"]);
 const TEXT_TRANSFORMS = new Set([
@@ -66,11 +70,13 @@ interface LexicalScope {
 export const SOURCE_COUPLED_TEST_DOCUMENTATION = {
   summary: "Disallow raw repository source text as a test oracle; parse or execute the artifact instead.",
   rationale: "Substring and regex checks can pass on comments or unreachable configuration and fail after behavior-preserving formatting changes.",
-  remediation: "Parse the artifact, execute its validator, or assert on another runtime contract.",
+  remediation: "Reuse adequate existing validation; otherwise assert a distinct parsed or runtime contract. Preserve deliberate representation contracts with an exact justified suppression.",
   category: "testing",
   limitations: [
-    "The rule follows stable lexical bindings, static source paths, awaited reads, and common text operations. Reassigned bindings, dynamic paths, unknown path wrappers, iterator pipelines, and interprocedural flows remain unreported.",
+    "The rule follows stable lexical bindings, static source paths including JSX/TSX, CSS and HTML, awaited reads, and common text operations. Named imports of node:path/path join and resolve are followed when their complete trailing static path proves a source suffix. Reassigned bindings, dynamic trailing segments, namespace path wrappers, unknown path wrappers, iterator pipelines, and interprocedural flows remain unreported.",
     "Assertion roots are scope-resolved for supported test runners and Node assert imports; local or unknown helpers with assertion-like names are not inferred.",
+    "Known fixture, golden, snapshot, and generated source paths are representation contracts and remain unreported; dot segments in the known path are normalized first.",
+    "Contained static paths beneath a stable native mkdtemp/mkdtempSync result are generated artifacts. Literal replace/replaceAll nonidentity guards comparing the same raw read remain unreported; fixed-string comparisons remain candidates.",
     "When raw representation is genuinely the contract (for example a golden or compatibility sentinel), use an exact line suppression with the reason.",
   ],
   examples: [
@@ -148,7 +154,7 @@ export function createSourceCoupledRule(
     type: "suggestion",
     docs: { description: documentation.summary },
     schema: [],
-    messages: { rawSourceOracle: "Raw repository source text is the oracle. Parse or execute the artifact so comments, formatting, and unreachable blocks cannot satisfy the contract." },
+    messages: { rawSourceOracle: "Raw repository source text is the oracle. Reuse adequate existing validation; otherwise assert a distinct parsed or runtime contract. Preserve a deliberate representation contract with an exact justified suppression." },
   },
   defaultOptions: [],
   create(context) {
@@ -190,12 +196,25 @@ export function createSourceCoupledRule(
     const sourcePath = (node: TSESTree.Node): boolean => {
       const current = unwrap(node);
       const value = stringValue(current);
-      if (value !== null) return sourceSuffixRe.test(value);
+      if (value !== null) return sourcePathValue(value);
       if (current.type === AST_NODE_TYPES.Identifier) return visible("paths", current);
       if (current.type === AST_NODE_TYPES.CallExpression || current.type === AST_NODE_TYPES.NewExpression) {
         const callee = unwrapExpression(current.callee);
         const first = current.arguments[0];
         if (first === undefined || first.type === AST_NODE_TYPES.SpreadElement) return false;
+        const pathBuilder = callee.type === AST_NODE_TYPES.Identifier ? nativePathBuilder(callee) : null;
+        if (current.type === AST_NODE_TYPES.CallExpression && pathBuilder !== null) {
+          if (temporaryDescendant(current, pathBuilder)) return false;
+          const trailing: string[] = [];
+          for (const argument of current.arguments.toReversed()) {
+            if (argument.type === AST_NODE_TYPES.SpreadElement) return false;
+            const segment = stringValue(argument);
+            if (segment === null) break;
+            trailing.unshift(segment);
+            if (pathBuilder === "resolve" && posix.isAbsolute(segment.replaceAll("\\", "/"))) break;
+          }
+          return trailing.length > 0 && sourcePathValue(trailing.join("/"));
+        }
         if (current.type === AST_NODE_TYPES.NewExpression && callee.type === AST_NODE_TYPES.Identifier && callee.name === "URL" && (bindingOf(callee)?.defs.length ?? 0) === 0) return sourcePath(first);
         if (callee.type === AST_NODE_TYPES.Identifier && bindingOf(callee)?.defs.some((definition) =>
           definition.node.type === AST_NODE_TYPES.ImportSpecifier && definition.node.imported.type === AST_NODE_TYPES.Identifier &&
@@ -203,6 +222,57 @@ export function createSourceCoupledRule(
           ["node:url", "url"].includes(String(definition.node.parent.source.value)))) return sourcePath(first);
       }
       return false;
+    };
+    const nativePathBuilder = (node: TSESTree.Identifier): "join" | "resolve" | null => {
+      const imported = nativeImportedName(node, PATH_MODULES);
+      return imported === "join" || imported === "resolve" ? imported : null;
+    };
+    const nativeImportedName = (node: TSESTree.Identifier, modules: ReadonlySet<string>): string | null => {
+      const binding = bindingOf(node);
+      if (binding === null || binding.references.some((reference) => reference.isWrite() && reference.init !== true)) return null;
+      for (const definition of binding.defs) {
+        const imported = definition.node;
+        if (imported.type === AST_NODE_TYPES.ImportSpecifier &&
+          imported.imported.type === AST_NODE_TYPES.Identifier &&
+          imported.parent.type === AST_NODE_TYPES.ImportDeclaration && modules.has(String(imported.parent.source.value))) {
+          return imported.imported.name;
+        }
+      }
+      return null;
+    };
+    const stableInitializer = (node: TSESTree.Identifier): TSESTree.Expression | null => {
+      const binding = bindingOf(node);
+      if (binding === null || binding.references.some((reference) => reference.isWrite() && reference.init !== true) || binding.defs.length !== 1) return null;
+      const definition = binding.defs[0]?.node;
+      return definition?.type === AST_NODE_TYPES.VariableDeclarator ? definition.init : null;
+    };
+    const temporaryDirectory = (node: TSESTree.Node, depth = 0): boolean => {
+      if (depth > 8) return false;
+      const current = unwrap(node);
+      if (current.type === AST_NODE_TYPES.Identifier) {
+        const initializer = stableInitializer(current);
+        return initializer !== null && temporaryDirectory(initializer, depth + 1);
+      }
+      if (current.type !== AST_NODE_TYPES.CallExpression) return false;
+      const callee = unwrap(current.callee);
+      return callee.type === AST_NODE_TYPES.Identifier && ["mkdtemp", "mkdtempSync"].includes(nativeImportedName(callee, FS_MODULES) ?? "");
+    };
+    const temporaryDescendant = (node: TSESTree.CallExpression, builder: "join" | "resolve"): boolean => {
+      const [directory, ...segments] = node.arguments;
+      if (directory === undefined || directory.type === AST_NODE_TYPES.SpreadElement || !temporaryDirectory(directory)) return false;
+      const values: string[] = [];
+      for (const segment of segments) {
+        if (segment.type === AST_NODE_TYPES.SpreadElement) return false;
+        const value = stringValue(segment);
+        if (value === null) return false;
+        values.push(value.replaceAll("\\", "/"));
+      }
+      const sentinel = "/__source_oracle_temporary_directory__";
+      return posix[builder](sentinel, ...values).startsWith(`${sentinel}/`);
+    };
+    const sourcePathValue = (value: string): boolean => {
+      const normalized = posix.normalize(value.replaceAll("\\", "/"));
+      return sourceSuffixRe.test(normalized) && !REPRESENTATION_DIR_RE.test(normalized) && !isGeneratedFile(normalized);
     };
     const rawRead = (node: TSESTree.Node): boolean => {
       const current = unwrap(node);
@@ -245,6 +315,28 @@ export function createSourceCoupledRule(
       if (name !== null && REGEXP_PREDICATES.has(name)) return new Set(current.arguments.flatMap((argument) => argument.type === AST_NODE_TYPES.SpreadElement ? [] : [...rawOrigins(argument)]));
       return new Set();
     };
+    const literalMutation = (node: TSESTree.Node, depth = 0): boolean => {
+      if (depth > 8) return false;
+      const current = unwrap(node);
+      if (current.type === AST_NODE_TYPES.Identifier) {
+        const initializer = stableInitializer(current);
+        return initializer !== null && literalMutation(initializer, depth + 1);
+      }
+      if (current.type !== AST_NODE_TYPES.CallExpression || current.arguments.length !== 2) return false;
+      const callee = unwrap(current.callee);
+      const [pattern, replacement] = current.arguments;
+      return callee.type === AST_NODE_TYPES.MemberExpression && ["replace", "replaceAll"].includes(ASTUtils.getPropertyName(callee) ?? "") &&
+        pattern !== undefined && replacement !== undefined && pattern.type !== AST_NODE_TYPES.SpreadElement && replacement.type !== AST_NODE_TYPES.SpreadElement &&
+        (stringValue(pattern) !== null || (pattern.type === AST_NODE_TYPES.Literal && "regex" in pattern)) && stringValue(replacement) !== null;
+    };
+    const mutationGuard = (operands: readonly TSESTree.CallExpressionArgument[]): boolean => {
+      if (operands.length !== 2) return false;
+      const [left, right] = operands;
+      if (left === undefined || right === undefined || left.type === AST_NODE_TYPES.SpreadElement || right.type === AST_NODE_TYPES.SpreadElement || (!literalMutation(left) && !literalMutation(right))) return false;
+      const leftOrigins = rawOrigins(left);
+      const rightOrigins = rawOrigins(right);
+      return leftOrigins.size > 0 && leftOrigins.size === rightOrigins.size && [...leftOrigins].every((origin) => rightOrigins.has(origin));
+    };
     const rawAssertionOrigins = (node: TSESTree.CallExpression): Set<string> => {
       const callee = unwrap(node.callee);
       const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
@@ -259,9 +351,11 @@ export function createSourceCoupledRule(
       const expectCallee = receiver.type === AST_NODE_TYPES.CallExpression ? unwrapExpression(receiver.callee) : null;
       if (receiver.type === AST_NODE_TYPES.CallExpression && expectCallee?.type === AST_NODE_TYPES.Identifier && assertionKind(expectCallee) === "expect") {
         if (!EXPECT_MATCHERS.has(matcher)) return new Set();
+        if (["toBe", "toEqual", "toStrictEqual"].includes(matcher) && calleeReceiver.type === AST_NODE_TYPES.MemberExpression && ASTUtils.getPropertyName(calleeReceiver) === "not" && mutationGuard([...receiver.arguments, ...node.arguments])) return new Set();
         return new Set([...receiver.arguments, ...node.arguments].flatMap((argument) => argument.type === AST_NODE_TYPES.SpreadElement ? [] : [...evidenceOrigins(argument)]));
       }
       if (receiver.type !== AST_NODE_TYPES.Identifier || assertionKind(receiver) !== "assert" || !ASSERT_MATCHERS.has(matcher)) return new Set();
+      if (["notEqual", "notStrictEqual"].includes(matcher) && mutationGuard(node.arguments)) return new Set();
       return new Set(node.arguments.flatMap((argument) => argument.type === AST_NODE_TYPES.SpreadElement ? [] : [...evidenceOrigins(argument)]));
     };
     const declare = (node: TSESTree.Identifier, state: { collection?: boolean; fsObject?: boolean; fsReader?: boolean; path?: boolean; rawOrigins?: Set<string> }): void => {

@@ -40,6 +40,22 @@ it.each([
 
 TESTER.run("source-coupled-test", rule, {
   valid: [
+    { name: "preserves literal mutation nonidentity guards before compiler checks", filename: "/repo/view.test.tsx", code: `${NAMED_FS} import { join } from 'node:path'; import assert from 'node:assert/strict'; const source = readFileSync(join(ROOT, 'view.tsx'), 'utf8'); const mutated = source.replaceAll('<Icon', '<MissingIcon'); assert.notEqual(mutated, source); expect(compile(mutated)).toHaveLength(1);` },
+    { name: "preserves the matcher form of a literal mutation guard", filename: "/repo/view.test.tsx", code: `${NAMED_FS} const source = readFileSync('view.tsx', 'utf8'); expect(source.replace(/Icon/g, 'MissingIcon')).not.toBe(source);` },
+    { name: "preserves generated data beneath a native temporary directory", filename: "/repo/policy.test.ts", code: `import { readFileSync, mkdtempSync, writeFileSync } from 'node:fs'; import { join } from 'node:path'; const directory = mkdtempSync(prefix); writeFileSync(join(directory, 'policy.json'), '{}'); expect(readFileSync(join(directory, 'policy.json'), 'utf8')).toBe('{}');` },
+    { name: "preserves component parser contracts", filename: "/repo/view.test.tsx", code: `${NAMED_FS} import { join } from 'node:path'; const ast = parse(readFileSync(join(ROOT, 'view.tsx'), 'utf8')); expect(ast.children).toHaveLength(1);` },
+    { name: "preserves component representation fixtures", filename: "/repo/parser.test.ts", code: `${NAMED_FS} import { join } from 'node:path'; expect(readFileSync(join(ROOT, 'fixtures/view.tsx'), 'utf8')).toContain('<View />');` },
+    { name: "preserves a joined representation directory", filename: "/repo/parser.test.ts", code: `${NAMED_FS} import { join } from 'node:path'; expect(readFileSync(join(ROOT, 'golden', 'view.html'), 'utf8')).toContain('<View />');` },
+    { name: "preserves rendered HTML assertions", filename: "/repo/view.test.ts", code: "const html = renderView(); expect(html).toContain('aria-label=');" },
+    { name: "preserves generated component source", filename: "/repo/view.test.ts", code: `${NAMED_FS} expect(readFileSync('generated/view.tsx', 'utf8')).toContain('<View />');` },
+    { name: "does not infer a locally shadowed path join", filename: "/repo/view.test.tsx", code: `${NAMED_FS} import { join } from 'node:path'; function run(join) { expect(readFileSync(join(ROOT, 'view.tsx'), 'utf8')).toContain('useEffect('); }` },
+    { name: "does not infer a custom path join", filename: "/repo/view.test.tsx", code: `${NAMED_FS} import { join } from './paths'; expect(readFileSync(join(ROOT, 'view.tsx'), 'utf8')).toContain('useEffect(');` },
+    { name: "does not infer a reassigned path alias", filename: "/repo/view.test.tsx", code: `${NAMED_FS} import { join } from 'node:path'; let path = join(ROOT, 'view.tsx'); path = renderedPath; expect(readFileSync(path, 'utf8')).toContain('useEffect(');` },
+    { name: "preserves an absolute resolved fixture path", filename: "/repo/parser.test.ts", code: `${NAMED_FS} import { resolve } from 'node:path'; expect(readFileSync(resolve(ROOT, 'src', '/fixtures/view.tsx'), 'utf8')).toContain('<View />');` },
+    { name: "does not infer a shadowed filesystem reader through a path join", filename: "/repo/view.test.tsx", code: `${NAMED_FS} import { join } from 'node:path'; function run(readFileSync) { expect(readFileSync(join(ROOT, 'view.tsx'), 'utf8')).toContain('useEffect('); }` },
+    { name: "requires the final path component to prove a source suffix", filename: "/repo/view.test.tsx", code: `${NAMED_FS} import { join } from 'node:path'; expect(readFileSync(join(ROOT, 'view.tsx', name), 'utf8')).toContain('useEffect(');` },
+    { name: "does not match a non-source final path component", filename: "/repo/view.test.tsx", code: `${NAMED_FS} import { join } from 'node:path'; expect(readFileSync(join(ROOT, 'view.tsx', '.log'), 'utf8')).toContain('useEffect(');` },
+    { name: "does not infer spread path segments", filename: "/repo/view.test.tsx", code: `${NAMED_FS} import { join } from 'node:path'; expect(readFileSync(join(ROOT, 'view.tsx', ...segments), 'utf8')).toContain('useEffect(');` },
     { name: "does not infer iterator-pipeline assertion dataflow", filename: "/repo/config.test.ts", code: `${NAMED_FS} import { fileURLToPath } from 'node:url'; test('raw', () => { const source = readFileSync(fileURLToPath(new URL('../wrangler.jsonc', import.meta.url)), 'utf8'); const values = source.matchAll(/NEXT_PUBLIC_ENVIRONMENT/g).map((match) => match[0]).toArray(); expect(values).toEqual(['dev']); });` },
     { name: "does not leak block-local source provenance", filename: "/repo/policy.test.ts", code: `${NAMED_FS} const source = 'runtime'; { const source = readFileSync('workflow.yml', 'utf8'); } expect(source).toContain('x');` },
     { name: "checks the complete concatenated path suffix", filename: "/repo/policy.test.ts", code: `${NAMED_FS} expect(readFileSync('workflow.yml' + '.log', 'utf8')).toContain('x');` },
@@ -63,6 +79,60 @@ TESTER.run("source-coupled-test", rule, {
     { filename: "/repo/config.test.ts", code: `${NAMED_FS} import { parse } from 'jsonc-parser'; test('parsed', () => { const config = parse(readFileSync('wrangler.jsonc', 'utf8')); expect(validate(config)).toEqual([]); });` },
   ],
   invalid: [
+    {
+      name: "does not exempt comparisons to fixed source spelling as mutation guards",
+      filename: "/repo/view.test.tsx",
+      code: `${NAMED_FS} const source = readFileSync('view.tsx', 'utf8'); expect(source.replaceAll('Icon', 'MissingIcon')).not.toBe('');`,
+      errors: [{ messageId: "rawSourceOracle" }],
+    },
+    {
+      name: "does not exempt paths escaping a fresh directory",
+      filename: "/repo/policy.test.ts",
+      code: `import { readFileSync, mkdtempSync } from 'node:fs'; import { join } from 'node:path'; const directory = mkdtempSync(prefix); expect(readFileSync(join(directory, '..', 'policy.json'), 'utf8')).toContain('permissions');`,
+      errors: [{ messageId: "rawSourceOracle" }],
+    },
+    {
+      name: "resets prior directories at an absolute resolved path",
+      filename: "/repo/view.test.tsx",
+      code: `${NAMED_FS} import { resolve } from 'node:path'; expect(readFileSync(resolve(ROOT, 'fixtures', '/src/view.tsx'), 'utf8')).toContain('useEffect(');`,
+      errors: [{ messageId: "rawSourceOracle" }],
+    },
+    {
+      name: "reports literal CSS declarations instead of computed layout",
+      filename: "/repo/view.test.mjs",
+      code: `${NAMED_FS} const css = readFileSync(new URL('../public/chat.css', import.meta.url), 'utf8'); assert.match(css, /padding:9px 11px/);`,
+      errors: [{ messageId: "rawSourceOracle" }],
+    },
+    {
+      name: "reports source HTML string order instead of rendered behavior",
+      filename: "/repo/view.test.mjs",
+      code: `${NAMED_FS} const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8'); assert.ok(html.indexOf('style.css') < html.indexOf('chat.css'));`,
+      errors: [{ messageId: "rawSourceOracle" }],
+    },
+    {
+      name: "normalizes source paths that leave a representation directory",
+      filename: "/repo/view.test.tsx",
+      code: `${NAMED_FS} import { join } from 'node:path'; expect(readFileSync(join(ROOT, 'fixtures', '../view.tsx'), 'utf8')).toContain('useEffect(');`,
+      errors: [{ messageId: "rawSourceOracle" }],
+    },
+    {
+      name: "reports component source spelling through a proven path join and source slice",
+      filename: "/repo/view.test.tsx",
+      code: `${NAMED_FS} import { join } from 'node:path'; const source = readFileSync(join(ROOT, 'context/view.tsx'), 'utf8'); const consumer = source.slice(source.indexOf('export function useView')); expect(consumer).toContain('useEffect(() => watch(), [watch]);');`,
+      errors: [{ messageId: "rawSourceOracle" }],
+    },
+    {
+      name: "reports JSX source through an aliased native path resolver",
+      filename: "/repo/view.test.ts",
+      code: `${NAMED_FS} import { resolve as resolvePath } from 'path'; const source = readFileSync(resolvePath(ROOT, 'view.jsx'), 'utf8'); expect(source).not.toContain('legacyView');`,
+      errors: [{ messageId: "rawSourceOracle" }],
+    },
+    {
+      name: "reports a stable joined read alias while deduplicating its assertions",
+      filename: "/repo/policy.test.ts",
+      code: `${NAMED_FS} import { join } from 'node:path'; const path = join(ROOT, 'workflow.yml'); const source = readFileSync(path, 'utf8'); expect(source).toContain('permissions'); expect(source).toMatch(/contents/);`,
+      errors: [{ messageId: "rawSourceOracle" }],
+    },
     {
       name: "recognizes an aliased expect imported from vitest",
       filename: "/repo/policy.test.ts",
