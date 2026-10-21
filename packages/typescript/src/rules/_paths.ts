@@ -5,7 +5,7 @@
  *
  */
 
-import { posix } from "node:path";
+import { posix, win32 } from "node:path";
 
 const LINE_TERMINATOR_RE = /[\n\r\u2028\u2029]/u;
 
@@ -43,7 +43,7 @@ export type TestPathGate = "fixtureTree";
 /** Extra path gates `isStoryFile` honours on request. */
 export type StoryPathGate = "storyTree";
 
-/** Accept analysis context while preserving the filename-only caller API. */
+/** ESLint contexts bound directory ownership to cwd; filename-only callers keep their supplied path. */
 export type FilePath = string | { readonly filename: string; readonly cwd: string };
 
 export function isTestFile(filename: FilePath, gates: readonly TestPathGate[] = []): boolean {
@@ -132,9 +132,25 @@ export function isScriptFile(filename: FilePath): boolean {
   return SCRIPT_FILE_RE.test(scopedFilename(filename));
 }
 
-/** Normalize caller-supplied paths while retaining the filename-only classification contract. */
+/** Keep checkout ancestors outside path-based source ownership decisions. */
 export function scopedFilename(input: FilePath): string {
-  return (typeof input === "string" ? input : input.filename).replaceAll("\\", "/");
+  if (typeof input === "string") return input.replaceAll("\\", "/");
+  const filename = input.filename.replaceAll("\\", "/");
+  const cwd = input.cwd.replaceAll("\\", "/");
+  const fileWindows = windowsAbsolute(filename);
+  const cwdWindows = windowsAbsolute(cwd);
+  let scoped = filename;
+  if (fileWindows && cwdWindows) scoped = win32.relative(cwd, filename).replaceAll("\\", "/");
+  else if (!fileWindows && !cwdWindows && posix.isAbsolute(filename) && posix.isAbsolute(cwd)) {
+    scoped = posix.relative(cwd, filename);
+  }
+  if (windowsAbsolute(scoped) || posix.isAbsolute(scoped)) return scoped;
+  // Keep a root separator for gates such as externalTree without retaining checkout ancestors.
+  return `./${posix.normalize(scoped)}`;
+}
+
+function windowsAbsolute(filename: string): boolean {
+  return /^[A-Za-z]:\//u.test(filename) || filename.startsWith("//");
 }
 
 /** Match configured globs consistently across native path separators. */
