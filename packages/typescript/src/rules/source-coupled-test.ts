@@ -122,6 +122,18 @@ function stringValue(node: TSESTree.Node): string | null {
   return null;
 }
 
+function staticPathSuffix(pathArguments: readonly TSESTree.CallExpressionArgument[], builder: "join" | "resolve"): string | null {
+  const trailing: string[] = [];
+  for (const argument of pathArguments.toReversed()) {
+    if (argument.type === AST_NODE_TYPES.SpreadElement) return null;
+    const segment = stringValue(argument);
+    if (segment === null) break;
+    trailing.unshift(segment);
+    if (builder === "resolve" && posix.isAbsolute(segment.replaceAll("\\", "/"))) break;
+  }
+  return trailing.length > 0 ? trailing.join("/") : null;
+}
+
 function importSource(node: TSESTree.ImportDeclaration): string | null {
   return typeof node.source.value === "string" ? node.source.value : null;
 }
@@ -198,29 +210,21 @@ export function createSourceCoupledRule(
       const value = stringValue(current);
       if (value !== null) return sourcePathValue(value);
       if (current.type === AST_NODE_TYPES.Identifier) return visible("paths", current);
-      if (current.type === AST_NODE_TYPES.CallExpression || current.type === AST_NODE_TYPES.NewExpression) {
-        const callee = unwrapExpression(current.callee);
-        const first = current.arguments[0];
-        if (first === undefined || first.type === AST_NODE_TYPES.SpreadElement) return false;
-        const pathBuilder = callee.type === AST_NODE_TYPES.Identifier ? nativePathBuilder(callee) : null;
-        if (current.type === AST_NODE_TYPES.CallExpression && pathBuilder !== null) {
-          if (temporaryDescendant(current, pathBuilder)) return false;
-          const trailing: string[] = [];
-          for (const argument of current.arguments.toReversed()) {
-            if (argument.type === AST_NODE_TYPES.SpreadElement) return false;
-            const segment = stringValue(argument);
-            if (segment === null) break;
-            trailing.unshift(segment);
-            if (pathBuilder === "resolve" && posix.isAbsolute(segment.replaceAll("\\", "/"))) break;
-          }
-          return trailing.length > 0 && sourcePathValue(trailing.join("/"));
-        }
-        if (current.type === AST_NODE_TYPES.NewExpression && callee.type === AST_NODE_TYPES.Identifier && callee.name === "URL" && (bindingOf(callee)?.defs.length ?? 0) === 0) return sourcePath(first);
-        if (callee.type === AST_NODE_TYPES.Identifier && bindingOf(callee)?.defs.some((definition) =>
-          definition.node.type === AST_NODE_TYPES.ImportSpecifier && definition.node.imported.type === AST_NODE_TYPES.Identifier &&
-          definition.node.imported.name === "fileURLToPath" && definition.node.parent.type === AST_NODE_TYPES.ImportDeclaration &&
-          ["node:url", "url"].includes(String(definition.node.parent.source.value)))) return sourcePath(first);
+      if (current.type !== AST_NODE_TYPES.CallExpression && current.type !== AST_NODE_TYPES.NewExpression) return false;
+      const callee = unwrapExpression(current.callee);
+      const first = current.arguments[0];
+      if (first === undefined || first.type === AST_NODE_TYPES.SpreadElement) return false;
+      const pathBuilder = callee.type === AST_NODE_TYPES.Identifier ? nativePathBuilder(callee) : null;
+      if (current.type === AST_NODE_TYPES.CallExpression && pathBuilder !== null) {
+        if (temporaryDescendant(current, pathBuilder)) return false;
+        const suffix = staticPathSuffix(current.arguments, pathBuilder);
+        return suffix !== null && sourcePathValue(suffix);
       }
+      if (current.type === AST_NODE_TYPES.NewExpression && callee.type === AST_NODE_TYPES.Identifier && callee.name === "URL" && (bindingOf(callee)?.defs.length ?? 0) === 0) return sourcePath(first);
+      if (callee.type === AST_NODE_TYPES.Identifier && bindingOf(callee)?.defs.some((definition) =>
+        definition.node.type === AST_NODE_TYPES.ImportSpecifier && definition.node.imported.type === AST_NODE_TYPES.Identifier &&
+        definition.node.imported.name === "fileURLToPath" && definition.node.parent.type === AST_NODE_TYPES.ImportDeclaration &&
+        ["node:url", "url"].includes(String(definition.node.parent.source.value)))) return sourcePath(first);
       return false;
     };
     const nativePathBuilder = (node: TSESTree.Identifier): "join" | "resolve" | null => {
