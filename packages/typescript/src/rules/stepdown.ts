@@ -11,7 +11,7 @@ import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "helperAboveOnlyCaller";
-type Options = [];
+type Options = [{ readonly privateBandOnly?: boolean }];
 
 export const STEPDOWN_DOCUMENTATION = {
   summary: "Place a private helper below its sole direct same-scope caller.",
@@ -20,7 +20,7 @@ export const STEPDOWN_DOCUMENTATION = {
   category: "maintainability",
   limitations: [
     "Generated and test files, cycles, dynamic or escaped references, overload targets, and helpers with multiple callers are excluded; immutable local callable aliases are followed only when every use stays in the caller. Function bodies include nested sibling helpers.",
-    "Class helpers must be private; their sole caller may be public, protected, or private.",
+    "Class helpers must be private; their sole caller may be public, protected, or private by default. Set privateBandOnly alongside accessibility ordering to restrict class reports to private callers; module and nested function ordering is unchanged.",
     "Runtime class-field, static-block, computed-member, and decorator barriers are never crossed; non-hoisted module helpers also cannot cross eager execution or unrelated initialization.",
     "This rule is report-only: reordering methods can change reflective property order, and moving module declarations can change initialization behavior or introduce temporal-dead-zone failures. Review module cycles and eager callers manually.",
   ],
@@ -473,6 +473,7 @@ function classScope(
   context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
   node: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
   computedReferences: readonly TSESTree.MemberExpression[],
+  privateBandOnly: boolean,
 ): void {
   const methods = node.body.body.filter(
     (member): member is TSESTree.MethodDefinition => member.type === AST_NODE_TYPES.MethodDefinition,
@@ -486,7 +487,7 @@ function classScope(
     return name !== null && key !== null && implementationCounts.get(key) === 1 ? [{ key, name, node: method }] : [];
   });
   const definitions = scopeDefinitions.filter(({ key, node: method }) =>
-    (method.accessibility === "private" || method.key.type === AST_NODE_TYPES.PrivateIdentifier) &&
+    isPrivateMethod(method) &&
     counts.get(key) === 1 && method.decorators.length === 0 && !method.computed && method.kind === "method",
   );
   if (definitions.length === 0) return;
@@ -619,6 +620,7 @@ function classScope(
     runtimeBarrierPrefix.push((runtimeBarrierPrefix.at(-1) ?? 0) + (isClassRuntimeBarrier(member) ? 1 : 0));
   }
   const canMove = (helper: Definition, caller: Definition): boolean => {
+    if (privateBandOnly && !isPrivateMethod(caller.node)) return false;
     const helperIndex = memberIndexes.get(helper.node as TSESTree.ClassElement);
     const callerIndex = memberIndexes.get(caller.node as TSESTree.ClassElement);
     if (helperIndex === undefined || callerIndex === undefined) return false;
@@ -626,6 +628,11 @@ function classScope(
   };
 
   reportMisordered(context, definitions, scopeDefinitions, calls, pinned, canMove);
+}
+
+function isPrivateMethod(node: TSESTree.Node): boolean {
+  return node.type === AST_NODE_TYPES.MethodDefinition &&
+    (node.accessibility === "private" || node.key.type === AST_NODE_TYPES.PrivateIdentifier);
 }
 
 function classReceiverBindings(
@@ -680,14 +687,23 @@ export default createRule<Options, MessageIds>({
   meta: {
     type: "suggestion",
     docs: { description: "Place a private helper below its sole direct same-scope caller." },
-    schema: [],
+    schema: [{
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        privateBandOnly: {
+          type: "boolean",
+          description: "Restrict class reports to private callers when another rule owns accessibility-band ordering.",
+        },
+      },
+    }],
     messages: {
       helperAboveOnlyCaller:
         "Private helper `{{helper}}` is defined above its only caller `{{caller}}`; move it below the caller.",
     },
   },
-  defaultOptions: [],
-  create(context) {
+  defaultOptions: [{}],
+  create(context, [options]) {
     if (isTestFile(context) || isGeneratedFile(context, context.sourceCode.text)) return {};
     const classes: Array<TSESTree.ClassDeclaration | TSESTree.ClassExpression> = [];
     const functionBodies: TSESTree.BlockStatement[] = [];
@@ -704,7 +720,7 @@ export default createRule<Options, MessageIds>({
         walk(program, context.sourceCode.visitorKeys, (node) => {
           if (node.type === AST_NODE_TYPES.MemberExpression && node.computed) computedReferences.push(node);
         });
-        for (const node of classes) classScope(context, node, computedReferences);
+        for (const node of classes) classScope(context, node, computedReferences, options.privateBandOnly === true);
       },
     };
   },

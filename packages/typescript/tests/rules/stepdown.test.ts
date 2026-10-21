@@ -31,6 +31,31 @@ const DEEP_CHAIN = `class Service { ${Array.from(
 
 RULE_TESTER.run("stepdown", rule, {
   valid: [
+    {
+      name: "delegates public callers to accessibility ordering in private-band mode",
+      code: "class Service { private load() { return 1; } public run() { return this.load(); } }",
+      options: [{ privateBandOnly: true }],
+    },
+    {
+      name: "delegates implicit public callers in private-band mode",
+      code: "class Service { private load() { return 1; } run() { return this.load(); } }",
+      options: [{ privateBandOnly: true }],
+    },
+    {
+      name: "delegates protected callers in private-band mode",
+      code: "class Service { private load() { return 1; } protected run() { return this.load(); } }",
+      options: [{ privateBandOnly: true }],
+    },
+    {
+      name: "delegates public constructors and accessors in private-band mode",
+      code: "class Service { private load() { return 1; } public constructor() { this.load(); } } class Reader { private load() { return 1; } public get value() { return this.load(); } } class Writer { private save(value: number) {} public set value(value: number) { this.save(value); } }",
+      options: [{ privateBandOnly: true }],
+    },
+    {
+      name: "delegates public static callers in private-band mode",
+      code: "class Service { private static load() { return 1; } static run() { return this.load(); } }",
+      options: [{ privateBandOnly: true }],
+    },
     { name: "does not infer ordering across conditional block scopes", code: "function outer(flag: boolean) { if (flag) { function load() { return 1; } function run() { return load(); } run(); } }" },
     { name: "does not assume a cyclic receiver alias is unrelated", code: "class Service { private load() { return 1; } run() { return this.load(); } } const a = b; const b = a; a['load']();" },
     { name: "keeps a nested helper below its caller", code: "function outer() { function run() { return load(); } function load() { return 1; } return run(); }" },
@@ -270,6 +295,36 @@ RULE_TESTER.run("stepdown", rule, {
     },
   ],
   invalid: [
+    {
+      name: "preserves standalone cross-accessibility ordering when explicitly disabled",
+      code: "class Service { private load() { return 1; } public run() { return this.load(); } }",
+      options: [{ privateBandOnly: false }],
+      errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
+    },
+    {
+      name: "still orders private callers within the private band",
+      code: "class Service { private load() { return 1; } private run() { return this.load(); } }",
+      options: [{ privateBandOnly: true }],
+      errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
+    },
+    {
+      name: "includes hash-private callers in the private band",
+      code: "class Service { #load() { return 1; } #run() { return this.#load(); } }",
+      options: [{ privateBandOnly: true }],
+      errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "#load", caller: "#run" } }],
+    },
+    {
+      name: "includes private constructors in the private band",
+      code: "class Service { private load() { return 1; } private constructor() { this.load(); } }",
+      options: [{ privateBandOnly: true }],
+      errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "constructor" } }],
+    },
+    {
+      name: "retains module function ordering in private-band mode",
+      code: "function load() { return 1; }\nfunction run() { return load(); }",
+      options: [{ privateBandOnly: true }],
+      errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }],
+    },
     { name: "reports nested sibling functions", code: "function outer() { function load() { return 1; } function run() { return load(); } return run(); }", errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }] },
     { name: "reports nested const helpers in a safe declaration region", code: "const outer = () => { const load = () => 1; const run = () => load(); return run(); };", errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "run" } }] },
     { name: "reports a nested helper in a class method", code: "class Service { run() { function load() { return 1; } function handle() { return load(); } return handle(); } }", errors: [{ messageId: "helperAboveOnlyCaller", data: { helper: "load", caller: "handle" } }] },

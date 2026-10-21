@@ -1063,7 +1063,29 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     expect(ruleIds).not.toContain("@sarj/prefer-nullish-filter-predicate");
   });
 
-  it("gives cross-accessibility ordering one diagnostic owner", async () => {
+  it.each(CONFIG_FACTORIES)("%s gives cross-accessibility ordering one diagnostic owner", async (_name, createConfig) => {
+    const focused = createConfig({ projectService: false }).map((entry) => ({
+      ...entry,
+      rules: Object.fromEntries(Object.entries(entry.rules ?? {}).filter(([id]) =>
+        ["@typescript-eslint/member-ordering", "@sarj/stepdown", "perfectionist/sort-classes"].includes(id))),
+    }));
+    const engine = new ESLint({ cwd: resolve("/", "__sarj_ordering_policy__"), overrideConfigFile: true, overrideConfig: focused });
+    const [result] = await engine.lintText("class Runner { private load() { return 1; } public run() { return this.load(); } }", { filePath: "ordering.ts" });
+    expect(result?.messages.map((message) => message.ruleId)).toEqual(["@typescript-eslint/member-ordering"]);
+  });
+
+  it.each(CONFIG_FACTORIES)("%s keeps private-band helpers owned by stepdown", async (_name, createConfig) => {
+    const focused = createConfig({ projectService: false }).map((entry) => ({
+      ...entry,
+      rules: Object.fromEntries(Object.entries(entry.rules ?? {}).filter(([id]) =>
+        ["@typescript-eslint/member-ordering", "@sarj/stepdown", "perfectionist/sort-classes"].includes(id))),
+    }));
+    const engine = new ESLint({ cwd: resolve("/", "__sarj_ordering_policy__"), overrideConfigFile: true, overrideConfig: focused });
+    const [result] = await engine.lintText("class Runner { private load() { return 1; } private run() { return this.load(); } }", { filePath: "ordering.ts" });
+    expect(result?.messages.map((message) => message.ruleId)).toEqual(["@sarj/stepdown"]);
+  });
+
+  it("gives shipped fixture cross-accessibility ordering one diagnostic owner", async () => {
     const messages = await lint("stepdown-conflict.ts");
     const ordering = messages.filter((message) =>
       ["@typescript-eslint/member-ordering", "@sarj/stepdown", "perfectionist/sort-classes"].includes(message.ruleId ?? ""),
