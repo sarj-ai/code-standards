@@ -2913,6 +2913,107 @@ def test_eslint_malformed_output_preserves_stderr_without_json_exception_name(tm
     assert "JSONDecodeError" not in issue.message
 
 
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "updated ./.basedpyright-baseline.json with 1503 errors (went down by 6)",
+        "updated ./.basedpyright/baseline.json with 1 error (went down by 1)",
+        "updated undefined with 0 errors (went down by 2)",
+    ],
+)
+def test_basedpyright_accepts_the_native_baseline_shrink_notice(tmp_path: Path, prefix: str) -> None:
+    assert parse_basedpyright(prefix + '\n\n{"generalDiagnostics":[]}', root=tmp_path) == ()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        'unexpected log\n\n{"generalDiagnostics":[]}',
+        'updated baseline with 1 error (went up by 1)\n\n{"generalDiagnostics":[]}',
+        'updated baseline with 1 error (went down by 0)\n\n{"generalDiagnostics":[]}',
+        'updated baseline with 1 errors (went down by 1)\n\n{"generalDiagnostics":[]}',
+        'updated baseline with 1 error (went down by 1)\n{"generalDiagnostics":[]}',
+        'updated baseline with 1 error (went down by 1)\n\nunexpected log\n{"generalDiagnostics":[]}',
+        'updated baseline with 1 error (went down by 1)\n\n{"generalDiagnostics":[]}\ntrailing log',
+        'updated baseline with 1 error (went down by 1)\n\n{"generalDiagnostics":',
+        "updated baseline with 1 error (went down by 1)\n\n{}",
+    ],
+)
+def test_basedpyright_rejects_unknown_framing_and_invalid_reports(tmp_path: Path, payload: str) -> None:
+    with pytest.raises(ValidationError):
+        parse_basedpyright(payload, root=tmp_path)
+
+
+@pytest.mark.parametrize("returncode", [1, 2])
+def test_basedpyright_native_notice_does_not_override_failure_status(tmp_path: Path, returncode: int) -> None:
+    source = tmp_path / "example.py"
+    source.write_text("value = 1\n")
+    payload = 'updated baseline with 0 errors (went down by 1)\n\n{"generalDiagnostics":[]}'
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert argv == ("basedpyright", "--outputjson")
+        assert cwd == tmp_path
+        return ProcessOutput(returncode, payload, "")
+
+    reports = analyze_external(
+        (str(source),), root=tmp_path, trust=TrustMode.SAFE, runner=runner, capabilities=frozenset({"pyright"})
+    )
+
+    assert len(reports) == 1
+    assert reports[0].completion is Completion.FAILED
+    assert reports[0].issues[0].kind == ("protocol-mismatch" if returncode == 1 else "tool-failure")
+
+
+def test_native_basedpyright_shrink_and_new_diagnostic_contract(tmp_path: Path) -> None:
+    source = tmp_path / "example.py"
+    source.write_text('first: int = "bad"\nsecond: int = "bad"\n')
+    (tmp_path / "pyrightconfig.json").write_text('{"include":["example.py"],"typeCheckingMode":"strict"}')
+    baseline = tmp_path / ".basedpyright" / "baseline.json"
+    initialized = subprocess.run(
+        (sys.executable, "-m", "basedpyright", "--writebaseline", "--outputjson"),
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert initialized.returncode in {0, 1}, initialized.stderr
+    assert baseline.is_file()
+    before = baseline.read_bytes()
+
+    source.write_text('first: int = 1\nsecond: int = "bad"\n')
+    # Explicit auto mode exercises the same local retirement behavior when this test runs in CI.
+    retired = subprocess.run(
+        (sys.executable, "-m", "basedpyright", "--baselinemode=auto", "--outputjson"),
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert retired.returncode == 0, retired.stderr
+    assert retired.stdout.startswith("updated ./.basedpyright/baseline.json with 1 error (went down by 1)\n\n")
+    assert parse_basedpyright(retired.stdout, root=tmp_path) == ()
+    shrunk = baseline.read_bytes()
+    assert shrunk != before
+
+    source.write_text('first: int = 1\nsecond: int = 2\nthird: int = "new"\n')
+    failed = subprocess.run(
+        (sys.executable, "-m", "basedpyright", "--baselinemode=auto", "--outputjson"),
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert failed.returncode == 1, failed.stderr
+    findings = parse_basedpyright(failed.stdout, root=tmp_path)
+    assert len(findings) == 1
+    assert findings[0].rule_id == "reportAssignmentType"
+    assert findings[0].severity is Severity.ERROR
+    assert baseline.read_bytes() == shrunk
+
+
 def test_basedpyright_utf16_range_preserves_astral_character(tmp_path: Path) -> None:
     source = tmp_path / "example.py"
     source.write_text("value = '😀'\n", encoding="utf-8")
