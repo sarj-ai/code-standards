@@ -528,13 +528,11 @@ def analyze_external(
                         pass_on_unpruned_suppressions=pass_on_unpruned_eslint_suppressions,
                     )
                     if rule_ids is not None or upstream_rules.ids
-                    else _local_eslint_argv(
-                        _eslint_json_argv(
-                            command.argv,
-                            pass_on_unpruned_suppressions=pass_on_unpruned_eslint_suppressions,
-                        ),
-                        command.cwd,
-                        root,
+                    else _selected_eslint_argv(
+                        command,
+                        frozenset(),
+                        full=True,
+                        pass_on_unpruned_suppressions=pass_on_unpruned_eslint_suppressions,
                     )
                     if runner is None
                     else _eslint_json_argv(
@@ -1934,31 +1932,31 @@ def _invoke_ruff_projects(
             invocation_id=project_id,
             file_count=len(scoped_files),
         )
-        cast_files = _ruff_cast_files(scoped_files)
-        if cast_files:
+        required_files = _ruff_required_files(scoped_files)
+        if required_files:
             cast_report = _invoke(
                 "ruff",
-                _ruff_cast_argv(cast_files),
+                _ruff_required_argv(required_files),
                 cwd=project,
                 root=root,
                 runner=runner,
                 parser=parse_ruff,
                 invocation_id=project_id,
-                file_count=len(cast_files),
+                file_count=len(required_files),
             )
-            cast_report = _with_indirect_cast_findings(cast_report, cast_files, root=root)
+            cast_report = _with_indirect_cast_findings(cast_report, required_files, root=root)
             report = _merge_ruff_reports(report, cast_report)
         reports.append(report)
     return tuple(reports)
 
 
-def _ruff_cast_files(files: Sequence[str]) -> tuple[str, ...]:
+def _ruff_required_files(files: Sequence[str]) -> tuple[str, ...]:
     selected: list[str] = []
     for raw_path in files:
         try:
-            # This is only a cheap prefilter; native Ruff owns imports, aliases and scopes.
+            # Native Ruff owns binding and suppression syntax; retain every comment-bearing source.
             source = Path(raw_path).read_bytes()
-            if source.isascii() and b"cast" not in source and b"typing" not in source:
+            if source.isascii() and b"cast" not in source and b"typing" not in source and b"#" not in source:
                 continue
         except OSError:
             pass
@@ -1969,8 +1967,16 @@ def _ruff_cast_files(files: Sequence[str]) -> tuple[str, ...]:
 def _merge_ruff_reports(report: ToolReport, cast_report: ToolReport) -> ToolReport:
     complete = report.completion is cast_report.completion is Completion.COMPLETE
     protected = tuple(
-        replace(finding, tags=(*finding.tags, "non-baselineable", "required-cast-policy"))
-        if finding.rule_id in {"TID251", "banned-api"}
+        replace(
+            finding,
+            tags=(
+                *finding.tags,
+                "non-baselineable",
+                "required-source-policy",
+                *(("required-cast-policy",) if finding.rule_id in {"TID251", "banned-api"} else ()),
+            ),
+        )
+        if finding.rule_id in {"TID251", "banned-api", "PGH003", "PGH004", "blanket-type-ignore", "blanket-noqa"}
         else finding
         for finding in cast_report.diagnostics
     )
@@ -2020,6 +2026,8 @@ def _indirect_cast_findings(files: Sequence[str], *, root: Path) -> tuple[Diagno
     for raw_path in files:
         path = Path(raw_path)
         raw = path.read_bytes()
+        if raw.isascii() and b"typing" not in raw:
+            continue
         encoding, _ = tokenize.detect_encoding(io.BytesIO(raw).readline)
         source = raw.decode(encoding)
         document = SourceDocument(path, source)
@@ -3308,7 +3316,7 @@ def _ruff_argv(files: Sequence[str], *, config: Path | None = None) -> tuple[str
     return ("ruff", "check", "--output-format", "json", *config_args, "--", *files)
 
 
-def _ruff_cast_argv(files: Sequence[str]) -> tuple[str, ...]:
+def _ruff_required_argv(files: Sequence[str]) -> tuple[str, ...]:
     return (
         "ruff",
         "check",
@@ -3316,7 +3324,7 @@ def _ruff_cast_argv(files: Sequence[str]) -> tuple[str, ...]:
         "json",
         "--ignore-noqa",
         "--config",
-        str(_PACKAGED_MOBILE_CONFIGS / "ruff.cast.toml"),
+        str(_PACKAGED_MOBILE_CONFIGS / "ruff.required.toml"),
         "--",
         *files,
     )
@@ -3500,6 +3508,7 @@ def _selected_eslint_argv(
     *,
     upstream_rules: UpstreamESLintRules = _NO_UPSTREAM_ESLINT_RULES,
     pass_on_unpruned_suppressions: bool = False,
+    full: bool = False,
 ) -> tuple[str, ...]:
     boundary = max(index for index, value in enumerate(command.argv) if value == "--")
     config = command.argv[command.argv.index("--config") + 1] if "--config" in command.argv else None
@@ -3510,6 +3519,7 @@ def _selected_eslint_argv(
             "upstreamAdvisories": sorted(upstream_rules.ids) if upstream_rules.warning_only else [],
             "config": config,
             "passOnUnpruned": pass_on_unpruned_suppressions,
+            **({"full": True} if full else {}),
         },
         separators=(",", ":"),
     )
@@ -3743,6 +3753,7 @@ def _parse_eslint_message(
         "eslint",
         location,
         rule_id=rule,
+        tags=("non-baselineable", "required-source-policy") if item.get("sarjRequiredSourcePolicy") is True else (),
     )
 
 

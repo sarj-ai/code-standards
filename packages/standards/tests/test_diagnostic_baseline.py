@@ -148,7 +148,7 @@ def test_makefile_guard_cannot_be_captured_or_hidden_by_a_diagnostic_baseline(tm
     )
     raw = report_from_tools(tmp_path, (ToolReport("repo-standards", Completion.COMPLETE, diagnostics=(guarded,)),))
 
-    visible = api._without_baselined_diagnostics(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    visible = api._without_baselined_diagnostics(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _without_baselined_diagnostics contract directly with controlled fixture data.
         raw, {"a" * 64: 100}
     )
 
@@ -620,7 +620,7 @@ def test_deletion_hunks_preserve_baselines_away_from_surviving_boundaries(
         for index in range(len(after.splitlines()))
     )
     report = report_from_tools(tmp_path, (ToolReport("ruff", Completion.COMPLETE, findings),))
-    visible = api._without_baselined_diagnostics(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    visible = api._without_baselined_diagnostics(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _without_baselined_diagnostics contract directly with controlled fixture data.
         report,
         {finding.fingerprint: 1 for finding in findings if finding.fingerprint is not None},
         changed_scope=scope,
@@ -719,7 +719,7 @@ def test_existing_baseline_fingerprint_hides_only_matching_react_doctor_debt(tmp
         (ToolReport("react-doctor", Completion.COMPLETE, (finding, new_finding)),),
     )
 
-    visible = api._without_baselined_diagnostics(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    visible = api._without_baselined_diagnostics(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _without_baselined_diagnostics contract directly with controlled fixture data.
         report, {"a" * 64: 1}
     )
 
@@ -735,7 +735,7 @@ def _configure_authored_engine_baseline_fixture(root: Path, path: str | None = N
 
 @pytest.fixture
 def checkov_process(monkeypatch: pytest.MonkeyPatch) -> None:
-    original = external._run_process  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    original = external._run_process  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _run_process contract directly with controlled fixture data.
     payload = json.dumps(
         {"passed": 0, "failed": 0, "skipped": 0, "parsing_errors": 0, "resource_count": 0, "checkov_version": "3.3.28"}
     )
@@ -927,7 +927,7 @@ def test_scoped_baseline_update_runs_only_shellcheck_for_native_selector(
 
     assert status == 0
     assert calls == [([str(source)], frozenset({"shellcheck"}), False)]
-    rendered: object = json.loads(baseline_path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    rendered: object = json.loads(baseline_path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     diagnostics = as_table(rendered).get("diagnostics")
     assert isinstance(diagnostics, list)
     assert diagnostics == [

@@ -21,15 +21,15 @@ def test_managed_mobile_tool_pins_match_the_shipped_version_manifest() -> None:
 
     assert {
         name: artifact.version
-        for name, artifact in mobile_tools._ARTIFACTS.items()  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        for name, artifact in mobile_tools._ARTIFACTS.items()  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _ARTIFACTS contract directly with controlled fixture data.
     } == {
         "detekt": versions["detekt"],
         "ktlint": versions["ktlint"],
         "mint": versions["mint"],
     }
-    assert mobile_tools._MOBSF_RULES.version == versions["mobsfscan"]  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert mobile_tools._MOBSF_RULES.version == versions["mobsfscan"]  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _MOBSF_RULES contract directly with controlled fixture data.
     assert versions["semgrep"] == mobile_tools.SEMGREP_VERSION
-    assert mobile_tools._MOBSF_RULES.url.startswith("https://files.pythonhosted.org/")  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert mobile_tools._MOBSF_RULES.url.startswith("https://files.pythonhosted.org/")  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _MOBSF_RULES contract directly with controlled fixture data.
     artifacts = mobile_tools._ARTIFACTS  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- verifies fixed origins and digests.
     assert all(artifact.url.startswith("https://github.com/") for artifact in artifacts.values())
     assert all(len(artifact.sha256) == 64 for artifact in artifacts.values())
@@ -49,7 +49,7 @@ def test_cached_tool_is_checksum_verified_without_network(tmp_path: Path, monkey
     cached = tmp_path / "ktlint-test"
     cached.write_bytes(payload)
 
-    assert mobile_tools._provision(artifact) == cached  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert mobile_tools._provision(artifact) == cached  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _provision contract directly with controlled fixture data.
     assert cached.stat().st_mode & 0o100
 
 
@@ -82,7 +82,7 @@ def test_mobsf_rules_are_checksum_verified_and_exclude_presence_rules(
     digest.update(b"swift/crypto.yaml\0")
     digest.update(actionable)
     digest.update(b"\0")
-    fixture = mobile_tools._RulesArtifact(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    fixture = mobile_tools._RulesArtifact(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _RulesArtifact contract directly with controlled fixture data.
         "test",
         "https://files.pythonhosted.org/fixture.tar.gz",
         hashlib.sha256(archive.read_bytes()).hexdigest(),
@@ -147,7 +147,7 @@ def _configure_mobsf_archive(
     *,
     version: str,
 ) -> None:
-    fixture = mobile_tools._RulesArtifact(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    fixture = mobile_tools._RulesArtifact(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _RulesArtifact contract directly with controlled fixture data.
         version,
         "https://files.pythonhosted.org/fixture.tar.gz",
         hashlib.sha256(archive.read_bytes()).hexdigest(),

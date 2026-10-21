@@ -19,7 +19,7 @@ paths = ['''^packages/standards/src/sarj_standards/configs/devops-verification\.
 regexes = ['''^5b61f4ec8a921f407e2fae598166fb3679b41d18a9b528bc6720c2043b3638c0$''']
 
 [[allowlists]]
-description = "Published SHA-256 of cast_access.py in checking-strength audit evidence"
+description = "Published SHA-256 of cast_access.py in the checking-strength audit ledger"
 targetRules = ["generic-api-key"]
 condition = "AND"
 regexTarget = "secret"

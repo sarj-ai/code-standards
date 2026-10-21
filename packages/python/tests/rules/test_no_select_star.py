@@ -162,16 +162,16 @@ def test_non_production_files_are_excluded(path: str):
 
 
 @pytest.mark.parametrize(
-    "source",
+    ("source", "expected"),
     [
-        'q = "SELECT * FROM call"  # sarj-noqa\n',
-        'q = "SELECT * FROM call"  # sarj-noqa: SARJ021\n',
-        'q = "SELECT * FROM call"  # sarj-noqa: SARJ020, SARJ021\n',
+        ('q = "SELECT * FROM call"  # sarj-noqa\n', 1),
+        ('q = "SELECT * FROM call"  # sarj-noqa: SARJ021\n', 0),
+        ('q = "SELECT * FROM call"  # sarj-noqa: SARJ020, SARJ021\n', 0),
     ],
     ids=["bare", "exact_code", "multi_code"],
 )
-def test_respects_noqa(source: str):
-    assert _kept(source) == []
+def test_respects_only_scoped_noqa(source: str, expected: int):
+    assert len(_kept(source)) == expected
 
 
 def test_wrong_noqa_code_not_suppressed():

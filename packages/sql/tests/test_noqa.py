@@ -29,11 +29,11 @@ def _run(rule: str, f: Path, capsys: pytest.CaptureFixture[str]) -> _RunResult:
     return _RunResult(code, [line for line in out.splitlines() if line])
 
 
-def test_bare_noqa_suppresses(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
+def test_bare_noqa_cannot_waive_all_rules(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     f = _write(tmp_path, "-- dialect: postgresql\ncreated_at TIMESTAMP NOT NULL -- sarj-noqa\n")
     result = _run("enforce-timestamptz", f, capsys)
-    assert result.exit_code == 0
-    assert result.lines == []
+    assert result.exit_code == 1
+    assert len(result.lines) == 1
 
 
 def test_noqa_with_matching_code_suppresses(tmp_path: Path, capsys: pytest.CaptureFixture[str]):

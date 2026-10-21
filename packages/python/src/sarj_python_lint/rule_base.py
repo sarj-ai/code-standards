@@ -20,6 +20,7 @@ from sarj_rule_contracts import (
 )
 
 from sarj_python_lint._python_target import PythonTargetFacts
+from sarj_python_lint.suppression_policy import PROTECTED_SUPPRESSION_CODES
 
 
 if TYPE_CHECKING:
@@ -43,7 +44,7 @@ _SARJ_NOQA_RE = re.compile(
 
 
 def is_suppressed(source_lines: Sequence[str], line: int, code: str) -> bool:
-    if line < 1 or line > len(source_lines):
+    if code.upper() in PROTECTED_SUPPRESSION_CODES or line < 1 or line > len(source_lines):
         return False
     text = source_lines[line - 1]
     m = _SARJ_NOQA_RE.search(text)
@@ -58,8 +59,7 @@ def is_suppressed(source_lines: Sequence[str], line: int, code: str) -> bool:
     codes_str = m.group(1)
     trailing = comment[m.end() :]
     if codes_str is None:
-        # A complete bare marker preserves the existing all-codes waiver contract.
-        return not (trailing and (not trailing[0].isspace() or trailing.lstrip().startswith(":")))
+        return False
     reason = trailing.lstrip()
     single_dash_reason = reason.startswith("-") and (codes_str[-1:].isspace() or trailing[:1].isspace())
     if reason and not reason.startswith(("--", "—", "–")) and not single_dash_reason:

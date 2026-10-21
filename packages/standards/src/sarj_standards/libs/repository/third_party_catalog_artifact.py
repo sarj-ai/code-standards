@@ -310,7 +310,7 @@ def sync(root: Path, *, check: bool, typescript_build: TypeScriptBuild = "requir
         return SyncResult(0, "ok: third-party-rules.v1.json matches resolved tool policy")
     if check:
         return SyncResult(1, "drift: third-party-rules.v1.json differs; rerun with --sync")
-    from sarj_standards.libs.adoption import transaction  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import transaction  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     transaction.atomic_write_text(resolved, destination, expected)
     return SyncResult(0, "updated: third-party-rules.v1.json")

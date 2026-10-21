@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -52,7 +53,7 @@ def test_cast_ban_cannot_be_waived_by_source_comments(tmp_path: Path, source: st
 
     assert len(reports) == 1
     assert reports[0].completion is Completion.COMPLETE
-    findings = reports[0].diagnostics
+    findings = tuple(item for item in reports[0].diagnostics if "cast` is banned" in item.message)
     assert len(findings) == 1
     assert "cast` is banned" in findings[0].message
     assert findings[0].source == "ruff"
@@ -134,8 +135,25 @@ def test_cast_policy_execution_failure_is_not_a_clean_result(tmp_path: Path) -> 
         'import typing_extensions as t\nvalue = getattr(t, "cast")(object, 1)\n',
         'import typing\nvalue = getattr(typing, "cast", None)(object, 1)\n',
         'import typing\nvalue = getattr(typing, "ca" "st")(object, 1)\n',
+        'import typing\nvalue = getattr(typing, "ca" + "st")(object, 1)\n',
+        'import typing\nvalue = getattr(typing, f"cast")(object, 1)\n',
+        'import typing\nvalue = typing.__dict__["cast"](object, 1)\n',
+        'import typing_extensions as t\nvalue = vars(t)["cast"](object, 1)\n',
+        'import typing\nvalue = typing.__getattribute__("cast")(object, 1)\n',
     ],
-    ids=["wildcard", "extensions-wildcard", "literal-reflection", "extensions-alias", "fallback", "concatenation"],
+    ids=[
+        "wildcard",
+        "extensions-wildcard",
+        "literal-reflection",
+        "extensions-alias",
+        "fallback",
+        "concatenation",
+        "literal-addition",
+        "static-fstring",
+        "module-dict",
+        "module-vars",
+        "module-getattribute",
+    ],
 )
 def test_indirect_static_cast_access_cannot_bypass_native_policy(tmp_path: Path, source: str) -> None:
     path = tmp_path / "app.py"
@@ -241,3 +259,210 @@ def test_utf8_bom_does_not_shift_indirect_access_byte_coordinates(tmp_path: Path
     assert region is not None
     assert (region.start.line, region.start.character) == (0, 0)
     assert source[region.start.byte_offset : region.end.byte_offset] == b"from typing import *"
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (
+            (
+                "t = object()\nclass Reader:\n    import typing as t\n"
+                '    def read(self):\n        return getattr(t, "cast", None)\n'
+                '    read_lambda = lambda: getattr(t, "cast", None)\n'
+                '    values = [getattr(t, "cast", None) for _ in (1,)]\n'
+                '    class Inner:\n        value = getattr(t, "cast", None)\n'
+                "assert Reader().read() is None\nassert Reader.read_lambda() is None\n"
+                "assert Reader.values == [None]\nassert Reader.Inner.value is None\n"
+            ),
+            0,
+        ),
+        (
+            (
+                "import typing as t\nclass Reader:\n    t = object()\n    getattr = lambda *_: None\n"
+                '    def read(self):\n        return getattr(t, "cast")(int, 1)\n'
+                "assert Reader().read() == 1\n"
+            ),
+            1,
+        ),
+        (
+            (
+                'class Reader:\n    import typing as t\n    values = [t for t in (getattr(t, "cast"),)]\n'
+                'assert Reader.values[0].__name__ == "cast"\n'
+            ),
+            1,
+        ),
+        (
+            'import typing as t\ndef read[t]():\n    return getattr(t, "cast", None)\nassert read() is None\n',
+            0,
+        ),
+        (
+            (
+                "import typing as t\nclass Reader[t]:\n"
+                '    def read(self):\n        return getattr(t, "cast", None)\nassert Reader().read() is None\n'
+            ),
+            0,
+        ),
+        (
+            'import typing as t\ntype Result[t] = getattr(t, "cast", None)\nassert Result.__value__ is None\n',
+            0,
+        ),
+        (
+            (
+                'import typing as t\ndef read[getattr]():\n    return getattr(t, "cast")\n'
+                "caught = False\ntry:\n    read()\nexcept TypeError:\n    caught = True\nassert caught\n"
+            ),
+            0,
+        ),
+        (
+            'import typing as t\ndef read[t](value=getattr(t, "cast")):\n    return value\nassert read().__name__ == "cast"\n',
+            1,
+        ),
+        (
+            'import typing as t\ndef read[t](*, value=getattr(t, "cast")):\n    return value\nassert read().__name__ == "cast"\n',
+            1,
+        ),
+        (
+            (
+                'import typing as t\n@getattr(t, "cast")(object, lambda function: function)\n'
+                "def read[t]():\n    return 1\nassert read() == 1\n"
+            ),
+            1,
+        ),
+        (
+            (
+                'import typing as t\n@getattr(t, "cast")(object, lambda cls: cls)\n'
+                'class Reader[t]:\n    pass\nassert Reader.__name__ == "Reader"\n'
+            ),
+            1,
+        ),
+        (
+            (
+                "import typing as t\nclass Base:\n    pass\n"
+                'class Reader[t](getattr(t, "cast", Base)):\n    pass\nassert issubclass(Reader, Base)\n'
+            ),
+            0,
+        ),
+        (
+            (
+                'class Reader:\n    import typing as t\n    def read(self, value=getattr(t, "cast")):\n'
+                '        return value\nassert Reader().read().__name__ == "cast"\n'
+            ),
+            1,
+        ),
+        (
+            (
+                'class Reader:\n    import typing as t\n    @getattr(t, "cast")(object, lambda fn: fn)\n'
+                "    def read(self):\n        return 1\nassert Reader().read() == 1\n"
+            ),
+            1,
+        ),
+        (
+            (
+                "import typing as t\nclass Reader:\n    t = object()\n"
+                '    def read(self, value=getattr(t, "cast", None)):\n        return value\n'
+                "assert Reader().read() is None\n"
+            ),
+            0,
+        ),
+        (
+            (
+                'class Reader:\n    import typing as t\n    def read(self) -> getattr(t, "cast"):\n'
+                '        return 1\nassert Reader.read.__annotations__["return"].__name__ == "cast"\n'
+            ),
+            1,
+        ),
+        (
+            (
+                'import typing as t\ndef read(t: getattr(t, "cast")):\n    return t\n'
+                'assert read.__annotations__["t"].__name__ == "cast"\n'
+            ),
+            1,
+        ),
+        (
+            'def read[t]():\n    import typing as t\n    return getattr(t, "cast")\nassert read().__name__ == "cast"\n',
+            1,
+        ),
+        (
+            'class Reader[t]:\n    import typing as t\n    value = getattr(t, "cast")\nassert Reader.value.__name__ == "cast"\n',
+            1,
+        ),
+        (
+            'class Reader[t]:\n    import typing as t\n    value = [x for x in (getattr(t, "cast"),)]\nassert Reader.value[0].__name__ == "cast"\n',
+            1,
+        ),
+        (
+            't = object()\ndef read[T: getattr(t, "cast", None)]():\n    import typing as t\nassert read.__type_params__[0].__bound__ is None\n',
+            0,
+        ),
+        (
+            't = object()\ndef read[T = getattr(t, "cast", None)]():\n    import typing as t\nassert read.__type_params__[0].__default__ is None\n',
+            0,
+        ),
+        (
+            'class Reader:\n    import typing as t\n    def read[T: getattr(t, "cast")](t):\n        pass\nassert Reader.read.__type_params__[0].__bound__.__name__ == "cast"\n',
+            1,
+        ),
+        (
+            'class Reader:\n    import typing as t\n    def read[T = getattr(t, "cast")](t):\n        pass\nassert Reader.read.__type_params__[0].__default__.__name__ == "cast"\n',
+            1,
+        ),
+        (
+            't=object()\nclass Reader[T: getattr(t, "cast", None)]:\n    import typing as t\nassert Reader.__type_params__[0].__bound__ is None\n',
+            0,
+        ),
+        (
+            't=object()\nclass Reader[T = getattr(t, "cast", None)]:\n    import typing as t\nassert Reader.__type_params__[0].__default__ is None\n',
+            0,
+        ),
+        (
+            'class Outer:\n    import typing as t\n    class Reader[T: getattr(t,"cast")]:\n        t=object()\nassert Outer.Reader.__type_params__[0].__bound__.__name__=="cast"\n',
+            1,
+        ),
+        (
+            'class Outer:\n    import typing as t\n    class Reader[T = getattr(t,"cast")]:\n        t=object()\nassert Outer.Reader.__type_params__[0].__default__.__name__=="cast"\n',
+            1,
+        ),
+    ],
+    ids=(
+        "class-namespaces-are-not-closures",
+        "method-sees-global-module-and-builtin",
+        "comprehension-first-iterable-sees-class-local",
+        "generic-function-parameter-is-native-typevar",
+        "generic-class-parameter-is-native-typevar",
+        "generic-type-alias-value-is-evaluated",
+        "generic-parameter-is-not-native-getattr",
+        "generic-function-default-sees-outer-module",
+        "generic-function-keyword-default-sees-outer-module",
+        "generic-function-decorator-sees-outer-module",
+        "generic-class-decorator-sees-outer-module",
+        "generic-class-base-sees-type-parameter",
+        "method-default-sees-class-local",
+        "method-decorator-sees-class-local",
+        "method-default-sees-class-local-shadow",
+        "method-return-annotation-sees-class-local",
+        "parameter-annotation-sees-outer-module",
+        "generic-function-body-import",
+        "generic-class-body-import",
+        "generic-class-local-import-comprehension-iterable",
+        "bound-sees-outer-object-not-body-import",
+        "default-sees-outer-object-not-body-import",
+        "bound-sees-outer-class-not-parameter",
+        "default-sees-outer-class-not-parameter",
+        "class-bound-skips-own-body",
+        "class-default-skips-own-body",
+        "class-bound-sees-outer-class",
+        "class-default-sees-outer-class",
+    ),
+)
+def test_source_proof_matches_native_scope_resolution(tmp_path: Path, source: str, expected: int) -> None:
+    path = tmp_path / "app.py"
+    path.write_text(source, encoding="utf-8")
+    (tmp_path / "ruff.toml").write_text(_CONFIG, encoding="utf-8")
+
+    runtime = run_process((sys.executable, str(path)), cwd=tmp_path)
+    assert runtime.returncode == 0, runtime.stderr
+    reports = analyze_external([str(path)], root=tmp_path, trust=TrustMode.TRUSTED, capabilities=frozenset({"ruff"}))
+
+    assert reports[0].completion is Completion.COMPLETE
+    assert len(reports[0].diagnostics) == expected
+    assert all("required-cast-policy" in finding.tags for finding in reports[0].diagnostics)

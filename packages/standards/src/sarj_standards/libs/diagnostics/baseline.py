@@ -53,7 +53,7 @@ class _LoadedBaseline:
 
 
 def changed_line_scope(root: Path, *, staged: bool) -> ChangedLineScope | None:
-    base = os.environ.get("SARJ_STANDARDS_BASE", "").strip()  # ruff: ignore[banned-api]
+    base = os.environ.get("SARJ_STANDARDS_BASE", "").strip()  # ruff: ignore[banned-api] -- the Standards launcher reads its baseline-selection environment before consumer settings exist.
     if not staged and not base:
         return None
     if not staged and _GIT_SHA.fullmatch(base) is None:
@@ -73,13 +73,13 @@ def changed_line_scope(root: Path, *, staged: bool) -> ChangedLineScope | None:
         "--no-ext-diff",
         "--no-textconv",
     )
-    names = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+    names = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
         (*common, "--name-only", "-z", "--"),
         cwd=root,
         check=False,
         capture_output=True,
     )
-    patch = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+    patch = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
         (*common, "--unified=0", "--no-color", "--src-prefix=a/", "--dst-prefix=b/", "--"),
         cwd=root,
         check=False,
@@ -426,7 +426,7 @@ def _validate_provenance(value: object) -> dict[str, str]:
 
 
 def repository_base_sha(root: Path) -> str:
-    explicit = os.environ.get("SARJ_STANDARDS_BASE", "").strip()  # ruff: ignore[banned-api]
+    explicit = os.environ.get("SARJ_STANDARDS_BASE", "").strip()  # ruff: ignore[banned-api] -- the Standards launcher reads its baseline-selection environment before consumer settings exist.
     if _GIT_SHA.fullmatch(explicit) is not None:
         return explicit
     git = shutil.which("git")

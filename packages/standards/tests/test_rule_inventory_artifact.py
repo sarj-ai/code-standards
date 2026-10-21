@@ -59,7 +59,7 @@ def test_runtime_load_does_not_import_rule_registries() -> None:
 def test_show_rules_prints_versioned_inventory(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["show", "rules"]) == 0
 
-    output: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
+    output: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     assert output["schemaVersion"] == 1
     assert output["rules"]
 

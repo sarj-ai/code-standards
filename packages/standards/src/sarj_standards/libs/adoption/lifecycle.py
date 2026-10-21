@@ -490,7 +490,7 @@ def execute(commands: Iterable[Command]) -> int:
         try:
             if command.label in {_PRECOMMIT_HOOK_LABEL, _LEFTHOOK_HOOK_LABEL}:
                 hook_transaction = _capture_hook_transaction(command.cwd)
-            completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
                 [executable, *command.argv[1:]],
                 cwd=command.cwd,
                 check=False,

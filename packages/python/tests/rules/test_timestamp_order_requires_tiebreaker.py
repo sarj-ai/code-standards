@@ -305,16 +305,16 @@ def test_skips_generated_and_malformed_source() -> None:
 
 
 @pytest.mark.parametrize(
-    "source",
+    ("source", "expected"),
     [
-        'QUERY = "SELECT id FROM task ORDER BY created_at DESC LIMIT 20"  # sarj-noqa\n',
-        'QUERY = "SELECT id FROM task ORDER BY created_at DESC LIMIT 20"  # sarj-noqa: SARJ407\n',
-        'QUERY = "SELECT id FROM task ORDER BY created_at DESC LIMIT 20"  # sarj-noqa: SARJ025, SARJ407\n',
+        ('QUERY = "SELECT id FROM task ORDER BY created_at DESC LIMIT 20"  # sarj-noqa\n', 1),
+        ('QUERY = "SELECT id FROM task ORDER BY created_at DESC LIMIT 20"  # sarj-noqa: SARJ407\n', 0),
+        ('QUERY = "SELECT id FROM task ORDER BY created_at DESC LIMIT 20"  # sarj-noqa: SARJ025, SARJ407\n', 0),
     ],
     ids=["bare", "exact-code", "multiple-codes"],
 )
-def test_local_suppression_can_remove_the_warning(source: str) -> None:
-    assert _kept(source) == []
+def test_only_scoped_local_suppression_can_remove_the_warning(source: str, expected: int) -> None:
+    assert len(_kept(source)) == expected
 
 
 def test_unrelated_suppression_code_does_not_remove_the_warning() -> None:

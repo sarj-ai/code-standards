@@ -57,21 +57,21 @@ def selected(selector: RuleSelector) -> SelectedRule:
 
 def _python(rule_id: str) -> SelectedRule:
     from sarj_python_lint.__main__ import analyze  # ruff: ignore[import-outside-top-level] -- load only the selected engine.
-    from sarj_python_lint.rules import REGISTRY  # ruff: ignore[import-outside-top-level]
+    from sarj_python_lint.rules import REGISTRY  # ruff: ignore[import-outside-top-level] -- load sarj_python_lint.rules only when this selected operation executes.
 
     return _native(rule_id, RuleEngine.PYTHON, REGISTRY.get(rule_id), analyze)
 
 
 def _sql(rule_id: str) -> SelectedRule:
     from sarj_sql_lint.__main__ import analyze  # ruff: ignore[import-outside-top-level] -- load only the selected engine.
-    from sarj_sql_lint.rules import REGISTRY  # ruff: ignore[import-outside-top-level]
+    from sarj_sql_lint.rules import REGISTRY  # ruff: ignore[import-outside-top-level] -- load sarj_sql_lint.rules only when this selected operation executes.
 
     return _native(rule_id, RuleEngine.SQL, REGISTRY.get(rule_id), analyze)
 
 
 def _iac(rule_id: str) -> SelectedRule:
     from sarj_iac_lint.__main__ import analyze  # ruff: ignore[import-outside-top-level] -- load only the selected engine.
-    from sarj_iac_lint.rules import REGISTRY  # ruff: ignore[import-outside-top-level]
+    from sarj_iac_lint.rules import REGISTRY  # ruff: ignore[import-outside-top-level] -- load sarj_iac_lint.rules only when this selected operation executes.
 
     return _native(rule_id, RuleEngine.IAC, REGISTRY.get(rule_id), analyze)
 

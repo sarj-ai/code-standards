@@ -32,12 +32,17 @@ RULE_TESTER.run("no-vague-suppression-description", rule, {
     "// eslint-disable-next-line no-console\nconsole.log(value);",
     "/* @ts-expect-error -- vendor declaration omits the runtime overload */\nlegacy.call(value);",
     "const value = 1; // eslint-disable-line @rule-tester/no-vague-suppression-description -- needed",
-    {
-      filename: "/repo/src/generated/client.ts",
-      code: "// @ts-expect-error -- needed\ncall();",
-    },
   ],
   invalid: [
+    ...["same", "n/a", "legacy"].map((reason) => ({
+      code: `// @ts-expect-error -- ${reason}\ncall();`,
+      errors: [{ messageId: "vagueDescription" as const }],
+    })),
+    {
+      filename: "/repo/src/generated/client.ts",
+      code: "// @generated\n// @ts-expect-error -- needed\ncall();",
+      errors: [{ messageId: "vagueDescription" }],
+    },
     {
       code: "// eslint-disable-next-line no-console -- needed\nconsole.log(value);",
       errors: [{ messageId: "vagueDescription" }],
@@ -123,6 +128,10 @@ describe("upstream ownership integration", () => {
     },
   ])("$name", ({ code, expected }) => {
     const messages = linter.verify(code, config, "src/ownership.ts");
-    expect(messages.map((message) => message.ruleId).filter((ruleId) => ruleId !== null)).toEqual(expected);
+    expect(
+      messages
+        .map((message) => message.ruleId)
+        .filter((ruleId) => ruleId !== null),
+    ).toEqual(expected);
   });
 });

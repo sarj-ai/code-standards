@@ -1,0 +1,5 @@
+# The complete gate owns these checks independently of consumer configuration.
+extend = "./ruff.cast.toml"
+
+[lint]
+select = ["banned-api", "blanket-noqa", "blanket-type-ignore"]

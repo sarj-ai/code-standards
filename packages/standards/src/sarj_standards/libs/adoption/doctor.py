@@ -439,7 +439,7 @@ def _check_shellcheck(root: Path, files: Sequence[Path]) -> Iterator[Finding]:
         return
     if adopted is None or "shellcheck" not in adopted.configs:
         return
-    from sarj_standards.libs.linting import textlint  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting import textlint  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting only when this selected operation executes.
 
     eligible = tuple(path for path in files if textlint.shell_dialect(path) not in {None, "zsh"})
     if not eligible:

@@ -184,7 +184,7 @@ def load(path: Path = CLI_REFERENCE_PATH) -> CliReference:
 
 
 def build(app: typer.Typer) -> CliReference:
-    from sarj_standards.libs.adoption import launcher  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import launcher  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     parser = get_command(app)
     if not isinstance(parser, (TyperCommand, TyperGroup)):
@@ -300,7 +300,7 @@ def render(parser: typer.Typer) -> str:
 
 
 def sync(root: Path, parser: typer.Typer, *, check: bool) -> ReferenceSyncResult:
-    from sarj_standards.libs.adoption import transaction  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import transaction  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     destination = root.resolve() / _REPOSITORY_REFERENCE_PATH
     expected = render(parser)

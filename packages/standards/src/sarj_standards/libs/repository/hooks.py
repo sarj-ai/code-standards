@@ -62,7 +62,7 @@ def _install_managed_hooks(
     durable_binary: Path,
     uvx: Path,
 ) -> None:
-    subprocess.run([str(binary), "install", "-f"], cwd=root, check=True)  # ruff: ignore[subprocess-without-shell-equals-true]
+    subprocess.run([str(binary), "install", "-f"], cwd=root, check=True)  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
     configured = _configured_hooks(root, binary)
     hook_paths = [path for path in _hook_paths(root) if path.name in configured]
     if hook_paths:
@@ -87,12 +87,12 @@ def _install_managed_hooks(
             if hook_path.name == "pre-commit":
                 contents = _harden_precommit_entry(contents, root)
             transaction.atomic_write_text(hook_path.parent, hook_path, contents)
-    subprocess.run([str(binary), "validate"], cwd=root, check=True)  # ruff: ignore[subprocess-without-shell-equals-true]
-    subprocess.run([str(binary), "check-install"], cwd=root, check=True)  # ruff: ignore[subprocess-without-shell-equals-true]
+    subprocess.run([str(binary), "validate"], cwd=root, check=True)  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
+    subprocess.run([str(binary), "check-install"], cwd=root, check=True)  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
 
 
 def _configured_hooks(root: Path, binary: Path) -> frozenset[str]:
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
         [str(binary), "dump", "--format", "json"], cwd=root, check=True, capture_output=True, text=True
     )
     configuration = parse_json(completed.stdout)
@@ -254,7 +254,7 @@ def _run(args: list[str]) -> int:
     if _installed_version(binary) != _VERSION:
         msg = f"lefthook {_VERSION} is required; reinstall code-standards"
         raise RuntimeError(msg)
-    return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+    return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
         [str(binary), *args], cwd=root, check=False
     ).returncode
 
@@ -301,7 +301,7 @@ def _hook_path(root: Path, hook_name: str) -> Path:
 def _installed_version(binary: Path) -> str | None:
     if not binary.is_file():
         return None
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
         [str(binary), "version"], check=False, capture_output=True, text=True
     )
     return completed.stdout.strip() if completed.returncode == 0 else None
@@ -312,6 +312,6 @@ def _git(root: Path, *args: str) -> str:
     if executable is None:
         msg = "git is required to manage repository hooks"
         raise OSError(msg)
-    return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+    return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
         [executable, *args], cwd=root, check=True, capture_output=True, text=True
     ).stdout

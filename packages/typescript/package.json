@@ -1,6 +1,6 @@
 {
   "name": "@sarj/eslint-plugin",
-  "version": "16.22.3",
+  "version": "16.23.0",
   "packageManager": "npm@12.2.0",
   "description": "Custom ESLint rules for hypermodern TypeScript / React / Next.js projects",
   "type": "module",
@@ -35,7 +35,7 @@
   "scripts": {
     "build": "tsup",
     "dogfood": "npm run build && npm run dogfood:built",
-    "lint": "eslint . ../../.github/scripts ../standards/src ../standards/eslint.config.mts --max-warnings 0",
+    "lint": "node ../standards/src/sarj_standards/configs/eslint-selected-rules.mts \"{\\\"full\\\":true,\\\"config\\\":null,\\\"rules\\\":[],\\\"consoleOutput\\\":true,\\\"failOnWarnings\\\":true}\" -- . ../../.github/scripts ../standards/src ../standards/eslint.config.mts",
     "prepack": "npm run build && npm run verify-package",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc --project tsconfig.tools.json",

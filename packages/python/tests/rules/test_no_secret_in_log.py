@@ -477,9 +477,9 @@ def test_sarj_noqa_with_code_suppresses():
     assert _unsuppressed(src) == []  # helper filters it
 
 
-def test_bare_sarj_noqa_suppresses():
+def test_bare_sarj_noqa_cannot_suppress_secret_logging():
     src = 'logger.info("auth", token=token)  # sarj-noqa\n'
-    assert _unsuppressed(src) == []
+    assert len(_unsuppressed(src)) == 1
 
 
 def test_sarj_noqa_for_other_code_does_not_suppress():

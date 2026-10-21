@@ -140,13 +140,13 @@ def _documented_spec(
 
 def _object_table(value: object) -> dict[str, object]:
     assert isinstance(value, dict)
-    assert all(isinstance(key, str) for key in value)  # pyright: ignore[reportUnknownVariableType]
-    return value  # pyright: ignore[reportUnknownVariableType]
+    assert all(isinstance(key, str) for key in value)  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
+    return value  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
 
 
 def _object_list(value: object) -> list[object]:
     assert isinstance(value, list)
-    return value  # pyright: ignore[reportUnknownVariableType]
+    return value  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
 
 
 def test_documented_catalog_is_deterministic_and_excludes_private_examples() -> None:
@@ -258,7 +258,7 @@ def test_catalog_alias_cannot_shadow_a_live_rule() -> None:
 def test_shipped_catalog_schema_covers_every_serialized_rule_field() -> None:
     root = Path(__file__).parents[3]
     schema_path = root / "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.schema.json"
-    schema_value: object = json.loads(schema_path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    schema_value: object = json.loads(schema_path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     definitions = _object_table(_object_table(schema_value)["$defs"])
     rule_schema = _object_table(definitions["rule"])
     required = _object_list(rule_schema["required"])

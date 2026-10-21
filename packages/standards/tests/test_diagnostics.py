@@ -84,7 +84,7 @@ def test_source_document_preserves_invalid_utf8_offsets_without_losing_the_repor
 
 
 def test_canonical_json_schema_is_bundled() -> None:
-    raw: object = json.loads(ANALYSIS_SCHEMA.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    raw: object = json.loads(ANALYSIS_SCHEMA.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     schema = as_table(raw)
 
     assert list(ANALYSIS_SCHEMA.parent.glob("*.schema.json")) == [ANALYSIS_SCHEMA]
@@ -193,15 +193,15 @@ def test_native_policy_failure_preserves_warning_severity_in_every_report_format
     assert as_table(run["properties"])["policyFailedTools"] == ["repo-standards"]
     assert as_table(list_field(run, "results")[0])["level"] == "warning"
 
-    normalized = api._with_warning_severity(report, frozenset({RuleSelector(RuleEngine.PYTHON, RuleId("unrelated"))}))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-    visible = api._without_baselined_diagnostics(normalized, {"a" * 64: 1})  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    normalized = api._with_warning_severity(report, frozenset({RuleSelector(RuleEngine.PYTHON, RuleId("unrelated"))}))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _with_warning_severity contract directly with controlled fixture data.
+    visible = api._without_baselined_diagnostics(normalized, {"a" * 64: 1})  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _without_baselined_diagnostics contract directly with controlled fixture data.
     assert visible.exit_code == 1
     assert visible.diagnostics == (warning,)
     assert visible.tools[0].policy_failed is True
     selection = RuleSelection.from_values(("python:no-broad-keyword-capture",))
-    selected = api._filter_report_selectors(report.tools[0], selection)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    selected = api._filter_report_selectors(report.tools[0], selection)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _filter_report_selectors contract directly with controlled fixture data.
     excluded = Policy.from_manifest(tmp_path, Manifest("8.71.2", (), ".", ".", excluded_paths=("tool.ts",)))
-    filtered = api._filter_tool_report(selected, excluded)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    filtered = api._filter_tool_report(selected, excluded)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _filter_tool_report contract directly with controlled fixture data.
     assert filtered == report.tools[0]
     assert report_from_tools(tmp_path, (filtered,)).exit_code == 1
 
@@ -375,7 +375,7 @@ def test_canonical_schema_preserves_rich_diagnostics(tmp_path: Path) -> None:
         ),
     )
 
-    payload = as_table(json.loads(to_json(report)))  # pyright: ignore[reportAny]
+    payload = as_table(json.loads(to_json(report)))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
 
     assert payload["schemaVersion"] == 1
     assert as_table(list_field(payload, "tools")[0])["invocationId"] == "fixture/project"
@@ -385,7 +385,7 @@ def test_canonical_schema_preserves_rich_diagnostics(tmp_path: Path) -> None:
     assert enriched["ruleKey"] == "fixture:prefer-name"
     assert as_table(enriched["fingerprint"])["value"] == "stable-fingerprint"
     assert list_field(enriched, "fixes")
-    sarif = as_table(json.loads(to_sarif(report)))  # pyright: ignore[reportAny]
+    sarif = as_table(json.loads(to_sarif(report)))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     run = as_table(list_field(sarif, "runs")[0])
     result = as_table(list_field(run, "results")[0])
     assert as_table(result["partialFingerprints"])["sarj/v1"] == "stable-fingerprint"
@@ -403,7 +403,7 @@ def test_expected_coverage_does_not_make_execution_incomplete(tmp_path: Path) ->
     report = AnalysisReport(tmp_path, Completion.COMPLETE, Conclusion.PASSED, (), (coverage,))
 
     assert report.exit_code == 0
-    payload = as_table(json.loads(to_json(report)))  # pyright: ignore[reportAny]
+    payload = as_table(json.loads(to_json(report)))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     assert as_table(list_field(payload, "coverage")[0])["disposition"] == "excluded"
 
 
@@ -508,6 +508,8 @@ def test_disabled_external_capabilities_are_not_executed(monkeypatch: pytest.Mon
     report = api.Standards(tmp_path).analyze(["app.py"], external=True, trust=TrustMode.TRUSTED)
 
     assert report.exit_code == 0
+    assert {item.source for item in report.coverage} == {"ruff", "basedpyright"}
+    assert all(item.disposition is CoverageDisposition.NOT_REQUESTED for item in report.coverage)
     assert not called
 
 
@@ -763,7 +765,7 @@ def test_sarif_qualifies_rule_identity_by_analyzer(tmp_path: Path) -> None:
         (ToolReport("fixture", Completion.COMPLETE, diagnostics=diagnostics),),
     )
 
-    raw: object = json.loads(to_sarif(report))  # pyright: ignore[reportAny]
+    raw: object = json.loads(to_sarif(report))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     run = as_table(list_field(as_table(raw), "runs")[0])
     driver = table_field(table_field(run, "tool"), "driver")
 
@@ -780,7 +782,7 @@ def test_sarif_percent_encodes_artifact_uri(tmp_path: Path) -> None:
         (ToolReport("fixture", Completion.COMPLETE, diagnostics=(diagnostic,)),),
     )
 
-    raw: object = json.loads(to_sarif(report))  # pyright: ignore[reportAny]
+    raw: object = json.loads(to_sarif(report))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     run = as_table(list_field(as_table(raw), "runs")[0])
     result = as_table(list_field(run, "results")[0])
     location = as_table(list_field(result, "locations")[0])

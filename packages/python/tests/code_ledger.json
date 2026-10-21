@@ -310,5 +310,6 @@
   "SARJ519": "no-discarded-validation-result",
   "SARJ520": "no-mutating-container-transform",
   "SARJ521": "require-pydantic-for-mapping-shape",
-  "SARJ522": "no-dual-shape-model-field-reader"
+  "SARJ522": "no-dual-shape-model-field-reader",
+  "SARJ523": "no-blanket-suppression"
 }

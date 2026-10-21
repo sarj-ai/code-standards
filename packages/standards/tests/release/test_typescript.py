@@ -96,6 +96,6 @@ def test_release_library_rejects_invalid_runtime_mode(tmp_path: Path) -> None:
     package, runner = _package(tmp_path)
 
     with pytest.raises(ValueError, match="unsupported TypeScript release mode"):
-        run_typescript_release("invalid", package, runner=runner)  # pyright: ignore[reportArgumentType]
+        run_typescript_release("invalid", package, runner=runner)  # pyright: ignore[reportArgumentType] -- deliberately pass an invalid value to verify runtime validation.
 
     assert runner.calls == []

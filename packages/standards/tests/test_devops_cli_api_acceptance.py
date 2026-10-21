@@ -89,7 +89,7 @@ def _paired_analysis(
         status = cli.main(arguments)
         output = capsys.readouterr()
         assert not output.err
-        payload: object = json.loads(output.out)  # pyright: ignore[reportAny]
+        payload: object = json.loads(output.out)  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
         document = as_table(payload)
         assert status == report.exit_code
         assert document == report.as_dict()

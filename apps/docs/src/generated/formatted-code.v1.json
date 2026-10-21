@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "84bde6e2211e466db43da934e484995749f821ff7f1e0ec4d5cfd45a9988d9a2",
-  "cliSha256": "023da6d5e584d85ad6e9abc462b405f683d135a17deb6f82eb043b8640b5d2d3",
+  "catalogSha256": "6e884023691a1079b743df105a2179823c1ac38f7c69dd9778bcdeb3c7e8be48",
+  "cliSha256": "806b5fe83135dbff17e687d9a071fd5f4dfea1056d079174d507a42415f5bfc5",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -7849,6 +7849,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-blanket-suppression": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/adapter.py",
+              "source": "def value() -> str:\n    return 1  # pyright: ignore\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/adapter.py",
+          "id": "blanket-type-ignore",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An unscoped ignore hides every diagnostic on the line"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/adapter.py",
+              "source": "value = vendor.value  # pyright: ignore[reportPrivateUsage] -- the dependency exposes this API only privately\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/adapter.py",
+          "id": "exact-local-exception",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A named diagnostic retains the dependency boundary explanation"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-broad-keyword-capture": {
       "examples": [
         {
@@ -11347,6 +11382,21 @@
           "title": "Concrete runtime mismatch explains the suppression"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "adapter.py",
+              "source": "value = vendor.value  # pyright: ignore[reportAny] -- the dependency's runtime value has no published stub\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "adapter.py",
+          "id": "explained-suppression-reason",
+          "outcome": "accept",
+          "scenarioId": "missing-reason",
+          "title": "Explain the concrete dependency typing boundary"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -11360,6 +11410,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Generic reason does not make the suppression auditable"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "adapter.py",
+              "source": "value = vendor.value  # pyright: ignore[reportAny]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "adapter.py",
+          "id": "missing-suppression-reason",
+          "outcome": "reject",
+          "scenarioId": "missing-reason",
+          "title": "A scoped suppression still needs an explanation"
         }
       ],
       "optionsSchemaSource": null

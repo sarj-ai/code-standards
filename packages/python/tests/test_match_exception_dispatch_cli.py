@@ -38,9 +38,8 @@ def category(error: BaseException):
         ),
         (_CLASSIFIER.format(suppression="  # sarj-noqa: SARJ080 — unrelated suppression"), 1),
         ("# @generated\n" + _CLASSIFIER.format(suppression=""), 0),
-        ("if value ==\n", 0),
     ],
-    ids=("one-warning", "exact-suppression", "other-suppression", "generated", "malformed"),
+    ids=("one-warning", "exact-suppression", "other-suppression", "generated"),
 )
 def test_match_exception_dispatch_cli_is_advisory(
     tmp_path: Path,

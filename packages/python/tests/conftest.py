@@ -46,7 +46,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
 def _is_narrowed(config: pytest.Config) -> bool:
     keyword: object = config.option.keyword  # pyright: ignore[reportAny] — pytest's option namespace is untyped
-    markexpr: object = config.option.markexpr  # pyright: ignore[reportAny] — same
+    markexpr: object = config.option.markexpr  # pyright: ignore[reportAny] — pytest's option namespace is untyped
     if keyword or markexpr:
         return True
     default = {"tests", str(config.rootpath / "tests")}

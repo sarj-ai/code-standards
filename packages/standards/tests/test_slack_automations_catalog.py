@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 def _is_table(value: object) -> TypeIs[dict[str, object]]:
     return isinstance(value, dict) and all(
         isinstance(key, str)
-        for key in value  # pyright: ignore[reportUnknownVariableType]
+        for key in value  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
     )
 
 
@@ -174,7 +174,7 @@ def test_shipped_json_schema_is_valid_draft_2020_12() -> None:
     Draft202012Validator.check_schema(schema)
 
 
-def _contract_corpus() -> tuple[tuple[str, dict[str, object], bool], ...]:  # ruff: ignore[too-many-locals]
+def _contract_corpus() -> tuple[tuple[str, dict[str, object], bool], ...]:  # ruff: ignore[too-many-locals] -- keep each independent contract candidate and control explicit in this fixture corpus.
     valid = _valid()
 
     invalid_slug = deepcopy(valid)

@@ -76,7 +76,7 @@ def test_no_two_packages_allocate_the_same_code() -> None:
 
 
 def _published_hooks() -> list[Mapping[str, object]]:
-    parsed: object = yaml.safe_load(_HOOKS_PATH.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    parsed: object = yaml.safe_load(_HOOKS_PATH.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the untyped YAML hook document before checking its allocated rule codes.
     assert _is_object_list(parsed)
     return [manifest.as_table(item) for item in parsed]
 

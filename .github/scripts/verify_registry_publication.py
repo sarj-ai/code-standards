@@ -2,7 +2,6 @@
 # requires-python = ">=3.12"
 # dependencies = ["typer==0.27.3", "pydantic==2.14.1"]
 # ///
-# pyright: basic
 
 from __future__ import annotations
 
@@ -29,7 +28,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 import zipfile
 
-from pydantic import ConfigDict, JsonValue, RootModel
+from pydantic import ConfigDict, JsonValue, RootModel, ValidationError
 import typer
 
 
@@ -116,23 +115,27 @@ def _json(url: str) -> dict[str, JsonValue]:
     request = Request(  # ruff: ignore[suspicious-url-open-usage] -- callers construct URLs from fixed HTTPS registries.
         url, headers={"Accept": "application/json", "Cache-Control": "no-cache"}
     )
-    with urlopen(  # ruff: ignore[suspicious-url-open-usage] -- the validated request targets a fixed HTTPS registry.
-        request, timeout=30
-    ) as response:
-        value: object = json.load(response)
-    if not isinstance(value, dict):
+    try:
+        return _RegistryDocument.model_validate(json.loads(_response_bytes(request))).root
+    except ValidationError:
         _fail(f"registry returned a non-object document: {url}")
-    return _RegistryDocument.model_validate(value).root
 
 
 def _bytes(url: str) -> bytes:
     request = Request(  # ruff: ignore[suspicious-url-open-usage] -- callers construct URLs from fixed HTTPS registries.
         url, headers={"Accept": "application/octet-stream"}
     )
-    with urlopen(  # ruff: ignore[suspicious-url-open-usage] -- the validated request targets a fixed HTTPS registry.
+    return _response_bytes(request)
+
+
+def _response_bytes(request: Request) -> bytes:
+    with urlopen(  # ruff: ignore[suspicious-url-open-usage] -- callers construct requests from fixed HTTPS registries.
         request, timeout=30
-    ) as response:
-        return response.read()
+    ) as response:  # pyright: ignore[reportAny] -- urllib's protocol-dependent response is untyped; its payload is checked below.
+        payload: object = response.read()  # pyright: ignore[reportAny] -- urllib's untyped read is narrowed to bytes before it leaves this boundary.
+    if not isinstance(payload, bytes):
+        _fail("registry returned a non-byte response")
+    return payload
 
 
 def _digest(data: bytes, algorithm: str) -> str:
@@ -165,10 +168,10 @@ def _statement(envelope: dict[str, JsonValue], *, field: str) -> dict[str, JsonV
     encoded = envelope.get(field)
     if not isinstance(encoded, str):
         _fail(f"attestation envelope has no {field}")
-    value: object = json.loads(base64.b64decode(encoded))
-    if not isinstance(value, dict):
+    try:
+        return _RegistryDocument.model_validate(json.loads(base64.b64decode(encoded))).root
+    except ValidationError:
         _fail("attestation statement is not an object")
-    return _RegistryDocument.model_validate(value).root
 
 
 def _subject_matches(statement: dict[str, JsonValue], *, filename: str, algorithm: str, digest: str) -> bool:
@@ -296,18 +299,18 @@ def _npm_identity(  # sarj-noqa: SARJ023 -- format decoding belongs beside its r
         stream = archive.extractfile("package/package.json")
         if stream is None:
             _fail("npm tarball has no package/package.json")
-        manifest: object = json.load(stream)
-    if (
-        not isinstance(manifest, dict)
-        or not isinstance(manifest.get("name"), str)
-        or not isinstance(manifest.get("version"), str)
-    ):
+        try:
+            manifest = _RegistryDocument.model_validate(json.load(stream)).root
+        except ValidationError:
+            _fail("npm tarball has incomplete package identity")
+    name, version = manifest.get("name"), manifest.get("version")
+    if not isinstance(name, str) or not isinstance(version, str):
         _fail("npm tarball has incomplete package identity")
-    return PackageIdentity(manifest["name"], manifest["version"])
+    return PackageIdentity(name, version)
 
 
 def _npm_provenance_commit(  # sarj-noqa: SARJ023 -- predicate decoding precedes its coordinator.
-    entry: object,
+    entry: JsonValue,
     *,
     expected_subject: str,
     sha512: str,
@@ -352,7 +355,7 @@ def _npm_provenance_commit(  # sarj-noqa: SARJ023 -- predicate decoding precedes
     return _npm_dependency_commit(dependencies)
 
 
-def _npm_dependency_commit(dependencies: Sequence[object]) -> str | None:
+def _npm_dependency_commit(dependencies: Sequence[JsonValue]) -> str | None:
     for dependency in dependencies:
         if not isinstance(dependency, dict) or dependency.get("uri") != f"git+{REPOSITORY_URL}@{REF}":
             continue
@@ -367,14 +370,9 @@ def attested_commit_matches_current_tree(package: str, attested: str, current: s
     paths = NPM_ARTIFACT_PATHS.get(package)
     if paths is None or GIT_COMMIT_PATTERN.fullmatch(current) is None:
         _fail_permanently(f"unsupported npm provenance identity: {package}@{current}")
+    ancestor_args = ("git", "merge-base", "--is-ancestor", attested, current)
     ancestor = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed git argv validates trusted provenance.
-        (  # ruff: ignore[start-process-with-partial-path] -- Actions supplies Git.
-            "git",
-            "merge-base",
-            "--is-ancestor",
-            attested,
-            current,
-        ),
+        ancestor_args,
         check=False,
         stdout=subprocess.DEVNULL,
         timeout=NPM_SUBPROCESS_TIMEOUT_SECONDS,
@@ -382,17 +380,10 @@ def attested_commit_matches_current_tree(package: str, attested: str, current: s
     if ancestor.returncode == 1:
         return False
     if ancestor.returncode != 0:
-        raise subprocess.CalledProcessError(ancestor.returncode, ancestor.args)
+        raise subprocess.CalledProcessError(ancestor.returncode, ancestor_args)
+    diff_args = ("git", "diff", "--quiet", attested, current, "--", *paths)
     unchanged = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed paths bind provenance to package source.
-        (  # ruff: ignore[start-process-with-partial-path] -- Actions supplies Git.
-            "git",
-            "diff",
-            "--quiet",
-            attested,
-            current,
-            "--",
-            *paths,
-        ),
+        diff_args,
         check=False,
         stdout=subprocess.DEVNULL,
         timeout=NPM_SUBPROCESS_TIMEOUT_SECONDS,
@@ -400,7 +391,7 @@ def attested_commit_matches_current_tree(package: str, attested: str, current: s
     if unchanged.returncode == 1:
         return False
     if unchanged.returncode != 0:
-        raise subprocess.CalledProcessError(unchanged.returncode, unchanged.args)
+        raise subprocess.CalledProcessError(unchanged.returncode, diff_args)
     return True
 
 

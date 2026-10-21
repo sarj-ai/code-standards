@@ -32,7 +32,7 @@ def _is_array(value: object) -> TypeGuard[list[object]]:
 
 
 def _load_yaml(path: Path) -> object:
-    parsed: object = yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)  # pyright: ignore[reportAny]
+    parsed: object = yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)  # pyright: ignore[reportAny] -- PyYAML BaseLoader preserves workflow scalars as strings for the assertions below.
     return parsed
 
 

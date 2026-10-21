@@ -1,0 +1,338 @@
+{
+  "scope": "Thirty distinct source and enforcement audit questions; this is not a claim of thirty discovered defects or complete static coverage.",
+  "baseline": "cc1db28e535cba8e5376476e3391c316f9d909fe",
+  "baseline_note": "Current origin/main when the audit branch was integrated; the requested pending suppression-hardening PR started at 2addb305.",
+  "target_bundle": "8.105.0",
+  "fixes": [
+    "Resolve class, comprehension, annotation, decorator and default evaluation scopes for proven indirect typing.cast access.",
+    "Respect generic type parameters and closer real bindings without confusing valid shadowing with native typing.cast.",
+    "Reject Ruff-honored scoped Flake8 file suppressions.",
+    "Reject source analyzeUnannotatedFunctions=false and disableBytesTypePromotions=false controls that remove native type diagnostics."
+  ],
+  "passes": [
+    {
+      "id": 1,
+      "question": "Can inline/file/range/blanket comments, consumer Ruff config, exclusions, or existing baselines waive the required direct-cast ban?",
+      "result": "pass",
+      "finding": "Packaged ignore-noqa policy remains required, non-baselineable, and cannot be rule-excluded; other API exceptions still work. Explicit whole-path/capability scope boundaries remain intentional.",
+      "regressions": [
+        "test_cast_ban_cannot_be_waived_by_source_comments",
+        "test_existing_import_baseline_cannot_authorize_future_casts",
+        "test_cast_ban_uses_packaged_policy_despite_consumer_per_file_ignore",
+        "test_rule_exclusions_cannot_waive_cast_but_preserve_other_api_exceptions",
+        "test_cast_policy_execution_failure_is_not_a_clean_result"
+      ]
+    },
+    {
+      "id": 2,
+      "question": "Are absolute typing/typing_extensions wildcard imports detected without treating relative or lookalike modules as native typing?",
+      "result": "pass",
+      "finding": "Both native wildcard forms are detected; relative/lookalike imports abstain; protected evidence supersedes duplicate generic syntax findings.",
+      "regressions": [
+        "wildcard-typing",
+        "wildcard-extensions",
+        "relative-wildcard",
+        "lookalike-wildcard",
+        "test_cast_evidence_takes_precedence_over_generic_syntax_finding"
+      ]
+    },
+    {
+      "id": 3,
+      "question": "Does literal-key proof fold only bounded side-effect-free text while preserving dynamic and non-cast keys?",
+      "result": "pass",
+      "finding": "Literal additions, adjacent strings and static f-strings are recognized. Variable keys, interpolated strings, unknown syntax and oversized/deep text are intentionally not evaluated.",
+      "regressions": [
+        "literal-add",
+        "static-fstring",
+        "dynamic-key",
+        "non-cast",
+        "test_abstains_without_a_stable_native_api_identity"
+      ]
+    },
+    {
+      "id": 4,
+      "question": "Do getattr fallback, module dict, vars, and __getattribute__ carriers preserve API identity without guessing keyword expansions?",
+      "result": "pass",
+      "finding": "All four supported carriers are enforced; opaque keyword expansions abstain. Native failure and protected-finding metadata remain tested.",
+      "regressions": [
+        "dict-carrier",
+        "vars-carrier",
+        "getattribute-carrier",
+        "getattr-fallback",
+        "keyword-expansion",
+        "test_indirect_static_cast_access_cannot_bypass_native_policy"
+      ]
+    },
+    {
+      "id": 5,
+      "question": "Does builtin shadowing distinguish an actual builtin call from a function parameter or unrelated lexical binding?",
+      "result": "pass",
+      "finding": "Parameter shadowing abstains; a same-named parameter in an unrelated function does not hide a proven module-level access. Class-local builtin shadowing is corrected under pass 7.",
+      "regressions": [
+        "builtin-argument",
+        "builtin-other-scope",
+        "test_shadowing_in_an_unrelated_scope_does_not_hide_proven_cast_access"
+      ]
+    },
+    {
+      "id": 6,
+      "question": "Does receiver proof stop after rebinding, member mutation, escape, or unbounded namespace access?",
+      "result": "pass",
+      "finding": "Existing conservative identity contracts remain unchanged. This helper does not claim to prove arbitrary mutable/reflected/dynamic programs.",
+      "regressions": [
+        "module-rebound",
+        "module-member-mutated",
+        "module-escaped",
+        "namespace-hazard",
+        "test_abstains_without_a_stable_native_api_identity"
+      ]
+    },
+    {
+      "id": 7,
+      "question": "Does lexical resolution separate class bodies from nested code and evaluate defaults, decorators, and lazy annotations in their native scopes?",
+      "result": "fixed",
+      "finding": "Corrected class lexical capture plus enclosing evaluation scopes for defaults, decorators, function annotations, and generic parameter bounds/defaults. Class body locals are visible only where Python makes them visible; method return annotations and generic owner bounds/defaults preserve outer class annotation scope. Explicit function/class body imports can override an enclosing generic parameter.",
+      "regressions": [
+        "class-import-is-not-method-closure",
+        "class-shadow-is-not-method-closure",
+        "class-getattr-is-not-method-closure",
+        "nested-class-not-closure",
+        "class-body-import",
+        "test_reflection_follows_python_class_scope_boundaries",
+        "test_type_parameters_do_not_shadow_outer_evaluation_scopes",
+        "test_source_proof_matches_native_scope_resolution",
+        "method-return-annotation-sees-class-local",
+        "parameter-annotation-sees-outer-module",
+        "bound-sees-outer-object-not-body-import",
+        "default-sees-outer-object-not-body-import",
+        "bound-sees-outer-class-not-parameter",
+        "default-sees-outer-class-not-parameter",
+        "class-bound-skips-own-body",
+        "class-default-skips-own-body",
+        "class-bound-sees-outer-class",
+        "class-default-sees-outer-class"
+      ]
+    },
+    {
+      "id": 8,
+      "question": "Are lambda/comprehension bodies distinct from the first iterable evaluation scope, including class-local sources?",
+      "result": "fixed",
+      "finding": "Nested lambda/comprehension bodies do not capture class locals; a comprehension first iterable still evaluates in its enclosing class scope. Existing stable module-level lambda access remains enforced.",
+      "regressions": [
+        "class-lambda-not-closure",
+        "class-comprehension-not-closure",
+        "comprehension-local-target",
+        "class-comprehension-first-iterable",
+        "module-lambda",
+        "comprehension-first-iterable-sees-class-local"
+      ]
+    },
+    {
+      "id": 9,
+      "question": "Do NFKC identifiers, string-literal spelling, CRLF/non-BMP regions, and UTF-8 BOM coordinates remain correct?",
+      "result": "pass",
+      "finding": "Identifier normalization recognizes equivalent Python names without normalizing runtime string literals. Existing coordinate tests and all 93 native-prefilter cases pass.",
+      "regressions": [
+        "nfkc-module-identifier",
+        "nfkc-getattr-identifier",
+        "literal-is-not-nfkc-identifier",
+        "test_multiline_reflection_keeps_utf16_and_crlf_source_coordinates",
+        "test_utf8_bom_does_not_shift_indirect_access_byte_coordinates",
+        "packages/python/tests/test_native_symbol_prefilters.py"
+      ]
+    },
+    {
+      "id": 10,
+      "question": "Can PEP 695 type parameters shadow a typing module or builtin and manufacture a false native-cast proof?",
+      "result": "fixed",
+      "finding": "Four original type-parameter shadowing false positives are fixed. Visible TypeVar/TypeVarTuple/ParamSpec names block native proof, while closer local imports win in body scope, owner defaults/decorators use outer scope, and bounds/defaults exclude owner body locals. Twenty independent review cases now match native runtime and expected detector results.",
+      "regressions": [
+        "generic-function-shadows-module",
+        "generic-function-shadows-getattr",
+        "generic-class-shadow-captured-in-method",
+        "type-alias-parameter-shadows-module",
+        "test_type_parameters_do_not_resolve_as_module_or_builtin_names",
+        "generic-type-alias-value-is-evaluated",
+        "generic-parameter-is-not-native-getattr",
+        "generic-function-body-import",
+        "generic-class-body-import",
+        "generic-class-local-import-comprehension-iterable",
+        "/private/tmp/sarj-30-pass/classification-cross-review-after.json"
+      ]
+    },
+    {
+      "id": 11,
+      "question": "Can bare, empty, malformed or partial Sarj selectors waive a diagnostic?",
+      "result": "pass",
+      "finding": "Only the complete named selector grammar suppresses; case-insensitive exact comma lists and supported single-dash reasons remain valid.",
+      "subcases": 8
+    },
+    {
+      "id": 12,
+      "question": "Do Pyright directives distinguish actual file configuration from malformed syntax and nested prose?",
+      "result": "pass",
+      "finding": "Explicit enableTypeIgnoreComments=false keeps the nested candidate ineffective. The initial strict-only probe was a false lead caused by a leading type:ignore, already owned by required PGH003. No nested-directive change was made.",
+      "subcases": 8
+    },
+    {
+      "id": 13,
+      "question": "Can supported boolean file controls remove actual type errors without SARJ523?",
+      "result": "pass",
+      "finding": "Ruff/BasedPyright source controls remain unchanged; SARJ523 now rejects the two proven false settings. analyzeUnannotatedFunctions removes the body operator error but still reports unknown return type and exits1; bytes promotion changes exit1 to0.",
+      "fix": "Extend the existing named disabled-check set by analyzeUnannotatedFunctions and disableBytesTypePromotions; do not infer weakening from arbitrary boolean names.",
+      "subcases": 5
+    },
+    {
+      "id": 14,
+      "question": "Can named Flake8 file-noqa bypass the exact local suppression boundary while inline/prose forms remain inert?",
+      "result": "pass",
+      "finding": "Ruff0.17 honors Flake8 F401 and TID251 file selectors. F401 still leaves TID251 active and vice versa, so this is scoped file suppression, not a claim that codes are ignored. Named standalone forms now emit one SARJ523; inert inline/prose forms do not.",
+      "fix": "Recognize standalone named flake8:noqa file directives separately so Ruff banned-api precedence cannot exempt this previously unowned form.",
+      "subcases": 5
+    },
+    {
+      "id": 15,
+      "question": "Are missing and closed generic reasons rejected without overrejecting a concrete boundary explanation?",
+      "result": "pass",
+      "finding": "SARJ419 remains a bounded lexical generic-phrase check; it cannot prove a human explanation true or sufficient. No speculative expansion was justified.",
+      "subcases": 6
+    },
+    {
+      "id": 16,
+      "question": "Can a second directive or issue-number hash hide an explicit generic reason or cause duplicate diagnostics?",
+      "result": "pass",
+      "finding": "Shared trailing concrete explanations remain supported; an explicit generic reason on either directive still reports exactly once; #123 remains reason content.",
+      "subcases": 4
+    },
+    {
+      "id": 17,
+      "question": "Can string, docstring, f-string or line-ending representation change whether a marker is a real Python comment?",
+      "result": "pass",
+      "finding": "Tokenized comment provenance excludes data while preserving real comments with BOM/CRLF.",
+      "subcases": 5
+    },
+    {
+      "id": 18,
+      "question": "Does an exact local waiver remain bounded across sibling rules, sibling functions, and shadowed process receivers?",
+      "result": "pass",
+      "finding": "Scope and alias analysis stay with the owning source rule; suppression parsing does not infer behavior from variable names.",
+      "subcases": 3
+    },
+    {
+      "id": 19,
+      "question": "Can parse, size or read failures make selected Python analysis report clean?",
+      "result": "pass",
+      "finding": "All three existing report-contract cases pass: FAILED/INCONCLUSIVE, exit2 and analyzer-failure. Per-rule abstention is not conflated with complete source analysis.",
+      "subcases": 1
+    },
+    {
+      "id": 20,
+      "question": "Can a source integrity rule waive itself, including case variants, rule exclusion or a diagnostic baseline?",
+      "result": "pass",
+      "finding": "Protected native policy findings remain nonbaselineable and required despite global/scoped rule exclusions; explicit whole-path and partial-check boundaries remain documented and are covered by the 21-test adjacent suite. Package suites run separately because their conftest modules share a tests.conftest name.",
+      "subcases": 2
+    },
+    {
+      "id": 21,
+      "question": "Can source directives disable the suppression validators themselves?",
+      "result": "pass",
+      "cases": [
+        "config-meta-off",
+        "self-disable",
+        "source-vague-off"
+      ]
+    },
+    {
+      "id": 22,
+      "question": "Can consumer ESLint configuration omit mandatory source rules?",
+      "result": "pass",
+      "cases": []
+    },
+    {
+      "id": 23,
+      "question": "Can native bulk suppressions waive full mandatory findings while partial scopes remain partial?",
+      "result": "pass",
+      "cases": []
+    },
+    {
+      "id": 24,
+      "question": "Can manifest rule exclusions, scoped overrides or baselines remove mandatory findings?",
+      "result": "pass",
+      "cases": []
+    },
+    {
+      "id": 25,
+      "question": "Are disabled capabilities and explicit partial checks reported as deliberate boundaries?",
+      "result": "pass",
+      "cases": []
+    },
+    {
+      "id": 26,
+      "question": "Do parser, configuration and missing-engine failures fail closed?",
+      "result": "pass",
+      "cases": []
+    },
+    {
+      "id": 27,
+      "question": "Can native ignore configuration or sibling paths silently lose selected-file coverage?",
+      "result": "pass",
+      "cases": []
+    },
+    {
+      "id": 28,
+      "question": "Does the mandatory floor cover all eight selected JS/TS extensions and hidden source?",
+      "result": "pass",
+      "cases": []
+    },
+    {
+      "id": 29,
+      "question": "Are explained exact local exceptions, directive-like strings and concrete prose preserved?",
+      "result": "pass",
+      "cases": []
+    },
+    {
+      "id": 30,
+      "question": "Do merge/dedup, warning staging and console exits preserve mandatory error severity?",
+      "result": "pass",
+      "cases": []
+    }
+  ],
+  "validation": {
+    "python": "3.15.0; native cast scope fixtures additionally execute on 3.14.7",
+    "ruff": "0.17.0",
+    "basedpyright": "1.40.2",
+    "node": "24.21.0",
+    "focused_suites_overlap": true,
+    "cast_python_tests_passed": 139,
+    "cast_standards_tests_passed": 86,
+    "native_scope_fixture_executions": 56,
+    "suppression_python_tests_passed": 224,
+    "suppression_full_gate_tests_passed": 21,
+    "eslint_full_gate_tests_passed": 39,
+    "eslint_native_rule_tests_passed": 27,
+    "commands": [
+      "uv --directory packages/python run pytest -q tests/test_cast_access.py tests/test_native_symbol_prefilters.py",
+      "uv --directory packages/python run pytest -q tests/rules/test_no_blanket_suppression.py tests/rules/test_no_vague_suppression_description.py tests/rules/test_no_file_level_escape_hatch_suppression.py tests/test_noqa.py",
+      "uv run --project packages/standards --frozen python -m pytest -q packages/standards/tests/test_ruff_cast_policy.py packages/standards/tests/test_required_suppression_policy.py packages/standards/tests/test_required_eslint_policy.py",
+      "make verify"
+    ],
+    "full_gate": "Final qualification is recorded in the pull request after execution."
+  },
+  "corpus": {
+    "scope": "Identical captured bytes of 898 already-local tracked Python files; helper-only analysis, with seeded/runtime cases providing positive evidence.",
+    "files": 898,
+    "bytes": 12451555,
+    "incidental_findings_before": 0,
+    "incidental_findings_after": 0,
+    "median_seconds_before": 2.509,
+    "median_seconds_after": 2.468,
+    "limitation": "Same-process timing under concurrent verification; no full-engine performance or speedup claim."
+  },
+  "limitations": [
+    "Unknown or mutable module identity, arbitrary aliasing, opaque keys, and dynamic namespace mutation retain conservative abstention.",
+    "Explicit whole-path exclusions, disabled capabilities, and deliberately selected partial checks remain analysis boundaries.",
+    "The native cast ban and mandatory suppression floor cannot be waived by a source comment or diagnostic baseline within their selected scope.",
+    "Other legitimate exact local API exceptions keep their documented boundary contracts; this does not ban every explained SDK import.",
+    "No autofix, consumer rule waiver, baseline increase or new lint suppression was added by these follow-up fixes."
+  ]
+}

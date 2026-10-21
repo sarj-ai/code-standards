@@ -65,7 +65,7 @@ def _evaluate(root: Path, scope: str, capsys: pytest.CaptureFixture[str]) -> _Ev
             "app/render.py",
         ]
     )
-    payload: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
+    payload: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     return _EvaluationResult(status, payload)
 
 
@@ -81,7 +81,7 @@ def test_corpus_evaluation_runs_only_the_selected_rule(tmp_path: Path, capsys: p
     assert status == 1
     raw_diagnostics = payload["diagnostics"]
     assert isinstance(raw_diagnostics, list)
-    diagnostics: list[dict[str, object]] = raw_diagnostics  # pyright: ignore[reportUnknownVariableType]
+    diagnostics: list[dict[str, object]] = raw_diagnostics  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
     assert len(diagnostics) == 1
     assert diagnostics[0]["ruleId"] == "no-string-concat-in-loop"
 
@@ -157,7 +157,7 @@ def test_manifest_evaluation_isolatedly_merges_public_and_private_corpora(
             "json",
         ]
     )
-    payload: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
+    payload: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
 
     assert status == 1
     assert payload["files"] == 2
@@ -227,7 +227,7 @@ def test_manifest_evaluation_isolates_linter_imports_from_corpus_packages(
     )
 
     assert status == 0
-    payload: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
+    payload: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     assert payload["files"] == 1
 
 
@@ -329,14 +329,14 @@ def test_warning_lifecycle_is_nonblocking_but_observable(
     observe_status = main(
         ["--root", str(tmp_path), "observe", "--rule", _SELECTOR, "--format", "json", "app/render.py"]
     )
-    observed: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
+    observed: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
 
     effective_diagnostics = effective["diagnostics"]
     corpus_diagnostics = corpus["diagnostics"]
     assert isinstance(effective_diagnostics, list)
     assert isinstance(corpus_diagnostics, list)
-    corpus_items: list[object] = corpus_diagnostics  # pyright: ignore[reportUnknownVariableType]
-    effective_items: list[object] = effective_diagnostics  # pyright: ignore[reportUnknownVariableType]
+    corpus_items: list[object] = corpus_diagnostics  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
+    effective_items: list[object] = effective_diagnostics  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
     corpus_diagnostic = corpus_items[0]
     effective_diagnostic = effective_items[0]
     assert _diagnostic(corpus_diagnostic)
@@ -347,7 +347,7 @@ def test_warning_lifecycle_is_nonblocking_but_observable(
     assert effective_status == 0
     assert observe_status == 0
     assert isinstance(observed["diagnostics"], list)
-    diagnostics: list[object] = observed["diagnostics"]  # pyright: ignore[reportUnknownVariableType]
+    diagnostics: list[object] = observed["diagnostics"]  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
     assert len(diagnostics) == 1
     lint_policy.warning_selectors.cache_clear()
 
@@ -397,5 +397,5 @@ def test_evaluate_rejects_unknown_selector(tmp_path: Path, capsys: pytest.Captur
     )
 
     assert status == 2
-    payload: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
+    payload: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     assert payload["completion"] == "failed"

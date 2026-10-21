@@ -295,7 +295,7 @@ def cmd_path(args: _Args) -> int:
 
 
 def cmd_peers(args: _Args) -> int:
-    from sarj_standards.libs.adoption import packagemanager, scaffold  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import packagemanager, scaffold  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     peers = manifest.eslint_peers()
     for name, pin in sorted(peers.items()):
@@ -328,7 +328,7 @@ def cmd_peers(args: _Args) -> int:
 
 
 def cmd_doctor(args: _Args) -> int:
-    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     root = _resolve_dest(args.dest)
     repair = args.repair
@@ -357,7 +357,7 @@ def cmd_doctor(args: _Args) -> int:
 
 
 def _report_doctor(args: _Args, root: Path, findings: list[doctor.Finding], repair_status: int) -> int:
-    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     repair = args.repair
     no_install = args.no_install
@@ -410,7 +410,7 @@ def _prepare_doctor_repair(root: Path, *, install: bool, commit_policy_only: boo
 
 
 def _repair_commit_policy(root: Path, *, install: bool) -> int | None:
-    from sarj_standards.libs.adoption import doctor, hooks, service  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import doctor, hooks, service  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     init_plan = service.plan_commit_policy(root, hook_manager=hooks.detect_manager(root))
     if init_plan.scaffold.errors:
@@ -433,7 +433,7 @@ def _repair_commit_policy(root: Path, *, install: bool) -> int | None:
 
 
 def _repair_full_adoption(root: Path, *, install: bool) -> int:
-    from sarj_standards.libs.adoption import doctor, upgrade  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import doctor, upgrade  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     plan = upgrade.build_plan(root)
     current_findings = list(plan.preflight_findings)
@@ -456,7 +456,7 @@ def _repair_full_adoption(root: Path, *, install: bool) -> int:
 
 
 def _without_install_findings(findings: list[doctor.Finding]) -> list[doctor.Finding]:
-    from sarj_standards.libs.adoption import doctor, upgrade  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import doctor, upgrade  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     return [
         doctor.Finding(
@@ -478,7 +478,7 @@ def _without_install_findings(findings: list[doctor.Finding]) -> list[doctor.Fin
 def _print_doctor_findings(
     root: Path, findings: list[doctor.Finding], drifted: int, warned: int, *, unadopted: bool
 ) -> None:
-    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     print(f"root:   {root}")
     for finding in findings:
@@ -500,7 +500,7 @@ def _print_doctor_findings(
 
 
 def _repair_legacy_manifest(root: Path, *, install: bool) -> manifest.Manifest:
-    from sarj_standards.libs.adoption import service  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import service  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     legacy = manifest.load_for_setup(root)
     if legacy is None:
@@ -534,7 +534,7 @@ def _repair_legacy_manifest(root: Path, *, install: bool) -> manifest.Manifest:
 
 
 def cmd_update(args: _Args) -> int:
-    from sarj_standards.libs.adoption import upgrade  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import upgrade  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     target_version: str | None = None
     if args.target_version is not None:
@@ -659,7 +659,7 @@ def _prepare_update_manifest(root: Path, *, check: bool) -> bool | None:
 
 
 def _update_preflight(plan: upgrade.UpgradePlan, preflight_findings: list[doctor.Finding]) -> bool:
-    from sarj_standards.libs.adoption import upgrade  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import upgrade  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     invalid = [finding for finding in preflight_findings if finding.id in _INVALID_DOCTOR_IDS]
     if invalid:
@@ -679,7 +679,7 @@ def _update_preflight(plan: upgrade.UpgradePlan, preflight_findings: list[doctor
 def _preview_update(
     root: Path, plan: upgrade.UpgradePlan, preflight_findings: list[doctor.Finding], preview: str
 ) -> int:
-    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     drifted = [finding for finding in preflight_findings if finding.level is doctor.Level.DRIFT]
     if preview:
@@ -708,7 +708,7 @@ def _apply_update(
     *,
     migrated_legacy: bool,
 ) -> int:
-    from sarj_standards.libs.adoption import doctor, lifecycle, upgrade  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import doctor, lifecycle, upgrade  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     current_drift = [finding for finding in preflight_findings if finding.level is doctor.Level.DRIFT]
     missing_hooks = not args.no_install and any(finding.id in _HOOK_INSTALL_IDS for finding in preflight_findings)
@@ -728,7 +728,7 @@ def _apply_update(
 
 
 def _update_postflight(root: Path, skipped_commands: list[lifecycle.Command], *, no_install: bool) -> int:
-    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     postflight_findings = doctor.diagnose(root)
     invalid = [finding for finding in postflight_findings if finding.id in _INVALID_DOCTOR_IDS]
@@ -751,7 +751,7 @@ def _report_updated(
     *,
     no_install: bool,
 ) -> int:
-    from sarj_standards.libs.adoption import doctor, upgrade  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import doctor, upgrade  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     pending = (
         [
@@ -780,7 +780,7 @@ def _report_updated(
 
 
 def _report_failed_update(root: Path, status: int) -> int:
-    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     print("error: update failed; tracked configuration files were restored", file=sys.stderr)
     remaining = [finding for finding in doctor.diagnose(root) if finding.level is doctor.Level.DRIFT]
@@ -950,7 +950,7 @@ def _preview_setup(args: _Args, init_plan: service.InitPlan) -> None:
 
 
 def _apply_setup(args: _Args, root: Path, init_plan: service.InitPlan) -> int:
-    from sarj_standards.libs.adoption import doctor, service  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import doctor, service  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     result = service.apply_init(init_plan, install=not args.no_install)
     if result.status:
@@ -978,7 +978,7 @@ def _apply_setup(args: _Args, root: Path, init_plan: service.InitPlan) -> int:
 
 
 def _report_setup(args: _Args, root: Path, init_plan: service.InitPlan) -> None:
-    from sarj_standards.libs.adoption import scaffold  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import scaffold  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     plan = init_plan.scaffold
     verb_write = "would write" if args.dry_run else "wrote"
@@ -1073,7 +1073,7 @@ def _declared_manifest(args: _Args) -> manifest.Manifest | None:
 
 
 def cmd_library_policy(args: _Args, *, selected_paths: Iterable[str] | None = None) -> int:
-    from sarj_standards.libs.linting import library_policy  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting import library_policy  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting only when this selected operation executes.
 
     root = _resolve_dest(args.dest)
     try:
@@ -1116,7 +1116,7 @@ def cmd_library_policy(args: _Args, *, selected_paths: Iterable[str] | None = No
 
 
 def cmd_check(args: _Args) -> int:
-    from sarj_standards.libs.linting import runner  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting import runner  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting only when this selected operation executes.
 
     root = _resolve_dest(args.dest)
     catalog_status = 0 if args.selected_rules else _check_conventional_slack_catalog(args, root)
@@ -1142,7 +1142,7 @@ def cmd_check(args: _Args) -> int:
 
 
 def _check_selected_rules(args: _Args, root: Path, scope: _CheckScope) -> int:
-    from sarj_standards.api import Standards, TrustMode  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.api import Standards, TrustMode  # ruff: ignore[import-outside-top-level] -- load sarj_standards.api only when this selected operation executes.
 
     if _validate_analysis_output(args, root):
         return 2
@@ -1215,7 +1215,7 @@ class _CheckScope:
 
 
 def _select_check_scope(args: _Args, root: Path, scope: _CheckScope) -> int | None:
-    from sarj_standards.libs.linting import external  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting import external  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting only when this selected operation executes.
 
     if args.staged:
         return _select_staged_check(args, root, scope)
@@ -1272,7 +1272,7 @@ def _select_explicit_check(args: _Args, root: Path) -> int | None:
 
 
 def _select_pull_request_check(args: _Args, root: Path, scope: _CheckScope, base: str) -> int | None:
-    from sarj_standards.libs.linting import runner  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting import runner  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting only when this selected operation executes.
 
     try:
         changed_names = _changed_file_names(root, base)
@@ -1304,7 +1304,7 @@ def _check_machine_output(args: _Args, root: Path, scope: _CheckScope) -> int:
         if adoption_report is not None:
             return _emit_analysis_report(args, root, adoption_report)
     if (scope.pull_request_scoped or args.staged) and not args.files:
-        from sarj_standards.api import (  # ruff: ignore[import-outside-top-level]
+        from sarj_standards.api import (  # ruff: ignore[import-outside-top-level] -- load sarj_standards.api only when this selected operation executes.
             AnalysisMode,
             Standards,
             TrustMode,
@@ -1333,7 +1333,7 @@ def cmd_validate_slack_automations(args: _Args) -> int:
 
 
 def _check_conventional_slack_catalog(args: _Args, root: Path) -> int:
-    from sarj_standards.libs.catalogs import CONVENTIONAL_PATH  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.catalogs import CONVENTIONAL_PATH  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.catalogs only when this selected operation executes.
 
     path = root / CONVENTIONAL_PATH
     return _render_slack_catalog_findings(args, root, path) if path.exists() or path.is_symlink() else 0
@@ -1349,7 +1349,7 @@ def _catalog_path(root: Path, value: Path) -> Path:
 
 
 def _render_slack_catalog_findings(args: _Args, root: Path, path: Path) -> int:
-    from sarj_standards.libs.catalogs import validate_catalog  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.catalogs import validate_catalog  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.catalogs only when this selected operation executes.
 
     findings = validate_catalog(path, root=root)
     if not findings:
@@ -1360,14 +1360,14 @@ def _render_slack_catalog_findings(args: _Args, root: Path, path: Path) -> int:
     if args.output_format == "text":
         print("\n".join(finding.render(relative) for finding in findings))
         return 1
-    from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.diagnostics only when this selected operation executes.
         Completion,
         Diagnostic,
         Location,
         Severity,
         ToolReport,
     )
-    from sarj_standards.libs.linting.analysis import report_from_tools  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.analysis import report_from_tools  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting.analysis only when this selected operation executes.
 
     diagnostics = tuple(
         Diagnostic(
@@ -1400,8 +1400,8 @@ def _run_canonical_check(
     python_type_check: bool = True,
     eslint: bool = True,
 ) -> int:
-    from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
-    from sarj_standards.libs.diagnostics import to_text  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level] -- load sarj_standards.api only when this selected operation executes.
+    from sarj_standards.libs.diagnostics import to_text  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.diagnostics only when this selected operation executes.
 
     report = Standards(root).analyze(
         paths,
@@ -1452,7 +1452,7 @@ def cmd_analyze(args: _Args) -> int:
 
 
 def cmd_rule_evaluate(args: _Args) -> int:
-    from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level] -- load sarj_standards.api only when this selected operation executes.
 
     root = _resolve_dest(args.dest)
     if args.private_overlay is not None and args.corpus_manifest is None:
@@ -1477,13 +1477,13 @@ def cmd_rule_evaluate(args: _Args) -> int:
 
 
 def _cmd_rule_evaluate_manifest(args: _Args, root: Path) -> int:
-    from sarj_standards.libs.corpus import (  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.corpus import (  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.corpus only when this selected operation executes.
         CorpusVisibility,
         load_manifest,
         load_private_overlay,
         merge_manifests,
     )
-    from sarj_standards.libs.rules import (  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.rules import (  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.rules only when this selected operation executes.
         CorpusLintError,
         run_isolated_corpora,
     )
@@ -1518,8 +1518,8 @@ def _cmd_rule_evaluate_manifest(args: _Args, root: Path) -> int:
     batches: list[dict[str, object]] = []
 
     def observe(source: object, batch: object, stdout: bytes, _stderr: bytes) -> None:
-        from sarj_standards.libs.corpus import CorpusSource  # ruff: ignore[import-outside-top-level]
-        from sarj_standards.libs.rules import CorpusBatchResult  # ruff: ignore[import-outside-top-level]
+        from sarj_standards.libs.corpus import CorpusSource  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.corpus only when this selected operation executes.
+        from sarj_standards.libs.rules import CorpusBatchResult  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.rules only when this selected operation executes.
 
         if not isinstance(source, CorpusSource) or not isinstance(batch, CorpusBatchResult):
             msg = "corpus runner returned an invalid result"
@@ -1635,9 +1635,9 @@ def _object_table(value: object) -> dict[str, object] | None:
 
 
 def cmd_observe(args: _Args) -> int:
-    from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
-    from sarj_standards.libs.linting.external import UpstreamESLintRules  # ruff: ignore[import-outside-top-level]
-    from sarj_standards.libs.linting.test_value import ESLINT_RULES  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level] -- load sarj_standards.api only when this selected operation executes.
+    from sarj_standards.libs.linting.external import UpstreamESLintRules  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting.external only when this selected operation executes.
+    from sarj_standards.libs.linting.test_value import ESLINT_RULES  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting.test_value only when this selected operation executes.
 
     root = _resolve_dest(args.dest)
     if _validate_analysis_output(args, root):
@@ -1649,7 +1649,7 @@ def cmd_observe(args: _Args) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return _emit_analysis_report(args, root, _machine_input_error(root, str(exc)))
     if files == []:
-        from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level]
+        from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.diagnostics only when this selected operation executes.
             AnalysisReport,
             Completion,
             Conclusion,
@@ -1671,8 +1671,8 @@ def cmd_observe(args: _Args) -> int:
 
 
 def _observation_rules(args: _Args) -> list[RuleSelector]:
-    from sarj_standards.libs.linting.policy import warning_selectors  # ruff: ignore[import-outside-top-level]
-    from sarj_standards.libs.linting.test_value import SELECTORS  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.policy import warning_selectors  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting.policy only when this selected operation executes.
+    from sarj_standards.libs.linting.test_value import SELECTORS  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting.test_value only when this selected operation executes.
 
     warning_rules = warning_selectors()
     test_value_rules: frozenset[RuleSelector] = SELECTORS if args.test_value else frozenset()
@@ -1692,7 +1692,7 @@ def _observation_rules(args: _Args) -> list[RuleSelector]:
 
 
 def _observation_paths(args: _Args, root: Path) -> list[str] | None:
-    from sarj_standards.libs.linting.test_value import select_test_paths  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.test_value import select_test_paths  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting.test_value only when this selected operation executes.
 
     files = args.files or None
     if args.observation_base is not None:
@@ -1707,8 +1707,8 @@ def _observation_paths(args: _Args, root: Path) -> list[str] | None:
 
 
 def _rule_evaluation_summary(report: object, selectors: Sequence[RuleSelector]) -> str:
-    from sarj_standards.libs.diagnostics import AnalysisReport  # ruff: ignore[import-outside-top-level]
-    from sarj_standards.libs.rules import RuleEngine  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.diagnostics import AnalysisReport  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.diagnostics only when this selected operation executes.
+    from sarj_standards.libs.rules import RuleEngine  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.rules only when this selected operation executes.
 
     if not isinstance(report, AnalysisReport):
         msg = "rule evaluation report has an invalid internal type"
@@ -1738,7 +1738,7 @@ def _rule_evaluation_summary(report: object, selectors: Sequence[RuleSelector]) 
 
 
 def _emit_analysis_report(args: _Args, root: Path, report: object) -> int:
-    from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.diagnostics only when this selected operation executes.
         AnalysisReport,
         to_github,
         to_json,
@@ -1789,8 +1789,8 @@ def _validate_analysis_output(args: _Args, root: Path) -> bool:
 
 
 def _machine_adoption_gate(root: Path) -> object | None:
-    from sarj_standards.libs.adoption import doctor, service  # ruff: ignore[import-outside-top-level]
-    from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import doctor, service  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
+    from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.diagnostics only when this selected operation executes.
         Completion,
         Diagnostic,
         ExecutionIssue,
@@ -1798,7 +1798,7 @@ def _machine_adoption_gate(root: Path) -> object | None:
         Severity,
         ToolReport,
     )
-    from sarj_standards.libs.linting.analysis import report_from_tools  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.analysis import report_from_tools  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting.analysis only when this selected operation executes.
 
     diagnosed = doctor.diagnose(root)
     absent = next((finding for finding in diagnosed if finding.id == "doctor.manifest.absent"), None)
@@ -1863,8 +1863,8 @@ def _merge_sync_findings(
     diagnostics: tuple[Diagnostic, ...],
     issues: tuple[ExecutionIssue, ...],
 ) -> _SyncFindings:
-    from sarj_standards.libs.adoption import service  # ruff: ignore[import-outside-top-level]
-    from sarj_standards.libs.diagnostics import Diagnostic, ExecutionIssue, Location, Severity  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import service  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
+    from sarj_standards.libs.diagnostics import Diagnostic, ExecutionIssue, Location, Severity  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.diagnostics only when this selected operation executes.
 
     doctor_paths = {diagnostic.location.path for diagnostic in diagnostics}
     sync_diagnostics_list: list[Diagnostic] = []
@@ -2002,7 +2002,7 @@ def _check_staged_adoption_health(
     *,
     args: _Args,
 ) -> int:
-    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     selected = tuple(Path(path) for path in staged_paths)
     drifted = [
@@ -2023,7 +2023,7 @@ def _check_staged_adoption_health(
 
 
 def _emit_staged_adoption_health(args: _Args, root: Path, drifted: list[doctor.Finding]) -> int:
-    from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.diagnostics only when this selected operation executes.
         Completion,
         Diagnostic,
         ExecutionIssue,
@@ -2031,7 +2031,7 @@ def _emit_staged_adoption_health(args: _Args, root: Path, drifted: list[doctor.F
         Severity,
         ToolReport,
     )
-    from sarj_standards.libs.linting.analysis import (  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.analysis import (  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting.analysis only when this selected operation executes.
         report_from_tools,
     )
 
@@ -2203,7 +2203,7 @@ def _selected_paths(root: Path, paths: Iterable[str]) -> list[str]:
 
 
 def cmd_format(args: _Args) -> int:
-    from sarj_standards.libs.adoption import doctor, lifecycle, scaffold  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import doctor, lifecycle, scaffold  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     root = _resolve_dest(args.dest)
     diagnosed = doctor.diagnose(root)
@@ -2262,7 +2262,7 @@ def _staged_files(root: Path) -> list[str]:
 
 
 def cmd_inspect(args: _Args) -> int:
-    from sarj_standards.libs.adoption import lifecycle  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import lifecycle  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     sys.stdout.write(lifecycle.inspection_json(_resolve_dest(args.dest)))
     return 0
@@ -2279,19 +2279,19 @@ def cmd_show(args: _Args) -> int:
         case "peers":
             return cmd_peers(args)
         case "rules":
-            from sarj_standards.libs.repository import rule_catalog_artifact  # ruff: ignore[import-outside-top-level]
+            from sarj_standards.libs.repository import rule_catalog_artifact  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.repository only when this selected operation executes.
 
             print(json.dumps(rule_catalog_artifact.load(), indent=2))
             return 0
         case "ci":
-            from sarj_standards.libs.adoption import scaffold  # ruff: ignore[import-outside-top-level]
+            from sarj_standards.libs.adoption import scaffold  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
             root = _resolve_dest(args.dest)
             rendered = scaffold.github_ci_workflow(root)
             if args.output is None:
                 print(rendered, end="")
             else:
-                from sarj_standards.libs.adoption import transaction  # ruff: ignore[import-outside-top-level]
+                from sarj_standards.libs.adoption import transaction  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
                 output = args.output if args.output.is_absolute() else root / args.output
                 transaction.atomic_write_text(root, output, rendered)
@@ -2302,7 +2302,7 @@ def cmd_show(args: _Args) -> int:
 
 
 def cmd_exclude(args: _Args) -> int:
-    from sarj_standards.libs.adoption import exclusions  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.adoption import exclusions  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
 
     root = _resolve_dest(args.dest)
     if args.exclude_cmd == "list":
@@ -2330,7 +2330,7 @@ def cmd_exclude(args: _Args) -> int:
 
 
 def cmd_ratchet(args: _Args) -> int:
-    from sarj_python_lint import run_ratchet  # ruff: ignore[import-outside-top-level]
+    from sarj_python_lint import run_ratchet  # ruff: ignore[import-outside-top-level] -- load sarj_python_lint only when this selected operation executes.
 
     root = _resolve_dest(args.dest)
     baseline = args.baseline if args.baseline is not None else root / "suppression-baseline.json"
@@ -2356,7 +2356,7 @@ _DEFAULT_DIAGNOSTIC_BASELINE = "diagnostic-baseline.json"
 
 
 def cmd_baseline(args: _Args) -> int:
-    from sarj_standards.libs.diagnostics import baseline  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.diagnostics import baseline  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.diagnostics only when this selected operation executes.
 
     root = _resolve_dest(args.dest)
     output = args.output if args.output is not None else root / _DEFAULT_DIAGNOSTIC_BASELINE
@@ -2420,7 +2420,7 @@ def _write_diagnostic_baseline(root: Path, output: Path, rendered: str, recorded
 
 
 def _baseline_analysis_reports(args: _Args, root: Path, selected: list[str] | None) -> list[AnalysisReport]:
-    from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.api import AnalysisMode, Standards, TrustMode  # ruff: ignore[import-outside-top-level] -- load sarj_standards.api only when this selected operation executes.
 
     trust = TrustMode.TRUSTED if args.trust_repository_code else TrustMode.SAFE
     operations: list[Callable[[], AnalysisReport]] = []
@@ -2485,7 +2485,7 @@ def _baseline_scan_rules(args: _Args) -> _BaselineScanRules:
 
 
 def _baseline_eslint_report(args: _Args, root: Path, selected: list[str] | None, trust: str) -> AnalysisReport:
-    from sarj_standards.libs.linting.external import UpstreamESLintRules  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.external import UpstreamESLintRules  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting.external only when this selected operation executes.
 
     custom = frozenset(
         selector.removeprefix("eslint:")
@@ -2509,8 +2509,8 @@ def _baseline_external_report(
     rule_ids: frozenset[str] | None = None,
     upstream_rules: UpstreamESLintRules | None = None,
 ) -> AnalysisReport:
-    from sarj_standards.libs.linting.analysis import report_from_tools  # ruff: ignore[import-outside-top-level]
-    from sarj_standards.libs.linting.external import UpstreamESLintRules, analyze_external  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.analysis import report_from_tools  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting.analysis only when this selected operation executes.
+    from sarj_standards.libs.linting.external import UpstreamESLintRules, analyze_external  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting.external only when this selected operation executes.
 
     return report_from_tools(
         root,
@@ -2529,7 +2529,7 @@ def _baseline_external_report(
 
 
 def _baseline_selected_paths(root: Path, files: Sequence[str], *, scoped: bool) -> list[str] | None:
-    from sarj_standards.libs.diagnostics import baseline  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.diagnostics import baseline  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.diagnostics only when this selected operation executes.
 
     selected = _selected_paths(root, files) if files else None
     if selected is not None or not scoped or (adopted := manifest.load(root)) is None:
@@ -2548,10 +2548,10 @@ def _react_doctor_baseline_report(
     trust: str,
     policy: Policy,
 ) -> AnalysisReport:
-    from sarj_standards.libs.linting.analysis import (  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.analysis import (  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting.analysis only when this selected operation executes.
         report_from_tools,
     )
-    from sarj_standards.libs.linting.external import (  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.linting.external import (  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting.external only when this selected operation executes.
         analyze_external,
     )
 
@@ -2573,7 +2573,7 @@ def _react_doctor_baseline_report(
 def _eligible_baseline_diagnostics(
     reports: Sequence[AnalysisReport], selectors: Sequence[str]
 ) -> tuple[Diagnostic, ...]:
-    from sarj_standards.libs.diagnostics import baseline  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.diagnostics import baseline  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.diagnostics only when this selected operation executes.
 
     selected = frozenset(_baseline_merge_selectors(selectors))
     return tuple(
@@ -2675,7 +2675,7 @@ def _baseline_catalog_selectors() -> frozenset[str]:
 
 @lru_cache(maxsize=1)
 def _baseline_catalog() -> rule_catalog_artifact.SelectorIndex:
-    from sarj_standards.libs.repository import rule_catalog_artifact  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.repository import rule_catalog_artifact  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.repository only when this selected operation executes.
 
     return rule_catalog_artifact.selector_index()
 
@@ -4261,7 +4261,7 @@ def _run_repo(args: _Args) -> int:
 
 
 def _run_repo_setup(args: _Args) -> int:
-    from sarj_standards.libs.setup import apply_setup, plan_setup  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.setup import apply_setup, plan_setup  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.setup only when this selected operation executes.
 
     plan = plan_setup(_resolve_dest(args.dest))
     if args.check:
@@ -4278,7 +4278,7 @@ def _run_repo_release(args: _Args) -> int:
 
     root = _resolve_dest(args.dest)
     if args.release_cmd == "status":
-        from sarj_standards.libs.release.status import print_release_status  # ruff: ignore[import-outside-top-level]
+        from sarj_standards.libs.release.status import print_release_status  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.release.status only when this selected operation executes.
 
         return print_release_status(root, commit=args.release_commit, output_format=args.output_format)
     if args.release_cmd == "check-tag":
@@ -4303,7 +4303,7 @@ def _run_repo_release(args: _Args) -> int:
             print(f"verified wheel license: {wheel}")
         return 0
     if args.release_cmd == "verify-publications":
-        from sarj_standards.libs.release import registry  # ruff: ignore[import-outside-top-level]
+        from sarj_standards.libs.release import registry  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.release only when this selected operation executes.
 
         return registry.main(
             [
@@ -4321,7 +4321,7 @@ def _run_repo_release(args: _Args) -> int:
 
 
 def _run_repo_check(args: _Args) -> int:
-    from sarj_standards.libs.repository import repository  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.repository import repository  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.repository only when this selected operation executes.
 
     findings = repository.check(
         _resolve_dest(args.dest),
@@ -4338,7 +4338,7 @@ def _run_repo_check(args: _Args) -> int:
 
 
 def _run_repo_sync_ledger(args: _Args) -> int:
-    from sarj_standards.libs.repository import rule_checkout, rule_maintenance  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.repository import rule_checkout, rule_maintenance  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.repository only when this selected operation executes.
 
     rule_checkout.ensure_current(
         _resolve_dest(args.dest), ("maintain", "sync-ledger", *(("--check",) if args.check else ())), all_engines=True
@@ -4349,7 +4349,7 @@ def _run_repo_sync_ledger(args: _Args) -> int:
 
 
 def _run_repo_docs(args: _Args) -> int:
-    from sarj_standards.libs.repository import docs  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.repository import docs  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.repository only when this selected operation executes.
 
     root = _resolve_dest(args.dest)
     if args.docs_cmd == "check":
@@ -4365,7 +4365,7 @@ def _run_repo_docs(args: _Args) -> int:
 
 
 def _run_repo_comment_corpus(args: _Args) -> int:
-    from sarj_standards.libs.repository import comment_corpus  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.repository import comment_corpus  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.repository only when this selected operation executes.
 
     if args.include_text is not None:
         return comment_corpus.write_records(args.roots, args.include_text)
@@ -4373,13 +4373,13 @@ def _run_repo_comment_corpus(args: _Args) -> int:
 
 
 def _run_repo_hooks(args: _Args) -> int:
-    from sarj_standards.libs.repository import hooks  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.repository import hooks  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.repository only when this selected operation executes.
 
     return hooks.install(_resolve_dest(args.dest))
 
 
 def _run_repo_rules(args: _Args) -> int:
-    from sarj_standards.libs.repository import rule_checkout, rule_inventory_artifact  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.repository import rule_checkout, rule_inventory_artifact  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.repository only when this selected operation executes.
 
     if args.selector is not None and args.rules_cmd in {"new", "verify", "prepare", "stage-warning", "promote-error"}:
         rule_checkout.ensure_current(
@@ -4433,7 +4433,7 @@ def _run_repo_rules_bench(args: _Args) -> int:
 
 
 def _run_repo_catalog(args: _Args) -> int:
-    from sarj_standards.libs.repository import rule_catalog_artifact, rule_checkout  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.repository import rule_catalog_artifact, rule_checkout  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.repository only when this selected operation executes.
 
     root = _resolve_dest(args.dest)
     rule_checkout.ensure_current(root, ("maintain", "catalog", args.catalog_cmd), all_engines=True)
@@ -4447,7 +4447,7 @@ def _run_repo_catalog(args: _Args) -> int:
 
 
 def _run_repo_cli_reference(args: _Args) -> int:
-    from sarj_standards.libs.repository import cli_reference_artifact  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.repository import cli_reference_artifact  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.repository only when this selected operation executes.
 
     result = cli_reference_artifact.sync(_resolve_dest(args.dest), build_app(), check=args.reference_cmd == "check")
     print(result.message)
@@ -4567,10 +4567,10 @@ def _run_repo_release_publish(args: _Args, root: Path) -> int:
 
 
 def _run_repo_rules_changes(args: _Args) -> int:
-    from sarj_standards.libs.release.process import (  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.release.process import (  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.release.process only when this selected operation executes.
         ProcessFailureError,
     )
-    from sarj_standards.libs.repository import rule_changes  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.repository import rule_changes  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.repository only when this selected operation executes.
 
     try:
         comparison = rule_changes.compare(
@@ -4601,7 +4601,7 @@ def _run_repo_rules_changes(args: _Args) -> int:
 
 
 def _run_repo_rules_new(args: _Args) -> int:
-    from sarj_standards.libs.repository import rule_authoring  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.repository import rule_authoring  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.repository only when this selected operation executes.
 
     if args.selector is None:  # pragma: no cover - Typer requires the positional value
         msg = "new requires a rule selector"
@@ -4620,7 +4620,7 @@ def _run_repo_rules_new(args: _Args) -> int:
 
 
 def _run_repo_rules_verify(args: _Args) -> int:
-    from sarj_standards.libs.repository import rule_authoring  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.repository import rule_authoring  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.repository only when this selected operation executes.
 
     if args.selector is None:  # pragma: no cover - Typer requires the positional value
         msg = "verify requires a rule selector"
@@ -4635,14 +4635,14 @@ def _run_repo_rules_verify(args: _Args) -> int:
 
 
 def _run_repo_rules_stage_warning(args: _Args) -> int:
-    from sarj_standards.libs.repository import rule_lifecycle  # ruff: ignore[import-outside-top-level]
+    from sarj_standards.libs.repository import rule_lifecycle  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.repository only when this selected operation executes.
 
     if args.selector is None:  # pragma: no cover - Typer requires the positional value
         msg = f"{args.rules_cmd} requires a rule selector"
         raise TypeError(msg)
     typescript = None
     if args.rules_cmd == "prepare":
-        from sarj_standards.libs.repository import (  # ruff: ignore[import-outside-top-level]
+        from sarj_standards.libs.repository import (  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.repository only when this selected operation executes.
             rule_authoring,
         )
 

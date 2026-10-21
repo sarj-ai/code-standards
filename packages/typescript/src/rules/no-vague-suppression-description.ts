@@ -5,14 +5,16 @@
  */
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile } from "./_paths.js";
 
 type MessageIds = "vagueDescription";
 type Options = readonly [];
 
-const ESLINT_DIRECTIVE_WITH_DESCRIPTION_RE = /^eslint-(?:disable|disable-next-line|disable-line)\b[^:\n]*?\s*(?::|--)\s*(.+?)\s*$/iu;
-const TS_EXPECT_ERROR_WITH_DESCRIPTION_RE = /^@ts-expect-error\b(?:(?:\s*(?::|--)\s*)|\s+)(.+?)\s*$/iu;
-const VAGUE_RE = /^(?:needed|required|intentional(?:ly)?|ignore(?:d)?|false positive|type error|typescript|to satisfy (?:the )?(?:linter|typescript|type checker))\.?$/iu;
+const ESLINT_DIRECTIVE_WITH_DESCRIPTION_RE =
+  /^eslint-(?:disable|disable-next-line|disable-line)\b[^:\n]*?\s*(?::|--)\s*(.+?)\s*$/iu;
+const TS_EXPECT_ERROR_WITH_DESCRIPTION_RE =
+  /^@ts-expect-error\b(?:(?:\s*(?::|--)\s*)|\s+)(.+?)\s*$/iu;
+const VAGUE_RE =
+  /^(?:needed|required|same|n\/a|legacy|intentional(?:ly)?|ignore(?:d)?|false positive|type error|typescript|to satisfy (?:the )?(?:linter|typescript|type checker))\.?$/iu;
 
 export const NO_VAGUE_SUPPRESSION_DESCRIPTION_DOCUMENTATION = {
   summary:
@@ -25,7 +27,7 @@ export const NO_VAGUE_SUPPRESSION_DESCRIPTION_DOCUMENTATION = {
   limitations: [
     "Only ESLint disable comments and TypeScript expect-error directives are checked.",
     "The rule uses a small anchored vocabulary and does not score prose quality generally.",
-    "Generated files and descriptions outside that exact vocabulary are excluded; an unflagged reason is not proof of a justified suppression. Missing descriptions remain owned by the upstream description requirement.",
+    "Descriptions outside that exact vocabulary are excluded; an unflagged reason is not proof of a justified suppression. Missing descriptions remain owned by the upstream description requirement. Explicit path exclusions own generated-source boundaries; a source marker does not waive suppression accountability.",
   ],
   examples: [
     {
@@ -85,15 +87,13 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) {
-      return {};
-    }
     return {
       Program(): void {
         for (const comment of context.sourceCode.getAllComments()) {
           const text = comment.value.trim();
           const description = suppressionDescription(text);
-          if (description === undefined || !VAGUE_RE.test(description)) continue;
+          if (description === undefined || !VAGUE_RE.test(description))
+            continue;
           context.report({
             loc: comment.loc,
             messageId: "vagueDescription",

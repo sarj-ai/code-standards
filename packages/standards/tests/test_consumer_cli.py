@@ -204,6 +204,10 @@ def test_yarn_workspace_setup_doctor_and_check_share_an_executable_eslint_enviro
         "if arguments[:1] == ['install']:\n"
         "    Path('.pnp.cjs').touch()\n"
         "    raise SystemExit(0)\n"
+        "if arguments[:2] == ['exec', 'node']:\n"
+        "    assert Path(arguments[2]).name == 'eslint-selected-rules.mts'\n"
+        "    assert json.loads(arguments[3])['full'] is True\n"
+        "    arguments = ['exec', 'eslint', *arguments[4:]]\n"
         "if arguments[:2] == ['exec', 'eslint'] and '\"eslint\"' in Path('package.json').read_text():\n"
         "    boundary = max(index for index, value in enumerate(arguments) if value == '--') + 1\n"
         "    print(json.dumps([{'filePath': str(Path(value).resolve()), 'messages': []} for value in arguments[boundary:]]))\n"
@@ -244,8 +248,8 @@ def test_yarn_workspace_setup_doctor_and_check_share_an_executable_eslint_enviro
     capsys.readouterr()
     assert cli.main(["--root", str(tmp_path), "check", "--trust-repository-code", "apps/web/src/index.ts"]) == 0
 
-    root_package: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
-    web_package: object = json.loads((web / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    root_package: object = json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
+    web_package: object = json.loads((web / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     assert "resolutions" in as_table(root_package)
     assert manifest.eslint_peers().items() <= manifest.table_field(as_table(web_package), "devDependencies").items()
 
@@ -264,7 +268,7 @@ def test_show_config_and_state_are_first_class(tmp_path: Path, capsys: pytest.Ca
     assert cli.main(["show", "config", "ruff"]) == 0
     assert capsys.readouterr().out.strip().endswith("ruff.strict.toml")
     assert cli.main(["--root", str(tmp_path), "show", "state"]) == 0
-    state: object = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
+    state: object = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     assert as_table(state).get("adopted_version") is None
 
 
@@ -372,7 +376,7 @@ def test_full_machine_check_runs_doctor_and_config_sync_gates(
 
     status = cli.main(["--root", str(tmp_path), "check", "--format", "json"])
 
-    payload: object = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
+    payload: object = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     document = as_table(payload)
     diagnostics = tuple(as_table(item) for item in list_field(document, "diagnostics"))
     assert status == 1
@@ -422,7 +426,7 @@ def test_empty_pull_request_scope_does_not_expand_to_the_repository(
 
 
 def test_react_doctor_trigger_keeps_metadata_and_deleted_typescript_out_of_the_analyzer_filter() -> None:
-    trigger = cli._react_doctor_triggered_by  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    trigger = cli._react_doctor_triggered_by  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _react_doctor_triggered_by contract directly with controlled fixture data.
     assert trigger(("package.json",))
     assert trigger(("src/deleted.tsx",))
     assert not trigger(("README.md",))
@@ -523,7 +527,7 @@ def test_non_default_push_honors_explicit_change_scope(
 
     monkeypatch.setattr(Standards, "analyze", capture_paths)  # sarj-noqa: SARJ445 -- intercepts consumer path routing
     status = cli.main(["--root", str(tmp_path), "check", "--format", "json"])
-    document: object = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
+    document: object = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     payload = as_table(document)
     if scope == "committed-base":
         assert status == 0
@@ -560,7 +564,7 @@ def test_pull_request_scope_ignores_changed_files_without_an_analyzer(
     status = cli.main(["--root", str(tmp_path), "check", "--format", "json"])
 
     assert status == 0
-    payload: object = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
+    payload: object = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     assert as_table(payload).get("diagnostics") == []
 
 
@@ -682,7 +686,7 @@ def test_native_workflow_health_failure_blocks_cli_before_analysis(
     assert cli.main(["--root", str(tmp_path), "doctor"]) == 1
     capsys.readouterr()
     assert cli.main(["--root", str(tmp_path), "check", "--format", "json"]) == 1
-    payload: object = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny]
+    payload: object = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     diagnostics = tuple(as_table(item) for item in list_field(as_table(payload), "diagnostics"))
     assert {item.get("ruleId") for item in diagnostics} == {
         "doctor.devops.actionlint.version",

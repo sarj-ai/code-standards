@@ -150,7 +150,7 @@ def fetch_npm_packument(package_name: str) -> Mapping[str, object]:
     url = f"https://registry.npmjs.org/{quote(package_name, safe='')}"
     request = Request(url, headers={"Accept": "application/json"})
     with urlopen(request, timeout=15) as response:  # ruff: ignore[suspicious-url-open-usage]  # pyright: ignore[reportAny] -- fixed trusted origin
-        untyped: object = json.load(response)  # pyright: ignore[reportAny]
+        untyped: object = json.load(response)  # pyright: ignore[reportAny] -- the stdlib decoder is untyped; validate this payload before using it as release metadata.
     return string_object_dict(untyped, label=f"npm registry response for {package_name}")
 
 

@@ -424,7 +424,7 @@ def is_suppressed(source_lines: str | list[str], line: int, code: str) -> bool:
         return False
     source = source_lines if isinstance(source_lines, str) else "\n".join(source_lines)
     codes = _suppression_codes(source).get(line, frozenset())
-    return codes is None or code.upper() in codes
+    return codes is not None and code.upper() in codes
 
 
 @lru_cache(maxsize=32)
@@ -454,7 +454,7 @@ def _comment_suppression(comment: SourceComment) -> tuple[int, frozenset[str] | 
     if codes_str is None:
         if trailing and (not trailing[0].isspace() or trailing.lstrip().startswith(":")):
             return None
-        return comment.line, None
+        return None
     suffix = trailing.lstrip()
     separated_dash = bool(trailing) and trailing[0].isspace() and suffix.startswith("-")
     if suffix and not (suffix.startswith(("--", "—", "–")) or separated_dash):

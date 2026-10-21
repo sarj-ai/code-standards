@@ -35,13 +35,13 @@ _UPSTREAM_ENGINES = frozenset({RuleEngine.CHECKOV, RuleEngine.ZIZMOR})
 
 def _object(value: object) -> dict[str, object]:
     assert isinstance(value, dict)
-    assert all(isinstance(key, str) for key in value)  # pyright: ignore[reportUnknownVariableType]
-    return value  # pyright: ignore[reportUnknownVariableType]
+    assert all(isinstance(key, str) for key in value)  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
+    return value  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
 
 
 def _array(value: object) -> list[object]:
     assert isinstance(value, list)
-    return value  # pyright: ignore[reportUnknownVariableType]
+    return value  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
 
 
 def _text(value: object) -> str:
@@ -50,7 +50,7 @@ def _text(value: object) -> str:
 
 
 def _load(path: Path) -> dict[str, object]:
-    value: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    value: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     return _object(value)
 
 
@@ -83,11 +83,11 @@ def test_engine_family_and_release_mappings_agree() -> None:
     expected_families = {case.family: case.engine for case in _CASES}
     expected_release_targets = {case.engine.value: case.release_target for case in _CASES}
 
-    assert dict(rule_lifecycle._ENGINE_BY_FAMILY) == expected_families  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
-    assert dict(rule_changes._ENGINE_BY_FAMILY) == {  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert dict(rule_lifecycle._ENGINE_BY_FAMILY) == expected_families  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _ENGINE_BY_FAMILY contract directly with controlled fixture data.
+    assert dict(rule_changes._ENGINE_BY_FAMILY) == {  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _ENGINE_BY_FAMILY contract directly with controlled fixture data.
         family: engine.value for family, engine in expected_families.items()
     }
-    assert dict(rule_changes._RELEASE_TARGET_BY_ENGINE) == expected_release_targets  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    assert dict(rule_changes._RELEASE_TARGET_BY_ENGINE) == expected_release_targets  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _RELEASE_TARGET_BY_ENGINE contract directly with controlled fixture data.
     assert set(expected_release_targets.values()) <= set(RELEASE_TARGETS)
 
 
@@ -96,11 +96,11 @@ def test_diagnostic_sources_resolve_to_the_same_engine_everywhere() -> None:
     expected_aliases.update({engine.value: engine for engine in _UPSTREAM_ENGINES})
 
     assert {
-        source: api._engine_for_diagnostic(_diagnostic(source))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        source: api._engine_for_diagnostic(_diagnostic(source))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _engine_for_diagnostic contract directly with controlled fixture data.
         for source in expected_aliases
     } == expected_aliases
     assert {
-        source: policy._SOURCE_ENGINES.get(source, source)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+        source: policy._SOURCE_ENGINES.get(source, source)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _SOURCE_ENGINES contract directly with controlled fixture data.
         for source in expected_aliases
     } == {source: engine.value for source, engine in expected_aliases.items()}
 

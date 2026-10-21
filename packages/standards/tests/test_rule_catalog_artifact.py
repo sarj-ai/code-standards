@@ -84,13 +84,13 @@ def _typescript_rule() -> dict[str, object]:
 
 def _object_table(value: object) -> dict[str, object]:
     assert isinstance(value, dict)
-    assert all(isinstance(key, str) for key in value)  # pyright: ignore[reportUnknownVariableType]
-    return value  # pyright: ignore[reportUnknownVariableType]
+    assert all(isinstance(key, str) for key in value)  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
+    return value  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
 
 
 def _object_list(value: object) -> list[object]:
     assert isinstance(value, list)
-    return value  # pyright: ignore[reportUnknownVariableType]
+    return value  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
 
 
 def test_typescript_projection_accepts_the_closed_public_shape() -> None:

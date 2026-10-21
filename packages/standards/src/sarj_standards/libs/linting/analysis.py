@@ -270,8 +270,8 @@ def _run_native(
     paths = [Path(item) for item in files]
     native_result: Sequence[_NativeDiagnostic]
     if package == "sarj_python_lint":
-        from sarj_python_lint.__main__ import analyze as analyze_python  # ruff: ignore[import-outside-top-level]
-        from sarj_python_lint.rules import DEFAULT_REGISTRY  # ruff: ignore[import-outside-top-level]
+        from sarj_python_lint.__main__ import analyze as analyze_python  # ruff: ignore[import-outside-top-level] -- load sarj_python_lint.__main__ only when this selected operation executes.
+        from sarj_python_lint.rules import DEFAULT_REGISTRY  # ruff: ignore[import-outside-top-level] -- load sarj_python_lint.rules only when this selected operation executes.
 
         if rule_ids is None:
             selected_rules = sorted(DEFAULT_REGISTRY)
@@ -375,6 +375,12 @@ def _normalize_native(
             else document.point(line=item.line, column=item.col)
         )
     rule_id, help_text = metadata.get(item.code, (None, None))
+    tags: tuple[str, ...] = ()
+    if source == "sarj-python-lint":
+        from sarj_python_lint.suppression_policy import PROTECTED_SUPPRESSION_CODES  # ruff: ignore[import-outside-top-level] -- only the Python engine owns these rule identities.
+
+        if item.code in PROTECTED_SUPPRESSION_CODES:
+            tags = ("non-baselineable", "required-source-policy")
     return Diagnostic(
         code=item.code,
         rule_id=rule_id,
@@ -383,6 +389,7 @@ def _normalize_native(
         source=source,
         location=Location(_relative_path(resolved, root), position=position),
         help=help_text,
+        tags=tags,
     )
 
 

@@ -14,10 +14,10 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def test_bare_noqa_suppresses(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_bare_noqa_cannot_waive_all_rules(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     rc = main(["check", "--rule", "require-deletion-protection", _write(tmp_path, _SQL_NOQA_BARE)])
-    assert rc == 0
-    assert not capsys.readouterr().out
+    assert rc == 1
+    assert "SARJ201" in capsys.readouterr().out
 
 
 def test_coded_noqa_suppresses(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -138,7 +138,7 @@ _LEXICAL_NOQA_CASES = (
         'resource "google_service_account_key" "main" { # sarj-noqa — migration tracked externally\n service_account_id = "app"\n}\n',
         1,
         "SARJ211",
-        True,
+        False,
     ),
     (
         "case-and-comma",
@@ -385,7 +385,7 @@ def test_shared_provenance_filters_actual_findings(
 
 
 _NOQA_DIRECTIVE_CASES = (
-    ("bare", "# sarj-noqa", True),
+    ("bare", "# sarj-noqa", False),
     ("reasoned", "# sarj-noqa: SARJ211 — migration", True),
     ("ascii-reason", "# sarj-noqa: SARJ211 -- migration", True),
     ("endash-reason", "# sarj-noqa: SARJ211 – migration", True),
@@ -493,7 +493,7 @@ def test_noqa_does_not_freeze_the_registered_code_catalog() -> None:
         ("# sarj-noqa: SARJ211,SARJ212 — migration", frozenset({"SARJ201"})),
         ("# sarj-noqa: SARJ2110 — migration", frozenset({"SARJ201", "SARJ211", "SARJ212"})),
         ("# sarj-noqa: SARJ211,,SARJ212 — migration", frozenset({"SARJ201", "SARJ211", "SARJ212"})),
-        ("# sarj-noqa", frozenset[str]()),
+        ("# sarj-noqa", frozenset({"SARJ201", "SARJ211", "SARJ212"})),
     ],
 )
 @pytest.mark.parametrize("crlf", [False, True])

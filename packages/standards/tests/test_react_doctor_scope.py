@@ -128,7 +128,7 @@ def test_scoped_scan_accepts_untouched_omissions_and_preserves_diagnostics(
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(1, json.dumps(payload), "")
 
-    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         root,
         projects=tuple(sorted((root / "packages").iterdir())),
         root=root,
@@ -172,7 +172,7 @@ def test_scoped_scan_keeps_coverage_failures_blocking(
             return ProcessOutput(128, "", "Git unavailable") if failure == "git-failure" else run_process(argv, cwd=cwd)
         return ProcessOutput(1, json.dumps(payload), "")
 
-    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         root,
         projects=tuple(sorted((root / "packages").iterdir())),
         root=root,
@@ -215,7 +215,7 @@ def test_changed_scan_requires_matching_verified_scope(workspace: _Workspace, fa
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(1, json.dumps(payload), "")
 
-    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         root,
         projects=tuple(sorted((root / "packages").iterdir())),
         root=root,
@@ -250,7 +250,7 @@ def test_staged_omissions_use_index_instead_of_worktree(workspace: _Workspace) -
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(1, json.dumps(payload), "")
 
-    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         root,
         projects=tuple(sorted((root / "packages").iterdir())),
         root=root,
@@ -284,7 +284,7 @@ def test_staged_omissions_cannot_hide_source_path_changes(workspace: _Workspace,
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(1, json.dumps(payload), "")
 
-    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         root,
         projects=tuple(sorted((root / "packages").iterdir())),
         root=root,
@@ -330,7 +330,7 @@ def test_staged_full_fallback_retains_complete_workspace_coverage(
         doctor_calls.append(tuple(argv))
         return ProcessOutput(1, json.dumps(full if "--scope" in argv else scoped), "")
 
-    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         root,
         projects=tuple(sorted((root / "packages").iterdir())),
         root=root,
@@ -375,7 +375,7 @@ def test_nested_project_change_does_not_require_enclosing_root_project(
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(1, json.dumps(payload), "")
 
-    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         root,
         projects=(root, *sorted((root / "packages").iterdir())),
         root=root,
@@ -683,7 +683,9 @@ def test_empty_changed_scope_uses_the_requested_bases_common_ancestor(
         ("helper.cts", False),
         ("helper.cjs", False),
         ("view.htm", False),
-        ("view.TSX", False),
+        # Keep the uppercase-extension probe distinct from the existing view.tsx
+        # on case-insensitive filesystems; it must create its own Git path.
+        ("uppercase.TSX", False),
         ("view.JS", False),
         ("view.ASTRO", False),
         ("bundle.iife.js", False),
@@ -743,7 +745,7 @@ def test_scoped_scan_matches_native_source_eligibility(
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(0, json.dumps(payload), "")
 
-    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         root,
         projects=tuple(sorted((root / "packages").iterdir())),
         root=root,
@@ -782,7 +784,7 @@ def test_native_excluded_source_keeps_changed_scope_guards(workspace: _Workspace
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(0, json.dumps(payload), "")
 
-    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         root,
         projects=tuple(sorted((root / "packages").iterdir())),
         root=root,
@@ -806,7 +808,7 @@ def test_generated_checkout_parent_does_not_exclude_authored_source(workspace: _
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(0, json.dumps(payload), "")
 
-    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         root,
         projects=tuple(sorted((root / "packages").iterdir())),
         root=root,

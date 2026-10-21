@@ -33,17 +33,17 @@ class _Campaign(TypedDict):
 
 def _object_table(value: object) -> dict[str, object]:
     assert isinstance(value, dict)
-    assert all(isinstance(key, str) for key in value)  # pyright: ignore[reportUnknownVariableType]
-    return value  # pyright: ignore[reportUnknownVariableType]
+    assert all(isinstance(key, str) for key in value)  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
+    return value  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
 
 
 def _object_list(value: object) -> list[object]:
     assert isinstance(value, list)
-    return value  # pyright: ignore[reportUnknownVariableType]
+    return value  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
 
 
 def _read_json(path: Path) -> dict[str, object]:
-    value: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny]
+    value: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     return _object_table(value)
 
 
