@@ -102,6 +102,10 @@ _MAX_PYTHON_PROJECTS = 32
 _SHELLCHECK_BATCH_SIZE = 250
 _SHELLCHECK_VERSION: Final = "0.11.0"
 _SHELLCHECK_VERSION_RE: Final = re.compile(r"^version:\s*(?P<version>\S+)\s*$", re.MULTILINE)
+_BASEDPYRIGHT_BASELINE_SHRINK_RE: Final = re.compile(
+    r"updated [^\r\n]+ with (?:1 error|(?:0|[2-9]|[1-9][0-9]+) errors) "
+    r"\(went down by [1-9][0-9]*\)"
+)
 _DEPTRY_ANNOTATION_RE: Final = re.compile(
     r"^::warning file=(?P<file>.*?),line=(?P<line>[1-9][0-9]*)"
     r"(?:,col=(?P<column>[1-9][0-9]*))?,title=(?P<code>DEP00[123])::(?P<message>.*)$"
@@ -3048,6 +3052,11 @@ def parse_sarif(  # ruff: ignore[too-many-locals] -- protocol normalization keep
 
 
 def parse_basedpyright(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
+    # Native auto-shrink mode prints this notice before --outputjson, without a quiet flag.
+    # Strip only its complete framing; arbitrary logs and malformed JSON remain protocol failures.
+    notice, separator, report_payload = payload.partition("\n\n")
+    if separator and _BASEDPYRIGHT_BASELINE_SHRINK_RE.fullmatch(notice):
+        payload = report_payload
     report = _BasedPyrightReport.model_validate_json(payload)
     documents: dict[Path, SourceDocument | None] = {}
     diagnostics: list[Diagnostic] = []
