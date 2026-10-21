@@ -1507,7 +1507,7 @@ export function createConfig(options = {}) {
       "@sarj/prefer-constant-time-secret-compare": "error",
       "@sarj/no-dynamic-sql": "error",
       "@sarj/store-insert-requires-on-conflict": "error",
-      "@sarj/stepdown": "error",
+      "@sarj/stepdown": ["error", { privateBandOnly: true }],
       "@sarj/no-offset-pagination": "error",
       "@sarj/no-select-star": "error",
       "@sarj/no-zod-native-enum": "error",

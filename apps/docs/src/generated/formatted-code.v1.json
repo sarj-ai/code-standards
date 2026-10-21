@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "6e884023691a1079b743df105a2179823c1ac38f7c69dd9778bcdeb3c7e8be48",
-  "cliSha256": "69801e2f90aed9980baf85a1d6931a35dc006c8fdd9a89276ede06aa1c41e43f",
+  "catalogSha256": "b67b9ea7765289a0b69637330a8f7b52e3f5d2cc21e42a955aa937ba2f8aa4f6",
+  "cliSha256": "ea30890c05604397bb049f3cf9bd532c352af94c9b65ab55d90ae6fbec1f916a",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -5693,7 +5693,7 @@
           "title": "Do not lead with a sole-caller helper"
         }
       ],
-      "optionsSchemaSource": null
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"privateBandOnly\": {\n      \"description\": \"Restrict class reports to private callers when another rule owns accessibility-band ordering.\",\n      \"type\": \"boolean\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "eslint:store-insert-requires-on-conflict": {
       "examples": [
