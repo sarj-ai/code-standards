@@ -141,6 +141,71 @@ describe("isScriptFile", () => {
   });
 });
 
+describe("context-scoped path ownership", () => {
+  it.each(["test", "tests", "fixtures", "__tests__", "integration", "generated", "vendor", "scripts", "stories", "external"])(
+    "does not inherit %s from a checkout ancestor",
+    (ancestor) => {
+      const cwd = `/workspace/${ancestor}/consumer`;
+      const context = { cwd, filename: `${cwd}/src/client.ts` };
+      expect(isTestFile(context, ["fixtureTree"])).toBe(false);
+      expect(isGeneratedFile(context, "", ["externalTree"])).toBe(false);
+      expect(isScriptFile(context)).toBe(false);
+      expect(isStoryFile(context, ["storyTree"])).toBe(false);
+    },
+  );
+
+  it.each([
+    ["POSIX", "/work/fixtures/consumer", "/work/fixtures/consumer/src/client.ts"],
+    ["Windows drive", String.raw`C:\fixtures\consumer`, String.raw`C:\fixtures\consumer\src\client.ts`],
+    ["Windows forward slash", "C:/vendor/consumer", "C:/vendor/consumer/src/client.ts"],
+    ["UNC", String.raw`\\server\share\tests\consumer`, String.raw`\\server\share\tests\consumer\src\client.ts`],
+    ["sibling prefix", "/work/tests/consumer", "/work/tests/consumer-other/src/client.ts"],
+    ["relative filename", "/work/fixtures/consumer", "src/client.ts"],
+    ["relative cwd and filename", "fixtures/consumer", "src/client.ts"],
+    ["resolved relative components", "/work/fixtures/consumer", "tests/../src/client.ts"],
+    ["virtual input", "/work/fixtures/consumer", "<input>"],
+    ["processor virtual filename", "/work/fixtures/consumer", "/work/fixtures/consumer/page.md/0.ts"],
+  ])("uses the explicit context cwd for %s paths", (_label, cwd, filename) => {
+    const context = { cwd, filename };
+    expect(isTestFile(context, ["fixtureTree"])).toBe(false);
+    expect(isGeneratedFile(context, "", ["externalTree"])).toBe(false);
+    expect(isScriptFile(context)).toBe(false);
+    expect(isStoryFile(context, ["storyTree"])).toBe(false);
+  });
+
+  it("retains directories owned by the linted project", () => {
+    const cwd = "/work/fixtures/vendor/scripts/stories/consumer";
+    const file = (path: string): { cwd: string; filename: string } => ({ cwd, filename: `${cwd}/${path}` });
+    expect(isTestFile(file("tests/client.ts"))).toBe(true);
+    expect(isTestFile(file("src/fixtures/client.ts"))).toBe(true);
+    expect(isTestFile(file("fixture/client.ts"), ["fixtureTree"])).toBe(true);
+    expect(isGeneratedFile(file("vendor/client.ts"))).toBe(true);
+    expect(isGeneratedFile(file("src/generated/client.ts"))).toBe(true);
+    expect(isGeneratedFile(file("external/client.ts"), "", ["externalTree"])).toBe(true);
+    expect(isScriptFile(file("scripts/client.ts"))).toBe(true);
+    expect(isStoryFile(file("stories/client.ts"), ["storyTree"])).toBe(true);
+  });
+
+  it("retains explicit basenames and source ownership markers", () => {
+    const cwd = "/work/fixtures/consumer";
+    const file = (name: string): { cwd: string; filename: string } => ({ cwd, filename: `${cwd}/src/${name}` });
+    expect(isTestFile(file("client.test.ts"))).toBe(true);
+    expect(isTestFile(file("client.spec.ts"))).toBe(true);
+    expect(isGeneratedFile(file("client.generated.ts"))).toBe(true);
+    expect(isGeneratedFile(file("client.d.ts"))).toBe(true);
+    expect(isGeneratedFile(file("client.ts"), "// @generated\nexport const value = 1;")).toBe(true);
+    expect(isScriptFile(file("client.mjs"))).toBe(true);
+    expect(isStoryFile(file("client.stories.tsx"))).toBe(true);
+  });
+
+  it("keeps the filename-only API compatible", () => {
+    expect(isTestFile("/work/fixtures/consumer/src/client.ts")).toBe(true);
+    expect(isGeneratedFile("/work/vendor/consumer/src/client.ts")).toBe(true);
+    expect(isScriptFile(String.raw`C:\scripts\consumer\src\client.ts`)).toBe(true);
+    expect(isStoryFile("/work/stories/consumer/src/client.ts", ["storyTree"])).toBe(true);
+  });
+});
+
 /** A gate is a per-rule exemption, so every caller must be recorded here. */
 const GATE_HOLDERS: Readonly<Record<string, readonly string[]>> = {
   "no-bespoke-api-case-conversion.ts": ["fixtureTree"],

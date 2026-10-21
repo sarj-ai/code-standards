@@ -275,8 +275,14 @@
     {
       "id": 27,
       "question": "Can native ignore configuration or sibling paths silently lose selected-file coverage?",
-      "result": "pass",
-      "cases": []
+      "result": "fixed",
+      "cases": [
+        "test_canonical_eslint_checks_production_beneath_exempt_named_ancestors",
+        "test_native_eslint_uses_its_project_cwd_when_the_process_runs_elsewhere",
+        "test_native_eslint_preserves_physical_project_ownership_across_consumers",
+        "test_full_driver_uses_the_same_context_relative_path_policy"
+      ],
+      "finding": "The original audit's pass result did not exercise checkout ancestors. A separate follow-up reproduced production diagnostics disappearing beneath exempt-named ancestors and scopes shared test/generated/script/story gates to the explicit ESLint cwd, preserving physical filenames and per-project ownership caching."
     },
     {
       "id": 28,
@@ -288,7 +294,12 @@
       "id": 29,
       "question": "Are explained exact local exceptions, directive-like strings and concrete prose preserved?",
       "result": "pass",
-      "cases": []
+      "cases": [
+        "test_canonical_eslint_preserves_in_repository_exemptions",
+        "test_canonical_eslint_keeps_import_binding_narrowing_under_a_test_named_ancestor",
+        "packages/typescript/tests/rules/_paths.test.ts"
+      ],
+      "finding": "Original exact local exception, string, and prose coverage is unchanged. Separate follow-up controls preserve actual in-project exemptions, generated basenames/source markers, and import-binding boundaries after ancestor normalization."
     },
     {
       "id": 30,
@@ -316,7 +327,19 @@
       "uv run --project packages/standards --frozen python -m pytest -q packages/standards/tests/test_ruff_cast_policy.py packages/standards/tests/test_required_suppression_policy.py packages/standards/tests/test_required_eslint_policy.py",
       "make verify"
     ],
-    "full_gate": "Final qualification is recorded in the pull request after execution."
+    "full_gate": "Final qualification is recorded in the pull request after execution.",
+    "path_follow_up": {
+      "bundle": "8.105.3",
+      "typescript": "16.23.3",
+      "scope": "Separate follow-up; original audit still contains thirty questions, not thirty discovered defects.",
+      "regression": "packages/standards/tests/test_eslint_ancestor_path_policy.py",
+      "native_cases": 25,
+      "before_noop_preparation": {
+        "failed": 21,
+        "passed": 4
+      },
+      "qualification": "Final qualification is recorded in the follow-up pull request after execution."
+    }
   },
   "corpus": {
     "scope": "Identical captured bytes of 898 already-local tracked Python files; helper-only analysis, with seeded/runtime cases providing positive evidence.",
