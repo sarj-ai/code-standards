@@ -66,11 +66,13 @@ running or reporting a corpus evaluation.
    prove redundancy.
 3. Select syntax-aware analysis whenever comments, strings, scopes, aliases, or
    nesting can make regex ambiguous. Never infer intent from names alone.
-4. Write labeled `EvaluationCase` values before implementation. Cover exact
-   positives, minimal negatives, near misses, nested forms, aliases, generated
-   code, fixtures, suppressions, malformed input, duplicate diagnostics, and
-   multi-rule precedence. For fixes, include semantic preservation and a second
-   pass that must produce no change.
+4. Write labeled `EvaluationCase` values before implementation. Keep positives,
+   minimal negatives, and near misses; add nesting, aliases, generated content,
+   fixtures, suppressions, malformed input, duplicate diagnostics, or multi-rule
+   precedence when applicable to the rule's contract. Reuse existing harness
+   coverage for unchanged integration behavior rather than repeating the entire
+   checklist for each rule or review comment. For fixes, include semantic
+   preservation and a second pass that must produce no change.
 5. Implement the smallest rule and register it atomically with its metadata,
    strict config, ledger entry, tests, docs, and owning package version. Keep a
    new judgment-heavy rule at warning severity. From the Standards repository,
