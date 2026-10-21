@@ -71,7 +71,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (isGeneratedFile(context, context.sourceCode.text)) return {};
     const { sourceCode } = context;
     const report = (node: TSESTree.Node, key: string | null): void => {
       if (key !== null && isAuthSecretName(key) && !tokenize(key).some((word) => METADATA_WORDS.has(word))) {

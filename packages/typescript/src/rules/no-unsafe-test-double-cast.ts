@@ -67,7 +67,7 @@ export default createRule<[], MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (!isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (!isTestFile(context) || isGeneratedFile(context, context.sourceCode.text)) return {};
     return {
       TSAsExpression(node: TSESTree.TSAsExpression): void {
         if ((node.expression.type === AST_NODE_TYPES.TSAsExpression || node.expression.type === AST_NODE_TYPES.TSTypeAssertion) && isUnknown(node.expression.typeAnnotation) && containsMockFactory(node.expression.expression, context.sourceCode)) context.report({ node, messageId: "noUnsafeTestDoubleCast" });

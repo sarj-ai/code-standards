@@ -73,7 +73,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename)) {
+    if (isTestFile(context)) {
       return {};
     }
     return createSqlListener((sql: string, node: TSESTree.Node): void => {

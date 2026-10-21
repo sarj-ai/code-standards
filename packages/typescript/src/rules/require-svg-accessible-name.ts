@@ -71,9 +71,9 @@ export default createRule<readonly [], "missingName">({
   defaultOptions: [],
   create(context) {
     if (
-      isGeneratedFile(context.filename, context.sourceCode.text) ||
-      isTestFile(context.filename) ||
-      isStoryFile(context.filename)
+      isGeneratedFile(context, context.sourceCode.text) ||
+      isTestFile(context) ||
+      isStoryFile(context)
     )
       return {};
     return {

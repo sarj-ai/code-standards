@@ -544,7 +544,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) {
+    if (isGeneratedFile(context, context.sourceCode.text)) {
       return {};
     }
 
@@ -682,7 +682,7 @@ export default createRule<Options, MessageIds>({
     return {
       Program(): void {
         const comments = sourceCode.getAllComments();
-        const callMatrixStems = isTestFile(context.filename)
+        const callMatrixStems = isTestFile(context)
           ? testCallMatrixStems(comments)
           : new Set<string>();
         const walls = findCommentWalls(comments);

@@ -43,8 +43,11 @@ export type TestPathGate = "fixtureTree";
 /** Extra path gates `isStoryFile` honours on request. */
 export type StoryPathGate = "storyTree";
 
-export function isTestFile(filename: string, gates: readonly TestPathGate[] = []): boolean {
-  const normalized = filename.replaceAll("\\", "/");
+/** Accept analysis context while preserving the filename-only caller API. */
+export type FilePath = string | { readonly filename: string; readonly cwd: string };
+
+export function isTestFile(filename: FilePath, gates: readonly TestPathGate[] = []): boolean {
+  const normalized = scopedFilename(filename);
   const base = normalized.slice(normalized.lastIndexOf("/") + 1);
   if (TEST_BASENAME_RE.test(base) || TEST_INTEGRATION_BASENAME_RE.test(base)) {
     return true;
@@ -55,8 +58,8 @@ export function isTestFile(filename: string, gates: readonly TestPathGate[] = []
   return gates.includes("fixtureTree") && FIXTURE_TREE_RE.test(normalized);
 }
 
-export function isStoryFile(filename: string, gates: readonly StoryPathGate[] = []): boolean {
-  const normalized = filename.replaceAll("\\", "/");
+export function isStoryFile(filename: FilePath, gates: readonly StoryPathGate[] = []): boolean {
+  const normalized = scopedFilename(filename);
   if (STORY_FILE_RE.test(normalized)) {
     return true;
   }
@@ -64,11 +67,11 @@ export function isStoryFile(filename: string, gates: readonly StoryPathGate[] = 
 }
 
 export function isGeneratedFile(
-  filename: string,
+  filename: FilePath,
   sourceText = "",
   gates: readonly GeneratedPathGate[] = [],
 ): boolean {
-  const normalized = filename.replaceAll("\\", "/");
+  const normalized = scopedFilename(filename);
   if (GENERATED_FILE_RE.test(normalized)) {
     return true;
   }
@@ -125,8 +128,13 @@ function leadingCommentBodies(sourceText: string): string[] {
   return bodies;
 }
 
-export function isScriptFile(filename: string): boolean {
-  return SCRIPT_FILE_RE.test(filename);
+export function isScriptFile(filename: FilePath): boolean {
+  return SCRIPT_FILE_RE.test(scopedFilename(filename));
+}
+
+/** Normalize caller-supplied paths while retaining the filename-only classification contract. */
+export function scopedFilename(input: FilePath): string {
+  return (typeof input === "string" ? input : input.filename).replaceAll("\\", "/");
 }
 
 /** Match configured globs consistently across native path separators. */

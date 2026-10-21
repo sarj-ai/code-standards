@@ -351,8 +351,8 @@ export default createRule<Options, MessageIds>({
     };
     if (
       JAVASCRIPT_FILE_RE.test(context.filename) ||
-      isTestFile(context.filename) ||
-      isGeneratedFile(context.filename, sourceCode.getText())
+      isTestFile(context) ||
+      isGeneratedFile(context, sourceCode.getText())
     ) {
       return {};
     }

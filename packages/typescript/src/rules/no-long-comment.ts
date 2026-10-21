@@ -120,7 +120,7 @@ export default createRule<Options, MessageIds>({
     if (VERSIONED_DEPENDENCY_TREE_RE.test(normalizedFilename)) return {};
     return {
       Program(): void {
-        for (const group of proseGroups(context.filename, context.sourceCode)) {
+        for (const group of proseGroups(context, context.sourceCode)) {
           if (
             group.comment.type !== "Block" ||
             !group.comment.value.startsWith("*") ||

@@ -83,7 +83,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (isTestFile(context) || isGeneratedFile(context, context.sourceCode.text)) return {};
     const zodBindings = new Set<TSESLint.Scope.Variable>();
     const bindingOf = (node: TSESTree.Identifier): TSESLint.Scope.Variable | null =>
       ASTUtils.findVariable(context.sourceCode.getScope(node), node.name);

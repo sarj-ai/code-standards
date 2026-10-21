@@ -425,7 +425,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (isGeneratedFile(context, context.sourceCode.text)) return {};
     const specifierExports = specifierExportedNames(context.sourceCode.ast);
     const typeExports = publiclyReachableTypeNames(
       context.sourceCode.ast,

@@ -145,7 +145,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [{}],
   create(context, [options]) {
-    if (isTestFile(context.filename)) {
+    if (isTestFile(context)) {
       return {};
     }
     const modules = options?.modules ?? [];

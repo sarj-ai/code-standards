@@ -57,7 +57,7 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     const source = context.sourceCode;
-    if (isGeneratedFile(context.filename, source.text)) return {};
+    if (isGeneratedFile(context, source.text)) return {};
     const namespaces = new Set<TSESLint.Scope.Variable>();
     const bindingOf = (node: TSESTree.Identifier): TSESLint.Scope.Variable | null =>
       ASTUtils.findVariable(source.getScope(node), node.name);

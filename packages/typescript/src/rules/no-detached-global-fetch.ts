@@ -84,9 +84,9 @@ export default createRule<Options, MessageIds>({
   create(context) {
     const sourceCode = context.sourceCode;
     if (
-      isTestFile(context.filename) ||
-      isScriptFile(context.filename) ||
-      isGeneratedFile(context.filename, sourceCode.text)
+      isTestFile(context) ||
+      isScriptFile(context) ||
+      isGeneratedFile(context, sourceCode.text)
     ) return {};
 
     const aliases = new Set<TSESLint.Scope.Variable>();

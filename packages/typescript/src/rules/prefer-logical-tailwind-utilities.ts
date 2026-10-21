@@ -136,9 +136,9 @@ export default createRule<Options, "physicalUtility">({
   create(context, [options]) {
     if (
       options?.enabled === false ||
-      isGeneratedFile(context.filename, context.sourceCode.text) ||
-      isTestFile(context.filename) ||
-      isStoryFile(context.filename)
+      isGeneratedFile(context, context.sourceCode.text) ||
+      isTestFile(context) ||
+      isStoryFile(context)
     )
       return {};
     return {

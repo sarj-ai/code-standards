@@ -170,7 +170,7 @@ export function createSourceCoupledRule(
   },
   defaultOptions: [],
   create(context) {
-    if (!isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (!isTestFile(context) || isGeneratedFile(context, context.sourceCode.text)) return {};
 
     const scopes: LexicalScope[] = [newScope()];
     const reportedOrigins = new Set<string>();
@@ -276,7 +276,7 @@ export function createSourceCoupledRule(
     };
     const sourcePathValue = (value: string): boolean => {
       const normalized = posix.normalize(value.replaceAll("\\", "/"));
-      return sourceSuffixRe.test(normalized) && !REPRESENTATION_DIR_RE.test(normalized) && !isGeneratedFile(normalized);
+      return sourceSuffixRe.test(normalized) && !REPRESENTATION_DIR_RE.test(normalized) && !isGeneratedFile({ filename: normalized, cwd: context.cwd });
     };
     const rawRead = (node: TSESTree.Node): boolean => {
       const current = unwrap(node);

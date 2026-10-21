@@ -91,9 +91,9 @@ export default createRule<Options, MessageIds>({
     // Generated or vendored, a test fixture, or a demo story: three kinds of
     // file whose member comments are output rather than commentary.
     if (
-      isGeneratedFile(context.filename, sourceCode.text, ["externalTree"]) ||
-      isTestFile(context.filename, ["fixtureTree"]) ||
-      isStoryFile(context.filename, ["storyTree"])
+      isGeneratedFile(context, sourceCode.text, ["externalTree"]) ||
+      isTestFile(context, ["fixtureTree"]) ||
+      isStoryFile(context, ["storyTree"])
     ) {
       return {};
     }

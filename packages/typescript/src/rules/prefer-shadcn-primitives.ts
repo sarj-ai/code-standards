@@ -454,9 +454,9 @@ export default createRule<Options, MessageIds>({
   create(context, [options]) {
     const filename = context.filename.replaceAll("\\", "/");
     if (
-      isTestFile(filename) ||
-      isStoryFile(filename) ||
-      isGeneratedFile(filename, context.sourceCode.text) ||
+      isTestFile(context) ||
+      isStoryFile(context) ||
+      isGeneratedFile(context, context.sourceCode.text) ||
       SHARED_PRIMITIVE_IMPLEMENTATION_RE.test(filename)
     ) {
       return {};

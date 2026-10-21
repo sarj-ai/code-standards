@@ -84,7 +84,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (isTestFile(context) || isGeneratedFile(context, context.sourceCode.text)) return {};
     const routerHooks = new Set<TSESLint.Scope.Variable>();
     const routers = new Set<TSESLint.Scope.Variable>();
     const reportedCallbacks = new WeakSet<TSESTree.ArrowFunctionExpression | TSESTree.FunctionExpression>();

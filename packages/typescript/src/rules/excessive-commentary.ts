@@ -147,7 +147,7 @@ export default createRule<Options, MessageIds>({
   create(context) {
     return {
       Program(): void {
-        for (const group of proseGroups(context.filename, context.sourceCode)) {
+        for (const group of proseGroups(context, context.sourceCode)) {
           const lines = lineCount(group.text);
           const words = wordCount(group.text);
           if (isJSDoc(group.comment)) {

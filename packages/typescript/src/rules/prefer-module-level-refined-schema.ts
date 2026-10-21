@@ -261,9 +261,9 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (
-      isTestFile(context.filename) ||
+      isTestFile(context) ||
       BENCHMARK_PATH_RE.test(context.filename) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
+      isGeneratedFile(context, context.sourceCode.text)
     )
       return {};
 

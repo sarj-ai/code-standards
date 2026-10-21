@@ -199,7 +199,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (!isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (!isTestFile(context) || isGeneratedFile(context, context.sourceCode.text)) return {};
     return {
       ReturnStatement(node: TSESTree.ReturnStatement): void {
         if (node.argument !== null) return;

@@ -245,7 +245,7 @@ export default createRule<Options, MessageIds>({
       return above !== undefined && above.loc.end.line === node.loc.start.line - 1;
     }
 
-    if (isTestFile(filename) || BENCHMARK_DIR_RE.test(filename.replaceAll("\\", "/"))) {
+    if (isTestFile(context) || BENCHMARK_DIR_RE.test(filename.replaceAll("\\", "/"))) {
       return {};
     }
 

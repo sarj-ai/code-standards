@@ -102,7 +102,7 @@ export default createRule<Options, "unlocalized">({
   defaultOptions: [{ enabled: true }],
   create(context, [options]) {
     if (
-      localizationExcluded(context.filename, context.sourceCode.text, options)
+      localizationExcluded(context, context.sourceCode.text, options)
     )
       return {};
     const attributes = options?.attributes ?? [

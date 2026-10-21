@@ -79,7 +79,7 @@ export default createRule<[], MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) {
+    if (isGeneratedFile(context, context.sourceCode.text)) {
       return {};
     }
 

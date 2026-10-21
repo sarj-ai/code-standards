@@ -48,7 +48,7 @@ export default createRule<[], "widening">({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (isGeneratedFile(context, context.sourceCode.text)) return {};
     if (!context.sourceCode.parserServices?.program || !context.sourceCode.parserServices.esTreeNodeToTSNodeMap) return {};
     const services = ESLintUtils.getParserServices(context);
     if (services.program === null) return {};

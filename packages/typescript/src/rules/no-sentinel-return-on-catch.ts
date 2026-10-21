@@ -569,7 +569,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [{}],
   create(context, [loggingOptions]) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) {
+    if (isGeneratedFile(context, context.sourceCode.text)) {
       return {};
     }
 

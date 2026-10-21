@@ -210,9 +210,9 @@ export default createRule<Options, MessageIds>({
 
     // Test and benchmark schemas are local fixtures rather than APIs.
     if (
-      isTestFile(context.filename) ||
+      isTestFile(context) ||
       BENCHMARK_PATH_RE.test(context.filename.replaceAll("\\", "/")) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
+      isGeneratedFile(context, context.sourceCode.text)
     ) {
       return {};
     }

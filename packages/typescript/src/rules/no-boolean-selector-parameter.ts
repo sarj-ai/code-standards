@@ -44,7 +44,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text) || !context.sourceCode.parserServices?.program) return {};
+    if (isGeneratedFile(context, context.sourceCode.text) || !context.sourceCode.parserServices?.program) return {};
     const services = ESLintUtils.getParserServices(context);
     const reported = new Set<TSESTree.Identifier>();
     function report(identifier: TSESTree.Identifier): void {

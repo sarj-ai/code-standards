@@ -180,7 +180,7 @@ export default createRule<Options, MessageIds>({
   create(context) {
     return {
       Program(): void {
-        for (const group of proseGroups(context.filename, context.sourceCode, true)) {
+        for (const group of proseGroups(context, context.sourceCode, true)) {
           const signature = documentedSignature(context.sourceCode, group.comment);
           if (
             group.hasTypedTags &&

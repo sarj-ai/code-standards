@@ -604,9 +604,9 @@ export default createRule<Options, MessageIds>({
   create(context: Ctx) {
     // Fixtures and generated clients own validation at a different boundary.
     if (
-      isTestFile(context.filename) ||
-      isScriptFile(context.filename) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
+      isTestFile(context) ||
+      isScriptFile(context) ||
+      isGeneratedFile(context, context.sourceCode.text)
     ) {
       return {};
     }
