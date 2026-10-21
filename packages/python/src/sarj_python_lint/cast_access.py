@@ -10,6 +10,7 @@ from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 
@@ -17,6 +18,7 @@ _TYPING = frozenset({"typing", "typing_extensions"})
 _GETATTR_ARITIES = frozenset({2, 3})
 _MAX_LITERAL_DEPTH = 12
 _CAST_LENGTH = len("cast")
+_COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,12 +101,97 @@ def _call_receiver(node: ast.Call, provenance: ResourceProvenance) -> ast.Name |
 def _builtin_call(call: ast.Call, name: str, provenance: ResourceProvenance) -> bool:
     if not isinstance(call.func, ast.Name) or call.func.id != name or call.keywords:
         return False
-    scope = provenance.scope(call.func)
+    return not _type_parameter_shadowed(name, call.func, provenance) and all(
+        name not in provenance.bindings.get(scope, {}) for scope in _lexical_scopes(call.func, provenance)
+    )
+
+
+def _lexical_scopes(node: ast.AST, provenance: ResourceProvenance) -> Iterator[ast.AST]:
+    scope = _evaluation_scope(node, provenance)
+    immediate = True
     while scope is not None:
-        if name in provenance.bindings.get(scope, {}):
+        # Ordinary nested code blocks do not capture class locals.
+        if immediate or not isinstance(scope, ast.ClassDef):
+            yield scope
+        immediate = False
+        scope = _evaluation_scope(scope, provenance)
+
+
+def _evaluation_scope(node: ast.AST, provenance: ResourceProvenance) -> ast.AST | None:
+    scope = provenance.scope(node)
+    if isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef) and _owner_annotation(
+        node, scope, provenance
+    ):
+        node, scope = scope, provenance.scope(scope)
+    while isinstance(scope, _COMPREHENSIONS):
+        iterable = scope.generators[0].iter
+        if iterable is not node and not provenance.contains(iterable, node):
+            break
+        # A comprehension's first iterable is evaluated in the enclosing scope.
+        node, scope = scope, provenance.scope(scope)
+    return scope
+
+
+def _owner_annotation(
+    node: ast.AST, owner: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef, provenance: ResourceProvenance
+) -> bool:
+    if any(parameter is node or provenance.contains(parameter, node) for parameter in owner.type_params):
+        return True
+    return isinstance(owner, ast.FunctionDef | ast.AsyncFunctionDef) and _function_annotation(node, owner, provenance)
+
+
+def _function_annotation(
+    node: ast.AST, function: ast.FunctionDef | ast.AsyncFunctionDef, provenance: ResourceProvenance
+) -> bool:
+    current = node
+    while (parent := provenance.context.parents.get(current)) is not None:
+        if (parent is function and current is function.returns) or (
+            isinstance(parent, ast.arg) and current is parent.annotation
+        ):
+            return True
+        if parent is function:
+            break
+        current = parent
+    return False
+
+
+def _type_parameter_shadowed(name: str, node: ast.AST, provenance: ResourceProvenance) -> bool:
+    current: ast.AST | None = node
+    while current is not None:
+        if (
+            isinstance(current, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.TypeAlias)
+            and any(
+                isinstance(parameter, ast.TypeVar | ast.TypeVarTuple | ast.ParamSpec) and parameter.name == name
+                for parameter in current.type_params
+            )
+            and not _outside_parameter_scope(node, current, provenance)
+            and not _local_binding_overrides(name, node, current, provenance)
+        ):
+            return True
+        current = provenance.context.parents.get(current)
+    return False
+
+
+def _outside_parameter_scope(
+    node: ast.AST,
+    owner: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.TypeAlias,
+    provenance: ResourceProvenance,
+) -> bool:
+    outside = [] if isinstance(owner, ast.TypeAlias) else list(owner.decorator_list)
+    if isinstance(owner, ast.FunctionDef | ast.AsyncFunctionDef):
+        outside.extend(owner.args.defaults)
+        outside.extend(value for value in owner.args.kw_defaults if value is not None)
+    # Defaults and decorators evaluate in the enclosing scope.
+    return any(value is node or provenance.contains(value, node) for value in outside)
+
+
+def _local_binding_overrides(name: str, node: ast.AST, owner: ast.AST, provenance: ResourceProvenance) -> bool:
+    for scope in _lexical_scopes(node, provenance):
+        if scope is not owner and not provenance.contains(owner, scope):
             return False
-        scope = provenance.scope(scope)
-    return True
+        if name in provenance.bindings.get(scope, {}):
+            return True
+    return False
 
 
 def _static_text(node: ast.expr, depth: int = 0) -> str | None:
@@ -136,7 +223,7 @@ def _reflection_carrier(node: ast.Call | ast.Subscript) -> ast.AST | None:
 def _typing_receiver(node: ast.Name, provenance: ResourceProvenance, receivers: set[int]) -> str | None:
     if node.id in provenance.mutated | provenance.external_bindings:
         return None
-    binding = provenance.binding(node.id, node)
+    binding = _name_binding(node, provenance)
     if not (
         isinstance(binding, ast.alias)
         and isinstance(provenance.context.parents.get(binding), ast.Import)
@@ -144,7 +231,7 @@ def _typing_receiver(node: ast.Name, provenance: ResourceProvenance, receivers: 
     ):
         return None
     for read in provenance.reads.get(node.id, ()):
-        if provenance.binding(read.id, read) is not binding:
+        if _name_binding(read, provenance) is not binding:
             continue
         parent = provenance.context.parents.get(read)
         if isinstance(parent, ast.Attribute) and parent.value is read:
@@ -153,3 +240,12 @@ def _typing_receiver(node: ast.Name, provenance: ResourceProvenance, receivers: 
             continue
         return None
     return binding.name
+
+
+def _name_binding(node: ast.Name, provenance: ResourceProvenance) -> ast.AST | None:
+    if _type_parameter_shadowed(node.id, node, provenance):
+        return None
+    for scope in _lexical_scopes(node, provenance):
+        if bindings := provenance.bindings.get(scope, {}).get(node.id):
+            return provenance.binding(node.id, bindings[0])
+    return None

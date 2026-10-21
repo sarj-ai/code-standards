@@ -13,7 +13,7 @@ For fixture changes, also run `code-standards check` over shared setup and its
 affected consumers. The observer's candidate list does not establish fixture
 visibility or liveness.
 
-- Name the contract and wrong outcome. Reuse adequate coverage; mechanical edits and review comments do not require tests.
+- Name the contract and wrong outcome. Reuse adequate coverage; a changed file, script, or review comment does not by itself require a new test. Record sufficient existing checks when no case is needed.
 - Compare inputs, actions, fixtures/marks, runtime, and assertion order/effects before removing duplicated or subsumed oracles. Combine complementary assertions sharing those conditions.
 - Cover inherited behavior at its owner; retain override and composition contracts.
 - Choose reusable setup by provider visibility, configuration, state isolation, and cleanup ownership. Compose fixture dependencies or typed factories while keeping the tested action and oracle visible; see [fixture design and reuse](references/oracles.md#fixture-design-and-reuse).

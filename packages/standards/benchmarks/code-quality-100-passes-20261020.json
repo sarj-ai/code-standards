@@ -1,0 +1,1024 @@
+{
+  "schemaVersion": 1,
+  "repository": "sarj-ai/code-standards",
+  "baseCommit": "47e11a2f002e22b59cc7db33fb8707d37d555f6f",
+  "requestedPasses": 100,
+  "completedResearchPasses": 100,
+  "state": "100 focused research passes and supplementary fixes complete; local and exact-head hosted verification results are recorded in the pull request.",
+  "newRuleIds": 0,
+  "severityChanges": 0,
+  "scope": "Distinct source-boundary inspections, not repeated executions or claimed exhaustive proof. No external consumer corpus was downloaded or changed.",
+  "benchmarkLimitations": "Synthetic corpora on a shared VM; component timings do not establish end-to-end consumer speedups. SQL traced transient allocation excludes retained caches and process RSS.",
+  "benchmarks": [
+    {
+      "component": "native DevOps diagnostic normalization",
+      "sourceBytes": 34000,
+      "findings": 500,
+      "samples": 5,
+      "method": "Alternating baseline/candidate wall time; exact diagnostic equality.",
+      "beforeMedianSeconds": 1.5287587839993648,
+      "afterMedianSeconds": 0.0814809950243216
+    },
+    {
+      "component": "SQL duplicate-index plus index-budget",
+      "sourceBytes": 25279,
+      "indexes": 500,
+      "coldSamples": 5,
+      "warmSamples": 7,
+      "method": "Same corpus; cold clears lexical, coordinate and index caches before each sample.",
+      "beforeColdMedianSeconds": 1.458173299,
+      "afterColdMedianSeconds": 0.10346514,
+      "beforeWarmMedianSeconds": 1.105652186,
+      "afterWarmMedianSeconds": 0.013153136,
+      "beforeWarmTransientPeakBytes": 441332,
+      "afterWarmTransientPeakBytes": 237633
+    },
+    {
+      "component": "TypeScript dynamic SQL",
+      "sourceBytes": 15979,
+      "findings": 600,
+      "method": "Nine interleaved rounds, eight iterations; baseline HEAD and candidate loaded together; current-thread CPU; identical diagnostics.",
+      "beforeCpuMedianMilliseconds": 11.779,
+      "afterCpuMedianMilliseconds": 10.388
+    },
+    {
+      "component": "TypeScript random ID admission",
+      "sourceBytes": 29089,
+      "findings": 0,
+      "method": "Nine interleaved rounds, eight iterations; baseline HEAD and candidate loaded together; current-thread CPU; identical diagnostics.",
+      "beforeCpuMedianMilliseconds": 8.726,
+      "afterCpuMedianMilliseconds": 7.621
+    },
+    {
+      "component": "Python regex walrus",
+      "sourceBytes": 8198,
+      "astNodes": 2006,
+      "candidatePairs": 100,
+      "samples": 5,
+      "method": "Alternating baseline/current with matching diagnostics; shared VM wall time.",
+      "beforeWarmMedianMilliseconds": 1396.251,
+      "afterWarmMedianMilliseconds": 631.971,
+      "beforeColdMedianMilliseconds": 817.647,
+      "afterColdMedianMilliseconds": 756.273,
+      "beforeCombinedMedianMilliseconds": 983.84,
+      "afterCombinedMedianMilliseconds": 575.667
+    }
+  ],
+  "passes": [
+    {
+      "pass": 1,
+      "lane": "python",
+      "evidenceAndOutcome": "**Lazy file facts (`_file_context.py`).** Reviewed parse failure handling, project AST reuse, freshness and fact lifetime. Existing equality guard `unit.source == self.source` prevents stale shared trees; syntax/Unicode failures abstain. Existing file-context tests exercise source changes, BOM decoding, collection and rule-order independence. Outcome: retain; no demonstrated gap."
+    },
+    {
+      "pass": 2,
+      "lane": "python",
+      "evidenceAndOutcome": "**AST index (`_ast_index.py`).** Reviewed breadth-first query order, `isinstance` semantics, parent mapping and shared singleton operator/context nodes. Query buckets preserve AST traversal order; parent cache deliberately preserves last-parent semantics. Existing file-context and AST-index regressions cover both. Outcome: retain; optimizing parent construction without that contract would be risky."
+    },
+    {
+      "pass": 3,
+      "lane": "python",
+      "evidenceAndOutcome": "**Source decoding and Unicode gates (`_source.py`).** Reviewed encoding discovery and normalized symbol prefilters. `tokenize.open` honors encoding cookies/BOM; NFKC is applied only to the necessary symbol gate, while AST/source locations use original text. Existing source-decoding/native-prefilter tests validate boundaries. Outcome: retain."
+    },
+    {
+      "pass": 4,
+      "lane": "python",
+      "evidenceAndOutcome": "**Import resolution (`_imports.py`).** Reviewed ambiguous imports, dotted aliases, non-import shadowing, module-only TYPE_CHECKING imports and comprehension result bindings. Conservative ambiguity/rebinding exclusions are intentional; no name-only inference added. Existing import-capture/type-guard tests and package tests validate. Outcome: retain."
+    },
+    {
+      "pass": 5,
+      "lane": "python",
+      "evidenceAndOutcome": "**Regex walrus suffix analysis (`prefer_walrus_regex_match.py`, SARJ081).** Evidence: each candidate scanned every later statement with a fresh NodeVisitor; 200 compact regex-result pairs took 2094.627 ms warm in initial baseline. Replaced repeated suffix walks with one last-containing-statement index per candidate body, retaining every Name context and nested/deferred use exclusion. Existing later-use, rebinding, compiled-pattern, suite and native-spelling tests exercise semantics. Outcome: measured performance fix; paired benchmark details below."
+    },
+    {
+      "pass": 6,
+      "lane": "python",
+      "evidenceAndOutcome": "**Stream-loop lexical gate (`prefer_walrus_stream_loop.py`, SARJ077).** Evidence: a valid `while (\\n True\\n):` loop with the exact supported producer/guard/body returned zero findings because the regex required a physical single-line header. Existing AST matcher already handles the header correctly. Smallest fix: necessary substring gates followed by unchanged AST proof. Added multiline-parenthesis and explicit-continuation positives plus multiline False negative. Outcome: extend existing semantic rule to equivalent syntax; no rewrite/fix-policy change."
+    },
+    {
+      "pass": 7,
+      "lane": "python",
+      "evidenceAndOutcome": "**Async cache correctness (`no_async_function_cache.py`, SARJ507).** Reviewed innermost decorator proof, active lru_cache sizing, relative/nested import shadowing and generator yield ownership. Existing cache rule excludes disabled/dynamic sizes and transformed async functions. Targeted baseline: cache + context tests passed 71 non-fixture cases; package suite validates all cache boundaries. Outcome: retain."
+    },
+    {
+      "pass": 8,
+      "lane": "python",
+      "evidenceAndOutcome": "**Loop string growth (`no_string_concat_in_loop.py`).** Reviewed lexical scope boundaries, backedge resets, loop-local values and single-iteration exclusions using existing nested-function/class/while-probe/f-string tests. Current exclusions distinguish accumulators from per-iteration values and observed intermediate strings. Outcome: retain; no unsafe blanket concatenation expansion."
+    },
+    {
+      "pass": 9,
+      "lane": "python",
+      "evidenceAndOutcome": "**Set overlap (`prefer_set_isdisjoint.py`, SARJ431).** Reviewed receiver provenance, known iterables, shadowed builtins, dict key views, boolean-only use and branch invalidation. Existing scanner excludes stored intersections and deferred captured bindings; suggestion remains non-autofixing because equality/hash effects can differ. Existing rule and project-integration tests validate. Outcome: retain."
+    },
+    {
+      "pass": 10,
+      "lane": "python",
+      "evidenceAndOutcome": "**Collection comprehensions (`prefer_collection_comprehension.py`).** Reviewed target observability, computed filter projections, leaked bindings, reflection and comprehension scopes. Existing owner binding/namespace observer analysis protects behavior; constructor projections and filtered loops already share helpers. Existing rule tests cover captured/observed targets and expression boundaries. Outcome: retain."
+    },
+    {
+      "pass": 11,
+      "lane": "python",
+      "evidenceAndOutcome": "**Builtin proof duplication (`prefer_native_string_check.py`).** Evidence: `_plain_string_adapter` repeated the exact direct/imported builtin proof already owned by `_builtin_type`. Reused that helper for `str`; preserved lexical/import mutation checks. Existing native-string tests (including builtin shadowing/mutation and intentional ValidationError contracts) passed in focused run. Outcome: DRY fix; no rule expansion."
+    },
+    {
+      "pass": 12,
+      "lane": "python",
+      "evidenceAndOutcome": "**Anchored regex validation (`prefer_regex_fullmatch.py`).** Reviewed flag exclusion, compiled pattern ownership, escaping, character classes and top-level alternation. Rule already rejects invalid/recursive/overflowing regex compilation and intentional newline contracts remain suppressible. Focused regex-fullmatch tests passed. Outcome: retain; do not guess ambiguous regex policies."
+    },
+    {
+      "pass": 13,
+      "lane": "python",
+      "evidenceAndOutcome": "**Elapsed clock scope (`prefer_monotonic_for_elapsed_time.py`, SARJ461).** Reviewed every-read proof, nested scope/comprehension escapes, clock mutation and severity of literal duration loops. Existing code separates advisory telemetry from proven while-loop duration comparisons. Package tests exercise those boundaries. Outcome: retain."
+    },
+    {
+      "pass": 14,
+      "lane": "python",
+      "evidenceAndOutcome": "**Fixed sleep arithmetic (`no_fixed_sleep_in_loop.py`, SARJ485).** Evidence: a valid AST with a 401-digit integer divided by 1 raised OverflowError during constant folding, crashing analysis. Owner is `_folded_seconds`; no-change harm is failure of the whole lint operation. Catch overflow at the arithmetic boundary and abstain, preserving literal-positive detection. Added division, floor-division and mixed float addition/multiplication overflow regressions, each first compiled as valid Python. Outcome: robustness fix; no new diagnostic on runtime-invalid expressions."
+    },
+    {
+      "pass": 15,
+      "lane": "python",
+      "evidenceAndOutcome": "**Async cancellation ownership (`no_swallowed_asyncio_cancellation.py`, SARJ458).** Reviewed straight-line exits, compound finalizers, child-task cleanup and canonical sleep severity proof. Current ownership/provenance boundaries are conservative and documented; compound handlers/uncancel abstentions are intentional. Package tests validate aliases and cancellation interactions. Outcome: retain."
+    },
+    {
+      "pass": 16,
+      "lane": "python",
+      "evidenceAndOutcome": "**Subprocess lifecycle (`subprocess_kill_without_reap.py`, SARJ464).** Reviewed unique owned Popen binding, direct timeout wait, terminal kill, later reapers and global SIGCHLD/os ownership. Existing proof rejects escaped/borrowed/context-owned handles and recognizes wait/communicate/poll. Package rule tests validate boundary. Outcome: retain; no interprocedural guessing."
+    },
+    {
+      "pass": 17,
+      "lane": "python",
+      "evidenceAndOutcome": "**Async exit cleanup (`async_cleanup_registered_synchronously.py`).** Reviewed ExitStack/AsyncExitStack constructor provenance, unescaped receiver and async callback resolution. Rule requires proven local ownership and recognizes async functions rather than names. Focused async cleanup tests passed. Outcome: retain."
+    },
+    {
+      "pass": 18,
+      "lane": "python",
+      "evidenceAndOutcome": "**Credentialed CORS (`no_cors_wildcard_with_credentials.py`, SARJ028).** Reviewed literal keyword dictionaries, nested effective unpacking, dynamic override invalidation and exact universal regexes. Existing scanner rejects computed credential flags and unknown effective keyword state. Package CORS tests validate exact duplicates/unpacks. Outcome: retain; expanding regex-language equivalence would require a stronger proof."
+    },
+    {
+      "pass": 19,
+      "lane": "python",
+      "evidenceAndOutcome": "**Interpreter source argv (`no_interpreter_source_arguments.py`).** Reviewed subprocess/asyncio/exec/spawn argument projection, executable override, shell exclusion and stdin text/encoding compatibility. Existing shared interpreter classifier owns flag semantics and the rule handles literal source channels. Package interpreter argv/encoding tests validate. Outcome: retain."
+    },
+    {
+      "pass": 20,
+      "lane": "python",
+      "evidenceAndOutcome": "**Secret log fields (`no_secret_in_log.py`).** Reviewed f-string/message interpolation, structured logger binding, literal kwargs mappings and effective dictionary overrides. Redaction token exclusions and opaque dynamic mappings avoid guessing. Existing secret-name/logging tests exercise semantic references. Outcome: retain; no name-list inflation."
+    },
+    {
+      "pass": 21,
+      "lane": "python",
+      "evidenceAndOutcome": "**Embedded SQL extraction (`_sql.py`).** Reviewed recursive static concatenation/interpolation API and newline-preserving SQL-noise masking. Shared `sql_string_value` already accepts a configurable interpolation placeholder; callers should use that rather than reimplement it. Existing SQL helper tests validate parsing/noise. Outcome: retain helper; apply reuse at pass 24."
+    },
+    {
+      "pass": 22,
+      "lane": "python",
+      "evidenceAndOutcome": "**SELECT-star docstrings (`no_select_star.py`, SARJ021).** Evidence: rule maintained a second complete docstring-owner scan equivalent to `context.docstring_node_ids`. Switched to the shared cached fact and removed redundant helper/index import. Existing SQL SELECT tests and shared docstring-fact tests cover module/class/function strings and traversal. Outcome: DRY fix; diagnostic semantics unchanged."
+    },
+    {
+      "pass": 23,
+      "lane": "python",
+      "evidenceAndOutcome": "**Store duplicate policy (`store_insert_requires_on_conflict.py`, SARJ018).** Reviewed executable-SQL context, replay-named owning callable, conflict clauses, same-target NOT EXISTS and intervening binding updates. Existing warning leaves dynamic policies opaque and requires actual SQL use. Package store-write tests validate. Outcome: retain; broad source-name-only policy not expanded."
+    },
+    {
+      "pass": 24,
+      "lane": "python",
+      "evidenceAndOutcome": "**Concatenated offset pagination (`no_offset_pagination.py`, SARJ025).** Evidence: HEAD baseline returned 0 for `'SELECT ... ' + f'LIMIT 10 OFFSET {offset}'`, current helper returned 1. Previous custom renderer preserved markers only for a top-level JoinedStr and lost nested f-string interpolation through concatenation. Reused `sql_string_value(..., interpolation_placeholder=':__sarj_dynamic__')`, deleting duplicate renderer. Added both concatenation orders, nested concatenation, static-offset/dynamic-limit negative, quoted SQL text negative, exact diagnostic count/location, and executable public positive/negative scenario. Outcome: extend existing rule to the same demonstrated dynamic SQL semantics. No severity/autofix change."
+    },
+    {
+      "pass": 25,
+      "lane": "python",
+      "evidenceAndOutcome": "**Mutable Pydantic factories (`shared_mutable_pydantic_factory.py`).** Reviewed captured mutable aliases, cyclic alias resolution, model customization and fresh factory values. Evidence: check_context rebuilt ImportIndex from the exact same context tree despite context.imports owning that fact. Reused context.imports and moved type-only ImportIndex import. Existing shared-factory tests cover alias/mutation/inert-vs-custom severity. Outcome: DRY shared-analysis fix, unchanged findings."
+    },
+    {
+      "pass": 26,
+      "lane": "python",
+      "evidenceAndOutcome": "**Pydantic validator outputs (`no_invalid_pydantic_validator_return.py`, SARJ515).** Reviewed return literals vs stored scalar/None/Union/Literal domains, numeric assignability, annotation budgets, multiple-validator abstention and unknown-field precedence. Existing proof is deliberately narrow and contains proper invalid-state boundaries. Package validator-return and precedence tests validate. Outcome: retain."
+    },
+    {
+      "pass": 27,
+      "lane": "python",
+      "evidenceAndOutcome": "**Pydantic empty bounds (`no_impossible_pydantic_field_bounds.py`).** Reviewed exclusive/inclusive integer endpoints, multiple_of arithmetic, adjacent floating values, finiteness and exact float conversion. Existing code already catches huge-int float conversion overflow and avoids approximating integers. Package bounds tests validate. Outcome: retain."
+    },
+    {
+      "pass": 28,
+      "lane": "python",
+      "evidenceAndOutcome": "**Unknown validator fields (`no_unknown_pydantic_validator_field.py`).** Reviewed canonical decorator stacks, explicitly deferred check_fields, wildcard targets and complete declared field set. Existing owner abstains on unknown/composed methods, preserving subclass extension contracts. Package validator-field tests validate. Outcome: retain."
+    },
+    {
+      "pass": 29,
+      "lane": "python",
+      "evidenceAndOutcome": "**Discriminated unions (`prefer_discriminated_model_union.py`).** Reviewed composition of data-union diagnostics with nullable model-validator proof, test exclusion, stability checks and suppression ownership. Reuses the dedicated discriminator analyzer, emits advisory model-union findings without changing external accepted combinations. Existing round-two/scope/runtime regressions validate. Outcome: retain."
+    },
+    {
+      "pass": 30,
+      "lane": "python",
+      "evidenceAndOutcome": "**Suppression comment cache (`_suppression_comments.py`, `rule_base.is_suppressed`).** Reviewed actual comment tokenization vs string content, invalid marker grammar, immutable maps and bounded cache. maxsize=1 prevents retaining a project of sources; comment map is read-only. Existing noqa/suppression tests cover strings, malformed markers and exact codes. Outcome: retain."
+    },
+    {
+      "pass": 31,
+      "lane": "typescript",
+      "evidenceAndOutcome": "SQL static concatenation composition (_sql.ts/sqlTextOf): erased operand wrappers caused `(\"SEL\" as string) + (\"ECT * FROM users\" satisfies string)` to dispatch two fragments, missing SELECT *. Minimal reproduction failed before implementation. Fix: unwrap at the existing extraction boundary. Validation: _sql suite and three downstream SQL suites."
+    },
+    {
+      "pass": 32,
+      "lane": "typescript",
+      "evidenceAndOutcome": "SQL native join ownership (_sql.ts/joinedFragmentCall): wrapped arrays, wrapped callees and static computed `join` members lost whole-statement proof. A reproduction emitted fragments plus separator instead of one query. Fix: use outerExpression and ASTUtils.getPropertyName, consuming only recognized static member text. Unknown methods remain opaque. Validation: wrapped joins, unknown member negative, nested executed query interaction."
+    },
+    {
+      "pass": 33,
+      "lane": "typescript",
+      "evidenceAndOutcome": "SQL join coercion exclusion (_sql.ts/fragmentArrayText): nested arrays must remain outside the deliberately bounded string-fragment contract even through assertions. Fix: check the unwrapped element before recursing. Validation: direct and wrapped nested-array negatives."
+    },
+    {
+      "pass": 34,
+      "lane": "typescript",
+      "evidenceAndOutcome": "SQL discarded-expression boundary (_sql.ts/isDiscardedSqlText): comparing unwrap(parent) to current fails for more than one erased wrapper. Fix: climb to outerExpression at each concatenation level. Executed queries inside substitutions remain visited. Validation: nested assertion+satisfies void negative and existing executed-call positives."
+    },
+    {
+      "pass": 35,
+      "lane": "typescript",
+      "evidenceAndOutcome": "SQL lexer reuse cost (_sql.ts, no-dynamic-sql.ts): interpolation analysis ran sqlSingleQuotedRanges and stripSqlNoise, each allocating/masking the whole text. Fix: expose one bounded sqlNoiseInfo scan yielding both products; existing public helper contracts preserved. Validation: lexer suite, dynamic SQL suite, before/after wall-time benchmark."
+    },
+    {
+      "pass": 36,
+      "lane": "typescript",
+      "evidenceAndOutcome": "Dynamic SQL operand collection (no-dynamic-sql.ts/concatOperands): recursive array spreads copy the accumulated left prefix for every + in a left-deep concat. Fix: explicit LIFO traversal pushes right then left into one output array. Validation: existing multi-offender/order cases, wrapped concatenation regressions, before/after 80,499-byte corpus benchmark."
+    },
+    {
+      "pass": 37,
+      "lane": "typescript",
+      "evidenceAndOutcome": "Dynamic SQL wrapped static context (no-dynamic-sql.ts/staticStatementText): nested assertions obscured SELECT and quote boundaries, causing two reproductions to miss runtime fragments/quoted values. Fix: unwrap before text reconstruction and flattening; use shared staticString for static operand admission. Validation: two failing positives and static/comment negatives added before fixes."
+    },
+    {
+      "pass": 38,
+      "lane": "typescript",
+      "evidenceAndOutcome": "SQL lexer dialect/noise boundary (_sql.ts/scanSqlNoise): inspected doubled quotes, nested comments, dollar tags, numbered parameters and UTF-16 offsets. Existing masking preserves offsets and excludes comments/identifiers; dialect escape modes remain documented exclusions. Outcome: retain implementation. Validation: existing _sql lexer regressions."
+    },
+    {
+      "pass": 39,
+      "lane": "typescript",
+      "evidenceAndOutcome": "Dynamic SQL static-fragment policy (no-dynamic-sql.ts/isStaticFragment): uppercase names remain an explicitly documented legacy exemption; names cannot prove static values. Broadening detection would violate current policy without a separate adoption decision. Outcome: no rule expansion. Validation: existing uppercase/static/member/comment/tagged-template tests."
+    },
+    {
+      "pass": 40,
+      "lane": "typescript",
+      "evidenceAndOutcome": "SQL star projection ownership (no-select-star.ts/hasRealSelectStar): inspected function star arguments, multiplication, qualified projections and EXISTS exclusions. Existing bounded lexical model has nested-SELECT context limits; replacing it requires a parser-backed scope model, so no speculative expansion. Outcome: retain current contract. Validation: no-select-star suite including query reconstruction interaction."
+    },
+    {
+      "pass": 41,
+      "lane": "typescript",
+      "evidenceAndOutcome": "SQL OFFSET admission (no-offset-pagination.ts): inspected query-shape requirement and recognized placeholder styles to avoid standalone/prose matches. Keyset pagination is a review advisory; random access can justify OFFSET. Outcome: preserve warning-first rule. Validation: no-offset-pagination suite."
+    },
+    {
+      "pass": 42,
+      "lane": "typescript",
+      "evidenceAndOutcome": "Insert conflict advisory scope (store-insert-requires-on-conflict.ts): nearest callable selection excludes top-level/anonymous cases, known conflict syntax is not idempotence proof. Name heuristics are documented and cannot support an error promotion. Outcome: no expansion. Validation: insert rule suite and SQL helper regressions."
+    },
+    {
+      "pass": 43,
+      "lane": "typescript",
+      "evidenceAndOutcome": "Static-string alias cache (_static-string.ts/scopedStaticString): checked stable aliases, lexical shadowing, later writes, cycles and per-SourceCode WeakMap lifetime. Cache keys are scope variables, not names/filenames; no cross-file reuse defect. Outcome: retain. Validation: existing _static-string cases, including changed text at one filename."
+    },
+    {
+      "pass": 44,
+      "lane": "typescript",
+      "evidenceAndOutcome": "AST traversal boundary (_for-each-ast-child.ts/_for-each-own-ast-child.ts): checked array holes, metadata fields, parent cycles and visitor short-circuit. Parser visitor keys are preferred where available; own reflection is explicitly bounded and skips parent. Outcome: no extra general-purpose traversal cache. Validation: package typecheck and existing consumers."
+    },
+    {
+      "pass": 45,
+      "lane": "typescript",
+      "evidenceAndOutcome": "Native fetch alias provenance (_native-fetch-reference.ts): checked local global receiver shadowing, reassignment, cyclic/transitive aliases, destructuring defaults and eight-binding limit. Existing scope-variable proof abstains from unknown clients. Outcome: retain. Validation: fetch timeout and detached fetch suites."
+    },
+    {
+      "pass": 46,
+      "lane": "typescript",
+      "evidenceAndOutcome": "Fetch init override ordering (require-fetch-timeout.ts plus tests): inspected later spreads, duplicate signal properties, unknown computed keys, null versus undefined, accessors and prototype signals. Existing handling models effective value uncertainty and Request inheritance; broadening would create false positives. Outcome: retain. Validation: require-fetch-timeout suite including native Request behavior tests."
+    },
+    {
+      "pass": 47,
+      "lane": "typescript",
+      "evidenceAndOutcome": "Raw fetch exemptions (no-raw-fetch-outside-clients.ts): inspected native fetch reference reuse, allowed wrapper modules, presigned transfer handoff, effect/server-action ownership. These policy exclusions deliberately differ from cancellation correctness. Outcome: retain separate callers over shared provenance helper. Validation: raw fetch suite."
+    },
+    {
+      "pass": 48,
+      "lane": "typescript",
+      "evidenceAndOutcome": "JSON primitive-array type delegation (no-json-stringify-object-equality.ts/syntaxMayContainObject): `[value]` with value:number was reported before consulting the checker. Fix: tri-state syntax classification returns unknown for unknown elements, allowing the existing typed owner to decide. Minimal negative failed before implementation. Validation: typed primitive expression and existing typed object/unknown positives."
+    },
+    {
+      "pass": 49,
+      "lane": "typescript",
+      "evidenceAndOutcome": "JSON primitive expression normalization (same rule): assertions, unary numbers, template strings and nested primitive arrays were treated as objects. Fix: recursively classify arrays and unwrap elements; primitive-valued syntax returns false. Three minimal negatives failed before implementation. Validation: wrappers, signed number, interpolated string, nested arrays, existing primitive exclusions."
+    },
+    {
+      "pass": 50,
+      "lane": "typescript",
+      "evidenceAndOutcome": "JSON RegExp literal object boundary (same rule): ESTree Literal also includes RegExp objects; two distinct regexes both serialize to `{}` but escaped detection. Fix: distinguish regex literals in syntax classification. Minimal positive failed before implementation. Validation: regex-array and nested-object positives, primitive negatives."
+    },
+    {
+      "pass": 51,
+      "lane": "typescript",
+      "evidenceAndOutcome": "JSON serializer alias provenance (same rule/isJsonStringify): checked const destructured aliases, defaults, imported/shadowed serializers and later writes. Existing native-global and identity checks remain conservative. Outcome: preserve alias boundary and no autofix. Validation: complete JSON equality suite."
+    },
+    {
+      "pass": 52,
+      "lane": "typescript",
+      "evidenceAndOutcome": "CORS effective-property semantics (no-cors-wildcard-with-credentials.ts): inspected case-sensitive JS property replacement followed by case-insensitive native header combination, spreads, accessors, prototypes and straight-line receiver writes. Existing handling abstains once proof is lost. Outcome: no broad duplicate CORS rule. Validation: CORS rule suite."
+    },
+    {
+      "pass": 53,
+      "lane": "typescript",
+      "evidenceAndOutcome": "Exported Next config alias safety (_exported-next-config-property.ts): checked const aliases, repeated effective keys, unknown spreads/computed keys, scope identity, escapes and isolated CommonJS export. Conservative reference rejection prevents false claims about mutated exported objects. Outcome: retain. Validation: Next source-map/SVG suites."
+    },
+    {
+      "pass": 54,
+      "lane": "typescript",
+      "evidenceAndOutcome": "SVG CSP hardening (no-dangerously-allow-svg.ts): inspected script-src none, sandbox presence/flags, duplicate directives and attachment disposition. Existing conservative duplicate-policy rejection is intentional; no inferred policy from dynamic values. Outcome: preserve security boundary. Validation: SVG suite."
+    },
+    {
+      "pass": 55,
+      "lane": "typescript",
+      "evidenceAndOutcome": "Next matcher static syntax (require-static-next-matcher.ts): inspected direct exported config, nested arrays/objects, computed fields, spreads and erased wrappers. Schema validity remains Next's owner; this rule must not duplicate the full framework validator. Outcome: retain. Validation: static matcher suite."
+    },
+    {
+      "pass": 56,
+      "lane": "typescript",
+      "evidenceAndOutcome": "Random ID reporting admission (no-insecure-random-id.ts): strong security-name detection is the only reporting branch; all later nonsecurity/path tests return into a no-report tail. Fix: remove ineffectual classification and traversal, preserving names/provenance/report behavior. Validation: full random-ID suite and before/after nonsecurity corpus benchmark; no duplicate implementation-shaped tests added."
+    },
+    {
+      "pass": 57,
+      "lane": "typescript",
+      "evidenceAndOutcome": "UUID native suggestion safety (prefer-native-random-uuid.ts): inspected native global availability, comment-preserving suggestions, resolved imports and locally shadowed require. No runtime-native dependency assumption changed; nonzero-argument/custom UUID modes remain excluded. Outcome: retain. Validation: UUID suite."
+    },
+    {
+      "pass": 58,
+      "lane": "typescript",
+      "evidenceAndOutcome": "Collection-copy performance advisory (no-reduce-accumulator-copy.ts): checked native Array/ReadonlyArray signature proof, inline fresh seed requirement, accumulator writes, nested functions/loops and copy methods. Existing type-aware ownership and no-autofix boundary protects snapshots. Outcome: retain. Validation: reducer suite."
+    },
+    {
+      "pass": 59,
+      "lane": "typescript",
+      "evidenceAndOutcome": "String accumulation repetition (no-string-concat-in-loop.ts): inspected local binding lookup, declarations inside loops, direct forEach callbacks, small static loops and immediate exits. A one-shot append is not repeated growth; warning language already avoids claiming a measured allocation cost. Outcome: retain. Validation: string-concat suite."
+    },
+    {
+      "pass": 60,
+      "lane": "typescript",
+      "evidenceAndOutcome": "Shared hygiene boundary (logging/secrets/path/comment helpers): inspected reusable logger matchers/options, credential words versus metadata flags, generated-header provenance, fixtures, protected technical comment signals and safe deletion ranges. Shared owners already prevent divergent vocabulary; no name-only semantic expansion or blanket suppression added. Outcome: retain. Validation: logging, secret-names, paths, comments and prose-budget suites; package lint/types/tests."
+    },
+    {
+      "pass": 61,
+      "lane": "sql",
+      "focus": "SQL shared index parsing",
+      "evidence": "`_index_analysis.parse_indexes` reconstructs identical frozen definitions for duplicate-index and index-budget checks. A 500-index/25,279-byte input measured 20.7ms per warm parse.",
+      "decision": "Added bounded `lru_cache(maxsize=32)` keyed by complete source and executable-body option. Return value is a tuple of frozen dataclasses containing only immutable fields; no path/I/O dependencies or invalidation requirement.",
+      "validation": "Existing index-budget, duplicate-index and FK suites; package SQL suite and before/after timing."
+    },
+    {
+      "pass": 62,
+      "lane": "sql",
+      "focus": "SQL duplicate-index comparison",
+      "evidence": "`_find_repeated_access_paths` and left-prefix detection compare every earlier index even across unrelated tables. 500 unrelated-table indexes took 1.140s median in duplicate-only checks. Exact duplicate precedence and first eligible counterpart are existing behavior contracts.",
+      "decision": "Hash exact access signatures and uniqueness; bucket nonunique B-tree prefixes by complete table/physical context while preserving earlier-candidate order and reported exclusions.",
+      "validation": "Complete duplicate-index suite includes three-way duplicates, unique/nonunique, physical options, DROP state, quoted names and prefix near misses. Package suite passed."
+    },
+    {
+      "pass": 63,
+      "lane": "sql",
+      "focus": "SQL FK quoted separators",
+      "evidence": "Minimal reproductions with `\"child;archive\"`, `\"parent;id\"`, quoted referenced-table semicolons emitted zero findings; `\"parent,id\"` emitted a finding for `int`. Existing shared scanner already recognizes quoted identifiers.",
+      "decision": "Replaced raw semicolon/comma splits and clause punctuation scan with one quote-aware segmentation helper. Added 10 indexed/unindexed interaction cases and a quoted primary-key near miss.",
+      "validation": "11 new regression cases passed; full SQL suite: 1806 passed, 4 skipped."
+    },
+    {
+      "pass": 64,
+      "lane": "sql",
+      "focus": "SQL FK diagnostic positions",
+      "evidence": "FK reporting slices/counts the source prefix for every diagnostic despite the shared cached source-location helper. Quoted delimiter fix must preserve exact line/column and suppression ownership.",
+      "decision": "Reused `source_location`; offsets now come directly from shared segments. No diagnostic wording/severity changes.",
+      "validation": "New quoted-identifier regressions assert line 3, column 3; existing repeated-identical FK location and suppression tests passed in full SQL suite."
+    },
+    {
+      "pass": 65,
+      "lane": "sql",
+      "focus": "SQL `add-constraint-requires-not-valid`",
+      "evidence": "Inspected identifier-aware action tokenization, FK referenced-column lists, fresh-table handling and NOT VALID/NOT ENFORCED exceptions. Existing parser owns quoted identifiers and nesting rather than scanning arbitrary matching text.",
+      "decision": "No demonstrated gap; retain existing narrowly scoped behavior. No speculative rule expansion.",
+      "validation": "Existing rule examples, action-interaction and malformed-syntax tests in passing full SQL suite."
+    },
+    {
+      "pass": 66,
+      "lane": "sql",
+      "focus": "SQL `enforce-timestamptz`",
+      "evidence": "Inspected parser-based identifier spans, quoted builtin recognition, column-reference exclusions and unsupported/procedural fallback. The code distinguishes timestamp identifiers from actual naive casts/types.",
+      "decision": "No demonstrated safe expansion; preserve custom schema/type boundaries.",
+      "validation": "Existing identifier/type, quoted, generated-source and dialect tests in passing full SQL suite."
+    },
+    {
+      "pass": 67,
+      "lane": "sql",
+      "focus": "SQL `prefer-text-over-varchar`",
+      "evidence": "Inspected parser-based non-type spans and exact lower-case quoted builtin handling. Schema functions and mixed-case custom types have different owners and must not be inferred as builtin types.",
+      "decision": "No change; existing syntax-aware boundary is justified.",
+      "validation": "Existing function-vs-type and schema/quoted-name tests in passing full SQL suite."
+    },
+    {
+      "pass": 68,
+      "lane": "sql",
+      "focus": "SQL `prefer-jsonb`",
+      "evidence": "Inspected CREATE/ALTER ownership, cast handling, statement splitting and quoted identifier filtering. Query/data-migration casts are deliberately excluded; DDL conversions remain covered.",
+      "decision": "No demonstrated gap; retain documented cast boundary.",
+      "validation": "Existing ALTER USING, quoted builtin, generated and query-cast tests in passing full SQL suite."
+    },
+    {
+      "pass": 69,
+      "lane": "sql",
+      "focus": "SQL `prefer-uuidv7-default`",
+      "evidence": "Inspected call-token boundary, case-sensitive quoted builtin, string/comment masking and model-owned redirection. No autofix is offered because server/version contracts require review.",
+      "decision": "No safe evidence-backed expansion identified.",
+      "validation": "Existing exact-call, comments/literals and generated-source tests in passing full SQL suite."
+    },
+    {
+      "pass": 70,
+      "lane": "sql",
+      "focus": "SQL `no-offset-pagination`",
+      "evidence": "Inspected dynamic OFFSET/MySQL LIMIT matching, cross-dialect identifiers, hash-comment/operator handling and generated/migration exclusions. Literal bounded pagination differs from dynamic offset contracts.",
+      "decision": "No change; additional query intent cannot be inferred safely.",
+      "validation": "Existing cross-dialect, nested query, malformed and bounded near-miss tests in passing full SQL suite."
+    },
+    {
+      "pass": 71,
+      "lane": "sql",
+      "focus": "SQL `index-concurrently`",
+      "evidence": "Inspected schema-aware fresh-table tracking, temporary relations, live-code filtering and dbmate section-specific remediation. A new table legitimately lacks concurrent writers.",
+      "decision": "No demonstrated safe expansion; preserve fresh-table exception.",
+      "validation": "Existing generated/procedural, schema, temporary-table and transaction-directive tests in passing full SQL suite."
+    },
+    {
+      "pass": 72,
+      "lane": "sql",
+      "focus": "SQL `mixed-migration-phases`",
+      "evidence": "Inspected forward/up-down selection, dollar-body exclusions, phase classification and complete atomicity evidence requirements. Existing evidence is substantive and duplicate/placeholder fields are rejected.",
+      "decision": "No change; avoid broadening subjective phase inference.",
+      "validation": "Existing forward/reverse, evidence, dollar-body and fresh-table interaction tests in passing full SQL suite."
+    },
+    {
+      "pass": 73,
+      "lane": "sql",
+      "focus": "SQL `idempotent-ddl`",
+      "evidence": "Inspected `_DdlCheck` dialect capability flags and supported IF EXISTS forms. Rule intentionally leaves constraint replay ownership with versioned migration runners.",
+      "decision": "No change; adding unsupported existence syntax would introduce invalid remediation.",
+      "validation": "Existing dialect and replay-policy tests in passing full SQL suite."
+    },
+    {
+      "pass": 74,
+      "lane": "sql",
+      "focus": "SQL insert replay policy",
+      "evidence": "Inspected per-write ownership, data-modifying CTE traversal, explicit schema target guard comparison and intentional insert-only suppression. A neighboring write must not supply another INSERT's policy.",
+      "decision": "No demonstrated gap; retain per-write and target-specific boundaries.",
+      "validation": "Existing CTE, alias/OVERRIDING, schema replay and dialect upsert tests in passing full SQL suite."
+    },
+    {
+      "pass": 75,
+      "lane": "sql",
+      "focus": "SQL application-schema CHECK advice",
+      "evidence": "Inspected CHECK extraction, JSON shape function detection, closed-list boundaries and ownership-conscious warning text. Cross-column/database invariants must not be deleted automatically.",
+      "decision": "No change; existing advisory boundary avoids claiming application ownership.",
+      "validation": "Existing JSON/enum-like positives and invariant/near-miss tests in passing full SQL suite."
+    },
+    {
+      "pass": 76,
+      "lane": "iac",
+      "focus": "HCL lexical scanner",
+      "evidence": "Inspected comment/string/heredoc frame handling, escaped template openers, nested interpolation and depth bounds. Shared immutable lexical documents are already content-cached.",
+      "decision": "No additional demonstrated scanner defect; retained centralized masking.",
+      "validation": "Existing nested template, escaped data, malformed source and comment/suppression tests in IaC package suite."
+    },
+    {
+      "pass": 77,
+      "lane": "iac",
+      "focus": "HCL literal decoding",
+      "evidence": "Inspected Unicode scalar checks, escaped-backslash handling, parenthesis stripping and static template discrimination. Decoder already distinguishes valid `\\U` escapes from invalid scalars.",
+      "decision": "Reuse existing decoder at local-exec boundary rather than add another decoder/cache.",
+      "validation": "Existing literal tests plus new command cases for eight-digit escapes, literal Unicode dollars and invalid scalars."
+    },
+    {
+      "pass": 78,
+      "lane": "iac",
+      "focus": "HCL local-exec command literals",
+      "evidence": "Reproduced rejection of grouped static command strings and valid eight-digit HCL escapes under JSON decoding. Decoded Unicode dollar characters are literal source data, not Terraform interpolation.",
+      "decision": "Replace duplicate JSON decoding with `_hcl.literal_string`, accepting static HCL forms and preserving dynamic exclusion.",
+      "validation": "New `test_local_exec.py`: static HCL command extraction, escaped templates/backslashes, dynamic template/expression and invalid Unicode cases. 20 new extraction cases passed."
+    },
+    {
+      "pass": 79,
+      "lane": "iac",
+      "focus": "HCL local-exec shell interpreter",
+      "evidence": "JSON decoding rejects valid trailing commas and grouped list expressions, silently preventing static command extraction. Dynamic executables/options cannot establish shell semantics.",
+      "decision": "Tokenize static list arguments and decode each string through HCL helper; retain approved shell names/options and `-c` requirement.",
+      "validation": "New trailing-comma, grouped-list, Unicode shell and multiline-list cases; dynamic, malformed, unknown-option and non-shell negatives."
+    },
+    {
+      "pass": 80,
+      "lane": "iac",
+      "focus": "HCL balanced structure ownership",
+      "evidence": "Compared `hcl._balanced_structure` with `_literal_policy.balanced_blocks`; both reject mismatched typed delimiters before literal-sensitive rules. Moving helpers across public/parser/rule layers would broaden change without a demonstrated semantic defect.",
+      "decision": "No change; avoided a DRY refactor that would add coupling or change permissive parser consumers.",
+      "validation": "Existing malformed/nesting tests plus local-exec dynamic/invalid negatives; IaC package suite."
+    },
+    {
+      "pass": 81,
+      "lane": "iac",
+      "focus": "HCL deletion protection",
+      "evidence": "Inspected curated provider guards, literal lifecycle protection, documented default-protected resource types, nested Cloud SQL handling and unresolved-expression severity.",
+      "decision": "No evidence-backed provider/resource expansion; preserve version-sensitive documented semantics.",
+      "validation": "Existing literal, provider policy, nested guard, view/default and dynamic-warning tests; IaC package suite."
+    },
+    {
+      "pass": 82,
+      "lane": "iac",
+      "focus": "HCL irreplaceable prevent_destroy",
+      "evidence": "Inspected provider PREVENT policies, lifecycle fallback, destructive options and unresolved protection severity. Force deletion alone does not establish disposable-resource intent.",
+      "decision": "No change; avoid inferring storage durability or provider support from names.",
+      "validation": "Existing provider/lifecycle/destructive option and dynamic-warning tests; IaC package suite."
+    },
+    {
+      "pass": 83,
+      "lane": "iac",
+      "focus": "HCL environment conditionals",
+      "evidence": "Inspected normalized environment operands, nested grouping, template-identity parsing and literal environment value qualification. Values must prove identity use rather than merely contain environment-looking text.",
+      "decision": "No demonstrated safe expansion; preserve conservative expression resolution.",
+      "validation": "Existing templates, collection predicates, normalizers and non-identity near misses; IaC package suite."
+    },
+    {
+      "pass": 84,
+      "lane": "iac",
+      "focus": "HCL dead environment inputs",
+      "evidence": "Inspected scalar type/default canonicalization, sensitive attributes, duplicate keys and conflicting var-file order. Unreadable/ambiguous environments remain blind rather than proving redundancy.",
+      "decision": "No change; unresolved configuration ordering must not authorize deletion.",
+      "validation": "Existing scalar grouping, JSON duplicate/redefinition, conflicts and typed/default interaction tests; IaC package suite."
+    },
+    {
+      "pass": 85,
+      "lane": "iac",
+      "focus": "HCL project basic privileges",
+      "evidence": "Inspected static string/local resolution, bounded recursion, literal role collections and direct jsonencode binding roles. Nested metadata/member strings cannot prove actual grants.",
+      "decision": "No demonstrated safe expansion; preserve direct binding ownership and cycle/depth limits.",
+      "validation": "Existing IAM role, aliases/collections, JSON policy and false-positive boundary tests; IaC package suite."
+    },
+    {
+      "pass": 86,
+      "lane": "iac",
+      "focus": "HCL managed service-account keys",
+      "evidence": "Inspected balanced block parsing, decoded resource labels and exact Google managed-key resource identity. Service accounts and string occurrences alone do not imply credentials.",
+      "decision": "No change; exact semantic resource ownership is appropriate.",
+      "validation": "Existing malformed, escaped label, comment/template and service-account near misses; IaC package suite."
+    },
+    {
+      "pass": 87,
+      "lane": "iac",
+      "focus": "HCL restated comments",
+      "evidence": "Inspected short adjacent declaration matching, rationale/reference/directive preservation, heredoc handling and generated/fixture scope. Comment intent beyond those boundaries remains subjective.",
+      "decision": "No safe expansion; retained warning-only review boundary.",
+      "validation": "Existing protected rationale, headings/groups, heredocs, directives and label/attribute examples; IaC package suite."
+    },
+    {
+      "pass": 88,
+      "lane": "iac",
+      "focus": "HCL terraform_data condition",
+      "evidence": "Inspected resource identity and lifecycle pre/postcondition ownership with local/remote provisioner exceptions. Actual provisioning resources have an operational condition contract.",
+      "decision": "No change; keep provisioner exception.",
+      "validation": "Existing plan-only condition positives and provisioning negatives; IaC package suite."
+    },
+    {
+      "pass": 89,
+      "lane": "iac",
+      "focus": "HCL mocked Terraform oracle",
+      "evidence": "Inspected direct injected literal entries, typed numeric/string equality, assertion ownership, delimiter matching and reference normalization. Derived behavior and different types must remain valid tests.",
+      "decision": "No demonstrated safe expansion; avoid broad test-oracle deletion claims.",
+      "validation": "Existing static equivalence, type/dynamic near misses, overrides and malformed tests; IaC package suite."
+    },
+    {
+      "pass": 90,
+      "lane": "iac",
+      "focus": "HCL redundant variable validation",
+      "evidence": "Inspected type-kind parsing, conversion/can ownership, nullability-sensitive length/keys logic and exhaustive Boolean predicates. Nullable inputs can make an apparently redundant validation substantive.",
+      "decision": "No change; preserve nullability and bounded expression semantics.",
+      "validation": "Existing typed/nullability, parenthesis, exhaustive-Boolean and meaningful-constraint near misses; IaC package suite."
+    },
+    {
+      "pass": 91,
+      "lane": "shared-tooling",
+      "focus": "Native DevOps report document reuse",
+      "target": "libs/linting/devops_source.py:_diagnostic",
+      "evidence": "Each finding reread and rebuilt SourceDocument; 500 findings over one 34,000-byte file reproduced repeated work.",
+      "decision": "implemented report-scoped document cache; fresh reports reread changed files",
+      "validation": "Native parser regressions, strict lint/types; five alternating benchmark pairs preserve exact diagnostics, median 1.528759s to 0.081481s."
+    },
+    {
+      "pass": 92,
+      "lane": "shared-tooling",
+      "focus": "Terraform diagnostic protocol normalization",
+      "target": "libs/linting/devops_source.py:parse_terraform",
+      "evidence": "The same diagnostics array was converted and validated twice in one report.",
+      "decision": "reuse the validated records for findings and error-count consistency",
+      "validation": "Existing Terraform report validity, missing-provider and coordinate regressions."
+    },
+    {
+      "pass": 93,
+      "lane": "shared-tooling",
+      "focus": "Source coordinate conversions",
+      "target": "libs/diagnostics/source.py",
+      "evidence": "Inspected byte/codepoint/UTF-16 conversion, surrogate boundaries, invalid UTF-8 preservation and CRLF split rejection; sparse UTF-16 indexing is already local to each document.",
+      "decision": "retain existing coordinate semantics; avoid speculative shared index refactor",
+      "validation": "Existing diagnostics boundary tests; new multi-document Unicode normalization regression."
+    },
+    {
+      "pass": 94,
+      "lane": "shared-tooling",
+      "focus": "Native/external analysis concurrency",
+      "target": "libs/linting/scheduling.py",
+      "evidence": "One boundary owns at most two workers, native/external result order is deterministic and a failed group preserves completed coverage.",
+      "decision": "retain bounded concurrency; no nested pool added",
+      "validation": "Existing one/two-worker, failure redaction and invalid-worker tests."
+    },
+    {
+      "pass": 95,
+      "lane": "shared-tooling",
+      "focus": "Duplicate-code normalization",
+      "target": "libs/linting/duplicate_code.py",
+      "evidence": "Inspected clone graph deduplication, per-call source cache, allowed-path filtering and own-block fingerprint anchoring; path containment and line bounds are enforced.",
+      "decision": "retain existing ownership and baseline identities",
+      "validation": "Existing duplicate ordering, exclusions, malformed output and fingerprint move tests."
+    },
+    {
+      "pass": 96,
+      "lane": "shared-tooling",
+      "focus": "Isolated corpus process bounds",
+      "target": "libs/rules/corpus_runner.py",
+      "evidence": "Inspected output draining, argv byte splitting, per-batch deadlines, descendant cleanup and post-run inventory verification; independent batches already use fresh processes.",
+      "decision": "retain existing isolation and limits",
+      "validation": "Existing isolated-corpus runner tests, including multi-root and deadline boundaries."
+    },
+    {
+      "pass": 97,
+      "lane": "shared-tooling",
+      "focus": "Pinned corpus selection and snapshots",
+      "target": "libs/corpus/snapshot.py",
+      "evidence": "Tracked-file selection filters link-like paths; digest includes relative path/size/content and checks pre/post file identity and Git revision.",
+      "decision": "retain content and revision checks; no metadata-only cache",
+      "validation": "Existing corpus foundation selection, digest drift and private-report tests."
+    },
+    {
+      "pass": 98,
+      "lane": "shared-tooling",
+      "focus": "Release process transport",
+      "target": "libs/release/process.py",
+      "evidence": "Inspected fixed argv binary transport, isolated build homes, secret-name filtering and signal return-code handling; process adapters intentionally have distinct streaming/text contracts.",
+      "decision": "retain transport boundaries; do not consolidate incompatible result contracts",
+      "validation": "Existing process byte-preservation, failed-execution and credential-free environment tests."
+    },
+    {
+      "pass": 99,
+      "lane": "shared-tooling",
+      "focus": "Rule dependency fingerprints",
+      "target": "libs/repository/rule_dependencies.py",
+      "evidence": "Inspected module graph traversal, directed local imports, TYPE_CHECKING exclusion, immutable JSON leaves and missing-import rejection; snapshot state owns each graph.",
+      "decision": "retain immutable-snapshot scope and explicit failure for ambiguous modules",
+      "validation": "Rule-change inventory comparison and repository artifact consistency gates."
+    },
+    {
+      "pass": 100,
+      "lane": "shared-tooling",
+      "focus": "Prepared Kubernetes and embedded shell boundaries",
+      "target": "libs/linting/prepared_kubernetes.py; libs/linting/embedded_shell.py; libs/schema_boundary.py",
+      "evidence": "Inspected exact GVK PodSpec mapping, exception identity/staleness, native check attribution, shell argv proof and schema reference closure. Existing helpers already centralize semantic ownership.",
+      "decision": "retain explicit adapters and exclusions; no name-only policy expansions",
+      "validation": "Existing Kubernetes/schema reuse controls and canonical full verification; native executable selected from pinned local install."
+    }
+  ],
+  "integrationBaseCommit": "350a941affdae9b81f45a0baa3d09e366e1b61df",
+  "validationEvidence": {
+    "preIntegrationPython": {
+      "passedInFullRun": 20532,
+      "transientFailures": 8,
+      "passedOnIsolatedRerun": 8,
+      "sourceChangesBetweenRuns": false,
+      "lint": "passed",
+      "types": "passed"
+    },
+    "preIntegrationSql": {
+      "passed": 1806,
+      "skipped": 4,
+      "lint": "passed",
+      "types": "passed"
+    },
+    "preIntegrationIac": {
+      "passed": 1468,
+      "lint": "passed",
+      "types": "passed"
+    },
+    "postIntegrationTypescriptFocused": {
+      "files": 7,
+      "passed": 397,
+      "lint": "passed",
+      "types": "passed"
+    },
+    "independentReview": "Native report caching and TypeScript diffs reviewed separately after the 100 source-boundary inspections; no correctness regression found.",
+    "canonicalVerification": "Final make verify and exact-head hosted checks are recorded in the pull request.",
+    "postIntegrationJsonEquality": {
+      "passed": 47,
+      "lint": "passed"
+    },
+    "postIntegrationHclGroupedLiterals": {
+      "passed": 141,
+      "lint": "passed",
+      "format": "passed",
+      "types": "passed"
+    },
+    "immutableRuleComparison": {
+      "command": "mise exec node@24.21.0 -- uv run --project packages/standards --frozen code-standards --root . maintain rules changes --before origin/main --after HEAD",
+      "sourceRevision": "3d53fb15450ae4e34dc23b2f3066681c997fd0a0",
+      "beforeRevision": "350a941affdae9b81f45a0baa3d09e366e1b61df",
+      "result": "passed",
+      "implementationChanged": 211,
+      "added": 0,
+      "removed": 0,
+      "policyChanged": 0,
+      "note": "Shared helper dependencies propagate implementation fingerprints; 211 does not count independently improved rules."
+    },
+    "nativeIntegrationPreparation": {
+      "command": "uv run --project packages/standards --frozen python -m sarj_standards.libs.release.native_test_setup --root .",
+      "result": "passed",
+      "note": "The first Knip five-second attestation timed out on the shared VM; retry with the installed exact Node and Knip versions selected succeeded. No timeouts or checks were relaxed."
+    }
+  },
+  "supplementaryReviewFindings": [
+    {
+      "boundary": "JSON equality without type information",
+      "gap": "Unknown spread arrays acquired a diagnostic in the initial fallback change.",
+      "fix": "Keep spreads opaque recursively while retaining direct opaque/object evidence and the typed path.",
+      "validation": "Two negative cases failed before the correction; 47 tests and scoped ESLint passed afterward."
+    },
+    {
+      "boundary": "HCL grouped literal interpreter elements",
+      "gap": "Literal shell/flag expressions wrapped in parentheses were still skipped by token-by-token list decoding.",
+      "fix": "Move the existing depth-aware comma splitter into the shared HCL module and decode complete elements. Dynamic/functions and invalid separators remain opaque.",
+      "validation": "Eight additional public extractor cases; 141 focused local-exec/IAM tests, Ruff, formatting and strict types passed."
+    },
+    {
+      "boundary": "TypeScript helper declaration order after dead-code removal",
+      "gap": "Removing the other caller made nameWords a single-caller private helper above isStrongSecurityName, which the full @sarj/stepdown dogfood gate rejects.",
+      "fix": "Move the unchanged declaration below its sole caller.",
+      "validation": "The initial canonical gate reproduced the error; scoped ESLint with the built dogfood config passes after the move. The affected and remaining canonical stages are resumed separately."
+    },
+    {
+      "boundary": "Reachable-history secret scan across other remote branches",
+      "gap": "The hosted all-ref scan flagged a published source SHA-256 in another branch audit, while this branch and main history passed.",
+      "evidence": {
+        "commit": "7288d1e8a301d87d6a6dca4524c7697286220faa",
+        "reportPath": "packages/standards/benchmarks/checking-strength-50-passes-20261020.json",
+        "line": 519,
+        "field": "sourceSha256",
+        "sourcePath": "packages/python/src/sarj_python_lint/cast_access.py",
+        "sha256": "f89e15c036d1ccb6d2be2022c32530c836646d972410453a8f23ef94cb4d515e",
+        "proof": "Hash equals SHA-256 of the source file bytes at the recorded repository commit."
+      },
+      "fix": "Restrict a generic-api-key exception to this exact public digest AND exact audit path. Other rules and values remain subject to scanning.",
+      "validation": "Pinned Gitleaks8.30.1 controls: the exact digest/path passes; the same digest at another path and a different digest at the same path both fail as expected. Full tracked-tree/all-ref scan results are recorded in the PR."
+    }
+  ],
+  "initialCorpusValidation": {
+    "corpus": "reviewed-repository",
+    "revision": "0c9cee7de2478bad7f28cb28b2ffa2458bb9055b",
+    "digest": "sha256:74468af2a0f8f07ea0ec10960317aeabf6105981b20876f2e10826ac6853f78a",
+    "files": 419,
+    "bytes": 6070345,
+    "batches": 2,
+    "stdoutLines": 0,
+    "returncodes": [
+      0,
+      0
+    ],
+    "elapsedSeconds": 121.056344,
+    "include": [
+      "packages/*/src/**/*.py"
+    ],
+    "batchSize": 250,
+    "rules": [
+      "no-fixed-sleep-in-loop",
+      "no-offset-pagination",
+      "no-select-star",
+      "prefer-native-string-check",
+      "prefer-walrus-regex-match",
+      "prefer-walrus-stream-loop",
+      "shared-mutable-pydantic-factory"
+    ],
+    "diagnostics": 0,
+    "method": "run_isolated_corpora: verified tracked existing files at the recorded revision and digest, one fresh process per batch, inventory verified again after execution.",
+    "limitations": "Repository implementation corpus only; no external consumer or third-party corpus evaluation."
+  },
+  "benchmarkEnvironment": {
+    "os": "Linux shared VM",
+    "python": "3.15.0",
+    "node": "24.22.0",
+    "baselineCommit": "350a941affdae9b81f45a0baa3d09e366e1b61df",
+    "limitations": "Shared VM scheduling affects wall time. Source and dependency versions are pinned by the recorded commit and package locks. The final verifier uses the repository Node pin 24.21.0; benchmark timing used 24.22.0."
+  },
+  "benchmarkReproduction": {
+    "instructions": "From the repository root with locked package environments installed, run the commands below to materialize these deterministic generators in a fresh temporary directory. Benchmarks are component probes, not correctness gates or end-to-end performance guarantees.",
+    "commands": [
+      "review_bench_dir=$(mktemp -d)",
+      "export CODE_STANDARDS_BENCH_DIR=\"$review_bench_dir\"",
+      "python3 - <<'PYSETUP'",
+      "import json",
+      "import os",
+      "from pathlib import Path",
+      "import subprocess",
+      "report = json.loads(Path('packages/standards/benchmarks/code-quality-100-passes-20261020.json').read_text())",
+      "directory = Path(os.environ['CODE_STANDARDS_BENCH_DIR'])",
+      "for name, lines in report['benchmarkReproduction']['programs'].items():",
+      "    (directory / name).write_text('\\n'.join(lines) + '\\n')",
+      "baseline = report['benchmarkEnvironment']['baselineCommit']",
+      "source_path = 'packages/standards/src/sarj_standards/libs/linting/devops_source.py'",
+      "(directory / 'devops_source.before.py').write_bytes(subprocess.check_output(['git', 'show', baseline + ':' + source_path]))",
+      "for name in subprocess.check_output(['git', 'ls-tree', '-r', '--name-only', baseline, 'packages/sql/src'], text=True).splitlines():",
+      "    target = directory / 'sql-before' / Path(name).relative_to('packages/sql/src')",
+      "    target.parent.mkdir(parents=True, exist_ok=True)",
+      "    target.write_bytes(subprocess.check_output(['git', 'show', baseline + ':' + name]))",
+      "PYSETUP",
+      "uv run --project packages/standards --frozen python \"$review_bench_dir/devops.py\"",
+      "PYTHONPATH=\"$review_bench_dir/sql-before\" uv run --project packages/sql --frozen python \"$review_bench_dir/sql.py\" baseline",
+      "uv run --project packages/sql --frozen python \"$review_bench_dir/sql.py\" candidate",
+      "mise exec node@24.22.0 -- node \"$review_bench_dir/typescript.mjs\"",
+      "uv run --project packages/python --frozen python \"$review_bench_dir/python.py\""
+    ],
+    "programs": {
+      "devops.py": [
+        "from importlib.util import module_from_spec, spec_from_file_location",
+        "import json",
+        "import os",
+        "from pathlib import Path",
+        "from statistics import median",
+        "import sys",
+        "from tempfile import TemporaryDirectory",
+        "from time import perf_counter",
+        "from sarj_standards.libs.linting import devops_source",
+        "",
+        "spec = spec_from_file_location('devops_source_before', Path(os.environ['CODE_STANDARDS_BENCH_DIR']) / 'devops_source.before.py')",
+        "before = module_from_spec(spec)",
+        "sys.modules[spec.name] = before",
+        "spec.loader.exec_module(before)",
+        "with TemporaryDirectory() as directory:",
+        "    root = Path(directory)",
+        "    (root / 'Dockerfile').write_text('RUN echo example\\n' * 2000)",
+        "    payload = json.dumps([{'code': 'DL3008', 'message': 'pin', 'file': 'Dockerfile', 'line': index + 1, 'column': 1, 'level': 'warning'} for index in range(500)])",
+        "    expected = before.parse_hadolint(payload, root)",
+        "    assert expected == devops_source.parse_hadolint(payload, root)",
+        "    samples = {'before': [], 'after': []}",
+        "    for _ in range(5):",
+        "        for name, module in [('before', before), ('after', devops_source)]:",
+        "            started = perf_counter()",
+        "            assert module.parse_hadolint(payload, root) == expected",
+        "            samples[name].append(perf_counter() - started)",
+        "    print(json.dumps({'files': 1, 'source_bytes': 34000, 'findings': 500, 'samples': samples, 'median_seconds': {name: median(times) for name, times in samples.items()}}, indent=2))"
+      ],
+      "sql.py": [
+        "from pathlib import Path",
+        "from statistics import median",
+        "import argparse",
+        "import json",
+        "import time",
+        "import tracemalloc",
+        "",
+        "from sarj_sql_lint.rule_base import _scan, clear_path_caches",
+        "from sarj_sql_lint.rules import _index_analysis",
+        "from sarj_sql_lint.rules.index_budget import IndexBudget",
+        "from sarj_sql_lint.rules.no_duplicate_index import NoDuplicateIndex",
+        "",
+        "parser = argparse.ArgumentParser()",
+        "parser.add_argument('revision')",
+        "options = parser.parse_args()",
+        "source = '\\n'.join(f'CREATE INDEX event_{i}_idx ON event_{i}(owner_id);' for i in range(500))",
+        "path = Path('migrations/000_indexes.sql')",
+        "rules = (NoDuplicateIndex(), IndexBudget())",
+        "",
+        "def check():",
+        "    return [rule.check(path, source) for rule in rules]",
+        "",
+        "cold = []",
+        "for _ in range(5):",
+        "    _scan.cache_clear()",
+        "    clear_path_caches()",
+        "    if hasattr(_index_analysis.parse_indexes, 'cache_clear'):",
+        "        _index_analysis.parse_indexes.cache_clear()",
+        "    start = time.perf_counter()",
+        "    check()",
+        "    cold.append(time.perf_counter() - start)",
+        "warm = []",
+        "for _ in range(7):",
+        "    start = time.perf_counter()",
+        "    check()",
+        "    warm.append(time.perf_counter() - start)",
+        "tracemalloc.start()",
+        "check()",
+        "_, peak = tracemalloc.get_traced_memory()",
+        "tracemalloc.stop()",
+        "print(json.dumps({'revision': options.revision, 'files':1, 'bytes':len(source), 'lines':500,'cold_seconds':cold,'cold_median':median(cold),'warm_seconds':warm,'warm_median':median(warm),'warm_peak_traced_bytes':peak}))"
+      ],
+      "typescript.mjs": [
+        "import { execFileSync } from 'node:child_process';",
+        "import { createRequire } from 'node:module';",
+        "import { writeFileSync } from 'node:fs';",
+        "import { performance } from 'node:perf_hooks';",
+        "import { threadCpuUsage } from 'node:process';",
+        "const root = process.cwd();",
+        "const temporaryRoot = process.env.CODE_STANDARDS_BENCH_DIR;",
+        "const packageRoot = root + '/packages/typescript';",
+        "const require = createRequire(packageRoot + '/package.json');",
+        "const { createJiti } = require('jiti');",
+        "const jiti = createJiti(packageRoot + '/package.json');",
+        "const { Linter } = require('eslint');",
+        "const parser = require('@typescript-eslint/parser');",
+        "function original(name) {",
+        "  const source = execFileSync('git', ['show', '350a941affdae9b81f45a0baa3d09e366e1b61df:packages/typescript/src/rules/' + name + '.ts'], {cwd:root,encoding:'utf8'});",
+        "  const rewritten = source.replace(/from \"\\.\\/([^\\\"]+)\\.js\"/g, (_,file) => 'from \"' + (name === 'no-dynamic-sql' && file === '_sql' ? temporaryRoot + '/typescript-original-_sql.ts' : packageRoot + '/src/rules/' + file + '.ts') + '\"');",
+        "  const path = temporaryRoot + '/typescript-original-' + name + '.ts';",
+        "  writeFileSync(path,rewritten.replaceAll('\"@typescript-eslint/utils\"', JSON.stringify(require.resolve('@typescript-eslint/utils'))));",
+        "  return path;",
+        "}",
+        "original('_sql');",
+        "const median = numbers => [...numbers].sort((a,b)=>a-b)[Math.floor(numbers.length/2)];",
+        "const sqlSource = Array.from({length:15}, (_,i) => 'db.query(' + ['\"SELECT id FROM records WHERE note = \\'\"', ...Array.from({length:80}, (_,j) => j%2 === 0 ? 'value_' + i + '_' + j : '\"literal\"'), '\"\\'\"'].join(' + ') + ');').join('\\n');",
+        "const randomSource = Array.from({length:400}, (_,i) => 'const output_' + i + ' = base + \"/tmp/\" + Math.random().toString(36).slice(2);').join('\\n');",
+        "for (const [name,source] of [['no-dynamic-sql',sqlSource],['no-insecure-random-id',randomSource]]) {",
+        "  const before = (await jiti.import(original(name))).default;",
+        "  const after = (await jiti.import(packageRoot + '/src/rules/' + name + '.ts')).default;",
+        "  const linter = new Linter();",
+        "  const config = rule => [{files:['**/*.ts'],languageOptions:{parser},plugins:{probe:{rules:{candidate:rule}}},rules:{'probe/candidate':'error'}}];",
+        "  const configs = [config(before),config(after)];",
+        "  linter.verify(source,configs[0],'probe.ts');",
+        "  const parsed=linter.getSourceCode();",
+        "  const messages=configs.map(c=>linter.verify(parsed,c,'probe.ts').map(m=>[m.messageId,m.line,m.column]));",
+        "  if(JSON.stringify(messages[0])!==JSON.stringify(messages[1])) throw Error('diagnostics changed in benchmark corpus: '+name);",
+        "  const samples=[[],[]];",
+        "  for(let trial=0;trial<9;trial++) for(const side of trial%2?[1,0]:[0,1]) {",
+        "    const cpu=threadCpuUsage(), wall=performance.now();",
+        "    for(let iteration=0;iteration<8;iteration++)linter.verify(parsed,configs[side],'probe.ts');",
+        "    const delta=threadCpuUsage(cpu);",
+        "    samples[side].push({cpuMs:(delta.user+delta.system)/8000,wallMs:(performance.now()-wall)/8});",
+        "  }",
+        "  console.log(JSON.stringify({name,sourceBytes:Buffer.byteLength(source),diagnostics:messages[0].length,before:{cpuMs:median(samples[0].map(s=>s.cpuMs)),wallMs:median(samples[0].map(s=>s.wallMs))},after:{cpuMs:median(samples[1].map(s=>s.cpuMs)),wallMs:median(samples[1].map(s=>s.wallMs))}}));",
+        "}"
+      ],
+      "python.py": [
+        "import ast",
+        "from pathlib import Path",
+        "from statistics import median",
+        "import subprocess",
+        "from time import perf_counter",
+        "from sarj_python_lint._file_context import PythonFileContext",
+        "from sarj_python_lint.__main__ import check_source",
+        "from sarj_python_lint.rules.prefer_walrus_regex_match import PreferWalrusRegexMatch",
+        "from sarj_python_lint.rules.prefer_walrus_stream_loop import PreferWalrusStreamLoop",
+        "from sarj_python_lint.rules.prefer_regex_fullmatch import PreferRegexFullmatch",
+        "original = subprocess.run(['git','show','350a941affdae9b81f45a0baa3d09e366e1b61df:packages/python/src/sarj_python_lint/rules/prefer_walrus_regex_match.py'],check=True,capture_output=True,text=True).stdout",
+        "namespace = {'__name__': 'baseline_walrus'}",
+        "exec(compile(original,'baseline.py','exec'),namespace)",
+        "path = Path('benchmark/renderer.py')",
+        "source = 'import re\\ndef render(text):\\n' + ''.join(f'    result_{i} = re.search(\"x\", text)\\n    if result_{i}:\\n        consume(result_{i})\\n' for i in range(100))",
+        "print('python', subprocess.run(['python','--version'],text=True,capture_output=True).stdout.strip(),'files',1,'bytes',len(source),'nodes',sum(1 for _ in ast.walk(ast.parse(source))),flush=True)",
+        "for mode in ['warm','cold','combined']:",
+        "    results={'baseline':[],'current':[]}",
+        "    context = PythonFileContext(path, source)",
+        "    context.tree",
+        "    context.node_index",
+        "    for repetition in range(5):",
+        "        for label in (['baseline','current'] if repetition%2 == 0 else ['current','baseline']):",
+        "            rule=namespace['PreferWalrusRegexMatch']() if label=='baseline' else PreferWalrusRegexMatch()",
+        "            start=perf_counter()",
+        "            if mode=='combined':",
+        "                findings=check_source([rule,PreferWalrusStreamLoop(),PreferRegexFullmatch()],path,source)",
+        "            else:",
+        "                findings=rule.check_context(context if mode=='warm' else PythonFileContext(path,source))",
+        "            elapsed=perf_counter()-start",
+        "            assert len(findings)==100",
+        "            results[label].append(elapsed*1000)",
+        "    print(mode, {name:round(median(values),3) for name,values in results.items()},'ms median of 5',flush=True)"
+      ]
+    }
+  },
+  "finalCorpusValidation": {
+    "corpus": "reviewed-repository-final",
+    "revision": "46400770742f28f871acb7290a742c5e34c77732",
+    "digest": "sha256:f4b5eaf355e67c2c1a6f31b455d80397bbdec1a3a13edd9505b295b1f7c3bbfe",
+    "files": 419,
+    "bytes": 6070235,
+    "batches": 2,
+    "stdoutLines": 0,
+    "returncodes": [
+      0,
+      0
+    ],
+    "elapsedSeconds": 21.900246
+  }
+}

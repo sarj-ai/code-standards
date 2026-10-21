@@ -4,7 +4,7 @@ from collections import Counter
 from functools import lru_cache
 from typing import TYPE_CHECKING
 
-from sarj_iac_lint._hcl import Block, blocks, literal_string, strip_outer_parentheses, tokens
+from sarj_iac_lint._hcl import Block, blocks, comma_parts, literal_string, strip_outer_parentheses, tokens
 
 
 if TYPE_CHECKING:
@@ -74,35 +74,19 @@ def _static_join(
 ) -> str | None:
     if parts[:2] != ("join", "(") or parts[-1:] != (")",):
         return None
-    arguments = _comma_parts(parts[2:-1])
+    arguments = comma_parts(parts[2:-1])
     if len(arguments) != _JOIN_ARGUMENT_COUNT:
         return None
     separator = _static_string(arguments[0], local_values, seen, depth + 1)
     collection = arguments[1]
     if separator is None or collection[:1] != ("[",) or collection[-1:] != ("]",):
         return None
-    elements = [_static_string(element, local_values, seen, depth + 1) for element in _comma_parts(collection[1:-1])]
+    elements = [_static_string(element, local_values, seen, depth + 1) for element in comma_parts(collection[1:-1])]
     return (
         separator.join(element for element in elements if element is not None)
         if all(element is not None for element in elements)
         else None
     )
-
-
-def _comma_parts(parts: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
-    values: list[tuple[str, ...]] = []
-    start, depth = 0, 0
-    for index, part in enumerate(parts):
-        if part in {"(", "[", "{"}:
-            depth += 1
-        elif part in {")", "]", "}"}:
-            depth -= 1
-        elif part == "," and depth == 0:
-            values.append(parts[start:index])
-            start = index + 1
-    if start < len(parts):
-        values.append(parts[start:])
-    return tuple(values)
 
 
 def _role_set_items(expression: str, collections: Mapping[str, str] | None) -> tuple[str, ...]:

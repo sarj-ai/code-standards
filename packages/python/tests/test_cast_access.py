@@ -60,3 +60,75 @@ def test_shadowing_in_an_unrelated_scope_does_not_hide_proven_cast_access() -> N
     source = 'import typing\ndef custom(getattr):\n    return getattr\ncoerce = getattr(typing, "cast")\n'
 
     assert len(indirect_typing_cast_accesses(Path("app.py"), source)) == 1
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (
+            't = object()\nclass Reader:\n    import typing as t\n    def read(self):\n        return getattr(t, "cast", None)\n',
+            0,
+        ),
+        (
+            'import typing as t\nclass Reader:\n    t = object()\n    def read(self):\n        return getattr(t, "cast")\n',
+            1,
+        ),
+        (
+            'import typing as t\nclass Reader:\n    getattr = custom\n    def read(self):\n        return getattr(t, "cast")\n',
+            1,
+        ),
+        (
+            't = object()\nclass Outer:\n    import typing as t\n    class Inner:\n        value = getattr(t, "cast", None)\n',
+            0,
+        ),
+        ('t = object()\nclass Reader:\n    import typing as t\n    read = lambda: getattr(t, "cast", None)\n', 0),
+        (
+            't = object()\nclass Reader:\n    import typing as t\n    values = [getattr(t, "cast", None) for _ in (1,)]\n',
+            0,
+        ),
+        ('class Reader:\n    import typing as t\n    value = getattr(t, "cast")\n', 1),
+        ('class Reader:\n    import typing as t\n    values = [t for t in (getattr(t, "cast"),)]\n', 1),
+        ('import typing as t\nread = lambda: getattr(t, "cast")\n', 1),
+    ],
+    ids=(
+        "method-skips-class-import",
+        "method-skips-class-shadow",
+        "method-skips-class-builtin-shadow",
+        "nested-class-skips-outer-class-import",
+        "lambda-skips-class-import",
+        "comprehension-skips-class-import",
+        "class-body-sees-class-import",
+        "comprehension-first-iterable-sees-class-import",
+        "module-lambda-sees-module-import",
+    ),
+)
+def test_reflection_follows_python_class_scope_boundaries(source: str, expected: int) -> None:
+    assert len(indirect_typing_cast_accesses(Path("app.py"), source)) == expected
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'import typing as t\ndef read[t]():\n    return getattr(t, "cast")\n',
+        'import typing as t\ndef read[getattr]():\n    return getattr(t, "cast")\n',
+        'import typing as t\nclass Reader[t]:\n    def read(self):\n        return getattr(t, "cast")\n',
+        'import typing as t\ntype Result[t] = getattr(t, "cast")\n',
+    ],
+    ids=("generic-function-receiver", "generic-function-builtin", "generic-class-receiver", "generic-type-alias"),
+)
+def test_type_parameters_do_not_resolve_as_module_or_builtin_names(source: str) -> None:
+    assert indirect_typing_cast_accesses(Path("app.py"), source) == ()
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'import typing as t\ndef read[t](value=getattr(t, "cast")):\n    return value\n',
+        'import typing as t\ndef read[t](*, value=getattr(t, "cast")):\n    return value\n',
+        'import typing as t\n@getattr(t, "cast")(object, lambda function: function)\ndef read[t]():\n    pass\n',
+        'import typing as t\n@getattr(t, "cast")(object, lambda cls: cls)\nclass Reader[t]:\n    pass\n',
+    ],
+    ids=("function-default", "function-keyword-default", "function-decorator", "class-decorator"),
+)
+def test_type_parameters_do_not_shadow_outer_evaluation_scopes(source: str) -> None:
+    assert len(indirect_typing_cast_accesses(Path("app.py"), source)) == 1

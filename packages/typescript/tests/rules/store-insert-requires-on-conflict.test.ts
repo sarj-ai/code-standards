@@ -18,6 +18,7 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("store-insert-requires-on-conflict", rule, {
   valid: [
+    { name: "preserves conflict handling through wrapped SQL fragments", code: 'function seed() { db.query(("INSERT INTO users(id) VALUES (?) " as string) + ("ON CONFLICT DO NOTHING" satisfies string)); }' },
     { name: "does not infer replay contracts at module scope", code: "db.prepare('INSERT INTO events(id) VALUES (?)').run();" },
     { name: "does not inherit replay names through anonymous callbacks", code: "function seed() { register(() => db.prepare('INSERT INTO events(id) VALUES (?)').run()); }" },
     { name: "does not mistake computed method names for replay contracts", code: "class Writer { [seed]() { db.prepare('INSERT INTO events(id) VALUES (?)').run(); } }" },
@@ -120,6 +121,7 @@ RULE_TESTER.run("store-insert-requires-on-conflict", rule, {
     },
   ],
   invalid: [
+    { name: "reconstructs an insert through erased SQL fragments", code: 'function seed() { db.query(("INS" as string) + ("ERT INTO users(id) VALUES (?)" satisfies string)); }', errors: [{ messageId: "storeInsertRequiresOnConflict" }] },
     { name: "inspects a seed insert reconstructed with an empty separator", code: "function seed() { db.query(['INS', 'ERT INTO users(id) VALUES (1)'].join('')); }", errors: [{ messageId: "storeInsertRequiresOnConflict" }] },
     { name: "reports the documented bare insert", code: STORE_INSERT_REQUIRES_ON_CONFLICT_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "storeInsertRequiresOnConflict" }] },
     {

@@ -223,6 +223,7 @@ def _json_tool(
 
 
 def parse_actionlint(payload: str, root: Path) -> tuple[Diagnostic, ...]:
+    documents: dict[Path, SourceDocument] = {}
     return tuple(
         _diagnostic(
             "actionlint",
@@ -230,6 +231,7 @@ def parse_actionlint(payload: str, root: Path) -> tuple[Diagnostic, ...]:
             _text(item, "message"),
             _text(item, "filepath"),
             root,
+            documents=documents,
             line=_integer(item, "line"),
             column=_integer(item, "column"),
             byte_column=True,
@@ -239,6 +241,7 @@ def parse_actionlint(payload: str, root: Path) -> tuple[Diagnostic, ...]:
 
 
 def parse_hadolint(payload: str, root: Path) -> tuple[Diagnostic, ...]:
+    documents: dict[Path, SourceDocument] = {}
     records = _records(parse_json(payload))
     for item in records:
         if item.get("level") not in {"error", "warning", "info", "style", "ignore"}:
@@ -251,6 +254,7 @@ def parse_hadolint(payload: str, root: Path) -> tuple[Diagnostic, ...]:
             _text(item, "message"),
             _text(item, "file"),
             root,
+            documents=documents,
             line=_integer(item, "line"),
             column=_integer(item, "column"),
         )
@@ -259,6 +263,7 @@ def parse_hadolint(payload: str, root: Path) -> tuple[Diagnostic, ...]:
 
 
 def parse_tflint(payload: str, root: Path, *, cwd: Path | None = None) -> tuple[Diagnostic, ...]:
+    documents: dict[Path, SourceDocument] = {}
     report = _table(parse_json(payload))
     errors = _records(report.get("errors"))
     if errors:
@@ -278,6 +283,7 @@ def parse_tflint(payload: str, root: Path, *, cwd: Path | None = None) -> tuple[
                 _text(item, "message"),
                 str((cwd or root) / _text(region, "filename")),
                 root,
+                documents=documents,
                 line=_integer(point, "line"),
                 column=_integer(point, "column"),
                 byte_column=True,
@@ -287,12 +293,14 @@ def parse_tflint(payload: str, root: Path, *, cwd: Path | None = None) -> tuple[
 
 
 def parse_terraform(payload: str, root: Path, *, cwd: Path | None = None) -> tuple[Diagnostic, ...]:
+    documents: dict[Path, SourceDocument] = {}
     report = _table(parse_json(payload))
     if not isinstance(report.get("valid"), bool) or report.get("format_version") != "1.0":
         message = "Terraform validation report must declare validity and a supported format"
         raise ValueError(message)
+    records = _records(report.get("diagnostics"))
     diagnostics: list[Diagnostic] = []
-    for item in _records(report.get("diagnostics")):
+    for item in records:
         summary = _text(item, "summary")
         if summary in _MISSING_TERRAFORM_INPUTS:
             raise NativeToolError(summary)
@@ -321,16 +329,14 @@ def parse_terraform(payload: str, root: Path, *, cwd: Path | None = None) -> tup
                     summary,
                     str((cwd or root) / _text(location, "filename")),
                     root,
+                    documents=documents,
                     line=_integer(start, "line"),
                     column=_integer(start, "column"),
                     byte_column=True,
                 )
             )
     error_count = _integer(report, "error_count", minimum=0)
-    if (
-        error_count != sum(item.get("severity") == "error" for item in _records(report.get("diagnostics")))
-        or bool(error_count) == report["valid"]
-    ):
+    if error_count != sum(item.get("severity") == "error" for item in records) or bool(error_count) == report["valid"]:
         message = "Terraform validity and error count disagree"
         raise ValueError(message)
     return tuple(diagnostics)
@@ -472,12 +478,16 @@ def _diagnostic(
     filename: str,
     root: Path,
     *,
+    documents: dict[Path, SourceDocument],
     line: int,
     column: int,
     byte_column: bool = False,
 ) -> Diagnostic:
     path = _contained(root, filename)
-    document = SourceDocument.read(path)
+    document = documents.get(path)
+    if document is None:
+        document = SourceDocument.read(path)
+        documents[path] = document
     point = document.byte_point(line=line, column=column) if byte_column else document.point(line=line, column=column)
     if point is None:
         message = "Tool reported a position outside its source document"

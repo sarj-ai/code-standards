@@ -149,3 +149,20 @@ def test_numeric_wrappers_preserve_dynamic_pagination(expression: str) -> None:
 def test_numeric_offset_scanning_preserves_fixed_and_opaque_values(expression: str) -> None:
     source = f'q = "SELECT id FROM account ORDER BY id OFFSET {expression}"\n'  # ruff: ignore[hardcoded-sql-expression] -- fixed/opaque pagination parser fixtures
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        ("'SELECT id FROM task ORDER BY id ' + f'LIMIT 10 OFFSET {offset}'", 1),
+        ("f'SELECT id FROM task OFFSET {offset}' + ' ROWS'", 1),
+        ("'SELECT id FROM task OFFSET ' + (f'{offset}' + ' ROWS')", 1),
+        ("f'SELECT id FROM task LIMIT {limit} ' + 'OFFSET 2'", 0),
+        ('''"SELECT id FROM task WHERE note = '" + f"OFFSET {offset}" + "'"''', 0),
+    ],
+)
+def test_concatenated_fstrings_preserve_dynamic_offset_and_sql_context(expression: str, expected: int) -> None:
+    findings = _check(f"query = {expression}\n")
+    assert len(findings) == expected
+    if findings:
+        assert findings[0].col == 9

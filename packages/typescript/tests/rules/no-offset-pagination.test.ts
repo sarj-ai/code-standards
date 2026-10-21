@@ -81,6 +81,7 @@ RULE_TESTER.run("no-offset-pagination", rule, {
     },
   ],
   invalid: [
+    { name: "reconstructs an offset through erased SQL fragments", code: 'db.query(("SELECT id FROM users LIMIT 1 OFF" as string) + ("SET ?" satisfies string));', errors: [{ messageId: "noOffsetPagination" }] },
     { name: "preserves a newline join separator after a line comment", code: "db.query(['SELECT id FROM users -- note', 'LIMIT 1 OFFSET 1'].join('\\n'));", errors: [{ messageId: "noOffsetPagination" }] },
     { name: "reports the documented offset query", code: NO_OFFSET_PAGINATION_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noOffsetPagination" }] },
     {

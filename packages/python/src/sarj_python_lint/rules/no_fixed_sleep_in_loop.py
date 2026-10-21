@@ -235,7 +235,12 @@ def _folded_seconds(node: ast.expr | None, constants: Mapping[str, float]) -> fl
             return None if value is None else -value
         case ast.BinOp(left=left, op=op, right=right):
             lhs, rhs = _folded_seconds(left, constants), _folded_seconds(right, constants)
-            return None if lhs is None or rhs is None else _arithmetic(op, lhs, rhs)
+            if lhs is None or rhs is None:
+                return None
+            try:
+                return _arithmetic(op, lhs, rhs)
+            except OverflowError:
+                return None
         case _:
             return None
 

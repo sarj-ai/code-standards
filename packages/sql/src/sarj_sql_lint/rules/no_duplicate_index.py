@@ -111,19 +111,24 @@ class NoDuplicateIndex(Rule):
                 )
             )
         _find_repeated_access_paths(indexes, reported, findings, path, self.code)
-        for position, later in enumerate(indexes):
+        contexts: dict[_IndexContext, list[IndexDefinition]] = {}
+        for later in indexes:
             if later.start in reported:
                 continue
+            if later.unique or later.method != "btree":
+                continue
+            previous = contexts.setdefault(_prefix_context(later), [])
             earlier = next(
                 (
                     candidate
-                    for candidate in indexes[:position]
+                    for candidate in previous
                     if candidate.start not in reported
                     and (_strict_prefix_pair(candidate, later) or _strict_prefix_pair(later, candidate))
                 ),
                 None,
             )
             if earlier is None:
+                previous.append(later)
                 continue
             shorter, longer = (earlier, later) if _strict_prefix_pair(earlier, later) else (later, earlier)
             reported.add(later.start)
@@ -215,20 +220,14 @@ def _active_indexes(path: Path, source: str) -> list[IndexDefinition]:
 def _find_repeated_access_paths(
     indexes: list[IndexDefinition], reported: set[int], findings: list[Diagnostic], path: Path, code: str
 ) -> None:
-    for position, index in enumerate(indexes):
+    seen: dict[tuple[_IndexAccessSignature, bool], IndexDefinition] = {}
+    for index in indexes:
         if index.start in reported:
             continue
-        counterpart = next(
-            (
-                candidate
-                for candidate in indexes[:position]
-                if candidate.start not in reported
-                and candidate.unique != index.unique
-                and index_access_signature(candidate) == index_access_signature(index)
-            ),
-            None,
-        )
+        signature = index_access_signature(index)
+        counterpart = seen.get((signature, not index.unique))
         if counterpart is None:
+            seen.setdefault((signature, index.unique), index)
             continue
         nonunique, unique = (counterpart, index) if index.unique else (index, counterpart)
         reported.add(index.start)

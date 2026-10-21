@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 import re
 from typing import TYPE_CHECKING, NamedTuple
 
@@ -162,6 +163,7 @@ def authored_secondary_indexes(path: Path, source: str) -> tuple[IndexDefinition
     return tuple(index for index in authored_indexes(path, source) if not index.unique)
 
 
+@lru_cache(maxsize=32)
 def parse_indexes(source: str, *, include_executable_bodies: bool = False) -> tuple[IndexDefinition, ...]:
     masked = _index_source(source, include_executable_bodies=include_executable_bodies)
     uncommented = mask_sql_comments(source)

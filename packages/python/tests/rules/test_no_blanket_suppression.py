@@ -32,8 +32,12 @@ if TYPE_CHECKING:
         "# pyright: reportReturnType=information\nvalue = vendor.value\n",
         "# pyright: reportReturnType=hint\nvalue = vendor.value\n",
         "# pyright: strictParameterNoneValue=false\ndef result(value: int = None) -> None:\n    pass\n",
+        '# pyright: analyzeUnannotatedFunctions=false\ndef result():\n    return 1 + "bad"\n',
+        "# pyright: disableBytesTypePromotions=false\ndef result(value: bytes) -> None:\n    pass\nresult(bytearray())\n",
         "# ruff: file-ignore[unused-import]\nimport vendor\n",
         "# ruff: noqa: F401\nimport vendor\n",
+        "# flake8: noqa: F401 -- dependency registers its plugin through import\nimport vendor\n",
+        "# flake8: noqa: TID251 -- dependency uses its external wire protocol\nimport vendor\n",
         "# ruff: disable[unused-import]\nimport vendor\n# ruff: enable[unused-import]\n",
         "# pyright: reportIgnoreCommentWithoutRule=false\nvalue = vendor.value # pyright: ignore\n",
     ],
@@ -51,6 +55,11 @@ def test_blocks_unscoped_or_file_wide_type_suppression(source: str) -> None:
         "# pyright: strict\nvalue = 1\n",
         "# pyright: reportPrivateUsage=true, reportReturnType=error\nvalue = 1\n",
         "# pyright: enableExperimentalFeatures=false\nvalue = 1\n",
+        "# pyright: analyzeUnannotatedFunctions=true\nvalue = 1\n",
+        "# pyright: disableBytesTypePromotions=true\nvalue = 1\n",
+        "# pyright: strictParameterNoneValue=true\nvalue = 1\n",
+        "text = '# pyright: analyzeUnannotatedFunctions=false'\n",
+        "# Example # pyright: disableBytesTypePromotions=false\nvalue = 1\n",
         "# The vendor requires a pyright: ignore directive in its examples.\nvalue = 1\n",
         "# A local example is `# pyright: ignore`.\nvalue = 1\n",
         '# The example uses "# pyright: reportReturnType=false".\nvalue = 1\n',
@@ -58,6 +67,8 @@ def test_blocks_unscoped_or_file_wide_type_suppression(source: str) -> None:
         "text = '# pyright: basic'\n",
         '"""Example:\n# pyright: reportReturnType=false\n"""\n',
         "value = vendor.value # noqa: F401 -- exact Ruff exception\n",
+        "import vendor # flake8: noqa: F401 -- dependency registers its plugin through import\n",
+        "# Example # flake8: noqa: F401\nimport vendor\n",
     ],
 )
 def test_preserves_scoped_exceptions_and_comment_provenance(source: str) -> None:
@@ -82,6 +93,16 @@ def test_bare_sarj_marker_cannot_waive_an_unrelated_rule() -> None:
 )
 def test_suppression_integrity_checks_cannot_suppress_themselves(rule: Rule, source: str) -> None:
     assert len(check_source([rule], Path("app/service.py"), source)) == 1
+
+
+def test_flake8_file_scope_takes_precedence_over_its_generic_reason() -> None:
+    source = "# flake8: noqa: TID251 -- needed # sarj-noqa: SARJ523 -- dependency uses its external wire protocol\nimport vendor\n"
+    findings = check_source(
+        [NoBlanketSuppression(), NoFileLevelEscapeHatchSuppression(), NoVagueSuppressionDescription()],
+        Path("app/service.py"),
+        source,
+    )
+    assert [(finding.line, finding.col, finding.code) for finding in findings] == [(1, 1, "SARJ523")]
 
 
 @pytest.mark.parametrize("code", ["SARJ054", "SARJ419", "SARJ448", "SARJ523"])

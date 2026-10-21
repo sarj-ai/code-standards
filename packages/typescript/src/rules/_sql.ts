@@ -3,9 +3,9 @@
  *
  */
 
-import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
-import { unwrapExpression } from "./_unwrap-expression.js";
+import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 import { staticString } from "./_static-string.js";
 
 /** Mask SQL values and comments without changing text or line lengths. */
@@ -14,9 +14,17 @@ export function stripSqlNoise(text: string): string {
 }
 
 export function sqlSingleQuotedRanges(text: string): readonly (readonly [number, number])[] {
-  const ranges: Array<readonly [number, number]> = [];
-  scanSqlNoise(text, (start, end) => ranges.push([start, end]));
-  return ranges;
+  return sqlNoiseInfo(text).singleQuotedRanges;
+}
+
+/** Mask SQL and record value ranges together for interpolation analysis. */
+export function sqlNoiseInfo(text: string): {
+  readonly text: string;
+  readonly singleQuotedRanges: readonly (readonly [number, number])[];
+} {
+  const singleQuotedRanges: Array<readonly [number, number]> = [];
+  const masked = scanSqlNoise(text, (start, end) => singleQuotedRanges.push([start, end]));
+  return { text: masked, singleQuotedRanges };
 }
 
 function scanSqlNoise(text: string, onSingleQuoted?: (start: number, end: number) => void): string {
@@ -115,6 +123,7 @@ const SUBSTITUTION_MARKER = "?";
 
 /** Reconstruct static SQL literals, templates, concatenations, and fragment arrays. */
 export function sqlTextOf(node: TSESTree.Node): string | null {
+  node = unwrapExpression(node);
   switch (node.type) {
     case AST_NODE_TYPES.Literal:
       return typeof node.value === "string" ? node.value : null;
@@ -145,7 +154,7 @@ function fragmentArrayText(node: TSESTree.ArrayExpression): string | null {
   if (separator === null) return null;
   const parts: string[] = [];
   for (const element of node.elements) {
-    if (element === null || (join !== null && element.type === AST_NODE_TYPES.ArrayExpression)) {
+    if (element === null || (join !== null && unwrapExpression(element).type === AST_NODE_TYPES.ArrayExpression)) {
       return null;
     }
     const part = sqlTextOf(element);
@@ -159,16 +168,16 @@ function fragmentArrayText(node: TSESTree.ArrayExpression): string | null {
 
 /** Return whether an array's fragments are consumed together by `.join(...)`. */
 function joinedFragmentCall(node: TSESTree.ArrayExpression): TSESTree.CallExpression | null {
-  const parent = node.parent;
+  const value = outerExpression(node);
+  const parent = value.parent;
+  const callee = parent?.type === AST_NODE_TYPES.MemberExpression ? outerExpression(parent) : null;
   return (
     parent?.type === AST_NODE_TYPES.MemberExpression &&
-    parent.object === node &&
-    !parent.computed &&
-    parent.property.type === AST_NODE_TYPES.Identifier &&
-    parent.property.name === "join" &&
-    parent.parent?.type === AST_NODE_TYPES.CallExpression &&
-    parent.parent.callee === parent
-  ) ? parent.parent : null;
+    parent.object === value &&
+    ASTUtils.getPropertyName(parent) === "join" &&
+    callee?.parent?.type === AST_NODE_TYPES.CallExpression &&
+    callee.parent.callee === callee
+  ) ? callee.parent : null;
 }
 
 /** Mark only text incorporated into a composite, leaving executed substitutions visible. */
@@ -217,6 +226,8 @@ export function createSqlListener(
       markConsumed(node, consumed);
       const separator = join.arguments[0];
       if (separator !== undefined && staticString(separator) !== null) markConsumed(separator, consumed);
+      const member = unwrapExpression(join.callee);
+      if (member.type === AST_NODE_TYPES.MemberExpression && member.computed) markConsumed(member.property, consumed);
     },
     TemplateLiteral: (node: TSESTree.TemplateLiteral): void => {
       visit(node);
@@ -229,12 +240,11 @@ export function createSqlListener(
 
 /** Ignore discarded text while still visiting query calls in its interpolations. */
 function isDiscardedSqlText(node: TSESTree.Node): boolean {
-  let current = node;
+  let current = outerExpression(node);
   let parent = current.parent;
   while (parent !== undefined && parent !== null) {
-    if (unwrapExpression(parent) === current ||
-        (parent.type === AST_NODE_TYPES.BinaryExpression && parent.operator === "+")) {
-      current = parent;
+    if (parent.type === AST_NODE_TYPES.BinaryExpression && parent.operator === "+") {
+      current = outerExpression(parent);
       parent = current.parent;
       continue;
     }

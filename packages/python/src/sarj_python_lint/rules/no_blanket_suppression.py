@@ -29,10 +29,12 @@ _SCOPED_IGNORE = re.compile(r"^ignore\s*\[\s*report[A-Za-z]+(?:\s*,\s*report[A-Z
 _DIAGNOSTIC = re.compile(r"^report[A-Z][A-Za-z]+$")
 _WEAKENED = frozenset({"false", "none", "warning", "information", "hint"})
 _WEAKER_MODES = frozenset({"basic", "standard"})
+_DISABLED_CHECKS = frozenset({"analyzeUnannotatedFunctions", "disableBytesTypePromotions", "strictParameterNoneValue"})
 _RUFF_BROAD = re.compile(
     r"^ruff:\s*(?:file-ignore\s*\[(?P<file>[^\]]+)\]|noqa\s*:\s*(?P<codes>[A-Za-z0-9_, ]+)|disable\s*\[[^\]]+\])",
     re.IGNORECASE,
 )
+_FLAKE8_BROAD = re.compile(r"^flake8:\s*noqa\s*:\s*[A-Za-z][A-Za-z0-9]*", re.IGNORECASE)
 _BAD = "def value() -> str:\n    return 1 # pyright: ignore\n"
 _GOOD = "value = vendor.value # pyright: ignore[reportPrivateUsage] -- the dependency exposes this API only privately\n"
 
@@ -51,7 +53,7 @@ class NoBlanketSuppression(Rule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Checks actual Python comment tokens for bare or empty sarj-noqa, unscoped pyright: ignore, basic/standard Pyright modes, report* downgrades below error, strictParameterNoneValue=false and scoped Ruff file/range disables. SARJ054 retains precedence for banned-api file directives.",
+            "Checks actual Python comment tokens for bare or empty sarj-noqa, unscoped pyright: ignore, basic/standard Pyright modes, report* downgrades below error, analyzeUnannotatedFunctions/disableBytesTypePromotions/strictParameterNoneValue=false and scoped Ruff/Flake8 file or Ruff range disables. SARJ054 retains precedence for Ruff banned-api file directives.",
             "Ruff owns blanket noqa and type: ignore through PGH004 and PGH003. Exact local exceptions remain available; this rule does not judge whether their explanations justify the exception.",
             "Directive examples inside strings and unrelated Pyright feature flags are excluded. Source-generated markers cannot waive accountability; use explicit whole-path exclusions for generated/vendor code. Consumer type-checker configuration remains outside this source rule.",
             "The full Standards gate protects this rule and the existing suppression-accountability checks from inline waivers, rule exclusions and diagnostic baselines. Explicitly selected partial checks remain scoped.",
@@ -105,6 +107,8 @@ class NoBlanketSuppression(Rule):
 
 
 def _broad_ruff(body: str) -> bool:
+    if _FLAKE8_BROAD.match(body) is not None:
+        return True
     match = _RUFF_BROAD.match(body)
     if match is None:
         return False
@@ -123,7 +127,7 @@ def _broad_pyright(tail: str, *, configuration: bool) -> bool:
         if option in _WEAKER_MODES:
             return True
         name, separator, value = option.partition("=")
-        if separator and name.strip() == "strictParameterNoneValue" and value.strip() == "false":
+        if separator and name.strip() in _DISABLED_CHECKS and value.strip() == "false":
             return True
         if separator and _DIAGNOSTIC.fullmatch(name.strip()) and value.strip() in _WEAKENED:
             return True

@@ -326,6 +326,22 @@ _OPENERS = frozenset("([{")
 _CLOSERS = frozenset(")]}")
 
 
+def comma_parts(parts: tuple[str, ...]) -> tuple[tuple[str, ...], ...]:
+    values: list[tuple[str, ...]] = []
+    start, depth = 0, 0
+    for index, part in enumerate(parts):
+        if part in {"(", "[", "{"}:
+            depth += 1
+        elif part in {")", "]", "}"}:
+            depth -= 1
+        elif part == "," and depth == 0:
+            values.append(parts[start:index])
+            start = index + 1
+    if start < len(parts):
+        values.append(parts[start:])
+    return tuple(values)
+
+
 def strip_outer_parentheses(value: tuple[str, ...]) -> tuple[str, ...]:
     if len(value) < _PARENTHESIS_PAIR_LENGTH or value[0] != "(" or value[-1] != ")":
         return value
