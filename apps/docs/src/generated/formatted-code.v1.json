@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "84bde6e2211e466db43da934e484995749f821ff7f1e0ec4d5cfd45a9988d9a2",
-  "cliSha256": "806b5fe83135dbff17e687d9a071fd5f4dfea1056d079174d507a42415f5bfc5",
+  "catalogSha256": "570b1b2eace0adaa02d5a2e9b2564e8eadb9b96caed70700cd213d83487904f3",
+  "cliSha256": "7c0922d18c816ad0d424861bf63108842381c868b37040e0397663902623169d",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -16001,6 +16001,101 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "DDL without a positive timeout"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "text:ci-cloud-target-literal": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "scripts/ci/provenance.sh",
+              "source": "gcloud kms keys versions get-public-key 1 --key signer --keyring trust --location global --project example-trust\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "scripts/ci/provenance.sh",
+          "id": "fixed-public-key-trust-read",
+          "outcome": "accept",
+          "scenarioId": "public-key-trust",
+          "title": "A public key retains its fixed trust authority"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "cloudbuild/build.yaml",
+              "source": "steps: [{ name: docker, args: [build, .] }]\nimages: [\"us-docker.pkg.dev/example-dev/images/app:$COMMIT_SHA\"]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "cloudbuild/build.yaml",
+          "id": "literal-build-output",
+          "outcome": "reject",
+          "scenarioId": "build-output",
+          "title": "A build output chooses one project"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "scripts/ci/publish.sh",
+              "source": "gcloud artifacts repositories list --project=example-dev\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "scripts/ci/publish.sh",
+          "id": "literal-project-flag",
+          "outcome": "reject",
+          "scenarioId": "project-flag",
+          "title": "A command selects one literal project"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "scripts/ci/provenance.sh",
+              "source": "gcloud kms keys versions create --project example-dev\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "scripts/ci/provenance.sh",
+          "id": "other-kms-project-target",
+          "outcome": "reject",
+          "scenarioId": "public-key-trust",
+          "title": "Other KMS operations still select a project"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "cloudbuild/build.yaml",
+              "source": "steps: [{ name: docker, args: [build, .] }]\nimages: [\"us-docker.pkg.dev/$PROJECT_ID/images/app:$COMMIT_SHA\"]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "cloudbuild/build.yaml",
+          "id": "selected-build-output",
+          "outcome": "accept",
+          "scenarioId": "build-output",
+          "title": "Cloud Build supplies the selected project"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "scripts/ci/publish.sh",
+              "source": "gcloud artifacts repositories list --project=\"$PROJECT_ID\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "scripts/ci/publish.sh",
+          "id": "selected-project-flag",
+          "outcome": "accept",
+          "scenarioId": "project-flag",
+          "title": "A command consumes the selected project"
         }
       ],
       "optionsSchemaSource": null

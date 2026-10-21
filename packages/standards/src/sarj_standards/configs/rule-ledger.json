@@ -367,6 +367,7 @@
       "test-phase-label-comment"
     ],
     "text": [
+      "ci-cloud-target-literal",
       "cloudbuild-contract",
       "commented-out-config",
       "config-comment-wall",
@@ -606,7 +607,8 @@
       "SARJ309",
       "SARJ310",
       "SARJ311",
-      "SARJ315"
+      "SARJ315",
+      "SARJ316"
     ]
   },
   "retired": [
