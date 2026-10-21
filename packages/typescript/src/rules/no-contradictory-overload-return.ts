@@ -44,7 +44,7 @@ export default createRule<Options, MessageIds>({
     messages: { contradictoryReturn: "For input {{input}}, this returned literal contradicts the overload result {{expected}}. Preserve the input/result relationship in a checked case map, implementation or variant-specific operation." },
   }, defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text) || !context.sourceCode.parserServices?.program) return {};
+    if (isGeneratedFile(context, context.sourceCode.text) || !context.sourceCode.parserServices?.program) return {};
     const services = ESLintUtils.getParserServices(context);
     const checker = services.program.getTypeChecker();
     const options = services.program.getCompilerOptions();

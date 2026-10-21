@@ -94,7 +94,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context: Ctx) {
-    if (isTestFile(context.filename)) {
+    if (isTestFile(context)) {
       return {};
     }
 

@@ -162,7 +162,7 @@ export default createRule<[], "excessiveComplexity">({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (isGeneratedFile(context, context.sourceCode.text)) return {};
     function check(node: FunctionNode): void {
       const points = functionComplexity(node, context.sourceCode.visitorKeys);
       const score = points.reduce((sum, point) => sum + point.amount, 0);

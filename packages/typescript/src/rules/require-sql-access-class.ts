@@ -319,8 +319,8 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (
-      isTestFile(context.filename) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
+      isTestFile(context) ||
+      isGeneratedFile(context, context.sourceCode.text)
     )
       return {};
     function knownNonDatabase(node: TSESTree.Node, seen = new Set<TSESTree.Node>()): boolean {

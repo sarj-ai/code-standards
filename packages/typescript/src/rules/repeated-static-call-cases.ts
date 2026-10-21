@@ -157,7 +157,7 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     const sourceCode = context.sourceCode;
-    if (!isTestFile(context.filename) || isGeneratedFile(context.filename, sourceCode.text)) return {};
+    if (!isTestFile(context) || isGeneratedFile(context, sourceCode.text)) return {};
     const duplicateGroups = new Map<TSESTree.Node, Map<string, FunctionNode[]>>();
     const pending: PendingFinding[] = [];
     return {

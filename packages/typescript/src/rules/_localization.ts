@@ -14,7 +14,7 @@ import {
   type ComponentImport,
   importedComponent,
 } from "./_jsx-accessibility.js";
-import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
+import { isGeneratedFile, isStoryFile, isTestFile, type FilePath } from "./_paths.js";
 
 export interface LocalizationOptions {
   readonly enabled?: boolean;
@@ -29,7 +29,7 @@ export const LOCALIZATION_PROPERTIES = {
 } as const;
 
 export function localizationExcluded(
-  filename: string,
+  filename: FilePath,
   source: string,
   options: LocalizationOptions | undefined,
 ): boolean {

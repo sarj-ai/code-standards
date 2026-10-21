@@ -71,15 +71,15 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (/\.(?:js|jsx|mjs|cjs)$/iu.test(context.filename) ||
-        isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+        isGeneratedFile(context, context.sourceCode.text)) return {};
     const program: TSESTree.Program = context.sourceCode.ast;
     const operationsFor = createServiceOperationResolver(program);
     const isExportedServiceClass = createExportedServiceClassResolver(program);
     return {
       ClassDeclaration(node): void {
         if (node.id === null || node.abstract || node.decorators.length > 0 || !isServiceRole(node.id.name, context.filename)) return;
-        if (isExportedServiceClass(node) && !isTestFile(context.filename) &&
-            !isStoryFile(context.filename) && !isScriptFile(context.filename)) return;
+        if (isExportedServiceClass(node) && !isTestFile(context) &&
+            !isStoryFile(context) && !isScriptFile(context)) return;
         const operations = operationsFor(node);
         if (operations.length === 0 || hasDeclaredServiceContract(node, operations, program) !== false) return;
         context.report({

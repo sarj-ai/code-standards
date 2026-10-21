@@ -85,8 +85,8 @@ export default createRule<Options, MessageIds>({
   create(context) {
     const normalizedFilename = context.filename.replaceAll("\\", "/");
     if (
-      isTestFile(context.filename) ||
-      isGeneratedFile(context.filename, context.sourceCode.text) ||
+      isTestFile(context) ||
+      isGeneratedFile(context, context.sourceCode.text) ||
       normalizedFilename.includes("src/rules/")
     )
       return {};

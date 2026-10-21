@@ -118,9 +118,9 @@ export default createRule<Options, MessageIds>({
   create(context) {
     if (
       DESIGN_SYSTEM_PATH.test(context.filename) ||
-      isTestFile(context.filename) ||
-      isStoryFile(context.filename) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
+      isTestFile(context) ||
+      isStoryFile(context) ||
+      isGeneratedFile(context, context.sourceCode.text)
     ) {
       return {};
     }

@@ -473,7 +473,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [{ max: MAX_TRY_BODY_STATEMENTS }],
   create(context, [options]) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) {
+    if (isGeneratedFile(context, context.sourceCode.text)) {
       return {};
     }
 

@@ -855,9 +855,8 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    const { filename } = context;
-    if (isTestFile(filename) || isStoryFile(filename) || isScriptFile(filename)) return {};
-    if (isGeneratedFile(filename, context.sourceCode.getText())) return {};
+    if (isTestFile(context) || isStoryFile(context) || isScriptFile(context)) return {};
+    if (isGeneratedFile(context, context.sourceCode.getText())) return {};
 
     // One pass over the module's top level, and only for a file that actually
     // has an options-object constructor to read.

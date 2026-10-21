@@ -145,11 +145,11 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     const sourceCode = context.sourceCode;
-    if (isGeneratedFile(context.filename, sourceCode.getText())) {
+    if (isGeneratedFile(context, sourceCode.getText())) {
       return {};
     }
     // A test that covers `z.nativeEnum` must call it; see @fileoverview.
-    if (isTestFile(context.filename)) {
+    if (isTestFile(context)) {
       return {};
     }
 

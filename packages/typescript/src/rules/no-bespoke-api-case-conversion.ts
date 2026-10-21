@@ -114,8 +114,8 @@ export default createRule<Options, MessageIds>({
     const basename = filename.slice(filename.lastIndexOf("/") + 1);
     if (
       !ADAPTER_BASENAME_RE.test(basename) ||
-      isGeneratedFile(filename, context.sourceCode.text) ||
-      isTestFile(filename, ["fixtureTree"])
+      isGeneratedFile(context, context.sourceCode.text) ||
+      isTestFile(context, ["fixtureTree"])
     ) {
       return {};
     }

@@ -132,9 +132,9 @@ export default createRule<Options, MessageIds>({
   create(context) {
     if (
       /\.(?:js|jsx|mjs|cjs)$/iu.test(context.filename) ||
-      isTestFile(context.filename) ||
-      isStoryFile(context.filename) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
+      isTestFile(context) ||
+      isStoryFile(context) ||
+      isGeneratedFile(context, context.sourceCode.text)
     ) return {};
     return {
       "Program:exit"(program): void {

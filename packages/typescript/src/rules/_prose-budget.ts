@@ -4,7 +4,7 @@
 
 import { AST_NODE_TYPES, type TSESTree, type TSESLint } from "@typescript-eslint/utils";
 
-import { isGeneratedFile, isScriptFile, isStoryFile, isTestFile } from "./_paths.js";
+import { isGeneratedFile, isScriptFile, isStoryFile, isTestFile, type FilePath } from "./_paths.js";
 
 const DIRECTIVE_RE = /^(?:!|eslint\b|eslint-|@ts-|prettier|biome-|c8\b|v8\b|istanbul\b|@vite|webpack|@jsx|@jest-environment|@vitest-environment|#__|todo\b|fixme\b|hack\b)/i;
 const LICENSE_RE = /\b(?:copyright|spdx-license-identifier|licensed under)\b/i;
@@ -70,7 +70,7 @@ export function hasTechnicalAnchor(text: string): boolean {
 }
 
 export function proseGroups(
-  filename: string,
+  filename: FilePath,
   sourceCode: Readonly<TSESLint.SourceCode>,
   includeValueTags = false,
 ): ProseGroup[] {

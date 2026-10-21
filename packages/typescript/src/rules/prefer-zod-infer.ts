@@ -676,9 +676,9 @@ export default createRule<Options, MessageIds>({
     const requireIdenticalShape = optionsArg?.requireIdenticalShape ?? true;
 
     if (
-      isTestFile(context.filename) ||
-      isStoryFile(context.filename) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
+      isTestFile(context) ||
+      isStoryFile(context) ||
+      isGeneratedFile(context, context.sourceCode.text)
     ) {
       return {};
     }

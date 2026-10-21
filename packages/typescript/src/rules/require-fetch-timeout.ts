@@ -199,7 +199,7 @@ export default createRule<Options, MessageIds>({
   create(context, [optionsArg]) {
     // `isTestFile` knows jscodeshift's `__testfixtures__/` spelling, so the
     // local pattern this rule used to keep for it decided nothing.
-    if (isTestFile(context.filename) || isScriptFile(context.filename)) {
+    if (isTestFile(context) || isScriptFile(context)) {
       return {};
     }
     const allowIn = optionsArg?.allowIn ?? [];

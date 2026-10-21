@@ -91,8 +91,8 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (
-      isGeneratedFile(context.filename, context.sourceCode.text) ||
-      isTestFile(context.filename, ["fixtureTree"])
+      isGeneratedFile(context, context.sourceCode.text) ||
+      isTestFile(context, ["fixtureTree"])
     ) {
       return {};
     }

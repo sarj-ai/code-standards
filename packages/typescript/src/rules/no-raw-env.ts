@@ -123,8 +123,8 @@ export default createRule<Options, MessageIds>({
   create(context) {
     const filename = context.filename;
     if (
-      isTestFile(filename) ||
-      isScriptFile(filename) ||
+      isTestFile(context) ||
+      isScriptFile(context) ||
       CONFIG_FILE_RE.test(filename.replaceAll("\\", "/"))
     ) {
       return {};

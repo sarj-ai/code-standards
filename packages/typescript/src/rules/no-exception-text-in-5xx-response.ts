@@ -60,7 +60,7 @@ export default createRule<readonly [], MessageIds>({
   defaultOptions: [],
   create(context) {
     const sourceCode = context.sourceCode;
-    if (isTestFile(context.filename) || isGeneratedFile(context.filename, sourceCode.text)) return {};
+    if (isTestFile(context) || isGeneratedFile(context, sourceCode.text)) return {};
 
     const candidates: { readonly node: TSESTree.CallExpression; readonly errors: readonly Variable[] }[] = [];
     const changedErrors = new Set<Variable>();

@@ -8,11 +8,11 @@ import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/u
 import * as ts from "typescript";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isGeneratedFile } from "./_paths.js";
+import { isGeneratedFile, scopedFilename } from "./_paths.js";
 
 type MessageIds = "declareActualContract";
 type Options = readonly [];
-const ESCAPED_CLASSES = new WeakMap<ts.Program, ReadonlySet<ts.Symbol>>();
+const ESCAPED_CLASSES = new WeakMap<ts.Program, Map<string, ReadonlySet<ts.Symbol>>>();
 
 export const REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION = {
   defaultLevel: "error",
@@ -65,25 +65,28 @@ function memberName(node: ts.Node): string | null {
   return null;
 }
 
-function ownedSource(source: ts.SourceFile): boolean {
-  return !source.isDeclarationFile && !/(?:^|[/\\])(?:node_modules|vendor|vendored|generated|dist)(?:[/\\])/u.test(source.fileName) &&
-    !isGeneratedFile(source.fileName, source.text);
+function ownedSource(source: ts.SourceFile, cwd: string): boolean {
+  const path = { filename: source.fileName, cwd };
+  return !source.isDeclarationFile && !/(?:^|[/\\])(?:node_modules|vendor|vendored|generated|dist)(?:[/\\])/u.test(scopedFilename(path)) &&
+    !isGeneratedFile(path, source.text);
 }
 
-function escapedClasses(program: ts.Program, checker: ts.TypeChecker): ReadonlySet<ts.Symbol> {
-  const cached = ESCAPED_CLASSES.get(program);
+function escapedClasses(program: ts.Program, checker: ts.TypeChecker, cwd: string): ReadonlySet<ts.Symbol> {
+  const scopes = ESCAPED_CLASSES.get(program) ?? new Map<string, ReadonlySet<ts.Symbol>>();
+  const cached = scopes.get(cwd);
   if (cached !== undefined) return cached;
   const escaped = new Set<ts.Symbol>();
   const namespaceValues = new Map<ts.Symbol, ReadonlySet<ts.Symbol>>();
   function visit(node: ts.Node): void {
     if (ts.isTypeNode(node) || ts.isImportDeclaration(node)) return;
     if (ts.isIdentifier(node) || ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
-      recordEscapedReference(checker, node, escaped, namespaceValues);
+      recordEscapedReference(checker, node, escaped, namespaceValues, cwd);
     }
     ts.forEachChild(node, visit);
   }
-  for (const source of program.getSourceFiles()) if (ownedSource(source)) visit(source);
-  ESCAPED_CLASSES.set(program, escaped);
+  for (const source of program.getSourceFiles()) if (ownedSource(source, cwd)) visit(source);
+  scopes.set(cwd, escaped);
+  ESCAPED_CLASSES.set(program, scopes);
   return escaped;
 }
 
@@ -92,32 +95,33 @@ function recordEscapedReference(
   node: ts.Identifier | ts.PropertyAccessExpression | ts.ElementAccessExpression,
   escaped: Set<ts.Symbol>,
   namespaceValues: Map<ts.Symbol, ReadonlySet<ts.Symbol>>,
+  cwd: string,
 ): void {
   const symbol = canonicalSymbol(checker, node);
   if (symbol !== undefined) {
     let values = namespaceValues.get(symbol);
     if (values === undefined) {
-      values = ownedClassValues(checker, symbol);
+      values = ownedClassValues(checker, symbol, cwd);
       namespaceValues.set(symbol, values);
     }
     if (!namespacePrefix(symbol, node) && !safeClassReference(node)) for (const value of values) escaped.add(value);
   }
   if (ts.isElementAccessExpression(node) && !safeClassReference(node)) {
     const receiver = canonicalSymbol(checker, node.expression) ?? checker.getTypeAtLocation(node.expression).getSymbol();
-    if (receiver !== undefined) for (const value of ownedClassValues(checker, receiver)) escaped.add(value);
+    if (receiver !== undefined) for (const value of ownedClassValues(checker, receiver, cwd)) escaped.add(value);
   }
 }
 
-function ownedClassValues(checker: ts.TypeChecker, original: ts.Symbol, seen = new Set<ts.Symbol>()): ReadonlySet<ts.Symbol> {
+function ownedClassValues(checker: ts.TypeChecker, original: ts.Symbol, cwd: string, seen = new Set<ts.Symbol>()): ReadonlySet<ts.Symbol> {
   const symbol = original.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(original) : original;
   const values = new Set<ts.Symbol>();
   if (seen.has(symbol)) return values;
   seen.add(symbol);
-  if (symbol.declarations?.some((declaration) => ts.isClassDeclaration(declaration) && ownedSource(declaration.getSourceFile()))) values.add(symbol);
+  if (symbol.declarations?.some((declaration) => ts.isClassDeclaration(declaration) && ownedSource(declaration.getSourceFile(), cwd))) values.add(symbol);
   if (symbol.declarations?.some((declaration) =>
-    (ts.isSourceFile(declaration) || ts.isModuleDeclaration(declaration)) && ownedSource(declaration.getSourceFile()))) {
+    (ts.isSourceFile(declaration) || ts.isModuleDeclaration(declaration)) && ownedSource(declaration.getSourceFile(), cwd))) {
     for (const exported of checker.getExportsOfModule(symbol)) {
-      for (const value of ownedClassValues(checker, exported, seen)) values.add(value);
+      for (const value of ownedClassValues(checker, exported, cwd, seen)) values.add(value);
     }
   }
   return values;
@@ -152,6 +156,7 @@ function closedNominalBoundary(
   call: ts.NewExpression,
   consumer: ts.ClassDeclaration,
   missing: MissingImplementation,
+  cwd: string,
 ): boolean {
   const { implementation, contractSymbol } = missing;
   const implementationSymbol = implementation.name === undefined ? undefined : canonicalSymbol(checker, implementation.name);
@@ -161,7 +166,7 @@ function closedNominalBoundary(
   if (contract === undefined) return false;
   const targets = new Set([consumerSymbol, ...classHierarchySymbols(checker, contract), ...classHierarchySymbols(checker, implementation)]);
   const sources = new Set([call.getSourceFile(), consumer.getSourceFile(), implementation.getSourceFile(), ...contractSymbol.declarations?.map((item) => item.getSourceFile()) ?? []]);
-  return ![...sources].some(hasPrototypeMutation) && ![...targets].some((target) => escapedClasses(program, checker).has(target));
+  return ![...sources].some(hasPrototypeMutation) && ![...targets].some((target) => escapedClasses(program, checker, cwd).has(target));
 }
 
 function classHierarchySymbols(checker: ts.TypeChecker, declaration: ts.ClassDeclaration, seen = new Set<ts.Symbol>()): Set<ts.Symbol> {
@@ -320,7 +325,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (isGeneratedFile(context, context.sourceCode.text)) return {};
     if (!context.sourceCode.parserServices?.program || !context.sourceCode.parserServices.esTreeNodeToTSNodeMap) return {};
     const services = ESLintUtils.getParserServices(context);
     const checker = services.program.getTypeChecker();
@@ -338,7 +343,7 @@ export default createRule<Options, MessageIds>({
         if (parameter === undefined) continue;
         const tsArgument = services.esTreeNodeToTSNodeMap.get(argument);
         const missing = missingImplementation(checker, signature, parameter, tsNode, tsArgument);
-        if (missing === null || !closedNominalBoundary(services.program, checker, tsNode, consumer, missing)) continue;
+        if (missing === null || !closedNominalBoundary(services.program, checker, tsNode, consumer, missing, context.cwd)) continue;
         context.report({
           node: argument,
           messageId: "declareActualContract",

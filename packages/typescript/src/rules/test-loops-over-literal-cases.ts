@@ -181,7 +181,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (!isTestFile(context.filename)) {
+    if (!isTestFile(context)) {
       return {};
     }
     const isFrameworkTest = (identifier: TSESTree.Identifier): boolean => TEST_CALLERS.has(runtimeTestFrameworkName(context.sourceCode, identifier, "test") ?? "");

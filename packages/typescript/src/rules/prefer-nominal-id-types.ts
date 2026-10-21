@@ -134,7 +134,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (isGeneratedFile(context, context.sourceCode.text)) return {};
     return {
       ArrowFunctionExpression: (node): void => checkBoundary(node, context),
       FunctionDeclaration: (node): void => checkBoundary(node, context),

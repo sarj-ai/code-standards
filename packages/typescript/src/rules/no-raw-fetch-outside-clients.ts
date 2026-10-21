@@ -282,8 +282,8 @@ export default createRule<Options, MessageIds>({
     const filename = context.filename;
 
     if (
-      isTestFile(filename) ||
-      isScriptFile(filename) ||
+      isTestFile(context) ||
+      isScriptFile(context) ||
       NON_PRODUCTION_TREE_RE.test(filename)
     ) {
       return {};

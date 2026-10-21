@@ -45,7 +45,7 @@ export default createRule<[], "incompatibleCustomParse">({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text) || !context.sourceCode.parserServices?.program) return {};
+    if (isGeneratedFile(context, context.sourceCode.text) || !context.sourceCode.parserServices?.program) return {};
     const services = ESLintUtils.getParserServices(context);
     const checker = services.program.getTypeChecker();
     const options = services.program.getCompilerOptions();

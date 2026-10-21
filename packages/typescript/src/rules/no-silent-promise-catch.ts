@@ -208,7 +208,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isTestFile(context.filename) || isScriptFile(context.filename)) {
+    if (isTestFile(context) || isScriptFile(context)) {
       return {};
     }
 

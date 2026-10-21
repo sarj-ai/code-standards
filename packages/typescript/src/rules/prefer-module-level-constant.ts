@@ -79,7 +79,7 @@ function isIgnoredFile(filename: string, sourceText: string): boolean {
   return /@generated\b/.test(sourceText.slice(0, 1024));
 }
 
-function isLocalFixtureFile(filename: string): boolean {
+function isLocalFixtureFile(filename: Parameters<typeof isTestFile>[0]): boolean {
   return isTestFile(filename) || isStoryFile(filename);
 }
 
@@ -381,7 +381,7 @@ export default createRule<Options, MessageIds>({
     if (isIgnoredFile(filename, sourceCode.getText())) {
       return {};
     }
-    if (ignoreTestFiles && isLocalFixtureFile(filename)) {
+    if (ignoreTestFiles && isLocalFixtureFile(context)) {
       return {};
     }
 

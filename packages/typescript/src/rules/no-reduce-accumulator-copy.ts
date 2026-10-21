@@ -36,7 +36,7 @@ export default createRule<[], "copy">({
   } },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (isGeneratedFile(context, context.sourceCode.text)) return {};
     if (!context.sourceCode.parserServices?.program || !context.sourceCode.parserServices.esTreeNodeToTSNodeMap) return {};
     const services = ESLintUtils.getParserServices(context);
     const program = services.program;

@@ -67,7 +67,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [],
   create(context) {
-    if (isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (isGeneratedFile(context, context.sourceCode.text)) return {};
 
     const checkProperty = (node: PropertyNode): void => {
       if (node.computed === true || node.key.type !== AST_NODE_TYPES.Identifier) return;

@@ -403,7 +403,7 @@ function reportCandidates(
     const declaration = handWrittenObjectDeclaration(contractSymbol);
     if (declaration === null || declaration.getSourceFile().isDeclarationFile) return;
     const source = declaration.getSourceFile();
-    if (isGeneratedFile(source.fileName, source.text)) return;
+    if (isGeneratedFile({ filename: source.fileName, cwd: context.cwd }, source.text)) return;
     const tsOutput = services.esTreeNodeToTSNodeMap.get(candidate.output);
     const parsed = checker.getTypeAtLocation(tsOutput);
     if (hasAuthoritativeOutputContract(checker, tsOutput, contractSymbol)) return;
@@ -516,9 +516,9 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     if (
-      isTestFile(context.filename) ||
-      isStoryFile(context.filename) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
+      isTestFile(context) ||
+      isStoryFile(context) ||
+      isGeneratedFile(context, context.sourceCode.text)
     ) {
       return {};
     }

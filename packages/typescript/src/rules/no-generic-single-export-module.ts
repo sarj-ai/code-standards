@@ -58,8 +58,8 @@ export default createRule<Options, MessageIds>({
     const { stem } = file;
     if (
       !GENERIC_MODULE_STEMS.has(stem) ||
-      isTestFile(context.filename) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
+      isTestFile(context) ||
+      isGeneratedFile(context, context.sourceCode.text)
     ) return {};
     let hasCommonJsExport = false;
     return {

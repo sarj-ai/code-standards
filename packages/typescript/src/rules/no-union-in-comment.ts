@@ -128,7 +128,7 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     const sourceCode = context.sourceCode;
-    if (isGeneratedFile(context.filename, sourceCode.text)) {
+    if (isGeneratedFile(context, sourceCode.text)) {
       return {};
     }
 

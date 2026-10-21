@@ -69,8 +69,8 @@ export default createRule<Options, MessageIds>({
       EXCLUDED_STEMS.has(fileStem) ||
       GENERIC_MODULE_STEMS.has(fileStem) ||
       context.filename.endsWith(".d.ts") ||
-      isTestFile(context.filename) ||
-      isGeneratedFile(context.filename, context.sourceCode.text)
+      isTestFile(context) ||
+      isGeneratedFile(context, context.sourceCode.text)
     ) return {};
     let hasCommonJsExport = false;
     return {

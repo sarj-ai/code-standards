@@ -89,7 +89,7 @@ export default createRule<Options, MessageIds>({
     const isIgnoredByOption =
       ignoreFiles.length > 0 && matchesAnyPattern(filename, ignoreFiles);
 
-    if (isIgnoredByOption || isGeneratedFile(filename, sourceText)) {
+    if (isIgnoredByOption || isGeneratedFile(context, sourceText)) {
       return {};
     }
 

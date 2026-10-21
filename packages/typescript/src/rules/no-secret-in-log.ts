@@ -236,7 +236,7 @@ export default createRule<Options, MessageIds>({
   create(context, [loggingOptions]) {
     const matcher = createLogMatcher(loggingOptions);
     // Bodies in a test file are fixtures the author wrote, not production PII.
-    const blobArmApplies = !isTestFile(context.filename);
+    const blobArmApplies = !isTestFile(context);
 
 
 

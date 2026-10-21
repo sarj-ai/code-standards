@@ -42,7 +42,7 @@ export default createRule<Options, MessageIds>({
   },
   defaultOptions: [{ additionalModulePrefixes: [] }],
   create(context, [options]) {
-    if (!isTestFile(context.filename) || isGeneratedFile(context.filename, context.sourceCode.text)) return {};
+    if (!isTestFile(context) || isGeneratedFile(context, context.sourceCode.text)) return {};
     return {
       CallExpression(node: TSESTree.CallExpression): void {
         const unwrappedNodeCallee = unwrapExpression(node.callee);

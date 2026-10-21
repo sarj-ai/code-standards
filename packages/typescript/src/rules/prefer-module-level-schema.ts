@@ -297,11 +297,10 @@ export default createRule<Options, MessageIds>({
     const minProperties = options?.minProperties ?? DEFAULT_MIN_PROPERTIES;
 
     const sourceCode = context.sourceCode;
-    const filename = context.filename;
-    if (isGeneratedFile(filename, sourceCode.getText())) {
+    if (isGeneratedFile(context, sourceCode.getText())) {
       return {};
     }
-    if (ignoreTestFiles && isTestFile(filename)) {
+    if (ignoreTestFiles && isTestFile(context)) {
       return {};
     }
 

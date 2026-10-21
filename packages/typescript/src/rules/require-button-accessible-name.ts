@@ -100,9 +100,9 @@ export default createRule<Options, "missingName">({
   defaultOptions: [{}],
   create(context, [options]) {
     if (
-      isGeneratedFile(context.filename, context.sourceCode.text) ||
-      isTestFile(context.filename) ||
-      isStoryFile(context.filename)
+      isGeneratedFile(context, context.sourceCode.text) ||
+      isTestFile(context) ||
+      isStoryFile(context)
     )
       return {};
     const iconModules = options?.iconModules ?? ["lucide-react"];
