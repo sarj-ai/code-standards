@@ -25,6 +25,15 @@ test. A passing test of a library default, trivial accessor, or unchanged
 forwarder needs a demonstrated compatibility or application contract to earn
 ongoing maintenance. Coverage targets alone do not supply that contract.
 
+For scripts and configuration, start with the existing parser, linter, type
+checker, build, and smoke commands. Add a dedicated test only for a distinct
+repository-owned behavior or compatibility contract those checks do not establish.
+When needed, exercise inputs, exit status, output, or effects through the real
+entry point. Inspecting implementation text, AST shape, helper counts, or file
+layout does not establish runtime behavior; preserve deliberate artifact and
+representation contracts. Do not duplicate a native tool's own syntax or schema
+validation in another test suite.
+
 Trace actual CI test selections and their effective pytest roots/configuration,
 coverage collection, skips and prerequisites, retries, and optional lanes before
 assessing which contracts execute. Establish the intended lane and available
