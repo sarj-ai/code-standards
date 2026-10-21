@@ -1875,7 +1875,7 @@ def _invoke_python_projects(
         return (ToolReport(name, Completion.FAILED, issues=(issue,), analyzer_id=AnalyzerId(name)),)
     reports: list[ToolReport] = []
     for project, scoped_files in projects:
-        argv = (_project_analyzer(project, "basedpyright"), "--outputjson")
+        argv = (_project_analyzer(project, "basedpyright"), "--outputjson", "--baselinemode=lock")
         project_id = project.relative_to(root).as_posix() or None
         report = _invoke(
             name,

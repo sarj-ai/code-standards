@@ -2915,6 +2915,38 @@ def test_eslint_malformed_output_preserves_stderr_without_json_exception_name(tm
     assert "JSONDecodeError" not in issue.message
 
 
+def test_basedpyright_checks_preserve_real_baselines_and_report_new_errors(tmp_path: Path) -> None:
+    analyzer = shutil.which("basedpyright", path=str(Path(sys.executable).parent))
+    assert analyzer is not None
+    (tmp_path / "pyrightconfig.json").write_text(
+        json.dumps({"typeCheckingMode": "strict", "include": ["example.py"], "baselineFile": "baseline.json"})
+    )
+    path = tmp_path / "example.py"
+    path.write_text('value: int = "wrong"\n')
+    generated = external_module.run_process((analyzer, "--writebaseline"), cwd=tmp_path)
+    assert generated.returncode in {0, 1}, generated.stderr
+    baseline = tmp_path / "baseline.json"
+    original = baseline.read_bytes()
+    assert json.loads(original)["files"]["./example.py"]
+
+    for source in ('value: int = "wrong"\n', "value: int = 1\n"):
+        path.write_text(source)
+        [report] = analyze_external(
+            (str(path),), root=tmp_path, trust=TrustMode.SAFE, capabilities=frozenset({"pyright"})
+        )
+        assert report.completion is Completion.COMPLETE
+        assert not report.issues
+        assert not report.diagnostics
+        assert baseline.read_bytes() == original
+
+    path.write_text("value: int = 1\nsecond: str = 1\n")
+    [report] = analyze_external((str(path),), root=tmp_path, trust=TrustMode.SAFE, capabilities=frozenset({"pyright"}))
+    assert report.completion is Completion.COMPLETE
+    assert not report.issues
+    assert [diagnostic.rule_id for diagnostic in report.diagnostics] == ["reportAssignmentType"]
+    assert baseline.read_bytes() == original
+
+
 def test_basedpyright_utf16_range_preserves_astral_character(tmp_path: Path) -> None:
     source = tmp_path / "example.py"
     source.write_text("value = '😀'\n", encoding="utf-8")
@@ -3021,7 +3053,7 @@ def test_unused_function_diagnostics_are_bounded_advisory_test_helpers(
     )
 
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        assert argv == ("basedpyright", "--outputjson")
+        assert argv == ("basedpyright", "--outputjson", "--baselinemode=lock")
         assert cwd == tmp_path
         return ProcessOutput(1, payload, "")
 
@@ -3468,7 +3500,7 @@ def test_basedpyright_prefers_a_parent_environment_over_a_nested_package_manifes
     reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=runner)
 
     assert all(report.completion is Completion.COMPLETE for report in reports)
-    assert seen[1] == ((str(analyzer), "--outputjson"), project)
+    assert seen[1] == ((str(analyzer), "--outputjson", "--baselinemode=lock"), project)
 
 
 def test_basedpyright_runs_in_project_mode_and_filters_unselected_diagnostics(tmp_path: Path) -> None:
@@ -3504,7 +3536,7 @@ def test_basedpyright_runs_in_project_mode_and_filters_unselected_diagnostics(tm
     reports = analyze_external([str(selected)], root=tmp_path, trust=TrustMode.SAFE, runner=runner)
 
     basedpyright = next(report for report in reports if report.name == "basedpyright")
-    assert seen[1] == ("basedpyright", "--outputjson")
+    assert seen[1] == ("basedpyright", "--outputjson", "--baselinemode=lock")
     assert basedpyright.completion is Completion.COMPLETE
     assert [diagnostic.location.path for diagnostic in basedpyright.diagnostics] == ["python/selected.py"]
 
@@ -3552,7 +3584,7 @@ def test_python_tools_use_the_adopted_config_for_files_outside_its_directory(tmp
             ),
             project,
         ),
-        (("basedpyright", "--outputjson"), project),
+        (("basedpyright", "--outputjson", "--baselinemode=lock"), project),
     ]
 
 
