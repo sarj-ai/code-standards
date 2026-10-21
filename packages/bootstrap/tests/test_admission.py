@@ -142,6 +142,53 @@ def test_explicit_capacity_allows_two_commands(tmp_path: Path, environment: dict
         _started(second)
 
 
+def test_shared_capacity_change_reaches_an_existing_waiter(tmp_path: Path, environment: dict[str, str]) -> None:
+    first, second = tmp_path / "first", tmp_path / "second"
+    with _launch(first, {**environment, "SARJ_LOCAL_CHECK_JOBS": "1"}):
+        _started(first)
+        with _launch(second, {**environment, "SARJ_LOCAL_CHECK_JOBS": "1"}) as two:
+            _waiting(two)
+            (tmp_path / "state/capacity.json").write_text('{"slots": 2}', encoding="utf-8")
+            _started(second)
+            (second / "release").touch()
+            assert two.wait(timeout=10) == 7
+
+
+def test_fifo_waiters_and_a_crashed_waiter_cannot_block_following_work(
+    tmp_path: Path, environment: dict[str, str]
+) -> None:
+    first, second, third = (tmp_path / name for name in ("first", "second", "third"))
+    with _launch(first, environment) as one:
+        _started(first)
+        with _launch(second, environment) as two:
+            _waiting(two)
+            with _launch(third, environment) as three:
+                assert three.stderr is not None
+                ready, _, _ = select.select([three.stderr], [], [], 10)
+                assert ready
+                assert "queue position 2" in os.read(three.stderr.fileno(), 4096).decode()
+                assert not (third / "started").exists()
+                two.kill()
+                two.wait(timeout=10)
+                (first / "release").touch()
+                assert one.wait(timeout=10) == 7
+                _started(third)
+                (third / "release").touch()
+                assert three.wait(timeout=10) == 7
+
+
+def test_invalid_shared_capacity_fails_before_execution(tmp_path: Path, environment: dict[str, str]) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "capacity.json").write_text('{"slots": true}', encoding="utf-8")
+    root = tmp_path / "invalid"
+    with _launch(root, environment) as process:
+        _, stderr = process.communicate(timeout=10)
+        assert process.returncode == 2, stderr
+        assert "capacity.json" in stderr
+        assert not (root / "started").exists()
+
+
 @pytest.mark.parametrize("cache", ["", "relative-cache", "absolute"])
 def test_invalid_cache_home_uses_the_shared_default(tmp_path: Path, environment: dict[str, str], cache: str) -> None:
     environment.pop("SARJ_LOCAL_CHECK_STATE_DIR")

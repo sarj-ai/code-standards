@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Generator
 
 
+MAX_SLOTS: Final = 64
 LEASE_ENV: Final = "SARJ_LOCAL_CHECK_LEASE"
 JSON_PARSER: Callable[[str], dict[str, object] | list[object] | str | int | float | bool | None] = json.loads
 
@@ -25,8 +26,6 @@ def check_slot(environment: dict[str, str]) -> Generator[None]:
     if os.name != "posix" or environment.get("CI", "").lower() in {"true", "1"}:
         yield
         return
-    import fcntl  # ruff: ignore[import-outside-top-level] -- unavailable on Windows, whose launcher stays unchanged.
-
     slots = int(environment.get("SARJ_LOCAL_CHECK_JOBS", "1"))
     timeout = float(environment.get("SARJ_LOCAL_CHECK_WAIT_SECONDS", "3600"))
     if slots < 1 or not math.isfinite(timeout) or timeout < 0:
@@ -42,8 +41,28 @@ def check_slot(environment: dict[str, str]) -> Generator[None]:
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     started = time.monotonic()
     next_report = started
+    with _registered_waiter(directory) as ticket_path:
+        yield from _wait_for_slot(
+            directory, slots, timeout, environment, started=started, next_report=next_report, ticket_path=ticket_path
+        )
+
+
+def _wait_for_slot(
+    directory: Path,
+    slots: int,
+    timeout: float,
+    environment: dict[str, str],
+    *,
+    started: float,
+    next_report: float,
+    ticket_path: Path,
+) -> Generator[None]:
+    import fcntl  # ruff: ignore[import-outside-top-level] -- POSIX admission path only.
+
     while True:
-        for slot in range(slots):
+        capacity = _capacity(directory, slots)
+        position = _queue_position(directory, ticket_path)
+        for slot in range(capacity) if position == 1 else ():
             with (directory / f"slot-{slot}.lock").open("a+", encoding="utf-8") as handle:
                 try:
                     fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -56,6 +75,8 @@ def check_slot(environment: dict[str, str]) -> Generator[None]:
                 handle.truncate()
                 handle.write(marker)
                 handle.flush()
+                ticket_path.unlink(missing_ok=True)
+                environment["SARJ_LOCAL_CHECK_JOBS"] = str(capacity)
                 environment[LEASE_ENV] = marker
                 environment["SARJ_LOCAL_CHECK_STATE_DIR"] = str(directory)
                 # POSIX exec replaces this launcher; its replacement owns the
@@ -67,14 +88,80 @@ def check_slot(environment: dict[str, str]) -> Generator[None]:
         now = time.monotonic()
         if now >= next_report:
             sys.stderr.write(
-                f"Local checks: waiting for one of {slots} shared slot(s) ({now - started:.0f}s elapsed).\n"
+                f"Local checks: waiting for one of {capacity} shared slot(s) "
+                f"(queue position {position}; {now - started:.0f}s elapsed).\n"
             )
             sys.stderr.flush()
             next_report = now + 15
         if now - started >= timeout:
             message = f"local checks: no shared slot became free within {timeout:g}s"
             raise TimeoutError(message)
-        time.sleep(min(0.1, timeout - (now - started)))
+        time.sleep(min(0.25, timeout - (now - started)))
+
+
+@contextmanager
+def _registered_waiter(directory: Path) -> Generator[Path]:
+    import fcntl  # ruff: ignore[import-outside-top-level] -- POSIX admission path only.
+
+    path = directory / f"wait-{time.time_ns():020d}-{secrets.token_hex(8)}.lock"
+    with (directory / "queue.lock").open("a+", encoding="utf-8") as registration:
+        fcntl.flock(registration, fcntl.LOCK_EX)
+        handle = path.open("x", encoding="utf-8")
+        fcntl.flock(handle, fcntl.LOCK_EX)
+    try:
+        with handle:
+            yield path
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def _capacity(directory: Path, slots: int) -> int:
+    # One operator-owned setting prevents old shell environments from forcing
+    # every repository back to a single slot. Changes also reach live waiters.
+    policy = directory / "capacity.json"
+    try:
+        value = JSON_PARSER(policy.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return slots
+    capacity = value.get("slots") if isinstance(value, dict) else None
+    if isinstance(capacity, bool) or not isinstance(capacity, int) or not 1 <= capacity <= MAX_SLOTS:
+        message = f"capacity.json must contain an integer slots value from 1 to {MAX_SLOTS}."
+        raise ValueError(message)
+    return capacity
+
+
+def _queue_position(directory: Path, ticket_path: Path) -> int:
+    import fcntl  # ruff: ignore[import-outside-top-level] -- POSIX admission path only.
+
+    with (directory / "queue.lock").open("a+", encoding="utf-8") as registration:
+        fcntl.flock(registration, fcntl.LOCK_EX)
+        return _live_queue_position(directory, ticket_path)
+
+
+def _live_queue_position(directory: Path, ticket_path: Path) -> int:
+    position = 1
+    for path in sorted(directory.glob("wait-*.lock")):
+        if path.name >= ticket_path.name:
+            break
+        if _ticket_is_live(path):
+            position += 1
+    return position
+
+
+def _ticket_is_live(path: Path) -> bool:
+    import fcntl  # ruff: ignore[import-outside-top-level] -- POSIX admission path only.
+
+    try:
+        handle = path.open("r+", encoding="utf-8")
+    except FileNotFoundError:
+        return False
+    with handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return True
+        path.unlink(missing_ok=True)
+    return False
 
 
 def _inherited_lease(directory: Path, marker: str | None) -> bool:
