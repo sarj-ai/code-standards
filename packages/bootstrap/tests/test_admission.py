@@ -23,7 +23,8 @@ if TYPE_CHECKING:
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="POSIX exec/lock contract; Windows retains its launcher")
 PROBE = """\
 from pathlib import Path
-import time
+import sys, time
+Path('argv.txt').write_text(chr(0).join(sys.argv[1:]))
 Path('started').touch()
 while not Path('release').exists():
     time.sleep(0.01)
@@ -47,11 +48,17 @@ def environment(tmp_path: Path) -> dict[str, str]:
 
 
 @contextmanager
-def _launch(root: Path, environment: dict[str, str], *, command: str = "check") -> Generator[subprocess.Popen[str]]:
+def _launch(
+    root: Path, environment: dict[str, str], *, command: str = "check", arguments: tuple[str, ...] = ()
+) -> Generator[subprocess.Popen[str]]:
     root.mkdir()
     (root / ".sarj-standards.toml").write_text('schema = 4\nbundle = "9.8.7"\n', encoding="utf-8")
     with subprocess.Popen(
-        [sys.executable, "-c", f"import sarj_standards_bootstrap as b; raise SystemExit(b.main([{command!r}]))"],
+        [
+            sys.executable,
+            "-c",
+            f"import sarj_standards_bootstrap as b; raise SystemExit(b.main({(command, *arguments)!r}))",
+        ],
         cwd=root,
         env=environment,
         stdout=subprocess.PIPE,
@@ -95,6 +102,42 @@ def test_workspaces_share_the_slot_until_the_exec_replacement_exits(
             _started(second)
             (second / "release").touch()
             assert two.wait(timeout=10) == 7
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        pytest.param(("--help",), id="long-help"),
+        pytest.param(("-h",), id="short-help"),
+        pytest.param(("src", "--help"), id="help-after-source"),
+        pytest.param(("--help", "--", "file.py"), id="help-before-separator"),
+    ],
+)
+def test_check_help_reaches_the_pinned_cli_while_capacity_is_full(
+    tmp_path: Path, environment: dict[str, str], arguments: tuple[str, ...]
+) -> None:
+    first, second = tmp_path / "first", tmp_path / "second"
+    with _launch(first, environment) as one:
+        _started(first)
+        with _launch(second, {**environment, "SARJ_LOCAL_CHECK_WAIT_SECONDS": "0"}, arguments=arguments) as two:
+            (second / "release").touch()
+            _, stderr = two.communicate(timeout=10)
+            assert two.returncode == 7, stderr
+            assert (second / "started").is_file()
+            forwarded = (second / "argv.txt").read_text(encoding="utf-8").split(chr(0))
+            assert forwarded[-len(arguments) - 1 :] == ["check", *arguments]
+            assert one.poll() is None
+
+
+def test_help_named_path_after_separator_still_requires_capacity(tmp_path: Path, environment: dict[str, str]) -> None:
+    first, second = tmp_path / "first", tmp_path / "second"
+    with _launch(first, environment):
+        _started(first)
+        with _launch(second, {**environment, "SARJ_LOCAL_CHECK_WAIT_SECONDS": "0"}, arguments=("--", "--help")) as two:
+            _, stderr = two.communicate(timeout=10)
+            assert two.returncode == 2, stderr
+            assert "no shared slot" in stderr
+            assert not (second / "started").exists()
 
 
 @pytest.mark.parametrize("command", ["check", "doctor"])
