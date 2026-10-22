@@ -1,7 +1,7 @@
 ---
 name: lint-rule-generator
-description: Design, route, and calibrate deterministic rules from demonstrated defects, including upstream overlap, false positives, and warning-first adoption.
+description: Design and calibrate deterministic rules for demonstrated defects after checking existing controls.
 ---
 
-Read and follow the [canonical skill](../../../plugins/sarj-audit/skills/lint-rule-generator/SKILL.md).
-Resolve its relative references from `plugins/sarj-audit/skills/lint-rule-generator/`.
+Read and follow the [canonical skill](../../../plugins/sarj-skills/skills/lint-rule-generator/SKILL.md).
+Resolve its relative references from `plugins/sarj-skills/skills/lint-rule-generator/`.

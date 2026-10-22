@@ -1,0 +1,4 @@
+interface:
+  display_name: "100 Passes"
+  short_description: "Find and review the highest-value improvements"
+  default_prompt: "Use $100-passes to improve this topic and show the materially useful PRs."

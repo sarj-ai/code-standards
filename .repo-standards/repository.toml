@@ -33,12 +33,13 @@ kind = "fixture"
 reason = "Minimal generated-loader stand-in tests exclusion of Yarn PnP ESM loader artifacts."
 
 [documentation]
-# Allow only the canonical harness entry points used by the discovery PR.
-# Every other new Markdown page keeps the zero-page default.
+# Canonical harness entrypoints; other new pages retain the zero-page default.
 addition_exemptions = [
+  ".agents/skills/100-passes/SKILL.md",
   ".agents/skills/audit-protocol/SKILL.md",
   ".agents/skills/lint-rule-generator/SKILL.md",
   ".agents/skills/test-value/SKILL.md",
+  ".claude/skills/100-passes/SKILL.md",
   ".claude/skills/audit-protocol/SKILL.md",
   ".claude/skills/lint-rule-generator/SKILL.md",
   ".claude/skills/test-value/SKILL.md",
