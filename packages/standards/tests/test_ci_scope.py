@@ -342,6 +342,7 @@ class WorkflowStep(BaseModel):
     name: str = ""
     condition: str = Field(default="", alias="if")
     run: str = ""
+    environment: dict[str, object] = Field(default_factory=dict, alias="env")
 
 
 class WorkflowJob(BaseModel):
@@ -350,6 +351,25 @@ class WorkflowJob(BaseModel):
     name: str = ""
     condition: str = Field(default="", alias="if")
     steps: list[WorkflowStep] = Field(default_factory=list)
+    strategy: dict[str, object] = Field(default_factory=dict)
+    environment: dict[str, object] = Field(default_factory=dict, alias="env")
+
+
+class CompatibilityCohort(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, extra="forbid")
+    cohort: str
+    targets: str
+
+
+class CompatibilityMatrix(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, extra="forbid")
+    include: list[CompatibilityCohort]
+
+
+class CompatibilityStrategy(BaseModel):
+    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, extra="forbid")
+    fail_fast: bool = Field(alias="fail-fast")
+    matrix: CompatibilityMatrix
 
 
 class Workflow(BaseModel):
@@ -392,6 +412,61 @@ def test_required_standards_gate_requires_both_lanes_and_routing() -> None:
         "needs.python-compatibility.result != 'success'",
     }
     assert guard.run == "exit 1"
+
+
+def test_minimum_runtime_matrix_covers_every_python_package_once() -> None:
+    jobs = workflow("ci.yml").jobs
+    tests = jobs["python-compatibility-tests"]
+    strategy = CompatibilityStrategy.model_validate(tests.strategy)
+    targets = [target for row in strategy.matrix.include for target in row.targets.split()]
+    assert len(strategy.matrix.include) == 2
+    assert not strategy.fail_fast
+    assert len(targets) == len(set(targets))
+    assert set(targets) == {
+        "test-bootstrap",
+        "test-contracts",
+        "test-python",
+        "test-sql",
+        "test-iac",
+        "test-standards",
+    }
+    assert tests.environment["UV_PYTHON"] == "3.14"
+    assert tests.environment["STANDARDS_PYTHON"] == "3.14"
+    gate = jobs["python-compatibility"]
+    assert gate.name == "Python 3.14 compatibility"
+    assert gate.needs == ["changes", "python-compatibility-tests"]
+    assert gate.condition.startswith("always()")
+    assert gate.condition == tests.condition
+
+
+@pytest.mark.parametrize(
+    ("routing", "cohorts", "passes"),
+    [
+        ("success", "success", True),
+        ("failure", "success", False),
+        ("cancelled", "success", False),
+        ("success", "failure", False),
+        ("success", "cancelled", False),
+        ("success", "skipped", False),
+        ("success", "", False),
+    ],
+)
+def test_minimum_runtime_gate_rejects_incomplete_matrix(routing: str, cohorts: str, passes: bool) -> None:
+    gate = workflow("ci.yml").jobs["python-compatibility"]
+    [guard] = [step for step in gate.steps if step.run]
+    assert guard.environment == {
+        "ROUTING_RESULT": "${{ needs.changes.result }}",
+        "COHORTS_RESULT": "${{ needs.python-compatibility-tests.result }}",
+    }
+    result = subprocess.run(
+        ("bash", "-euo", "pipefail", "-c", guard.run),
+        env={"PATH": os.defpath, "ROUTING_RESULT": routing, "COHORTS_RESULT": cohorts},
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert (result.returncode == 0) is passes
 
 
 def test_required_matrix_checks_keep_their_names_when_unaffected() -> None:
