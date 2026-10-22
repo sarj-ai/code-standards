@@ -184,7 +184,8 @@ def test_publication_and_tag_recovery_require_security_at_exact_revision(filenam
     assert checkout_index < gate_index
     revision = "${{ github.sha }}" if filename == "release.yml" else "${{ github.event.workflow_run.head_sha }}"
     assert checkout["with"] == {"ref": revision, "persist-credentials": False}
-    assert gate["env"] == {"GH_TOKEN": "${{ github.token }}", "TARGET_SHA": revision}
+    branch = "${{ github.ref_name }}" if filename == "release.yml" else "${{ github.event.workflow_run.head_branch }}"
+    assert gate["env"] == {"GH_TOKEN": "${{ github.token }}", "TARGET_SHA": revision, "TARGET_BRANCH": branch}
 
 
 def test_release_tags_registry_visible_packages_at_the_published_commit() -> None:
@@ -220,6 +221,63 @@ def test_release_tags_registry_visible_packages_at_the_published_commit() -> Non
         "maintain release create-tags typescript bootstrap contracts python sql iac standards tsconfig" in workflow
     )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
     assert '--commit "$PUBLISHED_SHA"' in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+
+
+def test_maintenance_uses_its_successful_publisher_identity_and_never_rolls_out() -> None:
+    preflight = _steps("release-tags.yml", "preflight")
+    lane_index, lane = next((index, step) for index, step in enumerate(preflight) if step.get("id") == "lane")
+    recovery_index = next(index for index, step in enumerate(preflight) if step.get("id") == "recovery")
+    assert lane_index < recovery_index
+    assert lane["env"] == {
+        "SOURCE_REF": "refs/heads/${{ github.event.workflow_run.head_branch }}",
+        "SOURCE_SHA": "${{ github.event.workflow_run.head_sha }}",
+        "CONTROLLER_SHA": "${{ github.workflow_sha }}",
+    }
+    dispatch = _job("release-tags.yml", "dispatch-rollout")
+    assert "needs.preflight.outputs.lane == 'main'" in str(dispatch["if"])
+    tag_steps = _steps("release-tags.yml", "tag")
+    maintenance = next(step for step in tag_steps if step.get("name") == "Create only the maintenance Standards tag")
+    assert maintenance["if"] == "needs.preflight.outputs.lane == 'standards-maintenance'"
+    assert maintenance["env"] == {"PUBLISHED_SHA": "${{ github.event.workflow_run.head_sha }}"}
+    assert 'create-tags standards --commit "$PUBLISHED_SHA"' in str(maintenance["run"])
+
+
+def test_maintenance_publication_keeps_fresh_build_and_prevents_sibling_publication() -> None:
+    detect = _steps("release.yml", "detect")
+    lane_index = next(index for index, step in enumerate(detect) if step.get("id") == "lane")
+    targets_index = next(index for index, step in enumerate(detect) if step.get("id") == "c")
+    guard_index, guard = next(
+        (index, step)
+        for index, step in enumerate(detect)
+        if step.get("name") == "Reject maintenance sibling publication"
+    )
+    assert lane_index < targets_index < guard_index
+    assert guard["if"] == "steps.lane.outputs.lane == 'standards-maintenance'"
+    build = _steps("release.yml", "build-standards")
+    reuse = next(step for step in build if step.get("id") == "reuse")
+    assert reuse["if"] == "needs.detect.outputs.lane == 'main'"
+    for name in [
+        "Build package and exact local dependency wheels",
+        "Build the plugin for native ESLint integration tests",
+        "Install the manifest formatter",
+        "Install the pinned native tool bootstrap",
+        "Install and attest integration native tools",
+        "Test against the built wheel",
+        "Smoke test the source distribution",
+    ]:
+        step = next(step for step in build if step.get("name") == name)
+        assert step["if"] == "steps.reuse.outputs.reused != 'true'"
+    names = [step.get("name") for step in build]
+    assert names.index("Install the rule authoring parser") < names.index(
+        "Build the plugin for native ESLint integration tests"
+    )
+    assert names.index("Build the plugin for native ESLint integration tests") < names.index(
+        "Test against the built wheel"
+    )
+    assert names.index("Install the manifest formatter") < names.index("Test against the built wheel")
+    publish = _job("release.yml", "publish-standards")
+    assert publish["environment"] == "pypi-standards-release"
+    assert publish["permissions"] == {"contents": "read", "id-token": "write"}
 
 
 def test_tsconfig_release_publishes_verified_registry_artifacts() -> None:
@@ -384,7 +442,7 @@ def test_release_fallback_requires_successful_terminal_ci(tmp_path: Path, filena
         if endpoint.endswith('/jobs'):
             print(os.environ['JOBS'])
         else:
-            run = {{'head_sha': os.environ['TARGET_SHA'], 'event': 'push', 'head_repository': {{'full_name': os.environ['GITHUB_REPOSITORY']}}, 'id': 42, 'conclusion': None if '/ci.yml/' in endpoint else 'success'}}
+            run = {{'head_sha': os.environ['TARGET_SHA'], 'head_branch': os.environ['TARGET_BRANCH'], 'event': 'push', 'path': '.github/workflows/' + endpoint.split('/workflows/')[1].split('/')[0], 'head_repository': {{'full_name': os.environ['GITHUB_REPOSITORY']}}, 'id': 42, 'conclusion': None if '/ci.yml/' in endpoint else 'success'}}
             wrong_sha = {{**run, 'head_sha': 'b' * 40, 'conclusion': 'success'}}
             wrong_repo = {{**run, 'head_repository': {{'full_name': 'untrusted/repo'}}, 'conclusion': 'success'}}
             print(json.dumps({{'workflow_runs': [wrong_sha, wrong_repo, run]}}))
@@ -403,6 +461,7 @@ def test_release_fallback_requires_successful_terminal_ci(tmp_path: Path, filena
             "PATH": f"{fake_bin}:/usr/bin:/bin",
             "JOBS": json.dumps({"jobs": jobs}),
             "TARGET_SHA": "a" * 40,
+            "TARGET_BRANCH": "main",
             "GITHUB_REPOSITORY": "example/repo",
             "CALLS": str(tmp_path / "calls.jsonl"),
         },
@@ -430,3 +489,143 @@ def test_release_fallback_requires_successful_terminal_ci(tmp_path: Path, filena
     ]
     expected.append(["api", "--method", "GET", "repos/example/repo/actions/runs/42/jobs", "-f", "per_page=100"])
     assert [json.loads(call) for call in calls] == expected
+
+
+class _LaneCheckout(NamedTuple):
+    root: Path
+    legacy_sha: str
+    controller_sha: str
+    runner_temp: Path
+    binaries: Path
+
+
+def _lane_git(root: Path, *arguments: str) -> str:
+    return subprocess.run(
+        (
+            "git",
+            "-c",
+            "core.hooksPath=/dev/null",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.invalid",
+            *arguments,
+        ),
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    ).stdout.strip()
+
+
+@pytest.fixture
+def lane_checkout(tmp_path: Path) -> _LaneCheckout:
+    root = tmp_path / "publisher"
+    root.mkdir()
+    _lane_git(root, "init", "--quiet")
+    (root / "publication.txt").write_text("older main publication\n")
+    _lane_git(root, "add", ".")
+    _lane_git(root, "commit", "--quiet", "-m", "older main without the lane helper")
+    legacy_sha = _lane_git(root, "rev-parse", "HEAD")
+    helper = root / ".github/scripts/release_lane.py"
+    helper.parent.mkdir(parents=True)
+    helper.write_bytes((REPO_ROOT / ".github/scripts/release_lane.py").read_bytes())
+    _lane_git(root, "add", ".")
+    _lane_git(root, "commit", "--quiet", "-m", "trusted workflow controller")
+    controller_sha = _lane_git(root, "rev-parse", "HEAD")
+    _lane_git(root, "checkout", "--quiet", "--detach", legacy_sha)
+    runner_temp = tmp_path / "runner-temp"
+    runner_temp.mkdir()
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    _write_executable(
+        binaries / "uv",
+        """
+        #!/bin/sh
+        [ "$1" = run ] && [ "$2" = --script ] || exit 64
+        shift 2
+        exec "$FIXTURE_PYTHON" "$@"
+        """,
+    )
+    return _LaneCheckout(root, legacy_sha, controller_sha, runner_temp, binaries)
+
+
+@pytest.mark.parametrize(
+    ("scenario", "source_ref", "expected_status"),
+    [
+        ("legacy-main", "refs/heads/main", 0),
+        ("current-main", "refs/heads/main", 0),
+        ("untrusted-maintenance-helper", "refs/heads/maintenance/standards-8.101", 2),
+        ("wrong-source-sha", "refs/heads/main", 2),
+        ("missing-maintenance-helper", "refs/heads/maintenance/standards-8.101", 2),
+        ("missing-feature-helper", "refs/heads/feature/release", 2),
+        ("missing-controller", "refs/heads/main", 128),
+        ("symbolic-controller", "refs/heads/main", 1),
+        ("maintenance-source", "refs/heads/maintenance/standards-8.101", 2),
+        ("feature-source", "refs/heads/feature/release", 2),
+    ],
+)
+def test_tag_lane_runs_the_yaml_step_against_the_exact_publisher_checkout(
+    lane_checkout: _LaneCheckout, scenario: str, source_ref: str, expected_status: int
+) -> None:
+    source_helper = scenario in {"current-main", "maintenance-source", "feature-source", "untrusted-maintenance-helper"}
+    source_sha = lane_checkout.controller_sha if source_helper else lane_checkout.legacy_sha
+    if source_helper:
+        _lane_git(lane_checkout.root, "checkout", "--quiet", "--detach", source_sha)
+    if scenario == "untrusted-maintenance-helper":
+        helper = lane_checkout.root / ".github/scripts/release_lane.py"
+        helper.write_text("from pathlib import Path\nPath('untrusted-helper-executed').touch()\n")
+        _lane_git(lane_checkout.root, "add", ".")
+        _lane_git(lane_checkout.root, "commit", "--quiet", "-m", "untrusted candidate helper")
+        source_sha = _lane_git(lane_checkout.root, "rev-parse", "HEAD")
+    controller_sha = lane_checkout.controller_sha
+    if scenario == "missing-controller":
+        controller_sha = "b" * 40
+    elif scenario == "symbolic-controller":
+        controller_sha = "HEAD"
+    if scenario == "wrong-source-sha":
+        source_sha = "a" * 40
+    output = lane_checkout.runner_temp / "github-output"
+    result = subprocess.run(
+        (
+            "bash",
+            "-euo",
+            "pipefail",
+            "-c",
+            _run("release-tags.yml", "preflight", "Validate the successful publisher's exact source lane"),
+        ),
+        cwd=lane_checkout.root,
+        env={
+            "PATH": f"{lane_checkout.binaries}:/usr/bin:/bin",
+            "FIXTURE_PYTHON": sys.executable,
+            "SOURCE_REF": source_ref,
+            "SOURCE_SHA": source_sha,
+            "CONTROLLER_SHA": controller_sha,
+            "RUNNER_TEMP": str(lane_checkout.runner_temp),
+            "GITHUB_OUTPUT": str(output),
+        },
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == expected_status, result.stderr
+    assert (lane_checkout.root / ".github/scripts/release_lane.py").exists() is source_helper
+    assert not _lane_git(lane_checkout.root, "status", "--porcelain=v1")
+    if expected_status == 0:
+        assert output.read_text() == "lane=main\n"
+        assert f"publication at {source_sha}" in result.stdout
+    else:
+        assert not output.exists()
+    materialized = lane_checkout.runner_temp / "release-lane-controller.py"
+    assert not (lane_checkout.root / "untrusted-helper-executed").exists()
+    if scenario not in {"missing-controller", "symbolic-controller"}:
+        assert materialized.is_file()
+        assert (  # sarj-noqa: SARJ402 -- exact materialized controller bytes are the source-binding trust contract.
+            materialized.read_bytes() == (REPO_ROOT / ".github/scripts/release_lane.py").read_bytes()
+        )
+    elif scenario == "symbolic-controller":
+        assert not materialized.exists()

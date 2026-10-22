@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+case "$TARGET_BRANCH" in
+  main | maintenance/standards-8.101) ;;
+  *)
+    echo "::error::publication branch is not allowed"
+    exit 1
+    ;;
+esac
+
 deadline=$((SECONDS + 2700))
 for specification in \
   'repo-ci.yml|release-ready' \
@@ -11,8 +19,8 @@ for specification in \
     response="$(gh api --method GET \
       "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs" \
       -f head_sha="$TARGET_SHA" -f event=push -f per_page=10)"
-    run="$(jq -c --arg sha "$TARGET_SHA" --arg repo "$GITHUB_REPOSITORY" \
-      '[.workflow_runs[] | select(.head_sha == $sha and .event == "push" and .head_repository.full_name == $repo)] | first // empty' \
+    run="$(jq -c --arg sha "$TARGET_SHA" --arg repo "$GITHUB_REPOSITORY" --arg branch "$TARGET_BRANCH" --arg path ".github/workflows/$workflow" \
+      '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == $branch and .event == "push" and .path == $path and .head_repository.full_name == $repo)] | first // empty' \
       <<<"$response")"
     if [[ -z "$run" ]]; then
       echo "waiting for $expected_name push run at $TARGET_SHA"
