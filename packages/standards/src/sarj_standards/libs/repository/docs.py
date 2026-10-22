@@ -34,7 +34,7 @@ _GENERATED_READMES: Final = (
     Path("packages/iac/README.md"),
     Path("packages/typescript/README.md"),
     Path("packages/tsconfig/README.md"),
-    Path("plugins/sarj-audit/README.md"),
+    Path("plugins/sarj-skills/README.md"),
 )
 _GENERATED_SECURITY_POLICY: Final = Path(".github/SECURITY.md")
 _EXECUTABLE_OR_LEGAL_DOCUMENTS: Final = (Path("AGENTS.md"),)
@@ -95,7 +95,7 @@ def _render_readmes(root: Path) -> dict[Path, str]:
     rendered = {root / "README.md": _root_readme(root, packages)}
     for manifest_path, registry, engine, metadata in packages:
         rendered[manifest_path.parent / "README.md"] = _package_readme(root, manifest_path, registry, engine, metadata)
-    rendered[root / "plugins/sarj-audit/README.md"] = _plugin_readme(root)
+    rendered[root / "plugins/sarj-skills/README.md"] = _plugin_readme(root)
     rendered[root / _GENERATED_SECURITY_POLICY] = _security_policy()
     return dict(sorted(rendered.items()))
 
@@ -517,13 +517,13 @@ def _package_usage(name: str, engine: str | None) -> str:
 
 
 def _plugin_readme(root: Path) -> str:
-    manifest_path = root / "plugins/sarj-audit/.claude-plugin/plugin.json"
+    manifest_path = root / "plugins/sarj-skills/.claude-plugin/plugin.json"
     metadata = _manifest(manifest_path)
     sections = [
         _GENERATED_SENTINEL,
         f"# {_title(_string(metadata, 'name'))}",
         _string(metadata, "description"),
-        f"[Documentation]({_DOCUMENTATION_URL}) · [Source](https://github.com/sarj-ai/code-standards/tree/main/plugins/sarj-audit)",
+        f"[Documentation]({_DOCUMENTATION_URL}) · [Source](https://github.com/sarj-ai/code-standards/tree/main/plugins/sarj-skills)",
     ]
     return "\n\n".join(sections) + "\n"
 

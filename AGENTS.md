@@ -14,7 +14,7 @@ Before editing a rule, state `Routing: <repository>, because <required evidence>
 Examples: banning a tracked verifier filename belongs in `repo-standards`; rejecting a
 Terraform expression that derives access from `var.environment` belongs here.
 
-For rule work, follow `plugins/sarj-audit/skills/lint-rule-generator/SKILL.md`. Run
+For rule work, follow `plugins/sarj-skills/skills/lint-rule-generator/SKILL.md`. Run
 `make verify` before review.
 
 For release recovery, never retarget an immutable package tag. If publishable

@@ -44,6 +44,9 @@ Thumbs.db
 !.claude/skills/test-value/
 .claude/skills/test-value/*
 !.claude/skills/test-value/SKILL.md
+!.claude/skills/100-passes/
+.claude/skills/100-passes/*
+!.claude/skills/100-passes/SKILL.md
 apps/docs/.wrangler/
 apps/docs/.dev.vars*
 !apps/docs/.dev.vars.example

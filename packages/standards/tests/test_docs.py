@@ -23,7 +23,7 @@ GENERATED_READMES = (
     Path("packages/iac/README.md"),
     Path("packages/typescript/README.md"),
     Path("packages/tsconfig/README.md"),
-    Path("plugins/sarj-audit/README.md"),
+    Path("plugins/sarj-skills/README.md"),
     Path(".github/SECURITY.md"),
 )
 
@@ -113,12 +113,12 @@ def _repository(root: Path) -> None:
         json.dumps({"rules": {"eslint": ["one", "two"], "python": ["one"], "sql": [], "iac": [], "text": []}}),
         encoding="utf-8",
     )
-    plugin_manifest = root / "plugins/sarj-audit/.claude-plugin/plugin.json"
+    plugin_manifest = root / "plugins/sarj-skills/.claude-plugin/plugin.json"
     plugin_manifest.parent.mkdir(parents=True)
     plugin_manifest.write_text(
         json.dumps(
             {
-                "name": "sarj-audit",
+                "name": "sarj-skills",
                 "version": "1.0.0",
                 "description": "Judgment-layer audits.",
                 "author": {"name": "sarj-ai"},
@@ -126,10 +126,10 @@ def _repository(root: Path) -> None:
         ),
         encoding="utf-8",
     )
-    command = root / "plugins/sarj-audit/commands/security.md"
+    command = root / "plugins/sarj-skills/commands/security.md"
     command.parent.mkdir(parents=True)
     command.write_text("# Security\n", encoding="utf-8")
-    skill = root / "plugins/sarj-audit/skills/audit-protocol/SKILL.md"
+    skill = root / "plugins/sarj-skills/skills/audit-protocol/SKILL.md"
     skill.parent.mkdir(parents=True)
     skill.write_text("# Audit protocol\n", encoding="utf-8")
     (root / "README.md").write_text("# stale\n", encoding="utf-8")
@@ -141,7 +141,7 @@ def _repository(root: Path) -> None:
         "packages/iac/README.md",
         "packages/typescript/README.md",
         "packages/tsconfig/README.md",
-        "plugins/sarj-audit/README.md",
+        "plugins/sarj-skills/README.md",
     ):
         path = root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -254,7 +254,7 @@ def test_skill_discovery_documents_validate_their_links(tmp_path: Path, harness:
     adapter = tmp_path / harness / "skills" / "audit-protocol" / "SKILL.md"
     adapter.parent.mkdir(parents=True)
     adapter.write_text(
-        "[Canonical skill](../../../plugins/sarj-audit/skills/audit-protocol/SKILL.md)\n", encoding="utf-8"
+        "[Canonical skill](../../../plugins/sarj-skills/skills/audit-protocol/SKILL.md)\n", encoding="utf-8"
     )
 
     docs.check(tmp_path)
@@ -302,19 +302,19 @@ def test_repository_generated_documentation_has_no_drift() -> None:
     assert docs.check(REPO_ROOT).status == 0
 
 
-def test_sarj_audit_marketplace_source_is_installable() -> None:
+def test_sarj_skills_marketplace_source_is_installable() -> None:
     marketplace = manifest.as_table(_load_json(REPO_ROOT / ".claude-plugin/marketplace.json"))
     assert marketplace.get("name") == "sarj", "Consumers install plugins through the public @sarj marketplace."
     entries = [manifest.as_table(value) for value in manifest.list_field(marketplace, "plugins")]
-    plugins = [entry for entry in entries if entry.get("name") == "sarj-audit"]
-    assert len(plugins) == 1, "Consumers must be able to install sarj-audit@sarj unambiguously."
+    plugins = [entry for entry in entries if entry.get("name") == "sarj-skills"]
+    assert len(plugins) == 1, "Consumers must be able to install sarj-skills@sarj unambiguously."
     source = plugins[0].get("source")
-    assert isinstance(source, str), "The bundled audit plugin needs a local source."
-    assert source.startswith("./"), "The bundled audit plugin needs a checkout-relative source."
+    assert isinstance(source, str), "The bundled skills plugin needs a local source."
+    assert source.startswith("./"), "The bundled skills plugin needs a checkout-relative source."
     plugin_root = (REPO_ROOT / source).resolve()
     assert plugin_root.is_relative_to(REPO_ROOT), f"Plugin source escapes the checkout: {source}"
     plugin = manifest.as_table(_load_json(plugin_root / ".claude-plugin/plugin.json"))
-    assert plugin.get("name") == "sarj-audit", f"Marketplace/plugin identity mismatch: {source}"
+    assert plugin.get("name") == "sarj-skills", f"Marketplace/plugin identity mismatch: {source}"
     assert any(plugin_root.glob("commands/*.md")) or any(plugin_root.glob("skills/*/SKILL.md")), (
         f"Plugin source has no discoverable commands or skills: {source}"
     )
