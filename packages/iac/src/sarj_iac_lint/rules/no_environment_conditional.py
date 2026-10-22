@@ -5,9 +5,10 @@ from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
-from sarj_iac_lint._hcl import document, header_comment_lines, tokens
+from sarj_iac_lint._hcl import document, header_comment_lines, literal_string, tokens
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
+    DefaultLevel,
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
@@ -101,6 +102,8 @@ _CLOSE = frozenset({")", "]", "}"})
 
 # Words that read like identifiers but head expressions: `if (x)` groups, `foo(x)` calls.
 _EXPRESSION_KEYWORDS = frozenset({"if", "for", "in"})
+_OPERAND_BOUNDARIES = _COMPARISONS | _EXPRESSION_KEYWORDS | frozenset({"&&", "||", "?", ":", ",", "="})
+_REFERENCE_PART_RE = re.compile(r"[A-Za-z_][\w-]*")
 
 # Checked first to avoid duplicate diagnostics: SARJ206 categorically owns these files.
 _TEST_SUFFIXES = (".tftest.hcl", ".tftest.json")
@@ -116,6 +119,7 @@ _GENERATED_RE = re.compile(r"generated.{0,80}(?:do not edit|don't edit)", re.IGN
 class _Use(NamedTuple):
     identity: str
     shape: str
+    severity: DefaultLevel = DefaultLevel.ERROR
 
 
 class _AssertionBlockKind(StrEnum):
@@ -148,6 +152,13 @@ class NoEnvironmentConditional(Rule):
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
+            (
+                "Comparisons against a catalog traversal with an exact static deployment selector, such as "
+                "local.catalog.prod.project, are advisory warnings when both operands have the same qualified "
+                "identity leaf. Catalog keys can describe business concepts rather than deployments. Dynamic "
+                "keys, computed operands, alias definitions and external catalog contents are not resolved. Existing "
+                "literal-comparison findings remain errors and take precedence within the same attribute."
+            ),
             (
                 "A comparison inside validation, precondition, postcondition, check, or assert asserts which "
                 "inputs are legal and is exempt. Terraform test files are rejected separately by SARJ206."
@@ -334,6 +345,47 @@ class NoEnvironmentConditional(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="catalog-derived-deployment-policy",
+                title="A static deployment catalog selector derives access policy",
+                outcome=ExampleOutcome.MATCH,
+                scenario="catalog-comparison",
+                files=(
+                    ExampleFile.iac(
+                        "main.tf",
+                        "locals {\n  access_count = var.project == local.catalog.prod.project ? 1 : 0\n}\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="explicit-deployment-policy-inputs",
+                title="Pass the access count and roles directly as typed inputs",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="catalog-comparison",
+                files=(
+                    ExampleFile.iac(
+                        "main.tf",
+                        'resource "google_project_iam_member" "query_runner" {\n'
+                        "  count   = var.access_count\n"
+                        "  project = var.project\n"
+                        '  role    = "roles/bigquery.jobUser"\n'
+                        "  member  = var.member\n"
+                        "}\n"
+                        'resource "google_project_iam_member" "ai_roles" {\n'
+                        "  for_each = var.ai_roles\n"
+                        "  project  = var.project\n"
+                        "  role     = each.value\n"
+                        "  member   = var.member\n"
+                        "}\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description = documentation.summary
@@ -356,6 +408,7 @@ class NoEnvironmentConditional(Rule):
                 col=attr.col,
                 code=self.code,
                 message=_message(owner, attr, use),
+                severity=use.severity,
             )
             for owner, attr in _attributes((document(source),))
             if _CONTAINS in attr.value or any(operator in attr.value for operator in _COMPARISONS)
@@ -394,6 +447,7 @@ def _is_assertion_block(block: Block, parents: tuple[Block, ...]) -> bool:
 
 def _environment_use(value: str) -> _Use | None:
     toks = tokens(value)
+    advisory: _Use | None = None
     for index, tok in enumerate(toks):
         if tok in _COMPARISONS:
             use = _comparison(toks, index)
@@ -403,11 +457,87 @@ def _environment_use(value: str) -> _Use | None:
             continue
         if use is not None:
             return use
-    return None
+        if advisory is None and tok in _COMPARISONS:
+            advisory = _catalog_comparison(toks, index)
+    return advisory
 
 
 def uses_environment_conditional(value: str) -> bool:
-    return _environment_use(value) is not None
+    use = _environment_use(value)
+    return use is not None and use.severity is DefaultLevel.ERROR
+
+
+def _catalog_comparison(toks: tuple[str, ...], index: int) -> _Use | None:
+    left = _operand(toks, index, direction=-1)
+    right = _operand(toks, index, direction=1)
+    left_parts, right_parts = _static_traversal(left), _static_traversal(right)
+    if (
+        left_parts is None
+        or right_parts is None
+        or left_parts[-1] != right_parts[-1]
+        or not _is_environment_name(left_parts[-1], literal='"prod"')
+        or not any(
+            selector.lower() in _ENVIRONMENT_LITERAL_SEGMENTS
+            for parts in (left_parts, right_parts)
+            for selector in parts[2:-1]
+        )
+    ):
+        return None
+    left_shape, right_shape = " ".join(left), " ".join(right)
+    return _Use(left_shape, f"{left_shape} {toks[index]} {right_shape}", DefaultLevel.WARNING)
+
+
+def _operand(toks: tuple[str, ...], index: int, *, direction: int) -> tuple[str, ...]:
+    depth = 0
+    start = index + direction
+    end = start
+    for end in range(start, -1 if direction == -1 else len(toks), direction):
+        tok = toks[end]
+        opening = tok in (_CLOSE if direction == -1 else _OPEN)
+        closing = tok in (_OPEN if direction == -1 else _CLOSE)
+        if depth == 0 and (closing or tok in _OPERAND_BOUNDARIES):
+            break
+        if opening:
+            depth += 1
+        elif closing:
+            depth -= 1
+    else:
+        end += direction
+    return toks[end + 1 : index] if direction == -1 else toks[start:end]
+
+
+def _static_traversal(operand: Sequence[str]) -> tuple[str, ...] | None:
+    operand = _peel(operand)
+    while (
+        len(operand) >= _GROUP_TOKENS + 1
+        and operand[0] in _NORMALIZERS
+        and operand[1] == "("
+        and _matching_close(operand, 1) == len(operand) - 1
+    ):
+        operand = _peel(operand[2:-1])
+    if not operand:
+        return None
+    parts = operand[0].split(".")
+    if parts[0] not in {"var", "local"} or not all(_REFERENCE_PART_RE.fullmatch(part) for part in parts):
+        return None
+    index = 1
+    while index < len(operand):
+        match operand[index : index + 3]:
+            case ["[", encoded_key, "]"]:
+                key = literal_string(encoded_key)
+                if key is None:
+                    return None
+                parts.append(key)
+                index += 3
+            case [".", tail, *_]:
+                tail_parts = tail.split(".")
+                if not all(_REFERENCE_PART_RE.fullmatch(part) for part in tail_parts):
+                    return None
+                parts.extend(tail_parts)
+                index += 2
+            case _:
+                return None
+    return tuple(parts) if len(parts) > 1 else None
 
 
 def _comparison(toks: tuple[str, ...], index: int) -> _Use | None:
@@ -626,6 +756,12 @@ def _message(owner: Block, attr: Attribute, use: _Use) -> str:
     # level, which is where Terragrunt keeps `inputs`.
     labelled = " ".join([owner.type, *(f'"{label}"' for label in owner.labels)])
     where = labelled if owner.type else "the file root"
+    if use.severity is DefaultLevel.WARNING:
+        return (
+            f"`{attr.name}` in {where} compares a deployment-shaped identity with a static catalog selector "
+            f"({use.shape}); consider passing the selected typed value or one named capability from the root "
+            "configuration. Catalog keys can also describe business concepts."
+        )
     return (
         f"`{attr.name}` in {where} selects behavior from deployment identity ({use.shape}); pass the selected typed "
         "value or one named capability from the root configuration."
