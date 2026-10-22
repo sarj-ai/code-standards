@@ -11,7 +11,8 @@ jobs:
   preflight:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch == 'main' &&
+      (github.event.workflow_run.head_branch == 'main' ||
+       github.event.workflow_run.head_branch == 'maintenance/standards-8.101') &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -20,6 +21,7 @@ jobs:
     outputs:
       recovery: ${{ steps.recovery.outputs.recovery }}
       standards_tag: ${{ steps.recovery.outputs.standards_tag }}
+      lane: ${{ steps.lane.outputs.lane }}
     steps:
       - name: Harden the runner
         uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
@@ -33,11 +35,20 @@ jobs:
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: '0.13.0'
+      - name: Validate the successful publisher's exact source lane
+        id: lane
+        env:
+          SOURCE_REF: refs/heads/${{ github.event.workflow_run.head_branch }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: >-
+          uv run --script .github/scripts/release_lane.py --root .
+          --ref "$SOURCE_REF" --commit "$SOURCE_SHA" --github-output "$GITHUB_OUTPUT"
       - id: recovery
         name: Detect tag or GitHub Release recovery
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+          TARGET_BRANCH: ${{ github.event.workflow_run.head_branch }}
         shell: bash
         run: bash .github/scripts/release-tag-preflight.sh
   release-safety:
@@ -61,6 +72,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+          TARGET_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: bash .github/scripts/release-require-checks.sh
   tag:
     needs: [preflight, release-safety]
@@ -86,12 +98,20 @@ jobs:
         with:
           version: '0.13.0'
       - name: Create immutable tags for registry-visible releases
+        if: needs.preflight.outputs.lane == 'main'
         env:
           PUBLISHED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: >-
           uv run --project packages/standards --frozen code-standards --root .
           maintain release create-tags typescript bootstrap contracts python sql iac standards tsconfig
           --commit "$PUBLISHED_SHA"
+      - name: Create only the maintenance Standards tag
+        if: needs.preflight.outputs.lane == 'standards-maintenance'
+        env:
+          PUBLISHED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: >-
+          uv run --project packages/standards --frozen code-standards --root .
+          maintain release create-tags standards --commit "$PUBLISHED_SHA"
       - name: Publish the Standards GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -103,6 +123,7 @@ jobs:
     if: >-
       always() &&
       needs.preflight.result == 'success' &&
+      needs.preflight.outputs.lane == 'main' &&
       ((needs.preflight.outputs.recovery == 'false') ||
        (needs.preflight.outputs.recovery == 'true' &&
         needs.release-safety.result == 'success' &&

@@ -2915,6 +2915,69 @@ def test_eslint_malformed_output_preserves_stderr_without_json_exception_name(tm
     assert "JSONDecodeError" not in issue.message
 
 
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "updated ./.basedpyright-baseline.json with 1503 errors (went down by 6)",
+        "updated ./.basedpyright/baseline.json with 1 error (went down by 1)",
+        "updated undefined with 0 errors (went down by 2)",
+        "baseline file is outdated, run without `--baselinemode=discard` to update it. (went down by 1)",
+    ],
+)
+def test_basedpyright_accepts_the_native_baseline_notice(tmp_path: Path, prefix: str) -> None:
+    assert parse_basedpyright(prefix + '\n\n{"generalDiagnostics":[]}', root=tmp_path) == ()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        'unexpected log\n\n{"generalDiagnostics":[]}',
+        'updated baseline with 1 error (went up by 1)\n\n{"generalDiagnostics":[]}',
+        'updated baseline with 1 error (went down by 0)\n\n{"generalDiagnostics":[]}',
+        'updated baseline with 1 errors (went down by 1)\n\n{"generalDiagnostics":[]}',
+        'updated baseline with 1 error (went down by 1)\n{"generalDiagnostics":[]}',
+        'updated baseline with 1 error (went down by 1)\n\nunexpected log\n{"generalDiagnostics":[]}',
+        'updated baseline with 1 error (went down by 1)\n\n{"generalDiagnostics":[]}\ntrailing log',
+        'updated baseline with 1 error (went down by 1)\n\n{"generalDiagnostics":',
+        "updated baseline with 1 error (went down by 1)\n\n{}",
+        'baseline file is outdated, run without `--baselinemode=discard` to update it. (went down by 0)\n\n{"generalDiagnostics":[]}',
+        'baseline file is outdated, run without `--baselinemode=discard` to update it. (went down by 1)\n{"generalDiagnostics":[]}',
+        'baseline file is outdated, run without `--baselinemode=discard` to update it. (went down by 1)\n\n{"generalDiagnostics":[]}\ntrailing log',
+    ],
+)
+def test_basedpyright_rejects_unknown_framing_and_invalid_reports(tmp_path: Path, payload: str) -> None:
+    with pytest.raises(ValidationError):
+        parse_basedpyright(payload, root=tmp_path)
+
+
+@pytest.mark.parametrize("returncode", [1, 2])
+@pytest.mark.parametrize(
+    "notice",
+    [
+        "updated baseline with 0 errors (went down by 1)",
+        "baseline file is outdated, run without `--baselinemode=discard` to update it. (went down by 1)",
+    ],
+)
+def test_basedpyright_native_notice_does_not_override_failure_status(
+    tmp_path: Path, returncode: int, notice: str
+) -> None:
+    source = tmp_path / "example.py"
+    source.write_text("value = 1\n")
+    payload = notice + '\n\n{"generalDiagnostics":[]}'
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert argv == ("basedpyright", "--outputjson", "--baselinemode=discard", str(source))
+        assert cwd == tmp_path
+        return ProcessOutput(returncode, payload, "")
+
+    reports = analyze_external(
+        [str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=runner, capabilities=frozenset({"pyright"})
+    )
+
+    assert reports[0].completion is Completion.FAILED
+    assert reports[0].issues[0].kind == ("protocol-mismatch" if returncode == 1 else "tool-failure")
+
+
 def test_basedpyright_utf16_range_preserves_astral_character(tmp_path: Path) -> None:
     source = tmp_path / "example.py"
     source.write_text("value = '😀'\n", encoding="utf-8")
@@ -3021,7 +3084,7 @@ def test_unused_function_diagnostics_are_bounded_advisory_test_helpers(
     )
 
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        assert argv == ("basedpyright", "--outputjson")
+        assert argv == ("basedpyright", "--outputjson", "--baselinemode=discard", str(path))
         assert cwd == tmp_path
         return ProcessOutput(1, payload, "")
 
@@ -3468,10 +3531,10 @@ def test_basedpyright_prefers_a_parent_environment_over_a_nested_package_manifes
     reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=runner)
 
     assert all(report.completion is Completion.COMPLETE for report in reports)
-    assert seen[1] == ((str(analyzer), "--outputjson"), project)
+    assert seen[1] == ((str(analyzer), "--outputjson", "--baselinemode=discard", str(source)), project)
 
 
-def test_basedpyright_runs_in_project_mode_and_filters_unselected_diagnostics(tmp_path: Path) -> None:
+def test_basedpyright_selects_files_and_filters_unselected_diagnostics(tmp_path: Path) -> None:
     project = tmp_path / "python"
     project.mkdir()
     (project / "pyrightconfig.json").write_text('{"include":["."]}\n', encoding="utf-8")
@@ -3504,7 +3567,7 @@ def test_basedpyright_runs_in_project_mode_and_filters_unselected_diagnostics(tm
     reports = analyze_external([str(selected)], root=tmp_path, trust=TrustMode.SAFE, runner=runner)
 
     basedpyright = next(report for report in reports if report.name == "basedpyright")
-    assert seen[1] == ("basedpyright", "--outputjson")
+    assert seen[1] == ("basedpyright", "--outputjson", "--baselinemode=discard", str(selected))
     assert basedpyright.completion is Completion.COMPLETE
     assert [diagnostic.location.path for diagnostic in basedpyright.diagnostics] == ["python/selected.py"]
 
@@ -3552,7 +3615,7 @@ def test_python_tools_use_the_adopted_config_for_files_outside_its_directory(tmp
             ),
             project,
         ),
-        (("basedpyright", "--outputjson"), project),
+        (("basedpyright", "--outputjson", "--baselinemode=discard", str(source)), project),
     ]
 
 

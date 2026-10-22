@@ -157,7 +157,7 @@ def test_release_has_no_manual_or_tag_publish_bypass() -> None:
     trigger = release.partition("\npermissions:\n")[0]
     assert "workflow_dispatch" not in trigger
     assert "tags:" not in trigger
-    assert "branches: [main]" in trigger
+    assert "branches: [main, maintenance/standards-8.101]" in trigger
     assert (
         re.search(r"(?m)^\s+path: .*dist/\*\s*$", release) is None
     )  # sarj-noqa: SARJ402 -- workflow text is the artifact-path contract
@@ -574,7 +574,12 @@ def test_documentation_deploy_is_revision_bound_self_verifying_and_single_site()
     workflow = (REPO_ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     verifier = (REPO_ROOT / "apps/docs/scripts/verify-deployment.ts").read_text(encoding="utf-8")
 
-    assert "branches: [main]" in workflow  # sarj-noqa: SARJ402 -- workflow text is the deployment-policy contract
+    assert (
+        "branches: [main, maintenance/standards-8.101]" in workflow
+    )  # sarj-noqa: SARJ402 -- workflow text is the deployment-policy contract
+    assert _workflow_job("docs-deploy")["if"] == (
+        "github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')"
+    )
     assert (
         "github.event_name == 'push' || github.event_name == 'workflow_dispatch'" in workflow
     )  # sarj-noqa: SARJ402 -- workflow text is the deployment-policy contract

@@ -100,6 +100,14 @@ _MAX_PYTHON_PROJECTS = 32
 _SHELLCHECK_BATCH_SIZE = 250
 _SHELLCHECK_VERSION: Final = "0.11.0"
 _SHELLCHECK_VERSION_RE: Final = re.compile(r"^version:\s*(?P<version>\S+)\s*$", re.MULTILINE)
+_BASEDPYRIGHT_BASELINE_SHRINK_RE: Final = re.compile(
+    r"updated [^\r\n]+ with (?:1 error|(?:0|[2-9]|[1-9][0-9]+) errors) "
+    r"\(went down by [1-9][0-9]*\)"
+)
+_BASEDPYRIGHT_BASELINE_DISCARD_RE: Final = re.compile(
+    r"baseline file is outdated, run without `--baselinemode=discard` to update it\. "
+    r"\(went down by [1-9][0-9]*\)"
+)
 _DEPTRY_ANNOTATION_RE: Final = re.compile(
     r"^::warning file=(?P<file>.*?),line=(?P<line>[1-9][0-9]*)"
     r"(?:,col=(?P<column>[1-9][0-9]*))?,title=(?P<code>DEP00[123])::(?P<message>.*)$"
@@ -418,6 +426,7 @@ def analyze_external(
                         root=root,
                         runner=execute,
                         parser=parse_basedpyright,
+                        project_mode=any(Path(path).is_dir() for path in contained),
                     )
                 )
 
@@ -1862,6 +1871,7 @@ def _invoke_python_projects(
     root: Path,
     runner: ProcessRunner,
     parser: ProtocolParser,
+    project_mode: bool,
 ) -> tuple[ToolReport, ...]:
     projects = _group_python_projects(files, root)
     if len(projects) > _MAX_PYTHON_PROJECTS:
@@ -1873,7 +1883,7 @@ def _invoke_python_projects(
         return (ToolReport(name, Completion.FAILED, issues=(issue,), analyzer_id=AnalyzerId(name)),)
     reports: list[ToolReport] = []
     for project, scoped_files in projects:
-        argv = (_project_analyzer(project, "basedpyright"), "--outputjson")
+        argv = _basedpyright_argv(project, scoped_files, project_mode=project_mode)
         project_id = project.relative_to(root).as_posix() or None
         report = _invoke(
             name,
@@ -1911,6 +1921,13 @@ def _invoke_python_projects(
             )
         )
     return tuple(reports)
+
+
+def _basedpyright_argv(project: Path, files: Sequence[str], *, project_mode: bool) -> tuple[str, ...]:
+    arguments = (_project_analyzer(project, "basedpyright"), "--outputjson")
+    if project_mode:
+        return arguments
+    return (*arguments, "--baselinemode=discard", *files)
 
 
 def _invoke_ruff_projects(
@@ -2921,6 +2938,13 @@ def parse_sarif(  # ruff: ignore[too-many-locals] -- protocol normalization keep
 
 
 def parse_basedpyright(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
+    # Native baseline modes print these notices before --outputjson, without a quiet flag.
+    # Strip only their complete framing; arbitrary logs and malformed JSON remain protocol failures.
+    notice, separator, report_payload = payload.partition("\n\n")
+    if separator and (
+        _BASEDPYRIGHT_BASELINE_SHRINK_RE.fullmatch(notice) or _BASEDPYRIGHT_BASELINE_DISCARD_RE.fullmatch(notice)
+    ):
+        payload = report_payload
     report = _BasedPyrightReport.model_validate_json(payload)
     documents: dict[Path, SourceDocument | None] = {}
     diagnostics: list[Diagnostic] = []

@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, maintenance/standards-8.101]
   workflow_dispatch:
   schedule:
     - cron: '23 9 * * 1'

@@ -184,7 +184,8 @@ def test_publication_and_tag_recovery_require_security_at_exact_revision(filenam
     assert checkout_index < gate_index
     revision = "${{ github.sha }}" if filename == "release.yml" else "${{ github.event.workflow_run.head_sha }}"
     assert checkout["with"] == {"ref": revision, "persist-credentials": False}
-    assert gate["env"] == {"GH_TOKEN": "${{ github.token }}", "TARGET_SHA": revision}
+    branch = "${{ github.ref_name }}" if filename == "release.yml" else "${{ github.event.workflow_run.head_branch }}"
+    assert gate["env"] == {"GH_TOKEN": "${{ github.token }}", "TARGET_SHA": revision, "TARGET_BRANCH": branch}
 
 
 def test_release_tags_registry_visible_packages_at_the_published_commit() -> None:
@@ -220,6 +221,62 @@ def test_release_tags_registry_visible_packages_at_the_published_commit() -> Non
         "maintain release create-tags typescript bootstrap contracts python sql iac standards tsconfig" in workflow
     )  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
     assert '--commit "$PUBLISHED_SHA"' in workflow  # sarj-noqa: SARJ402 -- workflow text is the release-policy contract
+
+
+def test_maintenance_uses_its_successful_publisher_identity_and_never_rolls_out() -> None:
+    preflight = _steps("release-tags.yml", "preflight")
+    lane_index, lane = next((index, step) for index, step in enumerate(preflight) if step.get("id") == "lane")
+    recovery_index = next(index for index, step in enumerate(preflight) if step.get("id") == "recovery")
+    assert lane_index < recovery_index
+    assert lane["env"] == {
+        "SOURCE_REF": "refs/heads/${{ github.event.workflow_run.head_branch }}",
+        "SOURCE_SHA": "${{ github.event.workflow_run.head_sha }}",
+    }
+    dispatch = _job("release-tags.yml", "dispatch-rollout")
+    assert "needs.preflight.outputs.lane == 'main'" in str(dispatch["if"])
+    tag_steps = _steps("release-tags.yml", "tag")
+    maintenance = next(step for step in tag_steps if step.get("name") == "Create only the maintenance Standards tag")
+    assert maintenance["if"] == "needs.preflight.outputs.lane == 'standards-maintenance'"
+    assert maintenance["env"] == {"PUBLISHED_SHA": "${{ github.event.workflow_run.head_sha }}"}
+    assert 'create-tags standards --commit "$PUBLISHED_SHA"' in str(maintenance["run"])
+
+
+def test_maintenance_publication_keeps_fresh_build_and_prevents_sibling_publication() -> None:
+    detect = _steps("release.yml", "detect")
+    lane_index = next(index for index, step in enumerate(detect) if step.get("id") == "lane")
+    targets_index = next(index for index, step in enumerate(detect) if step.get("id") == "c")
+    guard_index, guard = next(
+        (index, step)
+        for index, step in enumerate(detect)
+        if step.get("name") == "Reject maintenance sibling publication"
+    )
+    assert lane_index < targets_index < guard_index
+    assert guard["if"] == "steps.lane.outputs.lane == 'standards-maintenance'"
+    build = _steps("release.yml", "build-standards")
+    reuse = next(step for step in build if step.get("id") == "reuse")
+    assert reuse["if"] == "needs.detect.outputs.lane == 'main'"
+    for name in [
+        "Build package and exact local dependency wheels",
+        "Build the plugin for native ESLint integration tests",
+        "Install the manifest formatter",
+        "Install the pinned native tool bootstrap",
+        "Install and attest integration native tools",
+        "Test against the built wheel",
+        "Smoke test the source distribution",
+    ]:
+        step = next(step for step in build if step.get("name") == name)
+        assert step["if"] == "steps.reuse.outputs.reused != 'true'"
+    names = [step.get("name") for step in build]
+    assert names.index("Install the rule authoring parser") < names.index(
+        "Build the plugin for native ESLint integration tests"
+    )
+    assert names.index("Build the plugin for native ESLint integration tests") < names.index(
+        "Test against the built wheel"
+    )
+    assert names.index("Install the manifest formatter") < names.index("Test against the built wheel")
+    publish = _job("release.yml", "publish-standards")
+    assert publish["environment"] == "pypi-standards-release"
+    assert publish["permissions"] == {"contents": "read", "id-token": "write"}
 
 
 def test_tsconfig_release_publishes_verified_registry_artifacts() -> None:
@@ -384,7 +441,7 @@ def test_release_fallback_requires_successful_terminal_ci(tmp_path: Path, filena
         if endpoint.endswith('/jobs'):
             print(os.environ['JOBS'])
         else:
-            run = {{'head_sha': os.environ['TARGET_SHA'], 'event': 'push', 'head_repository': {{'full_name': os.environ['GITHUB_REPOSITORY']}}, 'id': 42, 'conclusion': None if '/ci.yml/' in endpoint else 'success'}}
+            run = {{'head_sha': os.environ['TARGET_SHA'], 'head_branch': os.environ['TARGET_BRANCH'], 'event': 'push', 'path': '.github/workflows/' + endpoint.split('/workflows/')[1].split('/')[0], 'head_repository': {{'full_name': os.environ['GITHUB_REPOSITORY']}}, 'id': 42, 'conclusion': None if '/ci.yml/' in endpoint else 'success'}}
             wrong_sha = {{**run, 'head_sha': 'b' * 40, 'conclusion': 'success'}}
             wrong_repo = {{**run, 'head_repository': {{'full_name': 'untrusted/repo'}}, 'conclusion': 'success'}}
             print(json.dumps({{'workflow_runs': [wrong_sha, wrong_repo, run]}}))
@@ -403,6 +460,7 @@ def test_release_fallback_requires_successful_terminal_ci(tmp_path: Path, filena
             "PATH": f"{fake_bin}:/usr/bin:/bin",
             "JOBS": json.dumps({"jobs": jobs}),
             "TARGET_SHA": "a" * 40,
+            "TARGET_BRANCH": "main",
             "GITHUB_REPOSITORY": "example/repo",
             "CALLS": str(tmp_path / "calls.jsonl"),
         },
