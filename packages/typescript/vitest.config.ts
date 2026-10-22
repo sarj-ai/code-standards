@@ -1,4 +1,5 @@
 import { readdir, readFile } from "node:fs/promises";
+import { availableParallelism } from "node:os";
 
 import { defineConfig } from "vitest/config";
 
@@ -26,6 +27,16 @@ async function sharedModuleGraphTests(): Promise<string[]> {
   return testFiles.filter((_, index) => marked[index]).map((file) => `tests/${file.replaceAll("\\", "/")}`);
 }
 
+function localCheckWorkerOptions(): { maxWorkers?: number } {
+  const options: { maxWorkers?: number } = {};
+  const capacityText = process.env["SARJ_LOCAL_CHECK_JOBS"];
+  if (capacityText === undefined || !/^[1-9]\d*$/u.test(capacityText)) return options;
+  const capacity = Number(capacityText);
+  if (Number.isSafeInteger(capacity)) options.maxWorkers = Math.max(1, Math.floor(availableParallelism() / capacity));
+  return options;
+}
+
+const LOCAL_CHECK_WORKER_OPTIONS = localCheckWorkerOptions();
 const SHARED_MODULE_GRAPH_TESTS = await sharedModuleGraphTests();
 
 export default defineConfig({
@@ -35,6 +46,7 @@ export default defineConfig({
     },
   },
   test: {
+    ...LOCAL_CHECK_WORKER_OPTIONS,
     globals: false,
     testTimeout: 60_000,
     hookTimeout: 60_000,
