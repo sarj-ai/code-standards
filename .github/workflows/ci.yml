@@ -832,8 +832,10 @@ jobs:
         run: uv run --project packages/standards python -m sarj_standards.libs.adoption.native_bootstrap
       - name: Install and attest integration native tools
         run: uv run --project packages/standards python -m sarj_standards.libs.release.native_test_setup --root .
+      - name: Record effective CPU capacity
+        run: nproc
       - name: Test every Python package on the minimum supported runtime
-        run: make test-bootstrap test-contracts test-python test-sql test-iac test-standards
+        run: make --jobs=2 --keep-going test-standards test-bootstrap test-contracts test-python test-sql test-iac
 
   standards:
     name: standards package
