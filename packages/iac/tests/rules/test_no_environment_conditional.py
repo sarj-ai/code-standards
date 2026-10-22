@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_iac_lint.rule_base import is_suppressed
+from sarj_iac_lint.rule_base import DefaultLevel, is_suppressed
 from sarj_iac_lint.rules.no_environment_conditional import (
     ENVIRONMENT_SEGMENTS,
     QUALIFIED_SEGMENTS,
@@ -1048,3 +1048,105 @@ def test_escaped_resource_label_does_not_turn_capability_input_into_environment_
     source = 'resource "google_storage_bucket" "\\u0063ache" {\n  count = var.enable_object_cache ? 1 : 0\n}\n'
 
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        pytest.param(
+            "var.project == local.stack_catalog.prod.project && var.project == local.selected_stack.project ? 1 : 0",
+            id="compound-project-count",
+        ),
+        pytest.param(
+            "var.project == local.stack_catalog.dev.project && var.project == local.selected_stack.project "
+            '? toset(["roles/aiplatform.user", "roles/serviceusage.serviceUsageConsumer"]) : toset([])',
+            id="compound-role-collection",
+        ),
+        pytest.param("local.catalog.prod.project == var.project ? 1 : 0", id="flipped-comparison"),
+        pytest.param("var.project != local.catalog.prod.project", id="inequality"),
+        pytest.param("(var.project) == (local.catalog.prod.project)", id="parentheses"),
+        pytest.param("lower(var.project) == trimspace(local.catalog.prod.project)", id="pure-normalizers"),
+        pytest.param('var.project == local.catalog["prod"].project', id="literal-bracket-selector"),
+        pytest.param('var["project"] == local["catalog"]["prod"]["project"]', id="bracket-identities"),
+        pytest.param(r'var.project == local.catalog["pr\u006fd"].project', id="decoded-selector"),
+        pytest.param("var.project_id == local.catalog.preview.project_id", id="qualified-identity"),
+    ],
+)
+def test_static_deployment_catalog_comparisons_are_advisory(expression: str) -> None:
+    (finding,) = _check(f"locals {{\n  selected = {expression}\n}}\n")
+
+    assert (finding.code, finding.line, finding.col, finding.severity) == ("SARJ204", 2, 3, DefaultLevel.WARNING)
+    assert "consider passing the selected typed value" in finding.message
+    # This public boolean helper retains its older proven-error contract.
+    assert not uses_environment_conditional(expression)
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        pytest.param("var.production_access_count", id="direct-count-input"),
+        pytest.param("var.development_ai_roles", id="direct-collection-input"),
+        pytest.param("var.enabled && var.ready ? 1 : 0", id="ordinary-capabilities"),
+        pytest.param("var.project == local.selected_stack.project", id="configured-identity-consistency"),
+        pytest.param("var.project == local.catalog.analytics.project", id="business-selector"),
+        pytest.param("var.project == local.catalog.productional.project", id="selector-substring"),
+        pytest.param('var.project == local.catalog["prod.project"]', id="one-business-key-is-not-a-traversal"),
+        pytest.param("var.project == local.catalog.prod.price", id="different-identity-leaf"),
+        pytest.param("var.product == local.catalog.prod.product", id="business-identity"),
+        pytest.param("var.project == local.prod.project", id="binding-name-is-not-a-selector"),
+        pytest.param("var.project == local.catalog[var.environment].project", id="dynamic-selector"),
+        pytest.param('var.project == local.catalog["${var.environment}"].project', id="template-selector"),
+        pytest.param(
+            'var.project == local.catalog["%{ if var.enabled }prod%{ endif }"].project', id="directive-selector"
+        ),
+        pytest.param("var.project == lookup(local.catalog, var.environment).project", id="computed-traversal"),
+        pytest.param("var.project == local.catalog.prod.project[0]", id="dynamic-leaf"),
+        pytest.param("var.project == local.catalog.prod.project_suffix", id="identity-suffix-mismatch"),
+        pytest.param("var.project + local.suffix == local.catalog.prod.project", id="computed-left-operand"),
+        pytest.param("var.project == local.catalog.prod.project + local.suffix", id="computed-right-operand"),
+        pytest.param('"var.project == local.catalog.prod.project"', id="literal-source-text"),
+        pytest.param("true /* var.project == local.catalog.prod.project */", id="comment-source-text"),
+    ],
+)
+def test_static_catalog_advisory_preserves_unproven_and_explicit_choices(expression: str) -> None:
+    assert _check(f"locals {{\n  selected = {expression}\n}}\n") == []
+
+
+@pytest.mark.parametrize("warning_first", [True, False], ids=["warning-before-error", "error-before-warning"])
+def test_literal_error_takes_precedence_over_catalog_advisory_in_one_attribute(*, warning_first: bool) -> None:
+    expressions = ["var.project == local.catalog.prod.project", 'var.environment == "prod"']
+    if not warning_first:
+        expressions.reverse()
+
+    (finding,) = _check(f"locals {{\n  selected = {' && '.join(expressions)}\n}}\n")
+
+    assert finding.severity is DefaultLevel.ERROR
+    assert 'var.environment == "prod"' in finding.message
+
+
+@pytest.mark.parametrize(
+    "wrapper",
+    [
+        'variable "project" {{ validation {{ condition = {condition} }} }}',
+        'resource "test" "r" {{ lifecycle {{ precondition {{ condition = {condition} }} }} }}',
+        'resource "test" "r" {{ lifecycle {{ postcondition {{ condition = {condition} }} }} }}',
+        'check "identity" {{ assert {{ condition = {condition} }} }}',
+    ],
+    ids=["validation", "precondition", "postcondition", "check"],
+)
+def test_catalog_identity_assertions_remain_allowed(wrapper: str) -> None:
+    assert _check(wrapper.format(condition="var.project == local.catalog.prod.project")) == []
+
+
+def test_catalog_advisory_preserves_attribute_suppression_and_reports_once() -> None:
+    source = (
+        "locals {\n"
+        "  selected = (  # sarj-noqa: SARJ204 -- reviewed business catalog\n"
+        "    var.project == local.catalog.prod.project || var.project == local.catalog.dev.project\n"
+        "  )\n"
+        "}\n"
+    )
+    (finding,) = _check(source)
+
+    assert finding.severity is DefaultLevel.WARNING
+    assert is_suppressed(source.splitlines(), finding.line, finding.code)

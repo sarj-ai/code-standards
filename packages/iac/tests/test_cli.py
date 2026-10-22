@@ -135,3 +135,48 @@ def test_cli_repeated_rules_and_option_like_paths(tmp_path: Path, monkeypatch: p
         )
         == 0
     )
+
+
+def test_catalog_warning_remains_visible_without_consuming_literal_error_baseline(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    src = tmp_path / "main.tf"
+    src.write_text('locals { selected = var.environment == "prod" }\n', encoding="utf-8")
+    baseline = tmp_path / "baseline.json"
+    assert main(["check", "--rule", _RULE, "--update-baseline", str(baseline), str(src)]) == 0
+    capsys.readouterr()
+    src.write_text(
+        "locals {\n"
+        "  count = var.project == local.catalog.prod.project ? 1 : 0\n"
+        '  selected = var.environment == "prod"\n'
+        "}\n",
+        encoding="utf-8",
+    )
+
+    assert main(["check", "--rule", _RULE, "--baseline", str(baseline), str(src)]) == 0
+    output = capsys.readouterr().out.strip().splitlines()
+    assert len(output) == 1
+    assert "SARJ204 warning:" in output[0]
+    assert "local.catalog.prod.project" in output[0]
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected_status", "warning_label"),
+    [
+        ("var.project == local.catalog.prod.project ? 1 : 0", 0, "warning: "),
+        ('var.environment == "prod" ? 1 : 0', 1, ""),
+    ],
+    ids=["catalog-advisory", "existing-literal-error"],
+)
+def test_environment_rule_cli_preserves_per_finding_severity(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    expression: str,
+    expected_status: int,
+    warning_label: str,
+) -> None:
+    src = tmp_path / "main.tf"
+    src.write_text(f"locals {{ selected = {expression} }}\n", encoding="utf-8")
+
+    assert main(["check", "--rule", _RULE, str(src)]) == expected_status
+    assert f"SARJ204 {warning_label}`selected`" in capsys.readouterr().out
