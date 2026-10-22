@@ -5,20 +5,24 @@ assert_lefthook_installed: true
 pre-commit:
   # Several commands use the same uv environment; serial execution prevents sync/typecheck races.
   parallel: false
+  piped: true
   commands:
     # Pre-commit consumers install the ROOT package, so a root version lagging
     # packages/python ships a stale linter under a fresh number.
     version-sync:
+      priority: 1
       run: make check-versions-synced
       fail_text: >-
         Root pyproject.toml version is out of sync with packages/python.
         Bump both and retry.
     private-refs:
+      priority: 2
       run: make check-no-private-refs
       fail_text: >-
         A private repo/client name or a conflict marker reached the tree.
         This regresses on rebases onto the scrub commit — re-anonymise and retry.
     file-conventions:
+      priority: 3
       run: make check-file-conventions
       fail_text: >-
         A file is misnamed, a rule has no test module named after it, markdown
@@ -26,15 +30,18 @@ pre-commit:
         drifted from its packaged source. Fix the reported path and retry.
 
     standards:
+      priority: 4
       run: uv run --no-config --project packages/standards --frozen code-standards check --staged --trust-repository-code
       fail_text: >-
         Standards staged checks failed. Fix the reported findings and retry.
     dogfood:
+      priority: 5
       run: make dogfood
       fail_text: >-
         A shipped custom rule reports against the Standards repository itself.
         Fix the finding before committing.
     typecheck:
+      priority: 6
       run: make typecheck
       fail_text: "Standards typecheck failed. Fix the reported error and retry."
 

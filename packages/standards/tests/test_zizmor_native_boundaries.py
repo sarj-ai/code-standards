@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 
 def _workflow(path: Path, trigger: str, *, workflow_cache: str = "", job_cache: str = "") -> None:
     path.parent.mkdir(parents=True)
+    # Native SARIF paths must be relative to this fixture's project boundary.
+    (path.parents[2] / ".git").mkdir(exist_ok=True)
     path.write_text(
         f"name: Security fixture\non: {trigger}\npermissions: {{}}\n"
         + (f"cache-mode: {workflow_cache}\n" if workflow_cache else "")
@@ -37,6 +39,23 @@ def _analyze(path: Path) -> tuple[Diagnostic, ...]:
     assert reports[0].completion is Completion.COMPLETE
     assert reports[0].version == security_tools.VERSIONS["zizmor"]
     return reports[0].diagnostics
+
+
+def test_native_paths_stay_inside_project_with_an_enclosing_git_marker(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    project = tmp_path / "project"
+    path = project / ".github/workflows/workflow.yml"
+    _workflow(path, "issue_comment")
+    original = path.read_bytes()
+
+    findings = [item for item in _analyze(path) if item.rule_id == "dangerous-triggers"]
+
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.WARNING
+    assert findings[0].location.path == ".github/workflows/workflow.yml"
+    assert findings[0].location.position is not None
+    assert findings[0].location.position.line == 1
+    assert path.read_bytes() == original
 
 
 @pytest.mark.parametrize(

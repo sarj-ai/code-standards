@@ -3085,13 +3085,22 @@ def test_basedpyright_rejects_unknown_framing_and_invalid_reports(tmp_path: Path
 
 
 @pytest.mark.parametrize("returncode", [1, 2])
-def test_basedpyright_native_notice_does_not_override_failure_status(tmp_path: Path, returncode: int) -> None:
+@pytest.mark.parametrize(
+    "notice",
+    [
+        "updated baseline with 0 errors (went down by 1)",
+        "baseline file is outdated, run without `--baselinemode=discard` to update it. (went down by 1)",
+    ],
+)
+def test_basedpyright_native_notice_does_not_override_failure_status(
+    tmp_path: Path, returncode: int, notice: str
+) -> None:
     source = tmp_path / "example.py"
     source.write_text("value = 1\n")
-    payload = 'updated baseline with 0 errors (went down by 1)\n\n{"generalDiagnostics":[]}'
+    payload = notice + '\n\n{"generalDiagnostics":[]}'
 
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        assert argv == ("basedpyright", "--outputjson")
+        assert argv == ("basedpyright", "--outputjson", "--baselinemode=discard", str(source))
         assert cwd == tmp_path
         return ProcessOutput(returncode, payload, "")
 
@@ -3260,7 +3269,7 @@ def test_unused_function_diagnostics_are_bounded_advisory_test_helpers(
     )
 
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        assert argv == ("basedpyright", "--outputjson")
+        assert argv == ("basedpyright", "--outputjson", "--baselinemode=discard", str(path))
         assert cwd == tmp_path
         return ProcessOutput(1, payload, "")
 
@@ -3707,10 +3716,10 @@ def test_basedpyright_prefers_a_parent_environment_over_a_nested_package_manifes
     reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=runner)
 
     assert all(report.completion is Completion.COMPLETE for report in reports)
-    assert seen[1] == ((str(analyzer), "--outputjson"), project)
+    assert seen[1] == ((str(analyzer), "--outputjson", "--baselinemode=discard", str(source)), project)
 
 
-def test_basedpyright_runs_in_project_mode_and_filters_unselected_diagnostics(tmp_path: Path) -> None:
+def test_basedpyright_selects_files_and_filters_unselected_diagnostics(tmp_path: Path) -> None:
     project = tmp_path / "python"
     project.mkdir()
     (project / "pyrightconfig.json").write_text('{"include":["."]}\n', encoding="utf-8")
@@ -3743,7 +3752,7 @@ def test_basedpyright_runs_in_project_mode_and_filters_unselected_diagnostics(tm
     reports = analyze_external([str(selected)], root=tmp_path, trust=TrustMode.SAFE, runner=runner)
 
     basedpyright = next(report for report in reports if report.name == "basedpyright")
-    assert seen[1] == ("basedpyright", "--outputjson")
+    assert seen[1] == ("basedpyright", "--outputjson", "--baselinemode=discard", str(selected))
     assert basedpyright.completion is Completion.COMPLETE
     assert [diagnostic.location.path for diagnostic in basedpyright.diagnostics] == ["python/selected.py"]
 
@@ -3791,7 +3800,7 @@ def test_python_tools_use_the_adopted_config_for_files_outside_its_directory(tmp
             ),
             project,
         ),
-        (("basedpyright", "--outputjson"), project),
+        (("basedpyright", "--outputjson", "--baselinemode=discard", str(source)), project),
     ]
 
 
