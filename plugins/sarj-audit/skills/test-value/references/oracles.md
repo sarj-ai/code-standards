@@ -25,15 +25,6 @@ test. A passing test of a library default, trivial accessor, or unchanged
 forwarder needs a demonstrated compatibility or application contract to earn
 ongoing maintenance. Coverage targets alone do not supply that contract.
 
-For scripts and configuration, start with the existing parser, linter, type
-checker, build, and smoke commands. Add a dedicated test only for a distinct
-repository-owned behavior or compatibility contract those checks do not establish.
-When needed, exercise inputs, exit status, output, or effects through the real
-entry point. Inspecting implementation text, AST shape, helper counts, or file
-layout does not establish runtime behavior; preserve deliberate artifact and
-representation contracts. Do not duplicate a native tool's own syntax or schema
-validation in another test suite.
-
 Trace actual CI test selections and their effective pytest roots/configuration,
 coverage collection, skips and prerequisites, retries, and optional lanes before
 assessing which contracts execute. Establish the intended lane and available
@@ -66,6 +57,41 @@ helpers in conventional test paths and keeps it advisory. The shared production
 setting stays disabled; adopting the bundle does not activate or rewrite
 consumer test environments. Decorated fixtures, methods, generated support,
 public helpers, and production callbacks are outside this finding.
+
+## Operational tests
+
+Review script, CI, configuration, and infrastructure tests by their contract,
+not their path or implementation language. Name the distinct behavior,
+compatibility, or safety outcome each new case protects and the existing check
+that might cover it. If existing coverage rejects the same wrong outcome,
+cite it and reuse it; a script edit or review comment does not require another
+test.
+
+Start with the existing parser, linter, type checker, build, and smoke commands.
+Do not duplicate their syntax or schema validation in another suite. Moving a
+source-spelling assertion into an AST or plan JSON check does not establish
+extra protection by itself; first demonstrate the missing invariant.
+
+A mock proving unchanged plumbing forwards defaults, a helper-count assertion,
+or a snapshot mirroring declarations needs a distinct contract. Prefer the
+cheapest boundary that observes selected destinations, exit status, output,
+or effects through the real entry point. Exact arguments at genuine adapter
+boundaries and explicitly named smoke or compatibility contracts remain valid.
+
+Use sparse cases for independent axes. Different parameter text alone does not
+establish distinct coverage: compare selected branches, state, effects, and
+failure conditions, including where paths rejoin. Retain combinations that
+exercise an interaction, authorization decision, compatibility boundary, or
+cleanup failure. Merge cases only when retained coverage rejects the same
+wrong outcomes under the relevant fixtures, marks, runtime, and ordering.
+
+Retain a narrow source or representation assertion when the bytes themselves
+are the reviewed security, packaging, generated-artifact, or compatibility
+contract. Name that boundary, why behavioral or native checks do not cover it,
+and any exact suppression required by existing rules. Limit the assertion to
+relevant fields or bytes; do not snapshot unrelated step names or layout, or
+build an interpreter merely to replace the assertion. Findings are review
+evidence, never authorization to delete tests.
 
 ## Judgment checks
 
