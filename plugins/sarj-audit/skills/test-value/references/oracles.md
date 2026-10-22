@@ -337,6 +337,33 @@ test. These defaults complement the judgment checks above:
   a clear two-line test with a generic runner, assertion helper, or new framework
   that hides which production operation and regression the case exercises.
 
+### Repeated setup
+
+Prefer an existing framework bulk API or compatible shared fixture when it
+makes repeated setup clearer. Keep direct calls when a data loop adds more
+wiring than it removes; do not create a helper solely to hide method names.
+
+[Vitest's `vi.stubEnv`](https://vitest.dev/api/vi.html#vi-stubenv) accepts one key
+and value, not a bulk map. This optional grouping takes more lines than six
+direct calls, so it is not a line-count improvement:
+
+```typescript
+for (const [name, value] of Object.entries({
+  APP_URL: "https://app.example.test",
+  BUCKET: "test",
+  CLIENT_ID: "test",
+  CLIENT_REGION: "test",
+  ENABLE_REPORTING: "false",
+  OPTIONAL_LABEL: "",
+})) vi.stubEnv(name, value);
+```
+
+Preserve setup order, `vi.hoisted` timing, and the owning cleanup hook or
+`unstubEnvs` configuration. Keep duplicate-key transitions explicit; a map can
+collapse or reorder them. Do not replace `vi.stubEnv` with
+`Object.assign(process.env, ...)`: it bypasses Vitest's restoration tracking.
+Two direct calls are usually clearer than adding a table and loop around them.
+
 ### A small language switch harness
 
 This illustrative application exposes a real Pydantic `SwitchParameters` model,
