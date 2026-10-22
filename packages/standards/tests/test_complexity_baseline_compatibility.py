@@ -67,6 +67,29 @@ def _subject(root: Path, source: str, *, missing_base: bool = False) -> _Subject
     return _Subject(target, document.encode())
 
 
+@pytest.mark.parametrize("owner", ["module", "class", "nested"], ids=["module", "class", "nested"])
+def test_position_only_changes_reuse_exact_provenance_budget(tmp_path: Path, owner: str) -> None:
+    source = _function()
+    if owner == "class":
+        source = "class Owner:\n" + "".join("    " + line + "\n" for line in source.splitlines())
+    elif owner == "nested":
+        source = "def outer():\n" + "".join("    " + line + "\n" for line in source.splitlines())
+    subject = _subject(tmp_path, source)
+    target = subject.target
+    target.write_text("# unrelated prefix\n\n" + source, encoding="utf-8")
+    _git(tmp_path, "add", "app.py")
+
+    raw = api.Standards(tmp_path).analyze([str(target)], mode=api.AnalysisMode.RAW, rules=_RULES)
+    policy = api.Standards(tmp_path).analyze([str(target)], staged=True, rules=_RULES)
+
+    assert raw.diagnostics[0].message.startswith("Cognitive complexity 21 exceeds 20.")
+    assert "Largest contributors: L" in raw.diagnostics[0].message
+    assert policy.diagnostics == ()
+    assert policy.issues == ()
+    assert sum(tool.baselined_count for tool in policy.tools) == 1
+    assert (tmp_path / "diagnostic-baseline.json").read_bytes() == subject.baseline
+
+
 def test_exact_legacy_fingerprint_is_required(tmp_path: Path) -> None:
     source = _function()
     subject = _subject(tmp_path, source)

@@ -54,6 +54,7 @@ from .libs.diagnostics import (
 )
 from .libs.filesystem import is_link_like
 from .libs.linting.analysis import analyze as analyze_paths, report_from_tools
+from .libs.linting.complexity_baseline import ComplexityBaselineResolver
 from .libs.linting.external import UpstreamESLintRules, analyze_external
 from .libs.linting.library_policy import (
     ManifestPolicyError,
@@ -322,7 +323,10 @@ class Standards:
             if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE}:
                 native = _with_warning_severity(native, _warning_rule_keys(normalized_mode, rule_selection))
             return _with_coverage(
-                _without_baselined_diagnostics(native, baseline_budget.counts, changed_scope=changed_scope), coverage
+                _without_baselined_diagnostics(
+                    native, baseline_budget.counts, changed_scope=changed_scope, provenance=baseline_budget.provenance
+                ),
+                coverage,
             )
         coverage.extend(
             _source_analyzer_coverage(
@@ -365,7 +369,10 @@ class Standards:
             upstream_rules=upstream_rules,
         )
         return _with_coverage(
-            _without_baselined_diagnostics(combined, baseline_budget.counts, changed_scope=changed_scope), coverage
+            _without_baselined_diagnostics(
+                combined, baseline_budget.counts, changed_scope=changed_scope, provenance=baseline_budget.provenance
+            ),
+            coverage,
         )
 
     def run(
@@ -688,10 +695,12 @@ def _without_baselined_diagnostics(
     counts: dict[str, int],
     *,
     changed_scope: diagnostic_baseline.ChangedLineScope | None = None,
+    provenance: diagnostic_baseline.Provenance | None = None,
 ) -> AnalysisReport:
     if not counts:
         return report
     remaining = counts.copy()
+    compatibility = ComplexityBaselineResolver(report.root, provenance) if provenance is not None else None
 
     def active(diagnostic: Diagnostic) -> bool:
         if not diagnostic_baseline.is_baselineable(diagnostic):
@@ -700,6 +709,9 @@ def _without_baselined_diagnostics(
             return True
         fingerprint = diagnostic.fingerprint
         budget = 0 if fingerprint is None else remaining.get(fingerprint, 0)
+        if budget < 1 and compatibility is not None:
+            fingerprint = compatibility.resolve(diagnostic)
+            budget = 0 if fingerprint is None else remaining.get(fingerprint, 0)
         if budget < 1 or fingerprint is None:
             return True
         remaining[fingerprint] = budget - 1
@@ -718,6 +730,8 @@ def _without_baselined_diagnostics(
         )
 
     tools = tuple(filter_tool(item) for item in report.tools)
+    if compatibility is not None and compatibility.issues:
+        tools = (*tools, ToolReport("sarj-standards", Completion.FAILED, issues=tuple(compatibility.issues)))
     return report_from_tools(report.root, tools)
 
 
