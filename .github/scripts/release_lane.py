@@ -25,6 +25,9 @@ LEGACY_VERSION = "8.101.1"
 # Reviewed candidate bytes; publication still requires successful native qualification
 # and exact-source release gates. Pinning this digest alone does not qualify a release.
 APPROVED_ADAPTER_SHA256 = "58b47b1defa519e1b690d9ab43530b23d89824ff28f4109be2941b2c8f62e254"
+APPROVED_LOCK_SHA256 = "64dfbdabf646cef05c003036c6849c5922d67865e27e94012a3e37a670777e28"
+APPROVED_GITLEAKS_SHA256 = "1fe4ec30d50367745d11b1e0fbb7bf384c1fc12abb0c1f6aa28a4c115b63158b"
+SECURITY_PROJECTIONS = frozenset({".gitleaks.toml"})
 PACKAGE = "packages/standards"
 CLI_REFERENCE = f"{PACKAGE}/src/sarj_standards/configs/cli-reference.v1.json"
 DOC_EXAMPLES = "apps/docs/src/generated/formatted-code.v1.json"
@@ -122,7 +125,7 @@ def _validate_maintenance(root: Path, commit: str) -> None:
     changed = frozenset(
         path.decode() for path in _git(root, "diff", "--name-only", "-z", LEGACY_COMMIT, commit).split(b"\0") if path
     )
-    unexpected = changed - BACKPORT_PATHS - TOOLING_PATHS
+    unexpected = changed - BACKPORT_PATHS - TOOLING_PATHS - SECURITY_PROJECTIONS
     if unexpected:
         msg = f"maintenance changes legacy policy or an unapproved path: {', '.join(sorted(unexpected))}"
         raise ReleaseLaneError(msg)
@@ -131,6 +134,7 @@ def _validate_maintenance(root: Path, commit: str) -> None:
         _validate_projection(root, commit, path, version)
     _validate_docs(root, commit)
     _validate_adapter(root, commit)
+    _validate_gitleaks(root, commit)
 
 
 def _maintenance_version(root: Path, commit: str) -> str:
@@ -145,10 +149,19 @@ def _maintenance_version(root: Path, commit: str) -> str:
 
 def _validate_projection(root: Path, commit: str, path: str, version: str) -> None:
     original = _at(root, LEGACY_COMMIT, path)
-    expected = original.replace(LEGACY_VERSION.encode(), version.encode())
-    if _at(root, commit, path) != expected:
-        msg = f"maintenance may change only the legacy version projection in {path}"
+    current = _at(root, commit, path)
+    if not _matches_projection(original, current, path, version):
+        msg = f"maintenance may change only the legacy version projection and reviewed security projection in {path}"
         raise ReleaseLaneError(msg)
+
+
+def _matches_projection(original: bytes, current: bytes, path: str, version: str) -> bool:
+    if path != f"{PACKAGE}/uv.lock":
+        return current == original.replace(LEGACY_VERSION.encode(), version.encode())
+    normalized = current.replace(version.encode(), LEGACY_VERSION.encode())
+    return hashlib.sha256(normalized).hexdigest() == APPROVED_LOCK_SHA256 and current == normalized.replace(
+        LEGACY_VERSION.encode(), version.encode()
+    )
 
 
 def _validate_docs(root: Path, commit: str) -> None:
@@ -163,6 +176,12 @@ def _validate_adapter(root: Path, commit: str) -> None:
     adapter = _at(root, commit, f"{PACKAGE}/src/sarj_standards/libs/linting/external.py")
     if hashlib.sha256(adapter).hexdigest() != APPROVED_ADAPTER_SHA256:
         msg = "maintenance adapter bytes do not match the independently reviewed backport"
+        raise ReleaseLaneError(msg)
+
+
+def _validate_gitleaks(root: Path, commit: str) -> None:
+    if hashlib.sha256(_at(root, commit, ".gitleaks.toml")).hexdigest() != APPROVED_GITLEAKS_SHA256:
+        msg = "maintenance scanner configuration must match the exact reviewed public-digest projection"
         raise ReleaseLaneError(msg)
 
 

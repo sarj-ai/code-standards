@@ -19,6 +19,8 @@ from sarj_standards.libs.release.process import run_process
 class PublisherLane(Protocol):
     LEGACY_COMMIT: str
     APPROVED_ADAPTER_SHA256: str
+    APPROVED_LOCK_SHA256: str
+    APPROVED_GITLEAKS_SHA256: str
     VERSION_PROJECTIONS: tuple[str, ...]
     DOC_EXAMPLES: str
     CLI_REFERENCE: str
@@ -80,9 +82,10 @@ def candidate(tmp_path: Path, lane: PublisherLane, monkeypatch: pytest.MonkeyPat
     files = {
         "packages/standards/pyproject.toml": '[project]\nversion = "8.101.1"\ndependencies = ["native==1.0"]\n',
         "packages/standards-compat/pyproject.toml": '[project]\nversion = "8.101.1"\ndependencies = ["code-standards==8.101.1"]\n',
-        "packages/standards/uv.lock": 'version = 1\n[[package]]\nname = "code-standards"\nversion = "8.101.1"\n',
+        "packages/standards/uv.lock": 'version = 1\n[[package]]\nname = "code-standards"\nversion = "8.101.1"\n\n[[package]]\nname = "virtualenv"\nversion = "21.14.7"\nsdist = { url = "https://example.invalid/virtualenv", hash = "sha256:fixture-approved" }\n',
         ".sarj-standards.toml": 'bundle = "8.101.1"\nrule_profile = "all"\n',
         lane.CLI_REFERENCE: '{"version":"8.101.1","summary":"Version8.101.1","commands":[]}\n',
+        ".gitleaks.toml": "[extend]\nuseDefault = true\n",
         lane.DOC_EXAMPLES: '{"catalogSha256":"legacy","cliSha256":"original","rules":[]}\n',
         "packages/standards/src/sarj_standards/libs/linting/external.py": "VALUE = 1\n",
         "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json": '{"rules":["retained"]}\n',
@@ -91,6 +94,8 @@ def candidate(tmp_path: Path, lane: PublisherLane, monkeypatch: pytest.MonkeyPat
         path = tmp_path / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content)
+    approved_lock = files["packages/standards/uv.lock"].replace('version = "21.14.7"', 'version = "21.14.12"')
+    approved_gitleaks = files[".gitleaks.toml"] + "# reviewed public digest fixture\n"
     anchor = _commit(tmp_path)
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise the real immutable-anchor lookup with private Git objects; injection would bypass that boundary.
         lane, "LEGACY_COMMIT", anchor
@@ -98,15 +103,23 @@ def candidate(tmp_path: Path, lane: PublisherLane, monkeypatch: pytest.MonkeyPat
     for relative in lane.VERSION_PROJECTIONS:
         path = tmp_path / relative
         path.write_text(path.read_text().replace("8.101.1", "8.101.2"))
+    lock = tmp_path / "packages/standards/uv.lock"
+    lock.write_text(lock.read_text().replace('version = "21.14.7"', 'version = "21.14.12"'))
+    (tmp_path / ".gitleaks.toml").write_text(approved_gitleaks)
     cli_digest = hashlib.sha256((tmp_path / lane.CLI_REFERENCE).read_bytes()).hexdigest()
     (tmp_path / lane.DOC_EXAMPLES).write_text(
         json.dumps({"catalogSha256": "legacy", "cliSha256": cli_digest, "rules": []})
     )
     adapter = tmp_path / "packages/standards/src/sarj_standards/libs/linting/external.py"
     adapter.write_text("VALUE = 2\n")
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise the real approved-digest lookup with private adapter bytes; injection would bypass that boundary.
-        lane, "APPROVED_ADAPTER_SHA256", hashlib.sha256(adapter.read_bytes()).hexdigest()
-    )
+    for name, payload in (
+        ("APPROVED_ADAPTER_SHA256", adapter.read_bytes()),
+        ("APPROVED_LOCK_SHA256", approved_lock.encode()),
+        ("APPROVED_GITLEAKS_SHA256", approved_gitleaks.encode()),
+    ):
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise the real approved-digest lookup with private fixture bytes; injection would bypass that boundary.
+            lane, name, hashlib.sha256(payload).hexdigest()
+        )
     return Candidate(tmp_path, anchor, _commit(tmp_path))
 
 
@@ -167,6 +180,15 @@ def test_maintenance_rejects_policy_and_component_drift(
         ("packages/standards/pyproject.toml", "native==1.0", "native==2.0"),
         ("packages/standards-compat/pyproject.toml", "code-standards==8.101.2", "code-standards==8.101.1"),
         ("packages/standards/uv.lock", "version = 1\n", "version = 2\n"),
+        ("packages/standards/uv.lock", 'version = "21.14.12"', 'version = "21.14.13"'),
+        ("packages/standards/uv.lock", 'version = "8.101.2"', 'version = "8.101.1"'),
+        ("packages/standards/uv.lock", 'hash = "sha256:fixture-approved"', 'hash = "sha256:fixture-tampered"'),
+        (
+            "packages/standards/uv.lock",
+            'url = "https://example.invalid/virtualenv"',
+            'url = "https://elsewhere.invalid/virtualenv"',
+        ),
+        ("packages/standards/uv.lock", 'name = "code-standards"', 'name = "another-package"'),
         (".sarj-standards.toml", 'rule_profile = "all"', 'rule_profile = "none"'),
         ("packages/standards/src/sarj_standards/configs/cli-reference.v1.json", '"commands":[]', '"commands":["new"]'),
     ],
@@ -308,3 +330,38 @@ def test_exact_push_safety_gate_rejects_other_run_identities(
     assert completed.returncode == (0 if scenario == "exact" else 86)
     if scenario == "exact":
         assert completed.stdout.count("jobs succeeded") == 3
+
+
+@pytest.mark.parametrize(
+    "content", ["[extend]\nuseDefault = false\n", "[extend]\nuseDefault = true\n# altered projection\n"]
+)
+def test_maintenance_scanner_path_requires_exact_approved_bytes(
+    candidate: Candidate, lane: PublisherLane, content: str
+) -> None:
+    (candidate.root / ".gitleaks.toml").write_text(content)
+    commit = _commit(candidate.root)
+    with pytest.raises(ValueError, match="scanner configuration must match"):
+        lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+
+
+def test_reviewed_lock_projection_supports_a_future_maintenance_version(
+    candidate: Candidate, lane: PublisherLane
+) -> None:
+    for relative in lane.VERSION_PROJECTIONS:
+        path = candidate.root / relative
+        path.write_text(path.read_text().replace("8.101.2", "8.101.10"))
+    document = candidate.root / lane.DOC_EXAMPLES
+    document.write_text(
+        json.dumps(
+            {
+                "catalogSha256": "legacy",
+                "cliSha256": hashlib.sha256((candidate.root / lane.CLI_REFERENCE).read_bytes()).hexdigest(),
+                "rules": [],
+            }
+        )
+    )
+    commit = _commit(candidate.root)
+    assert (
+        lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+        == "standards-maintenance"
+    )
