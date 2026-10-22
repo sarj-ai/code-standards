@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from pathlib import Path
 
@@ -237,6 +238,7 @@ def test_stale_publisher_cannot_overwrite_newer_pr_metadata() -> None:
         runner,
         "standards-rollout/current",
         pushed_head_sha="a" * 40,
+        branch_paths=("pyproject.toml", ".sarj-standards.toml"),
         verification_failure="",
     )
 
@@ -263,6 +265,7 @@ def test_same_head_publisher_preserves_newer_or_ambiguous_target(markers: str) -
         runner,
         "standards-rollout/current",
         pushed_head_sha="a" * 40,
+        branch_paths=("pyproject.toml", ".sarj-standards.toml"),
         verification_failure="",
     )
 
@@ -280,6 +283,7 @@ def test_same_head_publisher_preserves_unowned_pr_metadata() -> None:
         runner,
         "standards-rollout/current",
         pushed_head_sha="a" * 40,
+        branch_paths=("pyproject.toml", ".sarj-standards.toml"),
         verification_failure="",
     )
 
@@ -288,7 +292,8 @@ def test_same_head_publisher_preserves_unowned_pr_metadata() -> None:
 
 
 @pytest.mark.parametrize("previous", ["8.2.0", "8.2.1"])
-def test_publisher_can_advance_or_refresh_owned_pr_metadata(previous: str) -> None:
+@pytest.mark.parametrize("verify", [("true",), ()], ids=["configured-verification", "no-verification-command"])
+def test_publisher_can_advance_or_refresh_owned_pr_metadata(previous: str, verify: tuple[str, ...]) -> None:
     base_sha, tree_sha = "b" * 40, "c" * 40
     commit = json.dumps(
         {
@@ -310,20 +315,47 @@ def test_publisher_can_advance_or_refresh_owned_pr_metadata(previous: str) -> No
     )
 
     outcome = rollout._publish_rollout_pull(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- isolate the transport boundary
-        consumer(),
+        replace(consumer(), verify=verify),
         "8.2.1",
         runner,
         "standards-rollout/current",
         pushed_head_sha="a" * 40,
+        branch_paths=("pyproject.toml", ".sarj-standards.toml"),
         verification_failure="",
     )
 
     assert outcome.state is rollout.OutcomeState.PR_OPEN
     edit = next(command for command in runner.commands if command[:3] == ("gh", "pr", "edit"))
-    assert rollout.desired_marker("8.2.1") in edit[edit.index("--body") + 1]
+    body = edit[edit.index("--body") + 1]
+    assert rollout.pr_marker(consumer(), "8.2.1") in body
+    assert rollout.desired_marker("8.2.1") in body
+    for section in (
+        "What & why",
+        "Scope accounting",
+        "One-way or two-way door",
+        "QA impact / blast radius",
+        "Test evidence",
+    ):
+        assert f"## {section}\n\n" in body
+    assert f"Exact pushed head: `{'a' * 40}`" in body
+    assert 'Committed paths (2):\n\n    ".sarj-standards.toml"\n    "pyproject.toml"' in body
+    assert "Manual verification instructions (not recorded executions)" in body
+    assert f"1. Check out `{'a' * 40}`." in body
+    assert "2. Review every committed path" in body
+    assert "3. Run the registered consumer verification" in body
+    assert "required approvals and product QA remain separate gates" in body
+    if verify:
+        assert "selected local verification completed for the candidate tree" in body
+        assert "published head retains the verified tree and consumer base" in body
+    else:
+        assert "No consumer verification command is configured; no consumer checks are claimed" in body
+        assert "verification completed" not in body
 
 
-def test_failed_verification_pr_records_the_controller_revision(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    "failure", ["Standards doctor failed", "consumer bootstrap failed", "consumer verification failed"]
+)
+def test_failed_verification_pr_records_the_controller_revision(monkeypatch: pytest.MonkeyPatch, failure: str) -> None:
     monkeypatch.setenv("GITHUB_SHA", CONTROLLER_SHA)
     base_sha, tree_sha = "b" * 40, "c" * 40
     commit = json.dumps(
@@ -343,12 +375,19 @@ def test_failed_verification_pr_records_the_controller_revision(monkeypatch: pyt
         runner,
         "standards-rollout/current",
         pushed_head_sha="a" * 40,
-        verification_failure="lint failed",
+        branch_paths=("pyproject.toml", ".sarj-standards.toml"),
+        verification_failure=failure,
     )
 
     assert outcome.state is rollout.OutcomeState.BLOCKED
     edit = next(command for command in runner.commands if command[:3] == ("gh", "pr", "edit"))
-    assert f"{rollout.CONTROLLER_MARKER_PREFIX}={CONTROLLER_SHA} -->" in edit[edit.index("--body") + 1]
+    body = edit[edit.index("--body") + 1]
+    assert f"{rollout.CONTROLLER_MARKER_PREFIX}={CONTROLLER_SHA} -->" in body
+    assert rollout.VERIFICATION_FAILED_MARKER in body
+    assert f"```text\n{failure}\n```" in body
+    assert "later configured checks may not have run" in body
+    assert "verification completed" not in body
+    assert not any(command[:3] == ("gh", "pr", "merge") for command in runner.commands)
 
 
 @pytest.mark.parametrize("stage", ["before-edit", "after-edit", "empty-read"])
@@ -382,6 +421,7 @@ def test_publisher_waits_for_verified_push_without_repeating_verification(stage:
         runner,
         "standards-rollout/current",
         pushed_head_sha="a" * 40,
+        branch_paths=("pyproject.toml", ".sarj-standards.toml"),
         verification_failure="",
         sleep=waits.append,
     )
@@ -406,6 +446,7 @@ def test_unresolved_push_visibility_is_bounded_and_never_creates_or_edits(*, dis
         runner,
         "standards-rollout/current",
         pushed_head_sha="a" * 40,
+        branch_paths=("pyproject.toml", ".sarj-standards.toml"),
         verification_failure="",
         sleep=waits.append,
     )
@@ -431,6 +472,7 @@ def test_push_visibility_wait_preserves_concurrent_pr_changes(changed: str) -> N
         runner,
         "standards-rollout/current",
         pushed_head_sha="a" * 40,
+        branch_paths=("pyproject.toml", ".sarj-standards.toml"),
         verification_failure="",
         sleep=waits.append,
     )
