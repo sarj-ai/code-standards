@@ -170,3 +170,29 @@ def test_missing_provenance_does_not_create_a_budget(tmp_path: Path) -> None:
     assert len(policy.diagnostics) == 1
     assert policy.issues == ()
     assert (tmp_path / "diagnostic-baseline.json").read_bytes() == subject.baseline
+
+
+def test_unexpected_git_tree_failure_stays_observable_and_recovers(tmp_path: Path) -> None:
+    source = _function("unavailable_git_tree")
+    subject = _subject(tmp_path, source)
+    subject.target.write_text("# prefix\n\n" + source, encoding="utf-8")
+    tree_oid = _git(tmp_path, "rev-parse", "HEAD^{tree}")
+    tree = tmp_path / ".git" / "objects" / tree_oid[:2] / tree_oid[2:]
+    unavailable = tmp_path / "unavailable-tree"
+    tree.rename(unavailable)
+    try:
+        assert _git(tmp_path, "cat-file", "-t", "HEAD") == "commit"
+        policy = api.Standards(tmp_path).analyze([str(subject.target)], rules=_RULES)
+    finally:
+        unavailable.rename(tree)
+
+    assert len(policy.diagnostics) == 1
+    assert len(policy.issues) == 1
+    assert policy.issues[0].kind == "baseline-compatibility-failure"
+    assert "128" in policy.issues[0].message
+    assert sum(tool.baselined_count for tool in policy.tools) == 0
+    recovered = api.Standards(tmp_path).analyze([str(subject.target)], rules=_RULES)
+    assert recovered.diagnostics == ()
+    assert recovered.issues == ()
+    assert sum(tool.baselined_count for tool in recovered.tools) == 1
+    assert (tmp_path / "diagnostic-baseline.json").read_bytes() == subject.baseline
