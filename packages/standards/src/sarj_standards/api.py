@@ -286,7 +286,7 @@ class Standards:
         except (OSError, TypeError, ValueError) as exc:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         try:
-            baseline_counts = _analysis_baseline(self.root, adopted, normalized_mode)
+            baseline_budget = _analysis_baseline(self.root, adopted, normalized_mode)
             changed_scope = diagnostic_baseline.changed_line_scope(self.root, staged=staged)
         except (OSError, TypeError, ValueError) as exc:
             return _failed_analysis(self.root, "baseline-failure", str(exc))
@@ -322,7 +322,7 @@ class Standards:
             if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE}:
                 native = _with_warning_severity(native, _warning_rule_keys(normalized_mode, rule_selection))
             return _with_coverage(
-                _without_baselined_diagnostics(native, baseline_counts, changed_scope=changed_scope), coverage
+                _without_baselined_diagnostics(native, baseline_budget.counts, changed_scope=changed_scope), coverage
             )
         coverage.extend(
             _source_analyzer_coverage(
@@ -365,7 +365,7 @@ class Standards:
             upstream_rules=upstream_rules,
         )
         return _with_coverage(
-            _without_baselined_diagnostics(combined, baseline_counts, changed_scope=changed_scope), coverage
+            _without_baselined_diagnostics(combined, baseline_budget.counts, changed_scope=changed_scope), coverage
         )
 
     def run(
@@ -937,16 +937,18 @@ def _native_typescript_coverage(
         )
 
 
-def _analysis_baseline(root: Path, adopted: Manifest | None, normalized_mode: AnalysisMode) -> dict[str, int]:
+def _analysis_baseline(
+    root: Path, adopted: Manifest | None, normalized_mode: AnalysisMode
+) -> diagnostic_baseline.Budget:
     return (
-        diagnostic_baseline.load(
+        diagnostic_baseline.load_budget(
             root / adopted.diagnostic_baseline,
             require_v2=True,
             expected_bundle_version=__version__,
             expected_catalog_digest=diagnostic_baseline.bundled_catalog_digest(),
         )
         if normalized_mode is AnalysisMode.POLICY and adopted is not None and adopted.diagnostic_baseline is not None
-        else {}
+        else diagnostic_baseline.Budget({}, None)
     )
 
 
