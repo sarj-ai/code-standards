@@ -787,12 +787,20 @@ jobs:
         # needs >=10.4). The repo's own package.json carries the same overrides
         # privately, so nothing here could see it.
         run: bash ../../.github/scripts/ci-typescript-adoption-smoke.sh
-  python-compatibility:
-    name: Python 3.14 compatibility
+  python-compatibility-tests:
+    name: Python 3.14 tests (${{ matrix.cohort }})
     needs: changes
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cohort: core
+            targets: test-bootstrap test-contracts test-python test-sql test-iac
+          - cohort: standards
+            targets: test-standards
     env:
       UV_PYTHON: '3.14'
       STANDARDS_PYTHON: '3.14'
@@ -832,8 +840,32 @@ jobs:
         run: uv run --project packages/standards python -m sarj_standards.libs.adoption.native_bootstrap
       - name: Install and attest integration native tools
         run: uv run --project packages/standards python -m sarj_standards.libs.release.native_test_setup --root .
-      - name: Test every Python package on the minimum supported runtime
-        run: make test-bootstrap test-contracts test-python test-sql test-iac test-standards
+      - name: Test the compatibility cohort on the minimum supported runtime
+        env:
+          COMPATIBILITY_TARGETS: ${{ matrix.targets }}
+        run: |
+          read -r -a compatibility_targets <<<"$COMPATIBILITY_TARGETS"
+          make "${compatibility_targets[@]}"
+
+  # Keep the required status stable and reject an incomplete or cancelled matrix.
+  python-compatibility:
+    name: Python 3.14 compatibility
+    needs: [changes, python-compatibility-tests]
+    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        with:
+          egress-policy: audit
+      - name: Require routing and every compatibility cohort to succeed
+        env:
+          ROUTING_RESULT: ${{ needs.changes.result }}
+          COHORTS_RESULT: ${{ needs.python-compatibility-tests.result }}
+        run: |
+          test "$ROUTING_RESULT" = success
+          test "$COHORTS_RESULT" = success
 
   standards:
     name: standards package
@@ -1132,7 +1164,7 @@ jobs:
 
   complete:
     name: CI complete
-    needs: [size, changes, bootstrap, bootstrap-portability, contracts, python, sql, iac, typescript, tsconfig, portability-smoke, mobile-kotlin-smoke, mobile-swift-smoke, static-analysis, package-tests, adoption-smoke, python-compatibility, standards, docs-build, docs-deploy, gitleaks, dependency-review, npm-audit, codeql, scorecard]
+    needs: [size, changes, bootstrap, bootstrap-portability, contracts, python, sql, iac, typescript, tsconfig, portability-smoke, mobile-kotlin-smoke, mobile-swift-smoke, static-analysis, package-tests, adoption-smoke, python-compatibility-tests, python-compatibility, standards, docs-build, docs-deploy, gitleaks, dependency-review, npm-audit, codeql, scorecard]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
