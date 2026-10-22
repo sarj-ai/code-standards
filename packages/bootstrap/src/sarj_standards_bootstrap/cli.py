@@ -172,7 +172,8 @@ def run(arguments: Sequence[str], *, cwd: Path) -> NoReturn:
     if tuple(int(part) for part in selected_bundle.split(".")) >= _PYTHON315_BUNDLE:
         environment.setdefault("UV_PYTHON_DOWNLOADS_JSON_URL", _PYTHON_DOWNLOADS)
     try:
-        if parsed.forwarded[:1] == ("check",):
+        options = parsed.forwarded[: parsed.forwarded.index("--")] if "--" in parsed.forwarded else parsed.forwarded
+        if parsed.forwarded[:1] == ("check",) and {"-h", "--help"}.isdisjoint(options):
             with check_slot(environment):
                 execute(exact_command, environment)
         execute(exact_command, environment)
