@@ -1557,6 +1557,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         assert (repo / "bootstrap.sh").read_text() == original_native.replace("5.8.0", "5.8.1")
         pull_request_command = next(command for command in runner.commands if command[:3] == ("gh", "pr", "create"))
         pull_request_body = pull_request_command[pull_request_command.index("--body") + 1]
+        _assert_published_scope(repo, base_sha, pull_request_body)
         if dirty_runs == frozenset({1, 2}):
             assert "did not converge" in pull_request_body
         if target_moves:
@@ -2043,3 +2044,24 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         result = rollout.apply_one(consumer(), "5.8.1", FakeRunner(), dry_run=True)
 
         assert result.state == "would-create"
+
+
+def _assert_published_scope(repo: Path, base_sha: str, pull_request_body: str) -> None:
+    published_sha = subprocess.run(
+        ("git", "rev-parse", "HEAD"), cwd=repo, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    published_paths = (
+        subprocess.run(
+            ("git", "diff", "--name-only", "-z", f"{base_sha}...HEAD"),
+            cwd=repo,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        .stdout.rstrip("\0")
+        .split("\0")
+    )
+    assert f"Exact pushed head: `{published_sha}`" in pull_request_body
+    assert f"Committed paths ({len(published_paths)}):" in pull_request_body
+    for path in published_paths:
+        assert f"    {json.dumps(path)}\n" in pull_request_body
