@@ -14,6 +14,7 @@ affected consumers. The observer's candidate list does not establish fixture
 visibility or liveness.
 
 - Name the contract and wrong outcome. Reuse adequate coverage; a changed file, script, or review comment does not by itself require a new test. Record sufficient existing checks when no case is needed.
+- For script, CI, configuration, and infrastructure cases, apply [operational test admission](references/oracles.md#operational-tests): identify the distinct wrong outcome, covering native checks, and any necessary representation contract before adding or pruning coverage.
 - Compare inputs, actions, fixtures/marks, runtime, and assertion order/effects before removing duplicated or subsumed oracles. Combine complementary assertions sharing those conditions.
 - Cover inherited behavior at its owner; retain override and composition contracts.
 - Choose reusable setup by provider visibility, configuration, state isolation, and cleanup ownership. Compose fixture dependencies or typed factories while keeping the tested action and oracle visible; see [fixture design and reuse](references/oracles.md#fixture-design-and-reuse).
@@ -29,5 +30,7 @@ Preserve mandatory coverage, including store lines/branches. Reuse maintained
 fakes; production abstractions need a production reason. Findings never
 authorize deletion.
 
-Report keep, strengthen, merge, or delete with evidence and a focused command.
+Report keep, strengthen, merge, or delete with the wrong outcome, retained or
+covering check, evidence, and a focused command. An inconclusive comparison is
+not evidence to prune a test.
 Read [references/oracles.md](references/oracles.md) for uncertain cases.
