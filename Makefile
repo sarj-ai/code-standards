@@ -11,7 +11,7 @@ REGISTRY ?= .sarj-standards-rollout.toml
 JOBS ?= 4
 CONSUMER ?=
 DRY_RUN ?=
-TEST_JOBS ?= 4
+TEST_JOBS ?= $(if $(filter 0,$(value PYTEST_XDIST_AUTO_NUM_WORKERS)),1,$(or $(value PYTEST_XDIST_AUTO_NUM_WORKERS),4))
 PYTEST_ARGS ?=
 BASE ?= origin/main
 COMMIT ?= HEAD
@@ -126,13 +126,13 @@ test-sql:
 test-iac:
 	uv --directory packages/iac run pytest -q
 
-test-standards:
+test-standards: typescript-build
 	uv run --project packages/standards --frozen python -m sarj_standards.libs.release.wheel_tests --root . --jobs "$(TEST_JOBS)" $(PYTEST_ARGS)
 
 test-plan:
 	uv run --project packages/standards --frozen python -m sarj_standards.libs.release.test_selection --root . --base "$(BASE)"
 
-test-standards-changed:
+test-standards-changed: typescript-build
 	uv run --project packages/standards --frozen python -m sarj_standards.libs.release.wheel_tests --root . --jobs "$(TEST_JOBS)" --changed --base "$(BASE)" $(PYTEST_ARGS)
 
 test-tsconfig:

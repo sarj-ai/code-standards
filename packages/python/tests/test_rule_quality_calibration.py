@@ -8,10 +8,42 @@ from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 
 from sarj_python_lint.__main__ import analyze
 from sarj_python_lint.rule_base import Severity
+from sarj_python_lint.rules._project_index import ProjectIndexSet
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+def _calibration_project(root: Path) -> Path:
+    (root / ".git").mkdir()
+    return root
+
+
+@pytest.fixture
+def calibration_project(tmp_path: Path) -> Path:
+    # Every case describes one complete project. An ancestor's marker must not
+    # pull other temporary test projects into its native dependency index.
+    return _calibration_project(tmp_path)
+
+
+def test_calibration_index_excludes_sources_from_an_outer_project(tmp_path: Path) -> None:
+    outer = tmp_path / "outer"
+    outer.mkdir()
+    (outer / ".git").mkdir()
+    unrelated = outer / "unrelated.py"
+    unrelated.write_text("class Unrelated:\n    pass\n")
+    project = outer / "calibration"
+    project.mkdir()
+    _calibration_project(project)
+    path = project / "service.py"
+    source = "class Service:\n    pass\n"
+    path.write_text(source)
+
+    index = ProjectIndexSet.build([path], {path: source})
+
+    assert index.unit(path) is not None
+    assert index.unit(unrelated) is None
 
 
 _NEARBY_RULES = [
@@ -78,8 +110,8 @@ _VALID_API_CASES = (
 
 
 @pytest.mark.parametrize("case", _VALID_API_CASES, ids=tuple(case.case_id for case in _VALID_API_CASES))
-def test_valid_apis_remain_valid_in_combined_runner(tmp_path: Path, case: EvaluationCase) -> None:
-    path = tmp_path / "service.py"
+def test_valid_apis_remain_valid_in_combined_runner(calibration_project: Path, case: EvaluationCase) -> None:
+    path = calibration_project / "service.py"
     path.write_text(case.source)
 
     findings = analyze(_NEARBY_RULES, [path])
@@ -90,9 +122,9 @@ def test_valid_apis_remain_valid_in_combined_runner(tmp_path: Path, case: Evalua
 
 
 @pytest.mark.parametrize("contract_base", ["Protocol", "ABC"])
-def test_structural_and_nominal_contracts_keep_their_semantics(tmp_path: Path, contract_base: str) -> None:
-    (tmp_path / "pyproject.toml").write_text("[project]\nname='example'\nversion='0.1.0'\n")
-    package = tmp_path / "app"
+def test_structural_and_nominal_contracts_keep_their_semantics(calibration_project: Path, contract_base: str) -> None:
+    (calibration_project / "pyproject.toml").write_text("[project]\nname='example'\nversion='0.1.0'\n")
+    package = calibration_project / "app"
     package.mkdir()
     sources = {
         "__init__.py": "",
@@ -122,9 +154,9 @@ def test_structural_and_nominal_contracts_keep_their_semantics(tmp_path: Path, c
     assert [finding.code for finding in analyze(_NEARBY_RULES[::-1], paths)] == expected
 
 
-def test_real_hidden_settings_and_callable_fallbacks_still_warn(tmp_path: Path) -> None:
-    (tmp_path / "pyproject.toml").write_text("[project]\nname='example'\nversion='0.1.0'\n")
-    path = tmp_path / "service.py"
+def test_real_hidden_settings_and_callable_fallbacks_still_warn(calibration_project: Path) -> None:
+    (calibration_project / "pyproject.toml").write_text("[project]\nname='example'\nversion='0.1.0'\n")
+    path = calibration_project / "service.py"
     path.write_text(
         "from pydantic_settings import BaseSettings\n"
         "class Settings(BaseSettings):\n    token: str = 'ambient'\nsettings = Settings()\n"
@@ -191,8 +223,8 @@ _CALIBRATED_STYLE_CASES = (
 
 
 @pytest.mark.parametrize("case", _CALIBRATED_STYLE_CASES, ids=tuple(case.case_id for case in _CALIBRATED_STYLE_CASES))
-def test_narrowed_style_rules_preserve_unique_signals(tmp_path: Path, case: EvaluationCase) -> None:
-    path = tmp_path / case.path
+def test_narrowed_style_rules_preserve_unique_signals(calibration_project: Path, case: EvaluationCase) -> None:
+    path = calibration_project / case.path
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(case.source)
     expected = {
@@ -207,10 +239,12 @@ def test_narrowed_style_rules_preserve_unique_signals(tmp_path: Path, case: Eval
 
 
 @pytest.mark.parametrize("annotation", ["HttpPublisher", "Publisher"])
-def test_existing_substitutable_contract_is_reused_without_creating_one(tmp_path: Path, annotation: str) -> None:
-    package = tmp_path / "app"
+def test_existing_substitutable_contract_is_reused_without_creating_one(
+    calibration_project: Path, annotation: str
+) -> None:
+    package = calibration_project / "app"
     package.mkdir()
-    (tmp_path / "pyproject.toml").write_text("[project]\nname='example'\nversion='0.1.0'\n")
+    (calibration_project / "pyproject.toml").write_text("[project]\nname='example'\nversion='0.1.0'\n")
     (package / "__init__.py").write_text("")
     contract = package / "publisher.py"
     contract.write_text(
@@ -234,8 +268,8 @@ def test_existing_substitutable_contract_is_reused_without_creating_one(tmp_path
 
 
 @pytest.mark.parametrize("dependency", ["RecordStore", "ConnectionPool", "Worker"])
-def test_single_operation_service_keeps_proactive_contract_policy(tmp_path: Path, dependency: str) -> None:
-    path = tmp_path / "service.py"
+def test_single_operation_service_keeps_proactive_contract_policy(calibration_project: Path, dependency: str) -> None:
+    path = calibration_project / "service.py"
     path.write_text(
         "class ExampleService:\n"
         f"    def __init__(self, backend: {dependency}) -> None:\n        self.backend = backend\n"
@@ -249,9 +283,9 @@ def test_single_operation_service_keeps_proactive_contract_policy(tmp_path: Path
 @pytest.mark.parametrize("contract_base", ["ABC", "Protocol"])
 @pytest.mark.parametrize("contract_name", ["Runner", "_Runner"])
 def test_declared_contract_aliases_satisfy_combined_service_rules(
-    tmp_path: Path, contract_base: str, contract_name: str
+    calibration_project: Path, contract_base: str, contract_name: str
 ) -> None:
-    path = tmp_path / "service.py"
+    path = calibration_project / "service.py"
     path.write_text(
         f"from {'abc' if contract_base == 'ABC' else 'typing'} import {contract_base} as Interface\n"
         "from abc import abstractmethod\n"
@@ -277,9 +311,9 @@ def test_declared_contract_aliases_satisfy_combined_service_rules(
     ],
 )
 def test_contract_precedence_and_suppression_do_not_hide_independent_rules(
-    tmp_path: Path, suppression: str, expected: list[str]
+    calibration_project: Path, suppression: str, expected: list[str]
 ) -> None:
-    path = tmp_path / "service.py"
+    path = calibration_project / "service.py"
     comment = f"  # sarj-noqa: {suppression} -- contract supplied by framework" if suppression else ""
     path.write_text(
         f"class ThingService:{comment}\n"
@@ -293,9 +327,11 @@ def test_contract_precedence_and_suppression_do_not_hide_independent_rules(
 
 
 @pytest.mark.parametrize("injected", [False, True])
-def test_pool_and_repeated_client_setup_have_compatible_fixture_remediation(tmp_path: Path, injected: bool) -> None:
-    (tmp_path / "pyproject.toml").write_text("[project]\nname='example'\nversion='0.1.0'\n")
-    tests = tmp_path / "tests"
+def test_pool_and_repeated_client_setup_have_compatible_fixture_remediation(
+    calibration_project: Path, injected: bool
+) -> None:
+    (calibration_project / "pyproject.toml").write_text("[project]\nname='example'\nversion='0.1.0'\n")
+    tests = calibration_project / "tests"
     tests.mkdir()
     (tests / "__init__.py").write_text("")
     support = tests / "conftest.py"
@@ -327,5 +363,11 @@ def test_pool_and_repeated_client_setup_have_compatible_fixture_remediation(tmp_
     )
     expected = [] if injected else ["SARJ457"] * 3 + ["SARJ476"] * 3
 
-    assert sorted(finding.code for finding in analyze(_NEARBY_RULES, [support, path], root=tmp_path)) == expected
-    assert sorted(finding.code for finding in analyze(_NEARBY_RULES[::-1], [support, path], root=tmp_path)) == expected
+    assert (
+        sorted(finding.code for finding in analyze(_NEARBY_RULES, [support, path], root=calibration_project))
+        == expected
+    )
+    assert (
+        sorted(finding.code for finding in analyze(_NEARBY_RULES[::-1], [support, path], root=calibration_project))
+        == expected
+    )
