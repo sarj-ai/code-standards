@@ -40,6 +40,13 @@ class Candidate:
     commit: str
 
 
+_COMMIT_POLICY_BACKPORT_PATHS = (
+    "packages/standards/src/sarj_standards/libs/adoption/scaffold.py",
+    "packages/standards/tests/test_adoption.py",
+    ".github/workflows/commit-policy.yml",
+)
+
+
 def _git(root: Path, *arguments: str) -> str:
     return run_process(
         (
@@ -499,3 +506,82 @@ def test_single_adapter_approval_transition_uses_actual_history(
             lane.validate_lane(
                 candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=candidate.commit
             )
+
+
+def _commit_policy_history_candidate(tmp_path: Path, *, apply_backport: bool) -> Candidate:
+    repository = Path(__file__).resolve().parents[4]
+    checkout = tmp_path / "candidate"
+    prefix = "356560fbc7f76985f1b0997dde240aeb63a72fa9"
+    fix = "8d2f22aea2f01172ad35e53e5974abd0f5c69852"
+    _git(tmp_path, "clone", "--shared", "--no-checkout", str(repository), str(checkout))
+    _git(checkout, "checkout", "--detach", prefix)
+    if not apply_backport:
+        return Candidate(checkout, prefix, prefix)
+    patch = run_process(
+        ("git", "diff", f"{fix}^", fix, "--", *_COMMIT_POLICY_BACKPORT_PATHS),
+        cwd=repository,
+        capture_output=True,
+    ).stdout
+    patch_path = tmp_path / "reviewed-commit-policy.patch"
+    patch_path.write_text(patch)
+    _git(checkout, "apply", str(patch_path))
+    cli = checkout / "packages/standards/src/sarj_standards/configs/cli-reference.v1.json"
+    old_cli_digest = hashlib.sha256(cli.read_bytes()).hexdigest()
+    for relative in (
+        "packages/standards/pyproject.toml",
+        "packages/standards-compat/pyproject.toml",
+        "packages/standards/uv.lock",
+        ".sarj-standards.toml",
+        "packages/standards/src/sarj_standards/configs/cli-reference.v1.json",
+    ):
+        path = checkout / relative
+        source = path.read_text()
+        assert "8.101.3" in source
+        path.write_text(source.replace("8.101.3", "8.101.4"))
+    docs = checkout / "apps/docs/src/generated/formatted-code.v1.json"
+    source = docs.read_text()
+    assert source.count(old_cli_digest) == 1
+    docs.write_text(source.replace(old_cli_digest, hashlib.sha256(cli.read_bytes()).hexdigest()))
+    return Candidate(checkout, prefix, _commit(checkout))
+
+
+@pytest.mark.parametrize("apply_backport", [False, True], ids=["legacy-8.101.3", "reviewed-8.101.4"])
+def test_commit_policy_approval_preserves_legacy_and_accepts_exact_history(
+    lane: PublisherLane, tmp_path: Path, *, apply_backport: bool
+) -> None:
+    candidate = _commit_policy_history_candidate(tmp_path, apply_backport=apply_backport)
+    assert (
+        lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=candidate.commit)
+        == "standards-maintenance"
+    )
+
+
+@pytest.mark.parametrize("relative", _COMMIT_POLICY_BACKPORT_PATHS)
+def test_commit_policy_approval_rejects_each_partial_history(
+    lane: PublisherLane, tmp_path: Path, relative: str
+) -> None:
+    candidate = _commit_policy_history_candidate(tmp_path, apply_backport=True)
+    _git(candidate.root, "restore", "--source", candidate.anchor, "--", relative)
+    commit = _commit(candidate.root)
+    with pytest.raises(ValueError, match="requires all three approved files"):
+        lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+
+
+@pytest.mark.parametrize("relative", _COMMIT_POLICY_BACKPORT_PATHS)
+def test_commit_policy_approval_rejects_each_tampered_history(
+    lane: PublisherLane, tmp_path: Path, relative: str
+) -> None:
+    candidate = _commit_policy_history_candidate(tmp_path, apply_backport=True)
+    with (candidate.root / relative).open("a") as stream:
+        stream.write("\n")
+    commit = _commit(candidate.root)
+    with pytest.raises(ValueError, match="must match the exact approved bytes"):
+        lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+
+
+def test_commit_policy_approval_keeps_neighboring_policy_closed(lane: PublisherLane, tmp_path: Path) -> None:
+    candidate = _commit_policy_history_candidate(tmp_path, apply_backport=True)
+    (candidate.root / "packages/standards/src/sarj_standards/libs/adoption/scaffold_extra.py").write_text("VALUE = 3\n")
+    commit = _commit(candidate.root)
+    with pytest.raises(ValueError, match="legacy policy or an unapproved path"):
+        lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
