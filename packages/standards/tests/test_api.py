@@ -121,10 +121,11 @@ def test_canonical_analysis_routes_the_repository_only_once(
     assert len(routed) == 1
 
 
+@pytest.mark.parametrize("name", ["eslint.strict.mjs", "eslint.strict.ts"])
 def test_external_router_can_intentionally_ignore_managed_eslint_config(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, name: str
 ) -> None:
-    managed_config = tmp_path / "eslint.strict.mjs"
+    managed_config = tmp_path / name
     managed_config.write_text("export default [];\n", encoding="utf-8")
 
     def native(_paths: Sequence[str], **_kwargs: Unpack[NativeAnalyzeOptions]) -> api.AnalysisReport:
@@ -136,7 +137,7 @@ def test_external_router_can_intentionally_ignore_managed_eslint_config(
     monkeypatch.setattr(api, "analyze_paths", native)  # sarj-noqa: SARJ445 -- intercepts API orchestration
     monkeypatch.setattr(api, "analyze_external", external)  # sarj-noqa: SARJ445 -- intercepts API orchestration
 
-    report = api.Standards(tmp_path).analyze(["eslint.strict.mjs"], external=True)
+    report = api.Standards(tmp_path).analyze([name], external=True)
 
     assert report.conclusion is api.Conclusion.PASSED
     assert report.issues == ()

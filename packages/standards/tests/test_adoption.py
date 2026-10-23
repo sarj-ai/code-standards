@@ -193,7 +193,7 @@ def test_eslint_config_degrades_cleanly_without_a_type_project(config_name: str)
 
     assert "dirname(fileURLToPath(import.meta.url))" in text
     assert "export function createConfig(options = {})" in text
-    assert "[CONFIG_DIRECTORY, process.cwd()].map(normalizeRoot)" in text
+    assert "[CONFIG_DIRECTORY,process.cwd()].map(normalizeRoot)" in re.sub(r"\s+", "", text)
     assert "const detectedRoot = candidates.find(hasTypeProject)" in text
     assert "projectService: PROJECT_SERVICE" in text
     assert "tsconfigRootDir: TYPE_PROJECT_ROOT" in text
@@ -1377,7 +1377,7 @@ def test_setup_explicit_configs_update_manifest_without_losing_exclusions(tmp_pa
     assert adopted is not None
     assert adopted.configs == ("eslint",)
     assert adopted.excluded_paths == ("generated/**",)
-    assert (tmp_path / "eslint.strict.mjs").is_file()
+    assert (tmp_path / "eslint.strict.ts").is_file()
 
 
 def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path) -> None:
@@ -1411,9 +1411,9 @@ def test_setup_preserves_every_supported_manifest_policy_section(tmp_path: Path)
 def test_sync_uses_canonical_config_with_legacy_profile(tmp_path: Path) -> None:
     _typescript_repo(tmp_path)
     assert _cli("--root", str(tmp_path), "setup", "--profile", "application", "--no-install").returncode == 0
-    expected = CONFIGS_DIR / "eslint.strict.mjs"
+    expected = CONFIGS_DIR / "eslint.strict.ts"
     assert (
-        tmp_path / "eslint.strict.mjs"
+        tmp_path / "eslint.strict.ts"
     ).read_bytes() == expected.read_bytes()  # sarj-noqa: SARJ402 -- generated config bytes are the adoption contract
     assert _cli("--root", str(tmp_path), "doctor").returncode == 0
 
@@ -1513,11 +1513,11 @@ def test_init_writes_a_typescript_entrypoint_with_an_override_seam(tmp_path: Pat
     assert proc.returncode == 0, proc.stderr
 
     entrypoint = (tmp_path / "eslint.config.ts").read_text()
-    assert 'import strict from "./eslint.strict.mjs"' in entrypoint
+    assert 'import strict from "./eslint.strict.ts"' in entrypoint
     assert 'testFrameworks: ["vitest", "bun", "node", "testing-library", "playwright"]' in entrypoint
     assert "repo-specific overrides" in entrypoint
     assert "unicorn/filename-case" in entrypoint
-    assert (tmp_path / "eslint.strict.mjs").is_file()
+    assert (tmp_path / "eslint.strict.ts").is_file()
     assert json.loads((tmp_path / "doctor.config.json").read_text(encoding="utf-8")) == json.loads(
         (CONFIGS_DIR / "doctor.config.json").read_text(encoding="utf-8")
     )
@@ -1539,30 +1539,67 @@ def test_generated_typescript_entrypoint_is_compiler_checked(tmp_path: Path) -> 
     if shutil.which("node") is None or not compiler.is_file():
         pytest.skip("requires the repository's locked TypeScript compiler")
     _typescript_repo(tmp_path)
-    (tmp_path / "node_modules").symlink_to(modules, target_is_directory=True)
+    local_modules = tmp_path / "node_modules"
+    local_modules.mkdir()
+    for dependency in modules.iterdir():
+        if dependency.name == "@sarj":
+            continue
+        (local_modules / dependency.name).symlink_to(dependency, target_is_directory=dependency.is_dir())
+    namespace = local_modules / "@sarj"
+    namespace.mkdir()
+    (namespace / "eslint-plugin").symlink_to(modules.parent, target_is_directory=True)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     entrypoint = tmp_path / "eslint.config.ts"
     before = entrypoint.read_text(encoding="utf-8")
-    # The synchronized .mjs is an intentional runtime boundary. allowJs permits
-    # its existing JSDoc return contract; the authored .ts entrypoint stays strict.
+    # Both the generated preset and its authored override remain compiler checked.
     command = (
         str(compiler),
         "--strict",
         "--noEmit",
+        "--allowImportingTsExtensions",
         "--allowJs",
         "--skipLibCheck",
         "--target",
         "ES2025",
         "--module",
-        "NodeNext",
+        "Preserve",
         "--moduleResolution",
-        "NodeNext",
+        "Bundler",
         "--types",
         "node",
         str(entrypoint),
     )
     accepted = subprocess.run(command, cwd=tmp_path, capture_output=True, text=True, check=False, timeout=30)
     assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+    (tmp_path / "eslint.strict.mjs").write_text(
+        (CONFIGS_DIR / "eslint.strict.mjs").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    runtime = tmp_path / "preset-parity.ts"
+    runtime.write_text(
+        'import assert from "node:assert/strict";\n'
+        'import { ESLint } from "eslint";\n'
+        'import { createConfig as typed } from "./eslint.strict.ts";\n'
+        'import { createConfig as legacy } from "./eslint.strict.mjs";\n'
+        'const options = { projectService: false, testFrameworks: ["node"] };\n'
+        "const typedLint = new ESLint({ overrideConfigFile: true, overrideConfig: typed(options) });\n"
+        "const legacyLint = new ESLint({ overrideConfigFile: true, overrideConfig: legacy(options) });\n"
+        'const typedConfig = await typedLint.calculateConfigForFile("example.ts");\n'
+        'const legacyConfig = await legacyLint.calculateConfigForFile("example.ts");\n'
+        "assert.deepEqual(typedConfig.rules, legacyConfig.rules);\n"
+        "assert.deepEqual(typedConfig.settings, legacyConfig.settings);\n"
+        "assert.deepEqual(typedConfig.languageOptions.globals, legacyConfig.languageOptions.globals);\n"
+        "assert.deepEqual(typedConfig.languageOptions.parserOptions, legacyConfig.languageOptions.parserOptions);\n"
+        "const source = 'var greeting: string = \"hello\";\\nconsole.log(greeting);\\n';\n"
+        'const [typedResult] = await typedLint.lintText(source, { filePath: "example.ts" });\n'
+        'const [legacyResult] = await legacyLint.lintText(source, { filePath: "example.ts" });\n'
+        "assert.ok(typedResult.messages.length > 0);\n"
+        "assert.deepEqual(typedResult.messages, legacyResult.messages);",
+        encoding="utf-8",
+    )
+    parity = subprocess.run(
+        ("node", str(runtime)), cwd=tmp_path, capture_output=True, text=True, check=False, timeout=30
+    )
+    assert parity.returncode == 0, parity.stdout + parity.stderr
     rejected = before.replace("\n] satisfies", "\n  { name: 17 },\n] satisfies")
     assert rejected != before
     entrypoint.write_text(rejected, encoding="utf-8")
@@ -2383,7 +2420,7 @@ def test_init_wires_the_subproject_that_actually_installs_eslint(tmp_path: Path)
     assert proc.returncode == 0, proc.stderr
 
     assert (tmp_path / "web" / "eslint.config.ts").is_file()
-    assert (tmp_path / "web" / "eslint.strict.mjs").is_file()
+    assert (tmp_path / "web" / "eslint.strict.ts").is_file()
     assert not (tmp_path / "eslint.config.ts").exists()
 
     parsed: object = json.loads((tmp_path / "web" / "package.json").read_text(encoding="utf-8"))  # pyright: ignore[reportAny] — untyped stdlib boundary
@@ -4203,14 +4240,14 @@ def test_doctor_rejects_an_eslint_import_whose_strict_target_is_missing(tmp_path
     _typescript_repo(tmp_path)
     setup = _cli("--root", str(tmp_path), "setup", "--no-install")
     assert setup.returncode == 0, setup.stderr
-    (tmp_path / "eslint.strict.mjs").unlink()
+    (tmp_path / "eslint.strict.ts").unlink()
 
     proc = _cli("--root", str(tmp_path), "doctor")
 
     assert proc.returncode == 1
     assert "doctor.config.missing" in proc.stdout
     assert "doctor.eslint.wiring" in proc.stdout
-    assert "does not reference eslint.strict.mjs" in proc.stdout
+    assert "does not reference a managed ESLint preset" in proc.stdout
 
 
 def test_init_refuses_to_replace_unadopted_configs_without_force(tmp_path: Path) -> None:
@@ -4283,7 +4320,7 @@ def test_init_safely_wires_existing_python_and_typescript_configs(tmp_path: Path
         "pythonVersion": "3.14",
     }
     eslint = (tmp_path / "eslint.config.mjs").read_text()
-    assert 'import strict from "./eslint.strict.mjs"' in eslint
+    assert 'import strict from "./eslint.strict.ts"' in eslint
     assert "...strict" in eslint
     assert "// hand-rolled" in eslint
 
@@ -4297,7 +4334,7 @@ def test_init_wires_the_existing_eslint_js_entrypoint_without_creating_a_shadow(
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
 
     assert proc.returncode == 0, proc.stderr
-    assert "eslint.strict.mjs" in entrypoint.read_text(encoding="utf-8")
+    assert "eslint.strict.ts" in entrypoint.read_text(encoding="utf-8")
     assert sorted(path.name for path in tmp_path.glob("eslint.config.*")) == [f"eslint.config.{suffix}"]
     before = entrypoint.read_bytes()
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
@@ -4316,7 +4353,7 @@ def test_setup_composes_a_define_config_entrypoint(tmp_path: Path) -> None:
 
     assert proc.returncode == 0, proc.stderr
     updated = entrypoint.read_text(encoding="utf-8")
-    assert 'import strict from "./eslint.strict.mjs"' in updated
+    assert 'import strict from "./eslint.strict.ts"' in updated
     assert "export default defineConfig([\n  ...strict," in updated
 
 
@@ -4360,7 +4397,7 @@ def test_setup_accepts_nested_eslint_configs_that_reexport_repository_policy(tmp
 def test_setup_wires_a_conventional_nested_named_eslint_export(tmp_path: Path) -> None:
     _typescript_repo(tmp_path)
     (tmp_path / "eslint.config.mjs").write_text(
-        'import strict from "./eslint.strict.mjs";\nexport default [...strict];\n', encoding="utf-8"
+        'import strict from "./eslint.strict.ts";\nexport default [...strict];\n', encoding="utf-8"
     )
     nested = tmp_path / "apps" / "legacy"
     nested.mkdir(parents=True)
@@ -4371,7 +4408,7 @@ def test_setup_wires_a_conventional_nested_named_eslint_export(tmp_path: Path) -
 
     assert proc.returncode == 0, proc.stderr
     updated = config.read_text(encoding="utf-8")
-    assert 'import sarjStrict from "../../eslint.strict.mjs"' in updated
+    assert 'import sarjStrict from "../../eslint.strict.ts"' in updated
     assert "export default [...sarjStrict, ...eslintConfig];" in updated
 
 

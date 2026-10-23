@@ -25,7 +25,7 @@ def _repository(root: Path) -> _RepositoryFiles:
     preset.parent.mkdir(parents=True)
     catalog = root / "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json"
     catalog.parent.mkdir(parents=True)
-    strict = configs / "eslint.strict.mjs"
+    strict = configs / "eslint.strict.ts"
     application = configs / "eslint.application.mjs"
     catalog.write_text(
         json.dumps({"schemaVersion": 1, "rules": [{"key": "eslint:first-rule", "defaultLevel": "warning"}]}),
@@ -41,9 +41,9 @@ def _repository(root: Path) -> _RepositoryFiles:
     strict.write_text(
         'const rules = {\n  "@sarj/first-rule": ["error", { option: true }],\n'
         '  "@sarj/second-rule": "warn",\n};\n'
-        "          paths: [\n"
+        "function createConfig() {\n  return [{\n          paths: [\n          ],\n"
         '          patterns: ["*/index", "*/index.ts"],\n'
-        "  ];\n}\n\nconst config = createConfig();\nexport default config;\n",
+        "  }] as unknown as Linter.Config[];\n}\n\nconst config = createConfig();\nexport default config;\n",
         encoding="utf-8",
     )
     application.write_text("stale\n", encoding="utf-8")
@@ -56,6 +56,9 @@ def test_source_catalog_drives_plugin_presets_and_generated_configs(tmp_path: Pa
     assert not config_generation.sync_warning_levels(tmp_path, check=True)
     assert config_generation.sync_warning_levels(tmp_path, check=False)
     assert config_generation.sync_warning_levels(tmp_path, check=True)
+    assert strict.with_suffix(".mjs").read_text(encoding="utf-8") == config_generation.render_legacy_eslint(
+        strict.read_text(encoding="utf-8")
+    )
 
     preset_text = preset.read_text(encoding="utf-8")
     strict_text = strict.read_text(encoding="utf-8")
@@ -84,7 +87,7 @@ def test_warning_parity_check_detects_drift_in_either_direction(tmp_path: Path) 
 def test_canonical_library_generation_is_idempotent() -> None:
     assert config_generation.sync(check=True)
     generated = config_generation.generated_configs()
-    strict = next(text for path, text in generated.items() if path.name == "eslint.strict.mjs")
+    strict = next(text for path, text in generated.items() if path.name == "eslint.strict.ts")
     assert config_generation.render_eslint_strict(strict) == strict
     assert '"@sarj/no-restricted-library-load"' in strict
     assert '"module": "axios"' in strict

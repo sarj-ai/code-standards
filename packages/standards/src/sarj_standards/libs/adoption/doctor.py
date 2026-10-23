@@ -28,7 +28,12 @@ from sarj_standards.libs.typed_containers import is_object_mapping
 from sarj_standards.libs.yaml_boundary import mapping_items, sequence_items
 
 from . import hooks, launcher, manifest, packagemanager, retired_suppressions, scaffold
-from .configs import PYTHON_COMPANION_CONFIGS
+from .configs import (
+    ESLINT_CONFIG_NAMES as _ESLINT_CONFIG_NAMES,
+    PYTHON_COMPANION_CONFIGS,
+    eslint_preset_name,
+    eslint_wiring_reaches_strict as _eslint_wiring_reaches_strict,
+)
 
 
 if TYPE_CHECKING:
@@ -140,14 +145,7 @@ _SHA_REV = re.compile(r"^[0-9a-f]{7,40}$")
 
 _COMMIT_POLICY_CONTEXT: Final = "commit-policy-v1"
 _ESLINT_PLUGIN: Final = "@sarj/eslint-plugin"
-_ESLINT_CONFIG_NAMES: Final = (
-    "eslint.config.js",
-    "eslint.config.mjs",
-    "eslint.config.cjs",
-    "eslint.config.ts",
-    "eslint.config.mts",
-    "eslint.config.cts",
-)
+
 _LOCAL_SPECIFIERS: Final = ("file:", "link:", "workspace:", "portal:")
 _PYRIGHT_CONFIG_NAMES: Final = frozenset(
     {
@@ -170,7 +168,7 @@ _CONFIG_TARGETS: Final = MappingProxyType(
     {
         "ruff": ("ruff.strict.toml", "ruff.application.toml", ".ruff-strict.toml", "python"),
         "pyright": ("pyright.strict.json", "pyright.strict.json", ".pyright-strict.json", "python"),
-        "eslint": ("eslint.strict.mjs", "eslint.application.mjs", "eslint.strict.mjs", "typescript"),
+        "eslint": ("eslint.strict.ts", "eslint.application.mjs", "eslint.strict.ts", "typescript"),
         "markdownlint": ("markdownlint.strict.yaml", "markdownlint.strict.yaml", ".markdownlint.yaml", "root"),
         "shellcheck": ("shellcheck.strict.rc", "shellcheck.strict.rc", ".shellcheckrc", "root"),
         "taplo": ("taplo.strict.toml", "taplo.strict.toml", ".taplo.toml", "root"),
@@ -1564,14 +1562,14 @@ def _check_typescript_wiring(root: Path, typescript_root: Path | None, adopted: 
         yield Finding(
             Level.OK,
             str(active_entrypoint.relative_to(root)),
-            "references eslint.strict.mjs",
+            "references a managed ESLint preset",
             "doctor.eslint.wiring",
         )
     else:
         yield Finding(
             Level.DRIFT,
             str(active_entrypoint.relative_to(root)),
-            "does not reference eslint.strict.mjs directly or through a local config",
+            "does not reference a managed ESLint preset directly or through a local config",
             "doctor.eslint.wiring",
             "import and spread `./eslint.strict.mjs` from the active ESLint config chain",
         )
@@ -1636,8 +1634,8 @@ def _check_adopted_config(root: Path, name: str, destinations: Mapping[str, Path
     destination = destinations[kind]
     if destination is None:
         return
-    target = destination / target_name
-    source_name = standard_source
+    target = destination / (eslint_preset_name(destination) if name == "eslint" else target_name)
+    source_name = target.name if name == "eslint" else standard_source
     expected = CONFIGS_DIR / source_name
     if not target.is_file():
         yield Finding(
@@ -1758,7 +1756,7 @@ def _nested_eslint_configs(typescript_root: Path, active_entrypoint: Path) -> tu
     for path in _walk(typescript_root):
         if path == active_entrypoint or path.name not in names:
             continue
-        if path.parent == typescript_root and path.name == "eslint.strict.mjs":
+        if path.parent == typescript_root and path.name in {"eslint.strict.ts", "eslint.strict.mjs"}:
             continue
         if _eslint_wiring_reaches_strict(path, typescript_root):
             continue
@@ -1794,36 +1792,6 @@ def _check_text_wiring(
         yield Finding(Level.DRIFT, str(path.relative_to(root)), f"does not reference {needle}", finding_id, remediation)
     else:
         yield Finding(Level.OK, str(path.relative_to(root)), f"references {needle}", finding_id)
-
-
-_LOCAL_MODULE = re.compile(
-    r"(?m)^\s*(?:import\b[^;\n]*?\bfrom\s+|import\s*|export\b[^;\n]*?\bfrom\s+)"
-    r"[\"'](?P<path>\.[^\"']+)[\"']"
-)
-
-
-def _eslint_wiring_reaches_strict(path: Path, root: Path, seen: set[Path] | None = None) -> bool:
-    visited: set[Path] = set() if seen is None else seen
-    resolved = path.resolve()
-    if resolved in visited or not resolved.is_file():
-        return False
-    try:
-        resolved.relative_to(root.resolve())
-    except ValueError:
-        return False
-    visited.add(resolved)
-    text = _read(resolved)
-    for match in _LOCAL_MODULE.finditer(text):
-        target = (resolved.parent / match.group("path")).resolve()
-        if target.name == "eslint.strict.mjs" and target.is_file():
-            return True
-        candidates = (
-            target,
-            *(target.with_suffix(suffix) for suffix in (".js", ".mjs", ".cjs", ".ts", ".mts", ".cts")),
-        )
-        if any(_eslint_wiring_reaches_strict(candidate, root, visited) for candidate in candidates):
-            return True
-    return False
 
 
 def _check_eslint_peer_set(root: Path, typescript_root: Path) -> Iterator[Finding]:

@@ -26,6 +26,7 @@ export default defineConfig(
   {
     name: "sarj/typed-node-tooling",
     files: ["**/*.{ts,mts,cts}"],
+    ignores: ["**/configs/eslint.strict.ts"],
     extends: [js.configs.recommended, tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       globals: globals.nodeBuiltin,
@@ -43,5 +44,19 @@ export default defineConfig(
       },
     },
     linterOptions: { reportUnusedDisableDirectives: "error" },
+  },
+  {
+    // The adoption integration fixture compiler-checks the consumer peer graph.
+    name: "sarj/consumer-eslint-preset",
+    files: ["**/configs/eslint.strict.ts"],
+    extends: [js.configs.recommended, tseslint.configs.recommended],
+    languageOptions: {
+      globals: globals.nodeBuiltin,
+      parserOptions: {
+        tsconfigRootDir: fileURLToPath(new URL("../../packages/typescript/", import.meta.url)),
+        projectService: false,
+        project: false,
+      },
+    },
   },
 );

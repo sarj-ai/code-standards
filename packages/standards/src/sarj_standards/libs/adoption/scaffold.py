@@ -23,6 +23,13 @@ from sarj_standards.libs.typed_containers import is_object_list, is_object_mappi
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
 from . import hooks, launcher, manifest, packagemanager, repository_baseline, uvtool
+from .configs import (
+    CONFIG_SKIP_DIRECTORIES as _SKIP_DIRS,
+    ESLINT_CONFIG_NAMES as _ESLINT_CONFIG_NAMES,
+    configuration_roots as _all_roots,
+    eslint_preset_name,
+    eslint_wiring_reaches_strict as _eslint_wiring_reaches_strict,
+)
 from .packagemanager import LOCKFILES, Overrides, PackageManager, YarnVariant
 
 
@@ -108,14 +115,7 @@ class Plan:
 DEFAULT_CI_RUNNER: Final = "ubuntu-latest"
 _BLACKSMITH_X64_UBUNTU_RUNNER: Final = re.compile(r"blacksmith-\d+vcpu-ubuntu-(?P<release>\d{4})")
 _ESLINT_CONFIG: Final = "eslint.config.ts"
-_ESLINT_CONFIG_NAMES: Final = (
-    "eslint.config.js",
-    "eslint.config.mjs",
-    "eslint.config.cjs",
-    "eslint.config.ts",
-    "eslint.config.mts",
-    "eslint.config.cts",
-)
+
 _PYRIGHT_CONFIG: Final = "pyrightconfig.json"
 _PYRIGHT_POLICY_PARENT: Final = ".basedpyright-strict.json"
 _LEGACY_PYRIGHT_POLICY_PARENT: Final = ".pyright-strict.json"
@@ -184,46 +184,6 @@ _RUFF_LINT_SECTION = re.compile(
     r"(?P<body>.*?)(?=^[ \t]*\[|\Z)"
 )
 _RUFF_REPLACEMENT_KEY = re.compile(r"(?m)^(?P<indent>[ \t]*)(?P<key>select|ignore)(?P<equals>[ \t]*=)")
-
-#: Directories a detection walk must not descend into: an installed dependency
-#: carries thousands of `package.json` files and a vendored tree carries the
-#: pyproject of something this repo did not write.
-_SKIP_DIRS: Final = frozenset(
-    {
-        ".git",
-        ".gradle",
-        ".agents",
-        ".build",
-        ".cache",
-        ".claude",
-        ".next",
-        ".open-next",
-        ".turbo",
-        ".uv-cache",
-        ".wrangler",
-        ".yarn",
-        ".mypy_cache",
-        ".pytest_cache",
-        ".ruff_cache",
-        "build",
-        "coverage",
-        ".tox",
-        ".venv",
-        "Carthage",
-        "DerivedData",
-        "DerivedDataAPI",
-        "DerivedDataDist",
-        "Pods",
-        "SourcePackages",
-        "dist",
-        "fastlane",
-        "generated",
-        "node_modules",
-        "out",
-        "target",
-        "vendor",
-    }
-)
 
 
 def detect(
@@ -574,16 +534,6 @@ def _shallowest(root: Path, names: Sequence[str]) -> Path | None:
     if not found:
         return None
     return min(found, key=lambda path: (len(path.relative_to(root).parts), str(path)))
-
-
-def _all_roots(root: Path, names: Sequence[str]) -> list[Path]:
-    wanted = frozenset(names)
-    found: list[Path] = []
-    for parent, directories, filenames in os.walk(root, topdown=True, followlinks=False):
-        directories[:] = sorted(name for name in directories if name not in _SKIP_DIRS)
-        if not wanted.isdisjoint(filenames):
-            found.append(Path(parent))
-    return found
 
 
 def build_plan(
@@ -1045,11 +995,11 @@ def _report_unwired_nested_eslint_configs(repository: Path, selected: Path, plan
     # A selected TypeScript destination is an authority boundary. ESLint roots
     # in sibling workspaces cannot shadow that project and must not be
     # rewritten as though they were its descendants.
+    strict = selected / eslint_preset_name(selected)
     for config_root in _all_roots(selected, _ESLINT_CONFIG_NAMES):
         if config_root == selected:
             continue
         configs = tuple(config_root / name for name in _ESLINT_CONFIG_NAMES if (config_root / name).is_file())
-        strict = selected / "eslint.strict.mjs"
         if not configs or any(
             _eslint_wiring_reaches_strict(path, repository, planned_strict=strict) for path in configs
         ):
@@ -1583,12 +1533,13 @@ def _plan_typescript(root: Path, plan: Plan, *, force: bool) -> None:
         plan.errors.append(f"multiple active ESLint flat configs in {root}: {names}; keep one before running setup")
         return
     eslint = existing_configs[0] if existing_configs else root / _ESLINT_CONFIG
+    preset_name = eslint_preset_name(root)
     if eslint.is_file():
         text = eslint.read_text(encoding="utf-8")
-        if _eslint_wiring_reaches_strict(eslint, root, planned_strict=root / "eslint.strict.mjs"):
-            plan.skips.append((eslint, "already imports eslint.strict.mjs"))
+        if _eslint_wiring_reaches_strict(eslint, root, planned_strict=root / preset_name):
+            plan.skips.append((eslint, f"already imports {preset_name}"))
         elif re.search(r"(?m)^[ \t]*export\s+default\s+defineConfig\s*\(\s*\[", text):
-            wired = f'import strict from "./eslint.strict.mjs";\n\n{
+            wired = f'import strict from "./{preset_name}";\n\n{
                 re.sub(
                     r"(?m)^[ \t]*export\s+default\s+defineConfig\s*\(\s*\[",
                     "export default defineConfig([\n  ...strict,",
@@ -1598,7 +1549,7 @@ def _plan_typescript(root: Path, plan: Plan, *, force: bool) -> None:
             }'
             plan.writes.append((eslint, wired))
         elif re.search(r"(?m)^[ \t]*export\s+default\s*\[", text):
-            wired = f'import strict from "./eslint.strict.mjs";\n\n{
+            wired = f'import strict from "./{preset_name}";\n\n{
                 re.sub(
                     r"(?m)^[ \t]*export\s+default\s*\[",
                     "export default [\n  ...strict,",
@@ -1612,7 +1563,13 @@ def _plan_typescript(root: Path, plan: Plan, *, force: bool) -> None:
                 f"cannot safely wire {eslint}; import `./eslint.strict.mjs` and spread it in the exported flat config"
             )
     else:
-        _record(plan, eslint, _eslint_entrypoint(), force=force, reason="exists; import ./eslint.strict.mjs from it")
+        _record(
+            plan,
+            eslint,
+            _eslint_entrypoint(preset_name),
+            force=force,
+            reason="exists; import ./eslint.strict.mjs from it",
+        )
     client = plan.ecosystems.client
     install_root = plan.ecosystems.typescript_install_root or root
     _plan_npm_overrides(install_root, plan, client)
@@ -1636,47 +1593,6 @@ def _plan_typescript(root: Path, plan: Plan, *, force: bool) -> None:
     caveat = packagemanager.install_note(client, yarn=plan.ecosystems.yarn)
     if caveat is not None:
         plan.notes.append(caveat)
-
-
-_LOCAL_MODULE = re.compile(
-    r"(?m)^\s*(?:import\b[^;\n]*?\bfrom\s+|import\s*|export\b[^;\n]*?\bfrom\s+)"
-    r"[\"'](?P<path>\.[^\"']+)[\"']"
-)
-
-
-def _eslint_wiring_reaches_strict(
-    path: Path,
-    root: Path,
-    seen: set[Path] | None = None,
-    *,
-    planned_strict: Path | None = None,
-) -> bool:
-    visited: set[Path] = set() if seen is None else seen
-    resolved = path.resolve()
-    if resolved in visited or not resolved.is_file():
-        return False
-    try:
-        resolved.relative_to(root.resolve())
-    except ValueError:
-        return False
-    visited.add(resolved)
-    text = resolved.read_text(encoding="utf-8", errors="replace")
-    for match in _LOCAL_MODULE.finditer(text):
-        target = (resolved.parent / match.group("path")).resolve()
-        if target.name == "eslint.strict.mjs" and (
-            target.is_file() or (planned_strict is not None and target == planned_strict.resolve())
-        ):
-            return True
-        candidates = (
-            target,
-            *(target.with_suffix(suffix) for suffix in (".js", ".mjs", ".cjs", ".ts", ".mts", ".cts")),
-        )
-        if any(
-            _eslint_wiring_reaches_strict(candidate, root, visited, planned_strict=planned_strict)
-            for candidate in candidates
-        ):
-            return True
-    return False
 
 
 def _plan_npm_overrides(root: Path, plan: Plan, client: PackageManager) -> None:
@@ -1877,7 +1793,7 @@ def _indent_of(text: str) -> int | str:
     return match.group("indent") if match else 2
 
 
-def _eslint_entrypoint() -> str:
+def _eslint_entrypoint(preset_name: str = "eslint.strict.ts") -> str:
     return """// Flat config entrypoint. `eslint.strict.mjs` next to this file is SYNCED --
 // `code-standards setup` overwrites it, and `setup --dry-run` fails CI if
 // you edit it. Put every repo-specific decision HERE instead, in the override
@@ -1909,7 +1825,7 @@ export default [
   //   },
   // },
 ] satisfies import("eslint").Linter.Config[];
-"""
+""".replace("eslint.strict.mjs", preset_name)
 
 
 def _plan_precommit(root: Path, plan: Plan, *, force: bool) -> None:

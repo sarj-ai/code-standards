@@ -37,6 +37,7 @@ def _files(root: Path) -> tuple[Path, ...]:
         "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json",
         "packages/standards/src/sarj_standards/configs/rule-ledger.json",
         "packages/typescript/src/index.ts",
+        "packages/standards/src/sarj_standards/configs/eslint.strict.ts",
         "packages/standards/src/sarj_standards/configs/eslint.strict.mjs",
         "packages/standards/src/sarj_standards/configs/eslint.application.mjs",
     )

@@ -590,6 +590,7 @@ def test_staged_eslint_excludes_globally_ignored_config_modules(tmp_path: Path) 
         "eslint.config.mts",
         "eslint.config.cts",
         "eslint.strict.mjs",
+        "eslint.strict.ts",
     )
     for name in ignored:
         (tmp_path / name).write_text("export default [];\n", encoding="utf-8")

@@ -27,7 +27,12 @@ from . import (
     transaction,
     uvtool,
 )
-from .configs import MOBILE_COMPANION_CONFIGS, PYTHON_COMPANION_CONFIGS, TYPESCRIPT_COMPANION_CONFIGS
+from .configs import (
+    MOBILE_COMPANION_CONFIGS,
+    PYTHON_COMPANION_CONFIGS,
+    TYPESCRIPT_COMPANION_CONFIGS,
+    eslint_preset_name,
+)
 
 
 if TYPE_CHECKING:
@@ -69,7 +74,7 @@ _CONFIG_SOURCES = MappingProxyType(
     {
         "ruff": ("ruff.strict.toml", "ruff.application.toml", ".ruff-strict.toml", "python"),
         "pyright": ("pyright.strict.json", "pyright.strict.json", ".pyright-strict.json", "python"),
-        "eslint": ("eslint.strict.mjs", "eslint.application.mjs", "eslint.strict.mjs", "typescript"),
+        "eslint": ("eslint.strict.ts", "eslint.application.mjs", "eslint.strict.ts", "typescript"),
         "swiftformat": ("swiftformat.strict", "swiftformat.strict", ".swiftformat", "swift"),
         "swiftlint": ("swiftlint.strict.yml", "swiftlint.strict.yml", ".swiftlint.yml", "swift"),
         "ktlint": ("ktlint.strict.editorconfig", "ktlint.strict.editorconfig", ".editorconfig", "kotlin"),
@@ -313,8 +318,8 @@ def _upgrade_config_writes(root: Path, adopted: manifest.Manifest, changes: list
         except ValueError as exc:
             msg = f"manifest destination for {name} escapes repository root"
             raise ValueError(msg) from exc
-        source = CONFIGS_DIR / standard
-        target = destination / target_name
+        target = destination / (eslint_preset_name(destination) if name == "eslint" else target_name)
+        source = CONFIGS_DIR / (target.name if name == "eslint" else standard)
         if not target.is_file() or target.read_bytes() != source.read_bytes():
             targets = (target, *_identical_config_mirrors(root, target))
             for config_target in targets:

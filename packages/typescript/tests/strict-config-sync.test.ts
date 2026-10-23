@@ -1,10 +1,10 @@
 /**
  * Guards the seam between this plugin and the published standards strict
- * flat config. A rule name referenced in eslint.strict.mjs but missing from
+ * flat config. A rule name referenced in eslint.strict.ts but missing from
  * the plugin only surfaces at consumer lint time as "Definition for rule
  * '@sarj/...' was not found" — exactly the no-unsafe-cast wiring bug this
  * branch fixed — so pin it here where the plugin's tests already run.
- * (Loading eslint.strict.mjs through ESLint would need every third-party
+ * (Loading eslint.strict.ts through ESLint would need every third-party
  * plugin it imports installed here; a static parse of the @sarj references
  * is robust and dependency-free.)
  */
@@ -26,7 +26,7 @@ import plugin, {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const STRICT_CONFIG_PATH = resolve(
   HERE,
-  "../../standards/src/sarj_standards/configs/eslint.strict.mjs",
+  "../../standards/src/sarj_standards/configs/eslint.strict.ts",
 );
 const REPO_ROOT = resolve(HERE, "../../..");
 
@@ -54,7 +54,7 @@ function warnIfHistoryIsMissing(log: string, recorded: number): void {
  *
  * Matching over the raw file text does not work here, and the reason is exactly
  * the drift these tests exist to catch: the per-repo opt-ins are documented in
- * eslint.strict.mjs as commented-out example blocks containing the literal text
+ * eslint.strict.ts as commented-out example blocks containing the literal text
  * `"@sarj/no-storage-in-stateless-modules": [...]`. A raw-text regex counts those
  * as live references, which (a) makes PER_REPO_OPT_IN dead code and (b) lets any
  * future rule pass BOTH assertions while only ever appearing in a comment.
@@ -163,7 +163,7 @@ function baseSeverities(configText: string): Map<string, string> {
   return found;
 }
 
-describe("standards eslint.strict.mjs stays wired to the plugin", () => {
+describe("standards eslint.strict.ts stays wired to the plugin", () => {
   it("references only rule names that exist in the plugin's rules export", () => {
     const text = readFileSync(STRICT_CONFIG_PATH, "utf8");
     const referenced = referencedRuleNames(text);
@@ -189,7 +189,7 @@ describe("standards eslint.strict.mjs stays wired to the plugin", () => {
 
     // Architectural rules whose options are inherently per-repo, so a SHARED
     // config cannot set them meaningfully. Each is documented as an opt-in in
-    // eslint.strict.mjs. Adding a name here is a deliberate act — it must come
+    // eslint.strict.ts. Adding a name here is a deliberate act — it must come
     // with that documentation, or the exemption is just a way to hide drift.
     const PER_REPO_OPT_IN = new Set([
       "no-storage-in-stateless-modules", // inert without `modules`
