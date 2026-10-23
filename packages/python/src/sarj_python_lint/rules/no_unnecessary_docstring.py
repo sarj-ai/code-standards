@@ -216,6 +216,10 @@ class NoUnnecessaryDocstring(ProjectRule):
         tree = context.tree
         if tree is None:
             return []
+        if not any(
+            docstring_expression(owner) is not None for owner in _docstring_owners(tree, node_index=context.node_index)
+        ):
+            return []
         metadata = _metadata_context_bindings(context, tree)
         owner_keys = _owner_keys(tree)
         explicit_consumers = _explicit_docstring_consumers(

@@ -66,6 +66,23 @@ async def stop() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    ("source", "line"),
+    [
+        pytest.param('""\nvalue = 1\n', 1, id="module"),
+        pytest.param('class Service:\n    ""\n    value = 1\n', 2, id="class"),
+        pytest.param('def run():\n    ""\n    return None\n', 2, id="function"),
+        pytest.param('async def run():\n    ""\n    return None\n', 2, id="async-function"),
+        pytest.param(
+            'def build():\n    def run():\n        ""\n        return None\n    return run\n', 3, id="nested-function"
+        ),
+        pytest.param('class Service:\n    class Options:\n        ""\n        value = 1\n', 3, id="nested-class"),
+    ],
+)
+def test_empty_docstrings_keep_their_diagnostics(source: str, line: int) -> None:
+    assert [(finding.line, finding.code) for finding in _check(source)] == [(line, "SARJ420")]
+
+
 def test_flags_test_module_incident_narration_with_ticket_and_cross_file_reference() -> None:
     source = (
         '"""Fair-share behavior after INC-2048; core picker semantics are pinned by '
