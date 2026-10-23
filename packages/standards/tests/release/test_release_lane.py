@@ -123,6 +123,12 @@ def candidate(tmp_path: Path, lane: PublisherLane, monkeypatch: pytest.MonkeyPat
     return Candidate(tmp_path, anchor, _commit(tmp_path))
 
 
+def test_reviewed_adapter_digest_matches_checked_in_backport(lane: PublisherLane) -> None:
+    root = Path(__file__).resolve().parents[4]
+    adapter = root / "packages/standards/src/sarj_standards/libs/linting/external.py"
+    assert hashlib.sha256(adapter.read_bytes()).hexdigest() == lane.APPROVED_ADAPTER_SHA256
+
+
 def test_main_keeps_existing_release_scope(candidate: Candidate, lane: PublisherLane) -> None:
     assert lane.validate_lane(candidate.root, source_ref="refs/heads/main", commit=candidate.commit) == "main"
 

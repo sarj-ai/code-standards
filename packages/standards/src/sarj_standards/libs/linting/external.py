@@ -241,8 +241,13 @@ class _ReactDoctorProject(_ReactDoctorProtocolModel):
     complete: bool
     diagnostics: tuple[_ReactDoctorDiagnostic, ...] = ()
     skipped_checks: tuple[object, ...] | None = Field(default=None, alias="skippedChecks")
+    skipped_check_reasons: dict[str, str] = Field(default_factory=dict, alias="skippedCheckReasons")
     analyzed_file_count: int | None = Field(default=None, alias="analyzedFileCount", ge=0)
     scanned_file_count: int | None = Field(default=None, alias="scannedFileCount", ge=0)
+
+
+class _ReactDoctorIncompleteError(ValueError):
+    pass
 
 
 class _ReactDoctorDiff(_ReactDoctorProtocolModel):
@@ -2623,6 +2628,12 @@ def _invoke_unchecked(
         return ToolReport(name, Completion.FAILED, issues=(issue,))
     try:
         diagnostics = parser(output.stdout, root=root)
+    except _ReactDoctorIncompleteError as exc:
+        message = redact_message(str(exc), root)[:700]
+        if stderr := output.stderr.strip():
+            message += f"; stderr: {redact_message(stderr, root)[:300]}"
+        issue = ExecutionIssue(name, "tool-failure", message, output.returncode)
+        return ToolReport(name, Completion.FAILED, issues=(issue,))
     except json.JSONDecodeError as exc:
         stderr = output.stderr.strip()
         message = stderr or f"{name} returned invalid structured JSON at line {exc.lineno}, column {exc.colno}"
@@ -3134,7 +3145,7 @@ def _parse_react_doctor_report(
     documents: dict[Path, SourceDocument | None] = {}
     diagnostics: list[Diagnostic] = []
     for project in report.projects:
-        _validate_react_project_completion(project, expected_projects)
+        _validate_react_project_completion(project, expected_projects, root=root)
         directory = _contained_report_directory(project, root)
         for item in project.diagnostics:
             # The 0.9.x compact JSON protocol can retain warning diagnostics
@@ -3743,13 +3754,15 @@ def _validate_mobsfscan_coverage(report: dict[str, object], root: Path, expected
         raise ValueError(msg)
 
 
-def _validate_react_project_completion(project: _ReactDoctorProject, expected_projects: frozenset[Path] | None) -> None:
+def _validate_react_project_completion(
+    project: _ReactDoctorProject, expected_projects: frozenset[Path] | None, *, root: Path
+) -> None:
     if not project.complete:
-        msg = f"React Doctor project did not complete: {project.directory!r}"
-        raise ValueError(msg)
-    if project.skipped_checks:
-        msg = f"React Doctor skipped checks for project: {project.directory!r}"
-        raise ValueError(msg)
+        message = f"React Doctor project did not complete: {project.directory!r}"
+        raise _ReactDoctorIncompleteError(_react_project_incompleteness(project, message, root=root))
+    if project.skipped_checks or project.skipped_check_reasons:
+        message = f"React Doctor skipped checks for project: {project.directory!r}"
+        raise _ReactDoctorIncompleteError(_react_project_incompleteness(project, message, root=root))
     if expected_projects is not None and (
         project.skipped_checks is None or project.analyzed_file_count is None or project.scanned_file_count is None
     ):
@@ -3758,6 +3771,15 @@ def _validate_react_project_completion(project: _ReactDoctorProject, expected_pr
     if project.analyzed_file_count == 0 or project.scanned_file_count == 0:
         msg = f"React Doctor analyzed no files for project: {project.directory!r}"
         raise ValueError(msg)
+
+
+def _react_project_incompleteness(project: _ReactDoctorProject, message: str, *, root: Path) -> str:
+    skipped_count = None if project.skipped_checks is None else len(project.skipped_checks)
+    coverage = (
+        f"analyzed={project.analyzed_file_count}, scanned={project.scanned_file_count}, skipped_checks={skipped_count}"
+    )
+    reasons = redact_message(json.dumps(project.skipped_check_reasons or {}, sort_keys=True), root)[:384]
+    return f"{redact_message(message, root)[:200]}; {coverage}; skipped_check_reasons={reasons}"
 
 
 def _validate_react_report_status(report: _ReactDoctorReport, *, require_react_detection: bool) -> None:
