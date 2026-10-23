@@ -1,6 +1,6 @@
 [project]
 name = "sarj-python-lint"
-version = "1.66.2"
+version = "1.66.3"
 description = "Custom Python lint rules — AST-based, pre-commit-friendly, hypermodern defaults"
 readme = "README.md"
 authors = [{ name = "sarj-ai" }]
@@ -15,7 +15,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
   "Topic :: Software Development :: Quality Assurance",
 ]
-dependencies = ["sarj-rule-contracts==0.2.5", "packaging==26.3", "ruff>=0.17.0", "sqlglot==30.22.0", "typer==0.27.3"]
+dependencies = ["sarj-rule-contracts==0.2.6", "packaging==26.3", "ruff>=0.17.2", "sqlglot==30.24.0", "typer==0.27.3"]
 
 [project.scripts]
 sarj-python-lint = "sarj_python_lint.__main__:main"
@@ -32,7 +32,7 @@ Issues = "https://github.com/sarj-ai/code-standards/issues"
 dev = [
   "pydantic==2.14.1",
   "pytest>=9.1.1",
-  "ruff>=0.17.0",
+  "ruff>=0.17.2",
   "basedpyright>=1.40.2",
 ]
 

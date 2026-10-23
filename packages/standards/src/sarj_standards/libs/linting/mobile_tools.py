@@ -25,7 +25,7 @@ _MAX_ARTIFACT_BYTES: Final = 80 * 1024 * 1024
 _MAX_MOBSF_RULE_BYTES: Final = 16 * 1024 * 1024
 _READ_BYTES: Final = 1024 * 1024
 _USER_AGENT: Final = "code-standards-mobile-tools/1"
-SEMGREP_VERSION: Final = "1.180.0"
+SEMGREP_VERSION: Final = "1.182.1"
 
 
 def semgrep_command(*, offline: bool = True) -> tuple[str, ...]:

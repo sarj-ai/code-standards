@@ -139,9 +139,9 @@ def test_setup_prepares_only_selected_security_tools_and_writes_their_configs(
     assert native_calls[0] == (
         "--no-config --no-env --no-hooks install "
         "aqua:rhysd/actionlint@1.7.12 aqua:koalaman/shellcheck@0.11.0 "
-        "aqua:hashicorp/terraform@1.16.5 aqua:terraform-linters/tflint@0.64.0"
+        "aqua:hashicorp/terraform@1.17.0 aqua:terraform-linters/tflint@0.65.0"
     )
-    assert "exec aqua:terraform-linters/tflint@0.64.0 -- tflint --config " in native_calls[1]
+    assert "exec aqua:terraform-linters/tflint@0.65.0 -- tflint --config " in native_calls[1]
     assert native_calls[1].endswith(" --init")
     assert not any("zizmor" in call for call in native_calls)
     generated = (tmp_path / ".github/workflows/standards.yml").read_text()

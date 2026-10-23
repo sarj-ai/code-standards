@@ -138,7 +138,7 @@ def test_unreviewed_or_mismatched_repository_baselines_cannot_migrate(invalid: s
         repository_baseline.migrate(original.replace(before, after), _MANIFEST, target_policy_version=19)
 
 
-@pytest.mark.parametrize("version", [18, 19, 20])
+@pytest.mark.parametrize("version", [18, 19, 20, 25, 26, 27])
 def test_setup_rejects_unreviewed_policy_changes_without_mutating_baselines(tmp_path: Path, version: int) -> None:
     manifest = tmp_path / ".repo-standards" / "repository.toml"
     manifest.parent.mkdir()
@@ -174,30 +174,6 @@ def test_setup_preserves_current_policy_baselines_without_recapturing_findings(t
     scaffold.apply(plan.scaffold)
     assert path.read_bytes() == original
     repeated = service.plan_init(tmp_path)
-    assert path not in dict(repeated.scaffold.writes)
-
-
-@pytest.mark.parametrize("before", [25, 26])
-def test_setup_migrates_reviewed_warning_debt_once_without_recapturing_findings(tmp_path: Path, before: int) -> None:
-    manifest = tmp_path / ".repo-standards" / "repository.toml"
-    manifest.parent.mkdir()
-    manifest.write_bytes(_MANIFEST)
-    path = tmp_path / repository_baseline.PATH
-    original = _baseline(before, fingerprints=("b" * 64,)).replace(
-        b'"schema_version": 2', b'"schema_version": 2,\r\n\t"include_warnings": true'
-    )
-    path.write_bytes(original)
-
-    plan = service.plan_init(tmp_path)
-
-    expected = original.replace(f'"policy_version": {before}'.encode(), b'"policy_version": 27')
-    assert not plan.scaffold.errors
-    assert dict(plan.scaffold.writes)[path] == expected.decode("utf-8")
-    assert path.read_bytes() == original
-    scaffold.apply(plan.scaffold)
-    assert path.read_bytes() == expected
-    repeated = service.plan_init(tmp_path)
-    assert not repeated.scaffold.errors
     assert path not in dict(repeated.scaffold.writes)
 
 

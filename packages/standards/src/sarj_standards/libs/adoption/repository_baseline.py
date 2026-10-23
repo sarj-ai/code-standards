@@ -26,6 +26,8 @@ PATH = ".repo-standards/baseline.json"
 # Policy 27 adds a default-disabled local-residue warning. Existing rule
 # definitions, fingerprints and scope serialization are unchanged. Explicitly
 # enabling it still leaves every new finding unaccepted by the warning ratchet.
+# Policy 28 changes operational-script-tests finding identities. Retain the
+# explicit review boundary for older baselines rather than recapturing debt.
 _COMPATIBLE_TRANSITIONS = frozenset({(18, 19), (18, 20), (19, 20), (25, 26), (25, 27), (26, 27)})
 _POLICY_VERSION = re.compile(rb'("policy_version"\s*:\s*)[0-9]+(?=\s*[,}])')
 

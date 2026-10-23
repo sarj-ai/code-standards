@@ -43,7 +43,7 @@ def _report(*clones: dict[str, object]) -> str:
     return json.dumps({"duplicates": list(clones), "statistics": {}})
 
 
-def _jscpd(report: str | None, *, calls: list[tuple[tuple[str, ...], Path]], version: str = "5.4.1") -> ProcessRunner:
+def _jscpd(report: str | None, *, calls: list[tuple[tuple[str, ...], Path]], version: str = "5.4.2") -> ProcessRunner:
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         if tuple(argv[1:]) == ("--version",):
             return ProcessOutput(0, f"jscpd {version}\n", "")
@@ -121,7 +121,7 @@ def test_analysis_scans_the_whole_tree_with_the_pinned_detector(tmp_path: Path) 
     )
 
     assert report.completion is Completion.COMPLETE
-    assert report.version == "5.4.1"
+    assert report.version == "5.4.2"
     assert len(report.diagnostics) == 2
     ((argv, cwd),) = calls
     assert cwd == tmp_path.resolve()
@@ -134,9 +134,9 @@ def test_analysis_scans_the_whole_tree_with_the_pinned_detector(tmp_path: Path) 
 @pytest.mark.parametrize(
     ("report", "version"),
     [
-        (None, "5.4.1"),
-        ("{not json", "5.4.1"),
-        (json.dumps({"duplicates": [{"firstFile": {}}]}), "5.4.1"),
+        (None, "5.4.2"),
+        ("{not json", "5.4.2"),
+        (json.dumps({"duplicates": [{"firstFile": {}}]}), "5.4.2"),
         (_report(), "5.3.3"),
     ],
     ids=["missing-report", "malformed-json", "incomplete-clone", "unpinned-version"],

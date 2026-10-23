@@ -43,7 +43,7 @@ def test_native_production_scan_reports_authored_application_modules_as_warnings
         assert cwd == tmp_path
         calls.append(tuple(argv))
         if argv[1:] == ("--version",):
-            return ProcessOutput(0, "6.41.0\n", "")
+            return ProcessOutput(0, "6.42.1\n", "")
         return ProcessOutput(
             0,
             _report(
@@ -60,7 +60,7 @@ def test_native_production_scan_reports_authored_application_modules_as_warnings
     )
 
     assert result.completion is Completion.COMPLETE
-    assert result.version == "6.41.0"
+    assert result.version == "6.42.1"
     assert [(item.location.path, item.severity, item.rule_id) for item in result.diagnostics] == [
         ("src/orphan.ts", Severity.WARNING, "files")
     ]
@@ -189,7 +189,7 @@ def test_incomplete_native_graph_never_produces_deletion_findings(
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         assert cwd == tmp_path
         if argv[1:] == ("--version",):
-            return ProcessOutput(0, "6.41.0\n", "")
+            return ProcessOutput(0, "6.42.1\n", "")
         if production and "--production" not in argv:
             return ProcessOutput(0, _report(), "")
         return output
@@ -212,7 +212,7 @@ def test_invalid_native_evidence_fails_analysis(tmp_path: Path, output: ProcessO
 
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         assert cwd == tmp_path
-        return ProcessOutput(0, "6.41.0\n", "") if argv[1:] == ("--version",) else output
+        return ProcessOutput(0, "6.42.1\n", "") if argv[1:] == ("--version",) else output
 
     result = analyze_application_modules(
         root=tmp_path, trust=TrustMode.TRUSTED, allows_path=lambda _path: True, runner=runner
@@ -263,7 +263,7 @@ def test_native_production_graph_keeps_aliases_dynamic_imports_side_effects_and_
     result = analyze_application_modules(root=tmp_path, trust=TrustMode.TRUSTED, allows_path=lambda _path: True)
 
     assert result.completion is Completion.COMPLETE, result.issues
-    assert result.version == "6.41.0"
+    assert result.version == "6.42.1"
     assert [(item.location.path, item.severity) for item in result.diagnostics] == [
         ("src/test-only.ts", Severity.WARNING)
     ]
@@ -276,7 +276,7 @@ def test_knip_is_opt_in_and_uses_existing_native_provisioning_contract(tmp_path:
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         assert cwd == tmp_path
         calls.append(tuple(argv))
-        return ProcessOutput(0, "6.41.0\n", "") if argv[1:] == ("--version",) else ProcessOutput(0, _report(), "")
+        return ProcessOutput(0, "6.42.1\n", "") if argv[1:] == ("--version",) else ProcessOutput(0, _report(), "")
 
     disabled = analyze_external(
         ("src/index.ts",), root=tmp_path, trust="trusted", capabilities=frozenset(), runner=runner
@@ -334,7 +334,7 @@ def test_manifest_driven_analysis_requires_both_knip_activation_choices(
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         assert cwd == tmp_path
         calls.append(tuple(argv))
-        return ProcessOutput(0, "6.41.0\n", "") if argv[1:] == ("--version",) else ProcessOutput(0, _report(), "")
+        return ProcessOutput(0, "6.42.1\n", "") if argv[1:] == ("--version",) else ProcessOutput(0, _report(), "")
 
     reports = analyze_external(
         (),

@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "catalogSha256": "9c26357bb58115a304cb810e921fbf10f46937dd28a72651be2a7e050671d6ab",
-  "cliSha256": "e0c250e10d35caa84efebf13de48a805ae5b8387b48d5487d6b6dec01d50041f",
+  "cliSha256": "8ee53469ace0bdc4b95ca23e2566aee7c1b98305bf56ed96d5c309ccdc17af90",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
-    "prettierPluginToml": "3.0.2",
-    "ruff": "0.17.0",
+    "prettierPluginToml": "4.1.0",
+    "ruff": "0.17.2",
     "sqlFormatter": "15.9.0",
-    "terraform": "1.15.8"
+    "terraform": "1.17.0"
   },
   "rules": {
     "eslint:duplicate-test-body": {
