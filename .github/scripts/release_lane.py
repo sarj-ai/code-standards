@@ -34,6 +34,7 @@ DOC_EXAMPLES = "apps/docs/src/generated/formatted-code.v1.json"
 TOOLING_PATHS = frozenset(
     {
         ".github/scripts/release_lane.py",
+        ".github/scripts/release-github-release.sh",
         ".github/scripts/release-require-checks.sh",
         ".github/workflows/release.yml",
         ".github/workflows/release-tags.yml",

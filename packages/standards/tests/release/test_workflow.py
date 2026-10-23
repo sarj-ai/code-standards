@@ -239,6 +239,83 @@ def test_maintenance_uses_its_successful_publisher_identity_and_never_rolls_out(
     assert maintenance["if"] == "needs.preflight.outputs.lane == 'standards-maintenance'"
     assert maintenance["env"] == {"PUBLISHED_SHA": "${{ github.event.workflow_run.head_sha }}"}
     assert 'create-tags standards --commit "$PUBLISHED_SHA"' in str(maintenance["run"])
+    publish = next(step for step in tag_steps if step.get("name") == "Publish the Standards GitHub Release")
+    assert publish["env"] == {
+        "GH_TOKEN": "${{ github.token }}",
+        "RELEASE_LANE": "${{ needs.preflight.outputs.lane }}",
+        "STANDARDS_TAG": "${{ needs.preflight.outputs.standards_tag }}",
+        "PUBLISHED_SHA": "${{ github.event.workflow_run.head_sha }}",
+    }
+
+
+@pytest.mark.parametrize(
+    ("lane", "status", "exit_code", "create"),
+    [
+        pytest.param("main", "200", 0, False, id="main-existing"),
+        pytest.param("standards-maintenance", "200", 0, False, id="maintenance-existing"),
+        pytest.param("main", "404", 0, True, id="main-create"),
+        pytest.param("standards-maintenance", "404", 0, True, id="maintenance-create"),
+        pytest.param("main", "403", 1, False, id="main-forbidden"),
+        pytest.param("standards-maintenance", "403", 1, False, id="maintenance-forbidden"),
+        pytest.param("main", "500", 1, False, id="main-server-error"),
+        pytest.param("standards-maintenance", "500", 1, False, id="maintenance-server-error"),
+        pytest.param("main", "transport-error", 7, False, id="main-transport-error"),
+        pytest.param("standards-maintenance", "transport-error", 7, False, id="maintenance-transport-error"),
+        pytest.param(None, "404", 2, False, id="missing-lane"),
+        pytest.param("", "404", 2, False, id="empty-lane"),
+        pytest.param("preview", "404", 2, False, id="unknown-lane"),
+    ],
+)
+def test_github_release_creation_preserves_main_latest(
+    tmp_path: Path, *, lane: str | None, status: str, exit_code: int, create: bool
+) -> None:
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    _write_executable(binaries / "jq", '#!/bin/sh\nprintf "%s\\n" "$4"\n')
+    _write_executable(binaries / "gh", '#!/bin/sh\nprintf "%s\\n" "$@" > "$GH_CALLED"\n')
+    _write_executable(
+        binaries / "curl",
+        '#!/bin/sh\n: > "$HTTP_CALLED"\n[ "$FAKE_HTTP_STATUS" != transport-error ] || exit 7\nprintf "%s" "$FAKE_HTTP_STATUS"\n',
+    )
+    called = tmp_path / "http-called"
+    created = tmp_path / "gh-called"
+    tag = "standards-v8.101.3" if lane == "standards-maintenance" else "standards-v8.109.1"
+    environment = {
+        "PATH": f"{binaries}:/usr/bin:/bin",
+        "FAKE_HTTP_STATUS": status,
+        "HTTP_CALLED": str(called),
+        "GH_CALLED": str(created),
+        "STANDARDS_TAG": tag,
+        "GH_TOKEN": "test-token",
+        "GITHUB_API_URL": "https://api.github.invalid",
+        "GITHUB_REPOSITORY": "sarj-ai/code-standards",
+    }
+    if lane is not None:
+        environment["RELEASE_LANE"] = lane
+    completed = subprocess.run(
+        ("bash", str(REPO_ROOT / ".github/scripts/release-github-release.sh")),
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert completed.returncode == exit_code
+    assert called.exists() is (lane in {"main", "standards-maintenance"})
+    expected = [
+        "release",
+        "create",
+        tag,
+        "--verify-tag",
+        "--generate-notes",
+        "--title",
+        f"Standards {tag.removeprefix('standards-v')}",
+    ]
+    if lane == "standards-maintenance":
+        expected.append("--latest=false")
+    assert created.exists() is create
+    assert (created.read_text().splitlines() if created.exists() else []) == (expected if create else [])
 
 
 def test_maintenance_publication_keeps_fresh_build_and_prevents_sibling_publication() -> None:

@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+case "${RELEASE_LANE:-}" in
+  main | standards-maintenance) ;;
+  *)
+    echo "::error::an exact validated release lane is required"
+    exit 2
+    ;;
+esac
+
 encoded_tag="$(jq -rn --arg value "$STANDARDS_TAG" '$value | @uri')"
 release_status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
   --retry 2 --retry-all-errors --connect-timeout 5 --max-time 20 \
@@ -11,8 +19,12 @@ release_status="$(curl --silent --show-error --output /dev/null --write-out '%{h
 case "$release_status" in
   200) ;;
   404)
-    gh release create "$STANDARDS_TAG" --verify-tag --generate-notes \
-      --title "Standards ${STANDARDS_TAG#standards-v}"
+    release_args=(release create "$STANDARDS_TAG" --verify-tag --generate-notes
+      --title "Standards ${STANDARDS_TAG#standards-v}")
+    if [[ "$RELEASE_LANE" == standards-maintenance ]]; then
+      release_args+=(--latest=false)
+    fi
+    gh "${release_args[@]}"
     ;;
   *)
     echo "::error::GitHub Release lookup returned HTTP $release_status for $STANDARDS_TAG"

@@ -115,6 +115,7 @@ jobs:
       - name: Publish the Standards GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_LANE: ${{ needs.preflight.outputs.lane }}
           STANDARDS_TAG: ${{ needs.preflight.outputs.standards_tag }}
           PUBLISHED_SHA: ${{ github.event.workflow_run.head_sha }}
         run: bash .github/scripts/release-github-release.sh
