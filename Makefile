@@ -127,13 +127,13 @@ test-iac:
 	uv --directory packages/iac run pytest -q
 
 test-standards: typescript-build
-	uv run --project packages/standards --frozen python -m sarj_standards.libs.release.wheel_tests --root . --jobs "$(TEST_JOBS)" $(PYTEST_ARGS)
+	bash .github/scripts/make-native-test-tools.sh uv run --project packages/standards --frozen python -m sarj_standards.libs.release.wheel_tests --root . --jobs "$(TEST_JOBS)" $(PYTEST_ARGS)
 
 test-plan:
 	uv run --project packages/standards --frozen python -m sarj_standards.libs.release.test_selection --root . --base "$(BASE)"
 
 test-standards-changed: typescript-build
-	uv run --project packages/standards --frozen python -m sarj_standards.libs.release.wheel_tests --root . --jobs "$(TEST_JOBS)" --changed --base "$(BASE)" $(PYTEST_ARGS)
+	bash .github/scripts/make-native-test-tools.sh uv run --project packages/standards --frozen python -m sarj_standards.libs.release.wheel_tests --root . --jobs "$(TEST_JOBS)" --changed --base "$(BASE)" $(PYTEST_ARGS)
 
 test-tsconfig:
 	node .github/scripts/ci-validate-tsconfig.mts packages/tsconfig
