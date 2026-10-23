@@ -52,6 +52,8 @@ def _file_tools(path: Path, relative: str, selected: frozenset[str]) -> set[str]
         names.add("hadolint")
     if path.suffix == ".tf" or path.name.endswith(".tf.json"):
         names.update(selected & {"terraform", "tflint"})
+    elif (path.suffix == ".tfvars" or path.name.endswith(".tftest.hcl")) and "terraform" in selected:
+        names.add("terraform")
     if (
         path.name in {"compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"}
         and "compose" in selected

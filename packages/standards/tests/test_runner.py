@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import pytest
 
+from sarj_standards.api import Standards
 from sarj_standards.libs.linting import runner
 
 
@@ -58,6 +59,19 @@ def test_json_variable_files_route_to_iac_without_routing_other_json(tmp_path: P
     assert runner.group_paths([str(variables)]).iac == [str(variables)]
     assert runner.group_paths([str(tmp_path)]).iac == [str(variables)]
     assert runner.accepts_hook_path(variables, root=tmp_path)
+
+
+@pytest.mark.parametrize("name", ["cloudbuild.json", "release.cloudbuild.json", "cloudbuild.custom.json"])
+def test_cloudbuild_json_is_checked_from_direct_directory_and_staged_inputs(tmp_path: Path, name: str) -> None:
+    source = tmp_path / name
+    source.write_text('{"steps": [{"name": "builder", "waitFor": ["missing"]}]}\n', encoding="utf-8")
+
+    assert runner.accepts_hook_path(source, root=tmp_path)
+    for paths in ([name], ["."]):
+        report = Standards(tmp_path).analyze(paths, rules=("text:cloudbuild-contract",))
+        assert report.exit_code == 1
+        assert [diagnostic.code for diagnostic in report.diagnostics] == ["SARJ315"]
+        assert not report.issues
 
 
 def test_shell_files_route_to_shellcheck_and_text(tmp_path: Path) -> None:

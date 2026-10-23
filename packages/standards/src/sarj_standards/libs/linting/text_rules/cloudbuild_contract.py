@@ -28,17 +28,17 @@ class CloudBuildContract(Rule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         languages=frozenset({Language.CONFIG}),
-        file_patterns=("**/*.yaml", "**/*.yml"),
+        file_patterns=("**/*.yaml", "**/*.yml", "**/*.json"),
         references=(
             "https://docs.cloud.google.com/build/docs/configuring-builds/configure-build-step-order",
             "https://docs.cloud.google.com/build/docs/build-config-file-schema",
         ),
         limitations=(
             "This checks step dependencies and execution semantics, not a complete Cloud Build API schema.",
-            "Only YAML documents with a Build-shaped steps sequence are selected; other configuration shapes are not guessed.",
+            "Only YAML or JSON documents with a Build-shaped steps sequence are selected; other configuration shapes are not guessed.",
             "Unknown execution entrypoints, substitutions supplied by triggers, and effective service identities require prepared-output validation.",
             "YAML aliases retain executable use-site locations, including inherited mappings and aliased argument lists; shared anchor data is not treated as an execution site.",
-            "Malformed or duplicate-key YAML raises a parser error instead of a suppressible rule finding.",
+            "Malformed or duplicate-key configuration raises a parser error instead of a suppressible rule finding; JSON also rejects non-finite numbers and YAML-only syntax.",
         ),
         examples=tuple(
             RuleExample(

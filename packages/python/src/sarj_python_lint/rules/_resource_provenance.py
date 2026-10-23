@@ -12,6 +12,7 @@ from sarj_python_lint.rules._runtime_bindings import RuntimeBindings
 
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
@@ -82,6 +83,8 @@ class ResourceProvenance:
         self.bindings: dict[ast.AST | None, dict[str, list[ast.AST]]] = defaultdict(lambda: defaultdict(list))
         self.reads: dict[str, list[ast.Name]] = defaultdict(list)
         self._reads_by_binding: dict[str, dict[ast.AST, list[ast.Name]]] = {}
+        self._runtime_reads_by_binding: dict[str, dict[ast.AST, list[ast.Name]]] = {}
+        self._import_read_safety: dict[str, bool] = {}
         self.escape_cache: dict[tuple[ast.AST, bool], bool] = {}
         self.async_contract_cache: dict[ast.AsyncFunctionDef, bool] = {}
         self.import_contract_cache: dict[str, bool] = {}
@@ -172,10 +175,10 @@ class ResourceProvenance:
         if qualified is None or not self._owner_namespace_untouched(qualified.partition(".")[0]):
             return None
         if binding not in self.runtime_import_cache:
-            self.runtime_import_cache[binding] = all(
-                self.runtime_binding(root, read) is not binding or self._safe_import_use(read)
-                for read in self.reads.get(root, ())
+            reads = self._indexed_reads(
+                root, binding, cache=self._runtime_reads_by_binding, resolve=self.runtime_binding
             )
+            self.runtime_import_cache[binding] = all(self._safe_import_use(read) for read in reads)
         return qualified if self.runtime_import_cache[binding] else None
 
     @cached_property
@@ -283,17 +286,21 @@ class ResourceProvenance:
         ):
             return False
         binding = self.binding(root, node)
-        for read in self.reads.get(root, ()):
-            parent = self.parents.get(read)
-            if isinstance(parent, ast.Attribute | ast.ExceptHandler):
-                continue
-            if not self._safe_import_use(read):
-                return False
+        if not self._import_reads_safe(root):
+            return False
         return (
             isinstance(binding, ast.alias)
             and isinstance(self.scope(binding), ast.Module)
             and self.context.imports.resolved_qualified_name(node) == qualified
         )
+
+    def _import_reads_safe(self, name: str) -> bool:
+        if name not in self._import_read_safety:
+            self._import_read_safety[name] = all(
+                isinstance(self.parents.get(read), ast.Attribute | ast.ExceptHandler) or self._safe_import_use(read)
+                for read in self.reads.get(name, ())
+            )
+        return self._import_read_safety[name]
 
     def _owner_namespace_untouched(self, module: str) -> bool:
         if module not in _RESOURCE_OWNERS:
@@ -459,13 +466,23 @@ class ResourceProvenance:
         )
 
     def _binding_reads(self, name: str, binding: ast.AST) -> list[ast.Name]:
-        if name not in self._reads_by_binding:
+        return self._indexed_reads(name, binding, cache=self._reads_by_binding, resolve=self.binding)
+
+    def _indexed_reads(
+        self,
+        name: str,
+        binding: ast.AST,
+        *,
+        cache: dict[str, dict[ast.AST, list[ast.Name]]],
+        resolve: Callable[[str, ast.AST], ast.AST | None],
+    ) -> list[ast.Name]:
+        if name not in cache:
             grouped: dict[ast.AST, list[ast.Name]] = defaultdict(list)
             for read in self.reads.get(name, ()):
-                if (owner := self.binding(read.id, read)) is not None:
+                if (owner := resolve(read.id, read)) is not None:
                     grouped[owner].append(read)
-            self._reads_by_binding[name] = grouped
-        return self._reads_by_binding[name].get(binding, [])
+            cache[name] = grouped
+        return cache[name].get(binding, [])
 
     def unescaped(self, name: ast.Name, at: ast.AST, *, allow_context: bool = False) -> bool:
         binding = self.binding(name.id, at)

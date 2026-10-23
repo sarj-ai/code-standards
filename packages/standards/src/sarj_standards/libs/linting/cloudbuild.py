@@ -100,11 +100,15 @@ def scalar_text(node: Node | None) -> str | None:
 
 
 def check_cloudbuild(path: Path, source: str, *, selected: bool = False) -> list[Finding]:
-    if path.suffix.lower() not in {".yaml", ".yml"}:
+    if path.suffix.lower() not in {".yaml", ".yml", ".json"}:
         return []
     try:
+        if path.suffix.lower() == ".json":
+            from sarj_standards.libs.json_boundary import parse_unique_json  # ruff: ignore[import-outside-top-level] -- YAML checks do not need the JSON normalization runtime.
+
+            parse_unique_json(source)
         documents = compose_documents(source)
-    except (yaml.YAMLError, CloudBuildParseError) as error:
+    except (yaml.YAMLError, ValueError, RecursionError) as error:
         if selected:
             raise CloudBuildParseError(str(error)) from error
         return []
