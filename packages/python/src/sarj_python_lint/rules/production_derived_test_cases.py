@@ -17,6 +17,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._ast_names import assignment_names as _bound_target_names
 from sarj_python_lint.rules._first_party import FirstPartyFacts, has_first_party_source, is_first_party_module
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -99,21 +100,6 @@ def _node_binding_names(node: ast.AST) -> set[str]:
             *(_bound_target_names(item.optional_vars) for item in node.items if item.optional_vars is not None)
         )
     return names
-
-
-def _bound_target_names(node: ast.AST) -> set[str]:
-    match node:
-        case ast.Name(id=name):
-            return {name}
-        case ast.Tuple() | ast.List():
-            names: set[str] = set()
-            for element in node.elts:
-                names.update(_bound_target_names(element))
-            return names
-        case ast.Starred(value=value):
-            return _bound_target_names(value)
-        case _:
-            return set()
 
 
 def _imported_bindings(

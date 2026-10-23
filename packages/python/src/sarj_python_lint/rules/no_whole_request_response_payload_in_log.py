@@ -20,6 +20,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import object_list, walk as walk_ast
+from sarj_python_lint.rules._ast_names import expression_root as _root_name
 from sarj_python_lint.rules._logging import LOG_METHODS, is_logger_expr
 
 
@@ -380,12 +381,6 @@ def _mutated_names(statement: ast.stmt) -> frozenset[str]:
         ):
             names.add(root)
     return frozenset(names)
-
-
-def _root_name(node: ast.expr) -> str | None:
-    while isinstance(node, (ast.Attribute, ast.Subscript)):
-        node = node.value
-    return node.id if isinstance(node, ast.Name) else None
 
 
 def _containing_statement(node: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> ast.stmt | None:

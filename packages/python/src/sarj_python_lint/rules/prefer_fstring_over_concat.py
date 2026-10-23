@@ -193,12 +193,17 @@ class PreferFstringOverConcat(Rule):
             _classify_concat_context(node, inner, excluded, adds, regex_bindings)
 
         diags: list[Diagnostic] = []
+        module_evidence: _StringEvidence | None = None
+        scope_shadowing: dict[ast.AST, frozenset[str]] = {}
         for node in adds:
             if id(node) in inner or id(node) in excluded:
                 continue
             if not _in_callable_scope(node, parents):
                 continue
-            message = _verdict(node, _string_evidence(node, parents))
+            if module_evidence is None:
+                shadowed = _shadowed_producers(tree.body, None)
+                module_evidence = _StringEvidence(frozenset(), shadowed, _imported_modules(tree.body, None) - shadowed)
+            message = _verdict(node, _string_evidence(node, parents, module_evidence, scope_shadowing))
             if message is None:
                 continue
             diags.append(
@@ -459,7 +464,12 @@ def _is_string_repetition(expr: ast.expr) -> bool:
     return any(isinstance(side, ast.Constant) and isinstance(side.value, str) for side in (expr.left, expr.right))
 
 
-def _string_evidence(node: ast.BinOp, parents: Mapping[ast.AST, ast.AST]) -> _StringEvidence:
+def _string_evidence(
+    node: ast.BinOp,
+    parents: Mapping[ast.AST, ast.AST],
+    module_evidence: _StringEvidence,
+    scope_shadowing: dict[ast.AST, frozenset[str]],
+) -> _StringEvidence:
     scope: ast.AST = node
     while not isinstance(scope, ast.Module | ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
         parent = parents.get(scope)
@@ -467,16 +477,15 @@ def _string_evidence(node: ast.BinOp, parents: Mapping[ast.AST, ast.AST]) -> _St
             return _StringEvidence(frozenset(), frozenset(), frozenset())
         scope = parent
 
-    module = scope
-    while not isinstance(module, ast.Module):
-        parent = parents.get(module)
-        if parent is None:
-            return _StringEvidence(frozenset(), frozenset(), frozenset())
-        module = parent
-    shadowed = _shadowed_producers(module.body, None)
-    modules = _imported_modules(module.body, None) - shadowed
+    shadowed = module_evidence.shadowed
+    modules = module_evidence.modules
     if not isinstance(scope, ast.Module):
-        shadowed |= _scope_shadowed_producers(scope, None)
+        local_shadowing = scope_shadowing.get(scope)
+        if local_shadowing is None:
+            local_shadowing = _scope_shadowed_producers(scope, None)
+            scope_shadowing[scope] = local_shadowing
+        shadowed |= local_shadowing
+        modules -= local_shadowing
 
     known: set[str] = set()
     if isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):

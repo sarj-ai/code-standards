@@ -16,6 +16,7 @@ from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint.rule_base import Rule
 from sarj_python_lint.rules import REGISTRY
 from sarj_python_lint.rules._ast_index import nodes, parent_map, walk
+from sarj_python_lint.rules._comments import all_comments, comment_line_numbers
 from sarj_python_lint.rules._project_index import ProjectIndexSet
 from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
@@ -40,6 +41,35 @@ def test_file_facts_are_lazy_and_preserve_breadth_first_queries() -> None:
     # Callers cannot mutate the index by changing a query result.
     context.nodes(ast.Call).clear()
     assert len(context.nodes(ast.Call)) == 1
+
+
+@pytest.mark.parametrize("rich_scan_first", [False, True])
+def test_comment_line_facts_are_lazy_shared_and_source_specific(*, rich_scan_first: bool) -> None:
+    source = b'# retained comment\nvalue = "# string"\n'.decode()
+    context = PythonFileContext(Path("app.py"), source)
+    if rich_scan_first:
+        all_comments(source)
+    first = comment_line_numbers(context.source)
+    assert first == frozenset({1})
+    assert comment_line_numbers(context.source) is first
+    all_comments(source)
+    assert comment_line_numbers(context.source) is first
+    other = PythonFileContext(context.path, 'value = "# string"\n# different comment\n')
+    assert comment_line_numbers(other.source) == frozenset({2})
+    assert "tree" not in vars(context)
+
+
+@pytest.mark.parametrize(
+    ("source", "lines"),
+    [
+        ('value = "# string"\r\n# retained\r\n', frozenset({2})),
+        ('value = """# string\n# still a string"""\n# retained\n', frozenset({3})),
+        ("value = (\n    # unfinished input\n", frozenset[int]()),
+        ("if valid:\n    value = 1\n  # comment\n  value = 2\n", frozenset[int]()),
+    ],
+)
+def test_comment_line_boundaries_match_tokenizer_behavior(source: str, lines: frozenset[int]) -> None:
+    assert comment_line_numbers(source) == lines
 
 
 def test_import_modes_preserve_local_shadowing_distinction() -> None:

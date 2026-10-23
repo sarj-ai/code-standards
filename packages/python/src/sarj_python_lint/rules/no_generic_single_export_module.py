@@ -15,6 +15,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._ast_names import unqualified_name as _annotation_name
 from sarj_python_lint.rules._exports import mentions_dunder_all
 
 
@@ -162,14 +163,6 @@ def _dunder_all_matches_primary(tree: ast.Module, primary_name: str) -> bool:
         return False
     (entry,) = value.elts
     return isinstance(entry, ast.Constant) and entry.value == primary_name
-
-
-def _annotation_name(node: ast.expr) -> str:
-    match node:
-        case ast.Name(id=name) | ast.Attribute(attr=name):
-            return name
-        case _:
-            return ""
 
 
 def _is_skipped_path(path: Path) -> bool:

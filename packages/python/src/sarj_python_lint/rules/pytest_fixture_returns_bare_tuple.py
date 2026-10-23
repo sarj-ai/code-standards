@@ -15,6 +15,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import children, walk as walk_ast
+from sarj_python_lint.rules._ast_names import terminal_name as _dotted_tail
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -482,14 +483,6 @@ def _union_members(annotation: ast.expr) -> list[ast.expr]:
 def _only_non_none(members: list[ast.expr]) -> ast.expr | None:
     concrete = [member for member in members if not (isinstance(member, ast.Constant) and member.value is None)]
     return concrete[0] if len(concrete) == 1 and len(concrete) < len(members) else None
-
-
-def _dotted_tail(node: ast.expr) -> str | None:
-    match node:
-        case ast.Name(id=name) | ast.Attribute(attr=name):
-            return name
-        case _:
-            return None
 
 
 def _has_own_yield(fixture: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:

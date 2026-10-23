@@ -16,6 +16,20 @@ const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, parser
 
 RULE_TESTER.run("require-use-form-default-values", rule, {
   valid: [
+    { name: "keeps a replaced control's initialized contract", code: "import { Controller, useForm } from 'react-hook-form'; const form = useForm(); const initialized = useForm({ defaultValues: { name: '' } }); form.control = initialized.control; <Controller control={form.control} name='name' />;" },
+    { name: "keeps a control replaced through an alias", code: "import { Controller, useForm } from 'react-hook-form'; const form = useForm(); const alias = form; alias.control = initialized; <Controller control={form.control} />;" },
+    { name: "keeps a control replaced through an erased wrapper", code: "import { Controller, useForm } from 'react-hook-form'; const form = useForm(); (form as Custom)['control'] = initialized; <Controller control={form.control} />;" },
+    { name: "keeps a control replaced through a destructuring target", code: "import { Controller, useForm } from 'react-hook-form'; const form = useForm(); ({ control: form.control } = initialized); <Controller control={form.control} />;" },
+    { name: "keeps a control replaced through a defaulted array target", code: "import { Controller, useForm } from 'react-hook-form'; const form = useForm(); [form.control = initialized] = controls; <Controller control={form.control} />;" },
+    { name: "keeps a deleted control", code: "import { Controller, useForm } from 'react-hook-form'; const form = useForm(); delete form.control; <Controller control={form.control} />;" },
+    { name: "keeps controls written by loop targets", code: "import { Controller, useForm } from 'react-hook-form'; const form = useForm(); for (form.control of controls) {} <Controller control={form.control} />;" },
+    { name: "keeps controls exposed to unknown helpers", code: "import { Controller, useForm } from 'react-hook-form'; const form = useForm(); configure(form); <Controller control={form.control} />;" },
+    { name: "keeps controls exposed through native object alias methods", code: "import { Controller, useForm } from 'react-hook-form'; const form = useForm(); const alias = form.valueOf(); alias.control = initialized; <Controller control={form.control} />;" },
+    { name: "keeps directly exported forms", code: "import { Controller, useForm } from 'react-hook-form'; export const form = useForm(); <Controller control={form.control} />;" },
+    { name: "keeps forms exported through specifiers", code: "import { Controller, useForm } from 'react-hook-form'; const form = useForm(); export { form }; <Controller control={form.control} />;" },
+    { name: "keeps a form with two distinct initializer sites outside the proof", code: "import { Controller, useForm } from 'react-hook-form'; function View() { var form = useForm(); var form = useForm({ defaultValues: {} }); return <Controller control={form.control} />; }" },
+    { name: "keeps a control with two distinct initializer sites outside the proof", code: "import { Controller, useForm } from 'react-hook-form'; function View() { var { control } = useForm(); var { control } = useForm({ defaultValues: {} }); return <Controller control={control} />; }" },
+    { name: "keeps reassigned imports outside native provenance", code: "import { Controller, useForm } from 'react-hook-form'; useForm = custom; const form = useForm(); <Controller control={form.control} />;" },
     "import { useForm } from 'react-hook-form'; useForm();",
     "import { Controller, useForm } from 'react-hook-form'; const form = useForm({ ...options }); <Controller control={form.control} name='name' />;",
     "import { Controller, useForm } from 'react-hook-form'; const form = useForm(options); <Controller control={form.control} name='name' />;",
@@ -36,6 +50,9 @@ RULE_TESTER.run("require-use-form-default-values", rule, {
     "import { Controller, useForm } from 'react-hook-form'; let form = useForm(); form = replacement; <Controller control={form.control} />;",
   ],
   invalid: [
+    { name: "retains form type queries and read-only member uses", code: "import { Controller, useForm } from 'react-hook-form'; const form = useForm(); type Form = typeof form; type Control = typeof form.control; form.getValues(); <Controller control={form.control} />;", errors: [{ messageId: "requireUseFormDefaultValues" }] },
+    { name: "recognizes decoded module specifiers", code: "import { Controller, useForm } from 'react-\\u0068ook-form'; const form = useForm(); <Controller control={form.control} />;", errors: [{ messageId: "requireUseFormDefaultValues" }] },
+    { name: "retains a single initializer with a later bare declaration", code: "import { Controller, useForm } from 'react-hook-form'; function View() { var form = useForm(); var form; return <Controller control={form.control} />; }", errors: [{ messageId: "requireUseFormDefaultValues" }] },
     {
       name: "reports a Controller bound to an uninitialized form",
       code: "import { Controller, useForm } from 'react-hook-form'; const form = useForm(); <Controller control={form.control} name='name' />;",

@@ -16,7 +16,8 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import walk
-from sarj_python_lint.rules._closed_helpers import call_matches, closed_references, direct_call
+from sarj_python_lint.rules._ast_names import root_name as _root
+from sarj_python_lint.rules._closed_helpers import closed_owner as _closed_owner
 from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
 
 
@@ -153,16 +154,6 @@ class RequirePreciseFactorySignature(ProjectRule):
                     )
                 )
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
-
-
-def _closed_owner(function: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext) -> bool:
-    if not isinstance(function, ast.FunctionDef) or not function.name.startswith("_"):
-        return False
-    references = closed_references(context, function, context.resource_provenance)
-    return bool(references) and all(
-        (call := direct_call(reference, context)) is not None and call_matches(function, call)
-        for reference in references
-    )
 
 
 def _factory_result(annotation: ast.expr | None, context: PythonFileContext) -> ast.Name | ast.Attribute | None:
@@ -315,9 +306,3 @@ def _binds_name(node: ast.AST, name: str) -> bool:
             return (alias or imported.split(".")[0]) == name
         case _:
             return False
-
-
-def _root(node: ast.expr) -> str | None:
-    while isinstance(node, ast.Attribute):
-        node = node.value
-    return node.id if isinstance(node, ast.Name) else None

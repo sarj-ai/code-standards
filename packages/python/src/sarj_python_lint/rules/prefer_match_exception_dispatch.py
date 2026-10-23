@@ -16,7 +16,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
-from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._ast_index import nodes, walk as walk_ast
 
 
 if TYPE_CHECKING:
@@ -196,9 +196,7 @@ class PreferMatchExceptionDispatch(Rule):
 def _functions(
     tree: ast.Module, *, node_index: NodeIndex | None = None
 ) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]:
-    return tuple(
-        node for node in walk_ast(tree, index=node_index) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    )
+    return tuple(nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, index=node_index))
 
 
 def _exception_subjects(

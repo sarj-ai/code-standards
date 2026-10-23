@@ -16,6 +16,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
+from sarj_python_lint.rules._ast_names import dotted_name as _dotted
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -807,18 +808,6 @@ def _joined_text(node: ast.JoinedStr) -> str:
         elif isinstance(value, ast.FormattedValue):
             parts.append(_dotted(value.value) or "?")
     return "".join(parts)
-
-
-def _dotted(node: ast.expr) -> str | None:
-    parts: list[str] = []
-    current = node
-    while isinstance(current, ast.Attribute):
-        parts.append(current.attr)
-        current = current.value
-    if not isinstance(current, ast.Name):
-        return None
-    parts.append(current.id)
-    return ".".join(reversed(parts))
 
 
 def _collect_parametrized_names(argnames: ast.expr | None, parametrized: set[str]) -> None:

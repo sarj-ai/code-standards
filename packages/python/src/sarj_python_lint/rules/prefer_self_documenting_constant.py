@@ -21,6 +21,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._ast_names import terminal_name as _trailing_name
 from sarj_python_lint.rules._comments import split_identifier, standalone_comments
 
 
@@ -672,11 +673,3 @@ def _builtins_frozenset_mutated(tree: ast.Module, imports: ImportIndex, *, node_
         and imports.resolves(node, sources=frozenset({"builtins"}), symbol="frozenset")
         for node in walk_ast(tree, index=node_index)
     )
-
-
-def _trailing_name(node: ast.expr) -> str | None:
-    match node:
-        case ast.Name(id=name) | ast.Attribute(attr=name):
-            return name
-        case _:
-            return None

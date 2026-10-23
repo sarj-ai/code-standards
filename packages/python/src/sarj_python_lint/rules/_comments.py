@@ -326,7 +326,13 @@ class _Scan(NamedTuple):
     ordered: _Ordered
 
 
-_last_scan: tuple[str, _Scan] | None = None
+class _ScanMemo(NamedTuple):
+    source: str
+    scan: _Scan | None
+    comment_lines: frozenset[int] | None
+
+
+_last_scan: _ScanMemo | None = None
 
 
 def all_comments(source: str) -> _CommentScan[_Ordered]:
@@ -334,15 +340,35 @@ def all_comments(source: str) -> _CommentScan[_Ordered]:
     return _CommentScan(scan.ordered, scan.first_code_line)
 
 
+def comment_line_numbers(source: str) -> frozenset[int]:
+    global _last_scan  # ruff: ignore[global-statement] -- retain the existing single-source memo for both comment projections.
+    cached = _last_scan
+    scan = cached.scan if cached is not None and cached.source is source else None
+    if cached is not None and cached.source is source and cached.comment_lines is not None:
+        return cached.comment_lines
+    lines: frozenset[int]
+    if scan is not None:
+        lines = frozenset(comment.line for comment in scan.ordered)
+    else:
+        try:
+            tokens = tokenize.generate_tokens(io.StringIO(source).readline)
+            lines = frozenset(token.start[0] for token in tokens if token.type == tokenize.COMMENT)
+        except IndentationError, tokenize.TokenError:
+            lines = frozenset()
+    _last_scan = _ScanMemo(source, scan, lines)
+    return lines
+
+
 def _scan_memo(source: str) -> _Scan:
     global _last_scan  # ruff: ignore[global-statement] — single-slot memo; the CLI runs rules per file sequentially
-    if _last_scan is not None and _last_scan[0] is source:
-        return _last_scan[1]
+    cached = _last_scan if _last_scan is not None and _last_scan.source is source else None
+    if cached is not None and cached.scan is not None:
+        return cached.scan
     try:
         result = _scan(source)
     except UnicodeError:
         result = _Scan([], [], set(), 1 << 30, [])
-    _last_scan = (source, result)
+    _last_scan = _ScanMemo(source, result, cached.comment_lines if cached is not None else None)
     return result
 
 

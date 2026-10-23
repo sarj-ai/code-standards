@@ -18,6 +18,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import children, nodes, walk as walk_ast
+from sarj_python_lint.rules._ast_names import root_name as _root_name
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
@@ -601,12 +602,6 @@ def _unsafe_bindings(tree: ast.Module, *, node_index: NodeIndex | None = None) -
         names.add("*")
     _collect_pattern_bindings(tree, names, node_index=node_index)
     return frozenset(names)
-
-
-def _root_name(node: ast.expr) -> str | None:
-    while isinstance(node, ast.Attribute):
-        node = node.value
-    return node.id if isinstance(node, ast.Name) else None
 
 
 def _has_re_attribute_mutation(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:

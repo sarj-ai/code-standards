@@ -16,6 +16,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     parse_or_none,
 )
+from sarj_python_lint.rules._ast_names import terminal_name as _leaf_name
 from sarj_python_lint.rules._inherited_contract import inherited_contract
 
 
@@ -166,11 +167,3 @@ def _is_variadic_field(node: ast.expr) -> bool:
         or (isinstance(node, ast.Subscript) and _leaf_name(node.value) == "Unpack")
         or (isinstance(node, ast.Constant) and node.value is Ellipsis)
     )
-
-
-def _leaf_name(node: ast.expr) -> str | None:
-    match node:
-        case ast.Name(id=name) | ast.Attribute(attr=name):
-            return name
-        case _:
-            return None

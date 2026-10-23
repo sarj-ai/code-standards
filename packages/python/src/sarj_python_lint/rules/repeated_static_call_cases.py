@@ -19,6 +19,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._ast_names import dotted_parts as _dotted_name
 from sarj_python_lint.rules._comments import split_identifier
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules.no_repeated_test_body import duplicate_test_owner_ids
@@ -180,15 +181,6 @@ class RepeatedStaticCallCases(Rule):
             if id(test) not in duplicate_owners and not is_suppressed(source_lines, run[0].lineno, self.code)
         ]
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
-
-
-def _dotted_name(node: ast.expr) -> tuple[str, ...] | None:
-    if isinstance(node, ast.Name):
-        return (node.id,)
-    if isinstance(node, ast.Attribute):
-        parent = _dotted_name(node.value)
-        return None if parent is None else (*parent, node.attr)
-    return None
 
 
 def _comment_lines(source: str) -> frozenset[int]:

@@ -16,7 +16,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
-from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._ast_index import nodes, walk as walk_ast
 from sarj_python_lint.rules._ast_position import AstPosition, ast_position
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_test_path
@@ -164,9 +164,7 @@ def _local_imports(function: ast.FunctionDef | ast.AsyncFunctionDef) -> ImportIn
 def _functions(
     tree: ast.Module, *, node_index: NodeIndex | None = None
 ) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef]:
-    for node in walk_ast(tree, index=node_index):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            yield node
+    yield from nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, index=node_index)
 
 
 def _function_mutations(

@@ -17,6 +17,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import nodes, walk, walk as walk_ast
+from sarj_python_lint.rules._ast_names import terminal_name as _call_name
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 
 
@@ -205,16 +206,6 @@ def _is_executable_sql(
             return True
         current = parent
     return False
-
-
-def _call_name(node: ast.expr) -> str | None:
-    match node:
-        case ast.Name():
-            return node.id
-        case ast.Attribute():
-            return node.attr
-        case _:
-            return None
 
 
 def _sql_template_value(node: ast.expr) -> str | None:

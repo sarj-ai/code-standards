@@ -16,6 +16,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._closed_helpers import executable_body
 from sarj_python_lint.rules._imports import TYPING_SOURCES
 from sarj_python_lint.rules._type_guard_symbols import (
     builtin_guard_symbol,
@@ -189,14 +190,7 @@ def _sole_parameter(function: ast.FunctionDef) -> ast.arg | None:
 
 
 def _single_return(function: ast.FunctionDef) -> ast.Return | None:
-    body = function.body
-    if (
-        body
-        and isinstance(body[0], ast.Expr)
-        and isinstance(body[0].value, ast.Constant)
-        and isinstance(body[0].value.value, str)
-    ):
-        body = body[1:]
+    body = executable_body(function)
     return body[0] if len(body) == 1 and isinstance(body[0], ast.Return) else None
 
 

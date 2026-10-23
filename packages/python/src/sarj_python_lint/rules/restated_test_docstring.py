@@ -19,6 +19,9 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import children, walk as walk_ast
+from sarj_python_lint.rules._ast_names import (
+    root_name as _root_name,
+)
 from sarj_python_lint.rules._comments import is_protected, split_identifier, stem
 from sarj_python_lint.rules._docstrings import (
     VALUE_MARKER_RE,
@@ -185,13 +188,6 @@ def _is_pytest_mark(decorator: ast.expr, imports: ImportIndex, shadowed: frozens
         and isinstance(target, ast.Attribute)
         and imports.resolves(target.value, sources=_PYTEST, symbol="mark")
     )
-
-
-def _root_name(node: ast.expr) -> str | None:
-    current = node
-    while isinstance(current, ast.Attribute):
-        current = current.value
-    return current.id if isinstance(current, ast.Name) else None
 
 
 def _class_opts_out(node: ast.ClassDef) -> bool:
@@ -485,24 +481,6 @@ def _direct_bound_names(statement: ast.stmt) -> set[str]:
             return set()
 
 
-def _target_names(node: ast.expr) -> set[str]:
-    if isinstance(node, ast.Name):
-        return {node.id}
-    if isinstance(node, ast.Tuple | ast.List):
-        return {name for element in node.elts for name in _target_names(element)}
-    return set()
-
-
-def _terminal_name(node: ast.expr) -> str | None:
-    match node:
-        case ast.Name():
-            return node.id
-        case ast.Attribute():
-            return node.attr
-        case _:
-            return None
-
-
 def _is_docstring_reader(node: ast.Call) -> bool:
     if not node.args:
         return False
@@ -575,3 +553,11 @@ def _bind_docstring_owner(
             bindings[alias] = alias_owner
         case _:
             return
+
+
+def _target_names(node: ast.expr) -> set[str]:
+    if isinstance(node, ast.Name):
+        return {node.id}
+    if isinstance(node, ast.Tuple | ast.List):
+        return {name for element in node.elts for name in _target_names(element)}
+    return set()
