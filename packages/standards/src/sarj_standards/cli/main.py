@@ -1417,12 +1417,13 @@ def _run_canonical_check(
     rendered = to_text(report)
     if rendered:
         print(rendered, end="" if rendered.endswith("\n") else "\n")
-    if staged and report.diagnostics:
+    exit_code = report.exit_code
+    if staged and exit_code != 0 and report.diagnostics:
         print(
             "Agent: address the findings above. Run `code-standards fix --staged` for safe mechanical fixes, "
             "review the changes, stage the intended edits, and retry the commit."
         )
-    return report.exit_code
+    return exit_code
 
 
 def cmd_analyze(args: _Args) -> int:
