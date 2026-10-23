@@ -31,6 +31,10 @@ elif args[:2] == ['run', '--project']:
     assert args == ['run', '--project', 'packages/standards', '--frozen', 'python',
                     '-m', 'sarj_standards.libs.release.wheel_tests', '--root', '.', '--jobs', '4'], args
     target = 'standards'
+elif args[:2] == ['--directory', 'packages/python']:
+    assert args == ['--directory', 'packages/python', 'run', '--locked', '--with',
+                    'pytest-xdist==3.8.0', 'pytest', '-q', '-n', '4', '--dist', 'worksteal'], args
+    target = 'python'
 else:
     assert len(args) == 5 and args[0] == '--directory' and args[2:] == ['run', 'pytest', '-q'], args
     target = Path(args[1]).name

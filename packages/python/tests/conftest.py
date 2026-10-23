@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import pytest
 
@@ -17,9 +17,19 @@ if TYPE_CHECKING:
 
 _FIRED: set[str] = set()
 _CLEAN: set[str] = set()
+_WORKER_ERRORS: set[str] = set()
 
 # The file of the test currently running, in a one-slot holder so the hook can rebind it without a module-level `global`.
 _CURRENT_TEST_MODULE: list[str] = [""]
+
+
+@runtime_checkable
+class _WorkerOutput(Protocol):
+    workeroutput: dict[str, object]
+
+
+def _worker_output(value: object) -> dict[str, object] | None:
+    return value.workeroutput if isinstance(value, _WorkerOutput) else None
 
 
 def _recording(rule_id: str, examples_path: str, original: _Check) -> _Check:
@@ -53,10 +63,32 @@ def _is_narrowed(config: pytest.Config) -> bool:
     return any(arg not in default for arg in config.args)
 
 
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node: object) -> None:
+    output = _worker_output(node)
+    if output is not None:
+        fired = output.get("sarj_python_fired")
+        clean = output.get("sarj_python_clean")
+        if isinstance(fired, str) and isinstance(clean, str):
+            _FIRED.update(fired.splitlines())
+            _CLEAN.update(clean.splitlines())
+            return
+    _WORKER_ERRORS.add("Missing or invalid rule coverage report from a pytest worker.")
+
+
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    output = _worker_output(session.config)
+    if output is not None:
+        output["sarj_python_fired"] = "\n".join(sorted(_FIRED))
+        output["sarj_python_clean"] = "\n".join(sorted(_CLEAN))
+        return
     collecting: object = session.config.option.collectonly  # pyright: ignore[reportAny] — pytest's option namespace is untyped
     if exitstatus != 0 or collecting or _is_narrowed(session.config):
         return
+
+    if _WORKER_ERRORS:
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
+        print("\n" + "\n".join(sorted(_WORKER_ERRORS)))  # ruff: ignore[print] — report a failed worker coverage transport after tests finish
 
     unexercised = sorted(
         f"{rule_id}: {cls.examples_path()} never makes it {'report' if rule_id not in _FIRED else 'stay quiet'}"

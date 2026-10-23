@@ -118,7 +118,7 @@ test-contracts:
 	uv --directory packages/contracts run pytest -q
 
 test-python:
-	uv --directory packages/python run pytest -q
+	uv --directory packages/python run --locked --with pytest-xdist==3.8.0 pytest -q $(if $(filter 1,$(TEST_JOBS)),,-n "$(TEST_JOBS)" --dist worksteal)
 
 test-sql:
 	uv --directory packages/sql run pytest -q
