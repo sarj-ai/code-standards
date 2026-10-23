@@ -899,7 +899,11 @@ jobs:
       - name: Check skill plugin source
         if: needs.changes.outputs.reviewed-docs != 'true' && needs.changes.outputs.standards == 'false'
         working-directory: .
-        run: uv run --project packages/standards --frozen --no-dev code-standards --root . check plugins/sarj-skills
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          uv run --project packages/standards --frozen --no-dev code-standards --root . check plugins/sarj-skills
       - name: Verify source artifacts and build site
         if: needs.changes.outputs.reviewed-docs != 'true'
         working-directory: .
