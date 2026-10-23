@@ -1341,6 +1341,146 @@ def test_react_doctor_rejects_incomplete_projects(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    "coverage",
+    [
+        pytest.param({"complete": False}, id="native-incomplete"),
+        pytest.param({"complete": True, "skippedChecks": ["lint"]}, id="skipped-check"),
+        pytest.param(
+            {"complete": True, "skippedCheckReasons": {"lint:partial": "worker stopped"}}, id="skipped-reason"
+        ),
+    ],
+)
+def test_react_doctor_incomplete_context_remains_blocking(tmp_path: Path, coverage: dict[str, object]) -> None:
+    payload = _react_coverage_payload(tmp_path, coverage)
+
+    with pytest.raises(ValueError, match="React Doctor") as caught:
+        parse_react_doctor(payload, root=tmp_path)
+
+    message = str(caught.value)
+    assert "analyzed=7, scanned=11" in message
+    assert "skipped_checks=" in message
+    assert "skipped_check_reasons=" in message
+
+
+def test_react_doctor_incomplete_context_preserves_unreported_coverage(tmp_path: Path) -> None:
+    payload = json.dumps(
+        {
+            "schemaVersion": 3,
+            "version": manifest.eslint_peers()["react-doctor"],
+            "ok": True,
+            "projects": [{"directory": str(tmp_path), "complete": False}],
+            "error": None,
+        }
+    )
+
+    with pytest.raises(ValueError, match="did not complete") as caught:
+        parse_react_doctor(payload, root=tmp_path)
+
+    assert "analyzed=None, scanned=None, skipped_checks=None" in str(caught.value)
+
+
+def _react_coverage_payload(root: Path, coverage: dict[str, object]) -> str:
+    return json.dumps(
+        {
+            "schemaVersion": 3,
+            "version": manifest.eslint_peers()["react-doctor"],
+            "ok": True,
+            "reactDetected": True,
+            "projects": [
+                {
+                    "directory": str(root),
+                    "complete": True,
+                    "skippedChecks": [],
+                    "analyzedFileCount": 7,
+                    "scannedFileCount": 11,
+                    **coverage,
+                }
+            ],
+            "error": None,
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "reasons",
+    [
+        pytest.param(None, id="null-map"),
+        pytest.param([], id="array"),
+        pytest.param("worker stopped", id="string"),
+        pytest.param({"lint": None}, id="null-reason"),
+        pytest.param({"lint": 3}, id="numeric-reason"),
+    ],
+)
+def test_react_doctor_skipped_reasons_require_native_string_map(tmp_path: Path, reasons: object) -> None:
+    with pytest.raises(ValidationError, match="skippedCheckReasons"):
+        parse_react_doctor(_react_coverage_payload(tmp_path, {"skippedCheckReasons": reasons}), root=tmp_path)
+
+
+@pytest.mark.parametrize(
+    "coverage",
+    [pytest.param({}, id="omitted"), pytest.param({"skippedCheckReasons": {}}, id="empty-map")],
+)
+def test_react_doctor_optional_empty_reasons_preserve_complete_coverage(
+    tmp_path: Path, coverage: dict[str, object]
+) -> None:
+    payload = _react_coverage_payload(tmp_path, {"scannedFileCount": 7, **coverage})
+    assert parse_react_doctor(payload, root=tmp_path) == ()
+
+
+@pytest.mark.parametrize("returncode", [0, 1])
+def test_react_doctor_incomplete_report_retains_bounded_redacted_native_context(
+    tmp_path: Path, returncode: int
+) -> None:
+    package = tmp_path / "package.json"
+    package.write_text('{"dependencies":{"react":"19.0.0"}}\n', encoding="utf-8")
+    coverage: dict[str, object] = {
+        "complete": False,
+        "skippedChecks": ["lint"],
+        "skippedCheckReasons": {
+            "lint:partial": f"token=reason-credential {tmp_path}/source.tsx " + "x" * 4000,
+        },
+    }
+    stderr = (
+        "password=stderr-credential /outside/private/file.tsx Authorization: Bearer bearer-credential\n" + "y" * 4000
+    )
+    seen: list[tuple[str, ...]] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        seen.append(tuple(argv))
+        return ProcessOutput(returncode, _react_coverage_payload(tmp_path, coverage), stderr)
+
+    reports = analyze_external(
+        (str(package),),
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=runner,
+        capabilities=frozenset({"eslint"}),
+        include_react_doctor=True,
+        react_doctor_full_scan=True,
+        eslint=False,
+    )
+
+    report = next(item for item in reports if item.name == "react-doctor")
+    assert report.completion is Completion.FAILED
+    assert not report.diagnostics
+    issue = report.issues[0]
+    assert issue.kind == "tool-failure"
+    assert issue.exit_code == returncode
+    assert "analyzed=7, scanned=11, skipped_checks=1" in issue.message
+    assert "lint:partial" in issue.message
+    assert "stderr:" in issue.message
+    assert "password=<redacted>" in issue.message
+    assert "<path>" in issue.message
+    assert len(issue.message) <= 1024
+    for private in (str(tmp_path), "reason-credential", "stderr-credential", "bearer-credential", "/outside/private"):
+        assert private not in issue.message
+    assert len(seen) == 1
+    assert seen[0][seen[0].index("--scope") + 1] == "full"
+    assert seen[0][seen[0].index("--max-duration") + 1] == "60"
+
+
+@pytest.mark.parametrize(
     ("extra", "message"),
     [
         ({"reactDetected": False}, "did not detect React"),
