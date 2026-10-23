@@ -36,12 +36,20 @@ pre-commit:
         Standards staged checks failed. Fix the reported findings and retry.
     dogfood:
       priority: 5
+      skip: &unchanged-check-inputs
+        - run: >-
+            git diff --cached --quiet --no-renames --
+            '*.py' '*.pyi' '*.[jt]s' '*.[jt]sx' '*.[cm][jt]s'
+            '*.json*' '*.toml' '*.lock' '*.yml' '*.yaml' '*.sh'
+            ':(glob)**/Makefile' ':(glob)**/.python-version' ':(glob)**/.node-version'
+            ':(glob)**/.npmrc' ':(glob)**/.nvmrc' ':(glob)**/.gitignore' ':(glob)**/py.typed'
       run: make dogfood
       fail_text: >-
         A shipped custom rule reports against the Standards repository itself.
         Fix the finding before committing.
     typecheck:
       priority: 6
+      skip: *unchanged-check-inputs
       run: make typecheck
       fail_text: "Standards typecheck failed. Fix the reported error and retry."
 
