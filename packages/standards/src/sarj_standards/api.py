@@ -288,7 +288,6 @@ class Standards:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         try:
             baseline_budget = _analysis_baseline(self.root, adopted, normalized_mode)
-            changed_scope = diagnostic_baseline.changed_line_scope(self.root, staged=staged)
         except (OSError, TypeError, ValueError) as exc:
             return _failed_analysis(self.root, "baseline-failure", str(exc))
         try:
@@ -319,6 +318,7 @@ class Standards:
         coverage.extend(_prepared_coverage(adopted, prepared_devops))
         if not external:
             native = report_from_tools(self.root, native_analysis())
+            changed_scope = _analysis_changed_scope(self.root, native, baseline_budget, staged=staged)
             _native_typescript_coverage(selected_groups, adopted, rule_selection, coverage)
             if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE}:
                 native = _with_warning_severity(native, _warning_rule_keys(normalized_mode, rule_selection))
@@ -359,6 +359,9 @@ class Standards:
 
         combined = report_from_tools(
             self.root, analyze_groups(self.root, native_analysis, external_analysis, jobs=jobs)
+        )
+        changed_scope = _analysis_changed_scope(
+            self.root, combined, baseline_budget, staged=staged, shell_format=paths is None and not staged
         )
         combined = _with_shell_format_severity(combined, paths=paths, staged=staged, changed_scope=changed_scope)
         combined = _with_warning_severity(
@@ -657,6 +660,23 @@ def _failed_analysis(root: Path, kind: str, message: str) -> AnalysisReport:
     issue = ExecutionIssue("sarj-standards", kind, message)
     tool = ToolReport("sarj-standards", Completion.FAILED, issues=(issue,))
     return AnalysisReport(root, Completion.FAILED, Conclusion.INCONCLUSIVE, (tool,))
+
+
+def _analysis_changed_scope(
+    root: Path,
+    report: AnalysisReport,
+    budget: diagnostic_baseline.Budget,
+    *,
+    staged: bool,
+    shell_format: bool = False,
+) -> diagnostic_baseline.ChangedLineScope | None:
+    paths = frozenset(
+        item.location.path
+        for item in report.diagnostics
+        if (budget.counts and diagnostic_baseline.is_baselineable(item))
+        or (shell_format and item.source == "shfmt" and item.rule_id == "format")
+    )
+    return diagnostic_baseline.changed_line_scope(root, staged=staged, paths=paths) if paths else None
 
 
 def _with_shell_format_severity(

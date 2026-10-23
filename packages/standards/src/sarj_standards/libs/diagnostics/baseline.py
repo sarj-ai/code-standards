@@ -30,6 +30,7 @@ _FINGERPRINT = re.compile(r"[0-9a-f]{64}")
 _GIT_SHA = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 _HUNK = re.compile(r"^@@ -(?:\d+)(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 _TERRAFORM_TEST_SUFFIXES = (".tftest.hcl", ".tftest.json")
+_MAX_DIFF_PATH_BYTES = 64 * 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +38,12 @@ class ChangedLineScope:
     paths: frozenset[str]
     lines: dict[str, frozenset[int]]
     failed: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _ChangedPaths:
+    paths: frozenset[str]
+    renamed: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,7 +72,7 @@ class _LoadedBaseline:
     provenance: Provenance | None
 
 
-def changed_line_scope(root: Path, *, staged: bool) -> ChangedLineScope | None:
+def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None = None) -> ChangedLineScope | None:
     base = os.environ.get("SARJ_STANDARDS_BASE", "").strip()  # ruff: ignore[banned-api] -- the Standards launcher reads its baseline-selection environment before consumer settings exist.
     if not staged and not base:
         return None
@@ -77,6 +84,7 @@ def changed_line_scope(root: Path, *, staged: bool) -> ChangedLineScope | None:
     comparison = ("--cached",) if staged else (f"{base}...HEAD",)
     common = (
         git,
+        "--literal-pathspecs",
         "-c",
         "core.quotePath=true",
         "diff",
@@ -86,22 +94,52 @@ def changed_line_scope(root: Path, *, staged: bool) -> ChangedLineScope | None:
         "--no-ext-diff",
         "--no-textconv",
     )
-    names = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
-        (*common, "--name-only", "-z", "--"),
-        cwd=root,
-        check=False,
-        capture_output=True,
-    )
-    patch = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
-        (*common, "--unified=0", "--no-color", "--src-prefix=a/", "--dst-prefix=b/", "--"),
-        cwd=root,
-        check=False,
-        capture_output=True,
-    )
+    selected = tuple(sorted(set(paths))) if paths is not None else ()
+    if paths is not None and not selected:
+        return None
+    if sum(len(os.fsencode(path)) + 1 for path in selected) > _MAX_DIFF_PATH_BYTES:
+        selected = ()
+    try:
+        names = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed Git argv with literal repository-relative paths.
+            (*common, "--name-status", "-z", "--"),
+            cwd=root,
+            check=False,
+            capture_output=True,
+            timeout=30,
+        )
+        changes = _changed_paths(names.stdout)
+        if changes.renamed:
+            # A scoped patch can hide a rename/copy source and mark every destination line new.
+            selected = ()
+        patch = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed Git argv with literal repository-relative paths.
+            (*common, "--unified=0", "--no-color", "--src-prefix=a/", "--dst-prefix=b/", "--", *selected),
+            cwd=root,
+            check=False,
+            capture_output=True,
+            timeout=30,
+        )
+    except OSError, ValueError, subprocess.TimeoutExpired:
+        return ChangedLineScope(frozenset(), {}, failed=True)
     if names.returncode != 0 or patch.returncode != 0:
         return ChangedLineScope(frozenset(), {}, failed=True)
-    paths = frozenset(item.decode("utf-8", errors="surrogateescape") for item in names.stdout.split(b"\0") if item)
-    return ChangedLineScope(paths, _changed_lines_from_patch(patch.stdout.decode("utf-8", errors="surrogateescape")))
+    affected = changes.paths & frozenset(selected) if selected else changes.paths
+    return ChangedLineScope(affected, _changed_lines_from_patch(patch.stdout.decode("utf-8", errors="surrogateescape")))
+
+
+def _changed_paths(payload: bytes) -> _ChangedPaths:
+    records = iter(payload.split(b"\0"))
+    paths: set[str] = set()
+    renamed = False
+    while status := next(records, b""):
+        path = next(records, b"")
+        if status.startswith((b"R", b"C")):
+            path = next(records, b"")
+            renamed = True
+        if not path:
+            msg = "Git changed-path output is incomplete"
+            raise ValueError(msg)
+        paths.add(path.decode("utf-8", errors="surrogateescape"))
+    return _ChangedPaths(frozenset(paths), renamed)
 
 
 def _changed_lines_from_patch(patch: str) -> dict[str, frozenset[int]]:
