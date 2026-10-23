@@ -21,6 +21,8 @@ from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from sarj_python_lint._file_context import PythonFileContext
 
 
@@ -40,6 +42,12 @@ class _FixtureDecorators(NamedTuple):
 class _FixtureFunction(NamedTuple):
     node: ast.FunctionDef | ast.AsyncFunctionDef
     owner: ast.ClassDef | None
+
+
+class FixtureDeclaration(NamedTuple):
+    node: ast.FunctionDef | ast.AsyncFunctionDef
+    name: str
+    decorator: ast.expr
 
 
 _NO_FIXTURE_DECORATORS = _FixtureDecorators(frozenset(), {}, frozenset())
@@ -153,8 +161,7 @@ class PytestFixtureReturnsBareTuple(Rule):
         return diags
 
 
-def _bare_tuple_results(tree: ast.Module) -> list[_TupleResult]:
-    hits: list[_TupleResult] = []
+def fixture_declarations(tree: ast.Module) -> Iterator[FixtureDeclaration]:
     for node, owner in _discoverable_functions(tree):
         if not node.decorator_list:
             continue
@@ -162,6 +169,15 @@ def _bare_tuple_results(tree: ast.Module) -> list[_TupleResult]:
         fixture_name = _fixture_name(node, fixture_names)
         if fixture_name is None:
             continue
+        decorator = next(
+            dec for dec in node.decorator_list if _names_fixture(dec, fixture_names.names, fixture_names.roots)
+        )
+        yield FixtureDeclaration(node, fixture_name, decorator)
+
+
+def _bare_tuple_results(tree: ast.Module) -> list[_TupleResult]:
+    hits: list[_TupleResult] = []
+    for node, fixture_name, _decorator in fixture_declarations(tree):
         aliases = _type_aliases(tree, before_line=node.lineno)
         has_yield = _has_own_yield(node)
         if node.returns is not None and _homogeneous_tuple_annotation(

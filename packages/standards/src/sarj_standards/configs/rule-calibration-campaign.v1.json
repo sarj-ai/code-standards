@@ -3,6 +3,22 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/duplicate-pytest-fixture-params",
+      "family": "python",
+      "ruleId": "duplicate-pytest-fixture-params",
+      "state": "complete",
+      "evidence": "A paired pytest reproduction schedules two cases for duplicate fixture literals and one after reviewed deduplication; the previous 174 native rules and Ruff PT014 report neither fixture gap. Final labeled cases: 8 TP,18 TN,0 FP/FN. Focused regressions cover aliases/shadowing, immutable type/sign distinctions, explicit IDs, mutable/dynamic inputs, request identity, exact suppressions and deep tuples with bounded key growth. An isolated immutable sample contains all 352 fixture-bearing files selected without reference to detector hits from 1,588 inspected test files. Neither new rule reports a live finding; only three fixture parameter tables were present, so live precision and recall remain unmeasured. Private pins, paths and source remain local. No corpus program code was executed. Three paired fresh-worker comparisons on a fixed 24-file full-engine sample give first-analysis medians 4.877s versus 4.990s and warm medians 5.120s versus 5.138s, with all 29 diagnostics identical. First-analysis timing excludes imports/startup; shared-VM sample measurements do not establish fleet overhead.",
+      "outcome": "Ship SARJ524 at WARNING without autofix. Review dependent contracts before removing repeated parameters: consumers, hooks and global state may give repeated runs distinct meaning. Explicit case IDs or an exact reasoned suppression preserve intentional repetition. Error promotion requires separate field evidence."
+    },
+    {
+      "task": "rule-audit/python/pytest-fixture-returns-closed-resource",
+      "family": "python",
+      "ruleId": "pytest-fixture-returns-closed-resource",
+      "state": "complete",
+      "evidence": "A paired pytest reproduction fails when a fixture returns a managed StringIO and passes when it yields the live stream. Final labeled cases: 8 TP,28 TN,0 FP/FN. Focused regressions cover proven streams/tempfiles/HTTPX clients, async lifetime, provider identity/mutation, nested scopes, escaped/rebound resources, snapshots, exact suppressions and generated/non-test paths. Native analysis rejects three malformed labeled inputs across the shared evaluation. An isolated immutable sample contains all 352 fixture-bearing files selected without reference to detector hits from 1,588 inspected test files. Neither new rule reports a live finding; only three fixture parameter tables were present, so live precision and recall remain unmeasured. Private pins, paths and source remain local. No corpus program code was executed. Three paired fresh-worker comparisons on a fixed 24-file full-engine sample give first-analysis medians 4.877s versus 4.990s and warm medians 5.120s versus 5.138s, with all 29 diagnostics identical. First-analysis timing excludes imports/startup; shared-VM sample measurements do not establish fleet overhead.",
+      "outcome": "Ship SARJ525 at WARNING without autofix. Yield a proven managed resource until its requesting tests finish, or document an intentional closed-resource contract with an exact suppression. Unknown managers, TestClient, aliases/escapes and returns after a context remain excluded. Review cleanup/exception behavior before rewriting; error promotion requires separate field evidence."
+    },
+    {
       "task": "rule-audit/python/no-dual-shape-model-field-reader",
       "family": "python",
       "ruleId": "no-dual-shape-model-field-reader",
