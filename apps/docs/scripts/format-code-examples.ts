@@ -65,7 +65,7 @@ const catalog: unknown = JSON.parse(catalogSource);
 validateCatalog(catalog);
 const cli = parseReference(JSON.parse(cliSource) as unknown);
 const cache = new Map<string, string>();
-const ruffVersion = "0.17.0";
+const ruffVersion = "0.17.2";
 
 assert.equal(
   execFileSync(
@@ -78,8 +78,8 @@ assert.equal(
 );
 assert.match(
   execFileSync("terraform", ["version"], { encoding: "utf8" }),
-  /^Terraform v1\.15\.8\b/u,
-  "formatted code requires Terraform 1.15.8",
+  /^Terraform v1\.17\.0\b/u,
+  "formatted code requires Terraform 1.17.0",
 );
 
 function sha256(source: string) {
@@ -416,7 +416,7 @@ const docsProjection = {
     prettierPluginToml: await installedVersion("prettier-plugin-toml"),
     ruff: ruffVersion,
     sqlFormatter: await installedVersion("sql-formatter"),
-    terraform: "1.15.8",
+    terraform: "1.17.0",
   },
   rules,
   static: {

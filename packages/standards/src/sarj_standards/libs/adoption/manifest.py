@@ -53,10 +53,10 @@ class _UpstreamRuleEngine(StrEnum):
 LINT_CONFIGS: Final = "code-standards"
 _PYTHON_LINT: Final = "sarj-python-lint"
 SIBLING_PACKAGES: Final = (_PYTHON_LINT, "sarj-sql-lint", "sarj-iac-lint")
-REPO_STANDARDS_VERSION: Final = "6.11.0"
+REPO_STANDARDS_VERSION: Final = "6.12.5"
 # Actions can receive delivery fixes independently of the consumer topology policy.
-REPO_STANDARDS_ACTION_VERSION: Final = "6.11.0"
-REPO_STANDARDS_REVISION: Final = "aed2501dc09aa5701c984544d4fa20bea91661f9"
+REPO_STANDARDS_ACTION_VERSION: Final = "6.12.5"
+REPO_STANDARDS_REVISION: Final = "7deae1423e443d778c84c6bb916fa22c2a8522fe"
 
 
 def adopted_version() -> str:

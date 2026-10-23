@@ -35,7 +35,7 @@ def test_tflint_reuses_attestation_per_project_without_cross_invocation_cache(*,
             (cwd, "version" if "--version" in argv else "analysis", tuple(argv[1:]) != TOOLS["tflint"].version_args)
         )
         if "--version" in argv:
-            return ProcessOutput(0, "TFLint version 0.64.0\n+ ruleset.google (0.40.0)", "")
+            return ProcessOutput(0, "TFLint version 0.65.0\n+ ruleset.google (0.40.0)", "")
         return ProcessOutput(0, '{"errors":[],"issues":[]}', "")
 
     for _ in range(2):
@@ -44,7 +44,7 @@ def test_tflint_reuses_attestation_per_project_without_cross_invocation_cache(*,
             root=tmp_path, paths=paths, selected=frozenset({"tflint"}), trust_repository_code=True, runner=runner
         )
         assert all(report.completion is Completion.COMPLETE for report in reports)
-        assert all(report.version == "0.64.0" for report in reports)
+        assert all(report.version == "0.65.0" for report in reports)
         assert calls == [
             (tmp_path / "one", "version", False),
             (tmp_path / "one", "version", True),
@@ -59,17 +59,17 @@ def test_tflint_reuses_attestation_per_project_without_cross_invocation_cache(*,
     ("version", "version_status", "plugin", "plugin_status", "payload", "status"),
     [
         pytest.param("0.63.0", 0, "0.40.0", 0, '{"errors":[],"issues":[]}', 0, id="wrong-binary-version"),
-        pytest.param("0.64.0", 1, "0.40.0", 0, '{"errors":[],"issues":[]}', 0, id="failed-attestation"),
-        pytest.param("0.64.0", 0, "0.38.0", 0, '{"errors":[],"issues":[]}', 0, id="wrong-plugin-version"),
-        pytest.param("0.64.0", 0, "", 0, '{"errors":[],"issues":[]}', 0, id="missing-plugin"),
-        pytest.param("0.64.0", 0, "0.40.0", 1, '{"errors":[],"issues":[]}', 0, id="failed-plugin-version"),
-        pytest.param("0.64.0", 0, "0.40.0", 0, "not json", 0, id="malformed-json"),
-        pytest.param("0.64.0", 0, "0.40.0", 0, "{}", 0, id="missing-fields"),
+        pytest.param("0.65.0", 1, "0.40.0", 0, '{"errors":[],"issues":[]}', 0, id="failed-attestation"),
+        pytest.param("0.65.0", 0, "0.38.0", 0, '{"errors":[],"issues":[]}', 0, id="wrong-plugin-version"),
+        pytest.param("0.65.0", 0, "", 0, '{"errors":[],"issues":[]}', 0, id="missing-plugin"),
+        pytest.param("0.65.0", 0, "0.40.0", 1, '{"errors":[],"issues":[]}', 0, id="failed-plugin-version"),
+        pytest.param("0.65.0", 0, "0.40.0", 0, "not json", 0, id="malformed-json"),
+        pytest.param("0.65.0", 0, "0.40.0", 0, "{}", 0, id="missing-fields"),
         pytest.param(
-            "0.64.0", 0, "0.40.0", 0, '{"errors":[{"message":"failure"}],"issues":[]}', 0, id="reported-errors"
+            "0.65.0", 0, "0.40.0", 0, '{"errors":[{"message":"failure"}],"issues":[]}', 0, id="reported-errors"
         ),
-        pytest.param("0.64.0", 0, "0.40.0", 0, '{"errors":[],"issues":[]}', 2, id="finding-exit-without-findings"),
-        pytest.param("0.64.0", 0, "0.40.0", 0, '{"errors":[],"issues":[]}', 1, id="unexpected-exit"),
+        pytest.param("0.65.0", 0, "0.40.0", 0, '{"errors":[],"issues":[]}', 2, id="finding-exit-without-findings"),
+        pytest.param("0.65.0", 0, "0.40.0", 0, '{"errors":[],"issues":[]}', 1, id="unexpected-exit"),
     ],
 )
 def test_tflint_reuse_preserves_fail_closed_protocols(
@@ -112,7 +112,7 @@ def test_tflint_reuse_retains_native_diagnostic_locations(*, tmp_path: Path, sta
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         assert cwd == tmp_path / "project"
         if "--version" in argv:
-            return ProcessOutput(0, "TFLint version 0.64.0\n+ ruleset.google (0.40.0)", "")
+            return ProcessOutput(0, "TFLint version 0.65.0\n+ ruleset.google (0.40.0)", "")
         return ProcessOutput(status, payload, "")
 
     reports = analyze_sources(
@@ -171,7 +171,7 @@ def test_tflint_analysis_uses_the_executable_that_attested_its_plugin(
         lookups.append(binary)
         return NativeTool(
             name=name,
-            version="0.64.0",
+            version="0.65.0",
             version_args=("--version",),
             version_pattern="",
             finding_exits=frozenset({2}),
@@ -182,7 +182,7 @@ def test_tflint_analysis_uses_the_executable_that_attested_its_plugin(
         assert cwd == tmp_path / "project"
         calls.append(tuple(argv))
         if "--version" in argv:
-            return ProcessOutput(0, "TFLint version 0.64.0\n+ ruleset.google (0.40.0)", "")
+            return ProcessOutput(0, "TFLint version 0.65.0\n+ ruleset.google (0.40.0)", "")
         return ProcessOutput(0, '{"errors":[],"issues":[]}', "")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- default executable discovery is under test; injected process runners bypass its absolute-path resolver.

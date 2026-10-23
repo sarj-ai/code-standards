@@ -35,26 +35,26 @@ TOOLS: Final = MappingProxyType(
     {
         tool.name: tool
         for tool in (
-            NativeTool("helm", "4.3.0", ("version", "--short"), r"^v(?P<version>\d+\.\d+\.\d+)"),
+            NativeTool("helm", "4.3.1", ("version", "--short"), r"^v(?P<version>\d+\.\d+\.\d+)"),
             NativeTool("kubeconform", "0.8.0", ("-v",), r"^v?(?P<version>\d+\.\d+\.\d+)"),
             NativeTool("kube-linter", "0.8.3", ("version",), r"v?(?P<version>\d+\.\d+\.\d+)"),
             NativeTool("shfmt", "3.14.1", ("--version",), r"^v(?P<version>\d+\.\d+\.\d+)"),
             NativeTool("shellcheck", "0.11.0", ("--version",), r"^version:[ \t]*(?P<version>\d+\.\d+\.\d+)[ \t]*\r?$"),
             NativeTool("actionlint", "1.7.12", ("-version",), r"^(?P<version>\d+\.\d+\.\d+)"),
             NativeTool("hadolint", "2.15.1", ("--version",), r"v?(?P<version>\d+\.\d+\.\d+)"),
-            NativeTool("jscpd", "5.4.1", ("--version",), r"^jscpd (?P<version>\d+\.\d+\.\d+)$", frozenset()),
-            NativeTool("knip", "6.41.0", ("--version",), r"^(?P<version>\d+\.\d+\.\d+)$", frozenset()),
-            NativeTool("terraform", "1.16.5", ("version",), r"Terraform v(?P<version>\d+\.\d+\.\d+)"),
+            NativeTool("jscpd", "5.4.2", ("--version",), r"^jscpd (?P<version>\d+\.\d+\.\d+)$", frozenset()),
+            NativeTool("knip", "6.42.1", ("--version",), r"^(?P<version>\d+\.\d+\.\d+)$", frozenset()),
+            NativeTool("terraform", "1.17.0", ("version",), r"Terraform v(?P<version>\d+\.\d+\.\d+)"),
             NativeTool(
                 "tflint",
-                "0.64.0",
+                "0.65.0",
                 ("--version", "--config", str(CONFIGS_DIR / "tflint.version.hcl")),
                 r"TFLint version (?P<version>\d+\.\d+\.\d+)",
                 frozenset({2}),
             ),
             NativeTool(
                 "docker",
-                "5.6.0",
+                "5.6.1",
                 ("compose", "version", "--format", "json"),
                 r'"version"\s*:\s*"v?(?P<version>\d+\.\d+\.\d+)"',
             ),

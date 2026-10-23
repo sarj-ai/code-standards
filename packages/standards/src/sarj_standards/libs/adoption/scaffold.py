@@ -2394,7 +2394,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         lines.extend(
             (
                 "      - name: Harden the runner",
-                "        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1",
+                "        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2",
                 "        with:",
                 "          egress-policy: audit",
             )
@@ -2410,7 +2410,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
     if ecosystems.kotlin:
         lines.extend(
             (
-                "      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1",
+                "      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0",
                 "        with:",
                 "          distribution: temurin",
                 "          java-version: '21'",
@@ -2418,7 +2418,7 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
         )
     lines.extend(
         (
-            "      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0",
+            "      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2",
             "        with:",
             _setup_uv_version(root, ecosystems.python_root),
             "          enable-cache: true",
@@ -2549,7 +2549,7 @@ def _append_javascript_ci(
 def _setup_uv_version(root: Path, python_root: Path | None) -> str:
     source = uvtool.version_file(python_root)
     if source is None:
-        return "          version: '0.13.0'"
+        return "          version: '0.13.5'"
     return f"          version-file: {json.dumps(source.relative_to(root).as_posix())}"
 
 
@@ -2700,7 +2700,7 @@ def commit_policy_github_workflow(runner: str = DEFAULT_CI_RUNNER) -> str:
     harden = (
         """\
       - name: Harden the runner
-        uses: step-security/harden-runner@ccd8616d44fd3846e67624a50d5aad6d37bf2d25 # v2.22.1
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
 """

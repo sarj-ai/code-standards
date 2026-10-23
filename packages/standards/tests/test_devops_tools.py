@@ -101,7 +101,7 @@ def test_native_version_timeout_has_an_owned_tool_error(tmp_path: Path) -> None:
     assert isinstance(caught.value.__cause__, subprocess.TimeoutExpired)
 
 
-@pytest.mark.parametrize("installed_version", ["4.3.0", "4.0.0"])
+@pytest.mark.parametrize("installed_version", ["4.3.1", "4.0.0"])
 def test_timed_out_path_tool_preserves_pinned_mise_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, installed_version: str
 ) -> None:
@@ -134,12 +134,12 @@ def test_timed_out_path_tool_preserves_pinned_mise_fallback(
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise production lookup after a controlled OS-query timeout; the ordinary runner injection bypasses discovery.
         devops_tools, "run_process", resolve
     )
-    if installed_version == "4.3.0":
+    if installed_version == "4.3.1":
         assert checked_tool("helm", root=tmp_path, runner=resolve).executable == installed
     else:
-        with pytest.raises(NativeToolError, match=r"exact version 4\.3\.0"):
+        with pytest.raises(NativeToolError, match=r"exact version 4\.3\.1"):
             checked_tool("helm", root=tmp_path, runner=resolve)
-    reference = "aqua:helm/helm@4.3.0"
+    reference = "aqua:helm/helm@4.3.1"
     assert calls == [
         (str(stalled), "version", "--short"),
         (str(mise), "--no-config", "--no-env", "--no-hooks", "where", reference),
@@ -149,7 +149,7 @@ def test_timed_out_path_tool_preserves_pinned_mise_fallback(
 
 
 @pytest.mark.parametrize(
-    "payload", ['{"version":"v5.6.0","extra":true}', '[{"version":"v5.6.0"}]', '{"version":"v5.6.0 v5.6.0"}', "v5.6.0"]
+    "payload", ['{"version":"v5.6.1","extra":true}', '[{"version":"v5.6.1"}]', '{"version":"v5.6.1 v5.6.1"}', "v5.6.1"]
 )
 def test_compose_ambiguous_version_protocol_is_rejected(tmp_path: Path, payload: str) -> None:
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
@@ -188,15 +188,15 @@ def test_unparseable_path_compose_preserves_pinned_mise_fallback(
             path = installation if argv[4] == "where" else installed
             return ProcessOutput(0, f"{path}\n", "")
         assert argv == (str(installed), "version", "--format", "json")
-        return ProcessOutput(0, '{"version":"v5.6.0"}\n', "")
+        return ProcessOutput(0, '{"version":"v5.6.1"}\n', "")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise production lookup after a PATH multicall binary rejects its resolved argv0; the ordinary runner injection bypasses discovery.
         devops_tools, "run_process", resolve
     )
-    tool = checked_tool("docker", root=tmp_path, runner=resolve, expected_version="5.6.0")
+    tool = checked_tool("docker", root=tmp_path, runner=resolve, expected_version="5.6.1")
     assert tool.executable == installed
     assert tool.standalone_compose
-    reference = "github:docker/compose@5.6.0"
+    reference = "github:docker/compose@5.6.1"
     assert calls == [
         (str(multicall), "compose", "version", "--format", "json"),
         (str(mise), "--no-config", "--no-env", "--no-hooks", "where", reference),

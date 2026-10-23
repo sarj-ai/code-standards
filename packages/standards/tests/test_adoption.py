@@ -3102,8 +3102,8 @@ def test_show_ci_renders_a_complete_versioned_workflow(tmp_path: Path, ecosystem
     parsed: object = yaml.safe_load(rendered.stdout)  # pyright: ignore[reportAny] -- parser result is narrowed below.
     assert isinstance(parsed, dict)
     assert "permissions:\n  contents: read" in rendered.stdout
-    assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7" in rendered.stdout
-    assert "astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0" in rendered.stdout
+    assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1" in rendered.stdout
+    assert "astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2" in rendered.stdout
     uv_config = manifest.as_table(tomllib.loads((REPO_ROOT / "uv.toml").read_text(encoding="utf-8")))
     uv_required = manifest.text_field(uv_config, "required-version")
     assert uv_required is not None
@@ -3113,7 +3113,7 @@ def test_show_ci_renders_a_complete_versioned_workflow(tmp_path: Path, ecosystem
     if ecosystem == "python":
         assert "uv sync --locked" not in rendered.stdout
     else:
-        assert "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7" in rendered.stdout
+        assert "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0" in rendered.stdout
         assert "npm ci --no-audit --no-fund" in rendered.stdout
 
 
@@ -3593,7 +3593,7 @@ def test_setup_adopts_mobile_configs_and_staged_hook_only_for_configured_project
         assert "runs-on: macos-15" in workflow
     else:
         assert "runs-on: ubuntu-latest" in workflow
-        assert "actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6" in workflow
+        assert "actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad" in workflow
         assert "distribution: temurin" in workflow
         assert "java-version: '21'" in workflow
 

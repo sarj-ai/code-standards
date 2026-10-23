@@ -1,6 +1,6 @@
 # Checksummed managed-Python catalog from the pinned uv release.
-python-downloads-json-url = "https://raw.githubusercontent.com/astral-sh/uv/4ecd0eff2a81e3ffdcd7cfee10d08936e4747c17/crates/uv-python-managed/download-metadata.json"
-required-version = "==0.13.0"
+python-downloads-json-url = "https://raw.githubusercontent.com/astral-sh/uv/46776a95d6686ac0160c10611327ce491e6b202f/crates/uv-python-managed/download-metadata.json"
+required-version = "==0.13.5"
 exclude-newer = "0 days"
 index-strategy = "first-index"
 preview-features = ["malware-check"]

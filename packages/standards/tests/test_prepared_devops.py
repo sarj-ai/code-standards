@@ -131,7 +131,7 @@ def _helm_receipt(root: Path, stage: str) -> _ReceiptFixture:
     (directory / "resource.yaml").write_text(_hook_resource(f"pre-{stage}"), encoding="utf-8")
     fixture.target.update(
         {
-            "helm_version": "4.3.0",
+            "helm_version": "4.3.1",
             "release": "example",
             "namespace": "work",
             "stage": stage,
