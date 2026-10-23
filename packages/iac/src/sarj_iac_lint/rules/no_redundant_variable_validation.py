@@ -76,15 +76,15 @@ class NoRedundantVariableValidation(Rule):
     id = "no-redundant-variable-validation"
     code = "SARJ209"
     documentation = RuleDocumentation(
-        summary="Flag Terraform variable validation conditions already guaranteed by the variable's type constraint.",
+        summary="Flag Terraform variable validations already guaranteed by the declared type or nullability.",
         rationale=(
-            "Terraform applies a declared type constraint before custom validation. Rechecking that the same value "
-            "can be read, converted to its declared type, or exhausts a non-nullable boolean domain adds a second "
-            "contract that cannot reject a valid input and obscures the validations that enforce real domain rules."
+            "Terraform applies declared type and nullability constraints before custom validation. Rechecking "
+            "readability, conversion to the declared type, non-nullability, or an exhaustive non-nullable boolean "
+            "domain cannot reject another valid input and obscures actual domain requirements."
         ),
         remediation=(
             "Delete the redundant validation block. Keep validation for narrower domain requirements such as ranges, "
-            "formats, enums, nullability, and relationships between fields."
+            "formats, enums, otherwise permitted nulls, and relationships between fields."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
@@ -213,8 +213,8 @@ class NoRedundantVariableValidation(Rule):
                             condition.col,
                             self.code,
                             (
-                                f"Validation of `var.{name}` is already guaranteed by its declared `{type_kind}` type; "
-                                "delete this validation block."
+                                f"Validation of `var.{name}` is already guaranteed by its declared `{type_kind}` type "
+                                "and nullability; delete this validation block."
                             ),
                         )
                     )
@@ -253,6 +253,8 @@ def _restates_type(
 ) -> bool:
     normalized = strip_outer_parentheses(condition)
     variable = f"var.{variable_name}"
+    if forbids_null and _is_non_null_check(normalized, variable):
+        return True
     if (can_argument := _unary_call(normalized, "can")) is not None:
         can_argument = strip_outer_parentheses(can_argument)
         if can_argument == (variable,):
@@ -271,6 +273,22 @@ def _restates_type(
             _is_exhaustive_boolean_equality(normalized, variable)
             or _is_exhaustive_boolean_contains(normalized, variable)
         )
+    )
+
+
+def _is_non_null_check(condition: tuple[str, ...], variable: str) -> bool:
+    operator = "!="
+    comparison = condition
+    if condition[:1] == ("!",):
+        operator = "=="
+        comparison = strip_outer_parentheses(condition[1:])
+        if comparison == condition[1:]:
+            return False
+    operands = _top_level_split(comparison, operator)
+    return (
+        operands is not None
+        and len(operands) == _BINARY_PART_COUNT
+        and {strip_outer_parentheses(part) for part in operands} == {(variable,), ("null",)}
     )
 
 

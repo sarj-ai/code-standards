@@ -88,6 +88,48 @@ def test_flags_direct_can_of_declared_variable(tmp_path: Path) -> None:
     assert "declared `string` type" in diagnostics[0].message
 
 
+@pytest.mark.parametrize("condition", ["var.value != null", "null != (var.value)", "!(var.value == null)"])
+@pytest.mark.parametrize("nullable", ["false", "true", "null"])
+def test_null_validation_respects_declared_nullability(tmp_path: Path, condition: str, nullable: str) -> None:
+    source = (
+        'variable "value" {\n'
+        "  type = string\n"
+        f"  nullable = {nullable}\n"
+        "  validation {\n"
+        f"    condition = {condition}\n"
+        '    error_message = "Must not be null."\n'
+        "  }\n"
+        "}\n"
+    )
+
+    assert len(_check(tmp_path, source)) == (1 if nullable == "false" else 0)
+
+
+@pytest.mark.parametrize(
+    ("type_expression", "condition"),
+    [
+        ("string", "var.other != null"),
+        ("string", "var.value == null"),
+        ("string", "var.value != null && length(var.value) > 0"),
+        ("bool", "!var.value == null"),
+        ("bool", "!(var.value) == null"),
+    ],
+)
+def test_preserves_distinct_null_contracts(tmp_path: Path, type_expression: str, condition: str) -> None:
+    source = (
+        'variable "value" {\n'
+        f"  type = {type_expression}\n"
+        "  nullable = false\n"
+        "  validation {\n"
+        f"    condition = {condition}\n"
+        '    error_message = "Domain contract."\n'
+        "  }\n"
+        "}\n"
+    )
+
+    assert _check(tmp_path, source) == []
+
+
 @pytest.mark.parametrize(
     ("type_expression", "condition"),
     [
