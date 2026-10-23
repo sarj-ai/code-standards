@@ -3,8 +3,10 @@ name: 100-passes
 description: Run a requested 100-pass improvement campaign and open only materially useful PRs.
 ---
 
-Inspect scope/outcome, code, enforcement and active PRs. Rank benefit against risk,
-complexity and upkeep; prefer deletion/existing controls.
+Inspect scope/outcome, code, enforcement and active PRs. Before optimizing, trace
+a current producer or supported entrypoint to the affected code; fixture savings
+alone do not establish use. Rank benefit against risk, complexity and upkeep;
+prefer deletion/existing controls.
 
 Complete 100 distinct numbered reviews. Keep a private ledger of target, evidence
 and decision, justifying no-change results; repeated commands do not count.
