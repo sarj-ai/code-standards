@@ -20,13 +20,12 @@ from sarj_python_lint.rule_base import (
 from sarj_python_lint.rules._ast_index import children
 from sarj_python_lint.rules._comments import is_protected, stem
 from sarj_python_lint.rules._docstrings import (
-    PROMPT_DECORATOR_MARKERS,
     VALUE_MARKER_RE,
     annotation_tokens,
     arg_entries,
     arg_section,
-    decorator_markers,
     identifier_stems,
+    is_runtime_consumed_or_overload,
     restates,
 )
 
@@ -39,14 +38,6 @@ if TYPE_CHECKING:
 
 
 _ARGUMENT_CONSTRAINT_RE = re.compile(r"\b(available|current|existing|optional|required|supported)\b", re.IGNORECASE)
-
-_RUNTIME_DOC_DECORATORS = (
-    (frozenset({"agents"}), "function_tool"),
-    (frozenset({"click"}), "command"),
-    (frozenset({"typer"}), "command"),
-)
-
-_OVERLOAD_MODULES = frozenset({"typing", "typing_extensions"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,7 +142,7 @@ class DocstringArgsRestateSignature(Rule):
         block = arg_section(docstring)
         if block is None or VALUE_MARKER_RE.search(block) or is_protected(block):
             return
-        if _is_runtime_consumed_or_overload(node, imports):
+        if is_runtime_consumed_or_overload(node, imports):
             return
         entries = arg_entries(block)
         if not entries:
@@ -202,15 +193,3 @@ def _parameter_stems(
         known = callable_stems | identifier_stems(argument.arg) | annotation_stems
         parameters[argument.arg] = _ParameterFacts(frozenset(known), frozenset(annotation_stems))
     return parameters
-
-
-def _is_runtime_consumed_or_overload(node: ast.FunctionDef | ast.AsyncFunctionDef, imports: ImportIndex) -> bool:
-    if decorator_markers(node) & PROMPT_DECORATOR_MARKERS:
-        return True
-    for decorator in node.decorator_list:
-        target = decorator.func if isinstance(decorator, ast.Call) else decorator
-        if imports.resolves(target, sources=_OVERLOAD_MODULES, symbol="overload"):
-            return True
-        if any(imports.resolves(target, sources=sources, symbol=symbol) for sources, symbol in _RUNTIME_DOC_DECORATORS):
-            return True
-    return False

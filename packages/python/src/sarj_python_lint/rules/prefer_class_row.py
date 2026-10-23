@@ -16,6 +16,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._ast_names import expression_root as _target_root
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -464,12 +465,6 @@ def _writes_name(node: ast.stmt, name: str) -> bool:
     elif isinstance(node, (ast.AugAssign, ast.AnnAssign)):
         targets = [node.target]
     return any(_target_root(target) == name for target in targets)
-
-
-def _target_root(node: ast.expr) -> str | None:
-    while isinstance(node, (ast.Attribute, ast.Subscript)):
-        node = node.value
-    return node.id if isinstance(node, ast.Name) else None
 
 
 def _dotted(node: ast.expr) -> str | None:

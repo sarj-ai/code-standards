@@ -951,14 +951,6 @@ def _scope_bindings(function: ast.FunctionDef | ast.AsyncFunctionDef) -> frozens
     return frozenset(names)
 
 
-def _target_names(node: ast.expr) -> set[str]:
-    if isinstance(node, ast.Name):
-        return {node.id}
-    if isinstance(node, ast.Tuple | ast.List):
-        return {name for element in node.elts for name in _target_names(element)}
-    return set()
-
-
 def _position(node: ast.AST) -> AstPosition:
     return ast_position(node, missing=-1)
 

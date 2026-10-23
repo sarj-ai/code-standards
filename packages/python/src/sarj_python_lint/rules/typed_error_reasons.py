@@ -16,6 +16,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._ast_names import unqualified_name as _tail
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -204,14 +205,6 @@ class TypedErrorReasons(Rule):
 
 def _is_conventional_exception(node: ast.ClassDef) -> bool:
     return node.name.endswith(_ERROR_SUFFIXES) and any(_tail(base).endswith(_ERROR_SUFFIXES) for base in node.bases)
-
-
-def _tail(node: ast.expr) -> str:
-    match node:
-        case ast.Name(id=name) | ast.Attribute(attr=name):
-            return name
-        case _:
-            return ""
 
 
 def _sole_string_list_parameter(function: ast.FunctionDef) -> ast.arg | None:

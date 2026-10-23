@@ -18,6 +18,10 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import children, nodes
+from sarj_python_lint.rules._ast_names import (
+    root_name as _root_name,
+    terminal_name as _terminal_name,
+)
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
@@ -414,7 +418,7 @@ def _is_public_sentinel(value: str | bytes) -> bool:
 
 
 def _node_is_password(node: ast.expr) -> bool:
-    name = _operand_name(node)
+    name = _terminal_name(node)
     return name is not None and _node_name_is_password(name)
 
 
@@ -462,20 +466,6 @@ def _dominating_walrus_roles(
     return result
 
 
-def _root_name(node: ast.expr) -> str | None:
-    while isinstance(node, ast.Attribute):
-        node = node.value
-    return node.id if isinstance(node, ast.Name) else None
-
-
-def _terminal_name(node: ast.expr) -> str | None:
-    match node:
-        case ast.Name(id=name) | ast.Attribute(attr=name):
-            return name
-        case _:
-            return None
-
-
 def _enclosing_scope(
     node: ast.AST,
     parents: Mapping[ast.AST, ast.AST],
@@ -492,21 +482,13 @@ def _enclosing_scope(
 def _is_password_confirmation_pair(operands: list[ast.expr]) -> bool:
     if len(operands) != _PAIR_OPERAND_COUNT:
         return False
-    names = [_operand_name(operand) for operand in operands]
+    names = [_terminal_name(operand) for operand in operands]
     if any(name is None for name in names):
         return False
     tokens = [set(identifier_tokens(name or "")) for name in names]
     return all("password" in operand_tokens for operand_tokens in tokens) and any(
         "confirmation" in operand_tokens or "confirm" in operand_tokens for operand_tokens in tokens
     )
-
-
-def _operand_name(node: ast.expr) -> str | None:
-    match node:
-        case ast.Name(id=name) | ast.Attribute(attr=name):
-            return name
-        case _:
-            return None
 
 
 def _equality_dunder_compares(tree: ast.AST, source: str, *, node_index: NodeIndex | None = None) -> frozenset[int]:

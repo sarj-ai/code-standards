@@ -4,10 +4,8 @@ import ast
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import StrEnum
-from io import StringIO
 from itertools import pairwise
 from pathlib import PurePosixPath
-import tokenize
 from typing import TYPE_CHECKING, ClassVar, final, override
 
 from sarj_python_lint.rule_base import (
@@ -23,6 +21,7 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import children, walk as walk_ast
+from sarj_python_lint.rules._comments import comment_line_numbers
 
 
 if TYPE_CHECKING:
@@ -243,7 +242,6 @@ class PreferCollectionComprehension(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
-        source = context.source
         if context.generated:
             return []
         tree = context.tree
@@ -251,7 +249,7 @@ class PreferCollectionComprehension(Rule):
             return []
 
         source_lines = context.source_lines
-        comments = _comment_lines(source)
+        comments = comment_line_numbers(context.source)
         diagnostics: list[Diagnostic] = []
         set_shadowed = _set_is_shadowed(tree, node_index=context.node_index)
         namespace_observers = _namespace_observer_calls(context)
@@ -832,14 +830,6 @@ def _replacement_fits(init: _Init, name: str, expression: str, *, allow_multilin
         init.col_offset + len(prefix) + 1 <= _MAX_REPLACEMENT_WIDTH
         and init.col_offset + 4 + len(content) <= _MAX_REPLACEMENT_WIDTH
     )
-
-
-def _comment_lines(source: str) -> frozenset[int]:
-    try:
-        tokens = tokenize.generate_tokens(StringIO(source).readline)
-        return frozenset(token.start[0] for token in tokens if token.type == tokenize.COMMENT)
-    except IndentationError, tokenize.TokenError:
-        return frozenset()
 
 
 def _has_comment(init: _Init, loop: ast.For, comments: frozenset[int]) -> bool:

@@ -19,6 +19,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._ast_names import root_name as _root_name
 from sarj_python_lint.rules._inert_model_annotation import inert_direct_model_body
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
@@ -642,12 +643,6 @@ def _is_field_call(call: ast.Call, imports: ImportIndex, class_bindings: frozens
     return imports.resolves(call.func, sources=_PYDANTIC_FIELD_SOURCES, symbol="Field") and not (
         (root := _root_name(call.func)) is not None and root in class_bindings
     )
-
-
-def _root_name(node: ast.expr) -> str | None:
-    while isinstance(node, ast.Attribute):
-        node = node.value
-    return node.id if isinstance(node, ast.Name) else None
 
 
 def _class_bindings(cls: ast.ClassDef) -> frozenset[str]:

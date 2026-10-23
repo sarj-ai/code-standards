@@ -17,6 +17,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import comprehension_results
+from sarj_python_lint.rules._ast_names import assignment_names as _bound_target_names
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -61,21 +62,6 @@ class _RandomAliases:
     functions: set[str]
     seeds: set[str]
     constructors: set[str]
-
-
-def _bound_target_names(node: ast.AST) -> set[str]:
-    match node:
-        case ast.Name(id=name):
-            return {name}
-        case ast.Tuple() | ast.List():
-            names: set[str] = set()
-            for element in node.elts:
-                names.update(_bound_target_names(element))
-            return names
-        case ast.Starred(value=value):
-            return _bound_target_names(value)
-        case _:
-            return set()
 
 
 def _scope_binding_events(statements: list[ast.stmt]) -> list[str]:

@@ -249,9 +249,7 @@ class RequirePydanticForExternalJson(Rule):
 def _functions(
     tree: ast.Module, *, node_index: NodeIndex | None = None
 ) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]:
-    return tuple(
-        node for node in walk_ast(tree, index=node_index) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-    )
+    return tuple(nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, index=node_index))
 
 
 def _module_summaries(
@@ -1470,16 +1468,6 @@ def _is_local_json_text(expression: ast.expr) -> bool:
 
 def _literal_string(node: ast.expr) -> str | None:
     return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
-
-
-def _expression_tail(node: ast.expr) -> str | None:
-    match node:
-        case ast.Name():
-            return node.id
-        case ast.Attribute():
-            return node.attr
-        case _:
-            return None
 
 
 def _unwrap_await(node: ast.expr) -> ast.expr:

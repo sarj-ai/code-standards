@@ -18,7 +18,8 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import nodes, walk
-from sarj_python_lint.rules._closed_helpers import call_matches, closed_references, direct_call
+from sarj_python_lint.rules._ast_names import dotted_parts as _dotted_name
+from sarj_python_lint.rules._closed_helpers import closed_owner as _closed_owner
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -227,16 +228,6 @@ class RequireKeywordOnlySwapProneParams(Rule):
         return diags
 
 
-def _closed_owner(function: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext) -> bool:
-    if not isinstance(function, ast.FunctionDef) or not function.name.startswith("_"):
-        return False
-    references = closed_references(context, function, context.resource_provenance)
-    return bool(references) and all(
-        (call := direct_call(reference, context)) is not None and call_matches(function, call)
-        for reference in references
-    )
-
-
 def _is_exempt_path(path: Path) -> bool:
     directories = path.parts[:-1]
     if any(_TEST_SUPPORT_DIR_RE.fullmatch(part) for part in directories):
@@ -281,15 +272,6 @@ def _is_cli_command_decorator(dec: ast.expr) -> bool:
             return True
         case _:
             return False
-
-
-def _dotted_name(node: ast.expr) -> tuple[str, ...] | None:
-    if isinstance(node, ast.Name):
-        return (node.id,)
-    if isinstance(node, ast.Attribute):
-        parent = _dotted_name(node.value)
-        return None if parent is None else (*parent, node.attr)
-    return None
 
 
 def _method_node_ids(tree: ast.AST, *, node_index: NodeIndex | None = None) -> frozenset[int]:

@@ -20,6 +20,7 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import comprehension_results, walk as walk_ast
+from sarj_python_lint.rules._ast_names import root_name as _root_name
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -982,13 +983,6 @@ def _api_resolves(
 ) -> bool:
     root = _root_name(node)
     return root is not None and root not in api.shadowed and api.imports.resolves(node, sources=sources, symbol=symbol)
-
-
-def _root_name(node: ast.expr) -> str | None:
-    current = node
-    while isinstance(current, ast.Attribute):
-        current = current.value
-    return current.id if isinstance(current, ast.Name) else None
 
 
 def _is_source_open(

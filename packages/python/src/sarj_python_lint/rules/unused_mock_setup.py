@@ -23,6 +23,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import children, walk
+from sarj_python_lint.rules._ast_names import dotted_name as _dotted
 from sarj_python_lint.rules._closed_helpers import dynamic_namespace
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -382,18 +383,6 @@ def _config_target(stmt: ast.stmt, origins: frozenset[str], provenance: Resource
     ):
         return None
     return f"{target.value.id}.{target.attr}"
-
-
-def _dotted(node: ast.expr) -> str | None:
-    parts: list[str] = []
-    current = node
-    while isinstance(current, ast.Attribute):
-        parts.append(current.attr)
-        current = current.value
-    if not isinstance(current, ast.Name):
-        return None
-    parts.append(current.id)
-    return ".".join(reversed(parts))
 
 
 def _is_safe_value(node: ast.expr, provenance: ResourceProvenance, *, hash_key: bool = False) -> bool:

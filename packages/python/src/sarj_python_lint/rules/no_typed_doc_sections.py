@@ -16,6 +16,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._ast_names import terminal_name as _terminal_name
 from sarj_python_lint.rules._prose_budget import groups
 
 
@@ -138,11 +139,3 @@ def _is_public_contract(node: ast.FunctionDef | ast.AsyncFunctionDef, parents: M
         _terminal_name(base) in _PUBLIC_CONTRACT_BASES for base in owner.bases
     )
     return not decorators.isdisjoint(_PUBLIC_CONTRACT_DECORATORS) or protocol_method
-
-
-def _terminal_name(node: ast.expr) -> str | None:
-    match node:
-        case ast.Name(id=name) | ast.Attribute(attr=name):
-            return name
-        case _:
-            return None

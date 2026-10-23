@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import ast
-from io import StringIO
 from itertools import pairwise
 from pathlib import PurePosixPath
-import tokenize
 from typing import TYPE_CHECKING, ClassVar, Literal, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
@@ -20,6 +18,7 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import object_list, walk as walk_ast
+from sarj_python_lint.rules._comments import comment_line_numbers
 
 
 if TYPE_CHECKING:
@@ -115,7 +114,7 @@ class PreferWalrusAwaitedNoneGuard(Rule):
         if tree is None:
             return []
         source_lines = context.source_lines
-        comment_lines = _comment_lines(source)
+        comment_lines = comment_line_numbers(source)
         diagnostics: list[Diagnostic] = []
 
         def collect_body_candidates(body: list[ast.stmt]) -> None:
@@ -330,11 +329,3 @@ def _statement_lists(tree: ast.AST, *, node_index: NodeIndex | None = None) -> l
                 if statements:
                     result.append(statements)
     return result
-
-
-def _comment_lines(source: str) -> frozenset[int]:
-    try:
-        tokens = tokenize.generate_tokens(StringIO(source).readline)
-        return frozenset(token.start[0] for token in tokens if token.type == tokenize.COMMENT)
-    except IndentationError, tokenize.TokenError:
-        return frozenset()

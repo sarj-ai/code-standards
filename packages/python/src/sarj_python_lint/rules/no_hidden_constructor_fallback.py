@@ -368,15 +368,6 @@ def _directly_bound_names(statement: ast.stmt) -> set[str]:
             return set()
 
 
-def _argument_names(arguments: ast.arguments) -> set[str]:
-    names = {argument.arg for argument in (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)}
-    if arguments.vararg is not None:
-        names.add(arguments.vararg.arg)
-    if arguments.kwarg is not None:
-        names.add(arguments.kwarg.arg)
-    return names
-
-
 def _target_names(target: ast.expr) -> set[str]:
     if isinstance(target, ast.Name):
         return {target.id}

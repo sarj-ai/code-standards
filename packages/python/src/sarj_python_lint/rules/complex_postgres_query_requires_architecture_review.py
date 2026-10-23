@@ -17,6 +17,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import nodes, walk
+from sarj_python_lint.rules._ast_names import unqualified_name as _call_name
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
 from sarj_python_lint.rules.no_analytical_aggregation_in_postgres_store import analytical_signal
@@ -146,14 +147,6 @@ def _query_argument(call: ast.Call) -> ast.expr | None:
     if call.args:
         return call.args[0]
     return next((keyword.value for keyword in call.keywords if keyword.arg in _QUERY_KEYWORDS), None)
-
-
-def _call_name(function: ast.expr) -> str:
-    match function:
-        case ast.Name(id=name) | ast.Attribute(attr=name):
-            return name
-        case _:
-            return ""
 
 
 def _postgres_sql_constructors(

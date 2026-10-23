@@ -17,6 +17,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
 )
 from sarj_python_lint.rules._ast_index import walk
+from sarj_python_lint.rules._ast_names import unqualified_name as _call_name
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._sql import POSTGRES_UNQUOTED_IDENTIFIER, sql_string_value, strip_sql_noise
 
@@ -280,11 +281,3 @@ def _is_query_binding(target: ast.expr) -> bool:
     name = target.id if isinstance(target, ast.Name) else target.attr
     tokens = frozenset(part for part in name.lower().split("_") if part)
     return name == "q" or name.isupper() or bool(tokens & _QUERY_BINDING_TOKENS)
-
-
-def _call_name(function: ast.expr) -> str:
-    match function:
-        case ast.Name(id=name) | ast.Attribute(attr=name):
-            return name
-        case _:
-            return ""

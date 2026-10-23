@@ -18,6 +18,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._ast_names import root_name as _root_name
 from sarj_python_lint.rules._paths import is_test_path
 
 
@@ -199,12 +200,6 @@ def _binding_counts(context: PythonFileContext) -> Counter[str]:
             case _:
                 pass
     return result
-
-
-def _root_name(node: ast.expr) -> str | None:
-    while isinstance(node, ast.Attribute):
-        node = node.value
-    return node.id if isinstance(node, ast.Name) else None
 
 
 def _escapes(context: PythonFileContext, node: ast.Name) -> bool:

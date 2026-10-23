@@ -70,6 +70,39 @@ def test_plain_interpolation_message_does_not_mention_string_coercion() -> None:
     assert "join" not in diagnostic.message
 
 
+def test_string_facts_stay_local_to_each_scope_and_check() -> None:
+    rule = PreferFstringOverConcat()
+    source = """
+import json
+def greeting(name: str):
+    first = "Hello, " + name
+    name = unknown
+    second = "Hello, " + name
+    return "Value: " + json.dumps(second)
+def shadowed(json, name: str):
+    return "Value: " + json.dumps(name)
+def separate(name: str):
+    return "Hello, " + name
+"""
+    assert len(rule.check(_PATH, source)) == 3
+    assert rule.check(_PATH, 'def greeting(name):\n    return "Hello, " + name\n') == []
+    assert len(rule.check(_PATH, 'def greeting(name: str):\n    return "Hello, " + name\n')) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'import json\ndef greeting(json, name: str):\n    return "Value: " + json.dumps(name)\n',
+        'import re\ndef greeting(re, name: str):\n    return "Hello, " + re.escape(name)\n',
+        'import json\ndef greeting(name: str):\n    json = custom\n    return "Value: " + json.dumps(name)\n',
+        'import re\ndef greeting(name: str):\n    import custom as re\n    return "Hello, " + re.escape(name)\n',
+        'import json\ngreeting = lambda json: "Value: " + json.dumps(value)\n',
+    ],
+)
+def test_scope_shadowed_modules_do_not_prove_a_string_return(source: str) -> None:
+    assert _check(source) == []
+
+
 @pytest.mark.parametrize(
     "source",
     [

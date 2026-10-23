@@ -183,3 +183,13 @@ def _plain_decorator(
         and not (keyword.arg == "mode" and isinstance(keyword.value, ast.Constant) and keyword.value.value == "wrap")
         for keyword in decorator.keywords
     )
+
+
+def closed_owner(function: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext) -> bool:
+    if not isinstance(function, ast.FunctionDef) or not function.name.startswith("_"):
+        return False
+    references = closed_references(context, function, context.resource_provenance)
+    return bool(references) and all(
+        (call := direct_call(reference, context)) is not None and call_matches(function, call)
+        for reference in references
+    )

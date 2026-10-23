@@ -10,7 +10,7 @@ import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 import { staticString } from "./_static-string.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { stableValueBinding } from "./_stable-value-binding.js";
+import { stableValueBinding, typeOnlyReference } from "./_stable-value-binding.js";
 
 type MessageIds = "preferNodeCryptoHash";
 type Options = readonly [];
@@ -25,6 +25,7 @@ export const PREFER_NODE_CRYPTO_HASH_DOCUMENTATION = {
     "Only direct imports, const bindings, and inline calls with statically proven provenance from crypto or node:crypto are analyzed; arbitrary assignments and dynamic module specifiers are excluded.",
     "Only a literal algorithm with exactly one update call is reported; streaming and incremental hashes remain valid.",
     "Namespace bindings must remain read-only: visible writes, aliases, exports, inherited mutation or alias methods, unknown computed members, and other escaping uses are excluded; type-only references and direct member calls remain eligible.",
+    "CommonJS loads and default imports share one mutable native module object. A visible unsafe use of that object excludes its other loads; ESM named exports remain separate unless visible native export synchronization can update them.",
     "Runtime support and output encoding require manual review; no autofix or guaranteed speedup is promised.",
   ],
   references: ["https://nodejs.org/api/crypto.html#cryptohashalgorithm-data-options"],
@@ -44,42 +45,67 @@ function stableNamespace(variable: ScopeVariable): boolean {
   if (variable.defs.some((definition) => definition.type === "Variable" &&
     definition.parent.parent.type === AST_NODE_TYPES.ExportNamedDeclaration)) return false;
   return stableValueBinding(variable, (reference) => {
-    if (reference.isTypeReference && !reference.isValueReference) return true;
+    if (typeOnlyReference(reference)) return true;
     const receiver = outerExpression(reference.identifier);
-    if (typeQueryReference(receiver)) return true;
-    const member = receiver.parent;
-    if (member?.type !== AST_NODE_TYPES.MemberExpression || member.object !== receiver) {
-      return member?.type === AST_NODE_TYPES.UnaryExpression && member.operator === "typeof";
-    }
-    const use = outerExpression(member);
-    const name = ASTUtils.getPropertyName(member);
-    return name !== null && !UNSAFE_NAMESPACE_METHODS.has(name) &&
-      use.parent?.type === AST_NODE_TYPES.CallExpression && use.parent.callee === use;
+    return readonlyNamespaceUse(receiver);
   });
 }
 
-function typeQueryReference(node: TSESTree.Node): boolean {
-  let current = node;
-  while (current.parent?.type === AST_NODE_TYPES.TSQualifiedName && current.parent.left === current) {
-    current = current.parent;
+function readonlyNamespaceUse(receiver: TSESTree.Node): boolean {
+  const member = receiver.parent;
+  if (member?.type !== AST_NODE_TYPES.MemberExpression || member.object !== receiver) {
+    return member?.type === AST_NODE_TYPES.UnaryExpression && member.operator === "typeof";
   }
-  return current.parent?.type === AST_NODE_TYPES.TSTypeQuery && current.parent.exprName === current;
+  const use = outerExpression(member);
+  const name = ASTUtils.getPropertyName(member);
+  return name !== null && !UNSAFE_NAMESPACE_METHODS.has(name) &&
+    use.parent?.type === AST_NODE_TYPES.CallExpression && use.parent.callee === use;
 }
 
-function isCryptoLoader(
+function readonlyLoaderUse(
+  node: TSESTree.CallExpression,
+  resolve: (identifier: TSESTree.Identifier) => ScopeVariable | null,
+  stable: (variable: ScopeVariable) => boolean,
+): boolean {
+  const receiver = outerExpression(node);
+  const parent = receiver.parent;
+  if (parent?.type === AST_NODE_TYPES.VariableDeclarator && parent.init === receiver) {
+    if (parent.id.type === AST_NODE_TYPES.ObjectPattern) return true;
+    if (parent.id.type !== AST_NODE_TYPES.Identifier) return false;
+    const variable = resolve(parent.id);
+    return variable !== null && stable(variable);
+  }
+  return parent?.type === AST_NODE_TYPES.ExpressionStatement || readonlyNamespaceUse(receiver);
+}
+
+function namespaceDefaultMayEscape(variable: ScopeVariable): boolean {
+  return variable.references.some((reference) => {
+    if (typeOnlyReference(reference)) return false;
+    const receiver = outerExpression(reference.identifier);
+    const member = receiver.parent;
+    if (member?.type !== AST_NODE_TYPES.MemberExpression || member.object !== receiver) {
+      return member?.type !== AST_NODE_TYPES.UnaryExpression || member.operator !== "typeof";
+    }
+    const name = ASTUtils.getPropertyName(member);
+    return (name === null || name === "default") && !readonlyNamespaceUse(outerExpression(member));
+  });
+}
+
+function isBuiltinLoader(
   node: TSESTree.Expression,
   resolve: (identifier: TSESTree.Identifier) => ScopeVariable | null,
+  builtin: "crypto" | "module" = "crypto",
 ): boolean {
-  const unwrappedNodeCallee = node.type === "CallExpression" || node.type === "NewExpression" ? unwrapExpression(node.callee) : null;
   if (node.type !== AST_NODE_TYPES.CallExpression || node.arguments.length !== 1) return false;
   const [argument] = node.arguments;
   if (
     argument === undefined ||
     argument.type === AST_NODE_TYPES.SpreadElement ||
-    !isCryptoSpecifier(argument)
+    !isBuiltinSpecifier(argument, builtin)
   ) {
     return false;
   }
+  const unwrappedNodeCallee = unwrapExpression(node.callee);
   if (unwrappedNodeCallee?.type === AST_NODE_TYPES.Identifier) {
     return (
       unwrappedNodeCallee.name === "require" &&
@@ -95,10 +121,10 @@ function isCryptoLoader(
   );
 }
 
-function isCryptoSpecifier(node: TSESTree.Expression): boolean {
+function isBuiltinSpecifier(node: TSESTree.Expression, builtin: "crypto" | "module"): boolean {
   return (
     node.type === AST_NODE_TYPES.Literal &&
-    (node.value === "crypto" || node.value === "node:crypto")
+    (node.value === builtin || node.value === `node:${builtin}`)
   );
 }
 
@@ -124,8 +150,24 @@ export default createRule<Options, MessageIds>({
   meta: { type: "problem", docs: { description: PREFER_NODE_CRYPTO_HASH_DOCUMENTATION.summary }, schema: [], messages: { preferNodeCryptoHash: 'Prefer the modern one-shot node:crypto hash API when streaming state is unnecessary.' } },
   defaultOptions: [],
   create(context) {
+    if (!context.sourceCode.text.includes("crypto") && !context.sourceCode.text.includes("\\")) return {};
     const directBindings = new Set<ScopeVariable>();
     const namespaceBindings = new Set<ScopeVariable>();
+    const sharedBindings = new Set<ScopeVariable>();
+    const syncBindings = new Set<ScopeVariable>();
+    const moduleBindings = new Set<ScopeVariable>();
+    const namespaceStability = new WeakMap<ScopeVariable, boolean>();
+    const candidates: { node: TSESTree.CallExpression; shared: boolean }[] = [];
+    const possibleSynchronizations: TSESTree.CallExpression[] = [];
+    let sharedNamespaceUnsafe = false;
+
+    function namespaceStable(variable: ScopeVariable): boolean {
+      const cached = namespaceStability.get(variable);
+      if (cached !== undefined) return cached;
+      const stable = stableNamespace(variable);
+      namespaceStability.set(variable, stable);
+      return stable;
+    }
 
     function resolve(identifier: TSESTree.Identifier): ScopeVariable | null {
       return ASTUtils.findVariable(
@@ -137,20 +179,43 @@ export default createRule<Options, MessageIds>({
     function record(
       identifier: TSESTree.Identifier,
       destination: Set<ScopeVariable>,
+      shared = false,
     ): void {
       const variable = resolve(identifier);
-      if (variable !== null && (destination === namespaceBindings ? stableNamespace(variable) : stableValueBinding(variable))) destination.add(variable);
+      if (variable === null) return;
+      const stable = destination === namespaceBindings ? namespaceStable(variable) : stableValueBinding(variable);
+      if (shared && destination === namespaceBindings && !stable) sharedNamespaceUnsafe = true;
+      if (!stable) return;
+      destination.add(variable);
+      if (shared) sharedBindings.add(variable);
+    }
+
+    function recordModuleImports(specifiers: TSESTree.ImportDeclaration["specifiers"]): void {
+      for (const specifier of specifiers) {
+        if (specifier.type === AST_NODE_TYPES.ImportSpecifier) {
+          if (importedName(specifier.imported) === "syncBuiltinESMExports") record(specifier.local, syncBindings);
+          else if (importedName(specifier.imported) === "default") record(specifier.local, moduleBindings);
+        } else record(specifier.local, moduleBindings);
+      }
     }
 
     return {
       ImportDeclaration(node): void {
+        if (node.source.value === "module" || node.source.value === "node:module") {
+          recordModuleImports(node.specifiers);
+          return;
+        }
         if (node.source.value !== "crypto" && node.source.value !== "node:crypto") return;
         for (const specifier of node.specifiers) {
+          const shared = specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier ||
+            (specifier.type === AST_NODE_TYPES.ImportSpecifier && importedName(specifier.imported) === "default");
           if (
             specifier.type === AST_NODE_TYPES.ImportNamespaceSpecifier ||
-            specifier.type === AST_NODE_TYPES.ImportDefaultSpecifier
+            shared
           ) {
-            record(specifier.local, namespaceBindings);
+            record(specifier.local, namespaceBindings, shared);
+            const variable = resolve(specifier.local);
+            if (!shared && variable !== null && namespaceDefaultMayEscape(variable)) sharedNamespaceUnsafe = true;
           } else if (
             specifier.type === AST_NODE_TYPES.ImportSpecifier &&
             importedName(specifier.imported) === "createHash"
@@ -163,27 +228,31 @@ export default createRule<Options, MessageIds>({
         if (
           node.parent.kind !== "const" ||
           node.init === null ||
-          !isCryptoLoader(node.init, resolve)
+          (!isBuiltinLoader(node.init, resolve) && !isBuiltinLoader(node.init, resolve, "module"))
         ) {
           return;
         }
+        const crypto = isBuiltinLoader(node.init, resolve);
         if (node.id.type === AST_NODE_TYPES.Identifier) {
-          record(node.id, namespaceBindings);
+          record(node.id, crypto ? namespaceBindings : moduleBindings, crypto);
           return;
         }
         if (node.id.type !== AST_NODE_TYPES.ObjectPattern) return;
         for (const property of node.id.properties) {
           if (
             property.type === AST_NODE_TYPES.Property &&
-            propertyName(property) === "createHash" &&
+            propertyName(property) === (crypto ? "createHash" : "syncBuiltinESMExports") &&
             property.value.type === AST_NODE_TYPES.Identifier
           ) {
-            record(property.value, directBindings);
+            record(property.value, crypto ? directBindings : syncBindings, crypto);
           }
         }
       },
       CallExpression(node): void {
+        if (isBuiltinLoader(node, resolve) && !readonlyLoaderUse(node, resolve, namespaceStable)) sharedNamespaceUnsafe = true;
         const unwrappedNodeCallee = unwrapExpression(node.callee);
+        if (unwrappedNodeCallee.type === AST_NODE_TYPES.Identifier ||
+          (unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression && ASTUtils.getPropertyName(unwrappedNodeCallee) === "syncBuiltinESMExports")) possibleSynchronizations.push(node);
         if (unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression || !isMemberCall(node, "digest")) return;
         const update = unwrapExpression(unwrappedNodeCallee.object);
         if (
@@ -199,16 +268,18 @@ export default createRule<Options, MessageIds>({
         if (
           create.type !== AST_NODE_TYPES.CallExpression ||
           create.arguments.length !== 1 ||
-          staticString(algorithm ?? undefined) === null ||
-          !isCreateHashCall(
-            create,
-            directBindings,
-            namespaceBindings,
-            resolve,
-          )
+          staticString(algorithm ?? undefined) === null
         )
           return;
-        context.report({ node, messageId: "preferNodeCryptoHash" });
+        const provider = builtinCallProvider(create, directBindings, namespaceBindings, sharedBindings, resolve);
+        if (provider !== null) candidates.push({ node, shared: provider === "shared" });
+      },
+      "Program:exit"(): void {
+        const exportsMaySynchronize = sharedNamespaceUnsafe && possibleSynchronizations.some((node) =>
+          builtinCallProvider(node, syncBindings, moduleBindings, sharedBindings, resolve, "module") !== null);
+        for (const candidate of candidates) {
+          if (!sharedNamespaceUnsafe || (!candidate.shared && !exportsMaySynchronize)) context.report({ node: candidate.node, messageId: "preferNodeCryptoHash" });
+        }
       },
     };
   },
@@ -229,28 +300,29 @@ function isMemberCall(
   );
 }
 
-function isCreateHashCall(
+function builtinCallProvider(
   node: TSESTree.CallExpression,
   directBindings: ReadonlySet<ScopeVariable>,
   namespaceBindings: ReadonlySet<ScopeVariable>,
+  sharedBindings: ReadonlySet<ScopeVariable>,
   resolve: (identifier: TSESTree.Identifier) => ScopeVariable | null,
-): boolean {
+  builtin: "crypto" | "module" = "crypto",
+): "shared" | "snapshot" | null {
   const unwrappedNodeCallee = unwrapExpression(node.callee);
   if (unwrappedNodeCallee.type === AST_NODE_TYPES.Identifier) {
     const variable = resolve(unwrappedNodeCallee);
-    return variable !== null && directBindings.has(variable);
+    if (variable === null || !directBindings.has(variable)) return null;
+    return sharedBindings.has(variable) ? "shared" : "snapshot";
   }
   if (
     unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression ||
-    ASTUtils.getPropertyName(unwrappedNodeCallee) !== "createHash"
+    ASTUtils.getPropertyName(unwrappedNodeCallee) !== (builtin === "crypto" ? "createHash" : "syncBuiltinESMExports")
   ) {
-    return false;
+    return null;
   }
-  if (isCryptoLoader(unwrappedNodeCallee.object, resolve)) return true;
-  if (unwrappedNodeCallee.object.type !== AST_NODE_TYPES.Identifier) return false;
+  if (isBuiltinLoader(unwrappedNodeCallee.object, resolve, builtin)) return "shared";
+  if (unwrappedNodeCallee.object.type !== AST_NODE_TYPES.Identifier) return null;
   const variable = resolve(unwrappedNodeCallee.object);
-  return (
-    variable !== null &&
-    namespaceBindings.has(variable)
-  );
+  if (variable === null || !namespaceBindings.has(variable)) return null;
+  return sharedBindings.has(variable) ? "shared" : "snapshot";
 }

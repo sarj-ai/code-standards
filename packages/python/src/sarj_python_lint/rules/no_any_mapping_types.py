@@ -21,6 +21,7 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, scope_bound_names
 from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._ast_names import expression_root as _expression_root
 from sarj_python_lint.rules._namespace_access import dynamic_namespace_access
 
 
@@ -566,12 +567,6 @@ def _type_attribute_mutation(call: ast.Call, imports: ImportIndex, sensitive: se
         isinstance(call.func, ast.Name) and call.func.id in mutators and imports.builtin_is_unshadowed(call.func.id)
     ) or imports.resolved_symbol(call.func, sources=frozenset({"builtins"})) in mutators
     return known and _expression_root(call.args[0]) in sensitive
-
-
-def _expression_root(node: ast.expr) -> str | None:
-    while isinstance(node, (ast.Attribute, ast.Subscript)):
-        node = node.value
-    return node.id if isinstance(node, ast.Name) else None
 
 
 def _unshadowed_type_expression(

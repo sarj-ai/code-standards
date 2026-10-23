@@ -14,6 +14,7 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
+from sarj_python_lint.rules._ast_names import root_name as _root_name
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -235,12 +236,6 @@ def _shadowed_in_enclosing_function(
             return True
         current = parents.get(current)
     return False
-
-
-def _root_name(node: ast.expr) -> str | None:
-    while isinstance(node, ast.Attribute):
-        node = node.value
-    return node.id if isinstance(node, ast.Name) else None
 
 
 def _function_binds(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda, name: str) -> bool:

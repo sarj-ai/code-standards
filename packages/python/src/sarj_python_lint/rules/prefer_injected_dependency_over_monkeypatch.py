@@ -15,7 +15,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
-from sarj_python_lint.rules._ast_index import parent_map, walk as walk_ast
+from sarj_python_lint.rules._ast_index import nodes, parent_map, walk as walk_ast
 from sarj_python_lint.rules._ast_position import AstPosition, ast_position
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -325,9 +325,7 @@ def _arguments(arguments: ast.arguments) -> Iterator[ast.arg]:
 def _functions(
     tree: ast.Module, *, node_index: NodeIndex | None = None
 ) -> Iterator[ast.FunctionDef | ast.AsyncFunctionDef]:
-    for node in walk_ast(tree, index=node_index):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            yield node
+    yield from nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, index=node_index)
 
 
 def _attribute_mutations(
