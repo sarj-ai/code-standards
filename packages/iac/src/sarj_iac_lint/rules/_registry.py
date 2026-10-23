@@ -8,6 +8,7 @@ from sarj_iac_lint.rules.no_dead_environment_input import NoDeadEnvironmentInput
 from sarj_iac_lint.rules.no_environment_conditional import NoEnvironmentConditional
 from sarj_iac_lint.rules.no_managed_service_account_key import NoManagedServiceAccountKey
 from sarj_iac_lint.rules.no_mocked_terraform_test_oracle import NoMockedTerraformTestOracle
+from sarj_iac_lint.rules.no_nested_conditional import NoNestedConditional
 from sarj_iac_lint.rules.no_plaintext_secret_env import NoPlaintextSecretEnv
 from sarj_iac_lint.rules.no_project_basic_privilege import NoProjectBasicPrivilege
 from sarj_iac_lint.rules.no_project_secret_access_for_service_account import NoProjectSecretAccessForServiceAccount
@@ -34,6 +35,7 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoEnvironmentConditional.id: NoEnvironmentConditional,
         NoDeadEnvironmentInput.id: NoDeadEnvironmentInput,
         NoMockedTerraformTestOracle.id: NoMockedTerraformTestOracle,
+        NoNestedConditional.id: NoNestedConditional,
         NoRedundantVariableValidation.id: NoRedundantVariableValidation,
         NoRestatedComment.id: NoRestatedComment,
         NoTerraformDataCondition.id: NoTerraformDataCondition,

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "37525b30725edea094f4f09b4a2e520904cf9a255e863ef761fa3cbdc398a282",
-  "cliSha256": "77de58e4867d772af088b320abfc16fb8374b4e59b5408f04f9d465be8143aa5",
+  "catalogSha256": "1637e1113da1e829b8f5a92acc59c09e64c9280f63515a4206b8b9f631d5c75a",
+  "cliSha256": "c76cb5e2a0ca1e7b3c449a1e43534f039d272ae3ba5c8d27172166013f98c3ea",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -6370,6 +6370,41 @@
           "outcome": "accept",
           "scenarioId": "terraform-provider-evidence",
           "title": "Empty mock provider validates configured plan behavior"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "iac:no-nested-conditional": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "variable \"size\" { type = string }\nmodule \"service\" {\n  source = \"./service\"\n  size   = var.size\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "explicit-selected-value",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The caller supplies the selected value"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "locals {\n  size = var.primary ? \"large\" : var.secondary ? \"medium\" : \"small\"\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "nested-selection",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A nested selection hides the selected configuration"
         }
       ],
       "optionsSchemaSource": null

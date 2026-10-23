@@ -227,6 +227,7 @@
       "no-environment-conditional",
       "no-managed-service-account-key",
       "no-mocked-terraform-test-oracle",
+      "no-nested-conditional",
       "no-plaintext-secret-env",
       "no-project-basic-privilege",
       "no-project-secret-access-for-service-account",
@@ -594,7 +595,8 @@
       "SARJ211",
       "SARJ212",
       "SARJ213",
-      "SARJ214"
+      "SARJ214",
+      "SARJ215"
     ],
     "text": [
       "SARJ300",
