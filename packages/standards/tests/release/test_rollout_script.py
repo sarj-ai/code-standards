@@ -726,6 +726,115 @@ class TestSafety:
         )
 
 
+def _target_commit_policy_workflow(repo: Path) -> rollout.TargetCommitPolicyWorkflow | None:
+    configured = repo / ".repo-standards" / "repository.toml"
+    configured.parent.mkdir(exist_ok=True)
+    configured.write_text('repository_id = "example"\ncomponents = []\n[commit_message]\nenforcement = "strict"\n')
+    before = rollout.commit_policy_workflow_bytes(repo)
+    report = {
+        "schema": 1,
+        "root": str(repo.resolve()),
+        "findings": [finding.as_dict() for finding in adoption_doctor.diagnose_commit_policy(repo)],
+    }
+    doctor = subprocess.CompletedProcess(("target", "doctor", "--format", "json"), 1, json.dumps(report), "")
+    return rollout.attest_commit_policy_workflow(repo, doctor, before)
+
+
+class TestTargetCommitPolicyWorkflow:
+    def test_complete_target_finding_attests_exact_snapshot(self, tmp_path: Path) -> None:
+        workflow = tmp_path / rollout.COMMIT_POLICY_WORKFLOW_PATH
+        workflow.parent.mkdir(parents=True)
+        workflow.write_text(adoption_scaffold.commit_policy_github_workflow())
+
+        attested = _target_commit_policy_workflow(tmp_path)
+
+        assert attested is not None
+        assert attested.root == tmp_path.resolve()
+        assert attested.contents == workflow.read_bytes()
+
+    @pytest.mark.parametrize(
+        "fault",
+        [
+            "invalid-json",
+            "wrong-root",
+            "bool-schema",
+            "float-schema",
+            "missing",
+            "duplicate",
+            "drift",
+            "wrong-path",
+            "malformed",
+        ],
+    )
+    def test_unattested_workflow_is_not_allowed(self, tmp_path: Path, fault: str) -> None:
+        relative = rollout.COMMIT_POLICY_WORKFLOW_PATH
+        workflow = tmp_path / relative
+        workflow.parent.mkdir(parents=True)
+        workflow.write_text(adoption_scaffold.commit_policy_github_workflow())
+        finding = {"id": "doctor.ci.commit-policy", "level": "ok", "where": relative}
+        report: dict[str, object] = {
+            "schema": 1,
+            "root": str(tmp_path.parent if fault == "wrong-root" else tmp_path),
+            "findings": [finding],
+        }
+        if fault == "bool-schema":
+            report["schema"] = True
+        elif fault == "float-schema":
+            report["schema"] = 1.0
+        elif fault == "missing":
+            report["findings"] = []
+        elif fault == "duplicate":
+            report["findings"] = [finding, finding]
+        elif fault == "drift":
+            finding["level"] = "drift"
+        elif fault == "wrong-path":
+            finding["where"] = ".github/workflows/other.yml"
+        elif fault == "malformed":
+            report["findings"] = [None]
+        doctor = subprocess.CompletedProcess(
+            ("target", "doctor", "--format", "json"),
+            0,
+            "not-json" if fault == "invalid-json" else json.dumps(report),
+            "",
+        )
+
+        assert (
+            rollout.attest_commit_policy_workflow(tmp_path, doctor, rollout.commit_policy_workflow_bytes(tmp_path))
+            is None
+        )
+
+    @pytest.mark.parametrize("fault", ["crlf", "invalid-utf8", "symlink", "changed-during-doctor"])
+    def test_raw_workflow_binding_is_strict(self, tmp_path: Path, fault: str) -> None:
+        relative = rollout.COMMIT_POLICY_WORKFLOW_PATH
+        workflow = tmp_path / relative
+        workflow.parent.mkdir(parents=True)
+        canonical = adoption_scaffold.commit_policy_github_workflow().encode()
+        workflow.write_bytes(canonical)
+        before = rollout.commit_policy_workflow_bytes(tmp_path)
+        if fault == "symlink":
+            original = tmp_path / "original.yml"
+            original.write_bytes(canonical)
+            workflow.unlink()
+            workflow.symlink_to(original)
+        else:
+            workflow.write_bytes(
+                canonical.replace(b"\n", b"\r\n")
+                if fault == "crlf"
+                else canonical + (b"\xff" if fault == "invalid-utf8" else b"# changed\n")
+            )
+        if fault != "changed-during-doctor":
+            before = rollout.commit_policy_workflow_bytes(tmp_path)
+            assert before is None
+        report = {
+            "schema": 1,
+            "root": str(tmp_path),
+            "findings": [{"id": "doctor.ci.commit-policy", "level": "ok", "where": relative}],
+        }
+        doctor = subprocess.CompletedProcess(("target", "doctor", "--format", "json"), 0, json.dumps(report), "")
+
+        assert rollout.attest_commit_policy_workflow(tmp_path, doctor, before) is None
+
+
 class TestCanonicalCommitPolicyWorkflow:
     def test_only_exact_generated_workflow_is_allowed(self, tmp_path: Path) -> None:
         relative = rollout.COMMIT_POLICY_WORKFLOW_PATH
