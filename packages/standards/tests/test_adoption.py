@@ -468,18 +468,13 @@ def test_commit_policy_runs_on_the_smallest_blacksmith_arm_runner(runner: str, e
     assert job["runs-on"] == expected
 
 
-def test_commit_policy_edit_skip_never_carries_the_required_check_name() -> None:
-    job = _commit_policy_job(scaffold.commit_policy_github_workflow())
-    condition = job["if"]
-    name = str(job["name"])
+def test_commit_policy_metadata_edits_run_the_real_required_check() -> None:
+    workflow = scaffold.commit_policy_github_workflow()
+    job = _commit_policy_job(workflow)
 
-    assert condition == "github.event.action != 'edited' || github.event.changes.base"
-    assert name.startswith("${{ ")
-    assert name.endswith(" }}")
-    unevaluated = name.removeprefix("${{ ").removesuffix(" }}")
-    assert unevaluated != "commit-policy-v1"
-    assert "'commit-policy-v1 (unchanged by edit)'" in unevaluated
-    assert "concurrency" not in _workflow_document(scaffold.commit_policy_github_workflow())
+    assert "if" not in job
+    assert job.get("name", "commit-policy-v1") == "commit-policy-v1"
+    assert "concurrency" not in _workflow_document(workflow)
 
 
 def _embedded_commit_policy_repo(root: Path) -> None:
