@@ -110,10 +110,10 @@ def plan(files: Iterable[Path]) -> tuple[Rewrite, ...]:
     return tuple(rewrites)
 
 
-def reference_counts(path: Path, text: str) -> dict[str, int]:
+def reference_counts(path: Path, text: str, *, retired: tuple[ledger.Retired, ...] | None = None) -> dict[str, int]:
     if "sarj-doctor-ignore-retired-rules" in text:
         return {}
-    retired = ledger.load().retired
+    retired = ledger.load().retired if retired is None else retired
     if not any(entry.id in text for entry in retired):
         return {}
     entries = {entry.id: entry for entry in retired}

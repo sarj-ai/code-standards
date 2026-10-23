@@ -840,7 +840,9 @@ def check_retired_rules(root: Path, files: Sequence[Path] | None = None) -> Iter
     for path in _candidate_files(files if files is not None else _walk(root), _REFERENCE_SUFFIXES):
         if path.name in {"rule-ledger.json", "code_ledger.json"}:
             continue
-        counts = retired_rule_counts(path, _read(path), configured=path.resolve() in configured_references)
+        counts = retired_rule_counts(
+            path, _read(path), configured=path.resolve() in configured_references, retired=retired
+        )
         for entry in retired:
             hits = counts.get(entry.id, 0)
             if hits:
@@ -858,11 +860,14 @@ def retired_rule_references(path: Path, text: str) -> frozenset[str]:
     return frozenset(retired_rule_counts(path, text))
 
 
-def retired_rule_counts(path: Path, text: str, *, configured: bool = False) -> dict[str, int]:
+def retired_rule_counts(
+    path: Path, text: str, *, configured: bool = False, retired: tuple[ledger.Retired, ...] | None = None
+) -> dict[str, int]:
     if retired_suppressions.supports(path):
-        return retired_suppressions.reference_counts(path, text)
+        return retired_suppressions.reference_counts(path, text, retired=retired)
+    entries = ledger.load().retired if retired is None else retired
     references = _reference_text(text, configured=configured)
-    return {entry.id: hits for entry in ledger.load().retired if (hits := len(entry.pattern.findall(references)))}
+    return {entry.id: hits for entry in entries if (hits := len(entry.pattern.findall(references)))}
 
 
 def _configured_rule_reference_files(root: Path) -> frozenset[Path]:

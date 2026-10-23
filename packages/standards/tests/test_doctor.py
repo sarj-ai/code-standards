@@ -2,6 +2,7 @@
 # identifiers to prove that doctor diagnoses consumer repositories correctly.
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import shutil
@@ -15,6 +16,7 @@ import pytest
 import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import doctor, lifecycle, manifest, scaffold
 from sarj_standards.libs.adoption.doctor import Level, check_pyright_deprecated, check_ruff_policy_authority
+from sarj_standards.libs.repository import ledger
 
 
 if TYPE_CHECKING:
@@ -385,6 +387,39 @@ def test_doctor_honors_explicit_retired_rule_fixture_directive(tmp_path: Path) -
     findings = doctor.diagnose(tmp_path)
 
     assert not [finding for finding in findings if finding.id == "doctor.rule.retired"]
+
+
+def test_retired_rule_scan_reads_one_ledger_and_refreshes_between_scans(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    policy = tmp_path / "ledger.json"
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Injecting parsed entries would bypass the default global lookup whose freshness is under test.
+        ledger, "LEDGER_JSON", policy
+    )
+    entry = {"id": "SARJ061", "kind": "code", "status": "removed", "note": "fixture"}
+    policy.write_text(json.dumps({"retired": [entry]}))
+    paths = (tmp_path / "first.py", tmp_path / "second.tf", tmp_path / "diagnostic-baseline.json")
+    for path in paths:
+        path.write_text("# sarj-noqa: SARJ061\n")
+    for path in paths:
+        assert doctor.retired_rule_counts(path, path.read_text(), configured=True) == {"SARJ061": 1}
+    read = Path.read_bytes
+
+    def read_and_change_ledger(path: Path) -> bytes:
+        if path in paths:
+            policy.write_text('{"retired": []}')
+        return read(path)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Intercept the real read to change policy mid-scan; parsed-input injection would remove that boundary.
+        Path, "read_bytes", read_and_change_ledger
+    )
+    findings = list(doctor.check_retired_rules(tmp_path, paths))
+
+    assert {finding.where for finding in findings} == {f"{path.name}: SARJ061 x1" for path in paths}
+    assert list(doctor.check_retired_rules(tmp_path, paths)) == []
+
+    for path in paths:
+        assert doctor.retired_rule_counts(path, path.read_text(), configured=True) == {}
 
 
 def test_doctor_deduplicates_indistinguishable_pin_findings(tmp_path: Path) -> None:
