@@ -17,6 +17,13 @@ Terraform expression that derives access from `var.environment` belongs here.
 For rule work, follow `plugins/sarj-skills/skills/lint-rule-generator/SKILL.md`. Run
 `make verify` before review.
 
+When this checkout's `verify` target calls `.github/scripts/make-local-check.sh`
+and `sarj-local-check` is installed, run `make verify` directly so its phases can
+yield shared capacity. Keep the outer supervisor for older checkouts, other
+targets, and Git hooks. Verification stops after a failed phase; `make -k` keeps
+going within that phase. Later phases reuse the TypeScript build from the
+successful first phase.
+
 For release recovery, never retarget an immutable package tag. If publishable
 files changed after a tagged version, bump the affected package and exact
 sibling pins, then require a separate non-publishable merge with normal
