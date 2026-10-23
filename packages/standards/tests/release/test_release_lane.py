@@ -127,6 +127,17 @@ def test_main_keeps_existing_release_scope(candidate: Candidate, lane: Publisher
     assert lane.validate_lane(candidate.root, source_ref="refs/heads/main", commit=candidate.commit) == "main"
 
 
+def test_maintenance_accepts_reviewed_release_creation_owner(candidate: Candidate, lane: PublisherLane) -> None:
+    path = candidate.root / ".github/scripts/release-github-release.sh"
+    path.parent.mkdir(parents=True)
+    path.write_text("#!/bin/sh\nexit 0\n")
+    commit = _commit(candidate.root)
+    assert (
+        lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+        == "standards-maintenance"
+    )
+
+
 def test_maintenance_accepts_only_the_named_legacy_policy_lane(candidate: Candidate, lane: PublisherLane) -> None:
     targets = {name: "true" if name == "standards" else "false" for name in lane.RELEASE_TARGETS}
     assert (
@@ -161,6 +172,7 @@ def test_publication_requires_the_exact_checkout(candidate: Candidate, lane: Pub
         "packages/standards/src/sarj_standards/configs/ruff.strict.toml",
         "packages/python/pyproject.toml",
         "packages/standards/src/sarj_standards/libs/linting/another.py",
+        ".github/scripts/release-github-release-extra.sh",
     ],
 )
 def test_maintenance_rejects_policy_and_component_drift(
