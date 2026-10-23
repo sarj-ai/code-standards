@@ -241,6 +241,7 @@ def test_release_tags_publish_a_github_release_for_new_standards_versions(tmp_pa
     environment = _record_commands(tmp_path, "curl", "gh")
     environment.update(
         HTTP_STATUS=status,
+        RELEASE_LANE="main",
         STANDARDS_TAG="standards-v1.2.3",
         GH_TOKEN="test-token",
         GITHUB_API_URL="https://api.github.invalid",
