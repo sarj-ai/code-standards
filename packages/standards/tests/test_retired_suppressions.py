@@ -459,3 +459,47 @@ def test_leaves_unknown_eslint_bulk_suppression_shapes_blocking(tmp_path: Path, 
     target.write_text(source, encoding="utf-8")
 
     assert retired_suppressions.plan((target,)) == ()
+
+
+@pytest.mark.parametrize(
+    ("name", "source"),
+    [
+        ("app.py", "def café() -> int:\n    return 1\n"),
+        ("app.pyi", "def value() -> int: ...\n"),
+        ("app.ts", "export const café = 'ordinary source';\n"),
+        ("main.tf", 'locals { value = "ordinary source" }\n'),
+    ],
+    ids=("python", "stub", "typescript", "terraform"),
+)
+def test_skips_comment_parsing_without_retirement_candidates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, source: str
+) -> None:
+    target = tmp_path / name
+    target.write_text(source, encoding="utf-8")
+
+    def unexpected_comments(_path: Path, _text: str) -> None:
+        pytest.fail("source without retirement candidates must not be tokenized")
+
+    monkeypatch.setattr(retired_suppressions, "_comment_spans", unexpected_comments)  # sarj-noqa: SARJ445 — intercept the actual lexer boundary to prove public APIs skip parsing, without adding a production injection API.
+
+    assert retired_suppressions.plan((target,)) == ()
+    assert retired_suppressions.reference_counts(target, source) == {}
+
+
+@pytest.mark.parametrize(
+    ("key", "expected_key"),
+    [
+        ("@sarj/zod-naming-convention", "@sarj/require-pascal-case-zod-schema-name"),
+        (r"@sarj/\u007aod-naming-convention", r"@sarj/\u007aod-naming-convention"),
+    ],
+    ids=("retired-key", "escaped-key"),
+)
+def test_eslint_config_without_directives_keeps_existing_key_migration(
+    tmp_path: Path, key: str, expected_key: str
+) -> None:
+    target = tmp_path / "eslint.config.mjs"
+    source = f"export default [{{ rules: {{ '{key}': 'error' }} }}];\n"
+    target.write_text(source, encoding="utf-8")
+
+    expected = () if key == expected_key else (retired_suppressions.Rewrite(target, source.replace(key, expected_key)),)
+    assert retired_suppressions.plan((target,)) == expected
