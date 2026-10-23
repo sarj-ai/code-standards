@@ -46,12 +46,13 @@ def test_reports_indexes_beyond_file_budget_across_tables() -> None:
         "-- index-justification: referential-action: SET NULL",
     ],
 )
-def test_accepts_exact_immediately_preceding_justification(comment: str) -> None:
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_accepts_exact_immediately_preceding_justification(comment: str, newline: str) -> None:
     source = (
         "CREATE INDEX a_idx ON event(a);\nCREATE INDEX b_idx ON event(b);\nCREATE INDEX c_idx ON event(c);\n"
         f"{comment}\nCREATE INDEX d_idx ON event(d);\n"
     )
-    assert _check(source) == []
+    assert _check(source.replace("\n", newline)) == []
 
 
 @pytest.mark.parametrize(
@@ -296,3 +297,14 @@ CREATE INDEX d_idx ON event(d);
     findings = _check(source)
     assert len(findings) == 1
     assert findings[0].line == 7
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_blank_line_does_not_reuse_an_earlier_valid_justification(newline: str) -> None:
+    source = (
+        "CREATE INDEX a_idx ON event(a);\nCREATE INDEX b_idx ON event(b);\nCREATE INDEX c_idx ON event(c);\n"
+        "-- index-justification: referential-action: ON DELETE CASCADE\n\n"
+        "CREATE INDEX d_idx ON event(d);\n"
+    )
+    [finding] = _check(source.replace("\n", newline))
+    assert finding.line == 6

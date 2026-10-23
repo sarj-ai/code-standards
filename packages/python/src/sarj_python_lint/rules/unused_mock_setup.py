@@ -25,13 +25,13 @@ from sarj_python_lint.rule_base import (
 from sarj_python_lint.rules._ast_index import children, walk
 from sarj_python_lint.rules._closed_helpers import dynamic_namespace
 from sarj_python_lint.rules._paths import is_test_path
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 # The two attributes that *configure* what a mock does when called.
@@ -154,7 +154,7 @@ class UnusedMockSetup(Rule):
         if tree is None or dynamic_namespace(context):
             return []
 
-        provenance = ResourceProvenance(context)
+        provenance = context.resource_provenance
         if not provenance.builtin_namespace_untouched:
             return []
         seen: set[tuple[int, int]] = set()

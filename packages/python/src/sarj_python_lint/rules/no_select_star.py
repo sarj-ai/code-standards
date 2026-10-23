@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
@@ -17,7 +18,7 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._ast_index import walk
 from sarj_python_lint.rules._paths import is_test_path
-from sarj_python_lint.rules._sql import sql_string_value, strip_sql_noise
+from sarj_python_lint.rules._sql import POSTGRES_UNQUOTED_IDENTIFIER, sql_string_value, strip_sql_noise
 
 
 if TYPE_CHECKING:
@@ -26,7 +27,10 @@ if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
 
 
-_SQL_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*|\d+(?:\.\d+)?|[(),.*;]")
+_SQL_TOKEN = re.compile(
+    rf"{POSTGRES_UNQUOTED_IDENTIFIER}|\d+(?:\.\d+)?|"
+    r"\.[ \t\r\n\f\v]*\[(?:[^\]]|\]\])*\]|[-+*/<>=~!@#%^&|`?]+|[(),.;]"
+)
 _SELECT_PREFIX_WORDS = frozenset(
     {
         "ALL",
@@ -45,10 +49,10 @@ _SELECT_PREFIX_WORDS = frozenset(
         "WITH",
     }
 )
+_PROJECTION_PREFIX_LENGTH = 2
 _QUERY_BINDING_TOKENS = frozenset({"query", "sql", "statement"})
 _QUERY_SINKS = frozenset({"execute", "executemany", "executescript", "sql", "text"})
 _NON_PRODUCTION_SQL_PARTS = frozenset({"examples", "fixtures", "migration", "migrations"})
-_EXISTS_PREFIX_LENGTH = 2
 
 
 class _SqlToken(NamedTuple):
@@ -56,27 +60,43 @@ class _SqlToken(NamedTuple):
     depth: int
 
 
+@dataclass(slots=True)
+class _Projection:
+    exists_owned: bool
+    prefix: tuple[str, ...] = ()
+    found_star: bool = False
+
+
 def _has_real_select_star(sql: str) -> bool:
     tokens = _tokens_with_depth(sql)
-    selects: dict[int, tuple[int, bool, bool]] = {}
+    selects: dict[int, _Projection] = {}
+    exists_scopes: set[int] = set()
     for index, token in enumerate(tokens):
         lexeme = token.value
         depth = token.depth
-        if lexeme == "SELECT":
-            selects[depth] = (index, _is_exists_owned(tokens, index), False)
+        if lexeme == ")":
+            selects.pop(depth + 1, None)
+            exists_scopes.discard(depth + 1)
+        if lexeme == "(" and index > 0 and _is_keyword(tokens, index - 1, "EXISTS"):
+            exists_scopes.add(depth + 1)
+        if _is_keyword(tokens, index, "SELECT"):
+            selects[depth] = _Projection(exists_owned=bool(exists_scopes))
+            continue
+        if lexeme == ";":
+            selects.clear()
+            exists_scopes.clear()
             continue
         context = selects.get(depth)
         if context is None:
             continue
-        select_index, exists_owned, found_star = context
-        if lexeme == "*" and not exists_owned and _is_projection_star(tokens, index, select_index):
-            selects[depth] = (select_index, exists_owned, True)
-        elif lexeme == "FROM":
-            if found_star:
+        if _is_keyword(tokens, index, "FROM"):
+            if context.found_star:
                 return True
             selects.pop(depth, None)
-        elif lexeme == ";":
-            selects.pop(depth, None)
+        elif lexeme == "*" and not context.exists_owned and _is_projection_star(tokens, index, context):
+            context.found_star = True
+        elif len(context.prefix) < _PROJECTION_PREFIX_LENGTH:
+            context.prefix += (lexeme,)
     return False
 
 
@@ -84,7 +104,8 @@ def _tokens_with_depth(sql: str) -> list[_SqlToken]:
     tokens: list[_SqlToken] = []
     depth = 0
     for match in _SQL_TOKEN.finditer(sql):
-        lexeme = match.group().upper()
+        raw = match.group()
+        lexeme = raw.upper() if raw.isascii() else raw
         if lexeme == ")":
             depth = max(0, depth - 1)
         tokens.append(_SqlToken(lexeme, depth))
@@ -93,24 +114,18 @@ def _tokens_with_depth(sql: str) -> list[_SqlToken]:
     return tokens
 
 
-def _is_exists_owned(tokens: list[_SqlToken], select_index: int) -> bool:
-    return (
-        select_index >= _EXISTS_PREFIX_LENGTH
-        and tokens[select_index - 1].value == "("
-        and tokens[select_index - _EXISTS_PREFIX_LENGTH].value == "EXISTS"
-    )
+def _is_keyword(tokens: list[_SqlToken], index: int, keyword: str) -> bool:
+    return tokens[index].value == keyword and (index == 0 or tokens[index - 1].value != ".")
 
 
-def _is_projection_star(tokens: list[_SqlToken], star_index: int, select_index: int) -> bool:
+def _is_projection_star(tokens: list[_SqlToken], star_index: int, context: _Projection) -> bool:
     previous = tokens[star_index - 1].value if star_index else ""
-    if previous == ".":
-        return True
-    if previous in {"SELECT", ","} or previous in _SELECT_PREFIX_WORDS:
-        return True
-    prefix = [
-        token.value for token in tokens[select_index + 1 : star_index] if token.depth == tokens[select_index].depth
-    ]
-    return bool(prefix[:2] == ["DISTINCT", "ON"] and previous == ")")
+    return (
+        previous in {".", ","}
+        or not context.prefix
+        or previous in _SELECT_PREFIX_WORDS
+        or (previous == ")" and (context.prefix == ("DISTINCT", "ON") or context.prefix[:1] == ("TOP",)))
+    )
 
 
 @final
@@ -159,6 +174,34 @@ class NoSelectStar(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="wrapped-exists-outer-wildcard",
+                title="The outer projection still selects every column",
+                outcome=ExampleOutcome.MATCH,
+                scenario="projection-owner",
+                files=(
+                    ExampleFile.python(
+                        "app/queries.py", "query = 'SELECT EXISTS((SELECT * FROM jobs)), * FROM runs'\n"
+                    ),
+                ),
+                focus_path=PurePosixPath("app/queries.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="quoted-column-arithmetic",
+                title="Quoted arithmetic operands do not project a wildcard",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="projection-owner",
+                files=(
+                    ExampleFile.python(
+                        "app/queries.py", 'query = \'SELECT "units" * "price" AS total FROM entries\'\n'
+                    ),
+                ),
+                focus_path=PurePosixPath("app/queries.py"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description = documentation.summary
@@ -188,7 +231,7 @@ class NoSelectStar(Rule):
                 continue
             consumed.update(id(sub) for sub in walk(node))
 
-            sql = strip_sql_noise(text)
+            sql = strip_sql_noise(text, preserve_quoted_tokens=True)
             if not _has_real_select_star(sql):
                 continue
 

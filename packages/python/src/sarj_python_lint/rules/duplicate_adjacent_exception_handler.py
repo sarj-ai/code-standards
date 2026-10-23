@@ -26,13 +26,13 @@ from sarj_python_lint.rule_base import (
 from sarj_python_lint.rules._closed_helpers import dynamic_namespace, stable_class
 from sarj_python_lint.rules._paths import is_generated
 from sarj_python_lint.rules._project_index import ProjectIndexSet
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 from sarj_python_lint.rules._suppression_comments import scan_comments
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._project_index import SourceUnit, SymbolRef
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
     from sarj_python_lint.rules._suppression_comments import Comment
 
 
@@ -85,7 +85,7 @@ class DuplicateAdjacentExceptionHandler(ProjectRule):
             return []
         project = context.session.project or ProjectIndexSet.single(context.path, context.source)
         unit = project.unit_or_source(context.path, context.source, tree)
-        provenance = ResourceProvenance(context)
+        provenance = context.resource_provenance
         if not provenance.builtin_namespace_untouched:
             return []
         comments = scan_comments(context.source)
@@ -198,7 +198,7 @@ def _first_party_exception(
     definition_context = (
         context if owner.path == context.path else PythonFileContext(owner.path, owner.source, context.session)
     )
-    definition_provenance = provenance if definition_context is context else ResourceProvenance(definition_context)
+    definition_provenance = provenance if definition_context is context else definition_context.resource_provenance
     declaration = next(
         (node for node in definition_context.nodes(ast.ClassDef) if node.name == summary.symbol.name), None
     )

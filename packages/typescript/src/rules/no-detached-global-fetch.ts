@@ -12,6 +12,7 @@ import {
 } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { stableValueBinding } from "./_stable-value-binding.js";
 import { isGeneratedFile, isScriptFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "detachedGlobalFetch";
@@ -105,15 +106,9 @@ export default createRule<Options, MessageIds>({
         GLOBAL_RECEIVERS.has(node.name) && resolvesToGlobal(node);
     }
 
-    function isStableAlias(variable: TSESLint.Scope.Variable): boolean {
-      return !variable.references.some(
-        (reference) => reference.isWrite() && reference.init !== true,
-      );
-    }
-
     function recordAlias(identifier: TSESTree.Identifier): void {
       const variable = bindingOf(identifier);
-      if (variable !== null && isStableAlias(variable)) aliases.add(variable);
+      if (variable !== null && stableValueBinding(variable)) aliases.add(variable);
     }
 
     function staticMemberName(node: TSESTree.MemberExpression): string | null {
@@ -130,7 +125,7 @@ export default createRule<Options, MessageIds>({
       if (expression.type === AST_NODE_TYPES.Identifier) {
         if (expression.name === "fetch" && resolvesToGlobal(expression)) return true;
         const variable = bindingOf(expression);
-        return variable !== null && aliases.has(variable) && isStableAlias(variable);
+        return variable !== null && aliases.has(variable);
       }
       if (expression.type === AST_NODE_TYPES.MemberExpression) {
         return isGlobalFetchMember(expression);

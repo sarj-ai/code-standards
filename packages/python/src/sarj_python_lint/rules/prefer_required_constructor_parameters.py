@@ -18,11 +18,11 @@ from sarj_python_lint.rule_base import (
 from sarj_python_lint.rules._ast_position import AstPosition, ast_position
 from sarj_python_lint.rules._imports import TYPING_SOURCES
 from sarj_python_lint.rules._paths import is_test_path
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 @final
@@ -96,7 +96,7 @@ class PreferRequiredConstructorParameters(Rule):
                 continue
             if method.decorator_list:
                 if provenance is None:
-                    provenance = ResourceProvenance(context)
+                    provenance = context.resource_provenance
                 if _is_overload(context, provenance, method):
                     continue
             findings.extend(

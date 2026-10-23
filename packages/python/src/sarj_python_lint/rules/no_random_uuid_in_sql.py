@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-from dataclasses import dataclass
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, ClassVar, final, override
@@ -15,20 +14,22 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
-from sarj_python_lint.rules._sql import strip_sql_noise
+from sarj_python_lint.rules._sql import (
+    POSTGRES_IDENTIFIER_CONTINUATION,
+    POSTGRES_UNQUOTED_IDENTIFIER,
+    SQL_WHITESPACE,
+    strip_sql_noise,
+)
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
 
 
-_RANDOM_UUID_RE = re.compile(r"(?<![\w$])(?:gen_random_uuid|uuid_generate_v4)\s*\(", re.IGNORECASE)
-
-
-@dataclass(frozen=True, slots=True)
-class _IdentifierEnd:
-    end: int
-    after_whitespace: int
+_RANDOM_UUID_RE = re.compile(
+    rf"(?<!{POSTGRES_IDENTIFIER_CONTINUATION})(?ai:gen_random_uuid|uuid_generate_v4)[ \t\r\n\f\v]*\("
+)
+_SQL_IDENTIFIER = re.compile(POSTGRES_UNQUOTED_IDENTIFIER)
 
 
 # Require SQL structure so prose that merely names the function stays valid.
@@ -108,6 +109,7 @@ class NoRandomUuidInSql(Rule):
         tree = context.tree
         if tree is None:
             return []
+        docstrings = context.docstring_node_ids
         diags = [
             Diagnostic(
                 path=path,
@@ -117,7 +119,7 @@ class NoRandomUuidInSql(Rule):
                 message=_MESSAGE,
             )
             for node in context.nodes(ast.Constant)
-            if isinstance(node.value, str) and _is_offending_sql(node.value)
+            if id(node) not in docstrings and isinstance(node.value, str) and _is_offending_sql(node.value)
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
@@ -130,34 +132,31 @@ def _is_offending_sql(value: str) -> bool:
         return False
     if _UUIDV7_FUNCTION_RE.search(masked):
         return False
-    return any(not _inside_uuidv7_builder(masked, match.start()) for match in matches)
+    return _outside_uuidv7_builders(masked, frozenset(match.start() for match in matches))
 
 
-def _inside_uuidv7_builder(sql: str, position: int) -> bool:
-    calls: list[str | None] = []
+def _outside_uuidv7_builders(sql: str, positions: frozenset[int]) -> bool:
+    calls: list[bool] = []
+    builder_depth = 0
     index = 0
-    while index < position:
-        if sql[index].isalpha() or sql[index] == "_":
-            identifier = _identifier_end(sql, index, position)
-            if identifier.after_whitespace < position and sql[identifier.after_whitespace] == "(":
-                calls.append(sql[index : identifier.end].lower())
-                index = identifier.after_whitespace + 1
+    while index < len(sql):
+        if identifier := _SQL_IDENTIFIER.match(sql, index):
+            after = identifier.end()
+            while after < len(sql) and sql[after] in SQL_WHITESPACE:
+                after += 1
+            if after < len(sql) and sql[after] == "(":
+                if index in positions and builder_depth == 0:
+                    return True
+                builder = identifier[0].lower() in _UUIDV7_BUILDERS
+                calls.append(builder)
+                builder_depth += int(builder)
+                index = after + 1
                 continue
-            index = identifier.end
+            index = identifier.end()
             continue
         if sql[index] == "(":
-            calls.append(None)
+            calls.append(False)
         elif sql[index] == ")" and calls:
-            calls.pop()
+            builder_depth -= int(calls.pop())
         index += 1
-    return any(call in _UUIDV7_BUILDERS for call in calls)
-
-
-def _identifier_end(sql: str, index: int, position: int) -> _IdentifierEnd:
-    end = index + 1
-    while end < position and (sql[end].isalnum() or sql[end] in {"_", "$"}):
-        end += 1
-    after = end
-    while after < position and sql[after].isspace():
-        after += 1
-    return _IdentifierEnd(end=end, after_whitespace=after)
+    return False

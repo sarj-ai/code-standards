@@ -226,10 +226,9 @@ class NoDiscardedValidationResult(Rule):
 class _ValidationResults:
     def __init__(self, context: PythonFileContext) -> None:
         self.context = context
-        self.provenance = ResourceProvenance(context, require_static_namespace=True)
+        self.provenance = context.static_resource_provenance
         self.owners: dict[Path, tuple[PythonFileContext, ResourceProvenance]] = {}
         self.contracts: dict[_Function, bool] = {}
-        self.annotations: dict[ast.Module, AnnotationSemantics] = {}
 
     def discarded(self, statement: ast.Expr, call: ast.Call) -> bool:
         if self.provenance.dynamic_namespace or self.provenance.wildcard or self._expected_exception(statement):
@@ -382,7 +381,7 @@ class _ValidationResults:
             if module is None:
                 return None
             owner = PythonFileContext(path, module.source, self.context.session)
-            self.owners[path] = owner, ResourceProvenance(owner, require_static_namespace=True)
+            self.owners[path] = owner, owner.static_resource_provenance
         return self.owners[path][1]
 
     def _value_annotation(
@@ -395,10 +394,7 @@ class _ValidationResults:
     ) -> bool:
         if remaining <= 0 or provenance.context.tree is None or provenance.wildcard:
             return False
-        tree = provenance.context.tree
-        if tree not in self.annotations:
-            self.annotations[tree] = AnnotationSemantics.from_tree(tree)
-        annotation = self.annotations[tree].parse(annotation)
+        annotation = AnnotationSemantics.parse(annotation)
         match annotation:
             case ast.BinOp(left=left, op=ast.BitOr(), right=right):
                 return self._value_annotation(provenance, left, at, remaining - 1, seen) and self._value_annotation(

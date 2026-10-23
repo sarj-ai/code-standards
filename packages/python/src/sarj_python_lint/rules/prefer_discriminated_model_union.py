@@ -26,11 +26,11 @@ from sarj_python_lint.rules._pydantic_field_contract import (
     direct_models,
     unique_members,
 )
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 _PAIR_ARITY = 2
@@ -202,7 +202,7 @@ class PreferDiscriminatedModelUnion(Rule):
         diagnostics = data_union_diagnostics(context, self.code)
         if "None" not in context.symbol_source or "model_validator" not in context.symbol_source:
             return diagnostics
-        provenance = ResourceProvenance(context, require_static_namespace=True)
+        provenance = context.static_resource_provenance
         for model in direct_models(context, methods=True):
             if not _stable_model(model, context, provenance):
                 continue

@@ -9,6 +9,7 @@ import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescr
 import { importSpecifierName } from "./_import-specifier-name.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { stableValueBinding } from "./_stable-value-binding.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "preferAsyncFs";
@@ -99,11 +100,11 @@ export default createRule<Options, MessageIds>({
     };
     const isNamespace = (node: TSESTree.Identifier): boolean => {
       const binding = bindingOf(node);
-      return binding !== null && namespaces.has(binding) && !binding.references.some((reference) => reference.isWrite() && reference.init !== true);
+      return binding !== null && namespaces.has(binding);
     };
     const recordNamespace = (node: TSESTree.Identifier): void => {
       const binding = bindingOf(node);
-      if (binding !== null) namespaces.add(binding);
+      if (binding !== null && stableValueBinding(binding)) namespaces.add(binding);
     };
     return {
       ImportDeclaration(node): void {

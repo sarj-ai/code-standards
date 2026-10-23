@@ -14,6 +14,21 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+def test_comprehension_reuse_advice_stays_out_of_error_baselines(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    rule = REGISTRY["prefer-walrus-comprehension-filter"]
+    example = next(case for case in rule.public_examples() if case.expected_count)
+    target = tmp_path / "values.py"
+    target.write_text(example.focus_file.source, encoding="utf-8")
+    baseline = tmp_path / "baseline.json"
+    command = ["check", "--rule", rule.id]
+    assert main([*command, str(target)]) == 0
+    assert f"{rule.code} warning:" in capsys.readouterr().out
+    assert main([*command, "--update-baseline", str(baseline), str(target)]) == 0
+    assert json.loads(baseline.read_text()) == {}
+
+
 def test_warning_is_excluded_when_baseline_records_a_blocking_error(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

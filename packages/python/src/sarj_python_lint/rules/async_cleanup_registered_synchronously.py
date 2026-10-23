@@ -16,11 +16,11 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 _BAD = "from contextlib import AsyncExitStack\nasync def close():\n    await release()\nasync def run():\n    async with AsyncExitStack() as stack:\n        stack.callback(close)\n"
@@ -72,7 +72,7 @@ class AsyncCleanupRegisteredSynchronously(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if "callback" not in context.symbol_source or context.generated or context.tree is None:
             return []
-        provenance = ResourceProvenance(context, require_static_namespace=True)
+        provenance = context.static_resource_provenance
         findings: list[Diagnostic] = []
         for call in context.nodes(ast.Call):
             if not _wrong_callback(call, provenance) or is_suppressed(context.source_lines, call.lineno, self.code):

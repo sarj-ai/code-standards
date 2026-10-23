@@ -19,6 +19,15 @@ def _check(source: str, path: str = "queries/events.sql") -> list[Diagnostic]:
 _PUBLIC_EXAMPLES = NoOffsetPagination.public_examples()
 
 
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_repeated_offset_locations_preserve_unicode_and_physical_lines(newline: str) -> None:
+    statements = ["SELECT café FROM events LIMIT $1 OFFSET $2;", "SELECT id FROM jobs LIMIT $1 OFFSET $2;"]
+    source = newline.join(["-- pagination", *statements]) + newline
+    assert [(finding.line, finding.col) for finding in _check(source)] == [
+        (number, statement.index("OFFSET") + 1) for number, statement in enumerate(statements, start=2)
+    ]
+
+
 @pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES))
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file

@@ -23,11 +23,11 @@ from sarj_python_lint.rules._pydantic_field_contract import (
     direct_models,
     unique_members,
 )
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 type _Primitive = str | bytes | int | float | complex | bool | None
@@ -126,7 +126,7 @@ class NoInvalidPydanticValidatorReturn(Rule):
         annotations = [node.annotation for node in context.nodes(ast.AnnAssign)]
         if any(sum(1 for _ in ast.walk(annotation)) > _MAX_ANNOTATION_NODES for annotation in annotations):
             return []
-        provenance = ResourceProvenance(context, require_static_namespace=True)
+        provenance = context.static_resource_provenance
         findings: list[Diagnostic] = []
         for model in direct_models(context, methods=True):
             proof = _model_return(model, context, provenance)

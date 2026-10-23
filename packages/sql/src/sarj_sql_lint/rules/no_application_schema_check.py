@@ -5,6 +5,7 @@ import re
 from typing import TYPE_CHECKING, final, override
 
 from sarj_sql_lint.rule_base import (
+    POSTGRES_IDENTIFIER_CONTINUATION,
     AutofixPolicy,
     DefaultLevel,
     Diagnostic,
@@ -30,9 +31,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_CHECK_START = re.compile(r"\bCHECK\s*\(", re.IGNORECASE)
+_CHECK_START = re.compile(rf"(?<!{POSTGRES_IDENTIFIER_CONTINUATION})(?ai:CHECK)[ \t\r\n\f\v]*\(")
 _JSON_SHAPE_FUNCTION = re.compile(
-    r'(?<![A-Za-z0-9_$])(?:JSONB?_(?:TYPEOF|ARRAY_LENGTH)\b|(?-i:"jsonb?_(?:typeof|array_length)"))\s*\(',
+    rf'(?<!{POSTGRES_IDENTIFIER_CONTINUATION})(?:(?ai:JSONB?_(?:TYPEOF|ARRAY_LENGTH))\b|(?-i:"jsonb?_(?:typeof|array_length)"))[ \t\r\n\f\v]*\(',
     re.IGNORECASE,
 )
 _CLOSED_TEXT_VALUES = re.compile(
@@ -178,6 +179,7 @@ class NoApplicationSchemaCheck(Rule):
                         line=line,
                         col=col,
                         code=self.code,
+                        severity=DefaultLevel.WARNING,
                         message=(
                             "Review ownership of this "
                             "JSON-shape or closed-value CHECK. Move application-owned validation to a typed boundary; retain database invariants and document their ownership."

@@ -227,6 +227,7 @@ class NoRestatedComment(Rule):
                     column,
                     self.code,
                     f"Comment only repeats the following `{subject}` declaration; delete it or state its constraint.",
+                    severity=DefaultLevel.WARNING,
                 )
             )
         return findings

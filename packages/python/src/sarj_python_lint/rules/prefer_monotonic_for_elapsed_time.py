@@ -232,7 +232,7 @@ def _clock_is_mutated(context: PythonFileContext) -> bool:
     clocks = _clock_imports(context)
     if context.tree is None:
         return False
-    for node in ast.walk(context.tree):
+    for node in context.nodes(ast.AST):
         if _reflective_call(node) or (
             isinstance(node, ast.Attribute) and node.attr in {"__dict__", "__getattribute__"}
         ):

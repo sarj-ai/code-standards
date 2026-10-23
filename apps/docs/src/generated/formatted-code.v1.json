@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "1637e1113da1e829b8f5a92acc59c09e64c9280f63515a4206b8b9f631d5c75a",
-  "cliSha256": "c76cb5e2a0ca1e7b3c449a1e43534f039d272ae3ba5c8d27172166013f98c3ea",
+  "catalogSha256": "6d94559c2e8b92a6f6c84240b13d589c30d84633a498da7d531369944815d999",
+  "cliSha256": "731c1b67f9d4c059201d9125e06ac8628bfe07701833d61e2e45cb80ca47436f",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -2761,6 +2761,21 @@
           "title": "Select the required columns"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/queries.ts",
+              "source": "db.query('SELECT \"units\" * \"price\" AS total FROM entries');\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/queries.ts",
+          "id": "quoted-column-arithmetic",
+          "outcome": "accept",
+          "scenarioId": "projection-owner",
+          "title": "Quoted arithmetic operands are not wildcards"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -2774,6 +2789,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not select every column"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/queries.ts",
+              "source": "db.query(\"SELECT EXISTS((SELECT * FROM jobs)), * FROM runs\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/queries.ts",
+          "id": "wrapped-exists-outer-wildcard",
+          "outcome": "reject",
+          "scenarioId": "projection-owner",
+          "title": "The outer projection still selects every column"
         }
       ],
       "optionsSchemaSource": null
@@ -4411,6 +4441,21 @@
           "title": "Avoid mutable state for one value"
         },
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "case.ts",
+              "source": "const crypto = require(\"node:crypto\");\nexport const digest = crypto.createHash(\"sha256\").update(\"value\").digest(\"hex\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "case.ts",
+          "id": "native-namespace",
+          "outcome": "reject",
+          "scenarioId": "stable-native-namespace",
+          "title": "An unchanged namespace retains native provenance"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -4424,6 +4469,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Use Node's one-shot hash API"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "case.ts",
+              "source": "const crypto = require(\"node:crypto\");\ncrypto.createHash = () => ({\n  update() {\n    return this;\n  },\n  digest() {\n    return \"custom\";\n  },\n});\nexport const digest = crypto.createHash(\"sha256\").update(\"value\").digest(\"hex\");\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "case.ts",
+          "id": "replaced-namespace-member",
+          "outcome": "accept",
+          "scenarioId": "stable-native-namespace",
+          "title": "A replaced member has a different contract"
         }
       ],
       "optionsSchemaSource": null
@@ -6482,6 +6542,21 @@
     "iac:no-project-secret-access-for-service-account": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"google_project_iam_member\" \"api\" {\n  role   = join(\"\", [\"roles/secret\", \"manager.secretAccessor\"])\n  member = \"serviceAccount:worker@example.com\"\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "joined-project-secret-accessor",
+          "outcome": "reject",
+          "scenarioId": "static-role-principal",
+          "title": "A static role expression still grants project-wide access"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -6510,6 +6585,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A service account can read every project secret"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"google_project_iam_member\" \"api\" {\n  role   = join(\"\", [\"roles/secret\", \"manager.secretAccessor\"])\n  member = replace(\"serviceAccount:eng@example.com\", \"serviceAccount:\", \"group:\")\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "transformed-human-member",
+          "outcome": "accept",
+          "scenarioId": "static-role-principal",
+          "title": "A source string does not prove the resulting identity"
         }
       ],
       "optionsSchemaSource": null
@@ -10617,6 +10707,21 @@
           "title": "Store query selects named columns"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/queries.py",
+              "source": "query = 'SELECT \"units\" * \"price\" AS total FROM entries'\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/queries.py",
+          "id": "quoted-column-arithmetic",
+          "outcome": "accept",
+          "scenarioId": "projection-owner",
+          "title": "Quoted arithmetic operands do not project a wildcard"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -10630,6 +10735,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Store query selects every column"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/queries.py",
+              "source": "query = \"SELECT EXISTS((SELECT * FROM jobs)), * FROM runs\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/queries.py",
+          "id": "wrapped-exists-outer-wildcard",
+          "outcome": "reject",
+          "scenarioId": "projection-owner",
+          "title": "The outer projection still selects every column"
         }
       ],
       "optionsSchemaSource": null

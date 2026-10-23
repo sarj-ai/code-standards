@@ -16,11 +16,9 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
-from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._mapping_shape_callbacks import RawMappingCallbacks
 from sarj_python_lint.rules._paths import is_test_path
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
@@ -121,7 +119,7 @@ class RequirePydanticForMappingShape(Rule):
             or not {"vendor", "vendored", "third_party"}.isdisjoint(context.path.parts)
         ):
             return []
-        facts = _Facts(context, context.tree)
+        facts = _Facts(context)
         if facts.provenance.wildcard or facts.provenance.dynamic_namespace:
             return []
         sources: set[ast.expr] = set()
@@ -144,10 +142,10 @@ class RequirePydanticForMappingShape(Rule):
 
 
 class _Facts:
-    def __init__(self, context: PythonFileContext, tree: ast.Module) -> None:
+    def __init__(self, context: PythonFileContext) -> None:
         self.context = context
-        self.provenance = ResourceProvenance(context, require_static_namespace=True)
-        self.semantics = AnnotationSemantics.from_tree(tree)
+        self.provenance = context.static_resource_provenance
+        self.semantics = context.annotation_semantics
         self.imports = {
             node: ImportIndex.from_tree(ast.Module(body=[node], type_ignores=[]))
             for node in context.nodes(ast.Import, ast.ImportFrom)

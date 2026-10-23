@@ -124,6 +124,7 @@ class NoPlaintextSecretEnv(Rule):
                         self.code,
                         f"Environment variable {name} receives a plain value; reference a Secret Manager secret "
                         "with value_source or value_from instead",
+                        severity=DefaultLevel.WARNING,
                     )
                 )
         return findings

@@ -171,7 +171,7 @@ class NoBroadKeywordCapture(Rule):
         tree = context.tree
         if tree is None:
             return []
-        semantics = _stable_annotation_semantics(context, tree)
+        semantics = _stable_annotation_semantics(context)
         mutated_members = _mutated_annotation_members(context, semantics)
         overloads: set[ast.FunctionDef | ast.AsyncFunctionDef] | None = None
         findings: list[Diagnostic] = []
@@ -261,8 +261,8 @@ def _interface_severity(
     return Severity.ERROR
 
 
-def _stable_annotation_semantics(context: PythonFileContext, tree: ast.Module) -> AnnotationSemantics:
-    semantics = AnnotationSemantics.from_tree(tree)
+def _stable_annotation_semantics(context: PythonFileContext) -> AnnotationSemantics:
+    semantics = context.annotation_semantics
     unstable = _conflicting_annotation_imports(context, semantics) | _annotation_binding_writes(context)
     if not unstable:
         return semantics

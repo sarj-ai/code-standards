@@ -342,7 +342,14 @@ class NoDeadEnvironmentInput(Rule):
         if assignments is None:
             return []
         diags = [
-            Diagnostic(path=path, line=attr.line, col=attr.col, code=self.code, message=message)
+            Diagnostic(
+                path=path,
+                line=attr.line,
+                col=attr.col,
+                code=self.code,
+                message=message,
+                severity=DefaultLevel.WARNING,
+            )
             for attr in assignments
             if (message := _assignment_message(analysis, environment, attr)) is not None
         ]

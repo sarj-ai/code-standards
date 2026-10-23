@@ -167,6 +167,63 @@ describe("sqlTextOf reconstructs the shapes TypeScript SQL actually takes", () =
 });
 
 describe("stripSqlNoise masks values and comments, in one left-to-right pass", () => {
+  it.each(["SELECT 'one\rtwo', live FROM entries", "SELECT /* comment\rcontinuation */ live FROM entries", "-- commentary\rSELECT live FROM entries"])("preserves all newline offsets in %j", (sql) => {
+    const masked = stripSqlNoise(sql);
+    expect(masked.length).toBe(sql.length);
+    expect(masked).toContain("live");
+    expect([...masked].flatMap((character, index) => /[\r\n]/u.test(character) ? [index] : [])).toEqual([...sql].flatMap((character, index) => /[\r\n]/u.test(character) ? [index] : []));
+  });
+  it("can retain opaque values as projection tokens", () => {
+    const sql = 'SELECT"units" * "price" FROM entries';
+    const masked = stripSqlNoise(sql, { preserveQuotedTokens: true });
+    expect(masked).toBe('SELECT?       * ?       FROM entries');
+    expect(masked.length).toBe(sql.length);
+  });
+  it.each(["\n", "\r\n", "\n-- a comment\n", "\t-- a comment\r\n \t"])("continues E-string escaping across %j", (gap) => {
+    const literal = String.raw`'it\'s SELECT * FROM hidden'`;
+    const sql = `SELECT E'seed'${gap}${literal}, * FROM visible`;
+    const masked = stripSqlNoise(sql);
+    expect(masked).not.toContain("hidden");
+    expect(masked).toContain(", * FROM visible");
+    expect(masked.length).toBe(sql.length);
+    expect(masked.split("\n").map((line) => line.length)).toEqual(sql.split("\n").map((line) => line.length));
+    expect(sqlSingleQuotedRanges(sql).map(([start, end]) => sql.slice(start, end))).toEqual(["'seed'", literal]);
+  });
+
+  it("keeps separate expressions in separate quoted ranges", () => {
+    const sql = "SELECT E'seed' ||\n'plain' AS label, * FROM visible";
+    expect(stripSqlNoise(sql)).toContain("AS label, * FROM visible");
+    expect(sqlSingleQuotedRanges(sql).map(([start, end]) => sql.slice(start, end))).toEqual(["'seed'", "'plain'"]);
+  });
+
+  it.each(["E", "e"])("keeps escaped apostrophes inside PostgreSQL %s strings", (prefix) => {
+    const literal = String.raw`'it\'s SELECT *\nFROM hidden'`;
+    const sql = `SELECT ${prefix}${literal}, id FROM visible`;
+    expect(stripSqlNoise(sql)).toBe(`SELECT ${prefix}${" ".repeat(literal.length)}, id FROM visible`);
+    expect(sqlSingleQuotedRanges(sql).map(([start, end]) => sql.slice(start, end))).toEqual([literal]);
+  });
+
+  it.each(["текст", "😀"])("masks Unicode dollar tag %s without swallowing following SQL", (tag) => {
+    const literal = `$${tag}$SELECT *\nFROM hidden$${tag}$`;
+    const sql = `SELECT ${literal}, * FROM visible`;
+    const masked = literal.split("\n").map((line) => " ".repeat(line.length)).join("\n");
+    expect(stripSqlNoise(sql)).toBe(`SELECT ${masked}, * FROM visible`);
+  });
+
+  it("keeps Unicode dollar-containing identifiers and numbered parameters visible", () => {
+    const sql = "SELECT α$tag$ FROM visible WHERE id=$1";
+    expect(stripSqlNoise(sql)).toBe(sql);
+  });
+
+  it.each([String.raw`'it\'s SELECT * FROM hidden'`, String.raw`"it\"s SELECT * FROM hidden"`])(
+    "keeps escaped ordinary quotes inside their literal: %s",
+    (literal) => {
+      const sql = `SELECT ${literal}, id FROM visible`;
+      expect(stripSqlNoise(sql)).not.toContain("hidden");
+      expect(stripSqlNoise(sql)).toContain(", id FROM visible");
+    },
+  );
+
   it("masks nested block comments without swallowing subsequent SQL", () => {
     const sql = "SELECT /* outer /* inner */ hidden */ id FROM users";
     expect(stripSqlNoise(sql)).toBe("SELECT " + " ".repeat("/* outer /* inner */ hidden */".length) + " id FROM users");

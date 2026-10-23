@@ -21,7 +21,6 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
-from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
 from sarj_python_lint.rules._first_party import FirstPartyFacts, distribution_root
 from sarj_python_lint.rules._static_json_alias import private_static_json_alias
 
@@ -30,6 +29,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
 
 
 _JSON_SCALARS = frozenset({"None", "bool", "float", "int", "str"})
@@ -150,7 +150,7 @@ class PreferPydanticJsonValue(Rule):
         tree = context.tree
         if tree is None:
             return []
-        semantics = AnnotationSemantics.from_tree(tree)
+        semantics = context.annotation_semantics
         aliases = [alias for statement in tree.body if (alias := _explicit_alias(statement, semantics)) is not None]
         if not aliases:
             return []

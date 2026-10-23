@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from fnmatch import fnmatch
+from functools import cached_property
 import json
 from pathlib import Path, PurePosixPath
 import re
@@ -24,7 +25,13 @@ from yaml.tokens import ScalarToken
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field, table_field
 from sarj_standards.libs.json_boundary import parse_json
-from sarj_standards.libs.linting.devops_programs import ShellParser, block_embeds_program, execution_blocks, parse_shell
+from sarj_standards.libs.linting.devops_programs import (
+    ExecutionBlock,
+    ShellParser,
+    block_embeds_program,
+    execution_blocks,
+    parse_shell,
+)
 from sarj_standards.libs.linting.shell_ast import make_shell_parser
 from sarj_standards.libs.linting.text_rule_base import Finding as Finding, RuleMeta as RuleMeta
 from sarj_standards.libs.linting.text_rules._registry import REGISTRY as AUTHORED_RULES
@@ -84,6 +91,16 @@ class _HeredocWordStart:
 class _TextPolicy(NamedTuple):
     durable: tuple[str, ...]
     excluded: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _ExecutionFacts:
+    relative: str
+    source: str
+
+    @cached_property
+    def blocks(self) -> tuple[ExecutionBlock, ...]:
+        return tuple(execution_blocks(self.relative, self.source))
 
 
 class _StandaloneComment(NamedTuple):
@@ -1199,12 +1216,17 @@ def check_paths(
 
     def collect_path_findings(path: Path, relative: str, source: str) -> list[Finding]:
         path_findings: list[Finding] = []
+        execution = _ExecutionFacts(relative, source)
         if enabled_codes is None or "SARJ302" in enabled_codes:
             path_findings.extend(_artifact_findings(path, relative, source, durable_patterns))
         if enabled_codes is None or "SARJ309" in enabled_codes:
-            path_findings.extend(_declarative_deployment_findings(path, relative, source))
+            path_findings.extend(_declarative_deployment_findings(path, relative, source, execution=execution))
         if enabled_codes is None or "SARJ310" in enabled_codes:
-            path_findings.extend(_workflow_embedded_program_findings(path, relative, source, shell_parser=shell_parser))
+            path_findings.extend(
+                _workflow_embedded_program_findings(
+                    path, relative, source, shell_parser=shell_parser, execution=execution
+                )
+            )
         if enabled_codes is None or "SARJ304" in enabled_codes:
             path_findings.extend(_shell_iac_source_findings(path, relative, source))
         if enabled_codes is None or "SARJ311" in enabled_codes:
@@ -1305,7 +1327,9 @@ def _shell_heredoc_delimiters(line: str) -> list[_ShellHeredoc]:
     return delimiters
 
 
-def _declarative_deployment_findings(path: Path, relative: str, source: str) -> list[Finding]:
+def _declarative_deployment_findings(
+    path: Path, relative: str, source: str, *, execution: _ExecutionFacts | None = None
+) -> list[Finding]:
     if path.suffix.casefold() == ".tf":
         return _terraform_deployment_findings(path, source)
     pure = PurePosixPath(relative)
@@ -1313,7 +1337,7 @@ def _declarative_deployment_findings(path: Path, relative: str, source: str) -> 
     in_operational_tree = bool(pure.parts) and pure.parts[0].casefold() in _OPERATIONAL_ROOTS
     if (not in_workflow and not in_operational_tree) or path.suffix.casefold() in {".md", ".mdx"}:
         return []
-    mutation_line = _deployment_mutation_line(relative, source, in_workflow=in_workflow)
+    mutation_line = _deployment_mutation_line(relative, source, in_workflow=in_workflow, execution=execution)
     if mutation_line is not None:
         return [
             Finding(
@@ -1367,8 +1391,10 @@ def _terraform_local_exec_lines(source: str) -> list[_ShellLogicalLine]:
     return commands
 
 
-def _deployment_mutation_line(relative: str, source: str, *, in_workflow: bool) -> int | None:
-    for block in execution_blocks(relative, source):
+def _deployment_mutation_line(
+    relative: str, source: str, *, in_workflow: bool, execution: _ExecutionFacts | None = None
+) -> int | None:
+    for block in execution.blocks if execution is not None else execution_blocks(relative, source):
         if block.argv and _command_mutates_control_plane(block.argv):
             return block.line
     for command in _deployment_shell_lines(source, workflow=in_workflow):
@@ -1396,6 +1422,7 @@ def _workflow_embedded_program_findings(
     source: str,
     *,
     shell_parser: ShellParser = parse_shell,
+    execution: _ExecutionFacts | None = None,
 ) -> list[Finding]:
     findings = {
         (block.line, block.end_line, block.end_column): Finding(
@@ -1406,7 +1433,7 @@ def _workflow_embedded_program_findings(
             end_line=block.end_line,
             end_column=block.end_column,
         )
-        for block in execution_blocks(relative, source)
+        for block in (execution.blocks if execution is not None else execution_blocks(relative, source))
         if block_embeds_program(block, parse_shell=shell_parser)
     }
     return list(findings.values())

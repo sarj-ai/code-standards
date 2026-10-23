@@ -491,10 +491,13 @@ def _identifier_components(value: str) -> tuple[str, ...]:
 
 
 def _has_local_justification(source: str, start: int, *, unique: bool) -> bool:
-    previous_end = source.rfind("\n", 0, start)
-    if previous_end < 0:
+    line_start = start - source_location(source, start).column + 1
+    if line_start == 0:
         return False
-    previous_start = source.rfind("\n", 0, previous_end) + 1
+    previous_end = line_start - 1
+    if source[previous_end] == "\n" and previous_end > 0 and source[previous_end - 1] == "\r":
+        previous_end -= 1
+    previous_start = previous_end - source_location(source, previous_end).column + 1
     previous = source[previous_start:previous_end]
     return (
         _APP_READ_JUSTIFICATION_RE.fullmatch(previous) is not None

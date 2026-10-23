@@ -5,6 +5,7 @@ import re
 from typing import TYPE_CHECKING, final, override
 
 from sarj_sql_lint.rule_base import (
+    POSTGRES_IDENTIFIER_CONTINUATION,
     AutofixPolicy,
     Diagnostic,
     ExampleFile,
@@ -26,7 +27,10 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-PATTERN = re.compile(r'(?<![A-Za-z0-9_$])(?:gen_random_uuid\b|(?-i:"gen_random_uuid"))\s*\(', re.IGNORECASE)
+PATTERN = re.compile(
+    rf'(?<!{POSTGRES_IDENTIFIER_CONTINUATION})(?:(?ai:gen_random_uuid)\b|(?-i:"gen_random_uuid"))[ \t\r\n\f\v]*\(',
+    re.IGNORECASE,
+)
 
 _MESSAGE = (
     "`gen_random_uuid()` generates a random UUIDv4 — use `uuidv7()` (Postgres 18). "

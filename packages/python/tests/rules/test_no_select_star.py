@@ -308,3 +308,53 @@ def test_non_executable_or_historical_sql_is_ignored(source: str, path: str) -> 
 
 def test_direct_execute_literal_is_flagged() -> None:
     assert len(_check('cursor.execute("SELECT * FROM users")\n')) == 1
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        ('SELECT "units" * "price" FROM entries', 0),
+        ('SELECT DISTINCT "units" * "price" FROM entries', 0),
+        ("SELECT αselect * 2 FROM entries", 0),
+        ("SELECT \u017felect * 2 FROM entries", 0),
+        ("SELECT COUNT(r.*) FROM runs r", 0),
+        ("SELECT (SELECT 1), COUNT(r.*), EXTRACT(year FROM created_at) FROM runs r", 0),
+        ("SELECT EXISTS((SELECT * FROM entries))", 0),
+        ("SELECT EXISTS(SELECT * FROM a UNION SELECT * FROM b)", 0),
+        ('SELECT"entries".*FROM entries', 1),
+        ('SELECT DISTINCT ON("key")*FROM entries', 1),
+        ("SELECT EXISTS((SELECT * FROM jobs)), * FROM runs", 1),
+        ("-- comment\rSELECT * FROM entries", 1),
+    ],
+)
+def test_projection_ownership_and_opaque_value_boundaries(query: str, expected: int) -> None:
+    assert len(_check(f"query = {query!r}\n")) == expected
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT **amount FROM invoices",
+        "SELECT @*amount FROM invoices",
+        "SELECT *?amount FROM invoices",
+        "SELECT ~*amount FROM invoices",
+    ],
+)
+def test_custom_prefix_operator_is_not_a_projection_star(sql: str) -> None:
+    assert _check(f"query = {sql!r}\n") == []
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT t.[*] FROM entries AS t",
+        "SELECT t. [*] FROM entries AS t",
+        "SELECT t.[a]]* FROM bogus] FROM entries AS t",
+    ],
+)
+def test_qualified_bracket_identifiers_are_not_wildcards(sql: str) -> None:
+    assert _check(f"query = {sql!r}\n") == []
+
+
+def test_array_subqueries_keep_real_wildcard_coverage() -> None:
+    assert len(_check("query = 'SELECT ARRAY[(SELECT * FROM entries)] FROM wrapper'\n")) == 1

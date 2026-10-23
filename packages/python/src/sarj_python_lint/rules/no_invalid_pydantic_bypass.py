@@ -27,11 +27,11 @@ from sarj_python_lint.rules._pydantic_field_contract import (
     direct_models,
     unique_members,
 )
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 _BUILTINS = frozenset({"str", "int", "float", "bool", "bytes", "complex", "list", "dict", "set", "frozenset", "tuple"})
@@ -159,7 +159,7 @@ class NoInvalidPydanticBypass(Rule):
             return []
         if context.tree is None or not _bounded_model_annotations(context):
             return []
-        provenance = ResourceProvenance(context, require_static_namespace=True)
+        provenance = context.static_resource_provenance
         models = _models(context, provenance)
         diagnostics: list[Diagnostic] = []
         for call in context.nodes(ast.Call):

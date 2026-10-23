@@ -145,3 +145,21 @@ def test_quoted_lowercase_json_function_has_the_same_schema_contract(function: s
 
 def test_dollar_identifier_suffix_does_not_become_a_native_json_function() -> None:
     assert _check("CREATE TABLE event (payload jsonb CHECK (custom$jsonb_typeof(payload) = 'array'));") == []
+
+
+@pytest.mark.parametrize("prefix", ["α", "café", "a\u0301", "😀", "custom$"])
+def test_custom_unicode_function_is_not_a_native_json_shape_check(prefix: str) -> None:
+    source = f"CREATE TABLE entries (payload JSONB CHECK ({prefix}jsonb_typeof(payload) = 'array'));"
+    assert NoApplicationSchemaCheck().check(Path("migrations/001_entries.sql"), source) == []
+
+
+@pytest.mark.parametrize("name", ["j\u017fonb_typeof", "jsonb_typeof\u00a0"])
+def test_unicode_function_names_do_not_prove_native_json_checks(name: str) -> None:
+    source = f"CREATE TABLE entries (payload jsonb CHECK ({name}(payload) = 'array'));"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("name", ["😀check", "custom$check", "chec\u212a", "check\u00a0"])
+def test_custom_check_function_does_not_become_a_constraint(name: str) -> None:
+    source = f"SELECT {name}(jsonb_typeof('{{}}'::jsonb));"
+    assert _check(source) == []

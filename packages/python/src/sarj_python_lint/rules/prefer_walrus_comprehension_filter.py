@@ -109,6 +109,7 @@ def _check_comprehension_node(
                         line=line,
                         col=col,
                         code=code,
+                        severity=Severity.WARNING,
                         message=(
                             "The same call runs in this comprehension filter and result — "
                             "if reevaluation is unintended, bind it once with a fresh name."

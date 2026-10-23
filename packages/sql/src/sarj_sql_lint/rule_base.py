@@ -40,9 +40,12 @@ class SourceLocation(NamedTuple):
     column: int
 
 
+_SQL_LINE_END = re.compile(r"\r\n?|\n")
+
+
 @lru_cache(maxsize=1)
 def _line_starts(source: str) -> tuple[int, ...]:
-    return (0, *(match.end() for match in re.finditer(r"\n", source)))
+    return (0, *(match.end() for match in _SQL_LINE_END.finditer(source)))
 
 
 def source_location(source: str, offset: int) -> SourceLocation:
@@ -77,11 +80,13 @@ _SARJ_NOQA_RE = re.compile(
     r"--\s*sarj-noqa\b(?::[ \t]*([A-Za-z][A-Za-z0-9_]*(?:[ \t]*,[ \t]*[A-Za-z][A-Za-z0-9_]*)*))?",
     re.IGNORECASE,
 )
-_NON_NEWLINE = re.compile(r"[^\n]")
+_NON_NEWLINE = re.compile(r"[^\r\n]")
 
 # A dollar-quote delimiter (`$$` or `$tag$`) where `tag` cannot start with a digit, preventing match with `$1`/`$2` positional parameters.
 _DOLLAR_DELIM_RE = re.compile(r"\$(?:[A-Za-z_\u0080-\U0010ffff][A-Za-z0-9_\u0080-\U0010ffff]*)?\$")
-_IDENT_CHAR_RE = re.compile(r"[A-Za-z0-9_$\u0080-\U0010ffff]")
+POSTGRES_IDENTIFIER_CONTINUATION = r"[A-Za-z0-9_$\u0080-\U0010ffff]"
+_IDENT_CHAR_RE = re.compile(POSTGRES_IDENTIFIER_CONTINUATION)
+_CONTINUED_QUOTE = re.compile(r"[ \t\f\v]*(?:--[^\r\n]*)?[\r\n](?:[ \t\f\v\r\n]|--[^\r\n]*[\r\n])*'")
 _STATEMENT_HEAD_SIZE = 4
 
 
@@ -209,11 +214,11 @@ def has_file_comment_match(source: str, pattern: re.Pattern[str], *, limit: int)
 
 @lru_cache(maxsize=32)
 def _standalone_directive_comments(source: str) -> tuple[SourceComment, ...]:
-    source_lines = source.split("\n")
+    line_starts = _line_starts(source)
     return tuple(
         comment
-        for comment, _ in _file_comment_spans(source)
-        if not comment.block and not source_lines[comment.line - 1][: comment.column - 1].strip()
+        for comment, (start, _) in _file_comment_spans(source)
+        if not comment.block and not source[line_starts[comment.line - 1] : start].strip()
     )
 
 
@@ -715,7 +720,7 @@ def sql_code_matches(pattern: re.Pattern[str], source: str, *, group: str | int 
         yield match
 
 
-POSTGRES_IDENTIFIER_PART = r'(?-i:"(?:""|[^"\x00])+"|[A-Za-z_\u0080-\U0010ffff][A-Za-z0-9_$\u0080-\U0010ffff]*)'
+POSTGRES_IDENTIFIER_PART = rf'(?-i:"(?:""|[^"\x00])+"|[A-Za-z_\u0080-\U0010ffff]{POSTGRES_IDENTIFIER_CONTINUATION}*)'
 SQL_WHITESPACE = " \t\r\n\v\f"
 _SQL_IDENTIFIER_PART = re.compile(POSTGRES_IDENTIFIER_PART)
 _SQL_QUALIFIED_IDENTIFIER = re.compile(rf"\s*{POSTGRES_IDENTIFIER_PART}(?:\s*\.\s*{POSTGRES_IDENTIFIER_PART})*\s*")
@@ -880,8 +885,8 @@ class Rule(ABC):
 
 def _scan_source_comment(source: str, start: int, pair: str) -> _CommentScan:
     if pair == "--":
-        end = source.find("\n", start)
-        end = len(source) if end == -1 else end
+        newline = _SQL_LINE_END.search(source, start)
+        end = len(source) if newline is None else newline.start()
         body_end = end
     else:
         end = _scan_block_comment(source, start)
@@ -920,7 +925,10 @@ def _scan_literal(source: str, i: int, ch: str) -> int:
     escape_string = (
         ch == "'" and i > 0 and source[i - 1] in {"E", "e"} and (i == 1 or _IDENT_CHAR_RE.match(source, i - 2) is None)
     )
-    return _scan_quoted(source, i, ch, backslash_escapes=escape_string)
+    end = _scan_quoted(source, i, ch, backslash_escapes=escape_string)
+    while escape_string and (continuation := _CONTINUED_QUOTE.match(source, end)) is not None:
+        end = _scan_quoted(source, continuation.end() - 1, ch, backslash_escapes=True)
+    return end
 
 
 class _DollarBodies:

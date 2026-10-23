@@ -18,11 +18,11 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 _PYDANTIC = frozenset({"pydantic", "pydantic.type_adapter"})
@@ -129,7 +129,7 @@ class PreferNativeStringCheck(Rule):
             or context.tree is None
         ):
             return []
-        provenance = ResourceProvenance(context)
+        provenance = context.resource_provenance
         imports = {
             statement: ImportIndex.from_tree(ast.Module(body=[statement], type_ignores=[]))
             for statement in (*context.nodes(ast.Import), *context.nodes(ast.ImportFrom))

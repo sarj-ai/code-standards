@@ -18,11 +18,11 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 _METHODS = frozenset({"trace", "debug", "info", "success", "warning", "error", "critical", "exception", "log"})
@@ -100,7 +100,7 @@ class NoLoguruPrintfFormat(Rule):
             if receiver is None or not context.imports.resolves(receiver, sources=_LOGURU, symbol="logger"):
                 continue
             if provenance is None:
-                provenance = ResourceProvenance(context, require_static_namespace=True)
+                provenance = context.static_resource_provenance
                 if not _logger_imports_untouched(context, provenance):
                     return []
             if not provenance.imported(receiver, "loguru.logger") or is_suppressed(

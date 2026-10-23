@@ -19,7 +19,6 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
@@ -215,7 +214,7 @@ class NoMutatingContainerTransform(Rule):
 class _ContainerTransforms:
     def __init__(self, context: PythonFileContext) -> None:
         self.context = context
-        self.provenance = ResourceProvenance(context, require_static_namespace=True)
+        self.provenance = context.static_resource_provenance
 
     @cached_property
     def native_calls(self) -> dict[ast.Call, str]:

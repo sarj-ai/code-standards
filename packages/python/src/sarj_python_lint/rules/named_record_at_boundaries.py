@@ -103,7 +103,7 @@ class NamedRecordAtBoundaries(Rule):
         source_lines = context.source_lines
         local = _local_function_ids(tree)
         private_class_methods = _private_class_function_ids(tree)
-        semantics = AnnotationSemantics.from_tree(tree)
+        semantics = context.annotation_semantics
         imports = semantics.imports
         fastapi = context.fastapi
         class_shadowed_annotations = _class_shadowed_annotation_ids(tree, semantics, node_index=context.node_index)

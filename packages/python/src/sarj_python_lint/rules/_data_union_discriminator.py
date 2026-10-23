@@ -72,6 +72,7 @@ def data_union_diagnostics(context: PythonFileContext, code: str) -> list[Diagno
 class _DataUnions:
     def __init__(self, context: PythonFileContext, tree: ast.Module) -> None:
         self.context = context
+        # This analysis refines mutation ownership; keep its provenance private.
         self.provenance = ResourceProvenance(context, require_static_namespace=True)
         self.provenance.mutated = _scoped_module_mutations(self.provenance, tree)
         bindings = self.provenance.bindings.get(tree, {})

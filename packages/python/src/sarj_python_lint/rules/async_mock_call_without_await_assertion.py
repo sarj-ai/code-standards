@@ -21,7 +21,7 @@ from sarj_python_lint.rule_base import (
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._pytest import collected_tests
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance, builtin_namespace_untouched
+from sarj_python_lint.rules._resource_provenance import builtin_namespace_untouched
 
 
 if TYPE_CHECKING:
@@ -291,7 +291,7 @@ def _test_diagnostics(
 
 
 def _mock_provider_proven(test: _TestFunction, context: PythonFileContext) -> bool:
-    provenance = ResourceProvenance(context, require_static_namespace=True)
+    provenance = context.static_resource_provenance
     constructors = [
         node
         for node in ast.walk(test)

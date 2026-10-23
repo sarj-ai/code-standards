@@ -20,6 +20,7 @@ from sarj_sql_lint.rule_base import (
     is_dump_file,
     is_migration_source,
     mask_sql,
+    source_location,
 )
 
 
@@ -207,11 +208,12 @@ class NoOffsetPagination(Rule):
                 if suffix.startswith(")") and text[: match.end].count("(") <= text[: match.end].count(")"):
                     continue
                 offset = statement_start + match.start
+                location = source_location(source, offset)
                 diags.append(
                     Diagnostic(
                         path=path,
-                        line=source.count("\n", 0, offset) + 1,
-                        col=offset - source.rfind("\n", 0, offset),
+                        line=location.line,
+                        col=location.column,
                         code=self.code,
                         message=(
                             "Replace dynamic OFFSET with a direction-matched, stable, unique cursor; suppress "

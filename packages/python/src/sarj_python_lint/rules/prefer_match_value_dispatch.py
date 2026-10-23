@@ -18,12 +18,12 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._ast_index import NodeIndex
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 type _Literal = str | bytes | int | float
@@ -180,7 +180,7 @@ class PreferMatchValueDispatch(Rule):
         candidates = _candidate_dispatches(context, tree)
         if candidates and context.session.python_target.has_declared_support_before(path, (3, 10)):
             return []
-        provenance = ResourceProvenance(context, require_static_namespace=True) if candidates else None
+        provenance = context.static_resource_provenance if candidates else None
         for node, subject in sorted(candidates, key=lambda candidate: candidate[0].lineno):
             findings.append(
                 Diagnostic(

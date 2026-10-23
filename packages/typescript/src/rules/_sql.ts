@@ -8,9 +8,18 @@ import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescr
 import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 import { staticString } from "./_static-string.js";
 
+const SQL_IDENTIFIER_CONTINUATION = /[\w$\u0080-\u{10FFFF}]/u;
+const DOLLAR_DELIMITER = /\$(?:[A-Za-z_\u0080-\u{10FFFF}][A-Za-z_0-9\u0080-\u{10FFFF}]*)?\$/uy;
+const SQL_LINE_END = /[\r\n]/g;
+const CONTINUED_QUOTE = /[ \t\f\v]*(?:--[^\r\n]*)?[\r\n](?:[ \t\f\v\r\n]|--[^\r\n]*[\r\n])*'/y;
+
+interface SqlNoiseOptions {
+  readonly preserveQuotedTokens?: boolean;
+}
+
 /** Mask SQL values and comments without changing text or line lengths. */
-export function stripSqlNoise(text: string): string {
-  return scanSqlNoise(text);
+export function stripSqlNoise(text: string, options?: SqlNoiseOptions): string {
+  return scanSqlNoise(text, undefined, options?.preserveQuotedTokens === true);
 }
 
 export function sqlSingleQuotedRanges(text: string): readonly (readonly [number, number])[] {
@@ -27,24 +36,27 @@ export function sqlNoiseInfo(text: string): {
   return { text: masked, singleQuotedRanges };
 }
 
-function scanSqlNoise(text: string, onSingleQuoted?: (start: number, end: number) => void): string {
+function scanSqlNoise(text: string, onSingleQuoted?: (start: number, end: number) => void, preserveQuotedTokens = false): string {
   const out = text.split("");
   let index = 0;
   while (index < text.length) {
     const dollarEnd = dollarQuotedSqlEnd(text, index);
     if (dollarEnd !== null) {
       maskSqlRange(text, out, index, dollarEnd);
+      if (preserveQuotedTokens) out[index] = "?";
       index = dollarEnd;
       continue;
     }
     const character = text[index];
     if (character === "'" || character === '"') {
+      const start = index;
       index = quotedSqlEnd(text, out, index, onSingleQuoted);
+      if (preserveQuotedTokens) out[start] = "?";
       continue;
     }
     if (character === "-" && text[index + 1] === "-") {
-      const newline = text.indexOf("\n", index);
-      const end = newline === -1 ? text.length : newline;
+      SQL_LINE_END.lastIndex = index;
+      const end = SQL_LINE_END.exec(text)?.index ?? text.length;
       maskSqlRange(text, out, index, end);
       index = end;
       continue;
@@ -60,8 +72,9 @@ function scanSqlNoise(text: string, onSingleQuoted?: (start: number, end: number
 
 
 function dollarQuotedSqlEnd(text: string, start: number): number | null {
-  if (text[start] !== "$" || /[\w$]/u.test(text[start - 1] ?? "")) return null;
-  const delimiter = /^\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$/u.exec(text.slice(start))?.[0];
+  if (text[start] !== "$" || SQL_IDENTIFIER_CONTINUATION.test(text[start - 1] ?? "")) return null;
+  DOLLAR_DELIMITER.lastIndex = start;
+  const delimiter = DOLLAR_DELIMITER.exec(text)?.[0];
   if (delimiter === undefined) return null;
   const closing = text.indexOf(delimiter, start + delimiter.length);
   return closing < 0 ? text.length : closing + delimiter.length;
@@ -81,7 +94,7 @@ function blockSqlCommentEnd(text: string, out: string[], start: number): number 
       index += 2;
       continue;
     }
-    if (text[index] !== "\n") out[index] = " ";
+    if (text[index] !== "\n" && text[index] !== "\r") out[index] = " ";
     index += 1;
   }
   return index;
@@ -90,10 +103,19 @@ function blockSqlCommentEnd(text: string, out: string[], start: number): number 
 
 function quotedSqlEnd(text: string, out: string[], start: number, onSingleQuoted?: (start: number, end: number) => void): number {
   const quote = text[start];
+  const escapeString = quote === "'" && /[Ee]/u.test(text[start - 1] ?? "") &&
+    !SQL_IDENTIFIER_CONTINUATION.test(text[start - 2] ?? "");
+  let segmentStart = start;
   out[start] = " ";
   let index = start + 1;
   while (index < text.length) {
     const character = text[index];
+    // Generic SQL can use MySQL-style escapes; preserve the established conservative boundary.
+    if (character === "\\" && index + 1 < text.length) {
+      maskSqlRange(text, out, index, index + 2);
+      index += 2;
+      continue;
+    }
     if (character === quote) {
       out[index] = " ";
       if (index + 1 < text.length && text[index + 1] === quote) {
@@ -102,19 +124,34 @@ function quotedSqlEnd(text: string, out: string[], start: number, onSingleQuoted
         continue;
       }
       index += 1;
-      if (quote === "'") onSingleQuoted?.(start, index);
+      if (quote === "'") onSingleQuoted?.(segmentStart, index);
+      const continuation = escapedSqlContinuation(text, index, escapeString);
+      if (continuation !== null) {
+        maskSqlRange(text, out, index, continuation);
+        segmentStart = continuation - 1;
+        index = continuation;
+        continue;
+      }
       break;
     }
-    if (character !== "\n") out[index] = " ";
+    if (character !== "\n" && character !== "\r") out[index] = " ";
     index += 1;
   }
   return index;
 }
 
 
+/** PostgreSQL carries E-string escaping through newline-separated segments. */
+function escapedSqlContinuation(text: string, start: number, escapeString: boolean): number | null {
+  if (!escapeString) return null;
+  CONTINUED_QUOTE.lastIndex = start;
+  return CONTINUED_QUOTE.test(text) ? CONTINUED_QUOTE.lastIndex : null;
+}
+
+
 function maskSqlRange(text: string, out: string[], start: number, end: number): void {
   for (let index = start;index < end;index += 1) {
-    if (text[index] !== "\n") out[index] = " ";
+    if (text[index] !== "\n" && text[index] !== "\r") out[index] = " ";
   }
 }
 
@@ -197,7 +234,8 @@ function markConsumed(node: TSESTree.Node, consumed: WeakSet<TSESTree.Node>): vo
 
 /** Hand each whole, statically resolvable SQL statement to `handler` once. */
 export function createSqlListener(
-  handler: (sql: string, node: TSESTree.Node) => void,
+  handler: (sql: string, node: TSESTree.Node, original: string) => void,
+  options?: SqlNoiseOptions,
 ): TSESLint.RuleListener {
   const consumed = new WeakSet<TSESTree.Node>();
 
@@ -210,7 +248,7 @@ export function createSqlListener(
       return;
     }
     markConsumed(node, consumed);
-    handler(stripSqlNoise(text), node);
+    handler(stripSqlNoise(text, options), node, text);
   };
 
   return {

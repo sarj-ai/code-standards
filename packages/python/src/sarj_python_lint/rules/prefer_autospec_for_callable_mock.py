@@ -19,13 +19,13 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._ast_index import walk
 from sarj_python_lint.rules._paths import is_test_path
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 _MOCK_SOURCES = frozenset({"unittest.mock"})
@@ -138,7 +138,7 @@ class PreferAutospecForCallableMock(Rule):
         specs = {name: function for name, function in _stable_specs(tree).items() if _spec_is_closed(name, context)}
         if not specs:
             return []
-        provenance = ResourceProvenance(context, require_static_namespace=True)
+        provenance = context.static_resource_provenance
         findings: list[Diagnostic] = []
         scopes = [tree, *context.nodes(ast.FunctionDef, ast.AsyncFunctionDef)]
         for scope in scopes:

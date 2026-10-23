@@ -20,11 +20,11 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._closed_helpers import call_matches, closed_references, direct_call
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 @final
@@ -102,7 +102,7 @@ class NoUnusedUnderscoredKeywordParameter(Rule):
             for argument in _unused_parameters(context, function):
                 if is_suppressed(context.source_lines, argument.lineno, self.code):
                     continue
-                provenance = provenance or ResourceProvenance(context)
+                provenance = provenance or context.resource_provenance
                 findings.append(
                     Diagnostic(
                         path=context.path,

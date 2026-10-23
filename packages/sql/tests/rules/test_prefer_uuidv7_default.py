@@ -141,3 +141,14 @@ def test_does_not_confuse_a_quoted_name_or_value_with_the_native_call(source: st
 
 def test_dollar_identifier_suffix_does_not_become_a_native_uuid_call() -> None:
     assert _check("SELECT custom$gen_random_uuid();") == []
+
+
+@pytest.mark.parametrize("prefix", ["α", "café", "a\u0301", "😀", "custom$"])
+def test_custom_identifier_suffix_is_not_the_native_uuid_function(prefix: str) -> None:
+    assert _check(f"SELECT {prefix}gen_random_uuid();") == []
+    assert len(_check(f"SELECT {prefix}.gen_random_uuid();")) == 1
+
+
+@pytest.mark.parametrize("name", ["gen_random_uu\u0130d", "gen_random_uuid\u00a0"])
+def test_unicode_function_names_are_not_native_uuid_calls(name: str) -> None:
+    assert PreferUuidv7Default().check(Path("queries.sql"), f"SELECT {name}();") == []

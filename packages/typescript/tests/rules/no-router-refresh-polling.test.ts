@@ -16,6 +16,8 @@ const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
 
 RULE_TESTER.run("no-router-refresh-polling", rule, {
   valid: [
+    { name: "does not inherit router identity through a second var initializer", code: "import {useRouter} from 'next/navigation'; var router=useRouter(); var router=cache; setInterval(()=>router.refresh(),1000);" },
+    { name: "includes later writes in the namespace proof", code: "import {useRouter} from 'next/navigation'; let router=useRouter(); setInterval(()=>router.refresh(),1000); router=cache;" },
     {name: "reassigned binding is not proven Next router", code: "import {useRouter} from 'next/navigation'; let router=useRouter(); router=cache; setInterval(()=>router.refresh(),1000);"},
     {name: "function declaration is an execution boundary", code: "import {useRouter} from 'next/navigation'; const router=useRouter(); setInterval(() => {function later(){router.refresh();}}, 1000);"},
     { name: "accepts the documented direct fetch", code: NO_ROUTER_REFRESH_POLLING_DOCUMENTATION.examples[0].files[0].source },
@@ -30,6 +32,7 @@ RULE_TESTER.run("no-router-refresh-polling", rule, {
     { name: "ignores generated code", code: `const router = useRouter(); setInterval(() => router.refresh(), 1000);`, filename: "/repo/generated/client.ts" },
   ],
   invalid: [
+    { name: "retains a router binding through a bare var redeclaration", code: "import {useRouter} from 'next/navigation'; var router=useRouter(); var router; setInterval(()=>router.refresh(),1000);", errors: [{ messageId: "routerRefreshPolling" }] },
     { name: "reports the documented router polling", code: NO_ROUTER_REFRESH_POLLING_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "routerRefreshPolling" }] },
     {
       name: "reports aliased Next useRouter bindings",

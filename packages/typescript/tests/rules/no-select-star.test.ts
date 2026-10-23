@@ -18,6 +18,31 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-select-star", rule, {
   valid: [
+    ...[String.raw`SELECT 'it\'s SELECT * FROM hidden' AS message FROM visible`, String.raw`SELECT "it\"s SELECT * FROM hidden" AS message FROM visible`].map((sql) => ({
+      name: `keeps ordinary dialect escape data masked: ${sql}`,
+      code: `db.query(${JSON.stringify(sql)});`,
+    })),
+    ...["SELECT [SELECT EXISTS(SELECT id FROM a), * FROM b] FROM entries", "SELECT [`t`.* EXCEPT(x)] FROM entries", "SELECT `SELECT EXISTS(SELECT id FROM a), * FROM b` FROM entries"].map((sql) => ({
+      name: `retains conservative ambiguous-quote handling: ${sql}`,
+      code: `db.query(${JSON.stringify(sql)});`,
+    })),
+    ...["SELECT t.[*] FROM entries AS t", "SELECT t. [*] FROM entries AS t", "SELECT t.[a]]* FROM bogus] FROM entries AS t"].map((sql) => ({
+      name: `keeps a qualified bracket identifier opaque: ${sql}`,
+      code: `db.query(${JSON.stringify(sql)});`,
+    })),
+    ...["**", "@*", "*?", "~*"].map((operator) => ({
+      name: `keeps the custom prefix operator ${operator} intact`,
+      code: `db.query("SELECT ${operator}amount FROM invoices");`,
+    })),
+    { name: "keeps quoted arithmetic operands opaque", code: 'db.query(\'SELECT "units" * "price" FROM entries\');' },
+    { name: "keeps all redundant EXISTS parentheses exempt", code: 'db.query("SELECT EXISTS((SELECT * FROM entries))");' },
+    { name: "keeps a UNION within EXISTS exempt", code: 'db.query("SELECT EXISTS(SELECT * FROM a UNION SELECT * FROM b)");' },
+    { name: "does not mistake a masked column's arithmetic for a wildcard", code: 'db.query(\'SELECT "units" * 2 FROM runs\');' },
+    { name: "does not mistake a masked DISTINCT column's arithmetic for a wildcard", code: 'db.query(\'SELECT DISTINCT "units" * 2 FROM runs\');' },
+    { name: "does not project a function's qualified row argument", code: "db.query('SELECT COUNT(r.*) FROM runs r');" },
+    { name: "does not retain a completed scalar subquery's scope", code: "db.query('SELECT (SELECT 1), COUNT(r.*), EXTRACT(year FROM created_at) FROM runs r');" },
+    { name: "keeps wildcard text inside an escaped PostgreSQL value", code: `db.query(${JSON.stringify(String.raw`SELECT E'it\'s SELECT * FROM hidden' AS message FROM visible`)});` },
+    { name: "keeps wildcard text inside a Unicode dollar string", code: 'db.query("SELECT $текст$ SELECT * FROM hidden$текст$ AS message FROM visible");' },
     { name: "accepts a wrapped explicit projection", code: 'db.query(("SEL" as string) + ("ECT id FROM users" satisfies string));' },
     { name: "does not treat an unused join separator as SQL", code: "const note = ['ready'].join('SELECT * FROM users');" },
     { name: "abstains from joined fragments with an unknown separator", code: "db.query(['SELECT * FROM users', 'WHERE id = 1'].join(separator));" },
@@ -67,6 +92,7 @@ RULE_TESTER.run("no-select-star", rule, {
       code: 'log("select the * you want to copy from the list above");',
     },
     { name: "requires a complete SELECT FROM shape", code: "const glob = `SELECT *`;" },
+    { name: "does not infer a query from reversed keywords", code: 'log("FROM entries SELECT *");' },
     {
       name: "ignores SELECT star inside a line comment",
       code: "db.prepare(`-- SELECT * FROM runs\\nSELECT id FROM runs`).all();",
@@ -82,6 +108,13 @@ RULE_TESTER.run("no-select-star", rule, {
     },
   ],
   invalid: [
+    { name: "reports an outer wildcard after EXISTS without ambiguous quoting", code: 'db.query("SELECT EXISTS(SELECT id FROM a), * FROM b");', errors: [{ messageId: "noSelectStar" }] },
+    { name: "retains a real wildcard in an array subquery", code: 'db.query("SELECT ARRAY[(SELECT * FROM entries)] FROM wrapper");', errors: [{ messageId: "noSelectStar" }] },
+    { name: "retains a quoted qualifier without surrounding spaces", code: 'db.query(\'SELECT"entries".*FROM entries\');', errors: [{ messageId: "noSelectStar" }] },
+    { name: "retains the outer wildcard after wrapped EXISTS", code: 'db.query("SELECT EXISTS((SELECT * FROM jobs)), * FROM runs");', errors: [{ messageId: "noSelectStar" }] },
+    { name: "ends SQL comments at a carriage return", code: `db.query(${JSON.stringify("-- comment\rSELECT * FROM entries")});`, errors: [{ messageId: "noSelectStar" }] },
+    { name: "finds the outer wildcard after an EXISTS projection", code: "db.query('SELECT EXISTS(SELECT * FROM jobs), * FROM runs');", errors: [{ messageId: "noSelectStar" }] },
+    { name: "finds a live wildcard after an escaped PostgreSQL value", code: `db.query(${JSON.stringify(String.raw`SELECT E'it\'s fine', * FROM visible`)});`, errors: [{ messageId: "noSelectStar" }] },
     { name: "reconstructs a wildcard through erased SQL fragments", code: 'db.query(("SEL" as string) + ("ECT * FROM users" satisfies string));', errors: [{ messageId: "noSelectStar" }] },
     { name: "inspects SQL reconstructed with an empty join separator", code: "db.query(['SEL', 'ECT * FROM users'].join(''));", errors: [{ messageId: "noSelectStar" }] },
     { name: "keeps executed queries inside outer template substitutions", code: 'logger.info(`value ${db.query("SELECT * FROM users")}`);', errors: [{ messageId: "noSelectStar" }] },
