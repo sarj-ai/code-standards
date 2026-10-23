@@ -44,6 +44,7 @@ class SourcePaths:
     workflows: tuple[Path, ...]
     dockerfiles: tuple[Path, ...]
     terraform: tuple[Path, ...]
+    terraform_format: tuple[Path, ...]
     compose: tuple[Path, ...]
 
 
@@ -81,8 +82,16 @@ def analyze_sources(
                 runner=runner,
             )
         )
-    if "terraform" in selected and sources.terraform:
-        reports.extend(_terraform_reports(root, sources.terraform, runner, trust_repository_code=trust_repository_code))
+    if "terraform" in selected and (sources.terraform or sources.terraform_format):
+        reports.extend(
+            _terraform_reports(
+                root,
+                sources.terraform,
+                runner,
+                formatting_paths=sources.terraform_format,
+                trust_repository_code=trust_repository_code,
+            )
+        )
     if "tflint" in selected and sources.terraform:
         reports.extend(_tflint_reports(root, sources.terraform, runner, trust_repository_code=trust_repository_code))
     if "compose" in selected:
@@ -109,6 +118,7 @@ def _select_sources(root: Path, paths: tuple[str, ...]) -> SourcePaths:
             )
         ),
         terraform=tuple(path for path in inputs if path.suffix == ".tf" or path.name.endswith(".tf.json")),
+        terraform_format=tuple(path for path in inputs if path.name.endswith((".tf", ".tfvars", ".tftest.hcl"))),
         compose=tuple(
             path
             for path in inputs
@@ -350,10 +360,14 @@ def _project_inputs(paths: tuple[Path, ...]) -> tuple[tuple[Path, tuple[Path, ..
 
 
 def _terraform_reports(
-    root: Path, paths: tuple[Path, ...], runner: ProcessRunner, *, trust_repository_code: bool
+    root: Path,
+    paths: tuple[Path, ...],
+    runner: ProcessRunner,
+    *,
+    formatting_paths: tuple[Path, ...],
+    trust_repository_code: bool,
 ) -> tuple[ToolReport, ...]:
     reports: list[ToolReport] = []
-    formatting_paths = tuple(path for path in paths if path.suffix == ".tf")
     try:  # ruff: ignore[too-many-statements-in-try-clause] -- one boundary owns read-only formatting protocol.
         tool = checked_tool("terraform", root=root, runner=runner)
         output = (

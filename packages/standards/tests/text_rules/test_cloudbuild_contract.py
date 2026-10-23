@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,32 @@ def _alias_graph(branches: int) -> str:
 )
 def test_build_contract(source: str, count: int) -> None:
     assert len(check_cloudbuild(Path("config.yaml"), source)) == count
+
+
+@pytest.mark.parametrize(
+    ("steps", "count"),
+    [
+        ([{"name": "builder", "waitFor": ["later"]}, {"name": "builder", "id": "later"}], 1),
+        ([{"name": "builder", "entrypoint": "bash", "args": ["-c", "echo ${BRANCH_NAME}"]}], 1),
+        ([{"name": "builder", "entrypoint": "bash", "args": ["scripts/build.sh", "${BRANCH_NAME}"]}], 0),
+    ],
+    ids=("forward-dependency", "shell-source-substitution", "script-argument"),
+)
+def test_json_builds_share_yaml_semantics(steps: list[dict[str, object]], count: int) -> None:
+    source = json.dumps({"steps": steps}, indent=2)
+    findings = check_cloudbuild(Path("cloudbuild.json"), source, selected=True)
+    assert len(findings) == count
+    assert all(finding.code == "SARJ315" and finding.line > 1 for finding in findings)
+
+
+@pytest.mark.parametrize(
+    "source",
+    ['{"steps": [}', '{"steps": [], "steps": []}', '{"steps": [], "timeout": NaN}', "steps: []\n"],
+    ids=("malformed", "duplicate", "non-finite", "yaml-only"),
+)
+def test_selected_json_cannot_pass_as_yaml(source: str) -> None:
+    with pytest.raises(CloudBuildParseError):
+        check_cloudbuild(Path("cloudbuild.json"), source, selected=True)
 
 
 @pytest.mark.parametrize(

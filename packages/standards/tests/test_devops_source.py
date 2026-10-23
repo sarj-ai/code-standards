@@ -276,6 +276,33 @@ def test_json_terraform_is_never_passed_to_native_formatter(tmp_path: Path) -> N
     assert not any("fmt" in call or "init" in call for call in calls)
 
 
+def test_terraform_formats_variables_and_tests_without_validating_them_as_modules(tmp_path: Path) -> None:
+    names = ("values/dev.tfvars", "tests/routing.tftest.hcl", "data/dev.tfvars.json", "data/routing.tftest.json")
+    paths = tuple(_file(tmp_path, name, "{}\n") for name in names)
+    calls: list[tuple[str, ...]] = []
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        calls.append(tuple(argv))
+        if "version" in argv:
+            return ProcessOutput(0, "Terraform v1.16.5", "")
+        assert tuple(argv) == ("terraform", "fmt", "-check", "-list=true", *map(str, paths[:2]))
+        return ProcessOutput(3, f"{paths[0]}\n{paths[1]}\n", "")
+
+    reports = analyze_sources(
+        root=tmp_path,
+        paths=names,
+        selected=frozenset({"terraform", "tflint"}),
+        trust_repository_code=True,
+        runner=runner,
+    )
+    assert len(reports) == 1
+    assert reports[0].completion is Completion.COMPLETE
+    assert reports[0].file_count == 2
+    assert [diagnostic.location.path for diagnostic in reports[0].diagnostics] == list(names[:2])
+    assert len(calls) == 2
+
+
 def test_reported_path_cannot_escape_repository(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="not in the subpath"):
         parse_actionlint(

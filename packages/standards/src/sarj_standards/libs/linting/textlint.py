@@ -1152,7 +1152,10 @@ def is_text_path(path: Path) -> bool:
         or name.startswith(("dockerfile.", ".env."))
         or name.endswith(".dockerfile")
         or (path.suffix.casefold() == ".json" and ".claude" in path.parts and name.startswith("settings"))
-        or (path.suffix.casefold() == ".json" and any(part.casefold() in _OPERATIONAL_ROOTS for part in path.parts))
+        or (
+            path.suffix.casefold() == ".json"
+            and ("cloudbuild" in name or any(part.casefold() in _OPERATIONAL_ROOTS for part in path.parts))
+        )
         or shell_dialect(path) is not None
     )
 
