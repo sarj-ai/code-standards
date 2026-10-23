@@ -889,7 +889,7 @@ jobs:
       - name: Install pinned Terraform CLI
         if: needs.changes.outputs.reviewed-docs != 'true'
         env:
-          TERRAFORM_SHA256: d25ce7b6902013ad905db3d2eab0be4cd905887fe88b81a6171b8d5503c31f3d
+          TERRAFORM_SHA256: c168cab7c637a8769fdb90089ddd19de701bc6ff8aca64dc2e2185fe46f59f67
           TERRAFORM_VERSION: '1.17.0'
         run: bash ../../.github/scripts/ci-install-terraform.sh
       - name: Install locked documentation toolchains
