@@ -26,6 +26,8 @@ LEGACY_VERSION = "8.101.1"
 # and exact-source release gates. Pinning this digest alone does not qualify a release.
 APPROVED_ADAPTER_SHA256 = "b949ddf7fb6aadbf9e5fd4520b67a322b114a0b54a0af2b32c21d1a2644d882c"
 APPROVED_LOCK_SHA256 = "64dfbdabf646cef05c003036c6849c5922d67865e27e94012a3e37a670777e28"
+# Historical 8.101.2/3 retain their exact lock; later patches must carry both reviewed dependency fixes.
+APPROVED_PATCHED_LOCK_SHA256 = "a7df5c1149f9b655cd587b49cc3e2bdc1c484e7bd5092aa43c6d6b8903c84698"
 APPROVED_GITLEAKS_SHA256 = "1fe4ec30d50367745d11b1e0fbb7bf384c1fc12abb0c1f6aa28a4c115b63158b"
 SECURITY_PROJECTIONS = frozenset({".gitleaks.toml"})
 PACKAGE = "packages/standards"
@@ -62,6 +64,14 @@ BACKPORT_PATHS = frozenset(
         f"{PACKAGE}/tests/test_python_type_scope.py",
     }
 )
+# Exact whole-file projection of #1637 onto the reviewed 8.101.3 source; no other generator edits are approved.
+COMMIT_POLICY_BACKPORT_SHA256 = {
+    f"{PACKAGE}/src/sarj_standards/libs/adoption/scaffold.py": (
+        "8a656b177839655c9bc34c8dc7ed751e559cdc342f44fd608d38bf6b7efd9c3d"
+    ),
+    f"{PACKAGE}/tests/test_adoption.py": "20d9cee4883b50e9d6357548f10684084e69e265f704ab6d122963125efa483c",
+    ".github/workflows/commit-policy.yml": "21a5f6293e41a052e032305d286b641e61aac2f668470bc1dee01ee2098761fb",
+}
 RELEASE_TARGETS = frozenset({"typescript", "bootstrap", "contracts", "python", "sql", "iac", "standards", "tsconfig"})
 
 
@@ -126,7 +136,7 @@ def _validate_maintenance(root: Path, commit: str) -> None:
     changed = frozenset(
         path.decode() for path in _git(root, "diff", "--name-only", "-z", LEGACY_COMMIT, commit).split(b"\0") if path
     )
-    unexpected = changed - BACKPORT_PATHS - TOOLING_PATHS - SECURITY_PROJECTIONS
+    unexpected = changed - BACKPORT_PATHS - TOOLING_PATHS - SECURITY_PROJECTIONS - COMMIT_POLICY_BACKPORT_SHA256.keys()
     if unexpected:
         msg = f"maintenance changes legacy policy or an unapproved path: {', '.join(sorted(unexpected))}"
         raise ReleaseLaneError(msg)
@@ -136,6 +146,19 @@ def _validate_maintenance(root: Path, commit: str) -> None:
     _validate_docs(root, commit)
     _validate_adapter(root, commit)
     _validate_gitleaks(root, commit)
+    _validate_commit_policy_backport(root, commit, changed)
+
+
+def _validate_commit_policy_backport(root: Path, commit: str, changed: frozenset[str]) -> None:
+    if not changed.intersection(COMMIT_POLICY_BACKPORT_SHA256):
+        return
+    if not changed.issuperset(COMMIT_POLICY_BACKPORT_SHA256):
+        msg = "maintenance commit-policy backport requires all three approved files"
+        raise ReleaseLaneError(msg)
+    for path, expected in COMMIT_POLICY_BACKPORT_SHA256.items():
+        if hashlib.sha256(_at(root, commit, path)).hexdigest() != expected:
+            msg = f"maintenance commit-policy backport must match the exact approved bytes in {path}"
+            raise ReleaseLaneError(msg)
 
 
 def _maintenance_version(root: Path, commit: str) -> str:
@@ -160,7 +183,8 @@ def _matches_projection(original: bytes, current: bytes, path: str, version: str
     if path != f"{PACKAGE}/uv.lock":
         return current == original.replace(LEGACY_VERSION.encode(), version.encode())
     normalized = current.replace(version.encode(), LEGACY_VERSION.encode())
-    return hashlib.sha256(normalized).hexdigest() == APPROVED_LOCK_SHA256 and current == normalized.replace(
+    expected = APPROVED_LOCK_SHA256 if version in {"8.101.2", "8.101.3"} else APPROVED_PATCHED_LOCK_SHA256
+    return hashlib.sha256(normalized).hexdigest() == expected and current == normalized.replace(
         LEGACY_VERSION.encode(), version.encode()
     )
 
