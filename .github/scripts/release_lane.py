@@ -24,7 +24,7 @@ LEGACY_COMMIT = "14270016f74006a1c8fe2765d5a4258c6b4d4cb8"
 LEGACY_VERSION = "8.101.1"
 # Reviewed candidate bytes; publication still requires successful native qualification
 # and exact-source release gates. Pinning this digest alone does not qualify a release.
-APPROVED_ADAPTER_SHA256 = "58b47b1defa519e1b690d9ab43530b23d89824ff28f4109be2941b2c8f62e254"
+APPROVED_ADAPTER_SHA256 = "b949ddf7fb6aadbf9e5fd4520b67a322b114a0b54a0af2b32c21d1a2644d882c"
 APPROVED_LOCK_SHA256 = "64dfbdabf646cef05c003036c6849c5922d67865e27e94012a3e37a670777e28"
 APPROVED_GITLEAKS_SHA256 = "1fe4ec30d50367745d11b1e0fbb7bf384c1fc12abb0c1f6aa28a4c115b63158b"
 SECURITY_PROJECTIONS = frozenset({".gitleaks.toml"})

@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 import pytest
 
@@ -63,10 +63,8 @@ def _commit(root: Path) -> str:
     return _git(root, "rev-parse", "HEAD")
 
 
-@pytest.fixture
-def lane(monkeypatch: pytest.MonkeyPatch) -> PublisherLane:
-    path = Path(__file__).resolve().parents[4] / ".github/scripts/release_lane.py"
-    spec = importlib.util.spec_from_file_location("release_lane_fixture", path)
+def _load_lane(path: Path, name: str, monkeypatch: pytest.MonkeyPatch) -> PublisherLane:
+    spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -74,6 +72,12 @@ def lane(monkeypatch: pytest.MonkeyPatch) -> PublisherLane:
     spec.loader.exec_module(module)
     assert isinstance(module, PublisherLane)
     return module
+
+
+@pytest.fixture
+def lane(monkeypatch: pytest.MonkeyPatch) -> PublisherLane:
+    path = Path(__file__).resolve().parents[4] / ".github/scripts/release_lane.py"
+    return _load_lane(path, "release_lane_fixture", monkeypatch)
 
 
 @pytest.fixture
@@ -377,3 +381,121 @@ def test_reviewed_lock_projection_supports_a_future_maintenance_version(
         lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
         == "standards-maintenance"
     )
+
+
+def _project_maintenance_version(checkout: Path) -> None:
+    cli = checkout / "packages/standards/src/sarj_standards/configs/cli-reference.v1.json"
+    old_cli_digest = hashlib.sha256(cli.read_bytes()).hexdigest()
+    for relative in (
+        "packages/standards/pyproject.toml",
+        "packages/standards-compat/pyproject.toml",
+        "packages/standards/uv.lock",
+        ".sarj-standards.toml",
+        "packages/standards/src/sarj_standards/configs/cli-reference.v1.json",
+    ):
+        path = checkout / relative
+        source = path.read_text()
+        assert "8.101.2" in source
+        path.write_text(source.replace("8.101.2", "8.101.3"))
+    docs = checkout / "apps/docs/src/generated/formatted-code.v1.json"
+    source = docs.read_text()
+    assert source.count(old_cli_digest) == 1
+    docs.write_text(source.replace(old_cli_digest, hashlib.sha256(cli.read_bytes()).hexdigest()))
+
+
+def _reviewed_history_candidate(
+    tmp_path: Path, projection: Literal["prefix", "reviewed", "adapter-drift", "path-drift"]
+) -> Candidate:
+    repository = Path(__file__).resolve().parents[4]
+    checkout = tmp_path / "candidate"
+    prefix = "8c9ddf4828e92873d1b4486ab79c02c6aa47266e"
+    fix = "74e68908b6a5fea86282dbe0cdb98d5c1e10f28b"
+    adapter = "packages/standards/src/sarj_standards/libs/linting/external.py"
+    old_digest = "58b47b1defa519e1b690d9ab43530b23d89824ff28f4109be2941b2c8f62e254"
+    reviewed_digest = "b949ddf7fb6aadbf9e5fd4520b67a322b114a0b54a0af2b32c21d1a2644d882c"
+    _git(tmp_path, "clone", "--shared", "--no-checkout", str(repository), str(checkout))
+    _git(checkout, "checkout", "--detach", prefix)
+    assert hashlib.sha256((checkout / adapter).read_bytes()).hexdigest() == old_digest
+    if projection == "prefix":
+        return Candidate(checkout, prefix, prefix)
+
+    patch = run_process(
+        ("git", "diff", f"{fix}^", fix, "--", adapter, "packages/standards/tests/test_external_diagnostics.py"),
+        cwd=repository,
+        capture_output=True,
+    ).stdout
+    patch_path = tmp_path / "reviewed-backport.patch"
+    patch_path.write_text(patch)
+    _git(checkout, "apply", str(patch_path))
+    assert hashlib.sha256((checkout / adapter).read_bytes()).hexdigest() == reviewed_digest
+    _project_maintenance_version(checkout)
+    controller = checkout / ".github/scripts/release_lane.py"
+    source = controller.read_text()
+    assert source.count(old_digest) == 1
+    controller.write_text(source.replace(old_digest, reviewed_digest))
+    tests = checkout / "packages/standards/tests/release/test_release_lane.py"
+    anchor = "def test_main_keeps_existing_release_scope("
+    source = tests.read_text()
+    assert source.count(anchor) == 1
+    digest_test = """def test_reviewed_adapter_digest_matches_checked_in_backport(lane: PublisherLane) -> None:
+    root = Path(__file__).resolve().parents[4]
+    adapter = root / "packages/standards/src/sarj_standards/libs/linting/external.py"
+    assert hashlib.sha256(adapter.read_bytes()).hexdigest() == lane.APPROVED_ADAPTER_SHA256
+
+
+"""
+    tests.write_text(source.replace(anchor, digest_test + anchor))
+    if projection == "adapter-drift":
+        with (checkout / adapter).open("a") as stream:
+            stream.write("\n")
+    if projection == "path-drift":
+        (checkout / "packages/standards/src/sarj_standards/libs/linting/another.py").write_text("VALUE = 3\n")
+    return Candidate(checkout, prefix, _commit(checkout))
+
+
+@pytest.mark.parametrize(
+    ("controller", "projection", "message"),
+    [
+        ("A", "prefix", None),
+        ("A", "reviewed", "adapter bytes do not match"),
+        ("B", "reviewed", None),
+        ("B", "prefix", "adapter bytes do not match"),
+        ("B", "adapter-drift", "adapter bytes do not match"),
+        ("B", "path-drift", "legacy policy or an unapproved path"),
+    ],
+)
+def test_single_adapter_approval_transition_uses_actual_history(
+    lane: PublisherLane,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    controller: Literal["A", "B"],
+    projection: Literal["prefix", "reviewed", "adapter-drift", "path-drift"],
+    message: str | None,
+) -> None:
+    candidate = _reviewed_history_candidate(tmp_path, projection)
+    if controller == "A":
+        repository = Path(__file__).resolve().parents[4]
+        original = run_process(
+            ("git", "show", "d60128eed5df2f5607c3ee8d8fb3faed634dfa65:.github/scripts/release_lane.py"),
+            cwd=repository,
+            capture_output=True,
+        ).stdout
+        assert hashlib.sha256(original.encode()).hexdigest() == (
+            "180f43dd4fdff8bdce49301bef48676712cab2a091f701d7a67a7b37f331ae43"
+        )
+        path = tmp_path / "trusted-original-controller.py"
+        path.write_text(original)
+        lane = _load_lane(path, "release_lane_original_fixture", monkeypatch)
+    if message is None:
+        assert (
+            lane.validate_lane(
+                candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=candidate.commit
+            )
+            == "standards-maintenance"
+        )
+    else:
+        with pytest.raises(ValueError, match=message):
+            lane.validate_lane(
+                candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=candidate.commit
+            )
