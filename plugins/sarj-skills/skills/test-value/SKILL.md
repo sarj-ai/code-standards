@@ -3,27 +3,19 @@ name: test-value
 description: Write or review pytest and Vitest tests for distinct regression coverage and safe redundancy removal.
 ---
 
-# Test value
+Run `code-standards observe --test-value --base BASE` for changes; omit `--base`
+for the suite. Executable ESLint config needs `--trust-repository-code`.
+Check changed fixtures/consumers with `code-standards check`.
 
-Run `code-standards observe --test-value --base BASE` for changed tests; omit
-`--base` for the suite. Executable ESLint configuration requires
-`--trust-repository-code`. Verify advisory candidates in source; incomplete
-analysis is not clean evidence. Check changed fixture support and its consumers
-with `code-standards check` too.
+Name the contract, plausible wrong outcome and cheapest faithful oracle. Reuse
+sufficient coverage; review comments/coverage percentages alone justify no test.
+Retain required gates.
 
-Name each contract, plausible wrong outcome and cheapest faithful observation.
-Reuse sufficient coverage; an edit, review comment or coverage percentage alone
-does not justify another test. Preserve required coverage gates.
+Delete/merge only when retained cases reject the same wrong outcomes with
+compatible inputs, actions, fixtures, marks, runtime, order and effects.
+Preserve ordered scenarios and smoke/compatibility/representation contracts.
+Read [oracles](references/oracles.md) for integration and fixture-liveness decisions.
 
-Merge or remove only when retained cases reject the same wrong outcomes under
-compatible inputs, actions, fixtures, marks, runtime, ordering and effects.
-Parameterize independent cases when clearer; preserve ordered scenarios and
-meaningful smoke, compatibility, representation and boundary contracts.
-
-Reuse compatible providers and maintained fakes; keep actions and independent
-oracles visible. Read [oracles.md](references/oracles.md) for integration,
-fixture-liveness and ambiguous cases. Rerun affected consumers after changes.
-
-Report keep, strengthen, merge or delete with location, wrong outcome, covering
-check, evidence and focused command. Advisory findings never authorize deletion;
-an inconclusive comparison does not justify pruning.
+Rerun affected consumers. Report keep/strengthen/merge/delete with location,
+wrong outcome, covering check and evidence. Advisory/incomplete results never
+prove redundancy.

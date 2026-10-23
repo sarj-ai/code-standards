@@ -1,33 +1,20 @@
 # Data contracts
 
-Use the [audit protocol](../skills/audit-protocol/SKILL.md). Deterministic parsing,
-record, widening, union, predicate and validator rules own their proven cases.
+Apply [protocol](../skills/audit-protocol/SKILL.md).
 
-For remaining flows, show the producer, an admitted invalid value and the failing
-consumer. Preserve parsed domain evidence instead of repeatedly rediscovering it;
-use the owned schema at untrusted boundaries, precise types internally. Dynamic
-maps, generic infrastructure and trusted values do not require duplicate parsing.
+Show producer, admitted invalid value and failing consumer before strengthening
+a contract. Preserve parsed evidence; generic maps/trusted values need no
+duplicate parsing. Correlate proven variants without erasing drafts, partial
+updates, unknown variants or extension keys. Omission/null/value can differ;
+brands, casts, frozen fields and `TypedDict` provide no runtime validation.
 
-Model proven alternatives as complete correlated variants; distinguish roles,
-units and state transitions only where substitution breaks a real invariant.
-Keep legitimate drafts, partial updates, unknown variants, extension keys and
-partial-success states. Omission, null and supplied values can differ. Brands,
-casts, frozen fields and `TypedDict` do not validate runtime values.
+Preserve coercions, aliases, defaults, extras, error locations, Python/JSON paths,
+fields-set, construction/identity and collection protocols. Pydantic tagged
+dispatch precedes variant validators/defaults; boolean literals can admit
+integers. TypeScript unions need forbidden members only for required exactness.
 
-Migration compatibility includes accepted/coerced input, aliases, defaults,
-extra fields, error locations, Python/JSON paths, fields-set behavior and public
-construction/identity protocols. Pydantic tagged dispatch precedes variant
-validators/defaults; boolean literal equality can admit integers. Structural
-TypeScript unions need explicit forbidden members only when exactness is required.
-Preserve mixed versus homogeneous collections and dictionary/tuple operations.
-
-Validate the final established value, including validator order and mutable
-updates. Pydantic construction validation does not guarantee assignment rollback;
-`model_copy(update=...)` skips validation and instance revalidation can return the
-same object. Use a complete validated replacement when cross-field invariants
-must always hold; serialization round trips can lose excluded/private state.
-
-Trace both branches of predicates and the evidence behind generic results.
-Retain genuine narrowing at external/plugin boundaries. Show lost information or
-observable incompatible mutation before proposing a stronger contract; preserve
-caller-owned input, public overrides and intentional stateful APIs.
+Check validator order and mutation: assignment failure need not roll back,
+`model_copy(update=...)` skips validation, and revalidation may preserve identity.
+For lasting cross-field invariants, validate a complete replacement; round trips
+can lose private/excluded state. Trace both predicate branches and generic-result
+evidence; preserve genuine narrowing, caller ownership and public/stateful APIs.

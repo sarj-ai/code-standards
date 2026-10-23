@@ -1,19 +1,14 @@
 # Slack automations
 
-Use the [audit protocol](../skills/audit-protocol/SKILL.md). Run the existing
-catalog validator first; its schema/path/public-field findings are not judgments.
+Apply [protocol](../skills/audit-protocol/SKILL.md); run the catalog validator.
 
-Map live credential families to installed apps, personas, runtime capabilities
-and catalog records. Separate bot identities from user-token/admin integrations;
-historical manifests do not establish deployment.
+Compare live credential families/apps/personas, catalog, manifests and runtime
+registration; historical manifests do not prove deployment. Distinguish bots
+from user/admin integrations.
 
-Verify least privilege, trusted ingress, server-side actor/workspace authorization,
-deadline acknowledgements and visible terminal failures. HTTP signatures require
-the raw body and freshness; established Socket Mode/framework verification is a
-valid alternative. Slow work needs a durable boundary and retries need durable
-deduplication before effects.
-
-Compare catalog, manifests and runtime registration for real capability drift
-and sensitive prose exposure. Prefer shared generation or complete parity tests;
-never reveal credentials or private identifiers in findings. Apply only checks
-supported by the actual transport and integration.
+Check least privilege, actor/workspace authorization, acknowledgement deadlines
+and visible terminal failure. HTTP verification needs raw body/freshness;
+verified framework/Socket Mode handling is valid. Slow work needs durable dispatch
+and deduplication before effects. Prefer generation/parity for capability drift;
+apply transport-specific
+checks and redact sensitive catalog prose.
