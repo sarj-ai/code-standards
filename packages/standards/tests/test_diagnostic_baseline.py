@@ -13,7 +13,13 @@ import pytest
 
 from sarj_standards import api
 from sarj_standards.cli.main import main as cli_main
-from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, Manifest, as_table, load as load_manifest
+from sarj_standards.libs.adoption.manifest import (
+    ALL_CAPABILITIES,
+    MANIFEST_NAME,
+    Manifest,
+    as_table,
+    load as load_manifest,
+)
 from sarj_standards.libs.diagnostics import (
     AnalysisReport,
     Completion,
@@ -33,7 +39,7 @@ from sarj_standards.libs.linting.policy import Policy
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Iterable, Sequence
 
     from tests.call_contracts import ExternalAnalyzeOptions, StandardsAnalyzeOptions
 
@@ -433,6 +439,148 @@ def test_staged_changed_lines_cannot_consume_baseline_allowance(git_root: Path) 
     assert baseline.touches_changed_lines(new, scope)
 
 
+@pytest.mark.parametrize("mode", list(api.AnalysisMode))
+def test_analysis_without_a_baseline_skips_changed_line_queries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: api.AnalysisMode
+) -> None:
+    source = tmp_path / "app.py"
+    source.write_text("logger.info('request', token=token)\n", encoding="utf-8")
+
+    def unexpected_scope(_root: Path, *, staged: bool, paths: Iterable[str] | None = None) -> None:
+        pytest.fail(f"analysis without baseline consumers must not query Git diffs: staged={staged}, paths={paths}")
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- prove public analysis skips the Git-diff boundary when no consumer needs it.
+        baseline, "changed_line_scope", unexpected_scope
+    )
+
+    report = api.Standards(tmp_path).analyze(["app.py"], staged=True, mode=mode, rules=["python:no-secret-in-log"])
+
+    assert [item.code for item in report.diagnostics] == ["SARJ012"]
+    assert report.issues == ()
+
+
+def test_policy_analysis_keeps_a_changed_baselined_finding_active(git_root: Path) -> None:
+    source = git_root / "app.py"
+    source.write_text("logger.info('request', token=token)\n", encoding="utf-8")
+    standards = api.Standards(git_root)
+    selectors = ["python:no-secret-in-log"]
+    raw = standards.analyze(["app.py"], mode=api.AnalysisMode.RAW, rules=selectors)
+    baseline_path = git_root / "diagnostic-baseline.json"
+    baseline_path.write_text(_policy_baseline(raw.diagnostics), encoding="utf-8")
+    (git_root / MANIFEST_NAME).write_text(_manifest(baseline_path.name).render(), encoding="utf-8")
+    subprocess.run(("git", "add", "."), cwd=git_root, check=True)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=git_root, check=True)
+    unchanged = standards.analyze(["app.py"], staged=True, rules=selectors)
+    source.write_text("logger.info('changed', token=token)\n", encoding="utf-8")
+    subprocess.run(("git", "add", "app.py"), cwd=git_root, check=True)
+
+    changed = standards.analyze(["app.py"], staged=True, rules=selectors)
+
+    assert unchanged.diagnostics == ()
+    assert [item.code for item in changed.diagnostics] == ["SARJ012"]
+    assert changed.diagnostics[0].fingerprint == raw.diagnostics[0].fingerprint
+
+
+def test_full_external_scan_requires_only_changed_shell_formatting(
+    git_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name in ("changed.sh", "legacy.sh"):
+        (git_root / name).write_text("#!/bin/bash\nif true; then\necho ok\nfi\n", encoding="utf-8")
+    adopted = replace(_manifest(), disabled_capabilities=tuple(name for name in ALL_CAPABILITIES if name != "shfmt"))
+    (git_root / MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    subprocess.run(("git", "add", "."), cwd=git_root, check=True)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=git_root, check=True)
+    base = subprocess.check_output(("git", "rev-parse", "HEAD"), cwd=git_root, text=True).strip()
+    with (git_root / "changed.sh").open("a", encoding="utf-8") as source:
+        source.write("# changed\n")
+    subprocess.run(("git", "add", "."), cwd=git_root, check=True)
+    subprocess.run(("git", "commit", "-qm", "head"), cwd=git_root, check=True)
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", base)
+
+    standards = api.Standards(git_root)
+    full = standards.analyze(external=True)
+    staged = standards.analyze(["legacy.sh"], external=True, staged=True)
+
+    assert {item.location.path: item.severity for item in full.diagnostics if item.source == "shfmt"} == {
+        "changed.sh": Severity.ERROR,
+        "legacy.sh": Severity.WARNING,
+    }
+    assert [item.severity for item in staged.diagnostics if item.source == "shfmt"] == [Severity.ERROR]
+
+
+@pytest.mark.parametrize("staged", [True, False], ids=("staged", "committed"))
+@pytest.mark.parametrize("oversized", [False, True], ids=("scoped", "argv-fallback"))
+def test_changed_line_query_handles_literal_paths_and_oversized_scope(
+    git_root: Path, monkeypatch: pytest.MonkeyPatch, *, staged: bool, oversized: bool
+) -> None:
+    filename = "app[1].py"
+    for name in (filename, "app1.py", "unrelated.txt"):
+        (git_root / name).write_text("old\nkeep\n", encoding="utf-8")
+    subprocess.run(("git", "add", "."), cwd=git_root, check=True)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=git_root, check=True)
+    base = subprocess.check_output(("git", "rev-parse", "HEAD"), cwd=git_root, text=True).strip()
+    for name in (filename, "app1.py", "unrelated.txt"):
+        (git_root / name).write_text("old\nchanged\n", encoding="utf-8")
+    subprocess.run(("git", "add", "."), cwd=git_root, check=True)
+    if not staged:
+        subprocess.run(("git", "commit", "-qm", "head"), cwd=git_root, check=True)
+        monkeypatch.setenv("SARJ_STANDARDS_BASE", base)
+
+    paths = (filename, *(f"missing/{index:04d}/" + "x" * 100 for index in range(700))) if oversized else (filename,)
+    scope = baseline.changed_line_scope(git_root, staged=staged, paths=paths)
+
+    assert scope is not None
+    expected = frozenset({filename, "app1.py", "unrelated.txt"}) if oversized else frozenset({filename})
+    assert scope.paths == expected
+    assert scope.lines == dict.fromkeys(expected, frozenset({2}))
+
+
+@pytest.mark.parametrize("staged", [True, False], ids=("staged", "committed"))
+def test_scoped_changed_lines_preserve_distant_baselines_after_a_rename(
+    git_root: Path, monkeypatch: pytest.MonkeyPatch, *, staged: bool
+) -> None:
+    lines = [f"value{index} = {index}\n" for index in range(100)]
+    (git_root / "old.py").write_text("".join(lines), encoding="utf-8")
+    subprocess.run(("git", "add", "."), cwd=git_root, check=True)
+    subprocess.run(("git", "commit", "-qm", "base"), cwd=git_root, check=True)
+    base = subprocess.check_output(("git", "rev-parse", "HEAD"), cwd=git_root, text=True).strip()
+    subprocess.run(("git", "mv", "old.py", "new.py"), cwd=git_root, check=True)
+    lines[90] = "value90 = 100\n"
+    (git_root / "new.py").write_text("".join(lines), encoding="utf-8")
+    subprocess.run(("git", "add", "."), cwd=git_root, check=True)
+    if not staged:
+        subprocess.run(("git", "commit", "-qm", "head"), cwd=git_root, check=True)
+        monkeypatch.setenv("SARJ_STANDARDS_BASE", base)
+
+    scope = baseline.changed_line_scope(git_root, staged=staged, paths=("new.py",))
+    distant = Diagnostic("X", "old", Severity.ERROR, "ruff", Location("new.py", position=Position(1, 0, 10)))
+    edited = replace(distant, location=Location("new.py", position=Position(90, 0, 1000)))
+
+    assert scope is not None
+    assert scope.lines == {"new.py": frozenset({91})}
+    assert not baseline.touches_changed_lines(distant, scope)
+    assert baseline.touches_changed_lines(edited, scope)
+
+
+def test_changed_line_timeout_keeps_findings_active(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def expire(arguments: Sequence[str], *, cwd: Path, check: bool, capture_output: bool, timeout: float) -> None:
+        assert cwd == tmp_path
+        assert not check
+        assert capture_output
+        raise subprocess.TimeoutExpired(arguments, timeout)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- force a process timeout that fixture data cannot produce reliably.
+        subprocess, "run", expire
+    )
+
+    scope = baseline.changed_line_scope(tmp_path, staged=True, paths=("app.py",))
+    finding = Diagnostic("X", "new", Severity.ERROR, "ruff", Location("app.py"))
+
+    assert scope is not None
+    assert scope.failed
+    assert baseline.touches_changed_lines(finding, scope)
+
+
 @pytest.mark.parametrize("staged", [True, False], ids=("staged", "committed"))
 @pytest.mark.parametrize(
     "filename",
@@ -477,14 +625,15 @@ def test_non_utf8_git_paths_preserve_byte_identity(monkeypatch: pytest.MonkeyPat
     filename = "raw-\udcff.py"
 
     def git_diff(
-        arguments: Sequence[str], *, cwd: Path, check: bool, capture_output: bool
+        arguments: Sequence[str], *, cwd: Path, check: bool, capture_output: bool, timeout: float
     ) -> subprocess.CompletedProcess[bytes]:
         assert cwd == tmp_path
         assert not check
         assert capture_output
+        assert timeout == 30
         output = (
-            b"raw-\xff.py\0"
-            if "--name-only" in arguments
+            b"M\0raw-\xff.py\0"
+            if "--name-status" in arguments
             else b'diff --git "a/raw-\\377.py" "b/raw-\\377.py"\n'
             b'--- "a/raw-\\377.py"\n+++ "b/raw-\\377.py"\n@@ -2 +2 @@\n-old\n+changed\n'
         )
