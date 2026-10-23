@@ -117,9 +117,32 @@ def test_every_setup_uv_step_pins_the_uv_binary() -> None:
         text = workflow.read_text(encoding="utf-8")
         for match in re.finditer(r"(?m)^\s*- uses: astral-sh/setup-uv@[^\n]+$", text):
             following = text[match.end() :].split("\n      - ", 1)[0]
+            if workflow.name == "private-refs.yml" and "version-file: trusted/packages/standards/uv.toml" in following:
+                assert text.count("uses: astral-sh/setup-uv@") == 1
+                continue
             if "version: '0.13.5'" not in following:
                 violations.append(f"setup-uv does not pin uv 0.13.5 in {workflow}")
     assert violations == []
+
+
+def test_private_reference_scanner_uses_its_trusted_projects_uv_pin() -> None:
+    steps = _ci_steps("scan", "private-refs.yml")
+    trusted = _named_step(steps, "Check out trusted scanner")
+    install = _named_step(steps, "Install trusted scanner")
+    candidate = _named_step(steps, "Check out candidate as data")
+    uv_steps = [
+        step for step in steps if isinstance(uses := step.get("uses"), str) and uses.startswith("astral-sh/setup-uv@")
+    ]
+    assert len(uv_steps) == 1
+    uv_step = uv_steps[0]
+    assert uv_step["with"] == {"version-file": "trusted/packages/standards/uv.toml"}
+    assert trusted["with"] == {
+        "ref": "${{ github.event.pull_request.base.sha || github.sha }}",
+        "path": "trusted",
+        "persist-credentials": False,
+    }
+    assert install["run"] == "uv sync --project trusted/packages/standards --frozen --no-dev"
+    assert steps.index(trusted) < steps.index(uv_step) < steps.index(install) < steps.index(candidate)
 
 
 def test_read_only_workflows_do_not_persist_checkout_credentials() -> None:
