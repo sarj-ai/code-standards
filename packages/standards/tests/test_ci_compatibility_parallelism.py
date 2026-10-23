@@ -18,6 +18,7 @@ _ROOT = Path(__file__).resolve().parents[3]
 _SUITES = frozenset({"standards", "bootstrap", "contracts", "python", "sql", "iac"})
 _RECORDER = """#!/usr/bin/env python3
 import fcntl
+import os
 from pathlib import Path
 import sys
 import time
@@ -28,8 +29,22 @@ if Path(sys.argv[0]).name == 'npm':
     assert args[2:] in (['run', 'build'], ['test']), args
     target = 'typescript-build' if args[2:] == ['run', 'build'] else 'typescript'
 elif args[:2] == ['run', '--project']:
-    assert args == ['run', '--project', 'packages/standards', '--frozen', 'python',
-                    '-m', 'sarj_standards.libs.release.wheel_tests', '--root', '.', '--jobs', '4'], args
+    if 'sarj_standards.libs.release.native_test_setup' in args:
+        assert args == ['run', '--project', 'packages/standards', '--frozen', 'python',
+                        '-m', 'sarj_standards.libs.release.native_test_setup', '--root', '.'], args
+        handoff = Path(os.environ['GITHUB_PATH'])
+        handoff.write_text(str(Path('attested tools').resolve()) + '\\n')
+        Path('native-setup-path').write_text(str(handoff))
+        raise SystemExit(29 if Path('fail-target').read_text() == 'native-setup' else 0)
+    expected = ['run', '--project', 'packages/standards', '--frozen', 'python',
+                '-m', 'sarj_standards.libs.release.wheel_tests', '--root', '.', '--jobs', '4']
+    if '--changed' in args:
+        expected += ['--changed', '--base', 'origin/branch with space', '-k', 'selected']
+    assert args == expected, args
+    assert os.environ['PATH'].split(os.pathsep)[0] == str(Path('attested tools').resolve())
+    assert os.environ['GITHUB_PATH'] == str(Path('parent-path').resolve())
+    assert Path('parent-path').read_text() == 'parent handoff retained'
+    assert not Path(Path('native-setup-path').read_text()).parent.exists()
     target = 'standards'
 elif args[:2] == ['--directory', 'packages/python']:
     assert args == ['--directory', 'packages/python', 'run', '--locked', '--with',
@@ -88,6 +103,12 @@ def _workflow_command() -> str:
 @pytest.fixture
 def make_probe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (tmp_path / "Makefile").write_bytes((_ROOT / "Makefile").read_bytes())
+    helper = Path(".github/scripts/make-native-test-tools.sh")
+    (tmp_path / helper).parent.mkdir(parents=True)
+    (tmp_path / helper).write_bytes((_ROOT / helper).read_bytes())
+    (tmp_path / "attested tools").mkdir()
+    (tmp_path / "parent-path").write_text("parent handoff retained")
+    monkeypatch.setenv("GITHUB_PATH", str(tmp_path / "parent-path"))
     binaries = tmp_path / "bin"
     binaries.mkdir()
     for name in ("uv", "npm"):
@@ -139,6 +160,8 @@ def _run(root: Path, command: str, *, fail: str = "", timeout_seconds: float = 1
             assert action == "end"
             active.remove(target)
     assert not active, result.stdout + result.stderr
+    if (root / "native-setup-path").exists():
+        assert not Path((root / "native-setup-path").read_text()).parent.exists()
     return _Result(result, events, peak)
 
 
@@ -163,6 +186,27 @@ def test_compatibility_failure_keeps_independent_suites_running(make_probe: Path
 
 def test_failed_plugin_build_prevents_only_its_dependent_suite(make_probe: Path) -> None:
     _assert_run(_run(make_probe, _workflow_command(), fail="typescript-build"), success=False, standards=False)
+
+
+def test_failed_native_setup_prevents_only_its_dependent_suite(make_probe: Path) -> None:
+    result = _run(make_probe, _workflow_command(), fail="native-setup")
+    _assert_run(result, success=False, standards=False)
+    assert "Error 29" in result.process.stderr
+
+
+@pytest.mark.parametrize("target", ["test-standards", "test-standards-changed"])
+def test_native_setup_preserves_wheel_runner_arguments(make_probe: Path, target: str) -> None:
+    command = f"make {target}"
+    if target.endswith("-changed"):
+        command += ' BASE="origin/branch with space" PYTEST_ARGS="-k selected"'
+    result = _run(make_probe, command)
+    assert result.process.returncode == 0, result.process.stdout + result.process.stderr
+    assert result.events == [
+        ("start", "typescript-build"),
+        ("end", "typescript-build"),
+        ("start", "standards"),
+        ("end", "standards"),
+    ]
 
 
 @pytest.mark.parametrize("mutation", ["missing", "extra", "serial", "three-slots", "no-keep-going", "lost-status"])

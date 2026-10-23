@@ -83,17 +83,23 @@ def test_native_make_builds_plugin_before_wheel_tests(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target: str
 ) -> None:
     (tmp_path / "Makefile").write_bytes((_REPO_ROOT / "Makefile").read_bytes())
+    helper = Path(".github/scripts/make-native-test-tools.sh")
+    (tmp_path / helper).parent.mkdir(parents=True)
+    (tmp_path / helper).write_bytes((_REPO_ROOT / helper).read_bytes())
     binaries = tmp_path / "bin"
     binaries.mkdir()
     command = (
         "#!/usr/bin/env python3\n"
         "import json\n"
+        "import os\n"
         "from pathlib import Path\n"
         "import sys\n"
         "name = Path(sys.argv[0]).name\n"
         "built = Path('built-plugin')\n"
         "if name == 'uv' and not built.is_file():\n"
         "    raise SystemExit('wheel gate started before the plugin build')\n"
+        "if name == 'uv' and 'sarj_standards.libs.release.native_test_setup' in sys.argv:\n"
+        "    Path(os.environ['GITHUB_PATH']).touch()\n"
         "with Path('commands.jsonl').open('a') as stream:\n"
         "    stream.write(json.dumps([name, *sys.argv[1:]]) + '\\n')\n"
         "if name == 'npm':\n"
@@ -127,11 +133,23 @@ def test_native_make_builds_plugin_before_wheel_tests(
             "--frozen",
             "python",
             "-m",
+            "sarj_standards.libs.release.native_test_setup",
+            "--root",
+            ".",
+        ],
+        [
+            "uv",
+            "run",
+            "--project",
+            "packages/standards",
+            "--frozen",
+            "python",
+            "-m",
             "sarj_standards.libs.release.wheel_tests",
             "--root",
             ".",
             "--jobs",
             "2",
             *selection,
-        ]
+        ],
     ]
