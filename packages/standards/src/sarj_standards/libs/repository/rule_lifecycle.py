@@ -23,6 +23,7 @@ _CATALOG_PATH: Final = Path("packages/standards/src/sarj_standards/schemas/rule-
 _LEDGER_PATH: Final = Path("packages/standards/src/sarj_standards/configs/rule-ledger.json")
 _ESLINT_MANAGED_PATHS: Final = (
     Path("packages/typescript/src/index.ts"),
+    Path("packages/standards/src/sarj_standards/configs/eslint.strict.ts"),
     Path("packages/standards/src/sarj_standards/configs/eslint.strict.mjs"),
     Path("packages/standards/src/sarj_standards/configs/eslint.application.mjs"),
 )

@@ -133,6 +133,7 @@ MANAGED_ROLLOUT_NAMES = frozenset(
         "eslint.config.mts",
         "eslint.config.cts",
         "eslint.strict.mjs",
+        "eslint.strict.ts",
         "package-lock.json",
         "package.json",
         "pnpm-lock.yaml",

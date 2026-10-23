@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
+import shutil
+import subprocess  # ruff: ignore[suspicious-subprocess-import] -- compiles the bundled TypeScript preset without evaluating its input.
 from typing import TYPE_CHECKING, Final
 
 from sarj_standards._meta import CONFIGS_DIR
@@ -22,9 +24,11 @@ _ESLINT_ALIAS: Final = '// Compatibility alias; all repositories use the same po
 _RUFF_MARKER: Final = "[lint.per-file-ignores]"
 _ESLINT_MARKER: Final = "          paths: [\n"
 _ESLINT_PATTERNS_MARKER: Final = '          patterns: ["*/index", "*/index.ts"],\n'
-_ESLINT_CONFIG_END: Final = "\n  ];\n}\n\nconst config = createConfig();\nexport default config;\n"
+_ESLINT_CONFIG_END: Final = (
+    "\n  ] as unknown as Linter.Config[];\n}\n\nconst config = createConfig();\nexport default config;\n"
+)
 _RULE_CATALOG: Final = Path("packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json")
-_ESLINT_STRICT: Final = Path("packages/standards/src/sarj_standards/configs/eslint.strict.mjs")
+_ESLINT_STRICT: Final = Path("packages/standards/src/sarj_standards/configs/eslint.strict.ts")
 _ESLINT_APPLICATION_REPO: Final = Path("packages/standards/src/sarj_standards/configs/eslint.application.mjs")
 _TYPESCRIPT_PRESET: Final = Path("packages/typescript/src/index.ts")
 _ADVISORY_START: Final = "const ADVISORY_RULES = [\n"
@@ -51,13 +55,13 @@ def _python_bans() -> Mapping[str, str]:
 
 def render_eslint_strict(standard: str | None = None) -> str:
     if standard is None:
-        standard = (CONFIGS_DIR / "eslint.strict.mjs").read_text(encoding="utf-8")
+        standard = (CONFIGS_DIR / "eslint.strict.ts").read_text(encoding="utf-8")
     standard = _without_generated_policy(standard)
     bans = _typescript_bans()
     entries = "".join(f"            {json.dumps(dict(entry), sort_keys=True)},\n" for entry in bans)
     addition = f"            // BEGIN GENERATED LIBRARY POLICY\n{entries}            // END GENERATED LIBRARY POLICY\n"
     if _ESLINT_MARKER not in standard:
-        msg = "eslint.strict.mjs is missing the no-restricted-imports generation marker"
+        msg = "eslint.strict.ts is missing the no-restricted-imports generation marker"
         raise ValueError(msg)
     with_paths = standard.replace(_ESLINT_MARKER, _ESLINT_MARKER + addition, 1)
     patterns = [
@@ -75,7 +79,7 @@ def render_eslint_strict(standard: str | None = None) -> str:
         "          ],\n"
     )
     if _ESLINT_PATTERNS_MARKER not in with_paths:
-        msg = "eslint.strict.mjs is missing the no-restricted-imports patterns generation marker"
+        msg = "eslint.strict.ts is missing the no-restricted-imports patterns generation marker"
         raise ValueError(msg)
     with_static_policy = with_paths.replace(_ESLINT_PATTERNS_MARKER, pattern_block, 1)
     runtime_policy = json.dumps(_typescript_runtime_bans(), indent=2, sort_keys=True)
@@ -113,7 +117,7 @@ def render_eslint_strict(standard: str | None = None) -> str:
         "  // END GENERATED LIBRARY POLICY\n"
     )
     if _ESLINT_CONFIG_END not in with_static_policy:
-        msg = "eslint.strict.mjs is missing its library-rule generation marker"
+        msg = "eslint.strict.ts is missing its library-rule generation marker"
         raise ValueError(msg)
     return with_static_policy.replace(
         _ESLINT_CONFIG_END,
@@ -162,7 +166,8 @@ def generated_configs() -> Mapping[Path, str]:
     ruff = render_ruff_strict()
     configs = {
         CONFIGS_DIR / "ruff.strict.toml": ruff,
-        CONFIGS_DIR / "eslint.strict.mjs": render_eslint_strict(),
+        CONFIGS_DIR / "eslint.strict.ts": (typed := render_eslint_strict()),
+        CONFIGS_DIR / "eslint.strict.mjs": render_legacy_eslint(typed),
         _RUFF_APPLICATION: _RUFF_ALIAS,
         _ESLINT_APPLICATION: _ESLINT_ALIAS,
     }
@@ -188,10 +193,11 @@ def warning_level_artifacts(repository: Path) -> Mapping[Path, str]:
     preset = preset_path.read_text(encoding="utf-8")
     strict = strict_path.read_text(encoding="utf-8")
     rendered_preset = _render_typescript_preset(preset, warnings)
-    rendered_strict = _render_rule_levels(strict, warnings, label="eslint.strict.mjs")
+    rendered_strict = _render_rule_levels(strict, warnings, label="eslint.strict.ts")
     return {
         preset_path: rendered_preset,
         strict_path: rendered_strict,
+        strict_path.with_suffix(".mjs"): render_legacy_eslint(rendered_strict),
         repository / _ESLINT_APPLICATION_REPO: _ESLINT_ALIAS,
     }
 
@@ -246,3 +252,19 @@ def sync(*, check: bool) -> bool:
     for path, contents in expected.items():
         path.write_text(contents, encoding="utf-8")
     return True
+
+
+def render_legacy_eslint(source: str) -> str:
+    node = shutil.which("node")
+    if node is None:
+        msg = "Node.js is required to compile the legacy ESLint preset"
+        raise RuntimeError(msg)
+    result = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- resolved executable and fixed bundled compiler; input is parsed, never evaluated.
+        (node, str(Path(__file__).parents[2] / "configs" / "compile-eslint.mts")),
+        input=source,
+        text=True,
+        capture_output=True,
+        check=True,
+        timeout=30,
+    )
+    return result.stdout

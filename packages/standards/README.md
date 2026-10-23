@@ -23,6 +23,8 @@ code-standards doctor
 code-standards update
 ```
 
+New ESLint setups use `eslint.config.ts` and the compiler-checked `eslint.strict.ts` preset. Existing `.mjs` preset imports remain supported; to migrate, remove the old generated preset and change its imports to `.ts` before running setup.
+
 Use repeatable `check --rule ENGINE:ID` selectors to select native rules, ESLint rules, or managed security audits. Exclusions, baselines, and severities still apply; Ruff selectors are not supported. Native linters and ESLint execute only selected rules. ESLint retains configured parsers, options, severities, and suppression directives.
 
 Selected ESLint checks apply live inline suppressions and validate selected bulk suppression counts. The complete lint gate owns unused inline-directive and inline-configuration checks: a partial run cannot establish whether an unselected rule's directive is needed.

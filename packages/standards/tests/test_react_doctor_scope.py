@@ -707,6 +707,7 @@ def test_empty_changed_scope_uses_the_requested_bases_common_ancestor(
         ("types.d.ts", True),
         ("types.d.mts", True),
         ("eslint.strict.mjs", True),
+        ("eslint.strict.ts", True),
         ("bundle.min.tsx", True),
         ("bundle.minimum.js", True),
         ("bundle.mın.js", True),

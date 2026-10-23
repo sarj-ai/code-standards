@@ -333,7 +333,7 @@ describe("a rename ships a map, not a hole", () => {
   it("leaves no old name in the shipped strict config", () => {
     const configured = configuredSarjRuleNames(
       readFileSync(
-        resolve(REPO_ROOT, "packages/standards/src/sarj_standards/configs/eslint.strict.mjs"),
+        resolve(REPO_ROOT, "packages/standards/src/sarj_standards/configs/eslint.strict.ts"),
         "utf8",
       ),
     );

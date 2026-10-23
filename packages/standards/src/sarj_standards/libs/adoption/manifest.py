@@ -53,10 +53,10 @@ class _UpstreamRuleEngine(StrEnum):
 LINT_CONFIGS: Final = "code-standards"
 _PYTHON_LINT: Final = "sarj-python-lint"
 SIBLING_PACKAGES: Final = (_PYTHON_LINT, "sarj-sql-lint", "sarj-iac-lint")
-REPO_STANDARDS_VERSION: Final = "6.12.5"
+REPO_STANDARDS_VERSION: Final = "6.12.6"
 # Actions can receive delivery fixes independently of the consumer topology policy.
-REPO_STANDARDS_ACTION_VERSION: Final = "6.12.5"
-REPO_STANDARDS_REVISION: Final = "7deae1423e443d778c84c6bb916fa22c2a8522fe"
+REPO_STANDARDS_ACTION_VERSION: Final = "6.12.6"
+REPO_STANDARDS_REVISION: Final = "914081677f450369a41a981e5a11b1be0c7c81a1"
 
 
 def adopted_version() -> str:
@@ -715,7 +715,7 @@ def _validate_known_rule(engine: str, rule: str, selector: str) -> None:
     if rule.startswith("@sarj/"):
         known = frozenset(f"@sarj/{name}" for name in shipped.rules.get(ledger.ESLINT, ()))
     elif "/" not in rule:
-        config = (CONFIGS_DIR / "eslint.strict.mjs").read_text(encoding="utf-8")
+        config = (CONFIGS_DIR / "eslint.strict.ts").read_text(encoding="utf-8")
         known = frozenset(match.group("rule") for match in _ESLINT_RULE_KEY.finditer(config))
     else:
         return

@@ -1105,7 +1105,7 @@ def test_update_uses_enabled_explicit_typescript_destination_with_independent_pr
     assert plan.ecosystems.typescript_root == docs
     assert plan.scaffold_plan.ecosystems.typescript_root == docs
     assert not plan.scaffold_plan.errors
-    assert any(target == docs / "eslint.strict.mjs" for _source, target in plan.config_writes)
+    assert any(target == docs / "eslint.strict.ts" for _source, target in plan.config_writes)
     assert all(not target.is_relative_to(deploy) for _source, target in plan.config_writes)
 
 
