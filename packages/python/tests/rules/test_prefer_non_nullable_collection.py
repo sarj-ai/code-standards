@@ -156,3 +156,12 @@ def test_suppression_is_recognized() -> None:
 @pytest.mark.parametrize("source", ["", "# comment\n", "def broken( -> None:\n"])
 def test_allows_empty_or_invalid_source(source: str) -> None:
     assert _check(source) == []
+
+
+def test_flags_empty_list_collapse_with_deep_nullable_union() -> None:
+    annotation = " | ".join(["list[str]", *(["None"] * 1500)])
+    source = f"def resolve(items: {annotation} = None):\n    return items or []\n"
+    diagnostics = _check(source)
+    assert len(diagnostics) == 1
+    assert diagnostics[0].code == "SARJ082"
+    assert diagnostics[0].severity is Severity.WARNING

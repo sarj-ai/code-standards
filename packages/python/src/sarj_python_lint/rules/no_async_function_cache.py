@@ -17,6 +17,7 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import has_own_yield
+from sarj_python_lint.rules._imports import ambiguous_import_names as _nested_import_names
 
 
 if TYPE_CHECKING:
@@ -112,17 +113,6 @@ class NoAsyncFunctionCache(Rule):
                 ),
             )
         return diagnostics
-
-
-def _nested_import_names(context: PythonFileContext) -> frozenset[str]:
-    return frozenset(
-        alias.asname or alias.name.partition(".")[0]
-        for node in context.nodes(ast.Import, ast.ImportFrom)
-        for alias in node.names
-        if context.parents[node] is not context.tree
-        or (isinstance(node, ast.ImportFrom) and node.level > 0)
-        or alias.name == "*"
-    )
 
 
 def _is_coroutine_cache(decorator: ast.expr, imports: ImportIndex, shadowed: frozenset[str]) -> bool:

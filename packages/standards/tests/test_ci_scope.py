@@ -479,7 +479,9 @@ def test_skill_source_check_fetches_only_its_missing_comparison_commit(repositor
     assert step.env["BASE_SHA"] == (
         "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}"
     )
-    assert step.condition == "needs.changes.outputs.reviewed-docs != 'true' && needs.changes.outputs.standards == 'false'"
+    assert (
+        step.condition == "needs.changes.outputs.reviewed-docs != 'true' && needs.changes.outputs.standards == 'false'"
+    )
     fetch, check = step.run.splitlines()
     subprocess.run(
         ("bash", "-eu", "-c", fetch),

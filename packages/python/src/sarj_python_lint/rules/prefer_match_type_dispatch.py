@@ -15,6 +15,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
+from sarj_python_lint.rules._annotation_semantics import bit_or_members as _flatten_union
 
 
 if TYPE_CHECKING:
@@ -701,12 +702,6 @@ def _type_references(
     if any(reference is None for reference in references):
         return None
     return frozenset(reference for reference in references if reference is not None)
-
-
-def _flatten_union(expression: ast.expr) -> list[ast.expr]:
-    if isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.BitOr):
-        return [*_flatten_union(expression.left), *_flatten_union(expression.right)]
-    return [expression]
 
 
 def _type_reference(

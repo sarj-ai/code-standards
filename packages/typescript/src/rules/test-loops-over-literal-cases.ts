@@ -184,6 +184,15 @@ export default createRule<Options, MessageIds>({
     if (!isTestFile(context)) {
       return {};
     }
+    const referenceIdentifiers = new WeakMap<NonNullable<ReturnType<typeof ASTUtils.findVariable>>, ReadonlySet<TSESTree.Node>>();
+    const isReference = (variable: NonNullable<ReturnType<typeof ASTUtils.findVariable>>, identifier: TSESTree.Node): boolean => {
+      let identifiers = referenceIdentifiers.get(variable);
+      if (identifiers === undefined) {
+        identifiers = new Set(variable.references.map((reference) => reference.identifier));
+        referenceIdentifiers.set(variable, identifiers);
+      }
+      return identifiers.has(identifier);
+    };
     const isFrameworkTest = (identifier: TSESTree.Identifier): boolean => TEST_CALLERS.has(runtimeTestFrameworkName(context.sourceCode, identifier, "test") ?? "");
     const isFrameworkAssertion = (identifier: TSESTree.Identifier): boolean => ASSERTION_ROOTS.has(runtimeTestFrameworkName(context.sourceCode, identifier, "assertion") ?? "");
     return {
@@ -215,7 +224,7 @@ export default createRule<Options, MessageIds>({
         const capturesSetup = walkOwnScope(node.body, (current) => {
           if (current.type !== AST_NODE_TYPES.Identifier) return false;
           const variable = ASTUtils.findVariable(context.sourceCode.getScope(current), current.name);
-          if (variable === null || !variable.references.some((reference) => reference.identifier === current)) return false;
+          if (variable === null || !isReference(variable, current)) return false;
           return variable.defs.some((definition) => {
             const declaration = definition.name;
             return declaration.range[0] >= enclosing.range[0] && declaration.range[1] <= enclosing.range[1] &&

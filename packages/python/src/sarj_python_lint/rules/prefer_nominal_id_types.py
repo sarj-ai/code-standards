@@ -20,6 +20,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._annotation_semantics import bit_or_members as _flatten_union
 from sarj_python_lint.rules._ast_index import nodes, parent_map, walk as walk_ast
 from sarj_python_lint.rules._inherited_contract import inherited_contract
 from sarj_python_lint.rules._nominal_project import NominalSource
@@ -803,18 +804,6 @@ def _union_carrier(members: list[ast.expr], imports: ImportIndex, facts: _TypeFa
     if len({carrier.shape for carrier in carriers}) != 1:
         return None
     return _Carrier(carriers[0].shape, raw=any(carrier.raw for carrier in carriers))
-
-
-def _flatten_union(annotation: ast.expr) -> list[ast.expr]:
-    members: list[ast.expr] = []
-    pending = [annotation]
-    while pending:
-        member = pending.pop()
-        if isinstance(member, ast.BinOp) and isinstance(member.op, ast.BitOr):
-            pending.extend((member.right, member.left))
-        else:
-            members.append(member)
-    return members
 
 
 def _is_none(annotation: ast.expr) -> bool:

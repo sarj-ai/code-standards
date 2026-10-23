@@ -4,9 +4,13 @@ import ast
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 from sarj_python_lint.rules._ast_index import comprehension_results, walk as walk_ast
+
+
+if TYPE_CHECKING:
+    from sarj_python_lint._file_context import PythonFileContext
 
 
 ABC_SOURCES = frozenset({"abc"})
@@ -79,6 +83,17 @@ class ImportIndex:
                 return _ImportTarget(".".join((target.module, *ordered[:-1])), ordered[-1])
             case _:
                 return None
+
+
+def ambiguous_import_names(context: PythonFileContext) -> frozenset[str]:
+    return frozenset(
+        alias.asname or alias.name.partition(".")[0]
+        for node in context.nodes(ast.Import, ast.ImportFrom)
+        for alias in node.names
+        if context.parents[node] is not context.tree
+        or (isinstance(node, ast.ImportFrom) and node.level > 0)
+        or alias.name == "*"
+    )
 
 
 def _non_import_bindings(tree: ast.Module) -> set[str]:

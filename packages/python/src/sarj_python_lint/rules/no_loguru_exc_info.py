@@ -17,6 +17,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._imports import ambiguous_import_names as _ambiguous_import_names
 
 
 if TYPE_CHECKING:
@@ -112,17 +113,6 @@ class NoLoguruExcInfo(Rule):
                 ),
             )
         return diagnostics
-
-
-def _ambiguous_import_names(context: PythonFileContext) -> frozenset[str]:
-    return frozenset(
-        alias.asname or alias.name.partition(".")[0]
-        for node in context.nodes(ast.Import, ast.ImportFrom)
-        for alias in node.names
-        if context.parents[node] is not context.tree
-        or (isinstance(node, ast.ImportFrom) and node.level > 0)
-        or alias.name == "*"
-    )
 
 
 def _is_unconfigured_loguru(receiver: ast.expr, context: PythonFileContext, shadowed: frozenset[str]) -> bool:

@@ -1363,3 +1363,18 @@ def parse(value: object):
 @pytest.mark.parametrize("source", ["", "# comment\n", "def f(:\n    pass"])
 def test_trivial_or_invalid_source_is_ignored(source: str) -> None:
     assert _check(source) == []
+
+
+def test_accepts_deep_union_type_arm_without_recursion() -> None:
+    group = " | ".join(["dict"] * 1500 + ["list"])
+    source = f"""
+def parse(value: object):
+    if isinstance(value, (str, bytes)):
+        return scalar(value)
+    elif isinstance(value, {group}):
+        return collection(value)
+    elif isinstance(value, int):
+        return number(value)
+    return None
+"""
+    assert len(_check(source)) == 1

@@ -21,7 +21,7 @@ from sarj_python_lint.rules._logging import LOG_METHODS, is_logger_expr
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
     from sarj_python_lint._file_context import PythonFileContext
 
@@ -101,6 +101,7 @@ _STRING_METHODS = frozenset(
     }
 )
 _REGEX_METHODS = frozenset({"compile", "findall", "finditer", "fullmatch", "match", "search", "split", "sub", "subn"})
+_REGEX_CALL_NAMES = frozenset(f"re.{name}" for name in _REGEX_METHODS)
 _COMPACT_UNITS = frozenset({"em", "ms", "pt", "px", "rem", "s"})
 _PRODUCER_NAMES = _STRING_CALLS | {"json", "re", "str"}
 
@@ -114,6 +115,7 @@ class _StringEvidence(NamedTuple):
 class _RegexBindings(NamedTuple):
     modules: frozenset[str]
     functions: frozenset[str]
+    scoped_names: frozenset[str]
 
 
 class PreferFstringOverConcat(Rule):
@@ -188,9 +190,9 @@ class PreferFstringOverConcat(Rule):
         excluded: set[int] = set()
         adds: list[ast.BinOp] = []
         parents = context.parents
-        regex_bindings = _regex_bindings(tree)
+        regex_bindings = _regex_bindings(context)
         for node in context.nodes(ast.BinOp, ast.Call, ast.JoinedStr):
-            _classify_concat_context(node, inner, excluded, adds, regex_bindings)
+            _classify_concat_context(node, inner, excluded, adds, regex_bindings, context=context)
 
         diags: list[Diagnostic] = []
         module_evidence: _StringEvidence | None = None
@@ -226,6 +228,8 @@ def _classify_concat_context(
     excluded: set[int],
     adds: list[ast.BinOp],
     regex_bindings: _RegexBindings,
+    *,
+    context: PythonFileContext,
 ) -> None:
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
         _collect_add_chain(node, adds, inner)
@@ -233,9 +237,9 @@ def _classify_concat_context(
         # `("%0" + width + "d") % args` builds a format template.
         excluded.add(id(node.left))
     elif isinstance(node, ast.Call) and _is_logging_call(node):
-        _exclude_logging_chains(node, excluded)
-    elif isinstance(node, ast.Call) and _is_regex_call(node, regex_bindings):
-        excluded.update(id(sub) for arg in node.args for sub in walk(arg))
+        _exclude_call_chains(node, excluded)
+    elif isinstance(node, ast.Call) and _is_regex_call(node, regex_bindings, context):
+        _exclude_regex_chains(node, excluded, context)
     elif isinstance(node, ast.JoinedStr):
         # Rewriting a concat already nested in an f-string merely
         # trades one interpolation expression for a nested f-string.
@@ -249,26 +253,75 @@ def _is_logging_call(node: ast.Call) -> bool:
     return is_logger_expr(func.value)
 
 
-def _is_regex_call(node: ast.Call, bindings: _RegexBindings) -> bool:
+def _is_regex_call(node: ast.Call, bindings: _RegexBindings, context: PythonFileContext) -> bool:
     func = node.func
-    return (isinstance(func, ast.Name) and func.id in bindings.functions) or (
+    if isinstance(func, ast.Name) and func.id in bindings.functions:
+        return True
+    if (
         isinstance(func, ast.Attribute)
         and isinstance(func.value, ast.Name)
         and func.value.id in bindings.modules
         and func.attr in _REGEX_METHODS
-    )
+    ):
+        return True
+    root = func.value if isinstance(func, ast.Attribute) else func
+    if not isinstance(root, ast.Name) or root.id not in bindings.scoped_names:
+        return False
+    return _proven_regex_call(node, context)
 
 
-def _regex_bindings(tree: ast.Module) -> _RegexBindings:
+def _proven_regex_call(node: ast.Call, context: PythonFileContext) -> bool:
+    arguments: list[ast.expr] = [*node.args, *(keyword.value for keyword in node.keywords)]
+    if not any(isinstance(part, ast.BinOp) and isinstance(part.op, ast.Add) for arg in arguments for part in walk(arg)):
+        return False
+    return context.static_resource_provenance.runtime_import_name(node.func) in _REGEX_CALL_NAMES
+
+
+def _exclude_regex_chains(node: ast.Call, excluded: set[int], context: PythonFileContext) -> None:
+    if node.keywords and _proven_regex_call(node, context):
+        _exclude_call_chains(node, excluded)
+    else:
+        excluded.update(id(sub) for arg in node.args for sub in walk(arg))
+
+
+def _regex_bindings(context: PythonFileContext) -> _RegexBindings:
+    imports = context.nodes(ast.Import, ast.ImportFrom)
+    module_imports = [node for node in imports if context.parents[node] is context.tree]
     modules = {
         alias.asname or alias.name
-        for statement in tree.body
+        for statement in module_imports
         if isinstance(statement, ast.Import)
         for alias in statement.names
         if alias.name == "re"
     }
-    functions = _regex_function_bindings(tree)
-    return _RegexBindings(frozenset(modules), frozenset(functions))
+    functions = _regex_function_bindings(module_imports)
+    return _RegexBindings(frozenset(modules), frozenset(functions), _scoped_regex_names(context, imports))
+
+
+def _regex_function_bindings(imports: Sequence[ast.Import | ast.ImportFrom]) -> set[str]:
+    return {
+        alias.asname or alias.name
+        for statement in imports
+        if isinstance(statement, ast.ImportFrom) and statement.module == "re"
+        for alias in statement.names
+        if alias.name in _REGEX_METHODS
+    }
+
+
+def _scoped_regex_names(context: PythonFileContext, imports: Sequence[ast.Import | ast.ImportFrom]) -> frozenset[str]:
+    return frozenset(
+        alias.asname or alias.name
+        for node in imports
+        if context.parents[node] is not context.tree
+        for alias in node.names
+        if (isinstance(node, ast.Import) and alias.name == "re")
+        or (
+            isinstance(node, ast.ImportFrom)
+            and node.module == "re"
+            and node.level == 0
+            and alias.name in _REGEX_METHODS
+        )
+    )
 
 
 def _in_callable_scope(node: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> bool:
@@ -603,16 +656,6 @@ def _stored_names(node: ast.AST) -> set[str]:
     }
 
 
-def _regex_function_bindings(tree: ast.Module) -> set[str]:
-    return {
-        alias.asname or alias.name
-        for statement in tree.body
-        if isinstance(statement, ast.ImportFrom) and statement.module == "re"
-        for alias in statement.names
-        if alias.name in _REGEX_METHODS
-    }
-
-
 def _collect_string_parameters(
     scope: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda, shadowed: frozenset[str], known: set[str]
 ) -> None:
@@ -657,7 +700,7 @@ def _update_string_bindings(
         known.difference_update(_bound_names(statement))
 
 
-def _exclude_logging_chains(node: ast.Call, excluded: set[int]) -> None:
+def _exclude_call_chains(node: ast.Call, excluded: set[int]) -> None:
     arguments: list[ast.expr] = [*node.args, *(kw.value for kw in node.keywords)]
     excluded.update(id(sub) for arg in arguments for sub in walk(arg))
 

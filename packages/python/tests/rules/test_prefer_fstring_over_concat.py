@@ -139,6 +139,60 @@ def test_regex_api_arguments_are_clean(source: str) -> None:
 @pytest.mark.parametrize(
     "source",
     [
+        'def find(name: str, text: str):\n    import re\n    return re.search("Hello, " + name, text)\n',
+        'def find(name: str, text: str):\n    import re as patterns\n    return patterns.fullmatch("Hello, " + name, text)\n',
+        'def pattern(name: str):\n    from re import compile as compile_pattern\n    return compile_pattern("Hello, " + name)\n',
+        'def factory():\n    import re\n    def find(name: str, text: str):\n        return re.search("Hello, " + name, text)\n    return find\n',
+    ],
+)
+def test_callable_local_regex_imports_keep_patterns_clean(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'def find(name: str, text: str):\n    import custom as re\n    return re.search("Hello, " + name, text)\n',
+        'def find(name: str, text: str):\n    import re\n    re = custom\n    return re.search("Hello, " + name, text)\n',
+        'def factory():\n    import re\n    def find(re, name: str, text: str):\n        return re.search("Hello, " + name, text)\n    return find\n',
+        'def find(name: str, text: str):\n    from .re import search\n    return search("Hello, " + name, text)\n',
+    ],
+)
+def test_uncertain_local_regex_names_do_not_hide_prose(source: str) -> None:
+    [diagnostic] = _check(source)
+    assert diagnostic.code == "SARJ068"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'import re\ndef find(name: str, text: str):\n    return re.search(pattern="Hello, " + name, string=text)\n',
+        'def find(name: str, text: str):\n    import re\n    return re.search(pattern="Hello, " + name, string=text)\n',
+        'def find(name: str, text: str):\n    from re import search as find_pattern\n    return find_pattern(pattern="Hello, " + name, string=text)\n',
+        'from re import sub as replace\ndef find(name: str, text: str):\n    return replace(pattern="Hello, " + name, repl="Hi", string=text)\n',
+    ],
+)
+def test_proven_regex_keyword_arguments_are_clean(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'import re\ndef find(re, name: str, text: str):\n    return re.search(pattern="Hello, " + name, string=text)\n',
+        'def find(name: str, text: str):\n    import re\n    re = custom\n    return re.search(pattern="Hello, " + name, string=text)\n',
+        'from .re import search\ndef find(name: str, text: str):\n    return search(pattern="Hello, " + name, string=text)\n',
+        'import custom as re\ndef find(name: str, text: str):\n    return re.search(pattern="Hello, " + name, string=text)\n',
+    ],
+)
+def test_uncertain_regex_keywords_do_not_hide_prose(source: str) -> None:
+    [diagnostic] = _check(source)
+    assert diagnostic.code == "SARJ068"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
         'def query(table: str):\n    return "select * from " + table\n',
         'def query(tail: str):\n    return "SELECT * FROM users " + tail\n',
         'def query(table: str):\n    return "WITH rows AS (SELECT 1) SELECT * FROM " + table\n',
