@@ -227,11 +227,8 @@ def _commit_findings(
     scoped: re.Pattern[str] | None,
 ) -> list[Finding]:
     findings: list[Finding] = []
-    for revision in revisions:
-        message = _git(root, "show", "--quiet", "--format=%H%n%s%n%b", revision).stdout
-        parents = _git(root, "show", "--quiet", "--format=%P", revision).stdout.split()
-        if len(parents) > 1:
-            message = _without_generated_merge_subject(message)
+    for revision, parents, raw_message in _commit_messages(root, revisions):
+        message = _without_generated_merge_subject(raw_message) if len(parents) > 1 else raw_message
         if _matches_private_ref(message, broad, scoped) or _CONFLICT_RE.search(message):
             findings.append(Finding("private-refs", revision, "private reference or conflict marker in commit message"))
         changed = _git(
@@ -248,6 +245,21 @@ def _commit_findings(
         ).stdout
         findings.extend(_commit_changed_findings(root, revision, changed, policy, broad=broad, scoped=scoped))
     return findings
+
+
+def _commit_messages(root: Path, revisions: Sequence[str]) -> Iterable[tuple[str, list[str], str]]:
+    for offset in range(0, len(revisions), 128):
+        batch = revisions[offset : offset + 128]
+        fields = _git(root, "show", "--no-patch", "--format=%P%x00%H%n%s%n%b%n%x00", *batch, "--").stdout.split("\0")
+        if len(fields) != len(batch) * 2 + 1 or fields[-1].strip():
+            msg = "cannot parse commit message batch"
+            raise ValueError(msg)
+        for index, revision in enumerate(batch):
+            parents, message = fields[index * 2 : index * 2 + 2]
+            if message.partition("\n")[0] != revision:
+                msg = "commit message batch returned another revision"
+                raise ValueError(msg)
+            yield revision, parents.split(), message
 
 
 def _commit_changed_findings(

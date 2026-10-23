@@ -295,6 +295,25 @@ def test_private_reference_check_scans_intermediate_commit_blobs(tmp_path: Path)
     ]
 
 
+def test_private_reference_check_scans_every_commit_across_message_batches(tmp_path: Path) -> None:
+    _git_repo(tmp_path, {"value.txt": "public\n"})
+    _commit(tmp_path, "base")
+    base = _git(tmp_path, "rev-parse", "HEAD").stdout.strip()
+    revisions: list[str] = []
+    parent = base
+    for index in range(130):
+        parent = _git(
+            tmp_path, "commit-tree", "HEAD^{tree}", "-p", parent, "-m", f"change {index}\n\nsecret-repo body"
+        ).stdout.strip()
+        revisions.append(parent)
+
+    findings = repository.check_private_refs(tmp_path, _policy(), commits=f"{base}..{parent}")
+
+    assert [(item.where, item.message) for item in findings] == [
+        (revision, "private reference or conflict marker in commit message") for revision in revisions
+    ]
+
+
 def test_private_reference_check_scans_intermediate_paths_and_symlink_targets(tmp_path: Path) -> None:
     _git_repo(tmp_path, {"value.txt": "public\n"})
     _commit(tmp_path, "base")
