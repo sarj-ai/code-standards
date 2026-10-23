@@ -135,7 +135,7 @@ def _parameter_values(fixture: FixtureDeclaration, context: PythonFileContext) -
 
 def _literal_key(value: ast.expr) -> str | None:
     if isinstance(value, ast.Constant) and isinstance(value.value, str | bytes | bool | int | float | type(None)):
-        return f"{type(value.value).__name__}:{value.value!r}"
+        return _scalar_key(value=value.value)
     if (
         isinstance(value, ast.UnaryOp)
         and isinstance(value.op, ast.UAdd | ast.USub)
@@ -145,12 +145,18 @@ def _literal_key(value: ast.expr) -> str | None:
     ):
         number = value.operand.value
         number = -number if isinstance(value.op, ast.USub) else +number
-        return f"{type(number).__name__}:{number!r}"
+        return _scalar_key(value=number)
     if isinstance(value, ast.Tuple):
         keys = tuple(_literal_key(item) for item in value.elts)
         if all(key is not None for key in keys):
             return "tuple:" + "".join(f"{len(key)}:{key}" for key in keys if key is not None)
     return None
+
+
+def _scalar_key(*, value: str | bytes | float | None) -> str:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return f"int:{value:x}"
+    return f"{type(value).__name__}:{value!r}"
 
 
 def _observes_request_identity(node: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext) -> bool:

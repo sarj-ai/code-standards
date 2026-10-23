@@ -147,5 +147,14 @@ def test_deeply_nested_literal_parameters_keep_a_bounded_key() -> None:
     assert len(findings) == 1
 
 
+@pytest.mark.parametrize("repeated", [False, True], ids=("distinct", "duplicate"))
+def test_large_hexadecimal_integer_parameters(repeated: bool) -> None:
+    first = "0x" + "f" * 4096
+    second = first if repeated else "0x" + "e" * 4096
+    source = _BASE.replace('"empty", "empty"', f"{first}, {second}")
+    findings = DuplicatePytestFixtureParams().check(Path("tests/conftest.py"), source)
+    assert len(findings) == int(repeated)
+
+
 def test_documented_examples() -> None:
     verify_native_rule(DuplicatePytestFixtureParams, analyze)
