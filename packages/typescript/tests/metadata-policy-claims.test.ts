@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 import { expect, test } from "vitest";
 
 import { NO_ENUM_DOCUMENTATION } from "../src/rules/no-enum.js";

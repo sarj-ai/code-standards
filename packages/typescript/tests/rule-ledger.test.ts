@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 /**
  * Keeps the shipped rule ledger equal to this plugin's rule set.
  *

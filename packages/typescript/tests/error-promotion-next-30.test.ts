@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 import * as parser from "@typescript-eslint/parser";
 import { Linter } from "eslint";
 import { expect, it } from "vitest";

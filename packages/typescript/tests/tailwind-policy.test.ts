@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 import { fileURLToPath } from "node:url";
 
 import parser from "@typescript-eslint/parser";
