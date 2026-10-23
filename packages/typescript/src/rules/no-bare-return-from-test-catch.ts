@@ -215,6 +215,10 @@ export default createRule<Options, MessageIds>({
         const returnBlock = node.parent;
         if (parameter?.type === AST_NODE_TYPES.Identifier && returnBlock?.type === AST_NODE_TYPES.BlockStatement) {
           const errorBinding = ASTUtils.findVariable(context.sourceCode.getScope(parameter), parameter.name);
+          // Short reference lists cost less to scan than to index.
+          const errorReferences = errorBinding !== null && errorBinding.references.length > 32
+            ? new Set(errorBinding.references.map((reference) => reference.identifier))
+            : undefined;
           const assertedError = returnBlock.body.some((statement) => {
             if (statement.range[1] > node.range[0] || statement.type !== AST_NODE_TYPES.ExpressionStatement) return false;
             const expression = statement.expression;
@@ -225,7 +229,7 @@ export default createRule<Options, MessageIds>({
             let operand = expression.callee.type === AST_NODE_TYPES.MemberExpression ? expression.callee.object : null;
             if (operand?.type === AST_NODE_TYPES.MemberExpression && staticMemberName(operand) === "not") operand = operand.object;
             if (assertionName !== "assert" && (assertionName !== "expect" || operand?.type !== AST_NODE_TYPES.CallExpression || operand.callee !== root)) return false;
-            return walkOwnScope(expression, (current) => current.type === AST_NODE_TYPES.Identifier && errorBinding?.references.some((reference) => reference.identifier === current) === true);
+            return walkOwnScope(expression, (current) => current.type === AST_NODE_TYPES.Identifier && (errorReferences?.has(current) ?? errorBinding?.references.some((reference) => reference.identifier === current)) === true);
           });
           if (assertedError) return;
         }

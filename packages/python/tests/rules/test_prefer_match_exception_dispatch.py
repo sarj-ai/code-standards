@@ -239,3 +239,9 @@ def test_reports_two_classifiers_once_each_in_source_order() -> None:
 def test_rule_has_no_automatic_fix() -> None:
     assert PreferMatchExceptionDispatch.documentation is not None
     assert PreferMatchExceptionDispatch.documentation.autofix.value == "none"
+
+
+def test_accepts_deep_union_exception_group_without_recursion() -> None:
+    group = " | ".join(["TimeoutError"] * 1500 + ["APITimeoutError"])
+    source = _PROVIDER_CLASSIFIER.replace("TimeoutError | APITimeoutError", group)
+    assert len(_check(source)) == 1

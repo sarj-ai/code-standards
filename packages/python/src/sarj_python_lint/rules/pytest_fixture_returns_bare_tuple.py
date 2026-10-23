@@ -14,6 +14,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
+from sarj_python_lint.rules._annotation_semantics import bit_or_members as _union_members
 from sarj_python_lint.rules._ast_index import children, walk as walk_ast
 from sarj_python_lint.rules._ast_names import terminal_name as _dotted_tail
 from sarj_python_lint.rules._paths import is_test_path
@@ -472,12 +473,6 @@ def _optional_member(annotation: ast.expr) -> ast.expr | None:
         members = _union_members(annotation)
         return _only_non_none(members)
     return None
-
-
-def _union_members(annotation: ast.expr) -> list[ast.expr]:
-    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
-        return [*_union_members(annotation.left), *_union_members(annotation.right)]
-    return [annotation]
 
 
 def _only_non_none(members: list[ast.expr]) -> ast.expr | None:

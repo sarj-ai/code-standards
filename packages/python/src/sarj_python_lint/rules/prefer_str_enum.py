@@ -19,6 +19,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
+from sarj_python_lint.rules._annotation_semantics import bit_or_members as _flatten_annotation_union
 from sarj_python_lint.rules._ast_index import children, walk, walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_test_path
@@ -1406,18 +1407,6 @@ def _literal_string_values(node: ast.expr) -> list[str] | None:
         return None
     elts = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
     return [value for elt in elts if (value := _str_const(elt)) is not None]
-
-
-def _flatten_annotation_union(node: ast.expr) -> list[ast.expr]:
-    members: list[ast.expr] = []
-    pending = [node]
-    while pending:
-        current = pending.pop()
-        if isinstance(current, ast.BinOp) and isinstance(current.op, ast.BitOr):
-            pending.extend((current.right, current.left))
-        else:
-            members.append(current)
-    return members
 
 
 def _is_file_mode_key(key: str) -> bool:

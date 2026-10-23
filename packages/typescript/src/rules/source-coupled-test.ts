@@ -172,6 +172,14 @@ export function createSourceCoupledRule(
   create(context) {
     if (!isTestFile(context) || isGeneratedFile(context, context.sourceCode.text)) return {};
 
+    const referenceStability = new WeakMap<TSESLint.Scope.Variable, boolean>();
+    const referenceStable = (variable: TSESLint.Scope.Variable): boolean => {
+      const cached = referenceStability.get(variable);
+      if (cached !== undefined) return cached;
+      const stable = !variable.references.some((reference) => reference.isWrite() && reference.init !== true);
+      referenceStability.set(variable, stable);
+      return stable;
+    };
     const scopes: LexicalScope[] = [newScope()];
     const reportedOrigins = new Set<string>();
     const currentScope = (): LexicalScope => scopes.at(-1) ?? scopes[0]!;
@@ -189,7 +197,7 @@ export function createSourceCoupledRule(
     };
     const visible = (kind: "collections" | "fsObjects" | "fsReaders" | "paths", node: TSESTree.Identifier): boolean => {
       const name = bindingOf(node);
-      if (name === null || name.references.some((reference) => reference.isWrite() && reference.init !== true)) return false;
+      if (name === null || !referenceStable(name)) return false;
       for (let index = scopes.length - 1;index >= 0;index--) {
         const scope = scopes[index]!;
         if (scope.declared.has(name)) return scope[kind].has(name);
@@ -198,7 +206,7 @@ export function createSourceCoupledRule(
     };
     const visibleRawOrigins = (node: TSESTree.Identifier): Set<string> => {
       const name = bindingOf(node);
-      if (name === null || name.references.some((reference) => reference.isWrite() && reference.init !== true)) return new Set();
+      if (name === null || !referenceStable(name)) return new Set();
       for (let index = scopes.length - 1;index >= 0;index--) {
         const scope = scopes[index]!;
         if (scope.declared.has(name)) return scope.rawOrigins.get(name) ?? new Set();
@@ -233,7 +241,7 @@ export function createSourceCoupledRule(
     };
     const nativeImportedName = (node: TSESTree.Identifier, modules: ReadonlySet<string>): string | null => {
       const binding = bindingOf(node);
-      if (binding === null || binding.references.some((reference) => reference.isWrite() && reference.init !== true)) return null;
+      if (binding === null || !referenceStable(binding)) return null;
       for (const definition of binding.defs) {
         const imported = definition.node;
         if (imported.type === AST_NODE_TYPES.ImportSpecifier &&
@@ -246,7 +254,7 @@ export function createSourceCoupledRule(
     };
     const stableInitializer = (node: TSESTree.Identifier): TSESTree.Expression | null => {
       const binding = bindingOf(node);
-      if (binding === null || binding.references.some((reference) => reference.isWrite() && reference.init !== true) || binding.defs.length !== 1) return null;
+      if (binding === null || !referenceStable(binding) || binding.defs.length !== 1) return null;
       const definition = binding.defs[0]?.node;
       return definition?.type === AST_NODE_TYPES.VariableDeclarator ? definition.init : null;
     };

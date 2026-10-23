@@ -760,3 +760,14 @@ def test_closing_signature_line_preserves_local_suppression(header: str) -> None
 )
 def test_signature_suppression_does_not_consume_body_comments_or_string_data(source: str) -> None:
     assert len(_check(source)) == 1
+
+
+def test_flags_broad_kwargs_through_long_alias_chain() -> None:
+    aliases = "\n".join(
+        [
+            *(f"type Alias{index} = Alias{index + 1}" for index in range(620)),
+            "type Alias620 = object",
+        ]
+    )
+    source = f"{aliases}\ndef forward(**kwargs: Alias0):\n    return kwargs\n"
+    assert len(_check(source)) == 1

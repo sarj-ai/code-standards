@@ -15,6 +15,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
+from sarj_python_lint.rules._annotation_semantics import bit_or_members
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
@@ -291,9 +292,10 @@ def _is_nullable_list(annotation: ast.expr, imports: ImportIndex) -> bool:
 
 def _union_members(annotation: ast.expr, imports: ImportIndex) -> list[ast.expr] | None:
     if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
-        left = _union_members(annotation.left, imports) or [annotation.left]
-        right = _union_members(annotation.right, imports) or [annotation.right]
-        return [*left, *right]
+        members: list[ast.expr] = []
+        for member in bit_or_members(annotation):
+            members.extend(_union_members(member, imports) or [member])
+        return members
     if not isinstance(annotation, ast.Subscript):
         return None
     if imports.resolves(annotation.value, sources=_TYPING_SOURCES, symbol="Optional"):

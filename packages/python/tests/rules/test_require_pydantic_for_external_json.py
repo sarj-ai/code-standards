@@ -56,6 +56,18 @@ def test_flags_external_json_fixed_field_access(source: str) -> None:
     assert diagnostics[0].severity is Severity.ERROR
 
 
+@pytest.mark.parametrize("access", ["payload[key]", "payload.get(key)"])
+def test_indirect_record_reads_keep_dynamic_helper_keys(access: str) -> None:
+    diagnostics = _check(
+        "import httpx\n"
+        "def read(payload, key):\n"
+        f"    return {access}\n"
+        "def fetch():\n"
+        "    return read(httpx.get('https://api.example/report').json(), 'status')\n"
+    )
+    assert len(diagnostics) == 1
+
+
 def test_flags_original_react_doctor_helper_chain_once() -> None:
     diagnostics = _check("""
         import json

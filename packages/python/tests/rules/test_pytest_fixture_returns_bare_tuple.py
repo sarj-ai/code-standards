@@ -725,3 +725,15 @@ def test_provider_mutation_order_preserves_only_captured_native_decorators(
 ) -> None:
     source = f"import pytest\n{setup}\n@{decorator}\ndef pair():\n    return left, right\n"
     assert len(_check(source)) == expected_count
+
+
+def test_allows_homogeneous_fixture_with_deep_optional_union() -> None:
+    annotation = " | ".join(["tuple[int, ...]", *(["None"] * 1500)])
+    source = f"""
+import pytest
+
+@pytest.fixture
+def values() -> {annotation}:
+    return 1, 2
+"""
+    assert _check(source) == []

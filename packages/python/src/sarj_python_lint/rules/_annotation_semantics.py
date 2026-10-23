@@ -3,13 +3,30 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Self
+from typing import NamedTuple, Self
 
 from sarj_python_lint.rules._imports import ImportIndex
 
 
 _TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
 _TRANSPARENT_WRAPPERS = frozenset({"Annotated", "ClassVar", "Final", "NotRequired", "Optional", "ReadOnly", "Required"})
+
+
+def bit_or_members(expression: ast.expr) -> list[ast.expr]:
+    members: list[ast.expr] = []
+    pending = [expression]
+    while pending:
+        member = pending.pop()
+        if isinstance(member, ast.BinOp) and isinstance(member.op, ast.BitOr):
+            pending.extend((member.right, member.left))
+        else:
+            members.append(member)
+    return members
+
+
+class _AnnotationMember(NamedTuple):
+    node: ast.expr | None
+    seen: frozenset[str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,35 +92,51 @@ class AnnotationSemantics:
         if resolved is None:
             return ()
         if isinstance(resolved, ast.Name) and resolved.id in self.aliases:
-            return self._alias_members(resolved.id, seen=seen)
-        if isinstance(resolved, ast.BinOp) and isinstance(resolved.op, ast.BitOr):
-            return self.transparent_members(resolved.left, seen=seen) + self.transparent_members(
-                resolved.right, seen=seen
-            )
-        if isinstance(resolved, ast.Subscript):
-            return self._subscript_members(resolved, seen=seen)
-        return (resolved,)
+            pending = [_AnnotationMember(resolved, seen)]
+        else:
+            children = self._transparent_children(resolved)
+            if children is None:
+                return (resolved,)
+            pending = [_AnnotationMember(child, seen) for child in reversed(children)]
+        members: list[ast.expr] = []
+        while pending:
+            state = self._resolve_member(pending.pop())
+            if state.node is None:
+                continue
+            children = self._transparent_children(state.node)
+            if children is None:
+                members.append(state.node)
+            else:
+                pending.extend(_AnnotationMember(child, state.seen) for child in reversed(children))
+        return tuple(members)
 
-    def _alias_members(self, name: str, *, seen: frozenset[str]) -> tuple[ast.expr, ...]:
-        if name in seen:
-            return ()
-        return self.transparent_members(self.aliases[name], seen=seen | {name})
+    def _resolve_member(self, state: _AnnotationMember) -> _AnnotationMember:
+        node = self.parse(state.node)
+        if not isinstance(node, ast.Name) or node.id not in self.aliases:
+            return _AnnotationMember(node, state.seen)
+        seen = set(state.seen)
+        while isinstance(node, ast.Name) and node.id in self.aliases:
+            if node.id in seen:
+                return _AnnotationMember(None, frozenset(seen))
+            seen.add(node.id)
+            node = self.parse(self.aliases[node.id])
+        return _AnnotationMember(node, frozenset(seen))
 
-    def _subscript_members(self, node: ast.Subscript, *, seen: frozenset[str]) -> tuple[ast.expr, ...]:
+    def _transparent_children(self, node: ast.expr) -> list[ast.expr] | None:
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+            return bit_or_members(node)
+        if not isinstance(node, ast.Subscript):
+            return None
         wrapper = self.imports.resolved_symbol(node.value, sources=_TYPING_SOURCES)
         if wrapper == "Union":
-            members = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
-            return self._flatten_members(members, seen=seen)
+            return list(node.slice.elts) if isinstance(node.slice, ast.Tuple) else [node.slice]
         if wrapper not in _TRANSPARENT_WRAPPERS:
-            return (node,)
-        inner = node.slice.elts[0] if isinstance(node.slice, ast.Tuple) else node.slice
-        return self.transparent_members(inner, seen=seen)
-
-    def _flatten_members(self, nodes: list[ast.expr], *, seen: frozenset[str]) -> tuple[ast.expr, ...]:
-        members: list[ast.expr] = []
-        for node in nodes:
-            members.extend(self.transparent_members(node, seen=seen))
-        return tuple(members)
+            return None
+        if isinstance(node.slice, ast.Tuple):
+            if not node.slice.elts:
+                return None
+            return [node.slice.elts[0]]
+        return [node.slice]
 
 
 def _module_rebindings(tree: ast.Module) -> set[str]:

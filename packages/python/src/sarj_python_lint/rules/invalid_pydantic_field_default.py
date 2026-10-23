@@ -16,6 +16,7 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
 )
+from sarj_python_lint.rules._annotation_semantics import bit_or_members as _bit_union_members
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -312,18 +313,6 @@ def _literal_value(node: ast.expr) -> object:
 
 def _literal_key(value: object) -> _LiteralKey:
     return _LiteralKey(type(value), value)
-
-
-def _bit_union_members(node: ast.expr) -> list[ast.expr]:
-    members: list[ast.expr] = []
-    pending = [node]
-    while pending:
-        member = pending.pop()
-        if isinstance(member, ast.BinOp) and isinstance(member.op, ast.BitOr):
-            pending.extend((member.right, member.left))
-        else:
-            members.append(member)
-    return members
 
 
 def _literal_domain(node: ast.expr, imports: ImportIndex) -> _LiteralDomain | None:
