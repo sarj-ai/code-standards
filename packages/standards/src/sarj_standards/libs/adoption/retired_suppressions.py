@@ -114,6 +114,8 @@ def reference_counts(path: Path, text: str) -> dict[str, int]:
     if "sarj-doctor-ignore-retired-rules" in text:
         return {}
     retired = ledger.load().retired
+    if not any(entry.id in text for entry in retired):
+        return {}
     entries = {entry.id: entry for entry in retired}
     counts: dict[str, int] = {}
     spans = _comment_spans(path, text)
@@ -277,6 +279,8 @@ def _suppression_count(value: object) -> int | None:
 
 
 def _rewrite(path: Path, text: str, eslint: dict[str, str | None], codes: dict[str, str | None]) -> str:
+    if "sarj-noqa:" not in text and "eslint-" not in text and _ESLINT_CONFIG_NAMES.fullmatch(path.name) is None:
+        return text
     rewritten = text
     for span in reversed(_comment_spans(path, text)):
         comment = text[span.start : span.end]
