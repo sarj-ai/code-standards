@@ -379,6 +379,7 @@ class WorkflowStep(BaseModel):
     name: str = ""
     condition: str = Field(default="", alias="if")
     run: str = ""
+    env: dict[str, str] = Field(default_factory=dict)
 
 
 class WorkflowJob(BaseModel):
@@ -465,6 +466,34 @@ def test_private_reference_fetch_excludes_existing_main_history(repository: Path
     )
     assert git(candidate, "rev-list", f"{base}..{head}") == head
     assert git(candidate, "rev-parse", "--is-shallow-repository") == "false"
+
+
+def test_skill_source_check_fetches_only_its_missing_comparison_commit(repository: Path) -> None:
+    base = git(repository, "rev-parse", "HEAD")
+    git(repository, "commit", "--allow-empty", "-qm", "skill changed")
+    candidate = repository / "candidate"
+    git(repository, "clone", "--no-local", "--depth=1", repository.as_uri(), str(candidate))
+    before = subprocess.run(("git", "cat-file", "-e", base), cwd=candidate, check=False, capture_output=True)
+    assert before.returncode != 0
+    [step] = [step for step in workflow("ci.yml").jobs["docs-build"].steps if step.name == "Check skill plugin source"]
+    assert step.env["BASE_SHA"] == (
+        "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}"
+    )
+    assert step.condition == "needs.changes.outputs.reviewed-docs != 'true' && needs.changes.outputs.standards == 'false'"
+    fetch, check = step.run.splitlines()
+    subprocess.run(
+        ("bash", "-eu", "-c", fetch),
+        cwd=candidate,
+        env={**credential_free_environment(), "BASE_SHA": base},
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert git(candidate, "rev-parse", f"{base}^{{commit}}") == base
+    assert git(candidate, "rev-list", "--all", "--count") == "1"
+    assert git(candidate, "rev-parse", "--is-shallow-repository") == "true"
+    assert check.endswith("check plugins/sarj-skills")
 
 
 def test_scheduled_ci_audits_every_package(repository: Path) -> None:
