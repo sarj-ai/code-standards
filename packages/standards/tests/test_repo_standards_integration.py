@@ -579,7 +579,7 @@ def _typed_policy_repository(
 @pytest.mark.parametrize("staged", [False, True])
 @pytest.mark.parametrize("include_warnings", [False, True])
 def test_canonical_repository_gate_enforces_only_opted_in_new_warnings(
-    tmp_path: Path, *, staged: bool, include_warnings: bool
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], *, staged: bool, include_warnings: bool
 ) -> None:
     _typed_policy_repository(tmp_path, include_warnings=include_warnings)
     (tmp_path / "tool.mjs").write_text("export const authored = true;\n", encoding="utf-8")
@@ -610,6 +610,32 @@ def test_canonical_repository_gate_enforces_only_opted_in_new_warnings(
     else:
         arguments.append("tool.mjs")
     assert main(arguments) == int(include_warnings)
+    if staged:
+        capsys.readouterr()
+        assert main(["--root", str(tmp_path), "check", "--staged"]) == int(include_warnings)
+        output = capsys.readouterr().out
+        assert _JAVASCRIPT_RULE in output
+        assert ("retry the commit" in output) is include_warnings
+
+
+@pytest.mark.parametrize("execution_failure", [False, True])
+def test_staged_native_errors_keep_commit_retry_guidance(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], *, execution_failure: bool
+) -> None:
+    baseline = _typed_policy_repository(tmp_path, include_warnings=False)
+    if execution_failure:
+        baseline.write_text("invalid JSON\n", encoding="utf-8")
+        subprocess.run(("git", "add", str(baseline)), cwd=tmp_path, check=True)
+    (tmp_path / "service.py").write_text("logger.info('request', token=token)\n", encoding="utf-8")
+    subprocess.run(("git", "add", "service.py"), cwd=tmp_path, check=True)
+    capsys.readouterr()
+
+    status = main(["--root", str(tmp_path), "check", "--staged"])
+    output = capsys.readouterr().out
+
+    assert status == (2 if execution_failure else 1)
+    assert "SARJ012" in output
+    assert "retry the commit" in output
 
 
 @pytest.mark.parametrize("filename", ["cache.pyc", ".eslintcache", ".coverage"])
