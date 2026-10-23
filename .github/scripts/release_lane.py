@@ -26,6 +26,8 @@ LEGACY_VERSION = "8.101.1"
 # and exact-source release gates. Pinning this digest alone does not qualify a release.
 APPROVED_ADAPTER_SHA256 = "b949ddf7fb6aadbf9e5fd4520b67a322b114a0b54a0af2b32c21d1a2644d882c"
 APPROVED_LOCK_SHA256 = "64dfbdabf646cef05c003036c6849c5922d67865e27e94012a3e37a670777e28"
+# Historical 8.101.2/3 retain their exact lock; later patches must carry both reviewed dependency fixes.
+APPROVED_PATCHED_LOCK_SHA256 = "a7df5c1149f9b655cd587b49cc3e2bdc1c484e7bd5092aa43c6d6b8903c84698"
 APPROVED_GITLEAKS_SHA256 = "1fe4ec30d50367745d11b1e0fbb7bf384c1fc12abb0c1f6aa28a4c115b63158b"
 SECURITY_PROJECTIONS = frozenset({".gitleaks.toml"})
 PACKAGE = "packages/standards"
@@ -181,7 +183,8 @@ def _matches_projection(original: bytes, current: bytes, path: str, version: str
     if path != f"{PACKAGE}/uv.lock":
         return current == original.replace(LEGACY_VERSION.encode(), version.encode())
     normalized = current.replace(version.encode(), LEGACY_VERSION.encode())
-    return hashlib.sha256(normalized).hexdigest() == APPROVED_LOCK_SHA256 and current == normalized.replace(
+    expected = APPROVED_LOCK_SHA256 if version in {"8.101.2", "8.101.3"} else APPROVED_PATCHED_LOCK_SHA256
+    return hashlib.sha256(normalized).hexdigest() == expected and current == normalized.replace(
         LEGACY_VERSION.encode(), version.encode()
     )
 
