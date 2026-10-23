@@ -93,6 +93,22 @@ def route(root: Path, base: str, head: str, *, event: str = "pull_request") -> f
             id="tsconfig-consumers",
         ),
         pytest.param("apps/docs/src/content/guide.mdx", {"docs"}, id="documentation-prose"),
+        pytest.param("plugins/sarj-skills/.claude-plugin/plugin.json", {"docs"}, id="skill-plugin-metadata"),
+        pytest.param("plugins/sarj-skills/commands/security.md", {"docs"}, id="skill-command"),
+        pytest.param("plugins/sarj-skills/skills/audit-protocol/SKILL.md", {"docs"}, id="skill-instructions"),
+        pytest.param("plugins/sarj-skills/skills/100-passes/agents/openai.yaml", {"docs"}, id="skill-agent-metadata"),
+        pytest.param("plugins/sarj-skills/skills/test-value/references/oracles.md", {"docs"}, id="skill-reference"),
+        pytest.param(
+            "plugins/sarj-skills/skills/example/scripts/scan.py",
+            {"standards", "docs", "codeql-python"},
+            id="skill-executable-keeps-standards",
+        ),
+        pytest.param(
+            "plugins/sarj-skills/config.json", {"standards", "docs"}, id="unknown-plugin-config-keeps-standards"
+        ),
+        pytest.param(
+            "plugins/other/skills/example/SKILL.md", {"standards", "docs"}, id="unknown-plugin-keeps-standards"
+        ),
         pytest.param(
             "apps/docs/package-lock.json",
             {"docs", "standards", "docs-audit"},
@@ -147,6 +163,23 @@ def test_pr_selects_owners_and_consumers(repository: Path, path: str, expected: 
     git(repository, "add", "--", path)
     git(repository, "commit", "-qm", "change")
     assert route(repository, base, git(repository, "rev-parse", "HEAD"), event=event) == expected
+
+
+@pytest.mark.parametrize("event", ["pull_request", "push"])
+def test_skill_text_with_runtime_changes_keeps_package_checks(repository: Path, event: str) -> None:
+    base = git(repository, "rev-parse", "HEAD")
+    for relative in ("plugins/sarj-skills/skills/example/SKILL.md", "packages/python/src/rule.py"):
+        source = repository / relative
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("fixture\n")
+    git(repository, "add", "plugins", "packages")
+    git(repository, "commit", "-qm", "skill and runtime change")
+    assert route(repository, base, git(repository, "rev-parse", "HEAD"), event=event) == {
+        "python",
+        "standards",
+        "docs",
+        "codeql-python",
+    }
 
 
 def test_cross_package_rename_checks_old_and_new_owners(repository: Path) -> None:
@@ -298,21 +331,25 @@ def test_invalid_diff_fails_without_publishing_skip_outputs(repository: Path, ba
     assert not output.exists()
 
 
-def test_deleting_the_last_package_file_still_selects_its_checks(repository: Path) -> None:
-    source = repository / "packages/iac/last.py"
+@pytest.mark.parametrize(
+    ("relative", "expected"),
+    [
+        ("packages/iac/last.py", {"iac", "standards", "docs", "codeql-python"}),
+        ("plugins/sarj-skills/skills/example/SKILL.md", {"docs"}),
+    ],
+)
+def test_deleting_the_last_package_file_still_selects_its_checks(
+    repository: Path, relative: str, expected: set[str]
+) -> None:
+    source = repository / relative
     source.parent.mkdir(parents=True)
     source.write_text("fixture\n")
-    git(repository, "add", "packages")
+    git(repository, "add", "--", relative)
     git(repository, "commit", "-qm", "source")
     base = git(repository, "rev-parse", "HEAD")
     git(repository, "rm", str(source))
     git(repository, "commit", "-qm", "delete")
-    assert route(repository, base, git(repository, "rev-parse", "HEAD")) == {
-        "iac",
-        "standards",
-        "docs",
-        "codeql-python",
-    }
+    assert route(repository, base, git(repository, "rev-parse", "HEAD")) == expected
 
 
 def test_base_only_changes_do_not_trigger_unrelated_pr_checks(repository: Path) -> None:

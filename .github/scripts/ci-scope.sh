@@ -140,6 +140,11 @@ else
       apps/docs/*)
         select_scopes docs standards
         ;;
+      plugins/sarj-skills/.claude-plugin/plugin.json | plugins/sarj-skills/commands/*.md | \
+        plugins/sarj-skills/skills/*/SKILL.md | plugins/sarj-skills/skills/*/agents/openai.yaml | \
+        plugins/sarj-skills/skills/*/references/*.md)
+        select_scopes docs
+        ;;
       README.md | AGENTS.md | LICENSE | plugins/*)
         select_scopes docs standards
         ;;
