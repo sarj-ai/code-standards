@@ -7,8 +7,8 @@ Audits are read-only unless implementation is requested. Load the selected
 `../../commands/` file relative to this skill; Claude: `/sarj-skills:<command>`.
 
 Identify owning repositories, stack and boundaries; search named source paths
-with bounded output. Exclude task outputs, caches, duplicate worktrees and
-irrelevant generated/vendor/fixture data. Run native checks before judging
+with bounded output. Exclude unrelated task outputs, caches, duplicate worktrees
+and generated/vendor/fixture data. Run native checks before judging
 uncovered behavior; inspect framework guards.
 Require completed exit statuses; interrupted checks are inconclusive.
 Keep reports ignored and private; redact secrets/identifiers.
