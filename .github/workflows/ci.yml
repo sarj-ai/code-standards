@@ -896,6 +896,10 @@ jobs:
         if: needs.changes.outputs.reviewed-docs != 'true'
         working-directory: .
         run: bash .github/scripts/ci-docs-toolchains.sh
+      - name: Check skill plugin source
+        if: needs.changes.outputs.reviewed-docs != 'true' && needs.changes.outputs.standards == 'false'
+        working-directory: .
+        run: uv run --project packages/standards --frozen --no-dev code-standards --root . check plugins/sarj-skills
       - name: Verify source artifacts and build site
         if: needs.changes.outputs.reviewed-docs != 'true'
         working-directory: .
