@@ -26,12 +26,12 @@ from sarj_python_lint.rules._closed_helpers import (
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_generated, is_test_path
 from sarj_python_lint.rules._project_index import ProjectIndexSet
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._project_index import SourceUnit
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 _BUILTINS = frozenset({"str", "int", "float", "bool", "bytes", "list", "dict", "set", "tuple", "object"})
@@ -98,7 +98,7 @@ class RedundantTestConstructorForwarder(ProjectRule):
         unit = project.unit_or_source(context.path, context.source, tree)
         if unit is None:
             return []
-        provenance = ResourceProvenance(context)
+        provenance = context.resource_provenance
         findings: list[Diagnostic] = []
         for function in tree.body:
             if not isinstance(function, ast.FunctionDef) or (constructor := _forwarded_constructor(function)) is None:
@@ -195,7 +195,7 @@ def _record_fields(
     definition_context = (
         context if owner.path == context.path else PythonFileContext(owner.path, owner.source, context.session)
     )
-    definition_provenance = provenance if definition_context is context else ResourceProvenance(definition_context)
+    definition_provenance = provenance if definition_context is context else definition_context.resource_provenance
     declaration = next(
         (node for node in definition_context.nodes(ast.ClassDef) if node.name == summary.symbol.name), None
     )

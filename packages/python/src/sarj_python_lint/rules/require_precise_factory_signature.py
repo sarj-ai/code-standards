@@ -18,7 +18,6 @@ from sarj_python_lint.rule_base import (
 from sarj_python_lint.rules._ast_index import walk
 from sarj_python_lint.rules._closed_helpers import call_matches, closed_references, direct_call
 from sarj_python_lint.rules._paths import is_generated, is_test_path, is_test_support_path
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
@@ -159,7 +158,7 @@ class RequirePreciseFactorySignature(ProjectRule):
 def _closed_owner(function: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext) -> bool:
     if not isinstance(function, ast.FunctionDef) or not function.name.startswith("_"):
         return False
-    references = closed_references(context, function, ResourceProvenance(context))
+    references = closed_references(context, function, context.resource_provenance)
     return bool(references) and all(
         (call := direct_call(reference, context)) is not None and call_matches(function, call)
         for reference in references

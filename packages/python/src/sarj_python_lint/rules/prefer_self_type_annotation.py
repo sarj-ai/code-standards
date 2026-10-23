@@ -22,7 +22,6 @@ from sarj_python_lint.rules._annotation_semantics import scope_bound_names
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._closed_helpers import plain_class_members, stable_class
 from sarj_python_lint.rules._project_index import ProjectIndexSet, SourceUnit, SymbolRef, imports_outside
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
@@ -309,7 +308,7 @@ def _blocking_final_instance(
     ]
     if not decorators:
         return False
-    provenance = ResourceProvenance(context, require_static_namespace=True)
+    provenance = context.static_resource_provenance
     return (
         stable_class(context, declaration, provenance)
         and plain_class_members(context, declaration, provenance)

@@ -13,11 +13,11 @@ from sarj_python_lint.json_boundary import is_object_mapping
 from sarj_python_lint.rules._first_party import distribution_root
 from sarj_python_lint.rules._namespace_access import dynamic_namespace_access
 from sarj_python_lint.rules._native_namespace_capability import native_namespace_capability_escapes
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 MODEL_SOURCES = frozenset({"pydantic", "pydantic.main"})
@@ -43,7 +43,7 @@ def direct_models(context: PythonFileContext, *, methods: bool = False) -> tuple
         or dynamic_namespace_access(context.nodes(ast.AST), context.imports, context.parents)
     ):
         return ()
-    provenance = ResourceProvenance(context, require_static_namespace=True)
+    provenance = context.static_resource_provenance
     return tuple(
         node
         for node in tree.body

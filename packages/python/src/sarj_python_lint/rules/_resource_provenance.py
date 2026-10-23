@@ -5,9 +5,9 @@ from collections import defaultdict
 from functools import cached_property
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final
+from weakref import ReferenceType, ref
 
 from sarj_python_lint.rules._ast_index import has_own_yield
-from sarj_python_lint.rules._namespace_access import dynamic_namespace_access
 from sarj_python_lint.rules._runtime_bindings import RuntimeBindings
 
 
@@ -71,8 +71,13 @@ def builtin_namespace_untouched(context: PythonFileContext) -> bool:
 
 @final
 class ResourceProvenance:
-    def __init__(self, context: PythonFileContext, *, require_static_namespace: bool = False) -> None:
-        self.context = context
+    def __init__(
+        self, context: PythonFileContext, *, require_static_namespace: bool = False, borrow_context: bool = False
+    ) -> None:
+        self._context: PythonFileContext | ReferenceType[PythonFileContext] = (
+            ref(context) if borrow_context else context
+        )
+        self.parents = context.parents
         self.require_static_namespace = require_static_namespace
         self.bindings: dict[ast.AST | None, dict[str, list[ast.AST]]] = defaultdict(lambda: defaultdict(list))
         self.reads: dict[str, list[ast.Name]] = defaultdict(list)
@@ -98,15 +103,23 @@ class ResourceProvenance:
                 if root is not None:
                     self.mutated.add(root)
 
+    @property
+    def context(self) -> PythonFileContext:
+        context = self._context() if isinstance(self._context, ReferenceType) else self._context
+        if context is None:
+            msg = "The provenance file context has been released"
+            raise ReferenceError(msg)
+        return context
+
     @cached_property
     def builtin_namespace_untouched(self) -> bool:
         return builtin_namespace_untouched(self.context)
 
     def scope(self, node: ast.AST) -> ast.AST | None:
-        parent = self.context.parents.get(node)
+        parent = self.parents.get(node)
         while parent is not None:
             if isinstance(parent, ast.arguments) and (node in parent.defaults or node in parent.kw_defaults):
-                parent = self.context.parents.get(parent)
+                parent = self.parents.get(parent)
             elif isinstance(parent, _SCOPES) and not (
                 (
                     isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
@@ -118,12 +131,12 @@ class ResourceProvenance:
             if parent is None:
                 return None
             node = parent
-            parent = self.context.parents.get(parent)
+            parent = self.parents.get(parent)
         return None
 
     def _binding_scope(self, node: ast.AST) -> ast.AST | None:
         scope = self.scope(node)
-        parent = self.context.parents.get(node)
+        parent = self.parents.get(node)
         if isinstance(parent, ast.NamedExpr) and parent.target is node:
             while isinstance(scope, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
                 scope = self.scope(scope)
@@ -155,7 +168,7 @@ class ResourceProvenance:
         binding = self.runtime_binding(root, node)
         if not isinstance(binding, ast.alias):
             return None
-        qualified = import_name_for_binding(node, binding, self.context.parents.get(binding))
+        qualified = import_name_for_binding(node, binding, self.parents.get(binding))
         if qualified is None or not self._owner_namespace_untouched(qualified.partition(".")[0]):
             return None
         if binding not in self.runtime_import_cache:
@@ -195,7 +208,7 @@ class ResourceProvenance:
     def _namespace_aliases(self) -> dict[str, tuple[ast.alias, ...]]:
         aliases: dict[str, list[ast.alias]] = defaultdict(list)
         for binding in self.context.nodes(ast.alias):
-            parent = self.context.parents.get(binding)
+            parent = self.parents.get(binding)
             name = binding.asname or (
                 binding.name.partition(".")[0] if isinstance(parent, ast.Import) else binding.name
             )
@@ -231,7 +244,7 @@ class ResourceProvenance:
         return paths
 
     def _namespace_module_path(self, binding: ast.alias, attributes: tuple[str, ...]) -> Path | None:
-        parent = self.context.parents.get(binding)
+        parent = self.parents.get(binding)
         match parent:
             case ast.Import():
                 prefix = binding.name if binding.asname else binding.name.partition(".")[0]
@@ -250,7 +263,7 @@ class ResourceProvenance:
         for node in nodes:
             if not isinstance(node, ast.alias):
                 return False
-            parent = self.context.parents.get(node)
+            parent = self.parents.get(node)
             if isinstance(parent, ast.Import):
                 targets.add(("import", None, 0, node.name))
             elif isinstance(parent, ast.ImportFrom):
@@ -271,7 +284,7 @@ class ResourceProvenance:
             return False
         binding = self.binding(root, node)
         for read in self.reads.get(root, ()):
-            parent = self.context.parents.get(read)
+            parent = self.parents.get(read)
             if isinstance(parent, ast.Attribute | ast.ExceptHandler):
                 continue
             if not self._safe_import_use(read):
@@ -317,7 +330,7 @@ class ResourceProvenance:
         )
 
     def _safe_import_use(self, node: ast.Name | ast.Attribute) -> bool:
-        parent = self.context.parents.get(node)
+        parent = self.parents.get(node)
         return (
             (isinstance(parent, ast.Attribute) and parent.value is node)
             or (isinstance(parent, ast.Call) and parent.func is node)
@@ -337,9 +350,9 @@ class ResourceProvenance:
         binding = self.binding(name.id, at)
         if not isinstance(binding, ast.Name):
             return None
-        statement = self.context.parents.get(binding)
+        statement = self.parents.get(binding)
         if isinstance(statement, ast.withitem):
-            owner = self.context.parents.get(statement)
+            owner = self.parents.get(statement)
             if (
                 binding is statement.optional_vars
                 and self.contains(owner, at)
@@ -351,12 +364,12 @@ class ResourceProvenance:
         return value if isinstance(value, ast.Call) else None
 
     def assignment_value(self, binding: ast.Name, at: ast.AST) -> ast.expr | None:
-        statement = self.context.parents.get(binding)
+        statement = self.parents.get(binding)
         if not isinstance(statement, ast.Assign | ast.AnnAssign):
             return None
         if isinstance(statement, ast.Assign) and len(statement.targets) != 1:
             return None
-        if not isinstance(self.context.parents.get(statement), ast.Module | ast.FunctionDef | ast.AsyncFunctionDef):
+        if not isinstance(self.parents.get(statement), ast.Module | ast.FunctionDef | ast.AsyncFunctionDef):
             return None
         return statement.value if statement.lineno < getattr(at, "lineno", 0) else None
 
@@ -381,12 +394,10 @@ class ResourceProvenance:
 
     @cached_property
     def dynamic_namespace(self) -> bool:
-        return self.require_static_namespace and dynamic_namespace_access(
-            self.context.nodes(ast.AST), self.context.imports, self.context.parents
-        )
+        return self.require_static_namespace and self.context.dynamic_namespace
 
     def _stable_async_definition(self, function: ast.AsyncFunctionDef) -> ast.AsyncFunctionDef | None:
-        owner = self.context.parents.get(function)
+        owner = self.parents.get(function)
         if not isinstance(owner, ast.Module | ast.FunctionDef | ast.AsyncFunctionDef):
             return None
         if function.decorator_list or has_own_yield(function):
@@ -415,10 +426,10 @@ class ResourceProvenance:
         return True
 
     def _function_alias(self, read: ast.Name) -> ast.Name | None:
-        parent = self.context.parents.get(read)
+        parent = self.parents.get(read)
         if not isinstance(parent, ast.Assign | ast.AnnAssign) or parent.value is not read:
             return None
-        if not isinstance(self.context.parents.get(parent), ast.Module | ast.FunctionDef | ast.AsyncFunctionDef):
+        if not isinstance(self.parents.get(parent), ast.Module | ast.FunctionDef | ast.AsyncFunctionDef):
             return None
         targets = parent.targets if isinstance(parent, ast.Assign) else [parent.target]
         if len(targets) != 1 or not isinstance(targets[0], ast.Name):
@@ -427,7 +438,7 @@ class ResourceProvenance:
         return target if self.binding(target.id, target) is target else None
 
     def _safe_async_read(self, read: ast.Name) -> bool:
-        parent = self.context.parents.get(read)
+        parent = self.parents.get(read)
         if not isinstance(parent, ast.Call):
             return False
         if parent.func is read:
@@ -469,7 +480,7 @@ class ResourceProvenance:
         return self.escape_cache[key]
 
     def _method_or_context_read(self, read: ast.Name, *, allow_context: bool) -> bool:
-        parent = self.context.parents.get(read)
+        parent = self.parents.get(read)
         if allow_context and isinstance(parent, ast.withitem) and parent.context_expr is read:
             return True
         if (
@@ -478,12 +489,12 @@ class ResourceProvenance:
             or parent.attr in {"__setattr__", "__delattr__", "__getattribute__"}
         ):
             return False
-        call = self.context.parents.get(parent)
+        call = self.parents.get(parent)
         return isinstance(call, ast.Call) and call.func is parent
 
     def contains(self, owner: ast.AST | None, node: ast.AST) -> bool:
-        while node in self.context.parents:
-            node = self.context.parents[node]
+        while node in self.parents:
+            node = self.parents[node]
             if node is owner:
                 return True
         return False

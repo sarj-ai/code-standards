@@ -17,6 +17,8 @@ const PRODUCTION = "/repo/apps/worker/src/client.ts";
 
 RULE_TESTER.run("no-detached-global-fetch", rule, {
   valid: [
+    { name: "does not inherit fetch identity through a second var initializer", filename: PRODUCTION, code: "var request = fetch; var request = customFetch; const client = { request };" },
+    { name: "includes later alias writes in the stable-reference proof", filename: PRODUCTION, code: "let request = fetch; const client = { request }; request = customFetch;" },
     {
       name: "accepts the documented forwarding wrapper",
       filename: PRODUCTION,
@@ -58,6 +60,7 @@ RULE_TESTER.run("no-detached-global-fetch", rule, {
     { name: "ignores generated files", filename: "/repo/src/generated/client.ts", code: "const request = fetch;" },
   ],
   invalid: [
+    { name: "retains a fetch alias through a bare var redeclaration", filename: PRODUCTION, code: "var request = fetch; var request; const client = { request };", errors: [{ messageId: "detachedGlobalFetch" }] },
     {
       name: "reports the documented receiver-unsafe field",
       filename: PRODUCTION,

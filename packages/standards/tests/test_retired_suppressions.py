@@ -480,7 +480,9 @@ def test_skips_comment_parsing_without_retirement_candidates(
     def unexpected_comments(_path: Path, _text: str) -> None:
         pytest.fail("source without retirement candidates must not be tokenized")
 
-    monkeypatch.setattr(retired_suppressions, "_comment_spans", unexpected_comments)  # sarj-noqa: SARJ445 — intercept the actual lexer boundary to prove public APIs skip parsing, without adding a production injection API.
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 — intercept the actual lexer boundary to prove public APIs skip parsing, without adding a production injection API.
+        retired_suppressions, "_comment_spans", unexpected_comments
+    )
 
     assert retired_suppressions.plan((target,)) == ()
     assert retired_suppressions.reference_counts(target, source) == {}

@@ -115,6 +115,59 @@ def test_standard_string_backslash_does_not_escape_a_quote() -> None:
     assert "CREATE FUNCTION" in strip_sql_noise(r"SELECT 'backslash \' ; CREATE FUNCTION example()")
 
 
+@pytest.mark.parametrize("gap", ["\n", "\r\n", "\n-- a comment\n", "\t-- a comment\r\n \t"])
+@pytest.mark.parametrize("prefix", ["E", "e"])
+def test_continued_escape_string_keeps_its_escape_mode(gap: str, prefix: str) -> None:
+    hidden = r"'it\'s CREATE FUNCTION hidden()'"
+    source = f"SELECT {prefix}'seed'{gap}{hidden}; CREATE FUNCTION visible()"
+    masked = strip_sql_noise(source)
+    assert len(masked) == len(source)
+    assert masked.count("\n") == source.count("\n")
+    assert "hidden" not in masked
+    assert "CREATE FUNCTION visible" in masked
+
+
+def test_escape_mode_does_not_cross_an_expression_operator() -> None:
+    source = "SELECT E'seed' ||\n" + r"'backslash \' AS label; CREATE FUNCTION visible()"
+    assert "CREATE FUNCTION visible" in strip_sql_noise(source)
+
+
+@pytest.mark.parametrize("tag", ["текст", "a\u0301", "😀"])
+def test_postgres_unicode_dollar_tags_keep_values_opaque(tag: str) -> None:
+    source = f"SELECT ${tag}$CREATE FUNCTION hidden()${tag}$; CREATE FUNCTION visible()"
+    masked = strip_sql_noise(source)
+    assert "hidden" not in masked
+    assert "CREATE FUNCTION visible" in masked
+
+
+@pytest.mark.parametrize("prefix", ["α", "😀", "a\u0301"])
+def test_unicode_identifier_dollars_do_not_hide_following_sql(prefix: str) -> None:
+    source = f"SELECT {prefix}$body$ FROM docs; CREATE FUNCTION visible()"  # ruff: ignore[hardcoded-sql-expression] -- fixed lexical fixtures are never executed.
+    assert strip_sql_noise(source) == source
+
+
 def test_dollar_in_identifier_does_not_swallow_following_ddl() -> None:
     source = "SELECT foo$body$ FROM docs; CREATE FUNCTION example() RETURNS int AS $body$ SELECT 1 $body$ LANGUAGE SQL"
     assert "CREATE FUNCTION" in strip_sql_noise(source)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "SELECT 'one\rtwo', live FROM entries",
+        "SELECT /* comment\rcontinuation */ live FROM entries",
+        "-- commentary\rSELECT live FROM entries",
+    ],
+)
+def test_all_sql_newline_offsets_survive_masking(source: str) -> None:
+    masked = strip_sql_noise(source)
+    assert len(masked) == len(source)
+    assert "live" in masked
+    assert [i for i, c in enumerate(masked) if c in "\r\n"] == [i for i, c in enumerate(source) if c in "\r\n"]
+
+
+def test_projection_mode_keeps_quotes_as_opaque_tokens() -> None:
+    source = 'SELECT"units" * "price" FROM entries'
+    masked = strip_sql_noise(source, preserve_quoted_tokens=True)
+    assert masked == "SELECT?       * ?       FROM entries"
+    assert len(masked) == len(source)

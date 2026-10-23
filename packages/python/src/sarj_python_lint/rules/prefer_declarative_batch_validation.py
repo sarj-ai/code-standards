@@ -21,7 +21,6 @@ from sarj_python_lint.rule_base import (
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._logging import LOG_METHODS
 from sarj_python_lint.rules._paths import is_test_path
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 from sarj_python_lint.rules.prefer_class_row import PreferClassRow
 
 
@@ -166,7 +165,7 @@ class PreferDeclarativeBatchValidation(Rule):
 class _Facts:
     def __init__(self, context: PythonFileContext) -> None:
         self.context = context
-        self.provenance = ResourceProvenance(context, require_static_namespace=True)
+        self.provenance = context.static_resource_provenance
         self.imports = {
             statement: ImportIndex.from_tree(ast.Module(body=[statement], type_ignores=[]))
             for statement in context.nodes(ast.Import, ast.ImportFrom)

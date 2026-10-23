@@ -6,12 +6,13 @@ from typing import TYPE_CHECKING, Literal
 
 from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint.rules._namespace_access import dynamic_namespace_access
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
+
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 _TYPING = frozenset({"typing", "typing_extensions"})
@@ -44,7 +45,7 @@ def indirect_typing_cast_accesses(path: Path, source: str) -> tuple[CastAccess, 
 
 
 def _reflection_accesses(context: PythonFileContext) -> list[CastAccess]:
-    provenance = ResourceProvenance(context)
+    provenance = context.resource_provenance
     candidates = [
         (node, receiver)
         for node in context.nodes(ast.Call, ast.Subscript)

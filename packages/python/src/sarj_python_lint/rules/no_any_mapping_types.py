@@ -45,7 +45,7 @@ _TYPE_COMMENT_MARKER = re.compile(r"#\s*type:")
 @dataclass(frozen=True, slots=True)
 class _TypeReferenceContext:
     semantics: AnnotationSemantics
-    parents: Mapping[int, ast.AST]
+    parents: Mapping[ast.AST, ast.AST]
     implicit_aliases: frozenset[int]
 
 
@@ -152,21 +152,18 @@ class NoAnyMappingTypes(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
-        source = context.source
         if context.generated or _is_vendor_path(path):
             return []
-        if _TYPE_COMMENT_MARKER.search(source) is None:
-            tree = context.tree
-        else:
-            try:
-                tree = ast.parse(source, filename=str(path), type_comments=True)
-            except SyntaxError:
-                return []
+        tree = _annotation_tree(context)
         if tree is None:
             return []
-        semantics = AnnotationSemantics.from_tree(tree)
+        semantics = context.annotation_semantics if tree is context.tree else AnnotationSemantics.from_tree(tree)
         imports = semantics.imports
-        parents = {id(child): parent for parent in walk_ast(tree) for child in ast.iter_child_nodes(parent)}
+        parents = (
+            context.parents
+            if tree is context.tree
+            else {child: parent for parent in walk_ast(tree) for child in ast.iter_child_nodes(parent)}
+        )
         implicit_aliases = _implicit_mapping_aliases(tree, semantics)
         if not _stable_type_imports(tree, semantics, parents, implicit_aliases) or dynamic_namespace_access(
             context.nodes(ast.AST), imports, context.parents
@@ -199,6 +196,15 @@ class NoAnyMappingTypes(Rule):
                     )
                 )
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
+
+
+def _annotation_tree(context: PythonFileContext) -> ast.Module | None:
+    if _TYPE_COMMENT_MARKER.search(context.source) is None:
+        return context.tree
+    try:
+        return ast.parse(context.source, filename=str(context.path), type_comments=True)
+    except SyntaxError, UnicodeError:
+        return None
 
 
 def _implicit_mapping_aliases(tree: ast.Module, semantics: AnnotationSemantics) -> list[tuple[ast.expr, ast.Assign]]:
@@ -257,7 +263,7 @@ def _unshadowed_any_mappings(
     expression: ast.expr,
     owner: ast.AST,
     semantics: AnnotationSemantics,
-    parents: dict[int, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
     scope_cache: dict[int, frozenset[str]],
 ) -> list[tuple[ast.Subscript, ast.expr]]:
     parsed = semantics.parse(expression)
@@ -276,7 +282,7 @@ def _unshadowed_any_mappings(
 def _type_expressions(
     tree: ast.Module,
     imports: ImportIndex,
-    parents: dict[int, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
     scope_cache: dict[int, frozenset[str]],
     *,
     node_index: NodeIndex | None = None,
@@ -302,16 +308,16 @@ def _type_expressions(
 def _inherited_signature(
     node: ast.AST,
     imports: ImportIndex,
-    parents: dict[int, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
     scope_cache: dict[int, frozenset[str]],
 ) -> bool:
     function: ast.AST | None = node
     if isinstance(node, ast.arg):
-        arguments = parents.get(id(node))
-        function = parents.get(id(arguments)) if arguments is not None else None
+        arguments = parents.get(node)
+        function = parents.get(arguments) if arguments is not None else None
     if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
         return False
-    owner = parents.get(id(function))
+    owner = parents.get(function)
     if not isinstance(owner, ast.ClassDef):
         return False
     for decorator in function.decorator_list:
@@ -356,7 +362,7 @@ def _class_local_override(decorator: ast.expr, owner: ast.ClassDef) -> bool:
 def _stable_type_imports(
     tree: ast.Module,
     semantics: AnnotationSemantics,
-    parents: dict[int, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
     implicit_aliases: list[tuple[ast.expr, ast.Assign]],
 ) -> bool:
     imports = semantics.imports
@@ -478,7 +484,7 @@ def _type_namespace_escape(
         return node.attr != "Any" and _bare_runtime_value(node, references.parents)
     if not isinstance(node, ast.Name) or not isinstance(node.ctx, ast.Load) or node.id not in namespaces:
         return False
-    parent = references.parents.get(id(node))
+    parent = references.parents.get(node)
     return (
         not isinstance(parent, ast.Attribute)
         or parent.value is not node
@@ -486,8 +492,8 @@ def _type_namespace_escape(
     )
 
 
-def _bare_runtime_value(node: ast.expr, parents: Mapping[int, ast.AST]) -> bool:
-    parent = parents.get(id(node))
+def _bare_runtime_value(node: ast.expr, parents: Mapping[ast.AST, ast.AST]) -> bool:
+    parent = parents.get(node)
     return isinstance(parent, (ast.Assign, ast.AnnAssign, ast.NamedExpr, ast.Return)) and parent.value is node
 
 
@@ -498,14 +504,14 @@ def _mapping_provider_reference(node: ast.AST, providers: set[str], namespaces: 
 
 
 def _provider_type_reference(node: ast.expr, references: _TypeReferenceContext) -> bool:
-    parent = references.parents.get(id(node))
+    parent = references.parents.get(node)
     if isinstance(parent, ast.Call) and parent.func is node:
         return True
     if isinstance(parent, ast.ClassDef) and node in parent.bases:
         return True
     root = node
     while isinstance(parent, (ast.Subscript, ast.Tuple, ast.List, ast.BinOp)):
-        root, parent = parent, references.parents.get(id(parent))
+        root, parent = parent, references.parents.get(parent)
     annotation = _node_annotation(parent, references.semantics.imports) if parent is not None else None
     if (
         annotation is root
@@ -569,16 +575,16 @@ def _expression_root(node: ast.expr) -> str | None:
 
 
 def _unshadowed_type_expression(
-    node: ast.expr, parents: dict[int, ast.AST], scope_cache: dict[int, frozenset[str]]
+    node: ast.expr, parents: Mapping[ast.AST, ast.AST], scope_cache: dict[int, frozenset[str]]
 ) -> bool:
     names = {child.id for child in walk_ast(node) if isinstance(child, ast.Name)}
     return names.isdisjoint(_shadowed_names(node, parents, scope_cache))
 
 
-def _generic_scope_names(node: ast.AST, parents: dict[int, ast.AST]) -> set[str]:
+def _generic_scope_names(node: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> set[str]:
     names = _type_parameter_names(node)
     below = node
-    parent = parents.get(id(below))
+    parent = parents.get(below)
     function_default = False
     while parent is not None:
         match parent:
@@ -598,19 +604,19 @@ def _generic_scope_names(node: ast.AST, parents: dict[int, ast.AST]) -> set[str]
             case _:
                 pass
         below = parent
-        parent = parents.get(id(below))
+        parent = parents.get(below)
     return names
 
 
 def _shadowed_names(
     node: ast.AST,
-    parents: dict[int, ast.AST],
+    parents: Mapping[ast.AST, ast.AST],
     scope_cache: dict[int, frozenset[str]],
 ) -> set[str]:
     shadowed = _generic_scope_names(node, parents)
     crossed_function_body = False
     below = node
-    parent = parents.get(id(below))
+    parent = parents.get(below)
     while parent is not None:
         if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
             if below in parent.body:
@@ -619,7 +625,7 @@ def _shadowed_names(
         elif isinstance(parent, ast.ClassDef) and below in parent.body and not crossed_function_body:
             shadowed.update(_scope_names(parent, scope_cache))
         below = parent
-        parent = parents.get(id(below))
+        parent = parents.get(below)
     return shadowed
 
 

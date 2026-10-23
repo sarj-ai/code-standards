@@ -16,11 +16,11 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 _BAD = "import subprocess\ndef run(args):\n    process = subprocess.Popen(args)\n    try:\n        process.communicate(timeout=1)\n    except subprocess.TimeoutExpired:\n        process.kill()\n"
@@ -77,7 +77,7 @@ class SubprocessKillWithoutReap(Rule):
             or _global_child_owner(context)
         ):
             return []
-        provenance = ResourceProvenance(context, require_static_namespace=True)
+        provenance = context.static_resource_provenance
         findings: list[Diagnostic] = []
         for handler in context.nodes(ast.ExceptHandler):
             call = _unreaped_kill(context, provenance, handler)

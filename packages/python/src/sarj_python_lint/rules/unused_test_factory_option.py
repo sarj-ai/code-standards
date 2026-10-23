@@ -19,7 +19,6 @@ from sarj_python_lint.rule_base import (
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._closed_helpers import closed_references, direct_call, has_member_import
 from sarj_python_lint.rules._paths import is_test_path
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
@@ -27,6 +26,7 @@ if TYPE_CHECKING:
 
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._ast_index import NodeIndex
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 _MIN_INVARIANT_CALLS = 2
@@ -202,7 +202,7 @@ class UnusedTestFactoryOption(Rule):
                 continue
             if owner is not tree or path.name == "conftest.py":
                 continue
-            provenance = provenance or ResourceProvenance(context)
+            provenance = provenance or context.resource_provenance
             if _closed_module_factory(context, function, provenance):
                 findings.extend(
                     _factory_findings(

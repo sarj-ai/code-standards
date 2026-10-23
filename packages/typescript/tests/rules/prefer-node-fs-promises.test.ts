@@ -13,7 +13,10 @@ const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser, source
 
 RULE_TESTER.run("prefer-node-fs-promises", rule, {
   valid: [
+    { name: "does not inherit fs identity through a second var initializer", code: "var fs = require('node:fs'); var fs = custom; fs.readFileSync('x');" },
     { name: "does not treat reassigned namespace as fs", code: "let fs = require('node:fs'); fs = custom; fs.readFileSync('x');" },
+    { name: "accounts for later namespace writes before visiting an earlier use", code: "let fs = require('node:fs'); function read() { return fs.readFileSync('x'); } fs = custom;" },
+    { name: "does not propagate an alias from a reassigned namespace", code: "let fs = require('node:fs'); const alias = fs; alias.readFileSync('x'); fs = custom;" },
     { name: "does not inherit an imported namespace through shadowing", code: "import fs from 'node:fs'; function run(fs) { return fs.readFileSync(); }" },
     { name: "does not inherit a loaded namespace through shadowing", code: "const fs = require('node:fs'); function run(fs) { return fs.readFileSync(); }" },
     { name: "does not treat injected require as a Node loader", code: "function run(require) { const fs = require('node:fs'); return fs.readFileSync(); }" },
@@ -33,6 +36,7 @@ RULE_TESTER.run("prefer-node-fs-promises", rule, {
     "// eslint-disable-next-line @rule-tester/prefer-node-fs-promises -- synchronous transaction boundary\nimport { readFileSync, writeFileSync } from 'node:fs';",
   ],
   invalid: [
+    { name: "retains a native fs binding through a bare var redeclaration", code: "var fs = require('node:fs'); var fs; fs.readFileSync('x');", errors: [{ messageId: "preferAsyncFs", data: { name: "readFileSync" } }] },
     {
       code: PREFER_NODE_FS_PROMISES_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "preferAsyncFs", data: { name: "readFileSync" } }],

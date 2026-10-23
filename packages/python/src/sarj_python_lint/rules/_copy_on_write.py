@@ -110,9 +110,7 @@ class _Models:
     def validation_owner(self, unit: SourceUnit) -> _ValidationOwner:
         if unit.path not in self._validation_owners:
             context = PythonFileContext(unit.path, unit.source, self._validation_session)
-            self._validation_owners[unit.path] = _ValidationOwner(
-                context, ResourceProvenance(context, require_static_namespace=True)
-            )
+            self._validation_owners[unit.path] = _ValidationOwner(context, context.static_resource_provenance)
         return self._validation_owners[unit.path]
 
     def annotations(self, unit: SourceUnit) -> AnnotationSemantics:
@@ -378,7 +376,7 @@ class CopyOnWriteAnalysis:
 
     @cached_property
     def _validator_provider(self) -> ResourceProvenance:
-        return ResourceProvenance(self.context, require_static_namespace=True)
+        return self.context.static_resource_provenance
 
     def _function(self, function: _Function) -> None:
         parameters = [*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs]

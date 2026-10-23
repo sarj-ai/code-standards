@@ -5,7 +5,13 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_sql_lint.__main__ import analyze, main
-from sarj_sql_lint.rule_base import dollar_quoted_lines, mask_sql, normalize_sql_identifier, split_statements
+from sarj_sql_lint.rule_base import (
+    dollar_quoted_lines,
+    mask_sql,
+    normalize_sql_identifier,
+    source_location,
+    split_statements,
+)
 
 
 if TYPE_CHECKING:
@@ -22,6 +28,21 @@ def _mask(source: str) -> str:
     masked = mask_sql(source)
     _assert_shape(source, masked)
     return masked
+
+
+@pytest.mark.parametrize("gap", ["\n", "\r\n", "\n-- a comment\n", "\t-- a comment\r\n \t"])
+@pytest.mark.parametrize("prefix", ["E", "e"])
+def test_continued_escape_strings_keep_following_ddl_visible(gap: str, prefix: str) -> None:
+    hidden = r"'it\'s CREATE FUNCTION hidden()'"
+    source = f"SELECT {prefix}'seed'{gap}{hidden}; CREATE FUNCTION visible()"
+    masked = _mask(source)
+    assert "hidden" not in masked
+    assert "CREATE FUNCTION visible" in masked
+
+
+def test_escape_string_state_stops_at_an_expression_operator() -> None:
+    source = "SELECT E'seed' ||\n" + r"'backslash \' AS label; CREATE FUNCTION visible()"
+    assert "CREATE FUNCTION visible" in _mask(source)
 
 
 def test_bare_dollar_body_is_kept_as_sql() -> None:
@@ -389,3 +410,23 @@ def test_scalar_timeout_does_not_protect_executable_ddl(tmp_path: Path) -> None:
         "-- dialect: postgres\nSELECT $$SET lock_timeout = '5s';$$;\nALTER TABLE orders ADD COLUMN note TEXT;\n"
     )
     assert [(finding.code, finding.line) for finding in analyze(["require-lock-timeout"], [source])] == [("SARJ110", 3)]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "SELECT 'one\rtwo', live FROM entries",
+        "SELECT /* comment\rcontinuation */ live FROM entries",
+        "-- commentary\rSELECT live FROM entries",
+    ],
+)
+def test_carriage_return_sql_lines_remain_distinct(source: str) -> None:
+    masked = _mask(source)
+    assert "live" in masked
+    assert [i for i, c in enumerate(masked) if c in "\r\n"] == [i for i, c in enumerate(source) if c in "\r\n"]
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_source_locations_follow_all_postgres_line_endings(newline: str) -> None:
+    source = f"SELECT 1;{newline}SELECT live;"
+    assert source_location(source, source.index("SELECT", 1)) == (2, 1)

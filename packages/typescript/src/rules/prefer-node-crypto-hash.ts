@@ -6,10 +6,11 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
-import { unwrapExpression } from "./_unwrap-expression.js";
+import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 import { staticString } from "./_static-string.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { stableValueBinding } from "./_stable-value-binding.js";
 
 type MessageIds = "preferNodeCryptoHash";
 type Options = readonly [];
@@ -21,18 +22,49 @@ export const PREFER_NODE_CRYPTO_HASH_DOCUMENTATION = {
   remediation: "On a supported Node runtime, consider hash(algorithm, value, encoding). Preserve the output encoding explicitly: digest() returns a Buffer, while hash defaults to hex. Keep createHash for streams or multiple updates.",
   category: "performance",
   limitations: [
-    "Only bindings and inline calls with statically proven provenance from crypto or node:crypto are analyzed; arbitrary assignments and dynamic module specifiers are excluded.",
+    "Only direct imports, const bindings, and inline calls with statically proven provenance from crypto or node:crypto are analyzed; arbitrary assignments and dynamic module specifiers are excluded.",
     "Only a literal algorithm with exactly one update call is reported; streaming and incremental hashes remain valid.",
+    "Namespace bindings must remain read-only: visible writes, aliases, exports, inherited mutation or alias methods, unknown computed members, and other escaping uses are excluded; type-only references and direct member calls remain eligible.",
     "Runtime support and output encoding require manual review; no autofix or guaranteed speedup is promised.",
   ],
   references: ["https://nodejs.org/api/crypto.html#cryptohashalgorithm-data-options"],
   examples: [
     { id: "one-shot-hash", title: "Use Node's one-shot hash API", outcome: "no-match", files: [{ path: "case.ts", source: "import { hash } from 'node:crypto'; export const digest = hash('sha256', 'value', 'hex');" }], focusPath: "case.ts", expectedCount: 0, public: true },
     { id: "mutable-one-shot-chain", title: "Avoid mutable state for one value", outcome: "match", files: [{ path: "case.ts", source: "import { createHash } from 'node:crypto'; export const digest = createHash('sha256').update('value').digest('hex');" }], focusPath: "case.ts", expectedCount: 1, public: true },
+    { id: "native-namespace", scenarioId: "stable-native-namespace", title: "An unchanged namespace retains native provenance", outcome: "match", files: [{ path: "case.ts", source: "const crypto = require('node:crypto'); export const digest = crypto.createHash('sha256').update('value').digest('hex');" }], focusPath: "case.ts", expectedCount: 1, public: true },
+    { id: "replaced-namespace-member", scenarioId: "stable-native-namespace", title: "A replaced member has a different contract", outcome: "no-match", files: [{ path: "case.ts", source: "const crypto = require('node:crypto'); crypto.createHash = () => ({ update() { return this; }, digest() { return 'custom'; } }); export const digest = crypto.createHash('sha256').update('value').digest('hex');" }], focusPath: "case.ts", expectedCount: 0, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
 type ScopeVariable = TSESLint.Scope.Variable;
+const UNSAFE_NAMESPACE_METHODS: ReadonlySet<string> = new Set(["__defineGetter__", "__defineSetter__", "valueOf"]);
+
+/** A namespace that escapes can be changed through a use this rule cannot prove. */
+function stableNamespace(variable: ScopeVariable): boolean {
+  if (variable.defs.some((definition) => definition.type === "Variable" &&
+    definition.parent.parent.type === AST_NODE_TYPES.ExportNamedDeclaration)) return false;
+  return stableValueBinding(variable, (reference) => {
+    if (reference.isTypeReference && !reference.isValueReference) return true;
+    const receiver = outerExpression(reference.identifier);
+    if (typeQueryReference(receiver)) return true;
+    const member = receiver.parent;
+    if (member?.type !== AST_NODE_TYPES.MemberExpression || member.object !== receiver) {
+      return member?.type === AST_NODE_TYPES.UnaryExpression && member.operator === "typeof";
+    }
+    const use = outerExpression(member);
+    const name = ASTUtils.getPropertyName(member);
+    return name !== null && !UNSAFE_NAMESPACE_METHODS.has(name) &&
+      use.parent?.type === AST_NODE_TYPES.CallExpression && use.parent.callee === use;
+  });
+}
+
+function typeQueryReference(node: TSESTree.Node): boolean {
+  let current = node;
+  while (current.parent?.type === AST_NODE_TYPES.TSQualifiedName && current.parent.left === current) {
+    current = current.parent;
+  }
+  return current.parent?.type === AST_NODE_TYPES.TSTypeQuery && current.parent.exprName === current;
+}
 
 function isCryptoLoader(
   node: TSESTree.Expression,
@@ -107,7 +139,7 @@ export default createRule<Options, MessageIds>({
       destination: Set<ScopeVariable>,
     ): void {
       const variable = resolve(identifier);
-      if (variable !== null) destination.add(variable);
+      if (variable !== null && (destination === namespaceBindings ? stableNamespace(variable) : stableValueBinding(variable))) destination.add(variable);
     }
 
     return {

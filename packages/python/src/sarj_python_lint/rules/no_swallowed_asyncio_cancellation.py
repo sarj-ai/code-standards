@@ -19,7 +19,6 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._ast_index import nodes
 from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
@@ -140,7 +139,7 @@ def _function_diagnostics(function: ast.AsyncFunctionDef, context: PythonFileCon
 def _caller_sleep(node: ast.Try, context: PythonFileContext) -> bool:
     if context.dynamic_namespace or len(node.body) != 1 or len(node.handlers) != 1:
         return False
-    provenance = ResourceProvenance(context, require_static_namespace=True)
+    provenance = context.static_resource_provenance
     caught = node.handlers[0].type
     if caught is None or not provenance.imported(
         caught, context.imports.resolved_qualified_name(caught) or "asyncio.CancelledError"

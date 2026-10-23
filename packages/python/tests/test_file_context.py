@@ -17,10 +17,11 @@ from sarj_python_lint.rule_base import Rule
 from sarj_python_lint.rules import REGISTRY
 from sarj_python_lint.rules._ast_index import nodes, parent_map, walk
 from sarj_python_lint.rules._project_index import ProjectIndexSet
+from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Sequence
 
     from sarj_python_lint.rule_base import Diagnostic
 
@@ -70,9 +71,10 @@ def test_opaque_surrogate_annotations_do_not_crash_any_registered_rule(source: s
         assert rule_type().check(Path("app/services/domain.py"), source) == []
 
 
-def test_unencodable_source_is_inert_and_does_not_poison_later_checks() -> None:
+@pytest.mark.parametrize("prefix", ["# ", "# type: ignore "])
+def test_unencodable_source_is_inert_and_does_not_poison_later_checks(prefix: str) -> None:
     path = Path("app/services/domain.py")
-    source = f"# {chr(0xD800)}\n"
+    source = f"{prefix}{chr(0xD800)}\n"
     assert PythonFileContext(path, source).tree is None
     for rule_type in REGISTRY.values():
         assert rule_type().check(path, source) == []
@@ -139,11 +141,39 @@ def test_context_and_ast_are_collectable_after_file_checks() -> None:
     assert context.module_imports is context.module_imports
     assert context.fastapi.tree is tree
     assert context.parents is context.parents
+    assert context.annotation_semantics is context.annotation_semantics
+    assert context.annotation_semantics.imports is context.module_imports
+    assert context.resource_provenance is context.resource_provenance
+    assert context.static_resource_provenance is context.static_resource_provenance
     context_ref, tree_ref = weakref.ref(context), weakref.ref(tree)
     del context, tree  # sarj-noqa: SARJ442 -- release strong references to test fact lifetime.
     gc.collect()
     assert context_ref() is None
     assert tree_ref() is None
+
+
+@pytest.mark.parametrize("require_static_namespace", [False, True])
+def test_shared_provenance_does_not_retain_its_owner(require_static_namespace: bool) -> None:
+    context = PythonFileContext(Path("app.py"), 'import re\npattern = re.compile("value")\n')
+    provenance = context.static_resource_provenance if require_static_namespace else context.resource_provenance
+    assert provenance.context is context
+    assert provenance.parents is context.parents
+    assert provenance.runtime_bindings.module is not None
+    context_ref = weakref.ref(context)
+    del context  # sarj-noqa: SARJ442 -- observe immediate release while the borrowed analysis remains alive.
+    assert context_ref() is None
+    with pytest.raises(ReferenceError, match="file context has been released"):
+        provenance.context.nodes(ast.AST)
+
+
+def test_direct_provenance_retains_its_owner_until_the_analysis_is_released() -> None:
+    context = PythonFileContext(Path("app.py"), 'import re\npattern = re.compile("value")\n')
+    provenance = ResourceProvenance(context)
+    context_ref = weakref.ref(context)
+    del context  # sarj-noqa: SARJ442 -- direct analysis construction retains its existing ownership contract.
+    assert context_ref() is provenance.context
+    del provenance  # sarj-noqa: SARJ442 -- releasing the last owner must also release its file context.
+    assert context_ref() is None
 
 
 def test_generated_markers_refresh_between_analysis_invocations(tmp_path: Path) -> None:
@@ -159,13 +189,7 @@ def test_generated_markers_refresh_between_analysis_invocations(tmp_path: Path) 
     assert analyze(rules, [path])
 
 
-def _file_examples() -> Iterator[tuple[Path, str]]:
-    selected = (
-        "fastapi-explicit-openapi-contract",
-        "fastapi-class-router-contract",
-        "docstring-returns-restate-signature",
-        "no-docstring-type-restatement",
-    )
+def _file_examples(selected: Sequence[str]) -> Iterator[tuple[Path, str]]:
     for rule_id in selected:
         for example in REGISTRY[rule_id].public_examples():
             if len(example.files) == 1:
@@ -178,10 +202,23 @@ def test_shared_facts_preserve_findings_and_rule_order() -> None:
         "fastapi-class-router-contract",
         "docstring-returns-restate-signature",
         "no-docstring-type-restatement",
+        "no-any-mapping-types",
+        "named-record-at-boundaries",
+        "no-broad-keyword-capture",
+        "require-pydantic-for-mapping-shape",
+        "prefer-pydantic-json-value",
+        "prefer-psycopg-executemany",
+        "no-discarded-validation-result",
+        "no-mutating-container-transform",
+        "prefer-declarative-batch-validation",
+        "prefer-discriminated-model-union",
+        "no-invalid-pydantic-bypass",
+        "no-invalid-pydantic-validator-return",
+        "no-shallow-record-type-guard",
     )
     rules = [REGISTRY[rule_id]() for rule_id in selected]
     total_findings = 0
-    for path, source in _file_examples():
+    for path, source in _file_examples(selected):
         # Fresh per-rule contexts provide an independent comparison to shared facts.
         separate = sorted(finding.format() for rule in rules for finding in rule.check(path, source))
         context = PythonFileContext(path, source)
@@ -291,3 +328,21 @@ def test_parent_facts_do_not_reuse_another_files_tree() -> None:
     assert first.parents is not second.parents
     assert parent_map(second_tree, index=first.node_index) == second.parents
     assert not any(isinstance(node, ast.Name) and node.id == "first" for node in second.parents)
+
+
+def test_annotation_facts_belong_to_the_exact_file_source() -> None:
+    first = PythonFileContext(Path("types.py"), "type Item = list[str]\n")
+    second = PythonFileContext(Path("types.py"), "type Other = str\n")
+    assert set(first.annotation_semantics.aliases) == {"Item"}
+    assert set(second.annotation_semantics.aliases) == {"Other"}
+    assert first.annotation_semantics is not second.annotation_semantics
+
+
+def test_resource_provenance_modes_preserve_namespace_policy_and_source_isolation() -> None:
+    path = Path("app.py")
+    context = PythonFileContext(path, 'exec("dynamic = True")\n')
+    assert context.resource_provenance is not context.static_resource_provenance
+    assert not context.resource_provenance.dynamic_namespace
+    assert context.static_resource_provenance.dynamic_namespace
+    other = PythonFileContext(path, "value = 1\n")
+    assert not other.static_resource_provenance.dynamic_namespace

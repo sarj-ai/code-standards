@@ -19,12 +19,12 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 from sarj_python_lint.rules._store_writes import depends_on_target, discarded_call, sql_query
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 _BAD = "from psycopg import AsyncCursor\nasync def save(cursor: AsyncCursor, rows):\n    for row in rows:\n        await cursor.execute('INSERT INTO users (id) VALUES (%s)', (row.id,))\n"
@@ -81,7 +81,7 @@ class PreferPsycopgExecutemany(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if context.generated or "execute" not in context.symbol_source or context.tree is None:
             return []
-        provenance = ResourceProvenance(context, require_static_namespace=True)
+        provenance = context.static_resource_provenance
         findings: list[Diagnostic] = []
         for loop in context.nodes(ast.For):
             candidate = discarded_call(loop)
@@ -154,7 +154,7 @@ def _cursor_contract(
     binding = provenance.binding(receiver.id, call)
     if not isinstance(binding, ast.arg) or context.tree is None or provenance.dynamic_namespace or provenance.wildcard:
         return None
-    annotation = AnnotationSemantics.from_tree(context.tree).parse(binding.annotation)
+    annotation = AnnotationSemantics.parse(binding.annotation)
     if isinstance(annotation, ast.Subscript):
         annotation = annotation.value
     root = annotation.value if isinstance(annotation, ast.Attribute) else annotation

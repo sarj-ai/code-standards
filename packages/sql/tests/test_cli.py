@@ -5,10 +5,25 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_sql_lint.__main__ import main
+from sarj_sql_lint.rules import REGISTRY
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+@pytest.mark.parametrize("rule_id", ["mixed-migration-phases", "no-application-schema-check"])
+def test_advisory_findings_preserve_success(tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: str) -> None:
+    rule = REGISTRY[rule_id]
+    example = next(case for case in rule.public_examples() if case.expected_count)
+    for file in example.files:
+        path = tmp_path / file.path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(file.source, encoding="utf-8")
+    assert main(["check", "--rule", rule_id, str(tmp_path / example.focus_path)]) == 0
+    captured = capsys.readouterr()
+    assert f"{rule.code} warning:" in captured.out
+    assert not captured.err
 
 
 def test_explicit_missing_input_is_an_operator_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

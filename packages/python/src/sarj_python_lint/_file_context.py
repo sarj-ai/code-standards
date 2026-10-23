@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, final
 
 from sarj_python_lint._analysis_session import AnalysisSession
 from sarj_python_lint._source import symbol_prefilter_source
+from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
 from sarj_python_lint.rules._ast_index import NodeIndex
 from sarj_python_lint.rules._fastapi import FastapiIndex
 from sarj_python_lint.rules._imports import ImportIndex
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sarj_python_lint.rules._copy_on_write import CopyOnWriteAnalysis
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
     from sarj_python_lint.rules._test_provenance import TestProvenance
 
 
@@ -92,6 +94,10 @@ class PythonFileContext:
         return ImportIndex.from_tree(self._valid_tree(), module_scope_only=True)
 
     @cached_property
+    def annotation_semantics(self) -> AnnotationSemantics:
+        return AnnotationSemantics.from_imports(self._valid_tree(), self.module_imports)
+
+    @cached_property
     def dynamic_namespace(self) -> bool:
         return dynamic_namespace_access(self.nodes(ast.AST), self.imports, self.parents)
 
@@ -117,3 +123,16 @@ class PythonFileContext:
         from sarj_python_lint.rules._copy_on_write import CopyOnWriteAnalysis  # ruff: ignore[import-outside-top-level] — share ownership analysis only when requested
 
         return CopyOnWriteAnalysis(self)
+
+    @cached_property
+    def resource_provenance(self) -> ResourceProvenance:
+        from sarj_python_lint.rules._resource_provenance import ResourceProvenance  # ruff: ignore[import-outside-top-level] -- file-owned binding facts are lazy.
+
+        # The owner caches this analysis; borrowing prevents a reference cycle.
+        return ResourceProvenance(self, borrow_context=True)
+
+    @cached_property
+    def static_resource_provenance(self) -> ResourceProvenance:
+        from sarj_python_lint.rules._resource_provenance import ResourceProvenance  # ruff: ignore[import-outside-top-level] -- keep static-namespace policy in a separate cached analysis.
+
+        return ResourceProvenance(self, require_static_namespace=True, borrow_context=True)

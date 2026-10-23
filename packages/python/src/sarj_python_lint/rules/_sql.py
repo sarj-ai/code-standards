@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import re
 from typing import TYPE_CHECKING
 
 from sarj_python_lint.rules._paths import is_test_path
@@ -8,6 +9,15 @@ from sarj_python_lint.rules._paths import is_test_path
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+
+_SQL_LINE_END = re.compile(r"[\r\n]")
+_CONTINUED_QUOTE = re.compile(r"[ \t\f\v]*(?:--[^\r\n]*)?[\r\n](?:[ \t\f\v\r\n]|--[^\r\n]*[\r\n])*'")
+POSTGRES_IDENTIFIER_CONTINUATION = r"[A-Za-z0-9_$\u0080-\U0010ffff]"
+POSTGRES_UNQUOTED_IDENTIFIER = rf"[A-Za-z_\u0080-\U0010ffff]{POSTGRES_IDENTIFIER_CONTINUATION}*"
+SQL_WHITESPACE = " \t\r\n\f\v"
+_IDENTIFIER_CONTINUATION = re.compile(POSTGRES_IDENTIFIER_CONTINUATION)
+_DOLLAR_DELIMITER = re.compile(r"\$(?:[A-Za-z_\u0080-\U0010ffff][A-Za-z0-9_\u0080-\U0010ffff]*)?\$")
 
 
 def is_store_module(path: Path) -> bool:
@@ -44,6 +54,7 @@ def strip_sql_noise(
     *,
     mask_dollar_quotes: bool = True,
     mask_double_quotes: bool = True,
+    preserve_quoted_tokens: bool = False,
 ) -> str:
     out = list(text)
     i = 0
@@ -56,8 +67,10 @@ def strip_sql_noise(
             i += 1
             continue
         for offset in range(i, end):
-            if text[offset] != "\n":
+            if text[offset] not in {"\n", "\r"}:
                 out[offset] = " "
+        if preserve_quoted_tokens and text[i] in {"'", '"', "$"}:
+            out[i] = "?"
         i = end
     return "".join(out)
 
@@ -68,7 +81,7 @@ def _quoted_sql_end(text: str, start: int) -> int:
         quote == "'"
         and start > 0
         and text[start - 1] in {"E", "e"}
-        and (start == 1 or not (text[start - 2].isalnum() or text[start - 2] in {"_", "$"}))
+        and (start == 1 or _IDENTIFIER_CONTINUATION.match(text, start - 2) is None)
     )
     i = start + 1
     while i < len(text):
@@ -82,6 +95,9 @@ def _quoted_sql_end(text: str, start: int) -> int:
         if i < len(text) and text[i] == quote:
             i += 1
             continue
+        if escape_string and (continuation := _CONTINUED_QUOTE.match(text, i)) is not None:
+            i = continuation.end()
+            continue
         break
     return i
 
@@ -91,8 +107,8 @@ def _sql_noise_end(text: str, start: int, *, mask_dollar_quotes: bool) -> int | 
     if ch in {"'", '"'}:
         return _quoted_sql_end(text, start)
     if text.startswith("--", start) or (ch == "#" and (start == 0 or text[start - 1].isspace())):
-        end = text.find("\n", start)
-        return len(text) if end == -1 else end
+        end = _SQL_LINE_END.search(text, start)
+        return len(text) if end is None else end.start()
     if text.startswith("/*", start):
         return _block_comment_end(text, start)
     if mask_dollar_quotes and ch == "$":
@@ -116,17 +132,11 @@ def _block_comment_end(text: str, start: int) -> int:
 
 
 def _dollar_quote_end(text: str, start: int) -> int | None:
-    if start > 0 and (text[start - 1].isalnum() or text[start - 1] in {"_", "$"}):
+    if start > 0 and _IDENTIFIER_CONTINUATION.match(text, start - 1) is not None:
         return None
-    delimiter_end = text.find("$", start + 1)
-    if delimiter_end == -1:
+    match = _DOLLAR_DELIMITER.match(text, start)
+    if match is None:
         return None
-    tag = text[start + 1 : delimiter_end]
-    valid_tag = not tag or (
-        (tag[0].isalpha() or tag[0] == "_") and all(char.isalnum() or char == "_" for char in tag[1:])
-    )
-    if not valid_tag:
-        return None
-    delimiter = text[start : delimiter_end + 1]
-    close = text.find(delimiter, delimiter_end + 1)
+    delimiter = match[0]
+    close = text.find(delimiter, match.end())
     return None if close == -1 else close + len(delimiter)

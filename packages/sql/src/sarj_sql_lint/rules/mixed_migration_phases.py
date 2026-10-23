@@ -22,6 +22,7 @@ from sarj_sql_lint.rule_base import (
     mask_sql,
     mask_sql_literals_and_comments,
     normalize_sql_identifier,
+    source_location,
     split_statements,
     sql_comments,
 )
@@ -166,6 +167,7 @@ def _find_mixed_phase_diagnostic(path: Path, masked: str, code: str) -> list[Dia
                     code,
                     f"Forward migration mixes deployment phases ({detail}). Split independently deployable "
                     "phases, or document atomicity with lock, runtime, rollback, and postcondition evidence.",
+                    severity=DefaultLevel.WARNING,
                 )
             ]
     return []
@@ -174,7 +176,7 @@ def _find_mixed_phase_diagnostic(path: Path, masked: str, code: str) -> list[Dia
 def _has_complete_header_atomicity_evidence(forward: str) -> bool:
     masked = mask_sql_literals_and_comments(forward)
     first_code = next((index for index, char in enumerate(masked) if not char.isspace()), len(forward))
-    first_code_line = forward.count("\n", 0, first_code) + 1
+    first_code_line = source_location(forward, first_code).line
     directives = [
         comment
         for comment in sql_comments(forward)
@@ -219,7 +221,7 @@ def _forward_section(source: str) -> str:
     dollar_lines = {
         line
         for start, end in dollar_quoted_spans(source)
-        for line in range(source.count("\n", 0, start) + 1, source.count("\n", 0, max(start, end - 1)) + 2)
+        for line in range(source_location(source, start).line, source_location(source, max(start, end - 1)).line + 1)
     }
     lines = source.splitlines(keepends=True)
     has_up = any(
@@ -234,7 +236,7 @@ def _forward_section(source: str) -> str:
         match = None if line_number in dollar_lines else _SECTION_DIRECTIVE.match(line)
         if match is not None:
             active = match.group(1).casefold() == "up"
-        output.append(line if active else re.sub(r"[^\n]", " ", line))
+        output.append(line if active else re.sub(r"[^\r\n]", " ", line))
     return "".join(output)
 
 
@@ -242,7 +244,7 @@ def _mask_dollar_bodies(source: str, masked: str) -> str:
     output = list(masked)
     for start, end in dollar_quoted_spans(source):
         for position in range(start, end):
-            if output[position] != "\n":
+            if output[position] not in "\r\n":
                 output[position] = " "
     return "".join(output)
 

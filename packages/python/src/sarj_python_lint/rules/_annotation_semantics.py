@@ -19,7 +19,10 @@ class AnnotationSemantics:
 
     @classmethod
     def from_tree(cls, tree: ast.Module, *, module_scope_only: bool = True) -> Self:
-        imports = ImportIndex.from_tree(tree, module_scope_only=module_scope_only)
+        return cls.from_imports(tree, ImportIndex.from_tree(tree, module_scope_only=module_scope_only))
+
+    @classmethod
+    def from_imports(cls, tree: ast.Module, imports: ImportIndex) -> Self:
         candidates: dict[str, ast.expr] = {}
         ambiguous: set[str] = set()
         for statement in tree.body:

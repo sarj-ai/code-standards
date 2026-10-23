@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_iac_lint.__main__ import main, read_baseline
+from sarj_iac_lint.rules import REGISTRY
 
 
 if TYPE_CHECKING:
@@ -12,6 +13,21 @@ if TYPE_CHECKING:
 
 
 _RULE = "no-environment-conditional"
+
+
+@pytest.mark.parametrize("rule_id", ["no-project-secret-access-for-service-account", "no-plaintext-secret-env"])
+def test_warning_stage_security_findings_preserve_success(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: str
+) -> None:
+    rule_type = REGISTRY[rule_id]
+    example = next(case for case in rule_type.public_examples() if case.expected_count and len(case.files) == 1)
+    source = tmp_path / example.focus_path
+    source.write_text(example.focus_file.source, encoding="utf-8")
+    assert main(["check", "--rule", rule_id, str(source)]) == 0
+    captured = capsys.readouterr()
+    assert f"{rule_type.code} warning:" in captured.out
+    assert not captured.err
+
 
 _TWO_BRANCHES = """
 module "iam" {
@@ -29,6 +45,20 @@ resource "google_storage_bucket" "b" {
 }
 """
 )
+
+
+@pytest.mark.parametrize("rule_id", ["no-dead-environment-input", "no-restated-comment"])
+def test_advisory_findings_preserve_success(tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: str) -> None:
+    rule = REGISTRY[rule_id]
+    example = next(case for case in rule.public_examples() if case.expected_count)
+    for file in example.files:
+        path = tmp_path / file.path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(file.source, encoding="utf-8")
+    assert main(["check", "--rule", rule_id, str(tmp_path / example.focus_path)]) == 0
+    captured = capsys.readouterr()
+    assert f"{rule.code} warning:" in captured.out
+    assert not captured.err
 
 
 def test_explicit_missing_input_is_an_operator_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

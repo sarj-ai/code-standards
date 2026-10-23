@@ -291,3 +291,25 @@ def test_matchable_shapes_fire(source: str):
 
 def test_file_that_never_names_the_function_is_silent():
     assert _check('SQL = "CREATE TABLE t (id uuid DEFAULT uuidv7())"\n') == []
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ('SQL = "SELECT 😀gen_random_uuid()"\n', 0),
+        ('SQL = "SELECT a\u0301gen_random_uuid()"\n', 0),
+        ('SQL = "SELECT gen_random_uu\u0130d()"\n', 0),
+        ('SQL = "SELECT gen_random_uuid\u00a0()"\n', 0),
+        ('SQL = "SELECT PG_CATALOG.GEN_RANDOM_UUID()"\n', 1),
+        ('SQL = "SELECT 😀set_byte(gen_random_uuid())"\n', 1),
+        ('SQL = "SELECT set_byte(gen_random_uuid(), 0, 1)"\n', 0),
+        ('SQL = "SELECT set_byte(gen_random_uuid(), 0, 1), gen_random_uuid()"\n', 1),
+    ],
+)
+def test_native_names_and_builder_ownership_are_lexically_exact(source: str, expected: int) -> None:
+    assert len(_check(source)) == expected
+
+
+def test_sql_in_a_docstring_is_documentation() -> None:
+    assert _check('"SELECT gen_random_uuid() documents a legacy schema."\n') == []
+    assert _check('def describe():\n    "SELECT gen_random_uuid() documents a legacy schema."\n') == []

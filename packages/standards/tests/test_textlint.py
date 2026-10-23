@@ -1,9 +1,11 @@
 from pathlib import Path, PurePosixPath
+from typing import TYPE_CHECKING
 
 import pytest
 from sarj_rule_contracts import RuleId
 
 from sarj_standards.libs.linting import runner as linting_runner, textlint
+from sarj_standards.libs.linting.devops_programs import execution_blocks
 from sarj_standards.libs.rules.contracts import (
     DefaultLevel,
     EvaluationCase,
@@ -12,6 +14,10 @@ from sarj_standards.libs.rules.contracts import (
     Language,
     RuleExample,
 )
+
+
+if TYPE_CHECKING:
+    from sarj_standards.libs.linting.devops_programs import ExecutionBlock
 
 
 @pytest.mark.parametrize(
@@ -2929,6 +2935,65 @@ def test_utf8_signatures_preserve_text_rule_outcomes(tmp_path: Path, rule_id: Ru
             [str(tmp_path / example.focus_path)], root=tmp_path, rule_ids=frozenset({rule_id})
         )
         assert len(findings) == example.expected_count
+
+
+@pytest.mark.parametrize(
+    ("relative", "source"),
+    [
+        (".github/workflows/ci.yml", "jobs:\n  deploy:\n    steps:\n      - run: gcloud run deploy service\n"),
+        ("scripts/Dockerfile", "FROM runner\nRUN gcloud run deploy service\n"),
+        ("scripts/Makefile", "deploy:\n\tgcloud run deploy service\n"),
+        ("scripts/mise.toml", '[tasks.deploy]\nrun = "gcloud run deploy service"\n'),
+    ],
+)
+def test_selected_rules_share_execution_parsing_without_changing_findings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, relative: str, source: str
+) -> None:
+    path = tmp_path / relative
+    path.parent.mkdir(parents=True)
+    path.write_text(source, encoding="utf-8")
+    selected = frozenset({"declarative-deployment-boundary", "workflow-embedded-program"})
+    expected = sorted(
+        (
+            finding
+            for rule_id in sorted(selected)
+            for finding in textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({rule_id}))
+        ),
+        key=lambda finding: (finding.line, finding.code),
+    )
+    original = execution_blocks
+    calls: list[tuple[str, str]] = []
+
+    def counted(relative: str, source: str) -> list[ExecutionBlock]:
+        calls.append((relative, source))
+        return original(relative, source)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept textlint's global parser lookup; injection would bypass the shared-cache boundary.
+        textlint, "execution_blocks", counted
+    )
+    assert textlint.check_paths([str(path)], root=tmp_path, rule_ids=selected) == expected
+    assert calls == [(relative, source)]
+    path.write_text("", encoding="utf-8")
+    assert textlint.check_paths([str(path)], root=tmp_path, rule_ids=selected) == []
+    assert calls == [(relative, source), (relative, "")]
+
+
+def test_unselected_execution_rules_leave_other_file_formats_unparsed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "notes.md"
+    path.write_text("# Notes\n", encoding="utf-8")
+    calls: list[tuple[str, str]] = []
+
+    def counted(relative: str, source: str) -> list[ExecutionBlock]:
+        calls.append((relative, source))
+        return []
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept textlint's global parser lookup; injection would bypass the lazy-selection boundary.
+        textlint, "execution_blocks", counted
+    )
+    assert textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"hidden-markdown-heading"})) == []
+    assert not calls
 
 
 def test_utf8_signature_keeps_embedded_config_characters(tmp_path: Path) -> None:

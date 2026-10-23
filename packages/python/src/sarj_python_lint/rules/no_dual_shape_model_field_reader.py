@@ -113,7 +113,7 @@ class NoDualShapeModelFieldReader(Rule):
             or "getattr" not in context.symbol_source
         ):
             return []
-        provenance = ResourceProvenance(context, require_static_namespace=True)
+        provenance = context.static_resource_provenance
         if provenance.wildcard or provenance.dynamic_namespace or not provenance.builtin_namespace_untouched:
             return []
         findings: list[Diagnostic] = []

@@ -82,3 +82,15 @@ def test_ignores_malformed_and_non_terraform_sources() -> None:
 def test_allows_secret_names_and_non_secret_literals(name: str, value: str) -> None:
     env = f'      env {{\n        name  = "{name}"\n        value = {value}\n      }}\n'
     assert _lines(_service(env)) == []
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        'format("projects/%s", google_secret_manager_secret.api.name)',
+        "var.use_name ? google_secret_manager_secret.api.name : google_secret_manager_secret.api.secret_id",
+    ],
+)
+def test_composed_public_metadata_remains_inert(value: str) -> None:
+    env = f'      env {{\n        name = "API_KEY"\n        value = {value}\n      }}\n'
+    assert _lines(_service(env)) == []

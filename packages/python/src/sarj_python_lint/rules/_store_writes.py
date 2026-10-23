@@ -12,7 +12,6 @@ from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, sc
 from sarj_python_lint.rules._ast_index import walk
 from sarj_python_lint.rules._paths import is_generated
 from sarj_python_lint.rules._project_index import ProjectIndexSet
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
@@ -20,6 +19,7 @@ if TYPE_CHECKING:
 
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._imports import ImportIndex
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 type Function = ast.FunctionDef | ast.AsyncFunctionDef
@@ -187,7 +187,7 @@ def _comprehension_scopes(
 class StoreOwners:
     def __init__(self, context: PythonFileContext) -> None:
         self.context = context
-        self.provenance = ResourceProvenance(context, require_static_namespace=True)
+        self.provenance = context.static_resource_provenance
         self.project = context.session.project
 
     def receiver(self, expression: ast.expr, at: ast.AST) -> tuple[ast.ClassDef, ImportIndex] | None:
@@ -290,7 +290,7 @@ class StoreOwners:
         from sarj_python_lint._file_context import PythonFileContext  # ruff: ignore[import-outside-top-level] -- defer to avoid the rule registry's context import cycle.
 
         definition = PythonFileContext(owner.path, owner.source, self.context.session)
-        provenance = ResourceProvenance(definition, require_static_namespace=True)
+        provenance = definition.static_resource_provenance
         if (
             provenance.dynamic_namespace
             or provenance.wildcard

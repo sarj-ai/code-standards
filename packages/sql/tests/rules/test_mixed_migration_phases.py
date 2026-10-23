@@ -41,8 +41,9 @@ ALTER TABLE credential DROP COLUMN legacy_token;
     assert "CONTRACT" in finding.message
 
 
-def test_accepts_complete_reviewed_atomicity_evidence_in_header() -> None:
-    assert _check(ATOMICITY_DIRECTIVE + MIXED_PHASES) == []
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_accepts_complete_reviewed_atomicity_evidence_in_header(newline: str) -> None:
+    assert _check((ATOMICITY_DIRECTIVE + MIXED_PHASES).replace("\n", newline)) == []
 
 
 def test_accepts_semicolon_inside_substantive_evidence_value() -> None:
@@ -103,7 +104,8 @@ ALTER TABLE status ADD CONSTRAINT status_name_unique UNIQUE(name);
     assert _check(source) == []
 
 
-def test_ignores_down_section() -> None:
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_ignores_down_section(newline: str) -> None:
     source = """
 -- migrate:up
 ALTER TABLE account ADD COLUMN normalized TEXT;
@@ -111,7 +113,7 @@ ALTER TABLE account ADD COLUMN normalized TEXT;
 UPDATE account SET name = normalized;
 ALTER TABLE account DROP COLUMN normalized;
 """
-    assert _check(source) == []
+    assert _check(source.replace("\n", newline)) == []
 
 
 def test_ignores_keywords_in_comments_literals_and_dollar_bodies() -> None:
@@ -218,3 +220,10 @@ def test_quoted_table_case_and_quoted_clause_words_preserve_distinct_phases() ->
     )
     assert len(_check(distinct_table)) == 1
     assert _check('UPDATE "status" SET value = 1;\nALTER TABLE "status" ADD COLUMN "drop" TEXT;\n') == []
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+def test_dollar_body_section_markers_do_not_hide_forward_phases(newline: str) -> None:
+    source = "DO $body$\nBEGIN\n-- migrate:down\nPERFORM 1;\nEND;\n$body$;\n" + MIXED_PHASES
+    [finding] = _check(source.replace("\n", newline))
+    assert finding.line == 9

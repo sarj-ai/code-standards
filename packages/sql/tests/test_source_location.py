@@ -16,3 +16,17 @@ def test_source_location_refreshes_when_content_changes() -> None:
     assert source_location("first\nsecond", 8) == SourceLocation(2, 3)
     assert source_location("first second", 8) == SourceLocation(1, 9)
     assert source_location("first\nsecond", 8) == SourceLocation(2, 3)
+
+
+@pytest.mark.parametrize(
+    ("offset", "expected"),
+    [
+        (0, SourceLocation(1, 1)),
+        (5, SourceLocation(1, 6)),
+        (6, SourceLocation(2, 1)),
+        (12, SourceLocation(2, 7)),
+        (13, SourceLocation(3, 1)),
+    ],
+)
+def test_carriage_return_locations_follow_physical_lines(offset: int, expected: SourceLocation) -> None:
+    assert source_location("first\rsecond\r", offset) == expected

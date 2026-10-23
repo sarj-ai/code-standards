@@ -7,6 +7,7 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { stableValueBinding } from "./_stable-value-binding.js";
 import { directArgumentCall, outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
@@ -109,7 +110,7 @@ export default createRule<Options, MessageIds>({
           if (hookCallee.type !== AST_NODE_TYPES.Identifier) return;
           const hook = ASTUtils.findVariable(context.sourceCode.getScope(hookCallee), hookCallee.name);
           const router = ASTUtils.findVariable(context.sourceCode.getScope(node.id), node.id.name);
-          if (hook !== null && router !== null && routerHooks.has(hook)) routers.add(router);
+          if (hook !== null && router !== null && routerHooks.has(hook) && stableValueBinding(router)) routers.add(router);
         }
       },
       CallExpression(node): void {
@@ -117,13 +118,13 @@ export default createRule<Options, MessageIds>({
         const receiver = unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(unwrappedNodeCallee.object) : unwrappedNodeCallee;
         if (
           unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression || receiver.type !== AST_NODE_TYPES.Identifier ||
-          ASTUtils.getPropertyName(unwrappedNodeCallee) === null || (ASTUtils.getPropertyName(unwrappedNodeCallee) ?? "") !== "refresh"
+          ASTUtils.getPropertyName(unwrappedNodeCallee) !== "refresh"
         ) return;
         const router = ASTUtils.findVariable(
           context.sourceCode.getScope(receiver),
           receiver.name,
         );
-        if (router === null || !routers.has(router) || router.references.some((reference) => reference.isWrite() && reference.init !== true)) return;
+        if (router === null || !routers.has(router)) return;
         const callback = enclosingIntervalCallback(context.sourceCode, node);
         if (callback !== null && !reportedCallbacks.has(callback)) {
           reportedCallbacks.add(callback);

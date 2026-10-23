@@ -17,11 +17,11 @@ from sarj_python_lint.rule_base import (
     is_suppressed,
 )
 from sarj_python_lint.rules._closed_helpers import call_matches, closed_references, direct_call, executable_body
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 _HELPER = "def _space(match: re.Match[str]) -> str:\n    full = match.group(0)\n    digits = match.group(1)\n    spaced = ' '.join(digits)\n    return full.replace(digits, spaced)\n"
@@ -92,7 +92,7 @@ class DuplicateClosedPureHelper(Rule):
         tree = context.tree
         if context.generated or tree is None or ".group" not in context.symbol_source:
             return []
-        provenance = ResourceProvenance(context)
+        provenance = context.resource_provenance
         owners: dict[str, ast.FunctionDef] = {}
         findings: list[Diagnostic] = []
         for function in tree.body:

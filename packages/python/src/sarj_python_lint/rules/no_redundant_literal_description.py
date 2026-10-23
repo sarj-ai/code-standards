@@ -20,11 +20,11 @@ from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._inert_model_annotation import inert_direct_model_body
 from sarj_python_lint.rules._paths import is_test_path
-from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 _PYDANTIC_BASE_MODEL_SOURCES = frozenset({"pydantic", "pydantic.main", "pydantic.v1", "pydantic.v1.main"})
@@ -172,7 +172,7 @@ def _description_level(model: ast.ClassDef, context: PythonFileContext) -> Sever
 def _inert_description_model(model: ast.ClassDef, context: PythonFileContext) -> bool:
     if context.dynamic_namespace or not inert_direct_model_body(model, context.imports):
         return False
-    provenance = ResourceProvenance(context, require_static_namespace=True)
+    provenance = context.static_resource_provenance
     for node in walk_ast(model):
         if isinstance(node, ast.keyword) and node.arg == "json_schema_extra":
             return False

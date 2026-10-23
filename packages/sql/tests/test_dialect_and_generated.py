@@ -173,3 +173,15 @@ def test_redirect_keeps_every_finding_and_renames_the_fix_site() -> None:
 def test_redirect_is_a_no_op_on_a_hand_written_migration() -> None:
     diags = [Diagnostic(Path("m.sql"), 1, 1, "SARJ101", "Use `TIMESTAMPTZ`.")]
     assert redirect_to_model(diags, model_owned=False) == diags
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("SELECT 1;\n  -- dialect: sqlite\nSELECT 2;", "sqlite"),
+        ("SELECT 1; -- dialect: sqlite\nSELECT 2;", None),
+    ],
+)
+def test_directive_standalone_boundaries_follow_physical_lines(newline: str, source: str, expected: str | None) -> None:
+    assert declared_dialect(source.replace("\n", newline)) == expected
