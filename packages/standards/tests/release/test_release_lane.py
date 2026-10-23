@@ -126,6 +126,10 @@ def candidate(tmp_path: Path, lane: PublisherLane, monkeypatch: pytest.MonkeyPat
     for name, payload in (
         ("APPROVED_ADAPTER_SHA256", adapter.read_bytes()),
         ("APPROVED_LOCK_SHA256", approved_lock.encode()),
+        (
+            "APPROVED_PATCHED_LOCK_SHA256",
+            approved_lock.replace('version = "21.14.12"', 'version = "21.14.13"').encode(),
+        ),
         ("APPROVED_GITLEAKS_SHA256", approved_gitleaks.encode()),
     ):
         monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise the real approved-digest lookup with private fixture bytes; injection would bypass that boundary.
@@ -367,12 +371,26 @@ def test_maintenance_scanner_path_requires_exact_approved_bytes(
         lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
 
 
-def test_reviewed_lock_projection_supports_a_future_maintenance_version(
-    candidate: Candidate, lane: PublisherLane
+@pytest.mark.parametrize(
+    ("version", "patched", "accepted"),
+    [
+        ("8.101.3", False, True),
+        ("8.101.3", True, False),
+        ("8.101.4", False, False),
+        ("8.101.4", True, True),
+        ("8.101.10", False, False),
+        ("8.101.10", True, True),
+    ],
+)
+def test_reviewed_lock_projection_requires_version_specific_security_fix(
+    candidate: Candidate, lane: PublisherLane, version: str, *, patched: bool, accepted: bool
 ) -> None:
     for relative in lane.VERSION_PROJECTIONS:
         path = candidate.root / relative
-        path.write_text(path.read_text().replace("8.101.2", "8.101.10"))
+        path.write_text(path.read_text().replace("8.101.2", version))
+    if patched:
+        lock = candidate.root / "packages/standards/uv.lock"
+        lock.write_text(lock.read_text().replace('version = "21.14.12"', 'version = "21.14.13"'))
     document = candidate.root / lane.DOC_EXAMPLES
     document.write_text(
         json.dumps(
@@ -384,6 +402,10 @@ def test_reviewed_lock_projection_supports_a_future_maintenance_version(
         )
     )
     commit = _commit(candidate.root)
+    if not accepted:
+        with pytest.raises(ValueError, match="only the legacy version projection"):
+            lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+        return
     assert (
         lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
         == "standards-maintenance"
@@ -525,27 +547,10 @@ def _commit_policy_history_candidate(tmp_path: Path, *, apply_backport: bool) ->
     patch_path = tmp_path / "reviewed-commit-policy.patch"
     patch_path.write_text(patch)
     _git(checkout, "apply", str(patch_path))
-    cli = checkout / "packages/standards/src/sarj_standards/configs/cli-reference.v1.json"
-    old_cli_digest = hashlib.sha256(cli.read_bytes()).hexdigest()
-    for relative in (
-        "packages/standards/pyproject.toml",
-        "packages/standards-compat/pyproject.toml",
-        "packages/standards/uv.lock",
-        ".sarj-standards.toml",
-        "packages/standards/src/sarj_standards/configs/cli-reference.v1.json",
-    ):
-        path = checkout / relative
-        source = path.read_text()
-        assert "8.101.3" in source
-        path.write_text(source.replace("8.101.3", "8.101.4"))
-    docs = checkout / "apps/docs/src/generated/formatted-code.v1.json"
-    source = docs.read_text()
-    assert source.count(old_cli_digest) == 1
-    docs.write_text(source.replace(old_cli_digest, hashlib.sha256(cli.read_bytes()).hexdigest()))
     return Candidate(checkout, prefix, _commit(checkout))
 
 
-@pytest.mark.parametrize("apply_backport", [False, True], ids=["legacy-8.101.3", "reviewed-8.101.4"])
+@pytest.mark.parametrize("apply_backport", [False, True], ids=["legacy-8.101.3", "reviewed-8.101.3"])
 def test_commit_policy_approval_preserves_legacy_and_accepts_exact_history(
     lane: PublisherLane, tmp_path: Path, *, apply_backport: bool
 ) -> None:
