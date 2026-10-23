@@ -6,6 +6,7 @@ import pytest
 import yaml
 
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.linting.devops_tools import checked_tool, invoke
 from sarj_standards.libs.linting.external import run_process
 from sarj_standards.libs.linting.prepared_kubernetes import (
     OMISSION_CHECK,
@@ -84,9 +85,9 @@ def _native(resource: dict[str, object], tmp_path: Path) -> str:
     config, input_path = tmp_path / "policy.yaml", tmp_path / "input.yaml"
     config.write_text(yaml.safe_dump(build_config(resource)), encoding="utf-8")
     input_path.write_text(yaml.safe_dump(policy_resource(resource)), encoding="utf-8")
-    result = run_process(
-        [
-            "kube-linter",
+    result = invoke(
+        checked_tool("kube-linter", root=tmp_path),
+        (
             "lint",
             "--format",
             "json",
@@ -95,10 +96,10 @@ def _native(resource: dict[str, object], tmp_path: Path) -> str:
             "--fail-if-no-objects-found",
             "--fail-on-invalid-resource",
             str(input_path),
-        ],
-        cwd=tmp_path,
+        ),
+        root=tmp_path,
+        runner=run_process,
     )
-    assert result.returncode in {0, 1}, result.stderr
     assert result.stdout.strip(), result.stderr
     return result.stdout
 

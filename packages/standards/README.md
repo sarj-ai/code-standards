@@ -61,9 +61,24 @@ Unused private Python test helpers require `reportUnusedFunction` set to `warnin
 
 `check --jobs 2` overlaps native analysis with the external-tool pipeline. The default is `--jobs 1`; external tools remain sequential and report ordering is deterministic.
 
-DevOps execution blocks may sequence existing commands without helper scripts. Keep interpreter source, control flow, logical chains, pipelines and substitutions in independently linted files; Python `-m` and script paths, and jq/awk `-f` files remain supported. SARJ310 is an error, including short inline programs. Cloud Build SARJ315 checks unique IDs, ordered step dependencies, script/argv exclusivity and rejects untrusted substitutions in shell source; pass substitutions as quoted arguments to external scripts.
+DevOps execution blocks may sequence existing commands without helper scripts. Keep interpreter source, control flow, logical chains, pipelines and substitutions in independently linted files; Python `-m` and script paths, and jq/awk `-f` files remain supported. SARJ310 is an error, including short inline programs. Cloud Build SARJ315 checks YAML and JSON for unique IDs, ordered step dependencies, script/argv exclusivity and untrusted substitutions in shell source; pass substitutions as quoted arguments to external scripts. JSON configs are discovered in operational directories or with `cloudbuild` in their filename; JSON syntax must be strict, with unique keys and finite numbers.
 
 The source gate uses pinned actionlint, shared ShellCheck, offline Zizmor, Hadolint and Skaffold v4beta7 schema validation. Cloud Deploy validation is a documented partial structural contract. Terraform validation and TFLint require explicit repository trust and prepared local providers; analysis never initializes or downloads them. Compose requires an exact consumer `[devops].compose_version`; its source check does not resolve environment inputs.
+
+File discovery, enabled capabilities and native validation each determine coverage. Check the selected paths and tool reports; a syntax check does not establish deployment validity.
+
+| Format | Specialized coverage | Boundary |
+| --- | --- | --- |
+| Terraform `.tf`, `.tf.json` | Native validation, TFLint and applicable Sarj rules | Local providers and explicit trust required; JSON is never passed to `fmt` |
+| `.tfvars`, `.tftest.hcl` | Native Terraform formatting | Variable/test files do not select module validation or TFLint |
+| `.tfvars.json`, `.tftest.json`, other `.hcl` | Applicable Sarj rules | No native formatting; JSON semantic coverage is limited |
+| Actions workflows and composite actions | actionlint for workflows and referenced action metadata; Zizmor and shared execution checks | actionlint omits standalone metadata and composite steps; security capabilities may be disabled |
+| Cloud Build YAML/JSON | SARJ315 and executable-field checks, shared shell tools | Partial contract; hosted API field types, trigger inputs and admission remain external |
+| Dockerfile variants | Hadolint and executable-field checks | Image-default entrypoints are not inferred |
+| `compose.yaml`, `compose.yml`, `docker-compose.yaml`, `docker-compose.yml` | Pinned native Compose source validation | Overlays and custom filenames need assembled native validation; embedded programs are checked by content |
+| Skaffold and Cloud Deploy YAML | Pinned Skaffold schema; partial Cloud Deploy structure | Generated resources need prepared validation |
+| Helm charts, Kubernetes and CRDs | Prepared Helm lint/render, kubeconform and kube-linter | Receipts must bind the rendered artifacts and local schema closure |
+| Templates, systemd units, service-specific `.conf`/`.cfg` | Text rules for recognized templates and `.conf`/`.cfg`; units are not routed | Render templates and run the service's native validator; no general semantic coverage is claimed |
 
 Release gates use `code-standards analyze --prepared-only --prepared-devops prepared.json --prepared-target TARGET_ID`. Declare exact `prepared_targets` under `[devops]` with an authored `source` path. Version-one receipts bind target IDs, authored input hashes, staged chart archives, ordered values, typed set arguments, manifests and a hashed local schema closure. Helm 4.3.0 strict lint and stage-specific rendering feed kubeconform 0.8.0 and kube-linter 0.8.3. Missing tools, schemas, targets and invalid receipts fail the gate. Prepared-only findings bypass source debt baselines; container exceptions require exact target, GVK, namespace, object, check, container kind, container name and a reason, and stale exceptions fail.
 

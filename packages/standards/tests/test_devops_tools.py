@@ -31,6 +31,19 @@ def test_required_tools_match_dockerfile_variants_and_skip_ignore_files(tmp_path
     assert devops.install_commands(tmp_path, (ignored,), capabilities=("hadolint",)) == ()
 
 
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [("dev.tfvars", ("terraform",)), ("routing.tftest.hcl", ("terraform",)), ("dev.tfvars.json", ())],
+)
+def test_variable_and_test_only_projects_provision_the_native_formatter(
+    tmp_path: Path, name: str, expected: tuple[str, ...]
+) -> None:
+    path = tmp_path / name
+    path.write_text("{}\n", encoding="utf-8")
+    assert devops.required_tools(tmp_path, (path,), capabilities=("terraform", "tflint")) == expected
+    assert devops.required_tools(tmp_path, (path,), capabilities=("tflint",)) == ()
+
+
 def test_disabled_source_controls_do_not_provision_shell_parser(tmp_path: Path) -> None:
     workflow = tmp_path / ".github/workflows/ci.yml"
     workflow.parent.mkdir(parents=True)
