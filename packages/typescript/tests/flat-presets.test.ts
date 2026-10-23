@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 /**
  * The plugin's own presets have to work in the config format consumers write.
  *

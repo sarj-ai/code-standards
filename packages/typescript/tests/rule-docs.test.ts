@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 /**
  * The doc-diet ratchet, ported from `sarj-python-lint`'s `test_rule_meta.py` /
  * `test_rule_links.py`.

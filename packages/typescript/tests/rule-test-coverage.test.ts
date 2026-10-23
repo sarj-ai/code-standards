@@ -1,3 +1,4 @@
+// vitest: shared-module-graph
 /** Every shipped rule needs valid and invalid executable cases. */
 
 import { existsSync, readFileSync } from "node:fs";
