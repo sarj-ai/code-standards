@@ -1,12 +1,11 @@
 # Error handling
 
-Use the [audit protocol](../skills/audit-protocol/SKILL.md).
+Apply [protocol](../skills/audit-protocol/SKILL.md).
 
-Review catches below true failure boundaries, erased domain context, ambiguous
-recovery and failures leaving partial state. Log once at the owning boundary;
-catch/rethrow wrappers need added information. Native rules own silent catches,
-leaked exceptions and cause preservation.
+Trace recovery and partial state at actual failure boundaries. Retain domain
+context and request/job identity across async boundaries; log actionable failures
+once, with useful levels and privacy-safe context. Catch/rethrow wrappers need
+added information.
 
-When shell recovery needs an exit code, capture it immediately in the failure
-arm of `if command`; `if ! command` exposes the negated status. Preserve deliberate
-boolean negation and recovery behavior.
+Capture shell failure status immediately in `if command`'s failure arm;
+`if ! command` exposes the negated status.

@@ -1,20 +1,16 @@
 # Idempotency and atomicity
 
-Use the [audit protocol](../skills/audit-protocol/SKILL.md).
+Apply [protocol](../skills/audit-protocol/SKILL.md).
 
-Trace races, lost updates, retry keys and partial effects at the real consistency
-boundary. Multi-write atomicity requires the same connection/transaction;
-process mutexes do not span replicas and transactions cannot undo remote effects.
-Use established durable deduplication/outbox mechanisms and domain-correct
-conflict/tenant identity, preserving guarded updates.
+Trace races, retry identity and partial effects. Atomic writes need one
+connection/transaction; process locks do not span replicas, and transactions
+cannot undo remote effects. Preserve guarded updates and domain/tenant identity
+in durable deduplication/outboxes.
 
-Chunking need not commit each chunk. Psycopg nested transactions may be savepoints
-inside an implicit read transaction; establish the actual commit owner.
+Chunking need not commit per chunk. Psycopg nested transactions may be savepoints
+inside an implicit read transaction; establish the commit owner. Retry classified
+transient failures around the whole transaction with bounded backoff/cancellation.
+Lost commit connections leave unknown outcomes: reconcile durable keys/receipts
+before replaying non-idempotent writes.
 
-Retry classified transient failures at the complete transaction boundary with
-bounded backoff, preserving cancellation. Use structured diagnostics. A lost
-commit connection leaves an unknown outcome: reconcile the durable key/receipt
-before replaying a non-idempotent write.
-
-Verify repeated requests, failure rollback and affected concurrency contracts at
-the real store boundary; do not substitute SQL-spelling assertions.
+Verify retries, rollback and affected races against the real store.

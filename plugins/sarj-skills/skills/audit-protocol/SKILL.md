@@ -3,25 +3,17 @@ name: audit-protocol
 description: Run a requested domain audit using Sarj's shared command sources and verified findings.
 ---
 
-# Audit protocol
+Audits are read-only unless implementation is requested. Load the selected
+`../../commands/` file relative to this skill; Claude: `/sarj-skills:<command>`.
 
-Audits are read-only unless implementation is requested. Read only the selected
-file under `../../commands/`, relative to this skill's real directory; Claude
-exposes it as `/sarj-skills:<command>`.
+Identify stack/boundaries; run native checks before judging uncovered behavior.
+Exclude irrelevant generated/vendor/fixture data; inspect framework guards.
+Require completed exit statuses; interrupted checks are inconclusive.
+Keep reports ignored and private; redact secrets/identifiers.
 
-Identify the stack, authored boundaries and native checks. Run deterministic
-checks first and report verified findings once. Domain commands cover remaining
-judgments; exclude irrelevant generated/vendor/fixture data. Trace framework
-guards before claiming a local omission.
+Report severity, location, evidence, impact, smallest fix, confidence and owning
+tool/rule or `judgment-only`; report clean scopes too.
 
-Require completed checks and actual exit statuses; missing reports, interruption
-and unavailable prerequisites are incomplete evidence. Keep JSON reports in an
-ignored, owner-readable directory inside the checked repository.
-
-Report by severity: location, evidence, impact, smallest fix, confidence and owning
-rule/tool or `judgment-only`. Omit speculation. If clean, name examined checks/scopes.
-
-For interrupted work, keep one private handoff with objective, worktree,
-base/head/tree, commands/statuses, reports, PRs, owned processes and next action.
-On resume, reconcile revisions before reusing evidence; reference private history
-rather than copying transcripts.
+For interruption, save objective, worktree, base/head/tree, commands/statuses,
+reports/PRs, owned processes and next action. Reconcile revisions before reuse;
+reference private history instead of copying it.
