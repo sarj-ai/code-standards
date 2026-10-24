@@ -278,7 +278,7 @@ class Standards:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         if prepared_only:
             return _prepared_only_analysis(
-                self.root, adopted, prepared_devops, prepared_targets, paths=paths, rules=rules
+                self.root, adopted, prepared_devops, prepared_targets, paths=paths, rules=rules, trust=normalized_trust
             )
         try:
             selection_policy = _selection_policy(self.root, adopted, normalized_mode)
@@ -309,7 +309,7 @@ class Standards:
                 native = _with_library_policy(self.root, native, active_selected, selection_policy)
             if rule_selection is None and normalized_mode is AnalysisMode.POLICY:
                 native = _with_repository_analysis(self.root, native, staged=staged)
-            prepared = _prepared_reports(self.root, adopted, prepared_devops, prepared_targets)
+            prepared = _prepared_reports(self.root, adopted, prepared_devops, prepared_targets, trust=normalized_trust)
             return (*native.tools, *prepared)
 
         coverage = _selection_coverage(
@@ -624,6 +624,7 @@ def _prepared_only_analysis(
     *,
     paths: Sequence[str] | None,
     rules: Sequence[str | RuleSelector] | None,
+    trust: TrustMode,
 ) -> AnalysisReport:
     if not receipts or paths or rules:
         return _failed_analysis(
@@ -631,16 +632,23 @@ def _prepared_only_analysis(
             "invalid-input",
             "prepared-only analysis requires receipts and cannot include source paths or rule selectors",
         )
-    return report_from_tools(root, _prepared_reports(root, adopted, receipts, targets))
+    return report_from_tools(root, _prepared_reports(root, adopted, receipts, targets, trust=trust))
 
 
 def _prepared_reports(
-    root: Path, adopted: Manifest | None, receipts: Sequence[Path], targets: Sequence[str]
+    root: Path,
+    adopted: Manifest | None,
+    receipts: Sequence[Path],
+    targets: Sequence[str],
+    *,
+    trust: TrustMode = TrustMode.SAFE,
 ) -> tuple[ToolReport, ...]:
     if not receipts and not targets:
         return ()
     declared = adopted.prepared_targets if adopted is not None else ()
-    return analyze_prepared(receipts, root=root, declared=declared, selected=targets)
+    return analyze_prepared(
+        receipts, root=root, declared=declared, selected=targets, trust_repository_code=trust is TrustMode.TRUSTED
+    )
 
 
 def _prepared_coverage(adopted: Manifest | None, receipts: Sequence[Path]) -> tuple[CoverageNotice, ...]:
