@@ -32,6 +32,9 @@ from sarj_standards.libs.rules import RuleSelector
 from sarj_standards.libs.typed_containers import is_object_mapping
 
 
+_TEXT_DIAGNOSTIC_LIMIT: Final = 50
+
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
 
@@ -1414,7 +1417,7 @@ def _run_canonical_check(
         python_type_check=python_type_check,
         eslint=eslint,
     )
-    rendered = to_text(report)
+    rendered = to_text(report, max_diagnostics=_TEXT_DIAGNOSTIC_LIMIT)
     if rendered:
         print(rendered, end="" if rendered.endswith("\n") else "\n")
     exit_code = report.exit_code
@@ -1761,12 +1764,16 @@ def _emit_analysis_report(args: _Args, root: Path, report: object) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 2
     match args.output_format:
+        case "text":
+            payload = to_text(report, max_diagnostics=_TEXT_DIAGNOSTIC_LIMIT)
         case "github":
             payload = to_github(report, max_annotations_per_level=args.max_annotations_per_level)
         case "json":
             payload = to_json(report)
+        case "sarif":
+            payload = to_sarif(report)
         case _:
-            payload = {"sarif": to_sarif, "text": to_text}[args.output_format](report)
+            raise KeyError(args.output_format)
     if args.output is None or str(args.output) == "-":
         print(payload, end="")
     else:

@@ -72,8 +72,21 @@ def to_sarif(report: AnalysisReport) -> str:
     return json.dumps(payload, indent=2, sort_keys=True) + "\n"
 
 
-def to_text(report: AnalysisReport) -> str:
-    lines = [_text_diagnostic(item) for item in report.diagnostics]
+def to_text(report: AnalysisReport, *, max_diagnostics: int | None = None) -> str:
+    diagnostics = report.diagnostics
+    omitted = 0
+    if max_diagnostics is not None:
+        if max_diagnostics < 0:
+            msg = "max_diagnostics must be non-negative"
+            raise ValueError(msg)
+        omitted = max(0, len(diagnostics) - max_diagnostics)
+        if omitted:
+            diagnostics = tuple(nsmallest(max_diagnostics, diagnostics, key=_diagnostic_priority))
+    lines = [_text_diagnostic(item) for item in diagnostics]
+    if omitted:
+        lines.append(
+            f"code-standards: {omitted} diagnostic(s) omitted; use --format json or sarif for the complete report"
+        )
     lines.extend(f"{issue.source}: {issue.kind}: {issue.message}" for issue in report.issues)
     lines.extend(_coverage_line(item.source, item.reason, item.file_count) for item in report.coverage)
     lines.extend(_baseline_lines(report))
@@ -126,13 +139,13 @@ def _github_selection(
         severity: nsmallest(
             error_budget if severity is Severity.ERROR else max_annotations_per_level,
             (diagnostic for tool in report.tools for diagnostic in tool.diagnostics if diagnostic.severity is severity),
-            key=_github_priority,
+            key=_diagnostic_priority,
         )
         for severity in Severity
     }
 
 
-def _github_priority(diagnostic: Diagnostic) -> tuple[object, ...]:
+def _diagnostic_priority(diagnostic: Diagnostic) -> tuple[object, ...]:
     severity = {Severity.ERROR: 0, Severity.WARNING: 1, Severity.INFO: 2}[diagnostic.severity]
     location = diagnostic.location
     position = location.region.start if location.region is not None else location.position

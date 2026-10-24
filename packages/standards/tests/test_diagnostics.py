@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Unpack
 import pytest
 
 from sarj_standards import api
+from sarj_standards.cli.main import main
 from sarj_standards.libs.adoption.lifecycle import Command, EslintSelection
 from sarj_standards.libs.adoption.manifest import (
     ExclusionOverride,
@@ -810,6 +811,64 @@ def test_text_renderer_keeps_truthful_location_and_summary(tmp_path: Path) -> No
         "README.md:3:5: warning TEST005 be concise [fixture]\n"
         "code-standards: 0 error(s), 1 warning(s), 0 notice(s), 0 execution issue(s)\n"
     )
+
+
+def test_bounded_text_prioritizes_errors_and_keeps_failure_evidence(tmp_path: Path) -> None:
+    warnings = tuple(
+        Diagnostic("WARN", f"advisory {index}", Severity.WARNING, "fixture", Location(f"a{index}.py"))
+        for index in range(3)
+    )
+    error = Diagnostic("FAIL", "blocking finding", Severity.ERROR, "fixture", Location("z.py"))
+    report = report_from_tools(
+        tmp_path,
+        (
+            ToolReport("fixture", Completion.COMPLETE, diagnostics=(*warnings, error), baselined_count=7),
+            ToolReport(
+                "unavailable", Completion.FAILED, issues=(ExecutionIssue("unavailable", "failed", "retry tool"),)
+            ),
+        ),
+    )
+
+    bounded = to_text(report, max_diagnostics=2)
+
+    assert "blocking finding" in bounded
+    assert "advisory 0" in bounded
+    assert "advisory 1" not in bounded
+    assert "2 diagnostic(s) omitted" in bounded
+    assert "--format json or sarif" in bounded
+    assert "unavailable: failed: retry tool" in bounded
+    assert "7 existing finding(s) accepted" in bounded
+    assert "1 error(s), 3 warning(s)" in bounded
+    assert report.exit_code == 2
+    assert all(item.message in to_text(report) for item in (*warnings, error))
+    assert len(list_field(as_table(parse_json(to_json(report))), "diagnostics")) == 4
+    with pytest.raises(ValueError, match="non-negative"):
+        to_text(report, max_diagnostics=-1)
+
+
+@pytest.mark.parametrize("command", ["analyze", "check"])
+def test_cli_bounds_text_but_retains_the_complete_json_report(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], command: str
+) -> None:
+    (tmp_path / ".sarj-standards.toml").write_text(
+        Manifest(api.__version__, (), ".", ".", hook_manager="none").render(), encoding="utf-8"
+    )
+    paths: list[str] = []
+    for index in range(60):
+        source = tmp_path / f"package-{index}/package.json"
+        source.parent.mkdir()
+        source.write_text('{"dependencies":{"axios":"1"}}', encoding="utf-8")
+        paths.append(str(source))
+
+    text_status = main(["--root", str(tmp_path), command, *paths])
+    text = capsys.readouterr().out
+    json_status = main(["--root", str(tmp_path), command, "--format", "json", *paths])
+    report = as_table(parse_json(capsys.readouterr().out))
+
+    assert text_status == json_status == 1
+    assert "diagnostic(s) omitted" in text
+    assert sum("[sarj-library-policy]" in line for line in text.splitlines()) == 50
+    assert len(list_field(report, "diagnostics")) > 50
 
 
 def test_github_renderer_escapes_commands_without_inventing_a_position(tmp_path: Path) -> None:
