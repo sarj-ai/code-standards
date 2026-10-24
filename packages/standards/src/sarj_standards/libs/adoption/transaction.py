@@ -188,10 +188,13 @@ class FileTransaction:
         return cls(resolved, before, {}, absent_parents, explicit_only)
 
     def write_text(self, path: Path, contents: str) -> None:
+        self.write_bytes(path, contents.encode("utf-8"))
+
+    def write_bytes(self, path: Path, contents: bytes) -> None:
         snapshot = self.before[path]
         assert_expected(self.root, path, self.written.get(path, snapshot.contents))
-        atomic_write_text(self.root, path, contents)
-        self.written[path] = contents.encode("utf-8")
+        atomic_write_bytes(self.root, path, contents)
+        self.written[path] = contents
 
     def track(self, *paths: Path) -> None:
         for path in paths:

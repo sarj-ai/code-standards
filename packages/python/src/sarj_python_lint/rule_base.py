@@ -76,6 +76,28 @@ class ColumnEncoding(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class TextEdit:
+    """An exact, half-open range of one-based lines and UTF-8 byte columns.
+
+    Columns refer to decoded source without its original leading BOM.
+    """
+
+    start_line: int
+    start_col: int
+    end_line: int
+    end_col: int
+    replacement: str
+
+
+@dataclass(frozen=True, slots=True)
+class Fix:
+    title: str
+    safety: AutofixPolicy
+    source_hash: str
+    edits: tuple[TextEdit, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class Diagnostic:
     path: Path
     line: int
@@ -84,6 +106,7 @@ class Diagnostic:
     message: str
     severity: Severity = Severity.ERROR
     column_encoding: ColumnEncoding = ColumnEncoding.UTF8_BYTES
+    fixes: tuple[Fix, ...] = ()
 
     def format(self) -> str:
         label = "warning: " if self.severity is Severity.WARNING else ""

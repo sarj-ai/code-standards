@@ -2204,7 +2204,7 @@ def _selected_paths(root: Path, paths: Iterable[str]) -> list[str]:
 
 
 def cmd_format(args: _Args) -> int:
-    from sarj_standards.libs.adoption import doctor, lifecycle, scaffold  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
+    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level] -- selected operation only.
 
     root = _resolve_dest(args.dest)
     diagnosed = doctor.diagnose(root)
@@ -2227,12 +2227,29 @@ def cmd_format(args: _Args) -> int:
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
-    adopted = _declared_manifest(args)
+    return _execute_fixes(root, args.files, _declared_manifest(args))
+
+
+def _execute_fixes(root: Path, files: list[str], adopted: manifest.Manifest | None) -> int:
+    from sarj_standards.libs.adoption import lifecycle, scaffold  # ruff: ignore[import-outside-top-level] -- selected operation only.
+    from sarj_standards.libs.linting.python_fixes import fix_python  # ruff: ignore[import-outside-top-level] -- native edits precede upstream rewrites.
+
     ecosystems = scaffold.detect(root) if adopted is None else scaffold.detect_adopted(root, adopted)
+    selected = files or [str(root / path) for path in (adopted.verify_paths if adopted is not None else (".",))]
+    try:
+        if files:
+            fix_python(
+                [path for path in files if Path(path).is_file()], root=root, policy=Policy.from_manifest(root, adopted)
+            )
+        elif ecosystems.python_root is not None:
+            fix_python(
+                selected, root=root, policy=Policy.from_manifest(root, adopted), python_root=ecosystems.python_root
+            )
+    except (OSError, SyntaxError, UnicodeError, ValueError) as exc:
+        print(f"error: native Python fixes failed: {exc}", file=sys.stderr)
+        return 2
     commands = (
-        lifecycle.selected_format_commands(root, args.files)
-        if args.files
-        else lifecycle.format_commands(ecosystems, root=root)
+        lifecycle.selected_format_commands(root, files) if files else lifecycle.format_commands(ecosystems, root=root)
     )
     return lifecycle.execute(commands)
 
