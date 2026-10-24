@@ -143,3 +143,43 @@ def test_unmarked_inherited_tuple_contract_is_preserved() -> None:
         "    def internal(self) -> tuple[int, str]: ...\n"
     )
     assert [item.line for item in _check(source)] == [2]
+
+
+_TEST_RETURN_ANNOTATIONS = (
+    ("fixed", "", "tuple[int, str]", 1),
+    ("typing-alias", "from typing import Tuple as Pair\n", "Pair[int, str]", 1),
+    ("builtin-module", "import builtins\n", "builtins.tuple[int, str]", 1),
+    ("quoted", "", "'tuple[int, str]'", 1),
+    ("named-alias", "type Pair = tuple[int, str]\n", "Pair", 1),
+    ("annotated", "from typing import Annotated\n", "Annotated[tuple[int, str], 'record']", 1),
+    ("optional", "", "tuple[int, str] | None", 1),
+    ("collection", "", "tuple[int, ...]", 0),
+    ("nested-collection", "", "list[tuple[int, str]]", 0),
+    ("application-type", "from app.types import tuple\n", "tuple[int, str]", 0),
+)
+_TEST_RETURN_OWNERS = (
+    ("helper", "def make_pair() -> {annotation}: ...\n"),
+    ("async", "async def make_pair() -> {annotation}: ...\n"),
+    ("fixture", "import pytest\n@pytest.fixture\ndef pair() -> {annotation}: ...\n"),
+    ("nested", "def test_pair():\n    def make_pair() -> {annotation}: ...\n"),
+    ("method", "class TestPair:\n    def make_pair(self) -> {annotation}: ...\n"),
+)
+
+
+@pytest.mark.parametrize(
+    ("kind", "prefix", "annotation", "expected"),
+    _TEST_RETURN_ANNOTATIONS,
+    ids=[case[0] for case in _TEST_RETURN_ANNOTATIONS],
+)
+@pytest.mark.parametrize(("owner", "template"), _TEST_RETURN_OWNERS, ids=[case[0] for case in _TEST_RETURN_OWNERS])
+def test_fifty_unit_test_return_contracts(
+    *, kind: str, prefix: str, annotation: str, expected: int, owner: str, template: str
+) -> None:
+    assert len(_check(prefix + template.format(annotation=annotation), "tests/test_pair.py")) == expected, (kind, owner)
+
+
+@pytest.mark.parametrize("annotation", ["Pair", "tuple[int, str] | None"])
+def test_expanded_tuple_spelling_starts_as_warning(annotation: str) -> None:
+    findings = _check("type Pair = tuple[int, str]\ndef make_pair() -> " + annotation + ": ...\n", "tests/test_pair.py")
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.WARNING

@@ -65,7 +65,13 @@ def _class_owner(
     return unit, owner
 
 
-def constructor(context: PythonFileContext, expression: ast.expr, project: ProjectIndexSet) -> Constructor | None:
+def constructor(
+    context: PythonFileContext,
+    expression: ast.expr,
+    project: ProjectIndexSet,
+    *,
+    minimum_collaborators: int = _MIN_COLLABORATORS,
+) -> Constructor | None:
     resolved = _class_owner(context, expression, project)
     if resolved is None:
         return None
@@ -87,7 +93,7 @@ def constructor(context: PythonFileContext, expression: ast.expr, project: Proje
         and _is_port(project, unit, parameter.annotation)
         and stored.get(parameter.arg) in invoked
     )
-    if len(collaborators) < _MIN_COLLABORATORS:
+    if len(collaborators) < minimum_collaborators:
         return None
     return Constructor(
         SymbolRef(unit.module, owner.name),

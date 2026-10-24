@@ -313,5 +313,10 @@
   "SARJ522": "no-dual-shape-model-field-reader",
   "SARJ523": "no-blanket-suppression",
   "SARJ524": "duplicate-pytest-fixture-params",
-  "SARJ525": "pytest-fixture-returns-closed-resource"
+  "SARJ525": "pytest-fixture-returns-closed-resource",
+  "SARJ526": "prefer-pytest-dependency-fixtures",
+  "SARJ527": "prefer-pydantic-model-assertion",
+  "SARJ528": "prefer-precise-object-contract",
+  "SARJ529": "prefer-direct-import-module",
+  "SARJ530": "prefer-typed-settings-field"
 }
