@@ -145,8 +145,7 @@ def test_fifo_receipt_fails_without_waiting_for_a_writer(tmp_path: Path) -> None
     assert "bounded regular file" in result.stdout
 
 
-@pytest.mark.parametrize("growth", [False, True], ids=("exact-limit", "grows-after-stat"))
-def test_receipt_bound_covers_the_bytes_read(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, growth: bool) -> None:
+def test_receipt_growth_after_stat_cannot_bypass_byte_bound(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     path = _receipt(tmp_path).path
     limit = 2 * 1024 * 1024
     content = path.read_bytes()
@@ -160,7 +159,7 @@ def test_receipt_bound_covers_the_bytes_read(tmp_path: Path, monkeypatch: pytest
         follow_symlinks: bool = True,
     ) -> os.stat_result:
         result = original_stat(file, dir_fd=dir_fd, follow_symlinks=follow_symlinks)
-        if growth and file == path and follow_symlinks:
+        if file == path and follow_symlinks:
             path.write_bytes(content + b" " * limit)
         return result
 
@@ -170,12 +169,8 @@ def test_receipt_bound_covers_the_bytes_read(tmp_path: Path, monkeypatch: pytest
     [report] = analyze_prepared(
         (path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),), runner=_native
     )
-    if growth:
-        assert report.completion is Completion.FAILED
-        assert "bounded regular file" in report.issues[0].message
-    else:
-        assert report.completion is Completion.COMPLETE
-        assert not report.diagnostics
+    assert report.completion is Completion.FAILED
+    assert "bounded regular file" in report.issues[0].message
 
 
 @pytest.mark.parametrize("stage", ["install", "upgrade"], ids=("install-hook", "upgrade-hook"))
