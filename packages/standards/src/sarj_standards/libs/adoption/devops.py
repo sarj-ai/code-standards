@@ -31,6 +31,10 @@ def required_tools(
     names: set[str] = set()
     for path in files:
         names.update(_file_tools(path, path.relative_to(root).as_posix(), selected))
+    if "compose" in selected:
+        adopted = manifest.load_for_setup(root)
+        if adopted is not None and adopted.compose_projects:
+            names.add("docker")
     if prepared:
         names.update({"helm", "kubeconform", "kube-linter"})
     names.update(selected & set(manifest.QUALITY_ANALYZERS))

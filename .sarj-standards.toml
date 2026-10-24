@@ -1,5 +1,5 @@
 schema = 4
-bundle = "8.120.0"
+bundle = "8.121.0"
 rule_profile = "all"
 
 [capabilities]
@@ -8,6 +8,9 @@ rule_profile = "all"
 # importing the consumer preset from itself.
 disable = ["eslint", "swiftformat", "swiftlint", "ktlint", "detekt", "mobile-security", "markdownlint", "shellcheck", "taplo", "yamllint", "checkov", "zizmor", "jscpd"]
 
+
+[devops]
+compose_version = "5.6.1"
 
 [dest]
 python = "."

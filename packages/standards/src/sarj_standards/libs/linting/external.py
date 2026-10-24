@@ -448,6 +448,8 @@ def analyze_external(
             trust_repository_code=normalized_trust is TrustMode.TRUSTED,
             runner=execute,
             shared_shellcheck=capabilities is None or "shellcheck" in capabilities,
+            scope=contained,
+            policy=policy,
         )
     )
     reports.extend(
