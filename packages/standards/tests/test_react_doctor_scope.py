@@ -11,10 +11,13 @@ from sarj_standards.libs.adoption import manifest
 from sarj_standards.libs.diagnostics import Completion, TrustMode
 from sarj_standards.libs.linting import external
 from sarj_standards.libs.linting.external import ProcessOutput, run_process
+from sarj_standards.libs.typed_containers import is_object_list
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from pydantic import JsonValue
 
 
 def _git(root: Path, *args: str) -> str:
@@ -356,12 +359,21 @@ def test_staged_full_fallback_retains_complete_workspace_coverage(
         assert "requested project set" in report.issues[0].message
 
 
-@pytest.mark.parametrize("staged", [True, False], ids=["staged", "changed"])
+@pytest.mark.parametrize("scope", ["staged", "changed", "current"])
+@pytest.mark.parametrize("include_empty_root", [False, True], ids=["omitted-root", "empty-root"])
+@pytest.mark.parametrize("sibling_source_changed", [False, True], ids=["untouched-sibling", "omitted-touched-sibling"])
 @pytest.mark.parametrize("root_source_changed", [False, True], ids=["nested-only", "root-source"])
 def test_nested_project_change_does_not_require_enclosing_root_project(
-    workspace: _Workspace, monkeypatch: pytest.MonkeyPatch, staged: bool, root_source_changed: bool
+    workspace: _Workspace,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    scope: str,
+    include_empty_root: bool,
+    root_source_changed: bool,
+    sibling_source_changed: bool,
 ) -> None:
     root = workspace.root
+    staged = scope == "staged"
     (root / "package.json").write_text('{"devDependencies":{"react":"19.2.8"}}\n', encoding="utf-8")
     _git(root, "add", ".")
     _git(root, "commit", "-m", "Declare React at the repository root")
@@ -369,8 +381,30 @@ def test_nested_project_change_does_not_require_enclosing_root_project(
     monkeypatch.setenv("SARJ_STANDARDS_BASE", base)
     if root_source_changed:
         (root / "snippet.tsx").write_text("export const Snippet = () => <div />;\n", encoding="utf-8")
-    _change(root, ("app",), staged=staged)
+    _change(root, ("app", "engineering") if sibling_source_changed else ("app",), staged=staged or scope == "current")
     payload = _payload(root, base, ("app",), staged=staged)
+    if scope == "current":
+        for key in ("SARJ_STANDARDS_BASE", "SARJ_REACT_DOCTOR_BASE", "GITHUB_EVENT_PATH"):
+            monkeypatch.delenv(key, raising=False)
+        payload["diff"] = {
+            "baseBranch": "main",
+            "changedFileCount": 1 + int(root_source_changed) + int(sibling_source_changed),
+            "isCurrentChanges": True,
+        }
+    if include_empty_root:
+        reported_projects = payload["projects"]
+        assert is_object_list(reported_projects)
+        payload["projects"] = [
+            {
+                "directory": str(root),
+                "complete": True,
+                "skippedChecks": [],
+                "analyzedFileCount": 0,
+                "scannedFileCount": 0,
+                "diagnostics": [],
+            },
+            *reported_projects,
+        ]
 
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(1, json.dumps(payload), "")
@@ -385,12 +419,128 @@ def test_nested_project_change_does_not_require_enclosing_root_project(
         staged=staged,
     )
 
-    if root_source_changed:
+    if root_source_changed or sibling_source_changed:
         assert report.completion is Completion.FAILED
-        assert "requested project set" in report.issues[0].message
+        assert any(message in report.issues[0].message for message in ("analyzed no files", "requested project set"))
     else:
         assert report.completion is Completion.COMPLETE
         assert tuple(item.location.path for item in report.diagnostics) == ("packages/app/view.tsx",)
+
+
+@pytest.mark.parametrize("staged", [True, False], ids=["staged", "changed"])
+@pytest.mark.parametrize(
+    ("field", "value", "expected_message"),
+    [
+        ("complete", False, "did not complete"),
+        ("skippedChecks", None, "omitted completeness metadata"),
+        ("skippedChecks", ["lint"], "skipped checks"),
+        ("skippedCheckReasons", {"lint": "unavailable"}, "skipped checks"),
+        ("analyzedFileCount", None, "omitted completeness metadata"),
+        ("scannedFileCount", None, "omitted completeness metadata"),
+        ("analyzedFileCount", 1, "analyzed no files"),
+        ("scannedFileCount", 1, "analyzed no files"),
+        (
+            "diagnostics",
+            [
+                {
+                    "filePath": "view.tsx",
+                    "plugin": "react-doctor",
+                    "rule": "example",
+                    "severity": "warning",
+                    "message": "Contradictory empty analysis.",
+                    "line": 1,
+                    "column": 1,
+                }
+            ],
+            "analyzed no files",
+        ),
+    ],
+)
+def test_empty_scoped_project_keeps_completeness_guards(
+    workspace: _Workspace, *, staged: bool, field: str, value: JsonValue, expected_message: str
+) -> None:
+    root, base = workspace.root, workspace.base
+    _change(root, ("app",), staged=staged)
+    payload = _payload(root, base, ("app",), staged=staged)
+    projects = payload["projects"]
+    assert is_object_list(projects)
+    empty_project: dict[str, object] = {
+        "directory": str(root / "packages" / "engineering"),
+        "complete": True,
+        "skippedChecks": [],
+        "analyzedFileCount": 0,
+        "scannedFileCount": 0,
+    }
+    empty_project[field] = value
+    payload["projects"] = [*projects, empty_project]
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(1, json.dumps(payload), "")
+
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
+        root,
+        projects=(root / "packages" / "app", root / "packages" / "engineering"),
+        root=root,
+        runner=runner,
+        use_local_binary=False,
+        file_count=1,
+        staged=staged,
+    )
+
+    assert report.completion is Completion.FAILED
+    assert expected_message in report.issues[0].message
+
+
+@pytest.mark.parametrize(
+    "failure", ["none", "git-failure", "wrong-base", "wrong-count", "missing-kind", "missing-scope", "full-scan"]
+)
+def test_empty_scoped_project_requires_verified_git_scope(workspace: _Workspace, failure: str) -> None:
+    root, base = workspace.root, workspace.base
+    _change(root, ("app",), staged=False)
+    payload = _payload(root, base, ("app",), staged=False)
+    projects = payload["projects"]
+    assert is_object_list(projects)
+    payload["projects"] = [
+        *projects,
+        {
+            "directory": str(root / "packages" / "engineering"),
+            "complete": True,
+            "skippedChecks": [],
+            "analyzedFileCount": 0,
+            "scannedFileCount": 0,
+        },
+    ]
+    if failure in {"wrong-base", "wrong-count", "missing-kind"}:
+        payload["diff"] = {
+            "baseBranch": "HEAD" if failure == "wrong-base" else base,
+            "changedFileCount": 0 if failure == "wrong-count" else 1,
+            "isCurrentChanges": None if failure == "missing-kind" else False,
+        }
+    elif failure == "missing-scope":
+        payload["diff"] = None
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        if argv[0] == "git":
+            return ProcessOutput(128, "", "Git unavailable") if failure == "git-failure" else run_process(argv, cwd=cwd)
+        return ProcessOutput(1, json.dumps(payload), "")
+
+    report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
+        root,
+        projects=(root / "packages" / "app", root / "packages" / "engineering"),
+        root=root,
+        runner=runner,
+        use_local_binary=False,
+        file_count=1,
+        staged=False,
+        full_scan=failure == "full-scan",
+    )
+
+    if failure == "none":
+        assert report.completion is Completion.COMPLETE
+        assert tuple(item.location.path for item in report.diagnostics) == ("packages/app/view.tsx",)
+    else:
+        assert report.completion is Completion.FAILED
+        assert "analyzed no files" in report.issues[0].message
 
 
 @pytest.mark.parametrize("degraded", [False, True], ids=["ordinary", "degraded"])
