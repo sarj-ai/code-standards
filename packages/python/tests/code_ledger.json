@@ -318,5 +318,6 @@
   "SARJ527": "prefer-pydantic-model-assertion",
   "SARJ528": "prefer-precise-object-contract",
   "SARJ529": "prefer-direct-import-module",
-  "SARJ530": "prefer-typed-settings-field"
+  "SARJ530": "prefer-typed-settings-field",
+  "SARJ531": "no-redundant-local-alias"
 }

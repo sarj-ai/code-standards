@@ -232,6 +232,7 @@ from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossi
 from sarj_python_lint.rules.no_invalid_pydantic_bypass import NoInvalidPydanticBypass
 from sarj_python_lint.rules.no_invalid_pydantic_validator_return import NoInvalidPydanticValidatorReturn
 from sarj_python_lint.rules.no_partial_type_is import NoPartialTypeIs
+from sarj_python_lint.rules.no_redundant_local_alias import NoRedundantLocalAlias
 from sarj_python_lint.rules.no_shallow_record_type_guard import NoShallowRecordTypeGuard
 from sarj_python_lint.rules.no_slash_collection_root_under_prefix import NoSlashCollectionRootUnderPrefix
 from sarj_python_lint.rules.no_unknown_pydantic_validator_field import NoUnknownPydanticValidatorField
@@ -254,6 +255,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoRedundantLocalAlias.id: NoRedundantLocalAlias,
         PytestFixtureReturnsClosedResource.id: PytestFixtureReturnsClosedResource,
         DuplicatePytestFixtureParams.id: DuplicatePytestFixtureParams,
         PreferTypedSettingsField.id: PreferTypedSettingsField,
