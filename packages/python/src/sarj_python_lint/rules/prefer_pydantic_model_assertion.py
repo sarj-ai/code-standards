@@ -48,7 +48,7 @@ class PreferPydanticModelAssertion(ProjectRule):
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only consecutive plain equality or bool/None identity assertions on two distinct declared fields of a source-proven Pydantic model are considered. Models are resolved through declared parameter/local/return annotations and simple construction/validation calls. Plain properties are deliberately excluded because model_dump omits them. Unknown receivers, non-model objects, calls in expected values, assertion messages, repeated fields, nested attributes and custom comparison operators are excluded. This is a review advisory, never an automatic rewrite or assertion deletion.",
+            "Only consecutive plain equality or bool/None identity assertions on two distinct declared fields of a source-proven Pydantic model are considered. Models are resolved through declared parameter/local/return annotations and simple construction/validation calls. Plain properties, private attributes, model_config and ClassVar metadata are excluded; Final annotations are conservatively excluded as well. Unknown receivers, non-model objects, calls in expected values, assertion messages, repeated fields, nested attributes and custom comparison operators are excluded. This is a review advisory, never an automatic rewrite or assertion deletion.",
         ),
         examples=(
             RuleExample(
@@ -175,11 +175,7 @@ def _report(
     model = contracts.value(run[0][1].value)
     if model is None or not contracts.inherits(model, MODEL_BASES | SETTINGS_BASES):
         return
-    declared = {
-        node.target.id
-        for node in model.declaration.body
-        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
-    }
+    declared = set(contracts.model_fields(model))
     if not fields <= declared:
         return
     first = run[0][0]

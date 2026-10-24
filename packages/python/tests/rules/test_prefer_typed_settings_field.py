@@ -78,3 +78,34 @@ def test_final_settings_class_keeps_its_domain_field_contract(rule: PreferTypedS
         + "@final\nclass Settings(BaseSettings):\n    count: int = Field(default=1, gt=0)\n"
     )
     assert len(rule.check(Path("app/settings.py"), source)) == 1
+
+
+@pytest.mark.parametrize(
+    ("prefix", "declaration"),
+    [
+        ("from typing import ClassVar\n", "endpoint: ClassVar[str] = 'https://api.example.com'"),
+        ("from typing import ClassVar as Metadata\n", "mode: Metadata[str] = Mode.CLOUD"),
+        ("import typing_extensions as te\n", "endpoint: 'te.ClassVar[str]' = 'https://api.example.com'"),
+        ("from typing import Final\n", "endpoint: Final[str] = 'https://api.example.com'"),
+        ("from typing import ClassVar\ntype Metadata = ClassVar[str]\n", "mode: Metadata = Mode.CLOUD"),
+        ("", "_endpoint: str = 'https://api.example.com'"),
+    ],
+)
+def test_settings_metadata_keeps_its_class_contract(
+    rule: PreferTypedSettingsField, prefix: str, declaration: str
+) -> None:
+    source = prefix + _PREFIX + "class Settings(BaseSettings):\n    " + declaration + "\n"
+    assert rule.check(Path("app/settings.py"), source) == []
+
+
+def test_metadata_does_not_hide_an_ordinary_settings_field(rule: PreferTypedSettingsField) -> None:
+    source = (
+        "from typing import ClassVar\n"
+        + _PREFIX
+        + "class Settings(BaseSettings):\n"
+        + "    kind: ClassVar[str] = 'https://metadata.example.com'\n"
+        + "    endpoint: str = 'https://api.example.com'\n"
+    )
+    findings = rule.check(Path("app/settings.py"), source)
+    assert len(findings) == 1
+    assert findings[0].line == len(source.splitlines())

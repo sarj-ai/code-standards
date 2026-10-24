@@ -10,6 +10,8 @@ from sarj_python_lint.rules._project_index import ProjectIndexSet, SourceUnit, S
 
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from sarj_python_lint._file_context import PythonFileContext
 
 
@@ -25,9 +27,29 @@ class DeclaredClass:
     declaration: ast.ClassDef
 
 
+def _class_metadata_annotation(annotation: ast.expr, semantics: AnnotationSemantics) -> bool:
+    pending = [annotation]
+    seen: set[str] = set()
+    while pending:
+        node = semantics.parse(pending.pop())
+        if node is None:
+            return True
+        for member in ast.walk(node):
+            if isinstance(member, ast.Subscript) and semantics.imports.resolved_symbol(
+                member.value, sources=_TYPING_SOURCES
+            ) in {"ClassVar", "Final"}:
+                return True
+            if isinstance(member, ast.Name) and member.id in semantics.aliases and member.id not in seen:
+                seen.add(member.id)
+                pending.append(semantics.aliases[member.id])
+    return False
+
+
 class DeclaredContracts:
     def __init__(self, context: PythonFileContext) -> None:
         self.context = context
+        self._field_cache: dict[ast.ClassDef, dict[str, ast.AnnAssign]] = {}
+        self._module_annotations: dict[Path, AnnotationSemantics] = {}
         self.project = context.session.project or ProjectIndexSet.single(context.path, context.source)
         self.unit = self.project.unit(context.path)
         if self.unit is not None and self.unit.tree is not context.tree:
@@ -108,10 +130,43 @@ class DeclaredContracts:
     def inherits(self, model: DeclaredClass, bases: frozenset[str]) -> bool:
         return self.project.class_inherits_from(model.unit, model.declaration.name, bases)
 
+    def model_fields(self, model: DeclaredClass) -> dict[str, ast.AnnAssign]:
+        if model.unit.tree is None:
+            return {}
+        cached = self._field_cache.get(model.declaration)
+        if cached is not None:
+            return cached
+        semantics = self._module_semantics(model.unit)
+        fields = {
+            node.target.id: node
+            for node in model.declaration.body
+            if isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and not node.target.id.startswith("_")
+            and node.target.id != "model_config"
+            and not _class_metadata_annotation(node.annotation, semantics)
+        }
+        self._field_cache[model.declaration] = fields
+        return fields
+
+    def _module_semantics(self, unit: SourceUnit) -> AnnotationSemantics:
+        if unit.tree is None:
+            return self.context.annotation_semantics
+        semantics = self._module_annotations.get(unit.path)
+        if semantics is None:
+            imports = (
+                self.context.module_imports
+                if unit.path == self.context.path
+                else ImportIndex.from_tree(unit.tree, module_scope_only=True)
+            )
+            semantics = AnnotationSemantics.from_imports(unit.tree, imports)
+            self._module_annotations[unit.path] = semantics
+        return semantics
+
     def annotation(self, expression: ast.expr, unit: SourceUnit | None = None) -> DeclaredClass | None:
         semantics = self.context.annotation_semantics
         if unit is not None and unit is not self.unit and unit.tree is not None:
-            semantics = AnnotationSemantics.from_tree(unit.tree)
+            semantics = self._module_semantics(unit)
         candidates = [
             model
             for member in semantics.transparent_members(expression)

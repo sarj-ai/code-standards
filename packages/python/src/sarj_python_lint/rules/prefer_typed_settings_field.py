@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._declared_contracts import DeclaredClass
 
 
 _ENUM_BASES = frozenset({"enum.StrEnum", "enum.Enum", "enum.IntEnum"})
@@ -42,7 +43,7 @@ class PreferTypedSettingsField(ProjectRule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only source-proven BaseSettings classes and raw str/int/float fields are checked. Evidence comes from an enum/NewType default, an absolute HTTP/HTTPS/WS/WSS URL default or exact Field(gt=0)/Field(ge=0) metadata. Field names alone never imply credentials, IDs, ports, paths or allowed choices. Existing constrained/optional domain types and ClassVar metadata remain valid. URL and numeric changes require review; SDK conversion, required None defaults, NaN/infinity and environment source parsing need explicit tests. No automatic rewrite.",
+            "Only source-proven BaseSettings classes and raw str/int/float fields are checked. Evidence comes from an enum/NewType default, an absolute HTTP/HTTPS/WS/WSS URL default or exact Field(gt=0)/Field(ge=0) metadata. Field names alone never imply credentials, IDs, ports, paths or allowed choices. Existing constrained/optional domain types remain valid. Private attributes, model_config and ClassVar metadata are excluded; Final annotations are conservatively excluded as well. URL and numeric changes require review; SDK conversion, required None defaults, NaN/infinity and environment source parsing need explicit tests. No automatic rewrite.",
         ),
         examples=(
             RuleExample(
@@ -87,16 +88,14 @@ class PreferTypedSettingsField(ProjectRule):
             resolved = contracts.class_type(ast.Name(id=model.name))
             if resolved is None or not contracts.inherits(resolved, SETTINGS_BASES):
                 continue
-            findings.extend(_settings_fields(model, context, contracts, self.code))
+            findings.extend(_settings_fields(resolved, context, contracts, self.code))
         return findings
 
 
 def _settings_fields(
-    model: ast.ClassDef, context: PythonFileContext, contracts: DeclaredContracts, code: str
+    model: DeclaredClass, context: PythonFileContext, contracts: DeclaredContracts, code: str
 ) -> Iterator[Diagnostic]:
-    for field in model.body:
-        if not isinstance(field, ast.AnnAssign) or not isinstance(field.target, ast.Name):
-            continue
+    for field in contracts.model_fields(model).values():
         primitive = _primitive(field.annotation, context)
         if primitive is None:
             continue
