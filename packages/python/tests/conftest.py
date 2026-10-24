@@ -28,8 +28,20 @@ class _WorkerOutput(Protocol):
     workeroutput: dict[str, object]
 
 
+@runtime_checkable
+class _TemporaryConfig(Protocol):
+    _tmp_path_factory: pytest.TempPathFactory
+
+
 def _worker_output(value: object) -> dict[str, object] | None:
     return value.workeroutput if isinstance(value, _WorkerOutput) else None
+
+
+def _temporary_root(value: pytest.Config | _TemporaryConfig) -> Path | None:
+    if isinstance(value, _TemporaryConfig):
+        factory = value._tmp_path_factory  # ruff: ignore[private-member-access] # pyright: ignore[reportPrivateUsage] -- pytest plugin factory.
+        return factory.getbasetemp()
+    return None
 
 
 def _recording(rule_id: str, examples_path: str, original: _Check) -> _Check:
@@ -47,7 +59,18 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
     _CURRENT_TEST_MODULE[0] = item.path.as_posix()
 
 
+@pytest.hookimpl(trylast=True)
 def pytest_configure(config: pytest.Config) -> None:
+    # Pytest exposes its own configured factory to plugins at configure time.
+    temporary = _temporary_root(config)
+    if temporary is not None:
+        for ancestor in (temporary, *temporary.parents):
+            if (ancestor / ".git").exists():
+                msg = (
+                    f"Python rule tests need a temporary directory outside Git; found {ancestor / '.git'}. "
+                    "Set TMPDIR or --basetemp to a private non-Git path."
+                )
+                raise pytest.UsageError(msg)
     root = config.rootpath.parents[1]
     for rule_id, cls in REGISTRY.items():
         examples = (root / cls.examples_path()).as_posix()
