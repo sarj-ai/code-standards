@@ -53,12 +53,25 @@ _UNCERTAIN = (
     ast.TypeAlias,
 )
 _INITIALIZERS = (ast.Call, ast.Await, ast.Constant, ast.List, ast.Tuple, ast.Dict, ast.Set)
-_REFERENCE_OBSERVERS = frozenset({"getrefcount", "get_referrers", "getattr", "attrgetter", "TypeAdapter"})
+_REFERENCE_OBSERVERS = frozenset(
+    {
+        "getrefcount",
+        "get_referrers",
+        "getattr",
+        "attrgetter",
+        "TypeAdapter",
+        "BaseModel",
+        "RootModel",
+        "create_model",
+        "validate_call",
+        "model_rebuild",
+        "rebuild_dataclass",
+        "new_class",
+    }
+)
 _WORDS = re.compile(r"\w+")
 _TYPE_COMMENT = re.compile(r"#\s*type\s*:")
-_NAME_PAIR = re.compile(
-    r"\b(?P<target>[A-Za-z_]\w*)(?:[\s)\\]|#[^\r\n]*[\r\n])*=(?:[\s(\\]|#[^\r\n]*[\r\n])*(?P<source>[A-Za-z_]\w*)\b(?=[\s),;#\\]|$)"
-)
+_NAME_PAIR = re.compile(r"\b(?P<target>[A-Za-z_]\w*)[\s)\\]*=[\s(\\]*(?P<source>[A-Za-z_]\w*)\b(?=[\s),;\\]|$)")
 
 
 @final
@@ -77,8 +90,9 @@ class NoRedundantLocalAlias(Rule):
             "The original must be a parameter or an earlier initialized local with one binding; reassignment, deletion, imports, alias chains and uncertain initialization are excluded.",
             "Functions with if statements, loops, try statements, asserts, Boolean short-circuiting, nested scopes, global/nonlocal declarations or type aliases are excluded. Ordinary and async with bodies require ordered enclosing-suite binding evidence.",
             "A conditional expression is admitted only when its test is a bare name bound once as a parameter, and neither local is read within the expression.",
-            "Typed aliases, type comments, same-scope quoted references and conditional reads of the source or alias are excluded. Captured bindings and module/class aliases are preserved.",
-            "Files referencing namespace readers, dynamic attribute getters, TypeAdapter or reference-count observers are excluded, including aliases imported under another name. Computed type names can consume caller-local bindings without a Name read in the AST.",
+            "Typed aliases, files with type comments, same-scope quoted references and conditional reads of either local are excluded. Captured bindings and module/class aliases are preserved.",
+            "Files importing Pydantic or referencing known namespace readers, dynamic attribute getters or reference-count observers are excluded, including imported aliases. Computed type names can consume caller-local bindings without a Name read in the AST.",
+            "Dynamic class construction and class-valued references to type are excluded. Direct, unshadowed unary type(value) queries and standard-library dataclasses remain supported.",
             "Generated source, stubs and malformed input are excluded. Arbitrary external frame introspection is not modeled.",
             "No autofix is offered; readability judgments, multiple reads, positional forwarding and more complex control flow remain outside the contract.",
         ),
@@ -123,14 +137,13 @@ class NoRedundantLocalAlias(Rule):
         conditional_sources = _conditional_sources(context)
         quoted = _quoted_references(context, provenance, names)
         positions = {statement: i for owner in context.nodes(*_SUITES) for i, statement in enumerate(owner.body)}
-        comments = comment_lines(tuple(context.source_lines))
         findings: list[Diagnostic] = []
         for assignment in candidates:
             target = assignment.targets[0]
             source = assignment.value
             if not isinstance(target, ast.Name) or not isinstance(source, ast.Name):
                 continue
-            if _has_typing_reference(assignment, target, provenance, quoted, comments):
+            if (provenance.scope(assignment), target.id) in quoted:
                 continue
             use = _single_keyword_read(target, provenance, reads, keywords)
             if use is None:
@@ -153,13 +166,18 @@ class NoRedundantLocalAlias(Rule):
 
 
 def _excluded_file(context: PythonFileContext) -> bool:
+    if context.path.suffix != ".py" or "=" not in context.source:
+        return True
     # This is only a necessary ASCII signal; Unicode identifiers use the AST.
     if context.source.isascii() and not _possible_alias(context.source):
         return True
-    return context.path.suffix != ".py" or "=" not in context.source or context.tree is None
+    return context.tree is None
 
 
 def _possible_alias(source: str) -> bool:
+    # Comments may separate tokens; bypass the text gate instead of rescanning them.
+    if "#" in source:
+        return True
     forwarded: set[str] = set()
     assigned: set[str] = set()
     for match in _NAME_PAIR.finditer(source):
@@ -196,9 +214,13 @@ def _local_assignments(context: PythonFileContext, names: set[str]) -> list[ast.
     eligible = [
         node for node in candidates if isinstance(scope := provenance.scope(node), _FUNCTIONS) and scope not in blocked
     ]
-    if not eligible or context.generated:
+    if not eligible or context.generated or _has_type_comments(context):
         return []
     return eligible
+
+
+def _has_type_comments(context: PythonFileContext) -> bool:
+    return any(_TYPE_COMMENT.search(comment) for comment in comment_lines(tuple(context.source_lines)).values())
 
 
 def _parameter_choice(node: ast.IfExp, provenance: ResourceProvenance) -> bool:
@@ -230,21 +252,6 @@ def _conditional_sources(context: PythonFileContext) -> set[tuple[ast.AST | None
             names.add((provenance.scope(node), node.id))
         pending.extend(children(node))
     return names
-
-
-def _has_typing_reference(
-    assignment: ast.Assign,
-    target: ast.Name,
-    provenance: ResourceProvenance,
-    quoted: set[tuple[ast.AST | None, str]],
-    comments: Mapping[int, str],
-) -> bool:
-    if (provenance.scope(assignment), target.id) in quoted:
-        return True
-    return any(
-        _TYPE_COMMENT.search(comments.get(line, ""))
-        for line in range(assignment.lineno, (assignment.end_lineno or assignment.lineno) + 1)
-    )
 
 
 def _single_keyword_read(
@@ -298,11 +305,43 @@ def _quoted_words(value: str) -> set[str]:
 
 
 def _observes_references(context: PythonFileContext) -> bool:
-    return any(
-        (isinstance(node, ast.Name) and node.id in _REFERENCE_OBSERVERS)
-        or (isinstance(node, ast.Attribute) and node.attr in _REFERENCE_OBSERVERS)
-        or (isinstance(node, ast.alias) and node.name in _REFERENCE_OBSERVERS)
-        for node in context.nodes(ast.Name, ast.Attribute, ast.alias)
+    if _imports_model_namespace(context):
+        return True
+    for node in context.nodes(ast.Name, ast.Attribute, ast.alias):
+        name = _reference_name(node)
+        if name in _REFERENCE_OBSERVERS or (name == "type" and not _plain_type_query(node, context)):
+            return True
+    return False
+
+
+def _imports_model_namespace(context: PythonFileContext) -> bool:
+    for node in context.nodes(ast.Import, ast.ImportFrom):
+        if isinstance(node, ast.ImportFrom):
+            if node.level == 0 and (node.module or "").partition(".")[0] == "pydantic":
+                return True
+        elif any(alias.name.partition(".")[0] == "pydantic" for alias in node.names):
+            return True
+    return False
+
+
+def _reference_name(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return node.name if isinstance(node, ast.alias) else None
+
+
+def _plain_type_query(node: ast.AST, context: PythonFileContext) -> bool:
+    parent = context.parents.get(node)
+    return (
+        isinstance(node, ast.Name)
+        and context.imports.builtin_is_unshadowed("type")
+        and isinstance(parent, ast.Call)
+        and parent.func is node
+        and len(parent.args) == 1
+        and not parent.keywords
+        and not isinstance(parent.args[0], ast.Starred)
     )
 
 

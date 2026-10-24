@@ -741,3 +741,88 @@ def test_computed_type_namespace(imports: str, factory: str, expression: str) ->
 def test_unicode_quoted_annotation(alias: str, quoted: str) -> None:
     source = f'def render(item):\n    {alias} = item\n    reference: "list[{quoted}]"\n    consume({alias}={alias})\n'
     assert NoRedundantLocalAlias().check(Path("case.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        pytest.param(
+            "from pydantic import BaseModel\nclass Model(BaseModel):\n    value: 'payload'\ndef consume(*, payload):\n    return None\ndef render(item):\n    payload = item\n    Model.model_rebuild()\n    consume(payload=payload)\n    return Model(value='1').value\nresult = render(int)\n",
+            0,
+            id="namespace-model-rebuild",
+        ),
+        pytest.param(
+            "from pydantic import BaseModel\ndef consume(*, payload):\n    return None\ndef render(item):\n    payload = item\n    model = type('Model', (BaseModel,), {'__module__': __name__, '__annotations__': {'value': 'pay' + 'load'}})\n    consume(payload=payload)\n    return model(value='1').value\nresult = render(int)\n",
+            0,
+            id="namespace-dynamic-model-type",
+        ),
+        pytest.param(
+            "from pydantic import validate_call\ndef consume(*, payload):\n    return None\ndef echo(value: 'payload'):\n    return value\ndef render(item):\n    payload = item\n    checked = validate_call(echo)\n    consume(payload=payload)\n    return checked('1')\nresult = render(int)\n",
+            0,
+            id="namespace-validate-call",
+        ),
+        pytest.param(
+            "from pydantic import create_model\ndef consume(*, payload):\n    return None\ndef render(item):\n    payload = item\n    model = create_model('Model', value=('pay' + 'load', ...))\n    consume(payload=payload)\n    return model(value='1').value\nresult = render(int)\n",
+            0,
+            id="namespace-create-model-candidate",
+        ),
+        pytest.param(
+            "from pydantic import create_model as build_model\ndef consume(*, payload):\n    return None\ndef render(item):\n    payload = item\n    model = build_model('Model', value=('pay' + 'load', ...))\n    consume(payload=payload)\n    return model(value='1').value\nresult = render(int)\n",
+            0,
+            id="namespace-import-alias",
+        ),
+        pytest.param(
+            "import pydantic as models\ndef consume(*, payload):\n    return None\ndef render(item):\n    payload = item\n    model = models.create_model('Model', value=('pay' + 'load', ...))\n    consume(payload=payload)\n    return model(value='1').value\nresult = render(int)\n",
+            0,
+            id="namespace-qualified-module",
+        ),
+        pytest.param(
+            "def consume(*, payload):\n    return None\ndef render(item, model_base):\n    payload = item\n    model = type('Model', (model_base,), {'__module__': __name__, '__annotations__': {'value': 'pay' + 'load'}})\n    consume(payload=payload)\n    return model(value='1').value\nresult = render(int, framework_base)\n",
+            0,
+            id="namespace-dynamic-parameter-base",
+        ),
+        pytest.param(
+            'from typing import NewType, TypeVar, TypeAliasType\ndef consume(*, payload: object) -> None:\n    pass\ndef render() -> None:\n    Item = NewType("Item", int)\n    payload = Item\n    values = []  # type: list[payload]\n    consume(payload=payload)\n',
+            0,
+            id="separate-newtype-comment",
+        ),
+        pytest.param(
+            "def render(item):\n    payload = item\n    count = 1  # type: int\n    consume(payload=payload, count=count)\n",
+            0,
+            id="unrelated-type-comment",
+        ),
+        pytest.param(
+            "def other():\n    count = 1  # type: int\n    return count\ndef render(item):\n    payload = item\n    consume(payload=payload)\n",
+            0,
+            id="other-scope-type-comment",
+        ),
+        pytest.param(
+            "def render(item):\n    payload = item\n    kind = type(item)\n    consume(payload=payload, kind=kind)\n",
+            1,
+            id="unary-type-query",
+        ),
+        pytest.param(
+            "from dataclasses import dataclass\n@dataclass\nclass Record:\n    value: int\ndef render(item):\n    payload = item\n    consume(payload=payload)\n",
+            1,
+            id="stdlib-dataclass",
+        ),
+        pytest.param(
+            'def render(item):\n    note = "#"; payload = item; consume(payload=payload, note=note)\n',
+            1,
+            id="hash-string-inline",
+        ),
+        pytest.param(
+            "# x\n" * 500 + "def render(item):\n    payload = item\n    consume(payload=payload)\n",
+            1,
+            id="comment-prefix-positive",
+        ),
+        pytest.param("# x\n" * 500, 0, id="comment-only-input"),
+        pytest.param(
+            "def consume(*, payload):\n    return None\ndef render(item, type):\n    payload = item\n    adapter = type('pay' + 'load')\n    consume(payload=payload)\n    return adapter.validate_python('1')\nresult = render(int, framework_adapter)\n",
+            0,
+            id="shadowed-type-namespace-reader",
+        ),
+    ],
+)
+def test_independent_review_regressions(source: str, expected: int) -> None:
+    assert len(NoRedundantLocalAlias().check(Path("case.py"), source)) == expected
