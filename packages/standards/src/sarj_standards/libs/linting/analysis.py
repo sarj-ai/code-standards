@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from hashlib import sha256
 from importlib import import_module
 from pathlib import Path
 import time
@@ -13,12 +14,15 @@ from sarj_standards.libs.diagnostics import (
     Conclusion,
     Diagnostic,
     ExecutionIssue,
+    Fix,
+    FixSafety,
     InvocationId,
     Location,
     Position,
     Region,
     Severity,
     SourceDocument,
+    TextEdit,
     ToolReport,
     diagnostic_fingerprint,
 )
@@ -31,6 +35,8 @@ from .runner import GroupedPaths, group_paths
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from typing import Self
+
+    from sarj_python_lint.rule_base import Fix as PythonFix
 
     from .policy import Policy
 
@@ -60,6 +66,12 @@ class _NativeDiagnostic(Protocol):
 class _SeverityDiagnostic(Protocol):
     @property
     def severity(self) -> object: ...
+
+
+@runtime_checkable
+class _FixDiagnostic(Protocol):
+    @property
+    def fixes(self) -> tuple[PythonFix, ...]: ...
 
 
 class _RuleMetadata(Protocol):
@@ -261,7 +273,7 @@ def _run_native(
 ) -> ToolReport:
     started = time.monotonic()
     checker_module, registry_module = _load_native(package)
-    metadata = _metadata(registry_module.REGISTRY)
+    metadata = native_metadata(registry_module.REGISTRY)
     selected_rules = sorted(registry_module.REGISTRY) if rule_ids is None else sorted(rule_ids)
     unknown = sorted(set(selected_rules) - registry_module.REGISTRY.keys())
     if unknown:
@@ -284,9 +296,9 @@ def _run_native(
         )
     else:
         native_result = checker_module.analyze(selected_rules, paths)
-    cache: dict[Path, SourceDocument | _PythonSourceDocument | None] = {}
+    cache: dict[Path, SourceDocument | PythonSourceDocument | None] = {}
     diagnostics = tuple(
-        _normalize_native(item, source=name, root=root, metadata=metadata, documents=cache) for item in native_result
+        normalize_native(item, source=name, root=root, metadata=metadata, documents=cache) for item in native_result
     )
     return ToolReport(
         name,
@@ -308,7 +320,7 @@ def _load_native(package: str) -> _LoadedNative:
     return _LoadedNative(checker_module, registry_module)
 
 
-def _metadata(registry: Mapping[str, type[_RuleMetadata]]) -> dict[str, _NativeRuleMetadata]:
+def native_metadata(registry: Mapping[str, type[_RuleMetadata]]) -> dict[str, _NativeRuleMetadata]:
     by_code: dict[str, _NativeRuleMetadata] = {}
     for rule_id, rule_type in registry.items():
         rule = rule_type()
@@ -317,20 +329,27 @@ def _metadata(registry: Mapping[str, type[_RuleMetadata]]) -> dict[str, _NativeR
 
 
 @dataclass(frozen=True, slots=True)
-class _PythonSourceDocument:
+class PythonSourceDocument:
     document: SourceDocument
     raw: bytes
     encoding: str
     utf8_source: bytes
+    source_hash: str
 
     @classmethod
     def read(cls, path: Path) -> Self:
-        from sarj_python_lint import python_source_encoding  # ruff: ignore[import-outside-top-level] -- only the selected Python engine needs this decoder.
+        from sarj_python_lint import python_source_encoding, python_source_hash  # ruff: ignore[import-outside-top-level] -- only the selected Python engine needs these source contracts.
 
         raw = path.read_bytes()
         encoding = python_source_encoding(raw)
         text = raw.decode(encoding)
-        return cls(SourceDocument(path, text), raw, encoding, raw if encoding == "utf-8" else text.encode("utf-8"))
+        return cls(
+            SourceDocument(path, text),
+            raw,
+            encoding,
+            raw if encoding == "utf-8" else text.encode("utf-8"),
+            python_source_hash(text),
+        )
 
     def point(self, *, line: int, column: int) -> Position | None:
         return self._physical_point(self.document.point(line=line, column=column))
@@ -349,20 +368,20 @@ class _PythonSourceDocument:
         return replace(position, byte_offset=len(encoded)) if self.raw.startswith(encoded) else None
 
 
-def _normalize_native(
+def normalize_native(
     item: _NativeDiagnostic,
     *,
     source: str,
     root: Path,
     metadata: Mapping[str, _NativeRuleMetadata],
-    documents: dict[Path, SourceDocument | _PythonSourceDocument | None],
+    documents: dict[Path, SourceDocument | PythonSourceDocument | None],
 ) -> Diagnostic:
     resolved = item.path.resolve()
     document = documents.get(resolved)
     if resolved not in documents:
         try:
             document = (
-                _PythonSourceDocument.read(resolved) if source == "sarj-python-lint" else SourceDocument.read(resolved)
+                PythonSourceDocument.read(resolved) if source == "sarj-python-lint" else SourceDocument.read(resolved)
             )
         except OSError, UnicodeError, SyntaxError:
             document = None
@@ -390,7 +409,37 @@ def _normalize_native(
         location=Location(_relative_path(resolved, root), position=position),
         help=help_text,
         tags=tags,
+        fixes=_python_fixes(item, document, _relative_path(resolved, root)) if source == "sarj-python-lint" else (),
     )
+
+
+def _python_fixes(
+    item: _NativeDiagnostic, document: SourceDocument | PythonSourceDocument | None, relative: str
+) -> tuple[Fix, ...]:
+    if not isinstance(document, PythonSourceDocument) or not isinstance(item, _FixDiagnostic) or not item.fixes:
+        return ()
+    digest = document.source_hash
+    fixes: list[Fix] = []
+    for fix in item.fixes:
+        if str(fix.safety) != "safe" or fix.source_hash != digest:
+            continue
+        edits: list[TextEdit] = []
+        for edit in fix.edits:
+            start = document.byte_point(line=edit.start_line, column=edit.start_col)
+            end = document.byte_point(line=edit.end_line, column=edit.end_col)
+            if start is None or end is None:
+                break
+            edits.append(
+                TextEdit(
+                    Location(relative, region=Region(start, end)),
+                    edit.replacement,
+                    sha256(document.raw[start.byte_offset : end.byte_offset]).hexdigest(),
+                )
+            )
+        else:
+            if edits:
+                fixes.append(Fix(fix.title, FixSafety.SAFE, tuple(edits)))
+    return tuple(fixes)
 
 
 def _severity(item: _NativeDiagnostic) -> Severity:

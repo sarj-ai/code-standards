@@ -396,11 +396,20 @@ class Standards:
             lifecycle,
             scaffold,
         )
+        from .libs.linting.python_fixes import fix_python  # ruff: ignore[import-outside-top-level] -- only fix needs native edit application.
 
         try:
             adopted = load_manifest(self.root)
             ecosystems = scaffold.detect(self.root) if adopted is None else scaffold.detect_adopted(self.root, adopted)
-        except (OSError, TypeError, ValueError) as exc:
+            if ecosystems.python_root is not None:
+                selected = [str(self.root / path) for path in (adopted.verify_paths if adopted is not None else (".",))]
+                fix_python(
+                    selected,
+                    root=self.root,
+                    policy=Policy.from_manifest(self.root, adopted),
+                    python_root=ecosystems.python_root,
+                )
+        except (OSError, SyntaxError, TypeError, UnicodeError, ValueError) as exc:
             return Result(
                 Status.INVALID,
                 findings=(Finding("fix.input.invalid", "error", str(exc)),),

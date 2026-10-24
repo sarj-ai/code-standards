@@ -248,9 +248,10 @@ def _load_tool(
     return _LoadedTool(checker_module.main, registry_module.REGISTRY)
 
 
-def group_paths(files: Sequence[str], *, policy: Policy | None = None) -> GroupedPaths:
+def group_paths(files: Sequence[str], *, policy: Policy | None = None, python_only: bool = False) -> GroupedPaths:
     grouped = GroupedPaths()
-    inputs = _validated_inputs(files, policy=policy)
+    selected = _python_input_paths(files) if python_only else files
+    inputs = _validated_inputs(selected, policy=policy)
 
     roots = _minimal_roots(path for _raw, path, is_directory in inputs if is_directory)
     walked: set[Path] = set()
@@ -259,11 +260,19 @@ def group_paths(files: Sequence[str], *, policy: Policy | None = None) -> Groupe
         if is_directory:
             key = _path_key(path)
             if key in roots and key not in walked:
-                _route_directory(grouped, path, seen, policy=policy)
+                _route_directory(grouped, path, seen, policy=policy, python_only=python_only)
                 walked.add(key)
             continue
         _route_unique_path(grouped, path, raw_path, seen)
     return grouped
+
+
+def _python_input_paths(files: Sequence[str]) -> list[str]:
+    return [
+        name
+        for name in files
+        if (path := Path(name)).is_dir() or _SUFFIX_TO_TOOL.get(path.suffix.lower()) is _Tool.PYTHON
+    ]
 
 
 def _validated_inputs(files: Sequence[str], *, policy: Policy | None) -> list[tuple[str, Path, bool]]:
@@ -309,7 +318,9 @@ def _minimal_roots(paths: Iterable[Path]) -> frozenset[Path]:
     return frozenset(roots)
 
 
-def _route_directory(grouped: GroupedPaths, path: Path, seen: set[Path], *, policy: Policy | None = None) -> None:
+def _route_directory(
+    grouped: GroupedPaths, path: Path, seen: set[Path], *, policy: Policy | None = None, python_only: bool = False
+) -> None:
     for root, dir_names, file_names in os.walk(path, topdown=True, followlinks=False):
         base = Path(root)
         dir_names[:] = sorted(
@@ -321,6 +332,8 @@ def _route_directory(grouped: GroupedPaths, path: Path, seen: set[Path], *, poli
             if file_name in _IGNORED_DISCOVERED_FILES:
                 continue
             child = Path(root, file_name)
+            if python_only and _SUFFIX_TO_TOOL.get(child.suffix.lower()) is not _Tool.PYTHON:
+                continue
             if not _routable_child(child, policy=policy):
                 continue
             _route_unique_path(grouped, child, str(child), seen)
