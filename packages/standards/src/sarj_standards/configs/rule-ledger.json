@@ -100,6 +100,7 @@
       "no-random-uuid-in-sql",
       "no-raw-connection-in-tests",
       "no-raw-source-text-test-oracle",
+      "no-redundant-local-alias",
       "no-redundant-module-alias-exports",
       "no-repeated-structured-string-literal",
       "no-repeated-test-body",
@@ -572,7 +573,8 @@
       "SARJ527",
       "SARJ528",
       "SARJ529",
-      "SARJ530"
+      "SARJ530",
+      "SARJ531"
     ],
     "sql": [
       "SARJ101",
