@@ -3078,7 +3078,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
         ] = False,
         trust_repository_code: Annotated[
             bool,
-            typer.Option("--trust-repository-code", help="allow prepared local Terraform provider/plugin validation"),
+            typer.Option("--trust-repository-code", help="allow native validation that may execute repository code"),
         ] = False,
         prepared_devops: Annotated[
             list[Path] | None, typer.Option("--prepared-devops", help="data-only preparation receipt (repeatable)")
