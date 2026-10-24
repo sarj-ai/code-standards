@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 import pytest
@@ -21,11 +22,11 @@ def test_documented_examples() -> None:
     [
         ("import importlib\nimportlib.import_module('plugin')", 1),
         ("import importlib as imports\nimports.import_module('plugin')", 1),
-        ("import importlib\ndef call(loader=importlib.import_module): ...", 1),
-        ("import importlib\nloader = importlib.import_module", 1),
-        ("import importlib\ndef call(): return importlib.import_module('plugin')", 1),
-        ("from importlib import import_module\nimport_module('plugin')", 0),
-        ("from importlib import import_module as load\nload('plugin')", 0),
+        ("import importlib\ndef call(loader=importlib.import_module): ...", 0),
+        ("import importlib\nloader = importlib.import_module", 0),
+        ("import importlib\ndef call(): return importlib.import_module('plugin')", 0),
+        ("from importlib import import_module\nimport_module('plugin')", 1),
+        ("from importlib import import_module as load\nload('plugin')", 1),
         ("from importlib import metadata\nmetadata.version('plugin')", 0),
         ("import custom as importlib\nimportlib.import_module('plugin')", 0),
         ("import importlib\ndef call(importlib): return importlib.import_module('plugin')", 0),
@@ -38,3 +39,121 @@ def test_documented_examples() -> None:
 )
 def test_focused_import_provenance(rule: PreferDirectImportModule, source: str, expected: int) -> None:
     assert len(rule.check(Path("app/loader.py"), source)) == expected
+
+
+@pytest.mark.parametrize(
+    ("imports", "loader"),
+    [
+        ("import importlib", "importlib.import_module"),
+        ("import importlib as imports", "imports.import_module"),
+        ("from importlib import import_module", "import_module"),
+        ("from importlib import import_module as load", "load"),
+    ],
+    ids=["qualified", "module-alias", "direct", "function-alias"],
+)
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ("plugin = {loader}('plugins.billing')", 1),
+        ("plugin: ModuleType = {loader}('plugins.billing')", 1),
+        ("plugin = {loader}(name='plugins.billing')", 1),
+        ("{loader}('plugins.billing')", 1),
+        ("def plugin():\n    return {loader}('plugins.billing')", 0),
+        ("try:\n    plugin = {loader}('plugins.billing')\nexcept ImportError:\n    plugin = None", 0),
+        ("if enabled:\n    plugin = {loader}('plugins.billing')", 0),
+        ("plugins = [{loader}('plugins.billing') for item in names]", 0),
+        ("class Registry:\n    plugin = {loader}('plugins.billing')", 0),
+        ("plugin = {loader}(module_name)", 0),
+        ("loader = {loader}", 0),
+        ("plugin = {loader}('.billing')", 0),
+    ],
+    ids=[
+        "assignment",
+        "annotation",
+        "keyword",
+        "expression",
+        "lazy",
+        "optional",
+        "conditional",
+        "comprehension",
+        "class",
+        "configured",
+        "callback",
+        "relative",
+    ],
+)
+def test_static_import_contracts(
+    rule: PreferDirectImportModule, imports: str, loader: str, body: str, expected: int
+) -> None:
+    source = f"{imports}\n{body.format(loader=loader)}\n"
+    findings = rule.check(Path("app/loader.py"), source)
+    assert len(findings) == expected
+    if findings:
+        assert "import plugins.billing as plugin" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "import plugins.billing as plugin",
+        "plugin = importlib.import_module(f'plugins.{name}')",
+        "plugin = importlib.import_module('plugins.' + name)",
+        "plugin = importlib.import_module(*names)",
+        "plugin = importlib.import_module(**options)",
+        "plugin = importlib.import_module('plugins.billing', package='plugins')",
+        "plugin = importlib.import_module(name='plugins.billing', package=None)",
+        "with import_scope():\n    plugin = importlib.import_module('plugins.billing')",
+        "plugin = importlib.import_module('plugins.billing') if enabled else None",
+        "async def load():\n    return importlib.import_module('plugins.billing')",
+        "factory = lambda: importlib.import_module('plugins.billing')",
+        "loader = importlib.import_module\nplugin = loader('plugins.billing')",
+        "setattr(importlib, 'import_module', custom)\nplugin = importlib.import_module('plugins.billing')",
+    ],
+)
+def test_preserves_dynamic_loading_boundaries(rule: PreferDirectImportModule, body: str) -> None:
+    assert rule.check(Path("app/loader.py"), f"import importlib\n{body}\n") == []
+
+
+@pytest.mark.parametrize(
+    "module",
+    [
+        "",
+        ".plugin",
+        "..plugin",
+        "plugins.",
+        "plugins..billing",
+        "plugins.billing-v2",
+        "plugins.class",
+        "plugins/billing",
+    ],
+)
+def test_requires_valid_static_import_syntax(rule: PreferDirectImportModule, module: str) -> None:
+    source = f"import importlib\nplugin = importlib.import_module({module!r})\n"
+    assert rule.check(Path("app/loader.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    ("module", "expected"),
+    [("plugins.caf\u00e9", 1), ("plugins.match", 1), ("plugins.\u212a", 0), ("plugins.cafe\u0301", 0)],
+)
+def test_static_syntax_preserves_the_literal_module_name(
+    rule: PreferDirectImportModule, module: str, expected: int
+) -> None:
+    statement = f"import {module} as plugin"
+    assert (ast.unparse(ast.parse(statement)) == statement) is (expected == 1)
+    source = f"import importlib\nplugin = importlib.import_module({module!r})\n"
+    assert len(rule.check(Path("app/loader.py"), source)) == expected
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from custom import import_module\nplugin = import_module('plugins.billing')",
+        "from importlib import import_module\nimport_module = custom\nplugin = import_module('plugins.billing')",
+        "from importlib import import_module\nfrom custom import *\nplugin = import_module('plugins.billing')",
+        "from importlib import import_module\ninstall(import_module)\nplugin = import_module('plugins.billing')",
+        "import importlib\nexec(source)\nplugin = importlib.import_module('plugins.billing')",
+    ],
+)
+def test_preserves_unproven_loaders(rule: PreferDirectImportModule, source: str) -> None:
+    assert rule.check(Path("app/loader.py"), source) == []

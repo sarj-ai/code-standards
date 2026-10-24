@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "12257b93367a9d48c528287ac01204789d877c40e8c6fee8429ac28fa68a97f8",
-  "cliSha256": "7768b59c79a0e00c8bf72a901b83029b4d6eeb6e24b273b119b35547349c9016",
+  "catalogSha256": "364f70ba74467005267b8ec8309e77d4d343b3dec55111e44cf2b15f53aad169",
+  "cliSha256": "20e7fa12779d71b5439eb5a97388cedc17f5c63ca8a9355accea27d9ce603068",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -12062,34 +12062,34 @@
     "python:prefer-direct-import-module": {
       "examples": [
         {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app.py",
-              "source": "from importlib import import_module\n\nloader = import_module\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app.py",
-          "id": "focused-loader",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Import only the loader"
-        },
-        {
           "expectedCount": 1,
           "files": [
             {
               "path": "app.py",
-              "source": "import importlib\n\nloader = importlib.import_module\n"
+              "source": "import importlib\n\nplugin = importlib.import_module(\"plugins.billing\")\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "app.py",
-          "id": "qualified-loader",
+          "id": "literal-eager-loader",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "The module loader is qualified at each use"
+          "title": "A known eager dependency is loaded dynamically"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app.py",
+              "source": "import plugins.billing as plugin\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.py",
+          "id": "static-module-import",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A static import preserves the module binding"
         }
       ],
       "optionsSchemaSource": null
