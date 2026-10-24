@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import ast
+from keyword import iskeyword
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
+from unicodedata import is_normalized
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
@@ -15,6 +17,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
+from sarj_python_lint.rules._namespace_access import dynamic_namespace_access
 
 
 if TYPE_CHECKING:
@@ -27,29 +30,35 @@ class PreferDirectImportModule(Rule):
     code = "SARJ529"
     documentation = RuleDocumentation(
         default_level=Severity.WARNING,
-        summary="Import import_module directly instead of accessing importlib.import_module.",
-        rationale="A focused import makes the loader dependency explicit and removes repeated module qualification.",
-        remediation="Use 'from importlib import import_module' and annotate importer callables with 'Callable[[str], ModuleType]'. Keep intentional module patching behind an explained local exception.",
+        summary="Prefer static imports for eager module loads with a literal module name.",
+        rationale="Static imports expose known dependencies to readers and tooling without dynamic loader indirection.",
+        remediation="Replace a fixed eager module load with a module-level import, preserving its binding: plugin = importlib.import_module('plugins.billing') becomes import plugins.billing as plugin. Keep dynamic loading when module selection or import timing requires it.",
         category=RuleCategory.STYLE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only provenance-resolved importlib.import_module attribute reads are checked. Other importlib APIs, direct imports, shadowed or mutated namespaces and generated code are preserved. No automatic rewrite because changing the lookup can change monkeypatch behavior.",
+            "Checks direct module-level assignments and expression statements calling the proven stdlib import_module function, through qualified or directly imported names, with one literal absolute module name.",
+            "Function/class bodies, conditional or guarded imports, variable module names, relative imports, callback references, shadowed or mutated providers and generated code are excluded. Static import syntax must be valid for every module-name segment.",
+            "This is a warning without automatic rewriting: moving an import can change execution order, optional-dependency behavior or cycle handling. The rule does not prefer one spelling of genuinely dynamic import_module calls.",
         ),
         examples=(
             RuleExample(
-                example_id="qualified-loader",
-                title="The module loader is qualified at each use",
+                example_id="literal-eager-loader",
+                title="A known eager dependency is loaded dynamically",
                 outcome=ExampleOutcome.MATCH,
-                files=(ExampleFile.python("app.py", "import importlib\nloader = importlib.import_module\n"),),
+                files=(
+                    ExampleFile.python(
+                        "app.py", "import importlib\nplugin = importlib.import_module('plugins.billing')\n"
+                    ),
+                ),
                 focus_path=PurePosixPath("app.py"),
                 expected_count=1,
                 public=True,
             ),
             RuleExample(
-                example_id="focused-loader",
-                title="Import only the loader",
+                example_id="static-module-import",
+                title="A static import preserves the module binding",
                 outcome=ExampleOutcome.NO_MATCH,
-                files=(ExampleFile.python("app.py", "from importlib import import_module\nloader = import_module\n"),),
+                files=(ExampleFile.python("app.py", "import plugins.billing as plugin\n"),),
                 focus_path=PurePosixPath("app.py"),
                 expected_count=0,
                 public=True,
@@ -62,22 +71,43 @@ class PreferDirectImportModule(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if context.generated or context.tree is None or "import_module" not in context.symbol_source:
             return []
-        provenance = context.static_resource_provenance
+        loader_references = {
+            reference
+            for call in context.nodes(ast.Call)
+            if context.imports.resolved_qualified_name(call.func) == "importlib.import_module"
+            for reference in ast.walk(call.func)
+        }
+        if dynamic_namespace_access(
+            (node for node in context.nodes(ast.AST) if node not in loader_references),
+            context.imports,
+            context.parents,
+        ):
+            return []
         return [
             Diagnostic(
                 context.path,
                 node.lineno,
                 node.col_offset + 1,
                 self.code,
-                "Use 'from importlib import import_module' and call 'import_module(...)' directly.",
+                f"Use a module-level static import for the known module '{module}'; preserve the binding with 'import {module} as plugin' when needed.",
                 severity=Severity.WARNING,
             )
-            for node in context.nodes(ast.Attribute)
-            if node.attr == "import_module"
-            and isinstance(node.ctx, ast.Load)
-            and context.imports.resolved_qualified_name(node) == "importlib.import_module"
-            and isinstance(node.value, ast.Name)
-            and isinstance(provenance.binding(node.value.id, node), ast.alias)
-            and node.value.id not in provenance.mutated
-            and not provenance.wildcard
+            for statement in context.tree.body
+            if isinstance(statement, ast.Assign | ast.AnnAssign | ast.Expr)
+            and isinstance(node := statement.value, ast.Call)
+            and (module := _literal_module(node)) is not None
+            and context.resource_provenance.runtime_import_name(node.func) == "importlib.import_module"
         ]
+
+
+def _literal_module(call: ast.Call) -> str | None:
+    match call:
+        case ast.Call(args=[ast.Constant(value=str() as module)], keywords=[]):
+            pass
+        case ast.Call(args=[], keywords=[ast.keyword(arg="name", value=ast.Constant(value=str() as module))]):
+            pass
+        case _:
+            return None
+    if not is_normalized("NFKC", module):
+        return None
+    return module if all(part.isidentifier() and not iskeyword(part) for part in module.split(".")) else None
