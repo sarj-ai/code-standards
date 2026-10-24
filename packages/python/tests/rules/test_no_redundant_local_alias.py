@@ -826,3 +826,27 @@ def test_unicode_quoted_annotation(alias: str, quoted: str) -> None:
 )
 def test_independent_review_regressions(source: str, expected: int) -> None:
     assert len(NoRedundantLocalAlias().check(Path("case.py"), source)) == expected
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        pytest.param(
+            "from adapter_exports import *\ndef consume(*, payload):\n    return None\ndef render(item):\n    payload = item\n    adapter = type('pay' + 'load')\n    consume(payload=payload)\n    return adapter.validate_python('1')\nresult = render(int)\n",
+            0,
+            id="wildcard-shadows-type",
+        ),
+        pytest.param(
+            "from math import *\ndef render(item):\n    payload = item\n    consume(payload=payload)\n",
+            0,
+            id="wildcard-benign-local",
+        ),
+        pytest.param(
+            "from math import sqrt\ndef render(item):\n    payload = item\n    consume(payload=payload)\n",
+            1,
+            id="explicit-benign-import",
+        ),
+    ],
+)
+def test_wildcard_namespace(source: str, expected: int) -> None:
+    assert len(NoRedundantLocalAlias().check(Path("case.py"), source)) == expected

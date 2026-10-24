@@ -91,7 +91,7 @@ class NoRedundantLocalAlias(Rule):
             "Functions with if statements, loops, try statements, asserts, Boolean short-circuiting, nested scopes, global/nonlocal declarations or type aliases are excluded. Ordinary and async with bodies require ordered enclosing-suite binding evidence.",
             "A conditional expression is admitted only when its test is a bare name bound once as a parameter, and neither local is read within the expression.",
             "Typed aliases, files with type comments, same-scope quoted references and conditional reads of either local are excluded. Captured bindings and module/class aliases are preserved.",
-            "Files importing Pydantic or referencing known namespace readers, dynamic attribute getters or reference-count observers are excluded, including imported aliases. Computed type names can consume caller-local bindings without a Name read in the AST.",
+            "Files with wildcard imports, Pydantic imports or references to known namespace readers, dynamic attribute getters or reference-count observers are excluded. Wildcard exports cannot establish builtin identity; computed type names can consume caller-local bindings without a Name read in the AST.",
             "Dynamic class construction and class-valued references to type are excluded. Direct, unshadowed unary type(value) queries and standard-library dataclasses remain supported.",
             "Generated source, stubs and malformed input are excluded. Arbitrary external frame introspection is not modeled.",
             "No autofix is offered; readability judgments, multiple reads, positional forwarding and more complex control flow remain outside the contract.",
@@ -204,7 +204,7 @@ def _local_assignments(context: PythonFileContext, names: set[str]) -> list[ast.
         and isinstance(node.value, ast.Name)
         and node.targets[0].id != node.value.id
     ]
-    if not candidates or context.dynamic_namespace or _observes_references(context):
+    if not candidates or context.has_wildcard_import or context.dynamic_namespace or _observes_references(context):
         return []
     provenance = context.resource_provenance
     blocked = {provenance.scope(node) for node in context.nodes(*_UNCERTAIN)}
