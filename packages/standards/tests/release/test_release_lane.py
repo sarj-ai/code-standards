@@ -48,6 +48,8 @@ _COMMIT_POLICY_BACKPORT_PATHS = (
 
 
 _DOCS_DEPENDENCY_PATHS = ("apps/docs/package.json", "apps/docs/package-lock.json")
+_DEPLOY_DEPENDENCY_PATHS = (".github/deploy/package.json", ".github/deploy/package-lock.json")
+_DEPENDENCY_PATHS = (*_DOCS_DEPENDENCY_PATHS, *_DEPLOY_DEPENDENCY_PATHS)
 
 
 def _git(root: Path, *arguments: str) -> str:
@@ -100,7 +102,7 @@ def candidate(tmp_path: Path, lane: PublisherLane, monkeypatch: pytest.MonkeyPat
                 cwd=Path(__file__).resolve().parents[4],
                 capture_output=True,
             ).stdout
-            for relative in _DOCS_DEPENDENCY_PATHS
+            for relative in _DEPENDENCY_PATHS
         },
         "packages/standards/pyproject.toml": '[project]\nversion = "8.101.1"\ndependencies = ["native==1.0"]\n',
         "packages/standards-compat/pyproject.toml": '[project]\nversion = "8.101.1"\ndependencies = ["code-standards==8.101.1"]\n',
@@ -199,6 +201,8 @@ def test_publication_requires_the_exact_checkout(candidate: Candidate, lane: Pub
         "packages/python/pyproject.toml",
         "apps/docs/package-extra.json",
         "apps/docs/package-lock-extra.json",
+        ".github/deploy/package-extra.json",
+        ".github/deploy/package-lock-extra.json",
         "packages/standards/src/sarj_standards/libs/linting/another.py",
         ".github/scripts/release-github-release-extra.sh",
     ],
@@ -607,8 +611,8 @@ def test_commit_policy_approval_keeps_neighboring_policy_closed(lane: PublisherL
         lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
 
 
-def _apply_reviewed_docs_dependencies(root: Path, paths: tuple[str, ...] = _DOCS_DEPENDENCY_PATHS) -> None:
-    replacements = {
+def _apply_reviewed_docs_dependencies(root: Path, paths: tuple[str, ...] = _DEPENDENCY_PATHS) -> None:
+    replacements: dict[str, tuple[tuple[str, str], ...]] = {
         "apps/docs/package.json": (('"undici": "8.11.2"', '"undici": "8.12.2"'),),
         "apps/docs/package-lock.json": (
             ('"version": "3.1.8"', '"version": "3.1.9"'),
@@ -631,6 +635,8 @@ def _apply_reviewed_docs_dependencies(root: Path, paths: tuple[str, ...] = _DOCS
             ),
         ),
     }
+    replacements[".github/deploy/package.json"] = replacements["apps/docs/package.json"]
+    replacements[".github/deploy/package-lock.json"] = replacements["apps/docs/package-lock.json"][3:]
     for relative in paths:
         path = root / relative
         source = path.read_text()
@@ -641,34 +647,48 @@ def _apply_reviewed_docs_dependencies(root: Path, paths: tuple[str, ...] = _DOCS
 
 
 @pytest.mark.parametrize(
-    ("version", "paths", "accepted"),
+    ("dependency_paths", "other_paths"),
+    [(_DOCS_DEPENDENCY_PATHS, _DEPLOY_DEPENDENCY_PATHS), (_DEPLOY_DEPENDENCY_PATHS, _DOCS_DEPENDENCY_PATHS)],
+    ids=["site", "deployment"],
+)
+@pytest.mark.parametrize(
+    ("version", "member_indexes", "accepted"),
     [
         ("8.101.2", (), True),
-        ("8.101.2", (_DOCS_DEPENDENCY_PATHS[0],), False),
-        ("8.101.2", (_DOCS_DEPENDENCY_PATHS[1],), False),
-        ("8.101.2", _DOCS_DEPENDENCY_PATHS, False),
+        ("8.101.2", (0,), False),
+        ("8.101.2", (1,), False),
+        ("8.101.2", (0, 1), False),
         ("8.101.3", (), True),
-        ("8.101.3", (_DOCS_DEPENDENCY_PATHS[0],), False),
-        ("8.101.3", (_DOCS_DEPENDENCY_PATHS[1],), False),
-        ("8.101.3", _DOCS_DEPENDENCY_PATHS, False),
+        ("8.101.3", (0,), False),
+        ("8.101.3", (1,), False),
+        ("8.101.3", (0, 1), False),
         ("8.101.4", (), False),
-        ("8.101.4", (_DOCS_DEPENDENCY_PATHS[0],), False),
-        ("8.101.4", (_DOCS_DEPENDENCY_PATHS[1],), False),
-        ("8.101.4", _DOCS_DEPENDENCY_PATHS, True),
+        ("8.101.4", (0,), False),
+        ("8.101.4", (1,), False),
+        ("8.101.4", (0, 1), True),
         ("8.101.10", (), False),
-        ("8.101.10", (_DOCS_DEPENDENCY_PATHS[0],), False),
-        ("8.101.10", (_DOCS_DEPENDENCY_PATHS[1],), False),
-        ("8.101.10", _DOCS_DEPENDENCY_PATHS, True),
+        ("8.101.10", (0,), False),
+        ("8.101.10", (1,), False),
+        ("8.101.10", (0, 1), True),
     ],
 )
 def test_docs_dependencies_require_the_exact_version_specific_pair(
-    candidate: Candidate, lane: PublisherLane, version: str, paths: tuple[str, ...], *, accepted: bool
+    candidate: Candidate,
+    lane: PublisherLane,
+    version: str,
+    member_indexes: tuple[int, ...],
+    *,
+    dependency_paths: tuple[str, str],
+    other_paths: tuple[str, str],
+    accepted: bool,
 ) -> None:
     _project_maintenance_version(candidate.root, version)
     historical = version in {"8.101.2", "8.101.3"}
     if not historical:
         lock = candidate.root / "packages/standards/uv.lock"
         lock.write_text(lock.read_text().replace('version = "21.14.12"', 'version = "21.14.13"'))
+        _apply_reviewed_docs_dependencies(candidate.root, other_paths)
+    paths = tuple(dependency_paths[index] for index in member_indexes)
     _apply_reviewed_docs_dependencies(candidate.root, paths)
     commit = _commit(candidate.root) if _git(candidate.root, "status", "--porcelain") else candidate.commit
     if not accepted:
@@ -681,7 +701,7 @@ def test_docs_dependencies_require_the_exact_version_specific_pair(
     )
 
 
-@pytest.mark.parametrize("relative", _DOCS_DEPENDENCY_PATHS)
+@pytest.mark.parametrize("relative", _DEPENDENCY_PATHS)
 def test_docs_dependency_projection_rejects_each_tampered_member(
     candidate: Candidate, lane: PublisherLane, relative: str
 ) -> None:
