@@ -15,7 +15,32 @@ if TYPE_CHECKING:
 _AST = ast.AST
 
 
-def object_list(value: object) -> TypeIs[list[object]]:
+def statement_blocks(statements: list[ast.stmt]) -> Iterator[list[ast.stmt]]:
+    pending = [statements]
+    while pending:
+        block = pending.pop()
+        yield block
+        for statement in reversed(block):
+            match statement:
+                case ast.For() | ast.AsyncFor() | ast.While() | ast.If():
+                    nested = [statement.body, statement.orelse]
+                case ast.With() | ast.AsyncWith():
+                    nested = [statement.body]
+                case ast.Try() | ast.TryStar():
+                    nested = [
+                        statement.body,
+                        *(handler.body for handler in statement.handlers),
+                        statement.orelse,
+                        statement.finalbody,
+                    ]
+                case ast.Match():
+                    nested = [case.body for case in statement.cases]
+                case _:
+                    continue
+            pending.extend(reversed(nested))
+
+
+def object_list(value: object) -> TypeIs[list[object]]:  # sarj-noqa: SARJ528 -- narrows opaque AST fields.
     return isinstance(value, list)
 
 

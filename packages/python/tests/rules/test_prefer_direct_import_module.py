@@ -89,7 +89,7 @@ def test_static_import_contracts(
     findings = rule.check(Path("app/loader.py"), source)
     assert len(findings) == expected
     if findings:
-        assert "import plugins.billing as plugin" in findings[0].message
+        assert "import plugins.billing" in findings[0].message
 
 
 @pytest.mark.parametrize(
@@ -157,3 +157,25 @@ def test_static_syntax_preserves_the_literal_module_name(
 )
 def test_preserves_unproven_loaders(rule: PreferDirectImportModule, source: str) -> None:
     assert rule.check(Path("app/loader.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    ("statement", "replacement"),
+    [
+        ("plugin = load('plugins.billing')", "import plugins.billing as plugin"),
+        ("billing = load('plugins.billing')", "import plugins.billing as billing"),
+        ("billing: ModuleType = load('plugins.billing')", "import plugins.billing as billing"),
+        ("billing = load('billing')", "import billing"),
+        ("plugins = load('plugins.billing')", "import plugins.billing as plugins"),
+        ("load('plugins.billing')", "import plugins.billing"),
+        ("registry.plugin = load('plugins.billing')", "import plugins.billing"),
+        ("first = second = load('plugins.billing')", "import plugins.billing"),
+    ],
+)
+def test_recommends_a_static_import_with_the_actual_binding(
+    rule: PreferDirectImportModule, statement: str, replacement: str
+) -> None:
+    source = f"from importlib import import_module as load\n{statement}\n"
+    [finding] = rule.check(Path("app/loader.py"), source)
+    assert f"'{replacement}'" in finding.message
+    assert rule.check(Path("app/loader.py"), replacement) == []

@@ -15,6 +15,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
+from sarj_python_lint.rules._ast_index import statement_blocks
 from sarj_python_lint.rules._declared_contracts import (
     MODEL_BASES,
     SETTINGS_BASES,
@@ -23,7 +24,6 @@ from sarj_python_lint.rules._declared_contracts import (
 )
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._pytest import collected_tests
-from sarj_python_lint.rules._test_composition import direct_nodes
 
 
 if TYPE_CHECKING:
@@ -48,7 +48,7 @@ class PreferPydanticModelAssertion(ProjectRule):
         category=RuleCategory.TESTING,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only consecutive plain equality or bool/None identity assertions on two distinct declared fields of a source-proven Pydantic model are considered. Models are resolved through declared parameter/local/return annotations and simple construction/validation calls. Plain properties, private attributes, model_config and ClassVar metadata are excluded; Final annotations are conservatively excluded as well. Unknown receivers, non-model objects, calls in expected values, assertion messages, repeated fields, nested attributes and custom comparison operators are excluded. This is a review advisory, never an automatic rewrite or assertion deletion.",
+            "Only consecutive plain equality or bool/None identity assertions on two distinct declared fields of a source-proven Pydantic model are considered. Models are resolved through declared parameter/local/return annotations and simple construction/validation calls. Fields inherited through a single source-visible base chain are included; ambiguous multiple inheritance is not expanded. Plain properties, private attributes, model_config and ClassVar type wrappers are excluded; Annotated metadata does not turn a data field into a class variable; Final annotations are conservatively excluded as well. Unknown receivers, non-model objects, calls in expected values, assertion messages, repeated fields, nested attributes and custom comparison operators are excluded. This is a review advisory, never an automatic rewrite or assertion deletion.",
         ),
         examples=(
             RuleExample(
@@ -94,7 +94,7 @@ class PreferPydanticModelAssertion(ProjectRule):
         for function in collected_tests(context.tree.body):
             if not ordinary_pytest_test(function, context):
                 continue
-            for statements in _blocks(function):
+            for statements in statement_blocks(function.body):
                 for run in _assertion_runs(statements, context):
                     _report(context, contracts, run, findings, self.code)
         return findings
@@ -111,23 +111,6 @@ def _assertion_runs(
             run = []
         if field is not None and isinstance(statement, ast.Assert):
             run.append((statement, field))
-
-
-def _blocks(function: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[list[ast.stmt]]:
-    yield function.body
-    for node in direct_nodes(function):
-        match node:
-            case ast.If() | ast.For() | ast.AsyncFor() | ast.While():
-                yield node.body
-                yield node.orelse
-            case ast.With() | ast.AsyncWith() | ast.ExceptHandler() | ast.match_case():
-                yield node.body
-            case ast.Try() | ast.TryStar():
-                yield node.body
-                yield node.orelse
-                yield node.finalbody
-            case _:
-                continue
 
 
 def _asserted_field(statement: ast.stmt, context: PythonFileContext) -> ast.Attribute | None:
@@ -175,7 +158,7 @@ def _report(
     model = contracts.value(run[0][1].value)
     if model is None or not contracts.inherits(model, MODEL_BASES | SETTINGS_BASES):
         return
-    declared = set(contracts.model_fields(model))
+    declared = set(contracts.model_fields(model, inherited=True))
     if not fields <= declared:
         return
     first = run[0][0]

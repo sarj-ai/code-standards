@@ -32,7 +32,7 @@ class PreferDirectImportModule(Rule):
         default_level=Severity.WARNING,
         summary="Prefer static imports for eager module loads with a literal module name.",
         rationale="Static imports expose known dependencies to readers and tooling without dynamic loader indirection.",
-        remediation="Replace a fixed eager module load with a module-level import, preserving its binding: plugin = importlib.import_module('plugins.billing') becomes import plugins.billing as plugin. Keep dynamic loading when module selection or import timing requires it.",
+        remediation="Replace a fixed eager module load with a module-level import, preserving its binding: plugin = importlib.import_module('plugins.billing') becomes import plugins.billing as plugin. Use import plugins.billing when callers use the qualified module name; avoid a redundant alias for a single-component module. Keep dynamic loading when module selection or import timing requires it.",
         category=RuleCategory.STYLE,
         autofix=AutofixPolicy.NONE,
         limitations=(
@@ -89,7 +89,7 @@ class PreferDirectImportModule(Rule):
                 node.lineno,
                 node.col_offset + 1,
                 self.code,
-                f"Use a module-level static import for the known module '{module}'; preserve the binding with 'import {module} as plugin' when needed.",
+                _recommendation(statement, module),
                 severity=Severity.WARNING,
             )
             for statement in context.tree.body
@@ -98,6 +98,20 @@ class PreferDirectImportModule(Rule):
             and (module := _literal_module(node)) is not None
             and context.resource_provenance.runtime_import_name(node.func) == "importlib.import_module"
         ]
+
+
+def _recommendation(statement: ast.Assign | ast.AnnAssign | ast.Expr, module: str) -> str:
+    target = statement.target if isinstance(statement, ast.AnnAssign) else None
+    if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+        target = statement.targets[0]
+    replacement = f"import {module}"
+    if isinstance(target, ast.Name):
+        if target.id != module:
+            replacement += f" as {target.id}"
+        return f"Use the module-level static import '{replacement}' to preserve the '{target.id}' binding."
+    return (
+        f"Use the module-level static import '{replacement}'; update references to the qualified module where needed."
+    )
 
 
 def _literal_module(call: ast.Call) -> str | None:

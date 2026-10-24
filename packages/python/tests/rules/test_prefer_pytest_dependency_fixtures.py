@@ -105,3 +105,30 @@ def test_fixture_decorators_and_inherited_contracts_are_not_collected_tests(
         _SERVICE + header + "\n" + indent + "service = Service(Store())\n" + indent + "assert service.read() == 1\n"
     )
     assert rule.check(Path("tests/test_service.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "call",
+    ["Service(*prefix, Store())", "Service(store=Store(), **options)", "Service(existing, store=Store())"],
+)
+def test_unresolved_argument_binding_keeps_dependency_ownership(
+    rule: PreferPytestDependencyFixtures, call: str
+) -> None:
+    source = _SERVICE + f"def test_read(prefix, options, existing):\n    service = {call}\n"
+    assert rule.check(Path("tests/test_service.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        "STORE = Store()",
+        "STORE: Port = Store()",
+        "def make_store() -> Store: return Store()\nSTORE = make_store()",
+    ],
+)
+@pytest.mark.parametrize("argument", ["STORE", "store=STORE"])
+def test_shared_module_collaborators_are_requested_as_fixtures(
+    rule: PreferPytestDependencyFixtures, binding: str, argument: str
+) -> None:
+    source = _SERVICE + binding + f"\ndef test_read():\n    service = Service({argument})\n"
+    assert len(rule.check(Path("tests/test_service.py"), source)) == 1

@@ -16,7 +16,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._declared_contracts import MODEL_BASES, SETTINGS_BASES, DeclaredContracts
-from sarj_python_lint.rules._test_composition import direct_nodes
+from sarj_python_lint.rules._test_composition import call_arguments, direct_nodes
 from sarj_python_lint.rules.require_pydantic_for_mapping_shape import MappingShapeFacts
 
 
@@ -45,7 +45,7 @@ class PreferPreciseObjectContract(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Checks builtin object in function signatures and class field annotations, including supported containers, callables, optional unions and quoted annotations. Local opaque values, object() sentinels, Literal/Annotated metadata, framework hooks, proven override signatures, and registered raw Pydantic callbacks are excluded. Functions that directly validate an object parameter through a source-visible model_validate call retain that raw boundary. Imported or shadowed application types named object are preserved. Genuine opaque public contracts can use an explained exact-code exception; no automatic narrowing.",
+            "Checks builtin object in function signatures and class field annotations, including supported containers, callables, optional unions and quoted annotations. Local opaque values, object() sentinels, Literal/Annotated metadata, framework hooks, proven override signatures, and registered raw Pydantic callbacks are excluded. Functions that directly validate an object parameter through a source-visible model_validate call, positionally or with obj=, retain that raw boundary. JSON text inputs still require a text or byte contract. Aliases must resolve to their source declaration and their bodies use definition scope. Alias graphs are bounded and shared branches reuse their facts. Imported or shadowed application types named object are preserved. Genuine opaque public contracts can use an explained exact-code exception; no automatic narrowing.",
         ),
         examples=(
             RuleExample(
@@ -90,10 +90,7 @@ class PreferPreciseObjectContract(Rule):
         findings: list[Diagnostic] = []
         contracts = DeclaredContracts(context)
         for owner, annotation in _contracts(context):
-            if not any(
-                _opaque(member, context, facts, annotation)
-                for member in _type_members(annotation, context, facts, at=annotation)
-            ):
+            if not _has_object(annotation, context, facts, at=annotation):
                 continue
             function = owner if isinstance(owner, ast.FunctionDef | ast.AsyncFunctionDef) else None
             if function is not None and (
@@ -133,48 +130,42 @@ def _contracts(context: PythonFileContext) -> Iterator[tuple[ast.AST, ast.expr]]
             yield field, field.annotation
 
 
-def _type_members(
+def _has_object(
     annotation: ast.expr,
     context: PythonFileContext,
     facts: MappingShapeFacts,
     *,
     at: ast.AST,
     depth: int = 0,
-    aliases: frozenset[str] = frozenset(),
-) -> Iterator[ast.expr]:
+    aliases: dict[str, int] | None = None,
+) -> bool:
     if depth >= _MAX_TYPE_DEPTH:
-        return
+        return False
     node = context.annotation_semantics.parse(annotation)
-    if node is None:
-        return
-    if isinstance(node, ast.Name) and facts.shadowed(node.id, at):
-        return
+    if node is None or (isinstance(node, ast.Name) and facts.shadowed(node.id, at)):
+        return False
+    if aliases is None:
+        aliases = {}
     if isinstance(node, ast.Name) and node.id in context.annotation_semantics.aliases:
-        if node.id not in aliases:
-            yield from _type_members(
-                context.annotation_semantics.aliases[node.id],
-                context,
-                facts,
-                at=at,
-                depth=depth + 1,
-                aliases=aliases | {node.id},
-            )
-        return
-    members = _type_arguments(node, context)
+        value = facts.alias_value(node, at)
+        if value is None or depth >= aliases.get(node.id, _MAX_TYPE_DEPTH):
+            return False
+        aliases[node.id] = depth
+        return _has_object(value, context, facts, at=value, depth=depth + 1, aliases=aliases)
+    members = _type_arguments(node, facts, at)
     if members is None:
-        yield node
-        return
-    for member in members:
-        yield from _type_members(member, context, facts, at=at, depth=depth + 1, aliases=aliases)
+        return _opaque(node, facts, at)
+    return any(_has_object(member, context, facts, at=at, depth=depth + 1, aliases=aliases) for member in members)
 
 
-def _type_arguments(node: ast.expr, context: PythonFileContext) -> list[ast.expr] | None:
+def _type_arguments(node: ast.expr, facts: MappingShapeFacts, at: ast.AST) -> list[ast.expr] | None:
     match node:
         case ast.Subscript():
-            if context.imports.resolves(node.value, sources=_TYPING, symbol="Literal"):
+            wrapper = facts.qualified(node.value, at)
+            if wrapper in {"typing.Literal", "typing_extensions.Literal"}:
                 return []
             members = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
-            return members[:1] if context.imports.resolves(node.value, sources=_TYPING, symbol="Annotated") else members
+            return members[:1] if wrapper in {"typing.Annotated", "typing_extensions.Annotated"} else members
         case ast.BinOp(op=ast.BitOr()):
             return [node.left, node.right]
         case ast.List() | ast.Tuple():
@@ -183,15 +174,20 @@ def _type_arguments(node: ast.expr, context: PythonFileContext) -> list[ast.expr
             return None
 
 
-def _opaque(node: ast.expr, context: PythonFileContext, facts: MappingShapeFacts, at: ast.AST) -> bool:
-    return (facts.builtin(node, "object", at) and context.imports.builtin_is_unshadowed("object")) or facts.qualified(
-        node, at
-    ) == "builtins.object"
+def _opaque(node: ast.expr, facts: MappingShapeFacts, at: ast.AST) -> bool:
+    return facts.builtin(node, "object", at) or facts.qualified(node, at) == "builtins.object"
 
 
 def _framework(function: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext) -> bool:
-    return function.name in _FRAMEWORK_METHODS or any(
-        context.imports.resolves(node, sources=_TYPING, symbol="override") for node in function.decorator_list
+    owner = context.parents.get(function)
+    return isinstance(owner, ast.ClassDef) and (
+        function.name in _FRAMEWORK_METHODS
+        or (
+            bool(owner.bases)
+            and any(
+                context.imports.resolves(node, sources=_TYPING, symbol="override") for node in function.decorator_list
+            )
+        )
     )
 
 
@@ -210,9 +206,11 @@ def _validated_input(
     for node in direct_nodes(function):
         if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
             continue
-        if node.func.attr not in {"model_validate", "model_validate_json"} or not node.args:
+        if node.func.attr != "model_validate":
             continue
-        if not isinstance(node.args[0], ast.Name) or node.args[0].id not in parameters:
+        values = call_arguments(node, ("obj",))
+        value = values.get("obj") if values is not None else None
+        if not isinstance(value, ast.Name) or value.id not in parameters:
             continue
         model = contracts.class_type(node.func.value)
         if model is not None and contracts.inherits(model, MODEL_BASES | SETTINGS_BASES):

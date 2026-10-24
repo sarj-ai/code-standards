@@ -183,3 +183,35 @@ def test_expanded_tuple_spelling_starts_as_warning(annotation: str) -> None:
     findings = _check("type Pair = tuple[int, str]\ndef make_pair() -> " + annotation + ": ...\n", "tests/test_pair.py")
     assert len(findings) == 1
     assert findings[0].severity is Severity.WARNING
+
+
+@pytest.mark.parametrize(
+    ("provider", "annotation", "expected"),
+    [
+        ("from typing import Unpack, TypeVarTuple\nTs = TypeVarTuple('Ts')", "tuple[int, Unpack[Ts]]", []),
+        (
+            "from typing_extensions import Unpack as Spread, TypeVarTuple\nTs = TypeVarTuple('Ts')",
+            "tuple[int, Spread[Ts]]",
+            [],
+        ),
+        ("from application import Unpack", "tuple[int, Unpack[str]]", [Severity.WARNING]),
+        ("from application import Unpack as Field", "tuple[int, Field[str]]", [Severity.ERROR]),
+    ],
+)
+def test_variadic_fields_require_a_proven_unpack(provider: str, annotation: str, expected: list[Severity]) -> None:
+    findings = _check(f"{provider}\ndef pair() -> {annotation}: ...\n", "tests/test_pair.py")
+    assert [finding.severity for finding in findings] == expected
+
+
+@pytest.mark.parametrize(
+    ("provider", "annotation"),
+    [
+        ("from typing_extensions import Tuple", "Tuple[int, str]"),
+        ("from typing_extensions import Tuple as Record", "Record[int, str]"),
+        ("import typing_extensions as te", "te.Tuple[int, str]"),
+        ("from typing_extensions import Annotated", "Annotated[tuple[int, str], 'record']"),
+    ],
+)
+def test_typing_extensions_records_start_as_warnings(provider: str, annotation: str) -> None:
+    findings = _check(f"{provider}\ndef pair() -> {annotation}: ...\n", "tests/test_pair.py")
+    assert [finding.severity for finding in findings] == [Severity.WARNING]

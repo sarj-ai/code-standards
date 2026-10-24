@@ -201,3 +201,51 @@ def test_cyclic_metadata_aliases_do_not_hide_ordinary_fields(rule: PreferPydanti
         + "def test_user(result: User):\n    assert result.id == 1\n    assert result.name == 'Alice'\n"
     )
     assert len(rule.check(Path("tests/test_user.py"), source)) == 1
+
+
+@pytest.mark.parametrize(
+    ("annotation", "expected"),
+    [("Annotated[int, ClassVar[str]]", 1), ("Annotated[ClassVar[int], 'metadata']", 0)],
+)
+def test_only_the_annotated_type_defines_class_metadata(
+    rule: PreferPydanticModelAssertion, annotation: str, expected: int
+) -> None:
+    source = (
+        "from pydantic import BaseModel\nfrom typing import Annotated, ClassVar\n"
+        f"class User(BaseModel):\n    id: {annotation} = 1\n    name: str\n"
+        "def test_user(result: User):\n    assert result.id == 1\n    assert result.name == 'Alice'\n"
+    )
+    assert len(rule.check(Path("tests/test_user.py"), source)) == expected
+
+
+@pytest.mark.parametrize(("override", "expected"), [("", 1), ("    id: ClassVar[int] = 1\n", 0)])
+def test_inherited_fields_keep_subclass_metadata_overrides(
+    rule: PreferPydanticModelAssertion, override: str, expected: int
+) -> None:
+    source = (
+        "from pydantic import BaseModel\nfrom typing import ClassVar\n"
+        "class Parent(BaseModel):\n    id: int\n"
+        f"class User(Parent):\n{override}    name: str\n"
+        "def test_user(result: User):\n    assert result.id == 1\n    assert result.name == 'Alice'\n"
+    )
+    assert len(rule.check(Path("tests/test_user.py"), source)) == expected
+
+
+@pytest.mark.parametrize(
+    "wrapper",
+    [
+        "if enabled:\n{body}",
+        "try:\n    pass\nexcept ValueError:\n{body}",
+        "try:\n    pass\nexcept* ValueError:\n{body}",
+        "with resource:\n{body}",
+        "match value:\n    case 1:\n{deep_body}",
+    ],
+)
+def test_nested_blocks_keep_one_model_assertion_run(rule: PreferPydanticModelAssertion, wrapper: str) -> None:
+    assertions = "assert result.id == 1\nassert result.name == 'Alice'"
+    body = wrapper.format(
+        body="\n".join("    " + line for line in assertions.splitlines()),
+        deep_body="\n".join("        " + line for line in assertions.splitlines()),
+    )
+    source = _MODEL + "def test_user(result: User):\n" + "\n".join("    " + line for line in body.splitlines())
+    assert len(rule.check(Path("tests/test_user.py"), source)) == 1
