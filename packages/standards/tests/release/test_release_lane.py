@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 from typing import Protocol, runtime_checkable
@@ -27,6 +28,9 @@ class PublisherLane(Protocol):
     DOC_EXAMPLES: str
     CLI_REFERENCE: str
     RELEASE_TARGETS: frozenset[str]
+    REPO_STANDARDS_ACTION_FIRST_PATCH: int | None
+    REPO_STANDARDS_ACTION_PROJECTIONS: dict[str, str]
+    COMMIT_POLICY_BACKPORT_SHA256: dict[str, str]
 
     def validate_lane(
         self, root: Path, *, source_ref: str, commit: str, detected_targets: str | None = None
@@ -46,6 +50,18 @@ _REACT_SCOPE_TESTS = "packages/standards/tests/test_react_doctor_scope.py"
 _DOCS_DEPENDENCY_PATHS = ("apps/docs/package.json", "apps/docs/package-lock.json")
 _DEPLOY_DEPENDENCY_PATHS = (".github/deploy/package.json", ".github/deploy/package-lock.json")
 _DEPENDENCY_PATHS = (*_DOCS_DEPENDENCY_PATHS, *_DEPLOY_DEPENDENCY_PATHS)
+_ACTION_DEFAULT_PATHS = (
+    "packages/standards/src/sarj_standards/libs/adoption/manifest.py",
+    "packages/standards/tests/test_repo_standards_pins.py",
+)
+_ACTION_PATHS = (*_ACTION_DEFAULT_PATHS, ".github/workflows/ci.yml", ".github/workflows/commit-policy.yml")
+_COMMIT_POLICY_PATHS = (
+    "packages/standards/src/sarj_standards/libs/adoption/scaffold.py",
+    "packages/standards/tests/test_adoption.py",
+    ".github/workflows/commit-policy.yml",
+)
+_ACTION_REVISION = "e83f20a4781a721dc13c8d5d73f75647ea903621"
+_LEGACY_ACTION_REVISION = "aed2501dc09aa5701c984544d4fa20bea91661f9"
 
 
 def _git(root: Path, *arguments: str) -> str:
@@ -94,7 +110,7 @@ def candidate(tmp_path: Path, lane: PublisherLane, monkeypatch: pytest.MonkeyPat
                 cwd=Path(__file__).resolve().parents[4],
                 capture_output=True,
             ).stdout
-            for relative in _DEPENDENCY_PATHS
+            for relative in (*_DEPENDENCY_PATHS, *_ACTION_DEFAULT_PATHS)
         },
         "packages/standards/pyproject.toml": '[project]\nversion = "8.101.1"\ndependencies = ["native==1.0"]\n',
         "packages/standards-compat/pyproject.toml": '[project]\nversion = "8.101.1"\ndependencies = ["code-standards==8.101.1"]\n',
@@ -418,6 +434,8 @@ def test_maintenance_scanner_path_requires_exact_approved_bytes(
 def test_reviewed_lock_projection_requires_version_specific_security_fix(
     candidate: Candidate, lane: PublisherLane, version: str, *, patched: bool, accepted: bool
 ) -> None:
+    if version == "8.101.10":
+        _apply_reviewed_action_cohort(candidate.root, lane)
     if version not in {"8.101.2", "8.101.3"}:
         _apply_reviewed_docs_dependencies(candidate.root)
     for relative in lane.VERSION_PROJECTIONS:
@@ -541,6 +559,8 @@ def test_docs_dependencies_require_the_exact_version_specific_pair(
     other_paths: tuple[str, str],
     accepted: bool,
 ) -> None:
+    if version == "8.101.10":
+        _apply_reviewed_action_cohort(candidate.root, lane)
     _project_maintenance_version(candidate.root, version)
     if version == "8.101.10":
         (candidate.root / "packages/standards/src/sarj_standards/libs/linting/external.py").write_text("VALUE = 3\n")
@@ -600,6 +620,8 @@ def test_docs_dependency_projection_rejects_each_tampered_member(
 def test_scoped_react_backport_requires_exact_versioned_pair(
     candidate: Candidate, lane: PublisherLane, version: str, cohort: str, *, accepted: bool
 ) -> None:
+    if version == "8.101.10":
+        _apply_reviewed_action_cohort(candidate.root, lane)
     _project_maintenance_version(candidate.root, version)
     if version not in {"8.101.2", "8.101.3"}:
         _apply_reviewed_docs_dependencies(candidate.root)
@@ -623,3 +645,160 @@ def test_scoped_react_backport_requires_exact_versioned_pair(
     else:
         with pytest.raises(ValueError, match=r"adapter bytes do not match|scope tests do not match"):
             lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+
+
+def _apply_reviewed_action_cohort(root: Path, lane: PublisherLane) -> None:
+    assert set(lane.REPO_STANDARDS_ACTION_PROJECTIONS) == set(_ACTION_PATHS)
+    assert set(lane.COMMIT_POLICY_BACKPORT_SHA256) == set(_COMMIT_POLICY_PATHS)
+    reviewed = {**lane.COMMIT_POLICY_BACKPORT_SHA256, **lane.REPO_STANDARDS_ACTION_PROJECTIONS}
+    source = Path(__file__).resolve().parents[4]
+    for relative, digest in reviewed.items():
+        payload = (source / relative).read_bytes()
+        assert hashlib.sha256(payload).hexdigest() == digest
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+
+
+def _prepare_action_context(candidate: Candidate, lane: PublisherLane, version: str, *, actions: bool = True) -> None:
+    _project_maintenance_version(candidate.root, version)
+    lock = candidate.root / "packages/standards/uv.lock"
+    lock.write_text(lock.read_text().replace('version = "21.14.12"', 'version = "21.14.13"'))
+    _apply_reviewed_docs_dependencies(candidate.root)
+    (candidate.root / "packages/standards/src/sarj_standards/libs/linting/external.py").write_text("VALUE = 3\n")
+    (candidate.root / _REACT_SCOPE_TESTS).write_text("SCOPE_TEST = 2\n")
+    if actions:
+        _apply_reviewed_action_cohort(candidate.root, lane)
+
+
+@pytest.mark.parametrize(
+    ("version", "actions", "accepted"),
+    [
+        ("8.101.5", False, True),
+        ("8.101.5", True, True),
+        ("8.101.6", False, False),
+        ("8.101.6", True, True),
+        ("8.101.10", False, False),
+    ],
+)
+def test_action_floor_preserves_legacy_and_complete_older_candidates(
+    candidate: Candidate, lane: PublisherLane, version: str, *, actions: bool, accepted: bool
+) -> None:
+    _prepare_action_context(candidate, lane, version, actions=actions)
+    commit = _commit(candidate.root)
+    if not accepted:
+        with pytest.raises(ValueError, match="maintenance RepoStandards actions must match the exact approved bytes"):
+            lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+        return
+    assert (
+        lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+        == "standards-maintenance"
+    )
+
+
+def test_partial_actions_do_not_opt_older_candidates_out_of_the_complete_cohort(
+    candidate: Candidate, lane: PublisherLane
+) -> None:
+    _prepare_action_context(candidate, lane, "8.101.5")
+    relative = _ACTION_DEFAULT_PATHS[1]
+    (candidate.root / relative).write_text(_git(candidate.root, "show", f"{candidate.anchor}:{relative}") + "\n")
+    commit = _commit(candidate.root)
+    with pytest.raises(ValueError, match=f"exact approved bytes in {re.escape(relative)}"):
+        lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+
+
+def test_inactive_action_approval_rejects_introduced_defaults(
+    candidate: Candidate, lane: PublisherLane, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _prepare_action_context(candidate, lane, "8.101.6")
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise the fail-closed approval boundary without replacing validation.
+        lane, "REPO_STANDARDS_ACTION_FIRST_PATCH", None
+    )
+    commit = _commit(candidate.root)
+    with pytest.raises(ValueError, match="maintenance changes legacy policy or an unapproved path"):
+        lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+
+
+@pytest.mark.parametrize(
+    ("relative", "before", "after"),
+    [
+        (
+            _ACTION_DEFAULT_PATHS[0],
+            'REPO_STANDARDS_VERSION: Final = "6.11.0"',
+            'REPO_STANDARDS_VERSION: Final = "6.12.1"',
+        ),
+        (
+            _ACTION_DEFAULT_PATHS[0],
+            'REPO_STANDARDS_ACTION_VERSION: Final = "6.12.1"',
+            'REPO_STANDARDS_ACTION_VERSION: Final = "6.11.0"',
+        ),
+        (_ACTION_DEFAULT_PATHS[0], _ACTION_REVISION, _LEGACY_ACTION_REVISION),
+        (_ACTION_DEFAULT_PATHS[1], None, "\n# altered action expectations\n"),
+        (".github/workflows/ci.yml", _ACTION_REVISION, _LEGACY_ACTION_REVISION),
+        (".github/workflows/commit-policy.yml", _ACTION_REVISION, _LEGACY_ACTION_REVISION),
+    ],
+)
+def test_action_cohort_rejects_mixed_defaults_and_each_unapproved_source(
+    candidate: Candidate, lane: PublisherLane, relative: str, before: str | None, after: str
+) -> None:
+    _prepare_action_context(candidate, lane, "8.101.6")
+    path = candidate.root / relative
+    source = path.read_text()
+    if before is None:
+        path.write_text(source + after)
+    else:
+        assert before in source
+        path.write_text(source.replace(before, after, 1))
+    commit = _commit(candidate.root)
+    with pytest.raises(
+        ValueError,
+        match=f"maintenance RepoStandards actions must match the exact approved bytes in {re.escape(relative)}",
+    ):
+        lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+
+
+@pytest.mark.parametrize(
+    ("relative", "before", "after"),
+    [
+        ("packages/standards/pyproject.toml", "native==1.0", "repo-standards==6.12.1"),
+        ("packages/standards/uv.lock", "sha256:fixture-approved", "sha256:unreviewed-lock"),
+    ],
+)
+def test_action_approval_does_not_relax_legacy_package_or_patched_lock(
+    candidate: Candidate, lane: PublisherLane, relative: str, before: str, after: str
+) -> None:
+    _prepare_action_context(candidate, lane, "8.101.6")
+    path = candidate.root / relative
+    source = path.read_text()
+    assert source.count(before) == 1
+    path.write_text(source.replace(before, after))
+    commit = _commit(candidate.root)
+    with pytest.raises(ValueError, match="only the legacy version projection"):
+        lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+
+
+@pytest.mark.parametrize("relative", _COMMIT_POLICY_PATHS)
+@pytest.mark.parametrize("missing", [False, True])
+def test_action_backport_retains_the_complete_commit_policy_cohort(
+    candidate: Candidate, lane: PublisherLane, relative: str, *, missing: bool
+) -> None:
+    _prepare_action_context(candidate, lane, "8.101.6")
+    path = candidate.root / relative
+    if missing:
+        path.unlink()
+    else:
+        path.write_text(path.read_text() + "\n# unreviewed cohort source\n")
+    commit = _commit(candidate.root)
+    if missing and relative == ".github/workflows/commit-policy.yml":
+        with pytest.raises(subprocess.CalledProcessError) as failure:
+            lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+        assert failure.value.returncode == 128
+        assert f"{commit}:{relative}" in str(failure.value)
+        return
+    message = (
+        "maintenance commit-policy backport requires all three approved files"
+        if missing
+        else f"maintenance {'RepoStandards actions' if relative in _ACTION_PATHS else 'commit-policy backport'} must match the exact approved bytes in {re.escape(relative)}"
+    )
+    with pytest.raises(ValueError, match=message):
+        lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
