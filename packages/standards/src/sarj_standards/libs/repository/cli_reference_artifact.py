@@ -296,7 +296,7 @@ def _usage(
 
 
 def render(parser: typer.Typer) -> str:
-    return json.dumps(build(parser), ensure_ascii=False, separators=(",", ":"), sort_keys=True) + "\n"
+    return json.dumps(build(parser), ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 
 
 def sync(root: Path, parser: typer.Typer, *, check: bool) -> ReferenceSyncResult:
