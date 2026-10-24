@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from contextlib import suppress
+from itertools import product
 import os
 from pathlib import Path
+import re
 import shlex
 import signal
 import subprocess
@@ -82,7 +84,7 @@ class _Result(NamedTuple):
     peak_recipes: int
 
 
-def _workflow_command() -> str:
+def _workflow_command(scopes: dict[str, str] | None = None) -> str:
     document = parse_yaml((_ROOT / ".github/workflows/ci.yml").read_text())
     assert is_object_mapping(document)
     jobs = document["jobs"]
@@ -97,7 +99,14 @@ def _workflow_command() -> str:
         if is_object_mapping(step) and isinstance(command := step.get("run"), str) and command.startswith("make ")
     ]
     assert len(commands) == 1
-    return commands[0]
+    outputs = {} if scopes is None else scopes
+    command = re.sub(
+        r"\$\{\{ needs\.changes\.outputs\.([a-z]+) != 'false' && '([^']+)' \|\| '' \}\}",
+        lambda match: "" if outputs.get(match[1], "").casefold() == "false" else match[2],
+        commands[0],
+    )
+    assert "${{" not in command, command
+    return command
 
 
 @pytest.fixture
@@ -123,7 +132,8 @@ def make_probe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def _run(root: Path, command: str, *, fail: str = "", timeout_seconds: float = 10) -> _Result:
     jobs = next((arg.removeprefix("--jobs=") for arg in shlex.split(command) if arg.startswith("--jobs=")), "1")
-    (root / "barrier").write_text(jobs)
+    targets = [arg for arg in shlex.split(command) if arg.startswith("test-")]
+    (root / "barrier").write_text(str(min(int(jobs), len(targets))))
     (root / "fail-target").write_text(fail)
     argv = ("bash", "-eu", "-o", "pipefail", "-c", command)
     process = subprocess.Popen(
@@ -165,18 +175,48 @@ def _run(root: Path, command: str, *, fail: str = "", timeout_seconds: float = 1
     return _Result(result, events, peak)
 
 
-def _assert_run(result: _Result, *, success: bool, standards: bool = True) -> None:
+def _assert_run(result: _Result, *, success: bool, standards: bool = True, suites: frozenset[str] = _SUITES) -> None:
     assert (result.process.returncode == 0) is success, result.process.stdout + result.process.stderr
-    expected = (_SUITES if standards else _SUITES - {"standards"}) | {"typescript-build"}
+    expected = (suites if standards else suites - {"standards"}) | {"typescript-build"}
     for action in ("start", "end"):
         assert sorted(target for event, target in result.events if event == action) == sorted(expected)
-    assert result.peak_recipes == 2
+    assert result.peak_recipes == min(2, len(suites))
     if standards:
         assert result.events.index(("end", "typescript-build")) < result.events.index(("start", "standards"))
 
 
 def test_compatibility_runs_every_native_suite_with_two_make_slots(make_probe: Path) -> None:
     _assert_run(_run(make_probe, _workflow_command()), success=True)
+
+
+@pytest.mark.parametrize(("bootstrap", "python", "sql", "iac"), list(product(("false", "true"), repeat=4)))
+def test_compatibility_runs_only_affected_native_suites(
+    make_probe: Path, bootstrap: str, python: str, sql: str, iac: str
+) -> None:
+    scopes = {"bootstrap": bootstrap, "python": python, "sql": sql, "iac": iac}
+    suites = {"standards"}
+    if bootstrap == "true":
+        suites.add("bootstrap")
+    if python == "true":
+        suites.update(("contracts", "python"))
+    if sql == "true":
+        suites.add("sql")
+    if iac == "true":
+        suites.add("iac")
+    _assert_run(_run(make_probe, _workflow_command(scopes)), success=True, suites=frozenset(suites))
+
+
+@pytest.mark.parametrize("scope", ["bootstrap", "python", "sql", "iac"])
+@pytest.mark.parametrize("value", ["", "0", "unexpected", " false "])
+def test_unknown_routing_includes_the_compatibility_suite(make_probe: Path, scope: str, value: str) -> None:
+    scopes = dict.fromkeys(("bootstrap", "python", "sql", "iac"), "true") | {scope: value}
+    _assert_run(_run(make_probe, _workflow_command(scopes)), success=True)
+
+
+@pytest.mark.parametrize("value", ["False", "FALSE"])
+def test_compatibility_matches_github_case_insensitive_string_comparison(make_probe: Path, value: str) -> None:
+    scopes: dict[str, str] = dict.fromkeys(("bootstrap", "python", "sql", "iac"), value)
+    _assert_run(_run(make_probe, _workflow_command(scopes)), success=True, suites=frozenset({"standards"}))
 
 
 @pytest.mark.parametrize("suite", sorted(_SUITES))
