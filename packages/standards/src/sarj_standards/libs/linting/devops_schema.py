@@ -19,8 +19,9 @@ from sarj_standards.libs.diagnostics import (
     SourceDocument,
     ToolReport,
 )
-from sarj_standards.libs.json_boundary import normalize_json_value, parse_json
+from sarj_standards.libs.json_boundary import normalize_json_value, parse_json, parse_unique_json
 from sarj_standards.libs.linting import cloudbuild
+from sarj_standards.libs.linting.cloudbuild_schema import FORMATS, build_schema
 from sarj_standards.libs.typed_containers import is_object_mapping
 from sarj_standards.libs.yaml_boundary import mapping_items, sequence_items
 
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
     from jsonschema.exceptions import ValidationError
+    from pydantic import JsonValue
     from referencing.jsonschema import Schema
 
 _SCHEMAS = Path(__file__).resolve().parents[2] / "configs" / "schemas"
@@ -112,17 +114,19 @@ def analyze_source_schemas(*, root: Path, paths: tuple[str, ...]) -> tuple[ToolR
     validators: dict[str, Draft7Validator] = {}
     for relative in paths:
         path = (root / relative).resolve()
-        if path.suffix.lower() not in {".yaml", ".yml"}:
+        if path.suffix.lower() not in {".yaml", ".yml", ".json"}:
             continue
         try:
             path.relative_to(root.resolve())
-            source = path.read_text(encoding="utf-8")
+            source = path.read_bytes().decode("utf-8")
+            if path.suffix.lower() == ".json":
+                parse_unique_json(source)
             nodes = _documents(source)
         except (OSError, ValueError, yaml.YAMLError, RecursionError) as error:
-            if "skaffold" in path.stem or "clouddeploy" in path.stem:
+            if _selected_path(path):
                 reports.append(_failed("devops-schema", error))
             continue
-        for node in nodes:
+        for node in nodes or [None]:
             report = _source_schema_report(root, path, source, node, validators=validators)
             if report is not None:
                 reports.append(report)
@@ -137,6 +141,10 @@ def _source_schema_report(
     *,
     validators: dict[str, Draft7Validator],
 ) -> ToolReport | None:
+    if _cloudbuild_selected(path, node):
+        if node is None:
+            return _failed("cloudbuild-schema", ValueError("Cloud Build configuration must contain an object"))
+        return _validate_document(root, path, source, node, "cloudbuild/v1", validators=validators)
     if not isinstance(node, MappingNode):
         return None
     try:
@@ -148,6 +156,21 @@ def _source_schema_report(
     if version is None or not version.startswith(("skaffold/", "deploy.cloud.google.com/")):
         return None
     return _validate_document(root, path, source, node, version, validators=validators)
+
+
+def _selected_path(path: Path) -> bool:
+    return (
+        any(name in path.stem.casefold() for name in ("cloudbuild", "clouddeploy", "skaffold"))
+        or "cloudbuild" in path.parts
+    )
+
+
+def _cloudbuild_selected(path: Path, node: Node | None) -> bool:
+    return "cloudbuild" in path.stem.casefold() or (
+        "cloudbuild" in path.parts
+        and isinstance(node, MappingNode)
+        and any(cloudbuild.scalar_text(key) == "steps" for key, _ in mapping_items(node))
+    )
 
 
 def _schema_version(node: MappingNode) -> str | None:
@@ -180,20 +203,20 @@ def _validate_document(
     root: Path,
     path: Path,
     source: str,
-    node: MappingNode,
+    node: Node,
     version: str,
     *,
     validators: dict[str, Draft7Validator],
 ) -> ToolReport:
-    name = "skaffold-schema" if version.startswith("skaffold/") else "clouddeploy-structure"
+    name = "clouddeploy-structure"
+    if version == "cloudbuild/v1":
+        name = "cloudbuild-schema"
+    elif version.startswith("skaffold/"):
+        name = "skaffold-schema"
     try:  # ruff: ignore[too-many-statements-in-try-clause] -- normalize the external schema and YAML boundaries into one fatal coverage report.
         validator = _source_validator(node, version, validators)
         _validate_keys(node)
-        loader = yaml.SafeLoader("")
-        try:
-            instance = normalize_json_value(loader.construct_document(node))  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType] -- normalize the untyped safe YAML constructor boundary.
-        finally:
-            loader.dispose()  # pyright: ignore[reportUnknownMemberType] -- PyYAML loader cleanup boundary.
+        instance = _source_instance(path, source, node)
         errors: Iterable[ValidationError] = validator.iter_errors(instance)  # pyright: ignore[reportUnknownMemberType] -- jsonschema validation boundary.
         document = SourceDocument(path, source)
         findings = tuple(_schema_diagnostic(root, path, document, node, error, name=name) for error in errors)  # pyright: ignore[reportAny] -- external jsonschema iterator stub exposes validated errors as Any.
@@ -202,16 +225,36 @@ def _validate_document(
         return _failed(name, error)
 
 
-def _source_validator(node: MappingNode, version: str, validators: dict[str, Draft7Validator]) -> Draft7Validator:
-    skaffold = version.startswith("skaffold/")
-    if skaffold and version in validators:
+def _source_instance(path: Path, source: str, node: Node) -> JsonValue:
+    if path.suffix.lower() == ".json":
+        return normalize_json_value(parse_unique_json(source))
+    loader = yaml.SafeLoader("")
+    try:
+        return normalize_json_value(loader.construct_document(node))  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType] -- normalize the safe YAML constructor boundary.
+    finally:
+        loader.dispose()  # pyright: ignore[reportUnknownMemberType] -- PyYAML loader cleanup boundary.
+
+
+def _source_validator(node: Node, version: str, validators: dict[str, Draft7Validator]) -> Draft7Validator:
+    reusable = version == "cloudbuild/v1" or version.startswith("skaffold/")
+    if reusable and version in validators:
         return validators[version]
-    schema = _skaffold_schema(version) if skaffold else _deploy_schema(node, version)
+    if version == "cloudbuild/v1":
+        schema = build_schema(_SCHEMAS)
+    elif version.startswith("skaffold/"):
+        schema = _skaffold_schema(version)
+    elif isinstance(node, MappingNode):
+        schema = _deploy_schema(node, version)
+    else:
+        message = "Cloud Deploy configuration must contain an object"
+        raise ValueError(message)
     resource: Resource[Schema] = Resource.from_contents(schema)
     registry: Registry[Schema] = Registry()
     registry = registry.with_resource("urn:sarj:devops-source", resource)
-    validator = Draft7Validator(schema, registry=registry)
-    if skaffold:
+    validator = Draft7Validator(
+        schema, registry=registry, format_checker=FORMATS if version == "cloudbuild/v1" else None
+    )
+    if reusable:
         validators[version] = validator
     return validator
 

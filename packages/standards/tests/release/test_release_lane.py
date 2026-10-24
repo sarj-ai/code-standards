@@ -47,6 +47,11 @@ _COMMIT_POLICY_BACKPORT_PATHS = (
 )
 
 
+_DOCS_DEPENDENCY_PATHS = ("apps/docs/package.json", "apps/docs/package-lock.json")
+_DEPLOY_DEPENDENCY_PATHS = (".github/deploy/package.json", ".github/deploy/package-lock.json")
+_DEPENDENCY_PATHS = (*_DOCS_DEPENDENCY_PATHS, *_DEPLOY_DEPENDENCY_PATHS)
+
+
 def _git(root: Path, *arguments: str) -> str:
     return run_process(
         (
@@ -91,6 +96,14 @@ def lane(monkeypatch: pytest.MonkeyPatch) -> PublisherLane:
 def candidate(tmp_path: Path, lane: PublisherLane, monkeypatch: pytest.MonkeyPatch) -> Candidate:
     _git(tmp_path, "init", "--quiet")
     files = {
+        **{
+            relative: run_process(
+                ("git", "show", f"{lane.LEGACY_COMMIT}:{relative}"),
+                cwd=Path(__file__).resolve().parents[4],
+                capture_output=True,
+            ).stdout
+            for relative in _DEPENDENCY_PATHS
+        },
         "packages/standards/pyproject.toml": '[project]\nversion = "8.101.1"\ndependencies = ["native==1.0"]\n',
         "packages/standards-compat/pyproject.toml": '[project]\nversion = "8.101.1"\ndependencies = ["code-standards==8.101.1"]\n',
         "packages/standards/uv.lock": 'version = 1\n[[package]]\nname = "code-standards"\nversion = "8.101.1"\n\n[[package]]\nname = "virtualenv"\nversion = "21.14.7"\nsdist = { url = "https://example.invalid/virtualenv", hash = "sha256:fixture-approved" }\n',
@@ -186,6 +199,10 @@ def test_publication_requires_the_exact_checkout(candidate: Candidate, lane: Pub
         "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json",
         "packages/standards/src/sarj_standards/configs/ruff.strict.toml",
         "packages/python/pyproject.toml",
+        "apps/docs/package-extra.json",
+        "apps/docs/package-lock-extra.json",
+        ".github/deploy/package-extra.json",
+        ".github/deploy/package-lock-extra.json",
         "packages/standards/src/sarj_standards/libs/linting/another.py",
         ".github/scripts/release-github-release-extra.sh",
     ],
@@ -385,6 +402,8 @@ def test_maintenance_scanner_path_requires_exact_approved_bytes(
 def test_reviewed_lock_projection_requires_version_specific_security_fix(
     candidate: Candidate, lane: PublisherLane, version: str, *, patched: bool, accepted: bool
 ) -> None:
+    if version not in {"8.101.2", "8.101.3"}:
+        _apply_reviewed_docs_dependencies(candidate.root)
     for relative in lane.VERSION_PROJECTIONS:
         path = candidate.root / relative
         path.write_text(path.read_text().replace("8.101.2", version))
@@ -412,7 +431,7 @@ def test_reviewed_lock_projection_requires_version_specific_security_fix(
     )
 
 
-def _project_maintenance_version(checkout: Path) -> None:
+def _project_maintenance_version(checkout: Path, version: str = "8.101.3") -> None:
     cli = checkout / "packages/standards/src/sarj_standards/configs/cli-reference.v1.json"
     old_cli_digest = hashlib.sha256(cli.read_bytes()).hexdigest()
     for relative in (
@@ -425,7 +444,7 @@ def _project_maintenance_version(checkout: Path) -> None:
         path = checkout / relative
         source = path.read_text()
         assert "8.101.2" in source
-        path.write_text(source.replace("8.101.2", "8.101.3"))
+        path.write_text(source.replace("8.101.2", version))
     docs = checkout / "apps/docs/src/generated/formatted-code.v1.json"
     source = docs.read_text()
     assert source.count(old_cli_digest) == 1
@@ -589,4 +608,109 @@ def test_commit_policy_approval_keeps_neighboring_policy_closed(lane: PublisherL
     (candidate.root / "packages/standards/src/sarj_standards/libs/adoption/scaffold_extra.py").write_text("VALUE = 3\n")
     commit = _commit(candidate.root)
     with pytest.raises(ValueError, match="legacy policy or an unapproved path"):
+        lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+
+
+def _apply_reviewed_docs_dependencies(root: Path, paths: tuple[str, ...] = _DEPENDENCY_PATHS) -> None:
+    replacements: dict[str, tuple[tuple[str, str], ...]] = {
+        "apps/docs/package.json": (('"undici": "8.11.2"', '"undici": "8.12.2"'),),
+        "apps/docs/package-lock.json": (
+            ('"version": "3.1.8"', '"version": "3.1.9"'),
+            (
+                '"resolved": "https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.8.tgz"',
+                '"resolved": "https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.9.tgz"',
+            ),
+            (
+                '"integrity": "sha512-GZMtZUTNRpOVIECoXwLNZS5xUGE+mVNbTB8h/7Rwh2TFWcBQiPzTgyZi05BF9UMZKkLJv8XBRJTlU7zg8+ZfMg=="',
+                '"integrity": "sha512-hS/0Wt3Ya043oKXs0sIxrMpKQITXhMLIrVAKKXi4gozGC9v7YRWVnXIZzjNPTO02M9BdxLCWqK1yRXgNziVyJQ=="',
+            ),
+            ('"version": "8.11.2"', '"version": "8.12.2"'),
+            (
+                '"resolved": "https://registry.npmjs.org/undici/-/undici-8.11.2.tgz"',
+                '"resolved": "https://registry.npmjs.org/undici/-/undici-8.12.2.tgz"',
+            ),
+            (
+                '"integrity": "sha512-u4UB2/IrKdU6lFxumHmmo1a3fCQO5tzQllRorfoRS63txhrB7xTpSn1PftwC4qEHkOaqP95fCWW4lJzwErwzhQ=="',
+                '"integrity": "sha512-XtuDWVdqTLr3NAxm2ly9/hU6kUsJOgGh1RASzMBbsw6aWCOaQzHdW+QQDfdERjfJ2V5vL5pRPa4RetO9UfivDg=="',
+            ),
+        ),
+    }
+    replacements[".github/deploy/package.json"] = replacements["apps/docs/package.json"]
+    replacements[".github/deploy/package-lock.json"] = replacements["apps/docs/package-lock.json"][3:]
+    for relative in paths:
+        path = root / relative
+        source = path.read_text()
+        for old, new in replacements[relative]:
+            assert source.count(old) == 1
+            source = source.replace(old, new)
+        path.write_text(source)
+
+
+@pytest.mark.parametrize(
+    ("dependency_paths", "other_paths"),
+    [(_DOCS_DEPENDENCY_PATHS, _DEPLOY_DEPENDENCY_PATHS), (_DEPLOY_DEPENDENCY_PATHS, _DOCS_DEPENDENCY_PATHS)],
+    ids=["site", "deployment"],
+)
+@pytest.mark.parametrize(
+    ("version", "member_indexes", "accepted"),
+    [
+        ("8.101.2", (), True),
+        ("8.101.2", (0,), False),
+        ("8.101.2", (1,), False),
+        ("8.101.2", (0, 1), False),
+        ("8.101.3", (), True),
+        ("8.101.3", (0,), False),
+        ("8.101.3", (1,), False),
+        ("8.101.3", (0, 1), False),
+        ("8.101.4", (), False),
+        ("8.101.4", (0,), False),
+        ("8.101.4", (1,), False),
+        ("8.101.4", (0, 1), True),
+        ("8.101.10", (), False),
+        ("8.101.10", (0,), False),
+        ("8.101.10", (1,), False),
+        ("8.101.10", (0, 1), True),
+    ],
+)
+def test_docs_dependencies_require_the_exact_version_specific_pair(
+    candidate: Candidate,
+    lane: PublisherLane,
+    version: str,
+    member_indexes: tuple[int, ...],
+    *,
+    dependency_paths: tuple[str, str],
+    other_paths: tuple[str, str],
+    accepted: bool,
+) -> None:
+    _project_maintenance_version(candidate.root, version)
+    historical = version in {"8.101.2", "8.101.3"}
+    if not historical:
+        lock = candidate.root / "packages/standards/uv.lock"
+        lock.write_text(lock.read_text().replace('version = "21.14.12"', 'version = "21.14.13"'))
+        _apply_reviewed_docs_dependencies(candidate.root, other_paths)
+    paths = tuple(dependency_paths[index] for index in member_indexes)
+    _apply_reviewed_docs_dependencies(candidate.root, paths)
+    commit = _commit(candidate.root) if _git(candidate.root, "status", "--porcelain") else candidate.commit
+    if not accepted:
+        with pytest.raises(ValueError, match="docs dependencies must match the exact reviewed version-specific bytes"):
+            lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+        return
+    assert (
+        lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+        == "standards-maintenance"
+    )
+
+
+@pytest.mark.parametrize("relative", _DEPENDENCY_PATHS)
+def test_docs_dependency_projection_rejects_each_tampered_member(
+    candidate: Candidate, lane: PublisherLane, relative: str
+) -> None:
+    _project_maintenance_version(candidate.root, "8.101.4")
+    lock = candidate.root / "packages/standards/uv.lock"
+    lock.write_text(lock.read_text().replace('version = "21.14.12"', 'version = "21.14.13"'))
+    _apply_reviewed_docs_dependencies(candidate.root)
+    with (candidate.root / relative).open("a") as stream:
+        stream.write("\n")
+    commit = _commit(candidate.root)
+    with pytest.raises(ValueError, match="docs dependencies must match the exact reviewed version-specific bytes"):
         lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)

@@ -5,5 +5,17 @@
     "sha256": "c391a01232cdbf2db42b92664f62fce3bd0e37bf8d0c1de77abacb81b82951bc",
     "license": "Apache-2.0",
     "schema": "skaffold-v4beta7.json"
+  },
+  "cloudbuild/v1": {
+    "source": "https://raw.githubusercontent.com/googleapis/google-api-go-client/abd2ce12ea3f12c9114e206e3607efcced76ba8a/cloudbuild/v1/cloudbuild-api.json",
+    "commit": "abd2ce12ea3f12c9114e206e3607efcced76ba8a",
+    "revision": "20261010",
+    "sha256": "3ebb9f46d87276b72793722c86605ed3afdd90e9cf877536958682d71a00f979",
+    "license": "BSD-3-Clause",
+    "schema": "google-build-v1-schema.json",
+    "projection": "31 reachable Build definitions; closed fields, CLI aliases, optional unsets, enum names/int32 values and integer/duration/Base64 formats. Descriptive API documentation is omitted. Hosted admission remains external.",
+    "source_sha256": "5dda7ec6030b1dfec239653bc9006548d5db520ee79b339b25e5465e2013a069",
+    "generator": "python -m sarj_standards.libs.repository.cloudbuild_schema_projection <digest-verified-discovery.json> <google-build-v1-schema.json>",
+    "format_reference": "https://protobuf.dev/programming-guides/json/"
   }
 }
