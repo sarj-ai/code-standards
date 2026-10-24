@@ -441,6 +441,23 @@ def test_required_matrix_checks_keep_their_names_when_unaffected() -> None:
     assert workflow("ci.yml").jobs["npm-audit"].name == "npm-audit (apps/docs)"
 
 
+@pytest.mark.parametrize("job_name", ["portability-smoke", "adoption-smoke", "python-compatibility"])
+def test_smoke_reuse_requires_complete_reviewed_ci_and_keeps_fresh_fallback(job_name: str) -> None:
+    job = workflow("ci.yml").jobs[job_name]
+    # Routing failure is rejected before any proof can be reused. Job success
+    # still participates in both required aggregates, including the PR proof.
+    assert job.steps[1].condition == "needs.changes.result != 'success'"
+    assert job.steps[1].run == "exit 1"
+    summary = job.steps[2]
+    assert summary.condition == "needs.changes.outputs.reviewed-ci == 'true'"
+    assert summary.env == {"REVIEWED_RUN": "${{ needs.changes.outputs.reviewed-run }}"}
+    assert "$REVIEWED_RUN" in summary.run
+    assert summary.run.endswith('>>"$GITHUB_STEP_SUMMARY"')
+    for step in job.steps[3:]:
+        assert step.condition == "needs.changes.outputs.reviewed-ci != 'true'"
+    assert any(step.run for step in job.steps[3:])
+
+
 def test_private_reference_fetch_excludes_existing_main_history(repository: Path) -> None:
     ancestor = git(repository, "rev-parse", "HEAD")
     git(repository, "commit", "--allow-empty", "-qm", "main advanced")
