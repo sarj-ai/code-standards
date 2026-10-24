@@ -21,6 +21,7 @@ from sarj_standards.libs.diagnostics import (
     SourceDocument,
     ToolReport,
 )
+from sarj_standards.libs.filesystem import read_prefix
 from sarj_standards.libs.linting.external import run_process
 
 
@@ -96,8 +97,7 @@ def _document(root: Path, name: str) -> SourceDocument:
     if not path.is_file():
         message = "Action metadata must be a regular file"
         raise ValueError(message)
-    with path.open("rb") as stream:
-        content = stream.read(_MAX_SOURCE_BYTES + 1)
+    content = read_prefix(path, _MAX_SOURCE_BYTES + 1)
     if len(content) > _MAX_SOURCE_BYTES:
         message = "Action metadata exceeds the 2 MiB source bound"
         raise ValueError(message)

@@ -20,6 +20,7 @@ from sarj_standards.libs.diagnostics.models import (
     Severity,
     ToolReport,
 )
+from sarj_standards.libs.filesystem import read_prefix
 from sarj_standards.libs.json_boundary import parse_json, parse_unique_json
 from sarj_standards.libs.linting.chart_schemas import validate_chart_schemas
 from sarj_standards.libs.linting.devops_tools import NativeToolError, checked_tool, invoke
@@ -227,8 +228,7 @@ def _receipt_text(path: Path) -> str:
     if path.is_symlink() or not path.is_file():
         msg = "prepared receipt must be a bounded regular file"
         raise ValueError(msg)
-    with path.open("rb") as stream:
-        content = stream.read(_MAX_RECEIPT_BYTES + 1)
+    content = read_prefix(path, _MAX_RECEIPT_BYTES + 1)
     if len(content) > _MAX_RECEIPT_BYTES:
         msg = "prepared receipt must be a bounded regular file"
         raise ValueError(msg)
