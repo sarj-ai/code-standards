@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "9c26357bb58115a304cb810e921fbf10f46937dd28a72651be2a7e050671d6ab",
-  "cliSha256": "66ca726ae8fec24711b7977cd3806e60c5bb7d4af7a5a26f6a66010eccccda77",
+  "catalogSha256": "432ca839a63a4ef86a9c65323581961a5377f0993c0ad985bcb7ba7d0ac2fa92",
+  "cliSha256": "7064c9aa146388769bec8682384e2b954769aee7df4fe3c4ee5d324331e791a8",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -7334,6 +7334,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:duplicate-pytest-fixture-params": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/conftest.py",
+              "source": "import pytest\n\n\n@pytest.fixture(params=(\"empty\", \"filled\"))\ndef payload(request):\n    return request.param\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/conftest.py",
+          "id": "distinct-fixture-inputs",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Each fixture parameter represents a distinct input"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/conftest.py",
+              "source": "import pytest\n\n\n@pytest.fixture(params=(\"empty\", \"empty\"))\ndef payload(request):\n    return request.param\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/conftest.py",
+          "id": "repeated-fixture-input",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The same input schedules the dependent tests twice"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:excessive-commentary": {
       "examples": [
         {
@@ -13758,6 +13793,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Fixture consumers must remember field positions"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:pytest-fixture-returns-closed-resource": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/conftest.py",
+              "source": "from io import StringIO\nimport pytest\n\n\n@pytest.fixture\ndef stream():\n    with StringIO(\"payload\") as handle:\n        return handle\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/conftest.py",
+          "id": "fixture-returns-closed-stream",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Returning exits the stream context before the test runs"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/conftest.py",
+              "source": "from io import StringIO\nimport pytest\n\n\n@pytest.fixture\ndef stream():\n    with StringIO(\"payload\") as handle:\n        yield handle\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/conftest.py",
+          "id": "fixture-yields-live-stream",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Yield keeps the stream open for the requesting test"
         }
       ],
       "optionsSchemaSource": null

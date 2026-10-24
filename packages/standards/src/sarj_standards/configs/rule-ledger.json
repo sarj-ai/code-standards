@@ -33,6 +33,7 @@
       "docstring-returns-restate-signature",
       "duplicate-adjacent-exception-handler",
       "duplicate-closed-pure-helper",
+      "duplicate-pytest-fixture-params",
       "excessive-commentary",
       "fakes-in-shared-location",
       "fastapi-class-router-contract",
@@ -165,6 +166,7 @@
       "prefer-walrus-stream-loop",
       "production-derived-test-cases",
       "pytest-fixture-returns-bare-tuple",
+      "pytest-fixture-returns-closed-resource",
       "redundant-class-docstring",
       "redundant-docstring",
       "redundant-module-docstring",
@@ -558,7 +560,9 @@
       "SARJ520",
       "SARJ521",
       "SARJ522",
-      "SARJ523"
+      "SARJ523",
+      "SARJ524",
+      "SARJ525"
     ],
     "sql": [
       "SARJ101",

@@ -31,6 +31,10 @@ _SCOPES = (
 )
 _RESOURCE_OWNERS = MappingProxyType(
     {
+        "builtins": frozenset({"open"}),
+        "io": frozenset({"open", "StringIO", "BytesIO"}),
+        "tempfile": frozenset({"TemporaryFile", "NamedTemporaryFile"}),
+        "httpx": frozenset({"Client", "AsyncClient"}),
         "asyncio": frozenset({"sleep", "CancelledError", "exceptions.CancelledError"}),
         "contextlib": frozenset({"ExitStack", "AsyncExitStack", "_BaseExitStack"}),
         "subprocess": frozenset({"Popen", "TimeoutExpired"}),

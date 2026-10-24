@@ -219,6 +219,7 @@ if TYPE_CHECKING:
 from sarj_python_lint.rules.delete_route_returns_no_content import DeleteRouteReturnsNoContent
 from sarj_python_lint.rules.duplicate_adjacent_exception_handler import DuplicateAdjacentExceptionHandler
 from sarj_python_lint.rules.duplicate_closed_pure_helper import DuplicateClosedPureHelper
+from sarj_python_lint.rules.duplicate_pytest_fixture_params import DuplicatePytestFixtureParams
 from sarj_python_lint.rules.no_conflicting_pydantic_alias_validation import NoConflictingPydanticAliasValidation
 from sarj_python_lint.rules.no_contradictory_type_guard import NoContradictoryTypeGuard
 from sarj_python_lint.rules.no_create_verb_in_post_path import NoCreateVerbInPostPath
@@ -238,6 +239,7 @@ from sarj_python_lint.rules.no_work_verb_get_route import NoWorkVerbGetRoute
 from sarj_python_lint.rules.prefer_bulk_upsert import PreferBulkUpsert
 from sarj_python_lint.rules.prefer_discriminated_model_union import PreferDiscriminatedModelUnion
 from sarj_python_lint.rules.prefer_psycopg_executemany import PreferPsycopgExecutemany
+from sarj_python_lint.rules.pytest_fixture_returns_closed_resource import PytestFixtureReturnsClosedResource
 from sarj_python_lint.rules.redundant_test_constructor_forwarder import RedundantTestConstructorForwarder
 from sarj_python_lint.rules.repeated_unimplemented_test_contract import RepeatedUnimplementedTestContract
 from sarj_python_lint.rules.require_exp_on_jwt_decode import RequireExpOnJwtDecode
@@ -247,6 +249,8 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        PytestFixtureReturnsClosedResource.id: PytestFixtureReturnsClosedResource,
+        DuplicatePytestFixtureParams.id: DuplicatePytestFixtureParams,
         PreferBulkUpsert.id: PreferBulkUpsert,
         PreferPsycopgExecutemany.id: PreferPsycopgExecutemany,
         StoreFieldUpdateReusesUpsert.id: StoreFieldUpdateReusesUpsert,
