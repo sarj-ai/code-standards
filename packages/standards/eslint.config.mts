@@ -1,1 +1,6 @@
-export { default } from "../../.github/scripts/eslint.config.mts";
+import helpers from "../../.github/scripts/eslint.config.mts";
+
+export default [
+  { ignores: ["**/configs/action-parser.cjs"] },
+  ...helpers,
+];

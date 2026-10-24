@@ -21,6 +21,7 @@ from sarj_standards.libs.diagnostics import (
 )
 from sarj_standards.libs.json_boundary import normalize_json_value, parse_json, parse_unique_json
 from sarj_standards.libs.linting import cloudbuild
+from sarj_standards.libs.linting.action_metadata import analyze_actions
 from sarj_standards.libs.linting.cloudbuild_schema import FORMATS, build_schema
 from sarj_standards.libs.typed_containers import is_object_mapping
 from sarj_standards.libs.yaml_boundary import mapping_items, sequence_items
@@ -110,11 +111,11 @@ _DEPLOY_FIELDS: Mapping[str, dict[str, object]] = MappingProxyType(
 
 
 def analyze_source_schemas(*, root: Path, paths: tuple[str, ...]) -> tuple[ToolReport, ...]:
-    reports: list[ToolReport] = []
+    reports = list(analyze_actions(root=root, paths=paths))
     validators: dict[str, Draft7Validator] = {}
     for relative in paths:
         path = (root / relative).resolve()
-        if path.suffix.lower() not in {".yaml", ".yml", ".json"}:
+        if path.name in {"action.yml", "action.yaml"} or path.suffix.lower() not in {".yaml", ".yml", ".json"}:
             continue
         try:
             path.relative_to(root.resolve())

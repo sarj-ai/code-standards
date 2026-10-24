@@ -32,6 +32,12 @@ path = "packages/typescript/tests/fixtures/runs/.pnp.loader.mjs"
 kind = "fixture"
 reason = "Minimal generated-loader stand-in tests exclusion of Yarn PnP ESM loader artifacts."
 
+[[javascript.artifacts]]
+path = "packages/standards/src/sarj_standards/configs/action-parser.cjs"
+kind = "generated"
+source = "packages/standards/src/sarj_standards/configs/action-parser/index.mts"
+reason = "Reproducible Node-compatible bundle ships the pinned GitHub parser inside the Python wheel without consumer npm or TypeScript setup."
+
 [documentation]
 # Canonical harness entrypoints; other new pages retain the zero-page default.
 addition_exemptions = [

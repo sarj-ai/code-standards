@@ -1,0 +1,14 @@
+{
+  "source": "https://github.com/actions/languageservices/tree/b71ac284fc6a7382c22ecbf3e0009a6ae216823b",
+  "commit": "b71ac284fc6a7382c22ecbf3e0009a6ae216823b",
+  "parser": "@actions/workflow-parser@0.3.61",
+  "expressions": "@actions/expressions@0.3.61",
+  "license": "MIT",
+  "bundle_sha256": "7408ae0434ecd92441b1bd32a267e181231493e3f8319ad94655fa781c8ba26a",
+  "build": "npm ci --ignore-scripts --no-audit --no-fund && npm run build; dependency integrity is recorded in package-lock.json",
+  "boundary": "GitHub native action-root runner schema and converter; syntax/contexts and runtime requirements. The strict Marketplace metadata root is not imposed on local actions. Runtime values/execution remain external.",
+  "runner_reference": "https://github.com/actions/runner/tree/fee24199cba8acf6c25da3a061c986066f42327a/src/Runner.Worker",
+  "yaml": "yaml@2.8.3",
+  "yaml_source": "https://github.com/eemeli/yaml/tree/ce14587484822bffb0f7d31aefedcaf2dc0d0387",
+  "dependency_advisory": "https://github.com/advisories/GHSA-48c2-rrv3-qjmp"
+}
