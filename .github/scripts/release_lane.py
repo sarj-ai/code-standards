@@ -83,6 +83,14 @@ COMMIT_POLICY_BACKPORT_SHA256 = {
     f"{PACKAGE}/tests/test_adoption.py": "20d9cee4883b50e9d6357548f10684084e69e265f704ab6d122963125efa483c",
     ".github/workflows/commit-policy.yml": "21a5f6293e41a052e032305d286b641e61aac2f668470bc1dee01ee2098761fb",
 }
+# Action delivery is independent of the retained 6.11 runtime policy.
+REPO_STANDARDS_ACTION_FIRST_PATCH: int | None = 6
+REPO_STANDARDS_ACTION_PROJECTIONS: Final[dict[str, str]] = {
+    "packages/standards/src/sarj_standards/libs/adoption/manifest.py": "1a413118794fa06d59cd98e098f2afbf005c16b5020d7df8781133e451dac723",
+    "packages/standards/tests/test_repo_standards_pins.py": "553545d6335022dc0ddae6529311a3e37667a0342da74c311671042162baa88e",
+    ".github/workflows/ci.yml": "dd39d386dd144709848675ba4d33964b95d9d1dc5c8db15679034bb62f300628",
+    ".github/workflows/commit-policy.yml": "4de0749743f162c9bc6ac08492c8bc458503157510df7927eb30d1319f1c0446",
+}
 RELEASE_TARGETS = frozenset({"typescript", "bootstrap", "contracts", "python", "sql", "iac", "standards", "tsconfig"})
 
 
@@ -154,30 +162,56 @@ def _validate_maintenance(root: Path, commit: str) -> None:
         - SECURITY_PROJECTIONS
         - COMMIT_POLICY_BACKPORT_SHA256.keys()
         - DOCS_SECURITY_PROJECTIONS.keys()
+        - REPO_STANDARDS_ACTION_PROJECTIONS.keys()
     )
     if unexpected:
         msg = f"maintenance changes legacy policy or an unapproved path: {', '.join(sorted(unexpected))}"
         raise ReleaseLaneError(msg)
     version = _maintenance_version(root, commit)
+    action_backport = _validate_repo_standards_actions(root, commit, version, changed)
     for path in VERSION_PROJECTIONS:
         _validate_projection(root, commit, path, version)
     _validate_docs(root, commit)
     _validate_docs_dependencies(root, commit, version)
     _validate_adapter(root, commit, version)
     _validate_gitleaks(root, commit)
-    _validate_commit_policy_backport(root, commit, changed)
+    _validate_commit_policy_backport(root, commit, changed, action_backport=action_backport)
 
 
-def _validate_commit_policy_backport(root: Path, commit: str, changed: frozenset[str]) -> None:
+def _validate_commit_policy_backport(
+    root: Path, commit: str, changed: frozenset[str], *, action_backport: bool
+) -> None:
     if not changed.intersection(COMMIT_POLICY_BACKPORT_SHA256):
         return
     if not changed.issuperset(COMMIT_POLICY_BACKPORT_SHA256):
         msg = "maintenance commit-policy backport requires all three approved files"
         raise ReleaseLaneError(msg)
     for path, expected in COMMIT_POLICY_BACKPORT_SHA256.items():
-        if hashlib.sha256(_at(root, commit, path)).hexdigest() != expected:
+        reviewed = REPO_STANDARDS_ACTION_PROJECTIONS.get(path, expected) if action_backport else expected
+        if hashlib.sha256(_at(root, commit, path)).hexdigest() != reviewed:
             msg = f"maintenance commit-policy backport must match the exact approved bytes in {path}"
             raise ReleaseLaneError(msg)
+
+
+def _validate_repo_standards_actions(root: Path, commit: str, version: str, changed: frozenset[str]) -> bool:
+    # Older candidates may inherit the complete reviewed action defaults after rebasing.
+    default_changes = (
+        changed.intersection(REPO_STANDARDS_ACTION_PROJECTIONS) - TOOLING_PATHS - COMMIT_POLICY_BACKPORT_SHA256.keys()
+    )
+    first_patch = REPO_STANDARDS_ACTION_FIRST_PATCH
+    action_backport = first_patch is not None and (
+        int(version.rpartition(".")[2]) >= first_patch or bool(default_changes)
+    )
+    if not action_backport:
+        if default_changes:
+            msg = f"maintenance changes legacy policy or an unapproved path: {', '.join(sorted(default_changes))}"
+            raise ReleaseLaneError(msg)
+        return False
+    for path, expected in REPO_STANDARDS_ACTION_PROJECTIONS.items():
+        if hashlib.sha256(_at(root, commit, path)).hexdigest() != expected:
+            msg = f"maintenance RepoStandards actions must match the exact approved bytes in {path}"
+            raise ReleaseLaneError(msg)
+    return True
 
 
 def _maintenance_version(root: Path, commit: str) -> str:
