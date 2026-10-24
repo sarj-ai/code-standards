@@ -66,6 +66,22 @@ async def stop() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    ("source", "line"),
+    [
+        ('""\nvalue = 1\n', 1),
+        ('class Service:\n    ""\n    value = 1\n', 2),
+        ('def run():\n    ""\n    return 1\n', 2),
+        ('async def run():\n    ""\n    return 1\n', 2),
+        ('def outer():\n    def inner():\n        ""\n        return 1\n    return inner\n', 3),
+        ('class Service:\n    async def run(self):\n        ""\n        return 1\n', 3),
+    ],
+    ids=["module", "class", "function", "async-function", "nested-function", "nested-async-method"],
+)
+def test_empty_docstrings_remain_eligible(source: str, line: int) -> None:
+    assert [(finding.line, finding.code) for finding in _check(source)] == [(line, "SARJ420")]
+
+
 def test_flags_test_module_incident_narration_with_ticket_and_cross_file_reference() -> None:
     source = (
         '"""Fair-share behavior after INC-2048; core picker semantics are pinned by '
