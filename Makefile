@@ -18,7 +18,7 @@ COMMIT ?= HEAD
 ROLLOUT_OPTIONS = --registry "$(REGISTRY)" --jobs "$(JOBS)"
 ROLLOUT_TARGET = --channel "$(CHANNEL)" $(if $(CONSUMER),--consumer "$(CONSUMER)")
 
-.PHONY: help setup build verify doctor docs-artifacts-check docs-code-sync docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-portability release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger rollout rollout-plan rollout-status rollout-reconcile
+.PHONY: help setup build typescript-build verify doctor docs-artifacts-check docs-code-sync docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-portability release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger rollout rollout-plan rollout-status rollout-reconcile rollout-check docs-deploy-check shell-check
 
 help:
 	@echo "Targets: setup | verify | doctor | build | test | lint | dogfood | typecheck"
@@ -35,7 +35,6 @@ rollout:
 	@bash .github/scripts/make-require-version.sh "$@" "$(VERSION)"
 	$(ROLLOUT) $(ROLLOUT_OPTIONS) apply --version "$(VERSION)" $(ROLLOUT_TARGET) $(if $(DRY_RUN),--dry-run)
 
-.PHONY: rollout-check docs-deploy-check
 rollout-check:
 	@bash .github/scripts/make-require-version.sh "$@" "$(VERSION)"
 	$(ROLLOUT) verify-release --version "$(VERSION)"
@@ -55,16 +54,18 @@ rollout-reconcile:
 setup:
 	$(STANDARDS) --root . maintain setup
 
-# Canonical local gate; CI runs the same checks.
-verify: doctor docs-check format-check lint dogfood typecheck test repo-check check-no-private-refs shell-check
+verify:
+	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory doctor docs-check
+	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory format-check lint
+	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory --assume-old=typescript-build dogfood typecheck
+	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory --assume-old=typescript-build test
+	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory repo-check check-no-private-refs shell-check
 
 doctor:
 	@$(STANDARDS) doctor
 
 typescript-build:
 	npm --prefix packages/typescript run build
-
-.PHONY: typescript-build
 
 docs-artifacts-check: typescript-build
 	@$(STANDARDS) --root . maintain rules check
@@ -79,7 +80,6 @@ docs-code-sync:
 docs-check: docs-artifacts-check
 	bash .github/scripts/verify-docs.sh
 
-.PHONY: shell-check
 shell-check:
 	uv run --project packages/standards --frozen python -m sarj_standards.libs.repository.shell_checks --root . --tool shellcheck
 	uv run --project packages/standards --frozen python -m sarj_standards.libs.repository.shell_checks --root . --tool shfmt
