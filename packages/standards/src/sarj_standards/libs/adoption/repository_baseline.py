@@ -26,8 +26,8 @@ PATH = ".repo-standards/baseline.json"
 # Policy 27 adds a default-disabled local-residue warning. Existing rule
 # definitions, fingerprints and scope serialization are unchanged. Explicitly
 # enabling it still leaves every new finding unaccepted by the warning ratchet.
-# Policy 28 changes operational-script-tests finding identities. Retain the
-# explicit review boundary for older baselines rather than recapturing debt.
+# Policy 28 changes operational-script-tests identities; only empty policy 27
+# baselines remain compatible. Accepted debt still requires a separate review.
 _COMPATIBLE_TRANSITIONS = frozenset({(18, 19), (18, 20), (19, 20), (25, 26), (25, 27), (26, 27)})
 _POLICY_VERSION = re.compile(rb'("policy_version"\s*:\s*)[0-9]+(?=\s*[,}])')
 
@@ -58,7 +58,9 @@ def migrate(contents: bytes, manifest: bytes, *, target_policy_version: int) -> 
         raise ValueError(msg)
     if baseline.policy_version == target_policy_version:
         return contents
-    if (baseline.policy_version, target_policy_version) not in _COMPATIBLE_TRANSITIONS:
+    transition = (baseline.policy_version, target_policy_version)
+    empty_compatible = transition == (27, 28) and not baseline.fingerprints
+    if transition not in _COMPATIBLE_TRANSITIONS and not empty_compatible:
         msg = (
             f"repository baseline migration {baseline.policy_version} -> {target_policy_version} "
             "requires a separately reviewed compatibility decision"
