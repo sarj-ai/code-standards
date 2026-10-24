@@ -1,10 +1,10 @@
 import rule from "../../src/rules/no-redundant-consumer-union.js";
-import { CONSUMER_PREFIX, PRIVATE_CONSUMER_TESTER, UNION_DECLARATIONS, privateConsumerBoundaries } from "../private-consumer-cases.js";
+import { CONSUMER_PREFIX, PRIVATE_CONSUMER_TESTER, UNION_DECLARATIONS, runPrivateConsumerBoundaries } from "../private-consumer-cases.js";
 
 const PREFIX = `${CONSUMER_PREFIX}${UNION_DECLARATIONS}`;
+runPrivateConsumerBoundaries("no-redundant-consumer-union", rule, "Dog | Animal", UNION_DECLARATIONS);
 PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union", rule, {
   valid: [
-    ...privateConsumerBoundaries("Dog | Animal", UNION_DECLARATIONS),
     ...["", "declare global {interface Object {readonly __optionalToken: any}}"].map((augmentation) => ({
       name: "an optional covering key can reject a valid existing identifier: " + (augmentation ? "implicit Any" : "ordinary"),
       filename: "probe.tsx",

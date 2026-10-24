@@ -1,10 +1,10 @@
 import rule from "../../src/rules/prefer-minimal-parameter-contract.js";
-import { CONSUMER_PREFIX, INLINE_CONTRACT, PRIVATE_CONSUMER_TESTER, privateConsumerBoundaries } from "../private-consumer-cases.js";
+import { CONSUMER_PREFIX, INLINE_CONTRACT, PRIVATE_CONSUMER_TESTER, runPrivateConsumerBoundaries } from "../private-consumer-cases.js";
 
 const PREFIX = CONSUMER_PREFIX;
+runPrivateConsumerBoundaries("prefer-minimal-parameter-contract", rule, INLINE_CONTRACT);
 PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract", rule, {
   valid: [
-    ...privateConsumerBoundaries(INLINE_CONTRACT),
     ...[
       ["all required fields consumed", `function label(p: ${INLINE_CONTRACT}): string {return p.name + p.email;}`],
       ["unused destructured fields are still read", `function label({name, email}: ${INLINE_CONTRACT}): string {return name;}`],
