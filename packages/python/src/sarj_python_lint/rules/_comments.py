@@ -476,6 +476,8 @@ def statement_comment_walls(
     source: str,
     standalone: Sequence[tuple[int, int, str]],
 ) -> dict[int, frozenset[int]]:
+    if len(standalone) < _WALL_MIN_COMMENTS:
+        return {}
     tree = parse_or_none(path, source)
     if tree is None:
         return {}

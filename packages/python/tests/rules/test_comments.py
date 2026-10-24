@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import tokenize
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -14,9 +17,14 @@ from sarj_python_lint.rules._comments import (
     restates,
     split_identifier,
     standalone_comments,
+    statement_comment_walls,
     stem,
     trailing_comments,
 )
+
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.mark.parametrize(
@@ -132,3 +140,21 @@ def test_a_file_the_tokenizer_rejects_raises_rather_than_reading_as_comment_free
     # would instead report a broken file as having no comments at all.
     with pytest.raises((tokenize.TokenError, SyntaxError)):
         standalone_comments("def f(:\n")
+
+
+def test_statement_comment_walls_require_three_comments(tmp_path: Path) -> None:
+    source = """\
+def build_result():
+    # Fetch users
+    users = fetch_users()
+    # Validate users
+    validated_users = validate_users(users)
+    sorted_users = sort_users(validated_users)
+    # Return sorted users
+    return sorted_users
+"""
+    path = tmp_path / "example.py"
+    assert statement_comment_walls(path, source, standalone_comments(source).comments) == {2: frozenset({2, 4, 7})}
+
+    source = source.replace("    # Validate users\n", "")
+    assert statement_comment_walls(path, source, standalone_comments(source).comments) == {}
