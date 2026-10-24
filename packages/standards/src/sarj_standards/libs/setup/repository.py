@@ -23,15 +23,13 @@ def plan_setup(root: Path) -> SetupPlan:
             Command("Python package", ("uv", "sync", "--frozen"), resolved / "packages" / name)
             for name in ("python", "sql", "iac", "standards")
         ),
-        Command(
-            "TypeScript package",
-            ("npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"),
-            resolved / "packages" / "typescript",
-        ),
-        Command(
-            "Documentation site",
-            ("npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"),
-            resolved / "apps" / "docs",
+        *(
+            Command(label, ("npm", "ci", "--ignore-scripts", "--no-audit", "--no-fund"), resolved / path)
+            for label, path in (
+                ("TypeScript package", "packages/typescript"),
+                ("GitHub action parser", "packages/standards/src/sarj_standards/configs/action-parser"),
+                ("Documentation site", "apps/docs"),
+            )
         ),
     )
     return SetupPlan(resolved, install_hooks=True, commands=commands)

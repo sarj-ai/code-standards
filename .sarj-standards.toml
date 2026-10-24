@@ -1,5 +1,5 @@
 schema = 4
-bundle = "8.117.0"
+bundle = "8.120.0"
 rule_profile = "all"
 
 [capabilities]
@@ -243,9 +243,11 @@ manifests = [
   "packages/standards-compat/pyproject.toml",
   "packages/tsconfig/package.json",
   "packages/typescript/package.json",
+  "packages/standards/src/sarj_standards/configs/action-parser/package.json",
 ]
 locks = [
   ".github/deploy/package-lock.json",
+  "packages/standards/src/sarj_standards/configs/action-parser/package-lock.json",
   "packages/contracts/uv.lock",
   "apps/docs/package-lock.json",
   "packages/bootstrap/uv.lock",

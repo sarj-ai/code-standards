@@ -22,6 +22,7 @@
     "../../.github/scripts/*.mts",
     "../standards/eslint.config.mts",
     "../standards/src/sarj_standards/configs/*.mts",
+    "../standards/src/sarj_standards/configs/action-parser/*.mts",
     "eslint.config.ts",
     "eslint.dogfood.config.ts",
     "eslint-rule-setting.ts"
