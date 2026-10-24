@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -10,6 +12,10 @@ from sarj_standards._meta import RUFF_STRICT
 from sarj_standards.cli.main import main
 from sarj_standards.libs.adoption import manifest
 from sarj_standards.libs.linting import library_policy
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 def test_catalog_has_stable_unique_ids_and_adapter_messages() -> None:
@@ -236,6 +242,31 @@ def test_scan_paths_ignores_selected_source_files(tmp_path: Path) -> None:
     source.write_text("export const value = 1;\n", encoding="utf-8")
 
     assert library_policy.scan_paths(tmp_path, [str(source)]) == ()
+
+
+@pytest.mark.parametrize("ignored", ["node_modules", ".venv", "vendor"])
+@pytest.mark.parametrize("selected", [False, True])
+def test_dependency_scan_does_not_enter_ignored_subtrees(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ignored: str, *, selected: bool
+) -> None:
+    authored = tmp_path / "nested/package.json"
+    authored.parent.mkdir()
+    authored.write_text('{"dependencies":{"axios":"1"}}', encoding="utf-8")
+    excluded = authored.parent / ignored
+    excluded.mkdir()
+    (excluded / "package.json").write_text("invalid dependency metadata", encoding="utf-8")
+    original = os.scandir
+
+    def scandir(path: str | Path) -> Iterator[os.DirEntry[str]]:
+        assert not Path(path).is_relative_to(excluded)
+        return original(path)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Actual directory I/O is the performance boundary.
+        os, "scandir", scandir
+    )
+    findings = library_policy.scan_paths(tmp_path, ["nested"]) if selected else library_policy.scan(tmp_path)
+
+    assert [(finding.id, finding.path) for finding in findings] == [("LIB101", Path("nested/package.json"))]
 
 
 @pytest.mark.parametrize(
