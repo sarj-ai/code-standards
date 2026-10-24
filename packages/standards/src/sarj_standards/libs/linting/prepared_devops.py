@@ -20,6 +20,7 @@ from sarj_standards.libs.diagnostics.models import (
     Severity,
     ToolReport,
 )
+from sarj_standards.libs.filesystem import read_prefix
 from sarj_standards.libs.json_boundary import parse_json, parse_unique_json
 from sarj_standards.libs.linting.chart_schemas import validate_chart_schemas
 from sarj_standards.libs.linting.devops_tools import NativeToolError, checked_tool, invoke
@@ -190,10 +191,7 @@ def _analyze_receipts(
 
 
 def _receipt(path: Path, root: Path, declared: Sequence[PreparedTarget]) -> dict[str, dict[str, object]]:
-    if path.is_symlink() or path.stat().st_size > _MAX_RECEIPT_BYTES:
-        msg = "prepared receipt must be a bounded regular file"
-        raise ValueError(msg)
-    receipt = _table(parse_unique_json(path.read_text(encoding="utf-8")), "prepared receipt")
+    receipt = _table(parse_unique_json(_receipt_text(path)), "prepared receipt")
     if type(receipt.get("version")) is not int or receipt.get("version") != 1 or set(receipt) != {"version", "targets"}:
         msg = "prepared receipt requires version 1 and targets"
         raise ValueError(msg)
@@ -224,6 +222,17 @@ def _receipt(path: Path, root: Path, declared: Sequence[PreparedTarget]) -> dict
         _verify_artifacts(path.parent, target)
         result[identifier] = target
     return result
+
+
+def _receipt_text(path: Path) -> str:
+    if path.is_symlink() or not path.is_file():
+        msg = "prepared receipt must be a bounded regular file"
+        raise ValueError(msg)
+    content = read_prefix(path, _MAX_RECEIPT_BYTES + 1)
+    if len(content) > _MAX_RECEIPT_BYTES:
+        msg = "prepared receipt must be a bounded regular file"
+        raise ValueError(msg)
+    return content.decode("utf-8")
 
 
 def _verify_artifacts(directory: Path, target: Mapping[str, object]) -> None:
