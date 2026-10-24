@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "jsx": "preserve"
+  },
+  "include": [
+    "policy.tsx",
+    "ambient.d.ts"
+  ]
+}

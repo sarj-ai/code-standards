@@ -271,6 +271,7 @@
       "no-dynamic-sql",
       "no-enum",
       "no-exception-text-in-5xx-response",
+      "no-excess-jsx-props",
       "no-excessive-cognitive-complexity",
       "no-fat-try-blocks",
       "no-first-party-module-mock",

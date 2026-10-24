@@ -2829,6 +2829,14 @@
       "family": "python",
       "ruleId": "no-redundant-local-alias",
       "state": "complete"
+    },
+    {
+      "task": "rule-audit/typescript/no-excess-jsx-props",
+      "family": "typescript",
+      "ruleId": "no-excess-jsx-props",
+      "state": "complete",
+      "evidence": "First-warning scope qualification is recorded in PR #1747. Three isolated fresh trials scan 2,801 pinned TypeScript files, including 2,673 real files and 128 labeled seeds, with four cold/warm scans per batch and a 250-file cap. Every one of 64 unique new diagnostics is inspected: 64 TP, zero confirmed FP, 64 retained ordinary-function FNs and 128 accepted explicit-forwarding controls. Real code produces zero new findings with partial type availability: 13,003 checker diagnostic occurrences per trial include 7,439 missing-information occurrences, not unique dependencies or files. A complete post-extraction replay preserves every diagnostic and checker-code count. Finite inspected precision is not universal absence of false positives. Three fresh performance trials contain 18 alternating warm pairs per control: full-preset paired median +0.54% and representative 773-file median +1.17%, against a 5% aim. Full-preset warm off/on medians are 1485.63/1533.59ms; representative medians 6453.81/6357.32ms, with wide shared-VM ranges. Native single-registry cold off/on medians are 2285.95/2563.75ms; peak RSS 396320/406552KiB. Separate CPU profiles attribute most rule-stack work to lazy contextual/type queries. Exact source, input and raw evidence pins remain local; public reports omit private identities, source and identifying pins. Canonical verification and exact-head hosted CI remain merge gates.",
+      "outcome": "Ship as WARNING without fixes or suggestions. Require a complete native finite contract, an immutable const-arrow implementation with one pure returned scalar/intrinsic view, standard automatic React JSX and ES-module output, one self-closing identifier receiver and one direct plain object-literal spread. Preserve React metadata, implicit Object capabilities, and scalar own-field evidence; abstain on opaque or forwarding implementations, incomplete types, generics, unions, mapped/index surfaces, custom emitters, downlevel arrows and mutable CommonJS exports. An annotation does not remove runtime fields; explicit forwarding or projection requires identity/allocation review. Existing upstream unused-prop and primitive/identical-union owners remain unchanged."
     }
   ]
 }
