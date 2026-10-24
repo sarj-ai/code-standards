@@ -13,7 +13,7 @@ import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- inspect only the trusted checkout's Git objects.
 import sys
 import tomllib
-from typing import Annotated, ClassVar, Literal
+from typing import Annotated, ClassVar, Final, Literal
 
 from pydantic import ConfigDict, JsonValue, RootModel
 import typer
@@ -30,6 +30,12 @@ APPROVED_LOCK_SHA256 = "64dfbdabf646cef05c003036c6849c5922d67865e27e94012a3e37a6
 APPROVED_PATCHED_LOCK_SHA256 = "a7df5c1149f9b655cd587b49cc3e2bdc1c484e7bd5092aa43c6d6b8903c84698"
 APPROVED_GITLEAKS_SHA256 = "1fe4ec30d50367745d11b1e0fbb7bf384c1fc12abb0c1f6aa28a4c115b63158b"
 SECURITY_PROJECTIONS = frozenset({".gitleaks.toml"})
+DOCS_SECURITY_PROJECTIONS: Final[dict[str, str]] = {
+    "apps/docs/package.json": "f9115736acc3d86f75bbe99c9881d04178a697a2e7c2bce402126825dde4cd06",
+    "apps/docs/package-lock.json": "6f884f90258886a3fc83717c99dad498bd056e4ed1f9ec92c19c9e098995fd0c",
+    ".github/deploy/package.json": "ec9e370c0cea9794344e559177caabd93cc8b87bc626bc0b3adc24543927574e",
+    ".github/deploy/package-lock.json": "d32b91687d54fa3003c594f5fc3b44204937d0507a740c4b7b3f2bf6de787924",
+}
 PACKAGE = "packages/standards"
 CLI_REFERENCE = f"{PACKAGE}/src/sarj_standards/configs/cli-reference.v1.json"
 DOC_EXAMPLES = "apps/docs/src/generated/formatted-code.v1.json"
@@ -136,7 +142,14 @@ def _validate_maintenance(root: Path, commit: str) -> None:
     changed = frozenset(
         path.decode() for path in _git(root, "diff", "--name-only", "-z", LEGACY_COMMIT, commit).split(b"\0") if path
     )
-    unexpected = changed - BACKPORT_PATHS - TOOLING_PATHS - SECURITY_PROJECTIONS - COMMIT_POLICY_BACKPORT_SHA256.keys()
+    unexpected = (
+        changed
+        - BACKPORT_PATHS
+        - TOOLING_PATHS
+        - SECURITY_PROJECTIONS
+        - COMMIT_POLICY_BACKPORT_SHA256.keys()
+        - DOCS_SECURITY_PROJECTIONS.keys()
+    )
     if unexpected:
         msg = f"maintenance changes legacy policy or an unapproved path: {', '.join(sorted(unexpected))}"
         raise ReleaseLaneError(msg)
@@ -144,6 +157,7 @@ def _validate_maintenance(root: Path, commit: str) -> None:
     for path in VERSION_PROJECTIONS:
         _validate_projection(root, commit, path, version)
     _validate_docs(root, commit)
+    _validate_docs_dependencies(root, commit, version)
     _validate_adapter(root, commit)
     _validate_gitleaks(root, commit)
     _validate_commit_policy_backport(root, commit, changed)
@@ -195,6 +209,18 @@ def _validate_docs(root: Path, commit: str) -> None:
     if _Document.model_validate_json(_at(root, commit, DOC_EXAMPLES)) != expected:
         msg = "maintenance documentation must retain the legacy catalog, snippets and formatters"
         raise ReleaseLaneError(msg)
+
+
+def _validate_docs_dependencies(root: Path, commit: str, version: str) -> None:
+    for path, reviewed_digest in DOCS_SECURITY_PROJECTIONS.items():
+        expected = (
+            hashlib.sha256(_at(root, LEGACY_COMMIT, path)).hexdigest()
+            if version in {"8.101.2", "8.101.3"}
+            else reviewed_digest
+        )
+        if hashlib.sha256(_at(root, commit, path)).hexdigest() != expected:
+            msg = f"maintenance docs dependencies must match the exact reviewed version-specific bytes in {path}"
+            raise ReleaseLaneError(msg)
 
 
 def _validate_adapter(root: Path, commit: str) -> None:

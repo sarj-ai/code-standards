@@ -56,7 +56,7 @@
     "http-cache-semantics": "4.3.0",
     "sharp": "0.35.5",
     "miniflare": {
-      "undici": "8.11.2"
+      "undici": "8.12.2"
     },
     "@sarj/design": {
       "@astrojs/starlight": "$@astrojs/starlight"
