@@ -14,8 +14,10 @@ from sarj_python_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    Severity,
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._comments import has_external_reference
 from sarj_python_lint.rules._prose_budget import (
     groups,
     has_technical_anchor,
@@ -27,8 +29,10 @@ if TYPE_CHECKING:
     from sarj_python_lint.rules._ast_index import NodeIndex
 
 
-_MIN_LINES = 4
-_MIN_WORDS = 28
+_MIN_LINES = 3
+_MIN_WORDS = 20
+_ERROR_MIN_LINES = 4
+_ERROR_MIN_WORDS = 28
 _RATIONALE_RE = re.compile(
     r"\b(?:because|otherwise|therefore|must|never|cannot|can't|required?|invariant|"
     r"compatibility|security|race|atomic|deadlock|rollback|lock|data loss)\b",
@@ -45,21 +49,24 @@ class ExcessiveCommentary(Rule):
     id = "excessive-commentary"
     code = "SARJ434"
     documentation = RuleDocumentation(
-        summary="Long standalone implementation commentary — make the code self-documenting and retain only durable constraints.",
+        summary="Review long implementation comments; express behavior through code and keep constraints concise.",
         rationale=(
             "A paragraph that narrates nearby implementation behavior competes with the code and can drift independently "
             "from it."
         ),
         remediation=(
-            "Delete the narration and clarify names, types, or structure. Keep concise comments that record a durable "
-            "constraint or externally owned contract."
+            "Make behavior clear through names, types, validators and cohesive functions. Shorten remaining explanation "
+            "to a concise constraint or protocol reference. Keep necessary detail with an explained exact-code "
+            "exception; never delete a required constraint or create abstraction solely to satisfy this warning."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only contiguous standalone line-comment blocks with at least four non-empty lines and 28 words are inspected.",
-            "The paragraph must immediately precede an empty local collection that is then populated by at least two consecutive accumulator calls.",
-            "Generated files, directives, licenses, structured lists, docstrings, inline comments, rationale markers, and concrete technical anchors are excluded.",
+            "Contiguous standalone implementation comment blocks with at least three non-empty lines and 20 words are inspected.",
+            "The paragraph must immediately precede executable implementation code; narrative comments in tests and module setup are included.",
+            "The previously shipped accumulator pattern remains an error; expanded implementation commentary is a warning requiring review, with no automatic deletion.",
+            "Rationale, technical vocabulary and external citations do not exempt a long paragraph from warning-level review. Their existing protection against accumulator errors remains intact.",
+            "Generated files, directives, licenses, structured lists, docstrings, inline comments and short constraints are excluded.",
         ),
         examples=(
             RuleExample(
@@ -111,24 +118,31 @@ class ExcessiveCommentary(Rule):
         tree = context.tree
         if tree is None:
             return []
+        implementation_lines = {
+            node.lineno
+            for node in context.nodes(ast.stmt)
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Import, ast.ImportFrom))
+        }
         accumulator_lines = _narrated_accumulator_lines(tree, node_index=context.node_index)
         findings: list[Diagnostic] = []
         for group in groups(path, source):
             lines = tuple(stripped for line in group.text.splitlines() if (stripped := line.strip()))
-            if group.kind != "comment" or len(lines) < _MIN_LINES or len(group.text.split()) < _MIN_WORDS:
+            words = len(group.text.split())
+            if group.kind != "comment" or len(lines) < _MIN_LINES or words < _MIN_WORDS:
                 continue
             comment_end_line = group.line + len(group.text.splitlines()) - 1
-            if comment_end_line + 1 not in accumulator_lines:
+            if comment_end_line + 1 not in implementation_lines:
                 continue
-            if any(
+            if _BULLET_RE.search(group.text):
+                continue
+            review_only = any(
                 (
-                    _BULLET_RE.search(group.text),
                     has_technical_anchor(group.text),
+                    has_external_reference(group.text),
                     _RATIONALE_RE.search(group.text),
                     _RATIONALE_SO_RE.search(group.text),
                 )
-            ):
-                continue
+            )
             findings.append(
                 Diagnostic(
                     path,
@@ -136,6 +150,14 @@ class ExcessiveCommentary(Rule):
                     group.col,
                     self.code,
                     self.description,
+                    severity=(
+                        Severity.ERROR
+                        if not review_only
+                        and comment_end_line + 1 in accumulator_lines
+                        and len(lines) >= _ERROR_MIN_LINES
+                        and words >= _ERROR_MIN_WORDS
+                        else Severity.WARNING
+                    ),
                     column_encoding=group.column_encoding,
                 )
             )

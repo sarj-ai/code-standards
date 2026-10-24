@@ -54,7 +54,8 @@ class PreferNamedtupleOverTupleReturn(Rule):
         aliases=("prefer-namedtuple-over-tuple-return",),
         limitations=(
             "Generated files and documentation examples are excluded.",
-            "Explicit provenance-resolved builtin or typing fixed tuple return annotations with at least two slots are reported; variadic tuples remain valid collections.",
+            "Provenance-resolved builtin or typing fixed tuple return annotations with at least two slots are reported, including stable local aliases, quoted annotations, Annotated wrappers and optional unions in test helpers and fixtures; variadic tuples remain valid collections.",
+            "Existing direct tuple records remain errors; newly resolved local aliases and optional-union records start as warnings for adoption review.",
             "Classes with explicit bases, including object, are excluded without requiring an override decorator. Local base declarations do not prove runtime member ownership remains closed; class construction, native hooks and escaped handles can change inheritance. Independent module functions and plain classes remain eligible.",
         ),
         examples=(
@@ -109,7 +110,10 @@ class PreferNamedtupleOverTupleReturn(Rule):
         for node in context.nodes(ast.AST):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or node.returns is None:
                 continue
-            if not _is_public_record_tuple(node.returns, imports):
+            if not any(
+                _is_public_record_tuple(member, imports)
+                for member in context.annotation_semantics.transparent_members(node.returns)
+            ):
                 continue
             if inherited_contract(context.parents.get(node)):
                 continue
@@ -120,7 +124,7 @@ class PreferNamedtupleOverTupleReturn(Rule):
                     col=node.col_offset + 1,
                     code=self.code,
                     message=_MSG,
-                    severity=Severity.ERROR,
+                    severity=Severity.ERROR if _is_public_record_tuple(node.returns, imports) else Severity.WARNING,
                 )
             )
         return diagnostics
