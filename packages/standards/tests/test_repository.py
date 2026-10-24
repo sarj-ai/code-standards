@@ -486,6 +486,36 @@ def test_repository_checks_ignore_a_hooks_repository_environment(
     ]
 
 
+def test_repository_git_queries_reuse_names_but_refresh_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    outer = tmp_path / "outer"
+    inner = tmp_path / "inner"
+    outer.mkdir()
+    inner.mkdir()
+    _git_repo(outer, {"outer.txt": "outer\n"})
+    _git_repo(inner, {"inner.txt": "secret-repo/api\n"})
+    original_run = subprocess.run
+    queries: list[list[str]] = []
+
+    def run(argv: list[str], **options: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
+        queries.append(argv)
+        return original_run(argv, **options)
+
+    # Real Git must observe each requested checkout, even after hook variables change.
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- real subprocess counting is the performance oracle.
+        subprocess, "run", run
+    )
+    expected = repository.check_private_refs(inner, _policy(), commits=None)
+    assert [finding.where for finding in expected] == ["inner.txt"]
+    monkeypatch.setenv("GIT_DIR", str(outer / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(outer))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(outer / ".git" / "index"))
+    assert repository.check_private_refs(inner, _policy(), commits=None) == expected
+    assert repository.check_private_refs(outer, _policy(), commits=None) == []
+    assert sum(argv[1:] == ["rev-parse", "--local-env-vars"] for argv in queries) <= 1
+
+
 def test_ci_history_requires_full_checkout_for_test_jobs(tmp_path: Path) -> None:
     workflow = tmp_path / ".github/workflows/ci.yml"
     workflow.parent.mkdir(parents=True)

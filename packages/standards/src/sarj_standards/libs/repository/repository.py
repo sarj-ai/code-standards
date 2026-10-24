@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from fnmatch import fnmatch
+from functools import lru_cache
 import hashlib
 import json
 import os
@@ -580,13 +581,7 @@ def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
         msg = "git is required for repository checks"
         raise OSError(msg)
     environment = os.environ.copy()  # ruff: ignore[banned-api] -- preserve user Git configuration, but not a hook's repository binding.
-    local_names = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
-        [executable, "rev-parse", "--local-env-vars"],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.splitlines()
-    for name in local_names:
+    for name in _git_local_environment_names(executable):
         environment.pop(name, None)
     return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
         [executable, *args],
@@ -596,6 +591,20 @@ def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProc
         env=environment,
         errors="replace",
         text=True,
+    )
+
+
+@lru_cache(maxsize=1)
+def _git_local_environment_names(executable: str) -> tuple[str, ...]:
+    # Git's variable names are fixed for this executable; environment values
+    # must still be copied and stripped for every invocation, including hooks.
+    return tuple(
+        subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed Git metadata query with shell execution disabled.
+            [executable, "rev-parse", "--local-env-vars"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.splitlines()
     )
 
 
