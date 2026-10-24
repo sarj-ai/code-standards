@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "catalogSha256": "12257b93367a9d48c528287ac01204789d877c40e8c6fee8429ac28fa68a97f8",
-  "cliSha256": "056630871cde9b60d90dfcc63c9fe0aac31caaea16eb671e4d85bb095a3420dd",
+  "cliSha256": "57ed342a0503a882dccbb4fa6379f893fa939ad4179cbae3550d4e84daaa6620",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",

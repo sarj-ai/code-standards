@@ -18,7 +18,7 @@ COMMIT ?= HEAD
 ROLLOUT_OPTIONS = --registry "$(REGISTRY)" --jobs "$(JOBS)"
 ROLLOUT_TARGET = --channel "$(CHANNEL)" $(if $(CONSUMER),--consumer "$(CONSUMER)")
 
-.PHONY: help setup build typescript-build verify doctor docs-artifacts-check docs-code-sync docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-portability release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger rollout rollout-plan rollout-status rollout-reconcile rollout-check docs-deploy-check shell-check
+.PHONY: help setup build typescript-build verify doctor docs-artifacts-check docs-code-sync docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-portability release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger rollout rollout-plan rollout-status rollout-reconcile rollout-check docs-deploy-check shell-check test-typescript test-bootstrap test-contracts test-python test-sql test-iac test-standards test-tsconfig release-status test-plan test-standards-changed
 
 help:
 	@echo "Targets: setup | verify | doctor | build | test | lint | dogfood | typecheck"
@@ -68,6 +68,7 @@ typescript-build:
 	npm --prefix packages/typescript run build
 
 docs-artifacts-check: typescript-build
+	npm --prefix $(CONFIG_SRC)/action-parser run verify
 	@$(STANDARDS) --root . maintain rules check
 	@$(STANDARDS) --root . maintain catalog check --typescript-built
 	@uv run --project packages/standards --frozen python -m sarj_standards.libs.repository.third_party_catalog_artifact --root . --check --typescript-built
@@ -106,7 +107,6 @@ build:
 
 test: check-versions-synced test-typescript test-bootstrap test-contracts test-python test-sql test-iac test-standards test-tsconfig
 
-.PHONY: test-typescript test-bootstrap test-contracts test-python test-sql test-iac test-standards test-tsconfig release-status test-plan test-standards-changed
 
 test-typescript:
 	npm --prefix packages/typescript test

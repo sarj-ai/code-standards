@@ -1,0 +1,22 @@
+{
+  "name": "@sarj/action-parser-build",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@12.2.1",
+  "scripts": {
+    "build": "node generate.mts",
+    "check": "node generate.mts --check",
+    "verify": "npm ci --ignore-scripts --no-audit --no-fund && npm audit --ignore-scripts && npm run check"
+  },
+  "dependencies": {
+    "@actions/workflow-parser": "0.3.61"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  },
+  "overrides": {
+    "@actions/expressions": "0.3.61",
+    "cronstrue": "2.21.0",
+    "yaml": "2.8.3"
+  }
+}

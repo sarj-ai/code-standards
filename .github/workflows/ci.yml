@@ -382,6 +382,8 @@ jobs:
           version: '0.13.5'
       - run: npm ci --ignore-scripts --no-audit --no-fund
         if: needs.changes.outputs.typescript != 'false'
+      - run: npm --prefix ../standards/src/sarj_standards/configs/action-parser ci --ignore-scripts --no-audit --no-fund
+        if: needs.changes.outputs.typescript != 'false'
       - run: npm run build
         if: needs.changes.outputs.typescript != 'false'
       # Static analysis uses the canonical development runtime. Build, tests,
