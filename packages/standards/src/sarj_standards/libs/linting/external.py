@@ -64,6 +64,11 @@ class _ReactDoctorSelection(NamedTuple):
     projects: tuple[Path, ...]
 
 
+class _ReactDoctorScope(NamedTuple):
+    projects: frozenset[Path]
+    source_free_projects: frozenset[Path] = frozenset()
+
+
 class _DeptryPackage(NamedTuple):
     path: Path
     import_root: str
@@ -1462,14 +1467,15 @@ def _parse_react_doctor_staged_with_full_fallback(
     full_argv: Sequence[str],
 ) -> tuple[Diagnostic, ...]:
     report = _ReactDoctorReport.model_validate_json(payload)
-    scoped_projects = _react_doctor_scoped_project_set(
+    scope = _react_doctor_scoped_projects(
         report, expected_projects=expected_projects, root=root, runner=runner, scope_root=cwd, staged=True
     )
     if report.react_detected is not False:
         return _parse_react_doctor_report(
             report,
             root=root,
-            expected_projects=scoped_projects,
+            expected_projects=scope.projects,
+            source_free_projects=scope.source_free_projects,
             allow_empty_projects=allow_empty_projects,
             include_warnings=False,
             require_react_detection=True,
@@ -1480,7 +1486,8 @@ def _parse_react_doctor_staged_with_full_fallback(
     _parse_react_doctor_report(
         report,
         root=root,
-        expected_projects=scoped_projects,
+        expected_projects=scope.projects,
+        source_free_projects=scope.source_free_projects,
         allow_empty_projects=allow_empty_projects,
         include_warnings=False,
         require_react_detection=False,
@@ -1518,19 +1525,21 @@ def _parse_react_doctor_changed_scope(
         runner=runner,
         scope_root=scope_root,
     )
+    scope = _react_doctor_scoped_projects(
+        report, expected_projects=expected_projects, root=root, runner=runner, scope_root=scope_root, staged=False
+    )
     return _parse_react_doctor_report(
         report,
         root=root,
-        expected_projects=_react_doctor_scoped_project_set(
-            report, expected_projects=expected_projects, root=root, runner=runner, scope_root=scope_root, staged=False
-        ),
+        expected_projects=scope.projects,
+        source_free_projects=scope.source_free_projects,
         allow_empty_projects=allow_empty_projects,
         include_warnings=False,
         require_react_detection=True,
     )
 
 
-def _react_doctor_scoped_project_set(
+def _react_doctor_scoped_projects(
     report: _ReactDoctorReport,
     *,
     expected_projects: frozenset[Path],
@@ -1538,19 +1547,26 @@ def _react_doctor_scoped_project_set(
     runner: ProcessRunner,
     scope_root: Path,
     staged: bool,
-) -> frozenset[Path]:
-    # Scoped scans intentionally omit untouched workspaces. Prove that every
-    # omission is source-free using Git, independently of the analyzer's output.
+) -> _ReactDoctorScope:
+    # Scoped scans may omit untouched workspaces or include them with zero
+    # files. Prove both cases using Git, independently of the analyzer's output.
     reported_projects = frozenset(_contained_report_directory(item, root) for item in report.projects)
-    if not reported_projects or not reported_projects < expected_projects:
-        return expected_projects
+    empty_projects = frozenset(
+        _contained_report_directory(item, root)
+        for item in report.projects
+        if item.analyzed_file_count == 0 and item.scanned_file_count == 0 and not item.diagnostics
+    )
+    unchecked_projects = (expected_projects - reported_projects) | empty_projects
+    unverified = _ReactDoctorScope(expected_projects)
+    if not reported_projects or not reported_projects <= expected_projects or not unchecked_projects:
+        return unverified
     if not staged and (report.diff is None or report.diff.is_current_changes is None):
-        return expected_projects
+        return unverified
     requested_base = change_scope_base()
     if not staged and requested_base and report.diff is not None and report.diff.base_branch != requested_base:
-        return expected_projects
+        return unverified
     if _react_doctor_scope_has_no_source(
-        tuple(expected_projects - reported_projects),
+        tuple(unchecked_projects),
         root=root,
         runner=runner,
         staged=staged,
@@ -1559,8 +1575,8 @@ def _react_doctor_scoped_project_set(
         reported_changed_file_count=None if staged or report.diff is None else report.diff.changed_file_count,
         known_projects=tuple(expected_projects),
     ):
-        return reported_projects
-    return expected_projects
+        return _ReactDoctorScope(reported_projects, empty_projects)
+    return unverified
 
 
 def _react_doctor_empty_changed_scope_has_no_source(
@@ -3126,6 +3142,7 @@ def _parse_react_doctor_report(
     allow_empty_projects: bool,
     include_warnings: bool,
     require_react_detection: bool,
+    source_free_projects: frozenset[Path] = frozenset(),
 ) -> tuple[Diagnostic, ...]:
     _validate_react_report_status(report, require_react_detection=require_react_detection)
     if not report.projects and allow_empty_projects:
@@ -3145,8 +3162,10 @@ def _parse_react_doctor_report(
     documents: dict[Path, SourceDocument | None] = {}
     diagnostics: list[Diagnostic] = []
     for project in report.projects:
-        _validate_react_project_completion(project, expected_projects, root=root)
         directory = _contained_report_directory(project, root)
+        _validate_react_project_completion(
+            project, expected_projects, root=root, allow_empty=directory in source_free_projects
+        )
         for item in project.diagnostics:
             # The 0.9.x compact JSON protocol can retain warning diagnostics
             # even when both config and argv disable warnings. Standards only
@@ -3755,7 +3774,7 @@ def _validate_mobsfscan_coverage(report: dict[str, object], root: Path, expected
 
 
 def _validate_react_project_completion(
-    project: _ReactDoctorProject, expected_projects: frozenset[Path] | None, *, root: Path
+    project: _ReactDoctorProject, expected_projects: frozenset[Path] | None, *, root: Path, allow_empty: bool = False
 ) -> None:
     if not project.complete:
         message = f"React Doctor project did not complete: {project.directory!r}"
@@ -3768,7 +3787,9 @@ def _validate_react_project_completion(
     ):
         msg = f"React Doctor omitted completeness metadata for project: {project.directory!r}"
         raise ValueError(msg)
-    if project.analyzed_file_count == 0 or project.scanned_file_count == 0:
+    if (project.analyzed_file_count == 0 or project.scanned_file_count == 0) and not (
+        allow_empty and project.analyzed_file_count == 0 and project.scanned_file_count == 0 and not project.diagnostics
+    ):
         msg = f"React Doctor analyzed no files for project: {project.directory!r}"
         raise ValueError(msg)
 
