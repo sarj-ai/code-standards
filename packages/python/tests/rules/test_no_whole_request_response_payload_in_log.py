@@ -83,6 +83,17 @@ def test_non_logger_receiver_and_malformed_source_are_ignored() -> None:
     assert _check("logger.info(") == []
 
 
+def test_nested_logging_call_keeps_local_alias_analysis() -> None:
+    source = (
+        "def handle():\n"
+        "    body = response.text\n"
+        "    client.info('metadata', response_status=response.status_code)\n"
+        "    send(logger.error('provider failed', response_body=body))\n"
+    )
+
+    assert [(finding.line, finding.code) for finding in _check(source)] == [(2, "SARJ436")]
+
+
 def test_secret_named_payload_is_owned_by_secret_rule() -> None:
     assert _check("logger.info(f'{secret_response_body}')") == []
 

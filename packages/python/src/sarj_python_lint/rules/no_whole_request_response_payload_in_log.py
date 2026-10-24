@@ -175,11 +175,12 @@ class NoWholeRequestResponsePayloadInLog(Rule):
         tree = context.tree
         if tree is None:
             return []
+        calls = [node for node in context.nodes(ast.Call) if _is_logging_call(node)]
+        if not calls:
+            return []
         facts = _analysis_facts(context)
         diagnostics: list[Diagnostic] = []
-        for node in context.nodes(ast.Call):
-            if not _is_logging_call(node):
-                continue
+        for node in calls:
             statement = _containing_statement(node, facts.parents)
             suite_id = facts.statement_suites.get(id(statement)) if statement is not None else None
             suite = facts.suites.get(suite_id) if suite_id is not None else None
