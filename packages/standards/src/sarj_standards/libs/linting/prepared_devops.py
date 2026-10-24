@@ -48,7 +48,7 @@ if TYPE_CHECKING:
 
 
 _MAX_RECEIPT_BYTES = 2 * 1024 * 1024
-_MAX_MANIFEST_BYTES = 2 * 1024 * 1024
+MAX_MANIFEST_BYTES = 2 * 1024 * 1024
 _SHA256_LENGTH = 64
 _HELM_RELEASE_LENGTH = 53
 _TARGET_FIELDS = frozenset(
@@ -73,6 +73,9 @@ _TARGET_FIELDS = frozenset(
         "schema_bindings",
         "artifacts",
         "exceptions",
+        "native_version",
+        "executables",
+        "environment_file",
     }
 )
 
@@ -116,7 +119,7 @@ def contained_file(directory: Path, name: str) -> Path:
     return cursor
 
 
-def _verify_hash(path: Path, digest: str) -> None:
+def verify_artifact_hash(path: Path, digest: str) -> None:
     if len(digest) == _SHA256_LENGTH:
         with path.open("rb") as stream:
             if digest == file_digest(stream, sha256).hexdigest():
@@ -132,9 +135,17 @@ def analyze_prepared(
     declared: Sequence[PreparedTarget],
     selected: Sequence[str] = (),
     runner: ProcessRunner = run_process,
+    trust_repository_code: bool = False,
 ) -> tuple[ToolReport, ...]:
     try:
-        return _analyze_receipts(receipts, root=root, declared=declared, selected=selected, runner=runner)
+        return _analyze_receipts(
+            receipts,
+            root=root,
+            declared=declared,
+            selected=selected,
+            runner=runner,
+            trust_repository_code=trust_repository_code,
+        )
     except (OSError, TypeError, ValueError, yaml.YAMLError, subprocess.SubprocessError, RecursionError) as exc:
         return (
             ToolReport(
@@ -152,6 +163,7 @@ def _analyze_receipts(
     declared: Sequence[PreparedTarget],
     selected: Sequence[str],
     runner: ProcessRunner,
+    trust_repository_code: bool,
 ) -> tuple[ToolReport, ...]:
     wanted = set(selected) if selected else {target.id for target in declared}
     if not wanted:
@@ -171,7 +183,10 @@ def _analyze_receipts(
     if missing := wanted - targets.keys():
         msg = f"missing prepared targets: {', '.join(sorted(missing))}"
         raise ValueError(msg)
-    return tuple(_analyze_target(*targets[identifier], root=root, runner=runner) for identifier in sorted(wanted))
+    return tuple(
+        _analyze_target(*targets[identifier], root=root, runner=runner, trust_repository_code=trust_repository_code)
+        for identifier in sorted(wanted)
+    )
 
 
 def _receipt(path: Path, root: Path, declared: Sequence[PreparedTarget]) -> dict[str, dict[str, object]]:
@@ -198,14 +213,14 @@ def _receipt(path: Path, root: Path, declared: Sequence[PreparedTarget]) -> dict
         if identifier in result or allowed.get(identifier) != source:
             msg = f"prepared target is duplicated, undeclared, or bound to the wrong source: {identifier}"
             raise ValueError(msg)
-        _verify_hash(contained_file(root, source), _text(target, "source_sha256"))
+        verify_artifact_hash(contained_file(root, source), _text(target, "source_sha256"))
         if "source_inputs" in target:
             inputs = _table(target["source_inputs"], "prepared authored input hashes")
             if inputs.get(source) != target.get("source_sha256"):
                 msg = "prepared authored inputs must include the declared source hash"
                 raise ValueError(msg)
             for name in inputs:
-                _verify_hash(contained_file(root, name), _text(inputs, name))
+                verify_artifact_hash(contained_file(root, name), _text(inputs, name))
         _verify_artifacts(path.parent, target)
         result[identifier] = target
     return result
@@ -214,16 +229,20 @@ def _receipt(path: Path, root: Path, declared: Sequence[PreparedTarget]) -> dict
 def _verify_artifacts(directory: Path, target: Mapping[str, object]) -> None:
     artifacts = _table(target.get("artifacts"), "prepared artifact hashes")
     required = (*_strings(target.get("values", []), "values"), *_strings(target.get("manifests", []), "manifests"))
-    bindings = _table(target.get("schema_bindings"), "prepared schema bindings")
+    if "environment_file" in target:
+        required = (*required, _text(target, "environment_file"))
+    bindings = _table(target.get("schema_bindings", {}), "prepared schema bindings")
     for name in (*required, *bindings.values()):
         if not isinstance(name, str) or name not in artifacts:
             msg = f"prepared artifact lacks its content hash: {name}"
             raise ValueError(msg)
     for name in artifacts:
-        _verify_hash(contained_file(directory, name), _text(artifacts, name))
+        verify_artifact_hash(contained_file(directory, name), _text(artifacts, name))
 
 
-def _analyze_target(directory: Path, target: Mapping[str, object], *, root: Path, runner: ProcessRunner) -> ToolReport:
+def _analyze_target(
+    directory: Path, target: Mapping[str, object], *, root: Path, runner: ProcessRunner, trust_repository_code: bool
+) -> ToolReport:
     identifier = _text(target, "id")
     source = _text(target, "source")
     try:
@@ -233,7 +252,9 @@ def _analyze_target(directory: Path, target: Mapping[str, object], *, root: Path
                 item,
                 fingerprint=sha256(f"{input_hash}:{item.source}:{item.rule_id}:{item.message}".encode()).hexdigest(),
             )
-            for item in _target_diagnostics(directory, target, root=root, runner=runner)
+            for item in _target_diagnostics(
+                directory, target, root=root, runner=runner, trust_repository_code=trust_repository_code
+            )
         )
         return ToolReport(f"prepared-devops:{identifier}", Completion.COMPLETE, diagnostics=diagnostics, file_count=1)
     except (OSError, TypeError, ValueError, yaml.YAMLError, subprocess.SubprocessError, RecursionError) as exc:
@@ -245,12 +266,13 @@ def _analyze_target(directory: Path, target: Mapping[str, object], *, root: Path
 
 
 def _target_diagnostics(
-    directory: Path, target: Mapping[str, object], *, root: Path, runner: ProcessRunner
+    directory: Path, target: Mapping[str, object], *, root: Path, runner: ProcessRunner, trust_repository_code: bool
 ) -> tuple[Diagnostic, ...]:
     kind = _text(target, "kind")
     if kind not in {"helm", "kubernetes", "cloud-run"}:
-        msg = f"prepared target kind requires an explicit schema adapter: {kind}"
-        raise ValueError(msg)
+        from .prepared_native import validate_native  # ruff: ignore[import-outside-top-level] -- native service adapters reuse the receipt's verified artifact boundary.
+
+        return validate_native(directory, target, root=root, runner=runner, trust_repository_code=trust_repository_code)
     with tempfile.TemporaryDirectory(prefix="sarj-devops-") as temporary:
         manifests = (
             _render_helm(directory, target, root=root, runner=runner)
@@ -265,7 +287,7 @@ def _target_diagnostics(
 
 
 def _validate_cloudrun(manifests: str, target: Mapping[str, object], *, directory: Path) -> tuple[Diagnostic, ...]:
-    if len(manifests.encode()) > _MAX_MANIFEST_BYTES:
+    if len(manifests.encode()) > MAX_MANIFEST_BYTES:
         msg = "Cloud Run manifests exceed 2 MiB"
         raise ValueError(msg)
     objects = [item for item in parse_yaml_documents(manifests) if item is not None]
@@ -311,7 +333,7 @@ def _render_helm(directory: Path, target: Mapping[str, object], *, root: Path, r
         msg = "prepared Helm version differs from checked tool"
         raise ValueError(msg)
     archive = contained_file(directory, _text(target, "archive"))
-    _verify_hash(archive, _text(target, "archive_sha256"))
+    verify_artifact_hash(archive, _text(target, "archive_sha256"))
     validate_chart_schemas(archive)
     values = _strings(target.get("values", []), "values")
     args: list[str] = []
@@ -389,7 +411,7 @@ def _render_helm(directory: Path, target: Mapping[str, object], *, root: Path, r
 def _validate_manifests(
     manifests: str, target: Mapping[str, object], *, directory: Path, work: Path, root: Path, runner: ProcessRunner
 ) -> tuple[Diagnostic, ...]:
-    if len(manifests.encode()) > _MAX_MANIFEST_BYTES:
+    if len(manifests.encode()) > MAX_MANIFEST_BYTES:
         msg = "prepared manifest exceeds the bounded 2 MiB validation input"
         raise ValueError(msg)
     objects = _resources(manifests, namespace=_target_namespace(target))
@@ -554,7 +576,7 @@ def _closed_schema(
     if key in visited:
         return
     visited.add(key)
-    if path.stat().st_size > _MAX_MANIFEST_BYTES:
+    if path.stat().st_size > MAX_MANIFEST_BYTES:
         msg = "local schema exceeds 2 MiB"
         raise ValueError(msg)
     data = parse_unique_json(path.read_text(encoding="utf-8"))
@@ -573,5 +595,5 @@ def _closed_schema(
         artifact = posixpath.normpath((path.parent / name).relative_to(directory).as_posix())
         hashes = _table(target.get("artifacts"), "artifact hashes")
         child = contained_file(directory, artifact)
-        _verify_hash(child, _text(hashes, artifact))
+        verify_artifact_hash(child, _text(hashes, artifact))
         _closed_schema(child, directory, target, visited, reference.partition("#")[2])

@@ -22,7 +22,11 @@ def main(root: Annotated[Path, typer.Option("--root")]) -> None:
 def setup(root: Path) -> int:
     # Native workflow/shell, prepared Helm/Kubernetes, and application graph tests
     # exercise their tools regardless of the repository's consumer opt-outs.
-    fixture_files = (root / "packages/standards/tests/fixtures/compose-project/compose.yaml",)
+    fixture_files = (
+        root / "packages/standards/tests/fixtures/compose-project/compose.yaml",
+        root / "packages/standards/tests/fixtures/prepared-native/variables.tfvars",
+        root / "packages/standards/tests/fixtures/prepared-native/compose.yaml",
+    )
     files = (root / ".github/workflows/ci.yml", *(path for path in fixture_files if path.is_file()))
     capabilities = (*manifest.DEVOPS_ANALYZERS, "knip")
     commands = (
@@ -35,6 +39,18 @@ def setup(root: Path) -> int:
             root,
         ),
     )
+    if (root / "packages/standards/tests/test_prepared_native.py").is_file():
+        commands += (
+            lifecycle.Command(
+                "Native service configuration integration runtimes",
+                (
+                    "bash",
+                    str(root / ".github/scripts/setup-native-config-tests.sh"),
+                    str(root / "build/native-config-tests"),
+                ),
+                root,
+            ),
+        )
     status = lifecycle.execute(commands)
     if status:
         return status
