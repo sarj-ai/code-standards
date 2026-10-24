@@ -21,6 +21,7 @@ from sarj_standards.libs.diagnostics import (
     SourceDocument,
     ToolReport,
 )
+from sarj_standards.libs.filesystem import read_prefix
 from sarj_standards.libs.linting.external import run_process
 
 
@@ -29,6 +30,8 @@ if TYPE_CHECKING:
 
 _SHA256 = "7408ae0434ecd92441b1bd32a267e181231493e3f8319ad94655fa781c8ba26a"
 _MAX_SOURCE_BYTES = 2 * 1024 * 1024
+_MAX_BATCH_BYTES = 8 * 1024 * 1024
+_MAX_BATCH_FILES = 256
 _MAX_FAILURE_CHARS = 2_000
 
 
@@ -54,13 +57,11 @@ class _Results(RootModel[list[_Result]]):
 def analyze_actions(
     *, root: Path, paths: tuple[str, ...], runner: ProcessRunner = run_process
 ) -> tuple[ToolReport, ...]:
-    selected = tuple(name for name in paths if Path(name).name in {"action.yml", "action.yaml"})
+    selected = tuple(dict.fromkeys(name for name in paths if Path(name).name in {"action.yml", "action.yaml"}))
     if not selected:
         return ()
     try:
-        documents = {name: _document(root, name) for name in selected}
-        results = _parse(root, documents, runner=runner)
-        return tuple(_report(item, documents[item.path], root=root) for item in results)
+        return _analyze_selected(root, selected, runner=runner)
     except (OSError, ValueError, PackageNotFoundError, subprocess.SubprocessError, RecursionError) as error:
         return (
             ToolReport(
@@ -72,16 +73,40 @@ def analyze_actions(
         )
 
 
+def _analyze_selected(root: Path, selected: tuple[str, ...], *, runner: ProcessRunner) -> tuple[ToolReport, ...]:
+    reports: list[ToolReport] = []
+    documents: dict[str, SourceDocument] = {}
+    size = 0
+    for name in selected:
+        document = _document(root, name)
+        document_size = len(document.text.encode("utf-8"))
+        if documents and (size + document_size > _MAX_BATCH_BYTES or len(documents) >= _MAX_BATCH_FILES):
+            reports.extend(_analyze_batch(root, documents, runner=runner))
+            documents = {}
+            size = 0
+        documents[name] = document
+        size += document_size
+    if documents:
+        reports.extend(_analyze_batch(root, documents, runner=runner))
+    return tuple(reports)
+
+
 def _document(root: Path, name: str) -> SourceDocument:
     path = (root / name).resolve()
     path.relative_to(root.resolve())
-    if path.stat().st_size > _MAX_SOURCE_BYTES:
+    if not path.is_file():
+        message = "Action metadata must be a regular file"
+        raise ValueError(message)
+    content = read_prefix(path, _MAX_SOURCE_BYTES + 1)
+    if len(content) > _MAX_SOURCE_BYTES:
         message = "Action metadata exceeds the 2 MiB source bound"
         raise ValueError(message)
-    return SourceDocument(path, path.read_bytes().decode("utf-8"))
+    return SourceDocument(path, content.decode("utf-8"))
 
 
-def _parse(root: Path, documents: dict[str, SourceDocument], *, runner: ProcessRunner) -> list[_Result]:
+def _analyze_batch(
+    root: Path, documents: dict[str, SourceDocument], *, runner: ProcessRunner
+) -> tuple[ToolReport, ...]:
     bundle = CONFIGS_DIR / "action-parser.cjs"
     if hashlib.sha256(bundle.read_bytes()).hexdigest() != _SHA256:
         message = "Pinned GitHub action parser bundle digest does not match"
@@ -105,7 +130,7 @@ def _parse(root: Path, documents: dict[str, SourceDocument], *, runner: ProcessR
     if [item.path for item in results] != list(documents):
         message = "GitHub action parser omitted, duplicated or reordered selected files"
         raise ValueError(message)
-    return results
+    return tuple(_report(item, documents[item.path], root=root) for item in results)
 
 
 def _report(result: _Result, document: SourceDocument, *, root: Path) -> ToolReport:

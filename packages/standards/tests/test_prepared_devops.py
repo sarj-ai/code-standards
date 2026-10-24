@@ -4,7 +4,10 @@ from dataclasses import dataclass
 from hashlib import sha256
 from io import BytesIO
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 import tarfile
 from typing import TYPE_CHECKING
 
@@ -113,6 +116,61 @@ def test_native_null_clean_report_is_complete(tmp_path: Path) -> None:
     )
     assert reports[0].completion is Completion.COMPLETE
     assert not reports[0].diagnostics
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="named pipes require POSIX")
+def test_fifo_receipt_fails_without_waiting_for_a_writer(tmp_path: Path) -> None:
+    path = tmp_path / "receipt.json"
+    os.mkfifo(path)
+    result = subprocess.run(
+        (
+            sys.executable,
+            "-c",
+            (
+                "from pathlib import Path; import sys; "
+                "from sarj_standards.libs.adoption.manifest import PreparedTarget; "
+                "from sarj_standards.libs.linting.prepared_devops import analyze_prepared; "
+                "report, = analyze_prepared((Path(sys.argv[1]),), root=Path(sys.argv[2]), "
+                "declared=(PreparedTarget('example', 'deploy.yaml'),)); "
+                "assert report.issues; print(report.issues[0].message)"
+            ),
+            str(path),
+            str(tmp_path),
+        ),
+        capture_output=True,
+        check=True,
+        text=True,
+        timeout=10,
+    )
+    assert "bounded regular file" in result.stdout
+
+
+def test_receipt_growth_after_stat_cannot_bypass_byte_bound(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = _receipt(tmp_path).path
+    limit = 2 * 1024 * 1024
+    content = path.read_bytes()
+    path.write_bytes(content + b" " * (limit - len(content)))
+    original_stat = os.stat
+
+    def stat_then_grow(
+        file: int | str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        *,
+        dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> os.stat_result:
+        result = original_stat(file, dir_fd=dir_fd, follow_symlinks=follow_symlinks)
+        if file == path and follow_symlinks:
+            path.write_bytes(content + b" " * limit)
+        return result
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- real stat/read race; reader injection skips this boundary.
+        os, "stat", stat_then_grow
+    )
+    [report] = analyze_prepared(
+        (path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),), runner=_native
+    )
+    assert report.completion is Completion.FAILED
+    assert "bounded regular file" in report.issues[0].message
 
 
 @pytest.mark.parametrize("stage", ["install", "upgrade"], ids=("install-hook", "upgrade-hook"))
