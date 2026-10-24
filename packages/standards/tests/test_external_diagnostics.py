@@ -3164,7 +3164,8 @@ def test_native_basedpyright_shrink_and_new_diagnostic_contract(tmp_path: Path) 
 
 
 def test_native_protocol_contracts_preserve_cached_descriptor_boundary(tmp_path: Path) -> None:
-    template = """from functools import cached_property
+    template = """from dataclasses import dataclass
+from functools import cached_property
 from typing import Protocol
 
 class Service(Protocol):
@@ -3175,6 +3176,10 @@ class ServiceValue:
     @property
     def label(self) -> str:
         return "ready"
+
+    @property
+    def revision(self) -> int:
+        return 7
 
 class ConsumerContext(Protocol):
     @property
@@ -3190,6 +3195,25 @@ def forward(value: ProducerContext | ConsumerContext) -> ConsumerContext:
 
 def service_value(value: ProducerContext) -> Service:
     return value.service
+
+@dataclass(frozen=True, slots=True)
+class ServiceView[ServiceType]:
+    service: ServiceType
+
+def focused_view(value: ProducerContext) -> ServiceView[ServiceValue]:
+    return ServiceView(service=value.service)
+
+def compatible_view(value: ProducerContext) -> ConsumerContext:
+    return focused_view(value)
+
+def consume(value: ConsumerContext) -> str:
+    return value.service.label
+
+def consume_view(value: ProducerContext) -> str:
+    return consume(focused_view(value))
+
+def retained_information(value: ProducerContext) -> int:
+    return focused_view(value).service.revision
 """
     sources: list[str] = []
     for descriptor in ("cached_property", "property"):
