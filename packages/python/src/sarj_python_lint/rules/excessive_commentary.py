@@ -16,7 +16,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
-from sarj_python_lint.rules._ast_index import walk as walk_ast
+from sarj_python_lint.rules._ast_index import statement_blocks
 from sarj_python_lint.rules._comments import has_external_reference
 from sarj_python_lint.rules._prose_budget import (
     groups,
@@ -26,7 +26,6 @@ from sarj_python_lint.rules._prose_budget import (
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
-    from sarj_python_lint.rules._ast_index import NodeIndex
 
 
 _MIN_LINES = 3
@@ -64,7 +63,7 @@ class ExcessiveCommentary(Rule):
         limitations=(
             "Contiguous standalone implementation comment blocks with at least three non-empty lines and 20 words are inspected.",
             "The paragraph must immediately precede executable implementation code; narrative comments in tests and module setup are included.",
-            "The previously shipped accumulator pattern remains an error; expanded implementation commentary is a warning requiring review, with no automatic deletion.",
+            "The previously shipped accumulator pattern with a proven builtin collection remains an error; expanded implementation commentary is a warning requiring review, with no automatic deletion.",
             "Rationale, technical vocabulary and external citations do not exempt a long paragraph from warning-level review. Their existing protection against accumulator errors remains intact.",
             "Generated files, directives, licenses, structured lists, docstrings, inline comments and short constraints are excluded.",
         ),
@@ -123,7 +122,7 @@ class ExcessiveCommentary(Rule):
             for node in context.nodes(ast.stmt)
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Import, ast.ImportFrom))
         }
-        accumulator_lines = _narrated_accumulator_lines(tree, node_index=context.node_index)
+        accumulator_lines = _narrated_accumulator_lines(context)
         findings: list[Diagnostic] = []
         for group in groups(path, source):
             lines = tuple(stripped for line in group.text.splitlines() if (stripped := line.strip()))
@@ -164,18 +163,17 @@ class ExcessiveCommentary(Rule):
         return findings
 
 
-def _narrated_accumulator_lines(tree: ast.Module, *, node_index: NodeIndex | None = None) -> set[int]:
+def _narrated_accumulator_lines(context: PythonFileContext) -> set[int]:
     lines: set[int] = set()
-    for function in walk_ast(tree, index=node_index):
-        if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        _collect_accumulators(function.body, lines)
+    for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
+        for statements in statement_blocks(function.body):
+            _collect_accumulators(statements, lines, context)
     return lines
 
 
-def _collect_accumulators(statements: list[ast.stmt], lines: set[int]) -> None:
+def _collect_accumulators(statements: list[ast.stmt], lines: set[int], context: PythonFileContext) -> None:
     for index, statement in enumerate(statements):
-        name = _empty_collection_name(statement)
+        name = _empty_collection_name(statement, context)
         if name is not None:
             mutations = 0
             for following in statements[index + 1 :]:
@@ -184,11 +182,9 @@ def _collect_accumulators(statements: list[ast.stmt], lines: set[int]) -> None:
                 mutations += 1
             if mutations >= _MIN_ACCUMULATOR_CALLS:
                 lines.add(statement.lineno)
-        for child_statements in _nested_statement_lists(statement):
-            _collect_accumulators(child_statements, lines)
 
 
-def _empty_collection_name(statement: ast.stmt) -> str | None:
+def _empty_collection_name(statement: ast.stmt, context: PythonFileContext) -> str | None:
     target: ast.expr | None = None
     value: ast.expr | None = None
     if isinstance(statement, ast.AnnAssign):
@@ -208,7 +204,9 @@ def _empty_collection_name(statement: ast.stmt) -> str | None:
         and not value.args
         and not value.keywords
     ):
-        return target.id
+        provenance = context.static_resource_provenance
+        if provenance.builtin_namespace_untouched and provenance.binding(value.func.id, value.func) is None:
+            return target.id
     return None
 
 
@@ -222,22 +220,3 @@ def _is_accumulator_call(statement: ast.stmt, name: str) -> bool:
         and isinstance(function.value, ast.Name)
         and function.value.id == name
     )
-
-
-def _nested_statement_lists(statement: ast.stmt) -> list[list[ast.stmt]]:
-    match statement:
-        case ast.For() | ast.AsyncFor() | ast.While() | ast.If():
-            return [statement.body, statement.orelse]
-        case ast.With() | ast.AsyncWith():
-            return [statement.body]
-        case ast.Try() | ast.TryStar():
-            return [
-                statement.body,
-                statement.orelse,
-                statement.finalbody,
-                *(handler.body for handler in statement.handlers),
-            ]
-        case ast.Match():
-            return [case.body for case in statement.cases]
-        case _:
-            return []

@@ -206,3 +206,21 @@ def test_fifty_comment_contexts(
     block = "".join(indent + "# " + line + "\n" for line in text.splitlines())
     findings = commentary_rule.check(Path("app/response.py"), template.format(block=block))
     assert len(findings) == (0 if context == "generated" else expected), kind
+
+
+@pytest.mark.parametrize(("parameters", "expected"), [("", Severity.ERROR), ("list", Severity.WARNING)])
+def test_accumulator_errors_require_a_builtin_collection(
+    commentary_rule: ExcessiveCommentary, parameters: str, expected: Severity
+) -> None:
+    source = (
+        f"def collect({parameters}):\n"
+        "    # Gather each available item into the result collection here.\n"
+        "    # Start with an empty collection to hold all returned items.\n"
+        "    # Add the first group of items to this result collection.\n"
+        "    # Add the second group of items and return the collection.\n"
+        "    result = list()\n"
+        "    result.extend(first)\n"
+        "    result.extend(second)\n"
+        "    return result\n"
+    )
+    assert [finding.severity for finding in commentary_rule.check(Path("app.py"), source)] == [expected]

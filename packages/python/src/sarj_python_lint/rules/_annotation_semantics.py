@@ -63,7 +63,7 @@ class AnnotationSemantics:
                 candidates[name] = value
         if not candidates:
             return cls(imports, MappingProxyType({}))
-        rebound = _module_rebindings(tree)
+        rebound = module_rebindings(tree)
         aliases = {name: value for name, value in candidates.items() if name not in ambiguous and name not in rebound}
         return cls(imports, MappingProxyType(aliases))
 
@@ -139,7 +139,7 @@ class AnnotationSemantics:
         return [node.slice]
 
 
-def _module_rebindings(tree: ast.Module) -> set[str]:
+def module_rebindings(tree: ast.Module) -> set[str]:
     counts: dict[str, int] = {}
     for statement in tree.body:
         for name in _bound_names(statement):

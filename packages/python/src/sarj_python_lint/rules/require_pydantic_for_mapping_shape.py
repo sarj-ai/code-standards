@@ -16,7 +16,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
-from sarj_python_lint.rules._imports import ImportIndex
+from sarj_python_lint.rules._annotation_origins import AnnotationOrigins
 from sarj_python_lint.rules._mapping_shape_callbacks import RawMappingCallbacks
 from sarj_python_lint.rules._paths import is_test_path
 
@@ -141,51 +141,26 @@ class RequirePydanticForMappingShape(Rule):
         ]
 
 
-class MappingShapeFacts:
+class MappingShapeFacts(AnnotationOrigins):
     def __init__(self, context: PythonFileContext) -> None:
-        self.context = context
-        self.provenance = context.static_resource_provenance
+        super().__init__(context)
         self.semantics = context.annotation_semantics
-        self.imports = {
-            node: ImportIndex.from_tree(ast.Module(body=[node], type_ignores=[]))
-            for node in context.nodes(ast.Import, ast.ImportFrom)
-        }
+        self._annotation_cache: dict[tuple[ast.expr, ast.AST, bool, int], bool] = {}
         self.callbacks = RawMappingCallbacks(context, self.provenance, self.qualified, self.builtin, self.shadowed)
-
-    def shadowed(self, name: str, at: ast.AST) -> bool:
-        return _type_parameter_shadow(name, at, self.context)
-
-    def qualified(self, node: ast.expr, at: ast.AST) -> str | None:
-        root = node
-        while isinstance(root, ast.Attribute):
-            root = root.value
-        if (
-            not isinstance(root, ast.Name)
-            or root.id in self.provenance.mutated | self.provenance.external_bindings
-            or _type_parameter_shadow(root.id, at, self.context)
-        ):
-            return None
-        binding = self.provenance.binding(root.id, at)
-        parent = self.context.parents.get(binding) if binding is not None else None
-        index = self.imports.get(parent) if isinstance(parent, ast.Import | ast.ImportFrom) else None
-        return index.resolved_qualified_name(node) if index is not None else None
-
-    def builtin(self, node: ast.expr, name: str, at: ast.AST) -> bool:
-        return (
-            self.provenance.builtin_namespace_untouched
-            and isinstance(node, ast.Name)
-            and node.id == name
-            and not _type_parameter_shadow(name, at, self.context)
-            and self.provenance.binding(name, at) is None
-        )
 
     def annotation(self, node: ast.expr, at: ast.AST, *, mapping: bool, depth: int = 0) -> bool:
         if depth >= _MAX_DEPTH:
             return False
+        key = (node, at, mapping, depth)
+        if key not in self._annotation_cache:
+            self._annotation_cache[key] = self._annotation(node, at, mapping=mapping, depth=depth)
+        return self._annotation_cache[key]
+
+    def _annotation(self, node: ast.expr, at: ast.AST, *, mapping: bool, depth: int) -> bool:
         parsed = self.semantics.parse(node)
         if parsed is None:
             return False
-        if isinstance(parsed, ast.Name) and _type_parameter_shadow(parsed.id, at, self.context):
+        if isinstance(parsed, ast.Name) and self.shadowed(parsed.id, at):
             return False
         if isinstance(parsed, ast.Name) and parsed.id in self.semantics.aliases:
             return self.alias_annotation(parsed, at, mapping=mapping, depth=depth)
@@ -203,14 +178,17 @@ class MappingShapeFacts:
             return False
         return self.subscription_annotation(parsed, at, mapping=mapping, depth=depth)
 
-    def alias_annotation(self, node: ast.Name, at: ast.AST, *, mapping: bool, depth: int) -> bool:
+    def alias_value(self, node: ast.Name, at: ast.AST) -> ast.expr | None:
         binding = self.provenance.binding(node.id, at)
         if not isinstance(binding, ast.Name) or not isinstance(
             self.context.parents.get(binding), ast.TypeAlias | ast.AnnAssign
         ):
-            return False
-        value = self.semantics.aliases[node.id]
-        return self.annotation(value, value, mapping=mapping, depth=depth + 1)
+            return None
+        return self.semantics.aliases.get(node.id)
+
+    def alias_annotation(self, node: ast.Name, at: ast.AST, *, mapping: bool, depth: int) -> bool:
+        value = self.alias_value(node, at)
+        return value is not None and self.annotation(value, value, mapping=mapping, depth=depth + 1)
 
     def subscription_annotation(self, node: ast.Subscript, at: ast.AST, *, mapping: bool, depth: int) -> bool:
         qualified = self.qualified(node.value, at)
@@ -268,33 +246,6 @@ class MappingShapeFacts:
 
     def raw_boundary(self, node: ast.AST) -> bool:
         return self.callbacks.owns(node)
-
-
-def _type_parameter_shadow(name: str, at: ast.AST, context: PythonFileContext) -> bool:
-    outside: set[ast.AST] = set()
-    current = at
-    while (parent := context.parents.get(current)) is not None:
-        if (
-            isinstance(parent, ast.arguments)
-            and (current in parent.defaults or current in parent.kw_defaults)
-            and (owner := context.parents.get(parent)) is not None
-        ):
-            outside.add(owner)
-        if (
-            isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.TypeAlias)
-            and parent not in outside
-            and not (
-                isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
-                and current in parent.decorator_list
-            )
-            and any(
-                isinstance(parameter, ast.TypeVar | ast.ParamSpec | ast.TypeVarTuple) and parameter.name == name
-                for parameter in parent.type_params
-            )
-        ):
-            return True
-        current = parent
-    return False
 
 
 def _string(node: ast.expr) -> bool:

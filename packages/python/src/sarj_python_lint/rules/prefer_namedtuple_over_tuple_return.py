@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 _MIN_FIELDS = 2
 _DOCUMENTATION_DIR_NAMES = frozenset({"docs", "docs_src"})
 _TUPLE_SOURCES = frozenset({"builtins"})
-_TYPING_SOURCES = frozenset({"typing"})
+_TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
 
 _MSG = (
     "function returns a fixed positional tuple record — return a dataclass or validation model; "
@@ -55,7 +55,7 @@ class PreferNamedtupleOverTupleReturn(Rule):
         limitations=(
             "Generated files and documentation examples are excluded.",
             "Provenance-resolved builtin or typing fixed tuple return annotations with at least two slots are reported, including stable local aliases, quoted annotations, Annotated wrappers and optional unions in test helpers and fixtures; variadic tuples remain valid collections.",
-            "Existing direct tuple records remain errors; newly resolved local aliases and optional-union records start as warnings for adoption review.",
+            "Existing direct tuple records remain errors; newly resolved typing_extensions providers, local aliases, application types named Unpack and optional-union records start as warnings for adoption review.",
             "Classes with explicit bases, including object, are excluded without requiring an override decorator. Local base declarations do not prove runtime member ownership remains closed; class construction, native hooks and escaped handles can change inheritance. Independent module functions and plain classes remain eligible.",
         ),
         examples=(
@@ -124,7 +124,9 @@ class PreferNamedtupleOverTupleReturn(Rule):
                     col=node.col_offset + 1,
                     code=self.code,
                     message=_MSG,
-                    severity=Severity.ERROR if _is_public_record_tuple(node.returns, imports) else Severity.WARNING,
+                    severity=Severity.ERROR
+                    if _is_public_record_tuple(node.returns, imports, legacy=True)
+                    else Severity.WARNING,
                 )
             )
         return diagnostics
@@ -134,40 +136,47 @@ def _is_documentation_path(path: Path) -> bool:
     return any(part.lower() in _DOCUMENTATION_DIR_NAMES for part in path.parts)
 
 
-def _is_public_record_tuple(annotation: ast.expr, imports: ImportIndex) -> bool:
-    annotation = _unwrap_return_annotation(annotation, imports)
+def _is_public_record_tuple(annotation: ast.expr, imports: ImportIndex, *, legacy: bool = False) -> bool:
+    typing_sources = frozenset({"typing"}) if legacy else _TYPING_SOURCES
+    annotation = _unwrap_return_annotation(annotation, imports, typing_sources)
     if not isinstance(annotation, ast.Subscript) or not isinstance(annotation.slice, ast.Tuple):
         return False
     target = annotation.value
     is_tuple = (
         (isinstance(target, ast.Name) and target.id == "tuple" and imports.builtin_is_unshadowed("tuple"))
         or imports.resolves(target, sources=_TUPLE_SOURCES, symbol="tuple")
-        or imports.resolves(target, sources=_TYPING_SOURCES, symbol="Tuple")
+        or imports.resolves(target, sources=typing_sources, symbol="Tuple")
     )
     if not is_tuple:
         return False
     fields = annotation.slice.elts
-    return len(fields) >= _MIN_FIELDS and not any(_is_variadic_field(field) for field in fields)
+    return len(fields) >= _MIN_FIELDS and not any(_is_variadic_field(field, imports, legacy=legacy) for field in fields)
 
 
-def _unwrap_return_annotation(annotation: ast.expr, imports: ImportIndex) -> ast.expr:
+def _unwrap_return_annotation(annotation: ast.expr, imports: ImportIndex, typing_sources: frozenset[str]) -> ast.expr:
     if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
         parsed = parse_or_none(Path("annotation.py"), f"value: {annotation.value}")
         if parsed is not None and isinstance(parsed.body[0], ast.AnnAssign):
             return parsed.body[0].annotation
     if (
         isinstance(annotation, ast.Subscript)
-        and imports.resolves(annotation.value, sources=_TYPING_SOURCES, symbol="Annotated")
+        and imports.resolves(annotation.value, sources=typing_sources, symbol="Annotated")
         and isinstance(annotation.slice, ast.Tuple)
         and annotation.slice.elts
     ):
-        return _unwrap_return_annotation(annotation.slice.elts[0], imports)
+        return _unwrap_return_annotation(annotation.slice.elts[0], imports, typing_sources)
     return annotation
 
 
-def _is_variadic_field(node: ast.expr) -> bool:
+def _is_variadic_field(node: ast.expr, imports: ImportIndex, *, legacy: bool) -> bool:
     return (
         isinstance(node, ast.Starred)
-        or (isinstance(node, ast.Subscript) and _leaf_name(node.value) == "Unpack")
+        or (
+            isinstance(node, ast.Subscript)
+            and (
+                imports.resolves(node.value, sources=frozenset({"typing", "typing_extensions"}), symbol="Unpack")
+                or (legacy and _leaf_name(node.value) == "Unpack")
+            )
+        )
         or (isinstance(node, ast.Constant) and node.value is Ellipsis)
     )

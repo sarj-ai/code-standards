@@ -28,27 +28,30 @@ class DeclaredClass:
 
 
 def _class_metadata_annotation(annotation: ast.expr, semantics: AnnotationSemantics) -> bool:
-    pending = [annotation]
     seen: set[str] = set()
-    while pending:
-        node = semantics.parse(pending.pop())
-        if node is None:
+    node = semantics.parse(annotation)
+    while node is not None:
+        if isinstance(node, ast.Name) and node.id in semantics.aliases and node.id not in seen:
+            seen.add(node.id)
+            node = semantics.parse(semantics.aliases[node.id])
+            continue
+        if not isinstance(node, ast.Subscript):
+            return False
+        wrapper = semantics.imports.resolved_symbol(node.value, sources=_TYPING_SOURCES)
+        if wrapper in {"ClassVar", "Final"}:
             return True
-        for member in ast.walk(node):
-            if isinstance(member, ast.Subscript) and semantics.imports.resolved_symbol(
-                member.value, sources=_TYPING_SOURCES
-            ) in {"ClassVar", "Final"}:
-                return True
-            if isinstance(member, ast.Name) and member.id in semantics.aliases and member.id not in seen:
-                seen.add(member.id)
-                pending.append(semantics.aliases[member.id])
-    return False
+        if wrapper != "Annotated":
+            return False
+        if isinstance(node.slice, ast.Tuple) and not node.slice.elts:
+            return True
+        node = semantics.parse(node.slice.elts[0] if isinstance(node.slice, ast.Tuple) else node.slice)
+    return True
 
 
 class DeclaredContracts:
     def __init__(self, context: PythonFileContext) -> None:
         self.context = context
-        self._field_cache: dict[ast.ClassDef, dict[str, ast.AnnAssign]] = {}
+        self._field_cache: dict[tuple[ast.ClassDef, bool], dict[str, ast.AnnAssign]] = {}
         self._module_annotations: dict[Path, AnnotationSemantics] = {}
         self.project = context.session.project or ProjectIndexSet.single(context.path, context.source)
         self.unit = self.project.unit(context.path)
@@ -130,23 +133,32 @@ class DeclaredContracts:
     def inherits(self, model: DeclaredClass, bases: frozenset[str]) -> bool:
         return self.project.class_inherits_from(model.unit, model.declaration.name, bases)
 
-    def model_fields(self, model: DeclaredClass) -> dict[str, ast.AnnAssign]:
+    def model_fields(
+        self, model: DeclaredClass, *, inherited: bool = False, seen: frozenset[ast.ClassDef] = frozenset()
+    ) -> dict[str, ast.AnnAssign]:
         if model.unit.tree is None:
             return {}
-        cached = self._field_cache.get(model.declaration)
+        key = (model.declaration, inherited)
+        cached = self._field_cache.get(key)
         if cached is not None:
             return cached
+        if model.declaration in seen or len(seen) >= _MAX_DEPTH:
+            return {}
         semantics = self._module_semantics(model.unit)
-        fields = {
-            node.target.id: node
-            for node in model.declaration.body
-            if isinstance(node, ast.AnnAssign)
-            and isinstance(node.target, ast.Name)
-            and not node.target.id.startswith("_")
-            and node.target.id != "model_config"
-            and not _class_metadata_annotation(node.annotation, semantics)
-        }
-        self._field_cache[model.declaration] = fields
+        fields: dict[str, ast.AnnAssign] = {}
+        if inherited and len(model.declaration.bases) == 1:
+            parent = self.class_type(model.declaration.bases[0], model.unit)
+            if parent is not None:
+                fields.update(self.model_fields(parent, inherited=True, seen=seen | {model.declaration}))
+        for node in model.declaration.body:
+            if not isinstance(node, ast.AnnAssign) or not isinstance(node.target, ast.Name):
+                continue
+            name = node.target.id
+            if name.startswith("_") or name == "model_config" or _class_metadata_annotation(node.annotation, semantics):
+                fields.pop(name, None)
+            else:
+                fields[name] = node
+        self._field_cache[key] = fields
         return fields
 
     def _module_semantics(self, unit: SourceUnit) -> AnnotationSemantics:

@@ -7,10 +7,13 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_python_lint.rule_base import Severity
+from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
 from sarj_python_lint.rules.require_pydantic_for_mapping_shape import RequirePydanticForMappingShape
 
 
 if TYPE_CHECKING:
+    import ast
+
     from sarj_python_lint.rule_base import RuleExample
 
 
@@ -519,3 +522,25 @@ adapter = BeforeValidator(partial(normalize, raw={}))
         )
         == 1
     )
+
+
+@pytest.mark.parametrize(("leaf", "expected"), [("str | int", 0), ("object", 1)])
+def test_repeated_mapping_aliases_have_a_bounded_parse_budget(
+    monkeypatch: pytest.MonkeyPatch, leaf: str, expected: int
+) -> None:
+    visits = 0
+    original = AnnotationSemantics.parse
+
+    def measured(annotation: ast.expr | None) -> ast.expr | None:
+        nonlocal visits
+        visits += 1
+        assert visits < 128, "Repeated aliases must reuse their annotation facts"
+        return original(annotation)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- measure real parser calls to detect exponential alias expansion.
+        AnnotationSemantics, "parse", staticmethod(measured)
+    )
+    source = f"type A0 = {leaf}\n"
+    source += "".join(f"type A{index} = A{index - 1} | A{index - 1}\n" for index in range(1, 13))
+    source += "def parse(payload: dict[str, A12]):\n    return isinstance(payload['value'], str)\n"
+    assert len(_check(source)) == expected

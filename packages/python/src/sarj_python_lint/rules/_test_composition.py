@@ -5,6 +5,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from sarj_python_lint.rules._declared_contracts import DeclaredClass
 from sarj_python_lint.rules._project_index import ProjectIndexSet, SourceUnit, SymbolRef
 
 
@@ -40,9 +41,7 @@ def direct_nodes(node: ast.AST) -> Iterator[ast.AST]:
             yield from direct_nodes(child)
 
 
-def _class_owner(
-    context: PythonFileContext, expression: ast.expr, project: ProjectIndexSet
-) -> tuple[SourceUnit, ast.ClassDef] | None:
+def _class_owner(context: PythonFileContext, expression: ast.expr, project: ProjectIndexSet) -> DeclaredClass | None:
     qualified = context.module_imports.resolved_qualified_name(expression)
     unit = project.unit(context.path)
     if qualified is not None:
@@ -62,7 +61,7 @@ def _class_owner(
         for node in direct_nodes(unit.tree)
     ):
         return None
-    return unit, owner
+    return DeclaredClass(unit, owner)
 
 
 def constructor(
@@ -75,7 +74,7 @@ def constructor(
     resolved = _class_owner(context, expression, project)
     if resolved is None:
         return None
-    unit, owner = resolved
+    unit, owner = resolved.unit, resolved.declaration
     if unit.module is None:
         return None
     initializer = next(
@@ -240,15 +239,9 @@ def wiring(
     spec: Constructor,
     scope: WiringScope,
 ) -> tuple[tuple[str, str], ...] | None:
-    if any(isinstance(arg, ast.Starred) for arg in call.args) or any(keyword.arg is None for keyword in call.keywords):
+    values = call_arguments(call, spec.positional)
+    if values is None:
         return None
-    if len(call.args) > len(spec.positional):
-        return None
-    values = dict(zip(spec.positional, call.args, strict=False))
-    for keyword in call.keywords:
-        if keyword.arg is None or keyword.arg in values:
-            return None
-        values[keyword.arg] = keyword.value
     result: list[tuple[str, str]] = []
     for name in sorted(spec.collaborators):
         value = values.get(name)
@@ -259,6 +252,19 @@ def wiring(
             return None
         result.append((name, identity))
     return tuple(result)
+
+
+def call_arguments(call: ast.Call, positional: tuple[str, ...]) -> dict[str, ast.expr] | None:
+    if any(isinstance(arg, ast.Starred) for arg in call.args) or any(keyword.arg is None for keyword in call.keywords):
+        return None
+    if len(call.args) > len(positional):
+        return None
+    values = dict(zip(positional, call.args, strict=False))
+    for keyword in call.keywords:
+        if keyword.arg is None or keyword.arg in values:
+            return None
+        values[keyword.arg] = keyword.value
+    return values
 
 
 def _value_key(
@@ -300,4 +306,4 @@ def _value_key(
     ]
     if any(key is None for key in positional) or any(key is None for _, key in keywords):
         return None
-    return f"{owner[0].module}.{owner[1].name}:{positional!r}:{sorted(keywords)!r}"
+    return f"{owner.unit.module}.{owner.declaration.name}:{positional!r}:{sorted(keywords)!r}"

@@ -16,6 +16,8 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
+from sarj_python_lint.rules._annotation_origins import AnnotationOrigins
+from sarj_python_lint.rules._annotation_semantics import module_rebindings
 from sarj_python_lint.rules._declared_contracts import SETTINGS_BASES, DeclaredContracts
 from sarj_python_lint.rules._imports import ImportIndex
 
@@ -43,7 +45,7 @@ class PreferTypedSettingsField(ProjectRule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only source-proven BaseSettings classes and raw str/int/float fields are checked. Evidence comes from an enum/NewType default, an absolute HTTP/HTTPS/WS/WSS URL default or exact Field(gt=0)/Field(ge=0) metadata. Field names alone never imply credentials, IDs, ports, paths or allowed choices. Existing constrained/optional domain types remain valid. Private attributes, model_config and ClassVar metadata are excluded; Final annotations are conservatively excluded as well. URL and numeric changes require review; SDK conversion, required None defaults, NaN/infinity and environment source parsing need explicit tests. No automatic rewrite.",
+            "Only source-proven BaseSettings classes and raw str/int/float fields are checked. Evidence comes from an enum or stable NewType default, an absolute HTTP/HTTPS/WS/WSS URL default or exact Field(gt=0)/Field(ge=0) metadata. Field names alone never imply credentials, IDs, ports, paths or allowed choices. Existing constrained/optional domain types remain valid. Field types and Field providers use their lexical scope, including generic parameter shadowing. Private attributes, model_config and ClassVar type wrappers are excluded; Final annotations are conservatively excluded as well. URL and numeric changes require review; SDK conversion, required None defaults, NaN/infinity and environment source parsing need explicit tests. No automatic rewrite.",
         ),
         examples=(
             RuleExample(
@@ -81,6 +83,7 @@ class PreferTypedSettingsField(ProjectRule):
         if context.tree is None or context.generated:
             return []
         contracts = DeclaredContracts(context)
+        facts: AnnotationOrigins | None = None
         findings: list[Diagnostic] = []
         for model in context.tree.body:
             if not isinstance(model, ast.ClassDef):
@@ -88,18 +91,20 @@ class PreferTypedSettingsField(ProjectRule):
             resolved = contracts.class_type(ast.Name(id=model.name))
             if resolved is None or not contracts.inherits(resolved, SETTINGS_BASES):
                 continue
-            findings.extend(_settings_fields(resolved, context, contracts, self.code))
+            if facts is None:
+                facts = AnnotationOrigins(context)
+            findings.extend(_settings_fields(resolved, context, contracts, facts, self.code))
         return findings
 
 
 def _settings_fields(
-    model: DeclaredClass, context: PythonFileContext, contracts: DeclaredContracts, code: str
+    model: DeclaredClass, context: PythonFileContext, contracts: DeclaredContracts, facts: AnnotationOrigins, code: str
 ) -> Iterator[Diagnostic]:
     for field in contracts.model_fields(model).values():
-        primitive = _primitive(field.annotation, context)
+        primitive = _primitive(field.annotation, context, facts)
         if primitive is None:
             continue
-        preferred = _preferred(field, primitive, context, contracts)
+        preferred = _preferred(field, primitive, facts, contracts)
         if preferred is not None:
             yield Diagnostic(
                 context.path,
@@ -111,25 +116,26 @@ def _settings_fields(
             )
 
 
-def _primitive(annotation: ast.expr, context: PythonFileContext) -> str | None:
+def _primitive(annotation: ast.expr, context: PythonFileContext, facts: AnnotationOrigins) -> str | None:
     primitives = [
         member.id
         for member in context.annotation_semantics.transparent_members(annotation)
         if isinstance(member, ast.Name)
         and member.id in {"str", "int", "float"}
-        and context.imports.builtin_is_unshadowed(member.id)
+        and facts.builtin(member, member.id, annotation)
     ]
     return primitives[0] if len(primitives) == 1 else None
 
 
 def _preferred(
-    field: ast.AnnAssign, primitive: str, context: PythonFileContext, contracts: DeclaredContracts
+    field: ast.AnnAssign, primitive: str, facts: AnnotationOrigins, contracts: DeclaredContracts
 ) -> str | None:
     default = field.value
     options: dict[str, ast.expr] = {}
-    if isinstance(default, ast.Call) and context.imports.resolves(
-        default.func, sources=frozenset({"pydantic", "pydantic.fields"}), symbol="Field"
-    ):
+    if isinstance(default, ast.Call) and facts.qualified(default.func, default) in {
+        "pydantic.Field",
+        "pydantic.fields.Field",
+    }:
         options = {keyword.arg: keyword.value for keyword in default.keywords if keyword.arg is not None}
         default = options.get("default") or (default.args[0] if default.args else None)
     if (domain := _domain_type(default, contracts)) is not None:
@@ -183,9 +189,9 @@ def _nominal(expression: ast.expr, contracts: DeclaredContracts) -> str | None:
         return None
     symbol = contracts.project.resolve(contracts.unit, expression)
     unit = contracts.project.source_unit(symbol.module) if symbol is not None else None
-    if unit is None or unit.tree is None or symbol is None:
+    if unit is None or unit.tree is None or symbol is None or symbol.name in module_rebindings(unit.tree):
         return None
-    imports = ImportIndex.from_tree(unit.tree)
+    imports = ImportIndex.from_tree(unit.tree, module_scope_only=True)
     for node in unit.tree.body:
         if not isinstance(node, ast.Assign) or len(node.targets) != 1:
             continue

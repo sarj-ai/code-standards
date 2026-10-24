@@ -1,0 +1,455 @@
+{
+  "schema_version": 1,
+  "campaign": "Static imports and session rule robustness",
+  "date": "2026-10-24",
+  "release_versions": {
+    "python": "1.70.2",
+    "standards_bundle": "8.125.2"
+  },
+  "review_scope": [
+    "SARJ026",
+    "SARJ434",
+    "SARJ521",
+    "SARJ526",
+    "SARJ527",
+    "SARJ528",
+    "SARJ529",
+    "SARJ530"
+  ],
+  "interpretation": "50 distinct focused source and boundary reviews. Test matrix variants, rechecks and benchmark repetitions are not additional passes. This is not 50 complete repository audits or a fleet adoption claim.",
+  "passes": [
+    {
+      "pass": 1,
+      "topic": "Import replacement preserves the actual binding",
+      "decision": "fix",
+      "result": "Recommend the real assignment name, omit a redundant alias, and keep complex targets advisory.",
+      "regression_test": "packages/python/tests/rules/test_prefer_direct_import_module.py::test_recommends_a_static_import_with_the_actual_binding"
+    },
+    {
+      "pass": 2,
+      "topic": "Qualified and direct loader provenance",
+      "decision": "retain",
+      "result": "Resolve stdlib provenance through qualified, direct and aliased imports.",
+      "regression_test": "packages/python/tests/rules/test_prefer_direct_import_module.py::test_focused_import_provenance"
+    },
+    {
+      "pass": 3,
+      "topic": "Representable module names and Unicode normalization",
+      "decision": "retain",
+      "result": "Reject nonrepresentable or normalization-changing import spellings.",
+      "regression_test": "packages/python/tests/rules/test_prefer_direct_import_module.py::test_static_syntax_preserves_the_literal_module_name"
+    },
+    {
+      "pass": 4,
+      "topic": "Lazy, optional and guarded import timing",
+      "decision": "retain",
+      "result": "Keep function, class, guarded and configured loads outside eager-import advice.",
+      "regression_test": "packages/python/tests/rules/test_prefer_direct_import_module.py::test_static_import_contracts"
+    },
+    {
+      "pass": 5,
+      "topic": "Namespace mutation and escaped import providers",
+      "decision": "retain",
+      "result": "Abstain when mutation or dynamic namespace access invalidates loader provenance.",
+      "regression_test": "packages/python/tests/rules/test_prefer_direct_import_module.py::test_preserves_unproven_loaders"
+    },
+    {
+      "pass": 6,
+      "topic": "Literal calls and assignment shapes",
+      "decision": "fix",
+      "result": "Do not invent a variable binding for an expression or complex assignment target.",
+      "regression_test": "packages/python/tests/rules/test_prefer_direct_import_module.py::test_preserves_dynamic_loading_boundaries"
+    },
+    {
+      "pass": 7,
+      "topic": "Constructor argument expansion and duplicate binding",
+      "decision": "fix",
+      "result": "Share conservative positional and keyword binding; reject unpacking and duplicate bindings.",
+      "regression_test": "packages/python/tests/rules/test_prefer_pytest_dependency_fixtures.py::test_unresolved_argument_binding_keeps_dependency_ownership"
+    },
+    {
+      "pass": 8,
+      "topic": "Dependency aliases and module-level singleton ownership",
+      "decision": "fix",
+      "result": "Keep fixture parameters valid; source-visible module-level store instances must also enter tests through fixtures.",
+      "regression_test": "packages/python/tests/rules/test_prefer_pytest_dependency_fixtures.py::test_shared_module_collaborators_are_requested_as_fixtures"
+    },
+    {
+      "pass": 9,
+      "topic": "Source-proven collaborator protocols",
+      "decision": "retain",
+      "result": "Require a declared port stored and invoked by the receiving service.",
+      "regression_test": "packages/python/tests/rules/test_prefer_pytest_dependency_fixtures.py::test_dependency_fixture_contracts"
+    },
+    {
+      "pass": 10,
+      "topic": "Exception and resource lifecycle ownership",
+      "decision": "retain",
+      "result": "Keep constructions inside raises contexts and preserve fixture lifecycle guidance.",
+      "regression_test": "packages/python/tests/rules/test_prefer_pytest_dependency_fixtures.py::test_dependency_fixture_contracts"
+    },
+    {
+      "pass": 11,
+      "topic": "Factories and construction under test",
+      "decision": "retain",
+      "result": "Keep factory fixtures, settings validation and the object under test meaningful.",
+      "regression_test": "packages/python/tests/rules/test_prefer_pytest_dependency_fixtures.py::test_keeps_fixtures_factories_and_construction_under_test"
+    },
+    {
+      "pass": 12,
+      "topic": "Collected pytest scopes and fixture decorators",
+      "decision": "retain",
+      "result": "Exclude fixture functions, inherited test contracts and support modules.",
+      "regression_test": "packages/python/tests/rules/test_prefer_pytest_dependency_fixtures.py::test_fixture_decorators_and_inherited_contracts_are_not_collected_tests"
+    },
+    {
+      "pass": 13,
+      "topic": "Contiguous Pydantic assertion runs",
+      "decision": "retain",
+      "result": "Group distinct declared fields of one proven receiver without deleting None guards.",
+      "regression_test": "packages/python/tests/rules/test_prefer_pydantic_model_assertion.py::test_model_assertion_contracts"
+    },
+    {
+      "pass": 14,
+      "topic": "Inherited Pydantic data fields",
+      "decision": "fix",
+      "result": "Include single-base source-visible inheritance and remove subclass ClassVar overrides.",
+      "regression_test": "packages/python/tests/rules/test_prefer_pydantic_model_assertion.py::test_inherited_fields_keep_subclass_metadata_overrides"
+    },
+    {
+      "pass": 15,
+      "topic": "Annotated type versus annotation metadata",
+      "decision": "fix",
+      "result": "Inspect the type argument; ClassVar appearing only as metadata does not erase a field.",
+      "regression_test": "packages/python/tests/rules/test_prefer_pydantic_model_assertion.py::test_only_the_annotated_type_defines_class_metadata"
+    },
+    {
+      "pass": 16,
+      "topic": "Identity, custom comparisons and effectful expected values",
+      "decision": "retain",
+      "result": "Retain comparison semantics, repeated fields, messages and calls rather than rewriting them.",
+      "regression_test": "packages/python/tests/rules/test_prefer_pydantic_model_assertion.py::test_preserves_distinct_test_contracts"
+    },
+    {
+      "pass": 17,
+      "topic": "Mutation and control-flow grouping",
+      "decision": "fix",
+      "result": "Share statement-block traversal and report each nested assertion run once.",
+      "regression_test": "packages/python/tests/rules/test_prefer_pydantic_model_assertion.py::test_nested_blocks_keep_one_model_assertion_run"
+    },
+    {
+      "pass": 18,
+      "topic": "Async, method and return annotation provenance",
+      "decision": "retain",
+      "result": "Resolve annotated inputs and source-visible construction or validation results.",
+      "regression_test": "packages/python/tests/rules/test_prefer_pydantic_model_assertion.py::test_model_assertion_contracts"
+    },
+    {
+      "pass": 19,
+      "topic": "Object in parameters, returns and class fields",
+      "decision": "fix",
+      "result": "Use lexical provenance rather than suppressing an entire module for an unrelated local object name.",
+      "regression_test": "packages/python/tests/rules/test_prefer_precise_object_contract.py::test_object_contract_boundaries"
+    },
+    {
+      "pass": 20,
+      "topic": "Literal and Annotated metadata boundaries",
+      "decision": "fix",
+      "result": "Resolve wrapper imports in the annotation scope; skip metadata values.",
+      "regression_test": "packages/python/tests/rules/test_prefer_precise_object_contract.py::test_unrelated_local_wrapper_name_does_not_change_annotation_metadata"
+    },
+    {
+      "pass": 21,
+      "topic": "Acyclic and cyclic object alias traversal",
+      "decision": "fix",
+      "result": "Reuse alias visits at each minimum depth instead of expanding a shared graph exponentially.",
+      "regression_test": "packages/python/tests/rules/test_prefer_precise_object_contract.py::test_acyclic_alias_graph_is_visited_once_per_depth"
+    },
+    {
+      "pass": 22,
+      "topic": "Generic parameters shadowing type aliases",
+      "decision": "fix",
+      "result": "Resolve aliases to their actual declaration and evaluate their bodies in definition scope; preserve local class shadows and generic parameter boundaries.",
+      "regression_test": "packages/python/tests/rules/test_prefer_precise_object_contract.py::test_recursive_and_shadowed_aliases"
+    },
+    {
+      "pass": 23,
+      "topic": "Raw validation inputs versus JSON text",
+      "decision": "fix",
+      "result": "Preserve model_validate(obj=raw); model_validate_json requires a text or byte contract.",
+      "regression_test": "packages/python/tests/rules/test_prefer_precise_object_contract.py::test_raw_validation_requires_a_proven_object_argument"
+    },
+    {
+      "pass": 24,
+      "topic": "Framework methods and module-level decorator decoys",
+      "decision": "fix",
+      "result": "Framework exclusions require a class method; override exclusions require inheritance.",
+      "regression_test": "packages/python/tests/rules/test_prefer_precise_object_contract.py::test_module_functions_do_not_inherit_framework_contracts"
+    },
+    {
+      "pass": 25,
+      "topic": "Enum and nominal settings defaults",
+      "decision": "retain",
+      "result": "Derive domain advice from actual defaults, never from a field name.",
+      "regression_test": "packages/python/tests/rules/test_prefer_typed_settings_field.py::test_settings_domain_contracts"
+    },
+    {
+      "pass": 26,
+      "topic": "Settings primitive and Field provider scope",
+      "decision": "fix",
+      "result": "Ignore unrelated local shadows while preserving class and generic type shadows.",
+      "regression_test": "packages/python/tests/rules/test_prefer_typed_settings_field.py::test_settings_types_use_the_field_scope"
+    },
+    {
+      "pass": 27,
+      "topic": "Settings URL schemes and malformed defaults",
+      "decision": "retain",
+      "result": "Limit URL guidance to demonstrated supported absolute schemes and preserve input parsing.",
+      "regression_test": "packages/python/tests/rules/test_prefer_typed_settings_field.py::test_does_not_guess_domain_contracts_from_names"
+    },
+    {
+      "pass": 28,
+      "topic": "Settings numeric bounds and optionality",
+      "decision": "retain",
+      "result": "Advise standard positive types only for exact zero bounds, without rewriting other constraints.",
+      "regression_test": "packages/python/tests/rules/test_prefer_typed_settings_field.py::test_settings_domain_contracts"
+    },
+    {
+      "pass": 29,
+      "topic": "Settings data fields versus class metadata",
+      "decision": "fix",
+      "result": "Reuse the corrected ClassVar and Annotated type boundary.",
+      "regression_test": "packages/python/tests/rules/test_prefer_typed_settings_field.py::test_settings_metadata_keeps_its_class_contract"
+    },
+    {
+      "pass": 30,
+      "topic": "Stable NewType declarations and default behavior",
+      "decision": "fix",
+      "result": "Reuse module rebinding analysis to reject reassigned nominal factories.",
+      "regression_test": "packages/python/tests/rules/test_prefer_typed_settings_field.py::test_rebound_nominal_factories_do_not_prove_a_domain_type"
+    },
+    {
+      "pass": 31,
+      "topic": "Opaque mapping types and builtin shadowing",
+      "decision": "retain",
+      "result": "Preserve lexical runtime and annotation provenance, including generic parameters.",
+      "regression_test": "packages/python/tests/rules/test_require_pydantic_for_mapping_shape.py::test_generic_type_parameters_preserve_lexical_annotation_and_runtime_origins"
+    },
+    {
+      "pass": 32,
+      "topic": "Fixed mapping keys versus forwarding",
+      "decision": "retain",
+      "result": "Keep dynamic keys, forwarding, homogeneous maps and ambiguous aliases outside the rule.",
+      "regression_test": "packages/python/tests/rules/test_require_pydantic_for_mapping_shape.py::test_preserves_non_parsing_and_ambiguous_cases"
+    },
+    {
+      "pass": 33,
+      "topic": "Mapping discriminator and truth probes",
+      "decision": "retain",
+      "result": "Keep source-proven fixed-key parsing checks under the existing Pydantic owner.",
+      "regression_test": "packages/python/tests/rules/test_require_pydantic_for_mapping_shape.py::test_detects_field_shape_and_discriminator_probes"
+    },
+    {
+      "pass": 34,
+      "topic": "Registered raw callback ownership",
+      "decision": "retain",
+      "result": "Require registration and stable callback provenance; names and lexical nesting are insufficient.",
+      "regression_test": "packages/python/tests/rules/test_require_pydantic_for_mapping_shape.py::test_registered_raw_callback_ownership_and_lexical_decoys"
+    },
+    {
+      "pass": 35,
+      "topic": "Shared mapping alias graph complexity",
+      "decision": "fix",
+      "result": "Cache annotation facts with scope, mapping role and depth in the key.",
+      "regression_test": "packages/python/tests/rules/test_require_pydantic_for_mapping_shape.py::test_repeated_mapping_aliases_have_a_bounded_parse_budget"
+    },
+    {
+      "pass": 36,
+      "topic": "Mapping suppressions, generated sources and test oracles",
+      "decision": "retain",
+      "result": "Keep exact-code suppressions and asserted test-oracle boundaries.",
+      "regression_test": "packages/python/tests/rules/test_require_pydantic_for_mapping_shape.py::test_authored_tests_are_checked_and_exact_suppression_is_honored"
+    },
+    {
+      "pass": 37,
+      "topic": "Implementation commentary across application and test scopes",
+      "decision": "retain",
+      "result": "Keep warning-level review of long prose before executable code in every supported scope.",
+      "regression_test": "packages/python/tests/rules/test_excessive_commentary.py::test_fifty_comment_contexts"
+    },
+    {
+      "pass": 38,
+      "topic": "Comment rationale and external citations",
+      "decision": "retain",
+      "result": "Review long rationale while preserving protection against accumulator errors.",
+      "regression_test": "packages/python/tests/rules/test_excessive_commentary.py::test_constraints_and_references_obey_review_budget"
+    },
+    {
+      "pass": 39,
+      "topic": "Comment directives, structured lists and generated source",
+      "decision": "retain",
+      "result": "Preserve owned exclusions and concise constraints.",
+      "regression_test": "packages/python/tests/rules/test_excessive_commentary.py::test_owned_exclusions_do_not_report"
+    },
+    {
+      "pass": 40,
+      "topic": "Comment grouping and source coordinates",
+      "decision": "retain",
+      "result": "Check adjacency, indentation and codepoint coordinates with a Unicode control.",
+      "regression_test": "packages/python/tests/rules/test_excessive_commentary.py::test_fifty_comment_contexts"
+    },
+    {
+      "pass": 41,
+      "topic": "Accumulator collection provenance",
+      "decision": "fix",
+      "result": "A shadowed collection constructor keeps the general warning instead of an unjustified error.",
+      "regression_test": "packages/python/tests/rules/test_excessive_commentary.py::test_accumulator_errors_require_a_builtin_collection"
+    },
+    {
+      "pass": 42,
+      "topic": "Shared statement blocks without nested-scope duplication",
+      "decision": "fix",
+      "result": "Reuse one iterative block traversal for model assertions and commentary.",
+      "regression_test": "packages/python/tests/rules/test_prefer_pydantic_model_assertion.py::test_nested_blocks_keep_one_model_assertion_run"
+    },
+    {
+      "pass": 43,
+      "topic": "Quoted tuple records and unit-test helpers",
+      "decision": "retain",
+      "result": "Keep fixed positional record checks in tests, fixtures, helpers and methods.",
+      "regression_test": "packages/python/tests/rules/test_prefer_namedtuple_over_tuple_return.py::test_fifty_unit_test_return_contracts"
+    },
+    {
+      "pass": 44,
+      "topic": "Tuple provider provenance",
+      "decision": "fix",
+      "result": "Resolve typing_extensions Tuple and Annotated providers without escalating newly detected records to errors.",
+      "regression_test": "packages/python/tests/rules/test_prefer_namedtuple_over_tuple_return.py::test_typing_extensions_records_start_as_warnings"
+    },
+    {
+      "pass": 45,
+      "topic": "Variadic tuple Unpack provenance",
+      "decision": "fix",
+      "result": "Recognize real typing Unpack aliases; a same-named application type no longer hides a fixed record.",
+      "regression_test": "packages/python/tests/rules/test_prefer_namedtuple_over_tuple_return.py::test_variadic_fields_require_a_proven_unpack"
+    },
+    {
+      "pass": 46,
+      "topic": "Tuple aliases, unions and Annotated types",
+      "decision": "retain",
+      "result": "Preserve warning staging for expanded annotations and existing direct-tuple severity.",
+      "regression_test": "packages/python/tests/rules/test_prefer_namedtuple_over_tuple_return.py::test_expanded_tuple_spelling_starts_as_warning"
+    },
+    {
+      "pass": 47,
+      "topic": "Inherited tuple protocol compatibility",
+      "decision": "retain",
+      "result": "Preserve framework and inherited tuple protocols.",
+      "regression_test": "packages/python/tests/rules/test_prefer_namedtuple_over_tuple_return.py::test_inherited_override_preserves_public_tuple_protocol"
+    },
+    {
+      "pass": 48,
+      "topic": "Malformed tuple annotations and legacy severity",
+      "decision": "fix",
+      "result": "Retain malformed-input tolerance and start newly detected application Unpack cases as warnings.",
+      "regression_test": "packages/python/tests/rules/test_prefer_namedtuple_over_tuple_return.py::test_invalid_source_is_ignored"
+    },
+    {
+      "pass": 49,
+      "topic": "Shared declaration, annotation and argument facts",
+      "decision": "fix",
+      "result": "Reuse DeclaredClass, lexical annotation origins, module rebinding and call binding across owners.",
+      "regression_test": "packages/python/tests/rules/test_repeated_test_composition.py::test_first_party_fake_construction_matches_aliases_and_inline_calls"
+    },
+    {
+      "pass": 50,
+      "topic": "Integration, suppression, formatter and immutable performance calibration",
+      "decision": "verify",
+      "result": "Check paired corpus replay, exact suppressions, rule-order and parallel parity, all native gates and versioned publication.",
+      "regression_test": "packages/python/tests/rules/test_ast_index.py::test_walk_is_elementwise_identical_to_ast_walk"
+    }
+  ],
+  "verification": {
+    "focused_tests_passed": 799,
+    "native_rule_preflight": {
+      "rules": 182,
+      "python_files": 21,
+      "errors": 0,
+      "warnings": 0
+    },
+    "python_types": {
+      "errors": 0,
+      "warnings": 0,
+      "notes": 0
+    },
+    "labeled_public_controls": {
+      "tp": 8,
+      "fp": 0,
+      "fn": 0,
+      "tn": 8
+    },
+    "exact_code_suppressions": true,
+    "malformed_and_generated_source": true,
+    "formatter_convergence": true,
+    "rule_order_independent_findings": true,
+    "serial_parallel_parity": true,
+    "unicode_codepoint_coordinates": true,
+    "legacy_error_severities_preserved": true,
+    "full_native_gate_command": "make verify TEST_JOBS=2",
+    "full_native_gate": "passed_before_integrating_unrelated_typescript_release",
+    "tested_base_commit": "a90ceae84ab556dc681c0b4a816b66a00eb36fd7",
+    "integrated_base_commit": "da04b06cf2b1a0b62efc7bddcdda218e05ebb83c",
+    "integration_note": "Python engine source is unchanged between bases. Refresh generated artifacts and external diagnostic integration tests; exact-head CI qualifies the combined candidate."
+  },
+  "immutable_corpus_replay": {
+    "files": 50,
+    "bytes": 639913,
+    "roots": 4,
+    "method": "run_isolated_corpora with unchanged verified source pins and all eight affected rules",
+    "baseline_findings": 88,
+    "candidate_findings": 92,
+    "inspected_delta": {
+      "additional_object_warnings": 4,
+      "true_positives": 0,
+      "false_positives": 4,
+      "classification": "Upstream framework reflection APIs legitimately accept opaque Python values. Keep warning-stage review and explained exact-code exceptions; do not promote to errors."
+    },
+    "limits": "Selected frozen snapshots, not an unbiased production sample. Previously existing findings were not all relabeled. The clean public fixture matrix does not establish universal precision."
+  },
+  "performance": {
+    "baseline_commit": "a90ceae84ab556dc681c0b4a816b66a00eb36fd7",
+    "method": "Three paired fresh processes; each scans the same 50 files with all 182 rules twice. Cold and warm medians and maximum available process RSS are reported.",
+    "baseline": {
+      "rules": [
+        182
+      ],
+      "cold_median_seconds": 9.22997641999973,
+      "warm_median_seconds": 9.69791584496852,
+      "peak_rss_bytes": 102539264,
+      "diagnostics": [
+        206
+      ]
+    },
+    "candidate": {
+      "rules": [
+        182
+      ],
+      "cold_median_seconds": 9.451970115012955,
+      "warm_median_seconds": 9.574461809999775,
+      "peak_rss_bytes": 118075392,
+      "diagnostics": [
+        210
+      ]
+    },
+    "limits": "Process RSS includes the interpreter and allocator. These small selected corpora do not establish a fleet-wide speed or memory budget."
+  },
+  "limitations": [
+    "Static imports are advised only for direct eager module-level loads with a representable literal absolute module name. Import timing and complex target changes require review; no automatic rewrite.",
+    "Model fields require source-visible declarations. Inheritance expansion is bounded to supported single-base chains; ambiguous multiple inheritance and unknown models remain outside the proof.",
+    "Fixture advice requires demonstrated collaborator or settings provenance. Dynamic argument unpacking and ambiguous ownership abstain; construction under test and lifecycle contracts remain valid.",
+    "Genuinely opaque Python contracts and framework reflection APIs can require explained exact-code exceptions. JSON text validation requires a text or byte contract.",
+    "Settings advice derives from defaults and metadata. Preserve aliases, optionality, environment parsing, accepted schemes, coercion and constraints; do not turn on blanket strict mode.",
+    "Long implementation prose remains a review warning; concise constraints, directives, licenses, structured lists, generated files and docstrings remain excluded. Existing proven accumulator errors are preserved.",
+    "Freshly detected application types named Unpack begin as warnings; real typing and typing_extensions variadic tuples remain valid."
+  ]
+}

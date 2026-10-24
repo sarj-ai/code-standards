@@ -109,3 +109,41 @@ def test_metadata_does_not_hide_an_ordinary_settings_field(rule: PreferTypedSett
     findings = rule.check(Path("app/settings.py"), source)
     assert len(findings) == 1
     assert findings[0].line == len(source.splitlines())
+
+
+@pytest.mark.parametrize(
+    ("prefix", "annotation", "default", "expected"),
+    [
+        ("def unrelated(str): ...\n", "str", "'https://api.example.com'", 1),
+        ("def unrelated(Field): ...\n", "int", "Field(gt=0)", 1),
+        ("from typing import Annotated, ClassVar\n", "Annotated[str, ClassVar[str]]", "'https://api.example.com'", 1),
+        ("class str: pass\n", "str", "'https://api.example.com'", 0),
+        ("", "str | None", "'https://api.example.com'", 1),
+    ],
+)
+def test_settings_types_use_the_field_scope(
+    rule: PreferTypedSettingsField, prefix: str, annotation: str, default: str, expected: int
+) -> None:
+    source = prefix + _PREFIX + f"class Settings(BaseSettings):\n    value: {annotation} = {default}\n"
+    assert len(rule.check(Path("app/settings.py"), source)) == expected
+
+
+def test_generic_type_parameter_is_not_a_primitive_settings_field(rule: PreferTypedSettingsField) -> None:
+    source = _PREFIX + "class Settings[str](BaseSettings):\n    value: str = 'https://api.example.com'\n"
+    assert rule.check(Path("app/settings.py"), source) == []
+
+
+def test_unrelated_newtype_binding_does_not_hide_the_nominal_default(rule: PreferTypedSettingsField) -> None:
+    source = (
+        _PREFIX
+        + "def unrelated(NewType): ...\n"
+        + "class Settings(BaseSettings):\n    account: str = AccountId('account')\n"
+    )
+    [finding] = rule.check(Path("app/settings.py"), source)
+    assert "AccountId" in finding.message
+
+
+@pytest.mark.parametrize("replacement", ["AccountId = str", "def AccountId(value): return value"])
+def test_rebound_nominal_factories_do_not_prove_a_domain_type(rule: PreferTypedSettingsField, replacement: str) -> None:
+    source = _PREFIX + replacement + "\nclass Settings(BaseSettings):\n    account: str = AccountId('example')\n"
+    assert rule.check(Path("app/settings.py"), source) == []
