@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "d8ae93b2e47134b2cfbcb1467a64c9401a95014f07bbe16d9e7a9a66689f31ab",
-  "cliSha256": "5fb88133ed9308c1cc0c034d40da1a92b5311b8aa1577a5b1796a9a850158a28",
+  "catalogSha256": "e2a50895002a283b81eee5709e726c23eaf002732982a6c1df286c068076775a",
+  "cliSha256": "67d0ed11836ad9b1fa0a972774cc6c5db912dd9cc4ac43aa97f39567f0fefac9",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -2423,6 +2423,49 @@
       ],
       "optionsSchemaSource": null
     },
+    "eslint:no-redundant-consumer-union": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\ninterface Animal {\n  readonly name: string;\n}\ninterface Dog extends Animal {\n  readonly breed: string;\n}\nconst dog = { name: \"Ada\", breed: \"Collie\" };\nfunction label(value: Dog | Animal): string {\n  return value.name;\n}\nlabel(dog);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/case.ts",
+          "id": "covered-alternative",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The private consumer needs the covering Animal contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\ninterface Animal {\n  readonly name: string;\n}\ninterface Dog extends Animal {\n  readonly breed: string;\n}\nconst dog = { name: \"Ada\", breed: \"Collie\" };\nexport function label(value: Dog | Animal): string {\n  return value.name;\n}\nlabel(dog);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/case.ts",
+          "id": "public-contract",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A public union retains its observable alternatives"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:no-redundant-optional-array-default": {
       "examples": [
         {
@@ -4190,6 +4233,49 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not expose second-granularity timeout controls"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:prefer-minimal-parameter-contract": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\nconst account = { name: \"Ada\", email: \"a\" };\nfunction label(user: { readonly name: string; readonly email: string }): string {\n  return user.name;\n}\nlabel(account);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/case.ts",
+          "id": "unused-required-field",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A private name consumer unnecessarily requires email"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\nconst account = { name: \"Ada\", email: \"a\" };\nfunction label(user: { readonly name: string; readonly email: string }): string {\n  return user.name + user.email;\n}\nlabel(account);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/case.ts",
+          "id": "used-fields",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Every required dependency is read"
         }
       ],
       "optionsSchemaSource": null
