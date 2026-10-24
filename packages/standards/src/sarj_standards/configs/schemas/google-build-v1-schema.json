@@ -1,0 +1,2569 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/Build",
+  "definitions": {
+    "ArtifactObjects": {
+      "type": "object",
+      "properties": {
+        "location": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "paths": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "timing": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "Artifacts": {
+      "type": "object",
+      "properties": {
+        "genericArtifacts": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/GenericArtifact"
+            }
+          }
+        },
+        "generic_artifacts": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/GenericArtifact"
+            }
+          }
+        },
+        "goModules": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/GoModule"
+            }
+          }
+        },
+        "go_modules": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/GoModule"
+            }
+          }
+        },
+        "images": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "mavenArtifacts": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/MavenArtifact"
+            }
+          }
+        },
+        "maven_artifacts": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/MavenArtifact"
+            }
+          }
+        },
+        "npmPackages": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/NpmPackage"
+            }
+          }
+        },
+        "npm_packages": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/NpmPackage"
+            }
+          }
+        },
+        "objects": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/ArtifactObjects"
+          }
+        },
+        "oci": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/Oci"
+            }
+          }
+        },
+        "pythonPackages": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/PythonPackage"
+            }
+          }
+        },
+        "python_packages": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/PythonPackage"
+            }
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "Build": {
+      "type": "object",
+      "properties": {
+        "approval": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "artifacts": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/Artifacts"
+          }
+        },
+        "availableSecrets": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/Secrets"
+          }
+        },
+        "available_secrets": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/Secrets"
+          }
+        },
+        "buildTriggerId": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "build_trigger_id": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "createTime": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "create_time": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "dependencies": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/Dependency"
+            }
+          }
+        },
+        "failureInfo": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "failure_info": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "finishTime": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "finish_time": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "gitConfig": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/GitConfig"
+          }
+        },
+        "git_config": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/GitConfig"
+          }
+        },
+        "id": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "images": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "logUrl": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "log_url": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "logsBucket": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "logs_bucket": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "name": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "options": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/BuildOptions"
+          }
+        },
+        "projectId": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "project_id": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "queueTtl": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string",
+            "format": "google-duration"
+          }
+        },
+        "queue_ttl": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string",
+            "format": "google-duration"
+          }
+        },
+        "results": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "secrets": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/Secret"
+            }
+          }
+        },
+        "serviceAccount": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "service_account": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/Source"
+          }
+        },
+        "sourceProvenance": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "source_provenance": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "startTime": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "start_time": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "status": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "statusDetail": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "status_detail": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/BuildStep"
+          },
+          "minItems": 1
+        },
+        "substitutions": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": {
+              "type": "string"
+            },
+            "required": []
+          }
+        },
+        "tags": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "timeout": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string",
+            "format": "google-duration"
+          }
+        },
+        "timing": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "warnings": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "steps"
+      ]
+    },
+    "BuildOptions": {
+      "type": "object",
+      "properties": {
+        "automapSubstitutions": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "boolean"
+          }
+        },
+        "automap_substitutions": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "boolean"
+          }
+        },
+        "defaultLogsBucketBehavior": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "DEFAULT_LOGS_BUCKET_BEHAVIOR_UNSPECIFIED",
+                  "REGIONAL_USER_OWNED_BUCKET",
+                  "LEGACY_BUCKET"
+                ]
+              },
+              {
+                "type": "integer",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              }
+            ]
+          }
+        },
+        "default_logs_bucket_behavior": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "DEFAULT_LOGS_BUCKET_BEHAVIOR_UNSPECIFIED",
+                  "REGIONAL_USER_OWNED_BUCKET",
+                  "LEGACY_BUCKET"
+                ]
+              },
+              {
+                "type": "integer",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              }
+            ]
+          }
+        },
+        "diskSizeGb": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9223372036854775808,
+                "maximum": 9223372036854775807
+              },
+              {
+                "type": "string",
+                "format": "int64"
+              }
+            ]
+          }
+        },
+        "disk_size_gb": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9223372036854775808,
+                "maximum": 9223372036854775807
+              },
+              {
+                "type": "string",
+                "format": "int64"
+              }
+            ]
+          }
+        },
+        "dynamicSubstitutions": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "boolean"
+          }
+        },
+        "dynamic_substitutions": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "boolean"
+          }
+        },
+        "enableStructuredLogging": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "boolean"
+          }
+        },
+        "enable_structured_logging": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "boolean"
+          }
+        },
+        "env": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "logStreamingOption": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "STREAM_DEFAULT",
+                  "STREAM_ON",
+                  "STREAM_OFF"
+                ]
+              },
+              {
+                "type": "integer",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              }
+            ]
+          }
+        },
+        "log_streaming_option": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "STREAM_DEFAULT",
+                  "STREAM_ON",
+                  "STREAM_OFF"
+                ]
+              },
+              {
+                "type": "integer",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              }
+            ]
+          }
+        },
+        "logging": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "LOGGING_UNSPECIFIED",
+                  "LEGACY",
+                  "GCS_ONLY",
+                  "STACKDRIVER_ONLY",
+                  "CLOUD_LOGGING_ONLY",
+                  "NONE"
+                ]
+              },
+              {
+                "type": "integer",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              }
+            ]
+          }
+        },
+        "machineType": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "UNSPECIFIED",
+                  "N1_HIGHCPU_8",
+                  "N1_HIGHCPU_32",
+                  "E2_HIGHCPU_8",
+                  "E2_HIGHCPU_32",
+                  "E2_MEDIUM",
+                  "E2_STANDARD_2"
+                ]
+              },
+              {
+                "type": "integer",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              }
+            ]
+          }
+        },
+        "machine_type": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "UNSPECIFIED",
+                  "N1_HIGHCPU_8",
+                  "N1_HIGHCPU_32",
+                  "E2_HIGHCPU_8",
+                  "E2_HIGHCPU_32",
+                  "E2_MEDIUM",
+                  "E2_STANDARD_2"
+                ]
+              },
+              {
+                "type": "integer",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              }
+            ]
+          }
+        },
+        "pool": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/PoolOption"
+          }
+        },
+        "pubsubTopic": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "pubsub_topic": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "requestedVerifyOption": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "NOT_VERIFIED",
+                  "VERIFIED",
+                  "BEST_EFFORT"
+                ]
+              },
+              {
+                "type": "integer",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              }
+            ]
+          }
+        },
+        "requested_verify_option": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "NOT_VERIFIED",
+                  "VERIFIED",
+                  "BEST_EFFORT"
+                ]
+              },
+              {
+                "type": "integer",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              }
+            ]
+          }
+        },
+        "resolvedWorkerRelease": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "resolved_worker_release": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "secretEnv": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "secret_env": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "sourceProvenanceHash": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "NONE",
+                    "SHA256",
+                    "MD5",
+                    "GO_MODULE_H1",
+                    "SHA512",
+                    "DIRSUM_SHA256"
+                  ]
+                },
+                {
+                  "type": "integer",
+                  "minimum": -2147483648,
+                  "maximum": 2147483647
+                }
+              ]
+            }
+          }
+        },
+        "source_provenance_hash": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "NONE",
+                    "SHA256",
+                    "MD5",
+                    "GO_MODULE_H1",
+                    "SHA512",
+                    "DIRSUM_SHA256"
+                  ]
+                },
+                {
+                  "type": "integer",
+                  "minimum": -2147483648,
+                  "maximum": 2147483647
+                }
+              ]
+            }
+          }
+        },
+        "substitutionOption": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "MUST_MATCH",
+                  "ALLOW_LOOSE"
+                ]
+              },
+              {
+                "type": "integer",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              }
+            ]
+          }
+        },
+        "substitution_option": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "MUST_MATCH",
+                  "ALLOW_LOOSE"
+                ]
+              },
+              {
+                "type": "integer",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              }
+            ]
+          }
+        },
+        "volumes": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/Volume"
+            }
+          }
+        },
+        "workerPool": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "worker_pool": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "workerRelease": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "worker_release": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "BuildStep": {
+      "type": "object",
+      "properties": {
+        "allowExitCodes": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -2147483648,
+                  "maximum": 2147483647
+                },
+                {
+                  "type": "string",
+                  "format": "int32"
+                }
+              ]
+            }
+          }
+        },
+        "allow_exit_codes": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": -2147483648,
+                  "maximum": 2147483647
+                },
+                {
+                  "type": "string",
+                  "format": "int32"
+                }
+              ]
+            }
+          }
+        },
+        "allowFailure": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "boolean"
+          }
+        },
+        "allow_failure": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "boolean"
+          }
+        },
+        "args": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "automapSubstitutions": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "boolean"
+          }
+        },
+        "automap_substitutions": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "boolean"
+          }
+        },
+        "dir": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "entrypoint": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "exitCode": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "exit_code": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "id": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "pullTiming": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "pull_timing": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "results": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/StepResult"
+            }
+          }
+        },
+        "script": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "secretEnv": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "secret_env": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "status": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "timeout": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string",
+            "format": "google-duration"
+          }
+        },
+        "timing": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "volumes": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/Volume"
+            }
+          }
+        },
+        "waitFor": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "wait_for": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ]
+    },
+    "ConnectedRepository": {
+      "type": "object",
+      "properties": {
+        "dir": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "repository": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "revision": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "Dependency": {
+      "type": "object",
+      "properties": {
+        "empty": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "boolean"
+          }
+        },
+        "genericArtifact": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/GenericArtifactDependency"
+          }
+        },
+        "generic_artifact": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/GenericArtifactDependency"
+          }
+        },
+        "gitSource": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/GitSourceDependency"
+          }
+        },
+        "git_source": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/GitSourceDependency"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "DeveloperConnectConfig": {
+      "type": "object",
+      "properties": {
+        "dir": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "gitRepositoryLink": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "git_repository_link": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "revision": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "GenericArtifact": {
+      "type": "object",
+      "properties": {
+        "folder": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "registryPath": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "registry_path": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "GenericArtifactDependency": {
+      "type": "object",
+      "properties": {
+        "destPath": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "dest_path": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "resource": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "GitConfig": {
+      "type": "object",
+      "properties": {
+        "http": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/HttpConfig"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "GitSource": {
+      "type": "object",
+      "properties": {
+        "dir": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "revision": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "url": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "GitSourceDependency": {
+      "type": "object",
+      "properties": {
+        "depth": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9223372036854775808,
+                "maximum": 9223372036854775807
+              },
+              {
+                "type": "string",
+                "format": "int64"
+              }
+            ]
+          }
+        },
+        "destPath": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "dest_path": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "fetchTags": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "boolean"
+          }
+        },
+        "fetch_tags": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "boolean"
+          }
+        },
+        "recurseSubmodules": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "boolean"
+          }
+        },
+        "recurse_submodules": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "boolean"
+          }
+        },
+        "repository": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/GitSourceRepository"
+          }
+        },
+        "revision": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "GitSourceRepository": {
+      "type": "object",
+      "properties": {
+        "developerConnect": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "developer_connect": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "url": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "GoModule": {
+      "type": "object",
+      "properties": {
+        "modulePath": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "module_path": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "moduleVersion": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "module_version": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "repositoryLocation": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "repository_location": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "repositoryName": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "repository_name": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "repositoryProjectId": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "repository_project_id": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "sourcePath": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "source_path": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "HttpConfig": {
+      "type": "object",
+      "properties": {
+        "proxySecretVersionName": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "proxy_secret_version_name": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "InlineSecret": {
+      "type": "object",
+      "properties": {
+        "envMap": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": {
+              "type": "string",
+              "format": "byte"
+            },
+            "required": []
+          }
+        },
+        "env_map": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": {
+              "type": "string",
+              "format": "byte"
+            },
+            "required": []
+          }
+        },
+        "kmsKeyName": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "kms_key_name": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "MavenArtifact": {
+      "type": "object",
+      "properties": {
+        "artifactId": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "artifact_id": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "deployFolder": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "deploy_folder": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "groupId": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "group_id": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "path": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "repository": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "version": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "NpmPackage": {
+      "type": "object",
+      "properties": {
+        "packagePath": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "package_path": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "repository": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "Oci": {
+      "type": "object",
+      "properties": {
+        "file": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "registryPath": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "registry_path": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "tags": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "PoolOption": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "resolvedWorkerRelease": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "resolved_worker_release": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "workerRelease": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        },
+        "worker_release": {
+          "if": {
+            "type": "null"
+          },
+          "else": false
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "PythonPackage": {
+      "type": "object",
+      "properties": {
+        "paths": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "repository": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "RepoSource": {
+      "type": "object",
+      "properties": {
+        "branchName": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "branch_name": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "commitSha": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "commit_sha": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "dir": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "invertRegex": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "boolean"
+          }
+        },
+        "invert_regex": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "boolean"
+          }
+        },
+        "projectId": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "project_id": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "repoName": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "repo_name": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "substitutions": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": {
+              "type": "string"
+            },
+            "required": []
+          }
+        },
+        "tagName": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "tag_name": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "Secret": {
+      "type": "object",
+      "properties": {
+        "kmsKeyName": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "kms_key_name": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "secretEnv": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": {
+              "type": "string",
+              "format": "byte"
+            },
+            "required": []
+          }
+        },
+        "secret_env": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": {
+              "type": "string",
+              "format": "byte"
+            },
+            "required": []
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "SecretManagerSecret": {
+      "type": "object",
+      "properties": {
+        "env": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "versionName": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "version_name": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "Secrets": {
+      "type": "object",
+      "properties": {
+        "inline": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/InlineSecret"
+            }
+          }
+        },
+        "secretManager": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/SecretManagerSecret"
+            }
+          }
+        },
+        "secret_manager": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/SecretManagerSecret"
+            }
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "Source": {
+      "type": "object",
+      "properties": {
+        "connectedRepository": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/ConnectedRepository"
+          }
+        },
+        "connected_repository": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/ConnectedRepository"
+          }
+        },
+        "developerConnectConfig": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/DeveloperConnectConfig"
+          }
+        },
+        "developer_connect_config": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/DeveloperConnectConfig"
+          }
+        },
+        "gitSource": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/GitSource"
+          }
+        },
+        "git_source": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/GitSource"
+          }
+        },
+        "repoSource": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/RepoSource"
+          }
+        },
+        "repo_source": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/RepoSource"
+          }
+        },
+        "storageSource": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/StorageSource"
+          }
+        },
+        "storage_source": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/StorageSource"
+          }
+        },
+        "storageSourceManifest": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/StorageSourceManifest"
+          }
+        },
+        "storage_source_manifest": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "$ref": "#/definitions/StorageSourceManifest"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "StepResult": {
+      "type": "object",
+      "properties": {
+        "attestationContent": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "attestation_content": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "attestationType": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "attestation_type": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "name": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "StorageSource": {
+      "type": "object",
+      "properties": {
+        "bucket": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "generation": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9223372036854775808,
+                "maximum": 9223372036854775807
+              },
+              {
+                "type": "string",
+                "format": "int64"
+              }
+            ]
+          }
+        },
+        "object": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "sourceFetcher": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "SOURCE_FETCHER_UNSPECIFIED",
+                  "GSUTIL",
+                  "GCS_FETCHER"
+                ]
+              },
+              {
+                "type": "integer",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              }
+            ]
+          }
+        },
+        "source_fetcher": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "SOURCE_FETCHER_UNSPECIFIED",
+                  "GSUTIL",
+                  "GCS_FETCHER"
+                ]
+              },
+              {
+                "type": "integer",
+                "minimum": -2147483648,
+                "maximum": 2147483647
+              }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "StorageSourceManifest": {
+      "type": "object",
+      "properties": {
+        "bucket": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "generation": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9223372036854775808,
+                "maximum": 9223372036854775807
+              },
+              {
+                "type": "string",
+                "format": "int64"
+              }
+            ]
+          }
+        },
+        "object": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    },
+    "Volume": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        },
+        "path": {
+          "if": {
+            "type": "null"
+          },
+          "else": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": []
+    }
+  }
+}
