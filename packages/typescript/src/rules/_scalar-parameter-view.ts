@@ -1,3 +1,4 @@
+/** @fileoverview _scalar-parameter-view — trace scalar parameter reads in a pure returned view. */
 import ts from "typescript";
 
 const SCALAR_OPERATORS: ReadonlySet<ts.SyntaxKind> = new Set([

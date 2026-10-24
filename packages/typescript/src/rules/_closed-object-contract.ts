@@ -1,3 +1,4 @@
+/** @fileoverview _closed-object-contract — prove a finite structural member surface. */
 import ts from "typescript";
 
 /** Prove that native member lookup has a complete, finite structural key space. */

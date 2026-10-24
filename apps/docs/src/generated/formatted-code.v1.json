@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "b5289867dc2b4b3f75f6ff390a08ba4116c4e986eed363a62909f1c03d24b976",
+  "catalogSha256": "1c01d02f0ba1fd577a00f40fb0cb89c0e6149c08f92344d1546ef693272d1a09",
   "cliSha256": "96223d187afa84cf031e293bfa3af9079a4386258ab3081e1146762e8194c11d",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -10436,6 +10436,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not prove workflow behavior with a substring"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-redundant-local-alias": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "case.py",
+              "source": "def render(item):\n    consume(payload=item)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "case.py",
+          "id": "direct-keyword",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Pass the original local"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "case.py",
+              "source": "def render(item):\n    payload = item\n    consume(payload=payload)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "case.py",
+          "id": "keyword-supplies-role",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The keyword supplies the role"
         }
       ],
       "optionsSchemaSource": null

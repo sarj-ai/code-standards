@@ -11,10 +11,8 @@ import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 import { scalarParameterView, scalarType } from "./_scalar-parameter-view.js";
 
-const EXAMPLE_SUPPORT = [
-  { path: "tsconfig.json", source: '{"compilerOptions":{"strict":true,"target":"ESNext","module":"ESNext","moduleResolution":"Bundler","jsx":"react-jsx"}}' },
-  { path: "jsx.d.ts", source: 'declare module "react/jsx-runtime" { export namespace JSX { interface Element {} interface IntrinsicElements {span: {children?: unknown}} } }' },
-] as const;
+const EXAMPLE_TSCONFIG = { path: "tsconfig.json", source: '{"compilerOptions":{"strict":true,"target":"ESNext","module":"ESNext","moduleResolution":"Bundler","jsx":"react-jsx"}}' } as const;
+const EXAMPLE_JSX = { path: "jsx.d.ts", source: 'declare module "react/jsx-runtime" { export namespace JSX { interface Element {} interface IntrinsicElements {span: {children?: unknown}} } }' } as const;
 
 export const NO_EXCESS_JSX_PROPS_DOCUMENTATION = {
   summary: "Report statically known fields spread outside a resolved component props contract.",
@@ -33,8 +31,8 @@ export const NO_EXCESS_JSX_PROPS_DOCUMENTATION = {
   ],
   references: ["https://github.com/jsx-eslint/eslint-plugin-react/blob/master/docs/rules/jsx-props-no-spreading.md"],
   examples: [
-    { id: "excess-runtime-field", title: "An unrelated field is forwarded at runtime", outcome: "match", files: [...EXAMPLE_SUPPORT, { path: "src/avatar.tsx", source: "export {}; const Avatar = ({ displayName }: { displayName: string }) => <span>{displayName}</span>;\nconst avatar = <Avatar {...{ displayName: 'Ada', email: 'ada@example.test' }} />;" }], focusPath: "src/avatar.tsx", expectedCount: 1, public: true },
-    { id: "explicit-fields", title: "Forward only the declared field", outcome: "no-match", files: [...EXAMPLE_SUPPORT, { path: "src/avatar.tsx", source: "export {}; const Avatar = ({ displayName }: { displayName: string }) => <span>{displayName}</span>;\nconst avatar = <Avatar displayName='Ada' />;" }], focusPath: "src/avatar.tsx", expectedCount: 0, public: true },
+    { id: "excess-runtime-field", title: "An unrelated field is forwarded at runtime", outcome: "match", files: [EXAMPLE_JSX, { path: "src/avatar.tsx", source: "export {}; const Avatar = ({ displayName }: { displayName: string }) => <span>{displayName}</span>;\nconst avatar = <Avatar {...{ displayName: 'Ada', email: 'ada@example.test' }} />;" }, EXAMPLE_TSCONFIG], focusPath: "src/avatar.tsx", expectedCount: 1, public: true },
+    { id: "explicit-fields", title: "Forward only the declared field", outcome: "no-match", files: [EXAMPLE_JSX, { path: "src/avatar.tsx", source: "export {}; const Avatar = ({ displayName }: { displayName: string }) => <span>{displayName}</span>;\nconst avatar = <Avatar displayName='Ada' />;" }, EXAMPLE_TSCONFIG], focusPath: "src/avatar.tsx", expectedCount: 0, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
