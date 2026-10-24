@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e2a50895002a283b81eee5709e726c23eaf002732982a6c1df286c068076775a",
+  "catalogSha256": "cb668cbdbe1f1b26b2e79a9f16928900f3c273c74f0ac9fc4a7c18c13dbee6a1",
   "cliSha256": "67d0ed11836ad9b1fa0a972774cc6c5db912dd9cc4ac43aa97f39567f0fefac9",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -10533,6 +10533,21 @@
           "files": [
             {
               "path": "case.py",
+              "source": "def render(item):\n    return dict(payload=item)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "case.py",
+          "id": "direct-builtin-tail",
+          "outcome": "accept",
+          "scenarioId": "safe-fix",
+          "title": "Return the original local in the mapping"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "case.py",
               "source": "def render(item):\n    consume(payload=item)\n"
             }
           ],
@@ -10557,6 +10572,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "The keyword supplies the role"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "case.py",
+              "source": "def render(item):\n    payload = item\n    return dict(payload=payload)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "case.py",
+          "id": "safe-builtin-tail",
+          "outcome": "reject",
+          "scenarioId": "safe-fix",
+          "title": "A safe builtin mapping return"
         }
       ],
       "optionsSchemaSource": null

@@ -110,19 +110,19 @@ def test_apply_rolls_back_if_a_later_atomic_write_fails(tmp_path: Path, monkeypa
         category="testing",
         summary="Tests should receive an explicit clock.",
     )
-    original = transaction.atomic_write_text
+    original = transaction.atomic_write_bytes
     calls = 0
 
-    def fail_second_write(root: Path, path: Path, contents: str) -> None:
+    def fail_second_write(root: Path, path: Path, contents: bytes, *, mode: int | None = None) -> None:
         nonlocal calls
         calls += 1
         if calls == 2:
             detail = "injected failure"
             raise OSError(detail)
-        original(root, path, contents)
+        original(root, path, contents, mode=mode)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- transaction and artifact failure interception is the behavior under test.
-        transaction, "atomic_write_text", fail_second_write
+        transaction, "atomic_write_bytes", fail_second_write
     )
 
     with pytest.raises(OSError, match="injected failure"):
@@ -175,21 +175,22 @@ def test_scaffold_rollback_preserves_concurrent_edits(
     }[target_kind]
     if target_kind == "unrelated":
         target.write_text("original package\n", encoding="utf-8")
-    original = transaction.atomic_write_text
+    original = transaction.atomic_write_bytes
     calls = 0
 
-    def fail_after_concurrent_change(root: Path, path: Path, contents: str) -> None:
+    def fail_after_concurrent_change(root: Path, path: Path, contents: bytes, *, mode: int | None = None) -> None:
         nonlocal calls
         calls += 1
         if calls == 2:
             msg = "injected scaffold failure"
             raise OSError(msg)
-        original(root, path, contents)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text("concurrent owner\n", encoding="utf-8")
+        original(root, path, contents, mode=mode)
+        if calls == 1:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text("concurrent owner\n", encoding="utf-8")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- concurrent source writes are the behavior under test.
-        transaction, "atomic_write_text", fail_after_concurrent_change
+        transaction, "atomic_write_bytes", fail_after_concurrent_change
     )
     error = RuntimeError if target_kind == "written" else OSError
     with pytest.raises(error):

@@ -19,6 +19,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._ast_index import children
+from sarj_python_lint.rules._local_alias_fix import LocalAliasFixes
 from sarj_python_lint.rules._suppression_comments import comment_lines
 
 
@@ -82,9 +83,9 @@ class NoRedundantLocalAlias(Rule):
         default_level=Severity.WARNING,
         summary="Remove a local alias used only for its matching keyword argument.",
         rationale="An extra local binding makes readers trace two names for one value when the keyword already communicates its role.",
-        remediation="Pass the original local directly to the matching keyword and remove the unannotated alias assignment after review.",
+        remediation="Apply the safe fix where offered; otherwise pass the original local to the matching keyword and remove the unannotated alias after review.",
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
             "Only unannotated, single-target `alias = original` assignments with one binding and one read at `alias=alias` are checked.",
             "The original must be a parameter or an earlier initialized local with one binding; reassignment, deletion, imports, alias chains and uncertain initialization are excluded.",
@@ -93,10 +94,35 @@ class NoRedundantLocalAlias(Rule):
             "Typed aliases, files with type comments, same-scope quoted references and conditional reads of either local are excluded. Captured bindings and module/class aliases are preserved.",
             "Files with wildcard imports, Pydantic imports or references to known namespace readers, dynamic attribute getters or reference-count observers are excluded. Wildcard exports cannot establish builtin identity; computed type names can consume caller-local bindings without a Name read in the AST.",
             "Dynamic class construction and class-valued references to type are excluded. Direct, unshadowed unary type(value) queries and standard-library dataclasses remain supported.",
-            "Generated source, stubs and malformed input are excluded. Arbitrary external frame introspection is not modeled.",
-            "No autofix is offered; readability judgments, multiple reads, positional forwarding and more complex control flow remain outside the contract.",
+            "Generated source, stubs and malformed input are excluded; files must compile with normal module execution flags. Arbitrary external frame introspection is not modeled.",
+            "Safe fixes are limited to undecorated module functions with one required parameter, an optional existing docstring, a clean single-line alias and a tail return of unshadowed builtin dict with exactly the matching keyword. Recorded dict bindings, visible attribute/subscript writes, setter, mapping-mutator, ior, methodcaller or patch references, unittest imports, `|=` assignments, comments, non-UTF8 encodings, type parameters and visible code-object inspection prevent fixes. Mutation guards also exclude unrelated ordinary mappings, nonmutating methodcaller uses, harmless unittest imports and integer `|=` assignments. Other calls remain diagnostic-only; arbitrary external tracing, reflection and monkeypatching are not modeled.",
+            "Readability judgments, multiple reads, positional forwarding and more complex control flow remain outside the contract.",
         ),
         examples=(
+            RuleExample(
+                example_id="safe-builtin-tail",
+                scenario="safe-fix",
+                title="A safe builtin mapping return",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "case.py", "def render(item):\n    payload = item\n    return dict(payload=payload)\n"
+                    ),
+                ),
+                focus_path=PurePosixPath("case.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="direct-builtin-tail",
+                scenario="safe-fix",
+                title="Return the original local in the mapping",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.python("case.py", "def render(item):\n    return dict(payload=item)\n"),),
+                focus_path=PurePosixPath("case.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="keyword-supplies-role",
                 title="The keyword supplies the role",
@@ -138,6 +164,7 @@ class NoRedundantLocalAlias(Rule):
         quoted = _quoted_references(context, provenance, names)
         positions = {statement: i for owner in context.nodes(*_SUITES) for i, statement in enumerate(owner.body)}
         findings: list[Diagnostic] = []
+        fixes = LocalAliasFixes(context)
         for assignment in candidates:
             target = assignment.targets[0]
             source = assignment.value
@@ -152,14 +179,17 @@ class NoRedundantLocalAlias(Rule):
                 continue
             if not _stable_source(source, assignment, provenance, positions, conditional_sources):
                 continue
+            target_spelling = fixes.spelling(target)
+            source_spelling = fixes.spelling(source)
             findings.append(
                 Diagnostic(
                     path=context.path,
                     line=target.lineno,
                     col=target.col_offset + 1,
                     code=self.code,
-                    message=f"Local `{target.id}` only forwards `{source.id}` to `{target.id}=`; pass `{source.id}` directly and remove the alias.",
+                    message=f"Local `{target_spelling}` only forwards `{source_spelling}` to `{target_spelling}=`; pass `{source_spelling}` directly and remove the alias.",
                     severity=Severity.WARNING,
+                    fixes=fixes.for_alias(assignment, use),
                 )
             )
         return findings
@@ -204,7 +234,7 @@ def _local_assignments(context: PythonFileContext, names: set[str]) -> list[ast.
         and isinstance(node.value, ast.Name)
         and node.targets[0].id != node.value.id
     ]
-    if not candidates or context.has_wildcard_import or context.dynamic_namespace or _observes_references(context):
+    if not candidates or context.has_wildcard_import:
         return []
     provenance = context.resource_provenance
     blocked = {provenance.scope(node) for node in context.nodes(*_UNCERTAIN)}
@@ -214,9 +244,21 @@ def _local_assignments(context: PythonFileContext, names: set[str]) -> list[ast.
     eligible = [
         node for node in candidates if isinstance(scope := provenance.scope(node), _FUNCTIONS) and scope not in blocked
     ]
-    if not eligible or context.generated or _has_type_comments(context):
+    if not eligible or context.dynamic_namespace or _observes_references(context):
+        return []
+    if context.generated or _has_type_comments(context) or not _compiles(context):
         return []
     return eligible
+
+
+def _compiles(context: PythonFileContext) -> bool:
+    if context.tree is None:
+        return False
+    try:
+        compile(context.tree, str(context.path), "exec")
+    except SyntaxError:
+        return False
+    return True
 
 
 def _has_type_comments(context: PythonFileContext) -> bool:
