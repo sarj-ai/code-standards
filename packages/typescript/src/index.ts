@@ -1,3 +1,4 @@
+import noExcessJsxProps from "./rules/no-excess-jsx-props.js";
 import preferNativeFetchInServerActions from "./rules/prefer-native-fetch-in-server-actions.js";
 import noCredentialInBrowserStorage from "./rules/no-credential-in-browser-storage.js";
 import noNumericSearchParamCoercion from "./rules/no-numeric-search-param-coercion.js";
@@ -137,6 +138,7 @@ import { RENAMED_RULES } from "./rules/_renamed-rules.js";
 import { RETIRED_RULES } from "./rules/_retired-rules.js";
 
 const RULES = {
+  "no-excess-jsx-props": noExcessJsxProps,
   "prefer-native-fetch-in-server-actions": preferNativeFetchInServerActions,
   "no-credential-in-browser-storage": noCredentialInBrowserStorage,
   "no-numeric-search-param-coercion": noNumericSearchParamCoercion,
@@ -292,6 +294,7 @@ const ADVISORY_RULES = [
   "@sarj/no-cors-wildcard-with-credentials",
   "@sarj/no-credential-in-browser-storage",
   "@sarj/no-exception-text-in-5xx-response",
+  "@sarj/no-excess-jsx-props",
   "@sarj/no-invalid-typed-mutation",
   "@sarj/no-invalid-zod-custom-parse",
   "@sarj/no-numeric-search-param-coercion",
@@ -311,6 +314,7 @@ const ADVISORY_RULES = [
 ] as const;
 
 const RECOMMENDED_RULES = {
+  "@sarj/no-excess-jsx-props": "warn",
   "@sarj/named-child-schema-type": "error",
   "@sarj/no-conditional-empty-object-spread": "error",
   "@sarj/prefer-typed-reflection": "error",
@@ -440,6 +444,7 @@ const RECOMMENDED_RULES = {
 } as const;
 
 const STRICT_RULES = {
+  "@sarj/no-excess-jsx-props": "warn",
   "@sarj/named-child-schema-type": "error",
   "@sarj/no-conditional-empty-object-spread": "error",
   "@sarj/prefer-typed-reflection": "error",

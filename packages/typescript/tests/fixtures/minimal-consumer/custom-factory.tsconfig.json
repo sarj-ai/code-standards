@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react",
+    "jsxFactory": "h"
+  },
+  "include": [
+    "policy.tsx",
+    "ambient.d.ts"
+  ]
+}

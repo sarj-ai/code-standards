@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "jsxImportSource": "custom-runtime"
+  },
+  "include": [
+    "policy.tsx",
+    "ambient.d.ts"
+  ]
+}

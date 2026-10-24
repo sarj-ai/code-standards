@@ -3163,6 +3163,61 @@ def test_native_basedpyright_shrink_and_new_diagnostic_contract(tmp_path: Path) 
     assert baseline.read_bytes() == shrunk
 
 
+def test_native_protocol_contracts_preserve_cached_descriptor_boundary(tmp_path: Path) -> None:
+    template = """from functools import cached_property
+from typing import Protocol
+
+class Service(Protocol):
+    @property
+    def label(self) -> str: ...
+
+class ServiceValue:
+    @property
+    def label(self) -> str:
+        return "ready"
+
+class ConsumerContext(Protocol):
+    @property
+    def service(self) -> Service: ...
+
+class ProducerContext:
+    @DECORATOR
+    def service(self) -> ServiceValue:
+        return ServiceValue()
+
+def forward(value: ProducerContext | ConsumerContext) -> ConsumerContext:
+    return value
+
+def service_value(value: ProducerContext) -> Service:
+    return value.service
+"""
+    sources: list[str] = []
+    for descriptor in ("cached_property", "property"):
+        source = tmp_path / f"{descriptor}.py"
+        source.write_text(template.replace("DECORATOR", descriptor), encoding="utf-8")
+        sources.append(str(source))
+    (tmp_path / "pyrightconfig.json").write_text(
+        json.dumps({"typeCheckingMode": "basic", "pythonVersion": "3.14", "reportMissingImports": "error"}),
+        encoding="utf-8",
+    )
+
+    reports = analyze_external(
+        sources,
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        capabilities=frozenset({"pyright"}),
+    )
+
+    assert len(reports) == 1
+    report = reports[0]
+    assert report.completion is Completion.COMPLETE
+    assert report.file_count == 2
+    assert not report.issues
+    assert [(item.rule_id, item.location.path) for item in report.diagnostics] == [
+        ("reportReturnType", "cached_property.py")
+    ]
+
+
 def test_basedpyright_utf16_range_preserves_astral_character(tmp_path: Path) -> None:
     source = tmp_path / "example.py"
     source.write_text("value = '😀'\n", encoding="utf-8")
