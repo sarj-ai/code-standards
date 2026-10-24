@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_standards.libs.diagnostics import Completion
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting import action_metadata, devops_schema
-from sarj_standards.libs.linting.external import ProcessOutput, analyze_external
+from sarj_standards.libs.linting.external import ProcessOutput, analyze_external, run_process
+from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-    from pathlib import Path
 
 
 @pytest.mark.parametrize(
@@ -166,10 +168,76 @@ def test_all_selected_actions_are_returned_in_one_native_batch(tmp_path: Path) -
         path = tmp_path / name
         path.parent.mkdir(exist_ok=True)
         path.write_text("runs: {using: node24, main: index.js}\n")
-    reports = action_metadata.analyze_actions(root=tmp_path, paths=("action.yml", "nested/action.yaml"))
+    calls = 0
+
+    def observe(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        nonlocal calls
+        calls += 1
+        return run_process(argv, cwd=cwd, timeout_seconds=30)
+
+    reports = action_metadata.analyze_actions(root=tmp_path, paths=("action.yml", "nested/action.yaml"), runner=observe)
+    assert calls == 1
     assert len(reports) == 2
     assert all(report.completion is Completion.COMPLETE and not report.diagnostics for report in reports)
     assert [report.file_count for report in reports] == [1, 1]
+
+
+@pytest.mark.parametrize("bound", ["bytes", "files"])
+def test_large_selections_use_bounded_native_batches_without_losing_order(tmp_path: Path, bound: str) -> None:
+    source = "name: 🛠\r\nruns: {using: node24, main: index.js}\r\n"
+    count = 257 if bound == "files" else 5
+    if bound == "bytes":
+        source += ("# " + "p" * 32765 + "\n") * 56
+    selected = tuple(f"action-{index}/action.yml" for index in range(count))
+    for name in selected:
+        path = tmp_path / name
+        path.parent.mkdir()
+        path.write_bytes(source.encode())
+    batches: list[tuple[str, ...]] = []
+
+    def observe(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        documents = parse_json(Path(argv[-1]).read_text(encoding="utf-8"))
+        assert is_object_list(documents)
+        names: list[str] = []
+        size = 0
+        for document in documents:
+            assert is_object_mapping(document)
+            name, content = document["path"], document["content"]
+            assert isinstance(name, str)
+            assert isinstance(content, str)
+            names.append(name)
+            size += len(content.encode())
+        assert len(names) <= 256
+        assert size <= 8 * 1024 * 1024
+        batches.append(tuple(names))
+        return run_process(argv, cwd=cwd, timeout_seconds=30)
+
+    reports = action_metadata.analyze_actions(root=tmp_path, paths=(*selected, selected[0]), runner=observe)
+    assert len(batches) == 2
+    assert tuple(name for batch in batches for name in batch) == selected
+    assert len(reports) == len(selected)
+    assert all(report.completion is Completion.COMPLETE and not report.diagnostics for report in reports)
+
+
+def test_failure_in_a_later_batch_cannot_return_partial_clean_coverage(tmp_path: Path) -> None:
+    selected = tuple(f"action-{index}/action.yml" for index in range(257))
+    for name in selected:
+        path = tmp_path / name
+        path.parent.mkdir()
+        path.write_text("runs: {using: node24, main: index.js}\n")
+    calls = 0
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        nonlocal calls
+        calls += 1
+        output = run_process(argv, cwd=cwd, timeout_seconds=30)
+        return output if calls == 1 else ProcessOutput(0, "[]", "")
+
+    [report] = action_metadata.analyze_actions(root=tmp_path, paths=selected, runner=runner)
+    assert calls == 2
+    assert report.completion is Completion.FAILED
+    assert report.file_count == len(selected)
+    assert "omitted, duplicated or reordered" in report.issues[0].message
 
 
 def test_normal_external_routing_preserves_repository_relative_diagnostic_paths(tmp_path: Path) -> None:

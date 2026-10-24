@@ -190,10 +190,7 @@ def _analyze_receipts(
 
 
 def _receipt(path: Path, root: Path, declared: Sequence[PreparedTarget]) -> dict[str, dict[str, object]]:
-    if path.is_symlink() or path.stat().st_size > _MAX_RECEIPT_BYTES:
-        msg = "prepared receipt must be a bounded regular file"
-        raise ValueError(msg)
-    receipt = _table(parse_unique_json(path.read_text(encoding="utf-8")), "prepared receipt")
+    receipt = _table(parse_unique_json(_receipt_text(path)), "prepared receipt")
     if type(receipt.get("version")) is not int or receipt.get("version") != 1 or set(receipt) != {"version", "targets"}:
         msg = "prepared receipt requires version 1 and targets"
         raise ValueError(msg)
@@ -224,6 +221,18 @@ def _receipt(path: Path, root: Path, declared: Sequence[PreparedTarget]) -> dict
         _verify_artifacts(path.parent, target)
         result[identifier] = target
     return result
+
+
+def _receipt_text(path: Path) -> str:
+    if path.is_symlink() or not path.is_file():
+        msg = "prepared receipt must be a bounded regular file"
+        raise ValueError(msg)
+    with path.open("rb") as stream:
+        content = stream.read(_MAX_RECEIPT_BYTES + 1)
+    if len(content) > _MAX_RECEIPT_BYTES:
+        msg = "prepared receipt must be a bounded regular file"
+        raise ValueError(msg)
+    return content.decode("utf-8")
 
 
 def _verify_artifacts(directory: Path, target: Mapping[str, object]) -> None:
