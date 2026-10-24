@@ -155,6 +155,20 @@ class LoadedSource:
 
 
 @dataclass(frozen=True, slots=True)
+class _IndexedSource:
+    key: Path
+    path: Path
+    module: str | None
+    source: str
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectSourceSnapshot:
+    roots: tuple[Path, ...]
+    units: tuple[_IndexedSource, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class _ClassValueUse:
     reference: ast.Name | ast.Attribute
     type_or_constructor: bool
@@ -195,6 +209,30 @@ class ProjectIndexSet:
         _collect_unit_symbols(units, classes, nominals)
         self._classes = MappingProxyType(classes)
         self._nominals = MappingProxyType({key: frozenset(value) for key, value in nominals.items()})
+
+    def source_snapshot(self) -> ProjectSourceSnapshot:
+        # Rebuild memoized facts without rescanning roots or changing the
+        # module identities/order of the complete prepared source graph.
+        return ProjectSourceSnapshot(
+            self._roots,
+            tuple(_IndexedSource(key, unit.path, unit.module, unit.source) for key, unit in self._units.items()),
+        )
+
+    @classmethod
+    def from_source_snapshot(cls, snapshot: ProjectSourceSnapshot) -> Self:
+        units: dict[Path, SourceUnit] = {}
+        for source in snapshot.units:
+            tree: ast.Module | None = None
+            with suppress(SyntaxError):
+                tree = ast.parse(source.source, filename=str(source.path))
+            units[source.key] = SourceUnit(
+                path=source.path,
+                module=source.module,
+                source=source.source,
+                tree=tree,
+                imports=MappingProxyType(_imports(source.module, tree, is_package=source.path.name == "__init__.py")),
+            )
+        return cls(units, snapshot.roots)
 
     @classmethod
     def build(

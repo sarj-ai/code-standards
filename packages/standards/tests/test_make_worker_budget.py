@@ -11,6 +11,22 @@ import pytest
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
+def test_python_dogfood_receives_the_existing_worker_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES"):
+        monkeypatch.delenv(name, raising=False)
+    result = subprocess.run(
+        ("make", "--no-print-directory", "--dry-run", "dogfood-python", "TEST_JOBS=3"),
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not result.stderr
+    assert shlex.split(result.stdout) == ["bash", ".github/scripts/make-dogfood-python.sh", "3"]
+
+
 def _test_command(target: str, assignments: tuple[str, ...]) -> tuple[str, ...]:
     result = subprocess.run(
         (

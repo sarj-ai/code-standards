@@ -47,7 +47,7 @@ def test_python_dogfood_keeps_literal_paths_and_rejects_partial_inventory(
     monkeypatch.setenv("PATH", str(tools), prepend=os.pathsep)
     monkeypatch.setenv("FAILURE", failure)
     result = subprocess.run(
-        ("bash", str(_SCRIPTS / "make-dogfood-python.sh")),
+        ("bash", str(_SCRIPTS / "make-dogfood-python.sh"), "2"),
         cwd=tmp_path,
         text=True,
         capture_output=True,
@@ -62,6 +62,7 @@ def test_python_dogfood_keeps_literal_paths_and_rejects_partial_inventory(
         argv = parse_json(arguments.read_text(encoding="utf-8"))
         assert is_object_list(argv)
         assert list(argv[-6:]) == ["--rule", "first-rule", "--rule", "second-rule", "--", source]
+        assert list(argv[argv.index("--jobs") + 1 : argv.index("--jobs") + 2]) == ["2"]
         assert "native diagnostic" in result.stdout
         assert ("0 blocking diagnostics" in result.stdout) is (not failure)
 

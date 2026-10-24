@@ -25,7 +25,7 @@ for rule in "${python_rules[@]}"; do
   rule_args+=(--rule "$rule")
 done
 set +e
-output="$(uv run --quiet --project packages/python --frozen sarj-python-lint check "${rule_args[@]}" -- "${python_files[@]}" 2>&1)"
+output="$(uv run --quiet --project packages/python --frozen sarj-python-lint check --jobs "${1:-1}" "${rule_args[@]}" -- "${python_files[@]}" 2>&1)"
 status=$?
 set -e
 if ((status != 0)); then

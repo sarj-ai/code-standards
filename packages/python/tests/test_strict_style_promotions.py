@@ -374,8 +374,9 @@ def test_reexported_class_values_preserve_only_closed_constructor_controls(
 
 @pytest.mark.parametrize("target_only", [False, True])
 @pytest.mark.parametrize("kind", ["fluent-method", "before-validator"])
+@pytest.mark.parametrize("jobs", [1, 2])
 def test_dense_wildcard_cycles_cannot_prove_closed_class_ownership(
-    tmp_path: Path, target_only: bool, kind: str
+    tmp_path: Path, target_only: bool, kind: str, jobs: int
 ) -> None:
     (tmp_path / "pyproject.toml").write_text("[project]\nname = 'cyclic-probe'\nversion = '0.0.0'\n")
     package = tmp_path / "app"
@@ -413,6 +414,7 @@ def test_dense_wildcard_cycles_cannot_prove_closed_class_ownership(
             "require-explicit-contract-implementation",
         ],
         [target] if target_only else [target, *peers],
+        jobs=jobs,
     )
     assert [finding.severity for finding in diagnostics if finding.path == target and finding.code == code] == expected
 

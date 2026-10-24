@@ -96,7 +96,7 @@ def _canonical_rule_ids(rule_ids: list[str]) -> list[str]:
     return list(dict.fromkeys(rid if rid in REGISTRY else aliases.get(rid, rid) for rid in rule_ids))
 
 
-def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
+def _check(rule_ids: list[str], paths: list[Path], *, jobs: int = 1) -> list[Diagnostic]:
     rule_ids = _canonical_rule_ids(rule_ids)
     unknown = [rid for rid in rule_ids if rid not in REGISTRY]
     if unknown:
@@ -116,6 +116,12 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
         session.project = indexes
         for rule in project_rules:
             rule.prepare(indexes)
+    if jobs > 1 and len(loaded) > 1:
+        from sarj_python_lint._parallel import check_parallel  # ruff: ignore[import-outside-top-level] -- serial API users do not need multiprocessing.
+
+        parallel = check_parallel([type(rule) for rule in rules], loaded, session.project, jobs=jobs)
+        if parallel is not None:
+            return parallel
     diags: list[Diagnostic] = []
     for p, source in loaded.items():
         diags.extend(check_source(rules, p, source, session=session))
@@ -144,8 +150,12 @@ def analyze(
     *,
     baseline: Path | None = None,
     root: Path | None = None,
+    jobs: int = 1,
 ) -> list[Diagnostic]:
-    diagnostics = _check(rule_ids, paths)
+    if jobs < 1:
+        msg = "jobs must be at least 1"
+        raise ValueError(msg)
+    diagnostics = _check(rule_ids, paths, jobs=jobs)
     return diagnostics if baseline is None else _apply_baseline(diagnostics, _read_baseline(baseline), root=root)
 
 
@@ -481,9 +491,11 @@ def _apply_baseline(
     return out
 
 
-def _run_check(rule: list[str], files: list[Path], baseline: Path | None, update_baseline: Path | None) -> int:
+def _run_check(
+    rule: list[str], files: list[Path], baseline: Path | None, update_baseline: Path | None, *, jobs: int = 1
+) -> int:
     try:
-        diags = analyze(rule, files)
+        diags = analyze(rule, files, jobs=jobs)
     except (OSError, ValueError, SyntaxError) as exc:
         sys.stderr.write(f"error: {exc}\n")
         return 2
@@ -554,14 +566,16 @@ def _check_command(
     context: typer.Context,
     files: Annotated[list[Path], typer.Argument()],
     rule: Annotated[list[str], typer.Option("--rule", help="Rule ID (repeat for multiple).")],
+    *,
     baseline: Annotated[
         Path | None, typer.Option(help="Per-file shrink-only baseline JSON: {path: {CODE: count}}.")
     ] = None,
     update_baseline: Annotated[
         Path | None, typer.Option(help="Write current per-file diagnostic counts to JSON and exit 0.")
     ] = None,
+    jobs: Annotated[int, typer.Option(min=1, help="Analysis worker budget (up to 2); default is serial.")] = 1,
 ) -> None:
-    context.ensure_object(_Result).code = _run_check(rule, files, baseline, update_baseline)
+    context.ensure_object(_Result).code = _run_check(rule, files, baseline, update_baseline, jobs=jobs)
 
 
 def main(argv: list[str] | None = None) -> int:

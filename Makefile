@@ -163,7 +163,7 @@ lint:
 dogfood: dogfood-python dogfood-typescript
 
 dogfood-python:
-	@bash .github/scripts/make-dogfood-python.sh
+	@bash .github/scripts/make-dogfood-python.sh "$(TEST_JOBS)"
 
 dogfood-typescript: typescript-build
 	npm --prefix packages/typescript run dogfood:built
