@@ -34,7 +34,7 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
-          version: '0.13.5'
+          version-file: packages/standards/uv.toml
       - name: Validate the successful publisher's exact source lane
         id: lane
         env:
@@ -101,7 +101,7 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
-          version: '0.13.5'
+          version-file: packages/standards/uv.toml
       - name: Create immutable tags for registry-visible releases
         if: needs.preflight.outputs.lane == 'main'
         env:

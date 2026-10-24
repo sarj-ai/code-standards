@@ -120,6 +120,9 @@ def test_every_setup_uv_step_pins_the_uv_binary() -> None:
             if workflow.name == "private-refs.yml" and "version-file: trusted/packages/standards/uv.toml" in following:
                 assert text.count("uses: astral-sh/setup-uv@") == 1
                 continue
+            if workflow.name == "release-tags.yml" and "version-file: packages/standards/uv.toml" in following:
+                assert text.count("uses: astral-sh/setup-uv@") == 2
+                continue
             if "version: '0.13.5'" not in following:
                 violations.append(f"setup-uv does not pin uv 0.13.5 in {workflow}")
     assert violations == []
@@ -143,6 +146,26 @@ def test_private_reference_scanner_uses_its_trusted_projects_uv_pin() -> None:
     }
     assert install["run"] == "uv sync --project trusted/packages/standards --frozen --no-dev"
     assert steps.index(trusted) < steps.index(uv_step) < steps.index(install) < steps.index(candidate)
+
+
+@pytest.mark.parametrize("job", ["preflight", "tag"])
+def test_release_tag_jobs_use_the_published_projects_uv_pin(job: str) -> None:
+    steps = _ci_steps(job, "release-tags.yml")
+    checkouts = [
+        step for step in steps if isinstance(uses := step.get("uses"), str) and uses.startswith("actions/checkout@")
+    ]
+    uv_steps = [
+        step for step in steps if isinstance(uses := step.get("uses"), str) and uses.startswith("astral-sh/setup-uv@")
+    ]
+    assert len(checkouts) == len(uv_steps) == 1
+    checkout, uv_step = checkouts[0], uv_steps[0]
+    options = checkout["with"]
+    assert is_object_mapping(options)
+    assert options["ref"] == "${{ github.event.workflow_run.head_sha }}"
+    assert options["fetch-depth"] == 0
+    assert uv_step["with"] == {"version-file": "packages/standards/uv.toml"}
+    assert steps.index(checkout) < steps.index(uv_step)
+    assert all(steps.index(uv_step) < index for index, step in enumerate(steps) if "run" in step)
 
 
 def test_read_only_workflows_do_not_persist_checkout_credentials() -> None:
