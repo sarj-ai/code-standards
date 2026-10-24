@@ -29,6 +29,11 @@ APPROVED_ADAPTER_SHA256 = "b949ddf7fb6aadbf9e5fd4520b67a322b114a0b54a0af2b32c21d
 REACT_SCOPE_TESTS = "packages/standards/tests/test_react_doctor_scope.py"
 APPROVED_SCOPED_ADAPTER_SHA256 = "34a44e73a15dc8b3a50a7d8662cbe6471d7fbf2303d07e32e17338ce109a5f7c"
 APPROVED_SCOPED_TESTS_SHA256 = "0e62a69a71c7257de526619ef6cfda4cf824cfa5825edc961f7a28b8e014136b"
+# The per-call discovery backport is paired with its freshness tests from 8.101.7.
+DISCOVERY_FIRST_PATCH: Final = 7
+DISCOVERY_TESTS = "packages/standards/tests/test_python_project_discovery.py"
+APPROVED_DISCOVERY_ADAPTER_SHA256 = "321fc0c52dfafce2ddc9d69e0d4a41ed526692912b4208217fbc44790c4dd949"
+APPROVED_DISCOVERY_TESTS_SHA256 = "2d97caa821e96835eeba62ee9d5e8497edfe7cb0cc2d14b74501c3c228ef5468"
 APPROVED_LOCK_SHA256 = "64dfbdabf646cef05c003036c6849c5922d67865e27e94012a3e37a670777e28"
 # Historical 8.101.2/3 retain their exact lock; later patches must carry both reviewed dependency fixes.
 APPROVED_PATCHED_LOCK_SHA256 = "a7df5c1149f9b655cd587b49cc3e2bdc1c484e7bd5092aa43c6d6b8903c84698"
@@ -73,6 +78,7 @@ BACKPORT_PATHS = frozenset(
         f"{PACKAGE}/tests/test_external_diagnostics.py",
         f"{PACKAGE}/tests/test_python_type_scope.py",
         REACT_SCOPE_TESTS,
+        DISCOVERY_TESTS,
     }
 )
 # Exact whole-file projection of #1637 onto the reviewed 8.101.3 source; no other generator edits are approved.
@@ -169,6 +175,9 @@ def _validate_maintenance(root: Path, commit: str) -> None:
         raise ReleaseLaneError(msg)
     version = _maintenance_version(root, commit)
     action_backport = _validate_repo_standards_actions(root, commit, version, changed)
+    if (DISCOVERY_TESTS in changed) != (int(version.rpartition(".")[2]) >= DISCOVERY_FIRST_PATCH):
+        msg = "maintenance discovery backport requires the version-specific adapter and tests from 8.101.7"
+        raise ReleaseLaneError(msg)
     for path in VERSION_PROJECTIONS:
         _validate_projection(root, commit, path, version)
     _validate_docs(root, commit)
@@ -265,7 +274,13 @@ def _validate_docs_dependencies(root: Path, commit: str, version: str) -> None:
 def _validate_adapter(root: Path, commit: str, version: str) -> None:
     legacy = version in {"8.101.2", "8.101.3", "8.101.4"}
     adapter = _at(root, commit, f"{PACKAGE}/src/sarj_standards/libs/linting/external.py")
-    expected_adapter = APPROVED_ADAPTER_SHA256 if legacy else APPROVED_SCOPED_ADAPTER_SHA256
+    if int(version.rpartition(".")[2]) >= DISCOVERY_FIRST_PATCH:
+        expected_adapter = APPROVED_DISCOVERY_ADAPTER_SHA256
+        if hashlib.sha256(_at(root, commit, DISCOVERY_TESTS)).hexdigest() != APPROVED_DISCOVERY_TESTS_SHA256:
+            msg = "maintenance discovery tests do not match the reviewed backport"
+            raise ReleaseLaneError(msg)
+    else:
+        expected_adapter = APPROVED_ADAPTER_SHA256 if legacy else APPROVED_SCOPED_ADAPTER_SHA256
     if hashlib.sha256(adapter).hexdigest() != expected_adapter:
         msg = "maintenance adapter bytes do not match the independently reviewed backport"
         raise ReleaseLaneError(msg)

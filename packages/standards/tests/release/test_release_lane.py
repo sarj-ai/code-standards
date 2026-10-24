@@ -22,6 +22,8 @@ class PublisherLane(Protocol):
     APPROVED_ADAPTER_SHA256: str
     APPROVED_SCOPED_ADAPTER_SHA256: str
     APPROVED_SCOPED_TESTS_SHA256: str
+    APPROVED_DISCOVERY_ADAPTER_SHA256: str
+    APPROVED_DISCOVERY_TESTS_SHA256: str
     APPROVED_LOCK_SHA256: str
     APPROVED_GITLEAKS_SHA256: str
     VERSION_PROJECTIONS: tuple[str, ...]
@@ -47,6 +49,7 @@ class Candidate:
 
 
 _REACT_SCOPE_TESTS = "packages/standards/tests/test_react_doctor_scope.py"
+_DISCOVERY_TESTS = "packages/standards/tests/test_python_project_discovery.py"
 _DOCS_DEPENDENCY_PATHS = ("apps/docs/package.json", "apps/docs/package-lock.json")
 _DEPLOY_DEPENDENCY_PATHS = (".github/deploy/package.json", ".github/deploy/package-lock.json")
 _DEPENDENCY_PATHS = (*_DOCS_DEPENDENCY_PATHS, *_DEPLOY_DEPENDENCY_PATHS)
@@ -149,6 +152,8 @@ def candidate(tmp_path: Path, lane: PublisherLane, monkeypatch: pytest.MonkeyPat
         ("APPROVED_ADAPTER_SHA256", adapter.read_bytes()),
         ("APPROVED_SCOPED_ADAPTER_SHA256", b"VALUE = 3\n"),
         ("APPROVED_SCOPED_TESTS_SHA256", b"SCOPE_TEST = 2\n"),
+        ("APPROVED_DISCOVERY_ADAPTER_SHA256", b"VALUE = 4\n"),
+        ("APPROVED_DISCOVERY_TESTS_SHA256", b"DISCOVERY_TEST = 1\n"),
         ("APPROVED_LOCK_SHA256", approved_lock.encode()),
         (
             "APPROVED_PATCHED_LOCK_SHA256",
@@ -176,11 +181,26 @@ def test_reviewed_adapter_digest_matches_immutable_backport(lane: PublisherLane)
     assert hashlib.sha256(adapter.encode()).hexdigest() == lane.APPROVED_ADAPTER_SHA256
 
 
-def test_reviewed_scoped_pair_matches_checked_in_backport(lane: PublisherLane) -> None:
+def test_reviewed_scoped_pair_matches_immutable_backport(lane: PublisherLane) -> None:
+    root = Path(__file__).resolve().parents[4]
+    adapter = run_process(
+        (
+            "git",
+            "show",
+            "67a597eeb79985edf7567d0564beff9b13375574:packages/standards/src/sarj_standards/libs/linting/external.py",
+        ),
+        cwd=root,
+        capture_output=True,
+    ).stdout
+    assert hashlib.sha256(adapter.encode()).hexdigest() == lane.APPROVED_SCOPED_ADAPTER_SHA256
+    assert hashlib.sha256((root / _REACT_SCOPE_TESTS).read_bytes()).hexdigest() == lane.APPROVED_SCOPED_TESTS_SHA256
+
+
+def test_reviewed_discovery_pair_matches_checked_in_backport(lane: PublisherLane) -> None:
     root = Path(__file__).resolve().parents[4]
     adapter = root / "packages/standards/src/sarj_standards/libs/linting/external.py"
-    assert hashlib.sha256(adapter.read_bytes()).hexdigest() == lane.APPROVED_SCOPED_ADAPTER_SHA256
-    assert hashlib.sha256((root / _REACT_SCOPE_TESTS).read_bytes()).hexdigest() == lane.APPROVED_SCOPED_TESTS_SHA256
+    assert hashlib.sha256(adapter.read_bytes()).hexdigest() == lane.APPROVED_DISCOVERY_ADAPTER_SHA256
+    assert hashlib.sha256((root / _DISCOVERY_TESTS).read_bytes()).hexdigest() == lane.APPROVED_DISCOVERY_TESTS_SHA256
 
 
 def test_main_keeps_existing_release_scope(candidate: Candidate, lane: PublisherLane) -> None:
@@ -445,8 +465,9 @@ def test_reviewed_lock_projection_requires_version_specific_security_fix(
         lock = candidate.root / "packages/standards/uv.lock"
         lock.write_text(lock.read_text().replace('version = "21.14.12"', 'version = "21.14.13"'))
     if version == "8.101.10":
-        (candidate.root / "packages/standards/src/sarj_standards/libs/linting/external.py").write_text("VALUE = 3\n")
+        (candidate.root / "packages/standards/src/sarj_standards/libs/linting/external.py").write_text("VALUE = 4\n")
         (candidate.root / _REACT_SCOPE_TESTS).write_text("SCOPE_TEST = 2\n")
+        (candidate.root / _DISCOVERY_TESTS).write_text("DISCOVERY_TEST = 1\n")
     document = candidate.root / lane.DOC_EXAMPLES
     document.write_text(
         json.dumps(
@@ -563,8 +584,9 @@ def test_docs_dependencies_require_the_exact_version_specific_pair(
         _apply_reviewed_action_cohort(candidate.root, lane)
     _project_maintenance_version(candidate.root, version)
     if version == "8.101.10":
-        (candidate.root / "packages/standards/src/sarj_standards/libs/linting/external.py").write_text("VALUE = 3\n")
+        (candidate.root / "packages/standards/src/sarj_standards/libs/linting/external.py").write_text("VALUE = 4\n")
         (candidate.root / _REACT_SCOPE_TESTS).write_text("SCOPE_TEST = 2\n")
+        (candidate.root / _DISCOVERY_TESTS).write_text("DISCOVERY_TEST = 1\n")
     historical = version in {"8.101.2", "8.101.3"}
     if not historical:
         lock = candidate.root / "packages/standards/uv.lock"
@@ -613,14 +635,14 @@ def test_docs_dependency_projection_rejects_each_tampered_member(
         ("8.101.5", "paired", True),
         ("8.101.5", "adapter-drift", False),
         ("8.101.5", "tests-drift", False),
-        ("8.101.10", "legacy", False),
-        ("8.101.10", "paired", True),
+        ("8.101.6", "legacy", False),
+        ("8.101.6", "paired", True),
     ],
 )
 def test_scoped_react_backport_requires_exact_versioned_pair(
     candidate: Candidate, lane: PublisherLane, version: str, cohort: str, *, accepted: bool
 ) -> None:
-    if version == "8.101.10":
+    if version == "8.101.6":
         _apply_reviewed_action_cohort(candidate.root, lane)
     _project_maintenance_version(candidate.root, version)
     if version not in {"8.101.2", "8.101.3"}:
@@ -669,6 +691,41 @@ def _prepare_action_context(candidate: Candidate, lane: PublisherLane, version: 
     (candidate.root / _REACT_SCOPE_TESTS).write_text("SCOPE_TEST = 2\n")
     if actions:
         _apply_reviewed_action_cohort(candidate.root, lane)
+
+
+@pytest.mark.parametrize(
+    ("version", "cohort", "accepted"),
+    [
+        ("8.101.6", "paired", False),
+        ("8.101.7", "scoped", False),
+        ("8.101.7", "adapter-only", False),
+        ("8.101.7", "tests-only", False),
+        ("8.101.7", "paired", True),
+        ("8.101.7", "adapter-drift", False),
+        ("8.101.7", "tests-drift", False),
+        ("8.101.10", "paired", True),
+    ],
+)
+def test_discovery_backport_requires_exact_versioned_pair(
+    candidate: Candidate, lane: PublisherLane, version: str, cohort: str, *, accepted: bool
+) -> None:
+    _prepare_action_context(candidate, lane, version)
+    adapter = candidate.root / "packages/standards/src/sarj_standards/libs/linting/external.py"
+    if cohort not in {"scoped", "tests-only"}:
+        adapter.write_text("VALUE = 5\n" if cohort == "adapter-drift" else "VALUE = 4\n")
+    if cohort not in {"scoped", "adapter-only"}:
+        (candidate.root / _DISCOVERY_TESTS).write_text(
+            "DISCOVERY_TEST = 2\n" if cohort == "tests-drift" else "DISCOVERY_TEST = 1\n"
+        )
+    commit = _commit(candidate.root)
+    if not accepted:
+        with pytest.raises(ValueError, match=r"discovery backport requires|discovery tests|adapter bytes"):
+            lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+        return
+    assert (
+        lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+        == "standards-maintenance"
+    )
 
 
 @pytest.mark.parametrize(

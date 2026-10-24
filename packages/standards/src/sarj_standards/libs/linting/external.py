@@ -5,7 +5,7 @@ import contextlib
 from dataclasses import dataclass, replace
 from datetime import timedelta
 from enum import StrEnum
-from functools import partial
+from functools import cache, partial
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -2170,10 +2170,11 @@ def _project_analyzer(project: Path, name: str) -> str:
 
 def _group_python_projects(files: Sequence[str], root: Path) -> tuple[tuple[Path, tuple[str, ...]], ...]:
     fallback = _adopted_python_project(root)
+    nearest = cache(partial(_nearest_analyzer_project, root=root, fallback=fallback))
     grouped: dict[Path, list[str]] = {}
     for raw_file in files:
         path = Path(raw_file).resolve()
-        project = _nearest_analyzer_project(path.parent, root, fallback=fallback)
+        project = nearest(path.parent)
         grouped.setdefault(project, []).append(str(path))
     return tuple(
         (project, tuple(sorted(scoped_files)))
@@ -2203,10 +2204,11 @@ def _nearest_analyzer_project(start: Path, root: Path, *, fallback: Path | None 
 
 def _group_ruff_projects(files: Sequence[str], root: Path) -> tuple[tuple[Path, Path | None, tuple[str, ...]], ...]:
     fallback = _adopted_python_config(root)
+    nearest = cache(partial(_nearest_ruff_config, root=root))
     grouped: dict[tuple[Path, Path | None], list[str]] = {}
     for raw_file in files:
         path = Path(raw_file).resolve()
-        config = _nearest_ruff_config(path.parent, root) or fallback
+        config = nearest(path.parent) or fallback
         project = root if config is None else config.parent
         grouped.setdefault((project, config), []).append(str(path))
     return tuple(
@@ -2216,10 +2218,11 @@ def _group_ruff_projects(files: Sequence[str], root: Path) -> tuple[tuple[Path, 
 
 
 def _group_deptry_projects(files: Sequence[str], root: Path) -> tuple[tuple[Path, tuple[str, ...]], ...]:
+    nearest = cache(partial(_nearest_deptry_project, root=root))
     grouped: dict[Path, list[str]] = {}
     for raw_file in files:
         path = Path(raw_file).resolve()
-        project = _nearest_deptry_project(path.parent, root)
+        project = nearest(path.parent)
         if project is None:
             continue
         grouped.setdefault(project, []).append(str(path))
