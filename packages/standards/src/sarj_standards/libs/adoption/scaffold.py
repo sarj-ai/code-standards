@@ -1134,6 +1134,7 @@ def _desired_manifest(root: Path, plan: Plan, current: manifest.Manifest | None)
         ci_bootstrap=() if current is None else current.ci_bootstrap,
         prepared_targets=() if current is None else current.prepared_targets,
         compose_version=_new_compose_version(root) if current is None else current.compose_version,
+        compose_projects=() if current is None else current.compose_projects,
         ci_runner=None if current is None else current.ci_runner,
         ci_commit_policy="workflow" if current is None else current.ci_commit_policy,
         knip_application=False if current is None else current.knip_application,

@@ -8,7 +8,7 @@ import typer
 
 from sarj_standards.libs.adoption import devops, lifecycle, manifest
 from sarj_standards.libs.linting import security_tools
-from sarj_standards.libs.linting.devops_tools import checked_tool
+from sarj_standards.libs.linting.devops_tools import TOOLS, checked_tool
 
 
 app = typer.Typer(help="Provision pinned native tools for the package's integration tests")
@@ -22,10 +22,13 @@ def main(root: Annotated[Path, typer.Option("--root")]) -> None:
 def setup(root: Path) -> int:
     # Native workflow/shell, prepared Helm/Kubernetes, and application graph tests
     # exercise their tools regardless of the repository's consumer opt-outs.
-    files = (root / ".github/workflows/ci.yml",)
+    fixture_files = (root / "packages/standards/tests/fixtures/compose-project/compose.yaml",)
+    files = (root / ".github/workflows/ci.yml", *(path for path in fixture_files if path.is_file()))
     capabilities = (*manifest.DEVOPS_ANALYZERS, "knip")
     commands = (
-        *devops.install_commands(root, files, capabilities=capabilities, prepared=True),
+        *devops.install_commands(
+            root, files, capabilities=capabilities, prepared=True, compose_version=TOOLS["docker"].version
+        ),
         lifecycle.Command(
             "Pinned GitHub Actions security integration runtime",
             (*security_tools.command("zizmor", offline=False), "--version"),
