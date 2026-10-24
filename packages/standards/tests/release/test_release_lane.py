@@ -40,6 +40,7 @@ class Candidate:
     commit: str
 
 
+_REACT_SCOPE_TESTS = "packages/standards/tests/test_react_doctor_scope.py"
 _COMMIT_POLICY_BACKPORT_PATHS = (
     "packages/standards/src/sarj_standards/libs/adoption/scaffold.py",
     "packages/standards/tests/test_adoption.py",
@@ -112,6 +113,7 @@ def candidate(tmp_path: Path, lane: PublisherLane, monkeypatch: pytest.MonkeyPat
         ".gitleaks.toml": "[extend]\nuseDefault = true\n",
         lane.DOC_EXAMPLES: '{"catalogSha256":"legacy","cliSha256":"original","rules":[]}\n',
         "packages/standards/src/sarj_standards/libs/linting/external.py": "VALUE = 1\n",
+        _REACT_SCOPE_TESTS: "SCOPE_TEST = 1\n",
         "packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json": '{"rules":["retained"]}\n',
     }
     for relative, content in files.items():
@@ -138,6 +140,8 @@ def candidate(tmp_path: Path, lane: PublisherLane, monkeypatch: pytest.MonkeyPat
     adapter.write_text("VALUE = 2\n")
     for name, payload in (
         ("APPROVED_ADAPTER_SHA256", adapter.read_bytes()),
+        ("APPROVED_SCOPED_ADAPTER_SHA256", b"VALUE = 3\n"),
+        ("APPROVED_SCOPED_TESTS_SHA256", b"SCOPE_TEST = 2\n"),
         ("APPROVED_LOCK_SHA256", approved_lock.encode()),
         (
             "APPROVED_PATCHED_LOCK_SHA256",
@@ -410,6 +414,9 @@ def test_reviewed_lock_projection_requires_version_specific_security_fix(
     if patched:
         lock = candidate.root / "packages/standards/uv.lock"
         lock.write_text(lock.read_text().replace('version = "21.14.12"', 'version = "21.14.13"'))
+    if version == "8.101.10":
+        (candidate.root / "packages/standards/src/sarj_standards/libs/linting/external.py").write_text("VALUE = 3\n")
+        (candidate.root / _REACT_SCOPE_TESTS).write_text("SCOPE_TEST = 2\n")
     document = candidate.root / lane.DOC_EXAMPLES
     document.write_text(
         json.dumps(
@@ -429,6 +436,53 @@ def test_reviewed_lock_projection_requires_version_specific_security_fix(
         lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
         == "standards-maintenance"
     )
+
+
+@pytest.mark.parametrize(
+    ("version", "cohort", "accepted"),
+    [
+        ("8.101.3", "legacy", True),
+        ("8.101.4", "legacy", True),
+        ("8.101.3", "paired", False),
+        ("8.101.4", "paired", False),
+        ("8.101.3", "tests-only", False),
+        ("8.101.4", "tests-only", False),
+        ("8.101.5", "legacy", False),
+        ("8.101.5", "adapter-only", False),
+        ("8.101.5", "tests-only", False),
+        ("8.101.5", "paired", True),
+        ("8.101.5", "adapter-drift", False),
+        ("8.101.5", "tests-drift", False),
+        ("8.101.10", "legacy", False),
+        ("8.101.10", "paired", True),
+    ],
+)
+def test_scoped_react_backport_requires_exact_versioned_pair(
+    candidate: Candidate, lane: PublisherLane, version: str, cohort: str, *, accepted: bool
+) -> None:
+    _project_maintenance_version(candidate.root, version)
+    if version not in {"8.101.2", "8.101.3"}:
+        _apply_reviewed_docs_dependencies(candidate.root)
+        lock = candidate.root / "packages/standards/uv.lock"
+        lock.write_text(lock.read_text().replace('version = "21.14.12"', 'version = "21.14.13"'))
+    adapter = candidate.root / "packages/standards/src/sarj_standards/libs/linting/external.py"
+    if cohort in {"paired", "adapter-only", "tests-drift"}:
+        adapter.write_text("VALUE = 3\n")
+    elif cohort == "adapter-drift":
+        adapter.write_text("VALUE = 4\n")
+    if cohort in {"paired", "tests-only", "adapter-drift"}:
+        (candidate.root / _REACT_SCOPE_TESTS).write_text("SCOPE_TEST = 2\n")
+    elif cohort == "tests-drift":
+        (candidate.root / _REACT_SCOPE_TESTS).write_text("SCOPE_TEST = 3\n")
+    commit = _commit(candidate.root)
+    if accepted:
+        assert (
+            lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+            == "standards-maintenance"
+        )
+    else:
+        with pytest.raises(ValueError, match=r"adapter bytes do not match|scope tests do not match"):
+            lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
 
 
 def _project_maintenance_version(checkout: Path, version: str = "8.101.3") -> None:
@@ -683,6 +737,9 @@ def test_docs_dependencies_require_the_exact_version_specific_pair(
     accepted: bool,
 ) -> None:
     _project_maintenance_version(candidate.root, version)
+    if version == "8.101.10":
+        (candidate.root / "packages/standards/src/sarj_standards/libs/linting/external.py").write_text("VALUE = 3\n")
+        (candidate.root / _REACT_SCOPE_TESTS).write_text("SCOPE_TEST = 2\n")
     historical = version in {"8.101.2", "8.101.3"}
     if not historical:
         lock = candidate.root / "packages/standards/uv.lock"
