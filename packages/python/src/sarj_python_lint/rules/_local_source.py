@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 _MAX_ANCESTORS = 24
 _MAX_MODULE_BYTES = 256_000
-_MAX_MODULES = 512
+LOCAL_SOURCE_CACHE_LIMIT = 512
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +24,12 @@ class LocalModule:
     source: str
     tree: ast.Module
     runtime_imports: ImportIndex
+
+
+@dataclass(frozen=True, slots=True)
+class LocalSourceKeys:
+    resolutions: frozenset[tuple[Path, str | None, int]]
+    modules: frozenset[Path]
 
 
 @final
@@ -40,7 +46,7 @@ class LocalSourceFacts:
         key = (current, module, level)
         if key in self._resolutions:
             return self._resolutions[key]
-        if len(self._resolutions) >= _MAX_MODULES:
+        if len(self._resolutions) >= LOCAL_SOURCE_CACHE_LIMIT:
             return None
         result = _resolve_module(current, module, level, facts=facts)
         self._resolutions[key] = result
@@ -49,11 +55,15 @@ class LocalSourceFacts:
     def read_module(self, path: Path) -> LocalModule | None:
         if path in self._modules:
             return self._modules[path]
-        if len(self._modules) >= _MAX_MODULES:
+        if len(self._modules) >= LOCAL_SOURCE_CACHE_LIMIT:
             return None
         module = _read_module(path)
         self._modules[path] = module
         return module
+
+    def cache_keys(self) -> LocalSourceKeys:
+        # Failed lookups consume the same semantic budgets as successful ones.
+        return LocalSourceKeys(frozenset(self._resolutions), frozenset(self._modules))
 
 
 def _resolve_module(current: Path, module: str | None, level: int, *, facts: FirstPartyFacts) -> Path | None:
