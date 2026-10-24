@@ -523,14 +523,12 @@ def _normalize(name: str, ecosystem: Ecosystem) -> str:
 
 def _manifest_paths(root: Path) -> tuple[Path, ...]:
     paths: list[Path] = []
-    for path in root.rglob("*"):
-        relative_parts = path.relative_to(root).parts
-        if any(part in _IGNORED_DIRS for part in relative_parts):
-            continue
-        if not path.is_file():
-            continue
-        if accepts_path(path, root):
-            paths.append(path)
+    for parent, directories, filenames in root.walk():
+        directories[:] = [name for name in directories if name not in _IGNORED_DIRS]
+        for name in filenames:
+            path = parent / name
+            if accepts_path(path, root) and path.is_file():
+                paths.append(path)
     return tuple(sorted(paths))
 
 
