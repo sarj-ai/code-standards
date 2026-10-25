@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
 
 
+_ALIAS_RETURN_LENGTH = 2
 _NAMESPACE_MUTATORS = frozenset(
     {
         "setattr",
@@ -86,9 +87,9 @@ class LocalAliasFixes:
         if not isinstance(source, ast.Name) or parameters[0].arg != source.id:
             return ()
         body = owner.body[1:] if ast.get_docstring(owner) is not None else owner.body
-        if body[:1] != [assignment] or len(body[1:]) != 1 or not isinstance(body[-1], ast.Return):
+        if len(body) != _ALIAS_RETURN_LENGTH or body[0] is not assignment or not isinstance(body[1], ast.Return):
             return ()
-        call = body[-1].value
+        call = body[1].value
         if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Name) or call.func.id != "dict":
             return ()
         if call.args or len(call.keywords) != 1 or call.keywords[0].value is not use or not self._available:
@@ -110,14 +111,8 @@ class LocalAliasFixes:
             return ()
         if assignment.end_lineno != assignment.lineno:
             return ()
-        line = self.context.source_lines[assignment.lineno - 1]
         raw = self._lines[assignment.lineno - 1]
-        if (
-            raw[: assignment.col_offset].strip()
-            or raw[assignment.end_col_offset :].strip()
-            or ";" in line
-            or "\\" in line
-        ):
+        if raw[: assignment.col_offset].strip() or raw[assignment.end_col_offset :].strip():
             return ()
         return (
             TextEdit(assignment.lineno, 1, assignment.lineno + 1, 1, ""),

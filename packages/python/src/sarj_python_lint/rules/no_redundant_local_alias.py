@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-from collections import defaultdict
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, ClassVar, final, override
@@ -193,7 +192,6 @@ class NoRedundantLocalAlias(Rule):
             return []
         provenance = context.resource_provenance
         names = {node.targets[0].id for node in candidates if isinstance(node.targets[0], ast.Name)}
-        reads = _scope_reads(provenance, names)
         conditional_sources = _conditional_sources(context)
         quoted = _quoted_references(context, provenance, names)
         positions = {statement: i for owner in context.nodes(*_SUITES) for i, statement in enumerate(owner.body)}
@@ -206,7 +204,7 @@ class NoRedundantLocalAlias(Rule):
                 continue
             if (provenance.scope(assignment), target.id) in quoted:
                 continue
-            use = _single_keyword_read(target, provenance, reads, keywords)
+            use = _single_keyword_read(target, provenance, keywords)
             if use is None:
                 continue
             if not _dominates(assignment, use, context.parents, positions):
@@ -364,14 +362,6 @@ def _parameter_choice(node: ast.IfExp, provenance: ResourceProvenance) -> bool:
     return len(bindings) == 1 and isinstance(bindings[0], ast.arg)
 
 
-def _scope_reads(provenance: ResourceProvenance, names: set[str]) -> dict[tuple[ast.AST | None, str], list[ast.Name]]:
-    reads: dict[tuple[ast.AST | None, str], list[ast.Name]] = defaultdict(list)
-    for name in names:
-        for read in provenance.reads.get(name, ()):
-            reads[provenance.scope(read), name].append(read)
-    return reads
-
-
 def _conditional_sources(context: PythonFileContext) -> set[tuple[ast.AST | None, str]]:
     provenance = context.resource_provenance
     pending: list[ast.AST] = list(context.nodes(ast.IfExp))
@@ -391,12 +381,13 @@ def _conditional_sources(context: PythonFileContext) -> set[tuple[ast.AST | None
 def _single_keyword_read(
     target: ast.Name,
     provenance: ResourceProvenance,
-    reads: Mapping[tuple[ast.AST | None, str], list[ast.Name]],
     keywords: Mapping[ast.Name, str],
 ) -> ast.Name | None:
     scope = provenance.scope(target)
-    uses = reads.get((scope, target.id), ())
-    if provenance.bindings.get(scope, {}).get(target.id) != [target] or len(uses) != 1:
+    if provenance.bindings.get(scope, {}).get(target.id) != [target]:
+        return None
+    uses = provenance.binding_reads(target.id, target)
+    if len(uses) != 1:
         return None
     [use] = uses
     if keywords.get(use) != target.id or _statement(use, provenance.parents) is None:

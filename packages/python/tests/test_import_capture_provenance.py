@@ -99,6 +99,30 @@ def test_lexical_read_queries_do_not_supply_runtime_import_proofs() -> None:
     assert provenance.runtime_import_name(reference) is None
 
 
+@pytest.mark.parametrize("reverse", [False, True])
+def test_binding_reads_separate_shadowing_and_include_captures(*, reverse: bool) -> None:
+    source = (
+        "def first(item):\n"
+        "    payload = item\n"
+        "    consume(payload=payload)\n"
+        "    def captured():\n"
+        "        return payload\n"
+        "    return captured\n"
+        "def shadowed(payload):\n"
+        "    return payload\n"
+        "def last(item):\n"
+        "    payload = item\n"
+        "    return dict(payload=payload)\n"
+    )
+    context = PythonFileContext(Path("app.py"), source)
+    provenance = context.resource_provenance
+    functions = {function.name: function for function in context.nodes(ast.FunctionDef)}
+    expected = {"first": [3, 5], "shadowed": [8], "last": [11]}
+    for name in sorted(expected, reverse=reverse):
+        binding = provenance.bindings[functions[name]]["payload"][0]
+        assert sorted(read.lineno for read in provenance.binding_reads("payload", binding)) == expected[name]
+
+
 def test_runtime_import_checks_class_skipping_reads_after_a_lexical_query() -> None:
     source = (
         "import sys as runtime\n"
