@@ -11,6 +11,7 @@ from sarj_standards.libs.adoption import manifest
 from sarj_standards.libs.diagnostics import Completion, TrustMode
 from sarj_standards.libs.linting import external
 from sarj_standards.libs.linting.external import ProcessOutput, run_process
+from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
 if TYPE_CHECKING:
@@ -358,8 +359,23 @@ def test_staged_full_fallback_retains_complete_workspace_coverage(
 
 @pytest.mark.parametrize("staged", [True, False], ids=["staged", "changed"])
 @pytest.mark.parametrize("root_source_changed", [False, True], ids=["nested-only", "root-source"])
+@pytest.mark.parametrize(
+    "root_report",
+    [
+        "omitted",
+        "empty",
+        "incomplete",
+        "skipped",
+        "skipped-reason",
+        "missing-count",
+        "partial-count",
+        "diagnostic",
+        "touched-empty",
+        "git-failure",
+    ],
+)
 def test_nested_project_change_does_not_require_enclosing_root_project(
-    workspace: _Workspace, monkeypatch: pytest.MonkeyPatch, staged: bool, root_source_changed: bool
+    workspace: _Workspace, monkeypatch: pytest.MonkeyPatch, staged: bool, root_source_changed: bool, root_report: str
 ) -> None:
     root = workspace.root
     (root / "package.json").write_text('{"devDependencies":{"react":"19.2.8"}}\n', encoding="utf-8")
@@ -371,8 +387,40 @@ def test_nested_project_change_does_not_require_enclosing_root_project(
         (root / "snippet.tsx").write_text("export const Snippet = () => <div />;\n", encoding="utf-8")
     _change(root, ("app",), staged=staged)
     payload = _payload(root, base, ("app",), staged=staged)
+    projects = payload["projects"]
+    assert is_object_list(projects)
+    app_project = projects[0]
+    assert is_object_mapping(app_project)
+    overrides: dict[str, dict[str, object]] = {
+        "empty": {},
+        "incomplete": {"complete": False},
+        "skipped": {"skippedChecks": ["lint"]},
+        "skipped-reason": {"skippedCheckReasons": {"lint": "unavailable"}},
+        "missing-count": {"scannedFileCount": None},
+        "partial-count": {"scannedFileCount": 1},
+        "diagnostic": {"diagnostics": app_project["diagnostics"]},
+        "touched-empty": {},
+        "git-failure": {},
+    }
+    if root_report != "omitted":
+        projects.insert(
+            0,
+            {
+                "directory": ".",
+                "complete": True,
+                "skippedChecks": [],
+                "analyzedFileCount": 0,
+                "scannedFileCount": 0,
+                "diagnostics": [],
+                **overrides[root_report],
+            },
+        )
+    if root_report == "touched-empty":
+        app_project.update({"analyzedFileCount": 0, "scannedFileCount": 0})
 
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        if root_report == "git-failure" and argv[:2] == ("git", "diff"):
+            return ProcessOutput(2, "", "Git scope proof unavailable")
         return run_process(argv, cwd=cwd) if argv[0] == "git" else ProcessOutput(1, json.dumps(payload), "")
 
     report = external._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
@@ -385,9 +433,9 @@ def test_nested_project_change_does_not_require_enclosing_root_project(
         staged=staged,
     )
 
-    if root_source_changed:
+    if root_source_changed or root_report not in {"omitted", "empty"}:
         assert report.completion is Completion.FAILED
-        assert "requested project set" in report.issues[0].message
+        assert report.issues
     else:
         assert report.completion is Completion.COMPLETE
         assert tuple(item.location.path for item in report.diagnostics) == ("packages/app/view.tsx",)
