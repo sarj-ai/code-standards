@@ -8,6 +8,7 @@ import tomllib
 from typing import TYPE_CHECKING, ClassVar, override
 
 from sarj_python_lint.rule_base import (
+    AutofixPolicy,
     ColumnEncoding,
     Diagnostic,
     ExampleFile,
@@ -478,7 +479,9 @@ class NoCommentCruft(Rule):
             "structure; keep only concise comments for a hidden reason or constraint."
         ),
         category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes remove only standalone punctuation separators; prose, disabled code, editor regions and directives remain for review.",
             "Only standalone comments are classified; trailing comments, docstrings, directives, and referenced notes are excluded.",
             "Generated files, license headers, doctests, grammar illustrations, and Sphinx configuration banners are excluded.",
         ),
@@ -505,6 +508,15 @@ class NoCommentCruft(Rule):
                 focus_path=PurePosixPath("service.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("app/service.py", ("# --------\nvalue = 1\n")),),
+                fixed_files=(ExampleFile.python("app/service.py", ("\nvalue = 1\n")),),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )

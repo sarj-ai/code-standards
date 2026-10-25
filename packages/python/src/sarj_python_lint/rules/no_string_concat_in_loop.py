@@ -50,9 +50,11 @@ class NoStringConcatInLoop(Rule):
         rationale="Repeated immutable-string growth can copy the accumulated value on each iteration and become quadratic.",
         remediation="Collect fragments and join once, or use `io.StringIO` when incremental writes are required.",
         category=RuleCategory.PERFORMANCE,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         aliases=("inefficient-string-concat-in-loop",),
         limitations=(
+            "Autofix only handles a private nested ordinary synchronous nongenerator helper with closed direct callers, no known frame/metadata capabilities or comments, and exactly empty-string initialization, one literal loop, and return. The loop must append its exact-string item to that accumulator and contain at least two nonempty string literals; existing names, loop order, and fresh final-string identity are preserved with list append and join.",
+            "Containing callables must also be ordinary synchronous nongenerators with proven inert execution; unknown callouts, properties, overloads, reachable frame-exporting exceptions, and helper references crossing additional function, class, lambda, or comprehension scopes prevent fixes.",
             "The rule requires syntax that establishes string-like growth and excludes generated files.",
             "Subscript targets, per-iteration reinitialization, and intermediate values consumed by the loop are excluded.",
         ),
@@ -114,6 +116,25 @@ class NoStringConcatInLoop(Rule):
                 expected_count=0,
                 public=True,
                 scenario="fstring-growth",
+            ),
+            RuleExample(
+                example_id="safe-autofix",
+                title="A closed literal loop collects fragments and joins once",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/render.py",
+                        "def render():\n    def _render():\n        result = ''\n        for item in ('a', 'b'):\n            result += item\n        return result\n    return _render()\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/render.py",
+                        "def render():\n    def _render():\n        result = []\n        for item in ('a', 'b'):\n            result.append(item)\n        return ''.join(result)\n    return _render()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/render.py"),
+                expected_count=1,
             ),
         ),
     )

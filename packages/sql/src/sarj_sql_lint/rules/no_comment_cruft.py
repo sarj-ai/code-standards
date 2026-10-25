@@ -18,6 +18,7 @@ from sarj_sql_lint.rule_base import (
     is_dump_file,
     is_generated_migration,
     is_migration_source,
+    physical_lines,
     sql_comments,
 )
 
@@ -102,14 +103,14 @@ _BANNER_ONLY_RE = re.compile(r"^[-=#*~_.+ ]{4,}$")
 _BANNER_HEADING_RE = re.compile(r"^[-=#*~_.+]{4,}\s*\S.*?\s*[-=#*~_.+]{4,}$")
 _DEBT_MARKERS = ("TO" + "DO", "FIX" + "ME", "HACK", "X" + "XX")
 _DEBT_RE = re.compile(r"^(?:" + "|".join(_DEBT_MARKERS) + r")\b", re.IGNORECASE)
-_REFERENCE_RE = re.compile(r"https?://|\b(?:RFC|CVE)[- ]?\d+\b|\b[A-Z][A-Z0-9]{1,9}-\d+\b|#\d{2,6}\b")
-_DIRECTIVE_RE = re.compile(
+COMMENT_REFERENCE_RE = re.compile(r"https?://|\b(?:RFC|CVE)[- ]?\d+\b|\b[A-Z][A-Z0-9]{1,9}-\d+\b|#\d{2,6}\b")
+COMMENT_DIRECTIVE_RE = re.compile(
     r"^(?:sarj-noqa(?:\s*:|$)|sqlfluff(?:\s*:|\s+(?:disable|enable)\b)|squawk-ignore(?:\s*:|$)|"
     r"noqa(?:\s*:|$)|dialect\s*:|sql-dialect\s*:|migrate\s*:|\+goose\b|\+migrate\b|liquibase\b|"
     r"changeset\b|rollback\b|preconditions?\b|atlas\s*:|pgroll\s*:|flyway\s*:|pg_dump(?:\s*:|$))",
     re.IGNORECASE,
 )
-_ROLLBACK_CONTEXT_RE = re.compile(r"\b(?:roll\s*back|revert|undo)\b", re.IGNORECASE)
+ROLLBACK_CONTEXT_RE = re.compile(r"\b(?:roll\s*back|revert|undo)\b", re.IGNORECASE)
 _TEST_PATH_PARTS = frozenset({"test", "tests"})
 
 
@@ -141,9 +142,10 @@ class NoCommentCruft(Rule):
             "reference. Retain concise operational constraints, rollback instructions, and tool directives."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         aliases=("no-comment-cruft",),
         limitations=(
+            "Safe fixes remove standalone line-comment banners and complete supported disabled SQL-only comment runs. Debt, references, directives, rollback guidance, mixed prose and block comments remain for review.",
             "Only authored migration files are checked; dumps and generator-owned migrations are excluded.",
             "The scanner distinguishes SQL comments from strings, identifiers, templates, and executable dollar-quoted bodies.",
             "Commented-out SQL is reported only for a conservative complete-statement grammar; ambiguous prose and partial statements are preserved.",
@@ -155,6 +157,7 @@ class NoCommentCruft(Rule):
                 title="Disabled SQL statement",
                 outcome=ExampleOutcome.MATCH,
                 files=(ExampleFile.sql("migrations/001.sql", "-- DROP TABLE legacy_events;\nSELECT 1;\n"),),
+                fixed_files=(ExampleFile.sql("migrations/001.sql", "\nSELECT 1;\n"),),
                 focus_path=PurePosixPath("migrations/001.sql"),
                 expected_count=1,
                 public=True,
@@ -195,7 +198,7 @@ class NoCommentCruft(Rule):
 
 def _finding(comments: list[SourceComment]) -> _Finding | None:
     lines = [line for comment in comments for line in _comment_lines(comment)]
-    effective = [line for line in lines if line.text and _DIRECTIVE_RE.match(line.text) is None]
+    effective = [line for line in lines if line.text and COMMENT_DIRECTIVE_RE.match(line.text) is None]
     if not effective:
         return None
 
@@ -207,7 +210,7 @@ def _finding(comments: list[SourceComment]) -> _Finding | None:
         (
             line
             for line in effective
-            if _DEBT_RE.match(line.text) is not None and _REFERENCE_RE.search(line.text) is None
+            if _DEBT_RE.match(line.text) is not None and COMMENT_REFERENCE_RE.search(line.text) is None
         ),
         None,
     )
@@ -220,7 +223,7 @@ def _finding(comments: list[SourceComment]) -> _Finding | None:
 
     statement = "\n".join(line.text for line in effective)
     statement_line = _first_commented_sql_line(statement)
-    if not any(_ROLLBACK_CONTEXT_RE.search(line.text) for line in lines) and statement_line is not None:
+    if not any(ROLLBACK_CONTEXT_RE.search(line.text) for line in lines) and statement_line is not None:
         first = effective[statement_line]
         return _Finding(
             first.line,
@@ -232,7 +235,7 @@ def _finding(comments: list[SourceComment]) -> _Finding | None:
 
 def _comment_lines(comment: SourceComment) -> list[_CommentLine]:
     lines: list[_CommentLine] = []
-    for offset, raw in enumerate(comment.body.splitlines()):
+    for offset, raw in enumerate(physical_lines(comment.body)):
         text = raw.strip().lstrip("*").strip()
         lines.append(
             _CommentLine(
@@ -246,19 +249,19 @@ def _comment_lines(comment: SourceComment) -> list[_CommentLine]:
 
 
 def _first_commented_sql_line(text: str) -> int | None:
-    statements = _split_commented_statements(text)
+    statements = split_disabled_statements(text)
     search_start = 0
     for statement in statements:
         statement_start = text.find(statement, search_start)
         if statement_start < 0:
             continue
         search_start = statement_start + len(statement)
-        if _is_supported_statement(statement):
+        if is_supported_disabled_statement(statement):
             return text.count("\n", 0, statement_start)
     return None
 
 
-def _split_commented_statements(text: str) -> list[str]:
+def split_disabled_statements(text: str) -> list[str]:
     statements: list[str] = []
     start = 0
     cursor = 0
@@ -297,7 +300,7 @@ def _split_commented_statements(text: str) -> list[str]:
     return statements
 
 
-def _is_supported_statement(statement: str) -> bool:
+def is_supported_disabled_statement(statement: str) -> bool:
     compact = " ".join(statement.split())
     if _SQL_HEAD_RE.match(compact) is None:
         return False
@@ -404,7 +407,7 @@ def _is_supported_create_view(statement: str) -> bool:
 
 def _comment_groups(source: str) -> list[list[SourceComment]]:
     comments = sql_comments(source, mask_dollar_literals=True)
-    source_lines = source.splitlines()
+    source_lines = physical_lines(source)
     groups: list[list[SourceComment]] = []
     for comment in comments:
         if groups and _continues_group(source_lines, groups[-1][-1], comment):
@@ -431,7 +434,7 @@ def _is_standalone_comment(source_lines: list[str], comment: SourceComment) -> b
 
 
 def _banner_finding(effective: list[_CommentLine]) -> _Finding | None:
-    banner = next((line for line in effective if _is_banner(line.text)), None)
+    banner = next((line for line in effective if is_decorative_banner(line.text)), None)
     if banner is not None:
         return _Finding(
             banner.line,
@@ -442,7 +445,7 @@ def _banner_finding(effective: list[_CommentLine]) -> _Finding | None:
     return None
 
 
-def _is_banner(line: str) -> bool:
+def is_decorative_banner(line: str) -> bool:
     return _BANNER_ONLY_RE.fullmatch(line) is not None or _BANNER_HEADING_RE.fullmatch(line) is not None
 
 

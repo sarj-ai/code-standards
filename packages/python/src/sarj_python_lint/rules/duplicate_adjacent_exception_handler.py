@@ -54,26 +54,74 @@ class DuplicateAdjacentExceptionHandler(ProjectRule):
         rationale="Repeating one translation for adjacent statically known exception classes creates extra branches to maintain without different behavior.",
         remediation="Consider one tuple handler for the adjacent exception types. Preserve distinct messages, cleanup, ordering, and intentional independently maintained translations.",
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes merge only comment-free adjacent handlers using proven unshadowed builtin exception names; first-party classes and documented translation seams remain review-only.",
             "Only ordinary try statements with adjacent handlers, identical exception bindings, executable ASTs and comments are compared; exception groups and bare re-raise/pass handlers are excluded.",
             "Handler types must be simple names or tuples of unshadowed builtin or statically resolved first-party Exception subclasses, with stable declarations/imports initialized before the enclosing module statement. Declarations after a callable's definition are unresolved and excluded.",
-            "Dynamic or explicit builtin namespace access, unknown external exception classes, generated/vendor sources, different comments, and intervening handlers are excluded. Unseen external builtin mutations are not resolved. No autofix preserves intentional translation seams.",
+            "Dynamic or explicit builtin namespace access, unknown external exception classes, generated/vendor sources, different comments, and intervening handlers are excluded. Unseen external builtin mutations are not resolved.",
         ),
-        examples=tuple(
+        examples=(
+            *tuple(
+                RuleExample(
+                    example_id=name,
+                    title=title,
+                    outcome=outcome,
+                    files=(ExampleFile.python("app/service.py", source),),
+                    focus_path=PurePosixPath("app/service.py"),
+                    expected_count=count,
+                    public=True,
+                )
+                for name, title, outcome, source, count in (
+                    (
+                        "repeated-translation",
+                        "Adjacent handlers translate identically",
+                        ExampleOutcome.MATCH,
+                        _BAD,
+                        1,
+                    ),
+                    (
+                        "one-tuple-handler",
+                        "One handler owns the shared translation",
+                        ExampleOutcome.NO_MATCH,
+                        _GOOD,
+                        0,
+                    ),
+                )
+            ),
             RuleExample(
-                example_id=name,
-                title=title,
-                outcome=outcome,
-                files=(ExampleFile.python("app/service.py", source),),
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def translate(call):\n"
+                            "    try:\n"
+                            "        call()\n"
+                            "    except ValueError as error:\n"
+                            "        raise RuntimeError('invalid') from error\n"
+                            "    except TypeError as error:\n"
+                            "        raise RuntimeError('invalid') from error\n"
+                        ),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def translate(call):\n"
+                            "    try:\n"
+                            "        call()\n"
+                            "    except (ValueError, TypeError) as error:\n"
+                            "        raise RuntimeError('invalid') from error\n"
+                        ),
+                    ),
+                ),
                 focus_path=PurePosixPath("app/service.py"),
-                expected_count=count,
-                public=True,
-            )
-            for name, title, outcome, source, count in (
-                ("repeated-translation", "Adjacent handlers translate identically", ExampleOutcome.MATCH, _BAD, 1),
-                ("one-tuple-handler", "One handler owns the shared translation", ExampleOutcome.NO_MATCH, _GOOD, 0),
-            )
+                expected_count=1,
+            ),
         ),
     )
     description = documentation.summary
@@ -155,13 +203,18 @@ def _safe_types(
         )
     if not isinstance(expression, ast.Name):
         return False
-    if (
+    if is_builtin_exception_type(expression, context, provenance):
+        return True
+    return _first_party_exception(expression, context, provenance, project, unit, seen=seen)
+
+
+def is_builtin_exception_type(expression: ast.Name, context: PythonFileContext, provenance: ResourceProvenance) -> bool:
+    return (
         expression.id in _BUILTIN_EXCEPTIONS
         and context.imports.builtin_is_unshadowed(expression.id)
         and provenance.binding(expression.id, expression) is None
-    ):
-        return True
-    return _first_party_exception(expression, context, provenance, project, unit, seen=seen)
+        and provenance.builtin_namespace_untouched
+    )
 
 
 def _first_party_exception(

@@ -17,7 +17,7 @@ RuleTester.itOnly = it.only;
 it("keeps runtime reflection changes behind manual review", () => {
   expect(Object.getOwnPropertyNames(ErasedPrivate.prototype)).toContain("load");
   expect(Object.getOwnPropertyNames(RuntimePrivate.prototype)).not.toContain("load");
-  expect(rule.meta.fixable).toBeUndefined();
+  expect(rule.meta.fixable).toBe("code");
 });
 
 const RULE_TESTER = new RuleTester({
@@ -43,6 +43,10 @@ RULE_TESTER.run("prefer-ecmascript-private-members", rule, {
     { code: "class Service { private run() {} }", filename: "generated/service.ts" },
   ],
   invalid: [
+    { name: "fixes a closed unused module class", code: "export {}; class Vault { private read() { return 1; } open() { return this.read(); } }", output: "export {}; class Vault { #read() { return 1; } open() { return this.#read(); } }", errors: [{ messageId: "preferEcmascriptPrivate" }] },
+    { name: "preserves class decorators with implicit observation", code: "export {}; @register class Vault { private read() { return 1; } }", output: null, errors: [{ messageId: "preferEcmascriptPrivate" }] },
+    { name: "preserves a class that leaks through static execution", code: "export {}; class Vault { static leak = register(this); private read() { return 1; } }", output: null, errors: [{ messageId: "preferEcmascriptPrivate" }] },
+    { name: "preserves a class called through its outer binding", code: "export {}; class Vault { private read() { return 1; } } consume(new Vault());", output: null, errors: [{ messageId: "preferEcmascriptPrivate" }] },
     { name: "does not rewrite a class escaping through static this", code: "declare function register(value: unknown): void; class Service { static { register(this); } private load() { return 1; } run() { return this.load(); } }", output: null, errors: [{ messageId: "preferEcmascriptPrivate" }] },
     {
       name: "reports the documented method without an automatic runtime change",

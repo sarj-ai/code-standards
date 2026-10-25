@@ -6,7 +6,9 @@
 import { AST_NODE_TYPES, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 
+import { retainsNamedTypeUses } from "./_type-binding.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
 import { isGeneratedFile } from "./_paths.js";
 
 export const NO_KNOWN_VALUE_WIDENING_DOCUMENTATION = {
@@ -14,14 +16,24 @@ export const NO_KNOWN_VALUE_WIDENING_DOCUMENTATION = {
   rationale: "Erasing a typed value's fields forces downstream code to rediscover the same contract through casts, reflection, or representation checks.",
   remediation: "Keep the inferred type, select the required domain fields, or use satisfies to check compatibility without erasing evidence.",
   category: "maintainability",
+  autofix: "safe",
   limitations: [
     "Requires TypeScript type information. Only annotated local const bindings with identifier initializers are inspected; literals, calls, parameters, exported bindings, and type assertions are excluded.",
     "Only unknown, object, and index-only dictionaries with unknown values are rejected. Typed dynamic registries, finite-key records, empty accumulators, and unknown external input are preserved.",
-    "Intentional type erasure at a real abstraction boundary needs a local suppression explaining that boundary. No automatic rewrite is offered because later assignments may depend on the declared contract.",
+    "Intentional type erasure at a real abstraction boundary needs a local suppression explaining that boundary. Automatic fixes remove the annotation only from an unused private binding in a module or block; referenced bindings retain their declared contract for manual review.",
   ],
   examples: [
     { id: "erased-tool", title: "A dictionary erases a known tool contract", outcome: "match", files: [{ path: "src/tool.ts", source: "type Tool = { name: string; enabled: boolean };\ndeclare const tool: Tool;\nconst fields: Record<string, unknown> = tool;" }], focusPath: "src/tool.ts", expectedCount: 1, public: true },
     { id: "retained-tool", title: "Retain the tool's fields", outcome: "no-match", files: [{ path: "src/tool.ts", source: "type Tool = { name: string; enabled: boolean };\ndeclare const tool: Tool;\nconst fields = tool;" }], focusPath: "src/tool.ts", expectedCount: 0, public: true },
+    {
+      id: "safe-autofix",
+      title: "Apply the proven automatic correction",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "export {}; declare const tool: { name: string }; const fields: unknown = tool;" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "export {}; declare const tool: { name: string }; const fields = tool;" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -42,6 +54,7 @@ export default createRule<[], "widening">({
   documentation: NO_KNOWN_VALUE_WIDENING_DOCUMENTATION,
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: { description: NO_KNOWN_VALUE_WIDENING_DOCUMENTATION.summary },
     schema: [],
     messages: { widening: "This annotation erases a known value's contract. Retain inference or use a domain contract instead of rediscovering fields through casts or runtime checks." },
@@ -61,7 +74,16 @@ export default createRule<[], "widening">({
         const source = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(node.init));
         if (hasUnknownContract(source, checker)) return;
         const target = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(node.id.typeAnnotation.typeAnnotation));
-        if (erasesContract(target, checker)) context.report({ node: node.id.typeAnnotation, messageId: "widening" });
+        if (erasesContract(target, checker)) {
+          const annotation = node.id.typeAnnotation;
+          const canFix = isUnusedPrivateBinding(context.sourceCode, node, node.id, context.filename) &&
+            context.sourceCode.getCommentsInside(annotation).length === 0 &&
+            retainsNamedTypeUses(context.sourceCode, annotation);
+          context.report({
+            node: annotation, messageId: "widening",
+            fix: canFix ? (fixer) => fixer.replaceText(annotation, context.sourceCode.getText(annotation).replace(/[^\r\n]/gu, "")) : null,
+          });
+        }
       },
     };
   },

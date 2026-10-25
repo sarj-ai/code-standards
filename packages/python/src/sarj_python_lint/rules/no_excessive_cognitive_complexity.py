@@ -6,6 +6,7 @@ from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
+    AutofixPolicy,
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
@@ -166,13 +167,52 @@ class NoExcessiveCognitiveComplexity(Rule):
         rationale="Nested control flow increases the context a reader must retain while following a function.",
         remediation="Examples are fictional and written for this documentation; domain types are omitted. The library example replaces nested eligibility checks with early returns while preserving evaluation order. Refactor one function at a time, starting with its largest contributors. First simplify control flow and reduce nesting within the function. Extract a helper only when it clarifies a cohesive responsibility or enables meaningful reuse; do not split code solely to lower the score. Use lookup tables only for equivalent pure dispatch. Preserve APIs, side effects, evaluation order, and exception behavior. Run relevant tests before and after; remeasure the original and extracted functions. Do not hide branches in dense expressions or add indirection just to lower a score.",
         category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Autofix only flattens a whole-function chain of at most 32 literal True guards with no else to its existing standalone single-line literal return, inside a closed private nested ordinary zero-parameter helper. Other complexity requires review.",
+            "All containing callables must have proven inert execution without Global/Nonlocal declarations, escaped helper references, observable frames or metadata, callbacks, reachable failures or unknown finalizers. Comments and unsupported source line separators prevent edits. The exact return spelling, physical line number, surrounding source and LF/CRLF endings are preserved.",
             "Sarj metric, not exact Sonar compatibility: functions and lambdas are independent; calls, recursion, function annotations, parameter defaults, and decorators are not scored.",
             "Conditions, loops, exception handlers, match statements, and conditional expressions add one plus nesting. Elif and else add one; their bodies add nesting. Each run of like boolean operators adds one.",
             "Comprehension loops and filters add one plus nesting. Match cases are free; case guards count as nested conditions. Try, finally, with, return, break, continue, and await add no points themselves.",
             "Generated code is excluded; authored tests and all function lengths are checked. The threshold is a shared policy constant, not a correctness boundary.",
         ),
         examples=(
+            RuleExample(
+                example_id="closed-literal-true-guards",
+                title="Remove statically redundant nesting",
+                outcome=ExampleOutcome.MATCH,
+                scenario="closed-literal-true-guards",
+                files=(
+                    ExampleFile.python(
+                        "src/decision.py",
+                        "def ready():\n    def _ready():\n        if True:\n            if True:\n                if True:\n                    if True:\n                        if True:\n                            if True:\n                                return True\n    return _ready()\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "src/decision.py",
+                        "def ready():\n    def _ready():\n\n\n\n\n\n\n        return True\n    return _ready()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("src/decision.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="flattened-literal-true-guards",
+                title="The authored return needs no constant guards",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="closed-literal-true-guards",
+                files=(
+                    ExampleFile.python(
+                        "src/decision.py",
+                        "def ready():\n    def _ready():\n\n\n\n\n\n\n        return True\n    return _ready()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("src/decision.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="nested-decisions",
                 title="Six nested decisions require a review",

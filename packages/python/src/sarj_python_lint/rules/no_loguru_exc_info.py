@@ -41,13 +41,14 @@ class NoLoguruExcInfo(Rule):
         ),
         remediation="Use `logger.opt(exception=True)` or `logger.exception(...)` when reporting the active exception.",
         category=RuleCategory.CORRECTNESS,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes handle only a direct proven Loguru logger call with literal arguments and keywords, replacing unused exc_info=True with opt(exception=True). Existing bind/opt chains, dynamic argument evaluation and commented calls remain review-only.",
             "Only unambiguous Loguru imports and immediate bind/opt chains with literal exc_info=True are checked.",
             "A literal message is required; templates using exc_info or the record, explicit exception capture, and exception() are excluded.",
             "Unknown receivers, stored logger aliases, dynamic exc_info values, ambiguous imports, and generated files are excluded.",
             "Runtime monkeypatches of Loguru objects or methods are not resolved.",
-            "An intentionally stored field can use a diagnostic-specific suppression. No automatic rewrite changes logging context.",
+            "An intentionally stored field can use a diagnostic-specific suppression. More complex logging context remains review-only.",
         ),
         examples=(
             RuleExample(
@@ -77,6 +78,37 @@ class NoLoguruExcInfo(Rule):
                 focus_path=PurePosixPath("app/service.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "from loguru import logger\n"
+                            "try:\n"
+                            "    action()\n"
+                            "except ValueError:\n"
+                            "    logger.warning('failed', exc_info=True)\n"
+                        ),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "from loguru import logger\n"
+                            "try:\n"
+                            "    action()\n"
+                            "except ValueError:\n"
+                            "    logger.opt(exception=True).warning('failed')\n"
+                        ),
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )

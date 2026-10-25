@@ -158,8 +158,8 @@ def measure(
 
 def count_source(source: str, *, ruff_aliases: Mapping[str, str] | None = None) -> Counter[str]:
     counts: Counter[str] = Counter()
-    lines = source.splitlines()
-    for token in tokenize.generate_tokens(StringIO(source).readline):
+    lines = [line.rstrip("\r\n") for line in StringIO(source, newline="").readlines()]
+    for token in tokenize.generate_tokens(StringIO(source, newline="").readline):
         if token.type != tokenize.COMMENT:
             continue
         line = lines[token.start[0] - 1] if token.start[0] <= len(lines) else ""
@@ -336,7 +336,7 @@ def _read(path: Path) -> str:
 
 
 def _count_line(line: str, counts: Counter[str]) -> None:
-    for token in tokenize.generate_tokens(StringIO(line).readline):
+    for token in tokenize.generate_tokens(StringIO(line, newline="").readline):
         if token.type == tokenize.COMMENT:
             _count_comment(
                 token.string,

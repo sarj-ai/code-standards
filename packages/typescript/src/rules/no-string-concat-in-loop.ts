@@ -8,6 +8,7 @@ import { type TSESTree } from "@typescript-eslint/utils";
 import type { Scope } from "@typescript-eslint/utils/ts-eslint";
 
 import { unwrapExpression } from "./_unwrap-expression.js";
+import { literalStringLoopFix } from "./_literal-string-loop-fix.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
@@ -20,9 +21,12 @@ export const NO_STRING_CONCAT_IN_LOOP_DOCUMENTATION = {
     "Prefer collecting string fragments over repeatedly accumulating a growing string inside a loop.",
   rationale:
     "Repeatedly rebuilding a growing string can copy all prior content on each iteration, making total work grow quadratically.",
-  remediation: "Consider collecting fragments and joining once; preserve intermediate observations and coercion timing, and measure hot paths.",
+  remediation:
+    "Consider collecting fragments and joining once; preserve intermediate observations and coercion timing, and measure hot paths.",
   category: "performance",
+  autofix: "safe",
   limitations: [
+    "Automatic fixes require a sole exported zero-argument function with exactly a literal string initializer, a two-or-more literal-string for-of accumulation, and return of that same local string. Comments, intermediate reads, callbacks, imports, coercion and other control flow remain manual.",
     "Only local identifiers initialized with a string or template literal and accumulated in a loop body are inspected.",
     "Deferred function bodies are excluded except recognized direct forEach callbacks. Syntax does not establish engine-specific string allocation complexity.",
   ],
@@ -31,7 +35,13 @@ export const NO_STRING_CONCAT_IN_LOOP_DOCUMENTATION = {
       id: "join-fragments",
       title: "Join collected fragments after the loop",
       outcome: "no-match",
-      files: [{ path: "src/render.ts", source: "const parts = []; for (const item of items) { parts.push(item); } const output = parts.join(\"\");" }],
+      files: [
+        {
+          path: "src/render.ts",
+          source:
+            'const parts = []; for (const item of items) { parts.push(item); } const output = parts.join("");',
+        },
+      ],
       focusPath: "src/render.ts",
       expectedCount: 0,
       public: true,
@@ -40,10 +50,37 @@ export const NO_STRING_CONCAT_IN_LOOP_DOCUMENTATION = {
       id: "rebuild-string",
       title: "Do not rebuild a growing string in a loop",
       outcome: "match",
-      files: [{ path: "src/render.ts", source: "let output = ''; for (const item of items) { output = `${output}${item}`; }" }],
+      files: [
+        {
+          path: "src/render.ts",
+          source:
+            "let output = ''; for (const item of items) { output = `${output}${item}`; }",
+        },
+      ],
       focusPath: "src/render.ts",
       expectedCount: 1,
       public: true,
+    },
+    {
+      id: "safe-autofix",
+      title: "Apply the proven source-owned correction",
+      outcome: "match",
+      files: [
+        {
+          path: "src/autofix-example.ts",
+          source:
+            "export function render() { let output = ''; for (const item of ['a', 'b']) { output += item; } return output; }",
+        },
+      ],
+      fixedFiles: [
+        {
+          path: "src/autofix-example.ts",
+          source:
+            "export function render() { const output = ['', 'a', 'b'].join(\"\"); return output; }",
+        },
+      ],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
     },
   ],
 } as const satisfies RuleDocumentation;
@@ -134,10 +171,7 @@ function isStringLiteralInit(node: TSESTree.Expression | null): boolean {
 }
 
 /** Recognizes longhand accumulation such as `s = s + x`. */
-function isConcatOntoTarget(
-  rhs: TSESTree.Expression,
-  target: string,
-): boolean {
+function isConcatOntoTarget(rhs: TSESTree.Expression, target: string): boolean {
   if (rhs.type === "TemplateLiteral") {
     return rhs.expressions.some(
       (expression) =>
@@ -147,7 +181,9 @@ function isConcatOntoTarget(
   if (rhs.type !== "BinaryExpression" || rhs.operator !== "+") {
     return false;
   }
-  return isConcatOperand(rhs.left, target) || isConcatOperand(rhs.right, target);
+  return (
+    isConcatOperand(rhs.left, target) || isConcatOperand(rhs.right, target)
+  );
 }
 
 /** Finds a target identifier in a chained `+` expression. */
@@ -175,16 +211,17 @@ function isDeclaredInsideLoop(
   if (def === undefined) {
     return false;
   }
-  const body = repetition.type === "CallExpression"
-    ? repetition.arguments[0]
-    : (
-        repetition as
-          | TSESTree.ForStatement
-          | TSESTree.ForOfStatement
-          | TSESTree.ForInStatement
-          | TSESTree.WhileStatement
-          | TSESTree.DoWhileStatement
-      ).body;
+  const body =
+    repetition.type === "CallExpression"
+      ? repetition.arguments[0]
+      : (
+          repetition as
+            | TSESTree.ForStatement
+            | TSESTree.ForOfStatement
+            | TSESTree.ForInStatement
+            | TSESTree.WhileStatement
+            | TSESTree.DoWhileStatement
+        ).body;
   if (body === undefined || body.type === "SpreadElement") return false;
   const [declStart, declEnd] = def.node.range;
   const [bodyStart, bodyEnd] = body.range;
@@ -208,7 +245,12 @@ function enclosingLoop(node: TSESTree.Node): TSESTree.Node | null {
     ) {
       return parent.parent;
     }
-    if (parent.type === "ArrowFunctionExpression" || parent.type === "FunctionExpression" || parent.type === "FunctionDeclaration") return null;
+    if (
+      parent.type === "ArrowFunctionExpression" ||
+      parent.type === "FunctionExpression" ||
+      parent.type === "FunctionDeclaration"
+    )
+      return null;
     if (LOOP_NODE_TYPES.has(parent.type)) {
       const loop = parent as
         | TSESTree.ForStatement
@@ -226,17 +268,36 @@ function enclosingLoop(node: TSESTree.Node): TSESTree.Node | null {
   return null;
 }
 
-function immediatelyExitsLoop(node: TSESTree.AssignmentExpression, loop: TSESTree.Node): boolean {
-  if (!LOOP_NODE_TYPES.has(loop.type) || node.parent.type !== "ExpressionStatement") return false;
+function immediatelyExitsLoop(
+  node: TSESTree.AssignmentExpression,
+  loop: TSESTree.Node,
+): boolean {
+  if (
+    !LOOP_NODE_TYPES.has(loop.type) ||
+    node.parent.type !== "ExpressionStatement"
+  )
+    return false;
   const statement = node.parent;
   const block = statement.parent;
   if (block.type !== "BlockStatement") return false;
   const next = block.body[block.body.indexOf(statement) + 1];
-  if (next?.type !== "BreakStatement" && next?.type !== "ReturnStatement" && next?.type !== "ThrowStatement") return false;
+  if (
+    next?.type !== "BreakStatement" &&
+    next?.type !== "ReturnStatement" &&
+    next?.type !== "ThrowStatement"
+  )
+    return false;
   if (next.type === "BreakStatement" && next.label !== null) return false;
-  for (let current: TSESTree.Node | undefined = block; current !== undefined && current !== loop; current = current.parent) {
-    if (current.type === "TryStatement" ||
-      (next.type === "BreakStatement" && current.type === "SwitchStatement")) return false;
+  for (
+    let current: TSESTree.Node | undefined = block;
+    current !== undefined && current !== loop;
+    current = current.parent
+  ) {
+    if (
+      current.type === "TryStatement" ||
+      (next.type === "BreakStatement" && current.type === "SwitchStatement")
+    )
+      return false;
   }
   return true;
 }
@@ -300,7 +361,8 @@ function isStringSeededReduce(node: TSESTree.CallExpression): boolean {
     initial === undefined ||
     callback.type === "SpreadElement" ||
     initial.type === "SpreadElement" ||
-    (callback.type !== "ArrowFunctionExpression" && callback.type !== "FunctionExpression") ||
+    (callback.type !== "ArrowFunctionExpression" &&
+      callback.type !== "FunctionExpression") ||
     callback.params[0]?.type !== "Identifier" ||
     !isStringLiteralInit(initial)
   ) {
@@ -310,7 +372,10 @@ function isStringSeededReduce(node: TSESTree.CallExpression): boolean {
   if (callback.body.type !== "BlockStatement") {
     return isConcatOntoTarget(callback.body, accumulator);
   }
-  if (callback.body.body.length !== 1 || callback.body.body[0]?.type !== "ReturnStatement") {
+  if (
+    callback.body.body.length !== 1 ||
+    callback.body.body[0]?.type !== "ReturnStatement"
+  ) {
     return false;
   }
   const returned = callback.body.body[0].argument;
@@ -322,6 +387,7 @@ export default createRule<Options, MessageIds>({
   documentation: NO_STRING_CONCAT_IN_LOOP_DOCUMENTATION,
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: {
       description: NO_STRING_CONCAT_IN_LOOP_DOCUMENTATION.summary,
     },
@@ -398,6 +464,7 @@ export default createRule<Options, MessageIds>({
         context.report({
           node,
           messageId: "noStringConcatInLoop",
+          fix: literalStringLoopFix(context.sourceCode, node),
         });
       },
     };

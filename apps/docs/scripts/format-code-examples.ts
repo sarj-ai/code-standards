@@ -4,6 +4,7 @@ import { hash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, extname, resolve } from "node:path";
 import process from "node:process";
+import { text as readStreamText } from "node:stream/consumers";
 
 import { format as prettierFormat, type Plugin } from "prettier";
 import type { ExampleFile, Rule, RuleExample } from "../src/lib/catalog.ts";
@@ -53,17 +54,12 @@ const docsProjectionPath = resolve(
 );
 const mode = process.argv[2];
 
-if (mode !== "--check" && mode !== "--write") {
+if (mode !== "--check" && mode !== "--write" && mode !== "--format-json") {
   throw new Error(
-    "usage: node scripts/format-code-examples.ts --check|--write",
+    "usage: node scripts/format-code-examples.ts --check|--write|--format-json",
   );
 }
 
-const catalogSource = await readFile(catalogPath, "utf8");
-const cliSource = await readFile(cliPath, "utf8");
-const catalog: unknown = JSON.parse(catalogSource);
-validateCatalog(catalog);
-const cli = parseReference(JSON.parse(cliSource) as unknown);
 const cache = new Map<string, string>();
 const ruffVersion = "0.17.2";
 
@@ -295,6 +291,24 @@ async function formatFile(file: ExampleFile, context: string) {
   };
 }
 
+async function formatJson() {
+  const request: unknown = JSON.parse(await readStreamText(process.stdin));
+  assert(Array.isArray(request), "format JSON input must be a file array");
+  const files = await Promise.all(
+    request.map((value: unknown, index: number) => {
+      const file = record(value, `format JSON file ${String(index)}`);
+      assert.deepEqual(Object.keys(file).sort(), ["path", "source"]);
+      const path = text(file["path"], "format JSON path");
+      const source = file["source"];
+      assert(typeof source === "string", "format JSON source must be a string");
+      // Empty native output is represented only for this display comparison.
+      // The caller retains the original raw bytes for convergence and analysis.
+      return formatFile({ path, source: source || "\n" }, "format JSON");
+    }),
+  );
+  process.stdout.write(render(files));
+}
+
 async function formatExample(rule: Rule, example: RuleExample) {
   const context = `${rule.key}/${example.id}/${example.outcome}`;
   return {
@@ -317,127 +331,138 @@ function flattenCommands(commands: CliCommand[]): CliCommand[] {
   ]);
 }
 
-const rules: Record<
-  string,
-  { examples: RuleExample[]; optionsSchemaSource: string | null }
-> = {};
-let formattedFileCount = 0;
-const sourceFileCount = catalog.rules.reduce(
-  (ruleCount, rule) =>
-    ruleCount +
-    rule.examples.reduce(
-      (exampleCount, example) =>
-        exampleCount + example.files.length + example.fixedFiles.length,
-      0,
-    ),
-  0,
-);
-for (const rule of catalog.rules) {
-  const examples = await Promise.all(
-    rule.examples.map((example) => formatExample(rule, example)),
-  );
-  formattedFileCount += examples.reduce(
-    (count, example) =>
-      count + example.files.length + example.fixedFiles.length,
+if (mode === "--format-json") await formatJson();
+else {
+  const catalogSource = await readFile(catalogPath, "utf8");
+  const cliSource = await readFile(cliPath, "utf8");
+  const catalog: unknown = JSON.parse(catalogSource);
+  validateCatalog(catalog);
+  const cli = parseReference(JSON.parse(cliSource) as unknown);
+
+  const rules: Record<
+    string,
+    { examples: RuleExample[]; optionsSchemaSource: string | null }
+  > = {};
+  let formattedFileCount = 0;
+  const sourceFileCount = catalog.rules.reduce(
+    (ruleCount, rule) =>
+      ruleCount +
+      rule.examples.reduce(
+        (exampleCount, example) =>
+          exampleCount + example.files.length + example.fixedFiles.length,
+        0,
+      ),
     0,
   );
-  for (const scenarioId of new Set(
-    examples.map((example) => example.scenarioId),
-  )) {
-    const before = examples.find(
-      (example) =>
-        example.scenarioId === scenarioId && example.outcome === "reject",
+  for (const rule of catalog.rules) {
+    const examples = await Promise.all(
+      rule.examples.map((example) => formatExample(rule, example)),
     );
-    const after = examples.find(
-      (example) =>
-        example.scenarioId === scenarioId && example.outcome === "accept",
+    formattedFileCount += examples.reduce(
+      (count, example) =>
+        count + example.files.length + example.fixedFiles.length,
+      0,
     );
-    assert(before && after, `${rule.key}/${scenarioId}: incomplete comparison`);
-    assert.notDeepEqual(
-      before.files.map(({ path, source }) => ({ path, source })),
-      after.files.map(({ path, source }) => ({ path, source })),
-      `${rule.key}/${scenarioId}: formatting collapses before and after to the same code`,
-    );
-  }
-  rules[rule.key] = {
-    examples,
-    optionsSchemaSource:
-      rule.optionsSchema === null
-        ? null
-        : await formatCode(
-            JSON.stringify(rule.optionsSchema),
-            "options.json",
-            `${rule.key}/optionsSchema`,
-          ),
-  };
-}
-assert.equal(
-  formattedFileCount,
-  sourceFileCount,
-  "the formatted projection must cover every catalog file",
-);
-
-for (const [ruleKey, displayed] of Object.entries(rules)) {
-  for (const example of displayed.examples) {
-    for (const file of [...example.files, ...example.fixedFiles]) {
-      assert(
-        file.source.endsWith("\n"),
-        `${ruleKey}/${example.id}/${file.path}: missing final newline`,
+    for (const scenarioId of new Set(
+      examples.map((example) => example.scenarioId),
+    )) {
+      const before = examples.find(
+        (example) =>
+          example.scenarioId === scenarioId && example.outcome === "reject",
       );
-      if (file.path.endsWith(".sql") && file.source.includes("cursor")) {
-        assert.doesNotMatch(
-          file.source,
-          /:\s+cursor\b/u,
-          `${ruleKey}/${example.id}: SQL placeholder was split`,
+      const after = examples.find(
+        (example) =>
+          example.scenarioId === scenarioId && example.outcome === "accept",
+      );
+      assert(before && after, `${rule.key}/${scenarioId}: incomplete comparison`);
+      assert.notDeepEqual(
+        before.files.map(({ path, source }) => ({ path, source })),
+        after.files.map(({ path, source }) => ({ path, source })),
+        `${rule.key}/${scenarioId}: formatting collapses before and after to the same code`,
+      );
+    }
+    rules[rule.key] = {
+      examples,
+      optionsSchemaSource:
+        rule.optionsSchema === null
+          ? null
+          : await formatCode(
+              JSON.stringify(rule.optionsSchema),
+              "options.json",
+              `${rule.key}/optionsSchema`,
+            ),
+    };
+  }
+  assert.equal(
+    formattedFileCount,
+    sourceFileCount,
+    "the formatted projection must cover every catalog file",
+  );
+
+  for (const [ruleKey, displayed] of Object.entries(rules)) {
+    for (const example of displayed.examples) {
+      for (const file of [...example.files, ...example.fixedFiles]) {
+        assert(
+          file.source.endsWith("\n"),
+          `${ruleKey}/${example.id}/${file.path}: missing final newline`,
         );
+        if (file.path.endsWith(".sql") && file.source.includes("cursor")) {
+          assert.doesNotMatch(
+            file.source,
+            /:\s+cursor\b/u,
+            `${ruleKey}/${example.id}: SQL placeholder was split`,
+          );
+        }
       }
     }
   }
-}
 
-const quickSetupSource = [
-  cli.launcher.install,
-  `${cli.program} setup`,
-  `${cli.program} doctor`,
-  `${cli.program} check`,
-].join("\n");
-const usage: Record<string, string> = {};
-for (const command of flattenCommands(cli.commands)) {
-  usage[command.path.join("/")] = normalize(command.usage);
-}
+  const quickSetupSource = [
+    cli.launcher.install,
+    `${cli.program} setup`,
+    `${cli.program} doctor`,
+    `${cli.program} check`,
+  ].join("\n");
+  const usage: Record<string, string> = {};
+  for (const command of flattenCommands(cli.commands)) {
+    usage[command.path.join("/")] = normalize(command.usage);
+  }
 
-const docsProjection = {
-  schemaVersion: 1,
-  catalogSha256: sha256(catalogSource),
-  cliSha256: sha256(cliSource),
-  formatterVersions: {
-    prettier: await installedVersion("prettier"),
-    prettierPluginSh: await installedVersion("prettier-plugin-sh"),
-    prettierPluginToml: await installedVersion("prettier-plugin-toml"),
-    ruff: ruffVersion,
-    sqlFormatter: await installedVersion("sql-formatter"),
-    terraform: "1.17.0",
-  },
-  rules,
-  static: {
-    quickSetup: await formatCode(
-      quickSetupSource,
-      "quick-setup.sh",
-      "home/quickSetup",
-    ),
-    runOnce: await formatCode(
-      `${cli.launcher.runLatest} setup`,
-      "run-once.sh",
-      "cli/runOnce",
-    ),
-    bootstrap: await formatCode(
-      '[ci]\nbootstrap = ["yarn generate", "uv run --project python generate-api"]',
-      "bootstrap.toml",
-      "cli/bootstrap",
-    ),
-    usage,
-  },
-};
+  const docsProjection = {
+    schemaVersion: 1,
+    catalogSha256: sha256(catalogSource),
+    cliSha256: sha256(cliSource),
+    formatterVersions: {
+      prettier: await installedVersion("prettier"),
+      prettierPluginSh: await installedVersion("prettier-plugin-sh"),
+      prettierPluginToml: await installedVersion("prettier-plugin-toml"),
+      ruff: ruffVersion,
+      sqlFormatter: await installedVersion("sql-formatter"),
+      terraform: "1.17.0",
+    },
+    rules,
+    static: {
+      quickSetup: await formatCode(
+        quickSetupSource,
+        "quick-setup.sh",
+        "home/quickSetup",
+      ),
+      runOnce: await formatCode(
+        `${cli.launcher.runLatest} setup`,
+        "run-once.sh",
+        "cli/runOnce",
+      ),
+      bootstrap: await formatCode(
+        '[ci]\nbootstrap = ["yarn generate", "uv run --project python generate-api"]',
+        "bootstrap.toml",
+        "cli/bootstrap",
+      ),
+      usage,
+    },
+  };
+
+  await sync(docsProjectionPath, render(docsProjection));
+}
 
 function render(value: unknown) {
   return `${JSON.stringify(value, null, 2)}\n`;
@@ -462,5 +487,3 @@ async function sync(path: string, expected: string) {
   await mkdir(resolve(path, ".."), { recursive: true });
   await writeFile(path, expected);
 }
-
-await sync(docsProjectionPath, render(docsProjection));

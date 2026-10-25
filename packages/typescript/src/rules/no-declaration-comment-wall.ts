@@ -22,6 +22,7 @@ import {
   labelStems,
   novelWords,
 } from "./_comment-wall.js";
+import { commentLineEndings, exactMemberCommentRemovalRange, type CommentRemoval } from "./_comment-edits.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
 
@@ -34,7 +35,8 @@ export const NO_DECLARATION_COMMENT_WALL_DOCUMENTATION = {
   rationale: "A dense block of repetitive member comments obscures the few comments that add information and drifts with renamed members.",
   remediation: "Delete comments that restate member names and retain comments that explain constraints, lifecycle, or behavior.",
   category: "maintainability",
-  limitations: ["Only enum and class bodies meeting the configured comment-count and restatement-ratio thresholds are reported."],
+  autofix: "safe",
+  limitations: ["Automatic fixes remove only an exact multiword member-name comment on its own line and retain all physical line endings; threshold-based or novel prose remains manual.", "Only enum and class bodies meeting the configured comment-count and restatement-ratio thresholds are reported."],
   examples: [
     {
       id: "uncommented-members",
@@ -53,6 +55,15 @@ export const NO_DECLARATION_COMMENT_WALL_DOCUMENTATION = {
       focusPath: "src/status.ts",
       expectedCount: 1,
       public: true,
+    },
+    {
+      id: "safe-autofix",
+      title: "Apply the proven automatic correction",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "class Client {\n  /** Read user. */\n  readUser() {}\n  /** Write user. */\n  writeUser() {}\n  /** Delete user. */\n  deleteUser() {}\n}" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "class Client {\n\n  readUser() {}\n\n  writeUser() {}\n\n  deleteUser() {}\n}" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
     },
   ],
 } as const satisfies RuleDocumentation;
@@ -82,6 +93,7 @@ export default createRule<Options, MessageIds>({
   documentation: NO_DECLARATION_COMMENT_WALL_DOCUMENTATION,
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: {
       description:
         "Flag an enum body or class body whose member comments mostly re-spell the members' own names.",
@@ -148,6 +160,7 @@ export default createRule<Options, MessageIds>({
       }));
       let commented = 0;
       let restated = 0;
+      const removals: CommentRemoval[] = [];
       const claimed = new Set<TSESTree.Comment>();
       for (const [index, { member, comment }] of documented.entries()) {
         if (comment === undefined || claimed.has(comment)) continue;
@@ -172,6 +185,8 @@ export default createRule<Options, MessageIds>({
         const { end, start } = declarationRange(member.node);
         if (novelWords(body, knownTokens(sourceCode.text.slice(start, end))) <= options.maxNovelWords) {
           restated += 1;
+          const removal = exactMemberCommentRemovalRange(sourceCode.text, comment, member.key);
+          if (removal !== null) removals.push(removal);
         }
       }
 
@@ -184,6 +199,7 @@ export default createRule<Options, MessageIds>({
         },
         messageId: "commentWall",
         data: { restated: String(restated), commented: String(commented) },
+        fix: removals.length === 0 ? null : (fixer) => removals.map((removal) => fixer.replaceTextRange(removal.range, commentLineEndings(sourceCode.text, removal))),
       });
     }
 

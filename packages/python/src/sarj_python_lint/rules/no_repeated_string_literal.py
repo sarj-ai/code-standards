@@ -62,9 +62,11 @@ class NoRepeatedStringLiteral(Rule):
             "independent, suppress with a rationale."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         aliases=("no-repeated-string-literal",),
         limitations=(
+            "Autofix only reuses one existing stable enclosing local literal binding for an entire repeated group of exact builtin len(literal) calls in closed private nested ordinary synchronous nongenerator helpers. An already-authored closed helper must read that binding through len; the correction introduces no names or module lookups and exposes no string identity.",
+            "Containing callables require proven inert execution and no frame/metadata/namespace escapes, comments or type parameters. Reassigned, shadowed, conditional, competing or module bindings, unknown callouts, reachable exceptions and groups with any other use remain manual.",
             "Only exact same-file literals of at least 40 characters repeated across distinct callable scopes are compared; near-duplicates are not detected.",
             "Cross-scope findings require credible SQL or an absolute route; identifier-like strings require an existing unique module constant.",
             "Prose, documentation scaffolding, annotations, tests, migrations, examples, generated files, match patterns, and f-string fragments are excluded.",
@@ -97,6 +99,41 @@ class NoRepeatedStringLiteral(Rule):
                 focus_path=PurePosixPath("queries.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="Length-only copies reuse an existing local shared binding",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/queries.py",
+                        "def length_contracts():\n"
+                        "    query = 'SELECT id, name, created_at FROM organization'\n"
+                        "    def _canonical():\n"
+                        "        return len(query)\n"
+                        "    def _first():\n"
+                        "        return len('SELECT id, name, created_at FROM organization')\n"
+                        "    def _second():\n"
+                        "        return len('SELECT id, name, created_at FROM organization')\n"
+                        "    return (_canonical(), _first(), _second())\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/queries.py",
+                        "def length_contracts():\n"
+                        "    query = 'SELECT id, name, created_at FROM organization'\n"
+                        "    def _canonical():\n"
+                        "        return len(query)\n"
+                        "    def _first():\n"
+                        "        return len(query)\n"
+                        "    def _second():\n"
+                        "        return len(query)\n"
+                        "    return (_canonical(), _first(), _second())\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/queries.py"),
+                expected_count=2,
             ),
         ),
     )

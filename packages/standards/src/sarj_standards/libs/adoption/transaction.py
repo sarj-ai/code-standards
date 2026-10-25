@@ -7,6 +7,8 @@ import stat
 import tempfile
 from typing import Final, Self
 
+from sarj_rule_contracts import fix_file
+
 from sarj_standards.libs.filesystem import is_link_like
 
 
@@ -134,6 +136,7 @@ def _write_temporary(descriptor: int, contents: bytes, mode: int) -> None:
 class FileSnapshot:
     contents: bytes | None
     mode: int | None
+    group: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,10 +166,18 @@ class FileTransaction:
     written: dict[Path, bytes | None]
     absent_parents: set[Path]
     explicit_only: bool = False
+    source_writes: bool = False
 
     @classmethod
-    def capture(cls, root: Path, extra: tuple[Path, ...] = (), *, explicit_only: bool = False) -> Self:
+    def capture(
+        cls, root: Path, extra: tuple[Path, ...] = (), *, explicit_only: bool = False, source_writes: bool = False
+    ) -> Self:
         resolved = root.resolve()
+        if source_writes:
+            if not explicit_only:
+                msg = "source transactions require explicit mutation targets"
+                raise ValueError(msg)
+            validate_targets(resolved, extra)
         candidates = set(extra) if explicit_only else _capture_candidates(resolved, extra)
         before: dict[Path, FileSnapshot] = {}
         absent_parents: set[Path] = set()
@@ -183,9 +194,12 @@ class FileTransaction:
             if path.is_file() and path.stat(follow_symlinks=False).st_nlink > 1:
                 msg = f"refusing hard-linked transaction target {path}"
                 raise OSError(msg)
-            before[path] = _snapshot(path)
+            before[path] = _snapshot(path, source_write=source_writes)
             absent_parents.update(_absent_parents(resolved, path.parent))
-        return cls(resolved, before, {}, absent_parents, explicit_only)
+        if source_writes and any(snapshot.contents is None for snapshot in before.values()):
+            msg = "source transactions require existing regular files"
+            raise OSError(msg)
+        return cls(resolved, before, {}, absent_parents, explicit_only, source_writes)
 
     def write_text(self, path: Path, contents: str) -> None:
         self.write_bytes(path, contents.encode("utf-8"))
@@ -193,7 +207,12 @@ class FileTransaction:
     def write_bytes(self, path: Path, contents: bytes) -> None:
         snapshot = self.before[path]
         assert_expected(self.root, path, self.written.get(path, snapshot.contents))
-        atomic_write_bytes(self.root, path, contents)
+        if self.source_writes:
+            _write_source(
+                self.root, path, contents, expected=self.written.get(path, snapshot.contents), snapshot=snapshot
+            )
+        else:
+            atomic_write_bytes(self.root, path, contents)
         self.written[path] = contents
 
     def track(self, *paths: Path) -> None:
@@ -201,7 +220,7 @@ class FileTransaction:
             if is_link_like(path):
                 continue
             if path not in self.before:
-                self.before[path] = _snapshot(path)
+                self.before[path] = _snapshot(path, source_write=self.source_writes)
                 self.absent_parents.update(_absent_parents(self.root, path.parent))
 
     def mark_written(self, *paths: Path) -> None:
@@ -214,7 +233,7 @@ class FileTransaction:
             if self.explicit_only and path not in self.written:
                 continue
             expected = self.written.get(path, _UNTRACKED)
-            issue = _restore_path(self.root, path, snapshot, expected)
+            issue = _restore_path(self.root, path, snapshot, expected, source_write=self.source_writes)
             if issue is not None:
                 issues.append(issue)
         for parent in sorted(self.absent_parents, key=lambda item: len(item.parts), reverse=True):
@@ -235,11 +254,11 @@ class _Untracked:
 _UNTRACKED: Final = _Untracked()
 
 
-def _snapshot(path: Path) -> FileSnapshot:
+def _snapshot(path: Path, *, source_write: bool = False) -> FileSnapshot:
     if not path.is_file():
         return FileSnapshot(None, None)
     metadata = path.stat(follow_symlinks=False)
-    return FileSnapshot(path.read_bytes(), stat.S_IMODE(metadata.st_mode))
+    return FileSnapshot(path.read_bytes(), stat.S_IMODE(metadata.st_mode), metadata.st_gid if source_write else None)
 
 
 def _restore_path(
@@ -247,6 +266,8 @@ def _restore_path(
     path: Path,
     snapshot: FileSnapshot,
     expected: bytes | _Untracked | None,
+    *,
+    source_write: bool = False,
 ) -> RollbackIssue | None:
     try:
         validate_targets(root, (path,))
@@ -256,10 +277,41 @@ def _restore_path(
     if not isinstance(expected, _Untracked) and current != expected:
         return RollbackIssue(path, "changed concurrently after the standards write")
     try:
-        _apply_snapshot(root, path, snapshot)
-    except OSError as exc:
+        if source_write:
+            _restore_source(root, path, snapshot, expected)
+        else:
+            _apply_snapshot(root, path, snapshot)
+    except (OSError, ValueError) as exc:
         return RollbackIssue(path, str(exc))
     return None
+
+
+def _restore_source(
+    root: Path,
+    path: Path,
+    snapshot: FileSnapshot,
+    expected: bytes | _Untracked | None,
+) -> None:
+    if snapshot.contents is None or isinstance(expected, _Untracked):
+        msg = "source rollback requires an owned existing-file write"
+        raise OSError(msg)
+    _write_source(root, path, snapshot.contents, expected=expected, snapshot=snapshot)
+
+
+def _write_source(root: Path, path: Path, contents: bytes, *, expected: bytes | None, snapshot: FileSnapshot) -> None:
+    validate_targets(root, (path,))
+
+    def transform(source: str) -> str:
+        if source.encode("latin-1") != expected:
+            msg = f"planned mutation target changed concurrently: {path}; rerun the command"
+            raise OSError(msg)
+        metadata = path.stat(follow_symlinks=False)
+        if stat.S_IMODE(metadata.st_mode) != snapshot.mode or metadata.st_gid != snapshot.group:
+            msg = f"source permissions or group changed concurrently: {path}; rerun the command"
+            raise OSError(msg)
+        return contents.decode("latin-1")
+
+    fix_file(path, transform, source_encoding=lambda _raw: "latin-1")
 
 
 def _apply_snapshot(root: Path, path: Path, snapshot: FileSnapshot) -> None:

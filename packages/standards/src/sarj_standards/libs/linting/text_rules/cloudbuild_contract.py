@@ -26,7 +26,7 @@ class CloudBuildContract(Rule):
         rationale="Forward or duplicate dependencies invalidate a build; substitution into shell source changes executable syntax.",
         remediation="Order uniquely identified steps before their consumers and pass substituted values through env or direct argv.",
         category=RuleCategory.CORRECTNESS,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         languages=frozenset({Language.CONFIG}),
         file_patterns=("**/*.yaml", "**/*.yml", "**/*.json"),
         references=(
@@ -34,57 +34,100 @@ class CloudBuildContract(Rule):
             "https://docs.cloud.google.com/build/docs/build-config-file-schema",
         ),
         limitations=(
+            "In YAML or strict JSON, auto-fixing only deduplicates repeated exact '-' start sentinels in direct flow-style waitFor lists. All other parsed values and native findings must remain unchanged; aliases, anchors, tags, merges, comments, directives and escaped sentinels refuse the repair. JSON must pass strict unique-key parsing before and after the edit.",
             "This checks step dependencies and execution semantics, not a complete Cloud Build API schema.",
             "Only YAML or JSON documents with a Build-shaped steps sequence are selected; other configuration shapes are not guessed.",
             "Unknown execution entrypoints, substitutions supplied by triggers, and effective service identities require prepared-output validation.",
             "YAML aliases retain executable use-site locations, including inherited mappings and aliased argument lists; shared anchor data is not treated as an execution site.",
             "Malformed or duplicate-key configuration raises a parser error instead of a suppressible rule finding; JSON also rejects non-finite numbers and YAML-only syntax.",
         ),
-        examples=tuple(
+        examples=(
             RuleExample(
-                example_id=example_id,
-                title=title,
-                outcome=outcome,
-                files=(ExampleFile(path=PurePosixPath("build.yaml"), source=source),),
-                focus_path=PurePosixPath("build.yaml"),
-                expected_count=count,
-                public=True,
-                scenario=scenario,
-            )
-            for example_id, title, outcome, source, count, scenario in (
-                (
-                    "forward-dependency",
-                    "A build cannot depend on a later step",
-                    ExpectedOutcome.MATCH,
-                    "steps:\n- name: builder\n  waitFor: [later]\n- name: builder\n  id: later\n",
-                    1,
-                    "primary",
+                example_id="repeated-start-sentinel",
+                title="Repeated start sentinel has one unambiguous dependency",
+                outcome=ExpectedOutcome.MATCH,
+                files=(
+                    ExampleFile(
+                        path=PurePosixPath("cloudbuild.yaml"),
+                        source="steps:\n- name: builder\n  waitFor: [\n    '-',\n    '-'\n  ]\n",
+                    ),
                 ),
-                (
-                    "prior-dependency",
-                    "Dependencies precede their consumers",
-                    ExpectedOutcome.NO_MATCH,
-                    "steps:\n- name: builder\n  id: first\n- name: builder\n  waitFor: [first]\n",
-                    0,
-                    "primary",
+                focus_path=PurePosixPath("cloudbuild.yaml"),
+                expected_count=2,
+                fixed_files=(
+                    ExampleFile(
+                        path=PurePosixPath("cloudbuild.yaml"),
+                        source="steps:\n- name: builder\n  waitFor: [\n    '-'\n    \n  ]\n",
+                    ),
                 ),
-                (
-                    "alias-shell-source-substitution",
-                    "An aliased shell program reports substitution at each executable use",
-                    ExpectedOutcome.MATCH,
-                    'substitutions: {_VALUE: fixture-data}\nsteps:\n- name: builder\n  entrypoint: bash\n  args: &args [-c, "printf %s $_VALUE"]\n- name: builder\n  entrypoint: bash\n  args: *args\n',
-                    2,
-                    "cloudbuild-alias-location",
+                public=False,
+            ),
+            RuleExample(
+                example_id="repeated-json-start-sentinel",
+                title="A strict JSON build retains its authored start sentinel",
+                outcome=ExpectedOutcome.MATCH,
+                files=(
+                    ExampleFile(
+                        path=PurePosixPath("cloudbuild.json"),
+                        source='{"steps": [{"name": "builder", "waitFor": [\n  "-",\n  "-"\n]}]}\n',
+                    ),
                 ),
-                (
-                    "alias-external-script-arguments",
-                    "Aliased external-script arguments retain substitution as argv data",
-                    ExpectedOutcome.NO_MATCH,
-                    'substitutions: {_VALUE: fixture-data}\nsteps:\n- name: builder\n  entrypoint: bash\n  args: &args [scripts/check.sh, "$_VALUE"]\n- name: builder\n  entrypoint: bash\n  args: *args\n',
-                    0,
-                    "cloudbuild-alias-location",
+                focus_path=PurePosixPath("cloudbuild.json"),
+                expected_count=2,
+                fixed_files=(
+                    ExampleFile(
+                        path=PurePosixPath("cloudbuild.json"),
+                        source='{"steps": [{"name": "builder", "waitFor": [\n  "-"\n  \n]}]}\n',
+                    ),
                 ),
-            )
+                public=False,
+            ),
+            *(
+                RuleExample(
+                    example_id=example_id,
+                    title=title,
+                    outcome=outcome,
+                    files=(ExampleFile(path=PurePosixPath("build.yaml"), source=source),),
+                    focus_path=PurePosixPath("build.yaml"),
+                    expected_count=count,
+                    public=True,
+                    scenario=scenario,
+                )
+                for example_id, title, outcome, source, count, scenario in (
+                    (
+                        "forward-dependency",
+                        "A build cannot depend on a later step",
+                        ExpectedOutcome.MATCH,
+                        "steps:\n- name: builder\n  waitFor: [later]\n- name: builder\n  id: later\n",
+                        1,
+                        "primary",
+                    ),
+                    (
+                        "prior-dependency",
+                        "Dependencies precede their consumers",
+                        ExpectedOutcome.NO_MATCH,
+                        "steps:\n- name: builder\n  id: first\n- name: builder\n  waitFor: [first]\n",
+                        0,
+                        "primary",
+                    ),
+                    (
+                        "alias-shell-source-substitution",
+                        "An aliased shell program reports substitution at each executable use",
+                        ExpectedOutcome.MATCH,
+                        'substitutions: {_VALUE: fixture-data}\nsteps:\n- name: builder\n  entrypoint: bash\n  args: &args [-c, "printf %s $_VALUE"]\n- name: builder\n  entrypoint: bash\n  args: *args\n',
+                        2,
+                        "cloudbuild-alias-location",
+                    ),
+                    (
+                        "alias-external-script-arguments",
+                        "Aliased external-script arguments retain substitution as argv data",
+                        ExpectedOutcome.NO_MATCH,
+                        'substitutions: {_VALUE: fixture-data}\nsteps:\n- name: builder\n  entrypoint: bash\n  args: &args [scripts/check.sh, "$_VALUE"]\n- name: builder\n  entrypoint: bash\n  args: *args\n',
+                        0,
+                        "cloudbuild-alias-location",
+                    ),
+                )
+            ),
         ),
     )
 

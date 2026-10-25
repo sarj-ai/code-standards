@@ -5,7 +5,7 @@
  */
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { exportedNextConfigProperty } from "./_exported-next-config-property.js";
+import { canAutofixNextConfigLiteral, exportedNextConfigProperty } from "./_exported-next-config-property.js";
 
 type MessageIds = "noDangerouslyAllowSvg";
 type Options = readonly [];
@@ -19,8 +19,10 @@ export const NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION = {
   remediation:
     "Keep dangerouslyAllowSVG disabled. If SVG optimization is required, retain attachment disposition and set the image Content-Security-Policy to `script-src 'none'; sandbox;`.",
   category: "security",
+  autofix: "safe",
   limitations: [
-    "Only literal effective properties of a directly exported object, unescaped const alias, or isolated module.exports object are analyzed. Wrappers, factories, spreads, dynamic computed keys, dynamic policies and mutations are not inferred.",
+    "Automatic boolean changes are withheld when the module contains explicit TypeScript or JSDoc contracts; those contracts can constrain an aliased property to literal true. Plain objects and as const inference remain fixable.",
+    "Automatic fixes disable the unsafe SVG opt-in; already hardened configurations are preserved. Only literal effective properties of a directly exported object, unescaped const alias, or isolated module.exports object are analyzed. Wrappers, factories, spreads, dynamic computed keys, dynamic policies and mutations are not inferred.",
   ],
   examples: [
     {
@@ -40,6 +42,15 @@ export const NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION = {
       focusPath: "next.config.mjs",
       expectedCount: 1,
       public: true,
+    },
+    {
+      id: "safe-autofix",
+      title: "Apply the proven automatic correction",
+      outcome: "match",
+      files: [{ path: "next.config.ts", source: "export default { images: { dangerouslyAllowSVG: true } };" }],
+      fixedFiles: [{ path: "next.config.ts", source: "export default { images: { dangerouslyAllowSVG: false } };" }],
+      focusPath: "next.config.ts",
+      expectedCount: 1,
     },
   ],
 } as const satisfies RuleDocumentation;
@@ -73,6 +84,7 @@ export default createRule<Options, MessageIds>({
   documentation: NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION,
   meta: {
     type: "problem",
+    fixable: "code",
     docs: { description: NO_DANGEROUSLY_ALLOW_SVG_DOCUMENTATION.summary },
     schema: [],
     messages: {
@@ -97,7 +109,10 @@ export default createRule<Options, MessageIds>({
           );
           const attachmentDisposition = disposition === null || literalString(disposition) === "attachment";
           if (attachmentDisposition && policy !== null && hasHardenedSvgPolicy(policy)) return;
-          context.report({ node, messageId: "noDangerouslyAllowSvg" });
+          context.report({
+            node, messageId: "noDangerouslyAllowSvg",
+            fix: canAutofixNextConfigLiteral(context.sourceCode) ? (fixer) => fixer.replaceText(node.value, "false") : null,
+          });
         }
       },
     };

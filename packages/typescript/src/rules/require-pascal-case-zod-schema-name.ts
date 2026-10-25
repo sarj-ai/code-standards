@@ -11,6 +11,7 @@ import {
   ASTUtils,
 } from "@typescript-eslint/utils";
 
+import { hasIdentifierNamed } from "./_unused-private-binding.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -26,15 +27,24 @@ export const REQUIRE_PASCAL_CASE_ZOD_SCHEMA_NAME_DOCUMENTATION = {
   remediation: "Rename the binding to PascalCase ending in `Schema` (for example, `MutationRouteBaseSchema`).",
   category: "style",
   aliases: ["zod-naming-convention"],
-  autofix: "none",
+  autofix: "safe",
   limitations: [
     "Only module-level bindings proven from a Zod import or a same-file proven schema are checked.",
     "Tests, benchmarks, generated files, imported schemas, re-export aliases, and arbitrary wrapper-factory results are excluded.",
-    "Cross-file and exported renames are not safely file-local, so the rule has no autofix.",
+    "Automatic renaming is limited to private module const bindings with no collisions, exports, dynamic eval, or inferred function names. Public names and unsafe reference shapes remain manual.",
   ],
   examples: [
     { id: "runtime-type-schema-name", title: "Name a reusable schema like a runtime type contract", outcome: "no-match", files: [{ path: "src/user.ts", source: "import { z } from 'zod';\nexport const UserSchema = z.object({ id: z.string() });" }], focusPath: "src/user.ts", expectedCount: 0, public: true },
     { id: "screaming-schema-name", title: "Do not name a schema like a scalar constant", outcome: "match", files: [{ path: "src/user.ts", source: "import { z } from 'zod';\nexport const USER_SCHEMA = z.object({ id: z.string() });" }], focusPath: "src/user.ts", expectedCount: 1, public: true },
+    {
+      id: "safe-autofix",
+      title: "Apply the proven automatic correction",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "import { z } from \"zod\"; const USER_SCHEMA = z.string();" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "import { z } from \"zod\"; const UserSchema = z.string();" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -151,6 +161,7 @@ export default createRule<Options, MessageIds>({
   documentation: REQUIRE_PASCAL_CASE_ZOD_SCHEMA_NAME_DOCUMENTATION,
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: {
       description: "Require confirmed module-level Zod schema contracts to use PascalCase with a `Schema` suffix.",
     },
@@ -208,6 +219,36 @@ export default createRule<Options, MessageIds>({
       return binding !== null && zodBindings.has(binding);
     }
 
+    function renameFix(node: TSESTree.VariableDeclarator): ((fixer: TSESLint.RuleFixer) => readonly TSESLint.RuleFix[]) | null {
+      if (node.id.type !== AST_NODE_TYPES.Identifier || node.parent.kind !== "const" ||
+        node.parent.parent.type !== AST_NODE_TYPES.Program) return null;
+      const binding = resolvedBinding(node.id);
+      if (binding === null || binding.scope.type !== "module" ||
+        !/^[A-Za-z_][A-Za-z0-9_]*$/u.test(node.id.name) ||
+        hasIdentifierNamed(context.sourceCode.ast, "eval")) return null;
+      const words = node.id.name.replaceAll(/([a-z0-9])([A-Z])/gu, "$1_$2")
+        .replaceAll(/([A-Z])([A-Z][a-z])/gu, "$1_$2").split("_").filter(Boolean);
+      let name = words.map((word) => word[0]!.toUpperCase() + word.slice(1).toLowerCase()).join("");
+      if (!name.endsWith("Schema")) name += "Schema";
+      if (!PASCAL_SCHEMA_NAME_RE.test(name) || binding.scope.set.has(name) ||
+        hasIdentifierNamed(context.sourceCode.ast, name)) return null;
+      const references = [node.id, ...binding.references.map((reference) => reference.identifier)];
+      const replacements = new Map<number, { readonly node: TSESTree.Identifier; readonly text: string }>();
+      for (const reference of references) {
+        if (reference.type !== AST_NODE_TYPES.Identifier ||
+          ASTUtils.findVariable(context.sourceCode.getScope(reference), name) !== null) return null;
+        const parent = reference.parent;
+        if (parent.type === AST_NODE_TYPES.ExportSpecifier || parent.type === AST_NODE_TYPES.ExportDefaultDeclaration ||
+          (parent.type === AST_NODE_TYPES.AssignmentPattern && parent.parent.type === AST_NODE_TYPES.Property && parent.parent.shorthand)) return null;
+        let text = name;
+        if (parent.type === AST_NODE_TYPES.Property && parent.shorthand && parent.value === reference) {
+          text = `${context.sourceCode.getText(reference)}: ${name}`;
+        }
+        replacements.set(reference.range[0], { node: reference, text });
+      }
+      return (fixer) => [...replacements.values()].map((replacement) => fixer.replaceText(replacement.node, replacement.text));
+    }
+
     // Test and benchmark schemas are local fixtures rather than APIs.
     if (
       isTestFile(context) ||
@@ -246,6 +287,7 @@ export default createRule<Options, MessageIds>({
         context.report({
           node: node.id,
           messageId: "requirePascalSchema",
+          fix: renameFix(node),
         });
       },
     };

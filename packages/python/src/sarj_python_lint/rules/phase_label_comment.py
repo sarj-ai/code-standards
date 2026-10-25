@@ -44,9 +44,10 @@ class TestPhaseLabelComment(Rule):
         rationale="Phase labels narrate test structure without explaining behavior and often indicate that a test needs clearer names or smaller units.",
         remediation="Delete the label; if the phases remain hard to follow, extract a named helper or split the test.",
         category=RuleCategory.TESTING,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         aliases=("test-phase-label-comment",),
         limitations=(
+            "Safe fixes remove only reported standalone phase labels, preserving executable tokens and meaningful rationale.",
             "Standalone comments across recognized test and test-support files are checked, including fixtures, helpers, and module sections.",
             "Trailing comments and comments inside bracketed expressions are excluded.",
             "Comments containing words beyond the bounded phase-label grammar are preserved.",
@@ -87,6 +88,15 @@ class TestPhaseLabelComment(Rule):
                 focus_path=PurePosixPath("tests/test_widget.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("tests/test_service.py", ("# Arrange\nvalue = 1\n")),),
+                fixed_files=(ExampleFile.python("tests/test_service.py", ("\nvalue = 1\n")),),
+                focus_path=PurePosixPath("tests/test_service.py"),
+                expected_count=1,
             ),
         ),
     )

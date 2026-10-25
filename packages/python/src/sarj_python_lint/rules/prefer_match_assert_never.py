@@ -72,13 +72,43 @@ class PreferMatchAssertNever(Rule):
             "handle missing variants instead of suppressing assert_never's argument check."
         ),
         category=RuleCategory.CORRECTNESS,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes remove only an exact single argument-type ignore from an existing terminal assert_never call after every member of a canonical local StrEnum is already handled by terminating identity branches. Missing members, other suppressions, reasons, aliases, guarded branches and dynamic domains remain manual.",
             "Only subjects explicitly annotated as a locally declared Enum, StrEnum, IntEnum, or ReprEnum are checked.",
             "Flags, imported or untyped domains, class-pattern unions, guarded arms, generated files, and dynamic dispatch are excluded.",
             "Independently warns on import-proven assert_never calls with a trailing blanket or argument-type ignore; module-wide disables are not analyzed.",
         ),
         examples=(
+            RuleExample(
+                example_id="safe-exhaustive-ignore-removal",
+                title="Remove an already unnecessary exhaustiveness suppression",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/dispatch.py",
+                        "from enum import StrEnum\nfrom typing import assert_never\n"
+                        "class Status(StrEnum):\n    READY = 'ready'\n    DONE = 'done'\n"
+                        "def label(status: Status) -> str:\n"
+                        "    if status is Status.READY:\n        return 'Ready'\n"
+                        "    if status is Status.DONE:\n        return 'Done'\n"
+                        "    assert_never(status)  # type: ignore[arg-type]\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/dispatch.py"),
+                expected_count=1,
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/dispatch.py",
+                        "from enum import StrEnum\nfrom typing import assert_never\n"
+                        "class Status(StrEnum):\n    READY = 'ready'\n    DONE = 'done'\n"
+                        "def label(status: Status) -> str:\n"
+                        "    if status is Status.READY:\n        return 'Ready'\n"
+                        "    if status is Status.DONE:\n        return 'Done'\n"
+                        "    assert_never(status)  \n",
+                    ),
+                ),
+            ),
             RuleExample(
                 example_id="silent-closed-set-wildcard",
                 title="Closed-set match silently ignores a variant",

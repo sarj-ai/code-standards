@@ -203,10 +203,18 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
   ],
 
   invalid: [
-    { name: "reports the documented hand-written twin", code: PREFER_ZOD_INFER_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "handWrittenTwin", data: { typeName: "User", schemaName: "UserSchema" } }] },
+    { name: "preserves the sole local Date type binding inside a twin", code: "import { z } from \"zod\"; type Date = globalThis.Date; const EventSchema = z.object({ at: z.date() }); interface Event { at: Date }", output: null, errors: [{ messageId: "handWrittenTwin" }] },
+    { name: "derives a twin with an independently exported Date type use", code: "import { z } from \"zod\"; export type Kept = Date; type Date = globalThis.Date; const EventSchema = z.object({ at: z.date() }); interface Event { at: Date }", output: "import { z } from \"zod\"; export type Kept = Date; type Date = globalThis.Date; const EventSchema = z.object({ at: z.date() }); type Event = z.infer<typeof EventSchema>;", errors: [{ messageId: "handWrittenTwin" }] },
+    {name: "derives an unused private alias using the original namespace", code: "import * as schema from \"zod\"; const UserSchema = schema.object({ id: schema.string() }); type User = { id: string };", output: "import * as schema from \"zod\"; const UserSchema = schema.object({ id: schema.string() }); type User = schema.infer<typeof UserSchema>;", errors: [{messageId: "handWrittenTwin"}]},
+    {name: "preserves referenced twin ownership", code: "import { z } from \"zod\"; const UserSchema = z.object({ id: z.string() }); interface User { id: string } declare const value: User;", output: null, errors: [{messageId: "handWrittenTwin"}]},
+    {name: "preserves exported twin ownership", code: "import { z } from \"zod\"; const UserSchema = z.object({ id: z.string() }); export interface User { id: string }", output: null, errors: [{messageId: "handWrittenTwin"}]},
+    {name: "preserves member documentation", code: "import { z } from \"zod\"; const UserSchema = z.object({ id: z.string() }); interface User { /** stable contract */ id: string }", output: null, errors: [{messageId: "handWrittenTwin"}]},
+    { name: "reports the documented hand-written twin", code: PREFER_ZOD_INFER_DOCUMENTATION.examples[1].files[0].source, output: "import { z } from \"zod\"; const UserSchema = z.object({ id: z.string() }); type User = z.infer<typeof UserSchema>;", errors: [{ messageId: "handWrittenTwin", data: { typeName: "User", schemaName: "UserSchema" } }] },
     {
       code: `${IMPORT}const UserSchema = z.object({ id: z.string(), name: z.string() });
              interface User { id: string; name: string }`,
+      output: `${IMPORT}const UserSchema = z.object({ id: z.string(), name: z.string() });
+             type User = z.infer<typeof UserSchema>;`,
       errors: [{ messageId: "handWrittenTwin", data: { typeName: "User", schemaName: "UserSchema" } }],
     },
     // Declaration order does not affect pairing.
@@ -219,18 +227,24 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
     {
       code: `${IMPORT}const ZJobOptionsSchema = z.object({ id: z.string().optional(), name: z.string(), attempts: z.number() });
              type JobOptions = { id?: string; name: string; attempts: number };`,
+      output: `${IMPORT}const ZJobOptionsSchema = z.object({ id: z.string().optional(), name: z.string(), attempts: z.number() });
+             type JobOptions = z.infer<typeof ZJobOptionsSchema>;`,
       errors: [{ messageId: "handWrittenTwin", data: { typeName: "JobOptions", schemaName: "ZJobOptionsSchema" } }],
     },
     // `XType` is the same claim as `X`.
     {
       code: `${IMPORT}const settingsSchema = z.object({ theme: z.string(), compact: z.boolean() });
              interface SettingsType { theme: string; compact: boolean }`,
+      output: `${IMPORT}const settingsSchema = z.object({ theme: z.string(), compact: z.boolean() });
+             type SettingsType = z.infer<typeof settingsSchema>;`,
       errors: [{ messageId: "handWrittenTwin" }],
     },
     // Nullable and optional agree member for member.
     {
       code: `${IMPORT}const RowSchema = z.object({ id: z.string(), label: z.string().nullable(), note: z.string().optional() });
              interface Row { id: string; label: string | null; note?: string }`,
+      output: `${IMPORT}const RowSchema = z.object({ id: z.string(), label: z.string().nullable(), note: z.string().optional() });
+             type Row = z.infer<typeof RowSchema>;`,
       errors: [{ messageId: "handWrittenTwin" }],
     },
     // A namespace import, and `.describe()` does not change the inferred type.
@@ -238,24 +252,33 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
       code: `import * as zod from "zod";
              const eventSchema = zod.object({ kind: zod.literal("click"), at: zod.number() }).describe("an event");
              interface Event { kind: "click"; at: number }`,
+      output: `import * as zod from "zod";
+             const eventSchema = zod.object({ kind: zod.literal("click"), at: zod.number() }).describe("an event");
+             type Event = zod.infer<typeof eventSchema>;`,
       errors: [{ messageId: "handWrittenTwin" }],
     },
     {
       name: "reports twins behind shape-preserving schema chains",
       code: `${IMPORT}const UserSchema = z.object({ id: z.string() }).refine((user) => user.id.length > 0).meta({ title: "User" });
              interface User { id: string }`,
+      output: `${IMPORT}const UserSchema = z.object({ id: z.string() }).refine((user) => user.id.length > 0).meta({ title: "User" });
+             type User = z.infer<typeof UserSchema>;`,
       errors: [{ messageId: "handWrittenTwin" }],
     },
     {
       name: "reports a strictObject twin",
       code: `${IMPORT}const UserSchema = z.strictObject({ id: z.string(), active: z.boolean() });
              type User = { id: string; active: boolean };`,
+      output: `${IMPORT}const UserSchema = z.strictObject({ id: z.string(), active: z.boolean() });
+             type User = z.infer<typeof UserSchema>;`,
       errors: [{ messageId: "handWrittenTwin" }],
     },
     {
       name: "compares exact enum values independent of order",
       code: `${IMPORT}const JobSchema = z.object({ state: z.enum(["queued", "running"]), id: z.string() });
              interface Job { state: "running" | "queued"; id: string }`,
+      output: `${IMPORT}const JobSchema = z.object({ state: z.enum(["queued", "running"]), id: z.string() });
+             type Job = z.infer<typeof JobSchema>;`,
       errors: [{ messageId: "handWrittenTwin" }],
     },
     {
@@ -279,12 +302,16 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
       name: "reports a required output property supplied by a schema default",
       code: `${IMPORT}const UserSchema = z.object({ name: z.string().default("anonymous") });
              interface User { name: string }`,
+      output: `${IMPORT}const UserSchema = z.object({ name: z.string().default("anonymous") });
+             type User = z.infer<typeof UserSchema>;`,
       errors: [{ messageId: "handWrittenTwin" }],
     },
     {
       name: "recognizes the exact Date type inferred by z.date",
       code: `${IMPORT}const EventSchema = z.object({ createdAt: z.date() });
              interface Event { createdAt: Date }`,
+      output: `${IMPORT}const EventSchema = z.object({ createdAt: z.date() });
+             type Event = z.infer<typeof EventSchema>;`,
       errors: [{ messageId: "handWrittenTwin" }],
     },
     // The loose tier reports on name correlation without requiring equal shapes.

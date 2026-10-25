@@ -6,6 +6,9 @@
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
+import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
+import { hasIdentifierNamed, hasOnlyDirectFactoryUses } from "./_unused-private-binding.js";
+import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
 import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 import { staticString } from "./_static-string.js";
 
@@ -21,12 +24,14 @@ export const PREFER_NODE_CRYPTO_HASH_DOCUMENTATION = {
   rationale: "A createHash-update-digest chain allocates mutable streaming state for a single in-memory value; Node's built-in hash function expresses the one-shot operation directly and can use its optimized fast path.",
   remediation: "On a supported Node runtime, consider hash(algorithm, value, encoding). Preserve the output encoding explicitly: digest() returns a Buffer, while hash defaults to hex. Keep createHash for streams or multiple updates.",
   category: "performance",
+  autofix: "safe",
   limitations: [
     "Only direct imports, const bindings, and inline calls with statically proven provenance from crypto or node:crypto are analyzed; arbitrary assignments and dynamic module specifiers are excluded.",
     "Only a literal algorithm with exactly one update call is reported; streaming and incremental hashes remain valid.",
     "Namespace bindings must remain read-only: visible writes, aliases, exports, inherited mutation or alias methods, unknown computed members, and other escaping uses are excluded; type-only references and direct member calls remain eligible.",
     "CommonJS loads and default imports share one mutable native module object. A visible unsafe use of that object excludes its other loads; ESM named exports remain separate unless visible native export synchronization can update them.",
-    "Runtime support and output encoding require manual review; no autofix or guaranteed speedup is promised.",
+    "Automatic fixes require both existing canonical named node:crypto value imports, an already-read stable hash alias, a retained runtime createHash call outside every reportable one-shot chain, literal sha256/string/hex arguments, no shadowing/comments/optional chains, and no other value/side-effect imports, module augmentations, mock/loader APIs, test/story/support ownership or visible crypto/prototype/reflection authority changes.",
+    "Runtime support, missing imports, receiver-binding changes, other encodings or algorithms, and streaming data remain manual. The automatic subset reuses existing named imports and never inserts new ones; no guaranteed speedup is promised.",
   ],
   references: ["https://nodejs.org/api/crypto.html#cryptohashalgorithm-data-options"],
   examples: [
@@ -34,6 +39,15 @@ export const PREFER_NODE_CRYPTO_HASH_DOCUMENTATION = {
     { id: "mutable-one-shot-chain", title: "Avoid mutable state for one value", outcome: "match", files: [{ path: "case.ts", source: "import { createHash } from 'node:crypto'; export const digest = createHash('sha256').update('value').digest('hex');" }], focusPath: "case.ts", expectedCount: 1, public: true },
     { id: "native-namespace", scenarioId: "stable-native-namespace", title: "An unchanged namespace retains native provenance", outcome: "match", files: [{ path: "case.ts", source: "const crypto = require('node:crypto'); export const digest = crypto.createHash('sha256').update('value').digest('hex');" }], focusPath: "case.ts", expectedCount: 1, public: true },
     { id: "replaced-namespace-member", scenarioId: "stable-native-namespace", title: "A replaced member has a different contract", outcome: "no-match", files: [{ path: "case.ts", source: "const crypto = require('node:crypto'); crypto.createHash = () => ({ update() { return this; }, digest() { return 'custom'; } }); export const digest = crypto.createHash('sha256').update('value').digest('hex');" }], focusPath: "case.ts", expectedCount: 0, public: true },
+    {
+      id: "safe-autofix",
+      title: "Use an already available one-shot hash for literal UTF-8 input",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "import { createHash, hash } from \"node:crypto\"; export const existing = hash(\"sha256\", \"seed\", \"hex\"); export const streaming = createHash(\"sha256\"); export const digest = createHash(\"sha256\").update(\"value\").digest(\"hex\");" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "import { createHash, hash } from \"node:crypto\"; export const existing = hash(\"sha256\", \"seed\", \"hex\"); export const streaming = createHash(\"sha256\"); export const digest = hash(\"sha256\", \"value\", \"hex\");" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -147,17 +161,20 @@ function propertyName(node: TSESTree.Property): string | null {
 export default createRule<Options, MessageIds>({
   name: "prefer-node-crypto-hash",
   documentation: PREFER_NODE_CRYPTO_HASH_DOCUMENTATION,
-  meta: { type: "problem", docs: { description: PREFER_NODE_CRYPTO_HASH_DOCUMENTATION.summary }, schema: [], messages: { preferNodeCryptoHash: 'Prefer the modern one-shot node:crypto hash API when streaming state is unnecessary.' } },
+  meta: { type: "problem", fixable: "code", docs: { description: PREFER_NODE_CRYPTO_HASH_DOCUMENTATION.summary }, schema: [], messages: { preferNodeCryptoHash: 'Prefer the modern one-shot node:crypto hash API when streaming state is unnecessary.' } },
   defaultOptions: [],
   create(context) {
     if (!context.sourceCode.text.includes("crypto") && !context.sourceCode.text.includes("\\")) return {};
     const directBindings = new Set<ScopeVariable>();
     const namespaceBindings = new Set<ScopeVariable>();
+    const canonicalCreators = new Set<ScopeVariable>();
+    const hashBindings = new Map<ScopeVariable, TSESTree.Identifier>();
+    let unsafeAuthority: boolean | undefined;
     const sharedBindings = new Set<ScopeVariable>();
     const syncBindings = new Set<ScopeVariable>();
     const moduleBindings = new Set<ScopeVariable>();
     const namespaceStability = new WeakMap<ScopeVariable, boolean>();
-    const candidates: { node: TSESTree.CallExpression; shared: boolean }[] = [];
+    const candidates: { node: TSESTree.CallExpression; update: TSESTree.CallExpression; create: TSESTree.CallExpression; shared: boolean }[] = [];
     const possibleSynchronizations: TSESTree.CallExpression[] = [];
     let sharedNamespaceUnsafe = false;
 
@@ -199,8 +216,53 @@ export default createRule<Options, MessageIds>({
       }
     }
 
+    function recordCanonicalImport(node: TSESTree.ImportDeclaration): void {
+      if (node.source.value !== "node:crypto" || node.importKind === "type") return;
+      for (const specifier of node.specifiers) {
+        if (specifier.type !== AST_NODE_TYPES.ImportSpecifier || specifier.importKind === "type") continue;
+        const binding = resolve(specifier.local);
+        if (binding === null) continue;
+        const name = importedName(specifier.imported);
+        if (name === "hash") hashBindings.set(binding, specifier.local);
+        if (name === "createHash") canonicalCreators.add(binding);
+      }
+    }
+
+    function existingHashFix(node: TSESTree.CallExpression, update: TSESTree.CallExpression, create: TSESTree.CallExpression): TSESLint.ReportFixFunction | null {
+      if (hashBindings.size === 0 || canonicalCreators.size === 0) return null;
+      const algorithm = create.arguments[0];
+      const data = update.arguments[0];
+      const encoding = node.arguments[0];
+      const constructor = unwrapExpression(create.callee);
+      const digestMember = unwrapExpression(node.callee);
+      const updateMember = unwrapExpression(update.callee);
+      if (context.sourceCode.getCommentsInside(node).length > 0 ||
+        algorithm?.type !== AST_NODE_TYPES.Literal || algorithm.value !== "sha256" ||
+        data?.type !== AST_NODE_TYPES.Literal || typeof data.value !== "string" ||
+        node.arguments.length !== 1 || encoding?.type !== AST_NODE_TYPES.Literal || encoding.value !== "hex" ||
+        constructor.type !== AST_NODE_TYPES.Identifier || create.optional || update.optional || node.optional ||
+        digestMember.type !== AST_NODE_TYPES.MemberExpression || digestMember.optional ||
+        updateMember.type !== AST_NODE_TYPES.MemberExpression || updateMember.optional ||
+        create.typeArguments !== undefined || update.typeArguments !== undefined || node.typeArguments !== undefined) return null;
+      unsafeAuthority ??= hasUnsafeHashAuthority(context.sourceCode.ast) || isGeneratedFile(context, context.sourceCode.text) ||
+        isTestFile(context, ["fixtureTree"]) || isStoryFile(context, ["storyTree"]) ||
+        /(?:^|[\\/])(?:support|test-support|test-utils|mocks|setup)(?:[\\/]|\.[cm]?[jt]sx?$)/iu.test(context.filename);
+      if (unsafeAuthority) return null;
+      const creator = resolve(constructor);
+      if (creator === null || !canonicalCreators.has(creator) || !hasOnlyDirectFactoryUses(creator) ||
+        !hasRetainedFactoryCall(creator, candidates.map((candidate) => candidate.node))) return null;
+      for (const [binding, identifier] of hashBindings) {
+        if (!binding.references.some((reference) => reference.isValueReference && reference.isRead()) ||
+          !hasOnlyDirectFactoryUses(binding) || ASTUtils.findVariable(context.sourceCode.getScope(node), identifier.name) !== binding) continue;
+        const text = `${context.sourceCode.getText(identifier)}(${context.sourceCode.getText(algorithm)}, ${context.sourceCode.getText(data)}, ${context.sourceCode.getText(encoding)})`;
+        return (fixer) => fixer.replaceText(node, text);
+      }
+      return null;
+    }
+
     return {
       ImportDeclaration(node): void {
+        recordCanonicalImport(node);
         if (node.source.value === "module" || node.source.value === "node:module") {
           recordModuleImports(node.specifiers);
           return;
@@ -272,13 +334,13 @@ export default createRule<Options, MessageIds>({
         )
           return;
         const provider = builtinCallProvider(create, directBindings, namespaceBindings, sharedBindings, resolve);
-        if (provider !== null) candidates.push({ node, shared: provider === "shared" });
+        if (provider !== null) candidates.push({ node, update, create, shared: provider === "shared" });
       },
       "Program:exit"(): void {
         const exportsMaySynchronize = sharedNamespaceUnsafe && possibleSynchronizations.some((node) =>
           builtinCallProvider(node, syncBindings, moduleBindings, sharedBindings, resolve, "module") !== null);
         for (const candidate of candidates) {
-          if (!sharedNamespaceUnsafe || (!candidate.shared && !exportsMaySynchronize)) context.report({ node: candidate.node, messageId: "preferNodeCryptoHash" });
+          if (!sharedNamespaceUnsafe || (!candidate.shared && !exportsMaySynchronize)) context.report({ node: candidate.node, messageId: "preferNodeCryptoHash", fix: existingHashFix(candidate.node, candidate.update, candidate.create) });
         }
       },
     };
@@ -325,4 +387,41 @@ function builtinCallProvider(
   const variable = resolve(unwrappedNodeCallee.object);
   if (variable === null || !namespaceBindings.has(variable)) return null;
   return sharedBindings.has(variable) ? "shared" : "snapshot";
+}
+
+function hasUnsafeHashAuthority(root: TSESTree.Program): boolean {
+  if (["eval", "Object", "Reflect", "Function", "require", "process", "globalThis", "global", "vi", "jest", "mock", "doMock", "unstable_mockModule", "spyOn"].some((name) => hasIdentifierNamed(root, name)) || hasUnknownCryptoImport(root)) return true;
+  const pending: TSESTree.Node[] = [root];
+  const visited = new WeakSet<TSESTree.Node>();
+  while (pending.length > 0) {
+    const node = pending.pop();
+    if (node === undefined || visited.has(node)) continue;
+    visited.add(node);
+    if (node.type === AST_NODE_TYPES.ImportExpression || node.type === AST_NODE_TYPES.TSModuleDeclaration) return true;
+    if (node.type === AST_NODE_TYPES.MemberExpression) {
+      const name = ASTUtils.getPropertyName(node);
+      if (name === null || ["prototype", "constructor", "__proto__", "mock", "doMock", "unstable_mockModule", "spyOn", "register", "registerHooks", "enableCompileCache"].includes(name)) return true;
+    }
+    forEachOwnAstChild(node, (child) => { pending.push(child); }, (key) => key !== "tokens" && key !== "comments");
+  }
+  return false;
+}
+
+function hasUnknownCryptoImport(root: TSESTree.Program): boolean {
+  for (const statement of root.body) {
+    if (statement.type !== AST_NODE_TYPES.ImportDeclaration || statement.importKind === "type") continue;
+    if (statement.source.value !== "node:crypto" || statement.specifiers.length === 0) return true;
+    if (statement.specifiers.some((specifier) => specifier.type !== AST_NODE_TYPES.ImportSpecifier ||
+      (specifier.importKind !== "type" && !["createHash", "hash"].includes(importedName(specifier.imported))))) return true;
+  }
+  return false;
+}
+
+function hasRetainedFactoryCall(binding: ScopeVariable, removed: readonly TSESTree.CallExpression[]): boolean {
+  return binding.references.some((reference) => {
+    const identifier = reference.identifier;
+    if (!reference.isValueReference || !reference.isRead() || identifier.parent.type !== AST_NODE_TYPES.CallExpression ||
+      identifier.parent.callee !== identifier) return false;
+    return !removed.some((node) => node.range[0] <= identifier.range[0] && identifier.range[1] <= node.range[1]);
+  });
 }

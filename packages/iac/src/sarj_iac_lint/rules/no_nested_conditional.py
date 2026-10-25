@@ -45,15 +45,42 @@ class NoNestedConditional(Rule):
             "null guards and resource dependencies when extracting an expression."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         default_level=DefaultLevel.WARNING,
         limitations=(
+            "Safe fixes select an existing literal leaf only from a closed Boolean-literal conditional tree with homogeneous Boolean, bounded decimal-number or plain quoted-string leaves on one standalone attribute line in top-level locals. All branches are validated; comments, escapes, templates, nulls, references, calls, mixed types and ambiguous source ranges remain manual.",
             "Only direct conditional branches are inspected; independent choices inside calls, collections and templates remain out of scope.",
             "Assertions, generated files, fixtures, testdata and non-.tf inputs are excluded.",
             "An existing deployment-identity diagnostic takes precedence at the same attribute.",
             "This is a review advisory; no automatic extraction or deletion is safe for every expression.",
         ),
         examples=(
+            RuleExample(
+                example_id="closed-literal-selection",
+                title="A closed literal selection already determines the selected value",
+                outcome=ExampleOutcome.MATCH,
+                scenario="closed-literal-selection",
+                files=(
+                    ExampleFile.iac(
+                        "main.tf",
+                        'locals {\n  size = true ? "large" : false ? "medium" : "small"\n}\n',
+                    ),
+                ),
+                fixed_files=(ExampleFile.iac("main.tf", 'locals {\n  size = "large"\n}\n'),),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="selected-literal-value",
+                title="The selected literal is already explicit",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="closed-literal-selection",
+                files=(ExampleFile.iac("main.tf", 'locals {\n  size = "large"\n}\n'),),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="nested-selection",
                 title="A nested selection hides the selected configuration",

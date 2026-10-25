@@ -107,53 +107,53 @@ new RuleTester().run("no-typed-doc-sections", rule, {
     },
   ],
   invalid: [
-    { name: "reports an exact primitive parameter type repetition", code: "/** @param {string} value */\nfunction f(value: string): void {}", errors: [{ messageId: "typedSection" }] },
+    { name: "reports an exact primitive parameter type repetition", code: "/** @param {string} value */\nfunction f(value: string): void {}", output: "\nfunction f(value: string): void {}", errors: [{ messageId: "typedSection" }] },
     {
       name: "flags a description-free parameter tag",
-      code: "/** @param id */\nexport function fetchValue(id: string): number { return 1; }",
+      code: "/** @param id */\nexport function fetchValue(id: string): number { return 1; }", output: "\nexport function fetchValue(id: string): number { return 1; }",
       errors: [{ messageId: "typedSection" }],
     },
     {
       name: "flags a parameter description that only expands its name",
-      code: NO_TYPED_DOC_SECTIONS_DOCUMENTATION.examples[1].files[0].source,
+      code: NO_TYPED_DOC_SECTIONS_DOCUMENTATION.examples[1].files[0].source, output: "\nexport function fetchValue(userId: string): number { return 1; }",
       errors: [{ messageId: "typedSection" }],
     },
     {
       name: "flags a type-only return tag",
-      code: "/** @returns {boolean} */\nexport function fetchValue(id: string): boolean { return true; }",
+      code: "/** @returns {boolean} */\nexport function fetchValue(id: string): boolean { return true; }", output: "\nexport function fetchValue(id: string): boolean { return true; }",
       errors: [{ messageId: "typedSection" }],
     },
     {
       name: "flags one vacuous tag while preserving the meaningful tag",
-      code: "/** @param id the identifier\n * @returns Whether the feature is enabled.\n */\nexport function fetchValue(id: string): boolean { return true; }",
+      code: "/** @param id the identifier\n * @returns Whether the feature is enabled.\n */\nexport function fetchValue(id: string): boolean { return true; }", output: "/**\n * @returns Whether the feature is enabled.\n */\nexport function fetchValue(id: string): boolean { return true; }",
       errors: [{ messageId: "typedSection" }],
     },
     {
-      code: "/** @param id external identifier\n * @returns the value\n */\nexport function fetchValue(id: string): number { return 1; }",
+      code: "/** @param id external identifier\n * @returns the value\n */\nexport function fetchValue(id: string): number { return 1; }", output: "/**\n * @param id external identifier\n */\nexport function fetchValue(id: string): number { return 1; }",
       errors: [{ messageId: "typedSection" }],
     },
     {
-      code: "/** @returns the value */\nexport const fetchValue = (id: string): number => 1;",
+      code: "/** @returns the value */\nexport const fetchValue = (id: string): number => 1;", output: "\nexport const fetchValue = (id: string): number => 1;",
       errors: [{ messageId: "typedSection" }],
     },
     {
-      code: "/** @argument id external identifier\n * @return the value\n */\nexport default function fetchValue(id: string): number { return 1; }",
+      code: "/** @argument id external identifier\n * @return the value\n */\nexport default function fetchValue(id: string): number { return 1; }", output: "/**\n * @argument id external identifier\n */\nexport default function fetchValue(id: string): number { return 1; }",
       errors: [{ messageId: "typedSection" }],
     },
     {
-      code: "class Client {\n  /** @arg id external identifier\n   * @yield the value\n   */\n  *fetchValue(id: string): Generator<number> { yield 1; }\n}",
+      code: "class Client {\n  /** @arg id external identifier\n   * @yield the value\n   */\n  *fetchValue(id: string): Generator<number> { yield 1; }\n}", output: "class Client {\n  /**\n   * @arg id external identifier\n   */\n  *fetchValue(id: string): Generator<number> { yield 1; }\n}",
       errors: [{ messageId: "typedSection" }],
     },
     {
-      code: "/** @param id the identifier */\ndeclare function fetchValue(id: string): number;",
+      code: "/** @param id the identifier */\ndeclare function fetchValue(id: string): number;", output: "\ndeclare function fetchValue(id: string): number;",
       errors: [{ messageId: "typedSection" }],
     },
     {
-      code: "/** @param id the identifier\n * @throws {VendorError} when the vendor rejects the request\n */\nexport function fetchValue(id: string): number { return 1; }",
+      code: "/** @param id the identifier\n * @throws {VendorError} when the vendor rejects the request\n */\nexport function fetchValue(id: string): number { return 1; }", output: "/**\n * @throws {VendorError} when the vendor rejects the request\n */\nexport function fetchValue(id: string): number { return 1; }",
       errors: [{ messageId: "typedSection" }],
     },
     {
-      code: "/** @returns the value\n * @example fetchValue('abc')\n */\nexport function fetchValue(id: string): number { return 1; }",
+      code: "/** @returns the value\n * @example fetchValue('abc')\n */\nexport function fetchValue(id: string): number { return 1; }", output: "/**\n * @example fetchValue('abc')\n */\nexport function fetchValue(id: string): number { return 1; }",
       errors: [{ messageId: "typedSection" }],
     },
   ],

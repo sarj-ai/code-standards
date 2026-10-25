@@ -1,13 +1,20 @@
 // vitest: shared-module-graph
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import * as parser from "@typescript-eslint/parser";
+import { Linter } from "eslint";
+import ts from "typescript";
+import { afterAll, describe, expect, it } from "vitest";
 
 import rule, { EXCESSIVE_COMMENTARY_DOCUMENTATION } from "../../src/rules/excessive-commentary.js";
+import longRule from "../../src/rules/no-long-comment.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
+
+const DECORATED = EXCESSIVE_COMMENTARY_DOCUMENTATION.examples[2].files[0].source;
+const FIXED_DECORATION = EXCESSIVE_COMMENTARY_DOCUMENTATION.examples[2].fixedFiles[0].source;
 
 new RuleTester().run("excessive-commentary", rule, {
   valid: [
@@ -72,6 +79,60 @@ new RuleTester().run("excessive-commentary", rule, {
   ],
   invalid: [
     {
+      name: "removes decorative volume while retaining every narrative byte",
+      code: DECORATED,
+      output: FIXED_DECORATION,
+      errors: [{ messageId: "excessive" }],
+    },
+    {
+      name: "preserves CRLF and comment markers",
+      code: DECORATED.replaceAll("\n", "\r\n"),
+      output: FIXED_DECORATION.replaceAll("\n", "\r\n"),
+      errors: [{ messageId: "excessive" }],
+    },
+    {
+      name: "retains Unicode prose before UTF16 decoration ranges",
+      code: DECORATED.replace("local draft", "local draft 𝄞"),
+      output: FIXED_DECORATION.replace("local draft", "local draft 𝄞"),
+      errors: [{ messageId: "excessive" }],
+    },
+    {
+      name: "removes all adjacent decorative volume atomically",
+      code: DECORATED.replace(" * ++++++++\n", " * ++++++++\n * ++++++++\n"),
+      output: FIXED_DECORATION.replace(" * \n", " * \n * \n"),
+      errors: [{ messageId: "excessive" }],
+    },
+    ...["prompt", "expected", "password", "diagram", "signature"].map((context) => ({
+      name: `preserves ${context} contexts`,
+      code: DECORATED.replace("local draft", `local ${context}`),
+      output: null,
+      errors: [{ messageId: "excessive" as const }],
+    })),
+    {
+      name: "retains decoration when the native volume finding would remain",
+      code: DECORATED.replace(" */", " * The adapter keeps every stage close to the declarations it describes.\n */"),
+      output: null,
+      errors: [{ messageId: "excessive" }],
+    },
+    {
+      name: "preserves Markdown structure",
+      code: DECORATED.replace(" * ++++++++", " * ----\n * ++++++++"),
+      output: null,
+      errors: [{ messageId: "excessive" }],
+    },
+    {
+      name: "preserves fenced literal contexts",
+      code: DECORATED.replace(" * ++++++++", " * ~~~\n * ++++++++\n * ~~~"),
+      output: null,
+      errors: [{ messageId: "excessive" }],
+    },
+    {
+      name: "preserves indented examples",
+      code: DECORATED.replace(" * This file", " *     This file"),
+      output: null,
+      errors: [{ messageId: "excessive" }],
+    },
+    {
       code: EXCESSIVE_COMMENTARY_DOCUMENTATION.examples[0].files[0].source,
       errors: [{ messageId: "excessive" }],
     },
@@ -94,4 +155,39 @@ new RuleTester().run("excessive-commentary", rule, {
       errors: [{ messageId: "excessive" }],
     },
   ],
+});
+
+function apply(source: string): ReturnType<Linter["verifyAndFix"]> {
+  return new Linter().verifyAndFix(source, [{
+    files: ["**/*.ts"],
+    languageOptions: { parser },
+    plugins: { audit: { rules: { excessive: rule, long: longRule } } },
+    rules: { "audit/excessive": "error", "audit/long": "error" },
+  }], { filename: "src/adapter.ts" });
+}
+
+it.each(["\n", "\r\n"])("retains emitted JavaScript and converges with both comment rules and %j", (ending) => {
+  const source = DECORATED.replaceAll("\n", ending);
+  const first = apply(source);
+  expect(first.fixed).toBe(true);
+  expect(first.messages).toEqual([]);
+  expect(first.output).toBe(FIXED_DECORATION.replaceAll("\n", ending));
+  const second = apply(first.output);
+  expect(second.fixed).toBe(false);
+  expect(second.output).toBe(first.output);
+  expect(second.messages).toEqual([]);
+  const options = { compilerOptions: { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext, removeComments: true } };
+  expect(ts.transpileModule(first.output, options).outputText).toBe(ts.transpileModule(source, options).outputText);
+});
+
+it.each([
+  DECORATED.replace("local draft", "local draft @customTag"),
+  DECORATED.replace("local draft", "local copyright draft"),
+  DECORATED.replace("local draft", "local draft licensed under local terms"),
+  DECORATED.replace(" * ++++++++", " *     ++++++++"),
+  `// @ts-ignore\n${DECORATED}`,
+])("preserves protected documentation and next-line directive ownership", (source) => {
+  const result = apply(source);
+  expect(result.fixed).toBe(false);
+  expect(result.output).toBe(source);
 });

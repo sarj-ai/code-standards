@@ -6,7 +6,7 @@
 
 import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
-import { wholeLineRemovalRange } from "./_comment-edits.js";
+import { commentLineEndings, wholeLineRemovalRange } from "./_comment-edits.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
@@ -43,10 +43,10 @@ export const TEST_PHASE_LABEL_COMMENT_DOCUMENTATION = {
       id: "bare-phase-label",
       title: "Bare phase label is removed",
       outcome: "match",
-      files: [{ path: "widget.test.ts", source: "// Arrange\nconst widget = makeWidget();" }],
+      files: [{ path: "widget.test.ts", source: "const seed = 1;\n// Arrange\nconst widget = makeWidget();" }],
       focusPath: "widget.test.ts",
       expectedCount: 1,
-      fixedFiles: [{ path: "widget.test.ts", source: "const widget = makeWidget();" }],
+      fixedFiles: [{ path: "widget.test.ts", source: "const seed = 1;\n\nconst widget = makeWidget();" }],
       public: true,
     },
   ],
@@ -105,7 +105,7 @@ export default createRule<Options, MessageIds>({
           context.report({
             node: comment,
             messageId: "removeLabel",
-            fix: (fixer) => fixer.removeRange(removal.range),
+            fix: (fixer) => fixer.replaceTextRange(removal.range, commentLineEndings(context.sourceCode.text, removal)),
           });
         }
       },

@@ -3,7 +3,9 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { NO_REPEATED_STRING_LITERAL_DOCUMENTATION } from "../../src/rules/no-repeated-string-literal.js";
+import rule, {
+  NO_REPEATED_STRING_LITERAL_DOCUMENTATION,
+} from "../../src/rules/no-repeated-string-literal.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -33,21 +35,25 @@ RULE_TESTER.run("no-repeated-string-literal", rule, {
       filename: "/repo/src/view.tsx",
       code: "function A() { return <div id={'a_long_structured_identifier_that_is_more_than_forty_characters'} />; } function B() { return <div id={'a_long_structured_identifier_that_is_more_than_forty_characters'} />; }",
     },
-    { name: "accepts the documented shared constant", code: NO_REPEATED_STRING_LITERAL_DOCUMENTATION.examples[0].files[0].source },
+    {
+      name: "accepts the documented shared constant",
+      code: NO_REPEATED_STRING_LITERAL_DOCUMENTATION.examples[0].files[0]
+        .source,
+    },
     // Tagged templates are invocations whose tags define their meaning.
     {
       code: [
-        'const a = js`export default function Component() {\n  return null;\n}`;',
-        'function one() { return js`export default function Component() {\n  return null;\n}`; }',
-        'function two() { return js`export default function Component() {\n  return null;\n}`; }',
+        "const a = js`export default function Component() {\n  return null;\n}`;",
+        "function one() { return js`export default function Component() {\n  return null;\n}`; }",
+        "function two() { return js`export default function Component() {\n  return null;\n}`; }",
       ].join("\n"),
     },
     // Styling tags are outside this rule's string-value contract.
     {
       code: [
-        'const base = css`\n  min-width: min-content;\n  display: flex;\n`;',
-        'function a() { return css`\n  min-width: min-content;\n  display: flex;\n`; }',
-        'function b() { return css`\n  min-width: min-content;\n  display: flex;\n`; }',
+        "const base = css`\n  min-width: min-content;\n  display: flex;\n`;",
+        "function a() { return css`\n  min-width: min-content;\n  display: flex;\n`; }",
+        "function b() { return css`\n  min-width: min-content;\n  display: flex;\n`; }",
       ].join("\n"),
     },
     // Equal prose can have separate intent and must remain local.
@@ -181,7 +187,133 @@ RULE_TESTER.run("no-repeated-string-literal", rule, {
     },
   ],
   invalid: [
-    { name: "reports the documented repeated query", code: NO_REPEATED_STRING_LITERAL_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noRepeatedStringLiteral" }] },
+    {
+      name: "reuses the already read primitive constant",
+      code: "const QUERY = 'SELECT id, status, created_at FROM candidates'; export function current() { return QUERY; } export function one() { return 'SELECT id, status, created_at FROM candidates'; } export function two() { return 'SELECT id, status, created_at FROM candidates'; }",
+      output:
+        "const QUERY = 'SELECT id, status, created_at FROM candidates'; export function current() { return QUERY; } export function one() { return QUERY; } export function two() { return QUERY; }",
+      errors: [
+        { messageId: "noRepeatedStringLiteral" },
+        { messageId: "noRepeatedStringLiteral" },
+      ],
+    },
+    {
+      name: "preserves CRLF while reusing an existing constant",
+      code: "const QUERY = 'SELECT id, status, created_at FROM candidates';\r\nexport function current() { return QUERY; } export function one() { return 'SELECT id, status, created_at FROM candidates'; } export function two() { return 'SELECT id, status, created_at FROM candidates'; }",
+      output:
+        "const QUERY = 'SELECT id, status, created_at FROM candidates';\r\nexport function current() { return QUERY; } export function one() { return QUERY; } export function two() { return QUERY; }",
+      errors: [
+        { messageId: "noRepeatedStringLiteral" },
+        { messageId: "noRepeatedStringLiteral" },
+      ],
+    },
+    {
+      name: "retains imports",
+      code: "import \"setup\"; const QUERY = 'SELECT id, status, created_at FROM candidates'; export function current() { return QUERY; } export function one() { return 'SELECT id, status, created_at FROM candidates'; } export function two() { return 'SELECT id, status, created_at FROM candidates'; }",
+      output: null,
+      errors: [
+        { messageId: "noRepeatedStringLiteral" },
+        { messageId: "noRepeatedStringLiteral" },
+      ],
+    },
+    {
+      name: "retains comments",
+      code: "/* independent contract */ const QUERY = 'SELECT id, status, created_at FROM candidates'; export function current() { return QUERY; } export function one() { return 'SELECT id, status, created_at FROM candidates'; } export function two() { return 'SELECT id, status, created_at FROM candidates'; }",
+      output: null,
+      errors: [
+        { messageId: "noRepeatedStringLiteral" },
+        { messageId: "noRepeatedStringLiteral" },
+      ],
+    },
+    {
+      name: "retains annotated canonical constants",
+      code: "const QUERY: string = 'SELECT id, status, created_at FROM candidates'; export function current() { return QUERY; } export function one() { return 'SELECT id, status, created_at FROM candidates'; } export function two() { return 'SELECT id, status, created_at FROM candidates'; }",
+      output: null,
+      errors: [
+        { messageId: "noRepeatedStringLiteral" },
+        { messageId: "noRepeatedStringLiteral" },
+      ],
+    },
+    {
+      name: "retains mutable canonical constants",
+      code: "let QUERY = 'SELECT id, status, created_at FROM candidates'; export function current() { return QUERY; } export function one() { return 'SELECT id, status, created_at FROM candidates'; } export function two() { return 'SELECT id, status, created_at FROM candidates'; }",
+      output: null,
+      errors: [
+        { messageId: "noRepeatedStringLiteral" },
+        { messageId: "noRepeatedStringLiteral" },
+      ],
+    },
+    {
+      name: "requires an existing value reader",
+      code: "const QUERY = 'SELECT id, status, created_at FROM candidates'; export function current() { return 'SELECT id, status, created_at FROM candidates'; } export function one() { return 'SELECT id, status, created_at FROM candidates'; } export function two() { return 'SELECT id, status, created_at FROM candidates'; }",
+      output: null,
+      errors: [
+        { messageId: "noRepeatedStringLiteral" },
+        { messageId: "noRepeatedStringLiteral" },
+        { messageId: "noRepeatedStringLiteral" },
+      ],
+    },
+    {
+      name: "retains other initialization effects",
+      code: "const QUERY = 'SELECT id, status, created_at FROM candidates'; export function current() { return QUERY; } export function one() { return 'SELECT id, status, created_at FROM candidates'; } export function two() { return 'SELECT id, status, created_at FROM candidates'; } observe();",
+      output: null,
+      errors: [
+        { messageId: "noRepeatedStringLiteral" },
+        { messageId: "noRepeatedStringLiteral" },
+      ],
+    },
+    {
+      name: "retains function argument shadowing",
+      code: "const QUERY = 'SELECT id, status, created_at FROM candidates'; export function current() { return QUERY; } export function one(QUERY: string) { return 'SELECT id, status, created_at FROM candidates'; } export function two() { return 'SELECT id, status, created_at FROM candidates'; }",
+      output: null,
+      errors: [
+        { messageId: "noRepeatedStringLiteral" },
+        { messageId: "noRepeatedStringLiteral" },
+      ],
+    },
+    {
+      name: "retains callback observations",
+      code: "const QUERY = 'SELECT id, status, created_at FROM candidates'; export function current() { consume(QUERY); return QUERY; } export function one() { return 'SELECT id, status, created_at FROM candidates'; } export function two() { return 'SELECT id, status, created_at FROM candidates'; }",
+      output: null,
+      errors: [
+        { messageId: "noRepeatedStringLiteral" },
+        { messageId: "noRepeatedStringLiteral" },
+      ],
+    },
+    {
+      name: "retains return literal assertions",
+      code: "const QUERY = 'SELECT id, status, created_at FROM candidates'; export function current() { return QUERY; } export function one() { return 'SELECT id, status, created_at FROM candidates' as const; } export function two() { return 'SELECT id, status, created_at FROM candidates' as const; }",
+      output: null,
+      errors: [
+        { messageId: "noRepeatedStringLiteral" },
+        { messageId: "noRepeatedStringLiteral" },
+      ],
+    },
+    {
+      name: "retains exported canonical value contracts",
+      code: "export const QUERY = 'SELECT id, status, created_at FROM candidates'; export function current() { return QUERY; } export function one() { return 'SELECT id, status, created_at FROM candidates'; } export function two() { return 'SELECT id, status, created_at FROM candidates'; }",
+      output: null,
+      errors: [
+        { messageId: "noRepeatedStringLiteral" },
+        { messageId: "noRepeatedStringLiteral" },
+      ],
+    },
+    {
+      name: "retains alias ambiguity",
+      code: "const QUERY = 'SELECT id, status, created_at FROM candidates'; const OTHER = 'SELECT id, status, created_at FROM candidates'; export function current() { return QUERY; } export function one() { return 'SELECT id, status, created_at FROM candidates'; } export function two() { return 'SELECT id, status, created_at FROM candidates'; }",
+      output: null,
+      errors: [
+        { messageId: "noRepeatedStringLiteral" },
+        { messageId: "noRepeatedStringLiteral" },
+        { messageId: "noRepeatedStringLiteral" },
+      ],
+    },
+    {
+      name: "reports the documented repeated query",
+      code: NO_REPEATED_STRING_LITERAL_DOCUMENTATION.examples[1].files[0]
+        .source,
+      errors: [{ messageId: "noRepeatedStringLiteral" }],
+    },
     // Two distinct functions is the only count threshold, matching SARJ024.
     {
       code: [

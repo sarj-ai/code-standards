@@ -141,12 +141,58 @@ class NoSelectStar(Rule):
             "intermediate relation intentionally preserves its complete shape."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
             "Only statically recoverable SQL strings in credible query assignments or execution/composition calls in production source files are analyzed.",
             "Dynamic SQL and SQLAlchemy expression trees are not analyzed; bounded CTE wildcards may require a documented suppression.",
+            "Autofix only expands a complete single-row integer VALUES query with authored quoted column names, directly consumed by a fresh default psycopg Connection in a closed source-owned function. Other projections remain manual.",
         ),
         examples=(
+            RuleExample(
+                example_id="safe-autofix",
+                title="Expand the authored columns of an owned literal relation",
+                outcome=ExampleOutcome.MATCH,
+                scenario="owned-literal-projection",
+                files=(
+                    ExampleFile.python(
+                        "app/literal_rows.py",
+                        "from psycopg import Connection\n"
+                        "def literal_rows():\n"
+                        "    with Connection.connect() as connection:\n"
+                        '        return connection.execute(\'SELECT * FROM (VALUES (1, 2)) AS "authored"("a", "b")\').fetchall()\n',
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/literal_rows.py",
+                        "from psycopg import Connection\n"
+                        "def literal_rows():\n"
+                        "    with Connection.connect() as connection:\n"
+                        '        return connection.execute(\'SELECT "authored"."a", "authored"."b" FROM (VALUES (1, 2)) AS "authored"("a", "b")\').fetchall()\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/literal_rows.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="owned-literal-explicit-projection",
+                title="Preserve the explicit authored literal columns",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="owned-literal-projection",
+                files=(
+                    ExampleFile.python(
+                        "app/literal_rows.py",
+                        "from psycopg import Connection\n"
+                        "def literal_rows():\n"
+                        "    with Connection.connect() as connection:\n"
+                        '        return connection.execute(\'SELECT "authored"."a", "authored"."b" FROM (VALUES (1, 2)) AS "authored"("a", "b")\').fetchall()\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/literal_rows.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="wildcard-store-projection",
                 title="Store query selects every column",

@@ -5,6 +5,7 @@
 
 import type { TSESLint, TSESTree } from "@typescript-eslint/utils";
 
+import { commentLineEndings, ownLineCommentRemovalRange } from "./_comment-edits.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { proseGroups } from "./_prose-budget.js";
 
@@ -135,12 +136,50 @@ function canonicalWord(word: string): string {
   return word;
 }
 
+/** Remove only independently parsed vacuous tags from an own-line JSDoc block. */
+function typedTagEdit(
+  comment: TSESTree.Comment,
+  signature: Signature,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): { readonly range: readonly [number, number]; readonly text: string } | null {
+  if (comment.type !== "Block" || !comment.value.startsWith("*")) return null;
+  const removal = ownLineCommentRemovalRange(sourceCode.text, comment);
+  if (removal === null || /(?:eslint|@ts-|prettier|biome-|istanbul|[cv]8 ignore)/iu.test(comment.value)) return null;
+  const lines = comment.value.replace(/^\*/u, "").split("\n")
+    .map((line) => line.replace(/^[\t ]*\*?[\t ]?/u, "").replace(/\r$/u, ""));
+  const chunks: string[][] = [];
+  for (const line of lines) {
+    if (line.trimStart().startsWith("@") || chunks.length === 0) chunks.push([]);
+    chunks.at(-1)!.push(line);
+  }
+  let removed = false;
+  const retained = chunks.flatMap((chunk) => {
+    const tags = typedTags(chunk.join("\n"));
+    if (tags.length === 1 && isVacuousTag(tags[0]!, signature, sourceCode)) {
+      removed = true;
+      return [];
+    }
+    return chunk;
+  });
+  if (!removed) return null;
+  while (retained[0]?.trim() === "") retained.shift();
+  while (retained.at(-1)?.trim() === "") retained.pop();
+  if (retained.length === 0) return { range: removal.range, text: commentLineEndings(sourceCode.text, removal) };
+  const eol = sourceCode.text.includes("\r\n") ? "\r\n" : "\n";
+  const indent = " ".repeat(comment.loc.start.column);
+  return {
+    range: comment.range,
+    text: ["/**", ...retained.map((line) => `${indent} *${line.length === 0 ? "" : ` ${line}`}`), `${indent} */`].join(eol),
+  };
+}
+
 export const NO_TYPED_DOC_SECTIONS_DOCUMENTATION = {
   summary: "Reject typed-signature repetition while preserving behavior that types cannot express.",
   rationale:
     "Parameter and return tags repeat typed signatures and can drift without adding runtime behavior or constraints.",
   remediation: "Remove repeated parameter and return tags; retain documentation for behavior, failures, and external contracts.",
   category: "maintainability",
+  autofix: "safe",
   limitations: ["Description-free or name-restating tags require the adjacent explicitly typed signature and a corresponding parameter name. Optional/defaulted or nested parameter tags and unproven explicit JSDoc types are preserved."],
   examples: [
     {
@@ -161,6 +200,15 @@ export const NO_TYPED_DOC_SECTIONS_DOCUMENTATION = {
       expectedCount: 1,
       public: true,
     },
+    {
+      id: "safe-autofix",
+      title: "Apply the proven automatic correction",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "/** @param id the identifier */\nfunction read(id: string): string { return id; }" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "\nfunction read(id: string): string { return id; }" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -169,6 +217,7 @@ export default createRule<Options, MessageIds>({
   documentation: NO_TYPED_DOC_SECTIONS_DOCUMENTATION,
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: { description: "Reject typed-signature repetition while preserving behavior that types cannot express." },
     schema: [],
     messages: {
@@ -187,7 +236,12 @@ export default createRule<Options, MessageIds>({
             signature !== null &&
             typedTags(group.text).some((tag) => isVacuousTag(tag, signature, context.sourceCode))
           ) {
-            context.report({ node: group.comment, messageId: "typedSection" });
+            const edit = typedTagEdit(group.comment, signature, context.sourceCode);
+            context.report({
+              node: group.comment,
+              messageId: "typedSection",
+              fix: edit === null ? null : (fixer) => fixer.replaceTextRange(edit.range, edit.text),
+            });
           }
         }
       },

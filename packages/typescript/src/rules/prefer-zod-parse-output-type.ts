@@ -14,6 +14,8 @@ import {
 } from "@typescript-eslint/utils";
 import ts from "typescript";
 
+import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
+import { retainsNamedTypeUses } from "./_type-binding.js";
 import { importSpecifierName } from "./_import-specifier-name.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -37,7 +39,7 @@ export const PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION = {
   rationale: "A hand-written contract can drift from the runtime-validated value. Schema ownership determines whether deriving the type preserves the domain architecture.",
   remediation: "When the schema owns the contract, derive it with `z.output<typeof Schema>`. Preserve independently owned domain and public API contracts, and validate schema compatibility with those contracts.",
   category: "correctness",
-  autofix: "none",
+  autofix: "safe",
   limitations: [
     "Requires TypeScript type information and a returned output from a module-level local Zod object schema's `.parse()` or `.safeParse()` result.",
     "Same-module name-correlated twins that `prefer-zod-infer` can prove are left to that established rule; this companion owns richer or renamed same-module and cross-module contracts proven by parse-return data flow.",
@@ -47,7 +49,7 @@ export const PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION = {
     "Readonly, augmented, indexed, callable, generated, constrained, any, unknown, and never contracts are excluded rather than guessed.",
     "Nested contracts must preserve property keys, optionality and readonly behavior through aliases, containers and unambiguous unions. Distinct nested classes, accessor or method declarations, opaque members, ambiguous unions, or graphs beyond 128 compared pairs or 16 union alternatives are excluded.",
     "Explicit callable bindings, independently annotated contextual callbacks or object members, and class members fulfilling an annotated heritage contract retain ownership of their named output contract. Inference from the function body alone does not establish ownership; independent helpers remain eligible.",
-    "The rule is report-only because moving or exporting a schema changes module ownership and requires human review.",
+    "Automatic fixes replace only the bare return annotation of an unused private nongeneric synchronous function returning one direct local-schema parse result. The removed named contract must retain an independent top-level exported type-alias or direct type-export read; references in other removable annotations/assertions or its own definition cannot keep it live. Sole-use contracts, multiple consumers, public/callback/async/nullish/aliased returns, comments, shadowing and missing original Zod import provenance preserve manual ownership; schemas and domain declarations are never moved or exported.",
   ],
   examples: [
     {
@@ -81,6 +83,16 @@ export const PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION = {
       focusPath: "src/row.ts",
       expectedCount: 1,
       public: true, installedDependencies: [{ module: "zod", version: "4.6.7" }],
+    },
+    {
+      id: "safe-autofix",
+      title: "Derive an unused private parser return from its local schema",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "import { z } from \"zod\"; interface ParsedRow { id: string } export type KeptParsedRow = ParsedRow; const RowSchema = z.object({ id: z.string() }); function load(): ParsedRow { return RowSchema.parse({}); }" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "import { z } from \"zod\"; interface ParsedRow { id: string } export type KeptParsedRow = ParsedRow; const RowSchema = z.object({ id: z.string() }); function load(): z.output<typeof RowSchema> { return RowSchema.parse({}); }" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
+      installedDependencies: [{ module: "zod", version: "4.6.7" }],
     },
   ],
 } as const satisfies RuleDocumentation;
@@ -445,10 +457,12 @@ function reportCandidates(
 
   for (const candidate of candidates) { collectEligibleCandidate(candidate); }
   const schemasByContract = new Map<ts.Symbol, Set<ts.Symbol>>();
+  const candidatesByContract = new Map<ts.Symbol, number>();
   for (const { contractSymbol, schemaSymbol } of eligible) {
     const contractSchemas = schemasByContract.get(contractSymbol) ?? new Set<ts.Symbol>();
     contractSchemas.add(schemaSymbol);
     schemasByContract.set(contractSymbol, contractSchemas);
+    candidatesByContract.set(contractSymbol, (candidatesByContract.get(contractSymbol) ?? 0) + 1);
   }
   for (const { candidate, contractSymbol, schema } of eligible) {
     if (reported.has(contractSymbol) || schemasByContract.get(contractSymbol)?.size !== 1) continue;
@@ -456,6 +470,7 @@ function reportCandidates(
     context.report({
       node: candidate.typeReference,
       messageId: "handWrittenParsedOutput",
+      fix: privateParsedOutputFix(context, candidate, schema, zodNamespaces, candidatesByContract.get(contractSymbol)),
       data: {
         methodName: candidate.method,
         schemaName: schema.name,
@@ -463,6 +478,33 @@ function reportCandidates(
       },
     });
   }
+}
+
+
+function privateParsedOutputFix(
+  context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
+  candidate: ParsedReturnCandidate,
+  schema: LocalSchema,
+  namespaces: ReadonlySet<string>,
+  candidateCount: number | undefined,
+): TSESLint.ReportFixFunction | null {
+  const owner = directReturnOwner(candidate.output);
+  if (candidateCount !== 1 || candidate.method !== "parse" || candidate.output !== candidate.call ||
+    owner?.type !== AST_NODE_TYPES.FunctionDeclaration || owner.id === null || owner.async || owner.generator || owner.typeParameters !== undefined ||
+    owner.returnType?.typeAnnotation !== candidate.typeReference || owner.body?.body.length !== 1 ||
+    owner.body.body[0]?.type !== AST_NODE_TYPES.ReturnStatement || owner.body.body[0].argument !== candidate.call ||
+    context.sourceCode.getCommentsInside(owner).length > 0 ||
+    !retainsNamedTypeUses(context.sourceCode, candidate.typeReference) ||
+    !isUnusedPrivateBinding(context.sourceCode, owner, owner.id, context.filename)) return null;
+  const initializer = unwrapExpression(schema.initializer);
+  const callee = initializer.type === AST_NODE_TYPES.CallExpression ? unwrapExpression(initializer.callee) : null;
+  const namespace = callee?.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : null;
+  if (namespace?.type !== AST_NODE_TYPES.Identifier || !namespaces.has(namespace.name)) return null;
+  const binding = ASTUtils.findVariable(context.sourceCode.getScope(namespace), namespace.name);
+  if (binding?.defs.length !== 1 || binding.defs[0]?.type !== "ImportBinding" ||
+    ASTUtils.findVariable(context.sourceCode.getScope(candidate.typeReference), namespace.name) !== binding) return null;
+  return (fixer) => fixer.replaceText(candidate.typeReference,
+    `${context.sourceCode.getText(namespace)}.output<typeof ${context.sourceCode.getText(schema.identifier)}>`);
 }
 
 function handWrittenObjectDeclaration(
@@ -503,6 +545,7 @@ export default createRule<Options, MessageIds>({
   documentation: PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION,
   meta: {
     type: "problem",
+    fixable: "code",
     docs: {
       description:
         "Consider deriving validated return contracts from the Zod schema when the schema owns the contract.",

@@ -9,7 +9,9 @@ import {
   type TSESTree,
 } from "@typescript-eslint/utils";
 import ts from "typescript";
+import { retainsNamedTypeUses } from "./_type-binding.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
 import { isGeneratedFile } from "./_paths.js";
 
 export const NO_BROAD_RETURN_TYPE_DOCUMENTATION = {
@@ -20,9 +22,10 @@ export const NO_BROAD_RETURN_TYPE_DOCUMENTATION = {
   remediation:
     "Return the existing domain type or retain the inferred return contract. Keep unknown at unparsed input boundaries.",
   category: "maintainability",
+  autofix: "safe",
   limitations: [
     "Requires TypeScript type information and an implemented function with an explicit return annotation. Checks unknown, object, and unknown-valued index-only dictionaries, including aliases and Promise results.",
-    "Unparsed unknown/any values, generics, empty object literals, and declaration-only signatures are excluded. Parameter contracts are not inferred from names. Intentional opaque return boundaries require an explained local suppression. No autofix.",
+    "Unparsed unknown/any values, generics, empty object literals, and declaration-only signatures are excluded. Parameter contracts are not inferred from names. Intentional opaque return boundaries require an explained local suppression. Automatic fixes remove the annotation only from an unused private function declaration in a module or block; referenced and public contracts remain manual.",
   ],
   examples: [
     {
@@ -55,6 +58,15 @@ export const NO_BROAD_RETURN_TYPE_DOCUMENTATION = {
       expectedCount: 0,
       public: true,
     },
+    {
+      id: "safe-autofix",
+      title: "Apply the proven automatic correction",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "export {}; function request(value: { id: string }): unknown { return value; }" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "export {}; function request(value: { id: string }) { return value; }" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -63,6 +75,7 @@ type FunctionNode =
   | TSESTree.FunctionDeclaration
   | TSESTree.FunctionExpression;
 interface ReturnFrame {
+  readonly node: FunctionNode;
   readonly annotation: TSESTree.TSTypeAnnotation | undefined;
   known: boolean;
   opaque: boolean;
@@ -118,6 +131,7 @@ export default createRule<[], "avoid">({
   documentation: NO_BROAD_RETURN_TYPE_DOCUMENTATION,
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: { description: NO_BROAD_RETURN_TYPE_DOCUMENTATION.summary },
     schema: [],
     messages: {
@@ -155,6 +169,7 @@ export default createRule<[], "avoid">({
     const enter = (node: FunctionNode): void => {
       const annotation = node.returnType;
       frames.push({
+        node,
         annotation:
           !node.typeParameters &&
           annotation &&
@@ -169,8 +184,15 @@ export default createRule<[], "avoid">({
     };
     const leave = (): void => {
       const frame = frames.pop();
-      if (frame?.annotation && frame.known && !frame.opaque)
-        context.report({ node: frame.annotation, messageId: "avoid" });
+      if (frame?.annotation && frame.known && !frame.opaque) {
+        const annotation = frame.annotation;
+        const node = frame.node;
+        const canFix = node.type === AST_NODE_TYPES.FunctionDeclaration && node.id !== null &&
+          isUnusedPrivateBinding(context.sourceCode, node, node.id, context.filename) &&
+          context.sourceCode.getCommentsInside(annotation).length === 0 &&
+          retainsNamedTypeUses(context.sourceCode, annotation);
+        context.report({ node: annotation, messageId: "avoid", fix: canFix ? (fixer) => fixer.replaceText(annotation, context.sourceCode.getText(annotation).replace(/[^\r\n]/gu, "")) : null });
+      }
     };
     return {
       FunctionDeclaration: enter,

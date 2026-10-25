@@ -55,14 +55,46 @@ class RedundantDocstring(Rule):
             "names or types, and keep prose that documents constraints, side effects, or failure modes."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         aliases=("function-docstring-restates-declaration",),
         limitations=(
+            "Safe fixes remove exact error-level name restatements only from unescaped private nested synchronous nongenerator functions, with no decorators or namespace hazards and a matching native no-consumer finding. Public/escaped functions and meaningful or ambiguous prose remain review-only. Known frame and metadata capabilities, their import aliases and metadata field access prevent fixes.",
+            "Containing callables must also be ordinary synchronous nongenerators with proven inert execution; unknown callouts, properties, overloads, reachable frame-exporting exceptions, and helper references crossing additional function, class, lambda, or comprehension scopes prevent fixes.",
             "Decorated functions, methods on decorated or inherited classes, recognized in-file runtime docstring reads, generated files, and docstring-only bodies are excluded.",
             "Every non-grammatical Unicode word or number must already occur in the function name, parameters, or annotations; multi-parameter prose must include a distinguishing word from every parameter.",
             "ERROR is limited to exact ordered function-name restatements with grammatical filler and an optional terminal period; directional punctuation, reordered words and broader stem-set matches retain WARNING.",
         ),
         examples=(
+            RuleExample(
+                example_id="safe-private-autofix-subset",
+                title="Unescaped private helper keeps its behavioral contract",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def outer(value):\n"
+                            "    def _normalize(item):\n"
+                            '        """Normalize."""\n'
+                            "        return item\n"
+                            "    return _normalize(value)\n"
+                        ),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def outer(value):\n"
+                            "    def _normalize(item):\n"
+                            "        return item\n"
+                            "    return _normalize(value)\n"
+                        ),
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+            ),
             RuleExample(
                 example_id="signature-restatement",
                 title="Function docstring only repeats its declaration",

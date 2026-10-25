@@ -4,10 +4,12 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-union-in-comment.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { isGeneratedFile } from "./_paths.js";
+import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
 
 type MessageIds = "unionInComment";
 type Options = readonly [];
@@ -17,7 +19,9 @@ export const NO_UNION_IN_COMMENT_DOCUMENTATION = {
   rationale: "A broad string annotation does not express a closed set documented beside it.",
   remediation: "If the list is exhaustive, express it as a string-literal union; keep examples and runtime constraints documented separately.",
   category: "maintainability",
-  limitations: ["Only bare quoted-value lists directly attached to explicitly annotated string declarations are inspected. Unknown schema builders and runtime validation are not inferred."],
+  autofix: "safe",
+  limitations: ["Only bare quoted-value lists directly attached to explicitly annotated string declarations are inspected. Unknown schema builders and runtime validation are not inferred.",
+    "Automatic fixes remove only the broad string member from an unused private unmerged interface/object alias whose existing quoted literal branches exactly match the adjacent comment's set. Authored literal branches, nullability and the comment are retained. Bare string declarations, observed/public types, heritage, generics, dependent this, computed/indexed members, escapes and comments inside the changed union remain manual."],
   examples: [
     {
       id: "literal-union",
@@ -36,6 +40,15 @@ export const NO_UNION_IN_COMMENT_DOCUMENTATION = {
       focusPath: "src/record.ts",
       expectedCount: 1,
       public: true,
+    },
+    {
+      id: "safe-autofix",
+      title: "Keep the literal contract already authored beside its exact comment",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "export {}; interface Choice { kind: string | 'aa' | 'bb'; // 'aa' | 'bb'\n}" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "export {}; interface Choice { kind: 'aa' | 'bb'; // 'aa' | 'bb'\n}" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
     },
   ],
 } as const satisfies RuleDocumentation;
@@ -115,6 +128,7 @@ export default createRule<Options, MessageIds>({
   documentation: NO_UNION_IN_COMMENT_DOCUMENTATION,
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: {
       description:
         "Flag a comment that lists a `string` field's allowed values instead of the type listing them.",
@@ -181,9 +195,66 @@ export default createRule<Options, MessageIds>({
             node: comment,
             messageId: "unionInComment",
             data: { name: target.name, first: literals[0] ?? "" },
+            fix: existingLiteralUnionFix(sourceCode, target, literals, context.filename),
           });
         }
       },
     };
   },
 });
+
+function existingLiteralUnionFix(
+  sourceCode: Readonly<TSESLint.SourceCode>,
+  target: Target,
+  literals: readonly string[],
+  filename: string,
+): TSESLint.ReportFixFunction | null {
+  if (target.node.type !== AST_NODE_TYPES.TSPropertySignature || target.node.computed) return null;
+  const container = target.node.parent;
+  const owner = container.parent;
+  if ((container.type !== AST_NODE_TYPES.TSInterfaceBody || owner.type !== AST_NODE_TYPES.TSInterfaceDeclaration || owner.extends.length > 0) &&
+    (container.type !== AST_NODE_TYPES.TSTypeLiteral || owner.type !== AST_NODE_TYPES.TSTypeAliasDeclaration || owner.typeAnnotation !== container)) return null;
+  if ((owner.type !== AST_NODE_TYPES.TSInterfaceDeclaration && owner.type !== AST_NODE_TYPES.TSTypeAliasDeclaration) ||
+    owner.typeParameters !== undefined || !isUnusedPrivateBinding(sourceCode, owner, owner.id, filename) || dependentOwner(owner)) return null;
+  const annotation = target.node.typeAnnotation?.typeAnnotation;
+  if (annotation?.type !== AST_NODE_TYPES.TSUnionType || sourceCode.getCommentsInside(annotation).length > 0) return null;
+  const members = authoredLiteralMembers(sourceCode, annotation);
+  if (members === null) return null;
+  const { authored, retained } = members;
+  const described = new Set(literals);
+  if (authored.size < 2 || authored.size !== described.size || [...authored].some((literal) => !described.has(literal))) return null;
+  const replacement = retained.map((member) => sourceCode.getText(member)).join(" | ") +
+    sourceCode.getText(annotation).replace(/[^\r\n]/gu, "");
+  return (fixer) => fixer.replaceText(annotation, replacement);
+}
+
+function authoredLiteralMembers(
+  sourceCode: Readonly<TSESLint.SourceCode>,
+  annotation: TSESTree.TSUnionType,
+): { readonly authored: ReadonlySet<string>; readonly retained: readonly TSESTree.TypeNode[] } | null {
+  const authored = new Set<string>();
+  const retained: TSESTree.TypeNode[] = [];
+  for (const member of annotation.types) {
+    if (member.type === AST_NODE_TYPES.TSStringKeyword) continue;
+    if (member.type === AST_NODE_TYPES.TSLiteralType && member.literal.type === AST_NODE_TYPES.Literal && typeof member.literal.value === "string") {
+      if (sourceCode.getText(member).includes("\\")) return null;
+      authored.add(member.literal.value);
+    } else if (member.type !== AST_NODE_TYPES.TSNullKeyword && member.type !== AST_NODE_TYPES.TSUndefinedKeyword) return null;
+    retained.push(member);
+  }
+  return { authored, retained };
+}
+
+function dependentOwner(owner: TSESTree.TSInterfaceDeclaration | TSESTree.TSTypeAliasDeclaration): boolean {
+  const members = owner.type === AST_NODE_TYPES.TSInterfaceDeclaration ? owner.body.body :
+    owner.typeAnnotation.type === AST_NODE_TYPES.TSTypeLiteral ? owner.typeAnnotation.members : [];
+  if (members.some((member) => member.type !== AST_NODE_TYPES.TSPropertySignature || member.computed)) return true;
+  const pending: TSESTree.Node[] = [owner];
+  while (pending.length > 0) {
+    const node = pending.pop();
+    if (node === undefined) continue;
+    if (node.type === AST_NODE_TYPES.TSThisType) return true;
+    forEachOwnAstChild(node, (child) => { pending.push(child); });
+  }
+  return false;
+}

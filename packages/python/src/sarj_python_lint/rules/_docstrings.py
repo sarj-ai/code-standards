@@ -233,6 +233,14 @@ def sections(docstring: str) -> dict[str, str]:
     return out
 
 
+def section_ranges(docstring: str) -> list[tuple[str, int, int]]:
+    marks = list(_SECTION_RE.finditer(docstring))
+    return [
+        (mark.group("name"), mark.start(), marks[index + 1].start() if index + 1 < len(marks) else len(docstring))
+        for index, mark in enumerate(marks)
+    ]
+
+
 def arg_section(docstring: str) -> str | None:
     found = sections(docstring)
     for name in ARG_SECTIONS:

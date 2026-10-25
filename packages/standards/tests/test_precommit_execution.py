@@ -90,7 +90,7 @@ def test_real_git_precommit_runs_once_and_shows_diagnostics(tmp_path: Path, stat
     assert committed.returncode == status
     assert (committed.stdout + committed.stderr).count("fixture:") == 1
     assert json.loads(probe.receipt.read_text(encoding="utf-8")) == {
-        "args": ["check", "--staged", "--trust-repository-code"],
+        "args": ["check", "--staged", "--fix", "--trust-repository-code"],
         "paths": sorted(names),
     }
 
@@ -142,7 +142,7 @@ def test_real_lefthook_runs_without_source_filenames(tmp_path: Path, state: str)
     assert installed.read_bytes() == before
     assert "UNEXPECTED_OTHER_JOB" not in completed.stdout + completed.stderr
     assert json.loads(probe.receipt.read_text(encoding="utf-8")) == {
-        "args": ["check", "--staged", "--trust-repository-code"],
+        "args": ["check", "--staged", "--fix", "--trust-repository-code"],
         "paths": [] if state == "empty" else ["source.py"],
     }
 
@@ -262,7 +262,7 @@ def test_conditioned_lefthook_checks_are_not_healthy_or_silently_rewired(
 
 
 def test_unconditional_group_and_neutral_options_remain_supported(tmp_path: Path) -> None:
-    command = f"{launcher.repository_command()} check --staged --trust-repository-code"
+    command = hooks.canonical_staged_command(tmp_path)
     config = tmp_path / "lefthook.yml"
     config.write_text(
         f"pre-commit:\n  skip: false\n  only: true\n  exclude_tags: [unrelated]\n  jobs:\n    - group:\n        jobs:\n          - run: {command}\n"
@@ -281,7 +281,7 @@ def test_duplicate_yaml_keys_cannot_hide_a_disabled_check(tmp_path: Path, manage
         assert not hooks.precommit_runs_staged_check(tmp_path)
     else:
         config = tmp_path / "lefthook.yml"
-        command = f"{launcher.repository_command()} check --staged --trust-repository-code"
+        command = hooks.canonical_staged_command(tmp_path)
         config.write_text(
             f"pre-commit: {{}}\npre-commit:\n  commands:\n    standards:\n      run: {command}\n", encoding="utf-8"
         )

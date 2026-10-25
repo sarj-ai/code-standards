@@ -19,6 +19,7 @@ const TESTER = new RuleTester({
 });
 TESTER.run("prefer-typed-reflection", rule, {
   valid: [
+    { name: "preserves Reflect.get on a primitive", code: 'declare const target: string; Reflect.get(target, "length");' },
     { name: "keeps interpolated property keys dynamic", code: 'declare const target: { id: string }; declare const suffix: string; Reflect.get(target, `id${suffix}`);' },
     { name: "keeps open dictionaries with a wrapped literal outside the rule", code: 'declare const target: Record<string, unknown>; Reflect.get(target, ("id" as const));' },
     { name: "keeps a shadowed Reflect with a template key outside the rule", code: 'function read(Reflect: {get(target: object, key: string): unknown}, target: object) { return Reflect.get(target, `id`); }' },
@@ -34,12 +35,16 @@ TESTER.run("prefer-typed-reflection", rule, {
     'Reflect.ownKeys({ id: "a" });',
   ],
   invalid: [
-    { name: "retains a no-substitution template key", code: 'declare const target: { id: string }; Reflect.get(target, `id`);', errors: [{ messageId: "avoid" }] },
-    { name: "retains a const assertion around a literal key", code: 'declare const target: { id: string }; Reflect.get(target, ("id" as const));', errors: [{ messageId: "avoid" }] },
-    { name: "retains a satisfies wrapper around a literal key", code: 'declare const target: { id: string }; Reflect.get(target, ("id" satisfies string));', errors: [{ messageId: "avoid" }] },
+    { name: "preserves delete of a call result", code: 'declare const target: { id: string }; delete Reflect.get(target, "id");', output: null, errors: [{ messageId: "avoid" }] },
+    { name: "preserves delete through an erased wrapper", code: 'declare const target: { id: string }; delete (Reflect.get(target, "id") as unknown);', output: null, errors: [{ messageId: "avoid" }] },
+    { name: "preserves a detached method invocation", code: 'declare const target: { run(): string }; Reflect.get(target, "run")();', output: null, errors: [{ messageId: "avoid" }] },
+    { name: "preserves method tags", code: 'declare const target: { tag(strings: TemplateStringsArray): string }; Reflect.get(target, "tag")`value`;', output: null, errors: [{ messageId: "avoid" }] },
+    { name: "retains a no-substitution template key", code: 'declare const target: { id: string }; Reflect.get(target, `id`);', output: "declare const target: { id: string }; (target)[`id`];", errors: [{ messageId: "avoid" }] },
+    { name: "retains a const assertion around a literal key", code: 'declare const target: { id: string }; Reflect.get(target, ("id" as const));', output: "declare const target: { id: string }; (target)[\"id\" as const];", errors: [{ messageId: "avoid" }] },
+    { name: "retains a satisfies wrapper around a literal key", code: 'declare const target: { id: string }; Reflect.get(target, ("id" satisfies string));', output: "declare const target: { id: string }; (target)[\"id\" satisfies string];", errors: [{ messageId: "avoid" }] },
 
     {
-      code: 'declare const target: { id: string }; Reflect.get(target, "id");',
+      code: 'declare const target: { id: string }; Reflect.get(target, "id");', output: "declare const target: { id: string }; (target)[\"id\"];",
       errors: [
         {
           messageId: "avoid",
@@ -71,7 +76,7 @@ TESTER.run("prefer-typed-reflection", rule, {
       ],
     },
     {
-      code: 'declare const target: { id: string }; globalThis.Reflect.get(target, "id");',
+      code: 'declare const target: { id: string }; globalThis.Reflect.get(target, "id");', output: "declare const target: { id: string }; (target)[\"id\"];",
       errors: [
         {
           messageId: "avoid",

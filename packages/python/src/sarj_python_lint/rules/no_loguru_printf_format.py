@@ -46,15 +46,35 @@ class NoLoguruPrintfFormat(Rule):
             "fields. Review numeric, mapping and width specifications rather than mechanically replacing percent signs."
         ),
         category=RuleCategory.CORRECTNESS,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes handle direct proven logger calls with a brace-free literal message, matching argument count and exact native primitive values. Only simple %s/%r/%a and integer-literal %d/%i fields are converted; widths, numeric coercion, mappings, custom values and logger chains remain review-only.",
             "Only unambiguous module-level Loguru imports and immediate bind/opt chains with a literal message and supplied positional formatting arguments are checked.",
             "The decoded literal message must contain a valid percent conversion and no brace fields; Unicode and hex escapes preserve conversions. Escaped percent signs alone, malformed templates, dynamic messages and expanded arguments are excluded.",
             "Standard logging, unknown receivers, stored aliases, shadowed or escaped imports, custom wrapper chains, keyword-only fields and generated files are excluded.",
             "Visible namespace or logger mutations invalidate import proof. Interprocedural effects and runtime monkeypatches are not resolved.",
-            "Argument types and printf arity are not inferred. The warning requests review; no automatic conversion changes formatting or structured logging contracts.",
+            "Argument types and printf arity are not generally inferred. Only the explicitly proven primitive subset is fixed; other warnings require formatting/structured-field review.",
         ),
         examples=(
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="Exact primitive arguments have an unambiguous brace format",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from loguru import logger\nlogger.error('Request %s failed with status %d', 'marker', 503)\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from loguru import logger\nlogger.error('Request {!s} failed with status {:d}', 'marker', 503)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+            ),
             RuleExample(
                 example_id="printf-values-ignored",
                 title="Loguru leaves printf placeholders unchanged",

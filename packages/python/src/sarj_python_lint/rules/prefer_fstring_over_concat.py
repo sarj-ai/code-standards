@@ -132,10 +132,11 @@ class PreferFstringOverConcat(Rule):
             "concatenation or formatting behavior; a `str` annotation alone does not prove equivalence."
         ),
         category=RuleCategory.STYLE,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes require every runtime operand to be an explicit unshadowed builtin str, repr or ascii conversion of a proven exact native primitive. Bare strings, subclasses, custom operators and formatting contracts remain review-only.",
             "Runtime operands must have concrete string evidence.",
-            "String evidence does not prove that custom concatenation operators and `__format__` agree; this remains manual review.",
+            "String evidence alone does not prove custom concatenation and formatting equivalence; only exact-native-primitive builtin-conversion subsets are fixed.",
             (
                 "Logging, common direct SQL and regular-expression forms, lazy strings, ORM expressions, generated files, long "
                 "literals, and punctuation-oriented fragment composition are excluded."
@@ -168,6 +169,23 @@ class PreferFstringOverConcat(Rule):
                 focus_path=PurePosixPath("src/render.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py", ('def label(value):\n    return "The value is " + str(len(value)) + "!"\n')
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py", ("def label(value):\n    return f'The value is {len(value)!s}!'\n")
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )

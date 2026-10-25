@@ -262,7 +262,7 @@
         "source": "import { z } from \"zod\"; const Items = z[`array`](z[`string`]())[`optional`]()[`default`]([]);"
       }
     ],
-    "fixedSource": "import { z } from \"zod\"; const Items = z[`array`](z[`string`]())[`default`]([]);"
+    "fixedSource": "import { z } from \"zod\"; const Items = z[`array`](z[`string`]())[`optional`]()[`default`]([]);"
   },
   {
     "rule": "no-redundant-optional-array-default",
@@ -275,7 +275,7 @@
         "source": "import { z } from \"zod\"; const Items = (z!).array((z!).string()).optional().default([]);"
       }
     ],
-    "fixedSource": "import { z } from \"zod\"; const Items = (z!).array((z!).string()).default([]);"
+    "fixedSource": "import { z } from \"zod\"; const Items = (z!).array((z!).string()).optional().default([]);"
   },
   {
     "rule": "no-redundant-optional-array-default",
@@ -288,7 +288,7 @@
         "source": "import { z } from \"zod\"; const Items = (z as typeof z).array((z as typeof z).string()).optional().default([]);"
       }
     ],
-    "fixedSource": "import { z } from \"zod\"; const Items = (z as typeof z).array((z as typeof z).string()).default([]);"
+    "fixedSource": "import { z } from \"zod\"; const Items = (z as typeof z).array((z as typeof z).string()).optional().default([]);"
   },
   {
     "rule": "no-router-refresh-polling",

@@ -1,6 +1,9 @@
 // vitest: shared-module-graph
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import * as parser from "@typescript-eslint/parser";
+import { Linter } from "eslint";
+import ts from "typescript";
+import { afterAll, describe, expect, it } from "vitest";
 
 import rule, { NO_LONG_COMMENT_DOCUMENTATION } from "../../src/rules/no-long-comment.js";
 
@@ -10,6 +13,8 @@ RuleTester.it = it;
 RuleTester.itOnly = it.only;
 
 const UNPUNCTUATED_COMMENT_WALL = `/** ${Array.from({ length: 120 }, () => "context").join(" ")} */\nconst value = 1;`;
+const DECORATED = NO_LONG_COMMENT_DOCUMENTATION.examples[2].files[0].source;
+const FIXED_DECORATION = NO_LONG_COMMENT_DOCUMENTATION.examples[2].fixedFiles[0].source;
 
 new RuleTester().run("no-long-comment", rule, {
   valid: [
@@ -76,6 +81,60 @@ new RuleTester().run("no-long-comment", rule, {
     },
   ],
   invalid: [
+    {
+      name: "removes only interior plus decoration and retains prose paragraphs",
+      code: DECORATED,
+      output: FIXED_DECORATION,
+      errors: [{ messageId: "tooLong" }],
+    },
+    {
+      name: "preserves CRLF and comment markers while removing decoration",
+      code: DECORATED.replaceAll("\n", "\r\n"),
+      output: FIXED_DECORATION.replaceAll("\n", "\r\n"),
+      errors: [{ messageId: "tooLong" }],
+    },
+    {
+      name: "retains Unicode prose before UTF16 decoration ranges",
+      code: DECORATED.replace("accepts data", "accepts data 𝄞"),
+      output: FIXED_DECORATION.replace("accepts data", "accepts data 𝄞"),
+      errors: [{ messageId: "tooLong" }],
+    },
+    {
+      name: "removes all adjacent decoration atomically",
+      code: DECORATED.replace(" * ++++++++\n", " * ++++++++\n * ++++++++\n"),
+      output: FIXED_DECORATION.replace(" * \n", " * \n * \n"),
+      errors: [{ messageId: "tooLong" }],
+    },
+    ...["prompt", "expected", "password", "diagram", "signature"].map((context) => ({
+      name: `preserves ${context} contexts`,
+      code: DECORATED.replace("accepts data", `accepts ${context} data`),
+      output: null,
+      errors: [{ messageId: "tooLong" as const }],
+    })),
+    {
+      name: "retains decoration when its removal cannot establish paragraph structure",
+      code: DECORATED.replace(" * ++++++++\n", "").replace(" */", " * ++++++++\n */"),
+      output: null,
+      errors: [{ messageId: "tooLong" }],
+    },
+    {
+      name: "preserves Markdown structural delimiters",
+      code: DECORATED.replace(" * ++++++++", " * ----\n * ++++++++"),
+      output: null,
+      errors: [{ messageId: "tooLong" }],
+    },
+    {
+      name: "preserves fenced contexts",
+      code: DECORATED.replace(" * ++++++++", " * ~~~\n * ++++++++\n * ~~~"),
+      output: null,
+      errors: [{ messageId: "tooLong" }],
+    },
+    {
+      name: "preserves indented examples",
+      code: DECORATED.replace(" * The reader accepts", " *     The reader accepts"),
+      output: null,
+      errors: [{ messageId: "tooLong" }],
+    },
     { name: "reports the synthetic eight-sentence boundary", code: "/** One. Two. Three. Four. Five. Six. Seven. Eight. */\nconst chart = createChart();", errors: [{ messageId: "tooLong" }] },
     {
       name: "unstructured JSDoc cannot evade the budget by omitting punctuation",
@@ -99,4 +158,39 @@ const value = 1;`,
       errors: [{ messageId: "tooLong" }],
     },
   ],
+});
+
+function apply(source: string): ReturnType<Linter["verifyAndFix"]> {
+  return new Linter().verifyAndFix(source, [{
+    files: ["**/*.ts"],
+    languageOptions: { parser },
+    plugins: { audit: { rules: { comment: rule } } },
+    rules: { "audit/comment": "error" },
+  }], { filename: "src/reader.ts" });
+}
+
+it.each(["\n", "\r\n"])("retains emitted JavaScript and converges with %j line endings", (ending) => {
+  const source = DECORATED.replaceAll("\n", ending);
+  const first = apply(source);
+  expect(first.fixed).toBe(true);
+  expect(first.messages).toEqual([]);
+  expect(first.output).toBe(FIXED_DECORATION.replaceAll("\n", ending));
+  const second = apply(first.output);
+  expect(second.fixed).toBe(false);
+  expect(second.output).toBe(first.output);
+  expect(second.messages).toEqual([]);
+  const options = { compilerOptions: { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext, removeComments: true } };
+  expect(ts.transpileModule(first.output, options).outputText).toBe(ts.transpileModule(source, options).outputText);
+});
+
+it.each([
+  DECORATED.replace("accepts data", "accepts data @customTag"),
+  DECORATED.replace("accepts data", "retains copyright data"),
+  DECORATED.replace("accepts data", "retains data licensed under local terms"),
+  DECORATED.replace(" * ++++++++", " *     ++++++++"),
+  `// @ts-ignore\n${DECORATED}`,
+])("preserves protected documentation and next-line directive ownership", (source) => {
+  const result = apply(source);
+  expect(result.fixed).toBe(false);
+  expect(result.output).toBe(source);
 });

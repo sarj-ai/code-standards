@@ -87,9 +87,9 @@ RULE_TESTER.run("no-restated-jsdoc", rule, {
   ],
   invalid: [
     {
-      name: "offers deletion as a suggestion without applying an autofix",
+      name: "automatically deletes a redundant own-line block",
       code: "/** Get the user by id. */\nexport function getUserById(id: string) { return id; }",
-      output: null,
+      output: "\nexport function getUserById(id: string) { return id; }",
       errors: [
         {
           messageId: "restatesSignature",
@@ -105,7 +105,7 @@ RULE_TESTER.run("no-restated-jsdoc", rule, {
     {
       name: "counts a restated at-description tag as documentation text",
       code: "/** @description Get the user by id. */\nexport function getUserById(id: string) { return id; }",
-      output: null,
+      output: "\nexport function getUserById(id: string) { return id; }",
       errors: [
         {
           messageId: "restatesSignature",
@@ -120,7 +120,7 @@ RULE_TESTER.run("no-restated-jsdoc", rule, {
     },
     // Description plus parroting `@param` / `@returns`.
     {
-      code: "/**\n * Formats the amount.\n * @param amount The amount.\n * @returns The amount.\n */\nexport function formatAmount(amount: number) { return amount; }",
+      code: "/**\n * Formats the amount.\n * @param amount The amount.\n * @returns The amount.\n */\nexport function formatAmount(amount: number) { return amount; }", output: "\n\n\n\n\nexport function formatAmount(amount: number) { return amount; }",
       errors: [
         {
           messageId: "restatesSignature",
@@ -135,7 +135,7 @@ RULE_TESTER.run("no-restated-jsdoc", rule, {
     },
     // An arrow-function const.
     {
-      code: "/** Logout function */\nexport const useLogout = () => logout();",
+      code: "/** Logout function */\nexport const useLogout = () => logout();", output: "\nexport const useLogout = () => logout();",
       errors: [
         {
           messageId: "restatesSignature",
@@ -147,7 +147,7 @@ RULE_TESTER.run("no-restated-jsdoc", rule, {
     },
     // A class method.
     {
-      code: "class Processor {\n  /**\n   * Calculate bounds for features\n   */\n  calculateBounds(features: number[]) { return features; }\n}",
+      code: "class Processor {\n  /**\n   * Calculate bounds for features\n   */\n  calculateBounds(features: number[]) { return features; }\n}", output: "class Processor {\n\n\n\n  calculateBounds(features: number[]) { return features; }\n}",
       errors: [
         {
           messageId: "restatesSignature",
@@ -162,7 +162,7 @@ RULE_TESTER.run("no-restated-jsdoc", rule, {
     },
     // An interface property.
     {
-      code: "export interface Options {\n  /** the fetcher function */\n  fetcher?: () => void;\n}",
+      code: "export interface Options {\n  /** the fetcher function */\n  fetcher?: () => void;\n}", output: "export interface Options {\n\n  fetcher?: () => void;\n}",
       errors: [
         {
           messageId: "restatesSignature",
@@ -174,7 +174,7 @@ RULE_TESTER.run("no-restated-jsdoc", rule, {
     },
     // Bare `@param` tags with no description at all.
     {
-      code: "/**\n * @param mutationCache\n * @param options\n */\nexport function injectMutationState(mutationCache: unknown, options: unknown) { return [mutationCache, options]; }",
+      code: "/**\n * @param mutationCache\n * @param options\n */\nexport function injectMutationState(mutationCache: unknown, options: unknown) { return [mutationCache, options]; }", output: "\n\n\n\nexport function injectMutationState(mutationCache: unknown, options: unknown) { return [mutationCache, options]; }",
       errors: [
         {
           messageId: "restatesSignature",

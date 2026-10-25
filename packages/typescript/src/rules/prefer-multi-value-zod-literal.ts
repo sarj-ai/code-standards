@@ -24,24 +24,27 @@ export const PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION = {
     "Use the Zod 4 multi-value literal API instead of a union of literal schemas.",
   rationale:
     "One multi-value literal expresses the same closed value domain without repeated schema wrappers.",
-  remediation: "Use z.literal([value1, value2, ...]) for a modern Zod 4 value-domain contract. Preserve required union introspection or error-shape contracts with an explained local exception.",
+  remediation:
+    "Use z.literal([value1, value2, ...]) for a modern Zod 4 value-domain contract. Preserve required union introspection or error-shape contracts with an explained local exception.",
   category: "maintainability",
   autofix: "none",
   limitations: [
     "Bare zod imports are analyzed only when the rule option explicitly declares zodMajorVersion: 4; explicit zod/v4 entrypoints are self-declaring.",
     "All-string domains are left to zod/prefer-enum-over-literal-union.",
-    "Migration is manual: ZodLiteral and ZodUnion expose different introspection APIs and validation error shapes even when they accept the same values.",
+    "Migration remains manual: supported global constructor hooks observe the original literal/literal/union construction sequence even for an unused private schema. ZodLiteral and ZodUnion also expose different introspection APIs and validation error shapes.",
   ],
   examples: [
     {
       id: "multi-value",
       title: "Use one multi-value literal",
       outcome: "no-match",
-      files: [{
-        path: "src/schema.ts",
-        source:
-          "import { z } from 'zod/v4'; export const Version = z.literal([1, 2, 3]);",
-      }],
+      files: [
+        {
+          path: "src/schema.ts",
+          source:
+            "import { z } from 'zod/v4'; export const Version = z.literal([1, 2, 3]);",
+        },
+      ],
       focusPath: "src/schema.ts",
       expectedCount: 0,
       public: true,
@@ -50,14 +53,30 @@ export const PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION = {
       id: "literal-union",
       title: "Avoid repeated literal wrappers",
       outcome: "match",
-      files: [{
-        path: "src/schema.ts",
-        source:
-          "import { z } from 'zod/v4'; export const Version = z.union([z.literal(1), z.literal(2), z.literal(3)]);",
-      }],
+      files: [
+        {
+          path: "src/schema.ts",
+          source:
+            "import { z } from 'zod/v4'; export const Version = z.union([z.literal(1), z.literal(2), z.literal(3)]);",
+        },
+      ],
       focusPath: "src/schema.ts",
       expectedCount: 1,
       public: true,
+    },
+    {
+      id: "private-schema-migration",
+      title: "Review constructor hooks before migrating a private schema",
+      outcome: "match",
+      files: [
+        {
+          path: "src/autofix-example.ts",
+          source:
+            'import { z } from "zod/v4"; const VersionSchema = z.union([z.literal(1), z.literal(2)]);',
+        },
+      ],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
     },
   ],
 } as const satisfies RuleDocumentation;
@@ -96,8 +115,7 @@ function isStaticPrimitive(
 function isStaticString(node: TSESTree.CallExpressionArgument): boolean {
   node = unwrapExpression(node);
   return (
-    (node.type === AST_NODE_TYPES.Literal &&
-      typeof node.value === "string") ||
+    (node.type === AST_NODE_TYPES.Literal && typeof node.value === "string") ||
     (node.type === AST_NODE_TYPES.TemplateLiteral &&
       node.expressions.length === 0)
   );
@@ -112,13 +130,15 @@ export default createRule<Options, MessageIds>({
       description:
         "Use the Zod 4 multi-value literal API instead of a union of literal schemas.",
     },
-    schema: [{
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        zodMajorVersion: { type: "integer", minimum: 4, maximum: 4 },
+    schema: [
+      {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          zodMajorVersion: { type: "integer", minimum: 4, maximum: 4 },
+        },
       },
-    }],
+    ],
     messages: {
       useMultiValueLiteral:
         "Replace this literal-schema union with {{zod}}.literal([…]).",
@@ -150,7 +170,10 @@ export default createRule<Options, MessageIds>({
       method: string,
     ): boolean {
       const unwrappedNodeCallee = unwrapExpression(node.callee);
-      const receiver = unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(unwrappedNodeCallee.object) : unwrappedNodeCallee;
+      const receiver =
+        unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression
+          ? unwrapExpression(unwrappedNodeCallee.object)
+          : unwrappedNodeCallee;
       if (
         unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression ||
         receiver.type !== AST_NODE_TYPES.Identifier ||
@@ -159,6 +182,29 @@ export default createRule<Options, MessageIds>({
       )
         return false;
       return resolvedBinding(receiver) === binding;
+    }
+
+    function primitiveLiteralValues(
+      argument: TSESTree.ArrayExpression,
+      binding: TSESLint.Scope.Variable,
+    ): TSESTree.CallExpressionArgument[] | null {
+      const values: TSESTree.CallExpressionArgument[] = [];
+      for (const writtenElement of argument.elements) {
+        const element =
+          writtenElement === null ? null : unwrapExpression(writtenElement);
+        if (
+          element === null ||
+          element.type !== AST_NODE_TYPES.CallExpression ||
+          !directMemberCall(element, binding, "literal") ||
+          element.arguments.length !== 1
+        )
+          return null;
+        const [value] = element.arguments;
+        if (value === undefined || !isStaticPrimitive(value, context))
+          return null;
+        values.push(value);
+      }
+      return values;
     }
 
     return {
@@ -183,7 +229,10 @@ export default createRule<Options, MessageIds>({
       },
       CallExpression(node): void {
         const unwrappedNodeCallee = unwrapExpression(node.callee);
-        const receiver = unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(unwrappedNodeCallee.object) : unwrappedNodeCallee;
+        const receiver =
+          unwrappedNodeCallee.type === AST_NODE_TYPES.MemberExpression
+            ? unwrapExpression(unwrappedNodeCallee.object)
+            : unwrappedNodeCallee;
         if (
           unwrappedNodeCallee.type !== AST_NODE_TYPES.MemberExpression ||
           receiver.type !== AST_NODE_TYPES.Identifier
@@ -198,27 +247,18 @@ export default createRule<Options, MessageIds>({
           node.arguments.length !== 1
         )
           return;
-        const argument = node.arguments[0] === undefined ? undefined : unwrapExpression(node.arguments[0]);
+        const argument =
+          node.arguments[0] === undefined
+            ? undefined
+            : unwrapExpression(node.arguments[0]);
         if (
           argument?.type !== AST_NODE_TYPES.ArrayExpression ||
           argument.elements.length < 2
         )
           return;
 
-        const values: TSESTree.CallExpressionArgument[] = [];
-        for (const writtenElement of argument.elements) {
-          const element = writtenElement === null ? null : unwrapExpression(writtenElement);
-          if (
-            element === null ||
-            element.type !== AST_NODE_TYPES.CallExpression ||
-            !directMemberCall(element, binding, "literal") ||
-            element.arguments.length !== 1
-          )
-            return;
-          const [value] = element.arguments;
-          if (value === undefined || !isStaticPrimitive(value, context)) return;
-          values.push(value);
-        }
+        const values = primitiveLiteralValues(argument, binding);
+        if (values === null) return;
         if (values.every(isStaticString)) return;
 
         const namespace = receiver.name;

@@ -1950,7 +1950,7 @@ def test_generated_precommit_block_carries_no_rev(tmp_path: Path) -> None:
     generated = (tmp_path / ".pre-commit-config.yaml").read_text()
     assert "rev:" not in generated
     assert "repo: local" in generated
-    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code" in generated
+    assert f"{BOOTSTRAP_COMMAND} check --staged --fix --trust-repository-code" in generated
     assert "always_run: true" in generated
     assert "files:" not in generated
     assert generated.count("id: sarj-standards-check") == 1
@@ -2209,7 +2209,7 @@ def test_init_repairs_inert_or_compound_lefthook_commands(tmp_path: Path, run: s
 
     assert proc.returncode == 0, proc.stderr
     updated = (tmp_path / "lefthook.yml").read_text(encoding="utf-8")
-    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code" in updated
+    assert f"{BOOTSTRAP_COMMAND} check --staged --fix --trust-repository-code" in updated
 
 
 def test_init_repairs_a_commented_out_lefthook_command(tmp_path: Path) -> None:
@@ -2224,7 +2224,7 @@ def test_init_repairs_a_commented_out_lefthook_command(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr
     updated = (tmp_path / "lefthook.yml").read_text(encoding="utf-8")
     assert "# sarj-standards check --staged" in updated
-    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code" in updated
+    assert f"{BOOTSTRAP_COMMAND} check --staged --fix --trust-repository-code" in updated
 
 
 def test_init_rejects_malformed_lefthook_yaml(tmp_path: Path) -> None:
@@ -2261,7 +2261,7 @@ def test_init_repairs_unwired_but_rejects_missing_lefthook_management(tmp_path: 
     (tmp_path / "lefthook.yml").write_text("pre-commit:\n  commands: {}\n", encoding="utf-8")
     unwired = _cli("--root", str(tmp_path), "setup", "--hooks", "lefthook", "--no-install")
     assert unwired.returncode == 0, unwired.stderr
-    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code" in (tmp_path / "lefthook.yml").read_text(
+    assert f"{BOOTSTRAP_COMMAND} check --staged --fix --trust-repository-code" in (tmp_path / "lefthook.yml").read_text(
         encoding="utf-8"
     )
 
@@ -2289,7 +2289,7 @@ def test_init_preserves_and_extends_lefthook_v2_jobs(tmp_path: Path) -> None:
     updated = config.read_text(encoding="utf-8")
     assert original_job in updated
     assert f"- name: sarj-standards\n      run: {BOOTSTRAP_COMMAND}" in updated
-    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code" in updated
+    assert f"{BOOTSTRAP_COMMAND} check --staged --fix --trust-repository-code" in updated
     assert "pre-push:\n  commands: {}" in updated
     assert adoption_hooks.lefthook_runs_staged_check(tmp_path)
 
@@ -2308,7 +2308,7 @@ def test_nested_lefthook_v2_job_can_already_run_staged_check(tmp_path: Path) -> 
     assert proc.returncode == 0, proc.stderr
     updated = config.read_text(encoding="utf-8")
     assert updated != original
-    assert f"{BOOTSTRAP_COMMAND} check --staged --trust-repository-code" in updated
+    assert f"{BOOTSTRAP_COMMAND} check --staged --fix --trust-repository-code" in updated
 
 
 def test_lefthook_cycle_fails_closed_without_recursing(tmp_path: Path) -> None:
@@ -2517,7 +2517,9 @@ def test_doctor_detects_a_disabled_generated_precommit_hook(tmp_path: Path) -> N
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     config = tmp_path / ".pre-commit-config.yaml"
     config.write_text(
-        config.read_text(encoding="utf-8").replace("check --staged --trust-repository-code", "echo standards-disabled"),
+        config.read_text(encoding="utf-8").replace(
+            "check --staged --fix --trust-repository-code", "echo standards-disabled"
+        ),
         encoding="utf-8",
     )
 
@@ -2531,7 +2533,7 @@ def test_doctor_detects_competing_canonical_hook_managers(tmp_path: Path) -> Non
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
     (tmp_path / "lefthook.yml").write_text(
         "pre-commit:\n  jobs:\n    - name: standards\n"
-        f"      run: {BOOTSTRAP_COMMAND} check --staged --trust-repository-code\n",
+        f"      run: {BOOTSTRAP_COMMAND} check --staged --fix --trust-repository-code\n",
         encoding="utf-8",
     )
 
@@ -2547,7 +2549,7 @@ def test_lefthook_replaces_one_semantic_staged_command_with_a_stale_bootstrap_pi
     stale = BOOTSTRAP_COMMAND.replace("==2.0.3", "==1.9.0")
     config.write_text(
         "pre-commit:\n  jobs:\n    - name: standards\n"
-        f"      run: {stale} check --staged --trust-repository-code -- {{staged_files}}\n",
+        f"      run: {stale} check --staged --fix --trust-repository-code -- {{staged_files}}\n",
         encoding="utf-8",
     )
 
@@ -2565,8 +2567,8 @@ def test_lefthook_refuses_duplicate_semantic_staged_commands_even_with_stale_pin
     second = BOOTSTRAP_COMMAND.replace("==2.0.3", "==1.9.0")
     config.write_text(
         "pre-commit:\n  jobs:\n"
-        f"    - name: first\n      run: {first} check --staged --trust-repository-code -- {{staged_files}}\n"
-        f"    - name: second\n      run: {second} check --staged --trust-repository-code -- {{staged_files}}\n",
+        f"    - name: first\n      run: {first} check --staged --fix --trust-repository-code -- {{staged_files}}\n"
+        f"    - name: second\n      run: {second} check --staged --fix --trust-repository-code -- {{staged_files}}\n",
         encoding="utf-8",
     )
 

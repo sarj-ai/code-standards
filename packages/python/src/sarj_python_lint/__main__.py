@@ -573,8 +573,25 @@ def _check_command(
     update_baseline: Annotated[
         Path | None, typer.Option(help="Write current per-file diagnostic counts to JSON and exit 0.")
     ] = None,
+    fix: Annotated[
+        bool, typer.Option("--fix", help="Apply proven safe fixes before checking the remaining diagnostics.")
+    ] = False,
     jobs: Annotated[int, typer.Option(min=1, help="Analysis worker budget (up to 2); default is serial.")] = 1,
 ) -> None:
+    if fix:
+        from sarj_python_lint.autofix import fix_paths  # ruff: ignore[import-outside-top-level] -- load mutation support only for an explicit fix request.
+
+        canonical = _canonical_rule_ids(rule)
+        unknown = [rule_id for rule_id in canonical if rule_id not in REGISTRY]
+        if unknown:
+            context.ensure_object(_Result).code = _run_check(rule, files, baseline, update_baseline, jobs=jobs)
+            return
+        try:
+            fix_paths(files, rule_ids=canonical)
+        except (OSError, ValueError, SyntaxError, UnicodeError) as exc:
+            sys.stderr.write(f"error: {exc}\n")
+            context.ensure_object(_Result).code = 2
+            return
     context.ensure_object(_Result).code = _run_check(rule, files, baseline, update_baseline, jobs=jobs)
 
 

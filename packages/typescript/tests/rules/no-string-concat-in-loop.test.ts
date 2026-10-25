@@ -20,12 +20,30 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-string-concat-in-loop", rule, {
   valid: [
-    { name: "does not call an append before break repeated accumulation", code: "let text = ''; for (const item of items) { if (item.ok) { text += item.name; break; } }" },
-    { name: "does not repeat an append before return", code: "function f(items) { let text = ''; for (const item of items) { text += item.name; return text; } }" },
-    { name: "does not repeat an append before throw", code: "let text = ''; for (const item of items) { text += item.name; throw new Error(text); }" },
-    { name: "does not execute stored arrow callbacks in the enclosing loop", code: "let text = ''; for (const item of items) { callbacks.push(() => { text += item; }); }" },
-    { name: "does not execute nested function declarations", code: "let text = ''; for (const item of items) { function later() { text += item; } }" },
-    { name: "does not cross a deferred callback inside forEach", code: "let text = ''; items.forEach(item => { callbacks.push(function () { text += item; }); });" },
+    {
+      name: "does not call an append before break repeated accumulation",
+      code: "let text = ''; for (const item of items) { if (item.ok) { text += item.name; break; } }",
+    },
+    {
+      name: "does not repeat an append before return",
+      code: "function f(items) { let text = ''; for (const item of items) { text += item.name; return text; } }",
+    },
+    {
+      name: "does not repeat an append before throw",
+      code: "let text = ''; for (const item of items) { text += item.name; throw new Error(text); }",
+    },
+    {
+      name: "does not execute stored arrow callbacks in the enclosing loop",
+      code: "let text = ''; for (const item of items) { callbacks.push(() => { text += item; }); }",
+    },
+    {
+      name: "does not execute nested function declarations",
+      code: "let text = ''; for (const item of items) { function later() { text += item; } }",
+    },
+    {
+      name: "does not cross a deferred callback inside forEach",
+      code: "let text = ''; items.forEach(item => { callbacks.push(function () { text += item; }); });",
+    },
     {
       name: "ignores numeric reduce accumulation",
       code: "const total = values.reduce((sum, value) => sum + value, 0);",
@@ -249,9 +267,109 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
     },
   ],
   invalid: [
-    { name: "a switch break does not terminate the loop", code: "let text = ''; for (const item of items) { switch (item.kind) { case 'a': { text += item.name; break; } } }", errors: [{ messageId: "noStringConcatInLoop" }] },
-    { name: "a forEach return does not terminate iteration", code: "let text = ''; items.forEach(item => { text += item.name; return; });", errors: [{ messageId: "noStringConcatInLoop" }] },
-    { name: "a caught throw can continue the loop", code: "let text = ''; for (const item of items) { try { text += item.name; throw new Error(); } catch {} }", errors: [{ messageId: "noStringConcatInLoop" }] },
+    {
+      name: "retains reverse accumulation order",
+      code: "export function render() { let output = 'prefix'; for (const item of ['a', 'b']) { output = item + output; } return output; }",
+      output: null,
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    {
+      name: "retains authored template separators",
+      code: "export function render() { let output = 'prefix'; for (const item of ['a', 'b']) { output = `${output}-${item}`; } return output; }",
+      output: null,
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    {
+      name: "preserves longhand append",
+      code: "export function render() { let output = ''; for (const item of ['a', 'b']) { output = output + item; } return output; }",
+      output:
+        "export function render() { const output = ['', 'a', 'b'].join(\"\"); return output; }",
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    {
+      name: "preserves template append",
+      code: "export function render() { let output = ''; for (const item of ['a', 'b']) { output = `${output}${item}`; } return output; }",
+      output:
+        "export function render() { const output = ['', 'a', 'b'].join(\"\"); return output; }",
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    {
+      name: "preserves unbraced append",
+      code: "export function render() { let output = ''; for (const item of ['a', 'b']) output += item; return output; }",
+      output:
+        "export function render() { const output = ['', 'a', 'b'].join(\"\"); return output; }",
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    {
+      name: "retains unsupported boundary 1",
+      code: "export function render() { let output = ''; for (const item of ['a', read()]) { output += item; } return output; }",
+      output: null,
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    {
+      name: "retains unsupported boundary 2",
+      code: "export function render() { let output = ''; for (const item of ['a', 'b']) { observe(output); output += item; } return output; }",
+      output: null,
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    {
+      name: "retains unsupported boundary 3",
+      code: "export function render() { let output = ''; for (const item of ['a', 'b']) { output += item; if (item) break; } return output; }",
+      output: null,
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    {
+      name: "retains unsupported boundary 4",
+      code: "export function render() { let output = ''; for (const item of ['a', 'b']) { output += item; /* keep */ } return output; }",
+      output: null,
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    {
+      name: "retains unsupported boundary 5",
+      code: "import './patch-array.js'; export function render() { let output = ''; for (const item of ['a', 'b']) { output += item; } return output; }",
+      output: null,
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    {
+      name: "retains unsupported boundary 6",
+      code: "export function render(value: string) { let output = ''; for (const item of ['a', 'b']) { output += item; } return output; }",
+      output: null,
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    {
+      name: "retains unsupported boundary 7",
+      code: "export function render() { let output: 'a' = ''; for (const item of ['a', 'b']) { output += item; } return output; }",
+      output: null,
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    {
+      name: "retains unsupported boundary 8",
+      code: "export function render() { let output = ''; for (const item of ['a', 2]) { output += item; } return output; }",
+      output: null,
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    {
+      name: "applies the source-owned exact correction",
+      code: "export function render() { let output = ''; for (const item of ['a', 'b']) { output += item; } return output; }",
+      output:
+        "export function render() { const output = ['', 'a', 'b'].join(\"\"); return output; }",
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    {
+      name: "a switch break does not terminate the loop",
+      code: "let text = ''; for (const item of items) { switch (item.kind) { case 'a': { text += item.name; break; } } }",
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    {
+      name: "a forEach return does not terminate iteration",
+      code: "let text = ''; items.forEach(item => { text += item.name; return; });",
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
+    {
+      name: "a caught throw can continue the loop",
+      code: "let text = ''; for (const item of items) { try { text += item.name; throw new Error(); } catch {} }",
+      errors: [{ messageId: "noStringConcatInLoop" }],
+    },
     {
       name: "reports a string-seeded reduce accumulator",
       code: "const text = values.reduce((text, value) => text + value.content, '');",

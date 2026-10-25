@@ -60,6 +60,13 @@ TESTER.run("no-contradictory-overload-return", rule, {
     { name: "exact suppression", code: BAD.replace('return kind', '// eslint-disable-next-line @rule-tester/no-contradictory-overload-return -- compatibility contract separately reviewed\nreturn kind') },
   ],
   invalid: [
+    { name: "aligns an unused private scalar overload group", code: "export {};" + SCALAR, output: "export {};" + SCALAR.replace('kind:"a"):1', 'kind:"a"):2').replace('kind:"b"):2', 'kind:"b"):1'), errors: ERRORS },
+    { name: "aligns an unused private flat-result overload group", code: "export {};" + BAD, output: "export {};" + BAD.replace('kind: "text"): {kind: "text"}', 'kind: "text"): { "kind": "count" }').replace('kind: "count"): {kind: "count"}', 'kind: "count"): { "kind": "text" }'), errors: ERRORS },
+    { name: "preserves value aliases of an overload group", code: "export {};" + SCALAR + " const alias = choose;", output: null, errors: ERRORS },
+    { name: "preserves exported private-group references", code: SCALAR + " export { choose };", output: null, errors: ERRORS },
+    { name: "preserves dynamic overload references", code: "export {};" + SCALAR + " eval('choose');", output: null, errors: ERRORS },
+    { name: "preserves overload-group documentation", code: "export {}; /* keep the compatibility relation */" + SCALAR, output: null, errors: ERRORS },
+    { name: "preserves separately named result aliases", code: "export {}; type Result = 1;" + SCALAR.replace('kind:"a"):1', 'kind:"a"):Result'), output: null, errors: ERRORS },
     { name: "public inverted variants", code: BAD, errors: ERRORS },
     { name: "scalar results retain their relation", code: SCALAR, errors: ERRORS },
     { name: "literal record value despite broad implementation type", code: BAD.replace('{kind: "text" | "count"}', '{kind:string}'), errors: ERRORS },

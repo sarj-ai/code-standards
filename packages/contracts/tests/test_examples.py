@@ -167,6 +167,31 @@ def test_analyzer_cannot_silently_ignore_authored_execution_context(setup: str) 
         verify_examples((positive, negative), analyze)
 
 
+@pytest.mark.parametrize("behavior", ["correct", "unexpected", "oscillating", "still-reports"])
+def test_fix_examples_require_exact_output_clean_findings_and_convergence(behavior: str) -> None:
+    positive, negative = _examples()
+    positive = replace(positive, fixed_files=(ExampleFile(positive.focus_path, "good = True\n"),))
+
+    def analyze(_root: Path, focus: Path) -> list[ExampleFinding]:
+        source = focus.read_text(encoding="utf-8")
+        return [ExampleFinding(focus, 1, 1, "SARJ999")] if "bad" in source or behavior == "still-reports" else []
+
+    def fix(_root: Path, path: Path, source: str) -> str:
+        if path.name != "case.py":
+            return source
+        if behavior == "unexpected":
+            return "other = True\n"
+        if behavior == "oscillating" and source.startswith("good"):
+            return "bad = True\n"
+        return source.replace("bad", "good")
+
+    if behavior == "correct":
+        assert verify_examples((positive, negative), analyze, fix=fix) == 2
+    else:
+        with pytest.raises(ValueError, match=r"unexpected fixed|does not converge|still reports"):
+            verify_examples((positive, negative), analyze, fix=fix)
+
+
 def test_selected_rule_identity_is_checked_independently_of_count() -> None:
     def analyze(_root: Path, focus: Path) -> list[ExampleFinding]:
         return [ExampleFinding(focus, 1, 1, "SARJ998")] if "bad" in focus.read_text(encoding="utf-8") else []

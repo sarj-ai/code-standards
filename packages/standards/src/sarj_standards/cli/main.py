@@ -40,6 +40,7 @@ if TYPE_CHECKING:
 
     from sarj_standards.libs.adoption import doctor, lifecycle, service, upgrade
     from sarj_standards.libs.diagnostics import AnalysisReport, Diagnostic, ExecutionIssue
+    from sarj_standards.libs.linting import autofix
     from sarj_standards.libs.linting.external import UpstreamESLintRules
     from sarj_standards.libs.repository import rule_catalog_artifact
 
@@ -180,6 +181,7 @@ class _Args:
     exclude_kind: str = ""
     value: str = ""
     staged: bool = False
+    fix: bool = False
     release_commit: str = ""
     max_annotations_per_level: int = 10
     analysis_mode: str = "policy"
@@ -1119,9 +1121,15 @@ def cmd_library_policy(args: _Args, *, selected_paths: Iterable[str] | None = No
 
 
 def cmd_check(args: _Args) -> int:
-    from sarj_standards.libs.linting import runner  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.linting only when this selected operation executes.
-
     root = _resolve_dest(args.dest)
+    if args.fix and args.selected_rules:
+        print(
+            "error: --fix applies the complete configured rule set; omit --rule or run check without --fix",
+            file=sys.stderr,
+        )
+        return 2
+    if args.fix and _validate_analysis_output(args, root):
+        return 2
     catalog_status = 0 if args.selected_rules else _check_conventional_slack_catalog(args, root)
     if catalog_status:
         return catalog_status
@@ -1134,14 +1142,29 @@ def cmd_check(args: _Args) -> int:
         scope.repository_wide = True
     if args.selected_rules:
         return _check_selected_rules(args, root, scope)
+    preparation_status = _prepare_check_inputs(args, root, scope)
+    if preparation_status is not None:
+        return preparation_status
+    if args.output_format != "text":
+        return _check_machine_output(args, root, scope)
+    return _check_text_output(args, root, scope)
+
+
+def _prepare_check_inputs(args: _Args, root: Path, scope: _CheckScope) -> int | None:
+    from sarj_standards.libs.linting import runner  # ruff: ignore[import-outside-top-level] -- source routing is needed only for check execution.
+
     if args.staged:
         health_status = _check_staged_adoption_health(root, args.files, args=args)
         if health_status:
             return health_status
         args.files = [path for path in args.files if runner.accepts_hook_path(Path(path), root=root)]
-    if args.output_format != "text":
-        return _check_machine_output(args, root, scope)
-    return _check_text_output(args, root, scope)
+    if args.fix:
+        result = _apply_safe_fixes(root, args.files, args=args, scoped=args.staged or scope.pull_request_scoped)
+        if result.status > 1:
+            return _emit_fix_failure(args, root, result.status)
+        if result.changed and args.staged:
+            return _emit_fix_review_required(args, root)
+    return None
 
 
 def _check_selected_rules(args: _Args, root: Path, scope: _CheckScope) -> int:
@@ -1236,7 +1259,7 @@ def _select_staged_check(args: _Args, root: Path, scope: _CheckScope) -> int | N
     try:
         staged_names = _staged_file_names(root)
         scope.react_doctor_triggered = _react_doctor_triggered_by(staged_names)
-        staged = _safe_staged_paths(root, staged_names)
+        staged = _safe_staged_paths(root, _staged_file_names(root, include_deleted=False))
     except (OSError, subprocess.SubprocessError) as exc:
         if args.output_format != "text":
             return _emit_analysis_report(args, root, _machine_input_error(root, f"cannot read staged files: {exc}"))
@@ -1246,21 +1269,31 @@ def _select_staged_check(args: _Args, root: Path, scope: _CheckScope) -> int | N
         requested = frozenset(_repository_relative_names(root, args.files))
         selected_staged_names = [name for name in staged_names if name in requested]
         staged_set = frozenset(staged)
-        args.files = [path for path in _safe_staged_paths(root, args.files) if path in staged_set]
+        args.files = _requested_staged_paths(root, args.files, staged=staged_set)
     else:
         selected_staged_names = staged_names
         args.files = staged
-    drifted = _unstaged_versions(root, selected_staged_names)
+    try:
+        drifted = _unstaged_versions(root, selected_staged_names)
+    except (OSError, subprocess.SubprocessError) as exc:
+        if args.output_format != "text":
+            return _emit_analysis_report(args, root, _machine_input_error(root, f"cannot read staged files: {exc}"))
+        print(f"error: cannot read staged files: {exc}", file=sys.stderr)
+        return 2
     if drifted:
         message = (
-            "--staged found files with unstaged content; run through pre-commit "
-            "(which safely stashes it) or stage the intended versions: " + ", ".join(drifted)
+            "--staged found files with unstaged content or unverifiable Git index flags; "
+            "stage the intended versions and clear assume-unchanged/skip-worktree flags: " + ", ".join(drifted)
         )
         if args.output_format != "text":
             return _emit_analysis_report(args, root, _machine_input_error(root, message))
         print(f"error: {message}", file=sys.stderr)
         return 2
     return None
+
+
+def _requested_staged_paths(root: Path, files: Sequence[str], *, staged: frozenset[str]) -> list[str]:
+    return [path for path in _safe_staged_paths(root, files) if path in staged]
 
 
 def _select_explicit_check(args: _Args, root: Path) -> int | None:
@@ -2069,13 +2102,16 @@ def _emit_staged_adoption_health(args: _Args, root: Path, drifted: list[doctor.F
     return _emit_analysis_report(args, root, report)
 
 
-def _staged_file_names(root: Path) -> list[str]:
+def _staged_file_names(root: Path, *, include_deleted: bool = True) -> list[str]:
     git = shutil.which("git")
     if git is None:
         msg = "git is required for --staged"
         raise OSError(msg)
+    command = [git, "diff", "--cached", "--name-only", "-z"]
+    if not include_deleted:
+        command.append("--diff-filter=ACMRT")
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
-        [git, "diff", "--cached", "--name-only", "-z"],
+        command,
         cwd=root,
         check=True,
         capture_output=True,
@@ -2152,6 +2188,19 @@ def _unstaged_versions(root: Path, staged_paths: Iterable[str]) -> tuple[str, ..
     )
     unstaged = {part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0") if part}
     selected = set(_repository_relative_names(root, staged_paths))
+    if selected:
+        tracked = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- literal selected paths and NUL records preserve authored filenames.
+            [git, "--literal-pathspecs", "ls-files", "-v", "-z", "--", *sorted(selected)],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            env=_git_environment(),
+        )
+        unstaged.update(
+            entry[2:].decode("utf-8", errors="surrogateescape")
+            for entry in tracked.stdout.split(b"\0")
+            if entry and (b"a" <= entry[:1] <= b"z" or entry[:1] == b"S")
+        )
     return tuple(sorted(unstaged & selected))
 
 
@@ -2211,7 +2260,7 @@ def _selected_paths(root: Path, paths: Iterable[str]) -> list[str]:
 
 
 def cmd_format(args: _Args) -> int:
-    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level] -- selected operation only.
+    from sarj_standards.libs.adoption import doctor  # ruff: ignore[import-outside-top-level] -- diagnosis gates an explicit fix operation.
 
     root = _resolve_dest(args.dest)
     diagnosed = doctor.diagnose(root)
@@ -2234,45 +2283,84 @@ def cmd_format(args: _Args) -> int:
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
-    return _execute_fixes(root, args.files, _declared_manifest(args))
+    return _apply_safe_fixes(root, args.files, args=args, trusted=True).status
 
 
-def _execute_fixes(root: Path, files: list[str], adopted: manifest.Manifest | None) -> int:
-    from sarj_standards.libs.adoption import lifecycle, scaffold  # ruff: ignore[import-outside-top-level] -- selected operation only.
-    from sarj_standards.libs.linting.python_fixes import fix_python  # ruff: ignore[import-outside-top-level] -- native edits precede upstream rewrites.
+def _apply_safe_fixes(
+    root: Path, files: Sequence[str], *, args: _Args, trusted: bool = False, scoped: bool = False
+) -> autofix.FixResult:
+    from sarj_standards.libs.linting import autofix  # ruff: ignore[import-outside-top-level] -- native fixers are not needed for read-only checks.
 
-    ecosystems = scaffold.detect(root) if adopted is None else scaffold.detect_adopted(root, adopted)
-    selected = files or [str(root / path) for path in (adopted.verify_paths if adopted is not None else (".",))]
+    requested = files if files or scoped else [str(root)]
     try:
-        if files:
-            fix_python(
-                [path for path in files if Path(path).is_file()], root=root, policy=Policy.from_manifest(root, adopted)
-            )
-        elif ecosystems.python_root is not None:
-            fix_python(
-                selected, root=root, policy=Policy.from_manifest(root, adopted), python_root=ecosystems.python_root
-            )
+        return autofix.run(
+            root,
+            requested,
+            trusted=trusted or args.trust_repository_code,
+            eslint=args.eslint,
+            machine_output=args.output_format != "text",
+            default_scope=not files and not scoped,
+        )
     except (OSError, SyntaxError, UnicodeError, ValueError) as exc:
-        print(f"error: native Python fixes failed: {exc}", file=sys.stderr)
-        return 2
-    commands = (
-        lifecycle.selected_format_commands(root, files) if files else lifecycle.format_commands(ecosystems, root=root)
+        print(f"error: cannot apply safe fixes: {exc}", file=sys.stderr)
+        return autofix.FixResult(2, ())
+
+
+def _emit_fix_failure(args: _Args, root: Path, status: int) -> int:
+    if args.output_format == "text":
+        return status
+    from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level] -- failed fixes must preserve the requested machine report contract.
+        Completion,
+        ExecutionIssue,
+        ToolReport,
     )
-    return lifecycle.execute(commands)
+    from sarj_standards.libs.linting.analysis import report_from_tools  # ruff: ignore[import-outside-top-level] -- use the existing analysis output contract.
+
+    issue = ExecutionIssue(
+        "sarj-standards-autofix",
+        "autofix-failed",
+        "Safe-fix execution failed. Review any applied changes and the tool error output, then retry.",
+        exit_code=status,
+    )
+    report = report_from_tools(root, (ToolReport("sarj-standards-autofix", Completion.FAILED, issues=(issue,)),))
+    return _emit_analysis_report(args, root, report)
+
+
+def _emit_fix_review_required(args: _Args, root: Path) -> int:
+    message = "Safe fixes applied. Review and stage the changes, then retry the commit."
+    if args.output_format == "text":
+        print(message, file=sys.stderr)
+        return 1
+    from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level] -- structured results are needed only for machine output.
+        Completion,
+        Diagnostic,
+        Location,
+        Severity,
+        ToolReport,
+    )
+    from sarj_standards.libs.linting.analysis import report_from_tools  # ruff: ignore[import-outside-top-level] -- use the existing analysis output contract.
+
+    diagnostic = Diagnostic(
+        "fix.review-required",
+        message,
+        Severity.ERROR,
+        "sarj-standards-autofix",
+        Location("."),
+        rule_id="fix.review-required",
+        help="Review and stage the changes, then retry the commit.",
+    )
+    report = report_from_tools(
+        root, (ToolReport("sarj-standards-autofix", Completion.COMPLETE, diagnostics=(diagnostic,)),)
+    )
+    return _emit_analysis_report(args, root, report)
 
 
 def _select_staged_fix(args: _Args, root: Path) -> int | None:
     try:
-        staged_names = _staged_file_names(root)
-        drifted = _unstaged_versions(root, staged_names)
-        if drifted:
-            print(
-                "error: --staged found files with unstaged content; stage the intended versions before fixing: "
-                + ", ".join(drifted),
-                file=sys.stderr,
-            )
-            return 2
-        args.files = _safe_staged_paths(root, staged_names)
+        args.files = _staged_fix_paths(root, args.files)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     except (OSError, subprocess.SubprocessError) as exc:
         print(f"error: cannot read staged files: {exc}", file=sys.stderr)
         return 2
@@ -2282,8 +2370,23 @@ def _select_staged_fix(args: _Args, root: Path) -> int | None:
     return None
 
 
+def _staged_fix_paths(root: Path, files: Sequence[str]) -> list[str]:
+    staged_names = _staged_file_names(root, include_deleted=False)
+    if files:
+        requested = set(_repository_relative_names(root, files))
+        staged_names = [name for name in staged_names if name in requested]
+    if drifted := _unstaged_versions(root, staged_names):
+        msg = (
+            "--staged found files with unstaged content or unverifiable Git index flags; "
+            "stage the intended versions and clear assume-unchanged/skip-worktree flags before fixing: "
+            + ", ".join(drifted)
+        )
+        raise ValueError(msg)
+    return _safe_staged_paths(root, staged_names)
+
+
 def _staged_files(root: Path) -> list[str]:
-    return _safe_staged_paths(root, _staged_file_names(root))
+    return _safe_staged_paths(root, _staged_file_names(root, include_deleted=False))
 
 
 def cmd_inspect(args: _Args) -> int:
@@ -3167,6 +3270,10 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 help="run the complete gate on staged files; optional paths narrow the staged selection",
             ),
         ] = False,
+        fix: Annotated[
+            bool,
+            typer.Option("--fix", help="apply safe fixes before checking; staged edits remain unstaged for review"),
+        ] = False,
         selected_rules: Annotated[
             list[RuleSelector] | None,
             typer.Option(
@@ -3189,6 +3296,7 @@ def build_app(handler: Callable[[_Args], int] = _dispatch) -> typer.Typer:
                 eslint=not skip_eslint,
                 trust_repository_code=trust_repository_code,
                 staged=staged,
+                fix=fix,
                 selected_rules=selected_rules if selected_rules is not None else [],
                 output_format=output_format.value,
                 output=output if output is not None else None,

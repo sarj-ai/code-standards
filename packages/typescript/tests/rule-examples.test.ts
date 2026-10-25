@@ -226,7 +226,7 @@ describe("declarative example setup", () => {
     await expect(verifyRuleExamples(statelessStorage)).resolves.toBe(2);
   });
   it("uses the exact explicitly installed Zod declarations", async () => {
-    await expect(verifyRuleExamples(zodOutput, { installedDependencyRoot: new URL("../", import.meta.url).pathname })).resolves.toBe(2);
+    await expect(verifyRuleExamples(zodOutput, { installedDependencyRoot: new URL("../", import.meta.url).pathname })).resolves.toBe(3);
   });
   it("fails clearly without an explicit installed dependency root", async () => {
     await expect(verifyRuleExamples(zodOutput)).rejects.toThrow("explicit installed dependency root is required");

@@ -71,8 +71,9 @@ class PreferWalrusRegexMatch(Rule):
             "For an explicit None check, preserve it as `if (match := pattern.search(text)) is not None:`."
         ),
         category=RuleCategory.STYLE,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes preserve the original regex expression, identifier spelling, condition and body.",
             "Only a short, single-line assignment physically followed by a truthy or `is not None` check is analyzed.",
             "The receiver must resolve to an imported `re` or `regex` module, a unique compile binding, or a parameter annotated as its Pattern type.",
             "Tests, generated files, comments or blank lines between statements, rewrites over 100 columns, rebindings, and later result uses are excluded.",
@@ -114,6 +115,36 @@ class PreferWalrusRegexMatch(Rule):
                 focus_path=PurePosixPath("app/parser.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "import re\n"
+                            "def parse(text):\n"
+                            "    found = re.search('x', text)\n"
+                            "    if found:\n"
+                            "        return found.group(0)\n"
+                        ),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "import re\n"
+                            "def parse(text):\n"
+                            "    if (found := re.search('x', text)):\n"
+                            "        return found.group(0)\n"
+                        ),
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )

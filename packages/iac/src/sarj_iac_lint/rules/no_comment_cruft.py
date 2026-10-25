@@ -5,7 +5,13 @@ from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
-from sarj_iac_lint._hcl import header_comment_lines, heredoc_body_mask, mask_block_comments, ungrouped_expression
+from sarj_iac_lint._hcl import (
+    header_comment_lines,
+    heredoc_body_mask,
+    mask_block_comments,
+    physical_lines,
+    ungrouped_expression,
+)
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
@@ -90,8 +96,9 @@ class NoCommentCruft(Rule):
             "Delete disabled HCL and decorative dividers; use executable structure and concise rationale comments."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes remove diagnosed native-HCL line-comment banners and complete disabled HCL-only runs while preserving executable tokens; mixed rationale, directives, block comments and YAML remain for review.",
             "Commented assignments in tfvars files are allowed because they commonly document optional inputs.",
             "Generated files, testdata, and fixture trees are excluded because comments may be intentional test input.",
             "Tool directives, heredoc bodies, YAML block scalars, and malformed block comments are excluded.",
@@ -137,6 +144,7 @@ class NoCommentCruft(Rule):
                 title="Decorative divider around a section title",
                 outcome=ExampleOutcome.MATCH,
                 files=(ExampleFile.iac("main.tf", '# ==== Networking ====\nmodule "networking" {}\n'),),
+                fixed_files=(ExampleFile.iac("main.tf", '\nmodule "networking" {}\n'),),
                 focus_path=PurePosixPath("main.tf"),
                 expected_count=1,
                 scenario="divider",
@@ -168,7 +176,7 @@ class NoCommentCruft(Rule):
             return []
 
         detect_code = str(path).endswith((".tf", ".tf.json", ".hcl"))
-        lines = source.splitlines()
+        lines = source.splitlines() if path.suffix.lower() in {".yaml", ".yml"} else physical_lines(source)
         data_lines = _data_line_mask(path, lines)
         empty: frozenset[int] = frozenset()
         code_run = _code_run_leaders(lines, data_lines) if detect_code else empty
@@ -181,12 +189,12 @@ class NoCommentCruft(Rule):
             if m is None:
                 continue
             indent, _marker, body = m.group(1), m.group(2), m.group(3).strip()
-            if not body or _is_directive(body):
+            if not body or is_comment_directive(body):
                 continue
             msg = _classify(body, in_code_run=lineno in code_run)
             if msg is None:
                 continue
-            if _is_banner(body) and lineno not in banner_leaders:
+            if is_decorative_banner(body) and lineno not in banner_leaders:
                 continue
             diags.append(
                 Diagnostic(
@@ -232,7 +240,7 @@ def _banner_group_leaders(lines: list[str], data_lines: Sequence[bool]) -> froze
     for run in _comment_runs(lines, data_lines):
         seen_banner = False
         for lineno, body in run:
-            if not body or _is_directive(body) or not _is_banner(body):
+            if not body or is_comment_directive(body) or not is_decorative_banner(body):
                 continue
             if not seen_banner:
                 leaders.add(lineno)
@@ -241,18 +249,18 @@ def _banner_group_leaders(lines: list[str], data_lines: Sequence[bool]) -> froze
 
 
 def _classify(body: str, *, in_code_run: bool) -> str | None:
-    if _is_banner(body):
+    if is_decorative_banner(body):
         return "Decorative divider comment — remove it or replace it with a concise explanation."
     if in_code_run and _is_hcl_code(body):
         return "Commented-out HCL — delete it; recover prior source from version control if needed."
     return None
 
 
-def _is_directive(body: str) -> bool:
+def is_comment_directive(body: str) -> bool:
     return _DIRECTIVE_RE.match(body) is not None
 
 
-def _is_banner(body: str) -> bool:
+def is_decorative_banner(body: str) -> bool:
     return _BANNER_FULL_RE.fullmatch(body) is not None or _BANNER_TITLE_RE.fullmatch(body) is not None
 
 
@@ -308,7 +316,7 @@ def _block_comment_diagnostics(
 
 
 def _code_run_leader(run: list[_CommentLine]) -> int | None:
-    voting = [(lineno, body) for lineno, body in run if body and not _is_directive(body)]
+    voting = [(lineno, body) for lineno, body in run if body and not is_comment_directive(body)]
     if not voting:
         return None
     code = sum(1 for _, body in voting if _is_hcl_code(body))
@@ -339,7 +347,7 @@ def _commented_block_findings(
     comment_lines: Sequence[_CommentLine], path: Path, indent: str, code: str
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
-    voting = [(lineno, body) for lineno, body in comment_lines if body and not _is_directive(body)]
+    voting = [(lineno, body) for lineno, body in comment_lines if body and not is_comment_directive(body)]
     code_lines = [(lineno, body) for lineno, body in voting if _is_hcl_code(body)]
     if code_lines and len(code_lines) * 2 >= len(voting):
         diagnostics.append(

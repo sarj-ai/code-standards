@@ -43,9 +43,10 @@ class PreferPreciseObjectContract(Rule):
         rationale="An object annotation hides the operations and data the caller actually supplies. It often spreads casts and handwritten shape checks into consumers.",
         remediation="Use a concrete domain type, Protocol, TypeVar, Pydantic model or JsonValue as appropriate. Importer callables return types.ModuleType. Keep object for genuinely opaque Python values and raw validation boundaries with an explained local exception when necessary; never replace it with Any or a cast.",
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
-            "Checks builtin object in function signatures and class field annotations, including supported containers, callables, optional unions and quoted annotations. Local opaque values, object() sentinels, Literal/Annotated metadata, framework hooks, proven override signatures, and registered raw Pydantic callbacks are excluded. Functions that directly validate an object parameter through a source-visible model_validate call, positionally or with obj=, retain that raw boundary. JSON text inputs still require a text or byte contract. Aliases must resolve to their source declaration and their bodies use definition scope. Alias graphs are bounded and shared branches reuse their facts. Imported or shadowed application types named object are preserved. Genuine opaque public contracts can use an explained exact-code exception; no automatic narrowing.",
+            "Safe fixes narrow only a bare builtin object return annotation to builtin str for a closed private nested synchronous helper returning one exact string literal, with every call used directly as an if test and all containing return contracts explicit. Existing inert/metadata/binding proofs must hold; public/domain/container/parameter/model contracts and other result uses remain review-only.",
+            "Checks builtin object in function signatures and class field annotations, including supported containers, callables, optional unions and quoted annotations. Local opaque values, object() sentinels, Literal/Annotated metadata, framework hooks, proven override signatures, and registered raw Pydantic callbacks are excluded. Functions that directly validate an object parameter through a source-visible model_validate call, positionally or with obj=, retain that raw boundary. JSON text inputs still require a text or byte contract. Aliases must resolve to their source declaration and their bodies use definition scope. Alias graphs are bounded and shared branches reuse their facts. Imported or shadowed application types named object are preserved. Genuine opaque public contracts can use an explained exact-code exception; narrowing outside the exact private truthiness-only subset remains manual.",
         ),
         examples=(
             RuleExample(
@@ -73,6 +74,42 @@ class PreferPreciseObjectContract(Rule):
                     ),
                 ),
                 focus_path=PurePosixPath("app.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="Existing source proof permits a narrow convergent fix",
+                outcome=ExampleOutcome.MATCH,
+                scenario="private-literal-truthiness",
+                files=(
+                    ExampleFile.python(
+                        "app/contracts.py",
+                        "def ready() -> bool:\n    def _value() -> object:\n        return 'ready'\n    if _value():\n        return True\n    return False\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/contracts.py",
+                        "def ready() -> bool:\n    def _value() -> str:\n        return 'ready'\n    if _value():\n        return True\n    return False\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/contracts.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-result",
+                title="The proven private literal return already has its precise type",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="private-literal-truthiness",
+                files=(
+                    ExampleFile.python(
+                        "app/contracts.py",
+                        "def ready() -> bool:\n    def _value() -> str:\n        return 'ready'\n    if _value():\n        return True\n    return False\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/contracts.py"),
                 expected_count=0,
                 public=True,
             ),

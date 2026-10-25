@@ -4,6 +4,7 @@ import pytest
 
 from sarj_python_lint.__main__ import check_source
 from sarj_python_lint._fixes import apply_fixes
+from sarj_python_lint.autofix import fix_source
 from sarj_python_lint.rule_base import AutofixPolicy
 from sarj_python_lint.rules.no_redundant_local_alias import NoRedundantLocalAlias
 
@@ -384,3 +385,94 @@ def test_mapping_read_preserves_safe_fix(operation: str) -> None:
     assert apply_fixes(source, diagnostic.fixes) == source.replace("    payload = item\n", "").replace(
         "payload=payload", "payload=item"
     )
+
+
+_PATH = Path("app/records.py")
+_RULE = "no-redundant-local-alias"
+_PUBLIC = "def render(item):\n    payload = item\n    return dict(payload=payload)\n"
+_CLOSED = (
+    "def render(item):\n"
+    "    def _record(value):\n"
+    "        payload = value\n"
+    "        return dict(payload=payload)\n"
+    "    return _record(item)\n"
+)
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"], ids=["lf", "crlf", "cr"])
+@pytest.mark.parametrize("separator", ["\v", "\f", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029"])
+@pytest.mark.parametrize(
+    "body",
+    [
+        pytest.param(_PUBLIC, id="public-builtin-tail"),
+        pytest.param(_PUBLIC.replace("def render", "async def render"), id="async-builtin-tail"),
+        pytest.param(_PUBLIC.replace("(item)", "(*, item)"), id="keyword-only"),
+        pytest.param(_PUBLIC.replace("(item)", "(item, /)"), id="positional-only"),
+        pytest.param(_PUBLIC.replace("item", "élément"), id="unicode-parameter"),
+        pytest.param(_PUBLIC.replace("item", "ｃｌａｓｓ"), id="nfkc-keyword-parameter"),
+        pytest.param(
+            _PUBLIC.replace("(item)", "(item: object) -> dict[str, object]"),
+            id="annotation-contract",
+        ),
+        pytest.param(
+            _PUBLIC.replace("    payload = item", '    """Build a mapping."""\n    payload = item'),
+            id="existing-docstring",
+        ),
+    ],
+)
+def test_native_payload_uses_one_public_contract_path(body: str, separator: str, newline: str) -> None:
+    prefix = f'_BANNER = "left{separator}right"\n'
+    source = (prefix + body).replace("\n", newline)
+    expected = (prefix + body).replace("\n", newline)
+    assignment = next(line for line in body.split("\n") if line.startswith("    payload = "))
+    original = assignment.removeprefix("    payload = ")
+    expected = expected.replace(assignment + newline, "").replace("payload=payload", "payload=" + original)
+    findings = check_source([NoRedundantLocalAlias()], _PATH, source)
+    assert len(findings) == 1
+    assert findings[0].fixes
+    assert apply_fixes(source, findings[0].fixes) == expected
+    assert fix_source(_PATH, source, rule_ids=[_RULE]) == expected
+    assert fix_source(_PATH, source, rule_ids=[]) == source
+    assert fix_source(_PATH, expected, rule_ids=[_RULE]) == expected
+    assert not check_source([NoRedundantLocalAlias()], _PATH, expected)
+
+
+def test_native_payload_mixed_physical_endings_match_contract_offsets() -> None:
+    source = "def render(item):\r\n    payload = item\r    return dict(payload=payload)\n"
+    expected = "def render(item):\r\n    return dict(payload=item)\n"
+    [diagnostic] = check_source([NoRedundantLocalAlias()], _PATH, source)
+    assert diagnostic.fixes
+    assert apply_fixes(source, diagnostic.fixes) == expected
+    assert fix_source(_PATH, source, rule_ids=[_RULE]) == expected
+
+
+def test_absent_native_payload_keeps_the_existing_closed_handler() -> None:
+    expected = _CLOSED.replace("        payload = value\n", "").replace("payload=payload", "payload=value")
+    [diagnostic] = check_source([NoRedundantLocalAlias()], _PATH, _CLOSED)
+    assert diagnostic.fixes == ()
+    assert fix_source(_PATH, _CLOSED, rule_ids=[_RULE]) == expected
+    assert fix_source(_PATH, expected, rule_ids=[_RULE]) == expected
+
+
+@pytest.mark.parametrize("reader", ["coro.cr_frame.f_code.co_varnames", "coro.cr_code.co_varnames"])
+def test_visible_coroutine_code_metadata_retains_a_manual_finding(reader: str) -> None:
+    source = (
+        _PUBLIC.replace("def render", "async def render")
+        + "coro = render(object())\n"
+        + f"names = {reader}\n"
+        + "coro.close()\n"
+    )
+    direct = source.replace("    payload = item\n", "").replace("payload=payload", "payload=item")
+    [diagnostic] = check_source([NoRedundantLocalAlias()], _PATH, source)
+    assert diagnostic.fixes == ()
+    assert fix_source(_PATH, source, rule_ids=[_RULE]) == source
+    before: dict[str, object] = {}
+    after: dict[str, object] = {}
+    exec(  # ruff: ignore[exec-builtin] -- trusted fixture observes the visible coroutine code metadata.
+        compile(source, str(_PATH), "exec", dont_inherit=True), before
+    )
+    exec(  # ruff: ignore[exec-builtin] -- compare the same visible observer after a naive alias deletion.
+        compile(direct, str(_PATH), "exec", dont_inherit=True), after
+    )
+    assert before["names"] == ("item", "payload")
+    assert after["names"] == ("item",)

@@ -3,7 +3,9 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION } from "../../src/rules/require-static-next-matcher.js";
+import rule, {
+  REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION,
+} from "../../src/rules/require-static-next-matcher.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -21,7 +23,12 @@ const PROXY = "/repo/src/proxy.ts";
 
 RULE_TESTER.run("require-static-next-matcher", rule, {
   valid: [
-    { name: "accepts the documented literal matcher", code: REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION.examples[0].files[0].source, filename: REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION.examples[0].focusPath },
+    {
+      name: "accepts the documented literal matcher",
+      code: REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION.examples[0].files[0]
+        .source,
+      filename: REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION.examples[0].focusPath,
+    },
     {
       name: "accepts a literal string matcher",
       code: `export const config = { matcher: "/api/:path*" };`,
@@ -73,7 +80,126 @@ RULE_TESTER.run("require-static-next-matcher", rule, {
     },
   ],
   invalid: [
-    { name: "reports the documented computed matcher", code: REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION.examples[1].files[0].source, filename: REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION.examples[1].focusPath, errors: [{ messageId: "dynamicMatcher" }] },
+    {
+      name: "refuses erased private route declarations",
+      code: 'declare const matcher = "/api/:path*"; export const config = { matcher };',
+      output: null,
+      errors: [{ messageId: "dynamicMatcher" }],
+      filename: "/repo/src/middleware.ts",
+    },
+    {
+      name: "refuses erased config declarations",
+      code: 'const matcher = "/api/:path*"; export declare const config = { matcher };',
+      output: null,
+      errors: [{ messageId: "dynamicMatcher" }],
+      filename: "/repo/src/middleware.ts",
+    },
+    {
+      name: "retains other exported config properties",
+      code: 'const matcher = "/api/:path*"; export const config = { matcher, runtime: "nodejs" };',
+      filename: "/repo/src/middleware.ts",
+      errors: [{ messageId: "dynamicMatcher" }],
+      output: null,
+    },
+    {
+      name: "retains array allocation ownership",
+      code: 'const matcher = ["/api/:path*"]; export const config = { matcher };',
+      filename: "/repo/src/middleware.ts",
+      errors: [{ messageId: "dynamicMatcher" }],
+      output: null,
+    },
+    {
+      name: "retains annotated route contracts",
+      code: 'const matcher: string = "/api/:path*"; export const config = { matcher };',
+      filename: "/repo/src/middleware.ts",
+      errors: [{ messageId: "dynamicMatcher" }],
+      output: null,
+    },
+    {
+      name: "retains annotated exported config",
+      code: 'const matcher = "/api/:path*"; export const config: {matcher:string} = { matcher };',
+      filename: "/repo/src/middleware.ts",
+      errors: [{ messageId: "dynamicMatcher" }],
+      output: null,
+    },
+    {
+      name: "retains immutable assertion contracts",
+      code: 'const matcher = "/api/:path*"; export const config = { matcher } as const;',
+      filename: "/repo/src/middleware.ts",
+      errors: [{ messageId: "dynamicMatcher" }],
+      output: null,
+    },
+    {
+      name: "retains source imports",
+      code: 'import "setup"; const matcher = "/api/:path*"; export const config = { matcher };',
+      filename: "/repo/src/middleware.ts",
+      errors: [{ messageId: "dynamicMatcher" }],
+      output: null,
+    },
+    {
+      name: "retains additional route readers",
+      code: 'const matcher = "/api/:path*"; export const config = { matcher }; consume(matcher);',
+      filename: "/repo/src/middleware.ts",
+      errors: [{ messageId: "dynamicMatcher" }],
+      output: null,
+    },
+    {
+      name: "retains mutable route bindings",
+      code: 'let matcher = "/api/:path*"; export const config = { matcher };',
+      filename: "/repo/src/middleware.ts",
+      errors: [{ messageId: "dynamicMatcher" }],
+      output: null,
+    },
+    {
+      name: "retains comments and directives",
+      code: 'const matcher = "/api/:path*"; /* route contract */ export const config = { matcher };',
+      filename: "/repo/src/middleware.ts",
+      errors: [{ messageId: "dynamicMatcher" }],
+      output: null,
+    },
+    {
+      name: "retains computed matcher keys",
+      code: 'const matcher = "/api/:path*"; export const config = { ["matcher"]: matcher };',
+      filename: "/repo/src/middleware.ts",
+      errors: [{ messageId: "dynamicMatcher" }],
+      output: null,
+    },
+    {
+      name: "retains other declaration effects",
+      code: 'const matcher = "/api/:path*", extra = observe(); export const config = { matcher };',
+      filename: "/repo/src/middleware.ts",
+      errors: [{ messageId: "dynamicMatcher" }],
+      output: null,
+    },
+    {
+      name: "retains exported route names",
+      code: 'export const matcher = "/api/:path*"; export const config = { matcher };',
+      filename: "/repo/src/middleware.ts",
+      errors: [{ messageId: "dynamicMatcher" }],
+      output: null,
+    },
+    {
+      name: "reports the documented computed matcher",
+      code: REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION.examples[1].files[0]
+        .source,
+      filename: REQUIRE_STATIC_NEXT_MATCHER_DOCUMENTATION.examples[1].focusPath,
+      errors: [{ messageId: "dynamicMatcher" }],
+      output: 'export const config = { matcher: "/api/:path*" };',
+    },
+    {
+      name: "inlines the existing route into a longhand matcher",
+      code: 'const route = "/dashboard/:path*"; export const config = { "matcher": route };',
+      filename: PROXY,
+      errors: [{ messageId: "dynamicMatcher" }],
+      output: 'export const config = { "matcher": "/dashboard/:path*" };',
+    },
+    {
+      name: "retains CRLF inside the exported declaration",
+      code: 'const route = "/api/:path*";\r\nexport const config = {\r\n  matcher: route,\r\n};\r\n',
+      filename: MIDDLEWARE,
+      errors: [{ messageId: "dynamicMatcher" }],
+      output: 'export const config = {\r\n  matcher: "/api/:path*",\r\n};\r\n',
+    },
     {
       name: "rejects String.raw tagged templates",
       code: `export const config = { matcher: String.raw\`/api\\.json\` };`,
@@ -85,6 +211,7 @@ RULE_TESTER.run("require-static-next-matcher", rule, {
       code: `const matcher = "/api/:path*"; export const config = { matcher };`,
       filename: MIDDLEWARE,
       errors: [{ messageId: "dynamicMatcher" }],
+      output: 'export const config = { matcher: "/api/:path*" };',
     },
     {
       name: "rejects matcher calls",

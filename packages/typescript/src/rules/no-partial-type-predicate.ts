@@ -7,6 +7,7 @@ import { ASTUtils, AST_NODE_TYPES, ESLintUtils, type ParserServicesWithTypeInfor
 import { isNumberLiteralType } from "ts-api-utils";
 import ts from "typescript";
 
+import { privatePredicateBooleanFix } from "./_unused-private-binding.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { hasSeparatePredicateContract } from "./_has-separate-predicate-contract.js";
 import { isGeneratedFile } from "./_paths.js";
@@ -36,8 +37,9 @@ export const NO_PARTIAL_TYPE_PREDICATE_DOCUMENTATION = {
   remediation: "Use a boolean return for an intentional value filter, or recognize every member of the promised type. Preserve required callback and public contracts; a refined domain may need a distinct validated type. Recheck false-branch callers when changing a predicate.",
   category: "correctness",
   defaultLevel: "warning",
-  autofix: "none",
+  autofix: "safe",
   limitations: [
+    "Automatic fixes replace the unsound predicate with boolean only for an unused private function declaration without overloads, exports, eval, comments in the predicate, or declaration-file ownership. Runtime checks are preserved; observed callable contracts remain manual.",
     "Requires type information and a non-generic, non-async function with one directly annotated parameter, an explicit broad string/number/bigint/boolean predicate and a single return. Literal, branded, structural, multi-primitive union, assertion, method and overloaded contracts are excluded; contextually typed callbacks are preserved.",
     "Recognizes double-negation truthiness, a boolean parameter return or one same-kind literal comparison, optionally after a matching typeof equality. Without a typeof check, the input must already belong to the target primitive, except for double negation. String length comparisons use only concrete witnesses up to 256 characters. Arithmetic, method calls, dynamic bounds and complex boolean conditions are not inferred.",
     "A concrete member of the promised broad primitive must demonstrably return false. Numeric witnesses must also be assignable as literals to the declared input: broad number assignability alone does not prove membership in a numeric enum. Compiler-invalid target/input relations, any/never/generic inputs and opaque implementations abstain. This rule does not discourage total boundary guards or infer branded refinements. Generated files are excluded; tests remain checked.",
@@ -46,6 +48,15 @@ export const NO_PARTIAL_TYPE_PREDICATE_DOCUMENTATION = {
   examples: [
     { id: "boolean-value-filter", title: "Keep an intentional value filter boolean", outcome: "no-match", files: [{ path: "src/filter.ts", source: 'function isPositive(value: number): boolean { return value > 0; }' }], focusPath: "src/filter.ts", expectedCount: 0, public: true },
     { id: "partial-number-predicate", title: "Zero remains a number when the predicate returns false", outcome: "match", files: [{ path: "src/guard.ts", source: 'function isPositive(value: unknown): value is number { return typeof value === "number" && value > 0; }' }], focusPath: "src/guard.ts", expectedCount: 1, public: true },
+    {
+      id: "safe-autofix",
+      title: "Retain an unused private filter without unsound narrowing",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "export {}; function isPositive(value: unknown): value is number { return typeof value === \"number\" && value > 0; }" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "export {}; function isPositive(value: unknown): boolean { return typeof value === \"number\" && value > 0; }" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -54,6 +65,7 @@ export default createRule<Options, MessageIds>({
   documentation: NO_PARTIAL_TYPE_PREDICATE_DOCUMENTATION,
   meta: {
     type: "problem",
+    fixable: "code",
     docs: { description: NO_PARTIAL_TYPE_PREDICATE_DOCUMENTATION.summary },
     schema: [],
     messages: { partialPredicate: "This predicate returns false for {{witness}}, which still belongs to `{{target}}`. Its false branch can therefore narrow unsafely. Use a boolean value filter or a predicate that recognizes every promised value." },
@@ -70,7 +82,7 @@ export default createRule<Options, MessageIds>({
       const witness = rejectedWitness(refinement, predicate, context.sourceCode);
       if (witness === undefined) return;
       if (typeof witness === "number" && !numericWitnessInInput(witness, predicate.input)) return;
-      context.report({ node: predicate.annotation, messageId: "partialPredicate", data: {
+      context.report({ node: predicate.annotation, messageId: "partialPredicate", fix: privatePredicateBooleanFix(context.sourceCode, node, predicate.annotation, context.filename), data: {
         witness: showWitness(witness), target: predicate.kind,
       } });
     }

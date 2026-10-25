@@ -1,6 +1,6 @@
 - id: sarj-standards
   name: 'sarj-standards: complete repository quality gate'
-  entry: sarj-standards check --staged --trust-repository-code
+  entry: sarj-standards check --staged --fix --trust-repository-code
   language: python
   language_version: python3.14
   always_run: true

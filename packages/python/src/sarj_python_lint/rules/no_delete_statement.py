@@ -38,14 +38,51 @@ class NoDeleteStatement(Rule):
             "requires deletion, add an exact SARJ442 suppression on the statement and explain why."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         aliases=("no-deleted-only-override-parameter",),
         limitations=(
             "Every authored Python del statement is reported once, regardless of how many targets it contains.",
-            "The rule does not automatically rewrite deletion because the correct immutable replacement depends on ownership and value semantics.",
+            "Autofix only blanks one standalone, comment-free local deletion in a closed private nested ordinary helper with no parameters and exactly a None assignment to that same name, that deletion, and a literal return. Existing names, the assignment, line numbers and line endings remain unchanged; multiline deletion and unsupported source line separators are refused; all other deletion requires review.",
+            "Containing callables must have proven inert execution and no observable helper references, frame or metadata access, callbacks, reachable failures or unknown finalizers. Only proven local None deletion is modeled; deleted names retain an unbound tombstone so subsequent reads cannot resolve to a builtin or global.",
             "Generated and vendored files are excluded.",
         ),
         examples=(
+            RuleExample(
+                example_id="closed-none-deletion",
+                title="Remove a redundant None deletion marker",
+                outcome=ExampleOutcome.MATCH,
+                scenario="closed-none-deletion",
+                files=(
+                    ExampleFile.python(
+                        "app/request.py",
+                        "def ready():\n    def _ready():\n        unused = None\n        del unused\n        return True\n    return _ready()\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/request.py",
+                        "def ready():\n    def _ready():\n        unused = None\n\n        return True\n    return _ready()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/request.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="closed-none-deletion-removed",
+                title="The retained assignment has no lifetime marker",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="closed-none-deletion",
+                files=(
+                    ExampleFile.python(
+                        "app/request.py",
+                        "def ready():\n    def _ready():\n        unused = None\n\n        return True\n    return _ready()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/request.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="delete-mapping-entry",
                 title="Build a mapping without the removed entry",

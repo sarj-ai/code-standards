@@ -18,6 +18,7 @@ from sarj_sql_lint.rule_base import (
     is_dump_file,
     is_generated_migration,
     is_migration_source,
+    physical_lines,
     sql_comments,
 )
 
@@ -74,6 +75,14 @@ _NARRATION_RE = re.compile(
 )
 
 
+_DISABLED_SQL_EXAMPLE = (
+    "-- CREATE TABLE users (id BIGINT PRIMARY KEY, name TEXT);\n"
+    "-- CREATE TABLE groups (id BIGINT PRIMARY KEY, name TEXT);\n"
+    "-- CREATE TABLE teams (id BIGINT PRIMARY KEY, name TEXT);\n"
+    "-- CREATE TABLE accounts (id BIGINT PRIMARY KEY, name TEXT);\n"
+)
+
+
 class _CommentLine(NamedTuple):
     line: int
     column: int
@@ -95,15 +104,37 @@ class ExcessiveCommentary(Rule):
             "security, or externally owned constraints that the DDL cannot express."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         aliases=("excessive-commentary",),
         limitations=(
+            "Safe fixes apply only to complete supported disabled SQL-only line-comment runs, reusing the comment-cruft boundary. Narrative prose and mixed operational context remain diagnostic-only.",
             "Only authored, non-generated migrations are checked; schema dumps and non-migration SQL are excluded.",
             "Only contiguous standalone or block-comment narration containing at least four lines and 28 words is reported.",
             "Directives, lists, durable references, and concrete operational constraints are excluded line by line; broader semantic judgment remains in review.",
             "The shared SQL scanner recognizes `--` and `/* ... */` comments; MySQL `#` comments are outside this rule.",
         ),
         examples=(
+            RuleExample(
+                example_id="disabled-sql-narration",
+                scenario="disabled-sql-narration",
+                title="A long run consists entirely of disabled SQL declarations",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.sql("migrations/001.sql", _DISABLED_SQL_EXAMPLE),),
+                fixed_files=(ExampleFile.sql("migrations/001.sql", "\n\n\n\n"),),
+                focus_path=PurePosixPath("migrations/001.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="executable-sql-without-narration",
+                scenario="disabled-sql-narration",
+                title="Executable declarations do not narrate disabled source",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.sql("migrations/001.sql", _DISABLED_SQL_EXAMPLE.replace("-- ", "")),),
+                focus_path=PurePosixPath("migrations/001.sql"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="ddl-narration",
                 title="Migration comments narrate the table declarations",
@@ -173,7 +204,7 @@ class ExcessiveCommentary(Rule):
 
 
 def _comment_groups(source: str) -> list[list[SourceComment]]:
-    source_lines = source.splitlines()
+    source_lines = physical_lines(source)
     groups: list[list[SourceComment]] = []
     for comment in sql_comments(source):
         if groups and _continues_group(source_lines, groups[-1][-1], comment):
@@ -221,7 +252,7 @@ def _comment_lines(comment: SourceComment) -> list[_CommentLine]:
             comment.column if offset == 0 else 1,
             raw.strip().lstrip("*").strip(),
         )
-        for offset, raw in enumerate(comment.body.splitlines())
+        for offset, raw in enumerate(physical_lines(comment.body))
     ]
 
 

@@ -14,27 +14,42 @@ import {
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { stableValueBinding } from "./_stable-value-binding.js";
 import { isGeneratedFile, isScriptFile, isTestFile } from "./_paths.js";
+import { ownedFetchFix } from "./_owned-fetch-fix.js";
 
 type MessageIds = "detachedGlobalFetch";
 type Options = readonly [];
 
 export const NO_DETACHED_GLOBAL_FETCH_DOCUMENTATION = {
-  summary: "Keep the ambient global fetch receiver-safe when storing or explicitly rebinding it.",
-  rationale: "Calling a raw ambient fetch through a class or object property supplies that object as `this`; receiver-sensitive hosts can reject that invocation only after deployment.",
-  remediation: "Store a forwarding wrapper such as `(input, init) => fetch(input, init)`, or bind the callable to a compatible global or undefined receiver before storing it.",
+  summary:
+    "Keep the ambient global fetch receiver-safe when storing or explicitly rebinding it.",
+  rationale:
+    "Calling a raw ambient fetch through a class or object property supplies that object as `this`; receiver-sensitive hosts can reject that invocation only after deployment.",
+  remediation:
+    "Store a forwarding wrapper such as `(input, init) => fetch(input, init)`, or bind the callable to a compatible global or undefined receiver before storing it.",
   category: "correctness",
-  autofix: "none",
+  autofix: "safe",
+  references: [
+    "https://webidl.spec.whatwg.org/#es-operations",
+    "https://fetch.spec.whatwg.org/#fetch-method",
+  ],
   limitations: [
     "The rule follows stable local variables and defaulted parameters from an unshadowed ambient fetch or globalThis/self/window fetch into direct class, object, or member storage.",
     "Bare local aliases, callback arguments, returns, direct calls, compatible global or undefined bind/call/apply receivers, tests, scripts, generated files, and locally defined fetch implementations are excluded.",
     "Interprocedural aliases, mutable aliases, collection storage, and host identity remain manual review boundaries.",
+    "Automatic edits only bind a direct canonical ambient fetch to unshadowed undefined in a sole exported zero-argument ordinary function containing a private one-property object and its sole returned literal data-URL request. The callable and object never escape. Web IDL operations use the function realm's global object for an undefined receiver. Imports, comments, wrappers, other statements, options, shadows and identity observations remain manual; this repairs receiver behavior rather than preserving a host IllegalInvocation failure.",
   ],
   examples: [
     {
       id: "forwarded-global-fetch",
       title: "Store a receiver-safe forwarding wrapper",
       outcome: "no-match",
-      files: [{ path: "src/client.ts", source: "class Client { readonly request = (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init); }" }],
+      files: [
+        {
+          path: "src/client.ts",
+          source:
+            "class Client { readonly request = (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init); }",
+        },
+      ],
       focusPath: "src/client.ts",
       expectedCount: 0,
       public: true,
@@ -43,18 +58,53 @@ export const NO_DETACHED_GLOBAL_FETCH_DOCUMENTATION = {
       id: "receiver-unsafe-global-fetch",
       title: "Do not store raw ambient fetch as an object method",
       outcome: "match",
-      files: [{ path: "src/client.ts", source: "class Client { readonly request = fetch; }" }],
+      files: [
+        {
+          path: "src/client.ts",
+          source: "class Client { readonly request = fetch; }",
+        },
+      ],
       focusPath: "src/client.ts",
       expectedCount: 1,
       public: true,
     },
+    {
+      id: "safe-autofix",
+      title: "Bind the exclusively called private fetch to its realm receiver",
+      outcome: "match",
+      files: [
+        {
+          path: "src/client.ts",
+          source:
+            "export function load() { const client = { request: fetch }; return client.request('data:text/plain,hello'); }",
+        },
+      ],
+      fixedFiles: [
+        {
+          path: "src/client.ts",
+          source:
+            "export function load() { const client = { request: fetch.bind(undefined) }; return client.request('data:text/plain,hello'); }",
+        },
+      ],
+      focusPath: "src/client.ts",
+      expectedCount: 1,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
-const GLOBAL_RECEIVERS: ReadonlySet<string> = new Set(["globalThis", "self", "window"]);
-const EXPLICIT_RECEIVER_METHODS: ReadonlySet<string> = new Set(["apply", "bind", "call"]);
-const STORAGE_ASSIGNMENT_OPERATORS: ReadonlySet<TSESTree.AssignmentExpression["operator"]> =
-  new Set(["=", "&&=", "??=", "||="]);
+const GLOBAL_RECEIVERS: ReadonlySet<string> = new Set([
+  "globalThis",
+  "self",
+  "window",
+]);
+const EXPLICIT_RECEIVER_METHODS: ReadonlySet<string> = new Set([
+  "apply",
+  "bind",
+  "call",
+]);
+const STORAGE_ASSIGNMENT_OPERATORS: ReadonlySet<
+  TSESTree.AssignmentExpression["operator"]
+> = new Set(["=", "&&=", "??=", "||="]);
 
 function unwrapExpression(node: TSESTree.Expression): TSESTree.Expression {
   let current = node;
@@ -74,6 +124,7 @@ export default createRule<Options, MessageIds>({
   documentation: NO_DETACHED_GLOBAL_FETCH_DOCUMENTATION,
   meta: {
     type: "problem",
+    fixable: "code",
     docs: { description: NO_DETACHED_GLOBAL_FETCH_DOCUMENTATION.summary },
     schema: [],
     messages: {
@@ -88,12 +139,18 @@ export default createRule<Options, MessageIds>({
       isTestFile(context) ||
       isScriptFile(context) ||
       isGeneratedFile(context, sourceCode.text)
-    ) return {};
+    )
+      return {};
 
     const aliases = new Set<TSESLint.Scope.Variable>();
 
-    function bindingOf(identifier: TSESTree.Identifier): TSESLint.Scope.Variable | null {
-      return ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name);
+    function bindingOf(
+      identifier: TSESTree.Identifier,
+    ): TSESLint.Scope.Variable | null {
+      return ASTUtils.findVariable(
+        sourceCode.getScope(identifier),
+        identifier.name,
+      );
     }
 
     function resolvesToGlobal(identifier: TSESTree.Identifier): boolean {
@@ -101,9 +158,14 @@ export default createRule<Options, MessageIds>({
       return variable === null || variable.defs.length === 0;
     }
 
-    function isGlobalReceiver(node: TSESTree.Node): node is TSESTree.Identifier {
-      return node.type === AST_NODE_TYPES.Identifier &&
-        GLOBAL_RECEIVERS.has(node.name) && resolvesToGlobal(node);
+    function isGlobalReceiver(
+      node: TSESTree.Node,
+    ): node is TSESTree.Identifier {
+      return (
+        node.type === AST_NODE_TYPES.Identifier &&
+        GLOBAL_RECEIVERS.has(node.name) &&
+        resolvesToGlobal(node)
+      );
     }
 
     function recordAlias(identifier: TSESTree.Identifier): void {
@@ -113,9 +175,12 @@ export default createRule<Options, MessageIds>({
 
     function staticMemberName(node: TSESTree.MemberExpression): string | null {
       if (!node.computed) {
-        return node.property.type === AST_NODE_TYPES.Identifier ? node.property.name : null;
+        return node.property.type === AST_NODE_TYPES.Identifier
+          ? node.property.name
+          : null;
       }
-      return node.property.type === AST_NODE_TYPES.Literal && typeof node.property.value === "string"
+      return node.property.type === AST_NODE_TYPES.Literal &&
+        typeof node.property.value === "string"
         ? node.property.value
         : null;
     }
@@ -123,7 +188,8 @@ export default createRule<Options, MessageIds>({
     function mayBeRawFetch(node: TSESTree.Expression): boolean {
       const expression = unwrapExpression(node);
       if (expression.type === AST_NODE_TYPES.Identifier) {
-        if (expression.name === "fetch" && resolvesToGlobal(expression)) return true;
+        if (expression.name === "fetch" && resolvesToGlobal(expression))
+          return true;
         const variable = bindingOf(expression);
         return variable !== null && aliases.has(variable);
       }
@@ -139,7 +205,10 @@ export default createRule<Options, MessageIds>({
           : mayBeRawFetch(expression.left) || mayBeRawFetch(expression.right);
       }
       if (expression.type === AST_NODE_TYPES.ConditionalExpression) {
-        return mayBeRawFetch(expression.consequent) || mayBeRawFetch(expression.alternate);
+        return (
+          mayBeRawFetch(expression.consequent) ||
+          mayBeRawFetch(expression.alternate)
+        );
       }
       if (expression.type === AST_NODE_TYPES.SequenceExpression) {
         const last = expression.expressions.at(-1);
@@ -151,22 +220,41 @@ export default createRule<Options, MessageIds>({
     function isGlobalFetchMember(node: TSESTree.MemberExpression): boolean {
       if (!isGlobalReceiver(node.object)) return false;
       if (!node.computed) {
-        return node.property.type === AST_NODE_TYPES.Identifier && node.property.name === "fetch";
+        return (
+          node.property.type === AST_NODE_TYPES.Identifier &&
+          node.property.name === "fetch"
+        );
       }
-      return node.property.type === AST_NODE_TYPES.Literal && node.property.value === "fetch";
+      return (
+        node.property.type === AST_NODE_TYPES.Literal &&
+        node.property.value === "fetch"
+      );
     }
 
-    function recordAliasFromValue(identifier: TSESTree.Identifier, value: TSESTree.Expression): void {
+    function recordAliasFromValue(
+      identifier: TSESTree.Identifier,
+      value: TSESTree.Expression,
+    ): void {
       if (mayBeRawFetch(value)) recordAlias(identifier);
     }
 
     function reportStored(node: TSESTree.Expression): void {
-      if (mayBeRawFetch(node)) context.report({ node, messageId: "detachedGlobalFetch" });
+      if (!mayBeRawFetch(node)) return;
+      const fix = ownedFetchFix(sourceCode, node);
+      context.report({
+        node,
+        messageId: "detachedGlobalFetch",
+        fix,
+      });
     }
 
-    function isCompatibleReceiver(node: TSESTree.CallExpressionArgument | undefined): boolean {
-      if (node === undefined || node.type === AST_NODE_TYPES.SpreadElement) return false;
-      if (node.type !== AST_NODE_TYPES.Identifier || !resolvesToGlobal(node)) return false;
+    function isCompatibleReceiver(
+      node: TSESTree.CallExpressionArgument | undefined,
+    ): boolean {
+      if (node === undefined || node.type === AST_NODE_TYPES.SpreadElement)
+        return false;
+      if (node.type !== AST_NODE_TYPES.Identifier || !resolvesToGlobal(node))
+        return false;
       return GLOBAL_RECEIVERS.has(node.name) || node.name === "undefined";
     }
 
@@ -182,7 +270,8 @@ export default createRule<Options, MessageIds>({
       AssignmentPattern(node): void {
         if (node.left.type !== AST_NODE_TYPES.Identifier) return;
         recordAliasFromValue(node.left, node.right);
-        if (node.parent.type === AST_NODE_TYPES.TSParameterProperty) reportStored(node.right);
+        if (node.parent.type === AST_NODE_TYPES.TSParameterProperty)
+          reportStored(node.right);
       },
       CallExpression(node): void {
         const callee = unwrapExpression(node.callee);
@@ -191,8 +280,12 @@ export default createRule<Options, MessageIds>({
           !EXPLICIT_RECEIVER_METHODS.has(staticMemberName(callee) ?? "") ||
           !mayBeRawFetch(callee.object) ||
           isCompatibleReceiver(node.arguments[0])
-        ) return;
-        context.report({ node: callee.object, messageId: "detachedGlobalFetch" });
+        )
+          return;
+        context.report({
+          node: callee.object,
+          messageId: "detachedGlobalFetch",
+        });
       },
       Property(node): void {
         if (
@@ -200,7 +293,8 @@ export default createRule<Options, MessageIds>({
           node.method ||
           node.value.type === AST_NODE_TYPES.AssignmentPattern ||
           node.value.type === AST_NODE_TYPES.TSEmptyBodyFunctionExpression
-        ) return;
+        )
+          return;
         reportStored(node.value);
       },
       PropertyDefinition(node): void {
@@ -215,17 +309,20 @@ export default createRule<Options, MessageIds>({
         if (
           node.id.type !== AST_NODE_TYPES.ObjectPattern ||
           !isGlobalReceiver(unwrapExpression(node.init))
-        ) return;
+        )
+          return;
         for (const property of node.id.properties) {
           if (
             property.type !== AST_NODE_TYPES.Property ||
             property.computed ||
             property.key.type !== AST_NODE_TYPES.Identifier ||
             property.key.name !== "fetch"
-          ) continue;
-          const value = property.value.type === AST_NODE_TYPES.AssignmentPattern
-            ? property.value.left
-            : property.value;
+          )
+            continue;
+          const value =
+            property.value.type === AST_NODE_TYPES.AssignmentPattern
+              ? property.value.left
+              : property.value;
           if (value.type === AST_NODE_TYPES.Identifier) recordAlias(value);
         }
       },

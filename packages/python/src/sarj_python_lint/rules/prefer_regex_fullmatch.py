@@ -41,8 +41,9 @@ class PreferRegexFullmatch(Rule):
         rationale="The regex `$` anchor can match before a final newline, so an anchored match can accept a value that was not fully validated.",
         remediation="Use `re.fullmatch` or the compiled pattern's `fullmatch` method for strict whole-value validation. Preserve deliberate terminal-newline acceptance or an existing match contract with a reasoned exact SARJ460 exception; do not rewrite that behavior automatically.",
         category=RuleCategory.CORRECTNESS,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Autofix only replaces the final `$` with strict `\\Z` in one simple anchored ASCII character-class pattern passed to an existing canonical module-qualified re.match call with an exact string-literal subject containing no newline and no flags. It preserves the existing callee, argument order, literal quoting, and boolean-validation context; explicit mocks, namespace reflection, mutations, escapes, dynamic inputs, and other patterns remain for review.",
             "Checks direct negative match/is-None rejection guards and returns of bool(match), not match, or match is/is-not None. Match-object returns, extraction, search, and compound conditions are excluded.",
             "Patterns must be valid string or bytes literals bounded by `^` or `\\A` and an unescaped outer `$`; top-level alternation, inline extension groups other than noncapturing groups, and flags other than literal zero are excluded.",
             "Only imported standard-library re functions and unique, unconditional module or same-function compile bindings are resolved. Rebinding, import shadowing, escaped regex objects or modules, explicit match positions, tests, and generated files are excluded.",
@@ -96,6 +97,25 @@ class PreferRegexFullmatch(Rule):
                 focus_path=PurePosixPath("app/validation.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix",
+                title="A literal validation uses a strict end anchor on the existing matcher",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/validation.py",
+                        "import re\ndef valid():\n    return re.match(r'^[a-z]+$', 'sample') is not None\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/validation.py",
+                        "import re\ndef valid():\n    return re.match(r'^[a-z]+\\Z', 'sample') is not None\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/validation.py"),
+                expected_count=1,
             ),
         ),
     )

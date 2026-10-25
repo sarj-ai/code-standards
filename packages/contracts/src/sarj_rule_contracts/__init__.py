@@ -1,3 +1,4 @@
+from .autofix import TextEdit as TextEdit, apply_edits as apply_edits
 from .contracts import (
     AutofixPolicy as AutofixPolicy,
     CatalogRule as CatalogRule,
@@ -24,3 +25,4 @@ from .contracts import (
     RuleStatus as RuleStatus,
     Severity as Severity,
 )
+from .files import fix_file as fix_file

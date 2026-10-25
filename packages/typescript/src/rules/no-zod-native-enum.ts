@@ -24,18 +24,28 @@ type Options = readonly [];
 
 export const NO_ZOD_NATIVE_ENUM_DOCUMENTATION = {
   summary:
-    "Disallow `z.nativeEnum()` (and `z.enum()` over a TypeScript enum); use `z.enum([\"a\", \"b\"])` with a string-literal union instead.",
-  rationale: "The project prefers literal-first schema definitions. nativeEnum also accepts plain enum-like objects, so this is an explicit declaration policy, not proof that every call duplicates a TypeScript enum's runtime object.",
-  remediation: "Pass string literals directly to `z.enum` and derive the TypeScript type with `z.infer`.",
+    'Disallow `z.nativeEnum()` (and `z.enum()` over a TypeScript enum); use `z.enum(["a", "b"])` with a string-literal union instead.',
+  rationale:
+    "The project prefers literal-first schema definitions. nativeEnum also accepts plain enum-like objects, so this is an explicit declaration policy, not proof that every call duplicates a TypeScript enum's runtime object.",
+  remediation:
+    "Pass string literals directly to `z.enum` and derive the TypeScript type with `z.infer`.",
   category: "maintainability",
   autofix: "none",
-  limitations: ["Migration is manual: replacing an enum-like object with a value array changes the public schema.enum keys and can affect consumers."],
+  limitations: [
+    "Migration remains manual: enum-like object keys and supported global constructor hooks remain observable even for unused private schemas. Equal key/value objects still expose the changed nativeEnum versus enum constructor call through a hook stack.",
+  ],
   examples: [
     {
       id: "zod-literal-enum",
       title: "Declare string values directly in Zod",
       outcome: "no-match",
-      files: [{ path: "src/status.ts", source: "import { z } from \"zod\"; const S = z.enum([\"active\", \"inactive\"]);" }],
+      files: [
+        {
+          path: "src/status.ts",
+          source:
+            'import { z } from "zod"; const S = z.enum(["active", "inactive"]);',
+        },
+      ],
       focusPath: "src/status.ts",
       expectedCount: 0,
       public: true,
@@ -44,7 +54,13 @@ export const NO_ZOD_NATIVE_ENUM_DOCUMENTATION = {
       id: "zod-native-enum",
       title: "Declare literal values instead of an enum-like object",
       outcome: "match",
-      files: [{ path: "src/status.ts", source: "import { z } from \"zod\"; const S = z.nativeEnum({ Active: \"active\", Inactive: \"inactive\" });" }],
+      files: [
+        {
+          path: "src/status.ts",
+          source:
+            'import { z } from "zod"; const S = z.nativeEnum({ Active: "active", Inactive: "inactive" });',
+        },
+      ],
       focusPath: "src/status.ts",
       expectedCount: 1,
       public: true,
@@ -55,8 +71,16 @@ export const NO_ZOD_NATIVE_ENUM_DOCUMENTATION = {
       title: "Do not hide an imported TypeScript enum behind z.enum",
       outcome: "match",
       files: [
-        { path: "src/status-values.ts", source: "export enum Status { Active = 'active', Inactive = 'inactive' }" },
-        { path: "src/status.ts", source: "import { z } from 'zod'; import { Status } from './status-values.js';\nexport const StatusSchema = z.enum(Status);" },
+        {
+          path: "src/status-values.ts",
+          source:
+            "export enum Status { Active = 'active', Inactive = 'inactive' }",
+        },
+        {
+          path: "src/status.ts",
+          source:
+            "import { z } from 'zod'; import { Status } from './status-values.js';\nexport const StatusSchema = z.enum(Status);",
+        },
       ],
       installedDependencies: [{ module: "zod", version: "4.6.7" }],
       focusPath: "src/status.ts",
@@ -68,11 +92,31 @@ export const NO_ZOD_NATIVE_ENUM_DOCUMENTATION = {
       scenarioId: "imported-enum",
       title: "Let the schema own its literal value domain",
       outcome: "no-match",
-      files: [{ path: "src/status.ts", source: "import { z } from 'zod';\nexport const StatusSchema = z.enum(['active', 'inactive']);" }],
+      files: [
+        {
+          path: "src/status.ts",
+          source:
+            "import { z } from 'zod';\nexport const StatusSchema = z.enum(['active', 'inactive']);",
+        },
+      ],
       installedDependencies: [{ module: "zod", version: "4.6.7" }],
       focusPath: "src/status.ts",
       expectedCount: 0,
       public: true,
+    },
+    {
+      id: "private-schema-migration",
+      title: "Review constructor hooks before migrating a private schema",
+      outcome: "match",
+      files: [
+        {
+          path: "src/autofix-example.ts",
+          source:
+            'import { z } from "zod/v4"; const StatusSchema = z.nativeEnum({ Active: "active", Inactive: "inactive" });',
+        },
+      ],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
     },
   ],
 } as const satisfies RuleDocumentation;
@@ -132,7 +176,7 @@ export default createRule<Options, MessageIds>({
     type: "suggestion",
     docs: {
       description:
-        "Disallow `z.nativeEnum()` (and `z.enum()` over a TypeScript enum); use `z.enum([\"a\", \"b\"])` with a string-literal union instead.",
+        'Disallow `z.nativeEnum()` (and `z.enum()` over a TypeScript enum); use `z.enum(["a", "b"])` with a string-literal union instead.',
     },
     schema: [],
     messages: {
@@ -173,10 +217,16 @@ export default createRule<Options, MessageIds>({
       );
     }
 
-    function isZodMemberCall(node: TSESTree.CallExpression, api: string): boolean {
+    function isZodMemberCall(
+      node: TSESTree.CallExpression,
+      api: string,
+    ): boolean {
       const callee = unwrapExpression(node.callee);
 
-      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
+      const calleeReceiver =
+        callee.type === AST_NODE_TYPES.MemberExpression
+          ? unwrapExpression(callee.object)
+          : callee;
       if (
         callee.type === AST_NODE_TYPES.MemberExpression &&
         calleeReceiver.type === AST_NODE_TYPES.Identifier &&
@@ -187,11 +237,13 @@ export default createRule<Options, MessageIds>({
       }
       if (callee.type === AST_NODE_TYPES.Identifier) {
         const binding = resolvedBinding(callee);
-        return (
-          binding !== null && zodImportedBindings.get(binding) === api
-        );
+        return binding !== null && zodImportedBindings.get(binding) === api;
       }
       return false;
+    }
+
+    function registerNamespace(binding: TSESLint.Scope.Variable): void {
+      zodNamespaceBindings.add(binding);
     }
 
     return {
@@ -209,7 +261,9 @@ export default createRule<Options, MessageIds>({
                 : spec.imported.value === "z"))
           ) {
             const binding = resolvedBinding(spec.local);
-            if (binding !== null) zodNamespaceBindings.add(binding);
+            if (binding !== null) {
+              registerNamespace(binding);
+            }
           }
           if (
             spec.type === AST_NODE_TYPES.ImportSpecifier &&
@@ -236,7 +290,10 @@ export default createRule<Options, MessageIds>({
           return;
         }
         const argument = node.arguments[0];
-        if (argument === undefined || argument.type === AST_NODE_TYPES.SpreadElement) {
+        if (
+          argument === undefined ||
+          argument.type === AST_NODE_TYPES.SpreadElement
+        ) {
           return;
         }
         const arg = unwrap(argument);

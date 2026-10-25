@@ -7,7 +7,8 @@
 import { type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { isTestFile } from "./_paths.js";
+import { ownedSqlProjectionFix } from "./_owned-sql-projection-fix.js";
+import { isGeneratedFile, isScriptFile, isStoryFile, isTestFile } from "./_paths.js";
 import { createSqlListener, stripSqlNoise } from "./_sql.js";
 
 type MessageIds = "noSelectStar";
@@ -18,8 +19,11 @@ export const NO_SELECT_STAR_DOCUMENTATION = {
   rationale: "Wildcard projections couple row shape and query cost to unrelated schema changes.",
   remediation: "List every required column explicitly in the projection.",
   category: "correctness",
-  limitations: ["Only statically visible embedded SQL is checked; quoted strings (including PostgreSQL dollar strings), comments, function arguments such as COUNT(*), and stars inside EXISTS are excluded. Escaped ordinary strings, brackets, and backticks are handled conservatively. This is a bounded lexical scan, not a complete SQL parser."],
+  autofix: "safe",
+  limitations: ["Only statically visible embedded SQL is checked; quoted strings (including PostgreSQL dollar strings), comments, function arguments such as COUNT(*), and stars inside EXISTS are excluded. Escaped ordinary strings, brackets, and backticks are handled conservatively. This is a bounded lexical scan, not a complete SQL parser.", "Autofix only expands a complete single-row integer VALUES query with authored quoted column names, directly consumed by a fresh default pg Client in a closed source-owned function. Other projections remain manual."],
   examples: [
+    { id: "safe-autofix", scenarioId: "owned-literal-projection", title: "Expand the authored columns of an owned literal relation", outcome: "match", files: [{ path: "src/literal-rows.ts", source: "import { Client } from 'pg';\nexport async function literalRows() {\n  const authoredLiteralClient = new Client();\n  try {\n    await authoredLiteralClient.connect();\n    return (await authoredLiteralClient.query('SELECT * FROM (VALUES (1, 2)) AS \"authored\"(\"a\", \"b\")')).rows;\n  } finally {\n    await authoredLiteralClient.end();\n  }\n}\n" }], fixedFiles: [{ path: "src/literal-rows.ts", source: "import { Client } from 'pg';\nexport async function literalRows() {\n  const authoredLiteralClient = new Client();\n  try {\n    await authoredLiteralClient.connect();\n    return (await authoredLiteralClient.query('SELECT \"authored\".\"a\", \"authored\".\"b\" FROM (VALUES (1, 2)) AS \"authored\"(\"a\", \"b\")')).rows;\n  } finally {\n    await authoredLiteralClient.end();\n  }\n}\n" }], focusPath: "src/literal-rows.ts", expectedCount: 1, public: true },
+    { id: "owned-literal-explicit-projection", scenarioId: "owned-literal-projection", title: "Preserve the explicit authored literal columns", outcome: "no-match", files: [{ path: "src/literal-rows.ts", source: "import { Client } from 'pg';\nexport async function literalRows() {\n  const authoredLiteralClient = new Client();\n  try {\n    await authoredLiteralClient.connect();\n    return (await authoredLiteralClient.query('SELECT \"authored\".\"a\", \"authored\".\"b\" FROM (VALUES (1, 2)) AS \"authored\"(\"a\", \"b\")')).rows;\n  } finally {\n    await authoredLiteralClient.end();\n  }\n}\n" }], focusPath: "src/literal-rows.ts", expectedCount: 0, public: true },
     { id: "explicit-projection", title: "Select the required columns", outcome: "no-match", files: [{ path: "src/runs.ts", source: "db.prepare(`SELECT id, status FROM runs`).all();" }], focusPath: "src/runs.ts", expectedCount: 0, public: true },
     { id: "wildcard-projection", title: "Do not select every column", outcome: "match", files: [{ path: "src/runs.ts", source: "db.prepare(`SELECT * FROM runs`).all();" }], focusPath: "src/runs.ts", expectedCount: 1, public: true },
     { id: "decoded-query", scenarioId: "native-decoded-sql", title: "Inspect native-decoded query text", outcome: "match", files: [{ path: "src/page.ts", source: "db.query(\"SEL\\u0045CT * FROM runs\");" }], focusPath: "src/page.ts", expectedCount: 1, public: true },
@@ -190,6 +194,7 @@ export default createRule<Options, MessageIds>({
         "Prefer explicit column projections over SELECT * in embedded SQL.",
     },
     schema: [],
+    fixable: "code",
     messages: {
       noSelectStar:
         "`SELECT *` over-fetches and leaves the row shape implicit — a new or reordered column silently changes what this query returns. List the columns explicitly.",
@@ -204,7 +209,9 @@ export default createRule<Options, MessageIds>({
       if (!hasQueryShape(sql)) return;
       const conservativeSource = AMBIGUOUS_QUOTING.test(original) ? stripSqlNoise(original) : sql;
       if (!hasRealSelectStar(sql, original, conservativeSource)) return;
-      context.report({ node, messageId: "noSelectStar" });
+      const excluded = isGeneratedFile(context, context.sourceCode.text, ["externalTree"]) ||
+        isTestFile(context, ["fixtureTree"]) || isStoryFile(context, ["storyTree"]) || isScriptFile(context);
+      context.report({ node, messageId: "noSelectStar", fix: excluded ? null : ownedSqlProjectionFix(context.sourceCode, node, original) });
     }, { preserveQuotedTokens: true });
   },
 });

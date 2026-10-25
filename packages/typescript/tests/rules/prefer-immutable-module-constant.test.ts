@@ -80,6 +80,9 @@ RULE_TESTER.run("prefer-immutable-module-constant", rule, {
     "const Object = { freeze: <T>(value: T): T => value }; const VALUES = Object.freeze([1, 2, 3]);",
   ],
   invalid: [
+    { name: "fixes an unused private collection without changing runtime evaluation", code: "export {}; const VALUES = [1, 2, 3];", output: "export {}; const VALUES = [1, 2, 3] as const;", errors: [{ messageId: "preferAsConst" }] },
+    { name: "preserves a collection passed to an unknown consumer", code: "export {}; const VALUES = [1, 2, 3]; consume(VALUES);", output: null, errors: [{ messageId: "preferAsConst" }] },
+    { name: "preserves dynamic observation of an unused-looking binding", code: "export {}; const VALUES = [1, 2, 3]; eval(\"VALUES.push(4)\");", output: null, errors: [{ messageId: "preferAsConst" }] },
     {
       code: "type Readonly<T> = readonly T[]; type Surface<Readonly> = Readonly; export const LABELS: Surface<{ a: string }> = { a: 'A' };",
       errors: [{ messageId: "preferAsConst", data: { name: "LABELS" } }],

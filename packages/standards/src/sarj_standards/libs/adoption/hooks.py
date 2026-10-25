@@ -24,9 +24,7 @@ if TYPE_CHECKING:
 
 LEFTHOOK_NAMES: Final = ("lefthook.yml", "lefthook.yaml")
 PRECOMMIT_NAMES: Final = (".pre-commit-config.yaml", ".pre-commit-config.yml")
-SOURCE_STAGED_COMMAND: Final = (
-    "uv run --no-config --project packages/standards --frozen code-standards check --staged --trust-repository-code"
-)
+SOURCE_STAGED_COMMAND: Final = "uv run --no-config --project packages/standards --frozen code-standards check --staged --fix --trust-repository-code"
 _COMMANDS_BLOCK: Final = re.compile(r"(?m)^(?P<indent> +)commands:(?P<tail>[^\n]*)$")
 _JOBS_BLOCK: Final = re.compile(r"(?m)^(?P<indent> +)jobs:(?P<tail>[^\n]*)$")
 _MAX_JOB_DEPTH: Final = 64
@@ -313,7 +311,7 @@ def precommit_runs_staged_check(root: Path) -> bool:
     candidate = candidates[0]
     return (
         candidate.get("id") == "sarj-standards-check"
-        and candidate.get("entry") == f"{launcher.repository_command()} check --staged --trust-repository-code"
+        and candidate.get("entry") == f"{launcher.repository_command()} check --staged --fix --trust-repository-code"
         and candidate.get("language") == "system"
         and candidate.get("verbose") is True
         and candidate.get("always_run") is True
@@ -703,7 +701,8 @@ def _runs_staged_check(value: object) -> bool:
         tokens = shlex.split(value)
     except ValueError:
         return False
-    source_prefix = shlex.split(SOURCE_STAGED_COMMAND)[:-1]
+    source_tokens = shlex.split(SOURCE_STAGED_COMMAND)
+    source_prefix = source_tokens[: source_tokens.index("check") + 2]
     if tokens[: len(source_prefix)] == source_prefix:
         return True
     prefix = launcher.repository_argv()
@@ -778,7 +777,7 @@ def _is_exact_standards_argv(tokens: list[str]) -> bool:
 def canonical_staged_command(root: Path | None = None) -> str:
     if root is not None and (root / "packages" / "standards" / "pyproject.toml").is_file():
         return SOURCE_STAGED_COMMAND
-    return f"{launcher.repository_command()} check --staged --trust-repository-code"
+    return f"{launcher.repository_command()} check --staged --fix --trust-repository-code"
 
 
 def _canonical_commit_message_command(root: Path | None = None, *, runner_prefix: str | None = None) -> str:

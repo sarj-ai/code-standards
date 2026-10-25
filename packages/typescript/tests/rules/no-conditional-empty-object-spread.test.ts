@@ -21,7 +21,7 @@ TESTER.run("no-conditional-empty-object-spread", rule, {
   ],
   invalid: [
     {
-      code: "const value = { ...(enabled ? { a: 1 } : {}) };",
+      code: "const value = { ...(enabled ? { a: 1 } : {}) };", output: "const value = { ...(!!(enabled) && ({ a: 1 })) };",
       errors: [
         {
           messageId: "avoid",
@@ -29,7 +29,7 @@ TESTER.run("no-conditional-empty-object-spread", rule, {
       ],
     },
     {
-      code: "const value = { ...(enabled ? {} : { a: 1 }) };",
+      code: "const value = { ...(enabled ? {} : { a: 1 }) };", output: "const value = { ...(!(enabled) && ({ a: 1 })) };",
       errors: [
         {
           messageId: "avoid",
@@ -37,7 +37,7 @@ TESTER.run("no-conditional-empty-object-spread", rule, {
       ],
     },
     {
-      code: "const value = { ...((enabled ? { a: 1 } : {})) };",
+      code: "const value = { ...((enabled ? { a: 1 } : {})) };", output: "const value = { ...((!!(enabled) && ({ a: 1 }))) };",
       errors: [
         {
           messageId: "avoid",

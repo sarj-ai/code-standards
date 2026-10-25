@@ -42,8 +42,9 @@ class NoDuplicateDunderAllEntry(Rule):
         ),
         remediation="Remove each later duplicate while preserving the first declaration of the exported name.",
         category=RuleCategory.CORRECTNESS,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes remove duplicate elements only from comment-free literal sequences. Standalone literal append calls can also be removed. Any insert growth prevents autofixing the file because removing earlier entries would change positional insertion order; commented declarations remain review-only.",
             "One fully static module-level list or tuple plus literal append, extend, and insert growth is analyzed.",
             "Generated, dynamically reassigned, and non-Python declarations are excluded.",
         ),
@@ -75,6 +76,15 @@ class NoDuplicateDunderAllEntry(Rule):
                 focus_path=PurePosixPath("diagnostics/__init__.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("app/service.py", ('__all__ = ["one", "two", "one", "two"]\n')),),
+                fixed_files=(ExampleFile.python("app/service.py", ('__all__ = ["one", "two"]\n')),),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=2,
             ),
         ),
     )

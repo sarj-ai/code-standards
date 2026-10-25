@@ -13,7 +13,7 @@ import {
 } from "@typescript-eslint/utils";
 import * as ts from "typescript";
 
-import { convertibleMemberName } from "./_class-private.js";
+import { convertibleMemberName, isUnobservedPrivateClass, privateMemberFixes } from "./_class-private.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 
@@ -25,12 +25,12 @@ export const INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION = {
   rationale: "An implementing class should expose exactly its declared interface while keeping implementation helpers runtime-private.",
   remediation: "Add the method to the interface when it is public API, or make it `#private` and remove external or inherited access.",
   category: "architecture",
-  autofix: "none",
-  limitations: [
+  autofix: "safe",
+  limitations: ["Automatic conversion is limited to unused private module/block classes without heritage, decorators, computed members, static execution, or eval; referenced classes remain manual.",
     "Only concrete classes with an explicit `implements` clause are checked; constructors, static members, protected extension hooks, and overrides are excluded.",
     "Inherited interface members are resolved by TypeScript. Computed names are excluded because their contract identity is not stable syntax.",
     "The rule abstains for the whole class when TypeScript cannot resolve any implemented contract, avoiding false positives for missing or unavailable package declarations.",
-    "The rule is report-only because a public member can have consumers in another source file; the developer must choose whether to extend the interface or privatize it.",
+    "Referenced classes remain report-only because a public member can have consumers in another source file; the developer must choose whether to extend the interface or privatize it.",
     "TypeScript-private members are left to prefer-ecmascript-private-members so one concern produces one diagnostic.",
   ],
   examples: [
@@ -51,6 +51,15 @@ export const INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION = {
       focusPath: "src/store.ts",
       expectedCount: 1,
       public: true,
+    },
+    {
+      id: "safe-autofix",
+      title: "Apply the proven automatic correction",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "export {}; interface Store { load(): void } class DiskStore implements Store { load() { this.read(); } read() {} }" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "export {}; interface Store { load(): void } class DiskStore implements Store { load() { this.#read(); } #read() {} }" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
     },
   ],
 } as const satisfies RuleDocumentation;
@@ -82,6 +91,7 @@ function reportClass(
       node: first.key,
       messageId: "nonContractMemberMustBePrivate",
       data: { name },
+      fix: isUnobservedPrivateClass(context.sourceCode, owner, context.filename) ? (privateMemberFixes(context, services, owner, members, false) ?? null) : null,
     });
   }
 }
@@ -124,6 +134,7 @@ export default createRule<Options, MessageIds>({
   documentation: INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION,
   meta: {
     type: "problem",
+    fixable: "code",
     docs: { description: "Require methods outside an implemented interface contract to use ECMAScript private names." },
     schema: [],
     messages: {

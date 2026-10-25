@@ -30,8 +30,10 @@ export const PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION = {
   remediation:
     "Replace `filter(Boolean)` with `filter((value) => value !== null && value !== undefined)`.",
   category: "correctness",
-  autofix: "suggestion",
+  autofix: "safe",
   limitations: [
+    "Automatic fixes require a fresh literal array in the source's sole top-level const initializer or expression, with no imports, preceding callouts, or source prototype mutation; other reports retain a suggestion.",
+    "Browser HTMLAllCollection/document.all and its structural supertypes are excluded because the browser can expose a falsy object.",
     "The receiver must resolve to the built-in Array or ReadonlyArray filter method.",
     "Broad primitive types, falsy literals, any, unknown, generics, intersections, custom filters, and shadowed Boolean bindings are excluded.",
   ],
@@ -64,6 +66,15 @@ export const PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION = {
       focusPath: "src/users.ts",
       expectedCount: 1,
       public: true,
+    },
+    {
+      id: "safe-autofix",
+      title: "Apply the proven automatic correction",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "const present = [{ id: 'kept' }, null].filter(Boolean);" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "const present = [{ id: 'kept' }, null].filter((value) => value !== null && value !== undefined);" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
     },
   ],
 } as const satisfies RuleDocumentation;
@@ -112,22 +123,23 @@ const UNKNOWN_FLAGS =
   ts.TypeFlags.Enum |
   ts.TypeFlags.EnumLiteral;
 
-function isNullishPlusTruthy(type: ts.Type, checker: ts.TypeChecker): boolean {
+function isNullishPlusTruthy(type: ts.Type, checker: ts.TypeChecker, falsyBrowserObject: ts.Type | null): boolean {
   const members = type.isUnion() ? type.types : [type];
   let sawNullish = false;
   for (const member of members) {
     if ((member.flags & NULLISH_FLAGS) !== 0) {
       sawNullish = true;
-    } else if ((member.flags & ts.TypeFlags.Never) === 0 && !isProvablyTruthy(member, checker)) {
+    } else if ((member.flags & ts.TypeFlags.Never) === 0 && !isProvablyTruthy(member, checker, falsyBrowserObject)) {
       return false;
     }
   }
   return sawNullish;
 }
 
-function isProvablyTruthy(type: ts.Type, checker: ts.TypeChecker): boolean {
+function isProvablyTruthy(type: ts.Type, checker: ts.TypeChecker, falsyBrowserObject: ts.Type | null): boolean {
   if ((type.flags & UNKNOWN_FLAGS) !== 0) return false;
   if ((type.flags & ts.TypeFlags.Object) !== 0) {
+    if (falsyBrowserObject !== null && checker.isTypeAssignableTo(falsyBrowserObject, type)) return false;
     return ![
       checker.getStringType(),
       checker.getNumberType(),
@@ -155,11 +167,40 @@ function isProvablyTruthy(type: ts.Type, checker: ts.TypeChecker): boolean {
 function availableParameterName(
   node: TSESTree.CallExpression,
   context: TSESLint.RuleContext<MessageIds, Options>,
-): string | null {
+): string {
   for (const name of ["value", "item", "element", "candidate"] as const) {
     if (ASTUtils.findVariable(context.sourceCode.getScope(node), name) === null) return name;
   }
-  return null;
+  let suffix = 1;
+  while (ASTUtils.findVariable(context.sourceCode.getScope(node), `value${String(suffix)}`) !== null) suffix += 1;
+  return `value${String(suffix)}`;
+}
+
+function hasFreshArrayReceiver(
+  node: TSESTree.CallExpression,
+  receiver: TSESTree.Expression,
+  context: TSESLint.RuleContext<MessageIds, Options>,
+): boolean {
+  if (receiver.type !== AST_NODE_TYPES.ArrayExpression || !isLiteralValue(receiver)) return false;
+  const statements = context.sourceCode.ast.body;
+  if (statements.length !== 1) return false;
+  const statement = statements[0];
+  if (statement?.type === AST_NODE_TYPES.ExpressionStatement) return statement.expression === node;
+  return statement?.type === AST_NODE_TYPES.VariableDeclaration &&
+    statement.kind === "const" && statement.declarations.length === 1 &&
+    statement.declarations[0]?.id.type === AST_NODE_TYPES.Identifier &&
+    statement.declarations[0]?.init === node;
+}
+
+function isLiteralValue(node: TSESTree.Node): boolean {
+  if (node.type === AST_NODE_TYPES.Literal) return !("regex" in node);
+  if (node.type === AST_NODE_TYPES.ArrayExpression) {
+    return node.elements.every((element) => element !== null && isLiteralValue(element));
+  }
+  return node.type === AST_NODE_TYPES.ObjectExpression && node.properties.every((property) =>
+    property.type === AST_NODE_TYPES.Property && !property.computed && !property.method &&
+    property.kind === "init" && isLiteralValue(property.value),
+  );
 }
 
 export default createRule<Options, MessageIds>({
@@ -169,6 +210,7 @@ export default createRule<Options, MessageIds>({
     type: "suggestion",
     docs: { description: PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION.summary },
     hasSuggestions: true,
+    fixable: "code",
     schema: [],
     messages: {
       preferNullishPredicate:
@@ -186,6 +228,11 @@ export default createRule<Options, MessageIds>({
       services = null;
     }
     if (services === null) return {};
+    const program = services.program;
+    const checker = program.getTypeChecker();
+    const browserCollection = checker.resolveName("HTMLAllCollection", undefined, ts.SymbolFlags.Type, false);
+    const falsyBrowserObject = browserCollection?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) === true
+      ? checker.getDeclaredTypeOfSymbol(browserCollection) : null;
     return {
       CallExpression(node): void {
         const callee = unwrapExpression(node.callee);
@@ -202,22 +249,30 @@ export default createRule<Options, MessageIds>({
           !isBuiltinArrayFilter(callee, services)
         ) return;
         const elementType = arrayElementType(callee.object, services);
-        const checker = services.program.getTypeChecker();
-        if (elementType === null || !isNullishPlusTruthy(elementType, checker)) return;
+        if (elementType === null || !isNullishPlusTruthy(elementType, checker, falsyBrowserObject)) return;
         const parameter = availableParameterName(node, context);
-        context.report({
+        const undefinedBinding = ASTUtils.findVariable(context.sourceCode.getScope(node), "undefined");
+        const undefinedCheck = (undefinedBinding?.defs.length ?? 0) > 0 ? `typeof ${parameter} !== "undefined"` : `${parameter} !== undefined`;
+        const replacement = `(${parameter}) => ${parameter} !== null && ${undefinedCheck}`;
+        const report: {
+          readonly node: TSESTree.Identifier;
+          readonly messageId: MessageIds;
+          fix?: TSESLint.ReportFixFunction;
+          suggest?: TSESLint.ReportSuggestionArray<MessageIds>;
+        } = {
           node: callback,
           messageId: "preferNullishPredicate",
-          suggest: parameter === null
-            ? null
-            : [{
-                messageId: "replaceBoolean",
-                fix: (fixer) => fixer.replaceText(
-                  callback,
-                  `(${parameter}) => ${parameter} !== null && ${parameter} !== undefined`,
-                ),
-              }],
-        });
+        };
+        if (hasFreshArrayReceiver(node, callee.object, context)) {
+          report.fix = (fixer) => fixer.replaceText(callback, replacement);
+        }
+        report.suggest = [
+          {
+            messageId: "replaceBoolean",
+            fix: (fixer) => fixer.replaceText(callback, replacement),
+          },
+        ];
+        context.report(report);
       },
     };
   },

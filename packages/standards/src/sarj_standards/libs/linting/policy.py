@@ -106,6 +106,15 @@ class Policy:
     def filter_paths(self, paths: Iterable[str]) -> tuple[str, ...]:
         return tuple(path for path in paths if self.allows_path(path))
 
+    def excluded_rule_ids(self, path: str | Path, engine: str) -> frozenset[str]:
+        relative = self.relative(path)
+        selectors = set(self.excluded_rules)
+        for override in self.overrides:
+            if override.paths.match_file(relative):
+                selectors.update(override.rules)
+        prefix = f"{engine}:"
+        return frozenset(selector.removeprefix(prefix) for selector in selectors if selector.startswith(prefix))
+
     def filter_diagnostics(self, diagnostics: Iterable[Diagnostic]) -> tuple[Diagnostic, ...]:
         return tuple(item for item in diagnostics if self.allows_path(item.location.path) and self.allows_rule(item))
 

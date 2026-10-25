@@ -3,6 +3,7 @@ from __future__ import annotations
 from bisect import bisect_left
 from dataclasses import dataclass, field
 from functools import lru_cache
+from io import StringIO
 import json
 import re
 from types import MappingProxyType
@@ -13,6 +14,13 @@ from sarj_iac_lint.json_boundary import parse_json
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+
+def physical_lines(source: str, *, keepends: bool = False) -> list[str]:
+    lines = StringIO(source, newline="\n").readlines()
+    if keepends:
+        return lines
+    return [line[:-2] if line.endswith("\r\n") else line.removesuffix("\n") for line in lines]
 
 
 _MAX_BLOCK_DEPTH = 128
@@ -244,7 +252,7 @@ def masked_hcl_lines(source: str) -> list[str]:
     spans = tuple(span for span in lexical.comments if span.kind == "block-comment") + tuple(
         _Span("body", span.body_start, span.end) for span in lexical.values if span.kind == "heredoc"
     )
-    return [line if line.strip() else "" for line in _mask_spans(source, spans).splitlines()]
+    return [line if line.strip() else "" for line in physical_lines(_mask_spans(source, spans))]
 
 
 @lru_cache(maxsize=32)
@@ -253,7 +261,7 @@ def suppression_comment_lines(source: str) -> Mapping[int, str]:
     lexical = _lexical_document(source)
     for span in lexical.comments:
         first = bisect_left(lexical.physical_newlines, span.start) + 1
-        for offset, line in enumerate(source[span.start : span.end].splitlines()):
+        for offset, line in enumerate(physical_lines(source[span.start : span.end])):
             number = first + offset
             output[number] = output.get(number, "") + line
     return MappingProxyType(output)
@@ -282,7 +290,7 @@ def header_comment_lines(source: str, *, leading_only: bool = False) -> tuple[st
             line_start = lexical.physical_newlines[line_index - 1] + 1 if line_index else 0
             if source[line_start : span.start].strip():
                 continue
-        output.extend(source[span.start : min(span.end, limit)].splitlines())
+        output.extend(physical_lines(source[span.start : min(span.end, limit)]))
         previous_end = span.end
     return tuple(output)
 
@@ -469,7 +477,7 @@ class _ValueParseResult(NamedTuple):
 
 @lru_cache(maxsize=32)
 def document(source: str) -> Block:
-    root_end = max(len(source.splitlines()), 1)
+    root_end = max(len(physical_lines(source)), 1)
     try:
         return _parsed_document(source, root_end)
     except _InvalidHCLSourceError:

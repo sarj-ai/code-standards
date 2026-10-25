@@ -6,6 +6,7 @@ import pytest
 from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 
 from sarj_python_lint.__main__ import analyze, main
+from sarj_python_lint.autofix import fix_source
 from sarj_python_lint.rule_base import AutofixPolicy, Severity
 from sarj_python_lint.rules.unused_test_factory_option import UnusedTestFactoryOption
 
@@ -237,11 +238,13 @@ def test_native_warning_and_rule_order_are_stable(tmp_path: Path, capsys: pytest
     assert len(analyze(rules, [path])) == 1
 
 
-def test_metadata_promotes_singleton_proof_without_autofix() -> None:
+def test_metadata_promotes_singleton_proof_with_closed_nested_autofix() -> None:
     documentation = UnusedTestFactoryOption.documentation
     assert documentation is not None
     assert documentation.default_level is Severity.ERROR
-    assert documentation.autofix is AutofixPolicy.NONE
+    assert documentation.autofix is AutofixPolicy.SAFE
+    source = _FACTORY + "_make_widget(width=3)\n"
+    assert fix_source(Path("tests/test_widgets.py"), source, rule_ids=[UnusedTestFactoryOption.id]) == source
 
 
 _MODULE_LITERAL = "def _widget(*, width=3):\n    return Widget(width=width)\n_widget()\n_widget(width=3)\n"

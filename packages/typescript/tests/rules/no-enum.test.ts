@@ -18,6 +18,7 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-enum", rule, {
   valid: [
+    { name: "preserves implicit declaration-file exports", filename: "src/contracts.d.ts", code: "import type { Imported } from './other'; declare enum Status { Active = 'active' }" },
     {
       name: "accepts a string-literal union",
       code: NO_ENUM_DOCUMENTATION.examples[0].files[0].source,
@@ -69,6 +70,15 @@ RULE_TESTER.run("no-enum", rule, {
     },
   ],
   invalid: [
+    { name: "converts an unused private ambient string enum", code: "export {}; declare enum Status { Active = 'active', Inactive = 'inactive' }", output: "export {}; type Status = 'active' | 'inactive';", errors: [{ messageId: "noEnum" }] },
+    { name: "preserves a referenced ambient nominal contract", code: "export {}; declare enum Status { Active = 'active' } declare const status: Status;", output: null, errors: [{ messageId: "noEnum" }] },
+    { name: "preserves exported ambient enum contracts", code: "export declare enum Status { Active = 'active' }", output: null, errors: [{ messageId: "noEnum" }] },
+    { name: "preserves runtime string enum initialization", code: "export {}; enum Status { Active = 'active' }", output: null, errors: [{ messageId: "noEnum" }] },
+    { name: "preserves ambient numeric members", code: "export {}; declare enum Status { Active = 1 }", output: null, errors: [{ messageId: "noEnum" }] },
+    { name: "preserves ambient enum member documentation", code: "export {}; declare enum Status { /** stable key */ Active = 'active' }", output: null, errors: [{ messageId: "noEnum" }] },
+    { name: "preserves merged ambient declarations", code: "export {}; declare enum Status { Active = 'active' } declare namespace Status { const version: string; }", output: null, errors: [{ messageId: "noEnum" }] },
+    { name: "preserves script-global ambient contracts", code: "declare enum Status { Active = 'active' }", output: null, errors: [{ messageId: "noEnum" }] },
+    { name: "preserves dynamic ambient references", code: "export {}; declare enum Status { Active = 'active' } eval('Status');", output: null, errors: [{ messageId: "noEnum" }] },
     {
       name: "reports a numeric enum",
       code: NO_ENUM_DOCUMENTATION.examples[1].files[0].source,

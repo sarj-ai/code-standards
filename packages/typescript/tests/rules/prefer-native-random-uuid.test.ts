@@ -3,7 +3,9 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION } from "../../src/rules/prefer-native-random-uuid.js";
+import rule, {
+  PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION,
+} from "../../src/rules/prefer-native-random-uuid.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -16,29 +18,55 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("prefer-native-random-uuid", rule, {
   valid: [
-    { name: "public no-match example", filename: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[0].focusPath, code: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[0].files[0].source },
+    {
+      name: "public no-match example",
+      filename: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[0].focusPath,
+      code: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[0].files[0].source,
+    },
     { code: 'import { v4 } from "other"; v4();' },
     { code: 'import { v1 } from "uuid"; v1();' },
     { code: 'import { v4 } from "uuid"; v4({ random: bytes });' },
     { code: 'import { v4 } from "uuid"; consume(v4);' },
     { code: 'export { v4 } from "uuid";' },
-    { code: 'const uuid = require(name); uuid.v4();' },
+    { code: "const uuid = require(name); uuid.v4();" },
     { code: 'let uuid = require("uuid"); uuid.v4();' },
     { code: 'const { v7 } = require("uuid"); v7();' },
     { code: 'const { v4 } = require("other"); v4();' },
     {
       code: 'function load(require: (name: string) => { v4(): string }) { const uuid = require("uuid"); return uuid.v4(); }',
     },
-    { code: 'uuid.v4();' },
-    { code: 'globalThis.crypto.randomUUID();' },
+    { code: "uuid.v4();" },
+    { code: "globalThis.crypto.randomUUID();" },
     {
       code: 'import { v4 as makeId } from "uuid"; function f(makeId: () => string) { return makeId(); }',
     },
   ],
   invalid: [
-    { name: "withholds replacement when globalThis is shadowed", code: "import { v4 } from 'uuid'; function run(globalThis) { return v4(); }", errors: [{ messageId: "preferNative", suggestions: 0 }] },
-    { name: "preserves comments inside the replaced call", code: "import { v4 } from 'uuid'; v4(/* preserve compatibility note */);", errors: [{ messageId: "preferNative", suggestions: 0 }] },
-    { name: "public match example", filename: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[1].focusPath, code: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "preferNative", suggestions: 1 }] },
+    {
+      name: "reuses an existing canonical native UUID provider",
+      filename: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[2].focusPath,
+      code: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[2].files[0].source,
+      output:
+        PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[2].fixedFiles[0]
+          .source,
+      errors: [{ messageId: "preferNative", suggestions: 1 }],
+    },
+    {
+      name: "withholds replacement when globalThis is shadowed",
+      code: "import { v4 } from 'uuid'; function run(globalThis) { return v4(); }",
+      errors: [{ messageId: "preferNative", suggestions: 0 }],
+    },
+    {
+      name: "preserves comments inside the replaced call",
+      code: "import { v4 } from 'uuid'; v4(/* preserve compatibility note */);",
+      errors: [{ messageId: "preferNative", suggestions: 0 }],
+    },
+    {
+      name: "public match example",
+      filename: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[1].focusPath,
+      code: PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION.examples[1].files[0].source,
+      errors: [{ messageId: "preferNative", suggestions: 1 }],
+    },
     {
       code: 'import { v4 } from "uuid"; v4();',
       output: null,

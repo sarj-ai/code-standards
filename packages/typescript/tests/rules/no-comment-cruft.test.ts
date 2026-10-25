@@ -286,6 +286,7 @@ RULE_TESTER.run("no-comment-cruft", rule, {
     },
   ],
   invalid: [
+    { name: "removes a punctuation-only banner run in one pass", code: "const value = 1;\n// =================\n// -----------------\nconst next = 2;", output: "const value = 1;\n\n\nconst next = 2;", errors: [{ messageId: "sectionBanner" }] },
     // Section signposts fire in every standalone comment syntax.
     {
       code: "class C {\n  /**\n   * REMOVE METHODS\n   */\n  remove() { return 1; }\n}",
@@ -296,7 +297,7 @@ RULE_TESTER.run("no-comment-cruft", rule, {
       errors: [{ messageId: "sectionBanner" }],
     },
     {
-      code: "const x = 1;\n/**\n * ----------------\n */\nconst y = 2;",
+      code: "const x = 1;\n/**\n * ----------------\n */\nconst y = 2;", output: "const x = 1;\n\n\n\nconst y = 2;",
       errors: [{ messageId: "sectionBanner" }],
     },
     {
@@ -360,7 +361,7 @@ RULE_TESTER.run("no-comment-cruft", rule, {
       errors: [{ messageId: "commentedOutCode" }],
     },
     {
-      code: "const x = 1;\n/* ================= */\nconst y = 2;",
+      code: "const x = 1;\n/* ================= */\nconst y = 2;", output: "const x = 1;\n\nconst y = 2;",
       errors: [{ messageId: "sectionBanner" }],
     },
     {
@@ -501,7 +502,7 @@ RULE_TESTER.run("no-comment-cruft", rule, {
       errors: [{ messageId: "commentedOutCode" }],
     },
     {
-      code: "const x = 1;\n// =====================\nconst y = 2;",
+      code: "const x = 1;\n// =====================\nconst y = 2;", output: "const x = 1;\n\nconst y = 2;",
       errors: [{ messageId: "sectionBanner" }],
     },
     {
@@ -520,7 +521,7 @@ RULE_TESTER.run("no-comment-cruft", rule, {
     },
     {
       name: "coalesces the borders of one line-comment banner",
-      code: "const x = 1;\n// ----------------\n// HANDLERS\n// ----------------\nconst y = 2;",
+      code: "const x = 1;\n// ----------------\n// HANDLERS\n// ----------------\nconst y = 2;", output: "const x = 1;\n\n// HANDLERS\n\nconst y = 2;",
       errors: [{ messageId: "sectionBanner" }],
     },
     {

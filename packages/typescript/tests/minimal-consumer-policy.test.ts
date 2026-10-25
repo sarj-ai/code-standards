@@ -2,6 +2,7 @@ import { join } from "node:path";
 
 import { ESLint, type Linter } from "eslint";
 import { describe, expect, it } from "vitest";
+import ts from "typescript";
 
 import { createConfig as createApplicationConfig } from "../../standards/src/sarj_standards/configs/eslint.application.mjs";
 import { createConfig } from "../../standards/src/sarj_standards/configs/eslint.strict.mjs";
@@ -55,7 +56,8 @@ describe.each(FACTORIES)("%s minimal consumer policy", (_name, factory) => {
     const [result] = await eslint.lintText(`${PRIVATE_PREFIX}${source}`, {filePath: "policy.tsx"});
     expect(result?.fatalErrorCount).toBe(0);
     expect(result?.messages.map(({ruleId, severity}) => [ruleId, severity])).toEqual([[ruleId, 1]]);
-    expect(result?.messages[0]?.fix).toBeUndefined();
+    if (ruleId === DEPENDENCY) expect(result?.messages[0]?.fix).toBeDefined();
+    else expect(result?.messages[0]?.fix).toBeUndefined();
     expect(result?.messages[0]?.suggestions).toBeUndefined();
   });
 
@@ -77,5 +79,99 @@ describe.each(FACTORIES)("%s minimal consumer policy", (_name, factory) => {
     expect(result?.fatalErrorCount).toBe(1);
     expect(result?.messages[0]?.message).toContain("Expression expected");
     expect(result?.messages.map(({ruleId}) => ruleId)).toEqual([null]);
+  });
+});
+
+/** Native before/after diagnostics and emitted JavaScript are independent of the fix renderer. */
+function nativeContract(source: string, noUnusedLocals = false): {readonly diagnostics: readonly number[]; readonly javascript: readonly string[]} {
+  const filename = join(FIXTURE_ROOT, "autofix-native-contract.ts");
+  const options: ts.CompilerOptions = {strict: true, target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler, types: [], noEmitOnError: true, noUnusedLocals};
+  const host = ts.createCompilerHost(options);
+  const originalGetSourceFile = host.getSourceFile.bind(host);
+  host.getSourceFile = (name, languageVersion, onError, shouldCreateNewSourceFile) => name === filename
+    ? ts.createSourceFile(name, source, languageVersion, true)
+    : originalGetSourceFile(name, languageVersion, onError, shouldCreateNewSourceFile);
+  const program = ts.createProgram([filename], options, host);
+  const diagnostics = ts.getPreEmitDiagnostics(program).map((diagnostic) => diagnostic.code);
+  const javascript: string[] = [];
+  if (!diagnostics.length) program.emit(undefined, (name, text) => { if (name.endsWith(".js")) javascript.push(text); });
+  return {diagnostics, javascript};
+}
+
+describe.each(FACTORIES)("%s closed private contract safe fixes", (_name, factory) => {
+  const fixer = new ESLint({cwd: FIXTURE_ROOT, overrideConfigFile: true, overrideConfig: selectedConfig(factory), fix: true});
+  it.each(PRIVATE_CASES)("fixes %s without changing producer, JavaScript or caller validity", async (_rule, declaration) => {
+    const body = _rule === CONSUMER_UNION ? declaration.replace("function label", "export type KeptDog = Dog; const typedAccount: Dog = account; function label").replace("label(account)", "label(typedAccount)") : declaration;
+    const source = `${PRIVATE_PREFIX}${body}`;
+    const before = nativeContract(source, true);
+    expect(before.diagnostics).toEqual([]);
+    const [result] = await fixer.lintText(source, {filePath: "policy.tsx"});
+    expect(result?.output).toBeDefined();
+    expect(result?.output).not.toBe(source);
+    expect(result?.messages).toEqual([]);
+    const after = nativeContract(result?.output ?? source, true);
+    expect(after.diagnostics).toEqual([]);
+    expect(after.javascript).toEqual(before.javascript);
+    const [second] = await fixer.lintText(result?.output ?? source, {filePath: "policy.tsx"});
+    expect(second?.output).toBeUndefined();
+    expect(second?.messages).toEqual([]);
+  });
+  it("does not use another removable producer annotation as its survival proof", async () => {
+    const source = `${PRIVATE_PREFIX}interface Animal {readonly name: string} interface Dog extends Animal {readonly email: string} const typedAccount: Dog = account; function label(p: Dog | Animal): string {return p.name;} label(typedAccount);`;
+    expect(nativeContract(source, true).diagnostics).toEqual([]);
+    const [result] = await fixer.lintText(source, {filePath: "policy.tsx"});
+    expect(result?.output).toBeUndefined();
+    expect(result?.messages.map(({ruleId, severity}) => [ruleId, severity])).toEqual([[CONSUMER_UNION, 1]]);
+  });
+  it("retains sole covered type uses under native and strict lint unused checks", async () => {
+    const prefix = "export {}; interface Animal {readonly name: string} interface Dog extends Animal {readonly email: string} const account = {name: 'Ada', email: 'a'};";
+    const source = `${prefix}function label(p: Dog | Animal): string {return p.name;} label(account);`;
+    expect(nativeContract(source, true).diagnostics).toEqual([]);
+    const naive = source.replace("Dog | Animal", "Animal");
+    expect(nativeContract(naive, true).diagnostics.some((code) => code === 6196 || code === 6133)).toBe(true);
+    const strict = new ESLint({cwd: FIXTURE_ROOT, overrideConfigFile: true,
+      overrideConfig: [...selectedConfig(factory), {rules: {"@typescript-eslint/no-unused-vars": "error"}}], fix: true});
+    const [result] = await strict.lintText(source, {filePath: "policy.tsx"});
+    expect(result?.output).toBeUndefined();
+    expect(result?.messages.map(({ruleId, severity}) => [ruleId, severity])).toEqual([[CONSUMER_UNION, 1]]);
+    const [counterexample] = await strict.lintText(naive, {filePath: "policy.tsx"});
+    expect(counterexample?.messages.some(({ruleId, severity}) => ruleId === "@typescript-eslint/no-unused-vars" && severity === 2)).toBe(true);
+    const pair = `${prefix}function first(p: Dog | Animal): string {return p.name;} function second(p: Dog | Animal): string {return p.name;} first(account); second(account);`;
+    expect(nativeContract(pair, true).diagnostics).toEqual([]);
+    expect(nativeContract(pair.replaceAll("Dog | Animal", "Animal"), true).diagnostics.some((code) => code === 6196 || code === 6133)).toBe(true);
+    const [two] = await strict.lintText(pair, {filePath: "policy.tsx"});
+    expect(two?.output).toBeUndefined();
+    expect(two?.messages.map(({ruleId, severity}) => [ruleId, severity])).toEqual([[CONSUMER_UNION, 1], [CONSUMER_UNION, 1]]);
+  });
+  it("refuses the fresh-literal TS2353 and invalid-identifier TS2345 counterexamples", async () => {
+    const declaration = "function label(p: {readonly name: string; readonly email: string}): string {return p.name;}";
+    const fresh = `export {}; ${declaration} label({name: 'Ada', email: 'a'});`;
+    expect(nativeContract(fresh).diagnostics).toEqual([]);
+    expect(nativeContract(fresh.replace("readonly email: string", "")).diagnostics).toContain(2353);
+    const [freshResult] = await fixer.lintText(fresh, {filePath: "policy.tsx"});
+    expect(freshResult?.output).toBeUndefined();
+    const invalid = `export {}; const account = {name: 'Ada', email: 42}; ${declaration} label(account);`;
+    expect(nativeContract(invalid).diagnostics).toContain(2345);
+    expect(nativeContract(invalid.replace("readonly email: string", "")).diagnostics).toEqual([]);
+    const [invalidResult] = await fixer.lintText(invalid, {filePath: "policy.tsx"});
+    expect(invalidResult?.output).toBeUndefined();
+    expect(invalidResult?.messages.map(({ruleId, severity}) => [ruleId, severity])).toEqual([[DEPENDENCY, 1]]);
+  });
+  it("preserves an optional covering field that can reject an existing identifier", async () => {
+    const source = "export {}; interface Source {readonly name: string; readonly email: string} interface Covering {readonly name: string; readonly extra?: string} const account = {name: 'Ada', email: 'a', extra: 123}; function label(p: Source | Covering): string {return p.name;} label(account);";
+    expect(nativeContract(source).diagnostics).toEqual([]);
+    expect(nativeContract(source.replace("Source | Covering", "Covering")).diagnostics).toContain(2345);
+    const [result] = await fixer.lintText(source, {filePath: "policy.tsx"});
+    expect(result?.output).toBeUndefined();
+    expect(result?.messages).toEqual([]);
+  });
+  it("retains a necessary ts-expect-error instead of creating TS2578", async () => {
+    const source = "export {}; const account = {name: 'Ada'}; function label(p: {readonly name: string; readonly email: string}): string {return p.name;}\n// @ts-expect-error the original contract requires email\nlabel(account);";
+    expect(nativeContract(source).diagnostics).toEqual([]);
+    expect(nativeContract(source.replace("readonly email: string", "")).diagnostics).toContain(2578);
+    const [result] = await fixer.lintText(source, {filePath: "policy.tsx"});
+    expect(result?.output).toBeUndefined();
+    expect(result?.messages.map(({ruleId, severity}) => [ruleId, severity])).toEqual([[DEPENDENCY, 1]]);
   });
 });

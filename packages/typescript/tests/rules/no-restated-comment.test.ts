@@ -107,28 +107,28 @@ RULE_TESTER.run("no-restated-comment", rule, {
     },
   ],
   invalid: [
-    { name: "does not group an unrelated type query", code: "// Serialize key\nconst key = serialize(input);\ntype Payload = typeof other;", errors: [{ messageId: "restatesLineBelow", suggestions: 1 }] },
+    { name: "does not group an unrelated type query", code: "// Serialize key\nconst key = serialize(input);\ntype Payload = typeof other;", output: "\nconst key = serialize(input);\ntype Payload = typeof other;", errors: [{ messageId: "restatesLineBelow", suggestions: 1 }] },
     {
       name: "uses identifiers inside template interpolations but not template text",
-      code: "// serialized values\nreturn `${serializeValues(input)}`;",
+      code: "// serialized values\nreturn `${serializeValues(input)}`;", output: "\nreturn `${serializeValues(input)}`;",
       errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
     },
     {
       name: "does not treat a preceding trailing comment as a paragraph",
       code: "run(); // trace\n// Serialize key\nconst key = serialize(input);",
-      output: null,
+      output: "run(); // trace\n\nconst key = serialize(input);",
       errors: [{ messageId: "restatesLineBelow", suggestions: [{ messageId: "deleteComment", output: "run(); // trace\nconst key = serialize(input);" }] }],
     },
     {
       name: "does not treat a trailing comment as a prose paragraph",
       code: "// Serialize key\nconst key = serialize(input); // trace",
-      output: null,
+      output: "\nconst key = serialize(input); // trace",
       errors: [{ messageId: "restatesLineBelow", suggestions: [{ messageId: "deleteComment", output: "const key = serialize(input); // trace" }] }],
     },
     {
-      name: "offers whole-line deletion without applying an autofix",
+      name: "automatically deletes a redundant whole-line comment",
       code: NO_RESTATED_COMMENT_DOCUMENTATION.examples[1].files[0].source,
-      output: null,
+      output: "\nconst key = serialize(input);",
       errors: [
         {
           messageId: "restatesLineBelow",
@@ -142,17 +142,17 @@ RULE_TESTER.run("no-restated-comment", rule, {
       ],
     },
     {
-      code: "// Serialize key\nconst [key] = serialize(_k);\nreturn null;",
+      code: "// Serialize key\nconst [key] = serialize(_k);\nreturn null;", output: "\nconst [key] = serialize(_k);\nreturn null;",
       errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
     },
     {
-      code: "// issue path length\nconst issues = sortByPathLength(error.issues);\nreturn null;",
+      code: "// issue path length\nconst issues = sortByPathLength(error.issues);\nreturn null;", output: "\nconst issues = sortByPathLength(error.issues);\nreturn null;",
       errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
     },
     {
       name: "preserves CRLF while deleting an indented comment line",
       code: "function collect() {\r\n\t// issue path length\r\n\treturn sortByPathLength(error.issues);\r\n}",
-      output: null,
+      output: "function collect() {\r\n\r\n\treturn sortByPathLength(error.issues);\r\n}",
       errors: [
         {
           messageId: "restatesLineBelow",
@@ -166,18 +166,18 @@ RULE_TESTER.run("no-restated-comment", rule, {
       ],
     },
     {
-      code: "// Get the cached page data\nconst pageData = pageKey ? getCache().data : undefined;\nreturn null;",
+      code: "// Get the cached page data\nconst pageData = pageKey ? getCache().data : undefined;\nreturn null;", output: "\nconst pageData = pageKey ? getCache().data : undefined;\nreturn null;",
       errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
     },
     // The trailing-`e` strip makes the inflection fold symmetric, so
     // `serialized` and `serialize` land on the same stem.
     {
-      code: "// serialized values\nconst out = serializeValues(input);\nreturn null;",
+      code: "// serialized values\nconst out = serializeValues(input);\nreturn null;", output: "\nconst out = serializeValues(input);\nreturn null;",
       errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
     },
     {
       name: "reports a restatement at the eight-word budget",
-      code: "// cached page data result output value item record\nconst cachedPageDataResultOutputValueItemRecord = getCachedPageDataResultOutputValueItemRecord();\nreturn null;",
+      code: "// cached page data result output value item record\nconst cachedPageDataResultOutputValueItemRecord = getCachedPageDataResultOutputValueItemRecord();\nreturn null;", output: "\nconst cachedPageDataResultOutputValueItemRecord = getCachedPageDataResultOutputValueItemRecord();\nreturn null;",
       errors: [{ messageId: "restatesLineBelow", suggestions: 1 }],
     },
   ],

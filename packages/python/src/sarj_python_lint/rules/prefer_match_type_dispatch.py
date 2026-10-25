@@ -98,8 +98,9 @@ class PreferMatchTypeDispatch(Rule):
             "that share behavior with an OR-pattern."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes require a closed private nested synchronous helper with proven inert containing scopes and exact primitive literal callers. Only comment-free builtin class-check ladders on one parameter qualify; unknown subjects, callbacks, frame/closure escapes, sibling checks, grouped conditions, guards and custom classes remain review-only.",
             "General dispatch requires three or more adjacent, unguarded `isinstance` branches over the same simple name. Two arms are checked only for an exact `ast.Name.id` / `ast.Attribute.attr` projection followed by a None-returning fallback.",
             "A terminating sibling prefix may precede a two-arm if/elif tail whose bodies can fall through. Preserve nested checks inside case bodies rather than moving them into case guards.",
             "The checked types must be unshadowed builtins, undecorated module-local classes without an explicit or known locally inherited custom metaclass, or proven stdlib ast classes; unresolved imports, runtime type groups, repeated type references, generated files, and non-terminating sibling checks are excluded.",
@@ -226,6 +227,29 @@ class PreferMatchTypeDispatch(Rule):
                 focus_path=PurePosixPath("app/bindings.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def label():\n    def _label(value):\n        if isinstance(value, str):\n            return 'text'\n        elif isinstance(value, bytes):\n            return 'bytes'\n        elif isinstance(value, int):\n            return 'number'\n        return 'other'\n    return _label('sample')\n"
+                        ),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def label():\n    def _label(value):\n        match value:\n            case str():\n                return 'text'\n            case bytes():\n                return 'bytes'\n            case int():\n                return 'number'\n        return 'other'\n    return _label('sample')\n"
+                        ),
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )

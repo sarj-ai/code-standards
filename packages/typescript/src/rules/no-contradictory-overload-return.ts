@@ -3,17 +3,18 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-contradictory-overload-return.test.ts
  */
-import { ESLintUtils } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, ESLintUtils, type ParserServicesWithTypeInformation, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
 import { isGeneratedFile } from "./_paths.js";
 
 type Options = readonly [];
 type MessageIds = "contradictoryReturn";
 type Primitive = string | number | boolean | null;
 interface LiteralValue { readonly node: ts.Expression; readonly value: Primitive; }
-interface LiteralCase { readonly input: LiteralValue; readonly output: ts.Type; }
+interface LiteralCase { readonly input: LiteralValue; readonly output: ts.Type; readonly declaration: ts.FunctionDeclaration; }
 type Branch =
   | { readonly kind: "literal"; readonly node: ts.Expression; readonly value: LiteralValue }
   | { readonly kind: "record"; readonly node: ts.Expression; readonly values: ReadonlyMap<string, LiteralValue> };
@@ -23,8 +24,9 @@ export const NO_CONTRADICTORY_OVERLOAD_RETURN_DOCUMENTATION = {
   summary: "Preserve the input/result relationship promised by literal overloads.",
   rationale: "TypeScript checks an overload implementation against an overall envelope, without proving each input/result relationship. A function can compile while returning the opposite domain variant for every advertised literal input.",
   remediation: "Return the variant promised for each input. Prefer a checked case map or separate variant-specific operations when that makes the relationship explicit; retain overloads required by public APIs.",
-  category: "correctness", defaultLevel: "warning", autofix: "none",
+  category: "correctness", defaultLevel: "warning", autofix: "safe",
   limitations: [
+    "Automatic fixes align only an unused private complete same-file overload group with its existing literal implementation results. Binding aliases, exports, merges, eval, declaration files, comments, nonliteral result syntax and observed callers preserve manual ownership; runtime checks and returned values never change.",
     "Requires type information and a top-level non-generic, synchronous function with two to 32 unique, single-required-parameter overloads. Each public input must be a directly authored string, finite number, boolean or null literal. Broad, duplicate, aliased, optional, rest and multi-parameter inputs are excluded.",
     "The implementation must have one required identifier parameter and only return a strict literal equality/inequality conditional. Both branches must be primitive literals or flat objects containing only primitive literal property assignments. Calls, computed keys, getters, spreads, duplicate keys and __proto__ are excluded.",
     "Reports only a concrete returned literal incompatible with its primitive contract or an explicit returned property incompatible with the corresponding primitive property contract. Missing properties, arbitrary structural incompatibility, brands, enums, opaque types, effects and general control flow are outside this proof.",
@@ -34,13 +36,31 @@ export const NO_CONTRADICTORY_OVERLOAD_RETURN_DOCUMENTATION = {
   examples: [
     { id: "correct-case-results", title: "Match each literal input with its result", outcome: "no-match", files: [{ path: "src/load.ts", source: 'function load(kind: "text"): {kind: "text"};\nfunction load(kind: "count"): {kind: "count"};\nfunction load(kind: "text" | "count"): {kind: "text" | "count"} { return kind === "text" ? {kind: "text"} : {kind: "count"}; }' }], focusPath: "src/load.ts", expectedCount: 0, public: true },
     { id: "inverted-case-results", title: "Do not swap domain variants behind overloads", outcome: "match", files: [{ path: "src/load.ts", source: 'function load(kind: "text"): {kind: "text"};\nfunction load(kind: "count"): {kind: "count"};\nfunction load(kind: "text" | "count"): {kind: "text" | "count"} { return kind === "text" ? {kind: "count"} : {kind: "text"}; }' }], focusPath: "src/load.ts", expectedCount: 2, public: true },
+    {
+      id: "safe-autofix",
+      title: "Align an unused private overload group with its literal results",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "export {}; function choose(value: \"a\"): \"left\"; function choose(value: \"b\"): \"right\"; function choose(value: \"a\" | \"b\"): \"left\" | \"right\" { return value === \"a\" ? \"right\" : \"left\"; }" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "export {}; function choose(value: \"a\"): \"right\"; function choose(value: \"b\"): \"left\"; function choose(value: \"a\" | \"b\"): \"left\" | \"right\" { return value === \"a\" ? \"right\" : \"left\"; }" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 2,
+    },
+    {
+      id: "safe-autofix-record",
+      title: "Align an unused private overload group with its flat literal result",
+      outcome: "match",
+      files: [{ path: "src/autofix-record.ts", source: "export {}; function load(kind: \"text\"): {kind: \"text\"}; function load(kind: \"count\"): {kind: \"count\"}; function load(kind: \"text\" | \"count\"): {kind: \"text\" | \"count\"} { return kind === \"text\" ? {kind: \"count\"} : {kind: \"text\"}; }" }],
+      fixedFiles: [{ path: "src/autofix-record.ts", source: "export {}; function load(kind: \"text\"): { \"kind\": \"count\" }; function load(kind: \"count\"): { \"kind\": \"text\" }; function load(kind: \"text\" | \"count\"): {kind: \"text\" | \"count\"} { return kind === \"text\" ? {kind: \"count\"} : {kind: \"text\"}; }" }],
+      focusPath: "src/autofix-record.ts",
+      expectedCount: 2,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
 export default createRule<Options, MessageIds>({
   name: "no-contradictory-overload-return", documentation: NO_CONTRADICTORY_OVERLOAD_RETURN_DOCUMENTATION,
   meta: {
-    type: "problem", docs: { description: NO_CONTRADICTORY_OVERLOAD_RETURN_DOCUMENTATION.summary }, schema: [],
+    type: "problem", fixable: "code", docs: { description: NO_CONTRADICTORY_OVERLOAD_RETURN_DOCUMENTATION.summary }, schema: [],
     messages: { contradictoryReturn: "For input {{input}}, this returned literal contradicts the overload result {{expected}}. Preserve the input/result relationship in a checked case map, implementation or variant-specific operation." },
   }, defaultOptions: [],
   create(context) {
@@ -53,20 +73,77 @@ export default createRule<Options, MessageIds>({
       const implementation = services.esTreeNodeToTSNodeMap.get(node);
       const proof = implementationProof(implementation, checker);
       if (proof === undefined || (!strictNulls && proof.cases.some((entry) => entry.input.value === null))) return;
+      const fix = privateOverloadFix(context.sourceCode, context.filename, node, implementation, proof, services);
+      let offerFix = true;
       const reported = new Set<ts.Expression>();
       for (const entry of proof.cases) {
         const branch = (entry.input.value === proof.condition.value) === proof.equal ? proof.yes : proof.no;
         for (const literal of mismatches(branch, entry.output, checker)) {
           if (reported.has(literal.node)) continue;
           reported.add(literal.node);
-          context.report({ node: services.tsNodeToESTreeNodeMap.get(literal.node), messageId: "contradictoryReturn", data: {
+          context.report({ node: services.tsNodeToESTreeNodeMap.get(literal.node), messageId: "contradictoryReturn", fix: offerFix ? fix : null, data: {
             input: JSON.stringify(entry.input.value), expected: checker.typeToString(entry.output),
           } });
+          offerFix = false;
         }
       }
     } };
   },
 });
+
+
+function privateOverloadFix(
+  sourceCode: Readonly<TSESLint.SourceCode>,
+  filename: string,
+  node: TSESTree.FunctionDeclaration,
+  implementation: ts.FunctionDeclaration,
+  proof: NonNullable<ReturnType<typeof implementationProof>>,
+  services: ParserServicesWithTypeInformation,
+): TSESLint.ReportFixFunction | null {
+  const declarations = [implementation, ...proof.cases.map((entry) => entry.declaration)];
+  const owners = declarations.map((declaration) => services.tsNodeToESTreeNodeMap.get(declaration));
+  if (node.id === null || !isUnusedPrivateBinding(sourceCode, node, node.id, filename, owners) ||
+    !declarations.every((declaration) => declaration.getSourceFile() === implementation.getSourceFile()) ||
+    owners.some((owner) => owner.parent?.type !== AST_NODE_TYPES.Program || sourceCode.getCommentsInside(owner).length > 0 || sourceCode.getCommentsBefore(owner).length > 0)) return null;
+  const parameter = directParameter(implementation);
+  if (parameter === undefined || !primitiveResultSyntax(parameter.type) ||
+    (implementation.type !== undefined && !directResultSyntax(implementation.type)) ||
+    proof.cases.some((entry) => entry.declaration.type === undefined || !directResultSyntax(entry.declaration.type))) return null;
+  const edits: { readonly node: TSESTree.Node; readonly text: string }[] = [];
+  const checker = services.program.getTypeChecker();
+  for (const entry of proof.cases) {
+    const branch = (entry.input.value === proof.condition.value) === proof.equal ? proof.yes : proof.no;
+    if (mismatches(branch, entry.output, checker).length === 0) continue;
+    const annotation = entry.declaration.type;
+    if (annotation === undefined) return null;
+    const target = services.tsNodeToESTreeNodeMap.get(annotation);
+    edits.push({ node: target, text: `${branchResultType(branch, sourceCode, services)}${sourceCode.getText(target).replace(/[^\r\n]/gu, "")}` });
+  }
+  return edits.length === 0 ? null : (fixer) => edits.map((edit) => fixer.replaceText(edit.node, edit.text));
+}
+
+function directResultSyntax(node: ts.TypeNode): boolean {
+  if (ts.isParenthesizedTypeNode(node)) return directResultSyntax(node.type);
+  if (ts.isUnionTypeNode(node)) return node.types.length <= LIMIT && node.types.every(directResultSyntax);
+  if (!ts.isTypeLiteralNode(node)) return primitiveResultSyntax(node);
+  return node.members.every((member) => ts.isPropertySignature(member) && propertyKey(member.name) !== undefined &&
+    member.type !== undefined && primitiveResultSyntax(member.type));
+}
+
+function primitiveResultSyntax(node: ts.TypeNode): boolean {
+  if (ts.isParenthesizedTypeNode(node)) return primitiveResultSyntax(node.type);
+  if (ts.isUnionTypeNode(node)) return node.types.length <= LIMIT && node.types.every(primitiveResultSyntax);
+  if (ts.isLiteralTypeNode(node)) return primitiveLiteral(node.literal) !== undefined;
+  return node.kind === ts.SyntaxKind.StringKeyword || node.kind === ts.SyntaxKind.NumberKeyword ||
+    node.kind === ts.SyntaxKind.BooleanKeyword || node.kind === ts.SyntaxKind.UndefinedKeyword || node.kind === ts.SyntaxKind.NeverKeyword;
+}
+
+function branchResultType(branch: Branch, sourceCode: Readonly<TSESLint.SourceCode>, services: ParserServicesWithTypeInformation): string {
+  const valueType = (literal: LiteralValue): string => typeof literal.value === "string"
+    ? sourceCode.getText(services.tsNodeToESTreeNodeMap.get(literal.node)) : String(literal.value);
+  if (branch.kind === "literal") return valueType(branch.value);
+  return `{ ${[...branch.values].map(([key, value]) => `${JSON.stringify(key)}: ${valueType(value)}`).join("; ")} }`;
+}
 
 function implementationProof(node: ts.FunctionDeclaration, checker: ts.TypeChecker) {
   const parameter = directParameter(node);
@@ -113,7 +190,7 @@ function overloadCases(node: ts.FunctionDeclaration, implementationOutput: ts.Ty
     const output = checker.getReturnTypeOfSignature(signature);
     if (!checker.isTypeAssignableTo(output, implementationOutput)) return undefined;
     seen.add(input.value);
-    cases.push({ input, output });
+    cases.push({ input, output, declaration });
   }
   return cases.length >= 2 ? cases : undefined;
 }

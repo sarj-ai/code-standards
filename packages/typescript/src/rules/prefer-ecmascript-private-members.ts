@@ -14,6 +14,8 @@ import {
 
 import {
   convertibleMemberName,
+  isUnobservedPrivateClass,
+  privateMemberFixes,
   type PrivateConvertibleMember,
 } from "./_class-private.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -27,10 +29,10 @@ export const PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION = {
   rationale: "ECMAScript private names enforce encapsulation at runtime instead of erasing the boundary during compilation.",
   remediation: "Review reflection, instance escape and framework contracts before replacing TypeScript privacy with ECMAScript private names and updating references.",
   category: "maintainability",
-  autofix: "none",
+  autofix: "safe",
   limitations: [
     "Ambient, abstract, computed, decorated, override, parameter-property, and generated declarations are excluded.",
-    "Migration is report-only: type information cannot prove that instances or constructors never escape through this, or that reflection and framework serialization do not observe ordinary private properties.",
+    "Automatic conversion is limited to unused private module/block classes with no heritage, decorators, computed members, static execution, or eval. Other migration is report-only: type information cannot prove that instances or constructors never escape through this, or that reflection and framework serialization do not observe ordinary private properties.",
   ],
   references: ["https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Classes/Private_elements"],
   examples: [
@@ -52,12 +54,22 @@ export const PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION = {
       expectedCount: 1,
       public: true,
     },
+    {
+      id: "safe-autofix",
+      title: "Apply the proven automatic correction",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "export {}; class Vault { private read() { return 1; } open() { return this.read(); } }" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "export {}; class Vault { #read() { return 1; } open() { return this.#read(); } }" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
 function reportClass(
   context: Readonly<TSESLint.RuleContext<MessageIds, Options>>,
   owner: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
+  services: ParserServicesWithTypeInformation,
 ): void {
   const groups = new Map<string, PrivateConvertibleMember[]>();
   for (const member of owner.body.body) {
@@ -75,6 +87,7 @@ function reportClass(
       node: first.key,
       messageId: "preferEcmascriptPrivate",
       data: { name },
+      fix: isUnobservedPrivateClass(context.sourceCode, owner, context.filename) ? (privateMemberFixes(context, services, owner, members, true) ?? null) : null,
     });
   }
 }
@@ -102,6 +115,7 @@ export default createRule<Options, MessageIds>({
   documentation: PREFER_ECMASCRIPT_PRIVATE_MEMBERS_DOCUMENTATION,
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: { description: "Prefer ECMAScript `#private` class members over TypeScript-only `private` members." },
     schema: [],
     messages: {
@@ -120,8 +134,8 @@ export default createRule<Options, MessageIds>({
     }
     if (services === null) return {};
     return {
-      ClassDeclaration: (node): void => reportClass(context, node),
-      ClassExpression: (node): void => reportClass(context, node),
+      ClassDeclaration: (node): void => reportClass(context, node, services),
+      ClassExpression: (node): void => reportClass(context, node, services),
     };
   },
 });

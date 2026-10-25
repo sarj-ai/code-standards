@@ -70,7 +70,8 @@ RULE_TESTER.run("no-redundant-optional-array-default", rule, {
     {
       name: "accepts the documented array default",
       filename: PRODUCTION,
-      code: NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION.examples[0].files[0].source,
+      code: NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION.examples[0]
+        .files[0].source,
     },
     {
       name: "does not touch string defaults",
@@ -110,7 +111,7 @@ RULE_TESTER.run("no-redundant-optional-array-default", rule, {
     {
       name: "ignores a same-shaped local API",
       filename: PRODUCTION,
-      code: 'const z = toolkit; const Items = z.array(z.string()).optional().default([]);',
+      code: "const z = toolkit; const Items = z.array(z.string()).optional().default([]);",
     },
     {
       name: "ignores a same-shaped non-Zod import",
@@ -125,76 +126,117 @@ RULE_TESTER.run("no-redundant-optional-array-default", rule, {
     {
       name: "ignores test files",
       filename: "src/schema.test.ts",
-      code: NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION.examples[1].files[0].source,
+      code: NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION.examples[1]
+        .files[0].source,
     },
     {
       name: "ignores generated files",
       filename: "src/generated/schema.ts",
-      code: NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION.examples[1].files[0].source,
+      code: NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION.examples[1]
+        .files[0].source,
     },
   ],
   invalid: [
     {
+      name: "fixes an exclusively owned aliased legacy namespace",
+      filename: PRODUCTION,
+      code: "import * as schema from 'zod/v3'; const Items = schema.array(schema.string()).optional().default([]);",
+      output:
+        "import * as schema from 'zod/v3'; const Items = schema.array(schema.string()).default([]);",
+      errors: [{ messageId: "redundantOptionalArrayDefault" }],
+    },
+    {
+      name: "preserves a public legacy schema's wrapper introspection",
+      filename: PRODUCTION,
+      code: "import { z } from 'zod/v3'; export const Items = z.array(z.string()).optional().default([]);",
+      output: null,
+      errors: [{ messageId: "redundantOptionalArrayDefault" }],
+    },
+    {
+      name: "preserves a legacy factory prototype observer",
+      filename: PRODUCTION,
+      code: "import { z } from 'zod/v3'; z.array(z.string()).constructor.prototype.optional = observe; const Items = z.array(z.string()).optional().default([]);",
+      output: null,
+      errors: [{ messageId: "redundantOptionalArrayDefault" }],
+    },
+    {
+      name: "preserves legacy runtime observations after the declaration",
+      filename: PRODUCTION,
+      code: "import { z } from 'zod/v3'; const Items = z.array(z.string()).optional().default([]); observe();",
+      output: null,
+      errors: [{ messageId: "redundantOptionalArrayDefault" }],
+    },
+    {
+      name: "preserves legacy schema type references",
+      filename: PRODUCTION,
+      code: "import { z } from 'zod/v3'; const Items = z.array(z.string()).optional().default([]); type Item = typeof Items;",
+      output: null,
+      errors: [{ messageId: "redundantOptionalArrayDefault" }],
+    },
+
+    {
       name: "preserves Zod 3 semantics with a literal array fallback",
       filename: PRODUCTION,
       code: 'import { z } from "zod/v3"; const Items = z.array(z.string()).optional().default([]);',
-      output: 'import { z } from "zod/v3"; const Items = z.array(z.string()).default([]);',
+      output:
+        'import { z } from "zod/v3"; const Items = z.array(z.string()).default([]);',
       errors: [{ messageId: "redundantOptionalArrayDefault" }],
     },
     {
       name: "supports a function returning a literal array",
       filename: PRODUCTION,
       code: 'import { z } from "zod/v3"; const Items = z.array(z.string()).optional().default(function () { return []; });',
-      output: 'import { z } from "zod/v3"; const Items = z.array(z.string()).default(function () { return []; });',
+      output: null,
       errors: [{ messageId: "redundantOptionalArrayDefault" }],
     },
     {
       name: "supports an arrow block returning a literal array",
       filename: PRODUCTION,
       code: 'import { z } from "zod/v3"; const Items = z.array(z.string()).optional().default(() => { return []; });',
-      output: 'import { z } from "zod/v3"; const Items = z.array(z.string()).default(() => { return []; });',
+      output: null,
       errors: [{ messageId: "redundantOptionalArrayDefault" }],
     },
     {
-      name: "reports and fixes the documented redundant optional",
+      name: "reports the documented Zod 4 chain without suppressing constructor hooks",
       filename: PRODUCTION,
-      code: NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION.examples[1].files[0].source,
-      output: 'import { z } from "zod"; const Items = z.array(z.string()).default([]);',
+      code: NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION.examples[1]
+        .files[0].source,
+      output: null,
       errors: [{ messageId: "redundantOptionalArrayDefault" }],
     },
     {
       name: "supports array method syntax",
       filename: PRODUCTION,
       code: 'import { z } from "zod"; const Items = z.string().array().optional().default([]);',
-      output: 'import { z } from "zod"; const Items = z.string().array().default([]);',
+      output: null,
       errors: [{ messageId: "redundantOptionalArrayDefault" }],
     },
     {
       name: "supports lazy array defaults",
       filename: PRODUCTION,
       code: 'import { z } from "zod"; const Items = z.array(z.string()).optional().default(() => []);',
-      output: 'import { z } from "zod"; const Items = z.array(z.string()).default(() => []);',
+      output: null,
       errors: [{ messageId: "redundantOptionalArrayDefault" }],
     },
     {
       name: "resolves an aliased namespace import",
       filename: PRODUCTION,
       code: 'import { z as schema } from "zod/v4"; const Items = schema.array(schema.string()).optional().default([]);',
-      output: 'import { z as schema } from "zod/v4"; const Items = schema.array(schema.string()).default([]);',
+      output: null,
       errors: [{ messageId: "redundantOptionalArrayDefault" }],
     },
     {
       name: "resolves an aliased named array constructor",
       filename: PRODUCTION,
       code: 'import { array as list, string } from "zod"; const Items = list(string()).optional().default([]);',
-      output: 'import { array as list, string } from "zod"; const Items = list(string()).default([]);',
+      output: null,
       errors: [{ messageId: "redundantOptionalArrayDefault" }],
     },
     {
       name: "finds the pair below an outer metadata method",
       filename: PRODUCTION,
       code: 'import * as schema from "zod"; const Items = schema.array(schema.string()).optional().default([]).describe("items");',
-      output: 'import * as schema from "zod"; const Items = schema.array(schema.string()).default([]).describe("items");',
+      output: null,
       errors: [{ messageId: "redundantOptionalArrayDefault" }],
     },
   ],

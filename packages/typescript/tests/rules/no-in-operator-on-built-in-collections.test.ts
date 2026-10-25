@@ -17,7 +17,9 @@ const RULE_TESTER = new RuleTester({
   languageOptions: {
     parser: tsParser,
     parserOptions: {
-      projectService: { allowDefaultProject: ["*.ts*", "*/*.ts*", "*/*/*.ts*"] },
+      projectService: {
+        allowDefaultProject: ["*.ts*", "*/*.ts*", "*/*/*.ts*"],
+      },
       tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
     },
   },
@@ -27,7 +29,8 @@ RULE_TESTER.run("no-in-operator-on-built-in-collections", rule, {
   valid: [
     {
       name: "accepts the documented object narrowing example",
-      code: NO_IN_OPERATOR_ON_BUILT_IN_COLLECTIONS_DOCUMENTATION.examples[1].files[0].source,
+      code: NO_IN_OPERATOR_ON_BUILT_IN_COLLECTIONS_DOCUMENTATION.examples[1]
+        .files[0].source,
     },
     "declare const object: Record<string, unknown>; declare const key: string; if (key in object) use(key);",
     "declare const values: string[]; declare const index: number; if (index in values) use(index);",
@@ -47,8 +50,58 @@ RULE_TESTER.run("no-in-operator-on-built-in-collections", rule, {
   ],
   invalid: [
     {
+      name: "retains an inferred type predicate on an unknown Map property",
+      code: "export function hasField(cache: Map<string, object>) { return 'newField' in cache; }",
+      output: null,
+      errors: [{ messageId: "ambiguousCollectionIn" }],
+    },
+    {
+      name: "retains unsupported boundary 1",
+      code: "export function hasSize(cache: Map<string, object>, key: string): boolean { return key in cache; }",
+      output: null,
+      errors: [{ messageId: "ambiguousCollectionIn" }],
+    },
+    {
+      name: "retains unsupported boundary 2",
+      code: "export function hasSize(cache: Map<string, object>): boolean { if ('size' in cache) return cache.size > 0; return false; }",
+      output: null,
+      errors: [{ messageId: "ambiguousCollectionIn" }],
+    },
+    {
+      name: "retains unsupported boundary 3",
+      code: "export function hasSize(Reflect: Map<string, object>): boolean { return 'size' in Reflect; }",
+      output: null,
+      errors: [{ messageId: "ambiguousCollectionIn" }],
+    },
+    {
+      name: "retains unsupported boundary 4",
+      code: "import './patch-reflect.js'; export function hasSize(cache: Map<string, object>): boolean { return 'size' in cache; }",
+      output: null,
+      errors: [{ messageId: "ambiguousCollectionIn" }],
+    },
+    {
+      name: "retains unsupported boundary 5",
+      code: "export function hasSize(cache: Map<string, object>): boolean { /* property policy */ return 'size' in cache; }",
+      output: null,
+      errors: [{ messageId: "ambiguousCollectionIn" }],
+    },
+    {
+      name: "retains unsupported boundary 6",
+      code: "export function hasSize(cache: Map<string, object>): cache is Map<string, object> { return 'size' in cache; }",
+      output: null,
+      errors: [{ messageId: "ambiguousCollectionIn" }],
+    },
+    {
+      name: "applies the source-owned exact correction",
+      code: "export function hasSize(cache: Map<string, object>): boolean { return 'size' in cache; }",
+      output:
+        "export function hasSize(cache: Map<string, object>): boolean { return Reflect.has(cache, 'size'); }",
+      errors: [{ messageId: "ambiguousCollectionIn" }],
+    },
+    {
       name: "reports the documented Map entry check",
-      code: NO_IN_OPERATOR_ON_BUILT_IN_COLLECTIONS_DOCUMENTATION.examples[0].files[0].source,
+      code: NO_IN_OPERATOR_ON_BUILT_IN_COLLECTIONS_DOCUMENTATION.examples[0]
+        .files[0].source,
       output: null,
       errors: [{ messageId: "ambiguousCollectionIn" }],
     },

@@ -45,8 +45,10 @@ class NoUnusedUnderscoredKeywordParameter(Rule):
             "Do not erase a precise callback signature with **kwargs or add dummy reads to silence this warning."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes remove unannotated bool/None-default keyword-only inputs only from private unescaped nested synchronous nongenerator helpers with proven direct callers, updating only bool/None literal caller keywords. Module/public/callback contracts, type parameters, comments, reflection, annotations, expanded calls and effectful values remain review-only; native severities are unchanged. Known frame and metadata capabilities, their import aliases and metadata field access prevent fixes.",
+            "Containing callables must also be ordinary synchronous nongenerators with proven inert execution; unknown callouts, properties, overloads, reachable frame-exporting exceptions, and helper references crossing additional function, class, lambda, or comprehension scopes prevent fixes.",
             "ERROR is limited to private synchronous module functions with proven direct callers, no dynamic namespace or variadic/decorated contract, inert builtin bool/None annotations or no annotation, and bool/None defaults and supplied values. Public, method, callback, required-slot and effectful signature/argument cases retain WARNING.",
             "Only underscore-prefixed keyword-only declarations are checked; positional and variadic callback slots are excluded.",
             "Decorated functions other than unshadowed builtin staticmethod/classmethod, inherited methods, and intentional stubs are excluded.",
@@ -56,6 +58,25 @@ class NoUnusedUnderscoredKeywordParameter(Rule):
             "Generated and vendored files are excluded; test source is checked.",
         ),
         examples=(
+            RuleExample(
+                example_id="safe-private-nested-autofix",
+                title="A closed nested helper removes its unused singleton input and callers together",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/sink.py",
+                        "def emit():\n    def _emit(*, _unused=True):\n        return 'ready'\n    return _emit(_unused=False)\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/sink.py", "def emit():\n    def _emit():\n        return 'ready'\n    return _emit()\n"
+                    ),
+                ),
+                focus_path=PurePosixPath("app/sink.py"),
+                expected_count=1,
+                public=False,
+            ),
             RuleExample(
                 example_id="closed-singleton-keyword-input",
                 title="A private helper's unused singleton keyword has no contract or retained value",
@@ -99,7 +120,7 @@ class NoUnusedUnderscoredKeywordParameter(Rule):
         findings: list[Diagnostic] = []
         provenance: ResourceProvenance | None = None
         for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
-            for argument in _unused_parameters(context, function):
+            for argument in unused_keyword_parameters(context, function):
                 if is_suppressed(context.source_lines, argument.lineno, self.code):
                     continue
                 provenance = provenance or context.resource_provenance
@@ -168,7 +189,7 @@ def _inert_annotation(annotation: ast.expr | None, context: PythonFileContext, p
     )
 
 
-def _unused_parameters(
+def unused_keyword_parameters(
     context: PythonFileContext, function: ast.FunctionDef | ast.AsyncFunctionDef
 ) -> tuple[ast.arg, ...]:
     candidates = [argument for argument in function.args.kwonlyargs if argument.arg.startswith("_")]

@@ -6,6 +6,7 @@
 import { AST_NODE_TYPES, type TSESTree, type TSESLint } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { jsdocDecorationFix } from "./_jsdoc-decoration-fix.js";
 import {
   documentsTypedFunction,
   proseGroups,
@@ -20,15 +21,33 @@ const FILE_SELF_REFERENCE_RE = /\bthis (?:file|module)\b/iu;
 const CHANGE_HISTORY_RE = /\b(?:used to|previously|histor(?:y|ical)|keep moving|models? (?:move|moved|change|changed)|still under review)\b/iu;
 const IMPLEMENTATION_MAP_RE = /\b(?:everything (?:above|below)|nothing else|only thing|write half|maps? between|seam between)\b/iu;
 
+const DECORATED_HEADER = [
+  "/**",
+  " * This file is the seam between the local draft and backend models.",
+  " * Everything above it uses the local application representation for each record.",
+  " * Everything below it uses the separate wire representation for each record.",
+  " * This module translates fields between those two representations during each request.",
+  " * ++++++++",
+  " * The backend models changed several times during early implementation work.",
+  " * Each historical change required another edit in this local adapter module.",
+  " * The write half previously assembled several records together in one operation.",
+  " * It now saves each record separately through the route that owns it.",
+  " * Clear contract types should express this boundary through the actual declarations.",
+  " */",
+  "const value = 1;",
+].join("\n");
+
 export const EXCESSIVE_COMMENTARY_DOCUMENTATION = {
   defaultLevel: "warning",
   summary: "Flag long standalone implementation commentary that should be expressed by code.",
   rationale: "Narrative implementation paragraphs compete with the code and can drift independently from behavior.",
   remediation: "Delete narration and clarify names, types, or structure; retain only durable constraints and external contracts.",
   category: "maintainability",
+  autofix: "safe",
   limitations: [
     "Only an unattached file-header JSDoc block with at least ten non-empty lines and 65 words that narrates file layout or change history is inspected.",
     "Generated files, tests, scripts, stories, licenses, typed API documentation, and comments attached to declarations are excluded.",
+    "Safe fixes blank only interior plus-only decoration when removing those non-prose lines clears the existing volume finding. All prose bytes, comment markers and line endings remain; directives, licenses, examples, literal-output/prompt/credential contexts, Markdown structure and ambiguous comments remain for review.",
   ],
   examples: [
     {
@@ -72,6 +91,15 @@ export const EXCESSIVE_COMMENTARY_DOCUMENTATION = {
       focusPath: "src/adapter.ts",
       expectedCount: 0,
       public: true,
+    },
+    {
+      id: "safe-decoration",
+      title: "Remove decorative volume while retaining the complete narrative",
+      outcome: "match",
+      files: [{ path: "src/adapter.ts", source: DECORATED_HEADER }],
+      fixedFiles: [{ path: "src/adapter.ts", source: DECORATED_HEADER.replace("++++++++", "") }],
+      focusPath: "src/adapter.ts",
+      expectedCount: 1,
     },
   ],
 } as const satisfies RuleDocumentation;
@@ -135,6 +163,7 @@ export default createRule<Options, MessageIds>({
   documentation: EXCESSIVE_COMMENTARY_DOCUMENTATION,
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: {
       description: EXCESSIVE_COMMENTARY_DOCUMENTATION.summary,
     },
@@ -159,7 +188,11 @@ export default createRule<Options, MessageIds>({
               !group.hasTypedTags &&
               !documentsTypedFunction(context.sourceCode, group.comment) &&
               !documentsTypeOrMember(context.sourceCode, group.comment)
-            ) context.report({ node: group.comment, messageId: "excessive" });
+            ) context.report({
+              node: group.comment,
+              messageId: "excessive",
+              fix: jsdocDecorationFix(context.sourceCode, group.comment, (text) => lineCount(text) < ABSOLUTE_JSDOC_LINES),
+            });
           }
         }
       },

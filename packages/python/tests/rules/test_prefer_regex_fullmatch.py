@@ -4,6 +4,7 @@ import re
 import pytest
 from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 
+from sarj_python_lint.autofix import fix_source
 from sarj_python_lint.rule_base import AutofixPolicy, Severity
 from sarj_python_lint.rules.prefer_regex_fullmatch import PreferRegexFullmatch
 
@@ -176,9 +177,11 @@ def test_generated_and_test_files_are_excluded(prefix: str) -> None:
     assert not PreferRegexFullmatch().check(path, prefix + _guard("re.match(r'^a$', value)"))
 
 
-def test_documentation_examples_and_no_fix_policy() -> None:
+def test_documentation_examples_and_conditional_fix_policy() -> None:
     assert PreferRegexFullmatch.documentation is not None
-    assert PreferRegexFullmatch.documentation.autofix is AutofixPolicy.NONE
+    assert PreferRegexFullmatch.documentation.autofix is AutofixPolicy.SAFE
+    dynamic = _guard("re.match(r'^[a-z]+$', value)")
+    assert fix_source(Path("app/validation.py"), dynamic, rule_ids=[PreferRegexFullmatch.id]) == dynamic
     for example in PreferRegexFullmatch.public_examples():
         findings = PreferRegexFullmatch().check(Path(str(example.focus_path)), example.focus_file.source)
         assert len(findings) == example.expected_count

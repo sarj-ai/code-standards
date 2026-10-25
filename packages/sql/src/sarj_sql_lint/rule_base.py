@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from bisect import bisect_right
 from dataclasses import dataclass, replace
 from functools import lru_cache
+from io import StringIO
 from pathlib import Path
 import re
 from string import ascii_lowercase, ascii_uppercase
@@ -46,6 +47,11 @@ _SQL_LINE_END = re.compile(r"\r\n?|\n")
 @lru_cache(maxsize=1)
 def _line_starts(source: str) -> tuple[int, ...]:
     return (0, *(match.end() for match in _SQL_LINE_END.finditer(source)))
+
+
+def physical_lines(source: str, *, keepends: bool = False) -> list[str]:
+    lines = StringIO(source, newline="").readlines()
+    return lines if keepends else [line.removesuffix("\n").removesuffix("\r") for line in lines]
 
 
 def source_location(source: str, offset: int) -> SourceLocation:
@@ -784,8 +790,8 @@ def split_statements(masked: str) -> list[Statement]:
     spans = quoted_identifier_spans(masked)
     starts = tuple(start for start, _ in spans)
     line_offset = 0
-    for lineno, raw_with_ending in enumerate(masked.splitlines(keepends=True), start=1):
-        raw = raw_with_ending.splitlines()[0]
+    for lineno, raw_with_ending in enumerate(physical_lines(masked, keepends=True), start=1):
+        raw = raw_with_ending.removesuffix("\n").removesuffix("\r")
         fragment_start = 0
         for separator in re.finditer(r";", raw):
             position = line_offset + separator.start()

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from hashlib import sha256
+import os
 import subprocess
 from typing import TYPE_CHECKING
 
@@ -285,6 +286,7 @@ def test_staged_fix_respects_index_selection(tmp_path: Path, monkeypatch: pytest
 def test_eslint_only_default_fix_preserves_python_ownership(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, data: bytes
 ) -> None:
+    (tmp_path / "owned.ts").write_text("export const owned = 1;\n")
     (tmp_path / "package.json").write_text('{"name":"example","private":true}\n')
     adopted = replace(MANIFEST, configs=("eslint",))
     (tmp_path / ".sarj-standards.toml").write_text(adopted.render())
@@ -348,3 +350,51 @@ def test_default_fix_stays_within_adopted_python_root(tmp_path: Path, monkeypatc
     assert (backend / "case.py").read_text() == FIXED
     assert (tmp_path / "legacy.py").read_text() == SOURCE
     assert (tmp_path / "invalid.py").read_bytes() == b"\xff\xfe"
+
+
+def test_source_transaction_preserves_bytes_mode_and_group_on_rollback(tmp_path: Path) -> None:
+    path = tmp_path / "owned.py"
+    original = b"# coding: latin-1\r\nname = '\xe9'\r\n"
+    replacement = original.replace(b"name", b"label")
+    path.write_bytes(original)
+    path.chmod(0o751)
+    group = path.stat().st_gid
+    transaction = FileTransaction.capture(tmp_path, (path,), explicit_only=True, source_writes=True)
+    transaction.write_bytes(path, replacement)
+    assert path.read_bytes() == replacement
+    assert path.stat().st_mode & 0o777 == 0o751
+    assert path.stat().st_gid == group
+    assert transaction.rollback().ok
+    assert path.read_bytes() == original
+    assert path.stat().st_mode & 0o777 == 0o751
+    assert path.stat().st_gid == group
+
+
+def test_source_transaction_fsync_race_preserves_concurrent_bytes_and_rolls_back_owned_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = tmp_path / "first.py"
+    last = tmp_path / "last.py"
+    original = SOURCE.encode()
+    replacement = FIXED.encode()
+    concurrent = original + b"unrelated = 1\n"
+    for path in (first, last):
+        path.write_bytes(original)
+    transaction = FileTransaction.capture(tmp_path, (first, last), explicit_only=True, source_writes=True)
+    native_fsync = os.fsync
+
+    def concurrent_fsync(descriptor: int) -> None:
+        native_fsync(descriptor)
+        if first.read_bytes() == replacement and last.read_bytes() == original:
+            last.write_bytes(concurrent)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- The real fsync boundary exposes an in-write concurrent edit.
+        "sarj_rule_contracts.files.os.fsync", concurrent_fsync
+    )
+    transaction.write_bytes(first, replacement)
+    with pytest.raises(ValueError, match="source changed while fixes were prepared"):
+        transaction.write_bytes(last, replacement)
+    assert transaction.rollback().ok
+    assert first.read_bytes() == original
+    assert last.read_bytes() == concurrent
+    assert not list(tmp_path.glob(".sarj-fix-*"))

@@ -42,8 +42,9 @@ class NoUnusedValueMarker(Rule):
             "a real override, or `NotImplementedError` for an unsupported operation; preserve required keyword names."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes remove only primitive literal markers directly in function bodies, inserting pass when necessary. Calls, parameters, resource retention, chained assignments and annotations remain review-only.",
             "Plain and annotated assignments whose standalone target is `_` are reported, including chained assignments.",
             "Formal-parameter references are reported too, including positional, keyword-only, and variadic parameters.",
             "Unpacking placeholders, loop targets, wildcard imports, and underscore-prefixed names are excluded.",
@@ -133,6 +134,15 @@ class NoUnusedValueMarker(Rule):
                 focus_path=PurePosixPath("app/adapter.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("app/service.py", ("def empty():\n    _ = 1\n")),),
+                fixed_files=(ExampleFile.python("app/service.py", ("def empty():\n    pass\n")),),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )

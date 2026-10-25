@@ -6,6 +6,8 @@
 
 import { ASTUtils, AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
+import { retainsNamedTypeUses } from "./_type-binding.js";
+import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
 import { importSpecifierName } from "./_import-specifier-name.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -26,7 +28,9 @@ export const PREFER_ZOD_INFER_DOCUMENTATION = {
   rationale: "A derived type stays synchronized when the runtime schema changes.",
   remediation: "Replace the hand-written twin with `z.infer<typeof Schema>`.",
   category: "correctness",
+  autofix: "safe",
   limitations: [
+    "Automatic fixes use the original imported Zod namespace and existing schema only for an unused private unmerged interface or object alias with a positively identical shape and no declaration-file ownership or comments. Referenced/public contracts and coarse optional matching remain manual.",
     "Only module-level const schemas and module-level type declarations are paired; local declarations are excluded rather than matched by spelling across scopes.",
     "By default every field must positively agree; collection, nested-object and referenced-schema equivalence is not inferred from outer syntax alone.",
     "This is a bounded syntactic comparison, not general type equivalence. Review schema input versus output, interface augmentation, and separately evolving domain contracts before replacing a declaration.",
@@ -34,6 +38,15 @@ export const PREFER_ZOD_INFER_DOCUMENTATION = {
   examples: [
     { id: "inferred-type", title: "Infer the schema type", outcome: "no-match", files: [{ path: "src/user.ts", source: 'import { z } from "zod"; const UserSchema = z.object({ id: z.string() }); type User = z.infer<typeof UserSchema>;' }], focusPath: "src/user.ts", expectedCount: 0, public: true },
     { id: "handwritten-twin", title: "Do not duplicate the schema shape", outcome: "match", files: [{ path: "src/user.ts", source: 'import { z } from "zod"; const UserSchema = z.object({ id: z.string() }); interface User { id: string }' }], focusPath: "src/user.ts", expectedCount: 1, public: true },
+    {
+      id: "safe-autofix",
+      title: "Derive an unused private twin from its existing schema",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "import { z } from \"zod\"; const UserSchema = z.object({ id: z.string() }); interface User { id: string }" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "import { z } from \"zod\"; const UserSchema = z.object({ id: z.string() }); type User = z.infer<typeof UserSchema>;" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -644,6 +657,7 @@ export default createRule<Options, MessageIds>({
   documentation: PREFER_ZOD_INFER_DOCUMENTATION,
   meta: {
     type: "problem",
+    fixable: "code",
     docs: {
       description:
         "Derive a type from its Zod schema with `z.infer` instead of hand-writing a twin declaration beside it.",
@@ -962,9 +976,21 @@ export default createRule<Options, MessageIds>({
             return;
           }
           twinTypeNames.add(declaration.name);
+          const base = twinCallChain(schema.initializer, zodNamespaces)?.[0];
+          const callee = base === undefined ? null : unwrapExpression(base.callee);
+          const namespace = callee?.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : null;
+          const namespaceBinding = namespace?.type === AST_NODE_TYPES.Identifier
+            ? ASTUtils.findVariable(context.sourceCode.getScope(namespace), namespace.name) : null;
+          const canFix = requireIdenticalShape && namespace?.type === AST_NODE_TYPES.Identifier &&
+            namespaceBinding?.defs.length === 1 && namespaceBinding.defs[0]?.type === "ImportBinding" &&
+            isUnusedPrivateBinding(context.sourceCode, declaration.declaration, declaration.declaration.id, context.filename) &&
+            context.sourceCode.getCommentsInside(declaration.declaration).length === 0 &&
+            retainsNamedTypeUses(context.sourceCode, declaration.declaration);
           context.report({
             node: declaration.node,
             messageId: "handWrittenTwin",
+            fix: canFix && namespace?.type === AST_NODE_TYPES.Identifier ? (fixer) => fixer.replaceText(declaration.declaration,
+              `type ${context.sourceCode.getText(declaration.declaration.id)} = ${context.sourceCode.getText(namespace)}.infer<typeof ${schema.name}>;`) : null,
             data: { typeName: declaration.name, schemaName: schema.name },
           });
         }
