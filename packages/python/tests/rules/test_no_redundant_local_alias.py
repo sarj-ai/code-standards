@@ -850,3 +850,274 @@ def test_independent_review_regressions(source: str, expected: int) -> None:
 )
 def test_wildcard_namespace(source: str, expected: int) -> None:
     assert len(NoRedundantLocalAlias().check(Path("case.py"), source)) == expected
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        pytest.param(
+            "def render(flag):\n    if flag:\n        return None\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            1,
+            id="guard-before-fresh-call",
+        ),
+        pytest.param(
+            "def render(left, right):\n    if left and right:\n        return None\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            1,
+            id="bool-test-in-prefix",
+        ),
+        pytest.param(
+            "def render(left, right):\n    if left:\n        if right:\n            return None\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            1,
+            id="nested-prefix-guards",
+        ),
+        pytest.param(
+            "def render(flag):\n    if flag:\n        marker = 1\n    else:\n        marker = 2\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            1,
+            id="prefix-else",
+        ),
+        pytest.param(
+            "def render(left, right):\n    if left:\n        return None\n    if right:\n        return None\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            1,
+            id="multiple-prefix-guards",
+        ),
+        pytest.param(
+            "def render(flag):\n    if flag:\n        return None\n    item: object = object()\n    payload = item\n    return dict(payload=payload)\n",
+            1,
+            id="typed-fresh-source",
+        ),
+        pytest.param(
+            "class Renderer:\n    def render(self, flag):\n        if flag:\n            return None\n        item = object()\n        payload = item\n        return dict(payload=payload)\n",
+            1,
+            id="method-prefix",
+        ),
+        pytest.param(
+            "from contextlib import asynccontextmanager\n@asynccontextmanager\nasync def resources(flag):\n    if flag:\n        return\n    item = make_item()\n    payload = item\n    async with manager():\n        result = build(payload=payload)\n        yield (result, item)\n",
+            1,
+            id="async-prefix-manager",
+        ),
+        pytest.param(
+            "def resources(flag):\n    if flag:\n        return\n    item = make_item()\n    payload = item\n    with manager():\n        yield from build(payload=payload)\n    retain(item)\n",
+            1,
+            id="prefix-yield-from-with",
+        ),
+        pytest.param(
+            "def render(item):\n    if not isinstance(item, str):\n        return None\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="parameter-after-narrowing",
+        ),
+        pytest.param(
+            "def render(flag):\n    item = object()\n    if flag:\n        return None\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="fresh-before-prefix",
+        ),
+        pytest.param(
+            "def render(flag):\n    if flag:\n        return None\n    item = object()\n    payload = item\n    item = object()\n    return dict(payload=payload)\n",
+            0,
+            id="later-source-rebinding",
+        ),
+        pytest.param(
+            "def render(flag):\n    if flag:\n        return None\n    index = 0\n    start = index\n    while index < 3:\n        index += 1\n    return dict(start=start, end=index)\n",
+            0,
+            id="cursor-snapshot",
+        ),
+        pytest.param(
+            "def render(flag):\n    if flag:\n        item = object()\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="prefix-source-binding",
+        ),
+        pytest.param(
+            "def render(flag):\n    if flag:\n        payload = object()\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="prefix-alias-binding",
+        ),
+        pytest.param(
+            "def render(flags):\n    for flag in flags:\n        pass\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="prefix-loop",
+        ),
+        pytest.param(
+            "def render(flag):\n    try:\n        marker = flag\n    finally:\n        marker = None\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="prefix-try",
+        ),
+        pytest.param(
+            "def render(flag):\n    assert flag\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="prefix-assert",
+        ),
+        pytest.param(
+            "def render(flag):\n    if flag:\n        return None\n    item = object()\n    payload = item\n    if not flag:\n        return dict(payload=payload)\n",
+            0,
+            id="suffix-if",
+        ),
+        pytest.param(
+            "def render(flag):\n    if flag:\n        return None\n    item = object()\n    payload = item\n    return flag and dict(payload=payload)\n",
+            0,
+            id="suffix-bool",
+        ),
+        pytest.param(
+            "def render(left, right):\n    left and right\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="standalone-prefix-bool",
+        ),
+        pytest.param(
+            "def render(flag):\n    if flag:\n        marker = lambda: flag\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="prefix-lambda",
+        ),
+        pytest.param(
+            "def render(flags):\n    if flags:\n        marker = [x for x in flags]\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="prefix-comprehension",
+        ),
+        pytest.param(
+            "def render(flag):\n    if flag:\n        def nested():\n            return flag\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="prefix-nested-definition",
+        ),
+        pytest.param(
+            'def render(flag):\n    if flag:\n        marker = "payload"\n    item = object()\n    payload = item\n    return dict(payload=payload)\n',
+            0,
+            id="quoted-alias",
+        ),
+        pytest.param(
+            "def render(flag):\n    if flag:\n        return None\n    item = object()\n    payload: object = item\n    return dict(payload=payload)\n",
+            0,
+            id="alias-annotated",
+        ),
+        pytest.param(
+            "def render(flag):\n    if flag:\n        return None\n    item = object()\n    payload = item\n    marker = payload\n    return dict(payload=payload)\n",
+            0,
+            id="multiple-alias-reads",
+        ),
+        pytest.param(
+            "def render(flag):\n    with manager():\n        if flag:\n            marker = 1\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="guard-in-with-prefix",
+        ),
+        pytest.param(
+            "def render(left, right):\n    if left:\n        marker = left and right\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="boolean-in-prefix-body",
+        ),
+        pytest.param(
+            "def render(flag):\n    if flag:\n        return None\n    item = object()\n    with manager():\n        payload = item\n        return dict(payload=payload)\n",
+            0,
+            id="alias-nested-in-with-after-prefix",
+        ),
+        pytest.param(
+            "def run(flag):\n    if flag: return None\n    item = object(); payload = item\n    return dict(payload=payload)\n",
+            1,
+            id="same-line-fresh-source-and-alias",
+        ),
+        pytest.param(
+            "def run(flag):\n    if flag: return None\n    item = []\n    payload = item\n    item.append(1)\n    return dict(payload=payload)\n",
+            1,
+            id="nonmutating-mutable-source",
+        ),
+        pytest.param(
+            "def run(flag):\n    if flag: yield None\n    item = object()\n    payload = item\n    yield dict(payload=payload)\n",
+            1,
+            id="prefix-generator-suspension",
+        ),
+        pytest.param(
+            "async def run(flag):\n    if await gate(flag): return None\n    item = await create()\n    payload = item\n    return dict(payload=payload)\n",
+            1,
+            id="source-await-after-guard",
+        ),
+        pytest.param(
+            "def run(flag):\n    if flag:\n        factory = make_first\n    else:\n        factory = make_second\n    item: object = factory()\n    payload = item\n    return dict(payload=payload)\n",
+            1,
+            id="typed-branch-factory-selection",
+        ),
+        pytest.param(
+            "def run(left, right):\n    if left: return None\n    elif right and left: return None\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            1,
+            id="elif-tests-complete-before-source",
+        ),
+        pytest.param(
+            "def run(flag):\n    if flag:\n        item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="source-only-in-guard",
+        ),
+        pytest.param(
+            "def run(flag):\n    if flag: return None\n    with manager():\n        item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="source-in-with-after-guard",
+        ),
+        pytest.param(
+            "def run(flag):\n    if flag: return None\n    item = object()\n    with manager():\n        payload = item\n        return dict(payload=payload)\n",
+            0,
+            id="alias-in-with-after-guard",
+        ),
+        pytest.param(
+            "def run(flag):\n    item = object()\n    with manager():\n        if flag: return None\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="guard-in-with-after-source",
+        ),
+        pytest.param(
+            "def run(left, right):\n    if left: pass\n    else: marker = left or right\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="boolean-in-else-body",
+        ),
+        pytest.param(
+            "def run(flag):\n    if (lambda: flag)(): return None\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="lambda-in-prefix-test",
+        ),
+        pytest.param(
+            "def run(flag):\n    if flag:\n        def capture(): return flag\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="nested-definition-in-prefix",
+        ),
+        pytest.param(
+            "def run(flag):\n    if flag: return None\n    item = object()\n    payload = item\n    note = (item := object())\n    return dict(payload=payload)\n",
+            0,
+            id="source-rebound-by-walrus",
+        ),
+        pytest.param(
+            "def run(flag):\n    if flag: return None\n    item = object()\n    payload = item\n    del item\n    return dict(payload=payload)\n",
+            0,
+            id="source-deletion-snapshot",
+        ),
+        pytest.param(
+            "def run(flag):\n    if flag: return None\n    item = object()\n    payload: object = item\n    return dict(payload=payload)\n",
+            0,
+            id="alias-widening-annotation",
+        ),
+        pytest.param(
+            "def run(flag):\n    item: object = object()\n    if flag: return None\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="source-before-guard-type-narrowing",
+        ),
+        pytest.param(
+            "def run(item):\n    if not isinstance(item, str): return None\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="parameter-after-type-guard",
+        ),
+        pytest.param(
+            "def run(flags):\n    for flag in flags: pass\n    if flag: return None\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="prefix-loop-even-if-complete",
+        ),
+        pytest.param(
+            "def run(flag):\n    try: marker = flag\n    finally: marker = None\n    if flag: return None\n    item = object()\n    payload = item\n    return dict(payload=payload)\n",
+            0,
+            id="prefix-try-even-if-complete",
+        ),
+        pytest.param(
+            "def run(flag, enabled):\n    if flag: return None\n    item = object()\n    payload = item\n    return dict(payload=payload) if enabled else None\n",
+            0,
+            id="conditional-use-remains-blocked",
+        ),
+        pytest.param(
+            'def run(flag):\n    if flag: marker = "payload"\n    item = object()\n    payload = item\n    return dict(payload=payload)\n',
+            0,
+            id="quoted-target-in-prefix",
+        ),
+    ],
+)
+def test_completed_guard_prefix(source: str, expected: int) -> None:
+    diagnostics = check_source([NoRedundantLocalAlias()], Path("case.py"), source)
+    assert len(diagnostics) == expected
+    assert all(diagnostic.severity is Severity.WARNING and not diagnostic.fixes for diagnostic in diagnostics)
