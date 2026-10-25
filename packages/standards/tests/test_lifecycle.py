@@ -223,19 +223,17 @@ def test_failed_install_restores_lfs_post_hooks(
         legacy.write_text("original legacy\n", encoding="utf-8")
         legacy.chmod(0o640)
 
-    def hook_path(_root: Path) -> Path:
-        return hooks / "pre-commit"
-
     def failed_install(argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
+        if "rev-parse" in argv:
+            return subprocess.CompletedProcess(argv, 0, stdout=f".git/{argv[-1]}\n")
+        if argv[1:2] == ["dump"]:
+            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps({hook_type: {}}))
         hook.write_text("partial install\n", encoding="utf-8")
         hook.chmod(0o777)
         legacy.write_text("partial legacy\n", encoding="utf-8")
         legacy.chmod(0o777)
         return subprocess.CompletedProcess(argv, 7)
 
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- isolate the outer installer rollback boundary.
-        lifecycle, "_precommit_hook_path", hook_path
-    )
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- an interrupted installer must restore every affected hook.
         "sarj_standards.libs.adoption.lifecycle.subprocess.run", failed_install
     )

@@ -20,6 +20,8 @@ from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 _VERSION: Final = "2.2.1"
+_CORE_HOOKS: Final = ("pre-commit", "pre-push", "commit-msg")
+_LFS_POST_HOOKS: Final = ("post-checkout", "post-commit", "post-merge")
 _ARCHITECTURES: Final = MappingProxyType({"aarch64": "arm64", "amd64": "x86_64"})
 _EXPORT_ASSIGNMENT_PARTS: Final = 2
 _UVX_PATH_MARKER: Final = "# sarj-standards: uvx-path"
@@ -41,9 +43,7 @@ def install(root: Path) -> int:
         raise OSError(msg)
     native_binary = _native_binary()
     durable_binary = _hook_path(root, "pre-commit").parent / f".sarj-lefthook{native_binary.suffix}"
-    hook_targets = _hook_transaction_targets(durable_binary.parent)
-    transaction.validate_targets(durable_binary.parent, hook_targets)
-    hook_transaction = transaction.FileTransaction.capture(durable_binary.parent, hook_targets)
+    hook_transaction = capture_transaction(root)
     try:
         _install_managed_hooks(root, binary, native_binary, durable_binary, Path(uvx))
     except BaseException as exc:
@@ -127,25 +127,21 @@ def _harden_managed_call(contents: str, *, hook_type: str) -> str:
     return contents.replace(original, expected, 1)
 
 
-def _hook_transaction_targets(hooks_dir: Path) -> tuple[Path, ...]:
-    return tuple(
-        hooks_dir / name
-        for name in (
-            "pre-commit",
-            "pre-commit.legacy",
-            "commit-msg",
-            "commit-msg.legacy",
-            "pre-push",
-            "pre-push.legacy",
-            "post-checkout",
-            "post-checkout.legacy",
-            "post-commit",
-            "post-commit.legacy",
-            "post-merge",
-            "post-merge.legacy",
-            ".sarj-lefthook",
-            ".sarj-lefthook.exe",
-        )
+def capture_transaction(root: Path) -> transaction.FileTransaction:
+    hooks_dir = _hook_path(root, "pre-commit").parent
+    transaction.validate_targets(hooks_dir, _hook_transaction_targets(hooks_dir, frozenset()))
+    configured = _configured_hooks(root, _binary("lefthook"))
+    paths = _hook_transaction_targets(hooks_dir, configured)
+    transaction.validate_targets(hooks_dir, paths)
+    return transaction.FileTransaction.capture(hooks_dir, paths)
+
+
+def _hook_transaction_targets(hooks_dir: Path, configured: frozenset[str]) -> tuple[Path, ...]:
+    post_hooks = tuple(name for name in _LFS_POST_HOOKS if name in configured)
+    return (
+        *(hooks_dir / name for hook in (*_CORE_HOOKS, *post_hooks) for name in (hook, f"{hook}.legacy")),
+        hooks_dir / ".sarj-lefthook",
+        hooks_dir / ".sarj-lefthook.exe",
     )
 
 
@@ -292,11 +288,7 @@ def _native_binary() -> Path:
 
 
 def _hook_paths(root: Path) -> list[Path]:
-    return [
-        path
-        for hook_name in ("pre-commit", "pre-push", "commit-msg", "post-checkout", "post-commit", "post-merge")
-        if (path := _hook_path(root, hook_name)).is_file()
-    ]
+    return [path for hook_name in (*_CORE_HOOKS, *_LFS_POST_HOOKS) if (path := _hook_path(root, hook_name)).is_file()]
 
 
 def _hook_path(root: Path, hook_name: str) -> Path:

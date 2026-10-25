@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Unpack
 import pytest
 
 import sarj_standards.cli.main as cli
+from sarj_standards.libs.adoption import lifecycle
 from sarj_standards.libs.repository import comment_corpus, hooks, ledger, repository, rule_maintenance
 
 
@@ -1116,7 +1117,8 @@ def test_hook_install_resolves_environment_binaries(
     hooks.install(tmp_path)
     hooks.install(tmp_path)
 
-    assert calls[0] == ["/bin/lefthook", "install", "-f"]
+    assert calls[0] == ["/bin/lefthook", "dump", "--format", "json"]
+    assert calls[1] == ["/bin/lefthook", "install", "-f"]
     durable = hook.parent / ".sarj-lefthook"
     assert durable.read_text(encoding="utf-8") == "native binary"
     assert stat.S_IMODE(durable.stat().st_mode) == 0o755
@@ -1219,16 +1221,18 @@ def test_hook_install_rolls_back_every_hook_when_validation_fails(
         assert path is not None
         return f"/bin/{name}"
 
-    calls = 0
+    installed = False
 
     def run(argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
-        nonlocal calls
-        calls += 1
-        if calls == 1:
+        nonlocal installed
+        if argv[1] == "install":
+            installed = True
             original.write_text(f'#!/bin/sh\nchanged\ncall_lefthook run "{hook_type}" "$@"\n', encoding="utf-8")
             (hooks_dir / f"{hook_type}.legacy").write_text("partial legacy\n", encoding="utf-8")
             (hooks_dir / "commit-msg").write_text("#!/bin/sh\nnew\n", encoding="utf-8")
             return subprocess.CompletedProcess(argv, 0)
+        if argv[1] == "dump" and not installed:
+            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps({hook_type: {}}))
         if argv[1] == "dump" and failure != "dump":
             contents = "[]" if failure == "shape" else json.dumps({hook_type: {}})
             return subprocess.CompletedProcess(argv, 0, stdout=contents)
@@ -1267,6 +1271,58 @@ def test_hook_install_rolls_back_every_hook_when_validation_fails(
     assert not (hooks_dir / f"{hook_type}.legacy").exists()
     assert not (hooks_dir / "commit-msg").exists()
     assert not (hooks_dir / ".sarj-lefthook").exists()
+
+
+@pytest.mark.parametrize("hook_type", ["post-checkout", "post-commit", "post-merge"])
+@pytest.mark.parametrize("boundary", ["inner", "outer-lefthook", "outer-precommit"])
+@pytest.mark.parametrize("configured", [False, True])
+@pytest.mark.parametrize("link_kind", ["symlink", "hardlink"])
+def test_linked_post_hooks_are_validated_only_when_the_installer_can_change_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook_type: str, boundary: str, *, configured: bool, link_kind: str
+) -> None:
+    hooks_dir = tmp_path / ".git" / "hooks"
+    hooks_dir.mkdir(parents=True)
+    target = tmp_path / "custom-hook"
+    target.write_text("custom hook\n", encoding="utf-8")
+    hook = hooks_dir / hook_type
+    if link_kind == "symlink":
+        hook.symlink_to(target)
+    else:
+        hook.hardlink_to(target)
+    (tmp_path / "lefthook.yml").write_text("pre-commit: {}\n", encoding="utf-8")
+
+    def run(argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
+        if "rev-parse" in argv:
+            return subprocess.CompletedProcess(argv, 0, stdout=f".git/{argv[-1]}\n")
+        if argv[1:2] == ["dump"]:
+            return subprocess.CompletedProcess(
+                argv, 0, stdout=json.dumps({hook_type if configured else "pre-commit": {}})
+            )
+        if boundary == "inner":
+            raise subprocess.CalledProcessError(7, argv)
+        return subprocess.CompletedProcess(argv, 7)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- isolate installer failure after ownership validation.
+        "sarj_standards.libs.repository.hooks.subprocess.run", run
+    )
+
+    def install() -> int:
+        if boundary == "inner":
+            return hooks.install(tmp_path)
+        label = "Lefthook repository hooks" if boundary == "outer-lefthook" else "pre-commit hooks"
+        return lifecycle.execute([lifecycle.Command(label, ("git",), tmp_path)])
+
+    if configured and boundary != "outer-precommit":
+        with pytest.raises(OSError, match=r"symlink|hard-linked"):
+            install()
+    elif boundary == "inner":
+        with pytest.raises(subprocess.CalledProcessError) as error:
+            install()
+        assert error.value.returncode == 7
+    else:
+        assert install() == 7
+    assert target.read_text(encoding="utf-8") == "custom hook\n"
+    assert hook.is_symlink() if link_kind == "symlink" else hook.stat().st_ino == target.stat().st_ino
 
 
 @pytest.mark.parametrize(
