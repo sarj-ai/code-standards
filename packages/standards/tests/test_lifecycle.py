@@ -5,9 +5,10 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Unpack
 
 import pytest
 
@@ -18,6 +19,8 @@ from sarj_standards.libs.adoption.packagemanager import PackageManager
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    from tests.call_contracts import SubprocessOptions
 
 
 def _project(root: Path, name: str) -> Path:
@@ -201,6 +204,86 @@ def test_lefthook_install_uses_the_managed_durable_installer(
         "hooks",
         "install",
     )
+
+
+@pytest.mark.parametrize("hook_type", ["post-checkout", "post-commit", "post-merge"])
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("backup_exists", [False, True])
+@pytest.mark.parametrize("backup_suffix", ["legacy", "old"])
+def test_failed_install_restores_lfs_post_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hook_type: str,
+    *,
+    existing: bool,
+    backup_exists: bool,
+    backup_suffix: str,
+) -> None:
+    hooks = tmp_path / ".git" / "hooks"
+    hooks.mkdir(parents=True)
+    hook = hooks / hook_type
+    backup = hooks / f"{hook_type}.{backup_suffix}"
+    original_hook_mode = None
+    original_backup_mode = None
+    if existing:
+        hook.write_text("original\n", encoding="utf-8")
+        hook.chmod(0o744)
+        original_hook_mode = stat.S_IMODE(hook.stat().st_mode)
+    if backup_exists:
+        backup.write_text("original backup\n", encoding="utf-8")
+        backup.chmod(0o640)
+        original_backup_mode = stat.S_IMODE(backup.stat().st_mode)
+
+    def failed_install(argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
+        if "rev-parse" in argv:
+            return subprocess.CompletedProcess(argv, 0, stdout=f".git/{argv[-1]}\n")
+        if argv[1:2] == ["dump"]:
+            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps({hook_type: {}}))
+        hook.write_text("partial install\n", encoding="utf-8")
+        hook.chmod(0o777)
+        backup.write_text("partial backup\n", encoding="utf-8")
+        backup.chmod(0o777)
+        return subprocess.CompletedProcess(argv, 7)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- an interrupted installer must restore every affected hook.
+        "sarj_standards.libs.adoption.lifecycle.subprocess.run", failed_install
+    )
+
+    assert lifecycle.execute([lifecycle.Command("Lefthook repository hooks", (sys.executable,), tmp_path)]) == 7
+    if existing:
+        assert hook.read_text(encoding="utf-8") == "original\n"
+        assert stat.S_IMODE(hook.stat().st_mode) == original_hook_mode
+    else:
+        assert not hook.exists()
+    if backup_exists:
+        assert backup.read_text(encoding="utf-8") == "original backup\n"
+        assert stat.S_IMODE(backup.stat().st_mode) == original_backup_mode
+    else:
+        assert not backup.exists()
+
+
+@pytest.mark.parametrize("discovery", ["rev-parse", "dump"])
+def test_lefthook_preflight_timeout_prevents_installation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], discovery: str
+) -> None:
+    calls: list[list[str]] = []
+
+    def run(argv: list[str], **kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        if argv[1] == discovery:
+            timeout = kwargs.get("timeout")
+            assert timeout == 5
+            raise subprocess.TimeoutExpired(argv, timeout)
+        assert argv[1] == "rev-parse"
+        return subprocess.CompletedProcess(argv, 0, stdout=f".git/{argv[-1]}\n")
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- a stalled discovery must not start the hook installer.
+        "sarj_standards.libs.repository.hooks.subprocess.run", run
+    )
+
+    assert lifecycle.execute([lifecycle.Command("Lefthook repository hooks", (sys.executable,), tmp_path)]) == 2
+    assert all("install" not in argv for argv in calls)
+    assert "exceeded 5s and was stopped" in capsys.readouterr().err
 
 
 def test_precommit_hook_uses_pinned_uvx_after_its_install_cache_is_removed(

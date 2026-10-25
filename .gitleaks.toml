@@ -25,3 +25,21 @@ condition = "AND"
 regexTarget = "secret"
 paths = ['''^packages/standards/benchmarks/checking-strength-50-passes-20261020\.json$''']
 regexes = ['''^f89e15c036d1ccb6d2be2022c32530c836646d972410453a8f23ef94cb4d515e$''']
+
+[[allowlists]]
+description = "Published source-file SHA-256 values in historical safe-autofix audit evidence"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+paths = ['''^packages/standards/benchmarks/safe-autofix-rule-audit-20261022\.json$''']
+regexes = [
+  '''^03c54f031d8bf79a1d32947bd1f93bb34ced636324e9646451b7ef09732cbaa0$''',
+  '''^29dd0f70de5c38cc0fcd26aac2cac2b41093ac8b5c229c9651e8921b0f65f8cc$''',
+  '''^2b08345104a1e7d6bd7ac6a4a68b396f816151fb29246a6de734c002204d61fd$''',
+  '''^71bdc082ee3b7f4dbe75a71c4e431636ccc438e84d6ad5df486a9a445b8866ab$''',
+  '''^ad8652a797aea3b017de008edae6e0b14830ff17ff5c424fdd19ac70c6b437bd$''',
+  '''^de5d58498baee14403777f17af32523c3c51df2ae1186f1ef3ab39c5cea036bc$''',
+  '''^e62801de93c6daeb33245ea1844f3fb04f9e8708d29e841abea665fc63ec1d98$''',
+  '''^e739034922a6124c70ebf79038fb7d4d330f0d2cc3f10db74c14150c8c2074a1$''',
+  '''^fccd309bb2c4fffebeba9958cc7448f848d3fb102b83f2fa15313d31dae964e9$''',
+]

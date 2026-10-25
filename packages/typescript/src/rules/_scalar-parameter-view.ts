@@ -15,10 +15,20 @@ interface ParameterView {
   readonly root: ts.Symbol | undefined;
   readonly aliases: ReadonlyMap<ts.Symbol, string>;
   readonly reads: Set<string>;
+  readonly jsx: boolean;
 }
 
 /** Accept one pure returned view, retaining every bound or inspected root field. */
 export function scalarParameterView(parameter: ts.ParameterDeclaration, body: ts.ConciseBody, checker: ts.TypeChecker): ReadonlySet<string> | null {
+  return parameterReads(parameter, body, checker, true);
+}
+
+/** Scalar consumers do not inherit the JSX runtime proof used by component views. */
+export function scalarParameterReads(parameter: ts.ParameterDeclaration, body: ts.ConciseBody, checker: ts.TypeChecker): ReadonlySet<string> | null {
+  return parameterReads(parameter, body, checker, false);
+}
+
+function parameterReads(parameter: ts.ParameterDeclaration, body: ts.ConciseBody, checker: ts.TypeChecker, jsx: boolean): ReadonlySet<string> | null {
   if (parameter.dotDotDotToken || parameter.initializer || ts.isArrayBindingPattern(parameter.name)) return null;
   const root = ts.isIdentifier(parameter.name) ? checker.getSymbolAtLocation(parameter.name) : undefined;
   if (ts.isIdentifier(parameter.name) && !root) return null;
@@ -26,7 +36,7 @@ export function scalarParameterView(parameter: ts.ParameterDeclaration, body: ts
   const aliases = parameterAliases(parameter.name, checker, reads);
   if (!aliases) return null;
   const expression = returnedExpression(body);
-  const view = { checker, props: checker.getTypeAtLocation(parameter), root, aliases, reads };
+  const view = { checker, props: checker.getTypeAtLocation(parameter), root, aliases, reads, jsx };
   return expression && scalarView(expression, view) ? reads : null;
 }
 
@@ -51,7 +61,7 @@ function parameterAliases(name: ts.Identifier | ts.ObjectBindingPattern, checker
   return aliases;
 }
 
-function returnedExpression(body: ts.ConciseBody): ts.Expression | undefined {
+export function returnedExpression(body: ts.ConciseBody): ts.Expression | undefined {
   if (!ts.isBlock(body)) return body;
   const statement = body.statements.length === 1 ? body.statements[0] : undefined;
   return statement && ts.isReturnStatement(statement) ? statement.expression : undefined;
@@ -70,7 +80,7 @@ function scalarView(node: ts.Node, view: ParameterView): boolean {
   if (ts.isBinaryExpression(node)) return SCALAR_OPERATORS.has(node.operatorToken.kind) && scalarView(node.left, view) && scalarView(node.right, view);
   if (ts.isPrefixUnaryExpression(node)) return SCALAR_PREFIXES.has(node.operator) && scalarView(node.operand, view);
   if (ts.isTemplateExpression(node)) return node.templateSpans.every((span) => scalarView(span.expression, view));
-  return jsxView(node, view);
+  return view.jsx && jsxView(node, view);
 }
 
 function scalarLiteral(node: ts.Node): boolean {

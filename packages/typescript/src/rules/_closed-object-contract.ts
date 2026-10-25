@@ -1,16 +1,36 @@
 /** @fileoverview _closed-object-contract — prove a finite structural member surface. */
 import ts from "typescript";
 
+interface ContractProof {
+  readonly checker: ts.TypeChecker;
+  readonly active: Set<ts.Type>;
+  readonly completed: WeakMap<ts.Type, boolean>;
+}
+
 /** Prove that native member lookup has a complete, finite structural key space. */
-export function closedObjectContract(type: ts.Type, checker: ts.TypeChecker, seen = new Set<ts.Type>()): boolean {
-  if (seen.has(type)) return false;
-  seen.add(type);
-  if (type.isIntersection()) return type.types.every((part) => closedObjectContract(part, checker, new Set(seen)));
-  if (!ordinaryObject(type, checker)) return false;
+export function closedObjectContract(type: ts.Type, checker: ts.TypeChecker): boolean {
+  return visitContract(type, { checker, active: new Set(), completed: new WeakMap() });
+}
+
+function visitContract(type: ts.Type, proof: ContractProof): boolean {
+  const known = proof.completed.get(type);
+  if (known !== undefined) return known;
+  if (proof.active.has(type)) return false;
+  proof.active.add(type);
+  const result = type.isIntersection()
+    ? type.types.every((part) => visitContract(part, proof))
+    : completeObject(type, proof);
+  proof.active.delete(type);
+  proof.completed.set(type, result);
+  return result;
+}
+
+function completeObject(type: ts.Type, proof: ContractProof): boolean {
+  if (!ordinaryObject(type, proof.checker)) return false;
   // A symbol may also carry value declarations, notably the global Object constructor.
   const declarations = type.getSymbol()?.getDeclarations()?.filter((declaration) => ts.isInterfaceDeclaration(declaration) || ts.isTypeLiteralNode(declaration));
   if (!declarations?.length) return false;
-  return declarations.every((declaration) => completeDeclaration(declaration, checker, seen));
+  return declarations.every((declaration) => completeDeclaration(declaration, proof));
 }
 
 function ordinaryObject(type: ts.Type, checker: ts.TypeChecker): boolean {
@@ -21,11 +41,11 @@ function ordinaryObject(type: ts.Type, checker: ts.TypeChecker): boolean {
   return checker.getSignaturesOfType(type, ts.SignatureKind.Call).length === 0 && checker.getSignaturesOfType(type, ts.SignatureKind.Construct).length === 0;
 }
 
-function completeDeclaration(declaration: ts.InterfaceDeclaration | ts.TypeLiteralNode, checker: ts.TypeChecker, seen: ReadonlySet<ts.Type>): boolean {
-  if (!declaration.members.every((member) => finiteMember(member, checker))) return false;
+function completeDeclaration(declaration: ts.InterfaceDeclaration | ts.TypeLiteralNode, proof: ContractProof): boolean {
+  if (!declaration.members.every((member) => finiteMember(member, proof.checker))) return false;
   if (!ts.isInterfaceDeclaration(declaration)) return true;
   if (declaration.typeParameters?.length) return false;
-  return (declaration.heritageClauses ?? []).every((heritage) => heritage.types.every((base) => closedObjectContract(checker.getTypeAtLocation(base), checker, new Set(seen))));
+  return (declaration.heritageClauses ?? []).every((heritage) => heritage.types.every((base) => visitContract(proof.checker.getTypeAtLocation(base), proof)));
 }
 
 function finiteMember(member: ts.TypeElement, checker: ts.TypeChecker): boolean {
