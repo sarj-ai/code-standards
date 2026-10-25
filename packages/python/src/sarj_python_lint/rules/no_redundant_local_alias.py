@@ -24,7 +24,7 @@ from sarj_python_lint.rules._suppression_comments import comment_lines
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterator, Mapping
 
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._resource_provenance import ResourceProvenance
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 
 _FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef)
 _SUITES = (*_FUNCTIONS, ast.With, ast.AsyncWith)
-_UNCERTAIN = (
+_NESTED_SCOPES = (
     *_FUNCTIONS,
     ast.ClassDef,
     ast.Lambda,
@@ -40,6 +40,9 @@ _UNCERTAIN = (
     ast.SetComp,
     ast.DictComp,
     ast.GeneratorExp,
+)
+_UNCERTAIN = (
+    *_NESTED_SCOPES,
     ast.If,
     ast.For,
     ast.AsyncFor,
@@ -89,7 +92,8 @@ class NoRedundantLocalAlias(Rule):
         limitations=(
             "Only unannotated, single-target `alias = original` assignments with one binding and one read at `alias=alias` are checked.",
             "The original must be a parameter or an earlier initialized local with one binding; reassignment, deletion, imports, alias chains and uncertain initialization are excluded.",
-            "Functions with if statements, loops, try statements, asserts, Boolean short-circuiting, nested scopes, global/nonlocal declarations or type aliases are excluded. Ordinary and async with bodies require ordered enclosing-suite binding evidence.",
+            "Completed function-body if prefixes and their Boolean tests are supported only before a fresh, uniquely initialized local and alias in that same body. Parameters, earlier source bindings and aliases nested in with bodies after such prefixes are excluded.",
+            "Loops, try statements, asserts, other Boolean short-circuiting, nested scopes, global/nonlocal declarations and type aliases are excluded. Ordinary and async with bodies require ordered enclosing-suite binding evidence.",
             "A conditional expression is admitted only when its test is a bare name bound once as a parameter, and neither local is read within the expression.",
             "Typed aliases, files with type comments, same-scope quoted references and conditional reads of either local are excluded. Captured bindings and module/class aliases are preserved.",
             "Files with wildcard imports, Pydantic imports or references to known namespace readers, dynamic attribute getters or reference-count observers are excluded. Wildcard exports cannot establish builtin identity; computed type names can consume caller-local bindings without a Name read in the AST.",
@@ -141,6 +145,36 @@ class NoRedundantLocalAlias(Rule):
                 title="Pass the original local",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(ExampleFile.python("case.py", "def render(item):\n    consume(payload=item)\n"),),
+                focus_path=PurePosixPath("case.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="completed-guard-prefix",
+                scenario="completed-guard",
+                title="Initialize the original after the completed guard",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "case.py",
+                        "def render(enabled):\n    if not enabled:\n        return None\n    item = make_item()\n    payload = item\n    return build(payload=payload)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("case.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="direct-after-guard",
+                scenario="completed-guard",
+                title="Pass the fresh original directly",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "case.py",
+                        "def render(enabled):\n    if not enabled:\n        return None\n    item = make_item()\n    return build(payload=item)\n",
+                    ),
+                ),
                 focus_path=PurePosixPath("case.py"),
                 expected_count=0,
                 public=True,
@@ -237,18 +271,76 @@ def _local_assignments(context: PythonFileContext, names: set[str]) -> list[ast.
     if not candidates or context.has_wildcard_import:
         return []
     provenance = context.resource_provenance
-    blocked = {provenance.scope(node) for node in context.nodes(*_UNCERTAIN)}
-    blocked.update(
-        provenance.scope(node) for node in context.nodes(ast.IfExp) if not _parameter_choice(node, provenance)
-    )
+    boundaries = _scope_boundaries(context, provenance)
     eligible = [
-        node for node in candidates if isinstance(scope := provenance.scope(node), _FUNCTIONS) and scope not in blocked
+        node
+        for node in candidates
+        if isinstance(scope := provenance.scope(node), _FUNCTIONS)
+        and (boundary := boundaries.get(scope, 0)) is not None
+        and _after_prefix(node, boundary, provenance)
     ]
     if not eligible or context.dynamic_namespace or _observes_references(context):
         return []
     if context.generated or _has_type_comments(context) or not _compiles(context):
         return []
     return eligible
+
+
+def _scope_boundaries(context: PythonFileContext, provenance: ResourceProvenance) -> dict[ast.AST | None, int | None]:
+    prefixes = _prefix_bounds(context)
+    boundaries: dict[ast.AST | None, int | None] = {}
+    for node in context.nodes(*_UNCERTAIN):
+        scope = provenance.scope(node)
+        prefix = prefixes.get(node)
+        if prefix is None or context.parents.get(prefix) is not scope:
+            boundaries[scope] = None
+        elif (boundary := boundaries.get(scope, 0)) is not None:
+            boundaries[scope] = max(boundary, prefix.end_lineno or prefix.lineno)
+    for node in context.nodes(ast.IfExp):
+        if not _parameter_choice(node, provenance):
+            boundaries[provenance.scope(node)] = None
+    return boundaries
+
+
+def _prefix_bounds(context: PythonFileContext) -> dict[ast.AST, ast.If]:
+    bounds: dict[ast.AST, ast.If] = {}
+    for function in context.nodes(*_FUNCTIONS):
+        for root in function.body:
+            if isinstance(root, ast.If):
+                for node in _prefix_conditions(root):
+                    bounds[node] = root
+    return bounds
+
+
+def _prefix_conditions(root: ast.If) -> Iterator[ast.AST]:
+    pending: list[tuple[ast.AST, bool]] = [(root, False)]
+    while pending:
+        node, inside_test = pending.pop()
+        if isinstance(node, _NESTED_SCOPES):
+            continue
+        if isinstance(node, ast.If) or (isinstance(node, ast.BoolOp) and inside_test):
+            yield node
+        pending.extend(
+            (child, inside_test or (isinstance(node, ast.If) and child is node.test)) for child in children(node)
+        )
+
+
+def _after_prefix(assignment: ast.Assign, boundary: int, provenance: ResourceProvenance) -> bool:
+    if not boundary:
+        return True
+    if not isinstance(assignment.value, ast.Name):
+        return False
+    scope = provenance.scope(assignment)
+    bindings = provenance.bindings.get(scope, {}).get(assignment.value.id, ())
+    if len(bindings) != 1 or not isinstance(bindings[0], ast.Name):
+        return False
+    initializer = provenance.parents.get(bindings[0])
+    return (
+        isinstance(initializer, ast.Assign | ast.AnnAssign)
+        and provenance.parents.get(initializer) is scope
+        and provenance.parents.get(assignment) is scope
+        and initializer.lineno > boundary
+    )
 
 
 def _compiles(context: PythonFileContext) -> bool:
