@@ -330,6 +330,7 @@ def test_publisher_can_advance_or_refresh_owned_pr_metadata(previous: str, verif
     assert rollout.pr_marker(consumer(), "8.2.1") in body
     assert rollout.desired_marker("8.2.1") in body
     for section in (
+        "Summary",
         "What & why",
         "Scope accounting",
         "One-way or two-way door",
