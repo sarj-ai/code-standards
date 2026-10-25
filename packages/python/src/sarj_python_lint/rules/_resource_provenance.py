@@ -428,7 +428,7 @@ class ResourceProvenance:
             name = binding.id if isinstance(binding, ast.Name) else binding.name
             if name in self.mutated or name in self.external_bindings:
                 return False
-            for read in self._binding_reads(name, binding):
+            for read in self.binding_reads(name, binding):
                 alias = self._function_alias(read)
                 if alias is not None:
                     pending.append(alias)
@@ -469,7 +469,7 @@ class ResourceProvenance:
             and any(self.imported(constructor.func, f"contextlib.{kind}") for kind in ("ExitStack", "AsyncExitStack"))
         )
 
-    def _binding_reads(self, name: str, binding: ast.AST) -> list[ast.Name]:
+    def binding_reads(self, name: str, binding: ast.AST) -> list[ast.Name]:
         return self._indexed_reads(name, binding, cache=self._reads_by_binding, resolve=self.binding)
 
     def _indexed_reads(
@@ -496,7 +496,7 @@ class ResourceProvenance:
         if key not in self.escape_cache:
             self.escape_cache[key] = all(
                 self._method_or_context_read(read, allow_context=allow_context)
-                for read in self._binding_reads(name.id, binding)
+                for read in self.binding_reads(name.id, binding)
             )
         return self.escape_cache[key]
 
