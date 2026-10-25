@@ -500,9 +500,9 @@ def execute(commands: Iterable[Command]) -> int:
                 env=_command_environment(),
                 timeout=_COMMAND_TIMEOUT.total_seconds(),
             )
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as exc:
             _report_hook_rollback(hook_transaction)
-            sys.stderr.write(f"error: {command.label} exceeded {_COMMAND_TIMEOUT.total_seconds():g}s and was stopped\n")
+            sys.stderr.write(f"error: {command.label} exceeded {exc.timeout:g}s and was stopped\n")
             return 2
         except BaseException:
             _report_hook_rollback(hook_transaction)

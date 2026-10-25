@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import timedelta
 import hashlib
 import os
 from pathlib import Path
@@ -22,6 +23,7 @@ from sarj_standards.libs.typed_containers import is_object_mapping
 _VERSION: Final = "2.2.1"
 _CORE_HOOKS: Final = ("pre-commit", "pre-push", "commit-msg")
 _LFS_POST_HOOKS: Final = ("post-checkout", "post-commit", "post-merge")
+_DISCOVERY_TIMEOUT: Final = timedelta(seconds=5)
 _ARCHITECTURES: Final = MappingProxyType({"aarch64": "arm64", "amd64": "x86_64"})
 _EXPORT_ASSIGNMENT_PARTS: Final = 2
 _UVX_PATH_MARKER: Final = "# sarj-standards: uvx-path"
@@ -93,13 +95,20 @@ def _install_managed_hooks(
 
 def _configured_hooks(root: Path, binary: Path) -> frozenset[str]:
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
-        [str(binary), "dump", "--format", "json"], cwd=root, check=True, capture_output=True, text=True
+        [str(binary), "dump", "--format", "json"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=_DISCOVERY_TIMEOUT.total_seconds(),
     )
     configuration = parse_json(completed.stdout)
     if not is_object_mapping(configuration):
         msg = "Lefthook resolved configuration must be a JSON object"
         raise ValueError(msg)
-    return frozenset(name for name in configuration if isinstance(name, str))
+    configured = frozenset(name for name in configuration if isinstance(name, str))
+    # Native install refreshes remotes, so only local post hooks have stable ownership before installation.
+    return configured.difference(_LFS_POST_HOOKS) if configuration.get("remotes") else configured
 
 
 def _harden_precommit_entry(contents: str, root: Path) -> str:
@@ -139,7 +148,8 @@ def capture_transaction(root: Path) -> transaction.FileTransaction:
 def _hook_transaction_targets(hooks_dir: Path, configured: frozenset[str]) -> tuple[Path, ...]:
     post_hooks = tuple(name for name in _LFS_POST_HOOKS if name in configured)
     return (
-        *(hooks_dir / name for hook in (*_CORE_HOOKS, *post_hooks) for name in (hook, f"{hook}.legacy")),
+        *(hooks_dir / name for hook in _CORE_HOOKS for name in (hook, f"{hook}.legacy")),
+        *(hooks_dir / name for hook in post_hooks for name in (hook, f"{hook}.legacy", f"{hook}.old")),
         hooks_dir / ".sarj-lefthook",
         hooks_dir / ".sarj-lefthook.exe",
     )
@@ -311,5 +321,10 @@ def _git(root: Path, *args: str) -> str:
         msg = "git is required to manage repository hooks"
         raise OSError(msg)
     return subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
-        [executable, *args], cwd=root, check=True, capture_output=True, text=True
+        [executable, *args],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=_DISCOVERY_TIMEOUT.total_seconds(),
     ).stdout

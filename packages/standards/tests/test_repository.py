@@ -1229,6 +1229,8 @@ def test_hook_install_rolls_back_every_hook_when_validation_fails(
             installed = True
             original.write_text(f'#!/bin/sh\nchanged\ncall_lefthook run "{hook_type}" "$@"\n', encoding="utf-8")
             (hooks_dir / f"{hook_type}.legacy").write_text("partial legacy\n", encoding="utf-8")
+            if hook_type != "pre-commit":
+                (hooks_dir / f"{hook_type}.old").write_text("partial native backup\n", encoding="utf-8")
             (hooks_dir / "commit-msg").write_text("#!/bin/sh\nnew\n", encoding="utf-8")
             return subprocess.CompletedProcess(argv, 0)
         if argv[1] == "dump" and not installed:
@@ -1269,6 +1271,7 @@ def test_hook_install_rolls_back_every_hook_when_validation_fails(
     assert original.read_text(encoding="utf-8") == "#!/bin/sh\noriginal\n"
     assert stat.S_IMODE(original.stat().st_mode) == 0o744
     assert not (hooks_dir / f"{hook_type}.legacy").exists()
+    assert not (hooks_dir / f"{hook_type}.old").exists()
     assert not (hooks_dir / "commit-msg").exists()
     assert not (hooks_dir / ".sarj-lefthook").exists()
 
@@ -1277,8 +1280,16 @@ def test_hook_install_rolls_back_every_hook_when_validation_fails(
 @pytest.mark.parametrize("boundary", ["inner", "outer-lefthook", "outer-precommit"])
 @pytest.mark.parametrize("configured", [False, True])
 @pytest.mark.parametrize("link_kind", ["symlink", "hardlink"])
+@pytest.mark.parametrize("remote", [False, True])
 def test_linked_post_hooks_are_validated_only_when_the_installer_can_change_them(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook_type: str, boundary: str, *, configured: bool, link_kind: str
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hook_type: str,
+    boundary: str,
+    *,
+    configured: bool,
+    link_kind: str,
+    remote: bool,
 ) -> None:
     hooks_dir = tmp_path / ".git" / "hooks"
     hooks_dir.mkdir(parents=True)
@@ -1295,9 +1306,10 @@ def test_linked_post_hooks_are_validated_only_when_the_installer_can_change_them
         if "rev-parse" in argv:
             return subprocess.CompletedProcess(argv, 0, stdout=f".git/{argv[-1]}\n")
         if argv[1:2] == ["dump"]:
-            return subprocess.CompletedProcess(
-                argv, 0, stdout=json.dumps({hook_type if configured else "pre-commit": {}})
-            )
+            configuration: dict[str, object] = {hook_type if configured else "pre-commit": {}}
+            if remote:
+                configuration["remotes"] = [{"git_url": "/owned-local-remote"}]
+            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(configuration))
         if boundary == "inner":
             raise subprocess.CalledProcessError(7, argv)
         return subprocess.CompletedProcess(argv, 7)
@@ -1312,7 +1324,7 @@ def test_linked_post_hooks_are_validated_only_when_the_installer_can_change_them
         label = "Lefthook repository hooks" if boundary == "outer-lefthook" else "pre-commit hooks"
         return lifecycle.execute([lifecycle.Command(label, ("git",), tmp_path)])
 
-    if configured and boundary != "outer-precommit":
+    if configured and not remote and boundary != "outer-precommit":
         with pytest.raises(OSError, match=r"symlink|hard-linked"):
             install()
     elif boundary == "inner":
@@ -1323,6 +1335,39 @@ def test_linked_post_hooks_are_validated_only_when_the_installer_can_change_them
         assert install() == 7
     assert target.read_text(encoding="utf-8") == "custom hook\n"
     assert hook.is_symlink() if link_kind == "symlink" else hook.stat().st_ino == target.stat().st_ino
+
+
+@pytest.mark.parametrize("hook_type", ["post-checkout", "post-commit", "post-merge"])
+@pytest.mark.parametrize("cached", [False, True])
+def test_remote_post_hooks_keep_native_installation_behavior(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook_type: str, *, cached: bool
+) -> None:
+    hook = tmp_path / ".git" / "hooks" / hook_type
+    hook.parent.mkdir(parents=True)
+    (tmp_path / "lefthook.yml").write_text("pre-push: {}\n", encoding="utf-8")
+    native_hook = f'#!/bin/sh\ncall_lefthook run "{hook_type}" "$@"\n'
+    installed = False
+
+    def run(argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
+        nonlocal installed
+        if "rev-parse" in argv:
+            return subprocess.CompletedProcess(argv, 0, stdout=f".git/{argv[-1]}\n")
+        if argv[1] == "install":
+            installed = True
+            hook.write_text(native_hook, encoding="utf-8")
+        configuration: dict[str, object] = {"remotes": [{"git_url": "/owned-local-remote"}]}
+        if cached or installed:
+            configuration[hook_type] = {}
+        return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(configuration))
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- a refreshed remote's post hook must retain native installer behavior.
+        "sarj_standards.libs.repository.hooks.subprocess.run", run
+    )
+
+    assert hooks.install(tmp_path) == 0
+    assert installed
+    assert hook.read_text(encoding="utf-8") == native_hook
+    assert not (hook.parent / ".sarj-lefthook").exists()
 
 
 @pytest.mark.parametrize(

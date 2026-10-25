@@ -208,20 +208,27 @@ def test_lefthook_install_uses_the_managed_durable_installer(
 
 @pytest.mark.parametrize("hook_type", ["post-checkout", "post-commit", "post-merge"])
 @pytest.mark.parametrize("existing", [False, True])
-@pytest.mark.parametrize("legacy_exists", [False, True])
+@pytest.mark.parametrize("backup_exists", [False, True])
+@pytest.mark.parametrize("backup_suffix", ["legacy", "old"])
 def test_failed_install_restores_lfs_post_hooks(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook_type: str, existing: bool, legacy_exists: bool
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hook_type: str,
+    *,
+    existing: bool,
+    backup_exists: bool,
+    backup_suffix: str,
 ) -> None:
     hooks = tmp_path / ".git" / "hooks"
     hooks.mkdir(parents=True)
     hook = hooks / hook_type
-    legacy = hooks / f"{hook_type}.legacy"
+    backup = hooks / f"{hook_type}.{backup_suffix}"
     if existing:
         hook.write_text("original\n", encoding="utf-8")
         hook.chmod(0o744)
-    if legacy_exists:
-        legacy.write_text("original legacy\n", encoding="utf-8")
-        legacy.chmod(0o640)
+    if backup_exists:
+        backup.write_text("original backup\n", encoding="utf-8")
+        backup.chmod(0o640)
 
     def failed_install(argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
         if "rev-parse" in argv:
@@ -230,8 +237,8 @@ def test_failed_install_restores_lfs_post_hooks(
             return subprocess.CompletedProcess(argv, 0, stdout=json.dumps({hook_type: {}}))
         hook.write_text("partial install\n", encoding="utf-8")
         hook.chmod(0o777)
-        legacy.write_text("partial legacy\n", encoding="utf-8")
-        legacy.chmod(0o777)
+        backup.write_text("partial backup\n", encoding="utf-8")
+        backup.chmod(0o777)
         return subprocess.CompletedProcess(argv, 7)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- an interrupted installer must restore every affected hook.
@@ -244,11 +251,35 @@ def test_failed_install_restores_lfs_post_hooks(
         assert stat.S_IMODE(hook.stat().st_mode) == 0o744
     else:
         assert not hook.exists()
-    if legacy_exists:
-        assert legacy.read_text(encoding="utf-8") == "original legacy\n"
-        assert stat.S_IMODE(legacy.stat().st_mode) == 0o640
+    if backup_exists:
+        assert backup.read_text(encoding="utf-8") == "original backup\n"
+        assert stat.S_IMODE(backup.stat().st_mode) == 0o640
     else:
-        assert not legacy.exists()
+        assert not backup.exists()
+
+
+@pytest.mark.parametrize("discovery", ["rev-parse", "dump"])
+def test_lefthook_preflight_timeout_prevents_installation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], discovery: str
+) -> None:
+    calls: list[list[str]] = []
+
+    def run(argv: list[str], **kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        if argv[1] == discovery:
+            timeout = kwargs.get("timeout")
+            assert timeout == 5
+            raise subprocess.TimeoutExpired(argv, timeout)
+        assert argv[1] == "rev-parse"
+        return subprocess.CompletedProcess(argv, 0, stdout=f".git/{argv[-1]}\n")
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- a stalled discovery must not start the hook installer.
+        "sarj_standards.libs.repository.hooks.subprocess.run", run
+    )
+
+    assert lifecycle.execute([lifecycle.Command("Lefthook repository hooks", (sys.executable,), tmp_path)]) == 2
+    assert all("install" not in argv for argv in calls)
+    assert "exceeded 5s and was stopped" in capsys.readouterr().err
 
 
 def test_precommit_hook_uses_pinned_uvx_after_its_install_cache_is_removed(
