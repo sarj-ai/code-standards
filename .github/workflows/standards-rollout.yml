@@ -116,7 +116,13 @@ jobs:
           MISE_SHA256: c72477ae6c3a8e7d817a322f43da70e4643e75ee5c21265f1c19c894273b7428
         shell: bash
         run: bash .github/scripts/rollout-bootstrap.sh
-      - name: Mint the fleet rollout token
+      - name: Select the consumer token repository
+        id: token-scope
+        env:
+          CONSUMER: ${{ matrix.consumer.identity }}
+        shell: bash
+        run: bash .github/scripts/rollout-token-repository.sh
+      - name: Mint the consumer rollout token
         id: app-token
         continue-on-error: true
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -124,6 +130,7 @@ jobs:
           app-id: ${{ vars.STANDARDS_ROLLOUT_APP_ID }}
           private-key: ${{ secrets.STANDARDS_ROLLOUT_APP_PRIVATE_KEY }}
           owner: sarj-ai
+          repositories: ${{ steps.token-scope.outputs.repository }}
           permission-contents: write
           permission-pull-requests: write
           permission-workflows: write

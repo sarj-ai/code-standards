@@ -297,8 +297,12 @@ def _run_native(
     else:
         native_result = checker_module.analyze(selected_rules, paths)
     cache: dict[Path, SourceDocument | PythonSourceDocument | None] = {}
+    resolved_paths: dict[Path, Path] = {}
     diagnostics = tuple(
-        normalize_native(item, source=name, root=root, metadata=metadata, documents=cache) for item in native_result
+        normalize_native(
+            item, source=name, root=root, metadata=metadata, documents=cache, resolved_paths=resolved_paths
+        )
+        for item in native_result
     )
     return ToolReport(
         name,
@@ -375,8 +379,13 @@ def normalize_native(
     root: Path,
     metadata: Mapping[str, _NativeRuleMetadata],
     documents: dict[Path, SourceDocument | PythonSourceDocument | None],
+    resolved_paths: dict[Path, Path] | None = None,
 ) -> Diagnostic:
-    resolved = item.path.resolve()
+    resolved = None if resolved_paths is None else resolved_paths.get(item.path)
+    if resolved is None:
+        resolved = item.path.resolve()
+        if resolved_paths is not None:
+            resolved_paths[item.path] = resolved
     document = documents.get(resolved)
     if resolved not in documents:
         try:
@@ -400,16 +409,17 @@ def normalize_native(
 
         if item.code in PROTECTED_SUPPRESSION_CODES:
             tags = ("non-baselineable", "required-source-policy")
+    relative_path = _relative_path(resolved, root)
     return Diagnostic(
         code=item.code,
         rule_id=rule_id,
         message=item.message,
         severity=_severity(item),
         source=source,
-        location=Location(_relative_path(resolved, root), position=position),
+        location=Location(relative_path, position=position),
         help=help_text,
         tags=tags,
-        fixes=_python_fixes(item, document, _relative_path(resolved, root)) if source == "sarj-python-lint" else (),
+        fixes=_python_fixes(item, document, relative_path) if source == "sarj-python-lint" else (),
     )
 
 

@@ -22,7 +22,16 @@ def coverage_project(tmp_path: Path) -> Path:
 
 def _pytest(project: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", *arguments],
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            f"--basetemp={project.parents[1] / 'pytest-runtime'}",
+            *arguments,
+        ],
         cwd=project,
         env={**os.environ, "PYTEST_ADDOPTS": ""},  # ruff: ignore[banned-api] -- isolate pytest filters, retain runtime.
         capture_output=True,

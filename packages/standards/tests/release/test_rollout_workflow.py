@@ -111,7 +111,6 @@ def test_rollout_token_is_installation_scoped_and_never_persisted_by_checkout() 
     assert "STANDARDS_ROLLOUT_APP_ID" in workflow
     assert "STANDARDS_ROLLOUT_APP_PRIVATE_KEY" in workflow
     assert "STANDARDS_ROLLOUT_REGISTRY_TOML" in workflow
-    assert "repositories\n" not in workflow
     assert "permission-issues" not in workflow
     assert "permission-contents\nwrite" in workflow
     assert "permission-pull-requests\nwrite" in workflow
@@ -120,6 +119,55 @@ def test_rollout_token_is_installation_scoped_and_never_persisted_by_checkout() 
     assert "git push" not in workflow
     assert {"GH_TOKEN", "GITHUB_TOKEN"}.issubset(controller_literals)
     assert "STANDARDS_ROLLOUT_" in controller_literals
+
+
+@pytest.mark.parametrize("job_name", ["plan", "rollout", "report"])
+def test_only_the_consumer_write_token_is_repository_scoped(job_name: str) -> None:
+    jobs = _workflow()["jobs"]
+    assert _is_object(jobs)
+    job = jobs[job_name]
+    assert _is_object(job)
+    steps = job["steps"]
+    assert _is_array(steps)
+    token = next(step for step in steps if _is_object(step) and step.get("id") == "app-token")
+    assert _is_object(token)
+    inputs = token["with"]
+    assert _is_object(inputs)
+    assert inputs.get("repositories") == (
+        "${{ steps.token-scope.outputs.repository }}" if job_name == "rollout" else None
+    )
+
+
+@pytest.mark.parametrize(
+    ("consumer", "repository"),
+    [
+        ("example/app@main", "app"),
+        ("example/app@feature/with@sign", "app"),
+        ("", None),
+        ("example/app", None),
+        ("example/app@", None),
+        ("example/@main", None),
+        ("other/app@main", None),
+        ("example/app,another@main", None),
+        ("example/app\nrepository=another@main", None),
+    ],
+)
+def test_rollout_token_selection_cannot_fall_back_to_the_installation(
+    tmp_path: Path, consumer: str, repository: str | None
+) -> None:
+    output = tmp_path / "outputs"
+    environment = {
+        **credential_free_environment(),
+        "CONSUMER": consumer,
+        "GITHUB_REPOSITORY_OWNER": "example",
+        "GITHUB_OUTPUT": str(output),
+    }
+    result = _run_rollout("rollout-token-repository.sh", environment)
+    assert result.returncode == (0 if repository is not None else 1)
+    if repository is None:
+        assert not output.exists()
+    else:
+        assert output.read_text(encoding="utf-8") == f"repository={repository}\n"
 
 
 def test_release_tags_dispatches_rollout_from_the_immutable_release_tag() -> None:

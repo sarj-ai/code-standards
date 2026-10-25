@@ -9,6 +9,13 @@ concurrency. Separate queue/execution time; measure readiness, useful errors,
 repeated work or output cost. Preserve final qualification gates; modernization
 needs observable benefit.
 
+Before polling PR checks, confirm mergeability and that expected workflows
+started for the current head. Merge conflicts can suppress `pull_request`
+workflows while other checks pass; resolve that cause before waiting or
+claiming qualification. Poll pending runs with backoff; reuse immutable diffs
+and commit metadata, and retrieve relevant logs only for failed jobs.
+After a new commit, reconcile the head and expected workflows again.
+
 Trace stack inputs and matrices to command targets. Generalize shared contracts
 across supported stacks while retaining authorization and capability boundaries;
 reuse the declared stack set. A stack comparison alone does not prove a defect.

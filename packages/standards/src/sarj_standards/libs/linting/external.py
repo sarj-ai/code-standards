@@ -2283,7 +2283,9 @@ def _project_analyzer(project: Path, name: str) -> str:
 
 def _group_python_projects(files: Sequence[str], root: Path) -> tuple[tuple[Path, tuple[str, ...]], ...]:
     fallback = _adopted_python_project(root)
-    nearest = cache(partial(_nearest_analyzer_project, root=root, fallback=fallback))
+    nearest = cache(
+        partial(_nearest_analyzer_project, root=root, fallback=fallback, has_tool=cache(_pyproject_has_tool))
+    )
     grouped: dict[Path, list[str]] = {}
     for raw_file in files:
         path = Path(raw_file).resolve()
@@ -2295,8 +2297,14 @@ def _group_python_projects(files: Sequence[str], root: Path) -> tuple[tuple[Path
     )
 
 
-def _nearest_analyzer_project(start: Path, root: Path, *, fallback: Path | None = None) -> Path:
-    configured = _nearest_configured_python_project(start, root, names=("pyright", "basedpyright"))
+def _nearest_analyzer_project(
+    start: Path,
+    root: Path,
+    *,
+    fallback: Path | None = None,
+    has_tool: Callable[[Path, Sequence[str]], bool] | None = None,
+) -> Path:
+    configured = _nearest_configured_python_project(start, root, names=("pyright", "basedpyright"), has_tool=has_tool)
     if configured is not None:
         return configured
     current = start
@@ -2317,7 +2325,7 @@ def _nearest_analyzer_project(start: Path, root: Path, *, fallback: Path | None 
 
 def ruff_project_groups(files: Sequence[str], root: Path) -> tuple[tuple[Path, Path | None, tuple[str, ...]], ...]:
     fallback = _adopted_python_config(root)
-    nearest = cache(partial(_nearest_ruff_config, root=root))
+    nearest = cache(partial(_nearest_ruff_config, root=root, has_tool=cache(_pyproject_has_tool)))
     grouped: dict[tuple[Path, Path | None], list[str]] = {}
     for raw_file in files:
         path = Path(raw_file).resolve()
@@ -2331,7 +2339,9 @@ def ruff_project_groups(files: Sequence[str], root: Path) -> tuple[tuple[Path, P
 
 
 def _group_deptry_projects(files: Sequence[str], root: Path) -> tuple[tuple[Path, tuple[str, ...]], ...]:
-    nearest = cache(partial(_nearest_deptry_project, root=root))
+    nearest = cache(
+        partial(_nearest_deptry_project, root=root, has_specification=cache(_has_deptry_dependency_specification))
+    )
     grouped: dict[Path, list[str]] = {}
     for raw_file in files:
         path = Path(raw_file).resolve()
@@ -2345,10 +2355,10 @@ def _group_deptry_projects(files: Sequence[str], root: Path) -> tuple[tuple[Path
     )
 
 
-def _nearest_deptry_project(start: Path, root: Path) -> Path | None:
+def _nearest_deptry_project(start: Path, root: Path, *, has_specification: Callable[[Path], bool]) -> Path | None:
     current = start
     while current.is_relative_to(root):
-        if _has_deptry_dependency_specification(current):
+        if has_specification(current):
             return current
         if current == root:
             break
@@ -2374,7 +2384,10 @@ def _has_deptry_dependency_specification(project: Path) -> bool:
     return isinstance(poetry.get("dependencies"), dict)
 
 
-def _nearest_ruff_config(start: Path, root: Path) -> Path | None:
+def _nearest_ruff_config(
+    start: Path, root: Path, *, has_tool: Callable[[Path, Sequence[str]], bool] | None = None
+) -> Path | None:
+    probe = _pyproject_has_tool if has_tool is None else has_tool
     current = start
     while current.is_relative_to(root):
         for name in (".ruff.toml", "ruff.toml"):
@@ -2382,7 +2395,7 @@ def _nearest_ruff_config(start: Path, root: Path) -> Path | None:
             if candidate.is_file():
                 return candidate
         pyproject = current / "pyproject.toml"
-        if pyproject.is_file() and _pyproject_has_tool(pyproject, ("ruff",)):
+        if pyproject.is_file() and probe(pyproject, ("ruff",)):
             return pyproject
         if current == root:
             break
@@ -2406,13 +2419,20 @@ def _adopted_python_project(root: Path) -> Path | None:
     return project if project.is_dir() else None
 
 
-def _nearest_configured_python_project(start: Path, root: Path, *, names: Sequence[str]) -> Path | None:
+def _nearest_configured_python_project(
+    start: Path,
+    root: Path,
+    *,
+    names: Sequence[str],
+    has_tool: Callable[[Path, Sequence[str]], bool] | None = None,
+) -> Path | None:
+    probe = _pyproject_has_tool if has_tool is None else has_tool
     current = start
     while current.is_relative_to(root):
         if (current / "pyrightconfig.json").is_file() or (current / "pyrightconfig.jsonc").is_file():
             return current
         pyproject = current / "pyproject.toml"
-        if pyproject.is_file() and _pyproject_has_tool(pyproject, names):
+        if pyproject.is_file() and probe(pyproject, names):
             return current
         if current == root:
             break

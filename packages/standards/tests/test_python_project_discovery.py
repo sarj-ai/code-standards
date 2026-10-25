@@ -59,3 +59,37 @@ def test_deptry_observes_configuration_added_after_an_unowned_selection(tmp_path
     assert report.completion is Completion.COMPLETE, report.issues
     assert not report.diagnostics
     assert report.file_count == len(files)
+
+
+@pytest.mark.parametrize("capability", ["deptry", "ruff", "pyright"])
+def test_shared_ancestor_reads_stay_bounded_per_selection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capability: str
+) -> None:
+    root = tmp_path.resolve()
+    manifest = root / "pyproject.toml"
+    manifest.write_text(_PROJECT, encoding="utf-8")
+    sources: list[str] = []
+    for index in range(40):
+        directory = root / f"package_{index}" / "src"
+        directory.mkdir(parents=True)
+        source = directory / "app.py"
+        source.write_text("value = 1\n", encoding="utf-8")
+        sources.append(str(source))
+    reads: list[Path] = []
+    read_text = Path.read_text
+
+    def record_read(path: Path, **kwargs: str) -> str:
+        if path == manifest:
+            reads.append(path)
+        return read_text(path, **kwargs)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Real filesystem reads are the resource boundary; injecting a probe would bypass the repeated I/O under test.
+        Path, "read_text", record_read
+    )
+    capabilities = frozenset({capability})
+    (report,) = analyze_external(sources, root=root, trust=TrustMode.SAFE, capabilities=capabilities)
+    assert report.completion is Completion.COMPLETE, report.issues
+    assert not report.diagnostics
+    assert report.file_count == len(sources)
+    # The public pipeline also reads the manifest for configuration and rule policy.
+    assert len(reads) <= 4

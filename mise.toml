@@ -1,0 +1,8 @@
+# Match the native versions attested by doctor and the documentation formatter.
+[tools]
+uv = "0.13.5"
+"aqua:hashicorp/terraform" = "1.17.0"
+"aqua:koalaman/shellcheck" = "0.11.0"
+"aqua:mvdan/sh" = "3.14.1"
+"aqua:rhysd/actionlint" = "1.7.12"
+"github:docker/compose" = "5.6.1"
