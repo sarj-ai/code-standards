@@ -2552,9 +2552,9 @@ def _rollout_pull_body(
         evidence = "No consumer verification command is configured; no consumer checks are claimed."
     paths = "\n".join(f"    {json.dumps(path)}" for path in sorted(branch_paths))
     return (
-        f"{markers}\n## What & why\n\n"
+        f"{markers}\n## Summary\n\n"
         f"Adopt the published Standards bundle for `{consumer.identity}`.\n\n"
-        f"Desired bundle: `code-standards=={version}`.\n\n"
+        f"## What & why\n\nDesired bundle: `code-standards=={version}`.\n\n"
         f"## Scope accounting\n\nExact pushed head: `{pushed_head_sha}`.\n\n"
         f"Committed paths ({len(branch_paths)}):\n\n{paths}\n\n"
         "## One-way or two-way door\n\n"
