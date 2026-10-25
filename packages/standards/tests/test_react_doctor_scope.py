@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import shutil
 from typing import TYPE_CHECKING
 
 import pytest
@@ -29,21 +30,48 @@ class _Workspace:
     base: str
 
 
-@pytest.fixture
-def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> _Workspace:
-    _git(tmp_path, "init", "--template=", "--initial-branch=main")
-    _git(tmp_path, "config", "user.name", "Scope test")
-    _git(tmp_path, "config", "user.email", "scope@example.com")
+@pytest.fixture(scope="module")
+def workspace_seed(tmp_path_factory: pytest.TempPathFactory) -> _Workspace:
+    root = tmp_path_factory.mktemp("react-doctor-workspace-seed")
+    # run_process strips inherited GIT_* routing before function autouse fixtures run.
+    _git(root, "init", "--template=", "--initial-branch=main")
+    _git(root, "config", "user.name", "Scope test")
+    _git(root, "config", "user.email", "scope@example.com")
     for name in ("app", "engineering", "qa", "ai-dashboard"):
-        project = tmp_path / "packages" / name
+        project = root / "packages" / name
         project.mkdir(parents=True)
         (project / "package.json").write_text('{"dependencies":{"react":"19.2.8"}}\n', encoding="utf-8")
         (project / "view.tsx").write_text("export const View = () => <div />;\n", encoding="utf-8")
-    _git(tmp_path, "add", ".")
-    _git(tmp_path, "commit", "-m", "Initial workspaces")
-    base = _git(tmp_path, "rev-parse", "HEAD")
-    monkeypatch.setenv("SARJ_STANDARDS_BASE", base)
-    return _Workspace(root=tmp_path, base=base)
+    _git(root, "add", ".")
+    _git(root, "commit", "-m", "Initial workspaces")
+    return _Workspace(root=root, base=_git(root, "rev-parse", "HEAD"))
+
+
+@pytest.fixture
+def workspace(workspace_seed: _Workspace, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> _Workspace:
+    shutil.copytree(workspace_seed.root, tmp_path, dirs_exist_ok=True)
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", workspace_seed.base)
+    return _Workspace(root=tmp_path, base=workspace_seed.base)
+
+
+def test_workspace_copy_keeps_seed_git_state_independent(workspace: _Workspace, workspace_seed: _Workspace) -> None:
+    root = workspace.root
+    assert (root / ".git").is_dir()
+    assert not (root / ".git").is_symlink()
+    assert not (root / ".git/objects/info/alternates").exists()
+    assert not _git(root, "status", "--porcelain")
+    original_config = (workspace_seed.root / ".git/config").read_bytes()
+    _git(root, "config", "scope.private", "copy")
+    _git(root, "checkout", "-b", "private-copy")
+    _change(root, ("app",), staged=True)
+    assert _git(root, "diff", "--cached", "--name-only") == "packages/app/view.tsx"
+    assert not _git(workspace_seed.root, "status", "--porcelain")
+    assert (workspace_seed.root / ".git/config").read_bytes() == original_config
+
+    _git(root, "commit", "-m", "Change private copy")
+    assert _git(root, "rev-parse", "HEAD") != workspace_seed.base
+    assert _git(workspace_seed.root, "rev-parse", "HEAD") == workspace_seed.base
+    assert not _git(workspace_seed.root, "branch", "--list", "private-copy")
 
 
 def _change(root: Path, names: Sequence[str], *, staged: bool) -> None:
