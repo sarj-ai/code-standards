@@ -1882,11 +1882,14 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         ]
         assert environment["PATH"].startswith(str(shim_directory))
 
-    def test_provisions_exact_tools_declared_by_consumer_workflows(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("trigger", ["on", '"on"'])
+    def test_provisions_exact_tools_declared_by_consumer_workflows(self, tmp_path: Path, trigger: str) -> None:
         workflows = tmp_path / ".github/workflows"
         workflows.mkdir(parents=True)
         (workflows / "terraform.yml").write_text(
-            """jobs:
+            f"""name: Terraform
+{trigger}: push
+jobs:
   lint:
     steps:
       - uses: hashicorp/setup-terraform@0123456789012345678901234567890123456789
@@ -1914,7 +1917,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         workflows.mkdir(parents=True)
         for name, version in (("one.yml", "1.14.7"), ("two.yml", "1.13.5")):
             (workflows / name).write_text(
-                "jobs:\n  lint:\n    steps:\n"
+                "on: push\njobs:\n  lint:\n    steps:\n"
                 "      - uses: hashicorp/setup-terraform@0123456789012345678901234567890123456789\n"
                 f"        with:\n          terraform_version: {version}\n",
                 encoding="utf-8",
