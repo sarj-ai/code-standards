@@ -2675,6 +2675,9 @@ def _bootstrap_for_baseline(
     for path, contents in before.items():
         if contents is not None or path.exists() or path.is_symlink():
             assert_baseline_unchanged(path, contents)
+    if bootstrap is not None and baseline_path is not None and not baseline_path.is_file():
+        msg = "consumer bootstrap failed before the diagnostic baseline was available:\n"
+        raise RolloutError(msg + verification_detail(bootstrap))
     return bootstrap
 
 

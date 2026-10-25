@@ -111,6 +111,17 @@ def test_bootstrap_cannot_redirect_the_diagnostic_baseline(tmp_path: Path) -> No
     assert len(runner.commands) == 1
 
 
+def test_failed_bootstrap_without_a_baseline_preserves_the_failure(tmp_path: Path) -> None:
+    runner = BaselineRunner(tmp_path, bootstrap_exit=7)
+
+    with pytest.raises(rollout.RolloutError, match="bootstrap failed before") as failure:
+        _prepare(tmp_path, runner)
+
+    assert "bootstrap output" in str(failure.value)
+    assert len(runner.commands) == 1
+    assert not (tmp_path / "diagnostic-baseline.json").exists()
+
+
 @pytest.mark.parametrize("relative", ["diagnostic-baseline.json", ".repo-standards/baseline.json"])
 @pytest.mark.parametrize("mutation", ["create", "replace", "delete"])
 def test_bootstrap_cannot_change_baseline_bytes_or_absence(tmp_path: Path, relative: str, mutation: str) -> None:
