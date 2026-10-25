@@ -1159,7 +1159,8 @@ def declared_workflow_tools(repo: Path) -> tuple[str, ...]:
         except (OSError, yaml.YAMLError) as exc:
             msg = f"could not read consumer workflow tool declarations from {path}: {exc}"
             raise RolloutError(msg) from exc
-        if not is_object(parsed):
+        # PyYAML reads the ordinary workflow key `on` as the boolean True.
+        if not is_object_mapping(parsed):
             continue
         jobs = parsed.get("jobs")
         if not is_object(jobs):
