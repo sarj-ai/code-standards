@@ -1,7 +1,7 @@
 {
   "name": "sarj-skills",
   "description": "Evidence-driven audits, rule authoring, and iterative improvements",
-  "version": "4.0.3",
+  "version": "4.0.4",
   "author": { "name": "sarj-ai" },
   "homepage": "https://github.com/sarj-ai/code-standards",
   "repository": "https://github.com/sarj-ai/code-standards"
