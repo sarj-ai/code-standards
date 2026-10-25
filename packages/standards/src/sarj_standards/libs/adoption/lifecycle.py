@@ -490,7 +490,9 @@ def execute(commands: Iterable[Command]) -> int:
         hook_transaction: transaction.FileTransaction | None = None
         try:
             if command.label in {_PRECOMMIT_HOOK_LABEL, _LEFTHOOK_HOOK_LABEL}:
-                hook_transaction = _capture_hook_transaction(command.cwd)
+                hook_transaction = _capture_hook_transaction(
+                    command.cwd, lefthook=command.label == _LEFTHOOK_HOOK_LABEL
+                )
             completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- pass the fixed executable as an argv sequence with shell execution disabled.
                 [executable, *command.argv[1:]],
                 cwd=command.cwd,
@@ -498,9 +500,9 @@ def execute(commands: Iterable[Command]) -> int:
                 env=_command_environment(),
                 timeout=_COMMAND_TIMEOUT.total_seconds(),
             )
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as exc:
             _report_hook_rollback(hook_transaction)
-            sys.stderr.write(f"error: {command.label} exceeded {_COMMAND_TIMEOUT.total_seconds():g}s and was stopped\n")
+            sys.stderr.write(f"error: {command.label} exceeded {exc.timeout:g}s and was stopped\n")
             return 2
         except BaseException:
             _report_hook_rollback(hook_transaction)
@@ -518,7 +520,11 @@ def execute(commands: Iterable[Command]) -> int:
     return 0
 
 
-def _capture_hook_transaction(root: Path) -> transaction.FileTransaction:
+def _capture_hook_transaction(root: Path, *, lefthook: bool = False) -> transaction.FileTransaction:
+    if lefthook:
+        from sarj_standards.libs.repository import hooks as repository_hooks  # ruff: ignore[import-outside-top-level] -- load the selected manager's resolved hook ownership only for Lefthook installation.
+
+        return repository_hooks.capture_transaction(root)
     hooks_dir = _precommit_hook_path(root).parent
     names = (
         "pre-commit",
