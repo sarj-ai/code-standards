@@ -99,6 +99,20 @@ class _PreparationObserver(ProjectRule):
         return [Diagnostic(context.path, 1, 1, self.code, "prepared")]
 
 
+@final
+class _FileFailure(Rule):
+    id = "parallel-file-failure-fixture"
+    code = "TEST005"
+    description = "Fail one selected file while other files are queued."
+
+    @override
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        if context.path.name == "failure.py":
+            msg = "fixture file failed"
+            raise RuntimeError(msg)
+        return [Diagnostic(context.path, 1, 1, self.code, "completed")]
+
+
 def test_spawned_rule_preparation_matches_serial_lifecycle(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the real registry lifecycle is under test; injecting prepared rules would bypass it.
         engine, "REGISTRY", {**REGISTRY, _PreparationObserver.id: _PreparationObserver}
@@ -118,6 +132,23 @@ def test_worker_initialization_failure_is_not_serial_success(tmp_path: Path) -> 
             [_BrokenInitializer], {tmp_path / "first.py": "", tmp_path / "last.py": ""}, None, jobs=2
         )
     assert {child.pid for child in multiprocessing.active_children()} == before
+
+
+@pytest.mark.parametrize("failure_index", [0, 8])
+def test_queued_file_failure_propagates_and_reaps_workers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure_index: int
+) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the real registry must dispatch this rule in spawned workers.
+        engine, "REGISTRY", {**REGISTRY, _FileFailure.id: _FileFailure}
+    )
+    paths = [tmp_path / ("failure.py" if index == failure_index else f"file_{index}.py") for index in range(17)]
+    for path in paths:
+        path.write_text("value = 1\n")
+    before = {child.pid for child in multiprocessing.active_children()}
+    for jobs in (1, 2):
+        with pytest.raises(RuntimeError, match="fixture file failed"):
+            analyze([_FileFailure.id], paths, jobs=jobs)
+        assert {child.pid for child in multiprocessing.active_children()} == before
 
 
 @pytest.mark.parametrize("mode", ["resolutions", "modules"])
