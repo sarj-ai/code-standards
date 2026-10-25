@@ -5,9 +5,10 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Unpack
 
 import pytest
 
@@ -18,6 +19,8 @@ from sarj_standards.libs.adoption.packagemanager import PackageManager
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    from tests.call_contracts import SubprocessOptions
 
 
 def _project(root: Path, name: str) -> Path:
@@ -201,6 +204,53 @@ def test_lefthook_install_uses_the_managed_durable_installer(
         "hooks",
         "install",
     )
+
+
+@pytest.mark.parametrize("hook_type", ["post-checkout", "post-commit", "post-merge"])
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("legacy_exists", [False, True])
+def test_failed_install_restores_lfs_post_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook_type: str, existing: bool, legacy_exists: bool
+) -> None:
+    hooks = tmp_path / ".git" / "hooks"
+    hooks.mkdir(parents=True)
+    hook = hooks / hook_type
+    legacy = hooks / f"{hook_type}.legacy"
+    if existing:
+        hook.write_text("original\n", encoding="utf-8")
+        hook.chmod(0o744)
+    if legacy_exists:
+        legacy.write_text("original legacy\n", encoding="utf-8")
+        legacy.chmod(0o640)
+
+    def hook_path(_root: Path) -> Path:
+        return hooks / "pre-commit"
+
+    def failed_install(argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
+        hook.write_text("partial install\n", encoding="utf-8")
+        hook.chmod(0o777)
+        legacy.write_text("partial legacy\n", encoding="utf-8")
+        legacy.chmod(0o777)
+        return subprocess.CompletedProcess(argv, 7)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- isolate the outer installer rollback boundary.
+        lifecycle, "_precommit_hook_path", hook_path
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- an interrupted installer must restore every affected hook.
+        "sarj_standards.libs.adoption.lifecycle.subprocess.run", failed_install
+    )
+
+    assert lifecycle.execute([lifecycle.Command("Lefthook repository hooks", (sys.executable,), tmp_path)]) == 7
+    if existing:
+        assert hook.read_text(encoding="utf-8") == "original\n"
+        assert stat.S_IMODE(hook.stat().st_mode) == 0o744
+    else:
+        assert not hook.exists()
+    if legacy_exists:
+        assert legacy.read_text(encoding="utf-8") == "original legacy\n"
+        assert stat.S_IMODE(legacy.stat().st_mode) == 0o640
+    else:
+        assert not legacy.exists()
 
 
 def test_precommit_hook_uses_pinned_uvx_after_its_install_cache_is_removed(

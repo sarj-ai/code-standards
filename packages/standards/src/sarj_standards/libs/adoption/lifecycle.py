@@ -527,6 +527,12 @@ def _capture_hook_transaction(root: Path) -> transaction.FileTransaction:
         "commit-msg.legacy",
         "pre-push",
         "pre-push.legacy",
+        "post-checkout",
+        "post-checkout.legacy",
+        "post-commit",
+        "post-commit.legacy",
+        "post-merge",
+        "post-merge.legacy",
         ".sarj-lefthook",
         ".sarj-lefthook.exe",
     )

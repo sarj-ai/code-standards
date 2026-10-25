@@ -137,6 +137,12 @@ def _hook_transaction_targets(hooks_dir: Path) -> tuple[Path, ...]:
             "commit-msg.legacy",
             "pre-push",
             "pre-push.legacy",
+            "post-checkout",
+            "post-checkout.legacy",
+            "post-commit",
+            "post-commit.legacy",
+            "post-merge",
+            "post-merge.legacy",
             ".sarj-lefthook",
             ".sarj-lefthook.exe",
         )
@@ -288,7 +294,7 @@ def _native_binary() -> Path:
 def _hook_paths(root: Path) -> list[Path]:
     return [
         path
-        for hook_name in ("pre-commit", "pre-push", "commit-msg")
+        for hook_name in ("pre-commit", "pre-push", "commit-msg", "post-checkout", "post-commit", "post-merge")
         if (path := _hook_path(root, hook_name)).is_file()
     ]
 
