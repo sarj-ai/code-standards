@@ -6,5 +6,9 @@ if [[ "$EVENT_NAME" == push ]] && ! bash .github/scripts/ci-base-certified.sh "$
 fi
 bash .github/scripts/release-python.sh -m sarj_standards.libs.release.test_selection \
   --root . --base "$BEFORE" --head "$AFTER" --event "$EVENT_NAME" --report "$RUNNER_TEMP/impact.json"
-portability="$(jq -r '.full' "$RUNNER_TEMP/impact.json")"
+portability="$(jq -r '
+  .full or any(.changed_files[];
+    test("^packages/standards/tests/test_(cli_startup|consumer_cli|lifecycle|package_managers)\\.py$")
+  )
+' "$RUNNER_TEMP/impact.json")"
 echo "portability=$portability" >>"$GITHUB_OUTPUT"

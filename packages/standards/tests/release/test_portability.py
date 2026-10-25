@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -73,3 +74,48 @@ def test_portability_overlaps_both_lanes_and_propagates_each_failure(tmp_path: P
     assert (reports / "consumer-cli.log").exists()
     assert (reports / "lifecycle-cli.log").exists()
     assert (reports / "pre-commit.log").exists()
+
+
+@pytest.mark.parametrize(
+    ("changed", "full", "expected"),
+    [
+        ((), False, False),
+        ((), True, True),
+        (("packages/standards/tests/test_cli_startup.py",), False, True),
+        (("packages/standards/tests/test_consumer_cli.py",), False, True),
+        (("packages/standards/tests/test_lifecycle.py",), False, True),
+        (("packages/standards/tests/test_package_managers.py",), False, True),
+        (("packages/standards/tests/test_smoke.py",), False, False),
+        (("other/tests/test_lifecycle.py",), False, False),
+        (("packages/standards/tests/test_lifecycle_extra.py",), False, False),
+        (("README.md", "packages/standards/tests/test_lifecycle.py"), False, True),
+    ],
+)
+def test_changed_portability_tests_retain_native_release_gate(
+    tmp_path: Path, changed: tuple[str, ...], *, full: bool, expected: bool
+) -> None:
+    scripts = tmp_path / ".github/scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "release-python.sh").write_text(
+        '#!/usr/bin/env bash\nprintf \'%s\\n\' "$TEST_PLAN" >"$RUNNER_TEMP/impact.json"\n'
+    )
+    environment = credential_free_environment()
+    output = tmp_path / "output"
+    environment.update(
+        {
+            "EVENT_NAME": "workflow_dispatch",
+            "RUNNER_TEMP": str(tmp_path),
+            "GITHUB_OUTPUT": str(output),
+            "TEST_PLAN": json.dumps({"full": full, "changed_files": changed}),
+        }
+    )
+    subprocess.run(
+        ("bash", str(ROOT / ".github/scripts/release-impact.sh")),
+        cwd=tmp_path,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert output.read_text() == f"portability={str(expected).lower()}\n"

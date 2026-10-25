@@ -229,6 +229,8 @@ def test_failed_install_restores_lfs_post_hooks(
     if backup_exists:
         backup.write_text("original backup\n", encoding="utf-8")
         backup.chmod(0o640)
+    hook_mode = stat.S_IMODE(hook.stat().st_mode) if existing else None
+    backup_mode = stat.S_IMODE(backup.stat().st_mode) if backup_exists else None
 
     def failed_install(argv: list[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
         if "rev-parse" in argv:
@@ -248,12 +250,12 @@ def test_failed_install_restores_lfs_post_hooks(
     assert lifecycle.execute([lifecycle.Command("Lefthook repository hooks", (sys.executable,), tmp_path)]) == 7
     if existing:
         assert hook.read_text(encoding="utf-8") == "original\n"
-        assert stat.S_IMODE(hook.stat().st_mode) == 0o744
+        assert stat.S_IMODE(hook.stat().st_mode) == hook_mode
     else:
         assert not hook.exists()
     if backup_exists:
         assert backup.read_text(encoding="utf-8") == "original backup\n"
-        assert stat.S_IMODE(backup.stat().st_mode) == 0o640
+        assert stat.S_IMODE(backup.stat().st_mode) == backup_mode
     else:
         assert not backup.exists()
 
