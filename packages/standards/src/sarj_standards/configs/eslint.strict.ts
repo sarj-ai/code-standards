@@ -1488,6 +1488,8 @@ export function createConfig(options: ConfigOptions = {}): Linter.Config[] {
       "@sarj/no-hand-rolled-spinner": "error",
       "@sarj/no-known-value-widening": "error",
       "@sarj/no-excess-jsx-props": "warn",
+      "@sarj/no-redundant-consumer-union": "warn",
+      "@sarj/prefer-minimal-parameter-contract": "warn",
       "@sarj/no-invalid-typed-mutation": "warn",
       "@sarj/no-contradictory-type-predicate": "warn",
       "@sarj/no-partial-type-predicate": "warn",

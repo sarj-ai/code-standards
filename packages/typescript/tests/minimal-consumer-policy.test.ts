@@ -10,8 +10,15 @@ const FIXTURE_ROOT = join(import.meta.dirname, "fixtures", "minimal-consumer");
 const RULE = "@sarj/no-excess-jsx-props";
 const WIDENING = "@sarj/no-known-value-widening";
 const REDUNDANT = "@typescript-eslint/no-redundant-type-constituents";
-const SELECTED = new Set([RULE, WIDENING, REDUNDANT, "@sarj/no-broad-return-type", "react/jsx-props-no-spreading", "react/no-unused-prop-types"]);
+const DEPENDENCY = "@sarj/prefer-minimal-parameter-contract";
+const CONSUMER_UNION = "@sarj/no-redundant-consumer-union";
+const SELECTED = new Set([RULE, DEPENDENCY, CONSUMER_UNION, WIDENING, REDUNDANT, "@sarj/no-broad-return-type", "react/jsx-props-no-spreading", "react/no-unused-prop-types"]);
 const PREFIX = "export {}; declare namespace JSX { interface Element {} interface IntrinsicAttributes {key?: string} interface IntrinsicElements {span: {children?: unknown}} }\nconst Avatar = ({name}: {name: string}): JSX.Element => <span>{name}</span>;\n";
+const PRIVATE_PREFIX = 'export {}; const account = {name: "Ada", email: "a"};\n';
+const PRIVATE_CASES = [
+  [DEPENDENCY, "function label(p: {readonly name: string; readonly email: string}): string {return p.name;} label(account);"],
+  [CONSUMER_UNION, "interface Animal {readonly name: string} interface Dog extends Animal {readonly email: string} function label(p: Dog | Animal): string {return p.name;} label(account);"],
+] as const;
 type ConfigFactory = (options: {tsconfigRootDir: string; projectService?: boolean}) => Linter.Config[];
 const FACTORIES: ReadonlyArray<readonly [string, ConfigFactory]> = [
   ["strict", createConfig as ConfigFactory],
@@ -44,6 +51,20 @@ describe.each(FACTORIES)("%s minimal consumer policy", (_name, factory) => {
     expect(result?.suppressedMessages.map(({ruleId}) => ruleId)).toEqual([RULE]);
   });
 
+  it.each(PRIVATE_CASES)("stages %s once without duplicate upstream ownership", async (ruleId, source) => {
+    const [result] = await eslint.lintText(`${PRIVATE_PREFIX}${source}`, {filePath: "policy.tsx"});
+    expect(result?.fatalErrorCount).toBe(0);
+    expect(result?.messages.map(({ruleId, severity}) => [ruleId, severity])).toEqual([[ruleId, 1]]);
+    expect(result?.messages[0]?.fix).toBeUndefined();
+    expect(result?.messages[0]?.suggestions).toBeUndefined();
+  });
+
+  it.each(PRIVATE_CASES)("honors an exact reviewed suppression for %s", async (ruleId, source) => {
+    const [result] = await eslint.lintText(`${PRIVATE_PREFIX}// eslint-disable-next-line ${ruleId} -- preserve this independently reviewed private contract\n${source}`, {filePath: "policy.tsx"});
+    expect(result?.messages).toEqual([]);
+    expect(result?.suppressedMessages.map(({ruleId}) => ruleId)).toEqual([ruleId]);
+  });
+
   it("leaves runtime projection and API edits to the author", async () => {
     const fixer = new ESLint({cwd: FIXTURE_ROOT, overrideConfigFile: true, overrideConfig: selectedConfig(factory), fix: true});
     const [result] = await fixer.lintText(`${PREFIX}const view = <Avatar {...{name: 'Ada', accountId: 'a'}} />;`, {filePath: "policy.tsx"});
@@ -55,6 +76,6 @@ describe.each(FACTORIES)("%s minimal consumer policy", (_name, factory) => {
     const [result] = await eslint.lintText(`${PREFIX}const view = <Avatar {...{name: }} />;`, {filePath: "policy.tsx"});
     expect(result?.fatalErrorCount).toBe(1);
     expect(result?.messages[0]?.message).toContain("Expression expected");
-    expect(result?.messages.some(({ruleId}) => ruleId === RULE)).toBe(false);
+    expect(result?.messages.map(({ruleId}) => ruleId)).toEqual([null]);
   });
 });

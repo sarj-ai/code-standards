@@ -1,3 +1,5 @@
+import noRedundantConsumerUnion from "./rules/no-redundant-consumer-union.js";
+import preferMinimalParameterContract from "./rules/prefer-minimal-parameter-contract.js";
 import noExcessJsxProps from "./rules/no-excess-jsx-props.js";
 import preferNativeFetchInServerActions from "./rules/prefer-native-fetch-in-server-actions.js";
 import noCredentialInBrowserStorage from "./rules/no-credential-in-browser-storage.js";
@@ -138,6 +140,8 @@ import { RENAMED_RULES } from "./rules/_renamed-rules.js";
 import { RETIRED_RULES } from "./rules/_retired-rules.js";
 
 const RULES = {
+  "no-redundant-consumer-union": noRedundantConsumerUnion,
+  "prefer-minimal-parameter-contract": preferMinimalParameterContract,
   "no-excess-jsx-props": noExcessJsxProps,
   "prefer-native-fetch-in-server-actions": preferNativeFetchInServerActions,
   "no-credential-in-browser-storage": noCredentialInBrowserStorage,
@@ -299,10 +303,12 @@ const ADVISORY_RULES = [
   "@sarj/no-invalid-zod-custom-parse",
   "@sarj/no-numeric-search-param-coercion",
   "@sarj/no-partial-type-predicate",
+  "@sarj/no-redundant-consumer-union",
   "@sarj/no-restated-comment",
   "@sarj/no-restated-jsdoc",
   "@sarj/prefer-discriminated-union",
   "@sarj/prefer-millisecond-control-duration-schema",
+  "@sarj/prefer-minimal-parameter-contract",
   "@sarj/prefer-module-level-refined-schema",
   "@sarj/prefer-native-fetch-in-server-actions",
   "@sarj/prefer-node-crypto-hash",
@@ -315,6 +321,8 @@ const ADVISORY_RULES = [
 
 const RECOMMENDED_RULES = {
   "@sarj/no-excess-jsx-props": "warn",
+  "@sarj/no-redundant-consumer-union": "warn",
+  "@sarj/prefer-minimal-parameter-contract": "warn",
   "@sarj/named-child-schema-type": "error",
   "@sarj/no-conditional-empty-object-spread": "error",
   "@sarj/prefer-typed-reflection": "error",
@@ -445,6 +453,8 @@ const RECOMMENDED_RULES = {
 
 const STRICT_RULES = {
   "@sarj/no-excess-jsx-props": "warn",
+  "@sarj/no-redundant-consumer-union": "warn",
+  "@sarj/prefer-minimal-parameter-contract": "warn",
   "@sarj/named-child-schema-type": "error",
   "@sarj/no-conditional-empty-object-spread": "error",
   "@sarj/prefer-typed-reflection": "error",
