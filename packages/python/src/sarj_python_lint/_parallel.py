@@ -87,7 +87,8 @@ def check_parallel(
     resolutions: set[_ResolutionKey] = set()
     modules: set[Path] = set()
     try:
-        for result in pool.map(_check_file, loaded.items(), chunksize=1, buffersize=workers):
+        # Keep workers busy while an earlier file delays ordered results.
+        for result in pool.map(_check_file, loaded.items(), chunksize=1, buffersize=workers * 4):
             resolutions.update(result.resolutions)
             modules.update(result.modules)
             # A worker cannot hit either order-dependent limit when the whole
