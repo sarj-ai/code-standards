@@ -1610,21 +1610,20 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
                 raise RolloutError(msg + process_failure_detail(exc)) from exc
             repository_baselines = repository_baseline_migration(repo, previous_repository_baseline)
             assert_consumer_base_current(consumer, base_sha, runner)
-            report("refreshing scoped baselines")
+            report("bootstrapping consumer and refreshing scoped baselines")
             baseline_rules = rollout_baseline_rules(
                 consumer,
                 previous_react_doctor_policy,
                 react_doctor_policy_snapshot(repo),
             )
-            allowed_baseline_paths, baseline_path, expected_baseline = _prepare_rollout_baseline(
+            allowed_baseline_paths, baseline_path, expected_baseline, bootstrap = _prepare_rollout_baseline(
                 consumer, repo, candidate_runner, baseline_rules, tool_prefix, tool=tool, environment=unauthenticated
             )
             allowed_baseline_paths |= frozenset(path.relative_to(repo).as_posix() for path in repository_baselines)
-            report("diagnosing adoption and bootstrapping consumer")
+            report("diagnosing adoption")
             doctor = candidate_runner.run((*tool_prefix, *tool, "doctor"), cwd=repo, env=unauthenticated, check=False)
             if doctor.returncode != 0:
                 failures.append("Standards doctor failed:\n" + verification_detail(doctor))
-            bootstrap = run_consumer_bootstrap(repo, tool_prefix, candidate_runner, unauthenticated)
             assert_baseline_unchanged(baseline_path, expected_baseline)
             assert_baselines_unchanged(repository_baselines)
             consumer_baselines = _update_consumer_baselines(
@@ -2602,6 +2601,7 @@ class _RolloutBaseline(NamedTuple):
     allowed_paths: frozenset[str]
     path: Path | None
     expected: bytes | None
+    bootstrap: subprocess.CompletedProcess[str] | None
 
 
 def _prepare_rollout_baseline(
@@ -2626,7 +2626,9 @@ def _prepare_rollout_baseline(
             "consumer manifest does not declare diagnostic_baseline"
         )
         raise RolloutError(msg)
-    if baseline_path is not None and baseline_relative is not None and baseline_rules:
+    # Declared generators must finish before analysis captures accepted diagnostics.
+    bootstrap = _bootstrap_for_baseline(repo, tool_prefix, runner, environment, baseline_path=baseline_path)
+    if bootstrap is None and baseline_path is not None and baseline_relative is not None and baseline_rules:
         baseline_command = [
             *tool_prefix,
             *tool,
@@ -2649,7 +2651,34 @@ def _prepare_rollout_baseline(
             msg = f"{consumer.name}: scoped diagnostic baseline generation did not create {baseline_path}"
             raise RolloutError(msg)
     expected_baseline = None if baseline_path is None or not baseline_path.is_file() else baseline_path.read_bytes()
-    return _RolloutBaseline(allowed_baseline_paths, baseline_path, expected_baseline)
+    return _RolloutBaseline(allowed_baseline_paths, baseline_path, expected_baseline, bootstrap)
+
+
+def _bootstrap_for_baseline(
+    repo: Path,
+    tool_prefix: tuple[str, ...],
+    runner: CommandRunner,
+    environment: Mapping[str, str],
+    *,
+    baseline_path: Path | None,
+) -> subprocess.CompletedProcess[str] | None:
+    before = {repo / repository_baseline.PATH: repository_baseline.read_optional(repo)}
+    if baseline_path is not None:
+        before[baseline_path] = baseline_path.read_bytes() if baseline_path.is_file() else None
+    bootstrap = run_consumer_bootstrap(repo, tool_prefix, runner, environment)
+    adopted = load_consumer_manifest(repo)
+    relative = None if adopted is None else adopted.diagnostic_baseline
+    configured_path = None if relative is None else repo / relative
+    if baseline_path != configured_path:
+        msg = "consumer bootstrap changed the diagnostic baseline path"
+        raise RolloutError(msg)
+    for path, contents in before.items():
+        if contents is not None or path.exists() or path.is_symlink():
+            assert_baseline_unchanged(path, contents)
+    if bootstrap is not None and baseline_path is not None and not baseline_path.is_file():
+        msg = "consumer bootstrap failed before the diagnostic baseline was available:\n"
+        raise RolloutError(msg + verification_detail(bootstrap))
+    return bootstrap
 
 
 def _verify_rollout_patch(
