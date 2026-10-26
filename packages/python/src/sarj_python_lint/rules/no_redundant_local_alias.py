@@ -108,6 +108,7 @@ class NoRedundantLocalAlias(Rule):
             "Loops, try statements, asserts, other Boolean short-circuiting, nested scopes, global/nonlocal declarations and type aliases are excluded. Ordinary and async with bodies require ordered enclosing-suite binding evidence.",
             "A conditional expression is admitted only when its test is a bare name bound once as a parameter, and neither local is read within the expression.",
             "Typed aliases, files with type comments, same-scope quoted references and conditional reads of either local are excluded. Captured bindings and module/class aliases are preserved.",
+            "Aliases read inside template interpolations are preserved because templates expose expression text. This conservatively also excludes reads used only in format specifications.",
             "Files with wildcard imports, Pydantic imports or references to known namespace readers, dynamic attribute getters or reference-count observers are excluded. Wildcard exports cannot establish builtin identity; computed type names can consume caller-local bindings without a Name read in the AST.",
             "Dynamic class construction and class-valued references to type are excluded. Direct, unshadowed unary type(value) queries and standard-library dataclasses remain supported.",
             "Generated source, stubs and malformed input are excluded; files must compile with normal module execution flags. Arbitrary external frame introspection is not modeled.",
@@ -507,7 +508,7 @@ def _plain_type_query(node: ast.AST, context: PythonFileContext) -> bool:
 
 def _statement(node: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> ast.stmt | None:
     while not isinstance(node, ast.stmt):
-        if isinstance(node, (ast.IfExp, ast.BoolOp)) or (parent := parents.get(node)) is None:
+        if isinstance(node, (ast.IfExp, ast.BoolOp, ast.Interpolation)) or (parent := parents.get(node)) is None:
             return None
         node = parent
     return node

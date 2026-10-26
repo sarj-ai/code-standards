@@ -58,7 +58,7 @@ function nativeDiagnostics(filename: string): readonly string[] {
 }
 
 function configuration(root: string, names: readonly (keyof typeof RULES)[]): Linter.Config {
-  return {files: ["**/*.ts"], languageOptions: {parser, parserOptions: {project: join(root, "tsconfig.json"), tsconfigRootDir: root}},
+  return {files: ["**/*.ts"], languageOptions: {parser, parserOptions: {project: join(root, "tsconfig.json"), tsconfigRootDir: root, disallowAutomaticSingleRunInference: true}},
     plugins: {sarj: {rules: Object.fromEntries(names.map((name) => [name, RULES[name] as unknown as Rule.RuleModule]))}},
     rules: Object.fromEntries(names.map((name) => [`sarj/${name}`, "error" as const]))};
 }

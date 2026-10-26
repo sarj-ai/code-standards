@@ -58,15 +58,21 @@ _DISPLAY = _DisplayProjection.model_validate_json(
 
 
 def _format_display_sources(files: tuple[_DisplayFile, ...]) -> tuple[_DisplayFile, ...]:
-    result = subprocess.run(
-        ["node", str(_ROOT / "apps/docs/scripts/format-code-examples.ts"), "--format-json"],
-        input=json.dumps([file.model_dump() for file in files]),
-        cwd=_ROOT,
-        text=True,
-        capture_output=True,
-        check=True,
-        timeout=120,
-    )
+    try:
+        result = subprocess.run(
+            ["node", str(_ROOT / "apps/docs/scripts/format-code-examples.ts"), "--format-json"],
+            input=json.dumps([file.model_dump() for file in files]),
+            cwd=_ROOT,
+            text=True,
+            capture_output=True,
+            check=True,
+            timeout=120,
+        )
+    except subprocess.CalledProcessError as error:
+        stderr = dict[str, object](vars(error)).get("stderr")
+        details = stderr.strip() if isinstance(stderr, str) else ""
+        msg = f"Display formatter exited {error.returncode}: {details[-4000:]}"
+        raise AssertionError(msg) from error
     formatted = _DisplayFiles.model_validate_json(result.stdout).root
     assert tuple(file.path for file in formatted) == tuple(file.path for file in files)
     return formatted

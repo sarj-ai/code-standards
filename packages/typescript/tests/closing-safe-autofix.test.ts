@@ -81,10 +81,18 @@ it.each([
   expect(repeated.messages).toEqual([]);
 });
 
-it.each(["", "a", "𝄞", "\u0000", "\n", "same"])(
+it.each([
+  ["", '""'],
+  ["a", '"a"'],
+  ["𝄞", '"𝄞"'],
+  ["\u0000", '"\\u0000"'],
+  ["\n", '"\\n"'],
+  ["same", '"same"'],
+])(
   "preserves literal string accumulation for %s",
-  (fragment) => {
-    const source = `export function render() { let output = 'prefix'; for (const item of [${JSON.stringify(fragment)}, 'tail']) { output += item; } return output; }`;
+  (fragment, sourceLiteral) => {
+    expect(sourceLiteral).toBe(JSON.stringify(fragment));
+    const source = `export function render() { let output = 'prefix'; for (const item of [${sourceLiteral}, 'tail']) { output += item; } return output; }`;
     const result = apply(stringLoop, source);
     expect(result.fixed).toBe(true);
     expect(evaluate(result.output, "exports.render()")).toBe(

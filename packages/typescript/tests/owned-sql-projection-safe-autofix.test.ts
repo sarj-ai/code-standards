@@ -53,7 +53,8 @@ it.each([
   const source = sources().original.replace(QUERY, query);
   const result = apply(source);
   expect(result.fixed).toBe(true);
-  expect(result.output).toBe(source.replace("*", projection));
+  expect(source.match(/\*/gu)).toHaveLength(1);
+  expect(result.output).toBe(source.replaceAll("*", () => projection));
   expect(result.messages).toEqual([]);
   expect(apply(result.output).fixed).toBe(false);
 });

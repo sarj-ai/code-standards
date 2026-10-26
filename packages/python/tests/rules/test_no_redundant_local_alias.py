@@ -13,6 +13,53 @@ def test_documented_examples() -> None:
 
 
 @pytest.mark.parametrize(
+    ("source", "expected", "fixes"),
+    [
+        pytest.param(
+            'def render(item):\n    payload = item\n    return t"{dict(payload=payload)}"\n',
+            0,
+            0,
+            id="template-expression-text",
+        ),
+        pytest.param(
+            'async def render(item):\n    payload = item\n    return t"{dict(payload=payload)}"\n',
+            0,
+            0,
+            id="async-template-expression-text",
+        ),
+        pytest.param(
+            'def render(item):\n    payload = item\n    return f"{dict(payload=payload)}"\n',
+            1,
+            0,
+            id="ordinary-formatted-value",
+        ),
+        pytest.param(
+            'def render(item):\n    label = t"{dict(payload=item)}"\n    payload = item\n    return dict(payload=payload), label\n',
+            1,
+            0,
+            id="unrelated-template-keyword",
+        ),
+        pytest.param(
+            'def label(item):\n    return t"{dict(payload=item)}"\ndef render(item):\n    payload = item\n    return dict(payload=payload)\n',
+            1,
+            1,
+            id="sibling-safe-fix",
+        ),
+        pytest.param(
+            'def render(item, other):\n    payload = item\n    return t"{other:{dict(payload=payload)}}"\n',
+            0,
+            0,
+            id="conservative-template-format-spec",
+        ),
+    ],
+)
+def test_template_expression_boundaries(source: str, expected: int, fixes: int) -> None:
+    diagnostics = check_source([NoRedundantLocalAlias()], Path("case.py"), source)
+    assert len(diagnostics) == expected
+    assert sum(len(diagnostic.fixes) for diagnostic in diagnostics) == fixes
+
+
+@pytest.mark.parametrize(
     ("source", "expected", "filename"),
     [
         pytest.param(

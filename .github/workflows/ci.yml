@@ -690,6 +690,9 @@ jobs:
       - name: Build the plugin for native ESLint integration tests
         if: needs.changes.outputs.reviewed-wheels != 'true'
         run: npm --prefix ../typescript run build
+      - name: Install the locked documentation formatter dependencies
+        if: needs.changes.outputs.reviewed-wheels != 'true'
+        run: npm --prefix ../../apps/docs ci --ignore-scripts --no-audit --no-fund
       - name: Install pinned formatter for generated-manifest integration tests
         if: needs.changes.outputs.reviewed-wheels != 'true'
         run: bash ../../.github/scripts/ci-install-taplo.sh
@@ -876,6 +879,9 @@ jobs:
       - name: Build the plugin for native ESLint integration tests
         if: needs.changes.outputs.reviewed-ci != 'true'
         run: npm --prefix packages/typescript run build
+      - name: Install the locked documentation formatter dependencies
+        if: needs.changes.outputs.reviewed-ci != 'true'
+        run: npm --prefix apps/docs ci --ignore-scripts --no-audit --no-fund
       - name: Install the manifest formatter
         if: needs.changes.outputs.reviewed-ci != 'true'
         run: bash .github/scripts/ci-install-taplo.sh
