@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 import re
-import shlex
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- validates fixed local CLI examples.
 import sys
 import tomllib
@@ -721,17 +721,28 @@ def _heading_slug(heading: str) -> str:
 
 
 def _validate_cli_examples(path: Path, source: str) -> None:
-    for match in _STANDARDS_COMMAND.finditer(source):
-        command = shlex.split(match.group(1))
-        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed interpreter and argv.
-            [sys.executable, "-m", "sarj_standards", *command[1:], "--help"],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        if completed.returncode != 0:
-            msg = f"{path} contains an invalid command example: {match.group(1)!r}"
+    examples = [match.group(1) for match in _STANDARDS_COMMAND.finditer(source)]
+    if not examples:
+        return
+    completed = subprocess.run(
+        [sys.executable, "-m", "sarj_standards.libs.repository.cli_examples"],
+        input=json.dumps(examples),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    attempted = completed.stdout.splitlines()
+    expected = [str(index) for index in range(len(examples))]
+    if not attempted or len(attempted) > len(expected) or attempted != expected[: len(attempted)]:
+        msg = f"{path}: command example validation failed"
+        raise ValueError(msg)
+    if completed.returncode == 0:
+        if attempted != expected:
+            msg = f"{path}: command example validation did not check every example"
             raise ValueError(msg)
+        return
+    msg = f"{path} contains an invalid command example: {examples[len(attempted) - 1]!r}"
+    raise ValueError(msg)
 
 
 def _manifest(path: Path) -> dict[str, object]:
