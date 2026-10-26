@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TypeGuard
+import subprocess
+from typing import TYPE_CHECKING, TypeGuard, Unpack
 
 import pytest
 
 from sarj_standards.libs.adoption import manifest, transaction
 from sarj_standards.libs.repository import docs
 from sarj_standards.libs.typed_containers import is_object_mapping
+
+
+if TYPE_CHECKING:
+    from tests.call_contracts import SubprocessOptions
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -274,10 +279,58 @@ def test_broken_local_heading_link_fails_loudly(tmp_path: Path) -> None:
 
 def test_stale_command_example_fails_loudly(tmp_path: Path) -> None:
     _repository(tmp_path)
-    (tmp_path / "AGENTS.md").write_text("```bash\ncode-standards init\n```\n", encoding="utf-8")
+    (tmp_path / "AGENTS.md").write_text("```bash\ncode-standards --help\ncode-standards init\n```\n", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="invalid command example"):
+    with pytest.raises(ValueError, match="invalid command example: 'code-standards init'"):
         docs.check(tmp_path)
+
+
+def test_multiline_command_preserves_its_arguments(tmp_path: Path) -> None:
+    _repository(tmp_path)
+    (tmp_path / "AGENTS.md").write_text("code-standards\n--root . doctor\n", encoding="utf-8")
+
+    assert docs.check(tmp_path).status == 1
+
+
+@pytest.mark.parametrize("response", ["", "unexpected output", "999"])
+def test_failed_command_validation_worker_prevents_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, response: str
+) -> None:
+    _repository(tmp_path)
+    before = (tmp_path / "README.md").read_bytes()
+
+    def failed_worker(_arguments: list[str], **_options: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(["worker"], 1, stdout=response, stderr="")
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept the production process boundary; injection would bypass this protocol check.
+        subprocess, "run", failed_worker
+    )
+
+    with pytest.raises(ValueError, match="command example validation failed"):
+        docs.sync(tmp_path)
+
+    assert (tmp_path / "README.md").read_bytes() == before
+
+
+def test_incomplete_successful_command_validation_prevents_writes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _repository(tmp_path)
+    before = (tmp_path / "README.md").read_bytes()
+
+    def incomplete_worker(
+        _arguments: list[str], **_options: Unpack[SubprocessOptions]
+    ) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(["worker"], 0, stdout="0\n", stderr="")
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept the production process boundary; injection would bypass this protocol check.
+        subprocess, "run", incomplete_worker
+    )
+
+    with pytest.raises(ValueError, match="did not check every example"):
+        docs.sync(tmp_path)
+
+    assert (tmp_path / "README.md").read_bytes() == before
 
 
 def test_sync_uses_validated_atomic_writes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
