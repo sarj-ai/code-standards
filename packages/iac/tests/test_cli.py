@@ -11,13 +11,15 @@ from sarj_iac_lint.rules import REGISTRY
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from sarj_rule_contracts import RuleId
+
 
 _RULE = "no-environment-conditional"
 
 
 @pytest.mark.parametrize("rule_id", ["no-project-secret-access-for-service-account", "no-plaintext-secret-env"])
 def test_warning_stage_security_findings_preserve_success(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: str
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: RuleId
 ) -> None:
     rule_type = REGISTRY[rule_id]
     example = next(case for case in rule_type.public_examples() if case.expected_count and len(case.files) == 1)
@@ -48,7 +50,9 @@ resource "google_storage_bucket" "b" {
 
 
 @pytest.mark.parametrize("rule_id", ["no-dead-environment-input", "no-restated-comment"])
-def test_advisory_findings_preserve_success(tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: str) -> None:
+def test_advisory_findings_preserve_success(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: RuleId
+) -> None:
     rule = REGISTRY[rule_id]
     example = next(case for case in rule.public_examples() if case.expected_count)
     for file in example.files:

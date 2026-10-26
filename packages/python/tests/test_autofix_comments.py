@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from sarj_rule_contracts import RuleId
 
 from sarj_python_lint.autofix import fix_source
 from sarj_python_lint.rules import REGISTRY
@@ -21,7 +22,7 @@ _RULES = (
 )
 
 
-def _example(rule_id: str) -> RuleExample:
+def _example(rule_id: RuleId) -> RuleExample:
     documentation = REGISTRY[rule_id].documentation
     assert documentation is not None
     return next(example for example in documentation.examples if example.example_id == "safe-autofix-subset")
@@ -31,9 +32,9 @@ def _example(rule_id: str) -> RuleExample:
 @pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=("lf", "crlf"))
 @pytest.mark.parametrize("final_newline", [True, False], ids=("newline", "eof"))
 def test_exact_comment_fixes_preserve_code_ranges_and_converge(
-    rule_id: str, newline: str, *, final_newline: bool
+    rule_id: RuleId, newline: str, *, final_newline: bool
 ) -> None:
-    example = _example(rule_id)
+    example = _example(RuleId(rule_id))
     source = example.focus_file.source
     expected = example.fixed_files[0].source
     if not final_newline:
@@ -95,7 +96,7 @@ def test_original_identifier_and_numeric_spellings_are_retained(source: str, exp
         "extra-words",
     ),
 )
-def test_native_comment_findings_with_unresolved_meaning_remain_manual(rule_id: str, source: str) -> None:
+def test_native_comment_findings_with_unresolved_meaning_remain_manual(rule_id: RuleId, source: str) -> None:
     path = Path("app/service.py")
     assert REGISTRY[rule_id]().check(path, source)
     assert fix_source(path, source, rule_ids=[rule_id]) == source
@@ -120,15 +121,15 @@ def test_native_comment_findings_with_unresolved_meaning_remain_manual(rule_id: 
 )
 def test_accumulation_paragraph_needs_exact_ordered_ownership(old: str, new: str) -> None:
     rule_id = "excessive-commentary"
-    source = _example(rule_id).focus_file.source.replace(old, new)
+    source = _example(RuleId(rule_id)).focus_file.source.replace(old, new)
     path = Path("app/service.py")
     assert REGISTRY[rule_id]().check(path, source)
     assert fix_source(path, source, rule_ids=[rule_id]) == source
 
 
 @pytest.mark.parametrize("rule_id", _RULES)
-def test_comment_fixes_preserve_suppression_and_other_comments(rule_id: str) -> None:
-    example = _example(rule_id)
+def test_comment_fixes_preserve_suppression_and_other_comments(rule_id: RuleId) -> None:
+    example = _example(RuleId(rule_id))
     code = REGISTRY[rule_id].code
     source = example.focus_file.source
     lines = source.splitlines(keepends=True)
@@ -159,8 +160,8 @@ def test_many_exact_comment_candidates_batch_without_moving_code() -> None:
 
 
 @pytest.mark.parametrize("rule_id", _RULES)
-def test_comment_fixes_compile_to_identical_code_objects(rule_id: str) -> None:
-    source = _example(rule_id).focus_file.source
+def test_comment_fixes_compile_to_identical_code_objects(rule_id: RuleId) -> None:
+    source = _example(RuleId(rule_id)).focus_file.source
     fixed = fix_source(Path("app/service.py"), source, rule_ids=[rule_id])
     assert fixed != source
     original_code = compile(source, "app/service.py", "exec", dont_inherit=True)

@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 import pytest
 
 from sarj_python_lint._autofix import fix_source
 from sarj_python_lint.rules import REGISTRY
+
+
+if TYPE_CHECKING:
+    from sarj_rule_contracts import RuleId
 
 
 class _Case(NamedTuple):
@@ -219,7 +223,7 @@ def test_fixed_sources_converge_and_unselected_sources_stay_unchanged(case: _Cas
         ),
     ],
 )
-def test_ambiguous_behavior_and_comment_ownership_remain_for_review(rule_id: str, source: str) -> None:
+def test_ambiguous_behavior_and_comment_ownership_remain_for_review(rule_id: RuleId, source: str) -> None:
     assert fix_source(Path("app/service.py"), source, rule_ids=[rule_id]) == source
 
 
@@ -335,7 +339,7 @@ def test_documented_apis_metadata_escapes_and_meaningful_prose_stay_unchanged(so
         ),
     ],
 )
-def test_competing_docstring_sections_keep_their_independent_contracts(rule_id: str, sections: str) -> None:
+def test_competing_docstring_sections_keep_their_independent_contracts(rule_id: RuleId, sections: str) -> None:
     source = (
         'def outer(value):\n    def _count(tenant_id: str) -> int:\n        """Count active widgets.\n\n'
         + sections
@@ -441,7 +445,7 @@ def test_self_alias_shadowed_by_type_parameters_stays_unchanged(declaration: str
         ),
     ],
 )
-def test_generic_type_parameters_do_not_borrow_builtin_or_import_provenance(rule_id: str, source: str) -> None:
+def test_generic_type_parameters_do_not_borrow_builtin_or_import_provenance(rule_id: RuleId, source: str) -> None:
     path = Path(
         "tests/test_service.py"
         if rule_id in {"no-provably-dead-mock-configuration", "defect-xfail-requires-explicit-strict"}
@@ -566,7 +570,7 @@ def test_unused_capture_with_inert_builtin_object_annotation_can_be_removed() ->
     ],
 )
 def test_nested_caller_and_capture_annotation_provenance_reject_type_parameter_shadows(
-    rule_id: str, source: str
+    rule_id: RuleId, source: str
 ) -> None:
     assert fix_source(Path("app/service.py"), source, rule_ids=[rule_id]) == source
 
@@ -596,7 +600,7 @@ def test_nested_caller_and_capture_annotation_provenance_reject_type_parameter_s
         ),
     ],
 )
-def test_frame_capabilities_and_generator_metadata_keep_nested_signatures(rule_id: str, source: str) -> None:
+def test_frame_capabilities_and_generator_metadata_keep_nested_signatures(rule_id: RuleId, source: str) -> None:
     path = Path("tests/test_widget.py" if rule_id == "unused-test-factory-option" else "app/service.py")
     assert fix_source(path, source, rule_ids=[rule_id]) == source
 

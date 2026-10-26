@@ -11,9 +11,13 @@ from sarj_sql_lint.rules import REGISTRY
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from sarj_rule_contracts import RuleId
+
 
 @pytest.mark.parametrize("rule_id", ["mixed-migration-phases", "no-application-schema-check"])
-def test_advisory_findings_preserve_success(tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: str) -> None:
+def test_advisory_findings_preserve_success(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: RuleId
+) -> None:
     rule = REGISTRY[rule_id]
     example = next(case for case in rule.public_examples() if case.expected_count)
     for file in example.files:

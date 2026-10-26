@@ -13,6 +13,8 @@ from sarj_python_lint.rules import REGISTRY
 
 
 if TYPE_CHECKING:
+    from sarj_rule_contracts import RuleId
+
     from sarj_python_lint.rule_base import RuleExample
 
 
@@ -59,7 +61,7 @@ def test_every_safe_python_rule_has_a_fixed_example_in_the_separator_matrix() ->
 )
 @pytest.mark.parametrize("separator", _SEPARATORS)
 def test_every_safe_fixer_preserves_unrelated_quoted_shadow_source(
-    rule_id: str, example: RuleExample, separator: str
+    rule_id: RuleId, example: RuleExample, separator: str
 ) -> None:
     path = Path(example.focus_path)
     case = _with_shadow_source(example.focus_file.source, separator)

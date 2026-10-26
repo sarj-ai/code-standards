@@ -4,7 +4,9 @@ import textwrap
 from typing import TYPE_CHECKING
 
 import pytest
+from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 
+from sarj_python_lint.__main__ import main
 from sarj_python_lint.rule_base import RuleExample, Severity
 from sarj_python_lint.rules.prefer_fstring_over_concat import PreferFstringOverConcat
 
@@ -30,6 +32,271 @@ def _typed(source: str) -> str:
 _PUBLIC_EXAMPLES = PreferFstringOverConcat.public_examples()
 
 
+_PREFIX_INTERPOLATION = 'PREFIX = "Question: "\ndef render(value: str) -> str:\n    return PREFIX + value\n'
+_PREFIX_CASES = (
+    EvaluationCase("module-literal-prefix", Language.PYTHON, _PREFIX_INTERPOLATION, ExpectedOutcome.MATCH),
+    EvaluationCase(
+        "local-literal-prefix",
+        Language.PYTHON,
+        'def render(value: str) -> str:\n    prefix = "Question: "\n    return prefix + value\n',
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "module-literal-suffix",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace('"Question: "', '" is ready"').replace("PREFIX + value", "value + PREFIX"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "literal-prefix-alias",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace("def render", "LABEL = PREFIX\ndef render").replace(
+            "return PREFIX", "return LABEL"
+        ),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "final-literal-prefix",
+        Language.PYTHON,
+        "from typing import Final\n" + _PREFIX_INTERPOLATION.replace("PREFIX =", "PREFIX: Final[str] ="),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "lowercase-literal-prefix",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace("PREFIX", "prefix"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "prefix-with-str-conversion",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace("value: str", "value: object").replace("PREFIX + value", "PREFIX + str(value)"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "prefix-with-repr-conversion",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace("value: str", "value: object").replace("PREFIX + value", "PREFIX + repr(value)"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "async-prefix-interpolation",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace("def render", "async def render"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "method-uses-global-not-class-prefix",
+        Language.PYTHON,
+        'PREFIX = "Question: "\nclass Renderer:\n    PREFIX = object()\n'
+        "    def render(self, value: str) -> str:\n        return PREFIX + value\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "literal-prefix-in-enclosing-function",
+        Language.PYTHON,
+        'def factory():\n    prefix = "Question: "\n'
+        "    def render(value: str) -> str:\n        return prefix + value\n"
+        "    return render\n",
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "named-prefix-with-literal-tail",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace("PREFIX + value", 'PREFIX + value + "!"'),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "prefix-with-formatted-operand",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace("PREFIX + value", 'PREFIX + f"{value}"'),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "adjacent-literal-prefix",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace('"Question: "', '"Question" ": "'),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "unicode-literal-prefix",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace('"Question: "', '"السؤال: "'),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "prefix-with-json-producer",
+        Language.PYTHON,
+        "import json\n" + _PREFIX_INTERPOLATION.replace("PREFIX + value", "PREFIX + json.dumps(value)"),
+        ExpectedOutcome.MATCH,
+    ),
+    EvaluationCase(
+        "prefix-with-unknown-operand",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace("value: str", "value: object"),
+    ),
+    EvaluationCase(
+        "parameter-shadows-prefix",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace("def render(value: str)", "def render(value: str, PREFIX: str)"),
+    ),
+    EvaluationCase(
+        "module-prefix-rebound",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION + "PREFIX = unknown\n",
+    ),
+    EvaluationCase(
+        "global-prefix-writer",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION + "def change():\n    global PREFIX\n    PREFIX = unknown\n",
+    ),
+    EvaluationCase(
+        "nonlocal-prefix-writer",
+        Language.PYTHON,
+        'def factory():\n    prefix = "Question: "\n'
+        "    def change():\n        nonlocal prefix\n        prefix = unknown\n"
+        "    def render(value: str) -> str:\n        return prefix + value\n"
+        "    return render\n",
+    ),
+    EvaluationCase(
+        "local-prefix-rebound",
+        Language.PYTHON,
+        'def render(value: str) -> str:\n    prefix = "Question: "\n    prefix = unknown\n    return prefix + value\n',
+    ),
+    EvaluationCase(
+        "conditional-prefix-binding",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace('PREFIX = "Question: "', 'if enabled:\n    PREFIX = "Question: "'),
+    ),
+    EvaluationCase(
+        "unresolved-imported-prefix",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace('PREFIX = "Question: "', "from external import PREFIX"),
+    ),
+    EvaluationCase(
+        "annotation-only-prefix",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace('PREFIX = "Question: "', "PREFIX: str"),
+    ),
+    EvaluationCase(
+        "bytes-prefix",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace('"Question: "', 'b"Question: "').replace("value: str", "value: bytes"),
+    ),
+    EvaluationCase(
+        "sql-prefix",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace('"Question: "', '"SELECT * FROM items WHERE key = "'),
+    ),
+    EvaluationCase(
+        "regex-prefix",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace('"Question: "', '"^Question: "'),
+    ),
+    EvaluationCase(
+        "url-prefix",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace('"Question: "', '"https://example.test/"'),
+    ),
+    EvaluationCase(
+        "whitespace-terminator",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace('"Question: "', '"\\n"').replace("PREFIX + value", "value + PREFIX"),
+    ),
+    EvaluationCase(
+        "long-literal-prefix",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace('"Question: "', repr("Question: " * 20)),
+    ),
+    EvaluationCase(
+        "brace-template-prefix",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace('"Question: "', '"Question {template}: "'),
+    ),
+    EvaluationCase(
+        "percent-template-prefix",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace('"Question: "', '"Question %s: "'),
+    ),
+    EvaluationCase(
+        "literal-only-composition",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace("PREFIX + value", 'PREFIX + "fixed"'),
+    ),
+    EvaluationCase(
+        "module-declarative-composition",
+        Language.PYTHON,
+        'PREFIX = "Question: "\nvalue: str\nmessage = PREFIX + value\n',
+    ),
+    EvaluationCase(
+        "prefix-already-formatted",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace("PREFIX + value", 'f"{PREFIX}{value}"'),
+    ),
+    EvaluationCase(
+        "prefix-exact-suppression",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace(
+            "return PREFIX + value", "return PREFIX + value  # sarj-noqa: SARJ068 -- custom string semantics"
+        ),
+    ),
+    EvaluationCase("generated-prefix", Language.PYTHON, "# @generated\n" + _PREFIX_INTERPOLATION),
+    EvaluationCase("malformed-prefix", Language.PYTHON, "def render(:"),
+    EvaluationCase(
+        "list-addition",
+        Language.PYTHON,
+        _PREFIX_INTERPOLATION.replace('"Question: "', "[1]").replace("value: str", "value: list[int]"),
+    ),
+)
+
+
+@pytest.mark.parametrize("case", _PREFIX_CASES, ids=tuple(case.case_id for case in _PREFIX_CASES))
+def test_literal_prefix_interpolation_cases(case: EvaluationCase) -> None:
+    findings = _check(case.source)
+    assert [finding.code for finding in findings] == (["SARJ068"] if case.expected == ExpectedOutcome.MATCH else [])
+
+
+@pytest.mark.parametrize(
+    ("source", "exit_code"),
+    [
+        (_PREFIX_INTERPOLATION, 1),
+        (_PREFIX_INTERPOLATION.replace("PREFIX + value", 'f"{PREFIX}{value}"'), 0),
+        (_PREFIX_INTERPOLATION.replace("value: str", "value: object"), 0),
+        (
+            _PREFIX_INTERPOLATION.replace(
+                "return PREFIX + value", "return PREFIX + value  # sarj-noqa: SARJ068 -- custom string semantics"
+            ),
+            0,
+        ),
+    ],
+)
+def test_native_cli_enforces_interpolation_policy(tmp_path: Path, source: str, exit_code: int) -> None:
+    path = tmp_path / "render.py"
+    path.write_text(source)
+    assert main(["check", "--rule", PreferFstringOverConcat.id, str(path)]) == exit_code
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'def build(fragment: str):\n    return "import contextlib\\n" + fragment\n',
+        'def build(fragment: str):\n    return "from typing import Final\\n" + fragment\n',
+        'def build(fragment: str):\n    return fragment + "\\nasync def run"\n',
+        'def build(fragment: str):\n    return "def prepare():\\n    pass\\n" + fragment\n',
+        'def build(fragment: str):\n    return fragment + "\\nclass Record:\\n    value: str\\n"\n',
+        'def build(fragment: str):\n    return "# @generated\\n" + fragment\n',
+    ],
+)
+def test_program_source_fragments_are_not_prose_interpolation(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("label", ["Define handler: ", "Class: ", "import status: "])
+def test_ordinary_labels_are_not_mistaken_for_program_fragments(label: str) -> None:
+    [diagnostic] = _check(f"def label(value: str):\n    return {label!r} + value\n")
+    assert diagnostic.severity is Severity.ERROR
+
+
 @pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES))
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file
@@ -46,10 +313,10 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
         'def label(value: str) -> str:\n    return "Value: " + value[:3]\n',
     ],
 )
-def test_short_human_readable_interpolation_warns(source: str) -> None:
+def test_short_human_readable_interpolation_is_blocking(source: str) -> None:
     [diagnostic] = _check(source)
     assert diagnostic.code == "SARJ068"
-    assert diagnostic.severity is Severity.WARNING
+    assert diagnostic.severity is Severity.ERROR
     assert "human-readable" in diagnostic.message
 
 
@@ -345,6 +612,112 @@ def test_semantic_rule_is_not_path_routed(path: Path) -> None:
 @pytest.mark.parametrize("source", ["", "# comment\n", "def broken(:\n"])
 def test_empty_or_invalid_source_is_clean(source: str) -> None:
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'def render(indent: str):\n    return indent + "return _ready()"\n',
+        'def render(indent: str):\n    return indent + "yield produce()"\n',
+        'def render(indent: str):\n    return indent + "raise Failure()"\n',
+        'def render(query: str):\n    return "-- generated; do not edit\\n" + query\n',
+        'def render(query: str):\n    return "-- @generated\\n" + query\n',
+        'def render(value: str):\n    return value + " ("\n',
+        'def render(value: str):\n    return " (" + value + ")"\n',
+        'def render(value: str):\n    return " [ " + value + " ] "\n',
+    ],
+)
+def test_statement_headers_and_spaced_punctuation_remain_source_composition(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("prefix", ["return policy: ", "Generated output: ", "Return value: ", "assert success: "])
+def test_source_fragment_exclusions_preserve_ordinary_prose(prefix: str) -> None:
+    assert len(_check(f"def render(value: str):\n    return {prefix!r} + value\n")) == 1
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "workflow_runner = ",
+        "schema = 1\n[[consumer]]\nname = 'Example'\n",
+        "[lint.per-file-ignores]",
+        "[[consumer]]\n",
+        "          paths: [\n",
+        "apiVersion: example/v1\nkind: Config\n",
+        "build:\n  artifacts:\n    - image: example\n      buildCommand: ",
+        "retries = 3",
+    ],
+)
+def test_configuration_syntax_is_fragment_composition(prefix: str) -> None:
+    assert _check(f"def render(value: str):\n    return {prefix!r} + value\n") == []
+
+
+@pytest.mark.parametrize("prefix", ["Question: ", "Question:\n", "Status: ", "Build completed: "])
+def test_single_prose_labels_are_not_configuration_records(prefix: str) -> None:
+    assert len(_check(f"def render(value: str):\n    return {prefix!r} + value\n")) == 1
+
+
+@pytest.mark.parametrize(
+    "fragment",
+    [
+        "# Unicode prefix 😀 café\n",
+        "# header\r",
+        "élement = 1\n",
+        "SELECT 2;",
+        "  CAST(value AS pg_catalog.text) AS value;",
+    ],
+)
+def test_identifiers_comments_unicode_assignments_and_sql_expressions_remain_fragments(fragment: str) -> None:
+    assert _check(f"def render(value: str):\n    return {fragment!r} + value\n") == []
+
+
+@pytest.mark.parametrize("prefix", ["Hello ", "Symbol: ", "Please select ", "Cast member: ", "object", "symbol"])
+def test_fragment_tokens_do_not_hide_separated_human_text(prefix: str) -> None:
+    assert len(_check(f"def render(value: str):\n    return {prefix!r} + value\n")) == 1
+
+
+@pytest.mark.parametrize("alias", ["joined", "alias"])
+def test_stable_join_bindings_retain_fragment_composition(alias: str) -> None:
+    source = (
+        "def render(items: list[str]):\n"
+        "    joined = ''.join(items)\n"
+        "    alias = joined\n"
+        f"    return 'object' + {alias}\n"
+    )
+    assert _check(source) == []
+
+
+def test_rebinding_a_join_result_does_not_hide_human_interpolation() -> None:
+    source = "def render(items: list[str]):\n    joined = ''.join(items)\n    joined = 'world'\n    return 'Hello ' + joined\n"
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'def label(*names: str):\n    return "Hello, " + names\n',
+        'def label(**names: str):\n    return "Hello, " + names\n',
+        'def label(*names: "str"):\n    return "Hello, " + names\n',
+        'def label(**names: "str"):\n    return "Hello, " + names\n',
+        'str = object()\ndef label(name: "str"):\n    return "Hello, " + name\n',
+    ],
+)
+def test_variadic_containers_and_shadowed_annotations_do_not_prove_strings(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'def label(name: "str"):\n    return "Hello, " + name\n',
+        'def label(value):\n    name: "str" = value\n    return "Hello, " + name\n',
+        'def label(name: str, *rest: str):\n    return "Hello, " + name\n',
+        'def label(name: str, **extra: str):\n    return "Hello, " + name\n',
+    ],
+)
+def test_direct_string_annotations_remain_evidence_with_quotes_and_variadics(source: str) -> None:
+    assert len(_check(source)) == 1
 
 
 def test_long_chain_does_not_exhaust_the_stack() -> None:

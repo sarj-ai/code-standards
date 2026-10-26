@@ -9,7 +9,7 @@ from types import FunctionType, ModuleType
 from typing import TYPE_CHECKING
 
 import pytest
-from sarj_rule_contracts import apply_edits
+from sarj_rule_contracts import RuleId, apply_edits
 
 from sarj_python_lint._autofix_declared_contracts import DeclaredContractFixes
 from sarj_python_lint._file_context import PythonFileContext
@@ -42,7 +42,7 @@ _IMPORT = (
 _RULES = ("prefer-precise-object-contract", "prefer-direct-import-module")
 
 
-def _fixed(source: str, rule_id: str) -> str:
+def _fixed(source: str, rule_id: RuleId) -> str:
     context = PythonFileContext(_PATH, source)
     fixer = DeclaredContractFixes(context)
     return apply_edits(
@@ -68,9 +68,9 @@ def test_declared_contract_autofix_exact_native_output_and_convergence(newline: 
     expected = source.replace("-> object:", "-> str:")
     rule_id = _RULES[0]
     assert len(REGISTRY[rule_id]().check(_PATH, source)) == 1
-    assert _fixed(source, rule_id) == expected
+    assert _fixed(source, RuleId(rule_id)) == expected
     assert not REGISTRY[rule_id]().check(_PATH, expected)
-    assert _fixed(expected, rule_id) == expected
+    assert _fixed(expected, RuleId(rule_id)) == expected
     assert fix_source(_PATH, source, rule_ids=[rule_id]) == expected
     assert fix_source(_PATH, source, rule_ids=[]) == source
     compile(expected, str(_PATH), "exec", dont_inherit=True)
@@ -82,7 +82,7 @@ def test_guarded_import_helpers_are_outside_static_import_scope(lookup: str, new
     source = ("# Unicode 😀\n" + _IMPORT.replace("importlib.__dict__['import_module']", lookup)).replace("\n", newline)
     rule_id = _RULES[1]
     assert not REGISTRY[rule_id]().check(_PATH, source)
-    assert _fixed(source, rule_id) == source
+    assert _fixed(source, RuleId(rule_id)) == source
     assert fix_source(_PATH, source, rule_ids=[rule_id]) == source
     assert fix_source(_PATH, source, rule_ids=[]) == source
 
@@ -104,7 +104,7 @@ def test_guarded_import_helpers_are_outside_static_import_scope(lookup: str, new
 )
 def test_precise_return_requires_closed_truthiness_only_uses(before: str, after: str) -> None:
     source = _PRECISE.replace(before, after)
-    assert _fixed(source, _RULES[0]) == source
+    assert _fixed(source, RuleId(_RULES[0])) == source
 
 
 @pytest.mark.parametrize(
@@ -129,14 +129,14 @@ def test_precise_return_requires_closed_truthiness_only_uses(before: str, after:
 def test_function_scoped_import_variants_are_not_static_module_findings(before: str, after: str) -> None:
     source = _IMPORT.replace(before, after)
     assert not REGISTRY[_RULES[1]]().check(_PATH, source)
-    assert _fixed(source, _RULES[1]) == source
+    assert _fixed(source, RuleId(_RULES[1])) == source
     assert fix_source(_PATH, source, rule_ids=[_RULES[1]]) == source
 
 
 def test_declared_contract_fixes_preserve_suppression_unicode_and_selection() -> None:
     rule_id = _RULES[0]
     source = "# Unicode 😀\n" + _PRECISE
-    expected = _fixed(source, rule_id)
+    expected = _fixed(source, RuleId(rule_id))
     assert expected != source
     assert fix_source(_PATH, source, rule_ids=[rule_id]) == expected
     code = REGISTRY[rule_id].code
@@ -145,7 +145,7 @@ def test_declared_contract_fixes_preserve_suppression_unicode_and_selection() ->
 
 
 def test_precise_return_preserves_runtime_and_existing_public_return_annotation() -> None:
-    fixed = _fixed(_PRECISE, _RULES[0])
+    fixed = _fixed(_PRECISE, RuleId(_RULES[0]))
     assert fixed != _PRECISE
     original, updated = _function(_PRECISE, "ready"), _function(fixed, "ready")
     assert original() is updated() is True
@@ -157,7 +157,7 @@ def test_guarded_import_exclusion_preserves_canonical_provider_runtime_and_error
     namespace = {"importlib": module, "load": import_module, "ModuleType": ModuleType}
     for name in ("math", "autofix_missing_module_371582934"):
         source = _IMPORT.replace("'math'", repr(name))
-        fixed = _fixed(source, _RULES[1])
+        fixed = _fixed(source, RuleId(_RULES[1]))
         assert fixed == source
         assert not REGISTRY[_RULES[1]]().check(_PATH, source)
         original, updated = _function(source, "load_module", namespace), _function(fixed, "load_module", namespace)
@@ -174,14 +174,14 @@ def test_guarded_import_exclusion_preserves_false_guard_fallback() -> None:
     provider = ModuleType("private_loader")
 
     def first(name: str) -> str:
-        return "first:" + name
+        return f"first:{name}"
 
     def second(name: str) -> str:
-        return "second:" + name
+        return f"second:{name}"
 
     provider.__dict__["import_module"] = second
     namespace = {"importlib": provider, "load": first, "ModuleType": ModuleType}
-    fixed = _fixed(_IMPORT, _RULES[1])
+    fixed = _fixed(_IMPORT, RuleId(_RULES[1]))
     assert fixed == _IMPORT
     assert not REGISTRY[_RULES[1]]().check(_PATH, _IMPORT)
     assert (
@@ -194,7 +194,7 @@ def test_declared_contract_before_and_after_typecheck_without_api_changes(tmp_pa
     updated = tmp_path / "after.py"
     source = _PRECISE + "\nready_result: bool = ready()\n"
     # Analyze the source-owned private helper before adding its public bool consumer.
-    fixed = _fixed(_PRECISE, _RULES[0]) + "\nready_result: bool = ready()\n"
+    fixed = _fixed(_PRECISE, RuleId(_RULES[0])) + "\nready_result: bool = ready()\n"
     original.write_text(source, encoding="utf-8")
     updated.write_text(fixed, encoding="utf-8")
     root = Path(__file__).resolve().parents[3]

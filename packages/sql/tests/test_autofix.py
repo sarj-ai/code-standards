@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from sqlglot import exp
@@ -9,6 +10,10 @@ from sarj_sql_lint.__main__ import main
 from sarj_sql_lint._postgres import parse_postgres
 from sarj_sql_lint.autofix import fix_source
 from sarj_sql_lint.rules.excessive_commentary import ExcessiveCommentary
+
+
+if TYPE_CHECKING:
+    from sarj_rule_contracts import RuleId
 
 
 @pytest.mark.parametrize(
@@ -79,7 +84,7 @@ def test_cli_fix_preserves_crlf_and_permissions(tmp_path: Path, capsys: pytest.C
     ],
 )
 def test_cli_fix_respects_suppression_selection_and_malformed_source(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: str, source: str, exit_code: int
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: RuleId, source: str, exit_code: int
 ) -> None:
     path = tmp_path / "migration.sql"
     path.write_bytes(source.encode())
@@ -108,7 +113,7 @@ def test_cli_fix_refuses_symlink(tmp_path: Path, capsys: pytest.CaptureFixture[s
         ["no-migration-comment-cruft", "no-long-migration-narration"],
     ],
 )
-def test_disabled_sql_narration_is_fixable_when_selected_alone_or_together(rule_ids: list[str]) -> None:
+def test_disabled_sql_narration_is_fixable_when_selected_alone_or_together(rule_ids: list[RuleId]) -> None:
     path = Path("migrations/001.sql")
     source = "".join(
         f"-- CREATE TABLE {name} (id BIGINT PRIMARY KEY, name TEXT);\n"

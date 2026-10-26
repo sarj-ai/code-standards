@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from sarj_rule_contracts import TextEdit, apply_edits
+from sarj_rule_contracts import RuleId, TextEdit, apply_edits
 from sqlglot import exp
 from sqlglot.errors import SqlglotError
 
@@ -78,7 +78,7 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
         elif rule_id in {"no-migration-comment-cruft", "no-long-migration-narration"}:
             edits.extend(_comment_edits(source, diagnostics, banners=rule_id == "no-migration-comment-cruft"))
         else:
-            edits.extend(literal_edits(source, diagnostics, rule_id))
+            edits.extend(literal_edits(source, diagnostics, RuleId(rule_id)))
     fixed = apply_edits(source, edits)
     return fixed if _parseable(fixed) else source
 
