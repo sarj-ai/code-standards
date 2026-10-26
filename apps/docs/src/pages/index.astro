@@ -2,6 +2,7 @@
 import CodeBlock from '../components/CodeBlock.astro';
 import ReferencePage from '../components/ReferencePage.astro';
 import { formattedStaticCode } from '../lib/display-code';
+import { siteHref } from '../lib/site.ts';
 ---
 
 <ReferencePage
@@ -11,19 +12,19 @@ import { formattedStaticCode } from '../lib/display-code';
   <article class="about-page sarj-about-page">
     <h1>About</h1>
     <p>Writing code is now much easier than reading and reviewing code.</p>
-    <p>This linter provides <a href="/rules/">100+ opinionated rules</a> that automatically flag violations.</p>
+    <p>This linter provides <a href={siteHref('/rules/')}>100+ opinionated rules</a> that automatically flag violations.</p>
     <p>Developers can spend less time in code review and write well-structured, correct code faster.</p>
     <p>Use it with a coding agent and pre-commit so the agent automatically catches violations, fixes them, and commits the solution.</p>
 
     <section>
       <h2>Quick setup</h2>
       <CodeBlock code={formattedStaticCode.quickSetup} lang="bash" frame="terminal" wrap />
-      <p><a href="/cli/">CLI reference</a></p>
+      <p><a href={siteHref('/cli/')}>CLI reference</a></p>
     </section>
 
     <section class="sarj-related-standards" aria-labelledby="related-standards">
       <h2 id="related-standards">Related standards</h2>
-      <p><a href="https://repo-standards.sarj.ai/">Explore Sarj Repo Standards</a> for repository architecture, delivery, and API contract policy.</p>
+      <p><a href="https://engineering.sarj.ai/projects/repo-standards/">Explore Sarj Repo Standards</a> for repository architecture, delivery, and API contract policy.</p>
     </section>
   </article>
 </ReferencePage>

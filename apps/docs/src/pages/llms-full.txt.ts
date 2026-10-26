@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 
 import { catalog } from '../lib/catalog';
+import { siteUrl } from '../lib/site.ts';
 
 const lines = [
   '# Sarj Standards rule catalog',
@@ -16,7 +17,7 @@ const lines = [
     '',
     `Remediation: ${rule.remediation}`,
     '',
-    `Reference: https://code-standards.sarj.ai/rules/${rule.engine}/${rule.id}/`,
+    `Reference: ${siteUrl(`/rules/${rule.engine}/${rule.id}/`)}`,
     '',
   ]),
 ];

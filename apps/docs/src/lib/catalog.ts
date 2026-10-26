@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { sourceRevision } from "./source-revision";
+import { siteHref } from "./site.ts";
 import { ENGINES, validateCatalog } from "./catalog-validation";
 
 export { ENGINES };
@@ -121,7 +122,7 @@ export function engineLabel(engine: Engine): string {
 }
 
 export function ruleHref(rule: Pick<Rule, "engine" | "id">): string {
-  return `/rules/${rule.engine}/${rule.id}/`;
+  return siteHref(`/rules/${rule.engine}/${rule.id}/`);
 }
 
 export function rulesForEngine(engine: Engine): Rule[] {

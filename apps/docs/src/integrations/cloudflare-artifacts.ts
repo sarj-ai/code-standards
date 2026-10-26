@@ -1,25 +1,30 @@
 import { hash } from "node:crypto";
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import type { AstroIntegration } from "astro";
 
 import { catalog, ruleHref } from "../lib/catalog";
+import { SITE_BASE_PATH, SITE_ORIGIN, siteHref, siteUrl } from "../lib/site.ts";
 
-export default function cloudflareArtifacts(): AstroIntegration {
+export default function cloudflareArtifacts(assetRoot: URL): AstroIntegration {
   return {
     name: "sarj-cloudflare-static-artifacts",
     hooks: {
+      "astro:build:start": async () => {
+        await rm(assetRoot, { recursive: true, force: true });
+        await mkdir(new URL(`.${SITE_BASE_PATH}`, assetRoot), { recursive: true });
+      },
       "astro:build:done": async ({ dir }) => {
         const redirects = new Set<string>([
-          "/about / 301",
-          "/about/ / 301",
-          "/third-party-linters /third-party-linters/ruff/ 301",
-          "/third-party-linters/ /third-party-linters/ruff/ 301",
+          `${siteHref("/about")} ${siteHref("/")} 301`,
+          `${siteHref("/about/")} ${siteHref("/")} 301`,
+          `${siteHref("/third-party-linters")} ${siteHref("/third-party-linters/ruff/")} 301`,
+          `${siteHref("/third-party-linters/")} ${siteHref("/third-party-linters/ruff/")} 301`,
         ]);
         for (const rule of catalog.rules) {
           for (const alias of rule.aliases) {
             const target = ruleHref(rule);
-            redirects.add(`/rules/${rule.engine}/${alias} ${target} 301`);
-            redirects.add(`/rules/${rule.engine}/${alias}/ ${target} 301`);
+            redirects.add(`${siteHref(`/rules/${rule.engine}/${alias}`)} ${target} 301`);
+            redirects.add(`${siteHref(`/rules/${rule.engine}/${alias}/`)} ${target} 301`);
           }
         }
         const body = [
@@ -27,9 +32,9 @@ export default function cloudflareArtifacts(): AstroIntegration {
           ...[...redirects].sort(),
           "",
         ].join("\n");
-        await writeFile(new URL("_redirects", dir), body, "utf8");
+        await writeFile(new URL("_redirects", assetRoot), body, "utf8");
         await verifyIndexableSitemap(dir);
-        await writeContentSecurityPolicyHeader(dir);
+        await writeContentSecurityPolicyHeader(dir, assetRoot);
       },
     },
   };
@@ -40,7 +45,7 @@ async function verifyIndexableSitemap(dir: URL): Promise<void> {
     new URL("sitemap-index.xml", dir),
     "utf8",
   );
-  if (!sitemapIndex.includes("https://code-standards.sarj.ai/sitemap-0.xml")) {
+  if (!sitemapIndex.includes(siteUrl("/sitemap-0.xml"))) {
     throw new Error(
       "Sitemap index does not reference the canonical code-standards sitemap",
     );
@@ -55,7 +60,7 @@ async function verifyIndexableSitemap(dir: URL): Promise<void> {
       return location;
     },
   );
-  if (locations.some((location) => new URL(location).pathname === "/about/")) {
+  if (locations.some((location) => new URL(location).pathname === siteHref("/about/"))) {
     throw new Error(
       "Non-canonical /about/ alias must not appear in the sitemap",
     );
@@ -63,13 +68,10 @@ async function verifyIndexableSitemap(dir: URL): Promise<void> {
 
   for (const location of locations) {
     const url = new URL(location);
-    if (url.origin !== "https://code-standards.sarj.ai") {
+    if (url.origin !== SITE_ORIGIN || !url.pathname.startsWith(SITE_BASE_PATH)) {
       throw new Error(`Cross-origin sitemap URL: ${location}`);
     }
-    const relativePath =
-      url.pathname === "/"
-        ? "index.html"
-        : `${url.pathname.slice(1)}index.html`;
+    const relativePath = `${url.pathname.slice(SITE_BASE_PATH.length)}index.html`;
     const document = await readFile(new URL(relativePath, dir), "utf8");
     if (document.includes('name="robots" content="noindex')) {
       throw new Error(`Sitemap URL is marked noindex: ${location}`);
@@ -82,7 +84,7 @@ async function verifyIndexableSitemap(dir: URL): Promise<void> {
   }
 }
 
-async function writeContentSecurityPolicyHeader(dir: URL): Promise<void> {
+async function writeContentSecurityPolicyHeader(dir: URL, assetRoot: URL): Promise<void> {
   const htmlPaths = (await readdir(dir, { recursive: true }))
     .filter((path) => path.endsWith(".html"))
     .sort();
@@ -123,11 +125,12 @@ async function writeContentSecurityPolicyHeader(dir: URL): Promise<void> {
     throw new Error("Cloudflare headers must begin with the global route");
   }
 
-  const generated = headers.replace(
-    rootHeader,
-    `${rootHeader}${policyHeader}\n`,
+  const generated = headers.replaceAll(/^\/(.*)$/gmu, (_match: string, path: string) => siteHref(`/${path}`)).replace(
+    `${siteHref("/*")}\n`,
+    `${siteHref("/*")}\n${policyHeader}\n`,
   );
-  await writeFile(headersUrl, generated, "utf8");
+  await writeFile(new URL("_headers", assetRoot), generated, "utf8");
+  await rm(headersUrl);
 }
 
 function contentSecurityPolicy(document: string): string | undefined {

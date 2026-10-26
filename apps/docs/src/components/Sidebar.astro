@@ -1,12 +1,13 @@
 ---
 import DefaultSidebar from "@astrojs/starlight/components/Sidebar.astro";
+import { SITE_BASE_PATH } from "../lib/site.ts";
 ---
 
 <DefaultSidebar />
 
-<script is:inline>
+<script is:inline define:vars={{ siteBasePath: SITE_BASE_PATH }}>
   (() => {
-    const providerId = location.pathname.match(/^\/third-party-linters\/([^/]+)\//)?.[1];
+    const providerId = location.pathname.slice(siteBasePath.length).match(/^third-party-linters\/([^/]+)\//)?.[1];
     const activeProvider = providerId
       ? document.querySelector(
           `sl-sidebar-state-persist a[data-provider="${CSS.escape(providerId)}"]`,

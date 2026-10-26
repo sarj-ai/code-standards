@@ -1,3 +1,5 @@
 ---
-return Astro.redirect('/third-party-linters/ruff/', 301);
+import { siteHref } from '../../lib/site.ts';
+
+return Astro.redirect(siteHref('/third-party-linters/ruff/'), 301);
 ---

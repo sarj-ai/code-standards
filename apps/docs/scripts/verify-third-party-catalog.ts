@@ -12,13 +12,15 @@ import {
   type ThirdPartyRule,
 } from "../src/lib/third-party-catalog.ts";
 import { array, record, text } from "./_json.ts";
+import { SITE_BASE_PATH, SITE_ORIGIN, siteHref, siteUrl } from "../src/lib/site.ts";
 
 const appRoot = resolve(import.meta.dirname, "..");
 const artifactPath = resolve(
   appRoot,
   "src/generated/third-party-rules.v1.json",
 );
-const distRoot = resolve(appRoot, "dist");
+const assetRoot = resolve(appRoot, "dist");
+const distRoot = resolve(assetRoot, SITE_BASE_PATH.slice(1));
 const mode = process.argv[2];
 
 assert.ok(
@@ -211,24 +213,25 @@ function nonemptyString(value: string, label: string) {
 }
 
 async function verifyDist(ruleCounts: Map<string, number>) {
+  assert.deepEqual((await readdir(assetRoot)).sort(), ["_headers", "_redirects", "projects"]);
+  assert.deepEqual(await readdir(resolve(assetRoot, "projects")), ["code-standards"]);
+  const headers = await readFile(resolve(assetRoot, "_headers"), "utf8");
+  assert.ok(headers.startsWith(`${siteHref("/*")}\n`));
+  assert.ok(!headers.includes("\n/*\n"));
+  await readFile(resolve(distRoot, "404.html"), "utf8");
+  await verifyInternalLinks();
   const index = await readFile(
     resolve(distRoot, "third-party-linters/index.html"),
     "utf8",
   );
-  assert.match(
-    index,
-    /http-equiv="refresh" content="0;url=\/third-party-linters\/ruff\/"/u,
+  assert.ok(
+    index.includes(`http-equiv="refresh" content="0;url=${siteHref("/third-party-linters/ruff/")}"`),
     "index must redirect to Ruff",
   );
-  const redirects = await readFile(resolve(distRoot, "_redirects"), "utf8");
-  assert.match(
-    redirects,
-    /^\/third-party-linters \/third-party-linters\/ruff\/ 301$/mu,
-  );
-  assert.match(
-    redirects,
-    /^\/third-party-linters\/ \/third-party-linters\/ruff\/ 301$/mu,
-  );
+  const redirects = await readFile(resolve(assetRoot, "_redirects"), "utf8");
+  for (const source of ["/third-party-linters", "/third-party-linters/"]) {
+    assert.ok(redirects.split("\n").includes(`${siteHref(source)} ${siteHref("/third-party-linters/ruff/")} 301`));
+  }
   const expectedDirectories = catalog.providers.map(({ id }) => id).sort();
   const actualDirectories = (
     await readdir(resolve(distRoot, "third-party-linters"), {
@@ -287,7 +290,7 @@ async function verifyDist(ruleCounts: Map<string, number>) {
   const sitemap = await readFile(resolve(distRoot, "sitemap-0.xml"), "utf8");
   assert.ok(
     !sitemap.includes(
-      "<loc>https://code-standards.sarj.ai/third-party-linters/</loc>",
+      `<loc>${siteUrl("/third-party-linters/")}</loc>`,
     ),
   );
   for (const provider of catalog.providers) {
@@ -295,10 +298,25 @@ async function verifyDist(ruleCounts: Map<string, number>) {
     for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
       assert.ok(
         sitemap.includes(
-          `<loc>https://code-standards.sarj.ai${providerPageHref(provider.id, pageNumber)}</loc>`,
+          `<loc>${new URL(providerPageHref(provider.id, pageNumber), SITE_ORIGIN).href}</loc>`,
         ),
         `sitemap must include ${provider.id} page ${String(pageNumber)}`,
       );
+    }
+  }
+}
+
+async function verifyInternalLinks() {
+  const files = new Set(await readdir(assetRoot, { recursive: true }));
+  for (const file of files) {
+    if (!file.endsWith(".html")) continue;
+    const document = await readFile(resolve(assetRoot, file), "utf8");
+    for (const href of htmlHrefs(document)) {
+      if (!href.startsWith("/") || href.startsWith("//")) continue;
+      const path = new URL(href, SITE_ORIGIN).pathname;
+      assert.ok(path.startsWith(SITE_BASE_PATH), `${file}: link escapes project base: ${href}`);
+      const target = decodeURIComponent(path.slice(1));
+      assert.ok(files.has(target) || files.has(`${target}index.html`), `${file}: missing link target: ${href}`);
     }
   }
 }
@@ -467,7 +485,7 @@ async function verifyProviderPages(
     );
     for (const candidate of catalog.providers) {
       assert.ok(
-        hrefSet.has(`/third-party-linters/${candidate.id}/`),
+        hrefSet.has(siteHref(`/third-party-linters/${candidate.id}/`)),
         `${provider.id} page ${String(pageNumber)} navigation must link to ${candidate.id}`,
       );
       assert.ok(
@@ -567,9 +585,9 @@ function summaryParts(value: string) {
 }
 
 function providerPageHref(providerId: string, page: number) {
-  return page === 1
+  return siteHref(page === 1
     ? `/third-party-linters/${providerId}/`
-    : `/third-party-linters/${providerId}/${String(page)}/`;
+    : `/third-party-linters/${providerId}/${String(page)}/`);
 }
 
 function htmlHrefs(source: string) {
