@@ -4,9 +4,14 @@ import { defineConfig } from "astro/config";
 import { URL } from "node:url";
 
 import cloudflareArtifacts from "./src/integrations/cloudflare-artifacts.ts";
+import { SITE_BASE_PATH, SITE_ORIGIN, siteHref } from "./src/lib/site.ts";
+
+const ASSET_ROOT = new URL("./dist/", import.meta.url);
 
 export default defineConfig({
-  site: "https://code-standards.sarj.ai",
+  site: SITE_ORIGIN,
+  base: SITE_BASE_PATH,
+  outDir: `./dist${SITE_BASE_PATH}`,
   output: "static",
   trailingSlash: "always",
   compressHTML: true,
@@ -36,7 +41,7 @@ export default defineConfig({
   integrations: [
     sitemap({
       filter: (page) =>
-        !["/about/", "/third-party-linters/"].includes(new URL(page).pathname),
+        ![siteHref("/about/"), siteHref("/third-party-linters/")].includes(new URL(page).pathname),
     }),
     starlight({
       title: "Sarj Standards",
@@ -71,6 +76,6 @@ export default defineConfig({
         Sidebar: "./src/components/Sidebar.astro",
       },
     }),
-    cloudflareArtifacts(),
+    cloudflareArtifacts(ASSET_ROOT),
   ],
 });

@@ -8,6 +8,7 @@ import RulePager from '@sarj/design/RulePager.astro';
 import { catalog, engineLabel, ruleHref, sourceUrl, type Rule } from '../../../lib/catalog';
 import { displayRule } from '../../../lib/display-code';
 import { referenceSidebar } from '../../../lib/reference-sidebar';
+import { siteHref } from '../../../lib/site.ts';
 
 export function getStaticPaths() {
   return catalog.rules.map((rule, index) => ({
@@ -39,9 +40,9 @@ const exampleScenarios = [...new Set(displayed.examples.map((example) => example
     <header class="rule-detail__header">
       <div class="rule-detail__toolbar">
         <nav class="rule-breadcrumb" aria-label="Breadcrumb">
-          <a href={`/rules/${rule.engine}/`}><EngineMark engine={rule.engine} /></a>
+          <a href={siteHref(`/rules/${rule.engine}/`)}><EngineMark engine={rule.engine} /></a>
           <span aria-hidden="true">·</span>
-          <a href={`/rules/?category=${rule.category}`}>{rule.category}</a>
+          <a href={siteHref(`/rules/?category=${rule.category}`)}>{rule.category}</a>
         </nav>
         <RulePager
           previous={previousRule ? { href: ruleHref(previousRule), label: previousRule.id } : null}
@@ -55,7 +56,7 @@ const exampleScenarios = [...new Set(displayed.examples.map((example) => example
         {rule.messageIds.map((messageId) => <code>{messageId}</code>)}
         <a href={sourceUrl(rule.source)}>Rule source</a>
         <a href={sourceUrl(rule.test)}>Tests</a>
-        <a href="/api/v1/catalog.json">Catalog JSON</a>
+        <a href={siteHref('/api/v1/catalog.json')}>Catalog JSON</a>
       </div>
     </header>
 

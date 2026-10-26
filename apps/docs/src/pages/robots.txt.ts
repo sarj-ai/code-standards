@@ -1,9 +1,10 @@
 import type { APIRoute } from 'astro';
+import { siteUrl } from '../lib/site.ts';
 
 const body = `User-agent: *
 Allow: /
 
-Sitemap: https://code-standards.sarj.ai/sitemap-index.xml
+Sitemap: ${siteUrl('/sitemap-index.xml')}
 `;
 
 export const GET = (() => new Response(body, {

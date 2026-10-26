@@ -1,3 +1,5 @@
 ---
-return Astro.redirect('/', 301);
+import { siteHref } from '../../lib/site.ts';
+
+return Astro.redirect(siteHref('/'), 301);
 ---

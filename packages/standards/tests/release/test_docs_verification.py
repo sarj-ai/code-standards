@@ -11,7 +11,9 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
-@pytest.mark.parametrize("failure", ["none", "examples", "catalog", "lint", "types", "build", "distribution"])
+@pytest.mark.parametrize(
+    "failure", ["none", "examples", "catalog", "routing", "lint", "types", "build", "distribution"]
+)
 def test_complete_docs_gate_checks_projections_once_and_stops_on_failure(tmp_path: Path, failure: str) -> None:
     script = (REPO_ROOT / ".github/scripts/verify-docs.sh").read_text()
     commands = script[script.index("run_check()") :]
@@ -22,6 +24,7 @@ def test_complete_docs_gate_checks_projections_once_and_stops_on_failure(tmp_pat
         '#!/bin/sh\ncase "$*" in\n'
         '"run code-examples:check") name=examples;;\n'
         '"run third-party-catalog:check") name=catalog;;\n'
+        '"run test:routing") name=routing;;\n'
         '"--ignore-scripts run lint") name=lint;;\n'
         '"--ignore-scripts run check") name=types;;\n'
         '"--ignore-scripts run build") name=build;;\n'
@@ -55,12 +58,12 @@ def test_complete_docs_gate_checks_projections_once_and_stops_on_failure(tmp_pat
             "FAILURE": failure,
         },
     )
-    expected = ["examples", "catalog", "lint", "types", "build", "distribution"]
+    expected = ["examples", "catalog", "routing", "lint", "types", "build", "distribution"]
     if failure != "none":
-        expected = expected[: (4 if failure in {"lint", "types"} else expected.index(failure) + 1)]
+        expected = expected[: (5 if failure in {"lint", "types"} else expected.index(failure) + 1)]
     observed = (signals / "order").read_text().splitlines()
-    assert observed[:2] == expected[:2]
-    assert sorted(observed[2:4]) == sorted(expected[2:4])
-    assert observed[4:] == expected[4:]
+    assert observed[:3] == expected[:3]
+    assert sorted(observed[3:5]) == sorted(expected[3:5])
+    assert observed[5:] == expected[5:]
     assert (result.returncode == 0) == (failure == "none")
     assert len(result.stdout.splitlines()) == len(expected)
