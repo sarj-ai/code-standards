@@ -1,5 +1,7 @@
 import rawThirdPartyCatalog from "../generated/third-party-rules.v1.json" with { type: "json" };
 
+import { siteHref } from "./site.ts";
+
 export const THIRD_PARTY_PROFILES = ["application", "standard"] as const;
 export const THIRD_PARTY_PAGE_SIZE = 32;
 export type ThirdPartyProfile = (typeof THIRD_PARTY_PROFILES)[number];
@@ -342,7 +344,7 @@ export function thirdPartyProviderNavigationLabel(
 export function thirdPartyProviderHref(
   provider: Pick<ThirdPartyProvider, "id">,
 ): string {
-  return `/third-party-linters/${provider.id}/`;
+  return siteHref(`/third-party-linters/${provider.id}/`);
 }
 
 export function thirdPartyProviderPageHref(

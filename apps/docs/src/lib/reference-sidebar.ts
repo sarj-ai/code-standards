@@ -2,7 +2,6 @@ import type { StarlightUserConfig } from "@astrojs/starlight/types";
 
 import { ENGINES, catalog, engineLabel } from "./catalog";
 import {
-  thirdPartyProviderHref,
   thirdPartyProvidersForNavigation,
 } from "./third-party-catalog";
 
@@ -23,7 +22,7 @@ export const referenceSidebar = Object.freeze([
     collapsed: true,
     items: thirdPartyProvidersForNavigation().map((provider) => ({
       label: provider.label,
-      link: thirdPartyProviderHref(provider),
+      link: `/third-party-linters/${provider.id}/`,
       attrs: { "data-provider": provider.id },
     })),
   },

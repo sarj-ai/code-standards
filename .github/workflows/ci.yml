@@ -1030,7 +1030,7 @@ jobs:
     timeout-minutes: 10
     environment:
       name: code-standards-production
-      url: https://code-standards.sarj.ai
+      url: https://engineering.sarj.ai/projects/code-standards/
     defaults:
       run:
         working-directory: apps/docs

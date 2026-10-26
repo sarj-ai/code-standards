@@ -16,6 +16,7 @@ run_check() {
 # shared projections once; standalone npm commands retain their pre/post hooks.
 run_check Examples npm run code-examples:check
 run_check Catalog npm run third-party-catalog:check
+run_check Routing npm run test:routing
 # Both checks read the prepared source. ESLint excludes Astro's generated
 # .astro directory; neither check depends on the other's output.
 run_check Lint npm --ignore-scripts run lint &

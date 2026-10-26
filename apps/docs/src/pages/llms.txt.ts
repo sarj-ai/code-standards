@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 
 import { ENGINES, catalog, engineLabel } from '../lib/catalog';
+import { siteUrl } from '../lib/site.ts';
 
 const lines = [
   '# Sarj Standards',
@@ -9,19 +10,19 @@ const lines = [
   '',
   '## Reference',
   '',
-  '- [About](https://code-standards.sarj.ai/)',
-  '- [CLI](https://code-standards.sarj.ai/cli/)',
-  '- [All rules](https://code-standards.sarj.ai/rules/)',
-  '- [Catalog JSON](https://code-standards.sarj.ai/api/v1/catalog.json)',
-  '- [Catalog schema](https://code-standards.sarj.ai/api/v1/rule-catalog.schema.json)',
+  `- [About](${siteUrl('/')})`,
+  `- [CLI](${siteUrl('/cli/')})`,
+  `- [All rules](${siteUrl('/rules/')})`,
+  `- [Catalog JSON](${siteUrl('/api/v1/catalog.json')})`,
+  `- [Catalog schema](${siteUrl('/api/v1/rule-catalog.schema.json')})`,
   '',
   '## Rule families',
   '',
   ...ENGINES.filter((engine) => catalog.rules.some((rule) => rule.engine === engine)).map(
-    (engine) => `- [${engineLabel(engine)}](https://code-standards.sarj.ai/rules/${engine}/)`,
+    (engine) => `- [${engineLabel(engine)}](${siteUrl(`/rules/${engine}/`)})`,
   ),
   '',
-  'A complete text rendering is available at https://code-standards.sarj.ai/llms-full.txt',
+  `A complete text rendering is available at ${siteUrl('/llms-full.txt')}`,
   '',
 ];
 

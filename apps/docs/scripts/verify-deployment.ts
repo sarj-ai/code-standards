@@ -7,11 +7,12 @@ import { URL } from "node:url";
 import { parseCatalog } from "../src/lib/third-party-catalog.ts";
 import { validateCatalog } from "../src/lib/catalog-validation.ts";
 import { array, record, text } from "./_json.ts";
+import { LEGACY_HOSTNAME, SITE_URL, siteHref } from "../src/lib/site.ts";
 
 const expectedCommit = text(process.env["EXPECTED_COMMIT"], "EXPECTED_COMMIT");
 assert.ok(expectedCommit, "EXPECTED_COMMIT is required");
 const base = new URL(
-  process.env["DOCS_BASE_URL"] ?? "https://code-standards.sarj.ai/",
+  process.env["DOCS_BASE_URL"] ?? SITE_URL,
 );
 const thirdPartyCatalog = parseCatalog(
   JSON.parse(
@@ -99,7 +100,7 @@ async function verify() {
       text(upstreamResponse.headers.get("location"), "redirect location"),
       base,
     ).pathname,
-    "/third-party-linters/ruff/",
+    siteHref("/third-party-linters/ruff/"),
   );
   assert.match(ruffPage, /Third party Rules/u);
   assert.equal(
@@ -150,10 +151,7 @@ async function verify() {
       indexResponse.headers.get("content-type") ?? "",
       /^application\/json\b/u,
     );
-    assert.match(
-      page,
-      new RegExp(`href="/third-party-linters/${provider}/"`, "u"),
-    );
+    assert.ok(page.includes(`href="${siteHref(`/third-party-linters/${provider}/`)}"`));
   }
   assert.doesNotMatch(page, /site-search|pagefind|type="search"/iu);
   assert.doesNotMatch(page, /<meta http-equiv="content-security-policy"/iu);
@@ -175,7 +173,7 @@ async function verify() {
   assert.equal((await response("design-system/")).status, 404);
   assert.equal((await response("api/v1/docs-ui.json")).status, 404);
 
-  const assetPath = /(?:href|src)="(\/_astro\/[^"]+)"/u.exec(page)?.[1];
+  const assetPath = /(?:href|src)="([^"]*\/_astro\/[^"]+)"/u.exec(page)?.[1];
   assert.ok(assetPath, "rendered page must reference a hashed Astro asset");
   assert.equal(
     (await response(assetPath)).headers.get("content-security-policy"),
@@ -187,7 +185,7 @@ async function verify() {
   assert.equal(
     new URL(text(about.headers.get("location"), "redirect location"), base)
       .pathname,
-    "/",
+    siteHref("/"),
   );
 
   const missing = await response(`definitely-not-a-page-${expectedCommit}/`, {
@@ -208,8 +206,14 @@ async function verify() {
       text(aliasRedirect.headers.get("location"), "redirect location"),
       base,
     ).pathname,
-    `/rules/${aliasedRule.engine}/${aliasedRule.id}/`,
+    siteHref(`/rules/${aliasedRule.engine}/${aliasedRule.id}/`),
   );
+  const legacy = await globalThis.fetch(`https://${LEGACY_HOSTNAME}/cli/?migration=1&keep=two`, {
+    redirect: "manual",
+    signal: globalThis.AbortSignal.timeout(10_000),
+  });
+  assert.equal(legacy.status, 301);
+  assert.equal(legacy.headers.get("location"), new URL("cli/?migration=1&keep=two", SITE_URL).href);
 }
 
 function occurrences(source: string, pattern: RegExp) {

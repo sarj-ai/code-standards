@@ -1,10 +1,13 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "sarj-code-standards",
+  "main": "./src/worker.ts",
   "compatibility_date": "2026-08-08",
   "workers_dev": false,
   "preview_urls": false,
   "assets": {
+    "binding": "ASSETS",
+    "run_worker_first": true,
     "directory": "./dist",
     "not_found_handling": "404-page",
     "html_handling": "force-trailing-slash"
@@ -13,6 +16,14 @@
     {
       "pattern": "code-standards.sarj.ai",
       "custom_domain": true
+    },
+    {
+      "pattern": "engineering.sarj.ai/projects/code-standards",
+      "zone_name": "sarj.ai"
+    },
+    {
+      "pattern": "engineering.sarj.ai/projects/code-standards/*",
+      "zone_name": "sarj.ai"
     }
   ]
 }
