@@ -416,7 +416,7 @@ class CatalogRule:
 
 @dataclass(frozen=True, slots=True)
 class Finding:
-    rule_id: str
+    rule_id: RuleId
     line: int
     column: int
     message: str

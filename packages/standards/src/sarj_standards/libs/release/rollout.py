@@ -2454,7 +2454,7 @@ def _publish_rollout_pull(
                 "--head",
                 branch,
                 "--title",
-                BOT_COMMIT_PREFIX + version,
+                f"{BOT_COMMIT_PREFIX}{version}",
                 "--body",
                 body,
             )
@@ -2471,7 +2471,7 @@ def _publish_rollout_pull(
                 consumer.repository,
                 url,
                 "--title",
-                BOT_COMMIT_PREFIX + version,
+                f"{BOT_COMMIT_PREFIX}{version}",
                 "--body",
                 body,
             )

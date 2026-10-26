@@ -10,7 +10,7 @@ import sys
 import tempfile
 from typing import TYPE_CHECKING, Annotated
 
-from sarj_rule_contracts import fix_file
+from sarj_rule_contracts import RuleId, fix_file
 import typer
 
 from sarj_iac_lint import __version__
@@ -22,7 +22,7 @@ from sarj_iac_lint.rules import REGISTRY
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Mapping
+    from collections.abc import Iterator, Mapping, Sequence
 
 
 SKIP_DIR_NAMES = frozenset(
@@ -74,13 +74,13 @@ def _suppression_comments(path: Path, source: str, lines: list[str]) -> Mapping[
     return suppression_comment_lines(source)
 
 
-def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
-    unknown = [rid for rid in rule_ids if rid not in REGISTRY]
+def _check(rule_names: Sequence[str], paths: list[Path]) -> list[Diagnostic]:
+    unknown = [name for name in rule_names if name not in REGISTRY]
     if unknown:
         sys.stderr.write(f"unknown rule(s): {', '.join(unknown)}\n")
         sys.stderr.write(f"available: {', '.join(sorted(REGISTRY))}\n")
         raise SystemExit(2)
-    rules = [REGISTRY[rid]() for rid in rule_ids]
+    rules = [REGISTRY[RuleId(name)]() for name in rule_names]
     diags: list[Diagnostic] = []
     for p in _expand_paths(paths):
         try:
@@ -97,7 +97,10 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
     return diags
 
 
-def analyze(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
+def analyze(
+    rule_ids: Sequence[str],  # sarj-noqa: SARJ093 -- Public parsing boundary accepts raw names.
+    paths: list[Path],
+) -> list[Diagnostic]:
     return _check(rule_ids, paths)
 
 

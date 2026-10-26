@@ -4,12 +4,17 @@ import ast
 from pathlib import Path
 import subprocess
 import sys
+from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_python_lint.__main__ import check_source
 from sarj_python_lint.autofix import fix_source
 from sarj_python_lint.rules import REGISTRY
+
+
+if TYPE_CHECKING:
+    from sarj_rule_contracts import RuleId
 
 
 _RULE_ID = "no-excessive-cognitive-complexity"
@@ -209,7 +214,7 @@ def test_outside_comment_and_missing_final_newline_are_preserved() -> None:
         pytest.param(["no-secret-in-log"], id="selected-rule-with-no-builder"),
     ],
 )
-def test_unselected_complexity_fix_never_runs(rule_ids: list[str]) -> None:
+def test_unselected_complexity_fix_never_runs(rule_ids: list[RuleId]) -> None:
     source = _source()
     assert fix_source(_PATH, source, rule_ids=rule_ids) == source
 

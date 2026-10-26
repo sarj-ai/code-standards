@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_iac_lint.__main__ import main
 from sarj_iac_lint._hcl import tokens
 from sarj_iac_lint.autofix import fix_source
+
+
+if TYPE_CHECKING:
+    from sarj_rule_contracts import RuleId
 
 
 @pytest.mark.parametrize(
@@ -112,7 +117,7 @@ def test_cli_fix_preserves_crlf_and_permissions(tmp_path: Path, capsys: pytest.C
     ],
 )
 def test_cli_fix_respects_suppression_selection_and_malformed_source(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: str, source: str, exit_code: int
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: RuleId, source: str, exit_code: int
 ) -> None:
     path = tmp_path / "main.tf"
     path.write_bytes(source.encode())

@@ -5,6 +5,7 @@ import json
 from pathlib import Path, PurePosixPath
 import re
 import subprocess
+from typing import TYPE_CHECKING
 import warnings
 
 import pytest
@@ -13,6 +14,10 @@ from sarj_rule_contracts.examples import verify_native_rule
 from sarj_python_lint.__main__ import analyze
 from sarj_python_lint.rule_base import Diagnostic, ExampleFile, ExampleOutcome, Rule, RuleExample, Severity
 from sarj_python_lint.rules import REGISTRY
+
+
+if TYPE_CHECKING:
+    from sarj_rule_contracts import RuleId
 
 
 # tests/ -> packages/python -> packages -> repo root.
@@ -148,7 +153,7 @@ def _deleted_rule_modules() -> dict[str, str]:
 
 
 @pytest.mark.parametrize("rule_id", sorted(REGISTRY))
-def test_rule_has_self_documenting_meta(rule_id: str) -> None:
+def test_rule_has_self_documenting_meta(rule_id: RuleId) -> None:
     cls = REGISTRY[rule_id]
     assert issubclass(cls, Rule)
 
@@ -164,7 +169,7 @@ def test_rule_has_self_documenting_meta(rule_id: str) -> None:
 
 
 @pytest.mark.parametrize("rule_id", sorted(REGISTRY))
-def test_every_rule_has_an_examples_module(rule_id: str) -> None:
+def test_every_rule_has_an_examples_module(rule_id: RuleId) -> None:
     cls = REGISTRY[rule_id]
     examples = _REPO_ROOT / cls.examples_path()
     assert examples.is_file(), (
@@ -212,7 +217,7 @@ def test_every_rule_has_valid_source_owned_documentation() -> None:
     _AUTHORED_EXAMPLES,
     ids=tuple(f"{rule_id}:{example.example_id}" for rule_id, example in _AUTHORED_EXAMPLES),
 )
-def test_authored_example_files_compile_as_python(rule_id: str, example: RuleExample) -> None:
+def test_authored_example_files_compile_as_python(rule_id: RuleId, example: RuleExample) -> None:
     for file in example.files:
         if file.path.suffix == ".py":
             try:
@@ -222,7 +227,7 @@ def test_authored_example_files_compile_as_python(rule_id: str, example: RuleExa
 
 
 @pytest.mark.parametrize("rule_id", sorted(REGISTRY))
-def test_all_authored_examples_execute_the_native_contract(rule_id: str) -> None:
+def test_all_authored_examples_execute_the_native_contract(rule_id: RuleId) -> None:
     verify_native_rule(REGISTRY[rule_id], analyze)
 
 
@@ -234,7 +239,7 @@ def _warning_python_rule_ids() -> set[str]:
     }
 
 
-def _analyze_example(rule_id: str, example: RuleExample, root: Path) -> list[Diagnostic]:
+def _analyze_example(rule_id: RuleId, example: RuleExample, root: Path) -> list[Diagnostic]:
     root.mkdir(parents=True, exist_ok=True)
     (root / "pyproject.toml").touch(exist_ok=True)
     paths: list[Path] = []
@@ -254,7 +259,7 @@ def _analyze_example(rule_id: str, example: RuleExample, root: Path) -> list[Dia
 
 
 @pytest.mark.parametrize("rule_id", sorted(REGISTRY))
-def test_example_source_quoted_as_data_is_not_executed(rule_id: str, tmp_path: Path) -> None:
+def test_example_source_quoted_as_data_is_not_executed(rule_id: RuleId, tmp_path: Path) -> None:
     documentation = REGISTRY[rule_id].documentation
     assert documentation is not None
     for example in documentation.examples:
@@ -268,7 +273,7 @@ def test_example_source_quoted_as_data_is_not_executed(rule_id: str, tmp_path: P
 
 
 @pytest.mark.parametrize("rule_id", sorted(REGISTRY.keys() - _warning_python_rule_ids()))
-def test_error_level_python_rules_emit_blocking_public_examples(tmp_path: Path, rule_id: str) -> None:
+def test_error_level_python_rules_emit_blocking_public_examples(tmp_path: Path, rule_id: RuleId) -> None:
     examples = [example for example in REGISTRY[rule_id].public_examples() if example.outcome is ExampleOutcome.MATCH]
     assert examples, f"{rule_id}: no published rejecting example to test severity"
     for example in examples:

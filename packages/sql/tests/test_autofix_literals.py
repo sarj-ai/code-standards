@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from sqlglot import exp
@@ -8,6 +9,10 @@ from sqlglot import exp
 from sarj_sql_lint._postgres import parse_postgres
 from sarj_sql_lint.autofix import fix_source
 from sarj_sql_lint.rules import REGISTRY
+
+
+if TYPE_CHECKING:
+    from sarj_rule_contracts import RuleId
 
 
 _PATH = Path("supabase/queries/literals.sql")
@@ -74,7 +79,7 @@ _INSTANT = (
     ],
 )
 def test_literal_fixes_preserve_existing_boundaries_and_converge(
-    rule_id: str, source: str, expected: str, eol: str
+    rule_id: RuleId, source: str, expected: str, eol: str
 ) -> None:
     original = source + eol
     expected += eol
@@ -158,7 +163,7 @@ def test_timestamp_literals_refuse_session_authority_labels_errors_and_comments(
     ],
 )
 def test_literal_fixes_respect_suppression_selection_generated_and_malformed_source(
-    rule_id: str, source: str, code: str
+    rule_id: RuleId, source: str, code: str
 ) -> None:
     suppressed = f"{source} -- sarj-noqa: {code}\n"
     assert fix_source(_PATH, suppressed, rule_ids=[rule_id]) == suppressed
@@ -238,6 +243,6 @@ def test_literal_rules_combine_with_existing_ddl_and_comment_fixes() -> None:
         ("prefer-jsonb", _JSON.replace("metadata pg_catalog.jsonb", "other INTEGER, metadata pg_catalog.jsonb")),
     ],
 )
-def test_literal_fixes_refuse_source_visible_catalog_mutation_and_callouts(rule_id: str, source: str) -> None:
+def test_literal_fixes_refuse_source_visible_catalog_mutation_and_callouts(rule_id: RuleId, source: str) -> None:
     assert REGISTRY[rule_id]().check(_PATH, source)
     assert fix_source(_PATH, source, rule_ids=[rule_id]) == source

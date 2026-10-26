@@ -4,6 +4,7 @@ from pathlib import Path
 import time
 
 import pytest
+from sarj_rule_contracts import RuleId
 
 from sarj_sql_lint.rules import REGISTRY
 
@@ -33,7 +34,7 @@ _RELATIVE_OUTLIER_FACTOR = 10.0
 _RELATIVE_SLACK_S = 0.003
 
 
-def _best_time_s(rule_id: str, path: Path, source: str, repeats: int = 5) -> float:
+def _best_time_s(rule_id: RuleId, path: Path, source: str, repeats: int = 5) -> float:
     rule = REGISTRY[rule_id]()
     best = float("inf")
     for _ in range(repeats):
@@ -47,7 +48,7 @@ def _best_time_s(rule_id: str, path: Path, source: str, repeats: int = 5) -> flo
 def rule_timings() -> dict[str, float]:
     # Both gates inspect the same five-repeat measurements; neither needs a second run.
     path = Path("synthetic.sql")
-    return {rid: _best_time_s(rid, path, _SYNTHETIC_SQL) for rid in sorted(REGISTRY)}
+    return {rid: _best_time_s(RuleId(rid), path, _SYNTHETIC_SQL) for rid in sorted(REGISTRY)}
 
 
 def test_no_rule_exceeds_absolute_budget(rule_timings: dict[str, float]) -> None:

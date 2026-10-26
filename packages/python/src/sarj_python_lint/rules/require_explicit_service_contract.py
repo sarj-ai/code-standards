@@ -34,13 +34,22 @@ if TYPE_CHECKING:
     from sarj_python_lint.rules._project_index import ProjectIndexSet, SourceUnit
 
 
+_EXECUTOR_CALLBACK_INDEX = 1
+
+
+@dataclass(frozen=True, slots=True)
+class _RetainedCollaborators:
+    fields: frozenset[str]
+    typed_fields: frozenset[str]
+
+
 @final
 class RequireExplicitServiceContract(ProjectRule):
     id = "require-explicit-service-contract"
     code = "SARJ465"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         default_level=Severity.ERROR,
-        summary="Require an explicit contract for a service that invokes a retained collaborator.",
+        summary="Require an explicit contract for services that invoke collaborators or perform HTTP operations.",
         rationale=(
             "A one-operation service can orchestrate other services without declaring "
             "the contract that callers consume and implementations and fakes satisfy."
@@ -52,10 +61,13 @@ class RequireExplicitServiceContract(ProjectRule):
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only module-level service, store, and provider roles with a direct constructor assignment and a public operation that invokes the retained collaborator are checked.",
+            "Module-level service, store, and provider roles qualify when a public operation invokes a directly retained constructor collaborator. Classes that dispatch retained callbacks through asyncio or issue requests through locally constructed httpx clients also qualify without a role name or directory.",
             "Resolvable inherited ABC and Protocol operations, including private and generic contracts, satisfy this policy; unresolved ancestry is not treated as a missing contract.",
             "Generated code, tests, data values, abstract declarations, descriptors, static/class helpers, and unknown rewriting decorators are excluded.",
             "The bounded analysis follows directly retained constructor parameters and private instance helpers; dynamic field aliases and structurally implemented Protocols declared only by external consumers are not inferred.",
+            "An unannotated bare callback factory does not by itself establish a service collaborator. Called collaborator methods and proven native callback dispatch remain in scope.",
+            "Executor dispatch requires a directly acquired or uniquely assigned asyncio event loop, or asyncio.to_thread, and an explicit callback argument. Wrapper dispatchers and ambiguous starred arguments are not inferred.",
+            "HTTP client construction and request calls require stable native imports and an unescaped local client binding. Merely constructing or closing a client, unknown factories, mutated clients, and unrelated request methods are excluded.",
             "Method signatures are checked by the type checker. This explicit-contract policy has no automatic rewrite; preserve required framework boundaries with a reasoned exact-code exception.",
         ),
         examples=(
@@ -75,6 +87,51 @@ class RequireExplicitServiceContract(ProjectRule):
                 ),
                 focus_path=PurePosixPath("app/service.py"),
                 expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="retained-executor-callback-without-contract",
+                scenario="executor-dispatch",
+                title="Dispatching injected work establishes a service boundary",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/batching.py",
+                        "import asyncio\n"
+                        "from collections.abc import Callable\n"
+                        "class Batcher:\n"
+                        "    def __init__(self, operation: Callable[[], None]) -> None:\n"
+                        "        self.operation = operation\n"
+                        "    async def run(self) -> None:\n"
+                        "        await asyncio.get_running_loop().run_in_executor(None, self.operation)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/batching.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="retained-executor-callback-with-contract",
+                scenario="executor-dispatch",
+                title="The dispatcher declares its public operation",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/batching.py",
+                        "import asyncio\n"
+                        "from collections.abc import Callable\n"
+                        "from typing import Protocol\n"
+                        "class Operations(Protocol):\n"
+                        "    async def run(self) -> None: ...\n"
+                        "class Batcher(Operations):\n"
+                        "    def __init__(self, operation: Callable[[], None]) -> None:\n"
+                        "        self.operation = operation\n"
+                        "    async def run(self) -> None:\n"
+                        "        await asyncio.get_running_loop().run_in_executor(None, self.operation)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/batching.py"),
+                expected_count=0,
                 public=True,
             ),
             RuleExample(
@@ -156,7 +213,7 @@ class RequireExplicitServiceContract(ProjectRule):
                     code=self.code,
                     severity=Severity.ERROR,
                     message=(
-                        f"`{node.name}` invokes a retained collaborator from "
+                        f"`{node.name}` invokes a collaborator or HTTP boundary from "
                         f"{', '.join(sorted(operations))} without a declared ABC or Protocol covering its service operations."
                     ),
                 )
@@ -237,7 +294,6 @@ _IMPORTED_VALUES = frozenset(
         "Iterable",
         "Iterator",
         "Collection",
-        "Callable",
         "Path",
         "PurePath",
         "UUID",
@@ -274,13 +330,40 @@ def _is_service_role(node: ast.ClassDef, context: PythonFileContext) -> bool:
         ):
             continue
         return False
-    return bool(parts & BOUNDARY_DIRECTORIES) or node.name.endswith(BOUNDARY_SUFFIXES)
+    return (
+        bool(parts & BOUNDARY_DIRECTORIES)
+        or node.name.endswith(BOUNDARY_SUFFIXES)
+        or (
+            any(marker in context.source for marker in ("run_in_executor", "to_thread", "httpx"))
+            and bool(_collaborator_operations(node, context, boundary_only=True))
+        )
+    )
 
 
-def _collaborator_operations(node: ast.ClassDef, context: PythonFileContext) -> frozenset[str]:
+def _collaborator_operations(
+    node: ast.ClassDef, context: PythonFileContext, *, boundary_only: bool = False
+) -> frozenset[str]:
     constructor = next((method for method in class_methods(node) if method.name == "__init__"), None)
-    if constructor is None or not _known_decorators(constructor.decorator_list, context.imports):
+    if constructor is not None and not _known_decorators(constructor.decorator_list, context.imports):
         return frozenset()
+    retained = (
+        _collaborator_fields(constructor, context)
+        if constructor is not None
+        else _RetainedCollaborators(frozenset(), frozenset())
+    )
+    return operations_for_fields(
+        node,
+        retained.fields,
+        context.imports,
+        typed_fields=retained.typed_fields,
+        boundary_only=boundary_only,
+        context=context,
+    )
+
+
+def _collaborator_fields(
+    constructor: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext
+) -> _RetainedCollaborators:
     stored = self_stored_parameters(constructor, context.imports)
     value_names: set[str] = (
         {item.name for item in context.tree.body if isinstance(item, ast.ClassDef) and is_data_type(item)}
@@ -288,11 +371,14 @@ def _collaborator_operations(node: ast.ClassDef, context: PythonFileContext) -> 
         else set()
     )
     fields: set[str] = set()
+    typed_fields: set[str] = set()
     for parameter in (*constructor.args.posonlyargs, *constructor.args.args, *constructor.args.kwonlyargs):
         if _is_value_parameter(parameter.annotation, context.imports, value_names):
             continue
         fields.update(stored.fields_by_parameter.get(parameter.arg, ()))
-    return operations_for_fields(node, frozenset(fields), context.imports)
+        if parameter.annotation is not None:
+            typed_fields.update(stored.fields_by_parameter.get(parameter.arg, ()))
+    return _RetainedCollaborators(frozenset(fields), frozenset(typed_fields))
 
 
 def _is_value_parameter(annotation: ast.expr | None, imports: ImportIndex, value_names: set[str]) -> bool:
@@ -305,14 +391,28 @@ def _is_value_parameter(annotation: ast.expr | None, imports: ImportIndex, value
     return reference is not None and imports.resolved_symbol(reference, sources=_VALUE_SOURCES) in _IMPORTED_VALUES
 
 
-def operations_for_fields(node: ast.ClassDef, fields: frozenset[str], imports: ImportIndex) -> frozenset[str]:
-    if not fields:
+def operations_for_fields(
+    node: ast.ClassDef,
+    fields: frozenset[str],
+    imports: ImportIndex,
+    *,
+    typed_fields: frozenset[str] | None = None,
+    boundary_only: bool = False,
+    context: PythonFileContext | None = None,
+) -> frozenset[str]:
+    if not fields and (context is None or "httpx" not in context.source):
         return frozenset()
     methods = [method for method in class_methods(node) if _instance_operation(method, imports)]
     callers: dict[str, set[str]] = defaultdict(set)
     reaches_collaborator: set[str] = set()
     for method in methods:
-        visitor = _CollaboratorCalls(fields)
+        visitor = _CollaboratorCalls(
+            fields,
+            imports,
+            typed_fields=fields if typed_fields is None else typed_fields,
+            boundary_only=boundary_only,
+            context=context,
+        )
         visitor.visit_statements(method.body)
         if visitor.invalidated:
             continue
@@ -320,6 +420,14 @@ def operations_for_fields(node: ast.ClassDef, fields: frozenset[str], imports: I
             reaches_collaborator.add(method.name)
         for callee in visitor.calledclass_methods:
             callers[callee].add(method.name)
+    return _reachable_public_operations(methods, callers, reaches_collaborator)
+
+
+def _reachable_public_operations(
+    methods: list[ast.FunctionDef | ast.AsyncFunctionDef],
+    callers: dict[str, set[str]],
+    reaches_collaborator: set[str],
+) -> frozenset[str]:
     pending = deque(reaches_collaborator)
     while pending:
         for caller in callers[pending.popleft()] - reaches_collaborator:
@@ -332,8 +440,20 @@ def operations_for_fields(node: ast.ClassDef, fields: frozenset[str], imports: I
 
 @final
 class _CollaboratorCalls(ast.NodeVisitor):
-    def __init__(self, fields: frozenset[str]) -> None:
+    def __init__(
+        self,
+        fields: frozenset[str],
+        imports: ImportIndex,
+        *,
+        typed_fields: frozenset[str],
+        boundary_only: bool,
+        context: PythonFileContext | None,
+    ) -> None:
         self.fields = fields
+        self.typed_fields = typed_fields
+        self.imports = imports
+        self.boundary_only = boundary_only
+        self.context = context
         self.found = False
         self.invalidated = False
         self.calledclass_methods: set[str] = set()
@@ -372,7 +492,12 @@ class _CollaboratorCalls(ast.NodeVisitor):
         return True
 
     def visit_Call(self, node: ast.Call) -> None:
-        if called_self_field(node.func) in self.fields:
+        callback = _executor_callback(node, self.imports, self.context)
+        if (
+            (not self.boundary_only and self._calls_retained(node.func))
+            or (callback is not None and called_self_field(callback) in self.fields)
+            or _native_http_call(node, self.context)
+        ):
             self.found = True
         if (
             isinstance(node.func, ast.Attribute)
@@ -381,6 +506,14 @@ class _CollaboratorCalls(ast.NodeVisitor):
         ):
             self.calledclass_methods.add(node.func.attr)
         self.generic_visit(node)
+
+    def _calls_retained(self, function: ast.expr) -> bool:
+        field = called_self_field(function)
+        if field not in self.fields:
+            return False
+        if isinstance(function, ast.Attribute) and isinstance(function.value, ast.Name):
+            return field in self.typed_fields
+        return True
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         pass
@@ -399,6 +532,16 @@ class _CollaboratorCalls(ast.NodeVisitor):
         if not isinstance(node.test, ast.Constant) or node.test.value:
             self.visit_statements(node.body)
         self.visit_statements(node.orelse)
+
+    def visit_With(self, node: ast.With | ast.AsyncWith) -> None:
+        for item in node.items:
+            self.visit(item.context_expr)
+            if item.optional_vars is not None:
+                self.visit(item.optional_vars)
+        self.visit_statements(node.body)
+
+    def visit_AsyncWith(self, node: ast.AsyncWith) -> None:
+        self.visit_With(node)
 
     def visit_BoolOp(self, node: ast.BoolOp) -> None:
         for value in node.values:
@@ -429,6 +572,63 @@ class _CollaboratorCalls(ast.NodeVisitor):
     def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
         # Creation evaluates the first iterable, while the generator body is deferred.
         self.visit(node.generators[0].iter)
+
+
+def _executor_callback(node: ast.Call, imports: ImportIndex, context: PythonFileContext | None) -> ast.expr | None:
+    if imports.resolved_qualified_name(node.func) == "asyncio.to_thread":
+        return node.args[0] if node.args and not isinstance(node.args[0], ast.Starred) else None
+    if not isinstance(node.func, ast.Attribute) or node.func.attr != "run_in_executor":
+        return None
+    if not _is_asyncio_loop(node.func.value, imports, context):
+        return None
+    return _run_in_executor_callback(node)
+
+
+def _is_asyncio_loop(receiver: ast.expr, imports: ImportIndex, context: PythonFileContext | None) -> bool:
+    loop: ast.expr | None = receiver
+    if isinstance(loop, ast.Name) and context is not None:
+        provenance = context.static_resource_provenance
+        loop = provenance.constructor(loop, receiver) if provenance.unescaped(loop, receiver) else None
+    return (
+        isinstance(loop, ast.Call)
+        and not loop.args
+        and not loop.keywords
+        and imports.resolved_qualified_name(loop.func) in {"asyncio.get_running_loop", "asyncio.get_event_loop"}
+    )
+
+
+def _run_in_executor_callback(node: ast.Call) -> ast.expr | None:
+    if any(isinstance(argument, ast.Starred) for argument in node.args[: _EXECUTOR_CALLBACK_INDEX + 1]) or any(
+        keyword.arg is None for keyword in node.keywords
+    ):
+        return None
+    if len(node.args) > _EXECUTOR_CALLBACK_INDEX:
+        return node.args[_EXECUTOR_CALLBACK_INDEX] if all(keyword.arg != "func" for keyword in node.keywords) else None
+    if not node.args and all(keyword.arg != "executor" for keyword in node.keywords):
+        return None
+    return next((keyword.value for keyword in node.keywords if keyword.arg == "func"), None)
+
+
+_HTTP_OPERATIONS = frozenset({"request", "get", "post", "put", "patch", "delete", "head", "options", "send", "stream"})
+
+
+def _native_http_call(node: ast.Call, context: PythonFileContext | None) -> bool:
+    if (
+        context is None
+        or "httpx" not in context.source
+        or not isinstance(node.func, ast.Attribute)
+        or node.func.attr not in _HTTP_OPERATIONS
+        or not isinstance(node.func.value, ast.Name)
+    ):
+        return False
+    receiver = node.func.value
+    provenance = context.static_resource_provenance
+    constructor = provenance.constructor(receiver, node)
+    return (
+        constructor is not None
+        and provenance.runtime_import_name(constructor.func) in {"httpx.Client", "httpx.AsyncClient"}
+        and provenance.unescaped(receiver, node, allow_context=True)
+    )
 
 
 def _known_decorators(decorators: list[ast.expr], imports: ImportIndex) -> bool:

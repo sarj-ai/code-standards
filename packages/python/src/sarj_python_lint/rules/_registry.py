@@ -240,6 +240,7 @@ from sarj_python_lint.rules.no_work_verb_get_route import NoWorkVerbGetRoute
 from sarj_python_lint.rules.prefer_bulk_upsert import PreferBulkUpsert
 from sarj_python_lint.rules.prefer_direct_import_module import PreferDirectImportModule
 from sarj_python_lint.rules.prefer_discriminated_model_union import PreferDiscriminatedModelUnion
+from sarj_python_lint.rules.prefer_grouped_settings import PreferGroupedSettings
 from sarj_python_lint.rules.prefer_precise_object_contract import PreferPreciseObjectContract
 from sarj_python_lint.rules.prefer_psycopg_executemany import PreferPsycopgExecutemany
 from sarj_python_lint.rules.prefer_pydantic_model_assertion import PreferPydanticModelAssertion
@@ -255,6 +256,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        PreferGroupedSettings.id: PreferGroupedSettings,
         NoRedundantLocalAlias.id: NoRedundantLocalAlias,
         PytestFixtureReturnsClosedResource.id: PytestFixtureReturnsClosedResource,
         DuplicatePytestFixtureParams.id: DuplicatePytestFixtureParams,

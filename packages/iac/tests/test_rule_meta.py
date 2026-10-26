@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import PurePosixPath
+from typing import TYPE_CHECKING
 import warnings
 
 import pytest
@@ -9,11 +10,15 @@ from sarj_iac_lint.rule_base import ExampleFile, ExampleOutcome, Rule, RuleExamp
 from sarj_iac_lint.rules import REGISTRY
 
 
+if TYPE_CHECKING:
+    from sarj_rule_contracts import RuleId
+
+
 MIN_DESCRIPTION_LEN = 10
 
 
 @pytest.mark.parametrize("rule_id", sorted(REGISTRY))
-def test_rule_has_self_documenting_meta(rule_id: str) -> None:
+def test_rule_has_self_documenting_meta(rule_id: RuleId) -> None:
     cls = REGISTRY[rule_id]
     assert issubclass(cls, Rule)
     assert cls.id == rule_id, f"REGISTRY key {rule_id!r} != cls.id {cls.id!r}"

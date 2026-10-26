@@ -13,6 +13,14 @@ from sarj_python_lint.rules import REGISTRY
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from sarj_rule_contracts import RuleId
+
+
+_WARNING_RULE = REGISTRY["prefer-walrus-comprehension-filter"]
+_WARNING_SOURCE = next(
+    example for example in _WARNING_RULE.public_examples() if example.expected_count
+).focus_file.source
+
 
 def test_comprehension_reuse_advice_stays_out_of_error_baselines(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -33,13 +41,13 @@ def test_warning_is_excluded_when_baseline_records_a_blocking_error(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     target = tmp_path / "example.py"
-    target.write_text("def render(name: str) -> str: return 'hello ' + name\n\n# ----------------\nerror_value = 2\n")
+    target.write_text(_WARNING_SOURCE + "\n# ----------------\nerror_value = 2\n")
     baseline = tmp_path / "baseline.json"
-    rules = ["check", "--rule", "prefer-fstring-over-concat", "--rule", "no-comment-cruft"]
+    rules = ["check", "--rule", _WARNING_RULE.id, "--rule", "no-comment-cruft"]
 
     assert main([*rules, str(target)]) == 1
     control = capsys.readouterr().out
-    assert "SARJ068 " in control
+    assert _WARNING_RULE.code in control
     assert "SARJ016 " in control
 
     assert main([*rules, "--update-baseline", str(baseline), str(target)]) == 0
@@ -48,12 +56,12 @@ def test_warning_is_excluded_when_baseline_records_a_blocking_error(
     assert "1 blocking diagnostics over 1 files; 1 warnings excluded" in baseline_output
 
     assert main([*rules, "--baseline", str(baseline), str(target)]) == 0
-    assert "SARJ068 warning:" in capsys.readouterr().out
+    assert f"{_WARNING_RULE.code} warning:" in capsys.readouterr().out
 
 
 def test_warning_only_baseline_excludes_the_finding(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     target = tmp_path / "example.py"
-    target.write_text("def render(name: str) -> str: return 'hello ' + name\n")
+    target.write_text(_WARNING_SOURCE)
     baseline = tmp_path / "baseline.json"
 
     assert (
@@ -61,7 +69,7 @@ def test_warning_only_baseline_excludes_the_finding(tmp_path: Path, capsys: pyte
             [
                 "check",
                 "--rule",
-                "prefer-fstring-over-concat",
+                _WARNING_RULE.id,
                 "--update-baseline",
                 str(baseline),
                 str(target),
@@ -98,10 +106,13 @@ def test_warning_only_baseline_excludes_the_finding(tmp_path: Path, capsys: pyte
         "prefer-match-value-dispatch",
         "unused-test-factory-option",
         "no-unused-underscored-keyword-parameter",
+        "prefer-fstring-over-concat",
+        "prefer-nominal-id-types",
+        "require-explicit-service-contract",
     ],
 )
 def test_strict_promotions_block_enter_baselines_and_accept_exact_exceptions(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: str
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: RuleId
 ) -> None:
     rule_type = REGISTRY[rule_id]
     example = next(example for example in rule_type.public_examples() if example.expected_count)
@@ -164,7 +175,7 @@ def test_strict_promotions_block_enter_baselines_and_accept_exact_exceptions(
     ],
 )
 def test_promoted_rules_keep_unproven_cases_advisory_and_out_of_baselines(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: str, source: str
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], rule_id: RuleId, source: str
 ) -> None:
     root = tmp_path.parent / "advisory-cli-examples" / rule_id
     root.mkdir(parents=True)

@@ -48,7 +48,7 @@ def test_docstring_ids_require_a_valid_tree_without_poisoning_later_files() -> N
 
 
 @pytest.mark.parametrize("rule_id", _RULES)
-def test_shared_docstring_exclusions_preserve_standalone_and_rule_order(rule_id: str) -> None:
+def test_shared_docstring_exclusions_preserve_standalone_and_rule_order(rule_id: RuleId) -> None:
     rules = [REGISTRY[RuleId(key)]() for key in _RULES]
     hits = 0
     for example in REGISTRY[RuleId(rule_id)].public_examples():

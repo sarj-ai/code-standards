@@ -11,6 +11,8 @@ from sarj_python_lint.rules import REGISTRY
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from sarj_rule_contracts import RuleId
+
     from sarj_python_lint.rule_base import RuleExample
 
 
@@ -25,7 +27,7 @@ _NEIGHBORS = (
 
 @pytest.mark.parametrize("rule_id", ["no-test-method-grafting"])
 def test_method_grafting_error_enters_blocking_baseline(
-    rule_id: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    rule_id: RuleId, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     example: RuleExample = REGISTRY[rule_id].public_examples()[0]
     target = tmp_path / example.focus_path
@@ -42,7 +44,7 @@ def test_method_grafting_error_enters_blocking_baseline(
 
 
 @pytest.mark.parametrize("rule_id", _RULES)
-def test_new_rules_do_not_duplicate_neighbor_findings(rule_id: str, tmp_path: Path) -> None:
+def test_new_rules_do_not_duplicate_neighbor_findings(rule_id: RuleId, tmp_path: Path) -> None:
     example = REGISTRY[rule_id].public_examples()[0]
     target = tmp_path / example.focus_path
     target.parent.mkdir(parents=True)

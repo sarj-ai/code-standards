@@ -141,9 +141,11 @@ class PreferNominalIdTypes(Rule):
     id: str = "prefer-nominal-id-types"
     code: str = "SARJ093"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        default_level=Severity.ERROR,
         summary="Python boundaries should distinguish swappable identifier roles with nominal types.",
         rationale=(
             "Two identifiers with the same primitive or container carrier can be exchanged without a type-checking error. "
+            "Erasing an established domain ID has the same problem even when a boundary accepts one identifier. "
             "Nominal types make those role mistakes visible while leaving unlike carriers alone."
         ),
         remediation=(
@@ -154,7 +156,7 @@ class PreferNominalIdTypes(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "The rule checks functions, methods, constructors, and classes for at least two ID-shaped roles with the same proven carrier. Existing coverage remains an error.",
-            "Imported first-party carriers and non-ID roles backed by a unique matching NewType in the owning distribution or a declared local dependency are warnings. Ambiguous exports, conditional or relative imports, cycles, and unresolved ownership are skipped.",
+            "Imported first-party carriers and non-ID roles backed by a unique matching NewType in the owning distribution or a declared local dependency are errors. A single raw ID role also qualifies when that distribution already declares an unambiguous matching nominal type, including optional and collection forms. Ambiguous exports, conditional or relative imports, cycles, and unresolved ownership are skipped.",
             "Non-ID role discovery uses exact snake-case names and proven matching carriers; it does not infer brands from names alone. Dependency discovery respects declared workspace members and exclusions, and excludes optional and transitive dependencies.",
             "Rebound aliases, generic aliases, carrier names shadowed by type parameters, and mutated or escaped canonical provider namespaces are skipped conservatively across the file.",
             "Generated code, migrations, external adapters, operational context, raw schemas, SQLAlchemy Mapped fields, ambiguous imports, and unlike carrier shapes are excluded.",
@@ -186,6 +188,38 @@ class PreferNominalIdTypes(Rule):
                         "FileId = NewType('FileId', str)\n"
                         "FolderId = NewType('FolderId', str)\n\n"
                         "def move(file_id: FileId, parent_folder_id: FolderId) -> None: ...\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/services/files.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="established-single-id-erased",
+                scenario="established-single-id",
+                title="A single ID retains its established domain type",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/services/files.py",
+                        "from typing import NewType\nFileId = NewType('FileId', str)\n"
+                        "def load(file_id: str) -> None: ...\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/services/files.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="established-single-id-preserved",
+                scenario="established-single-id",
+                title="The boundary uses the existing nominal ID",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/services/files.py",
+                        "from typing import NewType\nFileId = NewType('FileId', str)\n"
+                        "def load(file_id: FileId) -> None: ...\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/services/files.py"),
@@ -263,7 +297,7 @@ class PreferNominalIdTypes(Rule):
         )
         source_lines = context.source_lines
         class_role_names = {
-            node: _role_keys(_qualifying_roles(_boundary_roles(node, imports, facts)))
+            node: _role_keys(_qualifying_roles(_boundary_roles(node, imports, facts), established=facts.value_roles))
             for node in tree.body
             if isinstance(node, ast.ClassDef)
         }
@@ -284,7 +318,7 @@ class PreferNominalIdTypes(Rule):
 
         def collect_boundary_diagnostics() -> None:
             for node in boundaries:
-                roles = _qualifying_roles(_boundary_roles(node, imports, facts))
+                roles = _qualifying_roles(_boundary_roles(node, imports, facts), established=facts.value_roles)
                 if not roles:
                     continue
                 old_roles = _qualifying_roles(_boundary_roles(node, imports, original_facts))
@@ -301,7 +335,7 @@ class PreferNominalIdTypes(Rule):
                         col=first_raw.annotation.col_offset + 1,
                         code=self.code,
                         message=_boundary_message(diagnostic_roles, established=bool(old_roles)),
-                        severity=Severity.ERROR if old_roles else Severity.WARNING,
+                        severity=Severity.ERROR,
                     )
                 )
 
@@ -440,7 +474,7 @@ def _role(
     return _IdRole(name=name, annotation=annotation, carrier=carrier)
 
 
-def _qualifying_roles(roles: list[_IdRole]) -> list[_IdRole]:
+def _qualifying_roles(roles: list[_IdRole], *, established: dict[str, str] | None = None) -> list[_IdRole]:
     by_shape: dict[str, list[_IdRole]] = {}
     for role in roles:
         by_shape.setdefault(role.carrier.shape, []).append(role)
@@ -450,7 +484,21 @@ def _qualifying_roles(roles: list[_IdRole]) -> list[_IdRole]:
         if len({role.name for role in same_shape}) >= _MIN_SWAPPABLE_ROLES
         and any(role.carrier.raw for role in same_shape)
     }
-    return [role for role in roles if role.carrier.shape in qualifying_shapes]
+    return [role for role in roles if role.carrier.shape in qualifying_shapes or _established_raw_id(role, established)]
+
+
+def _established_raw_id(role: _IdRole, established: dict[str, str] | None) -> bool:
+    if not role.carrier.raw or established is None or not role.name.endswith(("_id", "_ids")):
+        return False
+    if established.get(role.name) == role.carrier.shape:
+        return True
+    if not role.name.endswith("_ids"):
+        return False
+    shape = role.carrier.shape
+    while "[" in shape and shape.endswith("]"):
+        shape = shape.partition("[")[2][:-1]
+    name = role.name.removesuffix("s")
+    return established.get(name) == shape
 
 
 def _role_keys(roles: list[_IdRole]) -> set[tuple[str, str]]:
@@ -1033,6 +1081,8 @@ def _can_expand(
 ) -> bool:
     if _qualifying_roles(_boundary_roles(node, imports, facts)):
         return False
+    if any(role.carrier.raw and role.name.endswith(("_id", "_ids")) for role in _boundary_roles(node, imports, facts)):
+        return True
     annotations = _boundary_annotations(node)
     carriers = [carrier for annotation in annotations if (carrier := _carrier(annotation, imports, facts)) is not None]
     if len(carriers) < len(annotations):
@@ -1056,6 +1106,11 @@ def _boundary_annotations(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Cla
 
 def _boundary_message(roles: list[_IdRole], *, established: bool) -> str:
     names = ", ".join(f"`{name}`" for name in dict.fromkeys(role.name for role in roles))
+    if len(roles) == 1:
+        return (
+            f"{names} uses a raw carrier despite an established matching nominal identifier; "
+            "reuse that domain type and propagate it through this boundary."
+        )
     if established:
         # Existing baselines fingerprint this message; expanded coverage must not invalidate them.
         return (

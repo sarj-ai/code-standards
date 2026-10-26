@@ -12,6 +12,8 @@ from sarj_python_lint.rules import REGISTRY
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from sarj_rule_contracts import RuleId
+
 
 _FULL_RULES = (
     "async-mock-call-without-await-assertion",
@@ -23,7 +25,7 @@ _FULL_RULES = (
 
 
 @pytest.mark.parametrize("rule_id", _FULL_RULES)
-def test_error_policy_blocks_and_allows_exact_exception(rule_id: str, tmp_path: Path) -> None:
+def test_error_policy_blocks_and_allows_exact_exception(rule_id: RuleId, tmp_path: Path) -> None:
     rule = REGISTRY[rule_id]
     assert rule.documentation is not None
     assert rule.documentation.default_level is Severity.ERROR
@@ -150,7 +152,7 @@ def test_error_policy_blocks_and_allows_exact_exception(rule_id: str, tmp_path: 
     ],
 )
 def test_bounded_promotion_preserves_compatibility(
-    rule_id: str, source: str, expected: Severity, tmp_path: Path
+    rule_id: RuleId, source: str, expected: Severity, tmp_path: Path
 ) -> None:
     (tmp_path / "pyproject.toml").write_text(
         "[project]\nname = 'example'\nversion = '0.0.0'\ndependencies = ['pydantic>=2.5']\n"
