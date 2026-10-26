@@ -1058,6 +1058,11 @@ jobs:
           path: apps/docs/dist
       - name: Install locked deployment toolchain
         run: npm --prefix ../../.github/deploy ci --ignore-scripts --no-audit --no-fund
+      - name: Configure Cloudflare routes before publishing assets
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: ../../.github/deploy/node_modules/.bin/wrangler triggers deploy --config wrangler.jsonc
       - name: Deploy immutable build to Cloudflare Workers
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
