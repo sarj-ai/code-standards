@@ -12,6 +12,8 @@ from sarj_iac_lint.rules import REGISTRY
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from sarj_rule_contracts import RuleId
+
 
 @pytest.mark.parametrize(
     ("rule_id", "resource_type", "attribute"),
@@ -26,7 +28,7 @@ if TYPE_CHECKING:
     ],
 )
 def test_unresolved_provider_guard_is_nonblocking(
-    rule_id: str, resource_type: str, attribute: str, tmp_path: Path
+    rule_id: RuleId, resource_type: str, attribute: str, tmp_path: Path
 ) -> None:
     path = tmp_path / "storage.tf"
     rule = REGISTRY[rule_id]()

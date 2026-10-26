@@ -3,11 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 import subprocess
 import sys
+from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_python_lint.autofix import fix_source
 from sarj_python_lint.rules import REGISTRY
+
+
+if TYPE_CHECKING:
+    from sarj_rule_contracts import RuleId
 
 
 _KEYWORD_RULE = "require-keyword-only-swap-prone-params"
@@ -62,7 +67,7 @@ def test_private_contract_keeps_unproven_iteration_semantics(body: str) -> None:
         ),
     ],
 )
-def test_closing_candidates_match_exact_output_and_converge(rule_id: str, before: str, after: str) -> None:
+def test_closing_candidates_match_exact_output_and_converge(rule_id: RuleId, before: str, after: str) -> None:
     path = Path("app/service.py")
     assert REGISTRY[rule_id]().check(path, before)
     assert fix_source(path, before, rule_ids=[rule_id]) == after
@@ -121,7 +126,7 @@ def test_comprehension_cache_uses_a_fresh_normalized_identifier() -> None:
     ["setprofile", "settrace", "setprofile_all_threads", "settrace_all_threads", "monitoring", "register_callback"],
 )
 @pytest.mark.parametrize("rule_id", [_KEYWORD_RULE, _COMPREHENSION_RULE])
-def test_frame_capture_authorities_keep_private_metadata_unchanged(capability: str, rule_id: str) -> None:
+def test_frame_capture_authorities_keep_private_metadata_unchanged(capability: str, rule_id: RuleId) -> None:
     source = (
         f"from sys import {capability} as capture_frames\n"
         "def outer():\n"
@@ -310,7 +315,7 @@ def test_private_helper_contracts_cannot_escape_through_outer_frames_or_closures
 
 
 @pytest.mark.parametrize("rule_id", ["no-unnecessary-docstring", "redundant-docstring"])
-def test_private_docstring_metadata_cannot_escape_in_an_outer_generator(rule_id: str) -> None:
+def test_private_docstring_metadata_cannot_escape_in_an_outer_generator(rule_id: RuleId) -> None:
     source = 'def outer():\n    def _normalize(item):\n        """Normalize."""\n        return item\n    yield _normalize(3)\n'
     assert fix_source(Path("app/service.py"), source, rule_ids=[rule_id]) == source
 
@@ -336,7 +341,7 @@ def test_private_docstring_metadata_cannot_escape_in_an_outer_generator(rule_id:
     ],
 )
 def test_closing_candidates_preserve_runtime_values_and_evaluation_order(
-    rule_id: str, source: str, oracle: str, tmp_path: Path
+    rule_id: RuleId, source: str, oracle: str, tmp_path: Path
 ) -> None:
     path = tmp_path / "service.py"
     fixed = fix_source(Path("app/service.py"), source, rule_ids=[rule_id])

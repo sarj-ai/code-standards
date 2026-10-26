@@ -14,6 +14,8 @@ from time import monotonic
 from typing import TYPE_CHECKING, Literal
 from uuid import uuid7
 
+from sarj_rule_contracts import RuleId
+
 from sarj_sql_lint.autofix import fix_source
 from sarj_sql_lint.rules import REGISTRY
 
@@ -50,7 +52,7 @@ _SOURCE_PATHS = (
 
 @dataclass(frozen=True, slots=True)
 class _Case:
-    rule_id: str
+    rule_id: RuleId
     source: str
     column: str
     datatype: str
@@ -68,7 +70,7 @@ class _Report:
     status: Literal["passed"]
     image: str
     server_version_num: int
-    rule_ids: list[str]
+    rule_ids: list[RuleId]
     comparison_cases: int
     rejected_counterexamples: list[str]
     container_removed: bool
@@ -153,14 +155,14 @@ def _comparisons() -> list[_Comparison]:
 def _cases() -> list[_Case]:
     return [
         _Case(
-            rule_id="prefer-text-over-varchar",
+            rule_id=RuleId("prefer-text-over-varchar"),
             source="SELECT CAST(CAST('abc' AS pg_catalog.varchar(8)) AS pg_catalog.text) AS name;",
             column="name",
             datatype="text",
             table=None,
         ),
         _Case(
-            rule_id="prefer-text-over-varchar",
+            rule_id=RuleId("prefer-text-over-varchar"),
             source="SELECT ('abc'::pg_catalog.varchar(3))::pg_catalog.text AS name;",
             column="name",
             datatype="text",
@@ -168,7 +170,7 @@ def _cases() -> list[_Case]:
         ),
         *[
             _Case(
-                rule_id="prefer-jsonb",
+                rule_id=RuleId("prefer-jsonb"),
                 source="CREATE TABLE IF NOT EXISTS document (metadata pg_catalog.jsonb DEFAULT "
                 f"('{literal}'::pg_catalog.json)::pg_catalog.jsonb);",
                 column="metadata",
@@ -178,7 +180,7 @@ def _cases() -> list[_Case]:
             for literal in ("{}", "[]")
         ],
         _Case(
-            rule_id="enforce-timestamptz",
+            rule_id=RuleId("enforce-timestamptz"),
             source="SELECT pg_catalog.timezone(INTERVAL '00:00', "
             "CAST('2000-01-01 00:00:00' AS pg_catalog.timestamp)) AS instant;",
             column="instant",
@@ -186,7 +188,7 @@ def _cases() -> list[_Case]:
             table=None,
         ),
         _Case(
-            rule_id="enforce-timestamptz",
+            rule_id=RuleId("enforce-timestamptz"),
             source="SELECT CAST('2000-01-01 00:00:00' AS pg_catalog.timestamp) "
             "AT TIME ZONE INTERVAL '00:00' AS instant;",
             column="instant",
@@ -194,7 +196,7 @@ def _cases() -> list[_Case]:
             table=None,
         ),
         _Case(
-            rule_id="enforce-timestamptz",
+            rule_id=RuleId("enforce-timestamptz"),
             source="CREATE TABLE IF NOT EXISTS events (at pg_catalog.timestamptz DEFAULT "
             "pg_catalog.timezone(INTERVAL '00:00', CAST('2024-02-29 23:59:59' AS pg_catalog.timestamp)));",
             column="at",

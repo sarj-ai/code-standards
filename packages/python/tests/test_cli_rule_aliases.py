@@ -11,9 +11,11 @@ from sarj_python_lint.rules import REGISTRY
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from sarj_rule_contracts import RuleId
+
 
 @pytest.mark.parametrize("rule_id", ["defect-xfail-requires-strict", "xfail-requires-strict"])
-def test_analyze_accepts_authored_historical_rule_aliases(tmp_path: Path, rule_id: str) -> None:
+def test_analyze_accepts_authored_historical_rule_aliases(tmp_path: Path, rule_id: RuleId) -> None:
     target = tmp_path / "test_example.py"
     target.write_text(
         'import pytest\n\n@pytest.mark.xfail(reason="BUG: wrong status code")\ndef test_status():\n    assert True\n'
@@ -53,7 +55,7 @@ def test_analyze_deduplicates_canonical_and_historical_selections(tmp_path: Path
     ids=("implicit-empty-string", "explicit-absent-choice"),
 )
 def test_constructor_rule_rename_keeps_historical_selection_working(
-    tmp_path: Path, rule_ids: list[str], signature: str, expected_codes: list[str]
+    tmp_path: Path, rule_ids: list[RuleId], signature: str, expected_codes: list[str]
 ) -> None:
     target = tmp_path / "example.py"
     target.write_text(f"class Service:\n    def __init__(self, {signature}) -> None: ...\n")

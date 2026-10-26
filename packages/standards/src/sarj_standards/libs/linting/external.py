@@ -560,7 +560,7 @@ def analyze_external(
                     runner=execute_eslint,
                     parser=parse_eslint,
                     validator=partial(_validate_eslint_coverage, selected_files=_eslint_selected_files(command)),
-                    invocation_id=invocation_id,
+                    invocation_id=InvocationId(invocation_id),
                     file_count=_argv_file_count(command.argv),
                 )
             )
@@ -682,7 +682,7 @@ def _security_reports(
                     runner=partial(_security_runner, runner, name="zizmor"),
                     parser=security_tools.parse_zizmor,
                     version=security_tools.VERSIONS["zizmor"],
-                    invocation_id=f"batch-{start // _ESLINT_BATCH_SIZE + 1}",
+                    invocation_id=InvocationId(f"batch-{start // _ESLINT_BATCH_SIZE + 1}"),
                     file_count=len(batch),
                 )
             )
@@ -729,7 +729,7 @@ def _checkov_reports(
                     runner=partial(_security_runner, runner, name="checkov"),
                     parser=security_tools.parse_checkov,
                     version=security_tools.VERSIONS["checkov"],
-                    invocation_id=f"{framework}:batch-{start // _ESLINT_BATCH_SIZE + 1}",
+                    invocation_id=InvocationId(f"{framework}:batch-{start // _ESLINT_BATCH_SIZE + 1}"),
                     file_count=len(batch),
                 )
             )
@@ -1370,7 +1370,7 @@ def _invoke_react_doctor(
         root=root,
         runner=execution_runner,
         parser=parser,
-        invocation_id=project.relative_to(root).as_posix() or None,
+        invocation_id=InvocationId(project.relative_to(root).as_posix()) or None,
         file_count=file_count,
     )
 
@@ -1891,7 +1891,7 @@ def _invoke_python_projects(
     reports: list[ToolReport] = []
     for project, scoped_files in projects:
         argv = _basedpyright_argv(project, scoped_files, project_mode=project_mode)
-        project_id = project.relative_to(root).as_posix() or None
+        project_id = InvocationId(project.relative_to(root).as_posix()) or None
         report = _invoke(
             name,
             argv,
@@ -1945,7 +1945,7 @@ def _invoke_ruff_projects(
 ) -> tuple[ToolReport, ...]:
     reports: list[ToolReport] = []
     for project, config, scoped_files in ruff_project_groups(files, root):
-        project_id = None if project == root else project.relative_to(root).as_posix()
+        project_id = None if project == root else InvocationId(project.relative_to(root).as_posix())
         report = _invoke(
             "ruff",
             _ruff_argv(scoped_files, config=config),
@@ -2221,11 +2221,15 @@ def _shellcheck_reports(
         return tuple(reports)
     for batch_number, start in enumerate(range(0, len(grouped.shellcheck), _SHELLCHECK_BATCH_SIZE), start=1):
         batch = tuple(sorted(grouped.shellcheck[start : start + _SHELLCHECK_BATCH_SIZE]))
-        reports.append(_invoke_shellcheck(batch, root=root, runner=runner, invocation_id=str(batch_number)))
+        reports.append(
+            _invoke_shellcheck(batch, root=root, runner=runner, invocation_id=InvocationId(str(batch_number)))
+        )
     return tuple(reports)
 
 
-def _invoke_shellcheck(files: Sequence[str], *, root: Path, runner: ProcessRunner, invocation_id: str) -> ToolReport:
+def _invoke_shellcheck(
+    files: Sequence[str], *, root: Path, runner: ProcessRunner, invocation_id: InvocationId
+) -> ToolReport:
     report = _invoke(
         "shellcheck",
         (
@@ -2725,7 +2729,7 @@ def _invoke(
     runner: ProcessRunner,
     parser: ProtocolParser,
     validator: ProtocolValidator | None = None,
-    invocation_id: str | None = None,
+    invocation_id: InvocationId | None = None,
     file_count: int,
     version: str | None = None,
 ) -> ToolReport:

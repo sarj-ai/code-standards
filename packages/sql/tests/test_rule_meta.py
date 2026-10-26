@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import PurePosixPath
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -8,8 +9,12 @@ from sarj_sql_lint.rule_base import ExampleFile, ExampleOutcome, Rule, RuleExamp
 from sarj_sql_lint.rules import REGISTRY
 
 
+if TYPE_CHECKING:
+    from sarj_rule_contracts import RuleId
+
+
 @pytest.mark.parametrize("rule_id", sorted(REGISTRY))
-def test_rule_has_self_documenting_meta(rule_id: str) -> None:
+def test_rule_has_self_documenting_meta(rule_id: RuleId) -> None:
     cls = REGISTRY[rule_id]
     assert issubclass(cls, Rule)
 

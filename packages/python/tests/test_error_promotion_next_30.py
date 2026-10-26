@@ -13,6 +13,8 @@ from sarj_python_lint.rules import REGISTRY
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from sarj_rule_contracts import RuleId
+
 
 _PROMOTED_RULES = (
     "no-broad-keyword-capture",
@@ -35,7 +37,7 @@ _PROMOTED_RULES = (
 
 
 @pytest.mark.parametrize("rule_id", _PROMOTED_RULES)
-def test_promoted_example_blocks_and_supports_exact_local_exception(rule_id: str, tmp_path: Path) -> None:
+def test_promoted_example_blocks_and_supports_exact_local_exception(rule_id: RuleId, tmp_path: Path) -> None:
     rule = REGISTRY[rule_id]
     documentation = rule.documentation
     assert documentation is not None
@@ -138,7 +140,7 @@ def test_regex_hoisting_remains_warning_and_nonblocking(tmp_path: Path) -> None:
     ],
 )
 def test_compatibility_tiers_stay_warning_and_outside_blocking_baseline(
-    rule_id: str, source: str, tmp_path: Path
+    rule_id: RuleId, source: str, tmp_path: Path
 ) -> None:
     path = tmp_path / "boundary.py"
     path.write_text(source)
@@ -186,7 +188,9 @@ def test_docstring_exception_requires_a_genuine_matching_comment(marker: str, tm
 
 @pytest.mark.parametrize("quoted", [False, True], ids=("evaluated-annotation", "quoted-annotation"))
 @pytest.mark.parametrize("rule_id", ["require-pydantic-ordinal-lower-bound", "shared-mutable-pydantic-factory"])
-def test_annotation_effects_do_not_prove_the_runtime_field_contract(rule_id: str, quoted: bool, tmp_path: Path) -> None:
+def test_annotation_effects_do_not_prove_the_runtime_field_contract(
+    rule_id: RuleId, quoted: bool, tmp_path: Path
+) -> None:
     if rule_id == "require-pydantic-ordinal-lower-bound":
         field = "page_number: int = Field(default=1, description='1 for the first page')"
         annotation = "constrain(page_number)"

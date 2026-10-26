@@ -357,6 +357,26 @@ def test_maintenance_publication_keeps_fresh_build_and_prevents_sibling_publicat
     assert publish["permissions"] == {"contents": "read", "id-token": "write"}
 
 
+def test_iac_release_installs_pinned_terraform_before_mandatory_semantic_tests() -> None:
+    steps = _steps("release.yml", "build-iac")
+    install_index, install = next(
+        (index, step) for index, step in enumerate(steps) if step.get("name") == "Install pinned Terraform CLI"
+    )
+    test_index = next(index for index, step in enumerate(steps) if step.get("run") == "uv run pytest -q")
+
+    assert install_index < test_index
+    assert install["env"] == {
+        "TERRAFORM_SHA256": "c168cab7c637a8769fdb90089ddd19de701bc6ff8aca64dc2e2185fe46f59f67",
+        "TERRAFORM_VERSION": "1.17.0",
+    }
+    assert install["run"] == "bash ../../.github/scripts/ci-install-terraform.sh"
+    assert "if" not in install
+    assert "continue-on-error" not in install
+    assert "if" not in steps[test_index]
+    assert "continue-on-error" not in steps[test_index]
+    assert _job("release.yml", "build-iac")["defaults"] == {"run": {"working-directory": "packages/iac"}}
+
+
 def test_tsconfig_release_publishes_verified_registry_artifacts() -> None:
     workflow = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
     tsconfig_publish = workflow.split("  publish-tsconfig:", 1)[1]

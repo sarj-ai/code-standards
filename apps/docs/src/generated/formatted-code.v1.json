@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "7dc538cd7cc4e511ca1c374f42d4e62cc1bfd7dec0f7c11a637b49cc418d7a21",
-  "cliSha256": "3b9581bb78bc9739ccf9f7a9b47f6f2692a96c7dcde2f36ec4d6bf68de0888c4",
+  "catalogSha256": "5863fb8e39c80a40cffc8a0a4ec5d3d54acb2446bc534578ab70f1441ecc0a24",
+  "cliSha256": "4c121061d8187330beb33f22a3d382c1f4b733db390025c546c6ff1710031a48",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -12658,6 +12658,21 @@
           "files": [
             {
               "path": "src/render.py",
+              "source": "PREFIX = \"Question: \"\n\n\ndef render(value: str) -> str:\n    return f\"{PREFIX}{value}\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/render.py",
+          "id": "formatted-literal-prefix",
+          "outcome": "accept",
+          "scenarioId": "literal-prefix",
+          "title": "The prefix and value share one f-string"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/render.py",
               "source": "def greeting(name: str) -> str:\n    return f\"Hello, {name}!\"\n"
             }
           ],
@@ -12682,6 +12697,56 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Known string is joined to literals"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/render.py",
+              "source": "PREFIX = \"Question: \"\n\n\ndef render(value: str) -> str:\n    return PREFIX + value\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/render.py",
+          "id": "named-literal-prefix",
+          "outcome": "reject",
+          "scenarioId": "literal-prefix",
+          "title": "A literal prefix still participates in interpolation"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-grouped-settings": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/settings.py",
+              "source": "from pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    embedder_url: str\n    embedder_token: str\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/settings.py",
+          "id": "flat-component-settings",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Related settings expose a repeated component namespace"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/settings.py",
+              "source": "from pydantic import Field\nfrom pydantic_settings import BaseSettings, SettingsConfigDict\n\n\nclass EmbedderSettings(BaseSettings):\n    model_config = SettingsConfigDict(env_prefix=\"EMBEDDER_\")\n    url: str\n    token: str\n\n\nclass Settings(BaseSettings):\n    embedder: EmbedderSettings = Field(default_factory=EmbedderSettings)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/settings.py",
+          "id": "nested-component-settings",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The component owns its settings and environment prefix"
         }
       ],
       "optionsSchemaSource": null
@@ -13317,6 +13382,36 @@
     },
     "python:prefer-nominal-id-types": {
       "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/services/files.py",
+              "source": "from typing import NewType\n\nFileId = NewType(\"FileId\", str)\n\n\ndef load(file_id: str) -> None: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/services/files.py",
+          "id": "established-single-id-erased",
+          "outcome": "reject",
+          "scenarioId": "established-single-id",
+          "title": "A single ID retains its established domain type"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/services/files.py",
+              "source": "from typing import NewType\n\nFileId = NewType(\"FileId\", str)\n\n\ndef load(file_id: FileId) -> None: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/services/files.py",
+          "id": "established-single-id-preserved",
+          "outcome": "accept",
+          "scenarioId": "established-single-id",
+          "title": "The boundary uses the existing nominal ID"
+        },
         {
           "expectedCount": 0,
           "files": [
@@ -15010,6 +15105,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "The service declares its operation"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/batching.py",
+              "source": "import asyncio\nfrom collections.abc import Callable\nfrom typing import Protocol\n\n\nclass Operations(Protocol):\n    async def run(self) -> None: ...\n\n\nclass Batcher(Operations):\n    def __init__(self, operation: Callable[[], None]) -> None:\n        self.operation = operation\n\n    async def run(self) -> None:\n        await asyncio.get_running_loop().run_in_executor(None, self.operation)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/batching.py",
+          "id": "retained-executor-callback-with-contract",
+          "outcome": "accept",
+          "scenarioId": "executor-dispatch",
+          "title": "The dispatcher declares its public operation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/batching.py",
+              "source": "import asyncio\nfrom collections.abc import Callable\n\n\nclass Batcher:\n    def __init__(self, operation: Callable[[], None]) -> None:\n        self.operation = operation\n\n    async def run(self) -> None:\n        await asyncio.get_running_loop().run_in_executor(None, self.operation)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/batching.py",
+          "id": "retained-executor-callback-without-contract",
+          "outcome": "reject",
+          "scenarioId": "executor-dispatch",
+          "title": "Dispatching injected work establishes a service boundary"
         },
         {
           "expectedCount": 1,

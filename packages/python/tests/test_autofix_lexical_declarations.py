@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import subprocess
 import sys
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -13,6 +14,10 @@ from sarj_python_lint._autofix_docs import private_unescaped_function
 from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint.autofix import fix_source
 from sarj_python_lint.rules import REGISTRY
+
+
+if TYPE_CHECKING:
+    from sarj_rule_contracts import RuleId
 
 
 _PATH = Path("app/normalize.py")
@@ -45,7 +50,7 @@ _CASES = (
 @pytest.mark.parametrize("case", _CASES)
 @pytest.mark.parametrize("rule_id", ["no-unnecessary-docstring", "redundant-docstring"])
 def test_lexical_declarations_preserve_live_private_metadata_and_actual_finalizer_observers(
-    case: _LexicalCase, rule_id: str, tmp_path: Path
+    case: _LexicalCase, rule_id: RuleId, tmp_path: Path
 ) -> None:
     assert check_source([REGISTRY[rule_id]()], _PATH, case.source)
     context = PythonFileContext(_PATH, case.source)

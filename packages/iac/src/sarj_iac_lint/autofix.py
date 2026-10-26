@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from sarj_rule_contracts import TextEdit, apply_edits
+from sarj_rule_contracts import RuleId, TextEdit, apply_edits
 
 from sarj_iac_lint._hcl import (
     document,
@@ -66,7 +66,7 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
     for rule_id in selected:
         if rule_id not in _FIXABLE:
             continue
-        diagnostics = _rule_diagnostics(path, source, comments, rule_id=rule_id)
+        diagnostics = _rule_diagnostics(path, source, comments, rule_id=RuleId(rule_id))
         match rule_id:
             case "no-nested-conditional":
                 edits.extend(literal_conditional_edits(source, diagnostics))
@@ -88,7 +88,7 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
     return fixed if _balanced(fixed) else source
 
 
-def _rule_diagnostics(path: Path, source: str, comments: Mapping[int, str], *, rule_id: str) -> list[Diagnostic]:
+def _rule_diagnostics(path: Path, source: str, comments: Mapping[int, str], *, rule_id: RuleId) -> list[Diagnostic]:
     return [
         diagnostic
         for diagnostic in REGISTRY[rule_id]().check(path, source)

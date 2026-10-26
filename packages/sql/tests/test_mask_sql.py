@@ -17,6 +17,8 @@ from sarj_sql_lint.rule_base import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from sarj_rule_contracts import RuleId
+
 
 def _assert_shape(source: str, masked: str) -> None:
     assert len(masked) == len(source)
@@ -372,7 +374,7 @@ def test_identifier_normalization_preserves_quoted_identity_and_unparsed_text(so
         ("no-migration-comment-cruft", "-- ALTER TABLE orders ADD COLUMN note TEXT;"),
     ],
 )
-def test_scalar_dollar_data_is_not_an_executable_migration(tmp_path: Path, rule_id: str, source: str) -> None:
+def test_scalar_dollar_data_is_not_an_executable_migration(tmp_path: Path, rule_id: RuleId, source: str) -> None:
     path = tmp_path / "supabase" / "migrations" / "001_orders.sql"
     path.parent.mkdir(parents=True)
     path.write_text(source + "\n")

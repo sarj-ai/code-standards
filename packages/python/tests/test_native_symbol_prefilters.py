@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -9,6 +10,10 @@ from sarj_python_lint.__main__ import analyze
 from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint._source import symbol_prefilter_source
 from sarj_python_lint.rules._project_index import ProjectIndexSet
+
+
+if TYPE_CHECKING:
+    from sarj_rule_contracts import RuleId
 
 
 _NATIVE_SYMBOL_CASES = (
@@ -1005,7 +1010,7 @@ _NATIVE_SYMBOL_CASES = (
 
 @pytest.mark.parametrize(("rule_id", "focus", "files", "expected"), _NATIVE_SYMBOL_CASES)
 def test_native_semantic_contract_reaches_existing_ast_owner(
-    tmp_path: Path, rule_id: str, focus: str, files: tuple[tuple[str, str], ...], expected: int
+    tmp_path: Path, rule_id: RuleId, focus: str, files: tuple[tuple[str, str], ...], expected: int
 ) -> None:
     (tmp_path / "pyproject.toml").write_text('[project]\nname="public-native-gate"\nversion="0.1.0"\n')
     paths: list[Path] = []
