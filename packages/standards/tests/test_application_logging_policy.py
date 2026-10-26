@@ -271,3 +271,69 @@ def test_module_namespace_provenance_is_preserved_through_canonical_analysis(
 
     assert [item.id for item in findings] == (["LIB023"] if expected_count else [])
     assert len([item for item in report.diagnostics if item.source == "sarj-library-policy"]) == expected_count
+
+
+@pytest.mark.parametrize(
+    ("body", "expected_count"),
+    [
+        (
+            'import logging\nfrom vendor import configure\nconfigure(logging.root.__dict__)\nlogging.root.warning("event")\n',
+            0,
+        ),
+        (
+            'import logging\nfrom vendor import send\nlogging.root.__dict__["warning"] = send\nlogging.root.warning("event")\n',
+            0,
+        ),
+        (
+            'import logging\nfrom vendor import configure\nconfigure(logging.getLogger("app").__dict__)\nlogging.getLogger("app").warning("event")\n',
+            0,
+        ),
+        (
+            'import logging\nfrom vendor import send\nlogging.getLogger("app").__dict__["warning"] = send\nlogging.getLogger("app").warning("event")\n',
+            0,
+        ),
+        (
+            'import logging as primary\nimport logging as secondary\nfrom vendor import configure\nconfigure(primary.__dict__)\nsecondary.warning("event")\n',
+            0,
+        ),
+        ('import logging\nlogging.root.setLevel(logging.WARNING)\nlogging.root.warning("event")\n', 1),
+        (
+            'import logging\nlogging.getLogger("app").setLevel(logging.WARNING)\nlogging.getLogger("app").warning("event")\n',
+            1,
+        ),
+        (
+            'import logging\nimport unrelated\nfrom vendor import configure\nconfigure(unrelated.__dict__)\nlogging.warning("event")\n',
+            1,
+        ),
+        ('import logging\nfrom vendor import configure\nconfigure(logging.__dict__)\nlogging.warning("event")\n', 0),
+        (
+            'import logging\nfrom logging import root as events\nfrom vendor import configure\nconfigure(events.__dict__)\nlogging.root.warning("event")\n',
+            0,
+        ),
+        (
+            'import logging\nfrom logging import root as events\nfrom vendor import configure\nconfigure(logging.root.__dict__)\nevents.warning("event")\n',
+            0,
+        ),
+    ],
+    ids=[
+        "root_namespace_escaped",
+        "root_namespace_replaced",
+        "factory_namespace_escaped",
+        "factory_namespace_replaced",
+        "module_alias_namespace_cross_alias",
+        "ordinary_root_routing",
+        "ordinary_factory_routing",
+        "unrelated_namespace",
+        "existing_module_namespace_escape",
+        "imported_root_escape_then_module_root",
+        "module_root_escape_then_imported_root",
+    ],
+)
+def test_shared_logger_namespaces_preserve_canonical_provenance(tmp_path: Path, body: str, expected_count: int) -> None:
+    source = _source(tmp_path, "service.py", body)
+
+    findings = library_policy.scan_paths(tmp_path, [], python_paths=[source])
+    report = api.Standards(tmp_path).analyze([str(source)], mode=api.AnalysisMode.RAW)
+
+    assert [item.id for item in findings] == (["LIB023"] if expected_count else [])
+    assert len([item for item in report.diagnostics if item.source == "sarj-library-policy"]) == expected_count

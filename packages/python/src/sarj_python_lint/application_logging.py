@@ -189,7 +189,20 @@ class _LoggingProvenance:
                 node.id in root_names and self._root_reference_escapes(parent)
             ):
                 escaped.add(node.id)
-        return frozenset(escaped)
+        escaped_targets = {
+            (target.module, target.symbol)
+            for name in escaped
+            if (target := self.imports.bindings.get(name)) is not None
+        }
+        return frozenset(
+            name
+            for name in imported_names
+            if name in escaped
+            or (
+                (target := self.imports.bindings.get(name)) is not None
+                and (target.module, target.symbol) in escaped_targets
+            )
+        )
 
     def _root_reference_escapes(self, parent: ast.Attribute) -> bool:
         if parent.attr not in _PUBLIC_EMITTERS | _ROUTING_METHODS:
@@ -215,6 +228,10 @@ class _LoggingProvenance:
 
     def _collect_mutations(self) -> None:
         for node in self.context.nodes(ast.Attribute):
+            if node.attr == "__dict__" and (
+                self._factory_receiver(node.value) or self.imports.resolved_qualified_name(node.value) == "logging.root"
+            ):
+                self.mutated_operations.update("logging.Logger." + name for name in _PUBLIC_EMITTERS)
             if isinstance(node.ctx, (ast.Store, ast.Del)):
                 self._record_attribute_mutation(node)
         for call in self.context.nodes(ast.Call):

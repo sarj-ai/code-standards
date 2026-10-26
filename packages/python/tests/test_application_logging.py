@@ -702,6 +702,166 @@ _CASES = (
         ),
         1,
     ),
+    (
+        EvaluationCase(
+            case_id="related-root-namespace-escaped",
+            language=Language.PYTHON,
+            source=(
+                "import logging\n"
+                "from vendor import configure\n"
+                "configure(logging.root.__dict__)\n"
+                'logging.root.warning("event")\n'
+            ),
+            expected=ExpectedOutcome.NO_MATCH,
+            path=PurePosixPath("app/service.py"),
+        ),
+        0,
+    ),
+    (
+        EvaluationCase(
+            case_id="related-root-namespace-replaced",
+            language=Language.PYTHON,
+            source=(
+                "import logging\n"
+                "from vendor import send\n"
+                'logging.root.__dict__["warning"] = send\n'
+                'logging.root.warning("event")\n'
+            ),
+            expected=ExpectedOutcome.NO_MATCH,
+            path=PurePosixPath("app/service.py"),
+        ),
+        0,
+    ),
+    (
+        EvaluationCase(
+            case_id="related-factory-namespace-escaped",
+            language=Language.PYTHON,
+            source=(
+                "import logging\n"
+                "from vendor import configure\n"
+                'configure(logging.getLogger("app").__dict__)\n'
+                'logging.getLogger("app").warning("event")\n'
+            ),
+            expected=ExpectedOutcome.NO_MATCH,
+            path=PurePosixPath("app/service.py"),
+        ),
+        0,
+    ),
+    (
+        EvaluationCase(
+            case_id="related-factory-namespace-replaced",
+            language=Language.PYTHON,
+            source=(
+                "import logging\n"
+                "from vendor import send\n"
+                'logging.getLogger("app").__dict__["warning"] = send\n'
+                'logging.getLogger("app").warning("event")\n'
+            ),
+            expected=ExpectedOutcome.NO_MATCH,
+            path=PurePosixPath("app/service.py"),
+        ),
+        0,
+    ),
+    (
+        EvaluationCase(
+            case_id="related-module-alias-namespace-cross-alias",
+            language=Language.PYTHON,
+            source=(
+                "import logging as primary\n"
+                "import logging as secondary\n"
+                "from vendor import configure\n"
+                "configure(primary.__dict__)\n"
+                'secondary.warning("event")\n'
+            ),
+            expected=ExpectedOutcome.NO_MATCH,
+            path=PurePosixPath("app/service.py"),
+        ),
+        0,
+    ),
+    (
+        EvaluationCase(
+            case_id="related-ordinary-root-routing",
+            language=Language.PYTHON,
+            source=('import logging\nlogging.root.setLevel(logging.WARNING)\nlogging.root.warning("event")\n'),
+            expected=ExpectedOutcome.MATCH,
+            path=PurePosixPath("app/service.py"),
+        ),
+        1,
+    ),
+    (
+        EvaluationCase(
+            case_id="related-ordinary-factory-routing",
+            language=Language.PYTHON,
+            source=(
+                "import logging\n"
+                'logging.getLogger("app").setLevel(logging.WARNING)\n'
+                'logging.getLogger("app").warning("event")\n'
+            ),
+            expected=ExpectedOutcome.MATCH,
+            path=PurePosixPath("app/service.py"),
+        ),
+        1,
+    ),
+    (
+        EvaluationCase(
+            case_id="related-unrelated-namespace",
+            language=Language.PYTHON,
+            source=(
+                "import logging\n"
+                "import unrelated\n"
+                "from vendor import configure\n"
+                "configure(unrelated.__dict__)\n"
+                'logging.warning("event")\n'
+            ),
+            expected=ExpectedOutcome.MATCH,
+            path=PurePosixPath("app/service.py"),
+        ),
+        1,
+    ),
+    (
+        EvaluationCase(
+            case_id="related-existing-module-namespace-escape",
+            language=Language.PYTHON,
+            source=(
+                'import logging\nfrom vendor import configure\nconfigure(logging.__dict__)\nlogging.warning("event")\n'
+            ),
+            expected=ExpectedOutcome.NO_MATCH,
+            path=PurePosixPath("app/service.py"),
+        ),
+        0,
+    ),
+    (
+        EvaluationCase(
+            case_id="related-imported-root-escape-then-module-root",
+            language=Language.PYTHON,
+            source=(
+                "import logging\n"
+                "from logging import root as events\n"
+                "from vendor import configure\n"
+                "configure(events.__dict__)\n"
+                'logging.root.warning("event")\n'
+            ),
+            expected=ExpectedOutcome.NO_MATCH,
+            path=PurePosixPath("app/service.py"),
+        ),
+        0,
+    ),
+    (
+        EvaluationCase(
+            case_id="related-module-root-escape-then-imported-root",
+            language=Language.PYTHON,
+            source=(
+                "import logging\n"
+                "from logging import root as events\n"
+                "from vendor import configure\n"
+                "configure(logging.root.__dict__)\n"
+                'events.warning("event")\n'
+            ),
+            expected=ExpectedOutcome.NO_MATCH,
+            path=PurePosixPath("app/service.py"),
+        ),
+        0,
+    ),
 )
 
 
