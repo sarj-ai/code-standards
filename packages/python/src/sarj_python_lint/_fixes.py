@@ -54,12 +54,14 @@ def apply_fixes(source: str, fixes: Sequence[Fix]) -> str:
     edits.sort()
     result: list[bytes] = []
     previous = 0
+    previous_start: int | None = None
     for start, end, replacement in edits:
-        if start < previous:
+        if start < previous or start == previous_start:
             msg = "fix groups overlap"
             raise ValueError(msg)
         result.extend((raw[previous:start], replacement))
         previous = end
+        previous_start = start
     result.append(raw[previous:])
     fixed = b"".join(result).decode("utf-8")
     tree = ast.parse(fixed)

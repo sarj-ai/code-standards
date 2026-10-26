@@ -11,6 +11,7 @@ from sarj_python_lint.rules._imports import ImportIndex
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
 
@@ -81,6 +82,12 @@ class _ReceiverKey(NamedTuple):
     name: str
 
 
+class _ScopeFrame(NamedTuple):
+    node: ast.AST
+    scope: int
+    class_owner: int | None
+
+
 class _DecoratorBinding(NamedTuple):
     receiver: str
     method: str
@@ -107,6 +114,24 @@ def _binding_name(node: ast.expr) -> str:
     if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "self":
         return f"self.{node.attr}"
     return ""
+
+
+def _binding_targets(node: ast.AST) -> Sequence[ast.expr]:
+    match node:
+        case ast.Assign(targets=targets) | ast.Delete(targets=targets):
+            return targets
+        case (
+            ast.AnnAssign(target=target)
+            | ast.AugAssign(target=target)
+            | ast.For(target=target)
+            | ast.AsyncFor(target=target)
+            | ast.NamedExpr(target=target)
+        ):
+            return (target,)
+        case ast.With(items=items) | ast.AsyncWith(items=items):
+            return tuple(item.optional_vars for item in items if item.optional_vars is not None)
+        case _:
+            return ()
 
 
 class FastapiIndex:
@@ -136,26 +161,81 @@ class FastapiIndex:
         self._route_scopes: dict[int, int] = {}
         self._scope_parents: dict[int, int | None] = {0: None}
         self._class_scopes: set[int] = set()
+        self._comprehension_scopes: set[int] = set()
         self._index_scopes(tree)
         self._read_imports(tree)
         self._read_aliases(tree)
 
     def _index_scopes(self, tree: ast.Module) -> None:
-        pending: list[tuple[ast.AST, int, int | None]] = [(tree, 0, None)]
+        pending = [_ScopeFrame(tree, 0, None)]
         while pending:
             node, scope, class_owner = pending.pop()
             self._node_scopes[id(node)] = scope
-            if isinstance(node, ast.ClassDef):
-                class_owner = node.lineno
-                self._class_scopes.add(node.lineno)
-                self._scope_parents[node.lineno] = scope
-                scope = node.lineno
             self._node_classes[id(node)] = class_owner
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                self._route_scopes[id(node)] = scope
-                self._scope_parents[node.lineno] = scope
-                scope = node.lineno
-            pending.extend((child, scope, class_owner) for child in reversed(tuple(ast.iter_child_nodes(node))))
+            match node:
+                case ast.ClassDef() | ast.FunctionDef() | ast.AsyncFunctionDef():
+                    self._index_definition(node, scope, class_owner, pending)
+                case ast.Lambda():
+                    self._index_lambda(node, scope, class_owner, pending)
+                case ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp():
+                    self._index_comprehension(node, scope, class_owner, pending)
+                case _:
+                    pending.extend(
+                        _ScopeFrame(child, scope, class_owner) for child in reversed(tuple(ast.iter_child_nodes(node)))
+                    )
+
+    def _index_definition(
+        self,
+        node: ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
+        scope: int,
+        class_owner: int | None,
+        pending: list[_ScopeFrame],
+    ) -> None:
+        body = set(node.body)
+        owner = class_owner
+        self._scope_parents[node.lineno] = scope
+        if isinstance(node, ast.ClassDef):
+            owner = node.lineno
+            self._class_scopes.add(node.lineno)
+            self._node_classes[id(node)] = owner
+        else:
+            self._route_scopes[id(node)] = scope
+        pending.extend(
+            _ScopeFrame(child, node.lineno, owner) if child in body else _ScopeFrame(child, scope, class_owner)
+            for child in reversed(tuple(ast.iter_child_nodes(node)))
+        )
+
+    def _index_lambda(self, node: ast.Lambda, scope: int, class_owner: int | None, pending: list[_ScopeFrame]) -> None:
+        implicit_scope = -id(node)
+        self._scope_parents[implicit_scope] = scope
+        self._bind_arguments(node.args, implicit_scope)
+        pending.extend(
+            (_ScopeFrame(node.args, scope, class_owner), _ScopeFrame(node.body, implicit_scope, class_owner))
+        )
+
+    def _index_comprehension(
+        self,
+        node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp,
+        outer_scope: int,
+        class_owner: int | None,
+        pending: list[_ScopeFrame],
+    ) -> None:
+        scope = -id(node)
+        self._scope_parents[scope] = outer_scope
+        self._comprehension_scopes.add(scope)
+        for index, generator in enumerate(node.generators):
+            self._node_scopes[id(generator)] = scope
+            self._node_classes[id(generator)] = class_owner
+            self.bound_names.update(_ReceiverKey(scope, name) for name in self._target_names(generator.target))
+            pending.extend(
+                _ScopeFrame(child, outer_scope if index == 0 and child is generator.iter else scope, class_owner)
+                for child in ast.iter_child_nodes(generator)
+            )
+        pending.extend(
+            _ScopeFrame(child, scope, class_owner)
+            for child in ast.iter_child_nodes(node)
+            if not isinstance(child, ast.comprehension)
+        )
 
     def _read_imports(self, tree: ast.Module) -> None:
         for node in walk_ast(tree):
@@ -222,7 +302,17 @@ class FastapiIndex:
                     changed = True
 
     def _read_bound_names(self, node: ast.AST) -> None:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if targets := _binding_targets(node):
+            self.bound_names.update(
+                _ReceiverKey(self._binding_scope(node), name)
+                for target in targets
+                for name in self._target_names(target)
+            )
+        elif isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name is not None:
+            self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.name))
+        elif isinstance(node, ast.MatchMapping) and node.rest is not None:
+            self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.rest))
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             self._bind_function_names(node)
         elif isinstance(node, ast.ClassDef):
             self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.name))
@@ -231,34 +321,30 @@ class FastapiIndex:
                 _ReceiverKey(self._node_scopes[id(node)], alias.asname or alias.name.split(".")[0])
                 for alias in node.names
             )
-        elif isinstance(node, (ast.For, ast.AsyncFor)):
-            self.bound_names.update(
-                _ReceiverKey(self._node_scopes[id(node)], name) for name in self._target_names(node.target)
-            )
-        elif isinstance(node, ast.With):
-            self._bind_with_targets(node)
         elif isinstance(node, ast.ExceptHandler) and node.name is not None:
             self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.name))
-        elif isinstance(node, ast.NamedExpr):
-            self.bound_names.update(
-                _ReceiverKey(self._node_scopes[id(node)], name) for name in self._target_names(node.target)
-            )
+
+    def _binding_scope(self, node: ast.AST) -> int:
+        scope = self._node_scopes[id(node)]
+        if isinstance(node, ast.NamedExpr):
+            while scope in self._comprehension_scopes:
+                parent = self._scope_parents[scope]
+                if parent is None:
+                    break
+                scope = parent
+        return scope
 
     def _bind_function_names(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         self.bound_names.add(_ReceiverKey(self._node_scopes[id(node)], node.name))
-        arguments = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
-        if node.args.vararg is not None:
-            arguments.append(node.args.vararg)
-        if node.args.kwarg is not None:
-            arguments.append(node.args.kwarg)
-        self.bound_names.update(_ReceiverKey(node.lineno, argument.arg) for argument in arguments)
+        self._bind_arguments(node.args, node.lineno)
 
-    def _bind_with_targets(self, node: ast.With) -> None:
-        for item in node.items:
-            if item.optional_vars is not None:
-                self.bound_names.update(
-                    _ReceiverKey(self._node_scopes[id(node)], name) for name in self._target_names(item.optional_vars)
-                )
+    def _bind_arguments(self, arguments: ast.arguments, scope: int) -> None:
+        names = [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs]
+        if arguments.vararg is not None:
+            names.append(arguments.vararg)
+        if arguments.kwarg is not None:
+            names.append(arguments.kwarg)
+        self.bound_names.update(_ReceiverKey(scope, argument.arg) for argument in names)
 
     def _alias_assignment(self, node: ast.AST) -> tuple[int, str, ast.expr] | None:
         if isinstance(node, ast.Assign) and len(node.targets) == 1:
@@ -309,11 +395,15 @@ class FastapiIndex:
             self.hidden_receivers.add(key)
 
     def _target_names(self, node: ast.expr) -> tuple[str, ...]:
-        if isinstance(node, ast.Name):
-            return (node.id,)
-        if isinstance(node, (ast.Tuple, ast.List)):
-            return tuple(name for item in node.elts for name in self._target_names(item))
-        return ()
+        match node:
+            case ast.Name(id=name):
+                return (name,)
+            case ast.Starred(value=value):
+                return self._target_names(value)
+            case ast.Tuple(elts=items) | ast.List(elts=items):
+                return tuple(name for item in items for name in self._target_names(item))
+            case _:
+                return ()
 
     def _assignment_scope(self, node: ast.Assign | ast.AnnAssign, name: str) -> int:
         if name.startswith("self."):
@@ -526,11 +616,13 @@ class FastapiIndex:
         if isinstance(node, ast.Attribute):
             root = self._root_name(node)
         node_scope = self._node_scopes.get(id(node), 0)
-        # An annotation is evaluated outside the function whose signature owns
-        # it, so begin with that function's parent scope.
-        scope: int | None = self._scope_parents.get(node_scope)
+        # The index records where the annotation is evaluated. A method body
+        # does not close over an intervening class namespace.
+        scope: int | None = node_scope
         while scope is not None and scope != 0:
-            if _ReceiverKey(scope, root) in self.bound_names:
+            if (scope == node_scope or scope not in self._class_scopes) and _ReceiverKey(
+                scope, root
+            ) in self.bound_names:
                 return True
             scope = self._scope_parents.get(scope)
         return False

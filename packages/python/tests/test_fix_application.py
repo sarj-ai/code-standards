@@ -68,3 +68,24 @@ def test_complete_revision_guard_includes_unedited_text() -> None:
 def test_reject_malformed_result() -> None:
     with pytest.raises(SyntaxError):
         apply_fixes(SOURCE, (replace(FIX, edits=(TextEdit(1, 8, 1, 9, "("),)),))
+
+
+@pytest.mark.parametrize(
+    "edits",
+    [
+        (TextEdit(1, 1, 1, 1, "# first\n"), TextEdit(1, 1, 1, 1, "# second\n")),
+        (TextEdit(1, 1, 1, 1, "# same\n"), TextEdit(1, 1, 1, 1, "# same\n")),
+        (TextEdit(1, 1, 1, 1, "# before\n"), TextEdit(1, 1, 1, 5, "other")),
+    ],
+    ids=("distinct-insertions", "duplicate-insertion", "insertion-and-replacement"),
+)
+@pytest.mark.parametrize("separate_groups", [False, True], ids=("one-group", "two-groups"))
+def test_rejects_edits_that_share_a_start(edits: tuple[TextEdit, TextEdit], *, separate_groups: bool) -> None:
+    fixes = tuple(replace(FIX, edits=(edit,)) for edit in edits) if separate_groups else (replace(FIX, edits=edits),)
+    with pytest.raises(ValueError, match="fix groups overlap"):
+        apply_fixes(SOURCE, fixes)
+
+
+def test_accepts_insertion_at_previous_replacement_end() -> None:
+    fixes = (replace(FIX, edits=(TextEdit(1, 1, 1, 5, "value"), TextEdit(1, 5, 1, 5, "s"))),)
+    assert apply_fixes(SOURCE, fixes) == "values = 1\n"

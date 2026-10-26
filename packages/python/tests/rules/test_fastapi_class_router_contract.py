@@ -207,6 +207,146 @@ def test_rebound_or_shadowed_constructors_are_not_framework_proof(source: str) -
 
 
 @pytest.mark.parametrize(
+    "binding",
+    [
+        "    FastAPI, = (other_constructor,)",
+        "    [FastAPI] = [other_constructor]",
+        "    FastAPI, *rest = values",
+        "    FastAPI = other = other_constructor",
+        "    FastAPI += other_constructor",
+        "    del FastAPI",
+        "    match values:\n        case FastAPI:\n            pass",
+        "    match values:\n        case [*FastAPI]:\n            pass",
+        "    match values:\n        case {**FastAPI}:\n            pass",
+    ],
+)
+def test_local_binding_forms_do_not_prove_fastapi_constructor(binding: str) -> None:
+    source = f"""
+from fastapi import FastAPI
+def create_app(other_constructor, values):
+{binding}
+    app = FastAPI()
+    @app.get('/items', response_model=ItemsResponse)
+    def items() -> ItemsResponse: ...
+    return app
+"""
+    assert _check(source) == []
+
+
+def test_unrelated_function_binding_does_not_shadow_constructor() -> None:
+    source = """
+from fastapi import FastAPI
+def unrelated(value):
+    FastAPI, = (value,)
+def create_app():
+    app = FastAPI()
+    @app.get('/items', response_model=ItemsResponse)
+    def items() -> ItemsResponse: ...
+    return app
+"""
+    [finding] = _check(source)
+    assert "include_router" in finding.message
+
+
+@pytest.mark.parametrize(
+    "iteration",
+    [
+        "[FastAPI for FastAPI in values]",
+        "{FastAPI for FastAPI in values}",
+        "{FastAPI: None for FastAPI in values}",
+        "(FastAPI for FastAPI in values)",
+    ],
+)
+def test_comprehension_binding_does_not_shadow_enclosing_constructor(iteration: str) -> None:
+    source = f"""
+from fastapi import FastAPI
+def create_app(values):
+    unused = {iteration}
+    app = FastAPI()
+    @app.get('/items', response_model=ItemsResponse)
+    def items() -> ItemsResponse: ...
+    return app
+"""
+    [finding] = _check(source)
+    assert "include_router" in finding.message
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        ("lambda APIRouter: APIRouter()", 0),
+        ("lambda *APIRouter: APIRouter()", 0),
+        ("lambda **APIRouter: APIRouter()", 0),
+        ("lambda *, APIRouter: APIRouter()", 0),
+        ("lambda APIRouter: (lambda: APIRouter())", 0),
+        ("lambda: APIRouter()", 1),
+        ("lambda: (lambda: APIRouter())", 1),
+        ("lambda APIRouter=APIRouter(): APIRouter()", 1),
+        ("[APIRouter() for APIRouter in factories]", 0),
+        ("{APIRouter() for APIRouter in factories}", 0),
+        ("{APIRouter: APIRouter() for APIRouter in factories}", 0),
+        ("(APIRouter() for APIRouter in factories)", 0),
+        ("[APIRouter() for factory in factories]", 1),
+        ("{APIRouter() for factory in factories}", 1),
+        ("{factory: APIRouter() for factory in factories}", 1),
+        ("(APIRouter() for factory in factories)", 1),
+        ("[value for APIRouter in APIRouter()]", 1),
+        ("[value for APIRouter in factories for value in APIRouter()]", 0),
+    ],
+)
+def test_implicit_constructor_scopes_preserve_shadowing_and_proof(expression: str, expected: int) -> None:
+    source = f"from fastapi import APIRouter\nvalue = {expression}\n"
+    assert len(_check(source)) == expected
+
+
+@pytest.mark.parametrize(("receiver", "expected"), [("FastAPI", 0), ("unrelated", 1)])
+def test_async_with_target_preserves_constructor_scope(receiver: str, expected: int) -> None:
+    source = f"""
+from fastapi import FastAPI
+async def create_app(factory):
+    async with factory() as {receiver}:
+        pass
+    app = FastAPI()
+    @app.get('/items', response_model=ItemsResponse)
+    def items() -> ItemsResponse: ...
+    return app
+"""
+    assert len(_check(source)) == expected
+
+
+def test_comprehension_assignment_expression_binds_enclosing_scope() -> None:
+    source = """
+from fastapi import FastAPI
+def create_app(values):
+    unused = [(FastAPI := value) for value in values]
+    app = FastAPI()
+    @app.get('/items', response_model=ItemsResponse)
+    def items() -> ItemsResponse: ...
+    return app
+"""
+    assert _check(source) == []
+
+
+def test_function_default_is_evaluated_outside_its_parameter_scope() -> None:
+    source = """
+from fastapi import APIRouter
+def create_router(APIRouter=APIRouter()):
+    return APIRouter
+"""
+    assert len(_check(source)) == 1
+
+
+def test_class_decorator_is_evaluated_outside_class_bindings() -> None:
+    source = """
+from fastapi import APIRouter
+@decorate(APIRouter())
+class Factory:
+    APIRouter = OtherRouter
+"""
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
     ("binding", "constructor"),
     [
         ("from fastapi import APIRouter as Router", "Router"),

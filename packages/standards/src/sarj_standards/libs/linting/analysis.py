@@ -58,6 +58,9 @@ class _NativeDiagnostic(Protocol):
     @property
     def message(self) -> str: ...
 
+
+@runtime_checkable
+class _ColumnEncodingDiagnostic(Protocol):
     @property
     def column_encoding(self) -> object: ...
 
@@ -82,7 +85,7 @@ class _RuleMetadata(Protocol):
 
 @runtime_checkable
 class _CheckerModule(Protocol):
-    def analyze(self, rule_ids: list[str], paths: list[Path]) -> list[_NativeDiagnostic]: ...
+    def analyze(self, rule_ids: list[str], paths: list[Path]) -> Sequence[_NativeDiagnostic]: ...
 
 
 @runtime_checkable
@@ -395,13 +398,7 @@ def normalize_native(
         except OSError, UnicodeError, SyntaxError:
             document = None
         documents[resolved] = document
-    position = None
-    if document is not None:
-        position = (
-            document.byte_point(line=item.line, column=item.col)
-            if source == "sarj-python-lint" and str(item.column_encoding) == "utf8-bytes"
-            else document.point(line=item.line, column=item.col)
-        )
+    position = _native_position(item, source, document) if document is not None else None
     rule_id, help_text = metadata.get(item.code, (None, None))
     tags: tuple[str, ...] = ()
     if source == "sarj-python-lint":
@@ -421,6 +418,19 @@ def normalize_native(
         tags=tags,
         fixes=_python_fixes(item, document, relative_path) if source == "sarj-python-lint" else (),
     )
+
+
+def _native_position(
+    item: _NativeDiagnostic, source: str, document: SourceDocument | PythonSourceDocument
+) -> Position | None:
+    if source != "sarj-python-lint":
+        return document.point(line=item.line, column=item.col)
+    if not isinstance(item, _ColumnEncodingDiagnostic):
+        msg = "Python diagnostic does not declare its column encoding"
+        raise TypeError(msg)
+    if str(item.column_encoding) == "utf8-bytes":
+        return document.byte_point(line=item.line, column=item.col)
+    return document.point(line=item.line, column=item.col)
 
 
 def _python_fixes(

@@ -1,0 +1,1559 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-10-26T05:42:19.622336+00:00",
+  "scope": "Supplemental source audit for main delta integrated after the historical420-review baseline; not new native pass executions.",
+  "baseline_commit": "6dd5656a9c8ef9d307c1d45d4b216921a4d89782",
+  "reviewed_main": "250043c2b8132c956bab07ef16233297b0bd23ab",
+  "reviewed_tree": "5293635e7c0b66a133c863d31987edcb6ed8b06e",
+  "historical_audits_preserved": [
+    {
+      "path": "packages/standards/benchmarks/safe-autofix-rule-audit-20261022.json",
+      "scope": "original historical audit, unchanged"
+    },
+    {
+      "path": "packages/standards/benchmarks/autofix-followup-audit-20261026.json",
+      "scope": "420 historical source reviews against800bb/360 rules, unchanged"
+    }
+  ],
+  "current_census": {
+    "rules": 361,
+    "safe": 128,
+    "manual": 233,
+    "families": {
+      "iac": 14,
+      "python": 183,
+      "sql": 20,
+      "text": 12,
+      "typescript": 132
+    },
+    "delta": "One new Python manual rule; three Python semantic policies changed; SAFE count unchanged."
+  },
+  "counting_contract": {
+    "feasibility_source_reviews": 12,
+    "safe_design_records": 3,
+    "safe_verification_controls": 3,
+    "new_native_executions": 0,
+    "manual_designs": "Three rejected narrow-subset proposals per manual rule are recorded inside the feasibility reviews; no manual rule is relabeled SAFE and no not-applicable record is counted as native verification.",
+    "upstream_native_reuse": "Exact immutable PR1808/main250 complete CI proof supports existing unchanged native controls; targeted614 Python owners+98 diagnostics are qualified separately on the integrated candidate; full canonical/hooks/exact-head CI remain pending.",
+    "actual_integrated_targeted_execution": "One supervised preflight produced614 Python owner and98 diagnostics passes; three named controls are selections from that execution, not three repeated whole passes.",
+    "distinct_integrated_verification_controls": 12,
+    "control_count_note": "Exactly three distinct passed614JUnit cases per changed rule, including manual rules, mapped to their three source feasibility boundaries. These12 selections do not count as12 repeated native suite runs."
+  },
+  "changed_rule_feasibility": [
+    {
+      "id": "MAIN250-prefer-grouped-settings-1",
+      "recorded_at": "2026-10-26T05:36:31.873056+00:00",
+      "phase": "feasibility source review",
+      "rule_key": "python:prefer-grouped-settings",
+      "focus": "Environment and public API equivalence",
+      "verdict": "retain manual; no SAFE subset proven",
+      "reasoning": "The new warning identifies directly owned BaseSettings fields, but moving two names into a child object changes constructor keywords, environment decoding, aliases, serialized output and callers. Two literal defaults and an otherwise empty class do not close those public observations.",
+      "concrete_boundary": "Existing callers use Settings(embedder_url='u', embedder_token='t') or read settings.embedder_url; a rewrite to settings.embedder.url changes those interfaces even without custom validators.",
+      "source_evidence": [
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_grouped_settings.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "4c898554a7d85b4a8ad59bd02660089b86ecb1e2a0f42862b665e84a7e29aa34",
+          "line_start": 33,
+          "line_end": 55,
+          "symbol": "PreferGroupedSettings.documentation"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_grouped_settings.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "4c898554a7d85b4a8ad59bd02660089b86ecb1e2a0f42862b665e84a7e29aa34",
+          "line_start": 99,
+          "line_end": 128,
+          "symbol": "check_context"
+        }
+      ],
+      "owned_native_cases": [
+        {
+          "path": "packages/python/tests/rules/test_prefer_grouped_settings.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "52dee7e6703d53d2678091eb74fab08d28addd78e91e246a5e77db34ff57aa91",
+          "line_start": 113,
+          "line_end": 113,
+          "symbol": "test_settings_namespace_cases",
+          "parameter_case": "same-env-alias-only"
+        },
+        {
+          "path": "packages/python/tests/rules/test_prefer_grouped_settings.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "52dee7e6703d53d2678091eb74fab08d28addd78e91e246a5e77db34ff57aa91",
+          "line_start": 108,
+          "line_end": 108,
+          "symbol": "test_documented_examples"
+        }
+      ],
+      "validation_scope": "Source/test contract reviewed; actual integrated owning-module tests passed. Exact immutable upstream CI additionally supports unchanged fixer/runtime controls; no fresh full-suite completion is claimed.",
+      "integrated_candidate_verification": "Owning changed-rule native module passed in the actual614-test integrated preflight; full canonical gates, hooks and exact-head CI remain pending.",
+      "attempted_additional_safe_subset": {
+        "proposal": "Nest only two simple public fields with matching prefix and literal defaults.",
+        "rejected_because": "Source-local simplicity does not prove environment aliases or external constructor/access/serialization consumers unchanged."
+      },
+      "actual_integrated_control": {
+        "classname": "tests.rules.test_prefer_grouped_settings",
+        "name": "test_documented_examples",
+        "outcome": "passed",
+        "scope": "Executes documented flat/nested warning examples; does not prove environment-equivalent restructuring.",
+        "feasibility_review_id": "MAIN250-prefer-grouped-settings-1",
+        "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+      }
+    },
+    {
+      "id": "MAIN250-prefer-grouped-settings-2",
+      "recorded_at": "2026-10-26T05:36:31.873056+00:00",
+      "phase": "feasibility source review",
+      "rule_key": "python:prefer-grouped-settings",
+      "focus": "Namespace evidence and ownership limits",
+      "verdict": "retain manual; detector boundary sound",
+      "reasoning": "A complete first snake-case token, at least two distinct fields, modifier exclusions and refusal when the prefix is already a field prevent accidental grouping of character prefixes or generic max/is flags. DeclaredContracts proves the BaseSettings ancestry and owned fields; environment aliases alone are not structural evidence.",
+      "concrete_boundary": "embedding_url and embedder_token do not share a full token; max_calls/max_retries and an existing embedder field are explicitly not new component groups.",
+      "source_evidence": [
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_grouped_settings.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "4c898554a7d85b4a8ad59bd02660089b86ecb1e2a0f42862b665e84a7e29aa34",
+          "line_start": 28,
+          "line_end": 29,
+          "symbol": "group constants"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_grouped_settings.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "4c898554a7d85b4a8ad59bd02660089b86ecb1e2a0f42862b665e84a7e29aa34",
+          "line_start": 103,
+          "line_end": 116,
+          "symbol": "owned settings class and field selection"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_grouped_settings.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "4c898554a7d85b4a8ad59bd02660089b86ecb1e2a0f42862b665e84a7e29aa34",
+          "line_start": 131,
+          "line_end": 137,
+          "symbol": "_settings_groups"
+        }
+      ],
+      "owned_native_cases": [
+        {
+          "path": "packages/python/tests/rules/test_prefer_grouped_settings.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "52dee7e6703d53d2678091eb74fab08d28addd78e91e246a5e77db34ff57aa91",
+          "line_start": 113,
+          "line_end": 113,
+          "symbol": "test_settings_namespace_cases",
+          "parameter_case": "character-prefix-is-not-namespace / generic-bound-modifiers / existing-prefix-field"
+        },
+        {
+          "path": "packages/python/tests/rules/test_prefer_grouped_settings.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "52dee7e6703d53d2678091eb74fab08d28addd78e91e246a5e77db34ff57aa91",
+          "line_start": 131,
+          "line_end": 131,
+          "symbol": "test_only_owned_fields_form_a_new_group"
+        }
+      ],
+      "validation_scope": "Source/test contract reviewed; actual integrated owning-module tests passed. Exact immutable upstream CI additionally supports unchanged fixer/runtime controls; no fresh full-suite completion is claimed.",
+      "integrated_candidate_verification": "Owning changed-rule native module passed in the actual614-test integrated preflight; full canonical gates, hooks and exact-head CI remain pending.",
+      "attempted_additional_safe_subset": {
+        "proposal": "Use one shared environment alias prefix as a safe grouping signal.",
+        "rejected_because": "Alias spelling does not preserve source precedence, nested-delimiter configuration or the Python API; it is excluded even from detection."
+      },
+      "actual_integrated_control": {
+        "classname": "tests.rules.test_prefer_grouped_settings",
+        "name": "test_settings_namespace_cases[character-prefix-is-not-namespace]",
+        "outcome": "passed",
+        "scope": "Rejects partial-character prefix grouping; no fields or aliases rewritten.",
+        "feasibility_review_id": "MAIN250-prefer-grouped-settings-2",
+        "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+      }
+    },
+    {
+      "id": "MAIN250-prefer-grouped-settings-3",
+      "recorded_at": "2026-10-26T05:36:31.873056+00:00",
+      "phase": "feasibility source review",
+      "rule_key": "python:prefer-grouped-settings",
+      "focus": "Location, suppression and project boundaries",
+      "verdict": "retain warning/manual; no automatic rewrite",
+      "reasoning": "Only module-owned classes with resolved settings ancestry are considered. Generated/test inputs, unknown decorators and ClassVar/Final/private fields remain excluded. One finding per group is anchored to its first owned field; exact class/first-field suppression preserves explicit fixed APIs.",
+      "concrete_boundary": "An inherited embedder_url plus one local embedder_token must not manufacture a local two-field group; an unknown class decorator may replace the fields entirely.",
+      "source_evidence": [
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_grouped_settings.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "4c898554a7d85b4a8ad59bd02660089b86ecb1e2a0f42862b665e84a7e29aa34",
+          "line_start": 99,
+          "line_end": 126,
+          "symbol": "check_context"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_grouped_settings.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "4c898554a7d85b4a8ad59bd02660089b86ecb1e2a0f42862b665e84a7e29aa34",
+          "line_start": 48,
+          "line_end": 54,
+          "symbol": "manual policy and exclusions"
+        }
+      ],
+      "owned_native_cases": [
+        {
+          "path": "packages/python/tests/rules/test_prefer_grouped_settings.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "52dee7e6703d53d2678091eb74fab08d28addd78e91e246a5e77db34ff57aa91",
+          "line_start": 120,
+          "line_end": 120,
+          "symbol": "test_each_component_has_one_stable_diagnostic"
+        },
+        {
+          "path": "packages/python/tests/rules/test_prefer_grouped_settings.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "52dee7e6703d53d2678091eb74fab08d28addd78e91e246a5e77db34ff57aa91",
+          "line_start": 131,
+          "line_end": 131,
+          "symbol": "test_only_owned_fields_form_a_new_group"
+        },
+        {
+          "path": "packages/python/tests/rules/test_prefer_grouped_settings.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "52dee7e6703d53d2678091eb74fab08d28addd78e91e246a5e77db34ff57aa91",
+          "line_start": 139,
+          "line_end": 139,
+          "symbol": "test_imported_settings_base_is_resolved_in_the_project"
+        }
+      ],
+      "validation_scope": "Source/test contract reviewed; actual integrated owning-module tests passed. Exact immutable upstream CI additionally supports unchanged fixer/runtime controls; no fresh full-suite completion is claimed.",
+      "integrated_candidate_verification": "Owning changed-rule native module passed in the actual614-test integrated preflight; full canonical gates, hooks and exact-head CI remain pending.",
+      "attempted_additional_safe_subset": {
+        "proposal": "Rewrite a closed-looking settings class in a private module.",
+        "rejected_because": "Private path alone cannot close imports, environment consumers, Pydantic schema/default evaluation or comment ownership."
+      },
+      "actual_integrated_control": {
+        "classname": "tests.rules.test_prefer_grouped_settings",
+        "name": "test_only_owned_fields_form_a_new_group",
+        "outcome": "passed",
+        "scope": "Inherited/local field split does not fabricate two owned fields.",
+        "feasibility_review_id": "MAIN250-prefer-grouped-settings-3",
+        "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+      }
+    },
+    {
+      "id": "MAIN250-prefer-nominal-id-types-1",
+      "recorded_at": "2026-10-26T05:36:31.873056+00:00",
+      "phase": "feasibility source review",
+      "rule_key": "python:prefer-nominal-id-types",
+      "focus": "Established singleton identifier domains",
+      "verdict": "retain manual; expanded ERROR coverage",
+      "reasoning": "A single raw ID now qualifies only when a matching nominal domain is established, including collection/optional shapes. Existing two-role carrier analysis remains. Automatically changing an annotation still changes runtime annotations, reflection and validation consumers; NewType runtime identity does not make annotation replacement behavior-free.",
+      "concrete_boundary": "With FileId=NewType('FileId', str), load(file_id: str) is now blocking; replacing str with FileId changes inspect.signature/get_type_hints even though FileId(value) returns value.",
+      "source_evidence": [
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_nominal_id_types.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "c3515d7289abcd0c7720f8fb753b86fd3da34b87a05554adb641fb04245899b6",
+          "line_start": 143,
+          "line_end": 163,
+          "symbol": "documentation"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_nominal_id_types.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "c3515d7289abcd0c7720f8fb753b86fd3da34b87a05554adb641fb04245899b6",
+          "line_start": 474,
+          "line_end": 502,
+          "symbol": "_qualifying_roles and _established_raw_id"
+        }
+      ],
+      "owned_native_cases": [
+        {
+          "path": "packages/python/tests/rules/test_prefer_nominal_id_types.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "ee35196126436b6aad01edb43fa335f114824edaa163b2dcefde3d91b6af91f0",
+          "line_start": 165,
+          "line_end": 165,
+          "symbol": "test_single_id_reuses_an_established_nominal_type_as_an_error"
+        }
+      ],
+      "validation_scope": "Source/test contract reviewed; actual integrated owning-module tests passed. Exact immutable upstream CI additionally supports unchanged fixer/runtime controls; no fresh full-suite completion is claimed.",
+      "integrated_candidate_verification": "Owning changed-rule native module passed in the actual614-test integrated preflight; full canonical gates, hooks and exact-head CI remain pending.",
+      "attempted_additional_safe_subset": {
+        "proposal": "Replace one raw annotation with a unique local matching NewType.",
+        "rejected_because": "Runtime annotation/reflection and framework validation are observable; no closed module/consumer guarantee is established."
+      },
+      "actual_integrated_control": {
+        "classname": "tests.rules.test_prefer_nominal_id_types",
+        "name": "test_single_id_reuses_an_established_nominal_type_as_an_error[def load(file_id: str) -> None: ...\\n]",
+        "outcome": "passed",
+        "scope": "Established matching singleton carrier reports ERROR; annotation rewrite remains manual.",
+        "feasibility_review_id": "MAIN250-prefer-nominal-id-types-1",
+        "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+      }
+    },
+    {
+      "id": "MAIN250-prefer-nominal-id-types-2",
+      "recorded_at": "2026-10-26T05:36:31.873056+00:00",
+      "phase": "feasibility source review",
+      "rule_key": "python:prefer-nominal-id-types",
+      "focus": "Canonical provider and project ownership proof",
+      "verdict": "retain manual; fail closed on ambiguous domains",
+      "reasoning": "The existing ownership machinery limits first-party type discovery to the owning distribution and declared direct dependencies, preserves focus-source overrides, and rejects ambiguous exports and mutated or escaped canonical factories. The new singleton branch uses those established facts rather than names alone.",
+      "concrete_boundary": "Two FileId declarations, an unrelated NewType factory or a mutated typing.NewType namespace cannot safely prescribe a replacement import or identity.",
+      "source_evidence": [
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_nominal_id_types.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "c3515d7289abcd0c7720f8fb753b86fd3da34b87a05554adb641fb04245899b6",
+          "line_start": 281,
+          "line_end": 340,
+          "symbol": "check_context"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_nominal_id_types.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "c3515d7289abcd0c7720f8fb753b86fd3da34b87a05554adb641fb04245899b6",
+          "line_start": 1081,
+          "line_end": 1094,
+          "symbol": "_can_expand"
+        }
+      ],
+      "owned_native_cases": [
+        {
+          "path": "packages/python/tests/rules/test_prefer_nominal_id_types.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "ee35196126436b6aad01edb43fa335f114824edaa163b2dcefde3d91b6af91f0",
+          "line_start": 265,
+          "line_end": 265,
+          "symbol": "test_domain_brands_require_declared_dependency"
+        },
+        {
+          "path": "packages/python/tests/rules/test_prefer_nominal_id_types.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "ee35196126436b6aad01edb43fa335f114824edaa163b2dcefde3d91b6af91f0",
+          "line_start": 282,
+          "line_end": 282,
+          "symbol": "test_duplicate_domain_brand_definitions_are_unknown"
+        },
+        {
+          "path": "packages/python/tests/rules/test_prefer_nominal_id_types.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "ee35196126436b6aad01edb43fa335f114824edaa163b2dcefde3d91b6af91f0",
+          "line_start": 317,
+          "line_end": 317,
+          "symbol": "test_mutated_typing_namespace_does_not_establish_brand"
+        }
+      ],
+      "validation_scope": "Source/test contract reviewed; actual integrated owning-module tests passed. Exact immutable upstream CI additionally supports unchanged fixer/runtime controls; no fresh full-suite completion is claimed.",
+      "integrated_candidate_verification": "Owning changed-rule native module passed in the actual614-test integrated preflight; full canonical gates, hooks and exact-head CI remain pending.",
+      "attempted_additional_safe_subset": {
+        "proposal": "Import the first matching nominal type by normalized role name.",
+        "rejected_because": "Name equality does not establish canonical factory, unique export, distribution ownership or import side-effect equivalence."
+      },
+      "actual_integrated_control": {
+        "classname": "tests.rules.test_prefer_nominal_id_types",
+        "name": "test_duplicate_domain_brand_definitions_are_unknown",
+        "outcome": "passed",
+        "scope": "Ambiguous project brand definitions do not prescribe a nominal type.",
+        "feasibility_review_id": "MAIN250-prefer-nominal-id-types-2",
+        "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+      }
+    },
+    {
+      "id": "MAIN250-prefer-nominal-id-types-3",
+      "recorded_at": "2026-10-26T05:36:31.873056+00:00",
+      "phase": "feasibility source review",
+      "rule_key": "python:prefer-nominal-id-types",
+      "focus": "Severity, carrier shape and inherited boundaries",
+      "verdict": "retain manual; explicit ERROR migration",
+      "reasoning": "Previously advisory expanded-domain findings now become ERROR. Carrier-shape matching, operational/wire exclusions and explicit-base ownership refusal remain. Plural singleton lookup unwraps containers but requires a matching established singular role; it does not authorize replacing unlike scalar/array contracts.",
+      "concrete_boundary": "A raw external Adapter method or wire BaseModel field may be required by its existing protocol; a nominal annotation cannot be injected merely because file_id is suggestive.",
+      "source_evidence": [
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_nominal_id_types.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "c3515d7289abcd0c7720f8fb753b86fd3da34b87a05554adb641fb04245899b6",
+          "line_start": 318,
+          "line_end": 340,
+          "symbol": "collect_boundary_diagnostics"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_nominal_id_types.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "c3515d7289abcd0c7720f8fb753b86fd3da34b87a05554adb641fb04245899b6",
+          "line_start": 489,
+          "line_end": 502,
+          "symbol": "_established_raw_id"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_nominal_id_types.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "c3515d7289abcd0c7720f8fb753b86fd3da34b87a05554adb641fb04245899b6",
+          "line_start": 1106,
+          "line_end": 1122,
+          "symbol": "_boundary_message"
+        }
+      ],
+      "owned_native_cases": [
+        {
+          "path": "packages/python/tests/rules/test_prefer_nominal_id_types.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "ee35196126436b6aad01edb43fa335f114824edaa163b2dcefde3d91b6af91f0",
+          "line_start": 61,
+          "line_end": 61,
+          "symbol": "test_allows_distinct_nominal_operational_and_wire_ids"
+        },
+        {
+          "path": "packages/python/tests/rules/test_prefer_nominal_id_types.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "ee35196126436b6aad01edb43fa335f114824edaa163b2dcefde3d91b6af91f0",
+          "line_start": 96,
+          "line_end": 96,
+          "symbol": "test_inherited_override_preserves_public_raw_id_contract"
+        },
+        {
+          "path": "packages/python/tests/rules/test_prefer_nominal_id_types.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "ee35196126436b6aad01edb43fa335f114824edaa163b2dcefde3d91b6af91f0",
+          "line_start": 348,
+          "line_end": 348,
+          "symbol": "test_native_cli_blocks_expanded_nominal_violations"
+        }
+      ],
+      "validation_scope": "Source/test contract reviewed; actual integrated owning-module tests passed. Exact immutable upstream CI additionally supports unchanged fixer/runtime controls; no fresh full-suite completion is claimed.",
+      "integrated_candidate_verification": "Owning changed-rule native module passed in the actual614-test integrated preflight; full canonical gates, hooks and exact-head CI remain pending.",
+      "attempted_additional_safe_subset": {
+        "proposal": "Change only function annotations while leaving bodies and calls untouched.",
+        "rejected_because": "Bodies unchanged does not close public type/annotation contracts, inherited ownership or framework coercion behavior."
+      },
+      "actual_integrated_control": {
+        "classname": "tests.rules.test_prefer_nominal_id_types",
+        "name": "test_inherited_override_preserves_public_raw_id_contract[from typing import override-override]",
+        "outcome": "passed",
+        "scope": "Inherited external raw-ID operation is preserved while an independent owned function remains eligible.",
+        "feasibility_review_id": "MAIN250-prefer-nominal-id-types-3",
+        "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+      }
+    },
+    {
+      "id": "MAIN250-require-explicit-service-contract-1",
+      "recorded_at": "2026-10-26T05:36:31.873056+00:00",
+      "phase": "feasibility source review",
+      "rule_key": "python:require-explicit-service-contract",
+      "focus": "Retained callback dispatch as a real service boundary",
+      "verdict": "retain manual; no invented Protocol/ABC",
+      "reasoning": "The detector now recognizes stable asyncio loop dispatch and to_thread callbacks even without a service name/directory. Callback position and retained field identity are proved; starred/ambiguous arguments and unrelated loop factories stay unknown. A generated contract would invent names/signatures and change runtime class creation and MRO.",
+      "concrete_boundary": "Batcher retaining operation and passing it to a native run_in_executor is a service; passing operation as the executor or using custom_runtime.get_running_loop is not the same proof.",
+      "source_evidence": [
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/require_explicit_service_contract.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "b221d931f445c6546ca12238cf295c133f4f211f6ee0a0c2c25261297b68c90b",
+          "line_start": 333,
+          "line_end": 360,
+          "symbol": "service role and collaborator operations"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/require_explicit_service_contract.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "b221d931f445c6546ca12238cf295c133f4f211f6ee0a0c2c25261297b68c90b",
+          "line_start": 577,
+          "line_end": 609,
+          "symbol": "executor provenance and callback extraction"
+        }
+      ],
+      "owned_native_cases": [
+        {
+          "path": "packages/python/tests/rules/test_require_explicit_service_contract.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "fe1b196ad6ede35e8c5d2dd3198b6cefcaba47b41d6a0e32b5b529bb1e41dc76",
+          "line_start": 472,
+          "line_end": 472,
+          "symbol": "test_retained_executor_callback_establishes_a_service_boundary",
+          "parameter_case": "retained-callback-dispatch / custom-loop-factory / callback-is-not-executor / unknown-callback-position"
+        }
+      ],
+      "validation_scope": "Source/test contract reviewed; actual integrated owning-module tests passed. Exact immutable upstream CI additionally supports unchanged fixer/runtime controls; no fresh full-suite completion is claimed.",
+      "integrated_candidate_verification": "Owning changed-rule native module passed in the actual614-test integrated preflight; full canonical gates, hooks and exact-head CI remain pending.",
+      "attempted_additional_safe_subset": {
+        "proposal": "Synthesize a one-method Protocol for a lone forwarding async operation.",
+        "rejected_because": "Parameter/return contracts, import identity, class MRO/metaclass hooks and external structural consumers are not closed by one forwarding body."
+      },
+      "actual_integrated_control": {
+        "classname": "tests.rules.test_require_explicit_service_contract",
+        "name": "test_retained_executor_callback_establishes_a_service_boundary[retained-callback-dispatch]",
+        "outcome": "passed",
+        "scope": "Proven retained callback native dispatch establishes a service boundary; no Protocol is synthesized.",
+        "feasibility_review_id": "MAIN250-require-explicit-service-contract-1",
+        "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+      }
+    },
+    {
+      "id": "MAIN250-require-explicit-service-contract-2",
+      "recorded_at": "2026-10-26T05:36:31.873056+00:00",
+      "phase": "feasibility source review",
+      "rule_key": "python:require-explicit-service-contract",
+      "focus": "Local native HTTP provenance and resource ownership",
+      "verdict": "retain manual; native boundary detection only",
+      "reasoning": "A locally constructed stable httpx.Client/AsyncClient request can establish the role without an injected constructor collaborator. Runtime import identity, unescaped binding and a fixed operation set prevent merely constructing/closing a client or calling an unrelated request method from proving a service.",
+      "concrete_boundary": "An unknown factory or rebound httpx.AsyncClient cannot prove native behavior; adding a base class or moving the client into an invented dependency can change resource lifetime and exception handling.",
+      "source_evidence": [
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/require_explicit_service_contract.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "b221d931f445c6546ca12238cf295c133f4f211f6ee0a0c2c25261297b68c90b",
+          "line_start": 394,
+          "line_end": 423,
+          "symbol": "operations_for_fields"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/require_explicit_service_contract.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "b221d931f445c6546ca12238cf295c133f4f211f6ee0a0c2c25261297b68c90b",
+          "line_start": 612,
+          "line_end": 631,
+          "symbol": "_native_http_call"
+        }
+      ],
+      "owned_native_cases": [
+        {
+          "path": "packages/python/tests/rules/test_require_explicit_service_contract.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "fe1b196ad6ede35e8c5d2dd3198b6cefcaba47b41d6a0e32b5b529bb1e41dc76",
+          "line_start": 466,
+          "line_end": 466,
+          "symbol": "test_native_http_operations_establish_a_service_boundary",
+          "parameter_case": "http-mutated-native-constructor / http-unknown-method-decorator"
+        }
+      ],
+      "validation_scope": "Source/test contract reviewed; actual integrated owning-module tests passed. Exact immutable upstream CI additionally supports unchanged fixer/runtime controls; no fresh full-suite completion is claimed.",
+      "integrated_candidate_verification": "Owning changed-rule native module passed in the actual614-test integrated preflight; full canonical gates, hooks and exact-head CI remain pending.",
+      "attempted_additional_safe_subset": {
+        "proposal": "Generate a contract only for a method with one local HTTP request.",
+        "rejected_because": "Client ownership, async/context-manager lifetime, exceptions and declared signatures are not safely inferred from a request call."
+      },
+      "actual_integrated_control": {
+        "classname": "tests.rules.test_require_explicit_service_contract",
+        "name": "test_native_http_operations_establish_a_service_boundary[http-adapter-private-helper]",
+        "outcome": "passed",
+        "scope": "A stable native HTTP operation reached through a private helper is recognized.",
+        "feasibility_review_id": "MAIN250-require-explicit-service-contract-2",
+        "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+      }
+    },
+    {
+      "id": "MAIN250-require-explicit-service-contract-3",
+      "recorded_at": "2026-10-26T05:36:31.873056+00:00",
+      "phase": "feasibility source review",
+      "rule_key": "python:require-explicit-service-contract",
+      "focus": "Public-operation reachability and uncertain callbacks",
+      "verdict": "retain manual; preserve existing declared contracts",
+      "reasoning": "The visitor follows private instance helpers to public operations while respecting terminating statements, constant branches, context managers, generator deferral and field replacement. An untyped bare lifecycle factory is no longer automatically a collaborator, while proven native dispatch still qualifies. Existing resolvable ABC/Protocol operations satisfy the rule.",
+      "concrete_boundary": "A stored untyped loop_factory called to construct a value is not alone a service contract; dispatching that retained callback through a native executor is materially different.",
+      "source_evidence": [
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/require_explicit_service_contract.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "b221d931f445c6546ca12238cf295c133f4f211f6ee0a0c2c25261297b68c90b",
+          "line_start": 426,
+          "line_end": 438,
+          "symbol": "public operation closure"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/require_explicit_service_contract.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "b221d931f445c6546ca12238cf295c133f4f211f6ee0a0c2c25261297b68c90b",
+          "line_start": 475,
+          "line_end": 574,
+          "symbol": "_CollaboratorCalls control flow"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/require_explicit_service_contract.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "b221d931f445c6546ca12238cf295c133f4f211f6ee0a0c2c25261297b68c90b",
+          "line_start": 510,
+          "line_end": 516,
+          "symbol": "_calls_retained"
+        }
+      ],
+      "owned_native_cases": [
+        {
+          "path": "packages/python/tests/rules/test_require_explicit_service_contract.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "fe1b196ad6ede35e8c5d2dd3198b6cefcaba47b41d6a0e32b5b529bb1e41dc76",
+          "line_start": 482,
+          "line_end": 482,
+          "symbol": "test_untyped_lifecycle_factory_does_not_establish_a_service_contract"
+        },
+        {
+          "path": "packages/python/tests/rules/test_require_explicit_service_contract.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "fe1b196ad6ede35e8c5d2dd3198b6cefcaba47b41d6a0e32b5b529bb1e41dc76",
+          "line_start": 495,
+          "line_end": 495,
+          "symbol": "test_untyped_callback_still_establishes_a_proven_dispatch_boundary"
+        },
+        {
+          "path": "packages/python/tests/rules/test_require_explicit_service_contract.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "fe1b196ad6ede35e8c5d2dd3198b6cefcaba47b41d6a0e32b5b529bb1e41dc76",
+          "line_start": 664,
+          "line_end": 664,
+          "symbol": "test_proven_boundary_requires_a_visible_declared_contract"
+        }
+      ],
+      "validation_scope": "Source/test contract reviewed; actual integrated owning-module tests passed. Exact immutable upstream CI additionally supports unchanged fixer/runtime controls; no fresh full-suite completion is claimed.",
+      "integrated_candidate_verification": "Owning changed-rule native module passed in the actual614-test integrated preflight; full canonical gates, hooks and exact-head CI remain pending.",
+      "attempted_additional_safe_subset": {
+        "proposal": "Add an existing-looking base based only on matching public method names.",
+        "rejected_because": "Names do not establish exact callable contracts, ownership, MRO or abstract member coverage; Python runtime inheritance is observable."
+      },
+      "actual_integrated_control": {
+        "classname": "tests.rules.test_require_explicit_service_contract",
+        "name": "test_untyped_lifecycle_factory_does_not_establish_a_service_contract",
+        "outcome": "passed",
+        "scope": "An untyped bare lifecycle factory alone does not establish service behavior.",
+        "feasibility_review_id": "MAIN250-require-explicit-service-contract-3",
+        "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+      }
+    },
+    {
+      "id": "MAIN250-prefer-fstring-over-concat-1",
+      "recorded_at": "2026-10-26T05:36:31.873056+00:00",
+      "phase": "feasibility source review",
+      "rule_key": "python:prefer-fstring-over-concat",
+      "focus": "Diagnostic evidence is broader than rewrite permission",
+      "verdict": "retain existing conditional SAFE subset only",
+      "reasoning": "Short prose interpolation is now ERROR and stable literal-name prefixes can supply text evidence. That diagnostic expansion does not expand the unchanged fixer: every nonliteral operand still must be an unshadowed str/repr/ascii conversion of a proven exact native primitive. A str annotation is not exact runtime type proof.",
+      "concrete_boundary": "A str subclass overriding __add__ and __format__ can return 'added' for value + ' is ready' and 'formatted is ready' for a naive f-string; bare ast.Name operands are refused by the fixer.",
+      "source_evidence": [
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_fstring_over_concat.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "914c297b7d3bcbb5691c7a8f07c0ea8189770703d60c0e782fae83c57cc2a666",
+          "line_start": 139,
+          "line_end": 164,
+          "symbol": "documentation severity and SAFE limit"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_fstring_over_concat.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "914c297b7d3bcbb5691c7a8f07c0ea8189770703d60c0e782fae83c57cc2a666",
+          "line_start": 409,
+          "line_end": 458,
+          "symbol": "_verdict and _interpolation_parts"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/_autofix.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "d6b093e42163c0a149b29305087e9d85d4e0951178fae26b51ae2d08187f69c6",
+          "line_start": 598,
+          "line_end": 646,
+          "symbol": "_exact_primitive/_fstring_fix/_primitive_conversion"
+        }
+      ],
+      "owned_native_cases": [
+        {
+          "path": "packages/python/tests/test_autofix.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "b00dbe7e12065650e22433dea6ae0fe78665b1f535ea4e277dcb357b268f79fa",
+          "line_start": 226,
+          "line_end": 226,
+          "symbol": "test_ambiguous_behavior_and_comment_ownership_remain_for_review",
+          "parameter_case": "prefer-fstring-over-concat"
+        },
+        {
+          "path": "packages/python/tests/test_autofix.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "b00dbe7e12065650e22433dea6ae0fe78665b1f535ea4e277dcb357b268f79fa",
+          "line_start": 270,
+          "line_end": 270,
+          "symbol": "test_custom_string_conversion_and_positional_export_growth_are_preserved"
+        }
+      ],
+      "validation_scope": "Source/test contract reviewed; actual integrated owning-module tests passed. Exact immutable upstream CI additionally supports unchanged fixer/runtime controls; no fresh full-suite completion is claimed.",
+      "integrated_candidate_verification": "Owning changed-rule native module passed in the actual614-test integrated preflight; full canonical gates, hooks and exact-head CI remain pending.",
+      "actual_integrated_control": {
+        "classname": "tests.rules.test_prefer_fstring_over_concat",
+        "name": "test_explicit_str_guidance_preserves_semantics",
+        "outcome": "passed",
+        "scope": "Preserves explicit !s guidance; diagnostic text control only, not a newly executed runtime-equivalence probe.",
+        "feasibility_review_id": "MAIN250-prefer-fstring-over-concat-1",
+        "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+      }
+    },
+    {
+      "id": "MAIN250-prefer-fstring-over-concat-2",
+      "recorded_at": "2026-10-26T05:36:31.873056+00:00",
+      "phase": "feasibility source review",
+      "rule_key": "python:prefer-fstring-over-concat",
+      "focus": "Literal alias provenance and namespace mutation",
+      "verdict": "retain conditional SAFE; new named-prefix reports may stay manual",
+      "reasoning": "Named text and aliases are followed through runtime binding and assignment-value facts with cycle and dynamic-namespace guards. Rebinding, global/nonlocal writers, conditional bindings and imported values do not become literal proof. The fixer still refuses a named prefix because it is neither an inline literal nor primitive conversion.",
+      "concrete_boundary": "PREFIX='Question: '; def render(value: str): return PREFIX + value is now a report, but changing PREFIX via a writer or blindly inlining its text is not an authorized SAFE rewrite.",
+      "source_evidence": [
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_fstring_over_concat.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "914c297b7d3bcbb5691c7a8f07c0ea8189770703d60c0e782fae83c57cc2a666",
+          "line_start": 438,
+          "line_end": 480,
+          "symbol": "literal and binding facts"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/_autofix.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "d6b093e42163c0a149b29305087e9d85d4e0951178fae26b51ae2d08187f69c6",
+          "line_start": 610,
+          "line_end": 626,
+          "symbol": "unchanged literal/conversion-only acceptance"
+        }
+      ],
+      "owned_native_cases": [
+        {
+          "path": "packages/python/tests/rules/test_prefer_fstring_over_concat.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "ae3773a5956e8cc35df45335e945cabbe9e6e9b3a0753d2604fa442c0d2f9dbd",
+          "line_start": 254,
+          "line_end": 254,
+          "symbol": "test_literal_prefix_interpolation_cases",
+          "parameter_case": "module-literal-prefix / module-prefix-rebound / global-prefix-writer / nonlocal-prefix-writer / conditional-prefix-binding"
+        }
+      ],
+      "validation_scope": "Source/test contract reviewed; actual integrated owning-module tests passed. Exact immutable upstream CI additionally supports unchanged fixer/runtime controls; no fresh full-suite completion is claimed.",
+      "integrated_candidate_verification": "Owning changed-rule native module passed in the actual614-test integrated preflight; full canonical gates, hooks and exact-head CI remain pending.",
+      "actual_integrated_control": {
+        "classname": "tests.rules.test_prefer_fstring_over_concat",
+        "name": "test_plain_interpolation_message_does_not_mention_string_coercion",
+        "outcome": "passed",
+        "scope": "Bare str-annotated diagnostic does not invent str(...) guidance; custom __add__/__format__ refusal is separately established by source guard and unchanged upstream native fixer test.",
+        "feasibility_review_id": "MAIN250-prefer-fstring-over-concat-2",
+        "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+      }
+    },
+    {
+      "id": "MAIN250-prefer-fstring-over-concat-3",
+      "recorded_at": "2026-10-26T05:36:31.873056+00:00",
+      "phase": "feasibility source review",
+      "rule_key": "python:prefer-fstring-over-concat",
+      "focus": "Fragment exclusions, suppression and deterministic fix selection",
+      "verdict": "retain conditional SAFE with contextual refusals",
+      "reasoning": "Program/configuration fragments, SQL and regex composition, logging, stable join-built aliases and generated inputs remain outside the prose policy. Exact suppression is checked before findings. AST-based single-expression replacement still refuses owned comments and untouched-builtin uncertainty; promotion to ERROR changes gate severity without weakening edit selection.",
+      "concrete_boundary": "A generated source fragment 'def render(' + name + ')' or two config fields is composition, while a human label remains interpolation. Neither generic source-looking tokens nor a string annotation authorizes format/operator changes.",
+      "source_evidence": [
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_fstring_over_concat.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "914c297b7d3bcbb5691c7a8f07c0ea8189770703d60c0e782fae83c57cc2a666",
+          "line_start": 269,
+          "line_end": 291,
+          "symbol": "suppression and ERROR diagnostic"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_fstring_over_concat.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "914c297b7d3bcbb5691c7a8f07c0ea8189770703d60c0e782fae83c57cc2a666",
+          "line_start": 409,
+          "line_end": 435,
+          "symbol": "contextual verdict"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/rules/prefer_fstring_over_concat.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "914c297b7d3bcbb5691c7a8f07c0ea8189770703d60c0e782fae83c57cc2a666",
+          "line_start": 483,
+          "line_end": 503,
+          "symbol": "join and structural exclusions"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/_autofix.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "d6b093e42163c0a149b29305087e9d85d4e0951178fae26b51ae2d08187f69c6",
+          "line_start": 610,
+          "line_end": 625,
+          "symbol": "comment/namespace guards"
+        }
+      ],
+      "owned_native_cases": [
+        {
+          "path": "packages/python/tests/rules/test_prefer_fstring_over_concat.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "ae3773a5956e8cc35df45335e945cabbe9e6e9b3a0753d2604fa442c0d2f9dbd",
+          "line_start": 290,
+          "line_end": 290,
+          "symbol": "test_program_source_fragments_are_not_prose_interpolation"
+        },
+        {
+          "path": "packages/python/tests/rules/test_prefer_fstring_over_concat.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "ae3773a5956e8cc35df45335e945cabbe9e6e9b3a0753d2604fa442c0d2f9dbd",
+          "line_start": 652,
+          "line_end": 652,
+          "symbol": "test_configuration_syntax_is_fragment_composition"
+        },
+        {
+          "path": "packages/python/tests/rules/test_prefer_fstring_over_concat.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "ae3773a5956e8cc35df45335e945cabbe9e6e9b3a0753d2604fa442c0d2f9dbd",
+          "line_start": 681,
+          "line_end": 681,
+          "symbol": "test_stable_join_bindings_retain_fragment_composition"
+        }
+      ],
+      "validation_scope": "Source/test contract reviewed; actual integrated owning-module tests passed. Exact immutable upstream CI additionally supports unchanged fixer/runtime controls; no fresh full-suite completion is claimed.",
+      "integrated_candidate_verification": "Owning changed-rule native module passed in the actual614-test integrated preflight; full canonical gates, hooks and exact-head CI remain pending.",
+      "actual_integrated_control": {
+        "classname": "tests.rules.test_prefer_fstring_over_concat",
+        "name": "test_literal_prefix_interpolation_cases[prefix-exact-suppression]",
+        "outcome": "passed",
+        "scope": "Exact suppression prevents the newly expanded literal-prefix finding; byte-coordinate/convergence fixer controls remain separately bound to upstream native evidence.",
+        "feasibility_review_id": "MAIN250-prefer-fstring-over-concat-3",
+        "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+      }
+    }
+  ],
+  "safe_fstring_design_and_controls": [
+    {
+      "id": "MAIN250-SARJ068-D1",
+      "recorded_at": "2026-10-26T05:36:31.873056+00:00",
+      "phase": "SAFE design and verification control",
+      "boundary": "Exact primitive conversion, evaluation count and order",
+      "design": "Keep explicit !s/!r/!a conversion on the exact original primitive-producing expression. Do not introduce temporary bindings or reorder calls.",
+      "positive_witness": "return 'The value is ' + str(len(value)) + '!' -> return f'The value is {len(value)!s}!'",
+      "oracle": "Existing Sized.__len__ witness requires the result The value is 3! and exactly one __len__ call before and after the actual fix.",
+      "evidence": [
+        {
+          "path": "packages/python/src/sarj_python_lint/_autofix.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "d6b093e42163c0a149b29305087e9d85d4e0951178fae26b51ae2d08187f69c6",
+          "line_start": 598,
+          "line_end": 646,
+          "symbol": "primitive conversion acceptance"
+        },
+        {
+          "path": "packages/python/tests/test_autofix_runtime.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "0f33b7948798ae8cde79acaddf1dac1d1ab841b2206f7232b4db69ae44fc83ac",
+          "line_start": 184,
+          "line_end": 184,
+          "symbol": "test_runtime_fixes_preserve_values_order_and_exception_contracts",
+          "parameter_case": "prefer-fstring-over-concat"
+        },
+        {
+          "path": "packages/python/tests/test_autofix_runtime.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "0f33b7948798ae8cde79acaddf1dac1d1ab841b2206f7232b4db69ae44fc83ac",
+          "line_start": 127,
+          "line_end": 136,
+          "symbol": "Sized runtime oracle"
+        }
+      ],
+      "verification_status": "upstream exact-source native runtime control covered by immutable complete CI; integrated candidate verification pending; the distinct integrated preflight control below passed with its explicitly limited scope",
+      "actual_integrated_control": {
+        "classname": "tests.rules.test_prefer_fstring_over_concat",
+        "name": "test_explicit_str_guidance_preserves_semantics",
+        "outcome": "passed",
+        "scope": "Preserves explicit !s guidance; diagnostic text control only, not a newly executed runtime-equivalence probe."
+      }
+    },
+    {
+      "id": "MAIN250-SARJ068-D2",
+      "recorded_at": "2026-10-26T05:36:31.873056+00:00",
+      "phase": "SAFE design and verification control",
+      "boundary": "Custom __add__/__format__/__str__ and merely annotated strings",
+      "design": "Refuse bare str-annotated operands and conversions of unknown objects. Keep the exact-native primitive whitelist and untouched builtin namespace guard.",
+      "counterexample": "class S(str):\n    def __add__(self, other): return 'added'\n    def __format__(self, spec): return 'formatted'\ndef label(value: str): return value + ' is ready'\n# S('x') follows __add__; a naive f-string follows __format__ instead.",
+      "oracle": "A proposed direct subclass witness must keep source unchanged; the existing native control also refuses str(value) when custom __str__ returns a subclass whose __format__ differs.",
+      "evidence": [
+        {
+          "path": "packages/python/src/sarj_python_lint/_autofix.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "d6b093e42163c0a149b29305087e9d85d4e0951178fae26b51ae2d08187f69c6",
+          "line_start": 610,
+          "line_end": 646,
+          "symbol": "refusal of bare names and unknown conversions"
+        },
+        {
+          "path": "packages/python/tests/test_autofix.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "b00dbe7e12065650e22433dea6ae0fe78665b1f535ea4e277dcb357b268f79fa",
+          "line_start": 226,
+          "line_end": 226,
+          "symbol": "test_ambiguous_behavior_and_comment_ownership_remain_for_review",
+          "parameter_case": "prefer-fstring-over-concat"
+        },
+        {
+          "path": "packages/python/tests/test_autofix.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "b00dbe7e12065650e22433dea6ae0fe78665b1f535ea4e277dcb357b268f79fa",
+          "line_start": 270,
+          "line_end": 270,
+          "symbol": "test_custom_string_conversion_and_positional_export_growth_are_preserved"
+        }
+      ],
+      "verification_status": "existing custom-conversion refusal covered by immutable upstream CI; newly written combined __add__/__format__ illustration is source reasoning only, not executed here; fresh integrated control pending; the distinct integrated preflight control below passed with its explicitly limited scope",
+      "actual_integrated_control": {
+        "classname": "tests.rules.test_prefer_fstring_over_concat",
+        "name": "test_plain_interpolation_message_does_not_mention_string_coercion",
+        "outcome": "passed",
+        "scope": "Bare str-annotated diagnostic does not invent str(...) guidance; custom __add__/__format__ refusal is separately established by source guard and unchanged upstream native fixer test."
+      }
+    },
+    {
+      "id": "MAIN250-SARJ068-D3",
+      "recorded_at": "2026-10-26T05:36:31.873056+00:00",
+      "phase": "SAFE design and verification control",
+      "boundary": "UTF-8 coordinates, CRLF, comments, suppression and convergence",
+      "design": "Use the existing Source.replace edit path, diagnostic coordinate match and comment refusal. Reanalyze convergence and never rewrite unrelated unselected source.",
+      "oracle": "Existing unicode-before-expression/CRLF case preserves exact newline count; fixed source converges, empty selection is unchanged, and an owned inline comment prevents an unsafe replacement.",
+      "evidence": [
+        {
+          "path": "packages/python/src/sarj_python_lint/_autofix.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "d6b093e42163c0a149b29305087e9d85d4e0951178fae26b51ae2d08187f69c6",
+          "line_start": 610,
+          "line_end": 625,
+          "symbol": "coordinate/comment gated expression replacement"
+        },
+        {
+          "path": "packages/python/tests/test_autofix.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "b00dbe7e12065650e22433dea6ae0fe78665b1f535ea4e277dcb357b268f79fa",
+          "line_start": 235,
+          "line_end": 235,
+          "symbol": "test_unicode_byte_columns_and_crlf_are_preserved"
+        },
+        {
+          "path": "packages/python/tests/test_autofix.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "b00dbe7e12065650e22433dea6ae0fe78665b1f535ea4e277dcb357b268f79fa",
+          "line_start": 204,
+          "line_end": 204,
+          "symbol": "test_fixed_sources_converge_and_unselected_sources_stay_unchanged"
+        },
+        {
+          "path": "packages/python/tests/test_autofix.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "b00dbe7e12065650e22433dea6ae0fe78665b1f535ea4e277dcb357b268f79fa",
+          "line_start": 226,
+          "line_end": 226,
+          "symbol": "test_ambiguous_behavior_and_comment_ownership_remain_for_review"
+        }
+      ],
+      "verification_status": "three distinct existing formatting/convergence/refusal controls covered by immutable upstream CI; integrated candidate verification pending; the distinct integrated preflight control below passed with its explicitly limited scope",
+      "actual_integrated_control": {
+        "classname": "tests.rules.test_prefer_fstring_over_concat",
+        "name": "test_literal_prefix_interpolation_cases[prefix-exact-suppression]",
+        "outcome": "passed",
+        "scope": "Exact suppression prevents the newly expanded literal-prefix finding; byte-coordinate/convergence fixer controls remain separately bound to upstream native evidence."
+      }
+    }
+  ],
+  "shared_infrastructure_delta": [
+    {
+      "area": "shared contracts and all rule findings",
+      "verdict": "type contract changed; Fix and edit machinery unchanged",
+      "reason": "Only Finding.rule_id changes annotation from str to existing RuleId. RuleId is typing.NewType over str, so explicit RuleId(...) conversions retain the same runtime value. Finding strip/location validation is unchanged. Runtime annotation introspection can observe the intended type-contract change; it is not an autofix-safety expansion.",
+      "evidence": [
+        {
+          "path": "packages/contracts/src/sarj_rule_contracts/contracts.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "e1df38dc74bd90ed1e7aec0d82f99ce9ff74798a6bd40d1a9d5557fa992ad701",
+          "line_start": 21,
+          "line_end": 22,
+          "symbol": "RuleId NewType"
+        },
+        {
+          "path": "packages/contracts/src/sarj_rule_contracts/contracts.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "e1df38dc74bd90ed1e7aec0d82f99ce9ff74798a6bd40d1a9d5557fa992ad701",
+          "line_start": 417,
+          "line_end": 429,
+          "symbol": "Finding"
+        },
+        {
+          "path": "packages/python/src/sarj_python_lint/rule_base.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "16e4b9bb8672bc37b04b85aeca7605020164b38ee981043a6b9837941738d1d8",
+          "line_start": 98,
+          "line_end": 105,
+          "symbol": "unchanged native Fix dataclass"
+        }
+      ]
+    },
+    {
+      "area": "IaC/SQL fix selection and literal coordinates",
+      "verdict": "no edit arithmetic or parser-boundary change in this main delta",
+      "reason": "The authoritative diff adds explicit RuleId(...) at existing diagnostic/literal-dispatch boundaries and narrows rule_id annotations. Source spans, literal extraction, apply_edits and balanced/parseable guards are unchanged. Existing per-language suites are upstream evidence; integrated candidate validation remains pending.",
+      "changed_paths": [
+        "packages/iac/src/sarj_iac_lint/autofix.py",
+        "packages/sql/src/sarj_sql_lint/autofix.py",
+        "packages/sql/src/sarj_sql_lint/_autofix_literals.py"
+      ]
+    },
+    {
+      "area": "Standards external report identity",
+      "verdict": "same runtime string IDs under existing NewType boundary",
+      "reason": "InvocationId is an existing NewType over str. Added wrappers retain the same project/batch strings, while None handling and coverage validation remain. No new repository-code execution authority, exclusion, rollback behavior or analyzer suppression is introduced.",
+      "evidence": [
+        {
+          "path": "packages/standards/src/sarj_standards/libs/diagnostics/models.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "5bbe5ebdd387b8af207a1c97199bd5879e9c42ac799403204cfcc601d539c1c3",
+          "line_start": 18,
+          "line_end": 19,
+          "symbol": "AnalyzerId/InvocationId NewType"
+        },
+        {
+          "path": "packages/standards/src/sarj_standards/libs/linting/external.py",
+          "commit": "250043c2b8132c956bab07ef16233297b0bd23ab",
+          "sha256": "31328c0e85c01feff86e7e066cc21d6c282f305c7ddf8435194103d69aa1d622",
+          "line_start": 2729,
+          "line_end": 2740,
+          "symbol": "_invoke invocation_id contract"
+        }
+      ]
+    }
+  ],
+  "unchanged_rules": {
+    "count": 357,
+    "keys": [
+      "eslint:duplicate-test-body",
+      "eslint:enforce-file-structure",
+      "eslint:excessive-commentary",
+      "eslint:iac-source-coupled-test",
+      "eslint:interface-contract-members-private",
+      "eslint:named-child-schema-type",
+      "eslint:no-bare-return-from-test-catch",
+      "eslint:no-bespoke-api-case-conversion",
+      "eslint:no-boolean-selector-parameter",
+      "eslint:no-broad-return-type",
+      "eslint:no-client-side-data-fetching",
+      "eslint:no-comment-cruft",
+      "eslint:no-conditional-empty-object-spread",
+      "eslint:no-contradictory-overload-return",
+      "eslint:no-contradictory-type-predicate",
+      "eslint:no-cors-wildcard-with-credentials",
+      "eslint:no-credential-in-browser-storage",
+      "eslint:no-dangerously-allow-svg",
+      "eslint:no-declaration-comment-wall",
+      "eslint:no-detached-global-fetch",
+      "eslint:no-duplicate-lifecycle-refresh-listeners",
+      "eslint:no-duplicate-test-case",
+      "eslint:no-dynamic-sql",
+      "eslint:no-enum",
+      "eslint:no-exception-text-in-5xx-response",
+      "eslint:no-excess-jsx-props",
+      "eslint:no-excessive-cognitive-complexity",
+      "eslint:no-fat-try-blocks",
+      "eslint:no-first-party-module-mock",
+      "eslint:no-generic-single-export-module",
+      "eslint:no-hand-rolled-sleep",
+      "eslint:no-hand-rolled-spinner",
+      "eslint:no-impossible-zod-literal-bounds",
+      "eslint:no-in-operator-on-built-in-collections",
+      "eslint:no-insecure-random-id",
+      "eslint:no-invalid-typed-mutation",
+      "eslint:no-invalid-zod-custom-parse",
+      "eslint:no-json-stringify-error",
+      "eslint:no-json-stringify-object-equality",
+      "eslint:no-known-value-widening",
+      "eslint:no-log-only-catch",
+      "eslint:no-long-comment",
+      "eslint:no-numeric-search-param-coercion",
+      "eslint:no-offset-pagination",
+      "eslint:no-partial-type-predicate",
+      "eslint:no-positional-tuple-return",
+      "eslint:no-production-browser-source-maps",
+      "eslint:no-raw-env",
+      "eslint:no-raw-fetch-outside-clients",
+      "eslint:no-reduce-accumulator-copy",
+      "eslint:no-redundant-consumer-union",
+      "eslint:no-redundant-optional-array-default",
+      "eslint:no-repeated-string-literal",
+      "eslint:no-restated-comment",
+      "eslint:no-restated-jsdoc",
+      "eslint:no-restricted-library-load",
+      "eslint:no-router-refresh-polling",
+      "eslint:no-secret-in-log",
+      "eslint:no-select-star",
+      "eslint:no-sentinel-return-on-catch",
+      "eslint:no-server-env-in-client-component",
+      "eslint:no-silent-promise-catch",
+      "eslint:no-sleep-in-test-body",
+      "eslint:no-storage-in-stateless-modules",
+      "eslint:no-string-concat-in-loop",
+      "eslint:no-tautological-expect",
+      "eslint:no-trailing-value-narration",
+      "eslint:no-type-member-comment-wall",
+      "eslint:no-typed-doc-sections",
+      "eslint:no-union-in-comment",
+      "eslint:no-unlocalized-jsx-attributes",
+      "eslint:no-unlocalized-jsx-text",
+      "eslint:no-unlocalized-toast",
+      "eslint:no-unnecessary-use-client",
+      "eslint:no-unsafe-mock-casting",
+      "eslint:no-unsafe-test-double-cast",
+      "eslint:no-vague-suppression-description",
+      "eslint:no-zod-native-enum",
+      "eslint:prefer-await-in-async-return",
+      "eslint:prefer-constant-time-secret-compare",
+      "eslint:prefer-discriminated-union",
+      "eslint:prefer-ecmascript-private-members",
+      "eslint:prefer-immutable-module-constant",
+      "eslint:prefer-input-group-search",
+      "eslint:prefer-logical-tailwind-utilities",
+      "eslint:prefer-millisecond-control-duration-schema",
+      "eslint:prefer-minimal-parameter-contract",
+      "eslint:prefer-module-level-constant",
+      "eslint:prefer-module-level-refined-schema",
+      "eslint:prefer-module-level-schema",
+      "eslint:prefer-multi-value-zod-literal",
+      "eslint:prefer-named-callback-domain",
+      "eslint:prefer-named-complex-return-type",
+      "eslint:prefer-native-fetch-in-server-actions",
+      "eslint:prefer-native-random-uuid",
+      "eslint:prefer-node-crypto-hash",
+      "eslint:prefer-node-fs-promises",
+      "eslint:prefer-nominal-id-types",
+      "eslint:prefer-non-nullable-collection",
+      "eslint:prefer-nullish-filter-predicate",
+      "eslint:prefer-schema-for-api-payload",
+      "eslint:prefer-semantic-colors",
+      "eslint:prefer-server-actions",
+      "eslint:prefer-shadcn-primitives",
+      "eslint:prefer-shared-zod-enum",
+      "eslint:prefer-switch-for-repeated-equality",
+      "eslint:prefer-typed-reflection",
+      "eslint:prefer-whole-object-assertion",
+      "eslint:prefer-zod-infer",
+      "eslint:prefer-zod-parse-output-type",
+      "eslint:repeated-static-call-cases",
+      "eslint:require-assert-never",
+      "eslint:require-button-accessible-name",
+      "eslint:require-camelcase-properties",
+      "eslint:require-explicit-contract-implementation",
+      "eslint:require-explicit-service-contract",
+      "eslint:require-fetch-timeout",
+      "eslint:require-interface-for-exported-class",
+      "eslint:require-pascal-case-zod-schema-name",
+      "eslint:require-port-for-service",
+      "eslint:require-sql-access-class",
+      "eslint:require-static-next-matcher",
+      "eslint:require-svg-accessible-name",
+      "eslint:require-use-form-default-values",
+      "eslint:require-use-server-in-actions-file",
+      "eslint:require-zod-form-validation",
+      "eslint:sole-export-matches-filename",
+      "eslint:source-coupled-test",
+      "eslint:stepdown",
+      "eslint:store-insert-requires-on-conflict",
+      "eslint:test-loops-over-literal-cases",
+      "eslint:test-phase-label-comment",
+      "iac:no-comment-cruft",
+      "iac:no-dead-environment-input",
+      "iac:no-environment-conditional",
+      "iac:no-managed-service-account-key",
+      "iac:no-mocked-terraform-test-oracle",
+      "iac:no-nested-conditional",
+      "iac:no-plaintext-secret-env",
+      "iac:no-project-basic-privilege",
+      "iac:no-project-secret-access-for-service-account",
+      "iac:no-redundant-variable-validation",
+      "iac:no-restated-comment",
+      "iac:no-terraform-data-condition",
+      "iac:require-deletion-protection",
+      "iac:require-prevent-destroy-on-irreplaceable",
+      "python:async-cleanup-registered-synchronously",
+      "python:async-mock-call-without-await-assertion",
+      "python:complex-postgres-query-requires-architecture-review",
+      "python:defect-xfail-requires-explicit-strict",
+      "python:delete-route-returns-no-content",
+      "python:docstring-args-restate-signature",
+      "python:docstring-returns-restate-signature",
+      "python:duplicate-adjacent-exception-handler",
+      "python:duplicate-closed-pure-helper",
+      "python:duplicate-pytest-fixture-params",
+      "python:excessive-commentary",
+      "python:fakes-in-shared-location",
+      "python:fastapi-class-router-contract",
+      "python:fastapi-explicit-openapi-contract",
+      "python:iac-source-coupled-test",
+      "python:invalid-pydantic-field-default",
+      "python:mock-without-spec",
+      "python:named-record-at-boundaries",
+      "python:negative-only-http-status-assertion",
+      "python:no-analytical-aggregation-in-postgres-store",
+      "python:no-any-mapping-types",
+      "python:no-async-function-cache",
+      "python:no-bare-test-phase-comments",
+      "python:no-before-validator-input-mutation",
+      "python:no-blanket-suppression",
+      "python:no-broad-keyword-capture",
+      "python:no-comment-cruft",
+      "python:no-conflicting-pydantic-alias-validation",
+      "python:no-conftest-test-module-import",
+      "python:no-contradictory-type-guard",
+      "python:no-copied-inherited-docstring",
+      "python:no-cors-wildcard-with-credentials",
+      "python:no-create-verb-in-post-path",
+      "python:no-database-programmability",
+      "python:no-defaulted-environment-setting",
+      "python:no-delete-statement",
+      "python:no-discarded-validation-result",
+      "python:no-docstring-type-restatement",
+      "python:no-dual-shape-model-field-reader",
+      "python:no-dunder-all",
+      "python:no-duplicate-dunder-all-entry",
+      "python:no-duplicate-field-validator-body",
+      "python:no-exception-text-in-500-detail",
+      "python:no-excessive-cognitive-complexity",
+      "python:no-fastapi-on-event",
+      "python:no-file-level-escape-hatch-suppression",
+      "python:no-first-party-private-import",
+      "python:no-fixed-sleep-before-assert",
+      "python:no-fixed-sleep-in-loop",
+      "python:no-folded-bad-request-not-found",
+      "python:no-frozen-after-validator-field-write",
+      "python:no-generic-single-export-module",
+      "python:no-hasattr",
+      "python:no-hidden-constructor-fallback",
+      "python:no-impossible-pydantic-field-bounds",
+      "python:no-injected-module-loader",
+      "python:no-input-model-mutation",
+      "python:no-interpreter-source-arguments",
+      "python:no-invalid-argument-name-suppression",
+      "python:no-invalid-pydantic-bypass",
+      "python:no-invalid-pydantic-validator-return",
+      "python:no-loguru-exc-info",
+      "python:no-loguru-printf-format",
+      "python:no-mocked-pydantic-value-object",
+      "python:no-mutating-container-transform",
+      "python:no-nested-pydantic-field-validator",
+      "python:no-nullable-dependency-fallback",
+      "python:no-offset-pagination",
+      "python:no-partial-type-is",
+      "python:no-positional-psycopg-row-escape",
+      "python:no-positional-tuple-record",
+      "python:no-provably-dead-mock-configuration",
+      "python:no-psycopg-execution-outside-injected-owner",
+      "python:no-random-uuid-in-sql",
+      "python:no-raw-connection-in-tests",
+      "python:no-raw-source-text-test-oracle",
+      "python:no-redundant-local-alias",
+      "python:no-redundant-module-alias-exports",
+      "python:no-repeated-structured-string-literal",
+      "python:no-repeated-test-body",
+      "python:no-repeated-unseeded-stdlib-random-in-test",
+      "python:no-restated-closed-domain-description",
+      "python:no-restated-comment",
+      "python:no-secret-in-log",
+      "python:no-select-star",
+      "python:no-service-behavior-in-settings",
+      "python:no-shallow-container-type-guard",
+      "python:no-shallow-record-type-guard",
+      "python:no-slash-collection-root-under-prefix",
+      "python:no-statically-truthy-assertion",
+      "python:no-string-concat-in-loop",
+      "python:no-swallowed-asyncio-cancellation",
+      "python:no-test-method-grafting",
+      "python:no-trailing-numeric-unit-assignment-comment",
+      "python:no-unique-violation-message-match",
+      "python:no-unknown-pydantic-validator-field",
+      "python:no-unnecessary-docstring",
+      "python:no-unused-copy-result",
+      "python:no-unused-underscored-keyword-parameter",
+      "python:no-unused-value-marker",
+      "python:no-vague-suppression-description",
+      "python:no-whole-request-response-payload-in-log",
+      "python:no-work-verb-get-route",
+      "python:opaque-parametrize-case-needs-id",
+      "python:over-mocked-test",
+      "python:prefer-autospec-for-callable-mock",
+      "python:prefer-bulk-upsert",
+      "python:prefer-class-row",
+      "python:prefer-collection-comprehension",
+      "python:prefer-constant-time-secret-compare",
+      "python:prefer-declarative-batch-validation",
+      "python:prefer-direct-import-module",
+      "python:prefer-discriminated-model-union",
+      "python:prefer-immutable-module-constant",
+      "python:prefer-injected-dependency-over-monkeypatch",
+      "python:prefer-library-fake",
+      "python:prefer-match-assert-never",
+      "python:prefer-match-exception-dispatch",
+      "python:prefer-match-type-dispatch",
+      "python:prefer-match-value-dispatch",
+      "python:prefer-module-level-constant",
+      "python:prefer-monkeypatch-for-process-state-in-test",
+      "python:prefer-monotonic-for-elapsed-time",
+      "python:prefer-native-string-check",
+      "python:prefer-non-nullable-collection",
+      "python:prefer-or-pattern",
+      "python:prefer-precise-object-contract",
+      "python:prefer-psycopg-executemany",
+      "python:prefer-pydantic-json-value",
+      "python:prefer-pydantic-model-assertion",
+      "python:prefer-pytest-dependency-fixtures",
+      "python:prefer-pytest-fixture-injection",
+      "python:prefer-regex-fullmatch",
+      "python:prefer-required-constructor-parameters",
+      "python:prefer-self-documenting-constant",
+      "python:prefer-self-type-annotation",
+      "python:prefer-set-isdisjoint",
+      "python:prefer-str-enum",
+      "python:prefer-struct-over-namedtuple",
+      "python:prefer-typed-settings-field",
+      "python:prefer-walrus-awaited-none-guard",
+      "python:prefer-walrus-comprehension-filter",
+      "python:prefer-walrus-regex-match",
+      "python:prefer-walrus-stream-loop",
+      "python:production-derived-test-cases",
+      "python:pytest-fixture-returns-bare-tuple",
+      "python:pytest-fixture-returns-closed-resource",
+      "python:redundant-class-docstring",
+      "python:redundant-docstring",
+      "python:redundant-module-docstring",
+      "python:redundant-test-constructor-forwarder",
+      "python:repeated-kwarg-heavy-call-in-test",
+      "python:repeated-static-call-cases",
+      "python:repeated-test-composition",
+      "python:repeated-unimplemented-test-contract",
+      "python:replay-contract-insert-requires-duplicate-policy",
+      "python:require-exp-on-jwt-decode",
+      "python:require-explicit-contract-implementation",
+      "python:require-explicit-psycopg-transaction",
+      "python:require-injectable-retry-sleep",
+      "python:require-keyword-only-swap-prone-params",
+      "python:require-nodecode-for-splitting-settings-field",
+      "python:require-port-for-service",
+      "python:require-precise-factory-signature",
+      "python:require-public-dependency-contract",
+      "python:require-pydantic-for-external-json",
+      "python:require-pydantic-for-mapping-shape",
+      "python:require-pydantic-for-structured-payload",
+      "python:require-pydantic-ordinal-lower-bound",
+      "python:restated-test-docstring",
+      "python:shared-mutable-pydantic-factory",
+      "python:stepdown",
+      "python:store-field-update-reuses-upsert",
+      "python:store-get-delegates-to-bulk-read",
+      "python:subprocess-kill-without-reap",
+      "python:test-without-explicit-oracle",
+      "python:timestamp-order-requires-tiebreaker",
+      "python:typed-error-reasons",
+      "python:unused-test-factory-option",
+      "sql:enforce-timestamptz",
+      "sql:excess-migration-index-requires-justification",
+      "sql:existing-table-check-or-foreign-key-requires-not-valid",
+      "sql:idempotent-ddl",
+      "sql:index-concurrently",
+      "sql:insert-requires-replay-policy",
+      "sql:mixed-migration-phases",
+      "sql:no-application-schema-check",
+      "sql:no-database-functions",
+      "sql:no-database-triggers",
+      "sql:no-duplicate-index",
+      "sql:no-long-migration-narration",
+      "sql:no-migration-comment-cruft",
+      "sql:no-offset-pagination",
+      "sql:no-pg-enum",
+      "sql:prefer-jsonb",
+      "sql:prefer-text-over-varchar",
+      "sql:prefer-uuidv7-default",
+      "sql:require-fk-index",
+      "sql:require-lock-timeout",
+      "text:cloudbuild-contract",
+      "text:commented-out-config",
+      "text:config-comment-wall",
+      "text:declarative-deployment-boundary",
+      "text:ephemeral-execution-artifact",
+      "text:exact-config-comment-restatement",
+      "text:hidden-markdown-heading",
+      "text:iac-source-coupled-test",
+      "text:large-shell-program",
+      "text:no-unsafe-command-argument-interpolation",
+      "text:no-wildcard-secret-read-permission",
+      "text:workflow-embedded-program"
+    ],
+    "basis": "No other native rule source module changed in the authoritative6dd..250 delta. Shared type-boundary changes are accounted for above; historical reviews are not overwritten."
+  },
+  "immutable_upstream_native_evidence": {
+    "kind": "reused immutable upstream native evidence",
+    "pr": 1808,
+    "pr_head": "fd5a5c2ce4e99db42bd64ce2bcd389e68fb37d4c",
+    "pr_ci_run": 40272646934,
+    "attempt": 1,
+    "main": "250043c2b8132c956bab07ef16233297b0bd23ab",
+    "main_ci_run": 40273690081,
+    "tree": "5293635e7c0b66a133c863d31987edcb6ed8b06e",
+    "python_job": 121408704457,
+    "complete_pr_ci_jobs": 29,
+    "aggregate_artifact": 12629760430,
+    "aggregate_proof_sha256": "77c0da590ee46e57aaa4c4622ce137896f3111e9c397d347456570c83c348192",
+    "aggregate_proof": {
+      "schema_version": 1,
+      "repository": "sarj-ai/code-standards",
+      "source_commit": "9787112afdcd787a7e57fde4e16c57709b2ea995",
+      "tree": "5293635e7c0b66a133c863d31987edcb6ed8b06e",
+      "comparison_base": "6dd5656a9c8ef9d307c1d45d4b216921a4d89782",
+      "kind": "ci",
+      "run_id": 40272646934,
+      "run_attempt": 1
+    },
+    "source_relation": "The complete CI proof tree equals immutable merged main. Source/tests cited below were read at that exact main commit.",
+    "integrated_candidate_status": "Actual owning-module614 and diagnostics98 targeted tests passed; full canonical gates/hooks/exact-head CI pending.",
+    "new_native_executions_by_this_review": 0
+  },
+  "required_fresh_integrated_validation": [
+    "Current integrated rule inventory/catalog and documentation calibration, including183 Python rules and361 total custom rules.",
+    "Targeted Python rule/fix-owner tests for new and changed semantics plus current f-string runtime/refusal/coordinate controls.",
+    "Current sibling packages and strict native diagnostic/type contracts after contracts0.4.1/IaC0.30.1/SQL0.26.1 pin integration.",
+    "Complete applicable native gates, normal hooks and exact-head required CI before the integrated follow-up candidate is qualified."
+  ],
+  "verdict": "Retain new grouped-settings and expanded nominal/service policies as manual; retain only the existing proven primitive-conversion f-string SAFE subset. No additional SAFE expansion or new Source repair is proposed by this audit.",
+  "integrated_candidate_status": "Source-reviewed; targeted integrated owner/diagnostic tests passed. Current full canonical qualification, normal hooks and exact-head CI remain pending.",
+  "integrated_targeted_evidence": {
+    "recorded_at": "2026-10-26T05:40:04.871447+00:00",
+    "scope": "actual supervised integrated preflight; source/tests of the four rule modules match immutable250043. No repeated whole-suite pass counted.",
+    "python_owner_tests_passed": 614,
+    "python_owner_skipped": 0,
+    "diagnostics_owner_tests_passed": 98,
+    "diagnostics_owner_skipped": 0,
+    "python_junit_sha256": "0fecd9a8c254b9977038f7f8969c1b3d40547798952398696e9fd320772cf575",
+    "diagnostics_junit_sha256": "eaa4dfda876b6e45a1470db7835f397ece7f3ac1aeecd350cd0fbc8638122cca",
+    "completion_sha256": "a9b6642a924f6bf3cd55eaf040bc6afd712bc3db762a4097afd7910833eb1082",
+    "four_rule_source_hashes_match_main": {
+      "packages/python/src/sarj_python_lint/rules/prefer_grouped_settings.py": "4c898554a7d85b4a8ad59bd02660089b86ecb1e2a0f42862b665e84a7e29aa34",
+      "packages/python/src/sarj_python_lint/rules/prefer_fstring_over_concat.py": "914c297b7d3bcbb5691c7a8f07c0ea8189770703d60c0e782fae83c57cc2a666",
+      "packages/python/src/sarj_python_lint/rules/prefer_nominal_id_types.py": "c3515d7289abcd0c7720f8fb753b86fd3da34b87a05554adb641fb04245899b6",
+      "packages/python/src/sarj_python_lint/rules/require_explicit_service_contract.py": "b221d931f445c6546ca12238cf295c133f4f211f6ee0a0c2c25261297b68c90b"
+    },
+    "full_canonical_hooks_exact_head_CI": "pending",
+    "fstring_three_distinct_passed_controls": [
+      {
+        "classname": "tests.rules.test_prefer_fstring_over_concat",
+        "name": "test_explicit_str_guidance_preserves_semantics",
+        "outcome": "passed",
+        "scope": "Preserves explicit !s guidance; diagnostic text control only, not a newly executed runtime-equivalence probe."
+      },
+      {
+        "classname": "tests.rules.test_prefer_fstring_over_concat",
+        "name": "test_plain_interpolation_message_does_not_mention_string_coercion",
+        "outcome": "passed",
+        "scope": "Bare str-annotated diagnostic does not invent str(...) guidance; custom __add__/__format__ refusal is separately established by source guard and unchanged upstream native fixer test."
+      },
+      {
+        "classname": "tests.rules.test_prefer_fstring_over_concat",
+        "name": "test_literal_prefix_interpolation_cases[prefix-exact-suppression]",
+        "outcome": "passed",
+        "scope": "Exact suppression prevents the newly expanded literal-prefix finding; byte-coordinate/convergence fixer controls remain separately bound to upstream native evidence."
+      }
+    ],
+    "per_rule_three_distinct_passed_controls": {
+      "python:prefer-grouped-settings": [
+        {
+          "classname": "tests.rules.test_prefer_grouped_settings",
+          "name": "test_documented_examples",
+          "outcome": "passed",
+          "scope": "Executes documented flat/nested warning examples; does not prove environment-equivalent restructuring.",
+          "feasibility_review_id": "MAIN250-prefer-grouped-settings-1",
+          "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+        },
+        {
+          "classname": "tests.rules.test_prefer_grouped_settings",
+          "name": "test_settings_namespace_cases[character-prefix-is-not-namespace]",
+          "outcome": "passed",
+          "scope": "Rejects partial-character prefix grouping; no fields or aliases rewritten.",
+          "feasibility_review_id": "MAIN250-prefer-grouped-settings-2",
+          "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+        },
+        {
+          "classname": "tests.rules.test_prefer_grouped_settings",
+          "name": "test_only_owned_fields_form_a_new_group",
+          "outcome": "passed",
+          "scope": "Inherited/local field split does not fabricate two owned fields.",
+          "feasibility_review_id": "MAIN250-prefer-grouped-settings-3",
+          "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+        }
+      ],
+      "python:prefer-nominal-id-types": [
+        {
+          "classname": "tests.rules.test_prefer_nominal_id_types",
+          "name": "test_single_id_reuses_an_established_nominal_type_as_an_error[def load(file_id: str) -> None: ...\\n]",
+          "outcome": "passed",
+          "scope": "Established matching singleton carrier reports ERROR; annotation rewrite remains manual.",
+          "feasibility_review_id": "MAIN250-prefer-nominal-id-types-1",
+          "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+        },
+        {
+          "classname": "tests.rules.test_prefer_nominal_id_types",
+          "name": "test_duplicate_domain_brand_definitions_are_unknown",
+          "outcome": "passed",
+          "scope": "Ambiguous project brand definitions do not prescribe a nominal type.",
+          "feasibility_review_id": "MAIN250-prefer-nominal-id-types-2",
+          "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+        },
+        {
+          "classname": "tests.rules.test_prefer_nominal_id_types",
+          "name": "test_inherited_override_preserves_public_raw_id_contract[from typing import override-override]",
+          "outcome": "passed",
+          "scope": "Inherited external raw-ID operation is preserved while an independent owned function remains eligible.",
+          "feasibility_review_id": "MAIN250-prefer-nominal-id-types-3",
+          "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+        }
+      ],
+      "python:require-explicit-service-contract": [
+        {
+          "classname": "tests.rules.test_require_explicit_service_contract",
+          "name": "test_retained_executor_callback_establishes_a_service_boundary[retained-callback-dispatch]",
+          "outcome": "passed",
+          "scope": "Proven retained callback native dispatch establishes a service boundary; no Protocol is synthesized.",
+          "feasibility_review_id": "MAIN250-require-explicit-service-contract-1",
+          "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+        },
+        {
+          "classname": "tests.rules.test_require_explicit_service_contract",
+          "name": "test_native_http_operations_establish_a_service_boundary[http-adapter-private-helper]",
+          "outcome": "passed",
+          "scope": "A stable native HTTP operation reached through a private helper is recognized.",
+          "feasibility_review_id": "MAIN250-require-explicit-service-contract-2",
+          "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+        },
+        {
+          "classname": "tests.rules.test_require_explicit_service_contract",
+          "name": "test_untyped_lifecycle_factory_does_not_establish_a_service_contract",
+          "outcome": "passed",
+          "scope": "An untyped bare lifecycle factory alone does not establish service behavior.",
+          "feasibility_review_id": "MAIN250-require-explicit-service-contract-3",
+          "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+        }
+      ],
+      "python:prefer-fstring-over-concat": [
+        {
+          "classname": "tests.rules.test_prefer_fstring_over_concat",
+          "name": "test_explicit_str_guidance_preserves_semantics",
+          "outcome": "passed",
+          "scope": "Preserves explicit !s guidance; diagnostic text control only, not a newly executed runtime-equivalence probe.",
+          "feasibility_review_id": "MAIN250-prefer-fstring-over-concat-1",
+          "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+        },
+        {
+          "classname": "tests.rules.test_prefer_fstring_over_concat",
+          "name": "test_plain_interpolation_message_does_not_mention_string_coercion",
+          "outcome": "passed",
+          "scope": "Bare str-annotated diagnostic does not invent str(...) guidance; custom __add__/__format__ refusal is separately established by source guard and unchanged upstream native fixer test.",
+          "feasibility_review_id": "MAIN250-prefer-fstring-over-concat-2",
+          "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+        },
+        {
+          "classname": "tests.rules.test_prefer_fstring_over_concat",
+          "name": "test_literal_prefix_interpolation_cases[prefix-exact-suppression]",
+          "outcome": "passed",
+          "scope": "Exact suppression prevents the newly expanded literal-prefix finding; byte-coordinate/convergence fixer controls remain separately bound to upstream native evidence.",
+          "feasibility_review_id": "MAIN250-prefer-fstring-over-concat-3",
+          "execution": "selection from the single614-test integrated preflight; not a separate suite execution"
+        }
+      ]
+    }
+  }
+}
