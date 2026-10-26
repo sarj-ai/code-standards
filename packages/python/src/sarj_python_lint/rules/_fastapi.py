@@ -32,6 +32,7 @@ RESPONSE_TYPES = frozenset(
     }
 )
 _DEPENDENCY_MARKERS = frozenset({"Depends", "Security"})
+_CONSTRUCTOR_SOURCES = frozenset({"fastapi", "fastapi.applications", "fastapi.routing"})
 _MAX_IMPORTED_MODULE_BYTES = 500_000
 _MAX_IMPORT_HOPS = 8
 _MAX_PATH_ANCESTORS = 32
@@ -134,6 +135,7 @@ class FastapiIndex:
         self._node_classes: dict[int, int | None] = {}
         self._route_scopes: dict[int, int] = {}
         self._scope_parents: dict[int, int | None] = {0: None}
+        self._class_scopes: set[int] = set()
         self._index_scopes(tree)
         self._read_imports(tree)
         self._read_aliases(tree)
@@ -145,6 +147,7 @@ class FastapiIndex:
             self._node_scopes[id(node)] = scope
             if isinstance(node, ast.ClassDef):
                 class_owner = node.lineno
+                self._class_scopes.add(node.lineno)
                 self._scope_parents[node.lineno] = scope
                 scope = node.lineno
             self._node_classes[id(node)] = class_owner
@@ -272,7 +275,7 @@ class FastapiIndex:
 
     def _resolve_alias(self, key: _ReceiverKey, value: ast.expr) -> bool:
         source = self._receiver_key(key.scope, _binding_name(value))
-        constructor_kind = self._constructor_kind(value)
+        constructor_kind = self.constructor_kind(value)
         if constructor_kind is not None:
             self._register_constructor(key, value, constructor_kind)
             return True
@@ -337,25 +340,26 @@ class FastapiIndex:
         return isinstance(value, ast.Constant) and value.value is False
 
     def _is_constructor_call(self, node: ast.expr) -> bool:
-        return self._constructor_kind(node) is not None
+        return self.constructor_kind(node) is not None
 
-    def _constructor_kind(self, node: ast.expr) -> Literal["FastAPI", "APIRouter"] | None:
+    def constructor_kind(self, node: ast.expr) -> Literal["FastAPI", "APIRouter"] | None:
         if not isinstance(node, ast.Call):
             return None
-        if isinstance(node.func, ast.Name):
-            canonical = self.symbols.get(node.func.id)
-            if canonical == "FastAPI":
-                return "FastAPI"
-            if canonical == "APIRouter":
-                return "APIRouter"
-            return None
-        if (
-            isinstance(node.func, ast.Attribute)
-            and isinstance(node.func.value, ast.Name)
-            and node.func.value.id in self.modules
-            and node.func.attr in {"FastAPI", "APIRouter"}
-        ):
-            return "FastAPI" if node.func.attr == "FastAPI" else "APIRouter"
+        root = self._root_name(node.func) if isinstance(node.func, ast.Attribute) else flat_name(node.func)
+        local_scope = self._node_scopes.get(id(node), 0)
+        scope: int | None = local_scope
+        while scope is not None and scope != 0:
+            # Method bodies do not close over their class namespace.
+            if (scope == local_scope or scope not in self._class_scopes) and _ReceiverKey(
+                scope, root
+            ) in self.bound_names:
+                return None
+            scope = self._scope_parents[scope]
+        canonical = self.imports.resolved_symbol(node.func, sources=_CONSTRUCTOR_SOURCES)
+        if canonical == "FastAPI":
+            return "FastAPI"
+        if canonical == "APIRouter":
+            return "APIRouter"
         return None
 
     def routes(self, function: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[Route, ...]:

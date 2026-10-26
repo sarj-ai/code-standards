@@ -42,19 +42,21 @@ class FastapiClassRouterContract(Rule):
     id = "fastapi-class-router-contract"
     code = "SARJ451"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        summary="FastAPI routers use injected `*Router.build()` owners and explicit named object response models.",
+        summary="FastAPI HTTP routes use injected `*Router.build()` owners and explicit named object response models.",
         rationale=(
             "Class-owned construction gives dependencies one reviewable composition boundary, while explicit object models "
             "keep success envelopes stable and generated clients precise."
         ),
         remediation=(
             "Inject dependencies through `*Router.__init__`, create and return a local `APIRouter` from `build()`, and declare "
-            "`response_model=NamedResponse` with a matching named return annotation."
+            "`response_model=NamedResponse` with a matching named return annotation. Compose the application with "
+            "`FastAPI.include_router(...)` instead of declaring HTTP handlers directly on it."
         ),
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Tests, generated code, hidden routes, 204/304 responses, and explicit stream/file/HTML/text/redirect responses are excluded.",
+            "Tests, generated code, and hidden routes are excluded. FastAPI application construction and include_router composition are allowed.",
+            "Response-model checks exclude 204/304 responses and explicit stream/file/HTML/text/redirect responses.",
         ),
         examples=(
             RuleExample(
@@ -65,6 +67,38 @@ class FastapiClassRouterContract(Rule):
                 focus_path=PurePosixPath("app/routes.py"),
                 expected_count=1,
                 public=True,
+            ),
+            RuleExample(
+                example_id="direct-app-route",
+                title="An application declares an HTTP handler directly",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/routes.py",
+                        "from fastapi import FastAPI\napp = FastAPI()\n"
+                        "@app.get('/items', response_model=ItemsResponse)\n"
+                        "def items() -> ItemsResponse:\n    return ItemsResponse(items=[])\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/routes.py"),
+                expected_count=1,
+                public=True,
+                scenario="application-composition",
+            ),
+            RuleExample(
+                example_id="app-router-composition",
+                title="An application includes a class-owned router",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/routes.py",
+                        "from fastapi import FastAPI\napp = FastAPI()\napp.include_router(ItemRouter(service).build())\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/routes.py"),
+                expected_count=0,
+                public=True,
+                scenario="application-composition",
             ),
             RuleExample(
                 example_id="class-router",
@@ -99,11 +133,26 @@ class FastapiClassRouterContract(Rule):
             node for node in context.nodes(ast.AST) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         ):
             routes = tuple(route for route in index.routes(function) if not route.is_hidden)
+            findings.extend(_direct_app_route_findings(path, routes))
             for route in routes:
                 problem = _response_problem(function, route, index)
                 if problem is not None:
                     findings.append(Diagnostic(path, function.lineno, function.col_offset + 1, self.code, problem))
         return sorted(findings, key=lambda finding: (finding.line, finding.col, finding.message))
+
+
+def _direct_app_route_findings(path: Path, routes: tuple[Route, ...]) -> list[Diagnostic]:
+    decorators = {route.decorator for route in routes if route.receiver_kind == "FastAPI"}
+    return [
+        Diagnostic(
+            path,
+            decorator.lineno,
+            decorator.col_offset + 1,
+            FastapiClassRouterContract.code,
+            "declare HTTP routes on a local APIRouter returned by `*Router.build()`, then compose with include_router",
+        )
+        for decorator in decorators
+    ]
 
 
 def _router_construction_findings(
@@ -116,7 +165,7 @@ def _router_construction_findings(
 ) -> list[Diagnostic]:
     findings: list[Diagnostic] = []
     for call in (node for node in walk_ast(tree, index=node_index) if isinstance(node, ast.Call)):
-        if index.canonical(call.func) != "APIRouter":
+        if index.constructor_kind(call) != "APIRouter":
             continue
         function = _ancestor(call, parents, (ast.FunctionDef, ast.AsyncFunctionDef))
         cls = _ancestor(call, parents, ast.ClassDef)

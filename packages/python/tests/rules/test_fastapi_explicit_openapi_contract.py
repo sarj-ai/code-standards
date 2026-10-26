@@ -790,6 +790,220 @@ def second() -> APIRouter:
     assert _check(source) == []
 
 
+@pytest.mark.parametrize(
+    "decorators",
+    [
+        pytest.param(('get("/items")', 'get("/other")'), id="different-paths"),
+        pytest.param(('get("/items")', 'post("/items")'), id="different-methods"),
+        pytest.param(('api_route("/items", methods=["GET", "POST", "DELETE"])',), id="multiple-methods"),
+    ],
+)
+def test_literal_operation_ids_must_be_unique(decorators: tuple[str, ...]):
+    operations = "\n".join(
+        f"@router.{decorator[:-1]}, status_code=200, operation_id='items')\n"
+        f"async def operation_{index}() -> ItemResponse: ...\n"
+        for index, decorator in enumerate(decorators)
+    )
+    findings = _check(_source(operations))
+    assert len(findings) == 1
+    assert findings[0].message == ("[operation-id] duplicate operation_id `items`; use a unique ID for each operation.")
+
+
+def test_operation_id_conflicts_follow_router_and_decorator_aliases():
+    source = _source("""
+alias = router
+read = alias.get
+@read('/items', status_code=200, operation_id='items')
+async def items() -> ItemResponse: ...
+@router.post('/items', status_code=200, operation_id='items')
+async def create_item() -> ItemResponse: ...
+""")
+    findings = _check(source)
+    assert len(findings) == 1
+    assert "[operation-id]" in findings[0].message
+
+
+def test_stacked_operations_cannot_share_a_literal_operation_id():
+    source = _source("""
+@router.get('/items', status_code=200, operation_id='items')
+@router.post('/items', status_code=200, operation_id='items')
+async def items() -> ItemResponse: ...
+""")
+    findings = _check(source)
+    assert len(findings) == 1
+    assert "[operation-id]" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    ("first_options", "second_options"),
+    [
+        pytest.param("operation_id='items'", "operation_id='other_items'", id="unique"),
+        pytest.param("", "", id="generated-ids"),
+        pytest.param("operation_id=''", "operation_id=''", id="empty-ids-use-generated-default"),
+        pytest.param("operation_id='items'", "operation_id='Items'", id="case-sensitive"),
+        pytest.param("operation_id=operation_name", "operation_id=operation_name", id="dynamic-ids"),
+        pytest.param("operation_id='items', include_in_schema=False", "operation_id='items'", id="hidden-first"),
+        pytest.param("operation_id='items'", "operation_id='items', include_in_schema=False", id="hidden-second"),
+        pytest.param(
+            "operation_id='items'", "operation_id='items', openapi_extra={'operationId': 'other'}", id="override"
+        ),
+        pytest.param("operation_id='items'", "operation_id='items', openapi_extra=metadata", id="opaque-override"),
+    ],
+)
+def test_operation_ids_preserve_valid_and_unverifiable_contracts(first_options: str, second_options: str):
+    source = _source(f"""
+@router.get('/items', status_code=200, {first_options})
+async def items() -> ItemResponse: ...
+@router.post('/items', status_code=200, {second_options})
+async def create_item() -> ItemResponse: ...
+""")
+    assert _check(source) == []
+
+
+def test_duplicate_route_uses_existing_diagnostic_instead_of_operation_id_conflict():
+    source = _source("""
+@router.get('/items', status_code=200, operation_id='items')
+async def items() -> ItemResponse: ...
+@router.get('/items', status_code=200, operation_id='items')
+async def other_items() -> ItemResponse: ...
+""")
+    findings = _check(source)
+    assert len(findings) == 1
+    assert findings[0].message == "[routing] duplicate GET /items route."
+
+
+def test_operation_ids_do_not_assume_independent_routers_share_a_schema():
+    source = _source("""
+other = APIRouter()
+@router.get('/items', status_code=200, operation_id='items')
+async def items() -> ItemResponse: ...
+@other.post('/items', status_code=200, operation_id='items')
+async def other_items() -> ItemResponse: ...
+
+def factory() -> APIRouter:
+    router = APIRouter()
+    @router.get('/items', status_code=200, operation_id='items')
+    async def items() -> ItemResponse: ...
+    return router
+""")
+    assert _check(source) == []
+
+
+def test_hidden_router_operation_ids_are_excluded():
+    source = """
+from fastapi import APIRouter
+router = APIRouter(include_in_schema=False)
+@router.get('/items', status_code=200, operation_id='items')
+async def items() -> ItemResponse: ...
+@router.post('/items', status_code=200, operation_id='items')
+async def other_items() -> ItemResponse: ...
+"""
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "decorator",
+    [
+        pytest.param("get(route_path)", id="unknown-path"),
+        pytest.param('api_route("/items", methods=methods)', id="unknown-methods"),
+        pytest.param('api_route("/items", methods=["GET", "GET"])', id="repeated-same-method"),
+    ],
+)
+def test_operation_ids_require_distinct_known_operations(decorator: str):
+    source = _source(f"""
+@router.get('/items', status_code=200, operation_id='items')
+async def items() -> ItemResponse: ...
+@router.{decorator[:-1]}, status_code=200, operation_id='items')
+async def other_items() -> ItemResponse: ...
+""")
+    assert not any("[operation-id]" in finding.message for finding in _check(source))
+
+
+@pytest.mark.parametrize(
+    "registration",
+    [
+        pytest.param(
+            "if condition:\n"
+            "    @router.get('/one', status_code=200, operation_id='items')\n"
+            "    def one() -> ItemResponse: ...\n"
+            "else:\n"
+            "    @router.post('/two', status_code=200, operation_id='items')\n"
+            "    def two() -> ItemResponse: ...\n",
+            id="exclusive-branches",
+        ),
+        pytest.param(
+            "try:\n"
+            "    initialize()\n"
+            "    @router.get('/one', status_code=200, operation_id='items')\n"
+            "    def one() -> ItemResponse: ...\n"
+            "except RuntimeError:\n"
+            "    @router.post('/two', status_code=200, operation_id='items')\n"
+            "    def two() -> ItemResponse: ...\n",
+            id="fallback-registration",
+        ),
+        pytest.param(
+            "match mode:\n"
+            "    case 'one':\n"
+            "        @router.get('/one', status_code=200, operation_id='items')\n"
+            "        def one() -> ItemResponse: ...\n"
+            "    case 'two':\n"
+            "        @router.post('/two', status_code=200, operation_id='items')\n"
+            "        def two() -> ItemResponse: ...\n",
+            id="exclusive-match-cases",
+        ),
+        pytest.param(
+            "@router.get('/one', status_code=200, operation_id='items')\n"
+            "def one() -> ItemResponse: ...\n"
+            "for value in values:\n"
+            "    @router.post('/two', status_code=200, operation_id='items')\n"
+            "    def two() -> ItemResponse: ...\n",
+            id="possibly-empty-loop",
+        ),
+    ],
+)
+def test_operation_ids_do_not_assume_conditional_registrations_coexist(registration: str):
+    assert _check(_source(registration)) == []
+
+
+def test_handler_body_conditions_do_not_hide_operation_id_conflicts():
+    source = _source("""
+@router.get('/one', status_code=200, operation_id='items')
+def one() -> ItemResponse:
+    if condition:
+        return ItemResponse()
+    return ItemResponse()
+@router.post('/two', status_code=200, operation_id='items')
+def two() -> ItemResponse: ...
+""")
+    [finding] = _check(source)
+    assert "[operation-id]" in finding.message
+
+
+@pytest.mark.parametrize(
+    ("binding", "indent"),
+    [
+        pytest.param(
+            "from fastapi import APIRouter\nAPIRouter = OtherRouter\nrouter = APIRouter()", "", id="rebound-constructor"
+        ),
+        pytest.param("import fastapi as api\napi = other\nrouter = api.APIRouter()", "", id="rebound-module"),
+        pytest.param(
+            "from fastapi import APIRouter\ndef register(APIRouter):\n    router = APIRouter()",
+            "    ",
+            id="parameter-shadow",
+        ),
+    ],
+)
+def test_operation_ids_require_proven_fastapi_constructors(binding: str, indent: str):
+    source = f"""
+{binding}
+{indent}@router.get('/one', status_code=200, operation_id='items')
+{indent}def one() -> ItemResponse: ...
+{indent}@router.post('/two', status_code=200, operation_id='items')
+{indent}def two() -> ItemResponse: ...
+"""
+    assert _check(source) == []
+
+
 def test_hidden_websocket_test_generated_and_unrelated_routes_are_ignored():
     hidden = _source("""
 @router.get("/internal", include_in_schema=False)

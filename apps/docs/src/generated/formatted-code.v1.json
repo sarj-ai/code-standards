@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "ca720800975dea5cebef64696881340da8b2557f421e601299215a9981778f9d",
-  "cliSha256": "b82ca87d5d43b3532006e43ac8b823c49fe6022901fa5b29da4ff82f7813541f",
+  "catalogSha256": "34cfbffe0d1f7c9f5759928ed3aa18051023c6f0f376ea37ea7651a8c06d60bc",
+  "cliSha256": "d76bd79e22b473d092054b900f8732b0e29b3b0e445a89c61fcb60c43e35b572",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -7703,6 +7703,21 @@
           "files": [
             {
               "path": "app/routes.py",
+              "source": "from fastapi import FastAPI\n\napp = FastAPI()\napp.include_router(ItemRouter(service).build())\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/routes.py",
+          "id": "app-router-composition",
+          "outcome": "accept",
+          "scenarioId": "application-composition",
+          "title": "An application includes a class-owned router"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/routes.py",
               "source": "from fastapi import APIRouter\n\n\nclass ItemRouter:\n    def __init__(self, service: Service) -> None:\n        self._service = service\n\n    def build(self) -> APIRouter:\n        router = APIRouter()\n        return router\n"
             }
           ],
@@ -7712,6 +7727,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A class builds and returns its router"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/routes.py",
+              "source": "from fastapi import FastAPI\n\napp = FastAPI()\n\n\n@app.get(\"/items\", response_model=ItemsResponse)\ndef items() -> ItemsResponse:\n    return ItemsResponse(items=[])\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/routes.py",
+          "id": "direct-app-route",
+          "outcome": "reject",
+          "scenarioId": "application-composition",
+          "title": "An application declares an HTTP handler directly"
         },
         {
           "expectedCount": 1,
@@ -7747,6 +7777,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Operation with an explicit OpenAPI contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.get(\"/items\", status_code=200, operation_id=\"items\")\nasync def read_items() -> ItemsResponse: ...\n\n\n@router.post(\"/items\", status_code=201, operation_id=\"items\")\nasync def create_item() -> ItemResponse: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "duplicate-operation-id",
+          "outcome": "reject",
+          "scenarioId": "operation-id",
+          "title": "Two operations reuse one client method identifier"
         },
         {
           "expectedCount": 1,
@@ -7822,6 +7867,21 @@
           "outcome": "reject",
           "scenarioId": "unannotated-record",
           "title": "Unnamed record leaves the response schema implicit"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.get(\"/items\", status_code=200, operation_id=\"read_items\")\nasync def read_items() -> ItemsResponse: ...\n\n\n@router.post(\"/items\", status_code=201, operation_id=\"create_item\")\nasync def create_item() -> ItemResponse: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "unique-operation-ids",
+          "outcome": "accept",
+          "scenarioId": "operation-id",
+          "title": "Each operation has a distinct client method identifier"
         }
       ],
       "optionsSchemaSource": null
