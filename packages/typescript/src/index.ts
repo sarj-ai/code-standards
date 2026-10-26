@@ -617,7 +617,7 @@ const PLUGIN = {
 } as const;
 
 export default PLUGIN;
-export { publicDocumentation } from "./rules/_docs.js";
+export { type DocumentedRule, publicDocumentation } from "./rules/_docs.js";
 export {
   type RetiredRule,
   RETIRED_RULES,

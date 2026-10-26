@@ -622,7 +622,10 @@ def _string_list(
 ) -> tuple[str, ...]:
     if key not in table:
         return default
-    values = list_field(table, key)
+    values = table[key]
+    if not is_object_list(values):
+        msg = f"{label} must be a list of non-empty strings"
+        raise TypeError(msg)
     if not all(type(value) is str and value for value in values):
         msg = f"{label} must contain only non-empty strings"
         raise TypeError(msg)

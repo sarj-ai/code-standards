@@ -29,13 +29,19 @@ pre-commit:
         landed outside the allowed locations, or a generated strict config
         drifted from its packaged source. Fix the reported path and retry.
 
-    standards:
+    authored-eslint-fixes:
       priority: 4
+      run: uv run --no-config --project packages/standards --frozen python .github/scripts/fix-staged-eslint.py
+      fail_text: >-
+        Authored ESLint fixes require review or a reported failure needs repair.
+        Review and stage source changes before retrying.
+    standards:
+      priority: 5
       run: uv run --no-config --project packages/standards --frozen code-standards check --staged --fix --trust-repository-code
       fail_text: >-
         Standards staged checks failed. Fix the reported findings and retry.
     dogfood:
-      priority: 5
+      priority: 6
       skip: &unchanged-check-inputs
         - run: >-
             git diff --cached --quiet --no-renames --
@@ -48,7 +54,7 @@ pre-commit:
         A shipped custom rule reports against the Standards repository itself.
         Fix the finding before committing.
     typecheck:
-      priority: 6
+      priority: 7
       skip: *unchanged-check-inputs
       run: make typecheck
       fail_text: "Standards typecheck failed. Fix the reported error and retry."

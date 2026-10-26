@@ -237,6 +237,36 @@ async def me(user: Actor) -> UserResponse:
     assert _check(source, str(package / "api.py")) == []
 
 
+@pytest.mark.parametrize(
+    ("enclosing", "indent", "expected_count"),
+    [
+        ("def install(Actor):", "    ", 1),
+        ("def install(unrelated):", "    ", 0),
+        ("class Routes:\n    Actor = User", "    ", 1),
+        ("class Routes:\n    Actor = User\n    def install(self):", "        ", 0),
+    ],
+    ids=("enclosing-parameter", "unshadowed", "class-namespace", "method-skips-class"),
+)
+def test_imported_dependency_alias_respects_annotation_scope(
+    tmp_path: Path, enclosing: str, indent: str, expected_count: int
+) -> None:
+    package = _temporary_package(tmp_path)
+    (package / "dependencies.py").write_text(
+        "from typing import Annotated\nfrom fastapi import Depends\n"
+        "CurrentUser = Annotated[User, Depends(current_user)]\n",
+        encoding="utf-8",
+    )
+    source = _source(f"""
+from .dependencies import CurrentUser as Actor
+{enclosing}
+{indent}@router.get('/me', summary='Read me', description='Returns caller.', status_code=200)
+{indent}async def me(user: Actor) -> UserResponse:
+{indent}    return UserResponse.model_validate(user)
+""")
+    diagnostics = _check(source, str(package / "api.py"))
+    assert sum("explicit Annotated metadata" in finding.message for finding in diagnostics) == expected_count
+
+
 def test_imported_absolute_same_package_dependency_alias_is_resolved(tmp_path: Path):
     package = _temporary_package(tmp_path)
     (package / "dependencies.py").write_text(
@@ -848,6 +878,8 @@ async def items() -> ItemResponse: ...
             "operation_id='items'", "operation_id='items', openapi_extra={'operationId': 'other'}", id="override"
         ),
         pytest.param("operation_id='items'", "operation_id='items', openapi_extra=metadata", id="opaque-override"),
+        pytest.param("operation_id='items', **options", "operation_id='items'", id="unpacked-first"),
+        pytest.param("operation_id='items'", "operation_id='items', **options", id="unpacked-second"),
     ],
 )
 def test_operation_ids_preserve_valid_and_unverifiable_contracts(first_options: str, second_options: str):

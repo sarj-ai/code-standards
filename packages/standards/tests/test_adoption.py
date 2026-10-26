@@ -4714,3 +4714,29 @@ def test_init_replaces_a_partially_adopted_hook(tmp_path: Path) -> None:
     assert "id: sarj-standards-drift" not in updated
     assert updated.count("id: sarj-standards-check") == 1
     assert "check --staged" in updated
+
+
+@pytest.mark.parametrize(
+    ("section", "field"), [("capabilities", "disable"), ("ci", "bootstrap"), ("text", "exclude"), ("exclude", "paths")]
+)
+@pytest.mark.parametrize("value", ['"ruff"', "42", "false", "{ enabled = true }"])
+def test_manifest_rejects_present_non_array_string_lists(tmp_path: Path, section: str, field: str, value: str) -> None:
+    (tmp_path / manifest.MANIFEST_NAME).write_text(
+        f'schema = 4\nbundle = "1.2.3"\n[{section}]\n{field} = {value}\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(TypeError, match="must be a list of non-empty strings"):
+        manifest.load(tmp_path)
+
+
+def test_manifest_distinguishes_missing_arrays_from_explicit_empty_arrays(tmp_path: Path) -> None:
+    path = tmp_path / manifest.MANIFEST_NAME
+    path.write_text('schema = 4\nbundle = "1.2.3"\n', encoding="utf-8")
+    missing = manifest.load(tmp_path)
+    assert missing is not None
+    assert missing.durable_artifacts == manifest.DEFAULT_DURABLE_ARTIFACTS
+    path.write_text('schema = 4\nbundle = "1.2.3"\n[artifacts]\ndurable = []\n', encoding="utf-8")
+    explicit = manifest.load(tmp_path)
+    assert explicit is not None
+    assert explicit.durable_artifacts == ()

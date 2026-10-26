@@ -927,11 +927,12 @@ def _check_operation_ids(routes: list[tuple[int, Route]], parents: Mapping[ast.A
     seen: dict[tuple[int, str, str], Route] = {}
     reported: set[int] = set()
     for scope, route in sorted(routes, key=lambda item: item[1].decorator.lineno):
+        schema_override = route.has_unpack or "openapi_extra" in route.keywords
         if (
             route.is_hidden
             or route.path is None
             or route.method == "*"
-            or "openapi_extra" in route.keywords
+            or schema_override
             or _conditional_registration(route.decorator, parents)
         ):
             continue
