@@ -1,6 +1,6 @@
 {
   "name": "@sarj/eslint-plugin",
-  "version": "16.30.0",
+  "version": "16.30.1",
   "packageManager": "npm@12.2.1",
   "description": "Custom ESLint rules for hypermodern TypeScript / React / Next.js projects",
   "type": "module",
@@ -56,7 +56,6 @@
   "dependencies": {
     "@typescript-eslint/typescript-estree": "^8.72.0",
     "@typescript-eslint/utils": "^8.72.0",
-    "eslint-plugin-sonarjs": "4.2.2",
     "jsonc-parser": "^3.3.1",
     "ts-api-utils": "2.5.0"
   },

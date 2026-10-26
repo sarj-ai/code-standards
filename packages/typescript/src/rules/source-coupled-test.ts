@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/source-coupled-test.test.ts
  */
 
-import { posix } from "node:path";
+import { posix, win32 } from "node:path";
 
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
@@ -76,7 +76,7 @@ export const SOURCE_COUPLED_TEST_DOCUMENTATION = {
     "The rule follows stable lexical bindings, static source paths including JSX/TSX, CSS and HTML, awaited reads, and common text operations. Named imports of node:path/path join and resolve are followed when their complete trailing static path proves a source suffix. Reassigned bindings, dynamic trailing segments, namespace path wrappers, unknown path wrappers, iterator pipelines, and interprocedural flows remain unreported.",
     "Assertion roots are scope-resolved for supported test runners and Node assert imports; local or unknown helpers with assertion-like names are not inferred.",
     "Known fixture, golden, snapshot, and generated source paths are representation contracts and remain unreported; dot segments in the known path are normalized first.",
-    "Contained static paths beneath a stable native mkdtemp/mkdtempSync result are generated artifacts. Literal replace/replaceAll nonidentity guards comparing the same raw read remain unreported; fixed-string comparisons remain candidates.",
+    "Contained static paths, including stable nested join/resolve descendants, beneath a native mkdtemp/mkdtempSync result are generated artifacts. Absolute or drive-anchored resolve segments and traversal above the proven directory remain unproven. Literal replace/replaceAll nonidentity guards comparing the same raw read remain unreported; fixed-string comparisons remain candidates.",
     "When raw representation is genuinely the contract (for example a golden or compatibility sentinel), use an exact line suppression with the reason.",
   ],
   examples: [
@@ -120,6 +120,17 @@ function stringValue(node: TSESTree.Node): string | null {
     return left === null || right === null ? null : left + right;
   }
   return null;
+}
+
+function relativePathDepth(normalized: string, initialDepth: number): number | null {
+  let relativeDepth = initialDepth;
+  for (const part of normalized.split("/")) {
+    if (part === "..") {
+      if (relativeDepth === 0) return null;
+      relativeDepth -= 1;
+    } else if (part !== "" && part !== ".") relativeDepth += 1;
+  }
+  return relativeDepth;
 }
 
 function staticPathSuffix(pathArguments: readonly TSESTree.CallExpressionArgument[], builder: "join" | "resolve"): string | null {
@@ -267,20 +278,27 @@ export function createSourceCoupledRule(
       }
       if (current.type !== AST_NODE_TYPES.CallExpression) return false;
       const callee = unwrap(current.callee);
-      return callee.type === AST_NODE_TYPES.Identifier && ["mkdtemp", "mkdtempSync"].includes(nativeImportedName(callee, FS_MODULES) ?? "");
+      if (callee.type !== AST_NODE_TYPES.Identifier) return false;
+      if (["mkdtemp", "mkdtempSync"].includes(nativeImportedName(callee, FS_MODULES) ?? "")) return true;
+      const builder = nativePathBuilder(callee);
+      return builder !== null && temporaryDescendant(current, builder, depth + 1);
     };
-    const temporaryDescendant = (node: TSESTree.CallExpression, builder: "join" | "resolve"): boolean => {
+    const temporaryDescendant = (node: TSESTree.CallExpression, builder: "join" | "resolve", depth = 0): boolean => {
+      if (depth > 8) return false;
       const [directory, ...segments] = node.arguments;
-      if (directory === undefined || directory.type === AST_NODE_TYPES.SpreadElement || !temporaryDirectory(directory)) return false;
-      const values: string[] = [];
+      if (directory === undefined || directory.type === AST_NODE_TYPES.SpreadElement || !temporaryDirectory(directory, depth)) return false;
+      let relativeDepth = 0;
       for (const segment of segments) {
         if (segment.type === AST_NODE_TYPES.SpreadElement) return false;
         const value = stringValue(segment);
         if (value === null) return false;
-        values.push(value.replaceAll("\\", "/"));
+        const normalized = value.replaceAll("\\", "/");
+        if (builder === "resolve" && (posix.isAbsolute(normalized) || win32.parse(normalized).root !== "")) return false;
+        const nextDepth = relativePathDepth(normalized, relativeDepth);
+        if (nextDepth === null) return false;
+        relativeDepth = nextDepth;
       }
-      const sentinel = "/__source_oracle_temporary_directory__";
-      return posix[builder](sentinel, ...values).startsWith(`${sentinel}/`);
+      return relativeDepth > 0;
     };
     const sourcePathValue = (value: string): boolean => {
       const normalized = posix.normalize(value.replaceAll("\\", "/"));

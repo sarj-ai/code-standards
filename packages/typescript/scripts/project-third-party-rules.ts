@@ -110,11 +110,6 @@ const PROVIDERS: Record<string, readonly [string, string, string]> = {
     "eslint-plugin-promise",
     "https://github.com/eslint-community/eslint-plugin-promise",
   ],
-  sonarjs: [
-    "SonarJS",
-    "eslint-plugin-sonarjs",
-    "https://github.com/SonarSource/SonarJS",
-  ],
   "simple-import-sort": [
     "Simple Import Sort",
     "eslint-plugin-simple-import-sort",

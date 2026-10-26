@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import re
+import tokenize
 import tomllib
 from typing import TYPE_CHECKING, Final, Literal, NamedTuple
 
@@ -11,6 +12,7 @@ from packaging.requirements import InvalidRequirement, Requirement
 from packaging.utils import canonicalize_name
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field
+from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.typed_containers import is_object_mapping
 
@@ -225,9 +227,9 @@ CATALOG: Final[tuple[LibraryMapping, ...]] = (
         "preferred-stack",
         "logging",
         "loguru",
-        "Standards standardizes application logging on loguru, whose bound context carries correlation fields to "
-        "every line; a second stdlib logger splits the logs. A loguru bridge that intercepts third-party stdlib "
-        "records needs a local, reasoned TID251 suppression.",
+        "Use Loguru for application-owned log events and standalone output sinks so bound correlation context "
+        "stays intact. Standard-library SDK adapters, types, levels and record routing remain supported; "
+        "the application preference excludes native test paths without disabling logging correctness checks.",
     ),
     _mapping(
         "LIB101",
@@ -378,7 +380,7 @@ def python_banned_api() -> dict[str, str]:
     return {
         name: f"{entry.id}: {entry.message} Replace with {entry.replacement}."
         for entry in CATALOG
-        if entry.ecosystem == "python"
+        if entry.ecosystem == "python" and entry.id != "LIB023"
         for name in entry.imports
     }
 
@@ -416,6 +418,9 @@ class ManifestPolicyError(ValueError):
     """An applicable dependency manifest cannot be parsed safely."""
 
 
+_MAX_PYTHON_POLICY_SOURCE_BYTES: Final = 500_000
+
+
 _IGNORED_DIRS: Final = frozenset(
     {
         ".cache",
@@ -448,9 +453,18 @@ _GENERATED_MARKERS: Final = (
 _REQUIREMENTS_NAME: Final = re.compile(r"^requirements(?:[-_.].*)?\.(?:txt|in)$", re.IGNORECASE)
 
 
-def scan(root: Path, *, allowed_ids: Iterable[str] = ()) -> tuple[Finding, ...]:
+def scan(
+    root: Path,
+    *,
+    allowed_ids: Iterable[str] = (),
+    python_paths: Iterable[str | Path] = (),
+) -> tuple[Finding, ...]:
     root = root.resolve()
-    return _scan_manifests(root, _manifest_paths(root), allowed_ids=allowed_ids)
+    allowed = frozenset(allowed_ids)
+    return _combined_findings(
+        _scan_manifests(root, _manifest_paths(root), allowed_ids=allowed),
+        _scan_python_sources(root, python_paths, allowed_ids=allowed),
+    )
 
 
 def scan_paths(
@@ -458,8 +472,10 @@ def scan_paths(
     paths: Iterable[str | Path],
     *,
     allowed_ids: Iterable[str] = (),
+    python_paths: Iterable[str | Path] = (),
 ) -> tuple[Finding, ...]:
     root = root.resolve()
+    allowed = frozenset(allowed_ids)
     selected: set[Path] = set()
     for raw_path in paths:
         candidate = Path(raw_path)
@@ -472,7 +488,79 @@ def scan_paths(
             selected.update(_manifest_paths(resolved))
         elif resolved.is_file() and accepts_path(resolved, root):
             selected.add(resolved)
-    return _scan_manifests(root, tuple(sorted(selected)), allowed_ids=allowed_ids)
+    return _combined_findings(
+        _scan_manifests(root, tuple(sorted(selected)), allowed_ids=allowed),
+        _scan_python_sources(root, python_paths, allowed_ids=allowed),
+    )
+
+
+def _combined_findings(*groups: tuple[Finding, ...]) -> tuple[Finding, ...]:
+    return tuple(
+        sorted(
+            {item for group in groups for item in group},
+            key=lambda item: (str(item.path), item.line, item.id, item.package, item.column),
+        )
+    )
+
+
+def _scan_python_sources(
+    root: Path, paths: Iterable[str | Path], *, allowed_ids: frozenset[str]
+) -> tuple[Finding, ...]:
+    paths = tuple(paths)
+    if not paths or "LIB023" in allowed_ids:
+        return ()
+    from sarj_python_lint import application_logging_uses  # ruff: ignore[import-outside-top-level] -- load the public Python preference API only for selected Python source.
+
+    entry = next(entry for entry in CATALOG if entry.id == "LIB023")
+    findings: list[Finding] = []
+    selected = {_selected_python_source_path(root, raw_path) for raw_path in paths}
+    for path in sorted(selected):
+        try:
+            with tokenize.open(path) as stream:
+                source = stream.read()
+        except (SyntaxError, UnicodeError) as exc:
+            msg = f"cannot decode selected Python policy source: {path}"
+            raise ManifestPolicyError(msg) from exc
+        findings.extend(
+            Finding(
+                entry.id,
+                path.relative_to(root),
+                use.line,
+                use.column,
+                "logging",
+                entry.replacement,
+                f"{entry.message} Observed {use.operation}.",
+            )
+            for use in application_logging_uses(path, source, root=root)
+        )
+    return tuple(findings)
+
+
+def _selected_python_source_path(root: Path, raw_path: str | Path) -> Path:
+    candidate = Path(raw_path)
+    candidate = candidate if candidate.is_absolute() else root / candidate
+    if ".." in candidate.parts:
+        msg = f"selected Python policy source escapes repository root: {raw_path}"
+        raise ManifestPolicyError(msg)
+    try:
+        relative = candidate.relative_to(root)
+    except ValueError as exc:
+        msg = f"selected Python policy source escapes repository root: {raw_path}"
+        raise ManifestPolicyError(msg) from exc
+    cursor = root
+    for part in relative.parts:
+        if is_link_like(cursor := cursor / part):
+            msg = f"selected Python policy source traverses a symlink: {raw_path}"
+            raise ManifestPolicyError(msg)
+    path = candidate.resolve(strict=True)
+    if (
+        not path.is_file()
+        or path.suffix not in {".py", ".pyi"}
+        or path.stat().st_size > _MAX_PYTHON_POLICY_SOURCE_BYTES
+    ):
+        msg = f"expected a bounded canonical Python source, not a directory: {raw_path}"
+        raise ManifestPolicyError(msg)
+    return path
 
 
 def _scan_manifests(

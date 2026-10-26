@@ -177,8 +177,9 @@ def run(
     noise_only: bool = False,
     python_baseline: str | None = None,
     policy: Policy | None = None,
+    grouped: GroupedPaths | None = None,
 ) -> int:
-    grouped = group_paths(files, policy=policy)
+    grouped = group_paths(files, policy=policy) if grouped is None else grouped
     statuses = [
         _run_tool(
             "sarj_python_lint",

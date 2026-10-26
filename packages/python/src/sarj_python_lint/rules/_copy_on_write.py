@@ -5,6 +5,7 @@ from dataclasses import dataclass, replace
 from functools import cached_property
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final
+from weakref import ReferenceType, ref
 
 from sarj_python_lint._analysis_session import AnalysisSession
 from sarj_python_lint._file_context import PythonFileContext
@@ -359,8 +360,10 @@ def _contains_model(shape: _Shape) -> bool:
 
 @final
 class CopyOnWriteAnalysis:
-    def __init__(self, context: PythonFileContext) -> None:
-        self.context = context
+    def __init__(self, context: PythonFileContext, *, borrow_context: bool = False) -> None:
+        self._context: PythonFileContext | ReferenceType[PythonFileContext] = (
+            ref(context) if borrow_context else context
+        )
         self.models = _Models(context)
         self.mutations: list[Mutation] = []
         self.discarded: list[ast.Call] = []
@@ -373,6 +376,14 @@ class CopyOnWriteAnalysis:
         self._scan(tree.body, {})
         for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
             self._function(function)
+
+    @property
+    def context(self) -> PythonFileContext:
+        context = self._context() if isinstance(self._context, ReferenceType) else self._context
+        if context is None:
+            msg = "The copy-on-write file context has been released"
+            raise ReferenceError(msg)
+        return context
 
     @cached_property
     def _validator_provider(self) -> ResourceProvenance:

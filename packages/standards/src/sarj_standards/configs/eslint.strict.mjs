@@ -14,7 +14,6 @@ import node from "eslint-plugin-n";
 import perfectionist from "eslint-plugin-perfectionist";
 import promiseModule from "eslint-plugin-promise";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
-import sonarjs from "eslint-plugin-sonarjs";
 import betterTailwindcss from "eslint-plugin-better-tailwindcss";
 import { plugin as shadcn, project as shadcnProject } from "@shadcn/lint";
 import jsdoc from "eslint-plugin-jsdoc";
@@ -693,7 +692,6 @@ export function createConfig(options = {}) {
                 perfectionist,
                 promise,
                 "simple-import-sort": simpleImportSort,
-                sonarjs,
                 jsdoc,
                 shadcn: scopedShadcn,
                 "@sarj": sarj,
