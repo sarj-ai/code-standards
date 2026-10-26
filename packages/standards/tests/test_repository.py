@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from importlib.metadata import requires, version
 import io
 import json
 import os
@@ -9,6 +10,7 @@ import stat
 import subprocess
 from typing import TYPE_CHECKING, Unpack
 
+from packaging.requirements import Requirement
 import pytest
 
 import sarj_standards.cli.main as cli
@@ -1550,3 +1552,18 @@ def test_eslint_rule_names_supports_canonical_and_legacy_registry_names(
     )
 
     assert repository.eslint_rule_names(tmp_path) == [rule_key.strip('"')]
+
+
+def test_hook_runner_accepts_exact_declared_dependency_pin(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    dependencies = requires("code-standards")
+    assert dependencies is not None
+    requirements = tuple(Requirement(value) for value in dependencies)
+    lefthook = [requirement for requirement in requirements if requirement.name == "lefthook"]
+    assert len(lefthook) == 1
+    pins = tuple(lefthook[0].specifier)
+    assert len(pins) == 1
+    assert pins[0].operator == "=="
+    assert version("lefthook") == pins[0].version
+    _git(tmp_path, "init")
+    monkeypatch.chdir(tmp_path)
+    assert hooks.run(["version"]) == 0

@@ -89,6 +89,7 @@ class CheckOptions(TypedDict, total=False):
     noise_only: bool
     python_baseline: str | None
     policy: Policy | None
+    grouped: GroupedPaths | None
 
 
 class CanonicalCheckOptions(TypedDict, total=False):

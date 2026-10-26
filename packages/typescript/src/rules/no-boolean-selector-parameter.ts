@@ -3,14 +3,7 @@
  *
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-boolean-selector-parameter.test.ts
  */
-import {
-  AST_NODE_TYPES,
-  ASTUtils,
-  ESLintUtils,
-  type TSESLint,
-  type TSESTree,
-} from "@typescript-eslint/utils";
-import { rules as sonarRules } from "eslint-plugin-sonarjs";
+import { AST_NODE_TYPES, ASTUtils, ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import {
   isBooleanDataSelection,
@@ -22,10 +15,7 @@ import { isGeneratedFile } from "./_paths.js";
 
 type Options = readonly [];
 type MessageIds = "booleanSelector";
-interface NativeReport {
-  readonly loc?: TSESTree.SourceLocation | TSESTree.Position;
-}
-const UPSTREAM_SELECTOR_RULE = sonarRules["no-selector-parameter"];
+type FunctionNode = TSESTree.FunctionDeclaration | TSESTree.FunctionExpression | TSESTree.ArrowFunctionExpression;
 
 export const NO_BOOLEAN_SELECTOR_PARAMETER_DOCUMENTATION = {
   summary:
@@ -38,15 +28,14 @@ export const NO_BOOLEAN_SELECTOR_PARAMETER_DOCUMENTATION = {
   defaultLevel: "warning",
   autofix: "safe",
   limitations: [
-    "Requires type information. Adapts maintained SonarJS S2301 for single-statement if/else or conditional bodies and adds expression-bodied arrow conditionals. Only a direct broad-boolean parameter or its negation is considered; optional, nullable, literal-only, generic, destructured and indirect predicate conditions are excluded.",
+    "Requires type information. Checks an owned single-statement if/else, returned conditional or conditional expression statement, and expression-bodied arrow conditionals. Only a direct broad-boolean parameter or its negation is considered; optional, nullable, literal-only, generic, destructured and indirect predicate conditions are excluded.",
     "Preserves setters, pure mappings, selected pure data passed to one stable lexical operation or assigned to one simple target, independently authored callable and inherited member contracts, inline callbacks, and statically proven named callback references. Independent helpers remain checked in JSX files; callback identity is established from references rather than handler names.",
-    "The upstream block-body detector still exempts literal on[A-Z] object properties; the concise-arrow extension does not infer a callback contract from that name. Multi-statement bodies, short-circuit guards, local parameter aliases and arbitrary control flow are not inferred. Noncomputed property reads count as data without proving getter effects; computed reads remain outside that exemption, including literal keys. Side-effect detection does not prove whether a called function is pure, and a warning requires manual design review. Generated files are excluded; tests remain checked.",
+    "The block-body detector preserves the existing literal on[A-Z] object-property exemption; the concise-arrow extension does not infer a callback contract from that name. Multi-statement bodies, short-circuit guards, local parameter aliases and arbitrary control flow are not inferred. Noncomputed property reads count as data without proving getter effects; computed reads remain outside that exemption, including literal keys. Side-effect detection does not prove whether a called function is pure, and a warning requires manual design review. Generated files are excluded; tests remain checked.",
     "Automatic fixes only reuse two already authored private zero-argument ordinary operations returning primitive string literals. A complete comment-free four-declaration module must contain those operations, one private const broad-boolean arrow selecting their direct calls, and one exported zero-argument ordinary function with an explicit string-array return that calls the selector exclusively with literal true and false. Calls are routed to the existing named operations and the exclusively used selector declaration is removed. All other APIs, callbacks, dynamic arguments, contracts and operation bodies remain manual.",
   ],
   references: [
     "https://understandlegacycode.com/blog/what-is-wrong-with-boolean-parameters/",
     "https://martinfowler.com/bliki/FlagArgument.html",
-    "https://github.com/SonarSource/SonarJS/tree/master/packages/analysis/src/jsts/rules/S2301",
   ],
   examples: [
     {
@@ -156,46 +145,30 @@ export default createRule<Options, MessageIds>({
         fix,
       });
     }
-    function translate({ loc }: NativeReport): void {
-      if (loc === undefined) return;
-      const position = "start" in loc ? loc.start : loc;
-      const identifier = context.sourceCode.getNodeByRangeIndex(
-        context.sourceCode.getIndexFromLoc(position),
-      );
-      if (identifier?.type === AST_NODE_TYPES.Identifier) report(identifier);
-    }
-    // Native ESLint and TypeScript-ESTree expose different static listener types,
-    // but the pinned detector consumes these original nodes and parser services.
-    // The facade changes only reporting; it does not clone nodes or alter scopes.
-    const nativeContext: unknown = Object.create(context, {
-      report: { value: translate },
-    });
-    const nativeArguments: readonly unknown[] = [nativeContext];
-    const listeners: unknown = Reflect.apply(
-      UPSTREAM_SELECTOR_RULE.create.bind(UPSTREAM_SELECTOR_RULE),
-      undefined,
-      nativeArguments,
-    );
-    const native: TSESLint.RuleListener = {};
-    if (typeof listeners !== "object" || listeners === null) return native;
-    for (const selector of Object.keys(listeners)) {
-      const listener: unknown = Reflect.get(listeners, selector);
-      if (typeof listener === "function")
-        native[selector] = (...nodes: unknown[]): void => {
-          Reflect.apply(listener, undefined, nodes);
-        };
+    function inspectSingleStatementBody(owner: FunctionNode): void {
+      if (owner.body?.type !== AST_NODE_TYPES.BlockStatement || owner.body.body.length !== 1 || preservesBlockObjectCallback(owner)) return;
+      const statement = owner.body.body[0];
+      if (statement?.type === AST_NODE_TYPES.IfStatement) {
+        if (statement.alternate === null || (!ASTUtils.hasSideEffect(statement.consequent, context.sourceCode) &&
+          !ASTUtils.hasSideEffect(statement.alternate, context.sourceCode))) return;
+        const identifier = testIdentifier(statement.test);
+        if (identifier !== undefined) report(identifier);
+        return;
+      }
+      const selected = statement?.type === AST_NODE_TYPES.ReturnStatement ? statement.argument :
+        statement?.type === AST_NODE_TYPES.ExpressionStatement ? statement.expression : undefined;
+      if (selected?.type !== AST_NODE_TYPES.ConditionalExpression || (!ASTUtils.hasSideEffect(selected.consequent, context.sourceCode) &&
+        !ASTUtils.hasSideEffect(selected.alternate, context.sourceCode))) return;
+      const identifier = testIdentifier(selected.test);
+      if (identifier !== undefined) report(identifier);
     }
     return {
-      ...native,
+      FunctionDeclaration: inspectSingleStatementBody,
+      FunctionExpression: inspectSingleStatementBody,
+      ArrowFunctionExpression: inspectSingleStatementBody,
       ConditionalExpression(node) {
-        native.ConditionalExpression?.(node);
-        if (
-          node.parent.type !== AST_NODE_TYPES.ArrowFunctionExpression ||
-          node.parent.body !== node ||
-          (!ASTUtils.hasSideEffect(node.consequent, context.sourceCode) &&
-            !ASTUtils.hasSideEffect(node.alternate, context.sourceCode))
-        )
-          return;
+        if (node.parent.type !== AST_NODE_TYPES.ArrowFunctionExpression || node.parent.body !== node ||
+          (!ASTUtils.hasSideEffect(node.consequent, context.sourceCode) && !ASTUtils.hasSideEffect(node.alternate, context.sourceCode))) return;
         const callable = node.parent;
         if (
           (callable.parent.type === AST_NODE_TYPES.CallExpression &&
@@ -210,13 +183,19 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function testIdentifier(
-  test: TSESTree.Expression,
-): TSESTree.Identifier | undefined {
-  const value =
-    test.type === AST_NODE_TYPES.UnaryExpression && test.operator === "!"
-      ? test.argument
-      : test;
+// Preserve the existing block-only onX object-property blind spot. Names do not
+// establish callback ownership; the unchanged typed contract helper does that.
+function preservesBlockObjectCallback(owner: FunctionNode): boolean {
+  const property = owner.parent;
+  if (property.type !== AST_NODE_TYPES.Property || property.computed) return false;
+  const key = property.key;
+  const name = key.type === AST_NODE_TYPES.Identifier ? key.name :
+    key.type === AST_NODE_TYPES.Literal && typeof key.value === "string" ? key.value : undefined;
+  return name !== undefined && /^on[A-Z]/u.test(name);
+}
+
+function testIdentifier(test: TSESTree.Expression): TSESTree.Identifier | undefined {
+  const value = test.type === AST_NODE_TYPES.UnaryExpression && test.operator === "!" ? test.argument : test;
   return value.type === AST_NODE_TYPES.Identifier ? value : undefined;
 }
 

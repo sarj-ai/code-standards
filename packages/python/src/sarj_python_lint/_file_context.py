@@ -109,7 +109,7 @@ class PythonFileContext:
     def test_provenance(self) -> TestProvenance:
         from sarj_python_lint.rules._test_provenance import TestProvenance  # ruff: ignore[import-outside-top-level] — defer test analysis until requested
 
-        return TestProvenance(self)
+        return TestProvenance(self, borrow_context=True)
 
     def _valid_tree(self) -> ast.Module:
         tree = self.tree
@@ -122,7 +122,7 @@ class PythonFileContext:
     def copy_on_write(self) -> CopyOnWriteAnalysis:
         from sarj_python_lint.rules._copy_on_write import CopyOnWriteAnalysis  # ruff: ignore[import-outside-top-level] — share ownership analysis only when requested
 
-        return CopyOnWriteAnalysis(self)
+        return CopyOnWriteAnalysis(self, borrow_context=True)
 
     @cached_property
     def resource_provenance(self) -> ResourceProvenance:

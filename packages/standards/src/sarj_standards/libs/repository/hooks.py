@@ -20,7 +20,7 @@ from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.typed_containers import is_object_mapping
 
 
-_VERSION: Final = "2.2.1"
+_VERSION: Final = "2.2.2"
 _CORE_HOOKS: Final = ("pre-commit", "pre-push", "commit-msg")
 _LFS_POST_HOOKS: Final = ("post-checkout", "post-commit", "post-merge")
 _DISCOVERY_TIMEOUT: Final = timedelta(seconds=5)

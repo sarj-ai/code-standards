@@ -16,7 +16,6 @@ import perfectionist from "eslint-plugin-perfectionist";
 // @ts-expect-error -- The pinned promise plugin exports CommonJS without TypeScript declarations.
 import promiseModule from "eslint-plugin-promise";
 import simpleImportSort from "eslint-plugin-simple-import-sort";
-import sonarjs from "eslint-plugin-sonarjs";
 import betterTailwindcss from "eslint-plugin-better-tailwindcss";
 import { plugin as shadcn, project as shadcnProject } from "@shadcn/lint";
 import jsdoc from "eslint-plugin-jsdoc";
@@ -795,7 +794,6 @@ export function createConfig(options: ConfigOptions = {}): Linter.Config[] {
       perfectionist,
       promise,
       "simple-import-sort": simpleImportSort,
-      sonarjs,
       jsdoc,
       shadcn: scopedShadcn,
       "@sarj": sarj,

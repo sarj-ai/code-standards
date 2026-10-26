@@ -228,7 +228,10 @@ class Standards:
                     exit_code=_INVALID_EXIT,
                 )
             try:
-                policy_findings = check_selected_library_policy(self.root, selected)
+                selected_groups = group_paths(selected, policy=policy)
+                policy_findings = check_selected_library_policy(
+                    self.root, selected, python_paths=selected_groups.python
+                )
             except (OSError, TypeError, ValueError, ManifestPolicyError) as exc:
                 return Result(
                     Status.INVALID,
@@ -239,7 +242,7 @@ class Standards:
                 Finding(item.id, "error", item.message, str(item.path), f"use {item.replacement}")
                 for item in policy_findings
             )
-            source_status = check(selected, policy=policy)
+            source_status = check(selected, policy=policy, grouped=selected_groups)
             eslint_status = execute(selected_eslint_commands(self.root, selected))
             return _operation_result(max(source_status, eslint_status, 1 if findings else 0), findings=findings)
         return _operation_result(_verify(self.root))
@@ -306,7 +309,9 @@ class Standards:
                 rule_selection=rule_selection,
             )
             if rule_selection is None:
-                native = _with_library_policy(self.root, native, active_selected, selection_policy)
+                native = _with_library_policy(
+                    self.root, native, active_selected, selection_policy, python_paths=selected_groups.python
+                )
             if rule_selection is None and normalized_mode is AnalysisMode.POLICY:
                 native = _with_repository_analysis(self.root, native, staged=staged)
             prepared = _prepared_reports(self.root, adopted, prepared_devops, prepared_targets, trust=normalized_trust)
@@ -513,12 +518,11 @@ def _verify(root: Path) -> int:
         return _INVALID_EXIT
     verify_paths = adopted.verify_paths if adopted is not None else (".",)
     policy = Policy.from_manifest(root, adopted)
-    if check(
-        [str(root / path) for path in verify_paths],
-        policy=policy,
-    ):
+    selected = [str(root / path) for path in verify_paths]
+    selected_groups = group_paths(selected, policy=policy)
+    if check(selected, policy=policy, grouped=selected_groups):
         return 1
-    if check_library_policy(root):
+    if check_library_policy(root, python_paths=selected_groups.python):
         return 1
     return execute(verification_commands(detect(root)))
 
@@ -881,10 +885,15 @@ def _selected_external_analysis(
 
 
 def _with_library_policy(
-    root: Path, native: AnalysisReport, active_selected: list[str], selection_policy: Policy
+    root: Path,
+    native: AnalysisReport,
+    active_selected: list[str],
+    selection_policy: Policy,
+    *,
+    python_paths: Sequence[str] = (),
 ) -> AnalysisReport:
     try:
-        policy = _filter_tool_report(_policy_report(root, active_selected), selection_policy)
+        policy = _filter_tool_report(_policy_report(root, active_selected, python_paths=python_paths), selection_policy)
     except (OSError, TypeError, ValueError, ManifestPolicyError) as exc:
         issue = ExecutionIssue("sarj-library-policy", "policy-failure", f"{type(exc).__name__}: {exc}")
         policy = ToolReport("sarj-library-policy", Completion.FAILED, issues=(issue,))
@@ -1137,8 +1146,8 @@ def _engine_for_diagnostic(item: Diagnostic) -> RuleEngine | None:
     }.get(item.source)
 
 
-def _policy_report(root: Path, selected: Sequence[str]) -> ToolReport:
-    findings = check_selected_library_policy(root, selected)
+def _policy_report(root: Path, selected: Sequence[str], *, python_paths: Sequence[str] = ()) -> ToolReport:
+    findings = check_selected_library_policy(root, selected, python_paths=python_paths)
     documents: dict[Path, SourceDocument] = {}
     diagnostics: list[Diagnostic] = []
     for finding in findings:

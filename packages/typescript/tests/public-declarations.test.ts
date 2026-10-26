@@ -37,7 +37,6 @@ it("emits portable public declarations for inferred ESM and CommonJS rule export
       "eslint",
       "typescript",
       "ts-api-utils",
-      "eslint-plugin-sonarjs",
       "jsonc-parser",
       "@types",
     ]) {

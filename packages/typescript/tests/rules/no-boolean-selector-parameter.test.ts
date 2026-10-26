@@ -492,3 +492,86 @@ UNTYPED_TESTER.run(
     invalid: [],
   },
 );
+
+const OWNED_BOUNDARY_TESTER = new RuleTester({ languageOptions: { parser, parserOptions: {
+  projectService: { allowDefaultProject: ["*.ts*"] }, tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
+} } });
+
+OWNED_BOUNDARY_TESTER.run("owned boolean selector callback and effect boundaries", rule, {
+  valid: [
+    {
+      name: "inline async callback retains its external input even with awaited effects",
+      code: "declare function subscribe(callback: (flag: boolean) => Promise<void>): void; subscribe(async (flag: boolean) => { if (flag) { await first(); } else { await second(); } });",
+    },
+    {
+      name: "named callback contract preserves effectful assignment branches",
+      code: "declare function subscribe(callback: (flag: boolean) => void): void; declare let value: number; function route(flag: boolean) { if (flag) { value = first(); } else { value = second(); } } subscribe(route);",
+    },
+    {
+      name: "independently declared interface owns an effectful method signature",
+      code: "interface Port { choose(flag: boolean): void; } class Service implements Port { choose(flag: boolean) { if (flag) { first(); } else { second(); } } }",
+    },
+    {
+      name: "block object onX compatibility remains a documented blind spot",
+      code: "const callbacks = { onReady(flag: boolean) { if (!flag) { first(); } else { second(); } } };",
+    },
+    {
+      name: "parenthesized inline callback preserves its original argument contract",
+      code: "declare function subscribe(callback: (flag: boolean) => void): void; subscribe(((flag: boolean) => { if (flag) { first(); } else { second(); } }));",
+    },
+    {
+      name: "choosing a closure value does not execute its operation",
+      code: "function choose(flag: boolean) { return flag ? (() => first()) : (() => second()); }",
+    },
+    {
+      name: "comparison conditions remain outside direct boolean selection",
+      code: "function choose(flag: boolean) { if (flag === true) { first(); } else { second(); } }",
+    },
+    {
+      name: "multi-statement aliasing remains outside the bounded body contract",
+      code: "function choose(flag: boolean) { const selected = flag; return selected ? first() : second(); }",
+    },
+  ],
+  invalid: [
+    {
+      name: "updates in both branches are operations",
+      code: "declare let value: number; function choose(flag: boolean) { if (flag) { value++; } else { value--; } }",
+      errors: [{ messageId: "booleanSelector" }], output: null,
+    },
+    {
+      name: "the same storage target does not erase effects in selected values",
+      code: "declare let value: number; function choose(flag: boolean) { if (flag) { value = first(); } else { value = second(); } }",
+      errors: [{ messageId: "booleanSelector" }], output: null,
+    },
+    {
+      name: "returned array values retain their nested operation calls",
+      code: "function choose(flag: boolean) { return flag ? [first()] : [second()]; }",
+      errors: [{ messageId: "booleanSelector" }], output: null,
+    },
+    {
+      name: "negated conditional statements retain constructor effects",
+      code: "const choose = (flag: boolean) => { !flag ? new First() : new Second(); };",
+      errors: [{ messageId: "booleanSelector" }], output: null,
+    },
+    {
+      name: "returned object values retain their nested operation calls",
+      code: "function choose(flag: boolean) { return flag ? {value: first()} : {value: second()}; }",
+      errors: [{ messageId: "booleanSelector" }], output: null,
+    },
+    {
+      name: "awaited return conditionals retain selected asynchronous operations",
+      code: "async function choose(flag: boolean) { return flag ? await first() : await second(); }",
+      errors: [{ messageId: "booleanSelector" }], output: null,
+    },
+    {
+      name: "throwing selected constructed errors is effectful dispatch",
+      code: "function choose(flag: boolean) { if (flag) { throw new First(); } else { throw new Second(); } }",
+      errors: [{ messageId: "booleanSelector" }], output: null,
+    },
+    {
+      name: "an owned method without an external signature still selects operations",
+      code: "class Service { choose(flag: boolean) { if (flag) { this.first(); } else { this.second(); } } first() {} second() {} }",
+      errors: [{ messageId: "booleanSelector" }], output: null,
+    },
+  ],
+});

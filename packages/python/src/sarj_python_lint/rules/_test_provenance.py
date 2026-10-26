@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from functools import cached_property
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final
+from weakref import ReferenceType, ref
 
 from sarj_python_lint.rules._ast_index import walk
 from sarj_python_lint.rules._imports import ImportIndex
@@ -57,8 +58,10 @@ class _Analysis:
 
 @final
 class TestProvenance:
-    def __init__(self, context: PythonFileContext) -> None:
-        self.context = context
+    def __init__(self, context: PythonFileContext, *, borrow_context: bool = False) -> None:
+        self._context: PythonFileContext | ReferenceType[PythonFileContext] = (
+            ref(context) if borrow_context else context
+        )
         self.indexes = context.session.project or ProjectIndexSet.single(context.path, context.source)
         tree = context.tree
         indexed_unit = (
@@ -89,6 +92,14 @@ class TestProvenance:
         self._models: dict[ast.Call, _ModelMock] = {}
         self._grafts: list[tuple[ast.AST, str]] = []
         self._restoring: dict[tuple[str, ...], str] = {}
+
+    @property
+    def context(self) -> PythonFileContext:
+        context = self._context() if isinstance(self._context, ReferenceType) else self._context
+        if context is None:
+            msg = "The test-provenance file context has been released"
+            raise ReferenceError(msg)
+        return context
 
     def method_grafts(self) -> list[tuple[ast.AST, str]]:
         return self._analyzed.grafts

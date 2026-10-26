@@ -4,6 +4,7 @@ import ast
 from concurrent.futures.process import BrokenProcessPool
 import multiprocessing
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 from typing import TYPE_CHECKING, final, override
@@ -191,11 +192,12 @@ def test_native_cli_workers_preserve_order_output_baselines_and_errors(tmp_path:
     files = [tmp_path / name for name in ("z.py", "a.py")]
     for path in files:
         path.write_text('__all__ = ["value"]\nvalue = 1\n')
-    command = (
-        [str(Path(sys.executable).with_name("sarj-python-lint"))]
-        if entrypoint == "console"
-        else [sys.executable, "-m", "sarj_python_lint"]
-    )
+    if entrypoint == "console":
+        console = shutil.which("sarj-python-lint")
+        assert console is not None
+        command = [console]
+    else:
+        command = [sys.executable, "-m", "sarj_python_lint"]
     arguments = ["check", "--rule", "no-dunder-all"]
 
     def run(jobs: int, *extra: str) -> subprocess.CompletedProcess[str]:
