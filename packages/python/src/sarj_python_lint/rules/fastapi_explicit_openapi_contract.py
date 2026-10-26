@@ -30,6 +30,8 @@ from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from sarj_python_lint._file_context import PythonFileContext
 
 
@@ -87,6 +89,7 @@ class FastapiExplicitOpenapiContract(Rule):
         limitations=(
             "Hidden routes, WebSocket handlers, tests, generated files, documentation-source examples, and unrelated decorators are excluded.",
             "Dynamic response mappings are accepted when their contents cannot be resolved statically.",
+            "Operation ID conflicts require unconditional registrations with literal IDs and paths on the same local router; conditional registrations, dynamic IDs, OpenAPI overrides, and cross-router composition require generated-schema validation.",
             "Explicit status and parameter-location findings are organizational policy even when FastAPI inference would generate valid OpenAPI.",
             (
                 "Fixed-record return inference is local and conservative: dynamic keys, opaque escapes, and ambiguous "
@@ -193,6 +196,44 @@ class FastapiExplicitOpenapiContract(Rule):
                 scenario="unannotated-record",
                 public=True,
             ),
+            RuleExample(
+                example_id="duplicate-operation-id",
+                title="Two operations reuse one client method identifier",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "api.py",
+                        "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n"
+                        "@router.get('/items', status_code=200, operation_id='items')\n"
+                        "async def read_items() -> ItemsResponse: ...\n\n"
+                        "@router.post('/items', status_code=201, operation_id='items')\n"
+                        "async def create_item() -> ItemResponse: ...\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("api.py"),
+                expected_count=1,
+                scenario="operation-id",
+                public=True,
+            ),
+            RuleExample(
+                example_id="unique-operation-ids",
+                title="Each operation has a distinct client method identifier",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "api.py",
+                        "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n"
+                        "@router.get('/items', status_code=200, operation_id='read_items')\n"
+                        "async def read_items() -> ItemsResponse: ...\n\n"
+                        "@router.post('/items', status_code=201, operation_id='create_item')\n"
+                        "async def create_item() -> ItemResponse: ...\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("api.py"),
+                expected_count=0,
+                scenario="operation-id",
+                public=True,
+            ),
         ),
     )
     description: str = documentation.summary
@@ -228,6 +269,7 @@ class FastapiExplicitOpenapiContract(Rule):
                 findings.extend(_check_projection(route))
                 findings.extend(_check_response_statuses(route, index))
         findings.extend(_check_route_conflicts(declared))
+        findings.extend(_check_operation_ids(declared, context.parents))
         return [
             Diagnostic(
                 path=path,
@@ -878,6 +920,50 @@ def _check_route_conflicts(routes: list[tuple[int, Route]]) -> list[_Finding]:
             if pattern is not None:
                 bucket.append((route, pattern))
     return findings
+
+
+def _check_operation_ids(routes: list[tuple[int, Route]], parents: Mapping[ast.AST, ast.AST]) -> list[_Finding]:
+    findings: list[_Finding] = []
+    seen: dict[tuple[int, str, str], Route] = {}
+    reported: set[int] = set()
+    for scope, route in sorted(routes, key=lambda item: item[1].decorator.lineno):
+        if (
+            route.is_hidden
+            or route.path is None
+            or route.method == "*"
+            or "openapi_extra" in route.keywords
+            or _conditional_registration(route.decorator, parents)
+        ):
+            continue
+        operation_id = route.keywords.get("operation_id")
+        if (
+            not isinstance(operation_id, ast.Constant)
+            or not isinstance(operation_id.value, str)
+            or not operation_id.value
+        ):
+            continue
+        key = scope, route.receiver, operation_id.value
+        earlier = seen.get(key)
+        if earlier is None:
+            seen[key] = route
+        elif (earlier.path, earlier.method) != (route.path, route.method) and id(route.decorator) not in reported:
+            findings.append(
+                _Finding(
+                    operation_id,
+                    f"[operation-id] duplicate operation_id `{operation_id.value}`; use a unique ID for each operation.",
+                )
+            )
+            reported.add(id(route.decorator))
+    return findings
+
+
+def _conditional_registration(decorator: ast.Call, parents: Mapping[ast.AST, ast.AST]) -> bool:
+    owner = parents.get(decorator)
+    while owner is not None:
+        if isinstance(owner, (ast.If, ast.Match, ast.Try, ast.TryStar, ast.For, ast.AsyncFor, ast.While)):
+            return True
+        owner = parents.get(owner)
+    return False
 
 
 def _path_pattern(path: str) -> re.Pattern[str] | None:
