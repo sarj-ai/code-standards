@@ -8840,7 +8840,7 @@
             "symbol": "def check_context(self, context: PythonFileContext) -> list[Diagnostic]:"
           }
         ],
-        "attempted_subset_and_counterexample": "Try replacing dict/model dual access by getattr: missing/default/coercion and validation error behavior differ.",
+        "attempted_subset_and_counterexample": "Replacing support for dictionaries and models with getattr can change how absent values, default values, and validation failures behave.",
         "verdict": "retain-manual-until-stated-proof-exists",
         "additional_safe_subset_proven": false
       },
