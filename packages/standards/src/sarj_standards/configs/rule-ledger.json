@@ -138,6 +138,7 @@
       "prefer-direct-import-module",
       "prefer-discriminated-model-union",
       "prefer-fstring-over-concat",
+      "prefer-grouped-settings",
       "prefer-immutable-module-constant",
       "prefer-injected-dependency-over-monkeypatch",
       "prefer-library-fake",
@@ -577,7 +578,8 @@
       "SARJ528",
       "SARJ529",
       "SARJ530",
-      "SARJ531"
+      "SARJ531",
+      "SARJ532"
     ],
     "sql": [
       "SARJ101",

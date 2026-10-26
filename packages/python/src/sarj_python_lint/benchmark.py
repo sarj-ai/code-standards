@@ -8,12 +8,17 @@ from pathlib import Path
 from statistics import median
 import sys
 from time import perf_counter
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
+from sarj_rule_contracts import RuleId
 import typer
 
 from sarj_python_lint.__main__ import analyze, expand_paths
 from sarj_python_lint.rules import REGISTRY
+
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,11 +48,16 @@ def peak_memory_bytes() -> int | None:
     return peak if sys.platform == "darwin" else peak * 1024
 
 
-def measure(paths: list[Path], rule_ids: list[str] | None = None, *, repeats: int = 5) -> BenchmarkReport:
+def measure(
+    paths: list[Path],
+    rule_ids: Sequence[str] | None = None,  # sarj-noqa: SARJ093 -- Public input accepts raw rule names.
+    *,
+    repeats: int = 5,
+) -> BenchmarkReport:
     if repeats < 1:
         msg = "repeats must be positive"
         raise ValueError(msg)
-    selected = sorted(REGISTRY) if rule_ids is None else sorted(rule_ids)
+    selected = [RuleId(name) for name in sorted(REGISTRY if rule_ids is None else rule_ids)]
     unknown = sorted(set(selected) - REGISTRY.keys())
     if unknown:
         msg = f"unknown rule(s): {', '.join(unknown)}"

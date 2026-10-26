@@ -6,7 +6,7 @@ from datetime import date
 import re
 from typing import TYPE_CHECKING, TypeIs
 
-from sarj_rule_contracts import TextEdit
+from sarj_rule_contracts import RuleId, TextEdit
 from sqlglot import exp
 
 from sarj_sql_lint._postgres import parse_postgres
@@ -62,7 +62,7 @@ class _Range:
     end: int
 
 
-def literal_edits(source: str, diagnostics: Sequence[Diagnostic], rule_id: str) -> list[TextEdit]:
+def literal_edits(source: str, diagnostics: Sequence[Diagnostic], rule_id: RuleId) -> list[TextEdit]:
     if not diagnostics:
         return []
     statements = [tree for tree in parse_postgres(source) if tree is not None]
@@ -221,7 +221,7 @@ def _timezone_ranges(source: str) -> dict[int, _Range]:
 
 
 def _literal_edit(
-    source: str, cast: exp.Cast, positions: Sequence[int], timezones: Mapping[int, _Range], *, rule_id: str
+    source: str, cast: exp.Cast, positions: Sequence[int], timezones: Mapping[int, _Range], *, rule_id: RuleId
 ) -> TextEdit | None:
     literal = _arguments(cast).get("this")
     if not isinstance(literal, exp.Literal) or (value := _plain_literal(source, literal)) is None:

@@ -15,6 +15,7 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
+    is_suppressed,
 )
 from sarj_python_lint.rules._ast_index import walk, walk as walk_ast
 from sarj_python_lint.rules._logging import LOG_METHODS, is_logger_expr
@@ -32,8 +33,22 @@ if TYPE_CHECKING:
 _SQL_RE = re.compile(
     r"^\s*(?:(?i:(?:select\b.+\bfrom|insert\s+into|update\s+\S+\s+set|delete\s+from|merge\s+into)\b|"
     r"with\s+\w+\s+as\s*\(|(?:create|alter|drop)\s+(?:table|index|view|schema|type|database)\b|"
-    r"explain\s+(?:select|insert|update|delete|with)\b)|(?:FROM|JOIN|ORDER\s+BY|GROUP\s+BY|VALUES)\b)",
+    r"explain\s+(?:select|insert|update|delete|with)\b)|(?:SELECT|FROM|JOIN|ORDER\s+BY|GROUP\s+BY|VALUES)\b|CAST\s*\()",
 )
+_SOURCE_FRAGMENT_RE = re.compile(
+    r"(?:^|\n)[ \t]*(?:(?:async[ \t]+)?def[ \t]+\w+|class[ \t]+\w+[ \t]*[(:]|"
+    r"from[ \t]+[\w.]+[ \t]+import\b|import[ \t]+[\w.]+(?:[ \t]+as[ \t]+\w+)?[ \t]*(?:\n|$)|"
+    r"(?:return|yield|raise|assert)[ \t]+\w+[ \t]*\(|"
+    r"\#[^\r\n]*(?:\r\n?|\n)|"
+    r"(?:\#[ \t]*@generated|--[ \t]*(?:@generated|generated))\b)"
+)
+_CONFIG_FRAGMENT_RE = re.compile(
+    r"(?m)^[ \t]*(?:[^\W\d][\w.-]*[ \t]*=|"
+    r"\[{1,2}[A-Za-z_][\w.\"'-]*\]{1,2}[ \t]*(?:\n|$)|"
+    r"[A-Za-z_][\w.-]*:[ \t]*[\[{])"
+)
+_MAPPING_FIELD_RE = re.compile(r"(?m)^[ \t]*[A-Za-z_][\w.-]*:[ \t]*(?:\S|$)")
+_MIN_CONFIG_FIELDS = 2
 
 # Calls returning a lazy translation proxy or an escape-aware SafeString.
 _LAZY_CALLS = frozenset(
@@ -118,11 +133,16 @@ class _RegexBindings(NamedTuple):
     scoped_names: frozenset[str]
 
 
+class _InterpolationParts(NamedTuple):
+    literals: list[str]
+    dynamic: list[ast.expr]
+
+
 class PreferFstringOverConcat(Rule):
     id: str = "prefer-fstring-over-concat"
     code: str = "SARJ068"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Prefer f-strings for short human-readable interpolation when they make the result clearer.",
         rationale="For prose-like strings, f-strings keep interpolated values and surrounding text visible together.",
         remediation=(
@@ -136,12 +156,13 @@ class PreferFstringOverConcat(Rule):
         limitations=(
             "Safe fixes require every runtime operand to be an explicit unshadowed builtin str, repr or ascii conversion of a proven exact native primitive. Bare strings, subclasses, custom operators and formatting contracts remain review-only.",
             "Runtime operands must have concrete string evidence.",
+            "Unique literal-string bindings and aliases supply surrounding text, including module prefixes. Rebinding, global/nonlocal writers, conditional assignments, imported values, and unresolved scopes are not inferred.",
             "String evidence alone does not prove custom concatenation and formatting equivalence; only exact-native-primitive builtin-conversion subsets are fixed.",
             (
-                "Logging, common direct SQL and regular-expression forms, lazy strings, ORM expressions, generated files, long "
+                "Logging, source and configuration fragments, generated headers, common direct SQL and regular-expression forms, lazy strings, ORM expressions, generated files, long "
                 "literals, and punctuation-oriented fragment composition are excluded."
             ),
-            "The warning is stylistic and intentionally leaves URL, path, protocol, and declarative fragments alone.",
+            "The policy is stylistic and intentionally leaves URL, path, protocol and declarative fragments alone. Stable aliases of join-built strings retain the fragment-composition exclusion; unresolved or rebound values are not inferred.",
         ),
         examples=(
             RuleExample(
@@ -164,6 +185,36 @@ class PreferFstringOverConcat(Rule):
                 files=(
                     ExampleFile.python(
                         "src/render.py", 'def greeting(name: str) -> str:\n    return f"Hello, {name}!"\n'
+                    ),
+                ),
+                focus_path=PurePosixPath("src/render.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="named-literal-prefix",
+                scenario="literal-prefix",
+                title="A literal prefix still participates in interpolation",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "src/render.py",
+                        'PREFIX = "Question: "\ndef render(value: str) -> str:\n    return PREFIX + value\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("src/render.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="formatted-literal-prefix",
+                scenario="literal-prefix",
+                title="The prefix and value share one f-string",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "src/render.py",
+                        'PREFIX = "Question: "\ndef render(value: str) -> str:\n    return f"{PREFIX}{value}"\n',
                     ),
                 ),
                 focus_path=PurePosixPath("src/render.py"),
@@ -218,12 +269,14 @@ class PreferFstringOverConcat(Rule):
         for node in adds:
             if id(node) in inner or id(node) in excluded:
                 continue
+            if is_suppressed(context.source_lines, node.lineno, self.code):
+                continue
             if not _in_callable_scope(node, parents):
                 continue
             if module_evidence is None:
                 shadowed = _shadowed_producers(tree.body, None)
                 module_evidence = _StringEvidence(frozenset(), shadowed, _imported_modules(tree.body, None) - shadowed)
-            message = _verdict(node, _string_evidence(node, parents, module_evidence, scope_shadowing))
+            message = _verdict(node, _string_evidence(node, parents, module_evidence, scope_shadowing), context)
             if message is None:
                 continue
             diags.append(
@@ -232,7 +285,7 @@ class PreferFstringOverConcat(Rule):
                     line=node.lineno,
                     col=node.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message=message,
                 )
             )
@@ -353,20 +406,13 @@ def _in_callable_scope(node: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> boo
     return False
 
 
-def _verdict(node: ast.BinOp, evidence: _StringEvidence) -> str | None:
-    literals: list[str] = []
-    dynamic: list[ast.expr] = []
+def _verdict(node: ast.BinOp, evidence: _StringEvidence, context: PythonFileContext) -> str | None:
     operands = _flatten(node)
-    for operand in operands:
-        if isinstance(operand, ast.Constant):
-            if not isinstance(operand.value, str):
-                # A bytes/int/float literal is positive evidence this `+` is not
-                # string concatenation at all.
-                return None
-            literals.append(operand.value)
-        else:
-            dynamic.append(operand)
-    if _unsupported_interpolation_operands(literals, dynamic, evidence):
+    parts = _interpolation_parts(operands, evidence, context)
+    if parts is None:
+        return None
+    literals, dynamic = parts
+    if _unsupported_interpolation_operands(literals, dynamic, evidence) or _has_bound_join(dynamic, context):
         return None
     if len(operands) == _TERMINATOR_OPERANDS and all(not text.strip() for text in literals):
         return None
@@ -389,12 +435,70 @@ def _verdict(node: ast.BinOp, evidence: _StringEvidence) -> str | None:
     return message
 
 
+def _interpolation_parts(
+    operands: list[ast.expr], evidence: _StringEvidence, context: PythonFileContext
+) -> _InterpolationParts | None:
+    literals: list[str] = []
+    dynamic: list[ast.expr] = []
+    inline_literal = any(isinstance(operand, ast.Constant) and isinstance(operand.value, str) for operand in operands)
+    for operand in operands:
+        literal = (
+            None
+            if inline_literal and not isinstance(operand, ast.Constant) and _is_string_expr(operand, evidence)
+            else _literal_string(operand, context)
+        )
+        if literal is not None:
+            literals.append(literal)
+        elif isinstance(operand, ast.Constant):
+            # A bytes/int/float literal is positive evidence this `+` is not
+            # string concatenation at all.
+            return None
+        else:
+            dynamic.append(operand)
+    return _InterpolationParts(literals, dynamic)
+
+
+def _literal_string(expression: ast.expr, context: PythonFileContext) -> str | None:
+    value = _bound_value(expression, context)
+    return value.value if isinstance(value, ast.Constant) and isinstance(value.value, str) else None
+
+
+def _bound_value(expression: ast.expr, context: PythonFileContext) -> ast.expr | None:
+    seen: set[ast.AST] = set()
+    while isinstance(expression, ast.Name):
+        provenance = context.static_resource_provenance
+        if provenance.dynamic_namespace:
+            return None
+        binding = provenance.runtime_binding(expression.id, expression)
+        if not isinstance(binding, ast.Name) or binding in seen:
+            return None
+        seen.add(binding)
+        value = provenance.assignment_value(binding, expression)
+        if value is None:
+            return None
+        expression = value
+    return expression
+
+
+def _has_bound_join(dynamic: list[ast.expr], context: PythonFileContext) -> bool:
+    if not any(_is_join_call(call) for call in context.nodes(ast.Call)):
+        return False
+    return any(_is_join_call(_bound_value(expression, context)) for expression in dynamic)
+
+
 def _is_structural_fragment(literals: list[str]) -> bool:
+    if any(
+        _SOURCE_FRAGMENT_RE.search(text)
+        or _CONFIG_FRAGMENT_RE.search(text)
+        or len(_MAPPING_FIELD_RE.findall(text)) >= _MIN_CONFIG_FIELDS
+        for text in literals
+    ):
+        return True
     substantive = "".join(literals)
     return bool(substantive) and (
         "\\" in substantive
         or any(marker in substantive for marker in ("(?:", "(?=", "(?!", ".*", ".+", "^", "$"))
-        or not any(character.isalpha() or character.isspace() for character in substantive)
+        or not any(character.isalpha() for character in substantive)
     )
 
 
@@ -463,7 +567,7 @@ def _unsupported_interpolation_operands(
     return bool(any(isinstance(expr, ast.IfExp | ast.BoolOp) for expr in dynamic))
 
 
-def _is_join_call(expr: ast.expr) -> bool:
+def _is_join_call(expr: ast.expr | None) -> bool:
     return isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute) and expr.func.attr == "join"
 
 
@@ -573,9 +677,11 @@ def _string_evidence(
 
 
 def _annotation_is_string(annotation: ast.expr, shadowed: frozenset[str]) -> bool:
-    if isinstance(annotation, ast.Name):
-        return annotation.id == "str" and "str" not in shadowed
-    return False
+    match annotation:
+        case ast.Name(id="str") | ast.Constant(value="str"):
+            return "str" not in shadowed
+        case _:
+            return False
 
 
 def _is_string_expr(expr: ast.expr, evidence: _StringEvidence) -> bool:
@@ -681,18 +787,6 @@ def _collect_string_parameters(
     for arg in (*args.posonlyargs, *args.args, *args.kwonlyargs):
         if arg.annotation is not None and _annotation_is_string(arg.annotation, shadowed):
             known.add(arg.arg)
-    if (
-        args.vararg is not None
-        and args.vararg.annotation is not None
-        and _annotation_is_string(args.vararg.annotation, shadowed)
-    ):
-        known.add(args.vararg.arg)
-    if (
-        args.kwarg is not None
-        and args.kwarg.annotation is not None
-        and _annotation_is_string(args.kwarg.annotation, shadowed)
-    ):
-        known.add(args.kwarg.arg)
 
 
 def _update_string_bindings(

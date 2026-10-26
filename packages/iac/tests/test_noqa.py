@@ -13,6 +13,8 @@ from sarj_iac_lint.rules import REGISTRY
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from sarj_rule_contracts import RuleId
+
 
 def test_bare_noqa_cannot_waive_all_rules(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     rc = main(["check", "--rule", "require-deletion-protection", _write(tmp_path, _SQL_NOQA_BARE)])
@@ -432,7 +434,7 @@ def test_noqa_requires_complete_directive_codes(
 @pytest.mark.parametrize("selected", [False, True])
 @pytest.mark.parametrize("crlf", [False, True])
 def test_reasoned_noqa_preserves_registered_rule_selection(
-    rule_id: str, tmp_path: Path, *, selected: bool, crlf: bool
+    rule_id: RuleId, tmp_path: Path, *, selected: bool, crlf: bool
 ) -> None:
     rule = REGISTRY[rule_id]
     spec = rule.native_spec()

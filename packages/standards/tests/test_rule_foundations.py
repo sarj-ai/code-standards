@@ -292,7 +292,7 @@ def test_evaluation_reports_metrics_and_warning_first_decision() -> None:
     )
 
     def checker(case: EvaluationCase) -> Sequence[Finding]:
-        return (Finding("TEST001", 2, 5, "placeholder"),) if "pass" in case.source else ()
+        return (Finding(RuleId("TEST001"), 2, 5, "placeholder"),) if "pass" in case.source else ()
 
     report = evaluate(_problem(), "TEST001", cases, checker)
 
@@ -306,7 +306,7 @@ def test_evaluation_reports_metrics_and_warning_first_decision() -> None:
 def test_errors_or_duplicate_location_reject_promotion() -> None:
     good = EvaluationCase("good", Language.PYTHON, "return None", ExpectedOutcome.NO_MATCH)
     bad = EvaluationCase("bad", Language.PYTHON, "pass", ExpectedOutcome.MATCH)
-    hit = Finding("TEST001", 1, 1, "hit")
+    hit = Finding(RuleId("TEST001"), 1, 1, "hit")
     false_positive = evaluate(_problem(), "TEST001", (good,), lambda _case: (hit,))
     assert false_positive.false_positives == 1
     assert false_positive.decision is PromotionDecision.REJECT
@@ -314,8 +314,8 @@ def test_errors_or_duplicate_location_reject_promotion() -> None:
 
     def checker(_case: EvaluationCase) -> Sequence[Finding]:
         return (
-            Finding("TEST001", 1, 1, "first"),
-            Finding("TEST001", 1, 1, "duplicate"),
+            Finding(RuleId("TEST001"), 1, 1, "first"),
+            Finding(RuleId("TEST001"), 1, 1, "duplicate"),
         )
 
     report = evaluate(
@@ -335,7 +335,7 @@ def test_candidate_cannot_claim_another_rules_findings() -> None:
     case = EvaluationCase("bad", Language.PYTHON, "pass", ExpectedOutcome.MATCH)
 
     with pytest.raises(ValueError, match="returned findings for: OTHER001"):
-        evaluate(_problem(), "TEST001", (case,), lambda _case: (Finding("OTHER001", 1, 1, "overlap"),))
+        evaluate(_problem(), "TEST001", (case,), lambda _case: (Finding(RuleId("OTHER001"), 1, 1, "overlap"),))
 
 
 def test_private_case_source_and_layout_do_not_enter_report() -> None:
@@ -353,7 +353,7 @@ def test_private_case_source_and_layout_do_not_enter_report() -> None:
         _problem(),
         "TEST001",
         (case,),
-        lambda _case: (Finding("TEST001", 1, 1, f"matched {secret}"),),
+        lambda _case: (Finding(RuleId("TEST001"), 1, 1, f"matched {secret}"),),
     )
 
     assert secret not in repr(case)
@@ -395,7 +395,7 @@ def test_error_promotion_requires_verified_evidence_zero_errors_and_performance_
     )
 
     def checker(case: EvaluationCase) -> Sequence[Finding]:
-        return (Finding("TEST001", 1, 1, "hit"),) if case.source == "pass" else ()
+        return (Finding(RuleId("TEST001"), 1, 1, "hit"),) if case.source == "pass" else ()
 
     assert evaluate(_problem(), "TEST001", cases, checker, evidence=fast).decision is PromotionDecision.ERROR
     assert evaluate(_problem(), "TEST001", (), checker, evidence=fast).decision is PromotionDecision.REJECT
@@ -414,7 +414,7 @@ def test_error_promotion_requires_verified_evidence_zero_errors_and_performance_
         _problem(),
         "TEST001",
         (EvaluationCase("good", Language.PYTHON, "return None"),),
-        lambda _case: (Finding("TEST001", 1, 1, "hit"),),
+        lambda _case: (Finding(RuleId("TEST001"), 1, 1, "hit"),),
         thresholds=permissive,
         evidence=fast,
     )

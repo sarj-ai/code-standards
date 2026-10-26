@@ -6,6 +6,7 @@ from pathlib import Path
 import time
 
 import pytest
+from sarj_rule_contracts import RuleId
 
 from sarj_python_lint.rules import REGISTRY
 
@@ -53,7 +54,7 @@ class _RuleTimings:
 # These gates compare CPU work; scheduler pauses belong in the public wall-time benchmark.
 
 
-def _best_time_s(rule_id: str, path: Path, source: str, repeats: int = 5) -> float:
+def _best_time_s(rule_id: RuleId, path: Path, source: str, repeats: int = 5) -> float:
     rule = REGISTRY[rule_id]()
     best = float("inf")
     for _ in range(repeats):
@@ -63,8 +64,8 @@ def _best_time_s(rule_id: str, path: Path, source: str, repeats: int = 5) -> flo
     return best
 
 
-def _worst_path_time_s(rule_id: str, source: str) -> float:
-    return max(_best_time_s(rule_id, path, source) for path in _PATHS)
+def _worst_path_time_s(rule_id: RuleId, source: str) -> float:
+    return max(_best_time_s(RuleId(rule_id), path, source) for path in _PATHS)
 
 
 def _parse_baseline_s(repeats: int = 7) -> float:
@@ -80,7 +81,7 @@ def _parse_baseline_s(repeats: int = 7) -> float:
 def rule_timings() -> _RuleTimings:
     # Both gates inspect the same five-repeat measurements; neither needs a second run.
     parse_s = _parse_baseline_s()
-    timings = {rid: _worst_path_time_s(rid, _SYNTHETIC_PY) for rid in sorted(REGISTRY)}
+    timings = {rid: _worst_path_time_s(RuleId(rid), _SYNTHETIC_PY) for rid in sorted(REGISTRY)}
     return _RuleTimings(parse_s, timings)
 
 

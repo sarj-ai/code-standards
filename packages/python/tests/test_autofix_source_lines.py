@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_python_lint.__main__ import check_source
 from sarj_python_lint.autofix import fix_source
 from sarj_python_lint.rules import REGISTRY
+
+
+if TYPE_CHECKING:
+    from sarj_rule_contracts import RuleId
 
 
 _PATH = Path("app/source_lines.py")
@@ -28,7 +33,7 @@ _SEPARATORS = (
     "rule_ids", [pytest.param(["no-comment-cruft"], id="selected"), pytest.param(None, id="default")]
 )
 def test_nonphysical_separators_cannot_apply_a_diagnostic_to_different_source(
-    separator: str, container: str, rule_ids: list[str] | None
+    separator: str, container: str, rule_ids: list[RuleId] | None
 ) -> None:
     if container == "literal":
         source = f'DATA = """x{separator}y{separator}z\npreserve\n"""\n# --------------------\n'
@@ -42,7 +47,9 @@ def test_nonphysical_separators_cannot_apply_a_diagnostic_to_different_source(
 @pytest.mark.parametrize(
     "rule_ids", [pytest.param(["no-comment-cruft"], id="selected"), pytest.param(None, id="default")]
 )
-def test_ordinary_unicode_and_supported_line_endings_keep_safe_fixes(ending: str, rule_ids: list[str] | None) -> None:
+def test_ordinary_unicode_and_supported_line_endings_keep_safe_fixes(
+    ending: str, rule_ids: list[RuleId] | None
+) -> None:
     source = f"DATA = 'préservé 日本語'{ending}# --------------------{ending}"
     assert fix_source(_PATH, source, rule_ids=rule_ids) == f"DATA = 'préservé 日本語'{ending}{ending}"
 
@@ -50,7 +57,7 @@ def test_ordinary_unicode_and_supported_line_endings_keep_safe_fixes(ending: str
 @pytest.mark.parametrize(
     "rule_ids", [pytest.param(["no-comment-cruft"], id="selected"), pytest.param(None, id="default")]
 )
-def test_bare_carriage_returns_are_left_unchanged_until_shared_tokenizers_agree(rule_ids: list[str] | None) -> None:
+def test_bare_carriage_returns_are_left_unchanged_until_shared_tokenizers_agree(rule_ids: list[RuleId] | None) -> None:
     source = "DATA = 'preserve'\r# --------------------\r"
     assert fix_source(_PATH, source, rule_ids=rule_ids) == source
 

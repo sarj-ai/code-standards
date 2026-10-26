@@ -6,6 +6,7 @@ import time
 from typing import TYPE_CHECKING
 
 import pytest
+from sarj_rule_contracts import RuleId
 
 from sarj_iac_lint.rules import REGISTRY
 
@@ -55,7 +56,7 @@ class _GrowthTimes:
     large: float
 
 
-def _best_time_s(rule_id: str, path: Path, source: str, repeats: int = 5) -> float:
+def _best_time_s(rule_id: RuleId, path: Path, source: str, repeats: int = 5) -> float:
     rule = REGISTRY[rule_id]()
     best = float("inf")
     for _ in range(repeats):
@@ -68,7 +69,7 @@ def _best_time_s(rule_id: str, path: Path, source: str, repeats: int = 5) -> flo
 @pytest.fixture(scope="module")
 def rule_timings() -> dict[str, float]:
     path = Path("synthetic.tf")
-    return {rid: _best_time_s(rid, path, _SYNTHETIC_HCL) for rid in sorted(REGISTRY)}
+    return {rid: _best_time_s(RuleId(rid), path, _SYNTHETIC_HCL) for rid in sorted(REGISTRY)}
 
 
 def test_no_rule_exceeds_absolute_budget(rule_timings: dict[str, float]) -> None:

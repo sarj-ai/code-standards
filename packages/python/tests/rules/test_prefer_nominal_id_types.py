@@ -152,18 +152,58 @@ def _project_check(tmp_path: Path, source: str, definitions: str) -> list[Diagno
 @pytest.mark.parametrize(
     "source",
     [
+        "def load(file_id: str) -> None: ...\n",
+        "def load(file_id: str | None) -> None: ...\n",
+        "def load(file_ids: list[str]) -> None: ...\n",
+        "from collections.abc import Sequence\ndef load(file_ids: Sequence[str]) -> None: ...\n",
+        "from dataclasses import dataclass\n@dataclass(frozen=True, slots=True)\nclass FileIndex:\n    file_id: str\n    path: str\n",
+        "class FileIndex:\n    file_id: str\n    def __init__(self, file_id: str) -> None: ...\n",
+        "type Raw = str\ndef load(file_id: Raw) -> None: ...\n",
+        "def load(file_id: 'str') -> None: ...\n",
+    ],
+)
+def test_single_id_reuses_an_established_nominal_type_as_an_error(tmp_path: Path, source: str) -> None:
+    findings = _project_check(tmp_path, source, "from typing import NewType\nFileId = NewType('FileId', str)\n")
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ093"
+    assert findings[0].severity is Severity.ERROR
+
+
+@pytest.mark.parametrize(
+    ("source", "definitions"),
+    [
+        ("def load(file_id: str) -> None: ...\n", ""),
+        ("def load(file_id: int) -> None: ...\n", "from typing import NewType\nFileId = NewType('FileId', str)\n"),
+        ("def load(file_id: str) -> None: ...\n", "from typing import NewType\nFileId = NewType('WrongName', str)\n"),
+        (
+            "from example.types import FileId\ndef load(file_id: FileId) -> None: ...\n",
+            "from typing import NewType\nFileId = NewType('FileId', str)\n",
+        ),
+        (
+            "def load(file_id: str) -> None: ...  # sarj-noqa: SARJ093 -- raw external boundary\n",
+            "from typing import NewType\nFileId = NewType('FileId', str)\n",
+        ),
+    ],
+)
+def test_single_id_needs_an_unambiguous_matching_domain_type(tmp_path: Path, source: str, definitions: str) -> None:
+    assert _project_check(tmp_path, source, definitions) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
         "from example.types import FolderId\ndef move(file_id: str, folder_id: FolderId) -> None: ...\n",
         "from example.types import FolderId as Parent\ndef move(file_id: str, folder_id: Parent) -> None: ...\n",
         "import example.types as ids\ndef move(file_id: str, folder_id: ids.FolderId) -> None: ...\n",
         "from example.types import Raw\ndef move(file_id: Raw, folder_id: str) -> None: ...\n",
     ],
 )
-def test_imported_carriers_are_advisory(tmp_path: Path, source: str) -> None:
+def test_imported_carriers_are_blocking(tmp_path: Path, source: str) -> None:
     findings = _project_check(
         tmp_path, source, "from typing import NewType\nFolderId = NewType('FolderId', str)\ntype Raw = str\n"
     )
     assert len(findings) == 1
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
 
 
 def test_existing_domain_brands_admit_non_id_roles(tmp_path: Path) -> None:
@@ -173,7 +213,7 @@ def test_existing_domain_brands_admit_non_id_roles(tmp_path: Path) -> None:
         "from typing import NewType\nRoomName = NewType('RoomName', str)\nCallId = NewType('CallId', str)\n",
     )
     assert len(findings) == 1
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
 
 
 @pytest.mark.parametrize(
@@ -254,15 +294,15 @@ def test_explicit_first_party_reexport_chain(tmp_path: Path) -> None:
     source = "from example.exports import Export\ndef move(file_id: Export, folder_id: str) -> None: ...\n"
     findings = _project_check(tmp_path, source, "type Raw = str\n")
     assert len(findings) == 1
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
 
 
-def test_local_established_non_id_brand_is_advisory() -> None:
+def test_local_established_non_id_brand_is_blocking() -> None:
     findings = _check(
         "from typing import NewType\nRoomName = NewType('RoomName', str)\ndef record(room_name: str, call_id: str) -> None: ...\n"
     )
     assert len(findings) == 1
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
 
 
 def test_local_unrelated_newtype_factory_does_not_establish_domain() -> None:
@@ -304,15 +344,15 @@ def test_expanded_class_does_not_hide_existing_constructor_error(tmp_path: Path)
     assert findings[0].line == 5
 
 
-@pytest.mark.parametrize(("carrier", "exit_code"), [("FolderId", 0), ("str", 1)])
-def test_native_cli_keeps_expanded_warnings_nonblocking(tmp_path: Path, carrier: str, exit_code: int) -> None:
+@pytest.mark.parametrize(("carrier", "exit_code"), [("FolderId", 1), ("str", 1)])
+def test_native_cli_blocks_expanded_nominal_violations(tmp_path: Path, carrier: str, exit_code: int) -> None:
     source = f"from example.types import FolderId\ndef move(file_id: str, folder_id: {carrier}) -> None: ...\n"
     _project_check(tmp_path, source, "from typing import NewType\nFolderId = NewType('FolderId', str)\n")
     path = tmp_path / "example" / "service.py"
     assert main(["check", "--rule", PreferNominalIdTypes.id, str(path)]) == exit_code
 
 
-def test_expanded_warning_owns_generic_keyword_only_warning() -> None:
+def test_expanded_error_owns_generic_keyword_only_warning() -> None:
     source = "from typing import NewType\nApiKey = NewType('ApiKey', str)\ndef record(api_key: str, call_id: str) -> None: ...\n"
     findings = check_source(
         [RequireKeywordOnlySwapProneParams(), PreferNominalIdTypes()],
@@ -320,7 +360,7 @@ def test_expanded_warning_owns_generic_keyword_only_warning() -> None:
         source,
     )
     assert {(finding.code, finding.severity) for finding in findings} == {
-        ("SARJ093", Severity.WARNING),
+        ("SARJ093", Severity.ERROR),
     }
 
 
@@ -337,7 +377,7 @@ def test_demanded_annotations_preserve_quotes_and_local_aliases(tmp_path: Path, 
         tmp_path, source, "from typing import NewType\nFolderId = NewType('FolderId', str)\ntype Raw = str\n"
     )
     assert len(findings) == 1
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
 
 
 @pytest.mark.parametrize("include_brand", [True, False])
@@ -389,7 +429,7 @@ def test_native_normalized_nonfocus_factory_keeps_canonical_role_ownership(
 ) -> None:
     diagnostics = _project_check(tmp_path, "def record(room_name: str, call_id: str) -> None: ...\n", definitions)
     assert len(diagnostics) == expected
-    assert all(item.code == "SARJ093" and item.severity is Severity.WARNING for item in diagnostics)
+    assert all(item.code == "SARJ093" and item.severity is Severity.ERROR for item in diagnostics)
 
 
 @pytest.mark.parametrize(
@@ -667,7 +707,7 @@ def test_service_version_can_use_existing_nominal_domain_evidence(tmp_path: Path
         "from typing import NewType\nServiceVersion = NewType('ServiceVersion', str)\n",
     )
     assert len(diagnostics) == 1
-    assert diagnostics[0].severity is Severity.WARNING
+    assert diagnostics[0].severity is Severity.ERROR
 
 
 @pytest.mark.parametrize("schema", ["generated", "invalid", "wildcard", "shadowed", "nested"])
@@ -704,7 +744,7 @@ def test_current_focus_source_controls_canonical_role_evidence(tmp_path: Path, *
     current_source = boundary if brand_on_disk else brand + boundary
     diagnostics = PreferNominalIdTypes().check(tmp_path / "example" / "service.py", current_source)
     assert len(diagnostics) == int(not brand_on_disk)
-    assert all(item.severity is Severity.WARNING for item in diagnostics)
+    assert all(item.severity is Severity.ERROR for item in diagnostics)
 
 
 def test_distinct_class_and_constructor_roles_retain_both_diagnostics() -> None:
@@ -736,7 +776,7 @@ def test_distinct_expanded_class_roles_do_not_disappear_behind_constructor(tmp_p
         "    def __init__(self, file_id: str, folder_id: str) -> None: ...\n",
         "from typing import NewType\nRoomName = NewType('RoomName', str)\n",
     )
-    assert [(item.line, item.severity) for item in diagnostics] == [(2, Severity.WARNING), (4, Severity.ERROR)]
+    assert [(item.line, item.severity) for item in diagnostics] == [(2, Severity.ERROR), (4, Severity.ERROR)]
 
 
 @pytest.mark.parametrize("quote_annotation", [True, False])
@@ -942,7 +982,7 @@ def test_unescaped_canonical_factory_still_establishes_named_domain_roles() -> N
     )
     [finding] = _check(source)
     assert finding.code == "SARJ093"
-    assert finding.severity is Severity.WARNING
+    assert finding.severity is Severity.ERROR
 
 
 @pytest.mark.parametrize(

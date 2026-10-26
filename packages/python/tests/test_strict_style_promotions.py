@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -9,13 +10,17 @@ from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules import REGISTRY
 
 
+if TYPE_CHECKING:
+    from sarj_rule_contracts import RuleId
+
+
 @pytest.mark.parametrize(
     "rule_id",
     ["prefer-walrus-awaited-none-guard", "prefer-walrus-regex-match", "prefer-walrus-stream-loop"],
 )
 @pytest.mark.parametrize("requires_python", [">=3.7", ">=3.7,<3.8", "==3.7.*"])
 def test_walrus_preferences_preserve_declared_legacy_support(
-    tmp_path: Path, rule_id: str, requires_python: str
+    tmp_path: Path, rule_id: RuleId, requires_python: str
 ) -> None:
     (tmp_path / "pyproject.toml").write_text(
         f"[project]\nname = 'legacy-example'\nversion = '1.0.0'\nrequires-python = '{requires_python}'\n"
@@ -55,14 +60,14 @@ def test_walrus_preferences_preserve_declared_legacy_support(
         ),
     ],
 )
-def test_blocking_proofs_preserve_advisory_compatibility_cases(rule_id: str, blocking: str, advisory: str) -> None:
+def test_blocking_proofs_preserve_advisory_compatibility_cases(rule_id: RuleId, blocking: str, advisory: str) -> None:
     rule_type = REGISTRY[rule_id]
     assert [item.severity for item in rule_type().check(Path("service.py"), blocking)] == [Severity.ERROR]
     assert [item.severity for item in rule_type().check(Path("service.py"), advisory)] == [Severity.WARNING]
 
 
 @pytest.mark.parametrize("rule_id", ["require-precise-factory-signature", "require-keyword-only-swap-prone-params"])
-def test_namespace_exports_cannot_prove_closed_callable_ownership(rule_id: str) -> None:
+def test_namespace_exports_cannot_prove_closed_callable_ownership(rule_id: RuleId) -> None:
     source = (
         "import sys\n"
         "from collections.abc import Callable\nclass Result: pass\n"

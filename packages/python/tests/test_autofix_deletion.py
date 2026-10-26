@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 import textwrap
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -13,6 +14,10 @@ from sarj_python_lint._autofix_docs import private_unescaped_function
 from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint.autofix import fix_source
 from sarj_python_lint.rules import REGISTRY
+
+
+if TYPE_CHECKING:
+    from sarj_rule_contracts import RuleId
 
 
 _RULE_ID = "no-delete-statement"
@@ -282,7 +287,7 @@ def test_non_python_line_separators_cannot_shift_owned_source_offsets(separator:
         pytest.param(["no-secret-in-log"], id="selected-rule-with-no-builder"),
     ],
 )
-def test_rule_selection_cannot_apply_unselected_deletion_fixes(rule_ids: list[str]) -> None:
+def test_rule_selection_cannot_apply_unselected_deletion_fixes(rule_ids: list[RuleId]) -> None:
     source = _source("unused = None\ndel unused\nreturn 1")
     assert fix_source(_PATH, source, rule_ids=rule_ids) == source
 

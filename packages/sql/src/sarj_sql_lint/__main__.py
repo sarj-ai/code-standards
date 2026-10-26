@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 from typing import TYPE_CHECKING, Annotated
 
-from sarj_rule_contracts import fix_file
+from sarj_rule_contracts import RuleId, fix_file
 import typer
 
 from sarj_sql_lint import __version__
@@ -17,7 +17,7 @@ from sarj_sql_lint.rules.require_fk_index import index_analysis_session
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Sequence
 
 
 SKIP_DIR_NAMES = frozenset(
@@ -59,13 +59,13 @@ def _expand_paths(paths: list[Path]) -> list[Path]:
     return out
 
 
-def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
-    unknown = [rid for rid in rule_ids if rid not in REGISTRY]
+def _check(rule_names: Sequence[str], paths: list[Path]) -> list[Diagnostic]:
+    unknown = [name for name in rule_names if name not in REGISTRY]
     if unknown:
         sys.stderr.write(f"unknown rule(s): {', '.join(unknown)}\n")
         sys.stderr.write(f"available: {', '.join(sorted(REGISTRY))}\n")
         raise SystemExit(2)
-    rules = [REGISTRY[rid]() for rid in rule_ids]
+    rules = [REGISTRY[RuleId(name)]() for name in rule_names]
     clear_path_caches()
     expanded = _expand_paths(paths)
     diags: list[Diagnostic] = []
@@ -79,7 +79,10 @@ def _check(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
     return diags
 
 
-def analyze(rule_ids: list[str], paths: list[Path]) -> list[Diagnostic]:
+def analyze(
+    rule_ids: Sequence[str],  # sarj-noqa: SARJ093 -- Public parsing boundary accepts raw names.
+    paths: list[Path],
+) -> list[Diagnostic]:
     with index_analysis_session():
         return _check(rule_ids, paths)
 

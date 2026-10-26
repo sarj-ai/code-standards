@@ -6,6 +6,7 @@ import subprocess
 import sys
 
 import pytest
+from sarj_rule_contracts import RuleId
 
 from sarj_python_lint.autofix import fix_source
 from sarj_python_lint.rules import REGISTRY
@@ -14,7 +15,7 @@ from sarj_python_lint.rules import REGISTRY
 @dataclass(frozen=True, slots=True)
 class _ObserverCase:
     name: str
-    rule_id: str
+    rule_id: RuleId
     path: str
     helper: str
     source: str
@@ -71,7 +72,7 @@ def _unused_case(name: str, expression: str) -> _ObserverCase:
     source = _PROVIDER_IMPORT + _UNUSED_SOURCE.replace("OBSERVED", expression)
     return _ObserverCase(
         name,
-        "no-unused-underscored-keyword-parameter",
+        RuleId("no-unused-underscored-keyword-parameter"),
         "app/service.py",
         "_make",
         source,
@@ -86,7 +87,7 @@ def _parent_case(name: str, expression: str) -> _ObserverCase:
     )
     return _ObserverCase(
         name,
-        "no-unused-underscored-keyword-parameter",
+        RuleId("no-unused-underscored-keyword-parameter"),
         "app/service.py",
         "_make",
         source,
@@ -115,7 +116,7 @@ _CASES = (
     _parent_case("pooled-literal-identity", "if 1000 is 1000: observe()"),
     _ObserverCase(
         "keyword-only-overload",
-        "require-keyword-only-swap-prone-params",
+        RuleId("require-keyword-only-swap-prone-params"),
         "app/service.py",
         "_move",
         _PROVIDER_IMPORT + _MOVE_SOURCE,
@@ -128,7 +129,7 @@ _CASES = (
     *(
         _ObserverCase(
             rule,
-            rule,
+            RuleId(rule),
             "app/service.py",
             "_normalize",
             _PROVIDER_IMPORT + _DOC_SOURCE,
@@ -139,7 +140,7 @@ _CASES = (
     ),
     _ObserverCase(
         "factory-constructor",
-        "unused-test-factory-option",
+        RuleId("unused-test-factory-option"),
         "tests/test_widget.py",
         "_make_widget",
         _PROVIDER_IMPORT + _FACTORY_SOURCE,
@@ -151,7 +152,7 @@ _CASES = (
     ),
     _ObserverCase(
         "signature-exception-traceback",
-        "no-unused-underscored-keyword-parameter",
+        RuleId("no-unused-underscored-keyword-parameter"),
         "app/service.py",
         "_make",
         _RAISING_SOURCE,
@@ -161,7 +162,7 @@ _CASES = (
     ),
     _ObserverCase(
         "doc-exception-traceback",
-        "redundant-docstring",
+        RuleId("redundant-docstring"),
         "app/service.py",
         "_normalize",
         _RAISING_DOC_SOURCE,
@@ -171,7 +172,7 @@ _CASES = (
     ),
     _ObserverCase(
         "domain-exception-traceback",
-        "prefer-str-enum",
+        RuleId("prefer-str-enum"),
         "app/service.py",
         "_render",
         _RAISING_DOMAIN_SOURCE,
@@ -284,7 +285,7 @@ def _observe(case: _ObserverCase, source: str, directory: Path) -> str:
 
 @dataclass(frozen=True, slots=True)
 class _DispatchCase:
-    rule_id: str
+    rule_id: RuleId
     source: str
     rejected: str
     original_result: str
@@ -293,7 +294,7 @@ class _DispatchCase:
 
 _DISPATCH_CASES = (
     _DispatchCase(
-        "prefer-match-value-dispatch",
+        RuleId("prefer-match-value-dispatch"),
         "def dispatch(value):\n"
         "    if value == 'one':\n        return 1\n"
         "    elif value == 'two':\n        return 2\n"
@@ -309,7 +310,7 @@ _DISPATCH_CASES = (
         "0",
     ),
     _DispatchCase(
-        "prefer-match-type-dispatch",
+        RuleId("prefer-match-type-dispatch"),
         "def dispatch(value):\n"
         "    if isinstance(value, str):\n        return 'text'\n"
         "    elif isinstance(value, bytes):\n        return 'bytes'\n"

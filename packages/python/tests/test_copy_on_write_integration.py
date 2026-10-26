@@ -12,6 +12,8 @@ from sarj_python_lint.rules import REGISTRY
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from sarj_rule_contracts import RuleId
+
 
 _RULES = ("no-input-model-mutation", "no-before-validator-input-mutation", "no-unused-copy-result")
 
@@ -51,7 +53,7 @@ def test_unpacking_keeps_before_validator_mutation_ownership(expression: str, tm
 
 @pytest.mark.parametrize("rule_id", ["no-unused-copy-result"])
 def test_unused_copy_error_enters_blocking_baseline(
-    rule_id: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    rule_id: RuleId, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     example = REGISTRY[rule_id].public_examples()[0]
     target = tmp_path / example.focus_path

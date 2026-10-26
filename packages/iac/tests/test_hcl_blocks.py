@@ -23,6 +23,8 @@ from sarj_iac_lint.rules import REGISTRY
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from sarj_rule_contracts import RuleId
+
 
 def test_tokens_keeps_an_interpolated_string_whole():
     assert tokens('"cache-${var.environment}"') == ('"cache-${var.environment}"',)
@@ -604,7 +606,7 @@ _NATIVE_VALUE_BOUNDARY_CASES = (
 )
 @pytest.mark.parametrize("crlf", [False, True])
 def test_comment_newlines_preserve_complete_value_ownership(
-    name: str, source: str, rule_id: str, expected: int, tmp_path: Path, *, crlf: bool
+    name: str, source: str, rule_id: RuleId, expected: int, tmp_path: Path, *, crlf: bool
 ) -> None:
     source = source.replace("\n", "\r\n") if crlf else source
     path = tmp_path / "main.tf"

@@ -12,6 +12,8 @@ from sarj_sql_lint.rules import REGISTRY
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from sarj_rule_contracts import RuleId
+
 
 @pytest.mark.parametrize(
     ("tail", "count"),
@@ -130,7 +132,7 @@ def test_changed_source_does_not_reuse_old_waiver(*, tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("rule_id", sorted(REGISTRY))
 @pytest.mark.parametrize("line_ending", ["\n", "\r\n"])
-def test_all_registered_sql_examples_preserve_counts(*, tmp_path: Path, rule_id: str, line_ending: str) -> None:
+def test_all_registered_sql_examples_preserve_counts(*, tmp_path: Path, rule_id: RuleId, line_ending: str) -> None:
     specification = REGISTRY[rule_id].native_spec()
     assert specification is not None
     for index, example in enumerate(specification.examples):

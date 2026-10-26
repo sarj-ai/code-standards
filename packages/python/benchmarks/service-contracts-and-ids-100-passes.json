@@ -1,0 +1,1196 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-26",
+  "campaign": "Service contracts, established nominal IDs, interpolation and settings namespaces",
+  "versions": {
+    "code-standards": "8.131.0",
+    "sarj-python-lint": "1.76.0",
+    "sarj-rule-contracts": "0.4.1",
+    "sarj-sql-lint": "0.26.1",
+    "sarj-iac-lint": "0.30.1"
+  },
+  "decisions": {
+    "SARJ465": "Retain ERROR; prove native retained-callback dispatch and per-call HTTP service operations without relying on Queue/Client suffixes. Existing resolvable ABC/Protocol contracts remain valid.",
+    "SARJ093": "ERROR for established singleton ID erasure and previously advisory imported/established-domain coverage; retain ownership, carrier, ambiguity, inheritance, operational and raw-boundary guards.",
+    "SARJ068": "Promote supported short prose interpolation to ERROR under the stricter style policy. Stable literal prefixes count. String evidence alone does not prove custom operator/formatting equivalence; required custom semantics need an exact reasoned exception. Preserve the existing proven native-primitive str/repr/ascii safe-fix subset; other cases remain manual.",
+    "SARJ532": "Stage WARNING without autofix for repeated Python field namespace prefixes on source-proven BaseSettings. Environment aliases do not establish groups; nesting needs explicit environment/source-precedence review."
+  },
+  "admission": {
+    "service_gap": "Name exclusions and direct-call-only traversal missed native callback dispatch and per-call HTTP helpers.",
+    "nominal_gap": "The two-role threshold missed a raw singleton field despite an established matching domain type.",
+    "interpolation_gap": "Literal-only surrounding-text checks missed stable named prefixes; warnings did not block.",
+    "settings_gap": "No existing source-semantic grouping rule covered repeated Python field prefixes.",
+    "integration": "The inspected consumer used an older exact bundle pin; upgrading alone would not repair the demonstrated detector gaps. The inspected changed-file workflow did not establish a scope bypass."
+  },
+  "first100": {
+    "interpretation": "100 distinct labeled semantic review scenarios; not 100 repetitions of one scan",
+    "baseline_detector_revision": "ee0247acef1788f782fe31f0516b0613e8e2e57f",
+    "counts": {
+      "before": {
+        "tp": 0,
+        "tn": 61,
+        "fp": 0,
+        "fn": 39
+      },
+      "after": {
+        "tp": 39,
+        "tn": 61,
+        "fp": 0,
+        "fn": 0
+      }
+    },
+    "passes": [
+      {
+        "pass": 1,
+        "rule": "SARJ465",
+        "case": "retained-callback-dispatch",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 2,
+        "rule": "SARJ465",
+        "case": "named-service-dispatch",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 3,
+        "rule": "SARJ465",
+        "case": "queue-role-without-service-suffix",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 4,
+        "rule": "SARJ465",
+        "case": "aliased-asyncio-module",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 5,
+        "rule": "SARJ465",
+        "case": "aliased-loop-factory",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 6,
+        "rule": "SARJ465",
+        "case": "event-loop-factory",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 7,
+        "rule": "SARJ465",
+        "case": "callback-keyword",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 8,
+        "rule": "SARJ465",
+        "case": "retained-bound-method",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 9,
+        "rule": "SARJ465",
+        "case": "declared-abc",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 10,
+        "rule": "SARJ465",
+        "case": "declared-protocol",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 11,
+        "rule": "SARJ465",
+        "case": "custom-loop-factory",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 12,
+        "rule": "SARJ465",
+        "case": "shadowed-asyncio-module",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 13,
+        "rule": "SARJ465",
+        "case": "callback-only-stored",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 14,
+        "rule": "SARJ465",
+        "case": "callback-is-not-executor",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 15,
+        "rule": "SARJ465",
+        "case": "unknown-callback-position",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 16,
+        "rule": "SARJ465",
+        "case": "callback-replaced",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 17,
+        "rule": "SARJ465",
+        "case": "unreachable-dispatch",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 18,
+        "rule": "SARJ465",
+        "case": "deferred-dispatch",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 19,
+        "rule": "SARJ465",
+        "case": "suppressed-boundary",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 20,
+        "rule": "SARJ465",
+        "case": "generated-boundary",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 21,
+        "rule": "SARJ465",
+        "case": "malformed-boundary",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 22,
+        "rule": "SARJ465",
+        "case": "local-loop-binding",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 23,
+        "rule": "SARJ465",
+        "case": "thread-dispatch",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 24,
+        "rule": "SARJ465",
+        "case": "aliased-thread-dispatch",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 25,
+        "rule": "SARJ465",
+        "case": "private-only-dispatch",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 26,
+        "rule": "SARJ465",
+        "case": "dead-conditional-dispatch",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 27,
+        "rule": "SARJ465",
+        "case": "opaque-dispatch-wrapper",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 28,
+        "rule": "SARJ465",
+        "case": "missing-executor-argument",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 29,
+        "rule": "SARJ465",
+        "case": "partial-queue-contract",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 30,
+        "rule": "SARJ465",
+        "case": "queue-name-without-dispatch",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 31,
+        "rule": "SARJ465",
+        "case": "http-adapter-private-helper",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 32,
+        "rule": "SARJ465",
+        "case": "http-adapter-arbitrary-name",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 33,
+        "rule": "SARJ465",
+        "case": "http-module-alias",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 34,
+        "rule": "SARJ465",
+        "case": "http-constructor-alias",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 35,
+        "rule": "SARJ465",
+        "case": "http-callable-local-import",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 36,
+        "rule": "SARJ465",
+        "case": "http-no-constructor",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 37,
+        "rule": "SARJ465",
+        "case": "http-synchronous-client",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 38,
+        "rule": "SARJ465",
+        "case": "http-local-client-assignment",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 39,
+        "rule": "SARJ465",
+        "case": "http-convenience-method",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 40,
+        "rule": "SARJ465",
+        "case": "http-multiple-context-managers",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 41,
+        "rule": "SARJ465",
+        "case": "http-abc-contract",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 42,
+        "rule": "SARJ465",
+        "case": "http-protocol-contract",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 43,
+        "rule": "SARJ465",
+        "case": "http-incomplete-contract",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 44,
+        "rule": "SARJ465",
+        "case": "http-unresolved-ancestry",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 45,
+        "rule": "SARJ465",
+        "case": "http-generated-adapter",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 46,
+        "rule": "SARJ465",
+        "case": "http-adapter-suppression",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 47,
+        "rule": "SARJ465",
+        "case": "http-custom-module",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 48,
+        "rule": "SARJ465",
+        "case": "http-shadowed-module",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 49,
+        "rule": "SARJ465",
+        "case": "http-replaced-module",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 50,
+        "rule": "SARJ465",
+        "case": "http-replaced-client",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 51,
+        "rule": "SARJ465",
+        "case": "http-mutated-client-method",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 52,
+        "rule": "SARJ465",
+        "case": "http-client-escapes",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 53,
+        "rule": "SARJ465",
+        "case": "http-created-without-request",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 54,
+        "rule": "SARJ465",
+        "case": "http-cleanup-only",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 55,
+        "rule": "SARJ465",
+        "case": "http-unreachable-request",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 56,
+        "rule": "SARJ465",
+        "case": "http-deferred-request",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 57,
+        "rule": "SARJ465",
+        "case": "http-private-operations-only",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 58,
+        "rule": "SARJ465",
+        "case": "http-unknown-method-decorator",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 59,
+        "rule": "SARJ465",
+        "case": "http-unknown-class-decorator",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 60,
+        "rule": "SARJ465",
+        "case": "http-mutated-native-constructor",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 61,
+        "rule": "SARJ068",
+        "case": "module-literal-prefix",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 62,
+        "rule": "SARJ068",
+        "case": "local-literal-prefix",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 63,
+        "rule": "SARJ068",
+        "case": "module-literal-suffix",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 64,
+        "rule": "SARJ068",
+        "case": "literal-prefix-alias",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 65,
+        "rule": "SARJ068",
+        "case": "final-literal-prefix",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 66,
+        "rule": "SARJ068",
+        "case": "lowercase-literal-prefix",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 67,
+        "rule": "SARJ068",
+        "case": "prefix-with-str-conversion",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 68,
+        "rule": "SARJ068",
+        "case": "prefix-with-repr-conversion",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 69,
+        "rule": "SARJ068",
+        "case": "async-prefix-interpolation",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 70,
+        "rule": "SARJ068",
+        "case": "method-uses-global-not-class-prefix",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 71,
+        "rule": "SARJ068",
+        "case": "literal-prefix-in-enclosing-function",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 72,
+        "rule": "SARJ068",
+        "case": "named-prefix-with-literal-tail",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 73,
+        "rule": "SARJ068",
+        "case": "prefix-with-formatted-operand",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 74,
+        "rule": "SARJ068",
+        "case": "adjacent-literal-prefix",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 75,
+        "rule": "SARJ068",
+        "case": "unicode-literal-prefix",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 76,
+        "rule": "SARJ068",
+        "case": "prefix-with-json-producer",
+        "expected": "match",
+        "before_count": 0,
+        "after_count": 1,
+        "result": "pass"
+      },
+      {
+        "pass": 77,
+        "rule": "SARJ068",
+        "case": "prefix-with-unknown-operand",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 78,
+        "rule": "SARJ068",
+        "case": "parameter-shadows-prefix",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 79,
+        "rule": "SARJ068",
+        "case": "module-prefix-rebound",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 80,
+        "rule": "SARJ068",
+        "case": "global-prefix-writer",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 81,
+        "rule": "SARJ068",
+        "case": "nonlocal-prefix-writer",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 82,
+        "rule": "SARJ068",
+        "case": "local-prefix-rebound",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 83,
+        "rule": "SARJ068",
+        "case": "conditional-prefix-binding",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 84,
+        "rule": "SARJ068",
+        "case": "unresolved-imported-prefix",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 85,
+        "rule": "SARJ068",
+        "case": "annotation-only-prefix",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 86,
+        "rule": "SARJ068",
+        "case": "bytes-prefix",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 87,
+        "rule": "SARJ068",
+        "case": "sql-prefix",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 88,
+        "rule": "SARJ068",
+        "case": "regex-prefix",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 89,
+        "rule": "SARJ068",
+        "case": "url-prefix",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 90,
+        "rule": "SARJ068",
+        "case": "whitespace-terminator",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 91,
+        "rule": "SARJ068",
+        "case": "long-literal-prefix",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 92,
+        "rule": "SARJ068",
+        "case": "brace-template-prefix",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 93,
+        "rule": "SARJ068",
+        "case": "percent-template-prefix",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 94,
+        "rule": "SARJ068",
+        "case": "literal-only-composition",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 95,
+        "rule": "SARJ068",
+        "case": "module-declarative-composition",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 96,
+        "rule": "SARJ068",
+        "case": "prefix-already-formatted",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 97,
+        "rule": "SARJ068",
+        "case": "prefix-exact-suppression",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 98,
+        "rule": "SARJ068",
+        "case": "generated-prefix",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 99,
+        "rule": "SARJ068",
+        "case": "malformed-prefix",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      },
+      {
+        "pass": 100,
+        "rule": "SARJ068",
+        "case": "list-addition",
+        "expected": "no-match",
+        "before_count": 0,
+        "after_count": 0,
+        "result": "pass"
+      }
+    ]
+  },
+  "verification": {
+    "canonical_gates": "Completed make verify phases. After JSON-only registration repairs, reran the affected Python suite and built-wheel metadata checks; retained passed unchanged gates and package results. Completed tsconfig, repository and shell gates separately. Exact-head CI remains required.",
+    "python_rules_and_sources": [
+      183,
+      1006
+    ],
+    "typescript_rules": 132,
+    "blocking_dogfood_findings": 0,
+    "native_passing_tests": 47545,
+    "package_passing_tests": {
+      "typescript": 11995,
+      "bootstrap": 42,
+      "contracts": 91,
+      "python": 24092,
+      "sql": 2025,
+      "iac": 1794,
+      "standards": 7506
+    },
+    "sql_skipped": 4,
+    "standards_skipped": 9,
+    "exact_motivating_blocking_findings": 5,
+    "metadata": "New rule is registered in the runtime registry, permanent global and Python code ledgers, inventory, source catalog and curated calibration campaign. The campaign task remains pending broader review.",
+    "base_integration": "After local qualification, integrated main 6dd5656a9c8ef9d307c1d45d4b216921a4d89782, which only installs pinned Terraform before release IaC tests and adds its workflow regression test. Rule implementations and measured corpus files are unchanged; workflow regressions are rechecked before commit."
+  },
+  "corpus": {
+    "method": "run_isolated_corpora; three fresh processes per source and mode, one first and one subsequent analysis in each. Compare old detectors with repaired detectors on the same current kernel; candidate also enables settings grouping. OS caches are not flushed and shared VM load varies.",
+    "selection": "Fixed seed 20261026: 60 uniform files per source, plus every prior matched file, all changed Python targets, direct BaseSettings imports and exact motivating examples. Samples are supplemented by these disclosed positive-risk controls.",
+    "files": 296,
+    "guards": "Original private consumer revision and clean tree asserted; source/project/lock semantic closures checked before and after. Selected-file digests and inventory verified by the native corpus runner. No silent external repinning.",
+    "deterministic_diagnostics": true,
+    "precision_review": "All eight newly detected blocking sites were inspected: three existing-domain helpers and five motivating findings. The promoted private interpolation/domain sites were inspected. Twenty-three source/configuration-composition warnings and one untyped lifecycle-factory false positive from the control are absent in the repaired scan. No known inspected current error false positives. Forty-four settings prefix groups are review advisories, not claims that a mechanical nesting rewrite preserves environment behavior.",
+    "results": [
+      {
+        "corpus": "authoring-sample",
+        "files": 123,
+        "before": {
+          "cold": {
+            "seconds": [
+              12.606774740037508,
+              11.90996796998661,
+              18.301830786047503
+            ],
+            "median_seconds": 12.606774740037508,
+            "median_peak_memory_bytes": 623468544
+          },
+          "warm": {
+            "seconds": [
+              10.28504213807173,
+              10.531351326964796,
+              20.45601666998118
+            ],
+            "median_seconds": 10.531351326964796,
+            "median_peak_memory_bytes": 623497216
+          }
+        },
+        "after": {
+          "cold": {
+            "seconds": [
+              15.520363881019875,
+              11.886634801048785,
+              11.03432371292729
+            ],
+            "median_seconds": 11.886634801048785,
+            "median_peak_memory_bytes": 630542336
+          },
+          "warm": {
+            "seconds": [
+              11.607392013072968,
+              11.067402501939796,
+              10.05368549702689
+            ],
+            "median_seconds": 11.067402501939796,
+            "median_peak_memory_bytes": 630562816
+          }
+        },
+        "cold_ratio": 0.9428767504902225,
+        "warm_ratio": 1.050900512036141,
+        "before_findings": {
+          "SARJ068": 23
+        },
+        "after_findings": {}
+      },
+      {
+        "corpus": "private-consumer-sample",
+        "files": 107,
+        "before": {
+          "cold": {
+            "seconds": [
+              18.831457286025397,
+              18.06444929796271,
+              28.101249131956138
+            ],
+            "median_seconds": 18.831457286025397,
+            "median_peak_memory_bytes": 847052800
+          },
+          "warm": {
+            "seconds": [
+              16.337190925027244,
+              15.385995349031873,
+              15.60352339304518
+            ],
+            "median_seconds": 15.60352339304518,
+            "median_peak_memory_bytes": 847056896
+          }
+        },
+        "after": {
+          "cold": {
+            "seconds": [
+              20.213410348980688,
+              18.016108925105073,
+              17.49845420604106
+            ],
+            "median_seconds": 18.016108925105073,
+            "median_peak_memory_bytes": 847097856
+          },
+          "warm": {
+            "seconds": [
+              16.590965037001297,
+              15.793553230934776,
+              14.067326847929507
+            ],
+            "median_seconds": 15.793553230934776,
+            "median_peak_memory_bytes": 847609856
+          }
+        },
+        "cold_ratio": 0.9567028537124748,
+        "warm_ratio": 1.012178649212927,
+        "before_findings": {
+          "SARJ465": 24,
+          "SARJ093": 14,
+          "SARJ068": 2
+        },
+        "after_findings": {
+          "SARJ465": 24,
+          "SARJ093": 17,
+          "SARJ532": 44,
+          "SARJ068": 2
+        }
+      },
+      {
+        "corpus": "cpython-3.15.0-sample",
+        "files": 60,
+        "before": {
+          "cold": {
+            "seconds": [
+              1.1140221200184897,
+              0.9441706680227071,
+              1.0033803980331868
+            ],
+            "median_seconds": 1.0033803980331868,
+            "median_peak_memory_bytes": 110280704
+          },
+          "warm": {
+            "seconds": [
+              1.159723346005194,
+              1.0405877099838108,
+              0.9909073821036145
+            ],
+            "median_seconds": 1.0405877099838108,
+            "median_peak_memory_bytes": 110510080
+          }
+        },
+        "after": {
+          "cold": {
+            "seconds": [
+              1.3500212139915675,
+              1.4317791569046676,
+              1.1040979149984196
+            ],
+            "median_seconds": 1.3500212139915675,
+            "median_peak_memory_bytes": 114098176
+          },
+          "warm": {
+            "seconds": [
+              1.615567515953444,
+              1.5212282770080492,
+              1.1399870530003682
+            ],
+            "median_seconds": 1.5212282770080492,
+            "median_peak_memory_bytes": 114180096
+          }
+        },
+        "cold_ratio": 1.3454729797770233,
+        "warm_ratio": 1.46189337276693,
+        "before_findings": {
+          "SARJ465": 1
+        },
+        "after_findings": {}
+      },
+      {
+        "corpus": "private-motivating-examples",
+        "files": 6,
+        "before": {
+          "cold": {
+            "seconds": [
+              0.040836928063072264,
+              0.04512897692620754,
+              0.04558500403072685
+            ],
+            "median_seconds": 0.04512897692620754,
+            "median_peak_memory_bytes": 61128704
+          },
+          "warm": {
+            "seconds": [
+              0.04090312810149044,
+              0.040808587917126715,
+              0.04250167601276189
+            ],
+            "median_seconds": 0.04090312810149044,
+            "median_peak_memory_bytes": 61128704
+          }
+        },
+        "after": {
+          "cold": {
+            "seconds": [
+              0.058564511011354625,
+              0.05352828302420676,
+              0.05896163103170693
+            ],
+            "median_seconds": 0.058564511011354625,
+            "median_peak_memory_bytes": 60928000
+          },
+          "warm": {
+            "seconds": [
+              0.05575651198159903,
+              0.04975929297506809,
+              0.049998342990875244
+            ],
+            "median_seconds": 0.049998342990875244,
+            "median_peak_memory_bytes": 60928000
+          }
+        },
+        "cold_ratio": 1.2977141295960717,
+        "warm_ratio": 1.2223598856991427,
+        "before_findings": {},
+        "after_findings": {
+          "SARJ465": 2,
+          "SARJ068": 1,
+          "SARJ093": 2
+        }
+      }
+    ],
+    "privacy": "Private source, paths, identities and identifying pins remain in local owner-readable evidence; only aggregate private results are public."
+  },
+  "limits": [
+    "Finite labeled cases and supplemented samples do not establish universal recall or absence of false positives.",
+    "Unresolved or escaped providers, unknown decorators/bases, unsupported imports and ambiguous domain ownership remain conservative exclusions.",
+    "Raw public selector parsing retains exact documented exceptions and resolves internal nominal IDs; no blanket baseline was introduced.",
+    "Settings namespace matching is advisory; generic modifiers and non-field metadata are excluded. Existing nested APIs and source precedence still require review.",
+    "The second distinct 100 checks and SQL analytical-query policy are separate follow-up work; they are not claimed complete here."
+  ]
+}
