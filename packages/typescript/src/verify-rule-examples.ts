@@ -45,7 +45,7 @@ export async function verifyRuleExamples<Options extends readonly unknown[], Mes
       const ruleId = `@sarj/${spec.ruleId}`;
       const config: Linter.Config = {
         files: ["**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}"],
-        languageOptions: { parser, parserOptions: { project: tsconfig, tsconfigRootDir: root } },
+        languageOptions: { parser, parserOptions: { project: tsconfig, tsconfigRootDir: root, disallowAutomaticSingleRunInference: true } },
         plugins: { "@sarj": { rules: { [spec.ruleId]: rule as unknown as Rule.RuleModule } } },
         rules: { [ruleId]: ["error", ...(example.ruleOptions ?? rule.defaultOptions ?? [])] },
       };

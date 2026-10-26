@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from importlib import import_module
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 
 if TYPE_CHECKING:
@@ -21,17 +22,22 @@ class ExampleFinding:
 
 
 type ExampleAnalyzer = Callable[[Path, Path], Sequence[ExampleFinding]]
+type ExampleFixer = Callable[[Path, Path, str], str]
 
 
 def verify_examples(
-    examples: Sequence[RuleExample], analyze: ExampleAnalyzer, *, expected_code: str | None = None
+    examples: Sequence[RuleExample],
+    analyze: ExampleAnalyzer,
+    *,
+    expected_code: str | None = None,
+    fix: ExampleFixer | None = None,
 ) -> int:
     public_outcomes = {example.outcome.value for example in examples if example.public}
     if public_outcomes != {"match", "no-match"}:
         msg = "rule requires public match and no-match examples"
         raise ValueError(msg)
     for example in examples:
-        _verify_supported_setup(example)
+        _verify_supported_setup(example, fix_available=fix is not None)
         with TemporaryDirectory(prefix="sarj-rule-example-") as directory:
             root = Path(directory).resolve()
             (root / ".git").mkdir()
@@ -42,11 +48,13 @@ def verify_examples(
             focus = root / example.focus_path
             findings = [finding for finding in analyze(root, focus) if finding.path.resolve() == focus.resolve()]
             _verify_findings(example, findings, expected_code)
+            if example.fixed_files and fix is not None:
+                _verify_fixes(example, root, analyze, fix)
     return len(examples)
 
 
-def _verify_supported_setup(example: RuleExample) -> None:
-    if example.fixed_files:
+def _verify_supported_setup(example: RuleExample, *, fix_available: bool) -> None:
+    if example.fixed_files and not fix_available:
         msg = f"{example.example_id}: this analyzer has no fix adapter"
         raise ValueError(msg)
     if example.rule_options_json is not None:
@@ -54,6 +62,30 @@ def _verify_supported_setup(example: RuleExample) -> None:
         raise ValueError(msg)
     if example.installed_dependencies:
         msg = f"{example.example_id}: this analyzer has no installed dependency adapter"
+        raise ValueError(msg)
+
+
+def _verify_fixes(example: RuleExample, root: Path, analyze: ExampleAnalyzer, fix: ExampleFixer) -> None:
+    expected = {file.path: file.source for file in example.files}
+    if any(file.path not in expected for file in example.fixed_files):
+        msg = f"{example.example_id}: source fix adapter cannot create files"
+        raise ValueError(msg)
+    expected.update({file.path: file.source for file in example.fixed_files})
+    for file in example.files:
+        path = root / file.path
+        actual = fix(root, path, file.source)
+        if actual != expected[file.path]:
+            msg = f"{example.example_id}: unexpected fixed source for {file.path}"
+            raise ValueError(msg)
+    for name, source in expected.items():
+        (root / name).write_text(source, encoding="utf-8", newline="")
+    for name, source in expected.items():
+        if fix(root, root / name, source) != source:
+            msg = f"{example.example_id}: fix does not converge for {name}"
+            raise ValueError(msg)
+    focus = root / example.focus_path
+    if any(finding.path.resolve() == focus.resolve() for finding in analyze(root, focus)):
+        msg = f"{example.example_id}: fixed source still reports the selected rule"
         raise ValueError(msg)
 
 
@@ -107,6 +139,11 @@ class NativeFinding(Protocol):
 type NativeAnalyzer = Callable[[list[str], list[Path]], Sequence[NativeFinding]]
 
 
+@runtime_checkable
+class _NativeFixer(Protocol):
+    def fix_source(self, path: Path, source: str, *, rule_ids: Sequence[str] | None = None) -> str: ...
+
+
 def verify_native_rule(rule: type[NativeRule], analyze: NativeAnalyzer) -> int:
     spec = rule.native_spec()
     if spec is None:
@@ -116,4 +153,15 @@ def verify_native_rule(rule: type[NativeRule], analyze: NativeAnalyzer) -> int:
     def run(_root: Path, focus: Path) -> list[ExampleFinding]:
         return [ExampleFinding(d.path, d.line, d.col, d.code, d.message) for d in analyze([rule.id], [focus])]
 
-    return verify_examples(spec.examples, run, expected_code=spec.code)
+    fix: ExampleFixer | None = None
+    if any(example.fixed_files for example in spec.examples):
+        module = import_module(f"{rule.__module__.partition('.')[0]}.autofix")
+        if not isinstance(module, _NativeFixer):
+            msg = f"{rule.id}: missing native fix adapter"
+            raise TypeError(msg)
+
+        def fix_source(_root: Path, path: Path, source: str) -> str:
+            return module.fix_source(path, source, rule_ids=(rule.id,))
+
+        fix = fix_source
+    return verify_examples(spec.examples, run, expected_code=spec.code, fix=fix)

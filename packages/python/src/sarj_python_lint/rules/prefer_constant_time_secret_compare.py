@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint._secret_names import identifier_tokens, is_secret_name, leading_word
 from sarj_python_lint.rule_base import (
+    AutofixPolicy,
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
@@ -111,11 +112,14 @@ class PreferConstantTimeSecretCompare(Rule):
             "`hmac.compare_digest`; for passwords, use the password-hashing library's verification API."
         ),
         category=RuleCategory.SECURITY,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
             "The diagnostic requires evidence of an externally supplied credential and configured or stored secret state.",
+            "Containing callables must also be ordinary synchronous nongenerators with proven inert execution; unknown callouts, properties, overloads, reachable frame-exporting exceptions, and helper references crossing additional function, class, lambda, or comprehension scopes prevent fixes.",
             "Adjacent equality pairs, literal encode normalization, and unambiguous same-scope aliases from headers, cookies, settings, or environment are traced.",
             "Generated files, tests, test-support modules, equality methods, public sentinels, and type-like values are excluded.",
             "`compare_digest` requires compatible ASCII string or bytes-like operands and may still reveal type or length.",
+            "Automatic fixes require a closed private nested synchronous helper whose two required local operands are forwarded directly from its containing function parameters. Three existing defaults must already capture canonical compare_digest, type and bytes; every closed call omits those defaults. Only captured exact-type guards, the equality return and False fallback are allowed; unknown calls, attribute/subscript reads, imports, mutations, frame escapes, comments and type-parameter shadows abstain. No bindings, captures or imports are added; the intended timing behavior changes.",
         ),
         examples=(
             RuleExample(
@@ -131,6 +135,25 @@ class PreferConstantTimeSecretCompare(Rule):
                 focus_path=PurePosixPath("auth.py"),
                 expected_count=1,
                 public=True,
+            ),
+            RuleExample(
+                example_id="guarded-bytes-autofix",
+                title="Reuse a captured canonical comparison after exact bytes guards",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/auth.py",
+                        'from hmac import compare_digest\ncompare_digest(b"a", b"b")\ndef authenticate(provided_token, expected_token):\n    def _check(provided_token, expected_token, _compare=compare_digest, _type=type, _bytes=bytes):\n        if _type(provided_token) is _bytes and _type(expected_token) is _bytes:\n            return provided_token == expected_token\n        return False\n    return _check(provided_token, expected_token)\n',
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/auth.py",
+                        'from hmac import compare_digest\ncompare_digest(b"a", b"b")\ndef authenticate(provided_token, expected_token):\n    def _check(provided_token, expected_token, _compare=compare_digest, _type=type, _bytes=bytes):\n        if _type(provided_token) is _bytes and _type(expected_token) is _bytes:\n            return _compare(provided_token, expected_token)\n        return False\n    return _check(provided_token, expected_token)\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/auth.py"),
+                expected_count=1,
             ),
             RuleExample(
                 example_id="request-api-key-constant-time",

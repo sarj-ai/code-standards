@@ -4,7 +4,7 @@ from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, NamedTuple, final, override
 
-from sarj_iac_lint._hcl import header_comment_lines, heredoc_body_mask, mask_block_comments
+from sarj_iac_lint._hcl import header_comment_lines, heredoc_body_mask, mask_block_comments, physical_lines
 from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
@@ -74,7 +74,7 @@ _MIN_STEM_LENGTH = 3
 _RESOURCE_LABEL_COUNT = 2
 
 
-class _CommentCandidate(NamedTuple):
+class CommentCandidate(NamedTuple):
     body: str
     declaration: str
     subject: str
@@ -103,8 +103,9 @@ class NoRestatedComment(Rule):
             "author-controlled label when the declaration itself is unclear."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes remove only the diagnosed complete standalone comment group, preserve line boundaries and require identical executable HCL tokens.",
             "Only short comments immediately above native HCL declarations at the same indentation are compared.",
             (
                 "Comment groups, sibling headings, heredocs, directives, generated files, fixtures, references, "
@@ -119,6 +120,7 @@ class NoRestatedComment(Rule):
                 files=(
                     ExampleFile.iac("main.tf", 'locals {\n  # Set instance type\n  instance_type = "standard"\n}\n'),
                 ),
+                fixed_files=(ExampleFile.iac("main.tf", 'locals {\n\n  instance_type = "standard"\n}\n'),),
                 focus_path=PurePosixPath("main.tf"),
                 expected_count=1,
                 public=True,
@@ -207,12 +209,12 @@ class NoRestatedComment(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        if not _path_is_hcl(path) or _fixture_path(path) or _generated_header(source):
+        if not _path_is_hcl(path) or _fixture_path(path) or has_generated_header(source):
             return []
-        lines = source.splitlines()
+        lines = physical_lines(source)
         in_heredoc = heredoc_body_mask(lines)
         findings: list[Diagnostic] = []
-        for body, declaration, subject, line, column, indent, declaration_index in _comment_candidates(
+        for body, declaration, subject, line, column, indent, declaration_index in comment_candidates(
             lines, in_heredoc
         ):
             normalized_body = _TRAILING_SUPPRESSION_RE.sub("", body).strip()
@@ -233,8 +235,8 @@ class NoRestatedComment(Rule):
         return findings
 
 
-def _comment_candidates(lines: list[str], in_heredoc: tuple[bool, ...]) -> list[_CommentCandidate]:
-    candidates: list[_CommentCandidate] = []
+def comment_candidates(lines: list[str], in_heredoc: tuple[bool, ...]) -> list[CommentCandidate]:
+    candidates: list[CommentCandidate] = []
     index = 0
     while index < len(lines) - 1:
         if in_heredoc[index]:
@@ -321,7 +323,7 @@ def _fixture_path(path: Path) -> bool:
     return any(part.lower() in {"fixture", "fixtures", "testdata", "generated"} for part in path.parts)
 
 
-def _generated_header(source: str) -> bool:
+def has_generated_header(source: str) -> bool:
     comments = (line.lstrip().removeprefix("*").strip() for line in header_comment_lines(source, leading_only=True))
     return _GENERATED_RE.search(" ".join(comments)) is not None
 
@@ -338,7 +340,7 @@ def _line_comment_candidate(
     in_heredoc: tuple[bool, ...],
     index: int,
     line_match: re.Match[str],
-    candidates: list[_CommentCandidate],
+    candidates: list[CommentCandidate],
 ) -> int:
     start = index
     indent = len(line_match["indent"])
@@ -353,7 +355,7 @@ def _line_comment_candidate(
         declaration = lines[declaration_index]
         if (subject := _declaration_subject(declaration.strip())) is not None:
             candidates.append(
-                _CommentCandidate(
+                CommentCandidate(
                     " ".join(bodies),
                     declaration,
                     subject,
@@ -372,7 +374,7 @@ def _block_comment_candidate(
     in_heredoc: tuple[bool, ...],
     index: int,
     block_match: re.Match[str],
-    candidates: list[_CommentCandidate],
+    candidates: list[CommentCandidate],
 ) -> int:
     indent = len(block_match["indent"])
     body_lines = [block_match["body"]]
@@ -387,5 +389,5 @@ def _block_comment_candidate(
         body = " ".join(part for part in body_lines if part)
         declaration = lines[end + 1]
         if (subject := _declaration_subject(declaration.strip())) is not None:
-            candidates.append(_CommentCandidate(body, declaration, subject, index + 1, indent + 1, indent, end + 1))
+            candidates.append(CommentCandidate(body, declaration, subject, index + 1, indent + 1, indent, end + 1))
     return max(index + 1, end + 1)

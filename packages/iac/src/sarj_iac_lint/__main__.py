@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from functools import partial
 import json
 import os
 from pathlib import Path
@@ -9,10 +10,12 @@ import sys
 import tempfile
 from typing import TYPE_CHECKING, Annotated
 
+from sarj_rule_contracts import fix_file
 import typer
 
 from sarj_iac_lint import __version__
 from sarj_iac_lint._hcl import suppression_comment_lines
+from sarj_iac_lint.autofix import fix_source
 from sarj_iac_lint.json_boundary import is_object_mapping, parse_json
 from sarj_iac_lint.rule_base import DefaultLevel, Diagnostic, is_suppressed
 from sarj_iac_lint.rules import REGISTRY
@@ -175,12 +178,28 @@ class _Result:
     code: int = 0
 
 
+def _apply_fixes(rule: list[str], files: list[Path]) -> None:
+    if unknown := set(rule) - REGISTRY.keys():
+        message = f"unknown rule(s): {', '.join(sorted(unknown))}"
+        raise ValueError(message)
+    for path in _expand_paths(files):
+        fix_file(path, partial(fix_source, path, rule_ids=rule))
+
+
 def _run_check(
-    rule: list[str], files: list[Path], baseline: Path | None, update_baseline: Path | None, *, exit_zero: bool
+    rule: list[str],
+    files: list[Path],
+    baseline: Path | None,
+    update_baseline: Path | None,
+    *,
+    exit_zero: bool,
+    fix: bool = False,
 ) -> int:
     try:
+        if fix:
+            _apply_fixes(rule, files)
         diags = analyze(rule, files)
-    except ValueError as exc:
+    except (OSError, ValueError) as exc:
         sys.stderr.write(f"error: {exc}\n")
         return 2
     if update_baseline is not None:
@@ -245,8 +264,11 @@ def _check_command(
     ] = None,
     *,
     exit_zero: Annotated[bool, typer.Option("--exit-zero", help="Report but exit 0.")] = False,
+    fix: Annotated[bool, typer.Option("--fix", help="Apply safe fixes before reporting remaining findings.")] = False,
 ) -> None:
-    context.ensure_object(_Result).code = _run_check(rule, files, baseline, update_baseline, exit_zero=exit_zero)
+    context.ensure_object(_Result).code = _run_check(
+        rule, files, baseline, update_baseline, exit_zero=exit_zero, fix=fix
+    )
 
 
 def main(argv: list[str] | None = None) -> int:

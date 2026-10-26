@@ -65,7 +65,7 @@ RULE_TESTER.run("no-trailing-value-narration", rule, {
     },
   ],
   invalid: [
-    { name: "recognizes the unit on a direct assignment member", code: "settings.delayMs = 5; // 5 milliseconds", errors: [{ messageId: "deleteNarration", suggestions: 1 }] },
+    { name: "recognizes the unit on a direct assignment member", code: "settings.delayMs = 5; // 5 milliseconds", output: "settings.delayMs = 5;", errors: [{ messageId: "deleteNarration", suggestions: 1 }] },
     {
       name: "does not borrow another declaration's unit for deletion",
       code: "const unrelatedMs = 0; const retries = 5; // 5 retries",
@@ -79,7 +79,7 @@ RULE_TESTER.run("no-trailing-value-narration", rule, {
     {
       name: "unit-bearing constant advice only asks to delete the narration",
       code: "const DEFAULT_TTL_MS = 5; // 5 milliseconds",
-      output: null,
+      output: "const DEFAULT_TTL_MS = 5;",
       errors: [
         {
           messageId: "deleteNarration",
@@ -94,13 +94,13 @@ RULE_TESTER.run("no-trailing-value-narration", rule, {
     },
     {
       name: "short unit-bearing constant advice only asks to delete the narration",
-      code: "const POLL_MS = 3; // 3 ms",
+      code: "const POLL_MS = 3; // 3 ms", output: "const POLL_MS = 3;",
       errors: [{ messageId: "deleteNarration", suggestions: 1 }],
     },
     {
       name: "preserves CRLF after deleting trailing block narration",
       code: "const POLL_MS = 3;\t/* 3 ms */  \r\nnext();",
-      output: null,
+      output: "const POLL_MS = 3;\r\nnext();",
       errors: [
         {
           messageId: "deleteNarration",
@@ -129,7 +129,7 @@ RULE_TESTER.run("no-trailing-value-narration", rule, {
       errors: [{ messageId: "narratesValue" }],
     },
     {
-      code: "export const COOKIE_MAX_AGE_SECONDS = 90; // 90 seconds",
+      code: "export const COOKIE_MAX_AGE_SECONDS = 90; // 90 seconds", output: "export const COOKIE_MAX_AGE_SECONDS = 90;",
       errors: [{ messageId: "deleteNarration", suggestions: 1 }],
     },
     {
@@ -141,7 +141,7 @@ RULE_TESTER.run("no-trailing-value-narration", rule, {
       errors: [{ messageId: "narratesValue" }],
     },
     {
-      code: "const announcementTimeoutSec = 5; // 5 seconds",
+      code: "const announcementTimeoutSec = 5; // 5 seconds", output: "const announcementTimeoutSec = 5;",
       errors: [{ messageId: "deleteNarration", suggestions: 1 }],
     },
     {

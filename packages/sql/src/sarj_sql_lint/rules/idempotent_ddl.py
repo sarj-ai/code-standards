@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True, slots=True)
-class _DdlCheck:
+class DdlCheck:
     pattern: re.Pattern[str]
     message: str
     mysql_supported: bool
@@ -39,7 +39,7 @@ class _DdlCheck:
 
 
 _CHECKS = (
-    _DdlCheck(
+    DdlCheck(
         re.compile(
             r"\bCREATE\s+(?:(?:GLOBAL|LOCAL)\s+)?(?:(?:TEMP(?:ORARY)?|UNLOGGED)\s+)?TABLE(?>\s+)(?!IF\s+NOT\s+EXISTS\b)",
             re.IGNORECASE,
@@ -47,13 +47,13 @@ _CHECKS = (
         "`CREATE TABLE` without `IF NOT EXISTS` — use the supported existence guard.",
         mysql_supported=True,
     ),
-    _DdlCheck(
+    DdlCheck(
         re.compile(r"\bADD\s+COLUMN(?>\s+)(?!IF\s+NOT\s+EXISTS\b)", re.IGNORECASE),
         "`ADD COLUMN` without `IF NOT EXISTS` — use the supported existence guard.",
         mysql_supported=False,
         sqlite_supported=False,
     ),
-    _DdlCheck(
+    DdlCheck(
         re.compile(
             r"\bCREATE\s+(?:UNIQUE\s+)?INDEX(?>\s+)(?!(?:CONCURRENTLY\s+)?IF\s+NOT\s+EXISTS\b)",
             re.IGNORECASE,
@@ -61,7 +61,7 @@ _CHECKS = (
         "`CREATE INDEX` without `IF NOT EXISTS` — use the supported existence guard.",
         mysql_supported=False,
     ),
-    _DdlCheck(
+    DdlCheck(
         re.compile(
             r"\bCREATE\s+(?:EXTENSION|SCHEMA|SEQUENCE)(?>\s+)(?!IF\s+NOT\s+EXISTS\b)",
             re.IGNORECASE,
@@ -69,12 +69,12 @@ _CHECKS = (
         "`CREATE EXTENSION`/`SCHEMA`/`SEQUENCE` without `IF NOT EXISTS` — use the supported existence guard.",
         mysql_supported=True,
     ),
-    _DdlCheck(
+    DdlCheck(
         re.compile(r"\bDROP\s+TABLE(?>\s+)(?!IF\s+EXISTS\b)", re.IGNORECASE),
         "`DROP TABLE`/`DROP INDEX` without `IF EXISTS` — use the supported existence guard.",
         mysql_supported=True,
     ),
-    _DdlCheck(
+    DdlCheck(
         re.compile(r"\bDROP\s+INDEX(?>\s+)(?!(?:CONCURRENTLY\s+)?IF\s+EXISTS\b)", re.IGNORECASE),
         "`DROP TABLE`/`DROP INDEX` without `IF EXISTS` — use the supported existence guard.",
         mysql_supported=False,
@@ -91,14 +91,22 @@ class IdempotentDdl(Rule):
         rationale="Supported existence guards help replay DDL after partial application. A transactional migration runner such as dbmate owns version tracking and rollback; this rule does not require every statement to be independently replayable.",
         remediation="Use the native IF NOT EXISTS or IF EXISTS form where this rule supports it. Keep ADD CONSTRAINT as plain DDL in versioned transactional migrations; do not synthesize catalog-query DO blocks or catch duplicate-object errors solely for replay.",
         category=RuleCategory.CORRECTNESS,
-        autofix=AutofixPolicy.NONE,
-        limitations=("Dialect-specific DDL forms are checked only where the guard syntax is supported.",),
+        autofix=AutofixPolicy.SAFE,
+        limitations=(
+            "Dialect-specific DDL forms are checked only where the guard syntax is supported.",
+            "Safe fixes add only supported PostgreSQL existence guards to parseable authored DDL. They intentionally make an existing or absent object a no-op on replay; dumps, generator-owned files, unsupported syntax and other dialects remain unchanged.",
+        ),
         examples=(
             RuleExample(
                 example_id="unguarded-table-creation",
                 title="Table creation that fails on replay",
                 outcome=ExampleOutcome.MATCH,
                 files=(ExampleFile.sql("migrations/001_orders.sql", "CREATE TABLE orders (id BIGINT PRIMARY KEY);\n"),),
+                fixed_files=(
+                    ExampleFile.sql(
+                        "migrations/001_orders.sql", "CREATE TABLE IF NOT EXISTS orders (id BIGINT PRIMARY KEY);\n"
+                    ),
+                ),
                 focus_path=PurePosixPath("migrations/001_orders.sql"),
                 expected_count=1,
                 public=True,
@@ -127,7 +135,7 @@ class IdempotentDdl(Rule):
         model_owned = is_generated_migration(path, source)
 
         masked = mask_sql(source, mask_dollar_literals=True)
-        checks = _dialect_checks(source)
+        checks = ddl_checks(source)
 
         diags: list[Diagnostic] = []
 
@@ -151,7 +159,7 @@ class IdempotentDdl(Rule):
         return redirect_to_model(diags, model_owned=model_owned)
 
 
-def _dialect_checks(source: str) -> list[_DdlCheck]:
+def ddl_checks(source: str) -> list[DdlCheck]:
     if is_mysql(source):
         return [check for check in _CHECKS if check.mysql_supported]
     if is_sqlite(source):

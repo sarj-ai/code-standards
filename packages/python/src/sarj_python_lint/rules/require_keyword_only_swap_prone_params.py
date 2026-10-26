@@ -130,13 +130,15 @@ class RequireKeywordOnlySwapProneParams(Rule):
             "callers; otherwise retain the contract and suppress the warning locally."
         ),
         category=RuleCategory.CORRECTNESS,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         aliases=("kwonly-same-type-params",),
         limitations=(
+            "Autofix only migrates private nested ordinary synchronous nongenerator helpers with no escapes, known frame or metadata capabilities, type parameters, defaults, positional-only parameters, variadics, or existing keyword-only parameters. All exact direct callers must be valid and comment-free; existing parameter names and argument evaluation order are preserved.",
+            "Containing callables must also be ordinary synchronous nongenerators with proven inert execution; unknown callouts, properties, overloads, reachable frame-exporting exceptions, and helper references crossing additional function, class, lambda, or comprehension scopes prevent fixes.",
             "Private module functions with closed, statically resolved direct callers block as errors; public and compatibility-sensitive signatures retain advisory findings. Use distinct nominal parameter types when positional ABI must remain unchanged.",
             "Only high-risk groups of bare `str`, `int`, or `float` annotations are reported.",
             "Tests, generated code, migrations, conventional ordered groups, explicit inheritance, local structural protocols, and recognized routes, CLI handlers, callbacks, and runtime protocols are excluded.",
-            "External and published calling contracts cannot be proven from one file, so those signatures remain advisory without autofix; only proven closed private owners block.",
+            "External and published calling contracts cannot be proven from one file, so public and module signatures remain advisory without autofix; only proven closed private owners block.",
         ),
         examples=(
             RuleExample(
@@ -166,6 +168,25 @@ class RequireKeywordOnlySwapProneParams(Rule):
                 focus_path=PurePosixPath("service.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix",
+                title="Closed nested helper and its exact caller migrate together",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service.py",
+                        "def move():\n    def _move(source_id: str, target_id: str):\n        return source_id, target_id\n    return _move('inbox', 'archive')\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "service.py",
+                        "def move():\n    def _move(*, source_id: str, target_id: str):\n        return source_id, target_id\n    return _move(source_id='inbox', target_id='archive')\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=1,
             ),
         ),
     )

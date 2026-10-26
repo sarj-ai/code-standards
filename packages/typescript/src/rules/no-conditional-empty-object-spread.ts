@@ -15,9 +15,10 @@ export const NO_CONDITIONAL_EMPTY_OBJECT_SPREAD_DOCUMENTATION = {
   remediation:
     "Construct the object explicitly and add the conditional fields only when the original condition holds, preserving evaluation order and ownership.",
   category: "style",
+  autofix: "safe",
   limitations: [
     "Reports ternary expressions with an empty object branch directly spread into an object literal. Does not report array or argument spreads, logical spreads, or two nonempty alternatives.",
-    "This is an explicit readability policy, not a claim that conditional spreads are incorrect. No autofix: rewriting can affect readonly types, expression placement, property order, getters, and object ownership.",
+    "This is an explicit readability policy. Comment-free conditionals with exactly one nonempty object-literal branch are automatically rewritten as logical spreads, preserving omission, evaluation order and property ownership. Other expression branches require manual review.",
   ],
   examples: [
     {
@@ -50,6 +51,15 @@ export const NO_CONDITIONAL_EMPTY_OBJECT_SPREAD_DOCUMENTATION = {
       expectedCount: 0,
       public: true,
     },
+    {
+      id: "safe-autofix",
+      title: "Apply the proven automatic correction",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "declare const enabled: boolean; const value = { ...(enabled ? { item: 1 } : {}) };" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "declare const enabled: boolean; const value = { ...(!!(enabled) && ({ item: 1 })) };" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -65,6 +75,7 @@ export default createRule<[], "avoid">({
   documentation: NO_CONDITIONAL_EMPTY_OBJECT_SPREAD_DOCUMENTATION,
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: {
       description: NO_CONDITIONAL_EMPTY_OBJECT_SPREAD_DOCUMENTATION.summary,
     },
@@ -88,7 +99,19 @@ export default createRule<[], "avoid">({
           isEmptyObject(node.argument.consequent) ||
           isEmptyObject(node.argument.alternate)
         )
-          context.report({ node, messageId: "avoid" });
+          {
+            const conditional = node.argument;
+            const emptyConsequent = isEmptyObject(conditional.consequent);
+            const populated = emptyConsequent ? conditional.alternate : conditional.consequent;
+            const canFix = populated.type === AST_NODE_TYPES.ObjectExpression &&
+              populated.properties.length > 0 && context.sourceCode.getCommentsInside(conditional).length === 0;
+            context.report({
+              node, messageId: "avoid",
+              fix: canFix ? (fixer) => fixer.replaceText(conditional,
+                `${emptyConsequent ? "!" : "!!"}(${context.sourceCode.getText(conditional.test)}) && (${context.sourceCode.getText(populated)})`,
+              ) : null,
+            });
+          }
       },
     };
   },

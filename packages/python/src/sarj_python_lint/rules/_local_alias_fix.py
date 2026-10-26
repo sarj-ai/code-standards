@@ -60,7 +60,7 @@ class LocalAliasFixes:
             and context.imports.builtin_is_unshadowed("dict")
             and not any("dict" in bindings for bindings in context.resource_provenance.bindings.values())
             and context.resource_provenance.builtin_namespace_untouched
-            and not any(node.attr == "__code__" for node in context.nodes(ast.Attribute))
+            and not any(node.attr in {"__code__", "f_code", "cr_code"} for node in context.nodes(ast.Attribute))
             and not _visible_namespace_mutation(context)
         )
 

@@ -14,6 +14,21 @@ import literalCases from "./fixtures/literal-result-coverage.json";
 import callCases from "./fixtures/call-expression-coverage.json";
 import wrappedCases from "./fixtures/wrapped-callback-coverage.json";
 
+function assertExpectedFix(actual: Linter.FixReport, expected: {
+  readonly source: string;
+  readonly originalSource: string;
+  readonly diagnostics: readonly Linter.LintMessage[];
+}): readonly Linter.LintMessage[] {
+  expect(actual.output).toBe(expected.source);
+  if (expected.source !== expected.originalSource) {
+    expect(actual.fixed).toBe(true);
+    return [];
+  }
+  expect(actual.fixed).toBe(false);
+  expect(actual.messages).toEqual(expected.diagnostics);
+  return expected.diagnostics;
+}
+
 describe("erased receivers, static template keys and discarded SQL", () => {
   it.each([...cases, ...callCases, ...literalCases, ...wrappedCases])("$rule: $name", async (example) => {
     const root = await mkdtemp(join(tmpdir(), "sarj-erased-expression-"));
@@ -51,13 +66,17 @@ describe("erased receivers, static template keys and discarded SQL", () => {
       expect(new Set(messages.map(message => `${message.line}:${message.column}`)).size).toBe(messages.length);
       if ("fixedSource" in example && typeof example.fixedSource === "string") {
         const fixed = linter.verifyAndFix(focus?.source ?? "", config, { filename });
-        expect(fixed.output).toBe(example.fixedSource);
+        const remaining = assertExpectedFix(fixed, {
+          source: example.fixedSource,
+          originalSource: focus?.source ?? "",
+          diagnostics: messages,
+        });
         await writeFile(filename, fixed.output);
         parser.clearCaches();
         const repeated = linter.verifyAndFix(fixed.output, config, { filename });
         expect(repeated.output).toBe(fixed.output);
         expect(repeated.fixed).toBe(false);
-        expect(repeated.messages).toEqual([]);
+        expect(repeated.messages).toEqual(remaining);
       }
     } finally {
       await rm(root, { recursive: true, force: true });

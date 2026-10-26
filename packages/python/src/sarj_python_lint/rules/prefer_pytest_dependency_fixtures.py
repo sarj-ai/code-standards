@@ -30,6 +30,10 @@ if TYPE_CHECKING:
 _EXAMPLE = "from typing import Protocol\nclass Port(Protocol):\n    def read(self): ...\nclass Store:\n    def read(self): return 1\nclass Service:\n    def __init__(self, store: Port):\n        self.store = store\n    def read(self): return self.store.read()\n"
 
 
+_FACTORY_SOURCE = "import pytest\nfrom typing import Protocol\n\nclass Port(Protocol):\n    def read(self) -> int: ...\n\nclass Store:\n    def read(self) -> int:\n        return 1\n\nclass Service:\n    def __init__(self, store: Port) -> None:\n        self.store = store\n\n    def read(self) -> int:\n        return self.store.read()\n\n@pytest.fixture\ndef store_factory() -> type[Store]:\n    return Store\n\ndef test_read(store_factory: type[Store]) -> None:\n    if store_factory is Store:\n        service = Service(Store())\n        assert service.read() == 1\n"
+_FACTORY_FIXED = "import pytest\nfrom typing import Protocol\n\nclass Port(Protocol):\n    def read(self) -> int: ...\n\nclass Store:\n    def read(self) -> int:\n        return 1\n\nclass Service:\n    def __init__(self, store: Port) -> None:\n        self.store = store\n\n    def read(self) -> int:\n        return self.store.read()\n\n@pytest.fixture\ndef store_factory() -> type[Store]:\n    return Store\n\ndef test_read(store_factory: type[Store]) -> None:\n    if store_factory is Store:\n        service = Service(store_factory())\n        assert service.read() == 1\n"
+
+
 @final
 class PreferPytestDependencyFixtures(ProjectRule):
     id = "prefer-pytest-dependency-fixtures"
@@ -40,9 +44,10 @@ class PreferPytestDependencyFixtures(ProjectRule):
         rationale="Constructing collaborators in a test bypasses pytest's dependency graph, caching and overrides even when only one test currently needs the setup.",
         remediation="Request function-scoped store, service and settings fixtures by parameter. Use a typed factory fixture for variants or multiple instances. Keep construction under test explicit and preserve setup ordering and the actual owner's cleanup; do not create global singletons or autouse fixtures.",
         category=RuleCategory.TESTING,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
             "Source-visible module-level collaborator instances must also enter tests through fixtures. Argument binding must be explicit: starred positional arguments, keyword unpacking and duplicate bindings abstain rather than guessing collaborator ownership.",
+            "Safe fixes only reuse an already-requested typed factory inside an authored runtime identity guard over a closed source-owned collaborator graph. They change only its immediate constructor callee; no fixture, signature, guard, setup event or lifecycle is introduced. All other findings require review.",
             "Checks collected pytest functions and plain test classes. A local or inline class construction must feed a proven stored-and-invoked ABC/Protocol collaborator, or a proven BaseSettings instance must be passed to a call. Names alone never identify a service. Constructor failure tests, fixtures, helpers, dynamic/unresolved sources, generated and test-support paths are excluded. No automatic fixture extraction or lifecycle change.",
         ),
         examples=(
@@ -75,6 +80,25 @@ class PreferPytestDependencyFixtures(ProjectRule):
                 focus_path=PurePosixPath("tests/test_service.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="existing-factory-identity",
+                title="An authored identity guard closes the existing factory",
+                outcome=ExampleOutcome.MATCH,
+                scenario="existing-factory-identity",
+                files=(ExampleFile.python("tests/test_service.py", _FACTORY_SOURCE),),
+                fixed_files=(ExampleFile.python("tests/test_service.py", _FACTORY_FIXED),),
+                focus_path=PurePosixPath("tests/test_service.py"),
+                expected_count=1,
+            ),
+            RuleExample(
+                example_id="existing-factory-used",
+                title="The identical existing factory supplies the collaborator",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="existing-factory-identity",
+                files=(ExampleFile.python("tests/test_service.py", _FACTORY_FIXED),),
+                focus_path=PurePosixPath("tests/test_service.py"),
+                expected_count=0,
             ),
         ),
     )

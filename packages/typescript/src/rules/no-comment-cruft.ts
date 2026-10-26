@@ -4,8 +4,9 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-comment-cruft.test.ts
  */
 
-import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
+import { commentLineEndings, ownLineCommentRemovalRange } from "./_comment-edits.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import {
   codeTokens,
@@ -35,8 +36,9 @@ export const NO_COMMENT_CRUFT_DOCUMENTATION = {
   remediation:
     "Delete dead code and narration; express boundaries with named code and retain only comments that explain constraints or intent.",
   category: "maintainability",
+  autofix: "safe",
   limitations: [
-    "The rule skips generated files and conservatively preserves prose, issue references, licenses, examples, and tool directives.",
+    "The rule skips generated files and conservatively preserves prose, issue references, licenses, examples, and tool directives. Automatic fixes remove only whole-line punctuation-only banners while preserving line endings; narrated prose, unfinished work and contextual labels remain manual.",
   ],
   examples: [
     {
@@ -56,6 +58,15 @@ export const NO_COMMENT_CRUFT_DOCUMENTATION = {
       focusPath: "src/counter.ts",
       expectedCount: 1,
       public: true,
+    },
+    {
+      id: "safe-autofix",
+      title: "Apply the proven automatic correction",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "const first = 1;\n// =================\nconst second = 2;" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "const first = 1;\n\nconst second = 2;" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
     },
   ],
 } as const satisfies RuleDocumentation;
@@ -520,6 +531,7 @@ export default createRule<Options, MessageIds>({
   documentation: NO_COMMENT_CRUFT_DOCUMENTATION,
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: {
       description:
         "Flag commented-out code, section-banner comments, and leading file-header comment preambles.",
@@ -633,6 +645,23 @@ export default createRule<Options, MessageIds>({
     }
 
     /** True when every content line of a JSDoc block is a banner or a section title. */
+    function bannerFix(comment: TSESTree.Comment): ((fixer: TSESLint.RuleFixer) => TSESLint.RuleFix[]) | null {
+      const pure = (candidate: TSESTree.Comment): boolean => {
+        const lines = candidate.value.split("\n").map(stripCommentMarker).filter(Boolean);
+        return lines.length > 0 && lines.every((line) => BANNER_FULL_RE.test(line));
+      };
+      if (!pure(comment)) return null;
+      const comments = sourceCode.getAllComments();
+      const index = comments.indexOf(comment);
+      let start = index;
+      let end = index;
+      while (start > 0 && areAdjacentLineComments(comments[start - 1], comments[start])) start -= 1;
+      while (end + 1 < comments.length && areAdjacentLineComments(comments[end], comments[end + 1])) end += 1;
+      const removals = comments.slice(start, end + 1).filter(pure).map((candidate) => ownLineCommentRemovalRange(sourceCode.text, candidate));
+      if (removals.some((removal) => removal === null)) return null;
+      return (fixer) => removals.flatMap((removal) => removal === null ? [] : [fixer.replaceTextRange(removal.range, commentLineEndings(sourceCode.text, removal))]);
+    }
+
     function isSectionJsDoc(comment: TSESTree.Comment): boolean {
       const texts = comment.value
         .split("\n")
@@ -720,7 +749,7 @@ export default createRule<Options, MessageIds>({
             }
             // JSDoc is preserved unless its entire body is a section signpost.
             if (isStandalone(comment) && isSectionJsDoc(comment)) {
-              context.report({ node: comment, messageId: "sectionBanner" });
+              context.report({ node: comment, messageId: "sectionBanner", fix: bannerFix(comment) });
             }
             return;
           }
@@ -734,7 +763,7 @@ export default createRule<Options, MessageIds>({
           // banner shapes are the one unambiguous exception.
           if (!isStandalone(comment)) {
             if (isJsxOnlyComment(comment) && texts.some(isBanner)) {
-              context.report({ node: comment, messageId: "sectionBanner" });
+              context.report({ node: comment, messageId: "sectionBanner", fix: bannerFix(comment) });
             }
             return;
           }
@@ -775,7 +804,7 @@ export default createRule<Options, MessageIds>({
           const runStart = lineRunStart(comments, i);
           if (texts.some(isBanner)) {
             if (!reportedBannerRuns.has(runStart)) {
-              context.report({ node: comment, messageId: "sectionBanner" });
+              context.report({ node: comment, messageId: "sectionBanner", fix: bannerFix(comment) });
               reportedBannerRuns.add(runStart);
             }
             return;

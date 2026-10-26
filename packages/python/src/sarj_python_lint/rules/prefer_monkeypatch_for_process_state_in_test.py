@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 
 _OS = frozenset({"os"})
 _SYS = frozenset({"sys"})
+_PROCESS_STATE_MODULES = _OS | _SYS
 _SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
 
 
@@ -110,7 +111,7 @@ class PreferMonkeypatchForProcessStateInTest(Rule):
         if not is_test_path(path) or context.generated:
             return []
         tree = context.tree
-        if tree is None:
+        if tree is None or not _imports_process_state(context):
             return []
 
         mutations = [
@@ -135,6 +136,16 @@ class PreferMonkeypatchForProcessStateInTest(Rule):
         ]
         diagnostics.sort(key=lambda diagnostic: (diagnostic.line, diagnostic.col))
         return diagnostics
+
+
+def _imports_process_state(context: PythonFileContext) -> bool:
+    for node in context.nodes(ast.Import, ast.ImportFrom):
+        if isinstance(node, ast.Import):
+            if any(alias.name.partition(".")[0] in _PROCESS_STATE_MODULES for alias in node.names):
+                return True
+        elif node.level == 0 and node.module in _PROCESS_STATE_MODULES:
+            return True
+    return False
 
 
 def _enclosing_imports(function: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext) -> ImportIndex:

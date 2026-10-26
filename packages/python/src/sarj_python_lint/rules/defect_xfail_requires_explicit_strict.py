@@ -7,6 +7,7 @@ import re
 from typing import TYPE_CHECKING, ClassVar, override
 
 from sarj_python_lint.rule_base import (
+    AutofixPolicy,
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
@@ -70,7 +71,9 @@ class DefectXfailRequiresExplicitStrict(Rule):
         ),
         category=RuleCategory.TESTING,
         aliases=("defect-xfail-requires-strict", "xfail-requires-strict"),
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes add a missing literal strict=True only to direct, non-parametrized function markers. Existing strict choices, class/module policies and parametrized functions remain review-only.",
             "Only markers resolved through an unambiguous pytest or pytest.mark import are analyzed.",
             "Only xfail reasons that explicitly identify a defect are analyzed.",
             "Exception narrowing and defect identity remain manual review; strictness or a typed marker alone does not establish failure origin.",
@@ -106,6 +109,35 @@ class DefectXfailRequiresExplicitStrict(Rule):
                 focus_path=PurePosixPath("tests/test_api.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_service.py",
+                        (
+                            "import pytest\n"
+                            "@pytest.mark.xfail(reason='BUG: wrong output')\n"
+                            "def test_output():\n"
+                            "    assert result() == 1\n"
+                        ),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "tests/test_service.py",
+                        (
+                            "import pytest\n"
+                            "@pytest.mark.xfail(reason='BUG: wrong output', strict=True)\n"
+                            "def test_output():\n"
+                            "    assert result() == 1\n"
+                        ),
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_service.py"),
+                expected_count=1,
             ),
         ),
     )

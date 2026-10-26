@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 import sys
 from typing import TYPE_CHECKING, Annotated
 
+from sarj_rule_contracts import fix_file
 import typer
 
 from sarj_sql_lint import __version__
+from sarj_sql_lint.autofix import fix_source
 from sarj_sql_lint.rule_base import DefaultLevel, Diagnostic, clear_path_caches, is_suppressed
 from sarj_sql_lint.rules import REGISTRY
 from sarj_sql_lint.rules.require_fk_index import index_analysis_session
@@ -121,12 +124,24 @@ def _check_command(
     context: typer.Context,
     files: Annotated[list[Path], typer.Argument(parser=Path)],
     rule: Annotated[list[str], typer.Option("--rule", help="Rule ID (repeat for multiple).")],
+    *,
+    fix: Annotated[bool, typer.Option("--fix", help="Apply safe fixes before reporting remaining findings.")] = False,
 ) -> None:
-    context.ensure_object(_Result).code = _run_check(rule, files)
+    context.ensure_object(_Result).code = _run_check(rule, files, fix=fix)
 
 
-def _run_check(rule: list[str], files: list[Path]) -> int:
+def _apply_fixes(rule: list[str], files: list[Path]) -> None:
+    if unknown := set(rule) - REGISTRY.keys():
+        message = f"unknown rule(s): {', '.join(sorted(unknown))}"
+        raise ValueError(message)
+    for path in _expand_paths(files):
+        fix_file(path, partial(fix_source, path, rule_ids=rule))
+
+
+def _run_check(rule: list[str], files: list[Path], *, fix: bool = False) -> int:
     try:
+        if fix:
+            _apply_fixes(rule, files)
         diags = analyze(rule, files)
     except (OSError, ValueError) as exc:
         sys.stderr.write(f"error: {exc}\n")

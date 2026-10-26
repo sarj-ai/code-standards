@@ -153,10 +153,12 @@ def _extract_groups(path: Path, source: str) -> list[ProseGroup]:
     if tree is None:
         return []
     out = _docstring_groups(tree)
-    lines = source.splitlines()
+    lines = [line.rstrip("\r\n") for line in io.StringIO(source, newline="").readlines()]
     try:
         comments = [
-            token for token in tokenize.generate_tokens(io.StringIO(source).readline) if token.type == tokenize.COMMENT
+            token
+            for token in tokenize.generate_tokens(io.StringIO(source, newline="").readline)
+            if token.type == tokenize.COMMENT
         ]
     except tokenize.TokenError, IndentationError, SyntaxError:
         return out

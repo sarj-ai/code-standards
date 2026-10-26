@@ -249,9 +249,26 @@ def _load_tool(
 
 
 def group_paths(files: Sequence[str], *, policy: Policy | None = None, python_only: bool = False) -> GroupedPaths:
+    return _group_paths(files, policy=policy, python_only=python_only, validate_sources=True)
+
+
+def group_format_paths(
+    files: Sequence[str], *, policy: Policy | None = None, python_roots: tuple[Path, ...] | None = None
+) -> GroupedPaths:
+    return _group_paths(files, policy=policy, python_only=False, validate_sources=False, python_roots=python_roots)
+
+
+def _group_paths(
+    files: Sequence[str],
+    *,
+    policy: Policy | None,
+    python_only: bool,
+    validate_sources: bool,
+    python_roots: tuple[Path, ...] | None = None,
+) -> GroupedPaths:
     grouped = GroupedPaths()
     selected = _python_input_paths(files) if python_only else files
-    inputs = _validated_inputs(selected, policy=policy)
+    inputs = _validated_inputs(selected, policy=policy, validate_sources=validate_sources, python_roots=python_roots)
 
     roots = _minimal_roots(path for _raw, path, is_directory in inputs if is_directory)
     walked: set[Path] = set()
@@ -260,11 +277,28 @@ def group_paths(files: Sequence[str], *, policy: Policy | None = None, python_on
         if is_directory:
             key = _path_key(path)
             if key in roots and key not in walked:
-                _route_directory(grouped, path, seen, policy=policy, python_only=python_only)
+                _route_directory(
+                    grouped,
+                    path,
+                    seen,
+                    policy=policy,
+                    python_only=python_only,
+                    validate_sources=validate_sources,
+                    python_roots=python_roots,
+                )
                 walked.add(key)
             continue
         _route_unique_path(grouped, path, raw_path, seen)
     return grouped
+
+
+def _python_owned(path: Path, roots: tuple[Path, ...] | None) -> bool:
+    return (
+        _SUFFIX_TO_TOOL.get(path.suffix.lower()) is not _Tool.PYTHON
+        or roots is None
+        or path.is_dir()
+        or any(path.resolve().is_relative_to(root.resolve()) for root in roots)
+    )
 
 
 def _python_input_paths(files: Sequence[str]) -> list[str]:
@@ -275,10 +309,18 @@ def _python_input_paths(files: Sequence[str]) -> list[str]:
     ]
 
 
-def _validated_inputs(files: Sequence[str], *, policy: Policy | None) -> list[tuple[str, Path, bool]]:
+def _validated_inputs(
+    files: Sequence[str],
+    *,
+    policy: Policy | None,
+    validate_sources: bool = True,
+    python_roots: tuple[Path, ...] | None = None,
+) -> list[tuple[str, Path, bool]]:
     inputs: list[tuple[str, Path, bool]] = []
     for raw_path in files:
         path = Path(raw_path)
+        if not _python_owned(path, python_roots):
+            continue
         if is_link_like(path):
             msg = f"refusing symlink input: {raw_path}"
             raise ValueError(msg)
@@ -287,15 +329,21 @@ def _validated_inputs(files: Sequence[str], *, policy: Policy | None) -> list[tu
             raise ValueError(msg)
         if _is_skill_artifact(path):
             continue
-        if path.is_file() and _owns_path(path):
-            if _is_conventionally_generated(path) or _has_generated_header(path):
-                continue
-            _validate_source_file(path, raw_path)
-            if policy is not None and not policy.allows_path(path):
-                continue
+        if not _routable_input(path, raw_path, policy=policy, validate_sources=validate_sources):
+            continue
         inputs.append((raw_path, path, path.is_dir()))
 
     return inputs
+
+
+def _routable_input(path: Path, display: str, *, policy: Policy | None, validate_sources: bool) -> bool:
+    if not path.is_file() or not _owns_path(path):
+        return True
+    if _is_conventionally_generated(path) or _has_generated_header(path):
+        return False
+    if validate_sources:
+        _validate_source_file(path, display)
+    return policy is None or policy.allows_path(path)
 
 
 def accepts_hook_path(path: Path, *, root: Path | None = None) -> bool:
@@ -319,7 +367,14 @@ def _minimal_roots(paths: Iterable[Path]) -> frozenset[Path]:
 
 
 def _route_directory(
-    grouped: GroupedPaths, path: Path, seen: set[Path], *, policy: Policy | None = None, python_only: bool = False
+    grouped: GroupedPaths,
+    path: Path,
+    seen: set[Path],
+    *,
+    policy: Policy | None = None,
+    python_only: bool = False,
+    validate_sources: bool = True,
+    python_roots: tuple[Path, ...] | None = None,
 ) -> None:
     for root, dir_names, file_names in os.walk(path, topdown=True, followlinks=False):
         base = Path(root)
@@ -332,29 +387,45 @@ def _route_directory(
             if file_name in _IGNORED_DISCOVERED_FILES:
                 continue
             child = Path(root, file_name)
-            if python_only and _SUFFIX_TO_TOOL.get(child.suffix.lower()) is not _Tool.PYTHON:
-                continue
-            if not _routable_child(child, policy=policy):
+            if not _routable_child(
+                child,
+                policy=policy,
+                validate_sources=validate_sources,
+                python_only=python_only,
+                python_roots=python_roots,
+            ):
                 continue
             _route_unique_path(grouped, child, str(child), seen)
 
 
-def _routable_child(child: Path, *, policy: Policy | None) -> bool:
+def _routable_child(
+    child: Path,
+    *,
+    policy: Policy | None,
+    validate_sources: bool = True,
+    python_only: bool = False,
+    python_roots: tuple[Path, ...] | None = None,
+) -> bool:
+    if not _python_owned(child, python_roots):
+        return False
+    if python_only and _SUFFIX_TO_TOOL.get(child.suffix.lower()) is not _Tool.PYTHON:
+        return False
     if not _owns_path(child):
         return False
     if _is_conventionally_generated(child):
         return False
     if policy is not None and not policy.allows_path(child):
         return False
-    return _is_routable_discovered_file(child)
+    return _is_routable_discovered_file(child, validate_sources=validate_sources)
 
 
-def _is_routable_discovered_file(path: Path) -> bool:
+def _is_routable_discovered_file(path: Path, *, validate_sources: bool = True) -> bool:
     try:
         metadata = path.stat(follow_symlinks=False)
         if not stat.S_ISREG(metadata.st_mode):
             return False
-        _validate_source_size(path, metadata.st_size)
+        if validate_sources:
+            _validate_source_size(path, metadata.st_size)
     except ValueError:
         if _has_generated_header(path):
             return False

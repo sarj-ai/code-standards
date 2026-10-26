@@ -4,13 +4,15 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-redundant-optional-array-default.test.ts
  */
 
-import { ASTUtils,
+import {
+  ASTUtils,
   AST_NODE_TYPES,
   type TSESLint,
   type TSESTree,
 } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { privateLegacyArrayDefaultFix } from "./_private-legacy-array-default-fix.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 import { isZodModule } from "./_zod.js";
@@ -20,8 +22,10 @@ type Options = readonly [];
 
 export const NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION = {
   summary: "Remove `.optional()` immediately inside a Zod array default.",
-  rationale: "An outer default already accepts undefined array input, so the inner optional wrapper adds no state or fallback behavior.",
-  remediation: "Keep the array default and remove the immediately preceding `.optional()` call.",
+  rationale:
+    "An outer default already accepts undefined array input, so the inner optional wrapper adds no state or fallback behavior.",
+  remediation:
+    "Keep the array default and remove the immediately preceding `.optional()` call.",
   category: "maintainability",
   autofix: "safe",
   limitations: [
@@ -30,6 +34,7 @@ export const NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION = {
     "String, scalar, tuple, set, record, aliased, composed, and dynamically constructed schemas are excluded.",
     "The reversed `.default(...).optional()` order is preserved because its outer optional can return undefined instead of the default.",
     "Defaults must be literal arrays or synchronous functions returning one literal array; dynamic or undefined fallbacks are excluded because Zod 3 reparses the fallback.",
+    "Automatic fixes require a whole module containing only one explicit zod/v3 namespace import and one unused unannotated private const with exact z.array(z.string()).optional().default([]). Other findings remain manual: exported introspection and supported Zod 4 constructor hooks observe the removed wrapper.",
     "Calls containing comments are excluded so the fix never deletes authored context.",
     "Test and generated files are excluded.",
   ],
@@ -41,7 +46,8 @@ export const NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION = {
       files: [
         {
           path: "src/schema.ts",
-          source: 'import { z } from "zod"; const Items = z.array(z.string()).default([]);',
+          source:
+            'import { z } from "zod"; const Items = z.array(z.string()).default([]);',
         },
       ],
       focusPath: "src/schema.ts",
@@ -55,13 +61,8 @@ export const NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION = {
       files: [
         {
           path: "src/schema.ts",
-          source: 'import { z } from "zod"; const Items = z.array(z.string()).optional().default([]);',
-        },
-      ],
-      fixedFiles: [
-        {
-          path: "src/schema.ts",
-          source: 'import { z } from "zod"; const Items = z.array(z.string()).default([]);',
+          source:
+            'import { z } from "zod"; const Items = z.array(z.string()).optional().default([]);',
         },
       ],
       focusPath: "src/schema.ts",
@@ -74,8 +75,16 @@ export const NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION = {
       title: "Preserve an unrelated builder in a directory named zod",
       outcome: "no-match",
       files: [
-        { path: "src/my-zod/index.ts", source: 'export const z = { string: () => "string", array: (_element: string) => ({ optional: () => ({ default: (value: readonly string[]) => ({ value, optional: true }) }), default: (value: readonly string[]) => ({ value, optional: false }) }) };' },
-        { path: "src/schema.ts", source: 'import { z } from "./my-zod/index.js"; export const Items = z.array(z.string()).optional().default([]);' },
+        {
+          path: "src/my-zod/index.ts",
+          source:
+            'export const z = { string: () => "string", array: (_element: string) => ({ optional: () => ({ default: (value: readonly string[]) => ({ value, optional: true }) }), default: (value: readonly string[]) => ({ value, optional: false }) }) };',
+        },
+        {
+          path: "src/schema.ts",
+          source:
+            'import { z } from "./my-zod/index.js"; export const Items = z.array(z.string()).optional().default([]);',
+        },
       ],
       focusPath: "src/schema.ts",
       expectedCount: 0,
@@ -84,14 +93,40 @@ export const NO_REDUNDANT_OPTIONAL_ARRAY_DEFAULT_DOCUMENTATION = {
     },
     {
       id: "official-zod-subpath-array",
-      title: "Official Zod subpath constructors retain the safe fix",
+      title: "Official Zod subpaths retain the finding for manual review",
       outcome: "match",
-      files: [{ path: "src/schema.ts", source: 'import { array, string } from "zod/v4"; const Items = array(string()).optional().default([]);' }],
-      fixedFiles: [{ path: "src/schema.ts", source: 'import { array, string } from "zod/v4"; const Items = array(string()).default([]);' }],
+      files: [
+        {
+          path: "src/schema.ts",
+          source:
+            'import { array, string } from "zod/v4"; const Items = array(string()).optional().default([]);',
+        },
+      ],
       focusPath: "src/schema.ts",
       expectedCount: 1,
       public: true,
       scenarioId: "module-identity",
+    },
+    {
+      id: "safe-autofix",
+      title: "Remove a private legacy wrapper without constructor observers",
+      outcome: "match",
+      files: [
+        {
+          path: "src/autofix-example.ts",
+          source:
+            'import { z } from "zod/v3"; const Items = z.array(z.string()).optional().default([]);',
+        },
+      ],
+      fixedFiles: [
+        {
+          path: "src/autofix-example.ts",
+          source:
+            'import { z } from "zod/v3"; const Items = z.array(z.string()).default([]);',
+        },
+      ],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
     },
   ],
 } as const satisfies RuleDocumentation;
@@ -110,17 +145,22 @@ function hasArrayFallback(node: TSESTree.CallExpression): boolean {
   const value = unwrapExpression(argument);
   if (value.type === AST_NODE_TYPES.ArrayExpression) return true;
   if (
-    (value.type !== AST_NODE_TYPES.ArrowFunctionExpression && value.type !== AST_NODE_TYPES.FunctionExpression) ||
-    value.async || value.generator
-  ) return false;
+    (value.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
+      value.type !== AST_NODE_TYPES.FunctionExpression) ||
+    value.async ||
+    value.generator
+  )
+    return false;
   if (value.body.type !== AST_NODE_TYPES.BlockStatement) {
     return unwrapExpression(value.body).type === AST_NODE_TYPES.ArrayExpression;
   }
   const statement = value.body.body[0];
-  return value.body.body.length === 1 &&
+  return (
+    value.body.body.length === 1 &&
     statement?.type === AST_NODE_TYPES.ReturnStatement &&
     statement.argument !== null &&
-    unwrapExpression(statement.argument).type === AST_NODE_TYPES.ArrayExpression;
+    unwrapExpression(statement.argument).type === AST_NODE_TYPES.ArrayExpression
+  );
 }
 
 export default createRule<Options, MessageIds>({
@@ -129,7 +169,8 @@ export default createRule<Options, MessageIds>({
   meta: {
     type: "problem",
     docs: {
-      description: "Remove `.optional()` immediately inside a Zod array default.",
+      description:
+        "Remove `.optional()` immediately inside a Zod array default.",
     },
     fixable: "code",
     schema: [],
@@ -141,10 +182,7 @@ export default createRule<Options, MessageIds>({
   defaultOptions: [],
   create(context) {
     const sourceCode = context.sourceCode;
-    if (
-      isTestFile(context) ||
-      isGeneratedFile(context, sourceCode.getText())
-    ) {
+    if (isTestFile(context) || isGeneratedFile(context, sourceCode.getText())) {
       return {};
     }
 
@@ -157,9 +195,13 @@ export default createRule<Options, MessageIds>({
       if (binding === undefined) return false;
       let scope: TSESLint.Scope.Scope | null = sourceCode.getScope(node);
       while (scope !== null) {
-        const variable = scope.variables.find((candidate) => candidate.name === node.name);
+        const variable = scope.variables.find(
+          (candidate) => candidate.name === node.name,
+        );
         if (variable !== undefined) {
-          return variable.defs.some((definition) => definition.name === binding);
+          return variable.defs.some(
+            (definition) => definition.name === binding,
+          );
         }
         scope = scope.upper;
       }
@@ -169,16 +211,22 @@ export default createRule<Options, MessageIds>({
     function isArraySchemaExpression(node: TSESTree.Node): boolean {
       if (node.type !== AST_NODE_TYPES.CallExpression) return false;
       const callee = unwrapExpression(node.callee);
-      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
+      const calleeReceiver =
+        callee.type === AST_NODE_TYPES.MemberExpression
+          ? unwrapExpression(callee.object)
+          : callee;
       if (callee.type === AST_NODE_TYPES.Identifier) {
-        return arrayConstructors.has(callee.name) && resolvesToTrackedImport(callee);
+        return (
+          arrayConstructors.has(callee.name) && resolvesToTrackedImport(callee)
+        );
       }
       if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
       const method = ASTUtils.getPropertyName(callee);
       if (
         method === "array" &&
         (calleeReceiver.type === AST_NODE_TYPES.Identifier
-          ? namespaces.has(calleeReceiver.name) && resolvesToTrackedImport(calleeReceiver)
+          ? namespaces.has(calleeReceiver.name) &&
+            resolvesToTrackedImport(calleeReceiver)
           : isZodSchemaExpression(calleeReceiver))
       ) {
         return true;
@@ -189,7 +237,10 @@ export default createRule<Options, MessageIds>({
     function isZodSchemaExpression(node: TSESTree.Node): boolean {
       if (node.type !== AST_NODE_TYPES.CallExpression) return false;
       const callee = unwrapExpression(node.callee);
-      const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
+      const calleeReceiver =
+        callee.type === AST_NODE_TYPES.MemberExpression
+          ? unwrapExpression(callee.object)
+          : callee;
       if (callee.type === AST_NODE_TYPES.Identifier) {
         return resolvesToTrackedImport(callee);
       }
@@ -231,7 +282,10 @@ export default createRule<Options, MessageIds>({
       CallExpression(node: TSESTree.CallExpression): void {
         const defaultCallee = unwrapExpression(node.callee);
 
-        const defaultCalleeReceiver = defaultCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(defaultCallee.object) : defaultCallee;
+        const defaultCalleeReceiver =
+          defaultCallee.type === AST_NODE_TYPES.MemberExpression
+            ? unwrapExpression(defaultCallee.object)
+            : defaultCallee;
         if (
           defaultCallee.type !== AST_NODE_TYPES.MemberExpression ||
           ASTUtils.getPropertyName(defaultCallee) !== "default" ||
@@ -242,7 +296,10 @@ export default createRule<Options, MessageIds>({
         }
         const optionalCall = defaultCalleeReceiver;
         const optionalCallee = unwrapExpression(optionalCall.callee);
-        const optionalCalleeReceiver = optionalCallee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(optionalCallee.object) : optionalCallee;
+        const optionalCalleeReceiver =
+          optionalCallee.type === AST_NODE_TYPES.MemberExpression
+            ? unwrapExpression(optionalCallee.object)
+            : optionalCallee;
         if (
           optionalCallee.type !== AST_NODE_TYPES.MemberExpression ||
           ASTUtils.getPropertyName(optionalCallee) !== "optional" ||
@@ -255,8 +312,7 @@ export default createRule<Options, MessageIds>({
         context.report({
           node: optionalCall,
           messageId: "redundantOptionalArrayDefault",
-          fix: (fixer) =>
-            fixer.replaceText(optionalCall, sourceCode.getText(optionalCalleeReceiver)),
+          fix: privateLegacyArrayDefaultFix(sourceCode, node, context.filename),
         });
       },
     };

@@ -7,6 +7,7 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 import type { Scope } from "@typescript-eslint/utils/ts-eslint";
 
+import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
 
@@ -20,7 +21,9 @@ export const PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION = {
   remediation:
     "Expose literals with `as const` or a readonly type, and expose Set or Map values through ReadonlySet or ReadonlyMap.",
   category: "correctness",
+  autofix: "safe",
   limitations: [
+    "Automatic fixes add as const only to unannotated, unused private object/array literals in explicit modules with no eval; referenced or exported collections remain manual.",
     "Generated, test and JavaScript files are skipped. Private constants with observed direct or alias mutation are excluded; exported mutable collections remain advisory candidates. Reassigned aliases are conservatively followed, not flow-proven.",
     "Local type aliases are resolved before recognizing standard readonly types; imported or otherwise unknown type declarations are not inferred from their names. Readonly types have no runtime enforcement.",
   ],
@@ -62,6 +65,15 @@ export const PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION = {
       focusPath: "src/constants.ts",
       expectedCount: 0,
       public: true,
+    },
+    {
+      id: "safe-autofix",
+      title: "Apply the proven automatic correction",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "export {}; const VALUES = [1, 2, 3];" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "export {}; const VALUES = [1, 2, 3] as const;" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
     },
   ],
 } as const satisfies RuleDocumentation;
@@ -319,6 +331,7 @@ export default createRule<Options, MessageIds>({
   documentation: PREFER_IMMUTABLE_MODULE_CONSTANT_DOCUMENTATION,
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: {
       description:
         "Require module-level constant collections to expose readonly state.",
@@ -447,6 +460,11 @@ export default createRule<Options, MessageIds>({
           node: node.id,
           messageId: kind === "literal" ? "preferAsConst" : "preferReadonlyCollection",
           data: { name: node.id.name, kind },
+          fix: kind === "literal" && node.id.typeAnnotation === undefined &&
+            (node.init.type === AST_NODE_TYPES.ObjectExpression || node.init.type === AST_NODE_TYPES.ArrayExpression) &&
+            isUnusedPrivateBinding(sourceCode, node, node.id, context.filename)
+            ? (fixer) => fixer.insertTextAfter(node.init!, " as const")
+            : null,
         });
       },
     };

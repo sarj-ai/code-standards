@@ -73,9 +73,11 @@ class NoAnyMappingTypes(Rule):
             "for a genuinely opaque Python value. Preserve unchanged external API signatures with an exact explained suppression; do not automatically widen published returns."
         ),
         category=RuleCategory.CORRECTNESS,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         aliases=("no-vague-annotations",),
         limitations=(
+            "Automatic fixes replace only direct Any values in covariant Mapping parameters of closed private nested synchronous helpers whose parameter is entirely unused. Defaults, consumers, reflection/frame access, comments, shadowed object, mutable/aliased/string annotations and newly unused Any imports remain manual.",
+            "Containing callables must also be ordinary synchronous nongenerators with proven inert execution; unknown callouts, properties, overloads, reachable frame-exporting exceptions, and helper references crossing additional function, class, lambda, or comprehension scopes prevent fixes.",
             (
                 "Only proven built-in or standard-library string-keyed mappings whose value recursively contains "
                 "`typing.Any` are reported; `object` is intentionally not treated as `Any`."
@@ -91,6 +93,25 @@ class NoAnyMappingTypes(Rule):
             "Ambiguous type-import origins, attribute mutations, escaped canonical type namespaces and dynamic namespace access cause conservative file abstention.",
         ),
         examples=(
+            RuleExample(
+                example_id="safe-autofix",
+                title="Retain an unused private mapping parameter as opaque objects",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from collections.abc import Mapping\nfrom typing import Any\ndef identity(value: Any) -> Any:\n    return value\ndef outer() -> int:\n    def _accept(payload: Mapping[str, Any]) -> int:\n        return 1\n    return _accept({'key': 1})\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from collections.abc import Mapping\nfrom typing import Any\ndef identity(value: Any) -> Any:\n    return value\ndef outer() -> int:\n    def _accept(payload: Mapping[str, object]) -> int:\n        return 1\n    return _accept({'key': 1})\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+            ),
             RuleExample(
                 example_id="any-valued-mapping-annotation",
                 title="An Any-valued mapping erases the record schema",

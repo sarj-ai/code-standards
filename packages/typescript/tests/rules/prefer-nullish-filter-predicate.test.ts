@@ -1,8 +1,9 @@
 import { join } from "node:path";
+import { runInNewContext } from "node:vm";
 
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 import rule, {
   PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION,
@@ -27,6 +28,8 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("prefer-nullish-filter-predicate", rule, {
   valid: [
+    { name: "preserves the browser's falsy document.all object", code: "declare const values: readonly (HTMLAllCollection | null)[]; values.filter(Boolean);" },
+    { name: "preserves structural supertypes of the browser's falsy object", code: "declare const values: readonly (Pick<HTMLAllCollection, 'length' | 'item'> | null)[]; values.filter(Boolean);" },
     {
       name: "accepts the documented explicit predicate",
       code: PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION.examples[0].files[0].source,
@@ -43,9 +46,17 @@ RULE_TESTER.run("prefer-nullish-filter-predicate", rule, {
     "declare const values: readonly ({ id: string } | null)[]; values.filter((value) => value !== null && value !== undefined);",
   ],
   invalid: [
+    { name: "fixes a fresh inert literal array with no preceding callouts", code: "const present = [{ id: 'kept' }, null].filter(Boolean);", output: "const present = [{ id: 'kept' }, null].filter((value) => value !== null && value !== undefined);", errors: [{ messageId: "preferNullishPredicate", suggestions: 1 }] },
+    { name: "fixes an isolated fresh literal expression", code: "[{ id: 'kept' }, null].filter(Boolean);", output: "[{ id: 'kept' }, null].filter((value) => value !== null && value !== undefined);", errors: [{ messageId: "preferNullishPredicate", suggestions: 1 }] },
+    { name: "retains externally supplied receivers whose filter can observe callback identity", code: "function present(values: readonly ({ id: string } | null)[]) { return values.filter(Boolean); }", output: null, errors: [{ messageId: "preferNullishPredicate", suggestions: 1 }] },
+    { name: "retains fresh arrays after a source prototype replacement", code: "Array.prototype.filter = replacement; const present = [{ id: 'kept' }, null].filter(Boolean);", output: null, errors: [{ messageId: "preferNullishPredicate", suggestions: 1 }] },
+    { name: "retains fresh arrays after an arbitrary import", code: "import './patch-array.js'; const present = [{ id: 'kept' }, null].filter(Boolean);", output: null, errors: [{ messageId: "preferNullishPredicate", suggestions: 1 }] },
+    { name: "retains effectful element initialization", code: "const present = [{ id: read() }, null].filter(Boolean);", output: null, errors: [{ messageId: "preferNullishPredicate", suggestions: 1 }] },
+    { name: "preserves filtering with a shadowed undefined binding", code: "function present(undefined: object, values: readonly ({ id: string } | null | undefined)[]) { return values.filter(Boolean); }", output: null, errors: [{ messageId: "preferNullishPredicate", suggestions: 1 }] },
+    { name: "chooses a fresh callback name when common names are bound", code: "declare const value: string, item: string, element: string, candidate: string; declare const values: readonly (true | null)[]; values.filter(Boolean);", output: null, errors: [{ messageId: "preferNullishPredicate", suggestions: 1 }] },
     {
       name: "reports the documented object-null union",
-      code: PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION.examples[1].files[0].source,
+      code: PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION.examples[1].files[0].source, output: null,
       errors: [
         {
           messageId: "preferNullishPredicate",
@@ -60,18 +71,27 @@ RULE_TESTER.run("prefer-nullish-filter-predicate", rule, {
       ],
     },
     {
-      code: "declare const values: readonly (true | null | undefined)[]; values.filter(Boolean);",
+      code: "declare const values: readonly (true | null | undefined)[]; values.filter(Boolean);", output: null,
       errors: [{ messageId: "preferNullishPredicate", suggestions: 1 }],
     },
     {
-      code: "declare const values: readonly ('ready' | null)[]; values.filter(Boolean);",
+      code: "declare const values: readonly ('ready' | null)[]; values.filter(Boolean);", output: null,
       errors: [{ messageId: "preferNullishPredicate", suggestions: 1 }],
     },
     {
-      code: "declare const values: readonly (42 | null)[]; values.filter(Boolean);",
+      code: "declare const values: readonly (42 | null)[]; values.filter(Boolean);", output: null,
       errors: [{ messageId: "preferNullishPredicate", suggestions: 1 }],
     },
   ],
+});
+
+it("preserves fresh literal filtering with canonical built-in methods", () => {
+  const example = PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION.examples[2];
+  const source = example.files[0].source;
+  const fixed = example.fixedFiles[0].source;
+  expect(runInNewContext(`${fixed}\nJSON.stringify(present);`)).toBe(
+    runInNewContext(`${source}\nJSON.stringify(present);`),
+  );
 });
 
 

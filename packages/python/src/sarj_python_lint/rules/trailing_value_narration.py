@@ -42,7 +42,7 @@ _WORD_RE = re.compile(r"[A-Za-z]+(?:'[a-z]+)?|\d[\d_]*(?:\.\d[\d_]*)?")
 
 # Words that name the unit rather than the quantity — the one thing the code
 # does not say, and the reason the fix is a *name*, not a deletion.
-_UNIT_WORDS = frozenset(
+UNIT_WORDS = frozenset(
     {
         "bytes",
         "byte",
@@ -139,15 +139,15 @@ def _narrates_value(body: str, code: str, code_numbers: frozenset[str]) -> bool:
     comment_number_texts = [match.group(0) for match in _NUMBER_RE.finditer(body)]
     if len(comment_number_texts) != 1:
         return False
-    comment_number = _number_key(comment_number_texts[0])
+    comment_number = number_key(comment_number_texts[0])
     if comment_number is None or comment_number not in code_numbers:
         return False
-    if not any(word in _UNIT_WORDS for word in words):
+    if not any(word in UNIT_WORDS for word in words):
         return False
     identifiers = code_tokens(code)
     identifier_stems = {stem(token) for token in identifiers}
     for word in words:
-        if word in _STOPWORDS or word in _UNIT_WORDS or _number_key(word) == comment_number:
+        if word in _STOPWORDS or word in UNIT_WORDS or number_key(word) == comment_number:
             continue
         if word in identifiers or stem(word) in identifier_stems:
             continue
@@ -169,9 +169,10 @@ class TrailingValueNarration(Rule):
             "timedelta(minutes=5), then delete the duplicate comment."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.SUGGESTION,
+        autofix=AutofixPolicy.SAFE,
         aliases=("trailing-value-narration",),
         limitations=(
+            "Safe fixes remove only an exact number-and-unit comment on a direct nonnegative numeric literal assignment when the existing name has exactly that same unit suffix and the numeric values agree. Arithmetic, conversion, conflicting or missing units, aliases and explanatory prose remain review-only; executable code and line endings are retained.",
             "Detection targets one-line numeric assignments with one simple name or attribute target and a trailing comment that repeats one number and unit.",
             "Calls, returns, loops, assertions, chained or destructured assignments, multi-number comments, approximate conversions, reasons, references, directives, bracketed values, invalid syntax, and generated files are excluded.",
         ),
@@ -198,6 +199,15 @@ class TrailingValueNarration(Rule):
                 focus_path=PurePosixPath("settings.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="Exact authored words have a convergent comment fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("app/service.py", "TIMEOUT_MS = 1_000  # 1000ms\n"),),
+                fixed_files=(ExampleFile.python("app/service.py", "TIMEOUT_MS = 1_000\n"),),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )
@@ -268,7 +278,7 @@ def _numeric_assignments(tree: ast.AST, *, node_index: NodeIndex | None = None) 
 
 def _numeric_expression_numbers(node: ast.expr) -> frozenset[str] | None:
     if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)) and not isinstance(node.value, bool):
-        key = _number_key(node.value)
+        key = number_key(node.value)
         return frozenset() if key is None else frozenset({key})
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
         return _numeric_expression_numbers(node.operand)
@@ -282,7 +292,7 @@ def _numeric_expression_numbers(node: ast.expr) -> frozenset[str] | None:
     return None
 
 
-def _number_key(value: str | float) -> str | None:
+def number_key(value: str | float) -> str | None:
     parsed: object = value
     if isinstance(value, str):
         normalized = value.replace("_", "")

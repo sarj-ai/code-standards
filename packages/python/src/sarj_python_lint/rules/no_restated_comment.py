@@ -262,8 +262,9 @@ class NoRestatedComment(Rule):
             "constraint, consequence, ordering requirement, or meaningful region label."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.SUGGESTION,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes remove only a standalone comment whose complete plain-word sequence exactly matches the next single-line direct call identifier, ignoring case and a final period only. Stem matches, omitted words, labels, directives and other prose remain review-only; blank line count is preserved.",
             "Detection uses conservative lexical heuristics for short standalone comments above simple actions.",
             "Generated files, directives, protected comments, section labels, and comments adding novel context are excluded.",
         ),
@@ -299,6 +300,15 @@ class NoRestatedComment(Rule):
                 focus_path=PurePosixPath("service.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="Exact authored words have a convergent comment fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("app/service.py", "def load():\n    # Load profile\n    load_profile()\n"),),
+                fixed_files=(ExampleFile.python("app/service.py", "def load():\n\n    load_profile()\n"),),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )

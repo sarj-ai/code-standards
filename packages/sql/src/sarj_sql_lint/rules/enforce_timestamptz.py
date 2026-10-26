@@ -110,11 +110,32 @@ class EnforceTimestamptz(Rule):
         rationale="Naive timestamps discard offset context and make cross-time-zone comparisons ambiguous.",
         remediation="Declare persisted instants as TIMESTAMPTZ or TIMESTAMP WITH TIME ZONE.",
         category=RuleCategory.CORRECTNESS,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Automatic literal fixes require one literal-only SELECT or one simple CREATE TABLE with canonical typed literal defaults, with no other statements, reads, CTEs, operators, other constraints, custom casts or callouts. The external PostgreSQL built-in catalog must be canonical and unmodified; source-visible mutations are refused.",
+            "Autofix only replaces an existing canonical timezone(INTERVAL '00:00', naive ISO literal cast) or equivalent AT TIME ZONE interval expression with the same validated literal and explicit +00 timestamptz cast. A pre-existing SELECT alias or canonical timestamptz column DEFAULT must preserve its output name/type. Session-zone conversions, text timezone names, unaliased results, dynamic values, precision modifiers and comments inside the expression remain manual.",
             "Complete parseable PostgreSQL statements distinguish identifier positions from type keywords, including exact lower-case quoted built-ins and pg_catalog qualification. Custom schemas and quoted mixed-case type names are not inferred. Fragments and unsupported procedural syntax retain unquoted lexical detection.",
         ),
         examples=(
+            RuleExample(
+                example_id="safe-fixed-offset-literal",
+                title="An existing fixed offset and output label preserve the instant contract",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "supabase/queries/literal.sql",
+                        "SELECT pg_catalog.timezone(INTERVAL '00:00', CAST('2000-01-01 00:00:00' AS pg_catalog.timestamp)) AS instant;\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.sql(
+                        "supabase/queries/literal.sql",
+                        "SELECT CAST('2000-01-01 00:00:00+00' AS pg_catalog.timestamptz) AS instant;\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("supabase/queries/literal.sql"),
+                expected_count=1,
+            ),
             RuleExample(
                 example_id="naive-created-at",
                 title="Naive timestamp column",

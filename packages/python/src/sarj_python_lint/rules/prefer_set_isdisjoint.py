@@ -57,13 +57,14 @@ class PreferSetIsdisjoint(ProjectRule):
         rationale="`isdisjoint` names the overlap predicate directly and avoids allocating an intersection that is immediately discarded.",
         remediation="Use `left.isdisjoint(right)` and negate it when the condition requires overlap.",
         category=RuleCategory.STYLE,
-        autofix=AutofixPolicy.SUGGESTION,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes require both operands to be comment-free set literals containing only native primitive constants. Dynamic/custom elements and nonliteral operands remain review-only.",
             "Explicit unshadowed built-in bool calls are predicates even in assignments and returns. Raw stored or returned intersections remain values, not predicates.",
             "Set receivers must come from a literal, comprehension, constructor, dominating local assignment, or an unchanged parameter's directly declared first-party set/frozenset field.",
             "Dictionary key-view receivers require a literal/comprehension/constructor or one unreassigned, dominating local binding. Custom mappings and unproven parameters are excluded.",
             "Declared fields rely on the annotated contract. Unknown or union field types, properties, explicit owner/field reassignment, branch-merged bindings, stored intersections, and generated files are excluded. Captured bindings in deferred lambda/generator bodies and starred intersection arguments are excluded. The other operand must be a known iterable.",
-            "The suggestion is intentionally not an autofix because short-circuiting may make custom element equality or hashing side effects observable.",
+            "Nonliteral intersections remain suggestions because short-circuiting may make custom element equality or hashing side effects observable.",
         ),
         examples=(
             RuleExample(
@@ -94,6 +95,24 @@ class PreferSetIsdisjoint(ProjectRule):
                 focus_path=PurePosixPath("app/policy.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py", ("def overlaps():\n    return bool({'one', 'two'} & {'two'})\n")
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        ("def overlaps():\n    return bool((not ({'one', 'two'}).isdisjoint({'two'})))\n"),
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )

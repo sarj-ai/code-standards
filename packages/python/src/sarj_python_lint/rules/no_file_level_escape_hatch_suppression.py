@@ -5,6 +5,7 @@ import re
 from typing import TYPE_CHECKING, ClassVar, final, override
 
 from sarj_python_lint.rule_base import (
+    AutofixPolicy,
     ColumnEncoding,
     Diagnostic,
     ExampleFile,
@@ -47,8 +48,11 @@ class NoFileLevelEscapeHatchSuppression(Rule):
         rationale="A file-wide suppression silently authorizes future uses that were never reviewed.",
         remediation="Suppress each intentional use inline with the exact code and a reason.",
         category=RuleCategory.MAINTAINABILITY,
+        autofix=AutofixPolicy.SAFE,
         aliases=("no-file-level-escape-hatch-noqa",),
         limitations=(
+            "Autofix only removes an exact sole-selector TID251/banned-api comment when the entire nonempty module contains only simple name assignments of primitive literals and no other comments. Such a module has no imports, calls, attributes, definitions, annotations or API reads that could require a banned-api exception. Every executable source position and compiled code object is retained.",
+            "Mixed selectors, trailing reasons, additional directives or comments, annotations, containers, expressions and all executable API uses remain manual; no per-site suppression or rationale is invented.",
             "Detection covers legacy `ruff: noqa: CODE` and modern `ruff: file-ignore[name]` directives naming configured escape-hatch rules.",
             "Inline noqa comments, balanced Ruff disable/enable ranges, and file-level suppressions for mechanical rules are excluded.",
         ),
@@ -80,6 +84,15 @@ class NoFileLevelEscapeHatchSuppression(Rule):
                 focus_path=PurePosixPath("app/service.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A literal-only module cannot use a banned API",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("app/limits.py", "# ruff: file-ignore[banned-api]\nMAX_RETRIES = 3\n"),),
+                fixed_files=(ExampleFile.python("app/limits.py", "\nMAX_RETRIES = 3\n"),),
+                focus_path=PurePosixPath("app/limits.py"),
+                expected_count=1,
             ),
         ),
     )

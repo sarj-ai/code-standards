@@ -4,10 +4,11 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-enum.test.ts
  */
 
-import { type TSESTree } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, matchesAnyPattern } from "./_paths.js";
+import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
 
 type MessageIds = "noEnum";
 type Options = readonly [
@@ -23,7 +24,8 @@ export const NO_ENUM_DOCUMENTATION = {
   remediation:
     "Use a literal union or an `as const` object after checking runtime member access, numeric reverse mappings, serialized values, and public consumers.",
   category: "maintainability",
-  limitations: ["This is an explicit style policy for regular and const enums, not a claim that every enum emits an object. Generated files and configured exclusions are preserved; migration is manual."],
+  autofix: "safe",
+  limitations: ["This is an explicit style policy for regular and const enums, not a claim that every enum emits an object. Generated files and configured exclusions are preserved. Automatic conversion is limited to unused private ambient enums with literal string values; runtime enums and observed nominal contracts remain manual."],
   references: ["https://www.typescriptlang.org/docs/handbook/enums.html"],
   examples: [
     {
@@ -46,6 +48,15 @@ export const NO_ENUM_DOCUMENTATION = {
     },
     { id: "authored-after-comment", scenarioId: "native-header-boundary", title: "Keep executable authored code in scope", outcome: "match", files: [{ path: "src/status.ts", source: "// ordinary header\u2028const marker=\"auto-generated file\"; enum Mode {Start} console.log(Mode.Start, marker);" }], focusPath: "src/status.ts", expectedCount: 1, public: true },
     { id: "generated-header", scenarioId: "native-header-boundary", title: "Respect a native generated banner", outcome: "no-match", files: [{ path: "src/status.ts", source: "// auto-generated file\u2028const marker=\"auto-generated file\"; enum Mode {Start} console.log(Mode.Start, marker);" }], focusPath: "src/status.ts", expectedCount: 0, public: true },
+    {
+      id: "safe-autofix",
+      title: "Replace an unused ambient string enum with an erased union",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "export {}; declare enum Status { Active = 'active', Inactive = 'inactive' }" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "export {}; type Status = 'active' | 'inactive';" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -55,6 +66,7 @@ export default createRule<Options, MessageIds>({
   documentation: NO_ENUM_DOCUMENTATION,
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: {
       description:
         "Disallow TypeScript `enum`; use string-literal unions or `as const` objects instead.",
@@ -95,9 +107,16 @@ export default createRule<Options, MessageIds>({
 
     return {
       TSEnumDeclaration(node: TSESTree.TSEnumDeclaration): void {
+        const members = node.body.members;
+        const values = members.map((member) => member.initializer);
+        const canFix = node.declare && members.length > 0 && !node.const &&
+          values.every((value) => value?.type === AST_NODE_TYPES.Literal && typeof value.value === "string") &&
+          context.sourceCode.getCommentsInside(node).length === 0 &&
+          isUnusedPrivateBinding(context.sourceCode, node, node.id, context.filename);
         context.report({
           node,
           messageId: "noEnum",
+          fix: canFix ? (fixer) => fixer.replaceText(node, `type ${context.sourceCode.getText(node.id)} = ${values.map((value) => value === undefined ? "" : context.sourceCode.getText(value)).join(" | ")};`) : null,
         });
       },
     };

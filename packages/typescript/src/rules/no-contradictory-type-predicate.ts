@@ -6,6 +6,7 @@
 import { ASTUtils, AST_NODE_TYPES, ESLintUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 
+import { privatePredicateBooleanFix } from "./_unused-private-binding.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { hasSeparatePredicateContract } from "./_has-separate-predicate-contract.js";
 import { isGeneratedFile } from "./_paths.js";
@@ -35,8 +36,9 @@ export const NO_CONTRADICTORY_TYPE_PREDICATE_DOCUMENTATION = {
   remediation: "Match the predicate to every value the check accepts and rejects. Check literal membership for a closed domain and exclude null when promising a non-null object. Use a boolean return for an intentional value filter; preserve required public and callback contracts.",
   category: "correctness",
   defaultLevel: "warning",
-  autofix: "none",
+  autofix: "safe",
   limitations: [
+    "Automatic fixes replace the unsound predicate with boolean only for an unused private function declaration without overloads, exports, eval, comments in the predicate, or declaration-file ownership. Runtime checks are preserved; observed callable contracts remain manual.",
     "Requires type information, an explicit predicate over a directly named parameter and a single returned positive typeof equality for the same scope-resolved parameter. Both strict and loose equality and reversed operands are supported.",
     "Recognizes broad primitive targets, finite primitive literal/nullish unions and never, with unknown or fully classified primitive/nullish inputs. Closed input domains are checked against the actual target, including finite numeric enum members. Mixed broad-and-literal, branded, unique-symbol, structural, generic, asserted, declaration-only and multi-statement validators are excluded rather than guessed.",
     "For the intrinsic object target, typeof-object also admits null only when the declared input admits null and strictNullChecks is enabled. This narrow check does not infer structural property validation or classify other object/function relationships. Overloaded implementations, contextually typed callbacks and methods with class heritage or contextual object contracts retain their separate callable domain.",
@@ -55,6 +57,15 @@ export const NO_CONTRADICTORY_TYPE_PREDICATE_DOCUMENTATION = {
     { id: "empty-domain-check-succeeds", scenarioId: "empty-domain", title: "Numbers cannot belong to an empty target", outcome: "match", files: [{ path: "src/guard.ts", source: 'function impossible(value: unknown): value is never { return typeof value === "number"; }' }], focusPath: "src/guard.ts", expectedCount: 1, public: true },
     { id: "array-elements-unchecked", scenarioId: "array-elements", title: "Array membership alone does not prove text elements", outcome: "match", files: [{ path: "src/guard.ts", source: 'function texts(value: unknown): value is string[] { return Array.isArray(value); }' }], focusPath: "src/guard.ts", expectedCount: 1, public: true },
     { id: "array-elements-validated", scenarioId: "array-elements", title: "Establish the element domain at the boundary", outcome: "no-match", files: [{ path: "src/guard.ts", source: 'function texts(value: unknown): value is string[] { return Array.isArray(value) && value.every((item: unknown) => typeof item === "string"); }' }], focusPath: "src/guard.ts", expectedCount: 0, public: true },
+    {
+      id: "safe-autofix",
+      title: "Retain an unused private filter without unsound narrowing",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "export {}; function isText(value: unknown): value is string { return typeof value === \"number\"; }" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "export {}; function isText(value: unknown): boolean { return typeof value === \"number\"; }" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -63,6 +74,7 @@ export default createRule<Options, MessageIds>({
   documentation: NO_CONTRADICTORY_TYPE_PREDICATE_DOCUMENTATION,
   meta: {
     type: "problem",
+    fixable: "code",
     docs: { description: NO_CONTRADICTORY_TYPE_PREDICATE_DOCUMENTATION.summary },
     schema: [],
     messages: {
@@ -78,7 +90,7 @@ export default createRule<Options, MessageIds>({
     const services = ESLintUtils.getParserServices(context);
     const checker = services.program.getTypeChecker();
     const uncheckedArray = contradictoryArrayPredicate(context.sourceCode, services);
-    const pendingArrays: { readonly annotation: TSESTree.TSTypePredicate; readonly promised: string }[] = [];
+    const pendingArrays: { readonly node: FunctionNode; readonly annotation: TSESTree.TSTypePredicate; readonly promised: string }[] = [];
 
     function inspect(node: FunctionNode): void {
       const annotation = node.returnType?.typeAnnotation;
@@ -95,13 +107,13 @@ export default createRule<Options, MessageIds>({
       const target = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(annotation.typeAnnotation.typeAnnotation));
       if (!checker.isTypeAssignableTo(target, input)) return;
       if (check === undefined) {
-        if (uncheckedArray.matches(expression, parameter, input, target)) pendingArrays.push({ annotation, promised: checker.typeToString(target) });
+        if (uncheckedArray.matches(expression, parameter, input, target)) pendingArrays.push({ node, annotation, promised: checker.typeToString(target) });
         return;
       }
       const options = services.program.getCompilerOptions();
       const messageId = contradiction(input, target, check.kind, checker, options.strictNullChecks ?? options.strict ?? false);
       if (messageId === undefined) return;
-      context.report({ node: annotation, messageId, data: {
+      context.report({ node: annotation, messageId, fix: privatePredicateBooleanFix(context.sourceCode, node, annotation, context.filename), data: {
         promised: checker.typeToString(target), checked: check.kind,
       } });
     }
@@ -112,7 +124,7 @@ export default createRule<Options, MessageIds>({
       "ObjectPattern > Property": uncheckedArray.observeConstructor,
       "Program:exit"(): void {
         if (pendingArrays.length === 0 || !uncheckedArray.stable()) return;
-        for (const { annotation, promised } of pendingArrays) context.report({ node: annotation, messageId: "uncheckedArrayElements", data: { promised } });
+        for (const { node, annotation, promised } of pendingArrays) context.report({ node: annotation, messageId: "uncheckedArrayElements", fix: privatePredicateBooleanFix(context.sourceCode, node, annotation, context.filename), data: { promised } });
       },
     };
   },

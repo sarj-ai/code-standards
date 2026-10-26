@@ -191,6 +191,18 @@ RULE_TESTER.run("enforce-file-structure", rule, {
     },
   ],
   invalid: [
+    {
+      name: "moves only erased imports while preserving the directive prologue",
+      code: '"use client"; const value = 1; import type { Foo } from "foo"; type Bar = Foo; import type { Baz } from "baz";',
+      output: '"use client"; import type { Foo } from "foo";\nimport type { Baz } from "baz";\nconst value = 1;  type Bar = Foo; ',
+      errors: [{ messageId: "importsFirst" }, { messageId: "importsFirst" }],
+    },
+    {
+      name: "does not move comments or line-sensitive directives",
+      code: 'const value = 1;\n// @ts-ignore -- The type-only module belongs to the host.\nimport type { Foo } from "foo";',
+      output: null,
+      errors: [{ messageId: "importsFirst" }],
+    },
     // A generated-looking comment after hand-written code cannot exempt the file.
     {
       filename: "/repo/src/workspace/types/GraphRoot.types.ts",

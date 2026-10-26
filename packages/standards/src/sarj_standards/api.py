@@ -391,31 +391,19 @@ class Standards:
     ) -> AnalysisReport:
         return self.analyze(paths, external=external, trust=trust, mode=mode, rules=rules, staged=staged, jobs=jobs)
 
-    def fix(self) -> Result:
-        from .libs.adoption import (  # ruff: ignore[import-outside-top-level] -- selected operation only
-            lifecycle,
-            scaffold,
-        )
-        from .libs.linting.python_fixes import fix_python  # ruff: ignore[import-outside-top-level] -- only fix needs native edit application.
+    def fix(self, paths: Sequence[str] | None = None) -> Result:
+        from .libs.linting import autofix  # ruff: ignore[import-outside-top-level] -- selected operation only.
 
         try:
-            adopted = load_manifest(self.root)
-            ecosystems = scaffold.detect(self.root) if adopted is None else scaffold.detect_adopted(self.root, adopted)
-            if ecosystems.python_root is not None:
-                selected = [str(self.root / path) for path in (adopted.verify_paths if adopted is not None else (".",))]
-                fix_python(
-                    selected,
-                    root=self.root,
-                    policy=Policy.from_manifest(self.root, adopted),
-                    python_root=ecosystems.python_root,
-                )
+            selected = [str(self.root / path) for path in paths] if paths is not None else [str(self.root)]
+            result = autofix.run(self.root, selected, trusted=True, default_scope=paths is None)
         except (OSError, SyntaxError, TypeError, UnicodeError, ValueError) as exc:
             return Result(
                 Status.INVALID,
                 findings=(Finding("fix.input.invalid", "error", str(exc)),),
                 exit_code=_INVALID_EXIT,
             )
-        return _operation_result(lifecycle.execute(lifecycle.format_commands(ecosystems, root=self.root)))
+        return _operation_result(result.status)
 
     def doctor(self) -> Result:
         diagnosed = diagnose(self.root)

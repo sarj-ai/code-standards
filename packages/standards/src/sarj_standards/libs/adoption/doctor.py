@@ -587,7 +587,7 @@ def _check_precommit_hooks(
         yield Finding(
             Level.DRIFT,
             ".pre-commit-config.yaml",
-            "pre-commit does not run exactly one canonical `code-standards check --staged` hook",
+            "pre-commit does not run exactly one canonical `code-standards check --staged --fix` hook",
             "doctor.hooks.precommit",
             "run `code-standards update --offline`",
         )
@@ -634,7 +634,7 @@ def _check_lefthook_hooks(
         yield Finding(
             Level.DRIFT,
             "lefthook.yml",
-            "Lefthook does not run exactly one unconditional `code-standards check --staged` during pre-commit",
+            "Lefthook does not run exactly one unconditional `code-standards check --staged --fix` during pre-commit",
             "doctor.hooks.lefthook",
             "run `code-standards update --offline`",
         )

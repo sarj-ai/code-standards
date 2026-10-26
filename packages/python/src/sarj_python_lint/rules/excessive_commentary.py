@@ -59,11 +59,12 @@ class ExcessiveCommentary(Rule):
             "exception; never delete a required constraint or create abstraction solely to satisfy this warning."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes remove only an error-level four-or-more-line paragraph whose ordered plain-word lines exactly match all following zero-argument direct call identifiers in an otherwise exact initializer/accumulator-calls/return function body. Novel words, reordered calls, additional behavior, directives and meaningful prose remain review-only; each removed comment leaves its original blank line.",
             "Contiguous standalone implementation comment blocks with at least three non-empty lines and 20 words are inspected.",
             "The paragraph must immediately precede executable implementation code; narrative comments in tests and module setup are included.",
-            "The previously shipped accumulator pattern with a proven builtin collection remains an error; expanded implementation commentary is a warning requiring review, with no automatic deletion.",
+            "The previously shipped accumulator pattern with a proven builtin collection remains an error; expanded implementation commentary is a warning. Paragraphs outside the exact authored-word safe subset require manual review and are not automatically deleted.",
             "Rationale, technical vocabulary and external citations do not exempt a long paragraph from warning-level review. Their existing protection against accumulator errors remains intact.",
             "Generated files, directives, licenses, structured lists, docstrings, inline comments and short constraints are excluded.",
         ),
@@ -105,6 +106,25 @@ class ExcessiveCommentary(Rule):
                 focus_path=PurePosixPath("app.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="Exact authored words have a convergent comment fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "def reasons():\n    # Collect active account profile activation rejection reasons\n    # Collect current endpoint profile activation rejection reasons\n    # Collect current integration profile activation rejection reasons\n    # Collect current action profile activation rejection reasons\n    values = []\n    values.extend(collect_active_account_profile_activation_rejection_reasons())\n    values.extend(collect_current_endpoint_profile_activation_rejection_reasons())\n    values.extend(collect_current_integration_profile_activation_rejection_reasons())\n    values.extend(collect_current_action_profile_activation_rejection_reasons())\n    return values\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "def reasons():\n\n\n\n\n    values = []\n    values.extend(collect_active_account_profile_activation_rejection_reasons())\n    values.extend(collect_current_endpoint_profile_activation_rejection_reasons())\n    values.extend(collect_current_integration_profile_activation_rejection_reasons())\n    values.extend(collect_current_action_profile_activation_rejection_reasons())\n    return values\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )
@@ -173,7 +193,7 @@ def _narrated_accumulator_lines(context: PythonFileContext) -> set[int]:
 
 def _collect_accumulators(statements: list[ast.stmt], lines: set[int], context: PythonFileContext) -> None:
     for index, statement in enumerate(statements):
-        name = _empty_collection_name(statement, context)
+        name = empty_collection_name(statement, context)
         if name is not None:
             mutations = 0
             for following in statements[index + 1 :]:
@@ -184,7 +204,7 @@ def _collect_accumulators(statements: list[ast.stmt], lines: set[int], context: 
                 lines.add(statement.lineno)
 
 
-def _empty_collection_name(statement: ast.stmt, context: PythonFileContext) -> str | None:
+def empty_collection_name(statement: ast.stmt, context: PythonFileContext) -> str | None:
     target: ast.expr | None = None
     value: ast.expr | None = None
     if isinstance(statement, ast.AnnAssign):

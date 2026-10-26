@@ -44,8 +44,9 @@ class NoTerraformDataCondition(Rule):
             "owning resource, and environment or rollout policy in tests and deployment review."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes remove only standalone literal-true conditions with literal messages and no comments or extra content, preserving the resource address and all other lifecycle behavior. Real assertions require ownership review.",
             "Only lifecycle precondition and postcondition blocks directly inside terraform_data resources are checked.",
             "Resources with a direct file, local-exec, or remote-exec provisioner are excluded; their conditions may protect provisioning operations.",
             (
@@ -55,6 +56,34 @@ class NoTerraformDataCondition(Rule):
             "Only .tf files are read; Terraform test files and other HCL dialects are outside this rule.",
         ),
         examples=(
+            RuleExample(
+                example_id="literal-true-guard",
+                scenario="literal-true-guard",
+                title="A literal true assertion adds no constraint",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.iac(
+                        "main.tf",
+                        'resource "terraform_data" "guard" {\n  lifecycle {\n    precondition {\n      condition = true\n      error_message = "Always passes."\n    }\n  }\n}\n',
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.iac("main.tf", 'resource "terraform_data" "guard" {\n  lifecycle {\n\n\n\n\n  }\n}\n'),
+                ),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="no-inert-guard",
+                scenario="literal-true-guard",
+                title="Retain the resource without an inert assertion",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.iac("main.tf", 'resource "terraform_data" "guard" {\n  lifecycle {}\n}\n'),),
+                focus_path=PurePosixPath("main.tf"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="terraform-data-plan-guard",
                 title="Do not model deployment policy as a fake resource",

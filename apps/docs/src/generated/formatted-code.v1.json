@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "61d235562630c5c6b28e03690056bdb4d175200d3e5d580411c3efe75fcd212f",
-  "cliSha256": "53aa0056a14b4212a8b69128031ec3e22c6e7cd04e4af07ee288779fa0f9e6b2",
+  "catalogSha256": "d1371e909efe2079ec0d2ed9eeb398fde98de87df63ab5d55de61cbe9532fa47",
+  "cliSha256": "37862383fe4de03f474913e72c0556c594806961c36f497e6a815924d56df7b0",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -2430,14 +2430,19 @@
           "files": [
             {
               "path": "src/case.ts",
-              "source": "export {};\ninterface Animal {\n  readonly name: string;\n}\ninterface Dog extends Animal {\n  readonly breed: string;\n}\nconst dog = { name: \"Ada\", breed: \"Collie\" };\nfunction label(value: Dog | Animal): string {\n  return value.name;\n}\nlabel(dog);\n"
+              "source": "export {};\ninterface Animal {\n  readonly name: string;\n}\ninterface Dog extends Animal {\n  readonly breed: string;\n}\nexport type KeptDog = Dog;\nconst dog: Dog = { name: \"Ada\", breed: \"Collie\" };\nfunction label(value: Dog | Animal): string {\n  return value.name;\n}\nlabel(dog);\n"
             },
             {
               "path": "tsconfig.json",
               "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
             }
           ],
-          "fixedFiles": [],
+          "fixedFiles": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\ninterface Animal {\n  readonly name: string;\n}\ninterface Dog extends Animal {\n  readonly breed: string;\n}\nexport type KeptDog = Dog;\nconst dog: Dog = { name: \"Ada\", breed: \"Collie\" };\nfunction label(value: Animal): string {\n  return value.name;\n}\nlabel(dog);\n"
+            }
+          ],
           "focusPath": "src/case.ts",
           "id": "covered-alternative",
           "outcome": "reject",
@@ -2449,7 +2454,7 @@
           "files": [
             {
               "path": "src/case.ts",
-              "source": "export {};\ninterface Animal {\n  readonly name: string;\n}\ninterface Dog extends Animal {\n  readonly breed: string;\n}\nconst dog = { name: \"Ada\", breed: \"Collie\" };\nexport function label(value: Dog | Animal): string {\n  return value.name;\n}\nlabel(dog);\n"
+              "source": "export {};\ninterface Animal {\n  readonly name: string;\n}\ninterface Dog extends Animal {\n  readonly breed: string;\n}\nexport type KeptDog = Dog;\nconst dog: Dog = { name: \"Ada\", breed: \"Collie\" };\nexport function label(value: Dog | Animal): string {\n  return value.name;\n}\nlabel(dog);\n"
             },
             {
               "path": "tsconfig.json",
@@ -2491,17 +2496,12 @@
               "source": "import { array, string } from \"zod/v4\";\nconst Items = array(string()).optional().default([]);\n"
             }
           ],
-          "fixedFiles": [
-            {
-              "path": "src/schema.ts",
-              "source": "import { array, string } from \"zod/v4\";\nconst Items = array(string()).default([]);\n"
-            }
-          ],
+          "fixedFiles": [],
           "focusPath": "src/schema.ts",
           "id": "official-zod-subpath-array",
           "outcome": "reject",
           "scenarioId": "module-identity",
-          "title": "Official Zod subpath constructors retain the safe fix"
+          "title": "Official Zod subpaths retain the finding for manual review"
         },
         {
           "expectedCount": 1,
@@ -2511,12 +2511,7 @@
               "source": "import { z } from \"zod\";\nconst Items = z.array(z.string()).optional().default([]);\n"
             }
           ],
-          "fixedFiles": [
-            {
-              "path": "src/schema.ts",
-              "source": "import { z } from \"zod\";\nconst Items = z.array(z.string()).default([]);\n"
-            }
-          ],
+          "fixedFiles": [],
           "focusPath": "src/schema.ts",
           "id": "optional-array-default",
           "outcome": "reject",
@@ -2858,6 +2853,21 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "src/literal-rows.ts",
+              "source": "import { Client } from \"pg\";\nexport async function literalRows() {\n  const authoredLiteralClient = new Client();\n  try {\n    await authoredLiteralClient.connect();\n    return (\n      await authoredLiteralClient.query(\n        'SELECT \"authored\".\"a\", \"authored\".\"b\" FROM (VALUES (1, 2)) AS \"authored\"(\"a\", \"b\")',\n      )\n    ).rows;\n  } finally {\n    await authoredLiteralClient.end();\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/literal-rows.ts",
+          "id": "owned-literal-explicit-projection",
+          "outcome": "accept",
+          "scenarioId": "owned-literal-projection",
+          "title": "Preserve the explicit authored literal columns"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "src/queries.ts",
               "source": "db.query('SELECT \"units\" * \"price\" AS total FROM entries');\n"
             }
@@ -2868,6 +2878,26 @@
           "outcome": "accept",
           "scenarioId": "projection-owner",
           "title": "Quoted arithmetic operands are not wildcards"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/literal-rows.ts",
+              "source": "import { Client } from \"pg\";\nexport async function literalRows() {\n  const authoredLiteralClient = new Client();\n  try {\n    await authoredLiteralClient.connect();\n    return (\n      await authoredLiteralClient.query(\n        'SELECT * FROM (VALUES (1, 2)) AS \"authored\"(\"a\", \"b\")',\n      )\n    ).rows;\n  } finally {\n    await authoredLiteralClient.end();\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "src/literal-rows.ts",
+              "source": "import { Client } from \"pg\";\nexport async function literalRows() {\n  const authoredLiteralClient = new Client();\n  try {\n    await authoredLiteralClient.connect();\n    return (\n      await authoredLiteralClient.query(\n        'SELECT \"authored\".\"a\", \"authored\".\"b\" FROM (VALUES (1, 2)) AS \"authored\"(\"a\", \"b\")',\n      )\n    ).rows;\n  } finally {\n    await authoredLiteralClient.end();\n  }\n}\n"
+            }
+          ],
+          "focusPath": "src/literal-rows.ts",
+          "id": "safe-autofix",
+          "outcome": "reject",
+          "scenarioId": "owned-literal-projection",
+          "title": "Expand the authored columns of an owned literal relation"
         },
         {
           "expectedCount": 1,
@@ -4244,14 +4274,19 @@
           "files": [
             {
               "path": "src/case.ts",
-              "source": "export {};\nconst account = { name: \"Ada\", email: \"a\" };\nfunction label(user: { readonly name: string; readonly email: string }): string {\n  return user.name;\n}\nlabel(account);\n"
+              "source": "export {};\nconst account = { name: \"Ada\", email: \"a\" };\nfunction label(user: { readonly email: string; readonly name: string }): string {\n  return user.name;\n}\nlabel(account);\n"
             },
             {
               "path": "tsconfig.json",
               "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
             }
           ],
-          "fixedFiles": [],
+          "fixedFiles": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\nconst account = { name: \"Ada\", email: \"a\" };\nfunction label(user: { readonly name: string }): string {\n  return user.name;\n}\nlabel(account);\n"
+            }
+          ],
           "focusPath": "src/case.ts",
           "id": "unused-required-field",
           "outcome": "reject",
@@ -4263,7 +4298,7 @@
           "files": [
             {
               "path": "src/case.ts",
-              "source": "export {};\nconst account = { name: \"Ada\", email: \"a\" };\nfunction label(user: { readonly name: string; readonly email: string }): string {\n  return user.name + user.email;\n}\nlabel(account);\n"
+              "source": "export {};\nconst account = { name: \"Ada\", email: \"a\" };\nfunction label(user: { readonly email: string; readonly name: string }): string {\n  return user.name + user.email;\n}\nlabel(account);\n"
             },
             {
               "path": "tsconfig.json",
@@ -5999,13 +6034,13 @@
           "files": [
             {
               "path": "widget.test.ts",
-              "source": "// Arrange\nconst widget = makeWidget();\n"
+              "source": "const seed = 1;\n// Arrange\nconst widget = makeWidget();\n"
             }
           ],
           "fixedFiles": [
             {
               "path": "widget.test.ts",
-              "source": "const widget = makeWidget();\n"
+              "source": "const seed = 1;\n\nconst widget = makeWidget();\n"
             }
           ],
           "focusPath": "widget.test.ts",
@@ -6057,7 +6092,12 @@
               "source": "# ==== Networking ====\nmodule \"networking\" {}\n"
             }
           ],
-          "fixedFiles": [],
+          "fixedFiles": [
+            {
+              "path": "main.tf",
+              "source": "\nmodule \"networking\" {}\n"
+            }
+          ],
           "focusPath": "main.tf",
           "id": "decorative-divider",
           "outcome": "reject",
@@ -6574,6 +6614,26 @@
     "iac:no-nested-conditional": {
       "examples": [
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "locals {\n  size = true ? \"large\" : false ? \"medium\" : \"small\"\n}\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "main.tf",
+              "source": "locals {\n  size = \"large\"\n}\n"
+            }
+          ],
+          "focusPath": "main.tf",
+          "id": "closed-literal-selection",
+          "outcome": "reject",
+          "scenarioId": "closed-literal-selection",
+          "title": "A closed literal selection already determines the selected value"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -6602,6 +6662,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A nested selection hides the selected configuration"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "locals {\n  size = \"large\"\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "selected-literal-value",
+          "outcome": "accept",
+          "scenarioId": "closed-literal-selection",
+          "title": "The selected literal is already explicit"
         }
       ],
       "optionsSchemaSource": null
@@ -6751,7 +6826,12 @@
               "source": "variable \"region\" {\n  type = string\n  validation {\n    condition     = can(tostring(var.region))\n    error_message = \"Region must be a string.\"\n  }\n}\n"
             }
           ],
-          "fixedFiles": [],
+          "fixedFiles": [
+            {
+              "path": "variables.tf",
+              "source": "variable \"region\" {\n  type = string\n\n\n\n\n}\n"
+            }
+          ],
           "focusPath": "variables.tf",
           "id": "declared-string-conversion",
           "outcome": "reject",
@@ -6816,7 +6896,12 @@
               "source": "locals {\n  # Set instance type\n  instance_type = \"standard\"\n}\n"
             }
           ],
-          "fixedFiles": [],
+          "fixedFiles": [
+            {
+              "path": "main.tf",
+              "source": "locals {\n\n  instance_type = \"standard\"\n}\n"
+            }
+          ],
           "focusPath": "main.tf",
           "id": "attribute-restatement",
           "outcome": "reject",
@@ -6903,6 +6988,41 @@
     },
     "iac:no-terraform-data-condition": {
       "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"terraform_data\" \"guard\" {\n  lifecycle {\n    precondition {\n      condition     = true\n      error_message = \"Always passes.\"\n    }\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "main.tf",
+              "source": "resource \"terraform_data\" \"guard\" {\n  lifecycle {\n\n\n\n\n  }\n}\n"
+            }
+          ],
+          "focusPath": "main.tf",
+          "id": "literal-true-guard",
+          "outcome": "reject",
+          "scenarioId": "literal-true-guard",
+          "title": "A literal true assertion adds no constraint"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "main.tf",
+              "source": "resource \"terraform_data\" \"guard\" {\n  lifecycle {}\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "main.tf",
+          "id": "no-inert-guard",
+          "outcome": "accept",
+          "scenarioId": "literal-true-guard",
+          "title": "Retain the resource without an inert assertion"
+        },
         {
           "expectedCount": 1,
           "files": [
@@ -8666,6 +8786,41 @@
           "files": [
             {
               "path": "app/request.py",
+              "source": "def ready():\n    def _ready():\n        unused = None\n        del unused\n        return True\n\n    return _ready()\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "app/request.py",
+              "source": "def ready():\n    def _ready():\n        unused = None\n\n        return True\n\n    return _ready()\n"
+            }
+          ],
+          "focusPath": "app/request.py",
+          "id": "closed-none-deletion",
+          "outcome": "reject",
+          "scenarioId": "closed-none-deletion",
+          "title": "Remove a redundant None deletion marker"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/request.py",
+              "source": "def ready():\n    def _ready():\n        unused = None\n\n        return True\n\n    return _ready()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/request.py",
+          "id": "closed-none-deletion-removed",
+          "outcome": "accept",
+          "scenarioId": "closed-none-deletion",
+          "title": "The retained assignment has no lifetime marker"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/request.py",
               "source": "payload = dict(raw_payload)\ndel payload[\"secret\"]\n"
             }
           ],
@@ -8971,6 +9126,41 @@
     },
     "python:no-excessive-cognitive-complexity": {
       "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/decision.py",
+              "source": "def ready():\n    def _ready():\n        if True:\n            if True:\n                if True:\n                    if True:\n                        if True:\n                            if True:\n                                return True\n\n    return _ready()\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "src/decision.py",
+              "source": "def ready():\n    def _ready():\n\n        return True\n\n    return _ready()\n"
+            }
+          ],
+          "focusPath": "src/decision.py",
+          "id": "closed-literal-true-guards",
+          "outcome": "reject",
+          "scenarioId": "closed-literal-true-guards",
+          "title": "Remove statically redundant nesting"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/decision.py",
+              "source": "def ready():\n    def _ready():\n\n        return True\n\n    return _ready()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/decision.py",
+          "id": "flattened-literal-true-guards",
+          "outcome": "accept",
+          "scenarioId": "closed-literal-true-guards",
+          "title": "The authored return needs no constant guards"
+        },
         {
           "expectedCount": 0,
           "files": [
@@ -10578,6 +10768,21 @@
           "files": [
             {
               "path": "case.py",
+              "source": "def render(item):\n    def _record(value):\n        return dict(payload=value)\n\n    return _record(item)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "case.py",
+          "id": "direct-closed-dict-value",
+          "outcome": "accept",
+          "scenarioId": "closed-dict-identity",
+          "title": "The same keyword receives the original parameter"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "case.py",
               "source": "def render(item):\n    consume(payload=item)\n"
             }
           ],
@@ -10617,6 +10822,26 @@
           "outcome": "reject",
           "scenarioId": "safe-fix",
           "title": "A safe builtin mapping return"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "case.py",
+              "source": "def render(item):\n    def _record(value):\n        payload = value\n        return dict(payload=payload)\n\n    return _record(item)\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "case.py",
+              "source": "def render(item):\n    def _record(value):\n        return dict(payload=value)\n\n    return _record(item)\n"
+            }
+          ],
+          "focusPath": "case.py",
+          "id": "safe-closed-dict-alias",
+          "outcome": "reject",
+          "scenarioId": "closed-dict-identity",
+          "title": "A closed private dict wrapper preserves the original value"
         }
       ],
       "optionsSchemaSource": null
@@ -10977,6 +11202,21 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "app/literal_rows.py",
+              "source": "from psycopg import Connection\n\n\ndef literal_rows():\n    with Connection.connect() as connection:\n        return connection.execute(\n            'SELECT \"authored\".\"a\", \"authored\".\"b\" FROM (VALUES (1, 2)) AS \"authored\"(\"a\", \"b\")'\n        ).fetchall()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/literal_rows.py",
+          "id": "owned-literal-explicit-projection",
+          "outcome": "accept",
+          "scenarioId": "owned-literal-projection",
+          "title": "Preserve the explicit authored literal columns"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "app/queries.py",
               "source": "query = 'SELECT \"units\" * \"price\" AS total FROM entries'\n"
             }
@@ -10987,6 +11227,26 @@
           "outcome": "accept",
           "scenarioId": "projection-owner",
           "title": "Quoted arithmetic operands do not project a wildcard"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/literal_rows.py",
+              "source": "from psycopg import Connection\n\n\ndef literal_rows():\n    with Connection.connect() as connection:\n        return connection.execute(\n            'SELECT * FROM (VALUES (1, 2)) AS \"authored\"(\"a\", \"b\")'\n        ).fetchall()\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "app/literal_rows.py",
+              "source": "from psycopg import Connection\n\n\ndef literal_rows():\n    with Connection.connect() as connection:\n        return connection.execute(\n            'SELECT \"authored\".\"a\", \"authored\".\"b\" FROM (VALUES (1, 2)) AS \"authored\"(\"a\", \"b\")'\n        ).fetchall()\n"
+            }
+          ],
+          "focusPath": "app/literal_rows.py",
+          "id": "safe-autofix",
+          "outcome": "reject",
+          "scenarioId": "owned-literal-projection",
+          "title": "Expand the authored columns of an owned literal relation"
         },
         {
           "expectedCount": 1,
@@ -13191,6 +13451,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "The importer erases its module result"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/contracts.py",
+              "source": "def ready() -> bool:\n    def _value() -> str:\n        return \"ready\"\n\n    if _value():\n        return True\n    return False\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/contracts.py",
+          "id": "safe-autofix-result",
+          "outcome": "accept",
+          "scenarioId": "private-literal-truthiness",
+          "title": "The proven private literal return already has its precise type"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/contracts.py",
+              "source": "def ready() -> bool:\n    def _value() -> object:\n        return \"ready\"\n\n    if _value():\n        return True\n    return False\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "app/contracts.py",
+              "source": "def ready() -> bool:\n    def _value() -> str:\n        return \"ready\"\n\n    if _value():\n        return True\n    return False\n"
+            }
+          ],
+          "focusPath": "app/contracts.py",
+          "id": "safe-autofix-subset",
+          "outcome": "reject",
+          "scenarioId": "private-literal-truthiness",
+          "title": "Existing source proof permits a narrow convergent fix"
         }
       ],
       "optionsSchemaSource": null
@@ -15892,7 +16187,12 @@
               "source": "CREATE TABLE orders (id BIGINT PRIMARY KEY);\n"
             }
           ],
-          "fixedFiles": [],
+          "fixedFiles": [
+            {
+              "path": "migrations/001_orders.sql",
+              "source": "CREATE TABLE IF NOT EXISTS orders (id BIGINT PRIMARY KEY);\n"
+            }
+          ],
           "focusPath": "migrations/001_orders.sql",
           "id": "unguarded-table-creation",
           "outcome": "reject",
@@ -16285,6 +16585,41 @@
           "title": "Migration comments narrate the table declarations"
         },
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "-- CREATE TABLE users (id BIGINT PRIMARY KEY, name TEXT);\n-- CREATE TABLE groups (id BIGINT PRIMARY KEY, name TEXT);\n-- CREATE TABLE teams (id BIGINT PRIMARY KEY, name TEXT);\n-- CREATE TABLE accounts (id BIGINT PRIMARY KEY, name TEXT);\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "migrations/001.sql",
+              "source": "\n"
+            }
+          ],
+          "focusPath": "migrations/001.sql",
+          "id": "disabled-sql-narration",
+          "outcome": "reject",
+          "scenarioId": "disabled-sql-narration",
+          "title": "A long run consists entirely of disabled SQL declarations"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "CREATE TABLE users (id BIGINT PRIMARY KEY, name TEXT);\n\nCREATE TABLE groups (id BIGINT PRIMARY KEY, name TEXT);\n\nCREATE TABLE teams (id BIGINT PRIMARY KEY, name TEXT);\n\nCREATE TABLE accounts (id BIGINT PRIMARY KEY, name TEXT);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "executable-sql-without-narration",
+          "outcome": "accept",
+          "scenarioId": "disabled-sql-narration",
+          "title": "Executable declarations do not narrate disabled source"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -16312,7 +16647,12 @@
               "source": "-- DROP TABLE legacy_events;\nSELECT\n  1;\n"
             }
           ],
-          "fixedFiles": [],
+          "fixedFiles": [
+            {
+              "path": "migrations/001.sql",
+              "source": "SELECT\n  1;\n"
+            }
+          ],
           "focusPath": "migrations/001.sql",
           "id": "commented-statement",
           "outcome": "reject",
@@ -16807,7 +17147,12 @@
               "source": "# timeout = 30\ntimeout = 10\n"
             }
           ],
-          "fixedFiles": [],
+          "fixedFiles": [
+            {
+              "path": "config.toml",
+              "source": "timeout = 10\n"
+            }
+          ],
           "focusPath": "config.toml",
           "id": "disabled-config-entry",
           "outcome": "reject",
@@ -16872,7 +17217,12 @@
               "source": "# Set build name\nname: build\n# Run build command\nrun: make build\n# Set deploy image\nimage: app\n# Run deploy command\ncommand: deploy\n"
             }
           ],
-          "fixedFiles": [],
+          "fixedFiles": [
+            {
+              "path": "workflow.yml",
+              "source": "name: build\n# Run build command\nrun: make build\n# Set deploy image\nimage: app\n# Run deploy command\ncommand: deploy\n"
+            }
+          ],
           "focusPath": "workflow.yml",
           "id": "narrated-config-wall",
           "outcome": "reject",
@@ -17112,7 +17462,12 @@
               "source": "# Retry count is 3\nretry_count = 3\n"
             }
           ],
-          "fixedFiles": [],
+          "fixedFiles": [
+            {
+              "path": "config.toml",
+              "source": "retry_count = 3\n"
+            }
+          ],
           "focusPath": "config.toml",
           "id": "scalar-value-restatement",
           "outcome": "reject",
@@ -17132,7 +17487,12 @@
               "source": "<!--\n## Legacy setup\nUse the retired command.\n-->\n"
             }
           ],
-          "fixedFiles": [],
+          "fixedFiles": [
+            {
+              "path": "README.md",
+              "source": "\n"
+            }
+          ],
           "focusPath": "README.md",
           "id": "hidden-obsolete-section",
           "outcome": "reject",
@@ -17492,7 +17852,7 @@
       "doctor": "code-standards doctor [-h] [--format OUTPUT_FORMAT] [--repair] [--no-install]\n",
       "setup": "code-standards setup [-h] [--hooks HOOKS] [--python-dest PYTHON_DEST] [--typescript-dest TYPESCRIPT_DEST] [--swift-dest SWIFT_DEST] [--kotlin-dest KOTLIN_DEST] [--dry-run] [--force] [--no-install] [--tools-only] [--commit-policy-only] [--config ONLY ...] [--enable-repository-rule ENABLE_REPOSITORY_RULE ...]\n",
       "analyze": "code-standards analyze [-h] [--external] [--prepared-only] [--trust-repository-code] [--prepared-devops PREPARED_DEVOPS ...] [--prepared-target PREPARED_TARGET ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [FILES ...]\n",
-      "check": "code-standards check [-h] [--trust-repository-code] [--jobs JOBS] [--skip-python-type-check] [--skip-eslint] [--staged] [--rule SELECTED_RULES ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
+      "check": "code-standards check [-h] [--trust-repository-code] [--jobs JOBS] [--skip-python-type-check] [--skip-eslint] [--staged] [--fix] [--rule SELECTED_RULES ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
       "validate-slack-automations": "code-standards validate-slack-automations [-h] PATH\n",
       "observe": "code-standards observe [-h] [--rule SELECTED_RULES ...] [--test-value] [--base BASE] [--format OUTPUT_FORMAT] [--output OUTPUT] [--trust-repository-code] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]\n",
       "fix": "code-standards fix [-h] [--staged] [FILES ...]\n",

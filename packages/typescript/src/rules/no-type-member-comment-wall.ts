@@ -6,6 +6,7 @@
 
 import { AST_NODE_TYPES, AST_TOKEN_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
+import { commentLineEndings, exactMemberCommentRemovalRange, type CommentRemoval } from "./_comment-edits.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 
 import {
@@ -35,7 +36,8 @@ export const NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION = {
   rationale: "Repetitive member comments add scanning cost while hiding the comments that describe facts absent from the type.",
   remediation: "Delete comments that restate member names or types and keep comments that add constraints or behavior.",
   category: "maintainability",
-  limitations: ["Only interface and type-literal bodies meeting the configured comment-count and restatement-ratio thresholds are reported. Negation, requirements, conditional relations, and fixed-value contracts are not counted as restatements. The novel-word threshold is a review heuristic, not proof that a comment contains no useful contract."],
+  autofix: "safe",
+  limitations: ["Automatic fixes remove only an exact multiword member-name comment on its own line and retain all physical line endings; threshold-based or novel prose remains manual.", "Only interface and type-literal bodies meeting the configured comment-count and restatement-ratio thresholds are reported. Negation, requirements, conditional relations, and fixed-value contracts are not counted as restatements. The novel-word threshold is a review heuristic, not proof that a comment contains no useful contract."],
   examples: [
     {
       id: "uncommented-members",
@@ -54,6 +56,15 @@ export const NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION = {
       focusPath: "src/credentials.ts",
       expectedCount: 1,
       public: true,
+    },
+    {
+      id: "safe-autofix",
+      title: "Apply the proven automatic correction",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "interface Client {\n  /** Read user. */\n  readUser(): void;\n  /** Write user. */\n  writeUser(): void;\n  /** Delete user. */\n  deleteUser(): void;\n}" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "interface Client {\n\n  readUser(): void;\n\n  writeUser(): void;\n\n  deleteUser(): void;\n}" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
     },
   ],
 } as const satisfies RuleDocumentation;
@@ -74,6 +85,7 @@ export default createRule<Options, MessageIds>({
   documentation: NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION,
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: {
       description:
         "Flag an object type whose member comments mostly re-spell the members' own names and types.",
@@ -140,6 +152,7 @@ export default createRule<Options, MessageIds>({
       const documented = named.map((member) => ({ member, comment: documentingComment(member) }));
       let commented = 0;
       let restated = 0;
+      const removals: CommentRemoval[] = [];
       // A comment documents at most one member, so a shared block cannot be
       // counted once per member that happens to sit next to it.
       const claimed = new Set<TSESTree.Comment>();
@@ -157,6 +170,8 @@ export default createRule<Options, MessageIds>({
         }
         if (novelWords(body, knownTokens(sourceCode.getText(member))) <= options.maxNovelWords) {
           restated += 1;
+          const removal = exactMemberCommentRemovalRange(sourceCode.text, comment, member.key);
+          if (removal !== null) removals.push(removal);
         }
       }
 
@@ -169,6 +184,7 @@ export default createRule<Options, MessageIds>({
         },
         messageId: "commentWall",
         data: { restated: String(restated), commented: String(commented) },
+        fix: removals.length === 0 ? null : (fixer) => removals.map((removal) => fixer.replaceTextRange(removal.range, commentLineEndings(sourceCode.text, removal))),
       });
     }
 

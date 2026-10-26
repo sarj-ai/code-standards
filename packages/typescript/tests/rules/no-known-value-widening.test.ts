@@ -35,6 +35,12 @@ RULE_TESTER.run("no-known-value-widening", rule, {
     { code: "// @generated\ndeclare const tool: { name: string }; const fields: unknown = tool;" },
   ],
   invalid: [
+    { name: "preserves the sole named variable annotation binding", code: "export {}; type Opaque = unknown; declare const tool: { name: string }; const fields: Opaque = tool;", output: null, errors: [{ messageId: "widening" }] },
+    { name: "retains inference with an independent exported type use", code: "export type Kept = Opaque; type Opaque = unknown; declare const tool: { name: string }; const fields: Opaque = tool;", output: "export type Kept = Opaque; type Opaque = unknown; declare const tool: { name: string }; const fields = tool;", errors: [{ messageId: "widening" }] },
+    { name: "does not count a second erasable variable annotation as a witness", code: "export {}; type Opaque = unknown; declare const tool: { name: string }; const first: Opaque = tool; const second: Opaque = tool;", output: null, errors: [{ messageId: "widening" }, { messageId: "widening" }] },
+    { name: "retains inference only for an unused private module binding", code: "export {}; declare const tool: { name: string }; const fields: unknown = tool;", output: "export {}; declare const tool: { name: string }; const fields = tool;", errors: [{ messageId: "widening" }] },
+    { name: "preserves an exported alias contract", code: "declare const tool: { name: string }; const fields: unknown = tool; export { fields };", output: null, errors: [{ messageId: "widening" }] },
+    { name: "preserves explicit annotation comments", code: "export {}; declare const tool: { name: string }; const fields: /* opaque boundary */ unknown = tool;", output: null, errors: [{ messageId: "widening" }] },
     { code: "declare const value: { name: string } | undefined; const output: unknown = value;", errors: [{ messageId: "widening" }] },
     { code: "declare const tool: { name: string }; const fields: unknown = tool;", errors: [{ messageId: "widening" }] },
     { code: "declare const tool: { name: string }; const fields: object = tool;", errors: [{ messageId: "widening" }] },

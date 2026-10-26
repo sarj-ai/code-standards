@@ -44,8 +44,9 @@ class RequireExpOnJwtDecode(Rule):
         ),
         remediation='Pass `options={"require": ["exp"]}` to `jwt.decode` and bound the accepted lifetime.',
         category=RuleCategory.SECURITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes require an unmutated PyJWT import, no expanded/positional options, and absent options or a static mapping with a static string require sequence. They add only exp and preserve existing option flags and claims; maximum lifetime remains a separate policy decision.",
             "Calls resolved to PyJWT module-level `jwt.decode` or `jwt.decode_complete` are checked; `PyJWT` instances are not.",
             (
                 "A literal `options` mapping must contain a literal `require` collection with `exp`. Non-literal options, "
@@ -84,6 +85,33 @@ class RequireExpOnJwtDecode(Rule):
                 focus_path=PurePosixPath("auth.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "import jwt\n"
+                            "def claims(token, key):\n"
+                            "    return jwt.decode(token, key, algorithms=['HS256'])\n"
+                        ),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "import jwt\n"
+                            "def claims(token, key):\n"
+                            "    return jwt.decode(token, key, algorithms=['HS256'], options={'require': ['exp']})\n"
+                        ),
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )

@@ -81,12 +81,33 @@ class PreferTextOverVarchar(Rule):
         rationale="PostgreSQL gives VARCHAR(n) no storage or performance advantage, while its length cap obscures a business constraint.",
         remediation="Use TEXT and express a real maximum length with an explicit CHECK constraint when needed.",
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Automatic literal fixes require one literal-only SELECT or one simple CREATE TABLE with canonical typed literal defaults, with no other statements, reads, CTEs, operators, other constraints, custom casts or callouts. The external PostgreSQL built-in catalog must be canonical and unmodified; source-visible mutations are refused.",
+            "Autofix only replaces an exact short ordinary ASCII literal's canonical pg_catalog.varchar(n) cast when an existing direct pg_catalog.text cast already owns its result. Positive valid bounds must preserve every input character; columns, overlength strings, custom types, escaped literals and absent outer text boundaries remain manual.",
             "MySQL and SQLite sources are excluded because their VARCHAR behavior differs.",
             "Complete parseable PostgreSQL statements distinguish bounded builtin types from function names and custom schema types, including exact lower-case quoted varchar and pg_catalog qualification. Fragments and unsupported procedural syntax retain unquoted lexical detection.",
         ),
         examples=(
+            RuleExample(
+                example_id="safe-literal-under-text-boundary",
+                title="An existing text boundary preserves the short literal contract",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "queries/literal.sql",
+                        "SELECT CAST(CAST('abc' AS pg_catalog.varchar(8)) AS pg_catalog.text) AS name;\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.sql(
+                        "queries/literal.sql",
+                        "SELECT CAST(CAST('abc' AS pg_catalog.text) AS pg_catalog.text) AS name;\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("queries/literal.sql"),
+                expected_count=1,
+            ),
             RuleExample(
                 example_id="bounded-varchar-column",
                 title="Length-limited VARCHAR column",

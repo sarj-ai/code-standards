@@ -44,16 +44,38 @@ class UnusedTestFactoryOption(Rule):
         rationale="Unused customization obscures the values that actually distinguish test scenarios.",
         remediation="Consider keeping the invariant literal or stable local callable in the construction instead of exposing an unexercised option. Preserve intentional dependency contracts and callable default binding timing.",
         category=RuleCategory.TESTING,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes inline proven invariant bool/None values only in closed private nested synchronous nongenerator test factories without nested closure scopes, and remove the unannotated keyword-only option plus inert literal caller keywords. Module factories, annotations, type parameters, comments, reflection, dynamic calls, callable defaults and other values remain review-only. Known frame and metadata capabilities, their import aliases and metadata field access prevent fixes.",
+            "Containing callables must also be ordinary synchronous nongenerators with proven inert execution; unknown callouts, properties, overloads, reachable frame-exporting exceptions, and helper references crossing additional function, class, lambda, or comprehension scopes prevent fixes.",
             "Invariant bool and None options are ERROR when the closed caller proof succeeds and the file has no visible namespace access. Other literals and callable defaults remain WARNING because identity and default binding timing may differ.",
             "Literal findings consider private module-level helpers or _make_ and _build_ helpers nested directly inside test functions, with at least two known direct callers and straight-line construction bodies.",
             "Callable findings consider module-level private helpers with the same construction shape and an earlier undecorated local function default, only when at least two known direct callers all omit that option.",
             "Conftest module-level factories, explicit callable arguments, exports, decorators, escaping references, reflection, unpacking, rebinding, shadowing and ambiguous mutation or patch targets are excluded.",
-            "Same-name declarations elsewhere in the file conservatively exclude a helper. No autofix: this warning identifies unexercised customization, not an invalid callable contract.",
+            "Same-name declarations elsewhere in the file conservatively exclude a helper. Advisory findings retain their customization contract for review.",
             "Callable findings describe known callers in this file; cross-module and dynamic callers are not inferred. Retain intentional extension points with a reasoned exception, preserving definition-time default capture.",
         ),
         examples=(
+            RuleExample(
+                example_id="safe-private-nested-autofix",
+                title="A closed nested factory keeps its singleton directly in construction",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_widget.py",
+                        "def test_widgets():\n    def _make_widget(*, enabled=True):\n        return dict(enabled=enabled)\n    _make_widget()\n    _make_widget(enabled=True)\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "tests/test_widget.py",
+                        "def test_widgets():\n    def _make_widget():\n        return dict(enabled=True)\n    _make_widget()\n    _make_widget()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_widget.py"),
+                expected_count=1,
+                public=False,
+            ),
             RuleExample(
                 example_id="module-invariant-singleton-option",
                 title="A private test helper's callers never vary a singleton option",
@@ -310,6 +332,38 @@ def _factory_findings(
             )
         )
     return findings
+
+
+def autofix_invariant_keyword_option(
+    context: PythonFileContext, function: ast.FunctionDef, argument: ast.arg
+) -> tuple[ast.Constant, list[ast.Call]] | None:
+    if context.tree is None or not _is_factory(function) or argument not in function.args.kwonlyargs:
+        return None
+    findings = _factory_findings(
+        context.tree,
+        function,
+        context.path,
+        context.source_lines,
+        "SARJ443",
+        node_index=context.node_index,
+        strict=not context.dynamic_namespace,
+    )
+    if not any(
+        finding.line == argument.lineno
+        and finding.col == argument.col_offset + 1
+        and finding.severity is Severity.ERROR
+        for finding in findings
+    ):
+        return None
+    default = next((value for item, value in _literal_factory_options(function) if item is argument), None)
+    if default is None:
+        return None
+    calls = _direct_calls(context.tree, function, node_index=context.node_index)
+    bound = _bound_calls(function, calls)
+    if not bound:
+        return None
+    value = bound[0].get(argument.arg, default)
+    return (value, calls) if isinstance(value, ast.Constant) else None
 
 
 def _strict_factory_option(

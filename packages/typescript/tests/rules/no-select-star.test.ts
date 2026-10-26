@@ -16,6 +16,12 @@ const RULE_TESTER = new RuleTester({
   },
 });
 
+function documentedQuery(id: "explicit-projection" | "wildcard-projection"): string {
+  const example = NO_SELECT_STAR_DOCUMENTATION.examples.find((entry) => entry.id === id);
+  if (example === undefined) throw new Error(`Missing documented query example ${id}.`);
+  return example.files[0].source;
+}
+
 RULE_TESTER.run("no-select-star", rule, {
   valid: [
     ...[String.raw`SELECT 'it\'s SELECT * FROM hidden' AS message FROM visible`, String.raw`SELECT "it\"s SELECT * FROM hidden" AS message FROM visible`].map((sql) => ({
@@ -49,7 +55,7 @@ RULE_TESTER.run("no-select-star", rule, {
     { name: "ignores stars in PostgreSQL dollar strings", code: "db.query(`SELECT $$ * FROM $$`);" },
     { name: "ignores stars in tagged dollar strings", code: "db.query(`SELECT $body$ * FROM $body$`);" },
     { name: "preserves Unicode offsets while masking SQL values", code: "db.query(`SELECT '😀' AS emoji, '*' FROM users`);" },
-    { name: "accepts the documented projection", code: NO_SELECT_STAR_DOCUMENTATION.examples[0].files[0].source },
+    { name: "accepts the documented projection", code: documentedQuery("explicit-projection") },
     {
       name: "allows explicit projections",
       code: "db.prepare(`SELECT id, status, created_at FROM runs WHERE id = ?`).first();",
@@ -119,7 +125,7 @@ RULE_TESTER.run("no-select-star", rule, {
     { name: "inspects SQL reconstructed with an empty join separator", code: "db.query(['SEL', 'ECT * FROM users'].join(''));", errors: [{ messageId: "noSelectStar" }] },
     { name: "keeps executed queries inside outer template substitutions", code: 'logger.info(`value ${db.query("SELECT * FROM users")}`);', errors: [{ messageId: "noSelectStar" }] },
     { name: "retains a wildcard following a dollar-quoted literal", code: "db.query(`SELECT $$ literal $$, * FROM users`);", errors: [{ messageId: "noSelectStar" }] },
-    { name: "reports the documented wildcard", code: NO_SELECT_STAR_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "noSelectStar" }] },
+    { name: "reports the documented wildcard", code: documentedQuery("wildcard-projection"), errors: [{ messageId: "noSelectStar" }] },
     {
       name: "rejects a bare projection star",
       code: "db.prepare(`SELECT * FROM runs WHERE id = ?`).first();",

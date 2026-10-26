@@ -34,6 +34,8 @@ interface ObjectContract {
 export interface DiscriminatedReturn {
   readonly reportNode: TSESTree.Node;
   readonly tag: string;
+  readonly members: ReadonlyMap<string, TSESTree.TSPropertySignature>;
+  readonly returned: readonly ReadonlyMap<string, TSESTree.Node>[];
 }
 
 /** The evidence concerns this producer's returned variants, not every use of a shared type. */
@@ -54,7 +56,7 @@ export function discriminatedUnionReturns(node: Producer, sourceCode: TSESLint.S
     if (member.optional) continue;
     const domain = tagDomain(member.typeAnnotation?.typeAnnotation);
     if (domain !== undefined && hasTagSpecificPayload(name, domain, shape.optional, returned)) {
-      return { reportNode: contract.reportNode, tag: name };
+      return { reportNode: contract.reportNode, tag: name, members: shape.members, returned };
     }
   }
   return undefined;

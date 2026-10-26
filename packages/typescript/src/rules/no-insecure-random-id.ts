@@ -6,6 +6,8 @@
 
 import { ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
+import { existingUuidProviderFix } from "./_existing-uuid-provider-fix.js";
+
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
 import { isTestFile } from "./_paths.js";
@@ -14,14 +16,68 @@ type MessageIds = "insecureRandomId";
 type Options = readonly [];
 
 export const NO_INSECURE_RANDOM_ID_DOCUMENTATION = {
-  summary: "Disallow using `Math.random()` to generate identifiers, tokens, or secrets; use `crypto.randomUUID()` or `crypto.getRandomValues(...)` instead.",
-  rationale: "Math.random is predictable and lacks the entropy required for security-sensitive values.",
-  remediation: "Generate the value with crypto.randomUUID or crypto.getRandomValues.",
+  summary:
+    "Disallow using `Math.random()` to generate identifiers, tokens, or secrets; use `crypto.randomUUID()` or `crypto.getRandomValues(...)` instead.",
+  rationale:
+    "Math.random is predictable and lacks the entropy required for security-sensitive values.",
+  remediation:
+    "Generate the value with crypto.randomUUID or crypto.getRandomValues.",
   category: "security",
-  limitations: ["Names select security-sensitive bindings heuristically; they do not prove sensitivity. Sampling in unrelated bindings or branch tests, locally shadowed Math objects, ambiguous identifiers and test files are excluded. This is not interprocedural data-flow analysis."],
+  autofix: "safe",
+  limitations: [
+    "Names select security-sensitive bindings heuristically; they do not prove sensitivity. Sampling in unrelated bindings or branch tests, locally shadowed Math objects, ambiguous identifiers and test files are excluded. This is not interprocedural data-flow analysis. Automatic fixes cover only an exact RFC v4 x/y recipe in a closed module with explicit string APIs and an already-used bound crypto.randomUUID provider. Canonical unmodified Web Crypto, Math, String, RegExp, Number and Function.bind are assumed; the entropy upgrade intentionally changes random traces. Other recipes and providers remain manual.",
+  ],
   examples: [
-    { id: "cryptographic-id", title: "Use the Web Crypto API", outcome: "no-match", files: [{ path: "src/session.ts", source: "const sessionToken = crypto.randomUUID();" }], focusPath: "src/session.ts", expectedCount: 0, public: true },
-    { id: "predictable-token", title: "Do not derive a token from Math.random", outcome: "match", files: [{ path: "src/session.ts", source: "const sessionToken = Math.random();" }], focusPath: "src/session.ts", expectedCount: 1, public: true },
+    {
+      id: "cryptographic-id",
+      title: "Use the Web Crypto API",
+      outcome: "no-match",
+      files: [
+        {
+          path: "src/session.ts",
+          source: "const sessionToken = crypto.randomUUID();",
+        },
+      ],
+      focusPath: "src/session.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "predictable-token",
+      title: "Do not derive a token from Math.random",
+      outcome: "match",
+      files: [
+        {
+          path: "src/session.ts",
+          source: "const sessionToken = Math.random();",
+        },
+      ],
+      focusPath: "src/session.ts",
+      expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "existing-native-provider",
+      title: "Use the existing provider for the exact v4 recipe",
+      outcome: "match",
+      files: [
+        {
+          path: "src/ids.ts",
+          source:
+            "const nativeUuid = crypto.randomUUID.bind(crypto); function nativeId(): string { return nativeUuid(); } function recipeId(): string { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const uuidDigit = Math.random() * 16 | 0; return (c === 'x' ? uuidDigit : (uuidDigit & 3) | 8).toString(16); }); } export function ids(): string[] { return [nativeId(), recipeId()]; }",
+        },
+      ],
+      focusPath: "src/ids.ts",
+      expectedCount: 1,
+      fixedFiles: [
+        {
+          path: "src/ids.ts",
+          source:
+            "const nativeUuid = crypto.randomUUID.bind(crypto); function nativeId(): string { return nativeUuid(); } function recipeId(): string { return nativeUuid(); } export function ids(): string[] { return [nativeId(), recipeId()]; }",
+        },
+      ],
+      public: false,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -44,10 +100,11 @@ function isStrongSecurityName(name: string): boolean {
   const words = nameWords(name);
   return (
     words.some((word) => STRONG_SECURITY_WORDS.has(word)) ||
-    words.some((word, index) =>
-      (word === "api" && words[index + 1] === "key") ||
-      (word === "auth" && words[index + 1] === "id") ||
-      (word === "verification" && words[index + 1] === "code"),
+    words.some(
+      (word, index) =>
+        (word === "api" && words[index + 1] === "key") ||
+        (word === "auth" && words[index + 1] === "id") ||
+        (word === "verification" && words[index + 1] === "code"),
     )
   );
 }
@@ -63,7 +120,9 @@ function nameWords(name: string): string[] {
 /**
  * Returns true if `node` is a `Math.random()` CallExpression.
  */
-function isMathRandomCall(node: TSESTree.Node): node is TSESTree.CallExpression {
+function isMathRandomCall(
+  node: TSESTree.Node,
+): node is TSESTree.CallExpression {
   if (node.type !== "CallExpression") {
     return false;
   }
@@ -92,7 +151,10 @@ function findEnclosingNames(node: TSESTree.Node): string[] {
       return names;
     }
 
-    if ((parent.type === "Property" || parent.type === "PropertyDefinition") && parent.value === current) {
+    if (
+      (parent.type === "Property" || parent.type === "PropertyDefinition") &&
+      parent.value === current
+    ) {
       appendPropertyName(parent, names);
       directBinding = false;
     }
@@ -101,7 +163,10 @@ function findEnclosingNames(node: TSESTree.Node): string[] {
       appendAssignedName(parent, directBinding, names);
     }
 
-    if (parent.type === "ObjectExpression" || parent.type === "ArrayExpression") {
+    if (
+      parent.type === "ObjectExpression" ||
+      parent.type === "ArrayExpression"
+    ) {
       directBinding = false;
     }
 
@@ -110,7 +175,15 @@ function findEnclosingNames(node: TSESTree.Node): string[] {
       return names;
     }
 
-    if (parent.type === "ExpressionStatement" || parent.type === "IfStatement" || parent.type === "ForStatement" || parent.type === "WhileStatement" || parent.type === "DoWhileStatement" || parent.type === "FunctionExpression" || parent.type === "ArrowFunctionExpression") {
+    if (
+      parent.type === "ExpressionStatement" ||
+      parent.type === "IfStatement" ||
+      parent.type === "ForStatement" ||
+      parent.type === "WhileStatement" ||
+      parent.type === "DoWhileStatement" ||
+      parent.type === "FunctionExpression" ||
+      parent.type === "ArrowFunctionExpression"
+    ) {
       return names;
     }
 
@@ -130,6 +203,7 @@ export default createRule<Options, MessageIds>({
       description:
         "Disallow using `Math.random()` to generate identifiers, tokens, or secrets; use `crypto.randomUUID()` or `crypto.getRandomValues(...)` instead.",
     },
+    fixable: "code",
     schema: [],
     messages: {
       insecureRandomId:
@@ -146,31 +220,56 @@ export default createRule<Options, MessageIds>({
         if (!isMathRandomCall(node)) {
           return;
         }
-        if ((ASTUtils.findVariable(context.sourceCode.getScope(node), "Math")?.defs.length ?? 0) > 0) return;
+        if (
+          (ASTUtils.findVariable(context.sourceCode.getScope(node), "Math")
+            ?.defs.length ?? 0) > 0
+        )
+          return;
 
         const names = findEnclosingNames(node);
 
         if (names.some(isStrongSecurityName)) {
-          context.report({ node, messageId: "insecureRandomId" });
+          context.report({
+            node,
+            messageId: "insecureRandomId",
+            fix: existingUuidProviderFix(context.sourceCode, node, "recipe"),
+          });
         }
       },
     };
   },
 });
 
-function appendPropertyName(property: TSESTree.Property | TSESTree.PropertyDefinition, names: string[]): void {
+function appendPropertyName(
+  property: TSESTree.Property | TSESTree.PropertyDefinition,
+  names: string[],
+): void {
   const key = property.key;
   if (!property.computed && key.type === "Identifier") names.push(key.name);
-  if (key.type === "Literal" && typeof key.value === "string") names.push(key.value);
+  if (key.type === "Literal" && typeof key.value === "string")
+    names.push(key.value);
 }
 
-function appendAssignedName(assignment: TSESTree.AssignmentExpression, directBinding: boolean, names: string[]): void {
-  if (directBinding && assignment.left.type === "Identifier") names.push(assignment.left.name);
-  if (directBinding && assignment.left.type === "MemberExpression" && ASTUtils.getPropertyName(assignment.left) !== null) {
-    names.push((ASTUtils.getPropertyName(assignment.left) ?? ""));
+function appendAssignedName(
+  assignment: TSESTree.AssignmentExpression,
+  directBinding: boolean,
+  names: string[],
+): void {
+  if (directBinding && assignment.left.type === "Identifier")
+    names.push(assignment.left.name);
+  if (
+    directBinding &&
+    assignment.left.type === "MemberExpression" &&
+    ASTUtils.getPropertyName(assignment.left) !== null
+  ) {
+    names.push(ASTUtils.getPropertyName(assignment.left) ?? "");
   }
 }
 
-function appendDirectBindingName(id: TSESTree.Node | null, directBinding: boolean, names: string[]): void {
+function appendDirectBindingName(
+  id: TSESTree.Node | null,
+  directBinding: boolean,
+  names: string[],
+): void {
   if (directBinding && id?.type === "Identifier") names.push(id.name);
 }

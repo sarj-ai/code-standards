@@ -10,6 +10,8 @@ import {
 } from "@typescript-eslint/utils";
 import type * as ts from "typescript";
 
+import { isUnusedPrivateBinding } from "./_unused-private-binding.js";
+
 import { forEachAstChild } from "./_for-each-ast-child.js";
 
 export type PrivateConvertibleMember =
@@ -119,28 +121,23 @@ export function privateMemberFixes(
   if (unsafe) return undefined;
 
   const privateKeywordRanges = new Map<PrivateConvertibleMember, readonly [number, number]>();
-  if (removePrivateKeyword) {
-    const comments = context.sourceCode.getAllComments();
-    for (const member of members) {
-      const keyword = context.sourceCode.getTokens(member).find((token) => token.value === "private");
-      const next = keyword === undefined ? undefined : context.sourceCode.getTokenAfter(keyword);
-      if (keyword === undefined || next === null || next === undefined) return undefined;
-      if (comments.some((comment) => comment.range[0] >= keyword.range[1] && comment.range[1] <= next.range[0])) {
-        return undefined;
-      }
-      privateKeywordRanges.set(member, [keyword.range[0], next.range[0]]);
-    }
+  const comments = context.sourceCode.getAllComments();
+  for (const member of members) {
+    const accessibility = removePrivateKeyword ? "private" : member.accessibility;
+    if (accessibility === undefined) continue;
+    const keyword = context.sourceCode.getTokens(member).find((token) => token.value === accessibility && token.range[0] < member.key.range[0]);
+    const next = keyword === undefined ? undefined : context.sourceCode.getTokenAfter(keyword);
+    if (keyword === undefined || next === null || next === undefined) return undefined;
+    if (comments.some((comment) => comment.range[0] >= keyword.range[1] && comment.range[1] <= next.range[0])) return undefined;
+    privateKeywordRanges.set(member, [keyword.range[0], next.range[0]]);
   }
 
   return (fixer) => {
     const fixes: TSESLint.RuleFix[] = [];
     for (const member of members) {
       fixes.push(fixer.replaceText(member.key, `#${name}`));
-      if (removePrivateKeyword) {
-        const range = privateKeywordRanges.get(member);
-        if (range === undefined) return [];
-        fixes.push(fixer.removeRange(range));
-      }
+      const range = privateKeywordRanges.get(member);
+      if (range !== undefined) fixes.push(fixer.removeRange(range));
     }
     for (const reference of references) fixes.push(fixer.replaceText(reference.property, `#${name}`));
     return fixes;
@@ -163,4 +160,18 @@ export function convertibleMemberName(member: TSESTree.ClassElement): string | n
     member.type !== AST_NODE_TYPES.AccessorProperty
   ) return null;
   return memberName(member);
+}
+
+/** Class definition itself must have no eager hooks that can observe its members. */
+export function isUnobservedPrivateClass(
+  sourceCode: Readonly<TSESLint.SourceCode>,
+  owner: TSESTree.ClassDeclaration | TSESTree.ClassExpression,
+  filename: string,
+): owner is TSESTree.ClassDeclaration {
+  return owner.type === AST_NODE_TYPES.ClassDeclaration && owner.id !== null &&
+    owner.superClass === null && owner.decorators.length === 0 &&
+    !owner.body.body.some((member) => member.type === AST_NODE_TYPES.StaticBlock ||
+      ("static" in member && member.static) || ("computed" in member && member.computed) ||
+      ("decorators" in member && member.decorators.length > 0)) &&
+    isUnusedPrivateBinding(sourceCode, owner, owner.id, filename);
 }

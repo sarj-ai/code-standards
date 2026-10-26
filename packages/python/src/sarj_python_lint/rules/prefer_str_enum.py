@@ -216,12 +216,33 @@ class PreferStrEnum(Rule):
         rationale="A named closed domain lets type checking and review catch invalid values and incomplete handling.",
         remediation="Define a `StrEnum`, or a named `Literal` alias when enum runtime behavior is unnecessary.",
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Automatic fixes reuse one existing canonical module Literal alias only when its finite string domain strictly contains a closed private nested helper's handled literal match cases and every direct caller supplies a handled-case literal. Reachable fallback exceptions retain manual ownership because their tracebacks can expose private helper frames. An unhandled alias member must keep the existing rejecting fallback reachable; exact handled-domain aliases remain manual because narrowing would introduce an unreachable-pattern type error. Only the str parameter annotation changes; defaults, comments, generics, aliases/escapes, reflection/frame access, shared bodies and runtime enum creation remain manual.",
+            "Containing callables must also be ordinary synchronous nongenerators with proven inert execution; unknown callouts, properties, overloads, reachable frame-exporting exceptions, and helper references crossing additional function, class, lambda, or comprehension scopes prevent fixes.",
             "The rule requires a sibling choice collection or dispatch that explicitly rejects unlisted strings.",
             "Generated code, external vocabularies, open-ended name domains, and test-only comparison clusters are excluded.",
         ),
         examples=(
+            RuleExample(
+                example_id="safe-autofix",
+                title="Reuse an existing finite private domain with reachable rejection",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        'from typing import Literal\ntype Mode = Literal["text", "image", "reserved"]\ndef outer() -> str:\n    def _render(kind: str) -> str:\n        match kind:\n            case "text":\n                return "Text"\n            case "image":\n                return "Image"\n            case _:\n                raise ValueError("unsupported kind")\n    return _render("text")\n',
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        'from typing import Literal\ntype Mode = Literal["text", "image", "reserved"]\ndef outer() -> str:\n    def _render(kind: Mode) -> str:\n        match kind:\n            case "text":\n                return "Text"\n            case "image":\n                return "Image"\n            case _:\n                raise ValueError("unsupported kind")\n    return _render("text")\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+            ),
             RuleExample(
                 example_id="tabbed-rejecting-match",
                 scenario="tabbed-match-admission",

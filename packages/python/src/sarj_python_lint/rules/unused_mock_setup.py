@@ -107,8 +107,9 @@ class UnusedMockSetup(Rule):
             "delete behavior configuration contradicted by a terminal never-called assertion."
         ),
         category=RuleCategory.TESTING,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes remove only proven inert standalone configuration assignments; proven inert constructor keywords are removed while preserving the constructor, binding and annotation. Commented and annotated configuration writes remain review-only.",
             "Only non-generated test paths and stable local names unconditionally initialized from unittest.mock or an unshadowed pytest-mock fixture before configuration are analyzed. Dotted stores, auto-children, configured return-value chains, replacement or unpacked options, dynamic namespace access, and direct constructor-root or builtin namespace mutation are excluded. Unseen external mutations are not resolved.",
             "Only same-block overwrites and exact-path terminal never-called assertions are checked; uncertain evaluation, native setter/iteration effects, custom hash/equality, control flow, reads, and terminal receiver escapes are excluded. Configuration values require literal/native primitive provenance.",
         ),
@@ -140,6 +141,37 @@ class UnusedMockSetup(Rule):
                 focus_path=PurePosixPath("tests/test_billing.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_service.py",
+                        (
+                            "from unittest.mock import Mock\n"
+                            "def test_value():\n"
+                            "    value = Mock(return_value=1)\n"
+                            "    value.return_value = 2\n"
+                            "    assert value() == 2\n"
+                        ),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "tests/test_service.py",
+                        (
+                            "from unittest.mock import Mock\n"
+                            "def test_value():\n"
+                            "    value = Mock()\n"
+                            "    value.return_value = 2\n"
+                            "    assert value() == 2\n"
+                        ),
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_service.py"),
+                expected_count=1,
             ),
         ),
         aliases=("unused-mock-setup",),

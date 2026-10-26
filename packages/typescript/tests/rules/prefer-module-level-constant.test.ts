@@ -3,7 +3,9 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION } from "../../src/rules/prefer-module-level-constant.js";
+import rule, {
+  PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION,
+} from "../../src/rules/prefer-module-level-constant.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -19,24 +21,77 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("prefer-module-level-constant", rule, {
   valid: [
-    { name: "does not assume a parameter Object.keys is non-retaining", code: "function count(Object) { const values = [1, 2, 3]; return Object.keys(values).length; }" },
-    { name: "preserves mutation through a local Object.keys", code: "function count() { const Object = { keys(values) { values.push(4); return values; } }; const values = [1, 2, 3]; return Object.keys(values).length; }" },
-    { name: "does not assume a parameter Array.from is non-retaining", code: "function copy(Array) { const values = [1, 2, 3]; return Array.from(values).length; }" },
-    { name: "does not assume a parameter JSON.stringify is non-retaining", code: "function encode(JSON) { const values = [1, 2, 3]; return JSON.stringify(values); }" },
-    { name: "does not assume a parameter structuredClone is non-retaining", code: "function copy(structuredClone) { const values = [1, 2, 3]; return structuredClone(values).length; }" },
-    { name: "does not hoist construction through a local Set parameter", code: "function count(Set) { const values = new Set([1, 2, 3]); return values.size; }" },
-    { name: "does not hoist construction through a local Map class", code: "class Map { constructor(entries) { this.size = entries.length; } } function count() { const values = new Map([['a', 1], ['b', 2], ['c', 3]]); return values.size; }" },
-    { name: "preserves an imported Object contract", code: "import Object from 'custom-objects'; function count() { const values = [1, 2, 3]; return Object.keys(values).length; }" },
-    { name: "resolves a hoisted function binding for structuredClone", code: "function count() { const values = [1, 2, 3]; return structuredClone(values).length; function structuredClone(values) { values.push(4); return values; } }" },
-    { name: "does not call a module IIFE allocation repeated work", code: "const encode = (() => { const table = {a: 1, b: 2, c: 3}; return (key) => table[key]; })();" },
-    { name: "excludes a directly invoked typed function expression", code: "const encode = ((function () { const table = {a: 1, b: 2, c: 3}; return (key) => table[key]; }) as () => unknown)();" },
-    { name: "preserves nested property mutation per invocation", code: "function f() { const values = {a: {count: 0}, b: 1, c: 2}; values.a.count++; return values.a.count; }" },
-    { name: "preserves nested array mutation per invocation", code: "function f() { const values = [[1], [2], [3]]; values[0].push(4); return values[0].length; }" },
-    { name: "preserves computed mutator calls", code: "function f() { const values = [1, 2, 3]; values['push'](4); return values.length; }" },
-    { name: "preserves escaped nested mutable values", code: "function f() { const values = {a: {count: 0}, b: 1, c: 2}; const child = values.a; child.count++; return child.count; }" },
-    { name: "public no-match example", filename: PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION.examples[0].focusPath, code: PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION.examples[0].files[0].source },
+    {
+      name: "does not assume a parameter Object.keys is non-retaining",
+      code: "function count(Object) { const values = [1, 2, 3]; return Object.keys(values).length; }",
+    },
+    {
+      name: "preserves mutation through a local Object.keys",
+      code: "function count() { const Object = { keys(values) { values.push(4); return values; } }; const values = [1, 2, 3]; return Object.keys(values).length; }",
+    },
+    {
+      name: "does not assume a parameter Array.from is non-retaining",
+      code: "function copy(Array) { const values = [1, 2, 3]; return Array.from(values).length; }",
+    },
+    {
+      name: "does not assume a parameter JSON.stringify is non-retaining",
+      code: "function encode(JSON) { const values = [1, 2, 3]; return JSON.stringify(values); }",
+    },
+    {
+      name: "does not assume a parameter structuredClone is non-retaining",
+      code: "function copy(structuredClone) { const values = [1, 2, 3]; return structuredClone(values).length; }",
+    },
+    {
+      name: "does not hoist construction through a local Set parameter",
+      code: "function count(Set) { const values = new Set([1, 2, 3]); return values.size; }",
+    },
+    {
+      name: "does not hoist construction through a local Map class",
+      code: "class Map { constructor(entries) { this.size = entries.length; } } function count() { const values = new Map([['a', 1], ['b', 2], ['c', 3]]); return values.size; }",
+    },
+    {
+      name: "preserves an imported Object contract",
+      code: "import Object from 'custom-objects'; function count() { const values = [1, 2, 3]; return Object.keys(values).length; }",
+    },
+    {
+      name: "resolves a hoisted function binding for structuredClone",
+      code: "function count() { const values = [1, 2, 3]; return structuredClone(values).length; function structuredClone(values) { values.push(4); return values; } }",
+    },
+    {
+      name: "does not call a module IIFE allocation repeated work",
+      code: "const encode = (() => { const table = {a: 1, b: 2, c: 3}; return (key) => table[key]; })();",
+    },
+    {
+      name: "excludes a directly invoked typed function expression",
+      code: "const encode = ((function () { const table = {a: 1, b: 2, c: 3}; return (key) => table[key]; }) as () => unknown)();",
+    },
+    {
+      name: "preserves nested property mutation per invocation",
+      code: "function f() { const values = {a: {count: 0}, b: 1, c: 2}; values.a.count++; return values.a.count; }",
+    },
+    {
+      name: "preserves nested array mutation per invocation",
+      code: "function f() { const values = [[1], [2], [3]]; values[0].push(4); return values[0].length; }",
+    },
+    {
+      name: "preserves computed mutator calls",
+      code: "function f() { const values = [1, 2, 3]; values['push'](4); return values.length; }",
+    },
+    {
+      name: "preserves escaped nested mutable values",
+      code: "function f() { const values = {a: {count: 0}, b: 1, c: 2}; const child = values.a; child.count++; return child.count; }",
+    },
+    {
+      name: "public no-match example",
+      filename:
+        PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION.examples[0].focusPath,
+      code: PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION.examples[0].files[0]
+        .source,
+    },
     // Already at module scope — the target state.
-    { code: 'const KEYS = ["a", "b", "c"];\nfunction f(k: string) { return KEYS.includes(k); }' },
+    {
+      code: 'const KEYS = ["a", "b", "c"];\nfunction f(k: string) { return KEYS.includes(k); }',
+    },
 
     // FP mode: closes over a parameter, so it cannot be hoisted at all.
     {
@@ -116,8 +171,12 @@ RULE_TESTER.run("prefer-module-level-constant", rule, {
     },
 
     // FP mode: stateful regexes carry `lastIndex` across calls.
-    { code: "function f(s: string) { const RE = /ab+c/g; return RE.test(s); }" },
-    { code: "function f(s: string) { const RE = /ab+c/y; return RE.test(s); }" },
+    {
+      code: "function f(s: string) { const RE = /ab+c/g; return RE.test(s); }",
+    },
+    {
+      code: "function f(s: string) { const RE = /ab+c/y; return RE.test(s); }",
+    },
     // ...including one buried in a collection. `isLiteralOnly` sees a
     // `RegExpLiteral` as a plain `Literal`, so an ARRAY of regexes bypassed the
     // top-level `g`/`y` check entirely and the recommended hoist would have
@@ -214,42 +273,138 @@ RULE_TESTER.run("prefer-module-level-constant", rule, {
   ],
 
   invalid: [
-    { name: "public match example", filename: PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION.examples[1].focusPath, code: PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "hoistCollection" }] },
+    {
+      name: "preserves static computed native lookup access",
+      code: "export function isAllowed(key: string) { const KEYS: readonly string[] = ['a', 'b', 'c']; return KEYS['includes'](key); }",
+      output:
+        "const KEYS: readonly string[] = ['a', 'b', 'c'];\nexport function isAllowed(key: string) { return KEYS['includes'](key); }",
+      errors: [{ messageId: "hoistCollection" }],
+    },
+    {
+      name: "preserves CRLF while hoisting a readonly literal lookup",
+      code: "export function isAllowed(key: string) {\r\n  const KEYS: readonly string[] = ['a', 'b', 'c'];\r\n  return KEYS.includes(key);\r\n}",
+      output:
+        "const KEYS: readonly string[] = ['a', 'b', 'c'];\r\nexport function isAllowed(key: string) {\r\n  return KEYS.includes(key);\r\n}",
+      errors: [{ messageId: "hoistCollection" }],
+    },
+    {
+      name: "retains unsupported boundary 1",
+      code: "export function isAllowed(key: string) { const KEYS: string[] = ['a', 'b', 'c']; return KEYS.includes(key); }",
+      output: null,
+      errors: [{ messageId: "hoistCollection" }],
+    },
+    {
+      name: "retains unsupported boundary 2",
+      code: "import './register.js'; export function isAllowed(key: string) { const KEYS: readonly string[] = ['a', 'b', 'c']; return KEYS.includes(key); }",
+      output: null,
+      errors: [{ messageId: "hoistCollection" }],
+    },
+    {
+      name: "retains unsupported boundary 3",
+      code: "export function isAllowed(key: string) { const KEYS: readonly string[] = ['a', 'b', 'c']; return KEYS.join(key); }",
+      output: null,
+      errors: [{ messageId: "hoistCollection" }],
+    },
+    {
+      name: "retains unsupported boundary 4",
+      code: "export function isAllowed(key: string) { const KEYS: readonly string[] = ['a', 'b', 'c']; observe(); return KEYS.includes(key); }",
+      output: null,
+      errors: [{ messageId: "hoistCollection" }],
+    },
+    {
+      name: "retains unsupported boundary 5",
+      code: "export function isAllowed(key: string) { const KEYS: readonly (string | number)[] = ['a', 'b', 3]; return KEYS.includes(key); }",
+      output: null,
+      errors: [{ messageId: "hoistCollection" }],
+    },
+    {
+      name: "retains unsupported boundary 6",
+      code: "export function KEYS(key: string) { const KEYS: readonly string[] = ['a', 'b', 'c']; return KEYS.includes(key); }",
+      output: null,
+      errors: [{ messageId: "hoistCollection" }],
+    },
+    {
+      name: "retains unsupported boundary 7",
+      code: "export function isAllowed(key: string) { const KEYS: readonly string[] = ['a', 'b', 'c']; /* keep local */ return KEYS.includes(key); }",
+      output: null,
+      errors: [{ messageId: "hoistCollection" }],
+    },
+    {
+      name: "applies the source-owned exact correction",
+      code: "export function isAllowed(key: string) { const KEYS: readonly string[] = ['a', 'b', 'c']; return KEYS.includes(key); }",
+      output:
+        "const KEYS: readonly string[] = ['a', 'b', 'c'];\nexport function isAllowed(key: string) { return KEYS.includes(key); }",
+      errors: [{ messageId: "hoistCollection" }],
+    },
+    {
+      name: "public match example",
+      filename:
+        PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION.examples[1].focusPath,
+      code: PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION.examples[1].files[0]
+        .source,
+      errors: [{ messageId: "hoistCollection" }],
+    },
     // Array allow-list read via a non-mutating method.
     {
       name: "reports literal boolean null and number leaves",
       code: "function f() { const VALUES = [true, null, 1]; return VALUES.length; }",
-      errors: [{ messageId: "hoistCollection", data: { name: "VALUES", kind: "array" } }],
+      errors: [
+        {
+          messageId: "hoistCollection",
+          data: { name: "VALUES", kind: "array" },
+        },
+      ],
     },
     {
       name: "reports an interpolation-free template literal",
       code: "function f() { const VALUES = [`a`, `b`, `c`]; return VALUES.length; }",
-      errors: [{ messageId: "hoistCollection", data: { name: "VALUES", kind: "array" } }],
+      errors: [
+        {
+          messageId: "hoistCollection",
+          data: { name: "VALUES", kind: "array" },
+        },
+      ],
     },
     {
       name: "reports an object with literal computed keys",
       code: "function f() { const VALUES = { ['a']: 1, ['b']: 2, ['c']: 3 }; return VALUES.a; }",
-      errors: [{ messageId: "hoistCollection", data: { name: "VALUES", kind: "object" } }],
+      errors: [
+        {
+          messageId: "hoistCollection",
+          data: { name: "VALUES", kind: "object" },
+        },
+      ],
     },
     {
       code: "function isAllowed(k: string) { const KEYS = ['a', 'b', 'c']; return KEYS.includes(k); }",
-      errors: [{ messageId: "hoistCollection", data: { name: "KEYS", kind: "array" } }],
+      errors: [
+        { messageId: "hoistCollection", data: { name: "KEYS", kind: "array" } },
+      ],
       output: null,
     },
     // Object lookup table read by index.
     {
       code: "function label(k: string) { const LABELS = { a: 'A', b: 'B', c: 'C' }; return LABELS[k]; }",
-      errors: [{ messageId: "hoistCollection", data: { name: "LABELS", kind: "object" } }],
+      errors: [
+        {
+          messageId: "hoistCollection",
+          data: { name: "LABELS", kind: "object" },
+        },
+      ],
     },
     // Set membership.
     {
       code: "function isStop(w: string) { const STOP = new Set(['a', 'b', 'c']); return STOP.has(w); }",
-      errors: [{ messageId: "hoistCollection", data: { name: "STOP", kind: "Set" } }],
+      errors: [
+        { messageId: "hoistCollection", data: { name: "STOP", kind: "Set" } },
+      ],
     },
     // Map lookup.
     {
       code: "function code(k: string) { const M = new Map([['a', 1], ['b', 2], ['c', 3]]); return M.get(k); }",
-      errors: [{ messageId: "hoistCollection", data: { name: "M", kind: "Map" } }],
+      errors: [
+        { messageId: "hoistCollection", data: { name: "M", kind: "Map" } },
+      ],
     },
     // Non-global regex.
     {
@@ -260,7 +415,9 @@ RULE_TESTER.run("prefer-module-level-constant", rule, {
     // hoist. A table of stateless regexes is exactly what the rule is for.
     {
       code: "function f(s: string) { const RES = [/a/i, /b/, /c/]; return RES.some((r) => r.test(s)); }",
-      errors: [{ messageId: "hoistCollection", data: { name: "RES", kind: "array" } }],
+      errors: [
+        { messageId: "hoistCollection", data: { name: "RES", kind: "array" } },
+      ],
     },
     // `as const` wrapper.
     {
@@ -270,12 +427,19 @@ RULE_TESTER.run("prefer-module-level-constant", rule, {
     // `Object.freeze` wrapper.
     {
       code: "function f() { const O = Object.freeze({ a: 1, b: 2, c: 3 }); return O.a; }",
-      errors: [{ messageId: "hoistCollection", data: { name: "O", kind: "object" } }],
+      errors: [
+        { messageId: "hoistCollection", data: { name: "O", kind: "object" } },
+      ],
     },
     // Arrow function body (React-component shape — identity churn per render).
     {
       code: "const C = () => { const OPTIONS = [{ v: 1 }, { v: 2 }, { v: 3 }]; return OPTIONS.map((o) => o.v); };",
-      errors: [{ messageId: "hoistCollection", data: { name: "OPTIONS", kind: "array" } }],
+      errors: [
+        {
+          messageId: "hoistCollection",
+          data: { name: "OPTIONS", kind: "array" },
+        },
+      ],
     },
     // Class method body.
     {

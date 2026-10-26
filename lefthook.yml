@@ -31,7 +31,7 @@ pre-commit:
 
     standards:
       priority: 4
-      run: uv run --no-config --project packages/standards --frozen code-standards check --staged --trust-repository-code
+      run: uv run --no-config --project packages/standards --frozen code-standards check --staged --fix --trust-repository-code
       fail_text: >-
         Standards staged checks failed. Fix the reported findings and retry.
     dogfood:

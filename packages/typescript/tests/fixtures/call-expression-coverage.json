@@ -766,7 +766,7 @@
     ],
     "focusPath": "src/schema.ts",
     "expected": 1,
-    "fixedSource": "import { z } from \"zod\"; const Items = (z.array as typeof z.array)((z.string as typeof z.string)()).default([]);"
+    "fixedSource": "import { z } from \"zod\"; const Items = (z.array as typeof z.array)((z.string as typeof z.string)()).optional().default([]);"
   },
   {
     "rule": "no-redundant-optional-array-default",
@@ -779,7 +779,7 @@
     ],
     "focusPath": "src/schema.ts",
     "expected": 1,
-    "fixedSource": "import { z } from \"zod\"; const Items = (z.array satisfies typeof z.array)((z.string satisfies typeof z.string)()).default([]);"
+    "fixedSource": "import { z } from \"zod\"; const Items = (z.array satisfies typeof z.array)((z.string satisfies typeof z.string)()).optional().default([]);"
   },
   {
     "rule": "no-redundant-optional-array-default",
@@ -792,7 +792,7 @@
     ],
     "focusPath": "src/schema.ts",
     "expected": 1,
-    "fixedSource": "import { z } from \"zod\"; const Items = (z.array!)((z.string!)()).default([]);"
+    "fixedSource": "import { z } from \"zod\"; const Items = (z.array!)((z.string!)()).optional().default([]);"
   },
   {
     "rule": "no-redundant-optional-array-default",
@@ -805,7 +805,7 @@
     ],
     "focusPath": "src/schema.ts",
     "expected": 1,
-    "fixedSource": "import { z } from \"zod\"; const Items = ((z.array!) as typeof z.array)(((z.string!) as typeof z.string)()).default([]);"
+    "fixedSource": "import { z } from \"zod\"; const Items = ((z.array!) as typeof z.array)(((z.string!) as typeof z.string)()).optional().default([]);"
   },
   {
     "rule": "no-restricted-library-load",

@@ -2,10 +2,12 @@ import { join } from "node:path";
 
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { ESLint } from "eslint";
+import type { TSESLint } from "@typescript-eslint/utils";
+import { ESLint, Linter, type Rule } from "eslint";
 import { afterAll, describe, expect, it } from "vitest";
 
 import plugin from "../../src/index.js";
+import { retainsNamedTypeUses } from "../../src/rules/_type-binding.js";
 import rule, {
   PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION,
 } from "../../src/rules/prefer-zod-parse-output-type.js";
@@ -14,6 +16,53 @@ RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
 RuleTester.itOnly = it.only;
+
+function retainedTypeResult(body: string): boolean {
+  const results: boolean[] = [];
+  const probe: TSESLint.RuleModule<"probe", []> = {
+    meta: { type: "problem", schema: [], messages: { probe: "Probe." } },
+    defaultOptions: [],
+    create(context) {
+      return { TSAsExpression(node) { results.push(retainsNamedTypeUses(context.sourceCode, node.typeAnnotation)); } };
+    },
+  };
+  const messages = new Linter().verify(`export {}; declare const value: unknown; ${body}`, {
+    files: ["**/*.ts"],
+    languageOptions: { parser: tsParser, sourceType: "module", parserOptions: { lib: ["esnext"] } },
+    plugins: { proof: { rules: { retained: probe as unknown as Rule.RuleModule } } },
+    rules: { "proof/retained": "error" },
+  }, { filename: "liveness.ts" });
+  expect(messages).toEqual([]);
+  expect(results.length).toBeGreaterThan(0);
+  return results.at(-1) ?? false;
+}
+
+describe("named reads surviving erased type regions", () => {
+  it.each([
+    ["exported alias", "interface Target { id: string } export type Kept = Target; value as Target;", true],
+    ["explicit type export", "interface Target { id: string } export type { Target }; value as Target;", true],
+    ["all generic arguments", "interface Target { id: string } type Box<T> = T; export type Kept = Box<Target>; value as Box<Target>;", true],
+    ["qualified namespace root", "namespace Models { export interface Target { id: string } } export type Kept = Models.Target; value as Models.Target;", true],
+    ["typeof value read", "const factory = () => 1; export type Kept = typeof factory; value as typeof factory;", true],
+    ["resolved global without a local declaration", "value as Promise<string>;", true],
+    ["no named read", "value as number;", true],
+    ["sole interface use", "interface Target { id: string } value as Target;", false],
+    ["own exported definition", "export type Target = Target; value as Target;", false],
+    ["mutually recursive private definitions", "type Target = Other; type Other = Target; value as Target;", false],
+    ["value-only use cannot retain the merged type", "interface Target { id: string } const Target = 1; export type Kept = typeof Target; value as Target;", false],
+    ["variable annotation", "interface Target { id: string } declare const witness: Target; value as Target;", false],
+    ["exported variable annotation", "interface Target { id: string } export const witness: Target = { id: 'a' }; value as Target;", false],
+    ["return annotation", "interface Target { id: string } function witness(): Target { return { id: 'a' }; } value as Target;", false],
+    ["union parameter annotation", "interface Target { id: string } function witness(p: Target | string) {} value as Target;", false],
+    ["predicate annotation", "interface Target { id: string } function witness(p: unknown): p is Target { return true; } value as Target;", false],
+    ["other assertion", "interface Target { id: string } const witness = value as Target; value as Target;", false],
+    ["angle assertion", "interface Target { id: string } const witness = <Target>value; value as Target;", false],
+    ["interface property annotation", "interface Target { id: string } interface Other { child: Target } value as Target;", false],
+    ["unresolved name", "value as Missing;", false],
+  ] as const)("%s", (_name, code, expected) => {
+    expect(retainedTypeResult(code)).toBe(expected);
+  });
+});
 
 const TYPED_RULE_TESTER = new RuleTester({
   languageOptions: {
@@ -124,7 +173,14 @@ new RuleTester({ languageOptions: { parser: tsParser } }).run(
   "prefer-zod-parse-output-type without type information",
   rule,
   {
-    valid: [PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION.examples[1].files[0].source],
+    valid: [
+      PREFER_ZOD_PARSE_OUTPUT_TYPE_DOCUMENTATION.examples[1].files[0].source,
+      {
+        name: "requires type information before reporting or fixing a private parsed return",
+        filename: "zod-output-private.ts",
+        code: "import { z } from \"zod\"; interface ParsedRow { id: string } const RowSchema = z.object({ id: z.string() }); function load(): ParsedRow { return RowSchema.parse({}); }",
+      },
+    ],
     invalid: [],
   },
 );
@@ -286,8 +342,25 @@ TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
     },
   ],
   invalid: [
-    ...INDEPENDENT_HELPERS.map(([name, code]) => ({ name, filename: "zod-parse-output-port-owner.ts", code, errors: [{ messageId: "handWrittenParsedOutput" as const }] })),
-    ...EQUIVALENT_NESTED_CONTRACTS.map(([name, code]) => ({ name, filename: "zod-parse-output-deep-contract.ts", code, errors: [{ messageId: "handWrittenParsedOutput" as const }] })),
+    {name: "derives a private return with an independently exported type use", filename: "zod-output-private.ts",
+      code: "import { z } from \"zod\"; interface ParsedRow { id: string } export type KeptParsedRow = ParsedRow; const RowSchema = z.object({ id: z.string() }); function load(): ParsedRow { return RowSchema.parse({}); }",
+      output: "import { z } from \"zod\"; interface ParsedRow { id: string } export type KeptParsedRow = ParsedRow; const RowSchema = z.object({ id: z.string() }); function load(): z.output<typeof RowSchema> { return RowSchema.parse({}); }", errors: [{messageId: "handWrittenParsedOutput"}]},
+    {name: "keeps an imported contract live through an independently exported alias", filename: "zod-output-private.ts",
+      code: `${IMPORT}import type { TrialChannelRecord } from "./zod-infer-cross-module-contracts.js"; export type KeptRecord = TrialChannelRecord; const RowSchema = z.object({ applicationId: z.string(), channelId: z.string().nullable() }); function load(): TrialChannelRecord { return RowSchema.parse({}); }`,
+      output: `${IMPORT}import type { TrialChannelRecord } from "./zod-infer-cross-module-contracts.js"; export type KeptRecord = TrialChannelRecord; const RowSchema = z.object({ applicationId: z.string(), channelId: z.string().nullable() }); function load(): z.output<typeof RowSchema> { return RowSchema.parse({}); }`, errors: [{messageId: "handWrittenParsedOutput"}]},
+    {name: "other return annotations cannot keep a contract live", filename: "zod-output-private.ts",
+      code: "import { z } from \"zod\"; interface ParsedRow { id: string } const RowSchema = z.object({ id: z.string() }); function other(): ParsedRow { return { id: \"known\" }; } function load(): ParsedRow { return RowSchema.parse({}); }", output: null, errors: [{messageId: "handWrittenParsedOutput"}]},
+    {name: "other assertions cannot keep a contract live", filename: "zod-output-private.ts",
+      code: "import { z } from \"zod\"; interface ParsedRow { id: string } const witness = {} as ParsedRow; const RowSchema = z.object({ id: z.string() }); function load(): ParsedRow { return RowSchema.parse({}); }", output: null, errors: [{messageId: "handWrittenParsedOutput"}]},
+    {name: "private variable annotations cannot keep a contract live", filename: "zod-output-private.ts",
+      code: "import { z } from \"zod\"; interface ParsedRow { id: string } const witness: ParsedRow = { id: \"known\" }; const RowSchema = z.object({ id: z.string() }); function load(): ParsedRow { return RowSchema.parse({}); }", output: null, errors: [{messageId: "handWrittenParsedOutput"}]},
+    {name: "preserves a sole-use private parsed return contract", filename: "zod-output-private.ts", code: "import { z } from \"zod\"; interface ParsedRow { id: string } const RowSchema = z.object({ id: z.string() }); function load(): ParsedRow { return RowSchema.parse({}); }", output: null, errors: [{messageId: "handWrittenParsedOutput"}]},
+    {name: "preserves a consumed parser return contract", filename: "zod-output-private.ts", code: "import { z } from \"zod\"; interface ParsedRow { id: string } const RowSchema = z.object({ id: z.string() }); function load(): ParsedRow { return RowSchema.parse({}); } consume(load);", output: null, errors: [{messageId: "handWrittenParsedOutput"}]},
+    {name: "preserves an exported parser return contract", filename: "zod-output-private.ts", code: "import { z } from \"zod\"; interface ParsedRow { id: string } const RowSchema = z.object({ id: z.string() }); export function load(): ParsedRow { return RowSchema.parse({}); }", output: null, errors: [{messageId: "handWrittenParsedOutput"}]},
+    {name: "preserves dynamic parser references", filename: "zod-output-private.ts", code: "import { z } from \"zod\"; interface ParsedRow { id: string } const RowSchema = z.object({ id: z.string() }); function load(): ParsedRow { return RowSchema.parse({}); } eval(\"load\");", output: null, errors: [{messageId: "handWrittenParsedOutput"}]},
+    {name: "preserves comments in the parser body", filename: "zod-output-private.ts", code: "import { z } from \"zod\"; interface ParsedRow { id: string } const RowSchema = z.object({ id: z.string() }); function load(): ParsedRow { /* retain contract ownership */ return RowSchema.parse({}); }", output: null, errors: [{messageId: "handWrittenParsedOutput"}]},
+    ...INDEPENDENT_HELPERS.map(([name, code]) => ({ name, filename: "zod-parse-output-port-owner.ts", code, output: null, errors: [{ messageId: "handWrittenParsedOutput" as const }] })),
+    ...EQUIVALENT_NESTED_CONTRACTS.map(([name, code]) => ({ name, filename: "zod-parse-output-deep-contract.ts", code, output: null, errors: [{ messageId: "handWrittenParsedOutput" as const }] })),
     {
       name: "preserves outcomes for static member access",
       filename: "zod-parse-output-static-member.ts",
@@ -295,6 +368,7 @@ TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
         import type { TrialChannelRecord } from "./zod-infer-cross-module-contracts.js";
         const RowSchema = z["object"]({ applicationId: z["string"](), channelId: z["string"]()["nullable"]() });
         function get(): TrialChannelRecord { return RowSchema["parse"]({}); }`,
+      output: null,
       errors: [{ messageId: "handWrittenParsedOutput" }],
     },
     {
@@ -304,6 +378,7 @@ TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
         import type { TrialChannelRecord } from "./zod-infer-cross-module-contracts.js";
         const RowSchema = z.object({ applicationId: z.string(), channelId: z.string().nullable() });
         function get(): TrialChannelRecord { return RowSchema.parse({}); }`,
+      output: null,
       errors: [{ messageId: "handWrittenParsedOutput" }],
     },
     {
@@ -334,6 +409,7 @@ TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
         import type { TrialChannelRecord } from "./zod-infer-cross-module-contracts.js";
         const ValidatedDatabaseOutput = z.object({ applicationId: z.string(), channelId: z.string().nullable() });
         function get(): TrialChannelRecord { return ValidatedDatabaseOutput.parse({}); }`,
+      output: null,
       errors: [
         {
           messageId: "handWrittenParsedOutput",
@@ -354,6 +430,7 @@ TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
           applicationId: z.string(), channelId: z.string().nullable(),
         });
         function get(): PersistedRow { return DatabaseResultSchema.parse({}); }`,
+      output: null,
       errors: [
         {
           messageId: "handWrittenParsedOutput",
@@ -372,6 +449,7 @@ TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
         import type { AliasRecord } from "./zod-infer-cross-module-contracts.js";
         const RowSchema = z.object({ applicationId: z.string(), channelId: z.string().nullable() });
         function get(): AliasRecord { return RowSchema.parse({}); }`,
+      output: null,
       errors: [{ messageId: "handWrittenParsedOutput" }],
     },
     {
@@ -383,6 +461,7 @@ TYPED_RULE_TESTER.run("prefer-zod-parse-output-type", rule, {
           child: z.object({ value: z.string() }), tags: z.array(z.string()),
         });
         function get(): NestedRecord { return RowSchema.parse({}); }`,
+      output: null,
       errors: [{ messageId: "handWrittenParsedOutput" }],
     },
     {

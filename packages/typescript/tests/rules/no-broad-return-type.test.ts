@@ -33,6 +33,14 @@ TESTER.run("no-broad-return-type", rule, {
     "function opaque(value: any): unknown { return value; }",
   ],
   invalid: [
+    { name: "preserves the sole named broad return binding", code: "export {}; type Opaque = unknown; function read(value: { id: string }): Opaque { return value; }", output: null, errors: [{ messageId: "avoid" }] },
+    { name: "retains broad inference with an independent exported type use", code: "export type Kept = Opaque; type Opaque = unknown; function read(value: { id: string }): Opaque { return value; }", output: "export type Kept = Opaque; type Opaque = unknown; function read(value: { id: string }) { return value; }", errors: [{ messageId: "avoid" }] },
+    { name: "does not count a second erasable return annotation as a witness", code: "export {}; type Opaque = unknown; function first(value: { id: string }): Opaque { return value; } function second(value: { id: string }): Opaque { return value; }", output: null, errors: [{ messageId: "avoid" }, { messageId: "avoid" }] },
+    { name: "preserves implementation signatures of overload contracts", code: "export {}; function convert(value: true): number; function convert(value: false): string; function convert(value: boolean): unknown { return value ? 1 : 'no'; }", output: null, errors: [{ messageId: "avoid" }] },
+    { name: "retains inference only for an unused private module function", code: "export {}; function request(value: { id: string }): unknown { return value; }", output: "export {}; function request(value: { id: string }) { return value; }", errors: [{ messageId: "avoid" }] },
+    { name: "preserves an exported alias contract", code: "function request(value: { id: string }): unknown { return value; } export { request };", output: null, errors: [{ messageId: "avoid" }] },
+    { name: "preserves a public function contract", code: "export function request(value: { id: string }): unknown { return value; }", output: null, errors: [{ messageId: "avoid" }] },
+    { name: "preserves a referenced private function contract", code: "export {}; function request(value: { id: string }): unknown { return value; } request({ id: 'a' });", output: null, errors: [{ messageId: "avoid" }] },
     {
       code: "function request(value: { id: string }): unknown { return value; }",
       errors: [

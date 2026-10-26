@@ -57,9 +57,10 @@ class NoRedundantLiteralDescription(Rule):
             "examples, deprecation, or rationale not encoded by the field type."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         aliases=("no-redundant-literal-description",),
         limitations=(
+            "Safe fixes remove only the description keyword of a comment-free, error-level inert Field call whose entire literal description repeats the complete declared domain. Schema-ownership warnings remain review-only.",
             "Only direct fields on classes with a direct BaseModel base are inspected.",
             "Domains are resolved only from direct string Literals and static Literal aliases or string-valued Enums in the same module.",
             "Descriptions are reported only when a narrow clause repeats the complete domain without mapping or rationale.",
@@ -102,6 +103,35 @@ class NoRedundantLiteralDescription(Rule):
                 focus_path=PurePosixPath("app/models.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "from typing import Literal\n"
+                            "from pydantic import BaseModel, Field\n"
+                            "class Request(BaseModel):\n"
+                            "    mode: Literal['one', 'two'] = Field(description=\"Must be 'one' or 'two'.\")\n"
+                        ),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "from typing import Literal\n"
+                            "from pydantic import BaseModel, Field\n"
+                            "class Request(BaseModel):\n"
+                            "    mode: Literal['one', 'two'] = Field()\n"
+                        ),
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )

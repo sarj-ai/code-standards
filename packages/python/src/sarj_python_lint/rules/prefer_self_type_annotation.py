@@ -123,8 +123,9 @@ class PreferSelfTypeAnnotation(Rule):
         rationale="`Self` preserves the concrete subclass type when an inherited method returns its receiver or constructs through its class receiver.",
         remediation="Import `Self` from `typing` (or `typing_extensions` on Python before 3.11) and use it as the return annotation.",
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes replace only error-level return annotations when Self is already imported unambiguously. Advisory contracts, added imports, shadowed aliases and commented annotations remain review-only.",
             "Only final instance methods on stable undecorated module classes without bases, with a closed canonical final provider and every return equal to the unrebound receiver, block as errors. Other fluent methods and class constructors remain advisory to preserve valid override and construction contracts.",
             "Owned class and method mutation, namespace access, and escaped class references retain warning severity.",
             "Class creation must have inert literal members and supported method signatures/decorators; special methods and unknown descriptor values remain advisory.",
@@ -204,6 +205,37 @@ class PreferSelfTypeAnnotation(Rule):
                 expected_count=0,
                 public=False,
                 scenario="alternate-constructor",
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "from typing import Self, final\n"
+                            "class Builder:\n"
+                            "    @final\n"
+                            '    def configure(self) -> "Builder":\n'
+                            "        return self\n"
+                        ),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "from typing import Self, final\n"
+                            "class Builder:\n"
+                            "    @final\n"
+                            "    def configure(self) -> Self:\n"
+                            "        return self\n"
+                        ),
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )

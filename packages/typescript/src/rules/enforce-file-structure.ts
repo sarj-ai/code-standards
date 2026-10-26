@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/enforce-file-structure.test.ts
  */
 
-import { type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
+import { type TSESLint, type TSESTree, AST_NODE_TYPES } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile, isTestFile } from "./_paths.js";
@@ -19,8 +19,9 @@ export const ENFORCE_FILE_STRUCTURE_DOCUMENTATION = {
   remediation:
     "Move `use server` to the first statement when present, then place imports before declarations and executable statements.",
   category: "correctness",
+  autofix: "safe",
   limitations: [
-    "The rule skips tests and generated files, treats re-exports as neutral, and does not order body declarations.",
+    "The rule skips tests and generated files, treats re-exports as neutral, and does not order body declarations. Only misplaced import type declarations in comment-free files are automatically moved; runtime imports and directive activation remain manual.",
   ],
   examples: [
     {
@@ -40,6 +41,15 @@ export const ENFORCE_FILE_STRUCTURE_DOCUMENTATION = {
       focusPath: "src/component.ts",
       expectedCount: 1,
       public: true,
+    },
+    {
+      id: "safe-autofix",
+      title: "Apply the proven automatic correction",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "export {}; const value = 1; import type { Foo } from \"foo\";" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "export {}; import type { Foo } from \"foo\";\nconst value = 1; " }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
     },
   ],
 } as const satisfies RuleDocumentation;
@@ -83,6 +93,7 @@ export default createRule<Options, MessageIds>({
   documentation: ENFORCE_FILE_STRUCTURE_DOCUMENTATION,
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: {
       description: "Require imports before body statements and require `use server` to be the first statement.",
     },
@@ -114,6 +125,18 @@ export default createRule<Options, MessageIds>({
           });
         }
 
+        const firstBody = body.find((statement) => classifyStatement(statement) === "body" && !(statement.type === AST_NODE_TYPES.ExpressionStatement && statement.directive !== undefined));
+        const misplacedTypeImports = firstBody === undefined ? [] : body.filter(
+          (statement): statement is TSESTree.ImportDeclaration => statement.type === AST_NODE_TYPES.ImportDeclaration &&
+            statement.importKind === "type" && statement.range[0] > firstBody.range[0],
+        );
+        const fixTypeImports = firstBody === undefined || context.sourceCode.getAllComments().length > 0 || misplacedTypeImports.length === 0
+          ? null
+          : (fixer: TSESLint.RuleFixer): TSESLint.RuleFix[] => [
+              fixer.insertTextBefore(firstBody, misplacedTypeImports.map((statement) => context.sourceCode.getText(statement)).join("\n") + "\n"),
+              ...misplacedTypeImports.map((statement) => fixer.remove(statement)),
+            ];
+
         let seenBody = false;
         let inMisplacedRun = false;
 
@@ -133,6 +156,7 @@ export default createRule<Options, MessageIds>({
                 context.report({
                   node: statement,
                   messageId: "importsFirst",
+                  fix: statement === misplacedTypeImports[0] ? fixTypeImports : null,
                 });
               }
               continue;

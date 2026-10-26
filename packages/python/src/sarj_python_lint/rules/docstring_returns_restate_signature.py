@@ -130,13 +130,51 @@ class DocstringReturnsRestateSignature(Rule):
             "laziness, sentinel values, and success conditions in the public docstring."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes remove only a single native-proven redundant result section in plain unescaped private nested synchronous nongenerator functions with no detected metadata consumer. Multiple result headings, other sections and behavioral prose are preserved; public APIs, escaped/decorated helpers and escaped/raw string literals remain review-only. Known frame and metadata capabilities, their import aliases and metadata field access prevent fixes.",
+            "Containing callables must also be ordinary synchronous nongenerators with proven inert execution; unknown callouts, properties, overloads, reachable frame-exporting exceptions, and helper references crossing additional function, class, lambda, or comprehension scopes prevent fixes.",
             "The rule reads a single Google-style return or yield section and requires an informative explicit result annotation.",
             "Names that document the positions of a fixed tuple return are treated as semantic information.",
             "Generated files, overloads, runtime-consumed docstrings, typed sections, protected facts, result conditions, identity semantics, and whole-docstring restatements owned by SARJ050 are excluded.",
         ),
         examples=(
+            RuleExample(
+                example_id="safe-private-autofix-subset",
+                title="Unescaped private helper keeps its behavioral contract",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def outer():\n"
+                            "    def _get_line_length(line: str) -> int:\n"
+                            '        """Measure a rendered line.\n'
+                            "\n"
+                            "        Returns:\n"
+                            "            The line length.\n"
+                            '        """\n'
+                            "        return len(line)\n"
+                            "    return _get_line_length('sample')\n"
+                        ),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def outer():\n"
+                            "    def _get_line_length(line: str) -> int:\n"
+                            '        """Measure a rendered line.\n'
+                            '        """\n'
+                            "        return len(line)\n"
+                            "    return _get_line_length('sample')\n"
+                        ),
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+            ),
             RuleExample(
                 example_id="return-restates-signature",
                 title="Return description repeats the signature",

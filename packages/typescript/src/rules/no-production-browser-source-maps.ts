@@ -5,7 +5,7 @@
  */
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
-import { exportedNextConfigProperty } from "./_exported-next-config-property.js";
+import { canAutofixNextConfigLiteral, exportedNextConfigProperty } from "./_exported-next-config-property.js";
 
 type MessageIds = "noProductionBrowserSourceMaps";
 type Options = readonly [];
@@ -19,7 +19,9 @@ export const NO_PRODUCTION_BROWSER_SOURCE_MAPS_DOCUMENTATION = {
   remediation:
     "Leave productionBrowserSourceMaps disabled and upload private source maps directly to the error-monitoring service during the build.",
   category: "security",
+  autofix: "safe",
   limitations: [
+    "Automatic boolean changes are withheld when the module contains explicit TypeScript or JSDoc contracts; those contracts can constrain an aliased property to literal true. Plain objects and as const inference remain fixable.",
     "Only a literal true in the effective property of a directly exported object, unescaped const alias, or isolated module.exports object is reported. Wrappers, factories, spreads, dynamic computed keys and mutations are not inferred.",
   ],
   examples: [
@@ -41,6 +43,15 @@ export const NO_PRODUCTION_BROWSER_SOURCE_MAPS_DOCUMENTATION = {
       expectedCount: 1,
       public: true,
     },
+    {
+      id: "safe-autofix",
+      title: "Apply the proven automatic correction",
+      outcome: "match",
+      files: [{ path: "next.config.ts", source: "export default { productionBrowserSourceMaps: true };" }],
+      fixedFiles: [{ path: "next.config.ts", source: "export default { productionBrowserSourceMaps: false };" }],
+      focusPath: "next.config.ts",
+      expectedCount: 1,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -49,6 +60,7 @@ export default createRule<Options, MessageIds>({
   documentation: NO_PRODUCTION_BROWSER_SOURCE_MAPS_DOCUMENTATION,
   meta: {
     type: "problem",
+    fixable: "code",
     docs: { description: NO_PRODUCTION_BROWSER_SOURCE_MAPS_DOCUMENTATION.summary },
     schema: [],
     messages: {
@@ -67,7 +79,11 @@ export default createRule<Options, MessageIds>({
           node.value.type === "Literal" &&
           node.value.value === true
         ) {
-          context.report({ node, messageId: "noProductionBrowserSourceMaps" });
+          context.report({
+            node,
+            messageId: "noProductionBrowserSourceMaps",
+            fix: canAutofixNextConfigLiteral(context.sourceCode) ? (fixer) => fixer.replaceText(node.value, "false") : null,
+          });
         }
       },
     };

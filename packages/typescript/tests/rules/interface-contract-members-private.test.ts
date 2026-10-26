@@ -40,6 +40,9 @@ RULE_TESTER.run("interface-contract-members-private", rule, {
     { code: "interface Store { load(): void } class DiskStore implements Store { load() {} helper() {} }", filename: "generated/store.ts" },
   ],
   invalid: [
+    { name: "removes explicit public accessibility when privatizing an inert helper", code: "export {}; interface Store { load(): void } class DiskStore implements Store { load() { this.read(); } public read() {} }", output: "export {}; interface Store { load(): void } class DiskStore implements Store { load() { this.#read(); } #read() {} }", errors: [{ messageId: "nonContractMemberMustBePrivate" }] },
+    { name: "fixes an unused module class without changing the interface", code: "export {}; interface Store { load(): void } class DiskStore implements Store { load() { this.read(); } read() {} }", output: "export {}; interface Store { load(): void } class DiskStore implements Store { load() { this.#read(); } #read() {} }", errors: [{ messageId: "nonContractMemberMustBePrivate" }] },
+    { name: "preserves implicit static instance registration", code: "export {}; interface Store { load(): void } class DiskStore implements Store { static { register(new this()); } load() {} read() {} }", output: null, errors: [{ messageId: "nonContractMemberMustBePrivate" }] },
     {
       name: "reports the documented extra method without choosing its public API",
       code: INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION.examples[1].files[0].source,

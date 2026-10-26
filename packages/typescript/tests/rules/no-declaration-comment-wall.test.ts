@@ -281,6 +281,7 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
   ],
 
   invalid: [
+    { name: "automatically removes only exact multiword member names", code: "class Client {\n  /** Read user. */\n  readUser() {}\n  /** Write user. */\n  writeUser() {}\n  /** Delete user. */\n  deleteUser() {}\n}", output: "class Client {\n\n  readUser() {}\n\n  writeUser() {}\n\n  deleteUser() {}\n}", errors: [{ messageId: "commentWall" }] },
     // The enum arm. medusa/packages/core/utils/src/order/status.ts is this
     // exact shape, twice in one file.
     {
@@ -335,7 +336,7 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
         "  // credentials",
         "  tokenValue = 'c';",
         "}",
-      ].join("\n"),
+      ].join("\n"), output: "class Config {\n\n  retryCount = 4;\n\n  baseUrl = 'https://x';\n\n  userAgent = 'y';\n\n  // transport\n  socketPath = null;\n\n  // credentials\n  tokenValue = 'c';\n}",
       errors: [{ messageId: "commentWall" }],
     },
 

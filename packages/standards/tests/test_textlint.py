@@ -1601,6 +1601,13 @@ def test_large_shell_program_is_warning_only(tmp_path: Path) -> None:
 
 
 def test_registry_exposes_complete_neutral_rule_metadata() -> None:
+    safe_rules = {
+        "cloudbuild-contract",
+        "commented-out-config",
+        "config-comment-wall",
+        "exact-config-comment-restatement",
+        "hidden-markdown-heading",
+    }
     assert set(textlint.REGISTRY) == {
         "commented-out-config",
         "cloudbuild-contract",
@@ -1625,7 +1632,7 @@ def test_registry_exposes_complete_neutral_rule_metadata() -> None:
         assert spec.remediation
         assert spec.languages
         assert spec.file_patterns
-        assert spec.autofix == "none"
+        assert spec.autofix == ("safe" if rule_id in safe_rules else "none")
         assert spec.message_ids == ()
         assert {example.outcome for example in meta.public_examples} == {"match", "no-match"}
 

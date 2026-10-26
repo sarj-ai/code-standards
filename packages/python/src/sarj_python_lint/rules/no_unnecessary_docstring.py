@@ -125,8 +125,10 @@ class NoUnnecessaryDocstring(ProjectRule):
             "external tooling consumes __doc__, use an exact SARJ420 suppression that names the consumer."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes require a second native error-level exact-name-restatement finding on an unescaped private nested synchronous nongenerator function. All references must be direct calls; public APIs, classes/modules, behavioral prose, escapes and metadata consumers remain review-only. Known frame and metadata capabilities, their import aliases and metadata field access prevent fixes.",
+            "Containing callables must also be ordinary synchronous nongenerators with proven inert execution; unknown callouts, properties, overloads, reachable frame-exporting exceptions, and helper references crossing additional function, class, lambda, or comprehension scopes prevent fixes.",
             (
                 "Generated files, doctests, syntax-required stub bodies, schema classes, framework decorators, explicit "
                 "__doc__/help/getdoc consumers, canonical metadata-copy decorators, and local sarj-noqa suppressions are excluded."
@@ -146,6 +148,36 @@ class NoUnnecessaryDocstring(ProjectRule):
             ),
         ),
         examples=(
+            RuleExample(
+                example_id="safe-private-autofix-subset",
+                title="Unescaped private helper keeps its behavioral contract",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def outer(value):\n"
+                            "    def _normalize(item):\n"
+                            '        """Normalize."""\n'
+                            "        return item\n"
+                            "    return _normalize(value)\n"
+                        ),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def outer(value):\n"
+                            "    def _normalize(item):\n"
+                            "        return item\n"
+                            "    return _normalize(value)\n"
+                        ),
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+            ),
             RuleExample(
                 example_id="human-only-docstrings",
                 title="Human-only module, class, and function prose",

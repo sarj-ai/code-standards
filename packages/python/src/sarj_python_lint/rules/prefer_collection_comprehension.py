@@ -100,8 +100,9 @@ class PreferCollectionComprehension(Rule):
             "is incremental, evaluation order is observable, or the imperative form carries additional behavior."
         ),
         category=RuleCategory.STYLE,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes apply only error-level candidates in undecorated module functions with no parameters and exactly initialization, one loop over literal primitive elements or correctly unpacked literal pairs, and return. List/set elements and dictionary keys/values must be primitive literals, bound loop names, or tuples composed of them. Unknown iterators, callbacks, properties, overloads, reachable errors, extra statements and advisory candidates remain review-only; the initialized binding and annotation are retained.",
             "Supported list/set builders and dictionary builders with stable loop-local-name or literal keys block as errors. Dictionary attribute/descriptor keys remain advisory because assignment evaluates value before key while a comprehension evaluates key before value.",
             "Only function-local, adjacent empty initializers and one synchronous single-purpose loop are checked.",
             (
@@ -114,7 +115,7 @@ class PreferCollectionComprehension(Rule):
                 "do not fit a 120-column line or a simple formatter-style multiline comprehension are excluded. "
                 "Namespace observers, explicit inspect/sys frame access, and collections referenced by nested functions "
                 "are excluded. Dynamic function aliases and helper-hidden frame reads are not resolved. "
-                "No autofix is offered because dict key/value evaluation order can differ."
+                "Only the literal-domain subset is autofixed; other dictionary key/value evaluation order remains review-only."
             ),
             (
                 "Attribute projections can invoke properties or descriptors, so reviewers should keep the loop "
@@ -235,6 +236,29 @@ class PreferCollectionComprehension(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def values():\n    result = {}\n    for key, row in [('a', 1), ('b', 2), ('a', 3)]:\n        result[key] = (row,)\n    return result\n"
+                        ),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def values():\n    result = {key: (row,) for (key, row) in [('a', 1), ('b', 2), ('a', 3)]}\n    return result\n"
+                        ),
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+            ),
         ),
     )
     description = documentation.summary
@@ -270,6 +294,29 @@ class PreferCollectionComprehension(Rule):
                     )
                 )
         return sorted(diagnostics, key=lambda diagnostic: (diagnostic.line, diagnostic.col))
+
+
+def autofix_comprehension_replacement(
+    context: PythonFileContext, owner: _Callable, init: _Init, loop: ast.For
+) -> str | None:
+    initialized = _initialized_collection(init)
+    if initialized is None or context.dynamic_namespace:
+        return None
+    bindings = _owner_bindings(owner, _namespace_observer_calls(context))
+    candidate = _candidate(
+        bindings,
+        init=init,
+        loop=loop,
+        source_lines=context.source_lines,
+        comments=comment_line_numbers(context.source),
+        set_shadowed=_set_is_shadowed(context.tree, node_index=context.node_index)
+        if context.tree is not None
+        else True,
+    )
+    if candidate is None or not _preserves_dict_key_order(loop, candidate.kind):
+        return None
+    replacement = _loop_replacement(loop, initialized.name, initialized.kind, _bound_names(loop.target), bindings)
+    return None if replacement is None else replacement.expression
 
 
 def _preserves_dict_key_order(loop: ast.For, kind: _CollectionKind) -> bool:

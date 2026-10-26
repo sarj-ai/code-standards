@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from fnmatch import fnmatch
 from functools import cached_property
+from io import StringIO
 import json
 from pathlib import Path, PurePosixPath
 import re
@@ -19,12 +20,14 @@ from typing import (
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sarj_iac_lint.hcl import local_exec_commands
+from sarj_rule_contracts import TextEdit, apply_edits
 import yaml
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 from yaml.tokens import ScalarToken
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field, table_field
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.linting._cloudbuild_autofix import fix_cloudbuild_sentinels
 from sarj_standards.libs.linting.devops_programs import (
     ExecutionBlock,
     ShellParser,
@@ -37,6 +40,7 @@ from sarj_standards.libs.linting.text_rule_base import Finding as Finding, RuleM
 from sarj_standards.libs.linting.text_rules._registry import REGISTRY as AUTHORED_RULES
 from sarj_standards.libs.linting.toml_literals import TOML_STRING_OR_COMMENT_RE as _TOML_STRING_OR_COMMENT_RE
 from sarj_standards.libs.rules.contracts import (
+    AutofixPolicy,
     DefaultLevel,
     ExampleFile,
     ExpectedOutcome,
@@ -44,7 +48,7 @@ from sarj_standards.libs.rules.contracts import (
     RuleCategory,
     RuleExample,
 )
-from sarj_standards.libs.yaml_boundary import mapping_items, sequence_items
+from sarj_standards.libs.yaml_boundary import mapping_items, parse_yaml_documents, sequence_items
 
 
 if TYPE_CHECKING:
@@ -466,6 +470,7 @@ def _public_example(
     source: str,
     expected_count: int,
     scenario: str = "primary",
+    fixed_source: str | None = None,
 ) -> RuleExample:
     focus_path = PurePosixPath(path)
     return RuleExample(
@@ -473,6 +478,7 @@ def _public_example(
         title=title,
         outcome=outcome,
         files=(ExampleFile(path=focus_path, source=source),),
+        fixed_files=() if fixed_source is None else (ExampleFile(path=focus_path, source=fixed_source),),
         focus_path=focus_path,
         expected_count=expected_count,
         public=True,
@@ -484,6 +490,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
     {
         **{rule_id: rule.documentation for rule_id, rule in AUTHORED_RULES.items()},
         "config-comment-wall": RuleMeta(
+            autofix=AutofixPolicy.SAFE,
             code="SARJ300",
             default_level=DefaultLevel.ERROR,
             summary="four or more nearby configuration comments mostly repeat their entries",
@@ -508,6 +515,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                     "# Run build command\nrun: make build\n"
                     "# Set deploy image\nimage: app\n"
                     "# Run deploy command\ncommand: deploy\n",
+                    fixed_source="\nname: build\n# Run build command\nrun: make build\n# Set deploy image\nimage: app\n# Run deploy command\ncommand: deploy\n",
                     expected_count=1,
                 ),
                 _public_example(
@@ -549,6 +557,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             ),
         ),
         "commented-out-config": RuleMeta(
+            autofix=AutofixPolicy.SAFE,
             code="SARJ301",
             default_level=DefaultLevel.ERROR,
             summary="unexplained disabled config blocks or adjacent alternatives",
@@ -564,6 +573,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                     outcome=ExpectedOutcome.MATCH,
                     path="config.toml",
                     source="# timeout = 30\ntimeout = 10\n",
+                    fixed_source="\ntimeout = 10\n",
                     expected_count=1,
                 ),
                 _public_example(
@@ -926,6 +936,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             default_level=DefaultLevel.ERROR,
         ),
         "hidden-markdown-heading": RuleMeta(
+            autofix=AutofixPolicy.SAFE,
             code="SARJ305",
             summary="HTML comment hides a Markdown heading",
             rationale=(
@@ -943,6 +954,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                     outcome=ExpectedOutcome.MATCH,
                     path="README.md",
                     source="<!--\n## Legacy setup\nUse the retired command.\n-->\n",
+                    fixed_source="\n\n\n\n",
                     expected_count=1,
                 ),
                 _public_example(
@@ -956,9 +968,11 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
             ),
             limitations=(
                 "Only standalone, closed HTML comments containing an ATX heading outside Markdown code are checked; template instructions and protected rationale are preserved.",
+                "Safe fixes require plain .md source without front matter, template markers, raw HTML tags or multiline inline-code spans; MDX, embedded configuration/code and ambiguous backtick contexts remain for review.",
             ),
         ),
         "exact-config-comment-restatement": RuleMeta(
+            autofix=AutofixPolicy.SAFE,
             code="SARJ306",
             default_level=DefaultLevel.ERROR,
             summary="YAML or TOML comment exactly repeats the adjacent scalar assignment",
@@ -980,6 +994,7 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
                     outcome=ExpectedOutcome.MATCH,
                     path="config.toml",
                     source="# Retry count is 3\nretry_count = 3\n",
+                    fixed_source="\nretry_count = 3\n",
                     expected_count=1,
                 ),
                 _public_example(
@@ -1139,6 +1154,13 @@ REGISTRY: Final[Mapping[str, RuleMeta]] = MappingProxyType(
 )
 
 _META_BY_CODE: Final[Mapping[str, RuleMeta]] = MappingProxyType({meta.code: meta for meta in REGISTRY.values()})
+_GENERATED_MARKDOWN_HEADER_LINES: Final = 20
+_AUTOFIX_PRESERVED_COMMENT = re.compile(
+    r"\b(?:copyright|spdx|licen[cs]e|sarj-noqa|noqa|tflint|checkov|tfsec|trivy|shellcheck|yamllint|markdownlint|prettier-ignore|eslint|ruff|pyright|sqlfluff|squawk-ignore)\b|(?:coding|encoding)\s*[:=]",
+    re.IGNORECASE,
+)
+_AUTOFIX_HTML_CONTEXT = re.compile(r"<(?:/?[A-Za-z]|!DOCTYPE\b|!\[CDATA\[|[?%])", re.IGNORECASE)
+_AUTOFIX_MARKDOWN_FRONTMATTER = re.compile(r"(?:---|\+\+\+)(?:\s|$)|\{")
 
 
 def is_text_path(path: Path) -> bool:
@@ -1272,6 +1294,191 @@ def _authored_findings(path: Path, source: str, rule_ids: frozenset[str] | None)
         if rule_ids is None or rule_id in rule_ids
         for finding in rule().check(path, source)
     ]
+
+
+def fix_source(
+    path: Path,
+    source: str,
+    *,
+    rule_ids: Sequence[str] | None = None,
+    root: Path | None = None,
+) -> str:
+    selected = frozenset(REGISTRY) if rule_ids is None else frozenset(rule_ids)
+    if unknown := selected - REGISTRY.keys():
+        message = f"unknown text rules: {', '.join(sorted(unknown))}"
+        raise ValueError(message)
+    base = (root or Path.cwd()).resolve()
+    if not _allows_text_fix(path, source, base):
+        return source
+    lines = _text_source_lines(path, source, keepends=True)
+    edits = _hidden_heading_edits(path, source, lines) if "hidden-markdown-heading" in selected else []
+    if selected.intersection({"config-comment-wall", "exact-config-comment-restatement", "commented-out-config"}):
+        edits.extend(_config_comment_edits(path, source, lines, selected))
+    fixed = apply_edits(source, sorted(set(edits), key=lambda edit: edit.start))
+    if path.suffix.lower() in {".yaml", ".yml", ".toml"}:
+        try:
+            if _parsed_config_value(path, source) != _parsed_config_value(path, fixed):
+                return source
+        except ValueError, TypeError, yaml.YAMLError:
+            return source
+    return fix_cloudbuild_sentinels(path, fixed) if "cloudbuild-contract" in selected else fixed
+
+
+def _text_source_lines(path: Path, source: str, *, keepends: bool = False) -> list[str]:
+    if path.suffix.lower() in {".yaml", ".yml"}:
+        return source.splitlines(keepends=keepends)
+    return _physical_lines(source, keepends=keepends, lf_only=path.suffix.lower() == ".toml")
+
+
+def _physical_lines(source: str, *, keepends: bool = False, lf_only: bool = False) -> list[str]:
+    lines = StringIO(source, newline="\n" if lf_only else "").readlines()
+    if keepends:
+        return lines
+    if lf_only:
+        return [line[:-2] if line.endswith("\r\n") else line.removesuffix("\n") for line in lines]
+    return [line.removesuffix("\n").removesuffix("\r") for line in lines]
+
+
+def _allows_text_fix(path: Path, source: str, base: Path) -> bool:
+    relative = _relative(path.resolve(), base)
+    if any(fnmatch(relative, pattern) for pattern in _text_policy(base).excluded):
+        return False
+    if path.suffix.casefold() == ".mdx":
+        return False
+    if path.suffix.casefold() == ".md" and not _plain_markdown_fix_context(source):
+        return False
+    return not (
+        path.suffix.casefold() in {".md", ".mdx"}
+        and any(
+            comment.line <= _GENERATED_MARKDOWN_HEADER_LINES
+            and _GENERATED_CONFIG_OWNERSHIP_RE.match(comment.body)
+            and _GENERATED_CONFIG_HANDS_OFF_RE.search(comment.body)
+            for comment in _markdown_html_comments(source)
+        )
+    )
+
+
+def _hidden_heading_edits(path: Path, source: str, lines: list[str]) -> list[TextEdit]:
+    edits: list[TextEdit] = []
+    for finding in _markdown_hidden_comment_findings(path, source):
+        if _markdown_suppresses_finding(source, finding):
+            continue
+        last = finding.line
+        while last <= len(lines) and "-->" not in lines[last - 1]:
+            last += 1
+        if last <= len(lines):
+            removed = "".join(lines[finding.line - 1 : last])
+            if (
+                removed.count("<!--") == 1
+                and removed.count("-->") == 1
+                and not _AUTOFIX_PRESERVED_COMMENT.search(removed)
+            ):
+                edits.append(_blank_text_lines(lines, finding.line, last))
+    return edits
+
+
+def _plain_markdown_fix_context(source: str) -> bool:
+    if _AUTOFIX_MARKDOWN_FRONTMATTER.match(source.lstrip("\ufeff \t\r\n")):
+        return False
+    prose = "\n".join(_markdown_prose_lines(source, physical=True))
+    if _AUTOFIX_HTML_CONTEXT.search(prose) or re.search(r"\{[{%]", prose):
+        return False
+    opening: tuple[int, int] | None = None
+    for marker in re.finditer(r"`+", prose):
+        if opening is None:
+            opening = (len(marker.group()), marker.end())
+            continue
+        if len(marker.group()) != opening[0]:
+            continue
+        if "\n" in prose[opening[1] : marker.start()]:
+            return False
+        opening = None
+    return opening is None or "\n" not in prose[opening[1] :]
+
+
+def _blank_text_lines(lines: list[str], first: int, last: int) -> TextEdit:
+    start = sum(map(len, lines[: first - 1]))
+    original = "".join(lines[first - 1 : last])
+    return TextEdit(start, start + len(original), "".join(re.findall(r"\r\n|\r|\n", original)))
+
+
+def _parsed_config_value(path: Path, source: str) -> object:
+    return tomllib.loads(source) if path.suffix.lower() == ".toml" else parse_yaml_documents(source)
+
+
+def _config_comment_edits(path: Path, source: str, lines: list[str], selected: frozenset[str]) -> list[TextEdit]:
+    if path.suffix.lower() not in {".yaml", ".yml", ".toml"}:
+        return []
+    edits: list[TextEdit] = []
+    attached: list[_AttachedComment] = []
+    for finding in _comment_findings(path, source, attached_comments=attached):
+        if _AUTOFIX_PRESERVED_COMMENT.search(lines[finding.line - 1]):
+            continue
+        if finding.code == "SARJ306" and "exact-config-comment-restatement" in selected:
+            edits.append(_blank_text_lines(lines, finding.line, finding.line))
+        elif finding.code == "SARJ301" and "commented-out-config" in selected:
+            if edit := _disabled_config_group_edit(path, lines, finding.line):
+                edits.append(edit)
+        elif finding.code == "SARJ300" and "config-comment-wall" in selected:
+            edits.extend(_config_wall_edits(path, lines, attached, finding.line))
+    return edits
+
+
+def _disabled_config_group_edit(path: Path, lines: list[str], first: int) -> TextEdit | None:
+    leader = _standalone_comment(path, lines[first - 1])
+    if leader is None:
+        return None
+    last = first
+    while last < len(lines):
+        following = _standalone_comment(path, lines[last])
+        if following is None or following.indent != leader.indent or not following.body:
+            break
+        last += 1
+    comments = [_standalone_comment(path, line) for line in lines[first - 1 : last]]
+    if all(
+        comment is not None
+        and _commented_config_key(path, comment.body) is not None
+        and not _PROTECTED_RE.search(comment.body)
+        and not _DIRECTIVE_RE.match(comment.body)
+        and not _AUTOFIX_PRESERVED_COMMENT.search(comment.body)
+        for comment in comments
+    ):
+        return _blank_text_lines(lines, first, last)
+    return None
+
+
+def _config_wall_edits(path: Path, lines: list[str], attached: list[_AttachedComment], first: int) -> list[TextEdit]:
+    edits: list[TextEdit] = []
+    for group in _attached_groups(attached, lines, path=path):
+        weak = [line for line, _indent, is_weak in group if is_weak]
+        if not weak or weak[0] != first:
+            continue
+        edits.extend(
+            _blank_text_lines(lines, number, number) for number in weak if _restated_config_comment(path, lines, number)
+        )
+    return edits
+
+
+def _restated_config_comment(path: Path, lines: list[str], number: int) -> bool:
+    comment = _standalone_comment(path, lines[number - 1])
+    next_index = _next_content_line(lines, number)
+    return (
+        comment is not None
+        and next_index is not None
+        and not _AUTOFIX_PRESERVED_COMMENT.search(comment.body)
+        and _exact_wall_narration(comment.body, lines[next_index])
+    )
+
+
+def _exact_wall_narration(body: str, statement: str) -> bool:
+    words = [_normalize_word(word) for word in _words(body)]
+    if not words:
+        return False
+    action, *remainder = words
+    code = {_normalize_word(word) for word in _words(statement)}
+    return (action in {"configure", "define", "set"} or action in code) and all(
+        word in _STOPWORDS or word in code or word.rstrip("s") in code for word in remainder
+    )
 
 
 class _ShellHeredoc(NamedTuple):
@@ -1870,7 +2077,7 @@ def _markdown_suppresses_finding(source: str, finding: Finding) -> bool:
             finding.code in {code.strip().upper() for code in match.group("codes").split(",")}
             for match in _MARKDOWN_SUPPRESSION_RE.finditer(prose)
         )
-    lines = source.splitlines()
+    lines = _physical_lines(source) if finding.code == "SARJ305" else source.splitlines()
     if finding.line <= 1 or finding.line > len(lines):
         return False
     match = _MARKDOWN_SUPPRESSION_RE.fullmatch(lines[finding.line - 2])
@@ -2353,13 +2560,13 @@ def _wildcard_secret_read_permission(permission: str) -> bool:
     return False
 
 
-def _markdown_prose_lines(source: str) -> list[str]:
+def _markdown_prose_lines(source: str, *, physical: bool = False) -> list[str]:
     max_fence_indent = 3
     min_fence_length = 3
     indented_code_spaces = 4
     visible: list[str] = []
     fence: tuple[str, int] | None = None
-    for line in source.splitlines():
+    for line in _physical_lines(source) if physical else source.splitlines():
         leading_spaces = len(line) - len(line.lstrip(" "))
         candidate = line[leading_spaces:] if leading_spaces <= max_fence_indent else ""
         marker = candidate[:1]
@@ -2400,7 +2607,7 @@ def _markdown_html_comments(source: str) -> list[_MarkdownHtmlComment]:
     comments: list[_MarkdownHtmlComment] = []
     pending_line: int | None = None
     pending: list[str] = []
-    for line_number, line in enumerate(_markdown_prose_lines(source), start=1):
+    for line_number, line in enumerate(_markdown_prose_lines(source, physical=True), start=1):
         if pending_line is None:
             match = re.fullmatch(r"\s*<!--(?P<body>.*)", line)
             if match is None:
@@ -2425,7 +2632,7 @@ def _markdown_html_comments(source: str) -> list[_MarkdownHtmlComment]:
 
 
 def _hidden_markdown_heading(body: str) -> bool:
-    lines = [stripped for line in body.splitlines() if (stripped := line.strip())]
+    lines = [stripped for line in _physical_lines(body) if (stripped := line.strip())]
     if not lines or _MARKDOWN_HIDDEN_DIRECTIVE_RE.match(lines[0]):
         return False
     prose = "\n".join(lines)
@@ -2525,10 +2732,12 @@ def _text_policy(root: Path) -> _TextPolicy:
     return _TextPolicy(durable, excluded)
 
 
-def _comment_findings(path: Path, source: str) -> list[Finding]:
+def _comment_findings(
+    path: Path, source: str, *, attached_comments: list[_AttachedComment] | None = None
+) -> list[Finding]:
     if path.suffix.lower() in {".md", ".mdx"}:
         return []
-    lines = source.splitlines()
+    lines = _text_source_lines(path, source)
     validated_literal_lines = _validated_config_literal_lines(path, source, lines)
     generated_comment_wall = _has_generated_config_header(path, lines)
     attached: list[_AttachedComment] = []
@@ -2595,6 +2804,8 @@ def _comment_findings(path: Path, source: str) -> list[Finding]:
     for index, line in enumerate(lines):
         collect_comment(index, line)
 
+    if attached_comments is not None:
+        attached_comments.extend(attached)
     for group in _attached_groups(attached, lines, path=path):
         weak = [line for line, _indent, is_weak in group if is_weak]
         if (

@@ -61,12 +61,50 @@ class DocstringArgsRestateSignature(Rule):
             "in the docstring."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes remove only a single native-proven redundant argument section in plain unescaped private nested synchronous nongenerator functions with no detected metadata consumer. Multiple argument headings, other sections and behavioral prose are preserved; public APIs, escaped/decorated helpers and escaped/raw string literals remain review-only. Known frame and metadata capabilities, their import aliases and metadata field access prevent fixes.",
+            "Containing callables must also be ordinary synchronous nongenerators with proven inert execution; unknown callouts, properties, overloads, reachable frame-exporting exceptions, and helper references crossing additional function, class, lambda, or comprehension scopes prevent fixes.",
             "The rule reads Google-style argument sections and requires every documented entry to be a restatement before reporting.",
             "Generated files, runtime-consumed prompt, CLI, and route docstrings, protected facts, and empty machine-generated stubs are excluded.",
         ),
         examples=(
+            RuleExample(
+                example_id="safe-private-autofix-subset",
+                title="Unescaped private helper keeps its behavioral contract",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def outer(value):\n"
+                            "    def _count(tenant_id: str) -> int:\n"
+                            '        """Count active widgets.\n'
+                            "\n"
+                            "        Args:\n"
+                            "            tenant_id: Tenant ID\n"
+                            '        """\n'
+                            "        return 0\n"
+                            "    return _count(value)\n"
+                        ),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def outer(value):\n"
+                            "    def _count(tenant_id: str) -> int:\n"
+                            '        """Count active widgets.\n'
+                            '        """\n'
+                            "        return 0\n"
+                            "    return _count(value)\n"
+                        ),
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+            ),
             RuleExample(
                 example_id="argument-restates-signature",
                 title="Argument description repeats its name",

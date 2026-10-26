@@ -61,18 +61,40 @@ class NoBroadKeywordCapture(Rule):
             "homogeneous value type. Document genuinely open interfaces with an exact-code reasoned suppression."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes remove only an unused keyword capture with no annotation or proven builtin object on a private unescaped nested synchronous nongenerator helper when every direct call already satisfies the remaining declared signature. They preserve every caller argument and bare-star keyword-only contract. Module/public/callback contracts, other annotations, extra keywords, expanded calls, captures, decorators, type parameters and namespace/frame access remain review-only. Known frame and metadata capabilities, their import aliases and metadata field access prevent fixes.",
+            "Containing callables must also be ordinary synchronous nongenerators with proven inert execution; unknown callouts, properties, overloads, reachable frame-exporting exceptions, and helper references crossing additional function, class, lambda, or comprehension scopes prevent fixes.",
             "This strict interface policy is not proof of incorrect behavior or a universal ban on the object type; genuinely open boundaries use a reasoned exact-code exception.",
             "Reports missing, Any- or object-valued keyword captures whether discarded, read or forwarded.",
             "Precise or unresolved decorated signature-declaration families and functions with unresolved decorator effects are excluded; known classmethod/staticmethod/abstractmethod/final/override declarations remain eligible.",
             "Homogeneous keyword types constrain values but allow arbitrary names; ParamSpec preserves only its target's existing contract.",
             "Generated/vendor source and stubs are excluded. Unresolved imports, wildcard imports, conflicting imports, actual global or definition-time writes and shadowed annotation provenance are conservative. Identical imports and read-only global declarations remain eligible.",
             "Cross-file aliases, external stubs, generated signatures and runtime reflection are not resolved; transparent annotation metadata and ambiguous decorated declaration families can cause conservative false negatives.",
-            "No autofix can infer the intended contract. Dynamic payload/formatting APIs can intentionally need an exact-code exception.",
+            "Open or used captures still require an explicit intended contract. Dynamic payload/formatting APIs can intentionally need an exact-code exception.",
             "Runtime special methods and canonical override declarations retain WARNING because framework and inherited signatures can require an open keyword contract; ordinary declared interfaces use ERROR.",
         ),
         examples=(
+            RuleExample(
+                example_id="safe-private-nested-autofix",
+                title="A closed nested helper has no extra keyword contract to capture",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/adapter.py",
+                        "def adapt(value):\n    def _adapt(value, *, strict=True, **kwargs):\n        return value, strict\n    return _adapt(value, strict=False)\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/adapter.py",
+                        "def adapt(value):\n    def _adapt(value, *, strict=True):\n        return value, strict\n    return _adapt(value, strict=False)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/adapter.py"),
+                expected_count=1,
+                public=False,
+            ),
             RuleExample(
                 example_id="discarded-session-keywords",
                 title="An ignored catch-all weakens a fake's contract",

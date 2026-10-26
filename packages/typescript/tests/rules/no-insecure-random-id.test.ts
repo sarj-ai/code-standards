@@ -3,7 +3,9 @@ import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
 
-import rule, { NO_INSECURE_RANDOM_ID_DOCUMENTATION } from "../../src/rules/no-insecure-random-id.js";
+import rule, {
+  NO_INSECURE_RANDOM_ID_DOCUMENTATION,
+} from "../../src/rules/no-insecure-random-id.js";
 
 import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
 
@@ -20,9 +22,18 @@ const RULE_TESTER = new RuleTester({
 
 RULE_TESTER.run("no-insecure-random-id", rule, {
   valid: [
-    { name: "sampling does not inherit enclosing token function name", code: "function createToken() { const jitter = Math.random(); return crypto.randomUUID(); }" },
-    { name: "branch sampling does not produce the returned token", code: "function createToken() { if (Math.random() < 0.5) observe(); return crypto.randomUUID(); }" },
-    { name: "local Math is not the native random source", code: "function createToken(Math) { return Math.random(); }" },
+    {
+      name: "sampling does not inherit enclosing token function name",
+      code: "function createToken() { const jitter = Math.random(); return crypto.randomUUID(); }",
+    },
+    {
+      name: "branch sampling does not produce the returned token",
+      code: "function createToken() { if (Math.random() < 0.5) observe(); return crypto.randomUUID(); }",
+    },
+    {
+      name: "local Math is not the native random source",
+      code: "function createToken(Math) { return Math.random(); }",
+    },
     { code: NO_INSECURE_RANDOM_ID_DOCUMENTATION.examples[0].files[0].source },
     // Bare `Math.random()` for jitter — not an identifier.
     { code: "const jitter = Math.random() * 100;" },
@@ -71,7 +82,9 @@ RULE_TESTER.run("no-insecure-random-id", rule, {
     { code: "const executionId = 'exec-' + Math.random().toString(36);" },
     { code: "const requestId = Math.random().toString(16);" },
     { code: "const session = Math.random();" },
-    { code: "class ContextIdFactory { private readonly session = Math.random(); }" },
+    {
+      code: "class ContextIdFactory { private readonly session = Math.random(); }",
+    },
     // Bare `id`/`key`/`session` substrings alone no longer fire — we require a
     // strong security signal and err toward suppressing ambiguous ids.
     { code: "const id = Math.random();" },
@@ -93,7 +106,18 @@ RULE_TESTER.run("no-insecure-random-id", rule, {
     },
   ],
   invalid: [
-    { code: NO_INSECURE_RANDOM_ID_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "insecureRandomId" }] },
+    {
+      name: "reuses an existing canonical native UUID provider",
+      filename: NO_INSECURE_RANDOM_ID_DOCUMENTATION.examples[2].focusPath,
+      code: NO_INSECURE_RANDOM_ID_DOCUMENTATION.examples[2].files[0].source,
+      output:
+        NO_INSECURE_RANDOM_ID_DOCUMENTATION.examples[2].fixedFiles[0].source,
+      errors: [{ messageId: "insecureRandomId" }],
+    },
+    {
+      code: NO_INSECURE_RANDOM_ID_DOCUMENTATION.examples[1].files[0].source,
+      errors: [{ messageId: "insecureRandomId" }],
+    },
     // Genuine security-token shapes with the toString(36) idiom are flagged.
     {
       code: "const token = Math.random().toString(36);",
@@ -143,7 +167,6 @@ RULE_TESTER.run("no-insecure-random-id", rule, {
       code: "class S { token = Math.random(); }",
       errors: [{ messageId: "insecureRandomId" }],
     },
-
   ],
 });
 
@@ -256,36 +279,42 @@ RULE_TESTER.run("no-insecure-random-id arithmetic-chain limitation", rule, {
   ],
 });
 
-
 it("preserves outcomes for static member access and unknown member keys", async () => {
   const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "predictable-token-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/session.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/session.ts",
-        "source": "const sessionToken = Math[\"random\"]();"
-      }
-    ]
-  },
-  {
-    "id": "predictable-token-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/session.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/session.ts",
-        "source": "const sessionToken = Math[auditDynamicMember]();"
-      }
-    ]
-  }
-] } });
+  if (documentation === undefined)
+    throw new Error("Missing rule documentation");
+  await verifyRuleExamples({
+    ...rule,
+    documentation: {
+      ...documentation,
+      examples: [
+        {
+          id: "predictable-token-static-member",
+          title: "Static member access preserves the rule outcome",
+          outcome: "match",
+          focusPath: "src/session.ts",
+          expectedCount: 1,
+          files: [
+            {
+              path: "src/session.ts",
+              source: 'const sessionToken = Math["random"]();',
+            },
+          ],
+        },
+        {
+          id: "predictable-token-dynamic-member",
+          title: "Unknown member access does not establish API identity",
+          outcome: "no-match",
+          focusPath: "src/session.ts",
+          expectedCount: 0,
+          files: [
+            {
+              path: "src/session.ts",
+              source: "const sessionToken = Math[auditDynamicMember]();",
+            },
+          ],
+        },
+      ],
+    },
+  });
 });

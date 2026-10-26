@@ -67,8 +67,9 @@ class Stepdown(Rule):
         rationale="Caller-first ordering keeps the module's public flow visible before its implementation details.",
         remediation="Move the private helper below its sole caller without changing either body.",
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes move only unannotated module functions without decorators, type parameters, defaults or comments; class members and observable header evaluation remain review-only.",
             "Generated files, tests, `__main__.py`, mutual recursion, and helpers with multiple callers are excluded.",
             "Decorated definitions and dynamic references that cannot prove a sole caller are not reported.",
             "Only lexically resolved builtin classmethod/staticmethod decorators are transparent; other decorators and executable statements are movement barriers.",
@@ -102,6 +103,25 @@ class Stepdown(Rule):
                 focus_path=PurePosixPath("service.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        ("def _parse(value):\n    return value\n\ndef render(value):\n    return _parse(value)\n"),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        ("\ndef render(value):\n    return _parse(value)\n\ndef _parse(value):\n    return value\n\n"),
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )

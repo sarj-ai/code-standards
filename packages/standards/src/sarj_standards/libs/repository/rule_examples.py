@@ -7,7 +7,7 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] -- repository-ow
 import sys
 from typing import TYPE_CHECKING
 
-from sarj_rule_contracts.examples import ExampleAnalyzer, ExampleFinding, verify_examples
+from sarj_rule_contracts.examples import ExampleAnalyzer, ExampleFinding, ExampleFixer, verify_examples
 
 from sarj_standards.libs.repository import rule_catalog_artifact
 from sarj_standards.libs.rules import Language, RuleEngine, RuleSelector, RuleSpec
@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 class SelectedRule:
     spec: RuleSpec
     analyze: ExampleAnalyzer
+    fix: ExampleFixer | None = None
 
 
 _NODE_VERIFY = """import {rules} from './dist/index.js';
@@ -37,7 +38,7 @@ def verify(root: Path, selector: RuleSelector) -> int:
     if selector.engine is RuleEngine.ESLINT:
         return _typescript(root, selector)
     rule = selected(selector)
-    return verify_examples(rule.spec.examples, rule.analyze, expected_code=rule.spec.code)
+    return verify_examples(rule.spec.examples, rule.analyze, expected_code=rule.spec.code, fix=rule.fix)
 
 
 def selected(selector: RuleSelector) -> SelectedRule:
@@ -85,7 +86,20 @@ def _native(rule_id: str, engine: RuleEngine, rule: type[NativeRule] | None, ana
     def run(_root: Path, focus: Path) -> list[ExampleFinding]:
         return [ExampleFinding(d.path, d.line, d.col, d.code, d.message) for d in analyze([rule_id], [focus])]
 
-    return SelectedRule(spec, run)
+    def fix(_root: Path, path: Path, source: str) -> str:
+        match engine:
+            case RuleEngine.PYTHON:
+                from sarj_python_lint.autofix import fix_source  # ruff: ignore[import-outside-top-level] -- selected engine only.
+            case RuleEngine.SQL:
+                from sarj_sql_lint.autofix import fix_source  # ruff: ignore[import-outside-top-level] -- selected engine only.
+            case RuleEngine.IAC:
+                from sarj_iac_lint.autofix import fix_source  # ruff: ignore[import-outside-top-level] -- selected engine only.
+            case _:
+                msg = f"native fix adapter does not support {engine}"
+                raise ValueError(msg)
+        return fix_source(path, source, rule_ids=(rule_id,))
+
+    return SelectedRule(spec, run, fix)
 
 
 def _text(rule_id: str) -> SelectedRule:
@@ -102,7 +116,10 @@ def _text(rule_id: str) -> SelectedRule:
             for d in textlint.check_paths([str(focus)], root=root, rule_ids=frozenset({rule_id}))
         ]
 
-    return SelectedRule(meta.native_spec(rule_id), run)
+    def fix(root: Path, path: Path, source: str) -> str:
+        return textlint.fix_source(path, source, rule_ids=(rule_id,), root=root)
+
+    return SelectedRule(meta.native_spec(rule_id), run, fix)
 
 
 def _typescript(root: Path, selector: RuleSelector) -> int:

@@ -2200,7 +2200,7 @@ def _precommit_hook(runner_prefix: str, *, hook_indent: int = 6) -> str:
     return (
         f"{item}- id: sarj-standards-check\n"
         f"{field}name: sarj standards -- staged checks\n"
-        f"{field}entry: {runner_prefix} check --staged --trust-repository-code\n"
+        f"{field}entry: {runner_prefix} check --staged --fix --trust-repository-code\n"
         f"{field}language: system\n"
         f"{field}always_run: true\n"
         f"{field}pass_filenames: false\n"

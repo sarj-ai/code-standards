@@ -211,11 +211,13 @@ class PreferWalrusComprehensionFilter(Rule):
             "Keep separate calls or use an explicit loop when each evaluation is meaningful."
         ),
         category=RuleCategory.PERFORMANCE,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Autofix only handles a private nested ordinary synchronous nongenerator helper whose entire body returns one list comprehension over literal exact strings, with one identical call as its filter and result: proven builtin len, or zero-argument strip/lower/upper/lstrip/rstrip/casefold/capitalize/title/swapcase/expandtabs. Exact direct callers, fresh file-wide binding names, and absence of known frame or metadata capabilities are required; public, escaped, generic, variadic, and effectful shapes remain for review.",
+            "Containing callables must also be ordinary synchronous nongenerators with proven inert execution; unknown callouts, properties, overloads, reachable frame-exporting exceptions, and helper references crossing additional function, class, lambda, or comprehension scopes prevent fixes.",
             "Only single-generator comprehensions inside non-test callable bodies are analyzed; generated code and nested or deferred expression scopes are excluded.",
             "Nested calls, differing sibling calls, unsafe short-circuit branches, and recognized type-inspection, consuming, or nondeterministic calls are excluded.",
-            "The rule cannot prove referential transparency. A named expression binds in the containing callable, so the chosen name must be fresh and reviewed.",
+            "General findings cannot prove referential transparency. Outside the exact literal-string autofix subset, a named expression binds in the containing callable, so the chosen name must be fresh and reviewed.",
         ),
         examples=(
             RuleExample(
@@ -245,6 +247,25 @@ class PreferWalrusComprehensionFilter(Rule):
                 focus_path=PurePosixPath("app/values.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix",
+                title="A closed helper normalizes exact literal strings once",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/values.py",
+                        "def normalized():\n    def _normalized():\n        return [value.strip() for value in (' a ', '', ' b ') if value.strip()]\n    return _normalized()\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/values.py",
+                        "def normalized():\n    def _normalized():\n        return [stripped_value for value in (' a ', '', ' b ') if (stripped_value := value.strip())]\n    return _normalized()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/values.py"),
+                expected_count=1,
             ),
         ),
     )

@@ -4,23 +4,86 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/prefer-module-level-constant.test.ts
  */
 
-import { ASTUtils, type TSESTree, type TSESLint, AST_NODE_TYPES } from "@typescript-eslint/utils";
+import {
+  ASTUtils,
+  type TSESTree,
+  type TSESLint,
+  AST_NODE_TYPES,
+} from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { outerExpression, unwrapExpression } from "./_unwrap-expression.js";
 import { isStoryFile, isTestFile } from "./_paths.js";
+import { literalLookupHoistFix } from "./_literal-lookup-hoist-fix.js";
 
 type MessageIds = "hoistCollection" | "hoistRegex";
 
 export const PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION = {
-  summary: "Hoist literal-only constant collections and regexes out of function bodies to module scope so they are allocated once.",
-  rationale: "Recreating immutable lookup data on every call wastes allocations and obscures its constant nature.",
-  remediation: "Declare immutable literal collections and non-stateful regular expressions once at module scope.",
+  summary:
+    "Hoist literal-only constant collections and regexes out of function bodies to module scope so they are allocated once.",
+  rationale:
+    "Recreating immutable lookup data on every call wastes allocations and obscures its constant nature.",
+  remediation:
+    "Declare immutable literal collections and non-stateful regular expressions once at module scope.",
   category: "performance",
-  limitations: ["Small collections, observed direct or nested mutations, nested aliases, direct escapes, and dependencies on local values are excluded. Directly invoked function expressions are excluded rather than assuming they run repeatedly. Callback effects and indirect escapes are not analyzed interprocedurally; review those before hoisting.", "Builtin constructor and non-retaining call assumptions require unshadowed identifiers; local declarations conservatively abstain. Runtime replacement of globals is not modeled."],
+  autofix: "safe",
+  limitations: [
+    "Automatic fixes only hoist an existing readonly literal-string array from a sole exported ordinary function that only returns its native includes lookup on a string parameter. No imports, other declarations, comments, identity escapes or source prototype mutations are permitted.",
+    "Small collections, observed direct or nested mutations, nested aliases, direct escapes, and dependencies on local values are excluded. Directly invoked function expressions are excluded rather than assuming they run repeatedly. Callback effects and indirect escapes are not analyzed interprocedurally; review those before hoisting.",
+    "Builtin constructor and non-retaining call assumptions require unshadowed identifiers; local declarations conservatively abstain. Runtime replacement of globals is not modeled.",
+  ],
   examples: [
-    { id: "hoisted-collection", title: "Hoist a constant collection", outcome: "no-match", files: [{ path: "src/keys.ts", source: "const KEYS = ['a', 'b', 'c'] as const; function isAllowed(key: string) { return KEYS.includes(key); }" }], focusPath: "src/keys.ts", expectedCount: 0, public: true },
-    { id: "local-collection", title: "Do not recreate a constant collection", outcome: "match", files: [{ path: "src/keys.ts", source: "function isAllowed(key: string) { const KEYS = ['a', 'b', 'c']; return KEYS.includes(key); }" }], focusPath: "src/keys.ts", expectedCount: 1, public: true },
+    {
+      id: "hoisted-collection",
+      title: "Hoist a constant collection",
+      outcome: "no-match",
+      files: [
+        {
+          path: "src/keys.ts",
+          source:
+            "const KEYS = ['a', 'b', 'c'] as const; function isAllowed(key: string) { return KEYS.includes(key); }",
+        },
+      ],
+      focusPath: "src/keys.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "local-collection",
+      title: "Do not recreate a constant collection",
+      outcome: "match",
+      files: [
+        {
+          path: "src/keys.ts",
+          source:
+            "function isAllowed(key: string) { const KEYS = ['a', 'b', 'c']; return KEYS.includes(key); }",
+        },
+      ],
+      focusPath: "src/keys.ts",
+      expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "safe-autofix",
+      title: "Apply the proven source-owned correction",
+      outcome: "match",
+      files: [
+        {
+          path: "src/autofix-example.ts",
+          source:
+            "export function isAllowed(key: string) { const KEYS: readonly string[] = ['a', 'b', 'c']; return KEYS.includes(key); }",
+        },
+      ],
+      fixedFiles: [
+        {
+          path: "src/autofix-example.ts",
+          source:
+            "const KEYS: readonly string[] = ['a', 'b', 'c'];\nexport function isAllowed(key: string) { return KEYS.includes(key); }",
+        },
+      ],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -79,7 +142,9 @@ function isIgnoredFile(filename: string, sourceText: string): boolean {
   return /@generated\b/.test(sourceText.slice(0, 1024));
 }
 
-function isLocalFixtureFile(filename: Parameters<typeof isTestFile>[0]): boolean {
+function isLocalFixtureFile(
+  filename: Parameters<typeof isTestFile>[0],
+): boolean {
   return isTestFile(filename) || isStoryFile(filename);
 }
 
@@ -117,7 +182,9 @@ function isLiteralOnly(node: TSESTree.Node, depth: number): boolean {
       // stateful regex nested in a collection — `const patterns = [/a/g, /b/]`
       // — bypassed the top-level `g`/`y` check and the recommended hoist would
       // have carried `lastIndex` across calls.
-      return !(isRegexLiteral(inner) && HAS_STATEFUL_FLAG_RE.test(inner.regex.flags));
+      return !(
+        isRegexLiteral(inner) && HAS_STATEFUL_FLAG_RE.test(inner.regex.flags)
+      );
     }
     case AST_NODE_TYPES.TemplateLiteral: {
       return inner.expressions.length === 0;
@@ -161,7 +228,11 @@ function isLiteralOnly(node: TSESTree.Node, depth: number): boolean {
  * Classifies the initializer, or returns null when it is not a hoistable
  * literal-only collection / regex.
  */
-function classify(init: TSESTree.Node, checkRegex: boolean, sourceCode: Readonly<TSESLint.SourceCode>): Candidate | null {
+function classify(
+  init: TSESTree.Node,
+  checkRegex: boolean,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): Candidate | null {
   const node = unwrapObjectFreeze(init, sourceCode);
 
   if (isRegexLiteral(node)) {
@@ -203,9 +274,15 @@ type Candidate =
   | { kind: "regex"; size: number };
 
 /** `Object.freeze(x)` → `x`; anything else is returned untouched. */
-function unwrapObjectFreeze(node: TSESTree.Node, sourceCode: Readonly<TSESLint.SourceCode>): TSESTree.Node {
+function unwrapObjectFreeze(
+  node: TSESTree.Node,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): TSESTree.Node {
   const inner = unwrap(node);
-  const callee = inner.type === AST_NODE_TYPES.CallExpression ? unwrapExpression(inner.callee) : null;
+  const callee =
+    inner.type === AST_NODE_TYPES.CallExpression
+      ? unwrapExpression(inner.callee)
+      : null;
   if (
     inner.type === AST_NODE_TYPES.CallExpression &&
     callee?.type === AST_NODE_TYPES.MemberExpression &&
@@ -240,35 +317,42 @@ function enclosingFunction(node: TSESTree.Node): TSESTree.Node | null {
  * Built-ins that read their argument and return a fresh value without keeping
  * or mutating the original, so passing the binding to them is still a read.
  */
-const NON_RETAINING_BUILTINS: ReadonlyMap<string, ReadonlySet<string>> = new Map(
+const NON_RETAINING_BUILTINS: ReadonlyMap<
+  string,
+  ReadonlySet<string>
+> = new Map([
   [
-    [
-      "Object",
-      new Set(["keys", "values", "entries", "freeze", "fromEntries", "assign"]),
-    ],
-    ["Array", new Set(["from", "isArray"])],
-    ["JSON", new Set(["stringify"])],
+    "Object",
+    new Set(["keys", "values", "entries", "freeze", "fromEntries", "assign"]),
   ],
-);
+  ["Array", new Set(["from", "isArray"])],
+  ["JSON", new Set(["stringify"])],
+]);
 
-function isSafeRead(identifier: TSESTree.Identifier, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+function isSafeRead(
+  identifier: TSESTree.Identifier,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): boolean {
   let typeOwner: TSESTree.Node = identifier.parent;
-  while (typeOwner.type === AST_NODE_TYPES.TSQualifiedName) typeOwner = typeOwner.parent;
+  while (typeOwner.type === AST_NODE_TYPES.TSQualifiedName)
+    typeOwner = typeOwner.parent;
   if (typeOwner.type === AST_NODE_TYPES.TSTypeQuery) return true;
   let value: TSESTree.Expression = identifier;
   let parent = value.parent;
-  while (unwrapExpression(parent) !== parent && "expression" in parent && parent.expression === value) {
+  while (
+    unwrapExpression(parent) !== parent &&
+    "expression" in parent &&
+    parent.expression === value
+  ) {
     value = parent as TSESTree.Expression;
     parent = value.parent;
   }
 
-  if (parent.type === AST_NODE_TYPES.MemberExpression) return isSafeMemberRead(value, parent);
+  if (parent.type === AST_NODE_TYPES.MemberExpression)
+    return isSafeMemberRead(value, parent);
 
   // `for (const x of X)` — iteration is a read.
-  if (
-    parent.type === AST_NODE_TYPES.ForOfStatement &&
-    parent.right === value
-  ) {
+  if (parent.type === AST_NODE_TYPES.ForOfStatement && parent.right === value) {
     return true;
   }
 
@@ -309,7 +393,10 @@ function isNonRetainingBuiltinCall(
 ): boolean {
   const callee = unwrapExpression(node.callee);
 
-  const calleeReceiver = callee.type === AST_NODE_TYPES.MemberExpression ? unwrapExpression(callee.object) : callee;
+  const calleeReceiver =
+    callee.type === AST_NODE_TYPES.MemberExpression
+      ? unwrapExpression(callee.object)
+      : callee;
   if (
     callee.type === AST_NODE_TYPES.Identifier &&
     callee.name === "structuredClone"
@@ -337,8 +424,14 @@ function isNonRetainingBuiltinCall(
   return true;
 }
 
-function isUnshadowedBuiltin(identifier: TSESTree.Identifier, sourceCode: Readonly<TSESLint.SourceCode>): boolean {
-  return (ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name)?.defs.length ?? 0) === 0;
+function isUnshadowedBuiltin(
+  identifier: TSESTree.Identifier,
+  sourceCode: Readonly<TSESLint.SourceCode>,
+): boolean {
+  return (
+    (ASTUtils.findVariable(sourceCode.getScope(identifier), identifier.name)
+      ?.defs.length ?? 0) === 0
+  );
 }
 
 export default createRule<Options, MessageIds>({
@@ -346,6 +439,7 @@ export default createRule<Options, MessageIds>({
   documentation: PREFER_MODULE_LEVEL_CONSTANT_DOCUMENTATION,
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: {
       description:
         "Hoist literal-only constant collections and regexes out of function bodies to module scope so they are allocated once.",
@@ -432,11 +526,17 @@ export default createRule<Options, MessageIds>({
           return;
         }
         let expression = owner;
-        while (expression.parent !== undefined && unwrap(expression.parent) === expression) {
+        while (
+          expression.parent !== undefined &&
+          unwrap(expression.parent) === expression
+        ) {
           expression = expression.parent;
         }
-        if (expression.parent?.type === AST_NODE_TYPES.CallExpression &&
-          expression.parent.callee === expression) return;
+        if (
+          expression.parent?.type === AST_NODE_TYPES.CallExpression &&
+          expression.parent.callee === expression
+        )
+          return;
 
         const candidate = classify(node.init, checkRegex, sourceCode);
         if (candidate === null) {
@@ -451,6 +551,7 @@ export default createRule<Options, MessageIds>({
 
         context.report({
           node: node.id,
+          fix: literalLookupHoistFix(sourceCode, node),
           messageId:
             candidate.kind === "regex" ? "hoistRegex" : "hoistCollection",
           data: { name: node.id.name, kind: candidate.kind },
@@ -460,7 +561,10 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function classifyCollection(node: TSESTree.NewExpression, constructorName: string): Candidate | null {
+function classifyCollection(
+  node: TSESTree.NewExpression,
+  constructorName: string,
+): Candidate | null {
   const arg = node.arguments[0];
   if (
     node.arguments.length !== 1 ||
@@ -474,21 +578,34 @@ function classifyCollection(node: TSESTree.NewExpression, constructorName: strin
     return null;
   }
   return isLiteralOnly(entries, 0)
-    ? { kind: constructorName === "Set" ? "Set" : "Map", size: entries.elements.length }
+    ? {
+        kind: constructorName === "Set" ? "Set" : "Map",
+        size: entries.elements.length,
+      }
     : null;
 }
 
-function isSafeMemberRead(identifier: TSESTree.Expression, parent: TSESTree.MemberExpression): boolean {
+function isSafeMemberRead(
+  identifier: TSESTree.Expression,
+  parent: TSESTree.MemberExpression,
+): boolean {
   if (parent.object !== identifier) {
     // `foo[X]` — the binding is used as a key, which is a plain read.
     return true;
   }
-  while (parent.parent.type === AST_NODE_TYPES.MemberExpression && parent.parent.object === parent) {
+  while (
+    parent.parent.type === AST_NODE_TYPES.MemberExpression &&
+    parent.parent.object === parent
+  ) {
     parent = parent.parent;
   }
   const usage = outerExpression(parent);
   const grandparent = usage.parent;
-  if (grandparent.type === AST_NODE_TYPES.VariableDeclarator || grandparent.type === AST_NODE_TYPES.SpreadElement) return false;
+  if (
+    grandparent.type === AST_NODE_TYPES.VariableDeclarator ||
+    grandparent.type === AST_NODE_TYPES.SpreadElement
+  )
+    return false;
   // `X.a = 1`, `X[0] = 1`, `X.a += 1`
   if (
     grandparent.type === AST_NODE_TYPES.AssignmentExpression &&
@@ -511,12 +628,12 @@ function isSafeMemberRead(identifier: TSESTree.Expression, parent: TSESTree.Memb
   if (
     grandparent.type === AST_NODE_TYPES.CallExpression &&
     grandparent.callee === usage &&
-    (ASTUtils.getPropertyName(parent) === null || MUTATING_METHODS.has(ASTUtils.getPropertyName(parent) ?? ""))
+    (ASTUtils.getPropertyName(parent) === null ||
+      MUTATING_METHODS.has(ASTUtils.getPropertyName(parent) ?? ""))
   ) {
     return false;
   }
   // Other member reads retain the existing heuristic; this is not an
   // interprocedural proof that callbacks or returned children cannot mutate.
   return true;
-
 }

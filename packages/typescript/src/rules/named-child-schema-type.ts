@@ -25,7 +25,7 @@ export const NAMED_CHILD_SCHEMA_TYPE_DOCUMENTATION = {
   rationale: "Repeating a child schema's generic contract creates a second maintained declaration even though the record already uses that child at runtime.",
   remediation: "Replace only the matching record type argument with `typeof ChildSchema`, or share one explicit named schema type alias between child and record to retain an independently named public contract. Keep the outer annotation required by isolatedDeclarations and every runtime schema operation.",
   category: "maintainability",
-  autofix: "none",
+  autofix: "safe",
   limitations: [
     "Only direct module-level const z.record calls with two arguments, a ZodRecord annotation, and an earlier local const child with a complete explicit Zod type are inspected.",
     "The entire generic child annotation must match token for token; input/output, defaults, transforms, readonly modifiers and brands are never compared by output shape alone.",
@@ -35,6 +35,15 @@ export const NAMED_CHILD_SCHEMA_TYPE_DOCUMENTATION = {
   examples: [
     { id: "named-child", title: "Reference the named child contract", outcome: "no-match", files: [{ path: "src/record.ts", source: 'import { z } from "zod"; const KeySchema: z.ZodEnum<{ a: "a"; b: "b" }> = z.enum(["a", "b"]); export const RecordSchema: z.ZodRecord<typeof KeySchema, z.ZodString> = z.record(KeySchema, z.string());' }], focusPath: "src/record.ts", expectedCount: 0, public: true },
     { id: "copied-child", title: "Do not repeat the complete child annotation", outcome: "match", files: [{ path: "src/record.ts", source: 'import { z } from "zod"; const KeySchema: z.ZodEnum<{ a: "a"; b: "b" }> = z.enum(["a", "b"]); export const RecordSchema: z.ZodRecord<z.ZodEnum<{ a: "a"; b: "b" }>, z.ZodString> = z.record(KeySchema, z.string());' }], focusPath: "src/record.ts", expectedCount: 1, public: true },
+    {
+      id: "safe-autofix",
+      title: "Apply the proven automatic correction",
+      outcome: "match",
+      files: [{ path: "src/autofix-example.ts", source: "import { z } from \"zod\"; const KeySchema: z.ZodEnum<{ a: \"a\" }> = z.enum([\"a\"]); const RecordSchema: z.ZodRecord<z.ZodEnum<{ a: \"a\" }>, z.ZodString> = z.record(KeySchema, z.string());" }],
+      fixedFiles: [{ path: "src/autofix-example.ts", source: "import { z } from \"zod\"; const KeySchema: z.ZodEnum<{ a: \"a\" }> = z.enum([\"a\"]); const RecordSchema: z.ZodRecord<typeof KeySchema, z.ZodString> = z.record(KeySchema, z.string());" }],
+      focusPath: "src/autofix-example.ts",
+      expectedCount: 1,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -50,6 +59,7 @@ export default createRule<Options, MessageIds>({
   documentation: NAMED_CHILD_SCHEMA_TYPE_DOCUMENTATION,
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: { description: NAMED_CHILD_SCHEMA_TYPE_DOCUMENTATION.summary },
     schema: [],
     messages: { namedChildType: "Use `typeof {{name}}` or one shared named type alias for this exact child contract; keep the outer schema annotation and runtime operations." },
@@ -88,7 +98,12 @@ export default createRule<Options, MessageIds>({
       const expected = source.getTokens(annotation);
       const actual = source.getTokens(repeated);
       if (expected.length !== actual.length || expected.some((token, index) => token.type !== actual[index]?.type || token.value !== actual[index]?.value)) return;
-      context.report({ node: repeated, messageId: "namedChildType", data: { name: argument.name } });
+      context.report({
+        node: repeated,
+        messageId: "namedChildType",
+        data: { name: argument.name },
+        fix: (fixer) => fixer.replaceText(repeated, `typeof ${source.getText(argument)}`),
+      });
     }
 
     function factoryNamespace(expression: TSESTree.Node): TSESLint.Scope.Variable | null {

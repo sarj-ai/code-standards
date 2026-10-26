@@ -80,6 +80,15 @@ TESTER.run("no-contradictory-type-predicate", rule, {
     { name: "generated ownership", filename: 'guard.generated.ts', code: 'function check(v: unknown): v is string { return typeof v === "number"; }' },
   ],
   invalid: [
+    { name: "preserves the sole named contradictory predicate binding", code: "export {}; type Numeric = number; function check(v: unknown): v is Numeric { return typeof v === \"string\"; }", output: null, errors: [{ messageId: "contradictoryPredicate" }] },
+    { name: "corrects a contradiction with an independent exported type use", code: "export type Kept = Numeric; type Numeric = number; function check(v: unknown): v is Numeric { return typeof v === \"string\"; }", output: "export type Kept = Numeric; type Numeric = number; function check(v: unknown): boolean { return typeof v === \"string\"; }", errors: [{ messageId: "contradictoryPredicate" }] },
+    { name: "corrects an unused private primitive guard", code: "export {}; function check(v:unknown): v is string { return typeof v === \"number\"; }", output: "export {}; function check(v:unknown): boolean { return typeof v === \"number\"; }", errors: [{ messageId: "contradictoryPredicate" }] },
+    { name: "corrects an unused private closed-domain guard", code: "export {}; function check(v:unknown): v is \"ready\" { return typeof v === \"string\"; }", output: "export {}; function check(v:unknown): boolean { return typeof v === \"string\"; }", errors: [{ messageId: "closedLiteralPredicate" }] },
+    { name: "corrects an unused private array guard", code: "export {}; function check(v:unknown): v is string[] { return Array.isArray(v); }", output: "export {}; function check(v:unknown): boolean { return Array.isArray(v); }", errors: [{ messageId: "uncheckedArrayElements" }] },
+    { name: "preserves a consumed guard contract", code: "export {}; function check(v:unknown): v is string { return typeof v === \"number\"; } consume(check);", output: null, errors: [{ messageId: "contradictoryPredicate" }] },
+    { name: "preserves an exported guard contract", code: "export function check(v:unknown): v is string { return typeof v === \"number\"; }", output: null, errors: [{ messageId: "contradictoryPredicate" }] },
+    { name: "preserves a dynamic private guard reference", code: "export {}; function check(v:unknown): v is string { return typeof v === \"number\"; } eval(\"check\");", output: null, errors: [{ messageId: "contradictoryPredicate" }] },
+    { name: "preserves useful predicate comments", code: "export {}; function check(v:unknown): v is /* reviewed boundary */ string { return typeof v === \"number\"; }", output: null, errors: [{ messageId: "contradictoryPredicate" }] },
     { name: "public contradictory predicate", code: NO_CONTRADICTORY_TYPE_PREDICATE_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "contradictoryPredicate" }] },
     ...[
       ["number promised but string checked", 'function check(v: unknown): v is number { return typeof v === "string"; }'],

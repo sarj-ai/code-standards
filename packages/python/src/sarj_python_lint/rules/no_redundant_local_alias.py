@@ -77,6 +77,19 @@ _TYPE_COMMENT = re.compile(r"#\s*type\s*:")
 _NAME_PAIR = re.compile(r"\b(?P<target>[A-Za-z_]\w*)[\s)\\]*=[\s(\\]*(?P<source>[A-Za-z_]\w*)\b(?=[\s),;\\]|$)")
 
 
+_SAFE_ALIAS_ORIGINAL = (
+    "def render(item):\n"
+    "    def _record(value):\n"
+    "        payload = value\n"
+    "        return dict(payload=payload)\n"
+    "    return _record(item)\n"
+)
+
+_SAFE_ALIAS_FIXED = (
+    "def render(item):\n    def _record(value):\n        return dict(payload=value)\n    return _record(item)\n"
+)
+
+
 @final
 class NoRedundantLocalAlias(Rule):
     id = "no-redundant-local-alias"
@@ -99,7 +112,8 @@ class NoRedundantLocalAlias(Rule):
             "Files with wildcard imports, Pydantic imports or references to known namespace readers, dynamic attribute getters or reference-count observers are excluded. Wildcard exports cannot establish builtin identity; computed type names can consume caller-local bindings without a Name read in the AST.",
             "Dynamic class construction and class-valued references to type are excluded. Direct, unshadowed unary type(value) queries and standard-library dataclasses remain supported.",
             "Generated source, stubs and malformed input are excluded; files must compile with normal module execution flags. Arbitrary external frame introspection is not modeled.",
-            "Safe fixes are limited to undecorated module functions with one required parameter, an optional existing docstring, a clean single-line alias and a tail return of unshadowed builtin dict with exactly the matching keyword. Recorded dict bindings, visible attribute/subscript writes, setter, mapping-mutator, ior, methodcaller or patch references, unittest imports, `|=` assignments, comments, non-UTF8 encodings, type parameters and visible code-object inspection prevent fixes. Mutation guards also exclude unrelated ordinary mappings, nonmutating methodcaller uses, harmless unittest imports and integer `|=` assignments. Other calls remain diagnostic-only; arbitrary external tracing, reflection and monkeypatching are not modeled.",
+            "Native diagnostic fixes are limited to undecorated module functions with one required parameter, an optional existing docstring, a clean single-line alias and a tail return of unshadowed builtin dict with exactly the matching keyword. Recorded dict bindings, visible attribute/subscript writes, setter, mapping-mutator, ior, methodcaller or patch references, unittest imports, `|=` assignments, comments, non-UTF8 encodings, type parameters and visible function, frame or coroutine code-object inspection prevent fixes. Mutation guards also exclude unrelated ordinary mappings, nonmutating methodcaller uses, harmless unittest imports and integer `|=` assignments. Other calls remain diagnostic-only; arbitrary external tracing, reflection and monkeypatching are not modeled.",
+            "The central fixer also retains its separate closed nested private one-parameter helper profile: the whole body forwards one unannotated alias into a returned canonical builtin dict. Its closed-call, comment, annotation, escape, builtin and metadata-observation guards remain independent of native diagnostic fixes; a finding is edited through only one validated path.",
             "Readability judgments, multiple reads, positional forwarding and more complex control flow remain outside the contract.",
         ),
         examples=(
@@ -175,6 +189,27 @@ class NoRedundantLocalAlias(Rule):
                         "def render(enabled):\n    if not enabled:\n        return None\n    item = make_item()\n    return build(payload=item)\n",
                     ),
                 ),
+                focus_path=PurePosixPath("case.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="safe-closed-dict-alias",
+                title="A closed private dict wrapper preserves the original value",
+                scenario="closed-dict-identity",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("case.py", _SAFE_ALIAS_ORIGINAL),),
+                fixed_files=(ExampleFile.python("case.py", _SAFE_ALIAS_FIXED),),
+                focus_path=PurePosixPath("case.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="direct-closed-dict-value",
+                title="The same keyword receives the original parameter",
+                scenario="closed-dict-identity",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.python("case.py", _SAFE_ALIAS_FIXED),),
                 focus_path=PurePosixPath("case.py"),
                 expected_count=0,
                 public=True,

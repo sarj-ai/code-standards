@@ -522,6 +522,7 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
     },
   ],
   invalid: [
+    { name: "automatically removes only exact multiword member names", code: "interface Client {\n  /** Read user. */\n  readUser(): void;\n  /** Write user. */\n  writeUser(): void;\n  /** Delete user. */\n  deleteUser(): void;\n}", output: "interface Client {\n\n  readUser(): void;\n\n  writeUser(): void;\n\n  deleteUser(): void;\n}", errors: [{ messageId: "commentWall" }] },
     // typeorm/src/driver/sap/SapConnectionCredentialsOptions.ts:4 — ten members,
     // ten comments, every one "Database <the member's name>."
     {
@@ -548,6 +549,7 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "  errorBoundary: unknown;",
         "}",
       ].join("\n"),
+      output: "type RouteModule = {\n  // links\n  links: unknown;\n\n  // meta\n  meta: unknown;\n\n\n  clientLoader: unknown;\n\n\n  errorBoundary: unknown;\n}",
       errors: [{ messageId: "commentWall" }],
     },
     // A one-word restatement per row is still a wall: no blank lines, no runs,

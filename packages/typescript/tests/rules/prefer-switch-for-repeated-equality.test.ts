@@ -1,4 +1,5 @@
-// vitest: shared-module-graph
+import { join } from "node:path";
+
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, it } from "vitest";
@@ -25,8 +26,11 @@ RULE_TESTER.run("prefer-switch-for-repeated-equality", rule, {
     "switch (kind) { case 'a': a(); break; case 'b': b(); break; case 'c': c(); break; }",
   ],
   invalid: [
+    { name: "fixes terminating branches with an explicit final else", code: "function dispatch(kind: string): number { if (kind === 'a') return 1; else if (kind === 'b') return 2; else if (kind === 'c') return 3; else return 0; }", output: "function dispatch(kind: string): number { switch (kind) {\ncase 'a': { return 1; }\ncase 'b': { return 2; }\ncase 'c': { return 3; }\ndefault: { return 0; }\n} }", errors: [{ messageId: "preferSwitch" }] },
+    { name: "does not add unreachable breaks after never-returning calls", code: "declare function fail(): never; function dispatch(kind: string) { if (kind === 'a') fail(); else if (kind === 'b') fail(); else if (kind === 'c') fail(); }", output: null, errors: [{ messageId: "preferSwitch" }] },
+    { name: "does not add unreachable breaks after infinite loops", code: "function dispatch(kind: string) { if (kind === 'a') while (true) {} else if (kind === 'b') return 1; else if (kind === 'c') return 2; }", output: null, errors: [{ messageId: "preferSwitch" }] },
     {
-      code: "function dispatch(kind) { if (kind === 'a') a(); else if ('b' === kind) b(); else if (kind === 'c') c(); else fallback(); }",
+      code: "function dispatch(kind) { if (kind === 'a') a(); else if ('b' === kind) b(); else if (kind === 'c') c(); else fallback(); }", output: null,
       errors: [{ messageId: "preferSwitch", data: { discriminant: "kind" } }],
     },
   ],
@@ -41,8 +45,25 @@ RULE_TESTER.run("prefer-switch native discriminant identity", rule, {
     { name: "loose-comparison", code: "function probe(kind){if(kind=='a')return 1;else if(kind=='b')return 2;else if(kind=='c')return 3;return 0;}\nconsole.log(JSON.stringify([\"a\",\"b\",\"c\",\"d\"].map(probe)));" },
   ],
   invalid: [
-    { name: "plain", code: "function probe(kind){if(kind==='a')return 1;else if(kind==='b')return 2;else if(kind==='c')return 3;return 0;}\nconsole.log(JSON.stringify([\"a\",\"b\",\"c\",\"d\"].map(probe)));", errors: [{ messageId: "preferSwitch" }] },
-    { name: "escaped-first", code: "function probe(kind){if(\\u006bind==='a')return 1;else if(kind==='b')return 2;else if(kind==='c')return 3;return 0;}\nconsole.log(JSON.stringify([\"a\",\"b\",\"c\",\"d\"].map(probe)));", errors: [{ messageId: "preferSwitch" }] },
-    { name: "escaped-middle", code: "function probe(kind){if(kind==='a')return 1;else if(\\u006bind==='b')return 2;else if(kind==='c')return 3;return 0;}\nconsole.log(JSON.stringify([\"a\",\"b\",\"c\",\"d\"].map(probe)));", errors: [{ messageId: "preferSwitch" }] },
+    { name: "plain", code: "function probe(kind){if(kind==='a')return 1;else if(kind==='b')return 2;else if(kind==='c')return 3;return 0;}\nconsole.log(JSON.stringify([\"a\",\"b\",\"c\",\"d\"].map(probe)));", output: null, errors: [{ messageId: "preferSwitch" }] },
+    { name: "escaped-first", code: "function probe(kind){if(\\u006bind==='a')return 1;else if(kind==='b')return 2;else if(kind==='c')return 3;return 0;}\nconsole.log(JSON.stringify([\"a\",\"b\",\"c\",\"d\"].map(probe)));", output: null, errors: [{ messageId: "preferSwitch" }] },
+    { name: "escaped-middle", code: "function probe(kind){if(kind==='a')return 1;else if(\\u006bind==='b')return 2;else if(kind==='c')return 3;return 0;}\nconsole.log(JSON.stringify([\"a\",\"b\",\"c\",\"d\"].map(probe)));", output: null, errors: [{ messageId: "preferSwitch" }] },
+  ],
+});
+
+
+const TYPED_TESTER = new RuleTester({
+  languageOptions: { parser: tsParser, parserOptions: {
+    projectService: { allowDefaultProject: ["*.ts*"] },
+    tsconfigRootDir: join(import.meta.dirname, "..", "fixtures"),
+  } },
+});
+
+TYPED_TESTER.run("prefer-switch preserves TypeScript exhaustiveness", rule, {
+  valid: [],
+  invalid: [
+    { name: "preserves a finite-domain implicit unmatched return path", code: "function probe(kind: 'a' | 'b' | 'c'): number { if (kind === 'a') return 1; else if (kind === 'b') return 2; else if (kind === 'c') return 3; return 0; }", output: null, errors: [{ messageId: "preferSwitch" }] },
+    { name: "preserves flow narrowing to a finite domain", code: "function probe(kind: string): number { if (kind !== 'a' && kind !== 'b' && kind !== 'c') return 0; if (kind === 'a') return 1; else if (kind === 'b') return 2; else if (kind === 'c') return 3; return 4; }", output: null, errors: [{ messageId: "preferSwitch" }] },
+    { name: "fixes a proven open string domain without changing exhaustiveness", code: "function probe(kind: string): number { if (kind === 'a') return 1; else if (kind === 'b') return 2; else if (kind === 'c') return 3; return 0; }", output: "function probe(kind: string): number { switch (kind) {\ncase 'a': { return 1; }\ncase 'b': { return 2; }\ncase 'c': { return 3; }\n} return 0; }", errors: [{ messageId: "preferSwitch" }] },
   ],
 });

@@ -7,6 +7,7 @@
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { existingFactoryContractFix } from "./_existing-factory-contract-fix.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "./_paths.js";
 
 type MessageIds = "requireContract";
@@ -20,13 +21,16 @@ interface ClassBinding {
 
 export const REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION = {
   defaultLevel: "error",
-  summary: "Require exported concrete classes with public behavior to declare a contract.",
+  summary:
+    "Require exported concrete classes with public behavior to declare a contract.",
   rationale:
     "An explicit contract names the intended public capability separately from implementation details. TypeScript already supports structural compatibility; this is an architecture policy, not a prerequisite for substitution.",
   remediation:
     "Declare a focused interface and add an implements clause, or inherit from an intentional base contract.",
   category: "architecture",
+  autofix: "safe",
   limitations: [
+    "Automatic fixes only add the exact existing closed type alias named by an already-authored direct factory return annotation. A complete comment-free four-declaration module must contain one exported closed object type alias containing one zero-argument void method, one local matching worker interface, one ordinary nonabstract nongeneric class with an empty constructor retaining a private readonly worker parameter and one matching public forwarding method, and one exported ordinary required-worker-parameter factory returning that exact new class as the port. Unique lexical bindings, no heritage/decorators/defaults/imports/merges/other members or authority, and exact existing types/calls are required. Mergeable public interfaces are refused because downstream declaration augmentation can introduce a private-field compatibility error. No contract, method, field, import or name is invented; emitted JavaScript remains identical. Other shapes remain manual.",
     "JavaScript files are excluded because implements is TypeScript syntax; imported framework base contracts still require manual policy review.",
     "An exported injected service may also receive require-port-for-service: the two diagnostics intentionally enforce distinct service-boundary and general exported-contract policy scopes.",
     "The rule checks module-level class declarations and direct class-expression values exported directly, through local export specifiers, or through a default identifier; re-exports and expressions wrapped in other calls require review.",
@@ -64,6 +68,27 @@ export const REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION = {
       expectedCount: 1,
       public: true,
     },
+    {
+      id: "safe-autofix",
+      title: "The existing factory already names the service contract",
+      outcome: "match",
+      files: [
+        {
+          path: "src/service.ts",
+          source:
+            "export type Port = { run(): void; };\ninterface Worker { run(): void; }\nexport class Service { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }\nexport function create(worker: Worker): Port { return new Service(worker); }",
+        },
+      ],
+      fixedFiles: [
+        {
+          path: "src/service.ts",
+          source:
+            "export type Port = { run(): void; };\ninterface Worker { run(): void; }\nexport class Service implements Port { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }\nexport function create(worker: Worker): Port { return new Service(worker); }",
+        },
+      ],
+      focusPath: "src/service.ts",
+      expectedCount: 1,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -84,11 +109,13 @@ function hasPublicInstanceBehavior(node: ClassLike): boolean {
       member.accessibility === "private" ||
       member.accessibility === "protected" ||
       member.key.type === AST_NODE_TYPES.PrivateIdentifier
-    ) return false;
+    )
+      return false;
     return (
       member.value?.type === AST_NODE_TYPES.ArrowFunctionExpression ||
       member.value?.type === AST_NODE_TYPES.FunctionExpression ||
-      member.typeAnnotation?.typeAnnotation.type === AST_NODE_TYPES.TSFunctionType
+      member.typeAnnotation?.typeAnnotation.type ===
+        AST_NODE_TYPES.TSFunctionType
     );
   });
 }
@@ -96,9 +123,10 @@ function hasPublicInstanceBehavior(node: ClassLike): boolean {
 function classBindings(
   statement: TSESTree.ProgramStatement,
 ): readonly ClassBinding[] {
-  const declaration = statement.type === AST_NODE_TYPES.ExportNamedDeclaration
-    ? statement.declaration
-    : statement;
+  const declaration =
+    statement.type === AST_NODE_TYPES.ExportNamedDeclaration
+      ? statement.declaration
+      : statement;
   if (declaration?.type === AST_NODE_TYPES.ClassDeclaration) {
     return declaration.id === null
       ? []
@@ -107,7 +135,7 @@ function classBindings(
   if (declaration?.type !== AST_NODE_TYPES.VariableDeclaration) return [];
   return declaration.declarations.flatMap((item) =>
     item.id.type === AST_NODE_TYPES.Identifier &&
-      item.init?.type === AST_NODE_TYPES.ClassExpression
+    item.init?.type === AST_NODE_TYPES.ClassExpression
       ? [{ declaration: item.init, name: item.id.name }]
       : [],
   );
@@ -123,6 +151,7 @@ export default createRule<Options, MessageIds>({
         "Require exported concrete classes with public behavior to declare a contract.",
     },
     schema: [],
+    fixable: "code",
     messages: {
       requireContract:
         "Exported class `{{name}}` has public behavior but no declared interface or base contract; add a focused contract and implement it.",
@@ -135,19 +164,24 @@ export default createRule<Options, MessageIds>({
       isTestFile(context) ||
       isStoryFile(context) ||
       isGeneratedFile(context, context.sourceCode.text)
-    ) return {};
+    )
+      return {};
     return {
       "Program:exit"(program): void {
         const classes = new Map<string, ClassLike>();
         const abstractBases = new Set<string>();
-        function collectClassBindings(statement: TSESTree.ProgramStatement): void {
+        function collectClassBindings(
+          statement: TSESTree.ProgramStatement,
+        ): void {
           for (const binding of classBindings(statement)) {
             classes.set(binding.name, binding.declaration);
             if (binding.declaration.abstract) abstractBases.add(binding.name);
           }
         }
 
-        for (const statement of program.body) { collectClassBindings(statement); }
+        for (const statement of program.body) {
+          collectClassBindings(statement);
+        }
 
         const exported = exportedClasses(program, classes);
 
@@ -160,11 +194,13 @@ export default createRule<Options, MessageIds>({
             declaration.implements.length > 0 ||
             extendsLocalAbstractBase ||
             !hasPublicInstanceBehavior(declaration)
-          ) continue;
+          )
+            continue;
           context.report({
             node: declaration.id ?? declaration,
             messageId: "requireContract",
             data: { name: exportedName },
+            fix: existingFactoryContractFix(context.sourceCode, declaration),
           });
         }
       },
@@ -172,7 +208,10 @@ export default createRule<Options, MessageIds>({
   },
 });
 
-function exportedClasses(program: TSESTree.Program, classes: ReadonlyMap<string, ClassLike>): Map<ClassLike, string> {
+function exportedClasses(
+  program: TSESTree.Program,
+  classes: ReadonlyMap<string, ClassLike>,
+): Map<ClassLike, string> {
   const exported = new Map<ClassLike, string>();
   function collectExportedClass(statement: TSESTree.ProgramStatement): void {
     if (statement.type === AST_NODE_TYPES.ExportNamedDeclaration) {
@@ -200,20 +239,24 @@ function exportedClasses(program: TSESTree.Program, classes: ReadonlyMap<string,
     }
   }
 
-  function collectClassSpecifiers(statement: Extract<TSESTree.ExportNamedDeclaration, { source: null }>): void {
+  function collectClassSpecifiers(
+    statement: Extract<TSESTree.ExportNamedDeclaration, { source: null }>,
+  ): void {
     for (const specifier of statement.specifiers) {
       if (specifier.exportKind === "type") continue;
       const candidate = classes.get(specifier.local.name);
       if (candidate === undefined) continue;
-      const exportedName = specifier.exported.type === AST_NODE_TYPES.Identifier
-        ? specifier.exported.name
-        : specifier.exported.value;
+      const exportedName =
+        specifier.exported.type === AST_NODE_TYPES.Identifier
+          ? specifier.exported.name
+          : specifier.exported.value;
       exported.set(candidate, exportedName);
     }
-
   }
 
-  for (const statement of program.body) { collectExportedClass(statement); }
+  for (const statement of program.body) {
+    collectExportedClass(statement);
+  }
 
   return exported;
 }

@@ -1944,7 +1944,7 @@ def _invoke_ruff_projects(
     runner: ProcessRunner,
 ) -> tuple[ToolReport, ...]:
     reports: list[ToolReport] = []
-    for project, config, scoped_files in _group_ruff_projects(files, root):
+    for project, config, scoped_files in ruff_project_groups(files, root):
         project_id = None if project == root else project.relative_to(root).as_posix()
         report = _invoke(
             "ruff",
@@ -2323,7 +2323,7 @@ def _nearest_analyzer_project(
     return fallback or _nearest_project(start, root, ("pyproject.toml",))
 
 
-def _group_ruff_projects(files: Sequence[str], root: Path) -> tuple[tuple[Path, Path | None, tuple[str, ...]], ...]:
+def ruff_project_groups(files: Sequence[str], root: Path) -> tuple[tuple[Path, Path | None, tuple[str, ...]], ...]:
     fallback = _adopted_python_config(root)
     nearest = cache(partial(_nearest_ruff_config, root=root, has_tool=cache(_pyproject_has_tool)))
     grouped: dict[tuple[Path, Path | None], list[str]] = {}
@@ -3372,8 +3372,11 @@ def _react_doctor_location(
 
 
 def _ruff_argv(files: Sequence[str], *, config: Path | None = None) -> tuple[str, ...]:
-    config_args = () if config is None else ("--config", str(config))
-    return ("ruff", "check", "--output-format", "json", *config_args, "--", *files)
+    return ("ruff", "check", "--output-format", "json", *ruff_config_arguments(config), "--", *files)
+
+
+def ruff_config_arguments(config: Path | None) -> tuple[str, ...]:
+    return () if config is None else ("--config", str(config))
 
 
 def _ruff_required_argv(files: Sequence[str]) -> tuple[str, ...]:

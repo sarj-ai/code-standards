@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.autofix import fix_source
 from sarj_python_lint.rules.prefer_match_value_dispatch import PreferMatchValueDispatch
 
 
@@ -360,9 +361,11 @@ def test_two_terminal_siblings_remain_below_expansion_threshold() -> None:
     )
 
 
-def test_warning_rule_has_no_automatic_fix() -> None:
+def test_warning_rule_fixes_only_proven_parameter_dispatch() -> None:
     assert PreferMatchValueDispatch.documentation is not None
-    assert PreferMatchValueDispatch.documentation.autofix.value == "none"
+    assert PreferMatchValueDispatch.documentation.autofix.value == "safe"
+    source = _siblings()
+    assert fix_source(Path("app/dispatch.py"), source, rule_ids=[PreferMatchValueDispatch.id]) == source
 
 
 def test_with_suppressed_raise_is_not_a_terminal_branch() -> None:

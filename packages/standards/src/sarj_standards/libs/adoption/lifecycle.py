@@ -25,6 +25,8 @@ from . import manifest, packagemanager, scaffold, transaction
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    from sarj_standards.libs.linting.policy import Policy
+
 
 _PROJECT_SKIP_DIRS = frozenset({".git", ".venv", "build", "dist", "node_modules", "target", "vendor"})
 _SKILL_ARTIFACT_ROOTS = frozenset({".agents", ".claude"})
@@ -216,6 +218,7 @@ def select_eslint_commands(
     label: str = "selected",
     fix: bool = False,
     expand_directories: bool = False,
+    disabled_rules: Sequence[str] = (),
 ) -> EslintSelection:
     repository = root.resolve()
     fallback_project = _adopted_typescript_project(repository)
@@ -246,6 +249,7 @@ def select_eslint_commands(
                     "eslint",
                     *config_args,
                     *(("--fix",) if fix else ()),
+                    *(argument for rule in disabled_rules for argument in ("--rule", f"{rule}:off")),
                     "--",
                     *sorted(scoped),
                 ),
@@ -400,13 +404,13 @@ def format_commands(ecosystems: scaffold.Ecosystems, *, root: Path | None = None
             commands.extend(
                 (
                     Command(
-                        "Ruff format",
-                        (_environment_binary("ruff"), "format", "."),
+                        "Ruff fixes",
+                        (_environment_binary("ruff"), "check", "--fix", "--no-unsafe-fixes", "."),
                         project,
                     ),
                     Command(
-                        "Ruff fixes",
-                        (_environment_binary("ruff"), "check", "--fix", "."),
+                        "Ruff format",
+                        (_environment_binary("ruff"), "format", "."),
                         project,
                     ),
                 )
@@ -424,25 +428,86 @@ def format_commands(ecosystems: scaffold.Ecosystems, *, root: Path | None = None
     return commands
 
 
-def selected_format_commands(root: Path, paths: Iterable[str]) -> list[Command]:
+def selected_format_commands(
+    root: Path, paths: Iterable[str], *, trusted: bool = True, eslint: bool = True
+) -> list[Command]:
+    from sarj_standards.libs.linting.policy import Policy  # ruff: ignore[import-outside-top-level] -- fix planning shares checking policy.
+
     repository = root.resolve()
-    selected = tuple(sorted(set(paths)))
-    python_paths = tuple(
-        source_path.resolve().relative_to(repository).as_posix()
-        for path in selected
-        if (source_path := Path(path)).is_file() and source_path.suffix.lower() in {".py", ".pyi"}
-    )
+    adopted = manifest.load(repository)
+    policy = Policy.from_manifest(repository, adopted)
+    selected = tuple(sorted(set(policy.filter_paths(paths))))
     commands: list[Command] = []
-    if python_paths:
-        commands.extend(
-            (
-                Command("Ruff format", (_environment_binary("ruff"), "format", "--", *python_paths), repository),
-                Command("Ruff fixes", (_environment_binary("ruff"), "check", "--fix", "--", *python_paths), repository),
-            )
-        )
-    commands.extend(select_eslint_commands(repository, selected, label="selected", fix=True).commands)
+    if adopted is None or "ruff" in adopted.enabled_capabilities:
+        commands.extend(_ruff_fix_commands(repository, selected, policy))
+    if trusted and eslint and (adopted is None or "eslint" in adopted.enabled_capabilities):
+        commands.extend(_eslint_fix_commands(repository, selected, policy))
     commands.extend(shell_format_commands(repository, selected))
     return commands
+
+
+def _ruff_fix_commands(root: Path, paths: Sequence[str], policy: Policy) -> list[Command]:
+    from sarj_standards.libs.linting.external import (  # ruff: ignore[import-outside-top-level] -- defer the checking adapter to avoid its lifecycle command dependency during import.
+        ruff_config_arguments,
+        ruff_project_groups,
+    )
+
+    sources: list[str] = []
+    for path in paths:
+        source = Path(path)
+        source = source if source.is_absolute() else root / source
+        if source.is_file() and source.suffix.lower() in {".py", ".pyi"}:
+            sources.append(str(source.resolve()))
+    groups: dict[tuple[Path, Path | None, frozenset[str]], list[str]] = {}
+    for project, config, scoped in ruff_project_groups(sources, root):
+        for path in scoped:
+            key = (project, config, policy.excluded_rule_ids(path, "ruff"))
+            groups.setdefault(key, []).append(Path(os.path.relpath(path, project)).as_posix())
+    commands: list[Command] = []
+    for (project, config, disabled), group in sorted(
+        groups.items(), key=lambda item: (str(item[0][0]), str(item[0][1]), sorted(item[0][2]))
+    ):
+        ignored = ("--extend-ignore", ",".join(sorted(disabled))) if disabled else ()
+        config_args = ruff_config_arguments(config)
+        commands.extend(
+            (
+                Command(
+                    "Ruff fixes",
+                    (
+                        _environment_binary("ruff"),
+                        "check",
+                        "--fix",
+                        "--no-unsafe-fixes",
+                        *config_args,
+                        *ignored,
+                        "--",
+                        *group,
+                    ),
+                    project,
+                ),
+                Command("Ruff format", (_environment_binary("ruff"), "format", *config_args, "--", *group), project),
+            )
+        )
+    return commands
+
+
+def _eslint_fix_commands(root: Path, paths: Sequence[str], policy: Policy) -> list[Command]:
+    from sarj_standards.libs.repository import rule_catalog_artifact  # ruff: ignore[import-outside-top-level] -- distinguish custom selectors from native ESLint IDs.
+
+    custom = rule_catalog_artifact.selector_index().canonical
+    groups: dict[frozenset[str], list[str]] = {}
+    for path in paths:
+        disabled = frozenset(
+            f"@sarj/{rule}" if f"eslint:{rule}" in custom else rule for rule in policy.excluded_rule_ids(path, "eslint")
+        )
+        groups.setdefault(disabled, []).append(path)
+    return [
+        command
+        for disabled, group in sorted(groups.items(), key=lambda item: sorted(item[0]))
+        for command in select_eslint_commands(
+            root, group, label="selected", fix=True, disabled_rules=tuple(sorted(disabled))
+        ).commands
+    ]
 
 
 def shell_format_commands(root: Path, paths: Iterable[str] | None = None) -> list[Command]:
@@ -481,7 +546,7 @@ def shell_format_commands(root: Path, paths: Iterable[str] | None = None) -> lis
     ]
 
 
-def execute(commands: Iterable[Command]) -> int:
+def execute(commands: Iterable[Command], *, stdout_to_stderr: bool = False) -> int:
     for command in commands:
         executable = shutil.which(command.argv[0])
         if executable is None:
@@ -499,6 +564,7 @@ def execute(commands: Iterable[Command]) -> int:
                 check=False,
                 env=_command_environment(),
                 timeout=_COMMAND_TIMEOUT.total_seconds(),
+                stdout=2 if stdout_to_stderr else None,
             )
         except subprocess.TimeoutExpired as exc:
             _report_hook_rollback(hook_transaction)

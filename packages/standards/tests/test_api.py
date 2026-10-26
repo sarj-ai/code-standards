@@ -324,6 +324,7 @@ def test_standards_facade_fix_uses_the_adopted_nested_typescript_destination(
     )
     (tmp_path / "pnpm-workspace.yaml").write_text('packages:\n  - "apps/*"\n', encoding="utf-8")
     (web / "package.json").write_text('{"name":"web","private":true}\n', encoding="utf-8")
+    (web / "view.ts").write_text("export const value = 1;\n", encoding="utf-8")
     (tmp_path / ".sarj-standards.toml").write_text(
         Manifest(
             version=api.__version__,

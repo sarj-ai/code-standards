@@ -39,8 +39,9 @@ class PreferWalrusStreamLoop(Rule):
             "For `if value is None: break`, preserve the sentinel with `while (value := read()) is not None:`."
         ),
         category=RuleCategory.STYLE,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes preserve the original producer expression, sentinel comparison and remaining loop body; comments on the loop header abstain.",
             "Only `while True` loops beginning with a single-line call assignment and a physically adjacent falsy or `None` break are analyzed.",
             "Tests, generated files, comments attached to or separating the matched statements, blank lines, type comments, rewrites over 100 columns, loop or guard `else` clauses, and empty rewritten bodies are excluded.",
             "The producer receiver is not resolved; calls and awaited calls are accepted when the surrounding loop shape is otherwise exact.",
@@ -111,6 +112,40 @@ class PreferWalrusStreamLoop(Rule):
                 expected_count=0,
                 scenario="none-sentinel",
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def consume(read):\n"
+                            "    result = []\n"
+                            "    while True:\n"
+                            "        chunk = read()\n"
+                            "        if chunk is None:\n"
+                            "            break\n"
+                            "        result.append(chunk)\n"
+                            "    return result\n"
+                        ),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def consume(read):\n"
+                            "    result = []\n"
+                            "    while (chunk := read()) is not None:\n"
+                            "        result.append(chunk)\n"
+                            "    return result\n"
+                        ),
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )

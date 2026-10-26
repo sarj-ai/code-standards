@@ -87,8 +87,9 @@ class NoRedundantVariableValidation(Rule):
             "formats, enums, otherwise permitted nulls, and relationships between fields."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes remove only complete standalone validation blocks containing exactly the proven redundant condition and a literal error message, without comments or additional content.",
             "Only exact, syntax-parsed tautologies over the validation block's own variable are reported.",
             (
                 "Provider constraints, compound expressions containing a real domain predicate, dynamic types, "
@@ -114,6 +115,7 @@ class NoRedundantVariableValidation(Rule):
                     ),
                 ),
                 focus_path=PurePosixPath("variables.tf"),
+                fixed_files=(ExampleFile.iac("variables.tf", 'variable "region" {\n  type = string\n\n\n\n\n}\n'),),
                 expected_count=1,
                 public=True,
             ),

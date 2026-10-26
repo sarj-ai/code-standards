@@ -55,8 +55,9 @@ class PreferWalrusAwaitedNoneGuard(Rule):
             "or tracing boundary."
         ),
         category=RuleCategory.STYLE,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes reuse the proven assignment/guard candidate and preserve the original condition, awaited expression, body and sentinel.",
             "Only one-line awaited calls followed immediately by an exact `is None` or `is not None` guard ending in return or raise are checked.",
             "Statements before the terminal operation must be simple assignments; expressions and compound control flow are excluded.",
             "An `is None` guard requires a later use on the surviving path and must not use or rebind the name inside the guard; an `is not None` guard must consume the binding inside the terminal branch and leave no later use before rebinding.",
@@ -97,6 +98,36 @@ class PreferWalrusAwaitedNoneGuard(Rule):
                 focus_path=PurePosixPath("service.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "async def load(store):\n"
+                            "    item = await store.get()\n"
+                            "    if item is None:\n"
+                            "        return\n"
+                            "    return item.name\n"
+                        ),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "async def load(store):\n"
+                            "    if (item := await store.get()) is None:\n"
+                            "        return\n"
+                            "    return item.name\n"
+                        ),
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )

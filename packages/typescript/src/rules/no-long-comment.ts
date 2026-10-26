@@ -6,6 +6,7 @@
 import { AST_NODE_TYPES, type TSESTree, type TSESLint } from "@typescript-eslint/utils";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
+import { jsdocDecorationFix } from "./_jsdoc-decoration-fix.js";
 import {
   documentsTypedFunction,
   hasDocumentationStructure,
@@ -17,12 +18,25 @@ import {
 type MessageIds = "tooLong";
 type Options = readonly [];
 
+const DECORATED_COMMENT = [
+  "/**",
+  " * The reader accepts data. The reader checks format. The reader preserves ordering. The reader buffers records. The reader closes cleanly.",
+  " * ++++++++",
+  " * The writer accepts batches. The writer records progress. The writer flushes changes. The writer closes cleanly.",
+  " */",
+  "const value = 1;",
+].join("\n");
+
 export const NO_LONG_COMMENT_DOCUMENTATION = {
   summary: "Flag unusually large unstructured JSDoc blocks in implementation code.",
   rationale: "Large narrative comments become stale and obscure the local facts that belong beside the code.",
   remediation: "Keep only durable local constraints and express the remaining behavior in code.",
   category: "maintainability",
-  limitations: ["Only JSDoc blocks are inspected; structured API docs, tests, scripts, generated files, and versioned dependencies are excluded."],
+  autofix: "safe",
+  limitations: [
+    "Only JSDoc blocks are inspected; structured API docs, tests, scripts, generated files, and versioned dependencies are excluded.",
+    "Safe fixes blank only interior plus-only decoration when the retained prose gains actual paragraph structure. All prose bytes, comment markers and line endings remain; directives, licenses, examples, literal-output/prompt/credential contexts, Markdown structure and ambiguous comments remain for review.",
+  ],
   examples: [
     {
       id: "structured-jsdoc",
@@ -69,6 +83,15 @@ export function PortBars() { return null; }`,
       expectedCount: 1,
       public: true,
     },
+    {
+      id: "safe-decoration",
+      title: "Remove a decorative divider while retaining both prose paragraphs",
+      outcome: "match",
+      files: [{ path: "src/reader.ts", source: DECORATED_COMMENT }],
+      fixedFiles: [{ path: "src/reader.ts", source: DECORATED_COMMENT.replace("++++++++", "") }],
+      focusPath: "src/reader.ts",
+      expectedCount: 1,
+    },
   ],
 } as const satisfies RuleDocumentation;
 
@@ -108,6 +131,7 @@ export default createRule<Options, MessageIds>({
   documentation: NO_LONG_COMMENT_DOCUMENTATION,
   meta: {
     type: "suggestion",
+    fixable: "code",
     docs: { description: "Flag unusually large unstructured JSDoc blocks in implementation code." },
     schema: [],
     messages: {
@@ -132,7 +156,11 @@ export default createRule<Options, MessageIds>({
             sentenceUnits(group.text) < EXCESSIVE_SENTENCE_COUNT &&
             wordUnits(group.text) < EXCESSIVE_WORD_COUNT
           ) continue;
-          context.report({ node: group.comment, messageId: "tooLong" });
+          context.report({
+            node: group.comment,
+            messageId: "tooLong",
+            fix: jsdocDecorationFix(context.sourceCode, group.comment, hasDocumentationStructure),
+          });
         }
       },
     };

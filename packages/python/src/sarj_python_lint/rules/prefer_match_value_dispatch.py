@@ -48,8 +48,9 @@ class PreferMatchValueDispatch(Rule):
             "subject evaluation, and guard order before rewriting."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes require a closed private nested synchronous helper with proven inert containing scopes and exact primitive literal callers. Only comment-free literal-equality ladders on one parameter qualify; unknown subjects, callbacks, frame/closure escapes, sibling checks, grouped conditions and guards remain review-only.",
             "ERROR is limited to direct literal equality ladders on an unrebound local parameter, without visible namespace access, in a project with a proven minimum Python version of 3.10. All other supported ladders remain WARNING; no autofix is offered.",
             "Equality-only ladders require two or more tests on the same left-hand name or attribute chain, followed by else.",
             "Cases must be distinct string, bytes, or numeric literals, or singly bound module constants containing them; shadowed constants and singleton values are excluded.",
@@ -163,6 +164,29 @@ class PreferMatchValueDispatch(Rule):
                 focus_path=PurePosixPath("app/migrate.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def label():\n    def _label(value):\n        if value == 'one':\n            return 1\n        elif value == 'two':\n            return 2\n        elif value == 'three':\n            return 3\n        else:\n            return 0\n    return _label('one')\n"
+                        ),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def label():\n    def _label(value):\n        match value:\n            case 'one':\n                return 1\n            case 'two':\n                return 2\n            case 'three':\n                return 3\n            case _:\n                return 0\n    return _label('one')\n"
+                        ),
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )

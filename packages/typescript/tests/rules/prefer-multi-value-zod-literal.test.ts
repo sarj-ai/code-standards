@@ -1,4 +1,3 @@
-// vitest: shared-module-graph
 import * as tsParser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { afterAll, describe, expect, it } from "vitest";
@@ -35,9 +34,22 @@ const ERROR = { messageId: "useMultiValueLiteral" as const };
 
 RULE_TESTER.run("prefer-multi-value-zod-literal", rule, {
   valid: [
-    { name: "keeps wrapped all-string domains delegated to the enum owner", code: 'import { z } from "zod/v4"; z.union([z.literal(("a" as const)), z.literal(("b" as const))]);' },
-    { name: "keeps wrapped dynamic literal inputs opaque", code: 'import { z } from "zod/v4"; z.union([z.literal((value as number)), z.literal((2 as const))]);' },
-    { name: "keeps an unspecified bare Zod major version opaque", code: 'import { z } from "zod"; z.union([z.literal((1 as const)), z.literal((2 as const))]);' },
+    {
+      name: "preserves inline schema options",
+      code: 'import { z } from "zod/v4"; const VersionSchema = z.union([z.literal(1, { error: "one" }), z.literal(2)]);',
+    },
+    {
+      name: "keeps wrapped all-string domains delegated to the enum owner",
+      code: 'import { z } from "zod/v4"; z.union([z.literal(("a" as const)), z.literal(("b" as const))]);',
+    },
+    {
+      name: "keeps wrapped dynamic literal inputs opaque",
+      code: 'import { z } from "zod/v4"; z.union([z.literal((value as number)), z.literal((2 as const))]);',
+    },
+    {
+      name: "keeps an unspecified bare Zod major version opaque",
+      code: 'import { z } from "zod"; z.union([z.literal((1 as const)), z.literal((2 as const))]);',
+    },
 
     {
       name: "public no-match example",
@@ -74,38 +86,56 @@ RULE_TESTER.run("prefer-multi-value-zod-literal", rule, {
     },
   ],
   invalid: [
-    { name: "retains numeric literal domains through const assertions", code: 'import { z } from "zod/v4"; z.union([z.literal((1 as const)), z.literal((2 as const))]);', errors: [ERROR] },
-    { name: "recognizes imported static computed literal schema methods", code: 'import { z } from "zod/v4"; z["union"]([z["literal"]((1 as const)), z["literal"]((2 as const))]);', errors: [ERROR] },
+    {
+      name: "preserves supported constructor hooks for an unused private domain",
+      code: 'import { z } from "zod/v4"; const VersionSchema = z.union([z.literal(1), z.literal(2)]);',
+      output: null,
+      errors: [{ messageId: "useMultiValueLiteral" }],
+    },
+    {
+      name: "preserves an observed union error contract",
+      code: 'import { z } from "zod/v4"; const VersionSchema = z.union([z.literal(1), z.literal(2)]); consume(VersionSchema.safeParse(3));',
+      output: null,
+      errors: [{ messageId: "useMultiValueLiteral" }],
+    },
+    {
+      name: "retains numeric literal domains through const assertions",
+      code: 'import { z } from "zod/v4"; z.union([z.literal((1 as const)), z.literal((2 as const))]);',
+      errors: [ERROR],
+    },
+    {
+      name: "recognizes imported static computed literal schema methods",
+      code: 'import { z } from "zod/v4"; z["union"]([z["literal"]((1 as const)), z["literal"]((2 as const))]);',
+      errors: [ERROR],
+    },
 
     {
       name: "public match example",
       filename:
         PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION.examples[1].focusPath,
-      code: PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION.examples[1].files[0]
-        .source.replace("from 'zod'", "from 'zod/v4'"),
-      output:
-        null,
+      code: PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION.examples[1].files[0].source.replace(
+        "from 'zod'",
+        "from 'zod/v4'",
+      ),
+      output: null,
       errors: [ERROR],
     },
     {
       name: "reports without rewriting the motivating numeric domain",
       code: "import { z } from 'zod/v4'; export const AllowedConcurrencySchema = z.union([z.literal(2), z.literal(8), z.literal(16), z.literal(32), z.literal(128), z.literal(256)]);",
-      output:
-        null,
+      output: null,
       errors: [ERROR],
     },
     {
       name: "reports without rewriting a two-arm numeric union",
       code: "import { z } from 'zod/v4'; export const V = z.union([z.literal(1), z.literal(2)]);",
-      output:
-        null,
+      output: null,
       errors: [ERROR],
     },
     {
       name: "reports without rewriting every supported primitive syntax",
       code: "import { z } from 'zod/v4'; export const V = z.union([z.literal(-1), z.literal(2n), z.literal(true), z.literal(null), z.literal(undefined), z.literal(`x`)]);",
-      output:
-        null,
+      output: null,
       errors: [ERROR],
     },
     {
@@ -118,8 +148,7 @@ RULE_TESTER.run("prefer-multi-value-zod-literal", rule, {
     {
       name: "recognizes the explicit Zod 4 mini entrypoint",
       code: "import * as schema from 'zod/v4-mini'; export const V = schema.union([schema.literal(false), schema.literal(true)]);",
-      output:
-        null,
+      output: null,
       errors: [ERROR],
     },
     {
@@ -131,36 +160,44 @@ RULE_TESTER.run("prefer-multi-value-zod-literal", rule, {
   ],
 });
 
-
 it("preserves outcomes for static member access and unknown member keys", async () => {
   const documentation = rule.documentation;
-  if (documentation === undefined) throw new Error("Missing rule documentation");
-  await verifyRuleExamples({ ...rule, documentation: { ...documentation, examples: [
-  {
-    "id": "literal-union-static-member",
-    "title": "Static member access preserves the rule outcome",
-    "outcome": "match",
-    "focusPath": "src/schema.ts",
-    "expectedCount": 1,
-    "files": [
-      {
-        "path": "src/schema.ts",
-        "source": "import { z } from 'zod/v4'; export const Version = z[\"union\"]([z[\"literal\"](1), z[\"literal\"](2), z[\"literal\"](3)]);"
-      }
-    ]
-  },
-  {
-    "id": "literal-union-dynamic-member",
-    "title": "Unknown member access does not establish API identity",
-    "outcome": "no-match",
-    "focusPath": "src/schema.ts",
-    "expectedCount": 0,
-    "files": [
-      {
-        "path": "src/schema.ts",
-        "source": "import { z } from 'zod/v4'; export const Version = z[auditDynamicMember]([z[auditDynamicMember](1), z[auditDynamicMember](2), z[auditDynamicMember](3)]);"
-      }
-    ]
-  }
-] } });
+  if (documentation === undefined)
+    throw new Error("Missing rule documentation");
+  await verifyRuleExamples({
+    ...rule,
+    documentation: {
+      ...documentation,
+      examples: [
+        {
+          id: "literal-union-static-member",
+          title: "Static member access preserves the rule outcome",
+          outcome: "match",
+          focusPath: "src/schema.ts",
+          expectedCount: 1,
+          files: [
+            {
+              path: "src/schema.ts",
+              source:
+                'import { z } from \'zod/v4\'; export const Version = z["union"]([z["literal"](1), z["literal"](2), z["literal"](3)]);',
+            },
+          ],
+        },
+        {
+          id: "literal-union-dynamic-member",
+          title: "Unknown member access does not establish API identity",
+          outcome: "no-match",
+          focusPath: "src/schema.ts",
+          expectedCount: 0,
+          files: [
+            {
+              path: "src/schema.ts",
+              source:
+                "import { z } from 'zod/v4'; export const Version = z[auditDynamicMember]([z[auditDynamicMember](1), z[auditDynamicMember](2), z[auditDynamicMember](3)]);",
+            },
+          ],
+        },
+      ],
+    },
+  });
 });

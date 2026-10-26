@@ -15,6 +15,7 @@ import pytest
 import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import doctor, lifecycle, manifest, scaffold
 from sarj_standards.libs.adoption.packagemanager import PackageManager
+from sarj_standards.libs.linting import external
 
 
 if TYPE_CHECKING:
@@ -74,10 +75,10 @@ def test_fix_uses_the_isolated_ruff_without_requiring_a_consumer_lockfile(tmp_pa
 
     commands = lifecycle.format_commands(ecosystems)
 
-    assert [command.label for command in commands] == ["Ruff format", "Ruff fixes"]
+    assert [command.label for command in commands] == ["Ruff fixes", "Ruff format"]
     assert {Path(command.argv[0]).stem for command in commands} == {"ruff"}
-    assert commands[0].argv[1:] == ("format", ".")
-    assert commands[1].argv[1:] == ("check", "--fix", ".")
+    assert commands[0].argv[1:] == ("check", "--fix", "--no-unsafe-fixes", ".")
+    assert commands[1].argv[1:] == ("format", ".")
     assert all("--frozen" not in command.argv for command in commands)
 
 
@@ -93,6 +94,7 @@ def test_fix_routes_to_the_adopted_nested_typescript_destination(
     )
     (tmp_path / "pnpm-workspace.yaml").write_text('packages:\n  - "apps/*"\n', encoding="utf-8")
     (web / "package.json").write_text('{"name":"web","private":true}\n', encoding="utf-8")
+    (web / "view.ts").write_text("export const value = 1;\n", encoding="utf-8")
     (tmp_path / ".sarj-standards.toml").write_text(
         manifest.Manifest(
             version=distribution_version("code-standards"),
@@ -129,10 +131,131 @@ def test_selected_fix_routes_only_the_requested_python_and_typescript_files(tmp_
 
     commands = lifecycle.selected_format_commands(tmp_path, (str(python_file), str(typescript_file)))
 
-    assert [command.label for command in commands[:2]] == ["Ruff format", "Ruff fixes"]
+    assert [command.label for command in commands[:2]] == ["Ruff fixes", "Ruff format"]
     assert commands[0].argv[-1] == "service.py"
     assert commands[1].argv[-1] == "service.py"
     assert commands[2].argv[-3:] == ("--fix", "--", "view.ts")
+
+
+def _ruff_fallback_project(root: Path, *, overrides: tuple[manifest.ExclusionOverride, ...] = ()) -> Path:
+    project = root / "python"
+    project.mkdir()
+    config = project / "pyproject.toml"
+    config.write_text(
+        '[tool.ruff]\nextend = ".ruff-strict.toml"\n[tool.ruff.lint.extend-per-file-ignores]\n"../api.py" = ["F401"]\n',
+        encoding="utf-8",
+    )
+    (project / ".ruff-strict.toml").write_text('line-length = 120\n[lint]\nselect = ["F401"]\n', encoding="utf-8")
+    (root / manifest.MANIFEST_NAME).write_text(
+        manifest.Manifest(
+            version=distribution_version("code-standards"),
+            configs=("ruff",),
+            python_dest="python",
+            typescript_dest=".",
+            exclusion_overrides=overrides,
+        ).render(),
+        encoding="utf-8",
+    )
+    return config
+
+
+def test_selected_ruff_fixes_share_checking_fallback_authority(tmp_path: Path) -> None:
+    config = _ruff_fallback_project(tmp_path)
+    source = tmp_path / "api.py"
+    source.write_text("import os\n", encoding="utf-8")
+    [(project, checked_config, checked_paths)] = external.ruff_project_groups([str(source)], tmp_path)
+    commands = lifecycle.selected_format_commands(tmp_path, [str(source)])
+    assert checked_config == config
+    assert checked_paths == (str(source),)
+    assert [command.label for command in commands] == ["Ruff fixes", "Ruff format"]
+    for command in commands:
+        assert command.cwd == project == config.parent
+        assert command.argv[command.argv.index("--config") + 1] == str(config)
+        assert command.argv[-2:] == ("--", "../api.py")
+    assert "--no-unsafe-fixes" in commands[0].argv
+
+
+def test_selected_ruff_fixes_keep_project_and_exclusion_groups(tmp_path: Path) -> None:
+    overrides = (manifest.ExclusionOverride(paths=("excluded.py",), rules=("ruff:F401",), reason="fixture exclusion"),)
+    fallback = _ruff_fallback_project(tmp_path, overrides=overrides)
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    nested_config = nested / "ruff.toml"
+    nested_config.write_text("line-length = 100\n", encoding="utf-8")
+    paths = [tmp_path / "api.py", tmp_path / "excluded.py", nested / "source.py"]
+    for path in paths:
+        path.write_text("import os\n", encoding="utf-8")
+    commands = lifecycle.selected_format_commands(tmp_path, [str(path) for path in paths])
+    fixes = [command for command in commands if command.label == "Ruff fixes"]
+    formats = [command for command in commands if command.label == "Ruff format"]
+    assert len(fixes) == len(formats) == 3
+    selected: set[Path] = set()
+    for fixed, formatted in zip(fixes, formats, strict=True):
+        config = Path(fixed.argv[fixed.argv.index("--config") + 1])
+        assert formatted.argv[formatted.argv.index("--config") + 1] == str(config)
+        assert fixed.cwd == formatted.cwd == config.parent
+        assert "--no-unsafe-fixes" in fixed.argv
+        source = (fixed.cwd / fixed.argv[-1]).resolve()
+        assert source == (formatted.cwd / formatted.argv[-1]).resolve()
+        selected.add(source)
+        assert config == (nested_config if source.parent == nested else fallback)
+        assert ("--extend-ignore" in fixed.argv) == (source.name == "excluded.py")
+        if source.name == "excluded.py":
+            assert fixed.argv[fixed.argv.index("--extend-ignore") + 1] == "F401"
+    assert selected == set(paths)
+
+
+def test_selected_ruff_fixes_resolve_relative_inputs_against_root(tmp_path: Path) -> None:
+    config = _ruff_fallback_project(tmp_path)
+    source = tmp_path / "api.py"
+    source.write_text("import os\n", encoding="utf-8")
+    absolute = lifecycle.selected_format_commands(tmp_path, [str(source)])
+    relative = lifecycle.selected_format_commands(tmp_path, ["api.py"])
+    assert relative == absolute
+    assert all(command.cwd == config.parent for command in relative)
+
+
+def test_selected_ruff_fixes_execute_with_fallback_per_file_ignores(tmp_path: Path) -> None:
+    _ruff_fallback_project(tmp_path)
+    source = tmp_path / "api.py"
+    original = "import os\n"
+    source.write_text(original, encoding="utf-8")
+    commands = lifecycle.selected_format_commands(tmp_path, [str(source)])
+    binary = commands[0].argv[0]
+    default_check = subprocess.run(
+        [binary, "check", "--isolated", "--select", "F401", "--", str(source)],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert default_check.returncode == 1
+    assert "F401" in default_check.stdout
+    assert lifecycle.execute(commands) == 0
+    assert source.read_text(encoding="utf-8") == original
+    assert lifecycle.execute(commands) == 0
+    assert source.read_text(encoding="utf-8") == original
+
+
+def test_selected_ruff_formatter_executes_with_fallback_line_length(tmp_path: Path) -> None:
+    _ruff_fallback_project(tmp_path)
+    source = tmp_path / "values.py"
+    original = 'values = ["' + "a" * 40 + '", "' + "b" * 40 + '"]\n'
+    source.write_text(original, encoding="utf-8")
+    commands = lifecycle.selected_format_commands(tmp_path, [str(source)])
+    formatter = next(command for command in commands if command.label == "Ruff format")
+    default_check = subprocess.run(
+        [formatter.argv[0], "format", "--isolated", "--check", "--", str(source)],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert default_check.returncode == 1
+    assert lifecycle.execute((formatter,)) == 0
+    assert source.read_text(encoding="utf-8") == original
+    assert lifecycle.execute((formatter,)) == 0
+    assert source.read_text(encoding="utf-8") == original
 
 
 def test_setup_never_mutates_the_consumer_dependency_environment(tmp_path: Path) -> None:

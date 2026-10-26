@@ -53,14 +53,35 @@ class PreferJsonb(Rule):
         ),
         remediation="Declare JSONB columns and use jsonb casts for JSON document values.",
         category=RuleCategory.PERFORMANCE,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Automatic literal fixes require one literal-only SELECT or one simple CREATE TABLE with canonical typed literal defaults, with no other statements, reads, CTEs, operators, other constraints, custom casts or callouts. The external PostgreSQL built-in catalog must be canonical and unmodified; source-visible mutations are refused.",
+            "Autofix only corrects a canonical pg_catalog.json cast of the exact ordinary ASCII literal '{}' or '[]' inside an existing direct pg_catalog.jsonb cast and a canonical JSONB column DEFAULT. The outer JSONB boundary already owns normalization; schema types, other JSON documents, data expressions and missing boundaries remain manual.",
             "PostgreSQL dump files are excluded.",
             "JSON tokens inside comments, string literals, and longer identifiers are ignored.",
             "Column declarations include optional COLUMN keywords, JSON arrays, and exact quoted or pg_catalog-qualified built-ins. Case-sensitive quoted custom types and other schemas remain excluded.",
             "Query and data-migration casts are excluded because an external or legacy JSON column may require them.",
         ),
         examples=(
+            RuleExample(
+                example_id="safe-empty-default-under-jsonb-boundary",
+                title="The existing JSONB default already owns document normalization",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "migrations/001_defaults.sql",
+                        "CREATE TABLE IF NOT EXISTS document (metadata pg_catalog.jsonb DEFAULT ('{}'::pg_catalog.json)::pg_catalog.jsonb);\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.sql(
+                        "migrations/001_defaults.sql",
+                        "CREATE TABLE IF NOT EXISTS document (metadata pg_catalog.jsonb DEFAULT ('{}'::pg_catalog.jsonb)::pg_catalog.jsonb);\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("migrations/001_defaults.sql"),
+                expected_count=1,
+            ),
             RuleExample(
                 example_id="alter-json-type-with-using",
                 title="An ALTER USING conversion still declares a plain JSON type",

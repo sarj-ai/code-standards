@@ -4,6 +4,7 @@
 
 import { ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 
+import { forEachOwnAstChild } from "./_for-each-own-ast-child.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
 
 
@@ -57,4 +58,19 @@ function objectProperty(node: TSESTree.ObjectExpression, name: string): TSESTree
     if (key === name) selected = property;
   }
   return selected;
+}
+
+/** Explicit module contracts may require literal true even after an alias is resolved. */
+export function canAutofixNextConfigLiteral(sourceCode: Readonly<TSESLint.SourceCode>): boolean {
+  const constrained = (node: TSESTree.Node): boolean => {
+    if (node.type === "TSAsExpression") {
+      if (!(node.typeAnnotation.type === "TSTypeReference" && node.typeAnnotation.typeName.type === "Identifier" && node.typeAnnotation.typeName.name === "const")) return true;
+      return constrained(node.expression);
+    }
+    if (("typeAnnotation" in node && node.typeAnnotation !== undefined && node.typeAnnotation !== null) ||
+      node.type === "TSSatisfiesExpression" || node.type === "TSTypeAssertion") return true;
+    return forEachOwnAstChild(node, constrained);
+  };
+  return !constrained(sourceCode.ast) &&
+    !sourceCode.getAllComments().some((comment) => /@(?:type|satisfies|enum)\b/u.test(comment.value));
 }

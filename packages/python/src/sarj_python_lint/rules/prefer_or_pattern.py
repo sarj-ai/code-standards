@@ -42,8 +42,9 @@ class PreferOrPattern(Rule):
         rationale="An or-pattern expresses shared handling once and prevents identical arms from drifting apart.",
         remediation="Join the equivalent patterns with `|` and keep their shared body under the merged arm.",
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Safe fixes merge only comment-free proven runs and preserve the first body verbatim; runs containing comments remain review-only.",
             "Only adjacent, unguarded, refutable arms with structurally identical non-empty bodies are compared.",
             "Arms with different bound names or comments, intervening or leading comments, and combined patterns rejected by Python are excluded.",
             "Bodies that read pattern captures or names used by the match subject are excluded: merging can lose correlated narrowing required by typed calls. This syntax-only check also abstains from safe forwarding of those values.",
@@ -84,6 +85,32 @@ class PreferOrPattern(Rule):
                 focus_path=PurePosixPath("app/settings.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="A proven subset has a convergent automatic fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def label(value):\n"
+                            "    match value:\n"
+                            "        case 'one':\n"
+                            "            return 1\n"
+                            "        case 'two':\n"
+                            "            return 1\n"
+                        ),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        ("def label(value):\n    match value:\n        case 'one' | 'two':\n            return 1\n"),
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )
@@ -265,3 +292,14 @@ def _render_valid_or_pattern(patterns: list[ast.pattern]) -> str | None:
     except SyntaxError, ValueError, AttributeError, TypeError, RecursionError:
         return None
     return preview
+
+
+def autofix_pattern_runs(context: PythonFileContext) -> list[tuple[list[ast.match_case], str]]:
+    scanned, _ = all_comments(context.source)
+    comments = [(comment.line, comment.column, comment.body, comment.standalone) for comment in scanned]
+    return [
+        (run, rendered)
+        for match in context.nodes(ast.Match)
+        for run in _mergeable_runs(match, comments)
+        if (rendered := _render_valid_or_pattern([case.pattern for case in run])) is not None
+    ]

@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.autofix import fix_source
 from sarj_python_lint.rule_base import AutofixPolicy, Severity
 from sarj_python_lint.rules.prefer_collection_comprehension import PreferCollectionComprehension
 
@@ -834,7 +835,8 @@ def test_dictionary_evaluation_order_requires_manual_review() -> None:
     assert _check(replacement) == []
     documentation = PreferCollectionComprehension.documentation
     assert documentation is not None
-    assert documentation.autofix is AutofixPolicy.NONE
+    assert documentation.autofix is AutofixPolicy.SAFE
+    assert fix_source(Path("app/build.py"), source, rule_ids=[PreferCollectionComprehension.id]) == source
     for implementation, expected in ((source, {2: 2}), (replacement, {1: 2})):
         executable = (
             "from types import SimpleNamespace\n"

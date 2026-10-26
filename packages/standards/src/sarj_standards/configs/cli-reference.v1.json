@@ -457,6 +457,17 @@
         {
           "choices": [],
           "kind": "option",
+          "metavar": null,
+          "names": [
+            "--fix"
+          ],
+          "repeatable": false,
+          "required": false,
+          "summary": "apply safe fixes before checking; staged edits remain unstaged for review"
+        },
+        {
+          "choices": [],
+          "kind": "option",
           "metavar": "SELECTED_RULES",
           "names": [
             "--rule"
@@ -519,7 +530,7 @@
         "check"
       ],
       "summary": "run the complete quality gate or check selected paths or custom rules",
-      "usage": "code-standards check [-h] [--trust-repository-code] [--jobs JOBS] [--skip-python-type-check] [--skip-eslint] [--staged] [--rule SELECTED_RULES ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]"
+      "usage": "code-standards check [-h] [--trust-repository-code] [--jobs JOBS] [--skip-python-type-check] [--skip-eslint] [--staged] [--fix] [--rule SELECTED_RULES ...] [--format OUTPUT_FORMAT] [--output OUTPUT] [--max-annotations-per-level MAX_ANNOTATIONS_PER_LEVEL] [FILES ...]"
     },
     {
       "commands": [],
@@ -3305,6 +3316,6 @@
   },
   "program": "code-standards",
   "schemaVersion": 1,
-  "summary": "Adopt, check, fix, diagnose, and update sarj-ai standards (v8.129.11).",
-  "version": "8.129.11"
+  "summary": "Adopt, check, fix, diagnose, and update sarj-ai standards (v8.130.0).",
+  "version": "8.130.0"
 }

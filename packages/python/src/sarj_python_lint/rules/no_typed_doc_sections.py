@@ -42,9 +42,11 @@ class NoTypedDocSections(Rule):
             "conditions in the docstring."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         aliases=("no-typed-doc-sections",),
         limitations=(
+            "Safe fixes remove only native-proven redundant type labels in plain unescaped private nested synchronous nongenerator functions with no detected metadata consumer. Behavioral descriptions, other sections and quote style remain intact; public APIs, escaped/decorated helpers and escaped/raw literals remain review-only. Known frame and metadata capabilities, their import aliases and metadata field access prevent fixes.",
+            "Containing callables must also be ordinary synchronous nongenerators with proven inert execution; unknown callouts, properties, overloads, reachable frame-exporting exceptions, and helper references crossing additional function, class, lambda, or comprehension scopes prevent fixes.",
             "Only fully typed functions and Google-like colon-headed argument, return, and yield sections are checked.",
             "A documented label must parse as a Python type expression and match the corresponding annotation.",
             "Generated files, runtime-consumed prompt, CLI, and route docstrings, properties, abstract methods, overloads, protocol methods, and partially typed signatures are excluded.",
@@ -52,6 +54,45 @@ class NoTypedDocSections(Rule):
             "A reasoned exact-code suppression on the function declaration or closing docstring line preserves required documentation tooling conventions; markers inside string content are not suppression comments.",
         ),
         examples=(
+            RuleExample(
+                example_id="safe-private-autofix-subset",
+                title="Unescaped private helper keeps its behavioral contract",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def outer(value):\n"
+                            "    def _decode(payload: str) -> int:\n"
+                            '        """Decode the payload.\n'
+                            "\n"
+                            "        Args:\n"
+                            "            payload (str): UTF-8 JSON; duplicate keys are rejected.\n"
+                            '        """\n'
+                            "        return 1\n"
+                            "    return _decode(value)\n"
+                        ),
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        (
+                            "def outer(value):\n"
+                            "    def _decode(payload: str) -> int:\n"
+                            '        """Decode the payload.\n'
+                            "\n"
+                            "        Args:\n"
+                            "            payload: UTF-8 JSON; duplicate keys are rejected.\n"
+                            '        """\n'
+                            "        return 1\n"
+                            "    return _decode(value)\n"
+                        ),
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+            ),
             RuleExample(
                 example_id="parameter-type-restatement",
                 title="Remove only the repeated type label",

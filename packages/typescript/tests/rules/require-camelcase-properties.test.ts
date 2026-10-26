@@ -16,6 +16,7 @@ const ERROR = { messageId: "requireCamelcaseProperty" as const };
 
 RULE_TESTER.run("require-camelcase-properties", rule, {
   valid: [
+    { name: "preserves implicit declaration-file property contracts", filename: "src/contracts.d.ts", code: "import type { Imported } from './other'; interface Local { user_id: string }" },
     {
       name: "accepts the documented application property",
       filename: REQUIRE_CAMELCASE_PROPERTIES_DOCUMENTATION.examples[0].focusPath,
@@ -40,6 +41,16 @@ RULE_TESTER.run("require-camelcase-properties", rule, {
     },
   ],
   invalid: [
+    { name: "preserves polymorphic this key dependencies", code: "export {}; interface Local { user_id: string; selected: this['user_id'] }", output: null, errors: [{ messageId: "requireCamelcaseProperty" }] },
+    { name: "preserves quoted camelCase collisions", code: "export {}; interface Local { 'userId': number; user_id: string }", output: null, errors: [{ messageId: "requireCamelcaseProperty" }] },
+    { name: "preserves merged interface contracts", code: "export {}; interface Local { user_id: string } interface Local { userId: number }", output: null, errors: [{ messageId: "requireCamelcaseProperty" }] },
+    { name: "preserves computed-key collisions", code: "export {}; const key = 'userId' as const; interface Local { [key]: number; user_id: string }", output: null, errors: [{ messageId: "requireCamelcaseProperty" }] },
+    { name: "preserves template index constraints", code: "export {}; interface Local { [key: `userI${string}`]: number; user_id: string }", output: null, errors: [{ messageId: "requireCamelcaseProperty" }] },
+    { name: "renames an unused private interface property", code: "export {}; interface Local { user_id: string }", output: "export {}; interface Local { userId: string }", errors: [{ messageId: "requireCamelcaseProperty" }] },
+    { name: "renames an unused private object type property", code: "export {}; type Local = { user_id: string }", output: "export {}; type Local = { userId: string }", errors: [{ messageId: "requireCamelcaseProperty" }] },
+    { name: "preserves a referenced wire contract", code: "interface Local { user_id: string } const value: Local = input;", output: null, errors: [{ messageId: "requireCamelcaseProperty" }] },
+    { name: "preserves a conflicting camelCase property", code: "export {}; interface Local { user_id: string; userId: number }", output: null, errors: [{ messageId: "requireCamelcaseProperty" }] },
+    { name: "preserves inherited property contracts", code: "export {}; interface Base { userId: number } interface Local extends Base { user_id: string }", output: null, errors: [{ messageId: "requireCamelcaseProperty" }] },
     {
       name: "reports the pull-request return shape",
       filename: REQUIRE_CAMELCASE_PROPERTIES_DOCUMENTATION.examples[1].focusPath,

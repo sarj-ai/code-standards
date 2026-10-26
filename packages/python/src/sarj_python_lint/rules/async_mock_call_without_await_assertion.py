@@ -91,8 +91,9 @@ class AsyncMockCallWithoutAwaitAssertion(Rule):
             "checks scheduling before execution, use an exact SARJ456 suppression explaining that contract."
         ),
         category=RuleCategory.TESTING,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
+            "Autofix only adds a matching assert_awaited_once[_with] after the original call assertion in an argument-free, undecorated module async test whose exact body creates a fresh unconfigured canonical AsyncMock, awaits it once, and asserts its single call. With-arguments forms require identical primitive literals. Ambiguous imports, mocks, metadata/frame capabilities, fixtures, helpers, configuration, comments, and other statements remain for review; existing call assertions are retained.",
             "Only direct statements in collected test functions and methods are inspected; fixtures, helpers, nested blocks, and generated files are excluded.",
             "Requires a fresh local unittest.mock.AsyncMock constructor with unshadowed imports; aliases, reassignment, reset, and ambiguous configuration are excluded.",
             "Visible provider replacement, escape or unresolved lexical ownership retains WARNING; only the closed canonical AsyncMock provider proof blocks.",
@@ -222,6 +223,25 @@ class AsyncMockCallWithoutAwaitAssertion(Rule):
                 focus_path=PurePosixPath("tests/test_delivery.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix",
+                title="An exact awaited call retains both call and await evidence",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_delivery.py",
+                        "from unittest.mock import AsyncMock\nasync def test_delivery():\n    send = AsyncMock()\n    await send()\n    send.assert_called_once()\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "tests/test_delivery.py",
+                        "from unittest.mock import AsyncMock\nasync def test_delivery():\n    send = AsyncMock()\n    await send()\n    send.assert_called_once()\n    send.assert_awaited_once()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_delivery.py"),
+                expected_count=1,
             ),
         ),
     )
