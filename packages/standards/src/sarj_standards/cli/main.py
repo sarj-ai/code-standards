@@ -2357,7 +2357,7 @@ def _emit_fix_review_required(args: _Args, root: Path) -> int:
 
 def _select_staged_fix(args: _Args, root: Path) -> int | None:
     try:
-        args.files = _staged_fix_paths(root, args.files)
+        args.files = staged_fix_paths(root, args.files)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -2370,7 +2370,7 @@ def _select_staged_fix(args: _Args, root: Path) -> int | None:
     return None
 
 
-def _staged_fix_paths(root: Path, files: Sequence[str]) -> list[str]:
+def staged_fix_paths(root: Path, files: Sequence[str]) -> list[str]:
     staged_names = _staged_file_names(root, include_deleted=False)
     if files:
         requested = set(_repository_relative_names(root, files))

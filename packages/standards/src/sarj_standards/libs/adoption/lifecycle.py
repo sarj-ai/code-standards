@@ -218,12 +218,17 @@ def select_eslint_commands(
     label: str = "selected",
     fix: bool = False,
     expand_directories: bool = False,
+    include_config_sources: bool = False,
     disabled_rules: Sequence[str] = (),
 ) -> EslintSelection:
     repository = root.resolve()
     fallback_project = _adopted_typescript_project(repository)
     candidates = _selected_eslint_candidates(
-        repository, paths, fallback_project=fallback_project, expand_directories=expand_directories
+        repository,
+        paths,
+        fallback_project=fallback_project,
+        expand_directories=expand_directories,
+        include_config_sources=include_config_sources,
     )
     if not candidates:
         return EslintSelection((), 0)
@@ -317,6 +322,7 @@ def _selected_eslint_candidates(
     *,
     fallback_project: Path | None = None,
     expand_directories: bool = False,
+    include_config_sources: bool = False,
 ) -> set[Path]:
     candidates: set[Path] = set()
 
@@ -331,7 +337,7 @@ def _selected_eslint_candidates(
         if _is_skill_artifact(candidate, root):
             return
         if candidate.is_dir() and candidate.name not in _PROJECT_SKIP_DIRS:
-            sources = _eslint_sources(candidate)
+            sources = _eslint_sources(candidate, include_config_sources=include_config_sources)
             owners = {_owning_typescript_project(source, root, fallback_project=fallback_project) for source in sources}
             candidate_owner = _owning_typescript_project(candidate, root, fallback_project=fallback_project)
             if (
@@ -346,7 +352,7 @@ def _selected_eslint_candidates(
                 candidates.update(sources)
         elif (
             candidate.suffix.lower() in _ESLINT_SUFFIXES
-            and candidate.name not in _ESLINT_GLOBAL_IGNORE_NAMES
+            and (include_config_sources or candidate.name not in _ESLINT_GLOBAL_IGNORE_NAMES)
             and candidate.is_file()
         ):
             candidates.add(candidate)
@@ -360,7 +366,7 @@ def _contains_eslint_source(directory: Path) -> bool:
     return next(iter(_eslint_sources(directory)), None) is not None
 
 
-def _eslint_sources(directory: Path) -> set[Path]:
+def _eslint_sources(directory: Path, *, include_config_sources: bool = False) -> set[Path]:
     sources: set[Path] = set()
     for parent, directories, names in os.walk(directory):
         base = Path(parent)
@@ -375,7 +381,7 @@ def _eslint_sources(directory: Path) -> set[Path]:
             base / name
             for name in names
             if Path(name).suffix.lower() in _ESLINT_SUFFIXES
-            and name not in _ESLINT_GLOBAL_IGNORE_NAMES
+            and (include_config_sources or name not in _ESLINT_GLOBAL_IGNORE_NAMES)
             and not is_link_like(base / name)
         )
     return sources
@@ -441,7 +447,7 @@ def selected_format_commands(
     if adopted is None or "ruff" in adopted.enabled_capabilities:
         commands.extend(_ruff_fix_commands(repository, selected, policy))
     if trusted and eslint and (adopted is None or "eslint" in adopted.enabled_capabilities):
-        commands.extend(_eslint_fix_commands(repository, selected, policy))
+        commands.extend(eslint_fix_commands(repository, selected, policy))
     commands.extend(shell_format_commands(repository, selected))
     return commands
 
@@ -491,7 +497,9 @@ def _ruff_fix_commands(root: Path, paths: Sequence[str], policy: Policy) -> list
     return commands
 
 
-def _eslint_fix_commands(root: Path, paths: Sequence[str], policy: Policy) -> list[Command]:
+def eslint_fix_commands(
+    root: Path, paths: Sequence[str], policy: Policy, *, include_config_sources: bool = False
+) -> list[Command]:
     from sarj_standards.libs.repository import rule_catalog_artifact  # ruff: ignore[import-outside-top-level] -- distinguish custom selectors from native ESLint IDs.
 
     custom = rule_catalog_artifact.selector_index().canonical
@@ -505,7 +513,12 @@ def _eslint_fix_commands(root: Path, paths: Sequence[str], policy: Policy) -> li
         command
         for disabled, group in sorted(groups.items(), key=lambda item: sorted(item[0]))
         for command in select_eslint_commands(
-            root, group, label="selected", fix=True, disabled_rules=tuple(sorted(disabled))
+            root,
+            group,
+            label="selected",
+            fix=True,
+            disabled_rules=tuple(sorted(disabled)),
+            include_config_sources=include_config_sources,
         ).commands
     ]
 

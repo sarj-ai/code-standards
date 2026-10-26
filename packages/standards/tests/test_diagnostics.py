@@ -7,6 +7,8 @@ import tokenize
 from typing import TYPE_CHECKING, Unpack
 
 import pytest
+from sarj_iac_lint.rule_base import Diagnostic as IacDiagnostic
+from sarj_sql_lint.rule_base import Diagnostic as SqlDiagnostic
 
 from sarj_standards import api
 from sarj_standards.cli.main import main
@@ -50,7 +52,7 @@ from sarj_standards.libs.diagnostics import (
 )
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting import external as external_module
-from sarj_standards.libs.linting.analysis import analyze as analyze_paths, report_from_tools
+from sarj_standards.libs.linting.analysis import analyze as analyze_paths, normalize_native, report_from_tools
 from sarj_standards.libs.linting.policy import Policy
 from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelection, RuleSelector
 
@@ -1270,3 +1272,29 @@ def test_eslint_can_be_left_to_repository_ci_while_react_doctor_still_runs(
 
     assert selected == expected
     assert react_doctor == [True]
+
+
+@pytest.mark.parametrize(
+    ("source", "diagnostic_type"), [("sarj-sql-lint", SqlDiagnostic), ("sarj-iac-lint", IacDiagnostic)]
+)
+def test_common_native_projection_accepts_real_codepoint_diagnostic_records(
+    tmp_path: Path, source: str, diagnostic_type: type[SqlDiagnostic | IacDiagnostic]
+) -> None:
+    path = tmp_path / "source.txt"
+    path.write_text("é\n", encoding="utf-8")
+    native = diagnostic_type(path, 1, 2, "fixture", "A native finding")
+
+    diagnostic = normalize_native(native, source=source, root=tmp_path, metadata={}, documents={})
+
+    assert diagnostic.location == Location("source.txt", position=Position(0, 1, 2))
+    assert diagnostic.code == "fixture"
+    assert diagnostic.source == source
+
+
+def test_python_projection_rejects_diagnostic_without_required_column_encoding(tmp_path: Path) -> None:
+    path = tmp_path / "source.py"
+    path.write_text("value = 1\n", encoding="utf-8")
+    native = SqlDiagnostic(path, 1, 1, "fixture", "A malformed Python finding")
+
+    with pytest.raises(TypeError, match="does not declare its column encoding"):
+        normalize_native(native, source="sarj-python-lint", root=tmp_path, metadata={}, documents={})
