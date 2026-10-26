@@ -244,3 +244,30 @@ def test_invalid_selected_python_encoding_is_a_policy_failure(tmp_path: Path) ->
 
     with pytest.raises(library_policy.ManifestPolicyError, match="cannot decode selected Python"):
         library_policy.scan_paths(tmp_path, [], python_paths=[selected])
+
+
+@pytest.mark.parametrize(
+    ("body", "expected_count"),
+    [
+        (
+            'import logging\nfrom vendor import configure\nconfigure(logging.__dict__)\nlogging.warning("event")\n',
+            0,
+        ),
+        (
+            'import logging\nfrom vendor import send\nlogging.__dict__["warning"] = send\nlogging.warning("event")\n',
+            0,
+        ),
+        ('import logging\nlevel = logging.WARNING\nlogging.log(level, "event")\n', 1),
+    ],
+    ids=["escaped-module-namespace", "replaced-module-emitter", "ordinary-module-constant"],
+)
+def test_module_namespace_provenance_is_preserved_through_canonical_analysis(
+    tmp_path: Path, body: str, expected_count: int
+) -> None:
+    source = _source(tmp_path, "service.py", body)
+
+    findings = library_policy.scan_paths(tmp_path, [], python_paths=[source])
+    report = api.Standards(tmp_path).analyze([str(source)], mode=api.AnalysisMode.RAW)
+
+    assert [item.id for item in findings] == (["LIB023"] if expected_count else [])
+    assert len([item for item in report.diagnostics if item.source == "sarj-library-policy"]) == expected_count

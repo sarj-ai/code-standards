@@ -185,7 +185,9 @@ class _LoggingProvenance:
             if not isinstance(parent, ast.Attribute):
                 escaped.add(node.id)
                 continue
-            if node.id in root_names and self._root_reference_escapes(parent):
+            if (node.id in module_names and parent.attr == "__dict__") or (
+                node.id in root_names and self._root_reference_escapes(parent)
+            ):
                 escaped.add(node.id)
         return frozenset(escaped)
 

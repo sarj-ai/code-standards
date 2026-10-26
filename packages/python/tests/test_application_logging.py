@@ -401,6 +401,68 @@ _CASES = (
     ),
     (
         EvaluationCase(
+            case_id="escaped-module-dictionary-namespace",
+            language=Language.PYTHON,
+            source=(
+                'import logging\nfrom vendor import configure\nconfigure(logging.__dict__)\nlogging.warning("event")\n'
+            ),
+            expected=ExpectedOutcome.NO_MATCH,
+            path=PurePosixPath("app/service.py"),
+        ),
+        0,
+    ),
+    (
+        EvaluationCase(
+            case_id="patched-module-dictionary-emitter",
+            language=Language.PYTHON,
+            source=(
+                "import logging\n"
+                "from vendor import send\n"
+                'logging.__dict__["warning"] = send\n'
+                'logging.warning("event")\n'
+            ),
+            expected=ExpectedOutcome.NO_MATCH,
+            path=PurePosixPath("app/service.py"),
+        ),
+        0,
+    ),
+    (
+        EvaluationCase(
+            case_id="escaped-renamed-module-dictionary-namespace",
+            language=Language.PYTHON,
+            source=(
+                "import logging as events\n"
+                "from vendor import configure\n"
+                "configure(events.__dict__)\n"
+                'events.error("event")\n'
+            ),
+            expected=ExpectedOutcome.NO_MATCH,
+            path=PurePosixPath("app/service.py"),
+        ),
+        0,
+    ),
+    (
+        EvaluationCase(
+            case_id="ordinary-module-level-constant-keeps-emitter-provenance",
+            language=Language.PYTHON,
+            source=('import logging\nlevel = logging.WARNING\nlogging.log(level, "event")\n'),
+            expected=ExpectedOutcome.MATCH,
+            path=PurePosixPath("app/service.py"),
+        ),
+        1,
+    ),
+    (
+        EvaluationCase(
+            case_id="ordinary-module-routing-keeps-nearby-emitter-provenance",
+            language=Language.PYTHON,
+            source=('import logging\nlogging.getLogger().setLevel(logging.WARNING)\nlogging.warning("event")\n'),
+            expected=ExpectedOutcome.MATCH,
+            path=PurePosixPath("app/service.py"),
+        ),
+        1,
+    ),
+    (
+        EvaluationCase(
             case_id="unknown-wildcard-rebinding",
             language=Language.PYTHON,
             source=('import logging\nfrom vendor import *\nlogging.warning("event")\n'),

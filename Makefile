@@ -53,6 +53,7 @@ rollout-reconcile:
 
 setup:
 	$(STANDARDS) --root . maintain setup
+	npm --prefix packages/typescript run build
 
 verify:
 	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory doctor docs-check
@@ -106,7 +107,6 @@ build:
 	uv --directory packages/standards-compat build
 
 test: check-versions-synced test-typescript test-bootstrap test-contracts test-python test-sql test-iac test-standards test-tsconfig
-
 
 test-typescript:
 	npm --prefix packages/typescript test
