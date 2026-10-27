@@ -2,7 +2,8 @@ import { join } from "node:path";
 
 import * as parser from "@typescript-eslint/parser";
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { afterAll, describe, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import { z } from "zod";
 
 import rule, { NO_PARTIAL_TYPE_PREDICATE_DOCUMENTATION } from "../../src/rules/no-partial-type-predicate.js";
 
@@ -18,8 +19,22 @@ function predicate(expression: string, target = "number", input = "unknown"): st
   return `function check(value: ${input}): value is ${target} { return ${expression}; }`;
 }
 
+function uuidPredicate(schema = "z.uuid()", expression = "UuidSchema.safeParse(value).success", prefix = 'import { z } from "zod";'): string {
+  return `${prefix} const UuidSchema=${schema}; export function check(value:unknown):value is string{return ${expression};}`;
+}
+
 TESTER.run("no-partial-type-predicate", rule, {
   valid: [
+    {
+      name: "local paths alias has its own schema semantics",
+      filename: "guard.ts",
+      code: 'import {z} from "zod";const Schema=z.uuid();export function isString(value:unknown):value is string{return Schema.safeParse(value).success;}',
+      languageOptions: { parserOptions: {
+        projectService: false,
+        project: join(import.meta.dirname, "..", "fixtures", "uuid-local-module", "tsconfig.json"),
+        tsconfigRootDir: join(import.meta.dirname, "..", "fixtures", "uuid-local-module"),
+      } },
+    },
     { name: "public boolean filter", code: NO_PARTIAL_TYPE_PREDICATE_DOCUMENTATION.examples[0].files[0].source },
     ...[
       ["total primitive boundary", predicate('typeof value === "number"')],
@@ -79,8 +94,62 @@ TESTER.run("no-partial-type-predicate", rule, {
     ].map(([name, code]) => ({ name, code })),
     { name: "generated file", filename: "guard.generated.ts", code: predicate('typeof value === "number" && value > 0') },
     { name: "exact suppression", code: `// eslint-disable-next-line @rule-tester/no-partial-type-predicate -- legacy callback contract is reviewed\n${predicate('typeof value === "number" && value > 0')}` },
+    ...[
+      ["UUID boolean example", NO_PARTIAL_TYPE_PREDICATE_DOCUMENTATION.examples[3].files[0].source],
+      ["UUID branded domain", 'import {z} from "zod";const UuidSchema=z.uuid().brand<"Uuid">();type Uuid=z.infer<typeof UuidSchema>;export function check(value:unknown):value is Uuid{return UuidSchema.safeParse(value).success;}'],
+      ["UUID transform remains opaque", uuidPredicate('z.uuid().transform(value=>value)')],
+      ["UUID refine remains opaque", uuidPredicate('z.uuid().refine(value=>value.length>0)')],
+      ["UUID default remains opaque", uuidPredicate('z.uuid().default("00000000-0000-4000-8000-000000000000")')],
+      ["UUID coercion remains opaque", uuidPredicate('z.coerce.string().uuid()')],
+      ["imported schema remains opaque", 'import {UuidSchema} from "./schema.js";export function check(value:unknown):value is string{return UuidSchema.safeParse(value).success;}'],
+      ["unrelated zod-like module", uuidPredicate('z.uuid()', undefined, 'import {z} from "custom-schema";')],
+      ["shadowed zod namespace", 'import {z} from "zod";function create(z:CustomFactory){const UuidSchema=z.uuid();return (value:unknown):value is string=>UuidSchema.safeParse(value).success;}'],
+      ["shadowed schema receiver", 'import {z} from "zod";const UuidSchema=z.uuid();function create(UuidSchema:CustomSchema){return (value:unknown):value is string=>UuidSchema.safeParse(value).success;}'],
+      ["shadowed parsed parameter", 'import {z} from "zod";const UuidSchema=z.uuid();const other="ready";export function check(value:unknown):value is string{return UuidSchema.safeParse(other).success;}'],
+      ["negated parse result", uuidPredicate(undefined, '!UuidSchema.safeParse(value).success')],
+      ["asynchronous parse method", uuidPredicate(undefined, 'UuidSchema.safeParseAsync(value).success')],
+      ["dynamic success field", uuidPredicate(undefined, 'UuidSchema.safeParse(value)[field]')],
+      ["parse method receives options", uuidPredicate(undefined, 'UuidSchema.safeParse(value,options).success')],
+      ["other parse options can expose mutable schema internals", uuidPredicate()+'UuidSchema.safeParse("bad",{error:issue=>{(issue.inst as any)._zod.def.pattern.test=()=>true;return "Bad";}}).error;'],
+      ["spread parse options can expose mutable schema internals", uuidPredicate()+'UuidSchema.safeParse(...["bad",{error:(issue:any)=>{issue.inst._zod.def.pattern.test=()=>true;return "Bad";}}] as const).error;'],
+      ["other parse options are conservatively opaque", uuidPredicate()+'UuidSchema.safeParse("bad",{}).error;'],
+      ["parse result alias remains opaque", 'import {z} from "zod";const UuidSchema=z.uuid();export function check(value:unknown):value is string{const result=UuidSchema.safeParse(value);return result.success;}'],
+      ["schema alias escapes", uuidPredicate()+ 'const alias=UuidSchema;alias.safeParse=acceptAll;'],
+      ["schema method mutation", uuidPredicate()+'UuidSchema.safeParse=acceptAll;'],
+      ["schema unknown consumer", uuidPredicate()+'configure(UuidSchema);'],
+      ["namespace factory mutation", uuidPredicate()+'z.uuid=customFactory;'],
+      ["namespace escape", uuidPredicate()+'configure(z);'],
+      ["other namespace value use lacks closed prototype proof", uuidPredicate()+'const other=z.string();'],
+      ["reflective mutation", uuidPredicate()+'eval("UuidSchema.safeParse = acceptAll");'],
+      ["RegExp prototype can change UUID validation", uuidPredicate()+ 'RegExp.prototype.test=()=>true;'],
+      ["reflective RegExp prototype replacement", uuidPredicate()+ 'Object.defineProperty(RegExp.prototype,"test",{value:()=>true});'],
+      ["regex prototype capability through literal", uuidPredicate()+ 'Object.getPrototypeOf(/./).test=()=>true;'],
+      ["ambient RegExp replacement", uuidPredicate()+ 'globalThis.RegExp=CustomRegExp;'],
+      ["regex constructor escape", uuidPredicate()+ 'configure(RegExp);'],
+      ["Function constructor invalidates closed proof", uuidPredicate()+ 'Function("RegExp.prototype.test = () => true")();'],
+      ["explicit callback contract", 'import {z} from "zod";const UuidSchema=z.uuid();const check:(value:unknown)=>boolean=(value:unknown):value is string=>UuidSchema.safeParse(value).success;'],
+      ["UUID schema cast cannot invent an official factory", uuidPredicate('customSchema as z.ZodUUID')],
+      ["UUID format factory options remain opaque", uuidPredicate('z.uuid({error:"Public"})')],
+    ].map(([name, code])=>({name,code})),
   ],
   invalid: [
+    ...[
+      ["UUID partial predicate example", NO_PARTIAL_TYPE_PREDICATE_DOCUMENTATION.examples[2].files[0].source],
+      ["UUID legacy string chain", uuidPredicate('z.string().uuid()')],
+      ["UUID ordinary one-argument parse read preserves native behavior", uuidPredicate()+'UuidSchema.safeParse("bad").error;'],
+      ["UUID import alias", uuidPredicate('schema.uuid()', undefined, 'import {z as schema} from "zod";')],
+      ["UUID namespace import", uuidPredicate('z.uuid()', undefined, 'import * as z from "zod";')],
+      ["UUID v4 entry point", uuidPredicate('z.uuid()', undefined, 'import {z} from "zod/v4";')],
+      ["UUID v3 string format", uuidPredicate('z.string().uuid()', undefined, 'import {z} from "zod/v3";')],
+      ["UUID string input still admits counterexample", 'import {z} from "zod";const UuidSchema=z.uuid();export function check(value:string):value is string{return UuidSchema.safeParse(value).success;}'],
+      ["UUID broad string alias", 'import {z} from "zod";type Text=string;const UuidSchema=z.uuid();export function check(value:unknown):value is Text{return UuidSchema.safeParse(value).success;}'],
+      ["UUID standalone arrow", 'import {z} from "zod";const UuidSchema=z.uuid();export const check=(value:unknown):value is string=>UuidSchema.safeParse(value).success;'],
+      ["UUID private schema is review-only too", 'import {z} from "zod";const UuidSchema=z.uuid();function check(value:unknown):value is string{return UuidSchema.safeParse(value).success;}'],
+      ["UUID direct schema export preserves its local native behavior", 'import {z} from "zod";export const UuidSchema=z.uuid();export function check(value:unknown):value is string{return UuidSchema.safeParse(value).success;}'],
+      ["UUID separate export specifier does not mutate the schema", uuidPredicate()+'export {UuidSchema};'],
+      ["UUID original typed exported schema", 'import {z} from "zod";export const UuidSchema:z.ZodUUID=z.uuid();export const check=(value:unknown):value is string=>UuidSchema.safeParse(value).success;'],
+      ["UUID namespace type reads do not escape", 'import {z} from "zod";type Schema=z.ZodUUID;const UuidSchema=z.uuid();export function check(value:unknown):value is string{return UuidSchema.safeParse(value).success;}'],
+    ].map(([name,code])=>({name,code,output:null,errors:[{messageId:'partialPredicate' as const,data:{target:'string',witness:'`"not-a-uuid"`'}}]})),
     { name: "preserves the sole named primitive predicate binding", code: "export {}; type Numeric = number; function check(v: unknown): v is Numeric { return typeof v === \"number\" && v > 0; }", output: null, errors: [{ messageId: "partialPredicate" }] },
     { name: "corrects a predicate with an independent exported type use", code: "export type Kept = Numeric; type Numeric = number; function check(v: unknown): v is Numeric { return typeof v === \"number\" && v > 0; }", output: "export type Kept = Numeric; type Numeric = number; function check(v: unknown): boolean { return typeof v === \"number\" && v > 0; }", errors: [{ messageId: "partialPredicate" }] },
     { name: "corrects an unused private positive filter", code: "export {}; function check(v:unknown): v is number { return typeof v === \"number\" && v > 0; }", output: "export {}; function check(v:unknown): boolean { return typeof v === \"number\" && v > 0; }", errors: [{ messageId: "partialPredicate" }] },
@@ -133,6 +202,13 @@ TESTER.run("no-partial-type-predicate", rule, {
       ["tests stay checked", predicate('typeof value === "number" && value > 0')],
     ].map(([name, code]) => ({ name, code, errors: [{ messageId: "partialPredicate" as const }] })),
   ],
+});
+
+it("native UUID validation rejects a witness that remains a valid string", () => {
+  const witness = "not-a-uuid";
+  expect(z.uuid().safeParse(witness).success).toBe(false);
+  expect(z.string().uuid().safeParse(witness).success).toBe(false);
+  expect(z.string().safeParse(witness).success).toBe(true);
 });
 
 const SYNTAX_TESTER = new RuleTester({ languageOptions: { parser } });

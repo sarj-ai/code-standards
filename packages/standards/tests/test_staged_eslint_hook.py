@@ -57,6 +57,49 @@ def _run(root: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
+@pytest.mark.parametrize("fix", [False, True], ids=("verify", "fix"))
+@pytest.mark.parametrize("rule_warning", [False, True], ids=("ignored-only", "real-warning"))
+def test_native_ignore_warning_flag_preserves_rule_warning_limit(
+    tmp_path: Path, *, fix: bool, rule_warning: bool
+) -> None:
+    project = _native_project(tmp_path)
+    (project / "eslint.config.mjs").write_text(
+        "export default [{ignores:['ignored.js']},{rules:{'no-console':'warn'}}];\n", encoding="utf-8"
+    )
+    ignored = project / "ignored.js"
+    ignored.write_text("if (\n", encoding="utf-8")
+    source = project / "source.js"
+    original = "console.log('fixture');\n" if rule_warning else "export const VALUE = 1;\n"
+    source.write_text(original, encoding="utf-8")
+    node = shutil.which("node")
+    assert node is not None
+
+    result = subprocess.run(
+        (
+            node,
+            str(_TYPESCRIPT / "node_modules/eslint/bin/eslint.js"),
+            "--no-warn-ignored",
+            "--max-warnings",
+            "0",
+            *(("--fix",) if fix else ()),
+            "--",
+            "ignored.js",
+            "source.js",
+        ),
+        cwd=project,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert result.returncode == (1 if rule_warning else 0), result.stdout + result.stderr
+    assert "File ignored" not in result.stdout + result.stderr
+    assert ("no-console" in result.stdout) is rule_warning
+    assert source.read_text(encoding="utf-8") == original
+    assert ignored.read_text(encoding="utf-8") == "if (\n"
+
+
 @pytest.mark.parametrize("hidden", ["partial", "--assume-unchanged", "--skip-worktree"])
 def test_authored_hook_reconciles_non_typescript_inputs_before_any_fixer_or_build(tmp_path: Path, hidden: str) -> None:
     _repository(tmp_path)
@@ -220,6 +263,8 @@ def test_installed_own_hook_builds_fresh_custom_rules_and_preserves_native_fixes
     excluded.write_bytes(original)
     ignored = package / "src/ignored-values.ts"
     ignored.write_bytes(original)
+    rejected = package / "tests/fixtures/hook-ignored.ts"
+    rejected.write_text("if (\n", encoding="utf-8")
     adopted = manifest.Manifest(
         manifest.adopted_version(),
         (),
@@ -258,6 +303,7 @@ def test_installed_own_hook_builds_fresh_custom_rules_and_preserves_native_fixes
     assert b"export const FIRST_VALUE" in excluded.read_bytes()
     assert b"================" in excluded.read_bytes()
     assert ignored.read_bytes() == original
+    assert rejected.read_text(encoding="utf-8") == "if (\n"
     assert (package / "dist/index.js").is_file()
     assert _git(tmp_path, "ls-files", "--stage", "-z") == before
     assert _git(tmp_path, "rev-parse", "HEAD") == head
@@ -273,6 +319,7 @@ def test_installed_own_hook_builds_fresh_custom_rules_and_preserves_native_fixes
     )
     assert converged.returncode == 0, converged.stdout + converged.stderr
     assert source.read_bytes() == postimage
+    assert rejected.read_text(encoding="utf-8") == "if (\n"
 
 
 def test_installed_own_hook_builds_a_file_dependency_before_docs_only_native_eslint(

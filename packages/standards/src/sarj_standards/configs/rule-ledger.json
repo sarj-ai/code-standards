@@ -25,7 +25,10 @@
   "rules": {
     "python": [
       "async-cleanup-registered-synchronously",
+      "async-executor-shutdown",
       "async-mock-call-without-await-assertion",
+      "async-subprocess-cancellation-cleanup",
+      "cancel-owned-task-without-join",
       "complex-postgres-query-requires-architecture-review",
       "defect-xfail-requires-explicit-strict",
       "delete-route-returns-no-content",
@@ -35,6 +38,7 @@
       "duplicate-closed-pure-helper",
       "duplicate-pytest-fixture-params",
       "excessive-commentary",
+      "failed-probe-zero-threshold",
       "fakes-in-shared-location",
       "fastapi-class-router-contract",
       "fastapi-explicit-openapi-contract",
@@ -42,6 +46,7 @@
       "invalid-pydantic-field-default",
       "mock-without-spec",
       "named-record-at-boundaries",
+      "nan-hidden-by-builtin-min",
       "negative-only-http-status-assertion",
       "no-analytical-aggregation-in-postgres-store",
       "no-any-mapping-types",
@@ -394,6 +399,7 @@
       "large-shell-program",
       "no-unsafe-command-argument-interpolation",
       "no-wildcard-secret-read-permission",
+      "slack-event-text-in-mrkdwn",
       "workflow-embedded-program"
     ]
   },
@@ -581,7 +587,12 @@
       "SARJ529",
       "SARJ530",
       "SARJ531",
-      "SARJ532"
+      "SARJ532",
+      "SARJ536",
+      "SARJ537",
+      "SARJ538",
+      "SARJ539",
+      "SARJ540"
     ],
     "sql": [
       "SARJ101",
@@ -635,7 +646,8 @@
       "SARJ309",
       "SARJ310",
       "SARJ311",
-      "SARJ315"
+      "SARJ315",
+      "SARJ316"
     ]
   },
   "retired": [

@@ -216,10 +216,15 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from sarj_python_lint.rule_base import Rule
+from sarj_python_lint.rules.async_executor_shutdown import AsyncExecutorShutdown
+from sarj_python_lint.rules.async_subprocess_cancellation_cleanup import AsyncSubprocessCancellationCleanup
+from sarj_python_lint.rules.cancel_owned_task_without_join import CancelOwnedTaskWithoutJoin
 from sarj_python_lint.rules.delete_route_returns_no_content import DeleteRouteReturnsNoContent
 from sarj_python_lint.rules.duplicate_adjacent_exception_handler import DuplicateAdjacentExceptionHandler
 from sarj_python_lint.rules.duplicate_closed_pure_helper import DuplicateClosedPureHelper
 from sarj_python_lint.rules.duplicate_pytest_fixture_params import DuplicatePytestFixtureParams
+from sarj_python_lint.rules.failed_probe_zero_threshold import FailedProbeZeroThreshold
+from sarj_python_lint.rules.nan_hidden_by_builtin_min import NanHiddenByBuiltinMin
 from sarj_python_lint.rules.no_conflicting_pydantic_alias_validation import NoConflictingPydanticAliasValidation
 from sarj_python_lint.rules.no_contradictory_type_guard import NoContradictoryTypeGuard
 from sarj_python_lint.rules.no_create_verb_in_post_path import NoCreateVerbInPostPath
@@ -256,6 +261,11 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        AsyncSubprocessCancellationCleanup.id: AsyncSubprocessCancellationCleanup,
+        CancelOwnedTaskWithoutJoin.id: CancelOwnedTaskWithoutJoin,
+        AsyncExecutorShutdown.id: AsyncExecutorShutdown,
+        NanHiddenByBuiltinMin.id: NanHiddenByBuiltinMin,
+        FailedProbeZeroThreshold.id: FailedProbeZeroThreshold,
         PreferGroupedSettings.id: PreferGroupedSettings,
         NoRedundantLocalAlias.id: NoRedundantLocalAlias,
         PytestFixtureReturnsClosedResource.id: PytestFixtureReturnsClosedResource,
