@@ -1,6 +1,7 @@
 {
   "extends": "../tsconfig/strict.json",
   "compilerOptions": {
+    "incremental": true,
     "outDir": "./dist",
     "rootDir": "./src",
     // ESLint rule modules are `export default createRule(...)`. isolatedDeclarations

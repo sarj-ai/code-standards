@@ -1,6 +1,7 @@
 {
   "extends": "../tsconfig/strict.json",
   "compilerOptions": {
+    "incremental": true,
     "noEmit": true,
     "isolatedDeclarations": false,
     "allowImportingTsExtensions": true,
