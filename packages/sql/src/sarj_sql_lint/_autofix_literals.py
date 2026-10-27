@@ -143,7 +143,10 @@ def _literal_default(source: str, node: exp.Expr) -> bool:
     )
 
 
-def _literal_expression(source: str, node: object) -> bool:
+def _literal_expression(
+    source: str,
+    node: object,  # sarj-noqa: SARJ528 -- sqlglot argument values may be malformed non-expressions; each supported literal shape is checked.
+) -> bool:
     if isinstance(node, (exp.Literal, exp.Boolean, exp.Null)):
         return True
     if isinstance(node, exp.Paren):
@@ -186,7 +189,11 @@ def _canonical_type(source: str, node: object) -> bool:
     )
 
 
-def _arguments(node: exp.Expr) -> Mapping[str, object]:
+def _arguments(
+    node: exp.Expr,
+) -> Mapping[  # sarj-noqa: SARJ528 -- sqlglot args contains expressions, containers and native flags that readers refine.
+    str, object
+]:
     return node.args
 
 
@@ -208,7 +215,11 @@ def _is_object_list(value: object) -> TypeIs[list[object]]:
     return isinstance(value, list)
 
 
-def _metadata(node: exp.Expr) -> Mapping[str, object]:
+def _metadata(
+    node: exp.Expr,
+) -> Mapping[  # sarj-noqa: SARJ528 -- sqlglot meta is an open Python mapping; readers narrow positions and other fields.
+    str, object
+]:
     return node.meta
 
 

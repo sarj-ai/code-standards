@@ -144,7 +144,13 @@ def _table(value: object, *, label: str) -> dict[str, object]:
     return table
 
 
-def _source(values: dict[str, object], origin: Path, visibility: CorpusVisibility) -> CorpusSource:
+def _source(
+    values: dict[  # sarj-noqa: SARJ528 -- Validate raw TOML fields before constructing CorpusSource.
+        str, object
+    ],
+    origin: Path,
+    visibility: CorpusVisibility,
+) -> CorpusSource:
     required = {"name", "root", "kind", "digest", "include"}
     missing = sorted(required - values.keys())
     if missing:

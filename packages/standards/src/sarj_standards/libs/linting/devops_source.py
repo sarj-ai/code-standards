@@ -579,7 +579,11 @@ def _table(value: object) -> dict[object, object]:
     return value
 
 
-def _records(value: object) -> list[dict[object, object]]:
+def _records(
+    value: object,
+) -> list[  # sarj-noqa: SARJ528 -- Native tool array records retain unchecked values.
+    dict[object, object]
+]:
     if not is_object_list(value):
         message = "Expected a JSON array in native tool output"
         raise ValueError(message)

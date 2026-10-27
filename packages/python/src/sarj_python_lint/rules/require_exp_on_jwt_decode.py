@@ -35,7 +35,7 @@ class RequireExpOnJwtDecode(Rule):
     id = "require-exp-on-jwt-decode"
     code = "SARJ504"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="PyJWT decode calls require the exp claim.",
         rationale=(
             "PyJWT validates `exp` only when the claim is present. A token minted without `exp` (for example by a "
@@ -125,7 +125,7 @@ class RequireExpOnJwtDecode(Rule):
             return []
         imports = context.imports
         return [
-            Diagnostic(context.path, node.lineno, node.col_offset + 1, self.code, _MESSAGE, severity=Severity.WARNING)
+            Diagnostic(context.path, node.lineno, node.col_offset + 1, self.code, _MESSAGE, severity=Severity.ERROR)
             for node in context.nodes(ast.Call)
             if imports.resolved_symbol(node.func, sources=_PYJWT_MODULES) in _DECODERS and _exp_is_optional(node)
         ]

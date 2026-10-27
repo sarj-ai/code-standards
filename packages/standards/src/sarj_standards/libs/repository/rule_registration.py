@@ -120,7 +120,11 @@ def _reserve(root: Path, selector: RuleSelector, code: str | None, reserved: fro
     return FileEdit(path, before, json.dumps(data, indent=2) + "\n")
 
 
-def _strings(values: list[object]) -> list[str]:
+def _strings(
+    values: list[  # sarj-noqa: SARJ528 -- Validate ledger identities before treating them as strings.
+        object
+    ],
+) -> list[str]:
     result: list[str] = []
     for value in values:
         if not isinstance(value, str):

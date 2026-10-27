@@ -1076,8 +1076,7 @@ def _direct_base_symbol(unit: SourceUnit, expression: ast.expr) -> SymbolRef | N
     resolved = _resolve(unit, expression)
     if resolved is not None or not isinstance(expression, ast.Name) or unit.tree is None:
         return resolved
-    # Test support modules need not be packages. Absolute imports still prove
-    # the base identity even when the file itself has no importable module name.
+    # Absolute imports can establish base identity even for unpackaged test-support files.
     for statement in _module_import_statements(unit.tree):
         if not isinstance(statement, ast.ImportFrom) or statement.level or statement.module is None:
             continue

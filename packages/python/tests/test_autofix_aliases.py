@@ -166,7 +166,7 @@ def _reference_count(*, payload: object) -> int:
     ids=["caller-locals", "frame-backed-refcount"],
 )
 def test_genuine_external_consumer_findings_stay_manual_with_observable_counterexamples(
-    observer: Callable[..., object],
+    observer: Callable[..., int],
 ) -> None:
     findings = REGISTRY[_RULE]().check(_PATH, _PUBLIC_SOURCE)
     assert len(findings) == 1
@@ -194,7 +194,9 @@ def test_unknown_outer_calls_refuse_genuine_native_alias_findings(statement: str
     assert fix_source(_PATH, source, rule_ids=[_RULE]) == source
 
 
-def _metadata_transform(_item: object) -> object:
+def _metadata_transform(
+    _item: object,  # sarj-noqa: SARJ528 -- exec callback observes caller metadata and ignores its input value.
+) -> bool:
     function: object = sys._getframe(1).f_locals["_record"]  # ruff: ignore[private-member-access] # pyright: ignore[reportPrivateUsage, reportAny] -- stdlib f_locals is untyped; this frame observer immediately narrows its value with isinstance(FunctionType).
     assert isinstance(function, FunctionType)
     return "payload" in function.__code__.co_varnames

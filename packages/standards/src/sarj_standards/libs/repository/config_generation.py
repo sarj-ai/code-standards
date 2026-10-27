@@ -139,7 +139,7 @@ def _without_generated_policy(source: str) -> str:
     return source
 
 
-def _typescript_bans() -> Sequence[Mapping[str, object]]:
+def _typescript_bans() -> Sequence[Mapping[str, str]]:
     return tuple(
         {"name": entry.name, "message": entry.message} for entry in library_policy.typescript_restricted_imports()
     )

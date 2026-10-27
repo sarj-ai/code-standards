@@ -2863,6 +2863,14 @@
       "outcome": "Stage SARJ532 at WARNING without autofix. At least two directly owned public BaseSettings fields must share a complete Python namespace token; environment aliases alone do not qualify. Forty-four matching groups in the private sample remain API/environment review advisories. Preserve existing loading, aliases, defaults and source precedence when grouping manually."
     },
     {
+      "task": "rule-audit/sql/new-table-inline-constraints",
+      "family": "sql",
+      "ruleId": "new-table-inline-constraints",
+      "state": "pending",
+      "evidence": "Authored semantic fixtures cover primary keys, uniqueness, foreign keys, checks and plain unique column indexes on proven fresh tables. Near-miss controls preserve existing-table and online-validation migrations, forward foreign-key dependencies, transaction and migration-section boundaries, quoted identifiers, malformed input and indexes with separate PostgreSQL contracts. Final canonical verification and exact-head CI remain required; private source, paths and identifying pins remain local.",
+      "outcome": "Enforce SARJ121 as an error at the explicit user request, without autofix. Preserve constraint names and options when moving eligible declarations into CREATE TABLE. Ordinary, partial, expression, concurrent and option-bearing indexes remain separate; conditional or unproved table freshness abstains. Calibration remains pending rather than claiming completed release qualification."
+    },
+    {
       "task": "rule-audit/sql/no-analytical-queries-in-transactional-db",
       "family": "sql",
       "ruleId": "no-analytical-queries-in-transactional-db",

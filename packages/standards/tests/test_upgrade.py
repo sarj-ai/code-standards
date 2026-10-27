@@ -26,7 +26,7 @@ BOOTSTRAP_COMMAND = "uvx --no-config --isolated --python 3.14 --from sarj-standa
 
 
 class _LaterWriteError(OSError):
-    """A planned later write failed during a transaction regression."""
+    pass
 
 
 def _main(arguments: list[str]) -> int:
@@ -1292,7 +1292,7 @@ def test_update_migrates_legacy_wiring_before_the_single_dependency_install(
     )
     observed_policies: list[str] = []
 
-    def execute_after_rewrites(_commands: object) -> int:
+    def execute_after_rewrites(_commands: Iterable[lifecycle.Command]) -> int:
         observed_policies.append(policy.read_text(encoding="utf-8"))
         return 0
 
@@ -1330,7 +1330,7 @@ def test_update_installs_once_after_a_no_drift_legacy_migration(
     )
     observed_packages: list[str] = []
 
-    def execute_after_migration(_commands: object) -> int:
+    def execute_after_migration(_commands: Iterable[lifecycle.Command]) -> int:
         observed_packages.append(package.read_text(encoding="utf-8"))
         return 0
 
@@ -1537,7 +1537,7 @@ def test_offline_update_never_executes_install_commands(
     assert _main(["setup", "--dest", str(tmp_path), "--no-install"]) == 0
     capsys.readouterr()
 
-    def forbidden(_commands: object) -> int:
+    def forbidden(_commands: Iterable[lifecycle.Command]) -> int:
         pytest.fail("offline update attempted to execute an installer")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- upgrade orchestration and failure interception is the behavior under test.
@@ -1561,7 +1561,7 @@ def test_upgrade_with_install_still_rolls_back_dependency_drift(
         "doctor.python.legacy-in-project-tool",
     )
 
-    def execute(_commands: object) -> int:
+    def execute(_commands: Iterable[lifecycle.Command]) -> int:
         return 0
 
     def diagnose(_root: Path) -> list[doctor.Finding]:
@@ -1905,7 +1905,7 @@ def test_upgrade_rejects_a_symlinked_manifest_without_touching_its_target(tmp_pa
 def test_upgrade_rolls_back_new_lockfile_and_interrupt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _outdated_python_repo(tmp_path)
 
-    def interrupted(_commands: object) -> int:
+    def interrupted(_commands: Iterable[lifecycle.Command]) -> int:
         (tmp_path / "uv.lock").write_text("partial\n", encoding="utf-8")
         raise KeyboardInterrupt
 

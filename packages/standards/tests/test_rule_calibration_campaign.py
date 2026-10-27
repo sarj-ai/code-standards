@@ -1,8 +1,13 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
+
+from sarj_standards.libs.json_boundary import parse_json
+
+
+if TYPE_CHECKING:
+    from pydantic import JsonValue
 
 
 _ROOT = Path(__file__).parents[3]
@@ -42,9 +47,10 @@ def _object_list(value: object) -> list[object]:
     return value  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
 
 
-def _read_json(path: Path) -> dict[str, object]:
-    value: object = json.loads(path.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
-    return _object_table(value)
+def _read_json(path: Path) -> dict[str, JsonValue]:
+    value = parse_json(path.read_text(encoding="utf-8"))
+    assert isinstance(value, dict)
+    return value
 
 
 def _load_inventory() -> _Inventory:

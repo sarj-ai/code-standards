@@ -17,6 +17,8 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from pydantic import JsonValue
+
     from tests.call_contracts import SubprocessOptions
 
 
@@ -54,7 +56,11 @@ class PublicationVerifier(Protocol):
         sleeper: Callable[[float], None],
     ) -> T: ...
 
-    def _npm_artifact(self, tarball: Path, identity: PackageIdentity) -> object: ...
+    def _npm_artifact(
+        self,
+        tarball: Path,
+        identity: PackageIdentity,
+    ) -> object: ...  # sarj-noqa: SARJ528 -- Stage seam permits opaque test sentinels.
 
     def attested_commit_matches_current_tree(self, package: str, attested: str, current: str) -> bool: ...
 
@@ -286,24 +292,32 @@ def test_npm_verification_has_independent_stage_budgets(
     identity = PackageIdentity("@example/plugin", "1.2.3")
     artifact = object()
 
-    def retry(
+    def retry[T](
         stage: str,
-        operation: Callable[[], object],
+        operation: Callable[[], T],
         *,
         timeout: timedelta,
         clock: Callable[[], float],  # ruff: ignore[unused-function-argument] -- The retry stage fixes this keyword.
         sleeper: Callable[[float], None],  # ruff: ignore[unused-function-argument] -- The retry stage fixes this keyword.
-    ) -> object:
+    ) -> T:
         stages.append((stage, timeout))
         return operation()
 
     def read_identity(_tarball: Path) -> PackageIdentity:
         return identity
 
-    def read_artifact(_tarball: Path, _identity: PackageIdentity) -> object:
+    def read_artifact(
+        _tarball: Path,
+        _identity: PackageIdentity,
+    ) -> object:  # sarj-noqa: SARJ528 -- Return the uninspected identity sentinel.
         return artifact
 
-    def verify_provenance(_artifact: object, *, commit: str, environment: str) -> None:
+    def verify_provenance(
+        _artifact: object,  # sarj-noqa: SARJ528 -- Timeout test does not inspect artifacts.
+        *,
+        commit: str,
+        environment: str,
+    ) -> None:
         """Treat provenance as already verified while exercising publication timeouts."""
 
     def verify_installability(_identity: PackageIdentity) -> None:
@@ -351,26 +365,29 @@ def test_npm_verification_converges_independently_after_each_stage_is_delayed(
         waits.append(seconds)
         now += seconds
 
-    def delayed(name: str, result: object = None) -> object:
+    def delayed[T](name: str, result: T) -> T:
         attempts[name] += 1
         if attempts[name] == 1 or (name == "metadata" and now < metadata_ready_at):
             message = f"{name} has not propagated"
             raise OSError(message)
         return result
 
-    def delayed_metadata(_tarball: Path, _identity: PackageIdentity) -> object:
+    def delayed_metadata(
+        _tarball: Path,
+        _identity: PackageIdentity,
+    ) -> object:  # sarj-noqa: SARJ528 -- Return the same opaque stage sentinel.
         return delayed("metadata", artifact)
 
     def delayed_provenance(
-        _artifact: object,
+        _artifact: object,  # sarj-noqa: SARJ528 -- Only stage timing is exercised.
         *,
         commit: str,  # ruff: ignore[unused-function-argument] -- The provenance verifier fixes this keyword.
         environment: str,  # ruff: ignore[unused-function-argument] -- The provenance verifier fixes this keyword.
-    ) -> object:
-        return delayed("provenance")
+    ) -> None:
+        return delayed("provenance", None)
 
-    def delayed_install(_identity: PackageIdentity) -> object:
-        return delayed("install")
+    def delayed_install(_identity: PackageIdentity) -> None:
+        return delayed("install", None)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test models delayed npm registry metadata convergence
         verifier, "_npm_artifact", delayed_metadata
@@ -547,7 +564,7 @@ def test_pypi_immutable_artifact_mismatch_fails_without_waiting(
     artifact = pypi_dist / "alpha_1.whl"
     digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
 
-    def metadata(url: str) -> dict[str, object]:
+    def metadata(url: str) -> dict[str, JsonValue]:
         if url.endswith("/provenance"):
             return {}
         return {

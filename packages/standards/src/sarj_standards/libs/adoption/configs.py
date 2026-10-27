@@ -30,9 +30,7 @@ CONFIG_NAMES: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
     }
 )
 
-# These files travel with an existing capability instead of adding another
-# manifest switch. React Doctor is an advisory companion to the TypeScript
-# gate, so every ESLint consumer receives the same data-only configuration.
+# ESLint consumers also receive React Doctor's data-only companion config.
 TYPESCRIPT_COMPANION_CONFIGS: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
     {
         "react-doctor": ("doctor.config.json", "doctor.config.json"),

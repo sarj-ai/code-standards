@@ -164,20 +164,26 @@ def _extract_groups(path: Path, source: str) -> list[ProseGroup]:
         return out
     run: list[tokenize.TokenInfo] = []
     for comment in comments:
-        body = comment.string.removeprefix("#").strip()
         own_line = not lines[comment.start[0] - 1][: comment.start[1]].strip()
-        if not own_line or _DIRECTIVE_RE.match(body) or _LICENSE_RE.search(body):
+        if not own_line:
             if run:
-                out.append(_comment_run(run))
+                _append_comment_run(run, out)
                 run = []
             continue
         if run and (comment.start[0] != run[-1].end[0] + 1 or comment.start[1] != run[-1].start[1]):
-            out.append(_comment_run(run))
+            _append_comment_run(run, out)
             run = []
         run.append(comment)
     if run:
-        out.append(_comment_run(run))
+        _append_comment_run(run, out)
     return out
+
+
+def _append_comment_run(run: list[tokenize.TokenInfo], groups: list[ProseGroup]) -> None:
+    bodies = [token.string.removeprefix("#").strip() for token in run]
+    if any(_DIRECTIVE_RE.match(body) or _LICENSE_RE.search(body) for body in bodies):
+        return
+    groups.append(_comment_run(run))
 
 
 def _comment_run(run: list[tokenize.TokenInfo]) -> ProseGroup:

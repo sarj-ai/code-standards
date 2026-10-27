@@ -124,7 +124,7 @@ class _DataUnions:
                     message=f"Data union `{name}` has no shared disjoint Literal discriminator. "
                     "Add a common field such as `kind` or `scope` with non-overlapping Literal values "
                     "on every variant; preserve constructor and serialized contracts when choosing defaults.",
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
             )
         return findings

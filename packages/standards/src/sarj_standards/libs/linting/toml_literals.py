@@ -20,12 +20,12 @@ TOML_STRING_OR_COMMENT_RE = re.compile(
 
 @dataclass(frozen=True, slots=True)
 class TomlSource:
-    document: Mapping[str, object]
+    document: Mapping[str, object]  # sarj-noqa: SARJ528 -- Native TOML dates and times.
     string_lines: Mapping[TomlValuePath, int]
 
 
 class TomlStringLocationError(ValueError):
-    """A native string value has no verified location in the original source."""
+    pass
 
 
 def parse_toml_string_lines(source: str) -> TomlSource:
@@ -50,7 +50,11 @@ def parse_toml_string_lines(source: str) -> TomlSource:
     return TomlSource(original, _verify_values(original, marked, spans, newline_offsets))
 
 
-def _string_contents(document: Mapping[str, object]) -> list[str]:
+def _string_contents(
+    document: Mapping[  # sarj-noqa: SARJ528 -- Traverse native TOML values, including dates and times.
+        str, object
+    ],
+) -> list[str]:
     pending: list[object] = [document]
     strings: list[str] = []
     while pending:
@@ -76,7 +80,12 @@ def _replace_literals(source: str, spans: Mapping[str, tuple[int, int]], selecte
     return "".join(chunks)
 
 
-def _value_markers(document: Mapping[str, object], spans: Mapping[str, tuple[int, int]]) -> set[str]:
+def _value_markers(
+    document: Mapping[  # sarj-noqa: SARJ528 -- Find string markers without converting native TOML values.
+        str, object
+    ],
+    spans: Mapping[str, tuple[int, int]],
+) -> set[str]:
     pending: list[object] = [document]
     selected: set[str] = set()
     while pending:
@@ -91,8 +100,12 @@ def _value_markers(document: Mapping[str, object], spans: Mapping[str, tuple[int
 
 
 def _verify_values(
-    original: Mapping[str, object],
-    marked: Mapping[str, object],
+    original: Mapping[  # sarj-noqa: SARJ528 -- Compare original and marked native TOML types exactly.
+        str, object
+    ],
+    marked: Mapping[  # sarj-noqa: SARJ528 -- Compare original and marked native TOML types exactly.
+        str, object
+    ],
     spans: Mapping[str, tuple[int, int]],
     newline_offsets: list[int],
 ) -> dict[TomlValuePath, int]:
@@ -119,8 +132,15 @@ def _verify_values(
 
 
 def _paired_children(
-    left: object, right: object, path: TomlValuePath
-) -> list[tuple[object, object, TomlValuePath]] | None:
+    left: object,
+    right: object,  # sarj-noqa: SARJ528 -- Pair raw TOML children while preserving scalar identity.
+    path: TomlValuePath,
+) -> (
+    list[  # sarj-noqa: SARJ528 -- Pair raw TOML children while preserving scalar identity.
+        tuple[object, object, TomlValuePath]
+    ]
+    | None
+):
     if is_object_mapping(left):
         if not is_object_mapping(right) or left.keys() != right.keys():
             msg = "TOML string attribution changes native key identity"

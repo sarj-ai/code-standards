@@ -17,6 +17,8 @@ from sarj_standards.libs.linting.external import ProcessOutput, analyze_external
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
 
+    from pydantic import JsonValue
+
     from sarj_standards.libs.linting.external import ProcessRunner
 
 
@@ -30,7 +32,9 @@ def _write(root: Path, name: str, source: str) -> str:
     return str(path.resolve())
 
 
-def _clone(first: str, first_lines: tuple[int, int], second: str, second_lines: tuple[int, int]) -> dict[str, object]:
+def _clone(
+    first: str, first_lines: tuple[int, int], second: str, second_lines: tuple[int, int]
+) -> dict[str, JsonValue]:
     return {
         "firstFile": {"name": first, "start": first_lines[0], "end": first_lines[1]},
         "secondFile": {"name": second, "start": second_lines[0], "end": second_lines[1]},
@@ -39,7 +43,7 @@ def _clone(first: str, first_lines: tuple[int, int], second: str, second_lines: 
     }
 
 
-def _report(*clones: dict[str, object]) -> str:
+def _report(*clones: dict[str, JsonValue]) -> str:
     return json.dumps({"duplicates": list(clones), "statistics": {}})
 
 

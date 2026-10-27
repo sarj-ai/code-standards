@@ -37,7 +37,6 @@ from sarj_standards.libs.diagnostics import (
     ToolReport,
 )
 from sarj_standards.libs.json_boundary import parse_unique_json
-from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 _MANIFEST = Path(".repo-standards/repository.toml")
@@ -49,8 +48,6 @@ _GIT_READ_OPTIONS = ("--no-replace-objects", "--no-lazy-fetch", "--no-optional-l
 
 
 def analyze(root: Path, *, staged: bool) -> ToolReport | None:
-    # A committed-tree check has no repository snapshot before the first commit.
-    # The staged pre-commit path still analyzes the exact index for an initial commit.
     if (staged and not _is_git_worktree(root)) or (not staged and not _has_committed_tree(root)):
         return None
     selected_manifest = _selected_path_exists(root, _MANIFEST, staged=staged)
@@ -147,7 +144,11 @@ def _comparison_notes(provenance: InputProvenance | None) -> tuple[str, ...]:
 
 
 def _diagnostic(
-    item: object, *, baselined: bool, comparison_notes: tuple[str, ...] = (), ratchet_warning: bool = False
+    item: object,
+    *,
+    baselined: bool,
+    comparison_notes: tuple[str, ...] = (),
+    ratchet_warning: bool = False,
 ) -> Diagnostic:
     if not isinstance(item, RepositoryDiagnostic):
         msg = "Repo Standards returned an invalid diagnostic type"
@@ -297,9 +298,9 @@ def _comparison_base(root: Path) -> str | None:
     if len(data) > _MAX_EVENT_BYTES:
         msg = "GitHub event exceeds the 1 MiB repository comparison limit"
         raise ValueError(msg)
-    value: object = parse_unique_json(data.decode("utf-8"))
+    value = parse_unique_json(data.decode("utf-8"))
     for key in keys:
-        if not is_object_mapping(value) or key not in value:
+        if not isinstance(value, dict) or key not in value:
             msg = f"GitHub {event} event has no exact comparison base"
             raise ValueError(msg)
         value = value[key]

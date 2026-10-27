@@ -1001,7 +1001,9 @@ def test_module_without_any_match_yields_no_diagnostics():
 
 
 def test_match_free_module_skips_expensive_source_scans(monkeypatch: pytest.MonkeyPatch):
-    def fail_if_called(*_args: object):
+    def fail_if_called(
+        *_args: object,  # sarj-noqa: SARJ528 -- MonkeyPatch callback fails on every unexpected argument tuple.
+    ):
         pytest.fail("source scan should be skipped when there is no candidate match")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- lookup interception proves the lexical gate skips scanning.
@@ -1014,7 +1016,9 @@ def test_match_free_module_skips_expensive_source_scans(monkeypatch: pytest.Monk
 
 
 def test_nonmergeable_match_skips_expensive_source_scans(monkeypatch: pytest.MonkeyPatch):
-    def fail_if_called(*_args: object):
+    def fail_if_called(
+        *_args: object,  # sarj-noqa: SARJ528 -- MonkeyPatch callback fails on every unexpected argument tuple.
+    ):
         pytest.fail("source scan should be skipped when match arms cannot merge")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- lookup interception proves the shape gate skips scanning.

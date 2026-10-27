@@ -341,14 +341,9 @@ def _suppressed_diagnostics(
 
 def _suppressed_codes(codes: dict[str, set[Severity]]) -> set[tuple[str, Severity]]:
     suppressed = _precedence_suppressions(codes)
-    # SARJ094 is deliberately staged as a warning while teams calibrate the
-    # FastAPI contract policy. Its route-aware return finding still owns the
-    # overlapping annotation failure: emitting the blocking SARJ447 twin would
-    # defeat warning staging and give two remediations for one return contract.
+    # SARJ094 warning staging owns the overlapping return failure; its blocking twin would defeat that policy.
     if "SARJ094" in codes:
         suppressed.update(_route_contract_suppressions(codes))
-    # The promoted signature-restatement rules now block. Keep their errors and
-    # drop only the lower-severity typed-docstring twin at the same owner.
     if _typed_docstring_warning_is_superseded(codes):
         suppressed.add(("SARJ092", Severity.WARNING))
     return suppressed

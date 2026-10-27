@@ -634,7 +634,7 @@ def test_invalid_json_abstains_and_blinds_other_environments(source: str, tmp_pa
     ],
 )
 def test_json_scalar_conversion_matches_declared_types(
-    scalar_type: str, hcl: str, native: object, expected: int, tmp_path: Path
+    scalar_type: str, hcl: str, native: str | int | list[str] | None, expected: int, tmp_path: Path
 ) -> None:
     root = _write_root(tmp_path, f'variable "input" {{\n  type = {scalar_type}\n}}\n', {"dev": f"input = {hcl}\n"})
     path = root / "prod.tfvars.json"

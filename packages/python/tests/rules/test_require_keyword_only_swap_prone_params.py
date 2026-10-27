@@ -472,8 +472,7 @@ class Stream:
 
 @pytest.mark.parametrize("name", ["seek", "add_unredirected_header"])
 def test_protocol_names_as_plain_functions_still_fire(name: str):
-    # The exemption is for METHODS implementing a protocol — a module-level
-    # function that merely shares the name owns its own calling convention.
+    # Protocol method exemptions do not change calling conventions of same-named module functions.
     src = f"def {name}(source_id: int, target_id: int) -> int: ...\n"
     assert len(_check(src)) == 1
 
@@ -663,8 +662,6 @@ def test_test_support_directories_are_exempt(path: str):
     ],
 )
 def test_names_merely_containing_test_still_fire(path: str):
-    # The predicate matches a whole DIRECTORY segment; a module whose name
-    # merely contains the letters is production code.
     src = "def transfer(source_id: str, target_id: str) -> None: ...\n"
     assert len(_check(src, path)) == 1
 

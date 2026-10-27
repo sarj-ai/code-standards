@@ -11,6 +11,7 @@ from .fakes import FakeRolloutRunner
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
 
@@ -102,7 +103,7 @@ def test_activation_plan_cannot_filter_out_a_current_consumer_as_success(monkeyp
         return "a" * 40
 
     def status(
-        _version: str, _consumers: object, _runner: rollout.CommandRunner, *, jobs: int
+        _version: str, _consumers: Sequence[rollout.Consumer], _runner: rollout.CommandRunner, *, jobs: int
     ) -> tuple[rollout.Outcome, ...]:
         assert jobs == 1
         return (current,)

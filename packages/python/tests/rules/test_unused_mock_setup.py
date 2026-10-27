@@ -816,8 +816,7 @@ async def test_lookup():
 
 
 def test_assertion_before_the_configuration_is_exempt():
-    # The assertion describes the state *before* the arrange block; the setup
-    # is for whatever the test does next.
+    # An assertion before setup does not consume the later configured mock.
     src = """
 def test_lookup():
     lookup.assert_not_called()

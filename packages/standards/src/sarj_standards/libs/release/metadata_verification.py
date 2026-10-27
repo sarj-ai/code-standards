@@ -118,7 +118,10 @@ def _mapping(value: object) -> TypeGuard[dict[object, object]]:
     return isinstance(value, dict)
 
 
-def _identical(before: object, after: object) -> bool:
+def _identical(
+    before: object,  # sarj-noqa: SARJ528 -- Compare native TOML and JSON values.
+    after: object,  # sarj-noqa: SARJ528 -- Preserve native scalar type equality.
+) -> bool:
     if type(before) is not type(after):
         return False
     if _object(before) and _object(after):

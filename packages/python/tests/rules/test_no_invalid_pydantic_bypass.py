@@ -487,7 +487,7 @@ def test_multiple_invalid_fields_are_distinct_and_warnings() -> None:
     findings = _check(_BASE.replace("kind='unknown'", "kind='unknown', name=None"))
     assert len(findings) == 2
     assert len({(finding.line, finding.col) for finding in findings}) == 2
-    assert all(finding.severity is Severity.WARNING for finding in findings)
+    assert all(finding.severity is Severity.ERROR for finding in findings)
     assert _check(_BASE, "tests/test_models.py") == []
     assert _PROBLEM.bad_examples[0] == _BASE
 

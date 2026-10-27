@@ -109,8 +109,7 @@ def _analysis_manifest(root: Path, mode: AnalysisMode) -> Manifest | None:
     try:
         return load_manifest(root)
     except ValueError:
-        # Corpus evaluation is intentionally portable across consumer manifest
-        # generations. Current manifests still contribute path exclusions.
+        # Legacy manifests may still supply path exclusions.
         return None
 
 
@@ -1213,7 +1212,12 @@ def _sync_target_changes(source: Path, destination: Path) -> bool:
         return True
 
 
-def _object_list(value: object, label: str) -> list[object]:
+def _object_list(
+    value: object,  # sarj-noqa: SARJ528 -- Shallow validation preserves unchecked array elements.
+    label: str,
+) -> list[  # sarj-noqa: SARJ528 -- Shallow validation preserves unchecked array elements.
+    object
+]:
     if not is_object_list(value):
         msg = f"{label} must be an array"
         raise TypeError(msg)

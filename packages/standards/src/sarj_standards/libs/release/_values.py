@@ -9,7 +9,11 @@ from sarj_standards.libs.typed_containers import (
 is_object_dict = is_object_mapping
 
 
-def string_object_dict(value: object, *, label: str) -> dict[str, object]:
+def string_object_dict(
+    value: object,  # sarj-noqa: SARJ528 -- Validate only native table shape.
+    *,
+    label: str,
+) -> dict[str, object]:  # sarj-noqa: SARJ528 -- Retain unvalidated native values.
     if not is_object_dict(value):
         msg = f"{label} must contain an object or table"
         raise TypeError(msg)

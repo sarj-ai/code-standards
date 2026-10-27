@@ -58,14 +58,16 @@ HELM_SCHEMA_PROFILE = SchemaReferenceProfile(
 @dataclass(frozen=True, slots=True)
 class _SchemaResource:
     resource: Resource[Schema]
-    base: object
+    base: Schema
     validator: type[Validator]
 
 
 @dataclass(slots=True)
 class _ReferenceWalk:
     pending: list[_SchemaResource]
-    visited: dict[tuple[int, int], object] = field(default_factory=dict)
+    visited: dict[tuple[int, int], object] = field(  # sarj-noqa: SARJ528 -- Retain schema identity.
+        default_factory=dict
+    )
     references: list[str] = field(default_factory=list)
     identifiers: list[str] = field(default_factory=list)
 
@@ -184,7 +186,10 @@ def _native_subresources(
 
 def _profile_subresources(
     *,
-    content: dict[str, object] | bool,
+    content: dict[  # sarj-noqa: SARJ528 -- referencing Schema permits arbitrary in-memory metadata.
+        str, object
+    ]
+    | bool,
     validator: type[Validator],
     profile: SchemaReferenceProfile | None,
 ) -> Iterable[Resource[Schema]]:
@@ -201,7 +206,12 @@ def _profile_subresources(
                     yield _resource(child, default=validator)
 
 
-def _native_dialect(content: dict[str, object], dialects: frozenset[str] | None) -> None:
+def _native_dialect(
+    content: dict[  # sarj-noqa: SARJ528 -- Inspect the dialect without coercing Python schema metadata.
+        str, object
+    ],
+    dialects: frozenset[str] | None,
+) -> None:
     dialect = content.get("$schema")
     if dialects is not None and isinstance(dialect, str) and dialect.removesuffix("#") not in dialects:
         msg = "schema dialect is unsupported by the selected native validator"
@@ -209,7 +219,13 @@ def _native_dialect(content: dict[str, object], dialects: frozenset[str] | None)
 
 
 def _resource_identifier(
-    resource: Resource[Schema], content: dict[str, object], *, validator: type[Validator], legacy_identifiers: bool
+    resource: Resource[Schema],
+    content: dict[  # sarj-noqa: SARJ528 -- Preserve the referencing Resource schema Python values.
+        str, object
+    ],
+    *,
+    validator: type[Validator],
+    legacy_identifiers: bool,
 ) -> str | None:
     identifier = resource.id()
     uses_legacy_id = "id" in content and (content.get("$schema") is None or validator is Draft4Validator)
@@ -222,7 +238,7 @@ def _resource_identifier(
 
 
 def _queue_pointer_targets(
-    walk: _ReferenceWalk, references: tuple[str, ...], *, base: object, validator: type[Validator]
+    walk: _ReferenceWalk, references: tuple[str, ...], *, base: Schema, validator: type[Validator]
 ) -> None:
     for reference in references:
         if not reference.startswith("#") or not unquote(reference[1:]).startswith("/"):
@@ -234,7 +250,10 @@ def _queue_pointer_targets(
             walk.pending.append(_SchemaResource(_resource(target, default=validator), base, validator))
 
 
-def _pointer(value: object, fragment: str) -> object:
+def _pointer(
+    value: object,  # sarj-noqa: SARJ528 -- JSON Pointer traversal preserves in-memory schema object identity.
+    fragment: str,
+) -> object:  # sarj-noqa: SARJ528 -- JSON Pointer traversal preserves in-memory schema object identity.
     pointer = unquote(fragment)
     if not pointer.startswith("/"):
         return value  # Named anchors are covered by upstream semantic subresources.

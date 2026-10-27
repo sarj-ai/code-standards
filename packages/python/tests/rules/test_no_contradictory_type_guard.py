@@ -166,7 +166,7 @@ def _check(source: str, path: str = "app/guards.py") -> list[Diagnostic]:
 def test_labeled_cases(case: EvaluationCase) -> None:
     findings = _check(case.source)
     assert len(findings) == int(case.expected is ExpectedOutcome.MATCH)
-    assert all(finding.severity is Severity.WARNING for finding in findings)
+    assert all(finding.severity is Severity.ERROR for finding in findings)
 
 
 @pytest.mark.parametrize("example", NoContradictoryTypeGuard.public_examples())
@@ -178,7 +178,7 @@ def test_metadata_suppression_and_test_paths() -> None:
     docs = NoContradictoryTypeGuard.documentation
     assert docs is not None
     assert docs.autofix is AutofixPolicy.NONE
-    assert docs.default_level is Severity.WARNING
+    assert docs.default_level is Severity.ERROR
     finding = _check(_BASE)[0]
     assert (finding.code, finding.line, finding.col) == ("SARJ513", 3, 5)
     assert (

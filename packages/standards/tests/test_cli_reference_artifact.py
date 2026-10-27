@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 @pytest.mark.parametrize("schema", [True, 1.0, "1", None], ids=("boolean", "float", "string", "null"))
-def test_reference_requires_an_integer_schema_version(schema: object) -> None:
+def test_reference_requires_an_integer_schema_version(schema: bool | float | str | None) -> None:
     payload: dict[str, object] = dict(cli_reference_artifact.load())
     payload["schemaVersion"] = schema
 

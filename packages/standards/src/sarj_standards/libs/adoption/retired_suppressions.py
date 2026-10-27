@@ -129,9 +129,7 @@ def reference_counts(path: Path, text: str, *, retired: tuple[ledger.Retired, ..
         elif directive.state is _DirectiveState.AMBIGUOUS:
             _add_pattern_hits(counts, retired, comment)
 
-    # Config objects and fixture strings can be reference sites too. Mask real
-    # comments first so ordinary prose and already-classified directives are not
-    # counted a second time.
+    # Mask comments to avoid counting directives twice when scanning config and fixture references.
     uncomments = _mask_spans(text, spans)
     for line in uncomments.splitlines():
         if not _looks_like_ambiguous_reference(line):
@@ -197,7 +195,7 @@ def _rewrite_eslint_suppressions(text: str, retired: dict[str, str | None]) -> s
 
 
 class _DuplicateKeyError(ValueError):
-    """A JSON object repeated a key and therefore has no lossless object model."""
+    pass
 
 
 def _rewrite_ratchet_suppressions(text: str, retired: dict[str, str | None]) -> str:
@@ -251,7 +249,7 @@ def _remove_retired_file_selector_budgets(document: _JsonObject, removed: set[st
     return changed
 
 
-def _json_object_values(value: object) -> dict[str, object]:
+def _json_object_values(value: object) -> dict[str, _DecodedJsonValue]:
     if isinstance(value, _JsonObject):
         return value.values
     raise TypeError(type(value).__name__)
@@ -259,11 +257,14 @@ def _json_object_values(value: object) -> dict[str, object]:
 
 @dataclass(frozen=True, slots=True)
 class _JsonObject:
-    values: dict[str, object]
+    values: dict[str, _DecodedJsonValue]
 
 
-def _unique_object(pairs: list[tuple[str, object]]) -> _JsonObject:
-    result: dict[str, object] = {}
+type _DecodedJsonValue = str | int | float | bool | list[_DecodedJsonValue] | _JsonObject | None
+
+
+def _unique_object(pairs: list[tuple[str, _DecodedJsonValue]]) -> _JsonObject:
+    result: dict[str, _DecodedJsonValue] = {}
     for key, value in pairs:
         if key in result:
             raise _DuplicateKeyError(key)
@@ -499,7 +500,7 @@ def _classify_directive(path: Path, comment: str) -> _Directive:
     return _Directive(_DirectiveState.VALID, tokens, match, reason_match.group("reason") or "")
 
 
-def _comma_delimited_tokens(body: str, valid: Callable[[str], object | None]) -> tuple[str, ...]:
+def _comma_delimited_tokens(body: str, valid: Callable[[str], re.Match[str] | None]) -> tuple[str, ...]:
     raw = tuple(part.strip() for part in body.strip().split(","))
     if not raw or any(not token or valid(token) is None for token in raw):
         return ()

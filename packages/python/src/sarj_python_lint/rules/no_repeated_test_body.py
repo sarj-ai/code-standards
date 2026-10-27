@@ -38,16 +38,12 @@ _TEST_PREFIX = "test"
 # Collapse case literals so differing inputs do not hide duplicated test structure.
 _LITERAL_PLACEHOLDER = "\x00sarj-literal"
 
-# Statements in the shared body, docstring excluded, below which "these two
-# tests look alike" carries no information.
 _MIN_STATEMENTS = 3
 
 # Members of a normalized-body group before it counts as copy-paste.
 _MIN_GROUP = 2
 _MIN_SHORT_CASE_GROUP = 3
 
-# Small source-checker pairs often read better as individually named contracts.
-# A longer uninterrupted run is a case table whose repeated shell obscures the cases.
 _MIN_EMBEDDED_SOURCE_GROUP = 5
 _MIN_REPEATED_SOURCE_OPERATION = 3
 
@@ -72,8 +68,7 @@ _MAX_CASE_LITERAL = 32
 _LONG_SINGLE_LINE_FIXTURE_MIN_CHARS = 80
 _LONG_SINGLE_LINE_FIXTURE_MIN_WORDS = 10
 
-# Two-test coincidences need corroborating names; these words are too generic
-# to establish that both tests exercise one behavior.
+# Generic test-name words cannot corroborate shared behavior.
 _WEAK_TEST_NAME_TOKENS = frozenset({"case", "key", "test", "value"})
 _GENERIC_ORDINAL_TEST_RE = re.compile(r"test_?(?:[a-z]|first|one|second|three|third|two)$")
 
@@ -95,8 +90,8 @@ class _TestFunction(NamedTuple):
 
 
 class _LiteralDifference(NamedTuple):
-    original: object
-    replacement: object
+    original: object  # sarj-noqa: SARJ528 -- Preserve unfiltered ast.Constant.value for exact runtime type, equality and repr.
+    replacement: object  # sarj-noqa: SARJ528 -- Preserve unfiltered ast.Constant.value for exact runtime type, equality and repr.
 
 
 class NoRepeatedTestBody(Rule):
@@ -228,8 +223,7 @@ class _Outline:
                 statements += isinstance(child, ast.stmt)
         self.statements: int = statements
         self.embedded_source_checker: bool = _is_embedded_source_checker(node)
-        # Container, async-ness, signature and decorators are identity, not
-        # body: each of them can make two identical bodies different tests.
+        # Container, async status, signature and decorators distinguish otherwise identical test bodies.
         self.key: tuple[str, bool, tuple[str, ...], str, str] = (
             container,
             isinstance(node, ast.AsyncFunctionDef),
@@ -730,9 +724,6 @@ def _signature_shape(node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[str,
 
 
 def _decorator_shape(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
-    # Verbatim, constants included: a different `xfail` reason, `skipif`
-    # condition, `override_settings` value or `parametrize` table means the two
-    # tests differ in a way the body cannot show.
     return "|".join(ast.dump(dec) for dec in node.decorator_list)
 
 
@@ -761,9 +752,14 @@ def _message(group: list[_Shape]) -> str:
     )
 
 
-def _differing_literals(original: tuple[object, ...], duplicate: tuple[object, ...]) -> list[_LiteralDifference]:
-    # Equal shapes imply the same number of constants, so positional comparison
-    # is well defined; the length guard is belt and braces.
+def _differing_literals(
+    original: tuple[  # sarj-noqa: SARJ528 -- retain unfiltered AST payloads for exact type, equality and repr diagnostics.
+        object, ...
+    ],
+    duplicate: tuple[  # sarj-noqa: SARJ528 -- retain counterpart AST payloads for exact type, equality and repr diagnostics.
+        object, ...
+    ],
+) -> list[_LiteralDifference]:
     if len(original) != len(duplicate):
         return []
     return [

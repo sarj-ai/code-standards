@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from _pytest.capture import CaptureFixture
 
     from sarj_python_lint.rule_base import Diagnostic
+    from sarj_python_lint.rules.prefer_constant_time_secret_compare import _Roles  # pyright: ignore[reportPrivateUsage]  # sarj-noqa: SARJ048 -- Counter preserves the intercepted _roles_for_scope result type.
 
 
 _PATH = Path("app/auth.py")
@@ -85,7 +86,7 @@ def test_scope_roles_are_reused_across_comparisons(monkeypatch: pytest.MonkeyPat
     original = secret_compare._roles_for_scope  # pyright: ignore[reportPrivateUsage]  # ruff: ignore[private-member-access] -- exercise the internal _roles_for_scope contract directly with controlled fixture data.
     built: list[ast.Module | ast.FunctionDef | ast.AsyncFunctionDef] = []
 
-    def counted(scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef, names: frozenset[str]) -> object:
+    def counted(scope: ast.Module | ast.FunctionDef | ast.AsyncFunctionDef, names: frozenset[str]) -> _Roles:
         built.append(scope)
         return original(scope, names)
 

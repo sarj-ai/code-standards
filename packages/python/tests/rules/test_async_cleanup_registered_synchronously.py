@@ -228,7 +228,7 @@ def test_default_walrus_registers_a_synchronous_callback_at_runtime() -> None:
     async def run() -> None:
         from contextlib import AsyncExitStack  # ruff: ignore[import-outside-top-level] -- exercise the native cleanup boundary.
 
-        def nested(value: object = (close := synchronous)) -> None:
+        def nested(value: Callable[[], None] = (close := synchronous)) -> None:
             pass
 
         async with AsyncExitStack() as stack:

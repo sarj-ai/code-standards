@@ -15,6 +15,8 @@ from sarj_standards.libs.release import metadata_verification, rollout
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+    from pydantic import JsonValue
+
 
 @dataclass(frozen=True)
 class Candidate:
@@ -31,9 +33,9 @@ def _mapping(value: object) -> TypeGuard[dict[object, object]]:
     return isinstance(value, dict)
 
 
-def _data(path: Path) -> dict[str, object]:
+def _data(path: Path) -> dict[str, JsonValue]:
     value = parse_json(path.read_text(encoding="utf-8"))
-    assert _object(value)
+    assert isinstance(value, dict)
     return value
 
 

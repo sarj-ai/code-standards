@@ -15,7 +15,11 @@ def parse_yaml(text: str) -> object:
     return yaml.safe_load(text)  # pyright: ignore[reportAny] -- untyped parser boundary.
 
 
-def parse_yaml_documents(text: str) -> tuple[object, ...]:
+def parse_yaml_documents(
+    text: str,
+) -> tuple[  # sarj-noqa: SARJ528 -- SafeLoader constructs native YAML values without normalization.
+    object, ...
+]:
     loader = yaml.SafeLoader(text)
     documents: list[object] = []
     try:
@@ -90,7 +94,9 @@ class _YamlValidation:
             children.extend((key, value))
         return children
 
-    def key_identity(self, node: ScalarNode) -> object:
+    def key_identity(
+        self, node: ScalarNode
+    ) -> object:  # sarj-noqa: SARJ528 -- Preserve native YAML scalar-key equality and hashes.
         if node.tag == "tag:yaml.org,2002:merge":
             return (node.tag,)
         return self.loader.construct_object(node)  # pyright: ignore[reportUnknownMemberType, reportUnknownVariableType] -- safe scalar construction preserves actual dictionary-key equality.

@@ -77,11 +77,7 @@ class ColumnEncoding(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class TextEdit:
-    """An exact, half-open range of one-based lines and UTF-8 byte columns.
-
-    Columns refer to decoded source without its original leading BOM.
-    """
-
+    # Coordinates are one-based UTF-8 bytes after BOM removal; end positions are exclusive.
     start_line: int
     start_col: int
     end_line: int

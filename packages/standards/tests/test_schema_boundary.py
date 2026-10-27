@@ -266,6 +266,8 @@ def test_dependency_reference_closure_respects_each_dialect(
     [["required", 1], {"type": "not-a-schema-type"}, 1],
     ids=("invalid-property-dependency", "invalid-schema-dependency", "invalid-dependency-shape"),
 )
-def test_invalid_legacy_dependency_is_not_hidden_by_the_native_adapter(dependency: object) -> None:
+def test_invalid_legacy_dependency_is_not_hidden_by_the_native_adapter(
+    dependency: list[str | int] | dict[str, str] | int,
+) -> None:
     with pytest.raises(ValueError, match="invalid"):
         schema_references({"dependencies": {"mixed": dependency}})

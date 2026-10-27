@@ -1,10 +1,17 @@
+from __future__ import annotations
+
 import json
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 import pytest
 
 from sarj_standards.libs.release import registry as registry_module
 from sarj_standards.libs.release.registry import RegistryRequirement
+
+
+if TYPE_CHECKING:
+    from types import TracebackType
+    from urllib.request import Request
 
 
 @pytest.mark.parametrize(
@@ -32,14 +39,19 @@ def test_simple_artifact_requires_its_own_project_identity(
         def __enter__(self) -> Self:
             return self
 
-        def __exit__(self, *_args: object) -> None:
+        def __exit__(
+            self,
+            _exc_type: type[BaseException] | None,
+            _exc_value: BaseException | None,
+            _traceback: TracebackType | None,
+        ) -> None:
             return None
 
         def read(self) -> bytes:
             return json.dumps({"files": [{"filename": filename}]}).encode()
 
     def open_url(
-        _request: object,
+        _request: Request,
         *,
         timeout: int,  # ruff: ignore[unused-function-argument] -- HTTP transport fixes this keyword.
     ) -> Response:

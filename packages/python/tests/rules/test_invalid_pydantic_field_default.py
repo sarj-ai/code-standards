@@ -192,6 +192,8 @@ def test_after_validator_does_not_hide_invalid_default() -> None:
         ("tuple[int, ...]", "(1, 2)", "max_length=1"),
         ("dict[str, int]", "{}", "min_length=1"),
         ("set[int]", "{1, 2}", "max_length=1"),
+        ("set[float]", "{1.5, 1.5}", "min_length=2"),
+        ("dict[float, str]", "{1.5: 'one', 2.5: 'two'}", "max_length=1"),
     ],
 )
 def test_checks_literal_container_length_bounds(annotation: str, default: str, bound: str) -> None:

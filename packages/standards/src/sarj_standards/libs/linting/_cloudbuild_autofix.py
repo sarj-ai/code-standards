@@ -67,7 +67,11 @@ def _fix_owned_sentinels(path: Path, source: str) -> str:
     return fixed
 
 
-def _parsed_values(path: Path, source: str) -> tuple[object, ...]:
+def _parsed_values(
+    path: Path, source: str
+) -> tuple[  # sarj-noqa: SARJ528 -- Preserve native YAML values for autofix equivalence.
+    object, ...
+]:
     return (parse_unique_json(source),) if path.suffix.lower() == ".json" else parse_yaml_documents(source)
 
 
@@ -117,18 +121,28 @@ def _sentinel_findings(path: Path, step: MappingNode, waits: SequenceNode) -> li
     ]
 
 
-def _expected_values(documents: tuple[object, ...], targets: set[tuple[int, int]]) -> tuple[object, ...]:
+def _expected_values(
+    documents: tuple[  # sarj-noqa: SARJ528 -- Preserve untouched native YAML values across targeted rewrites.
+        object, ...
+    ],
+    targets: set[tuple[int, int]],
+) -> tuple[  # sarj-noqa: SARJ528 -- Preserve untouched native YAML values across targeted rewrites.
+    object, ...
+]:
     return tuple(
         _expected_document(value, {step for index, step in targets if index == document})
         for document, value in enumerate(documents)
     )
 
 
-def _expected_document(value: object, targets: set[int]) -> object:
+def _expected_document(
+    value: object,  # sarj-noqa: SARJ528 -- Only rewrite steps; preserve other native YAML values.
+    targets: set[int],
+) -> object:  # sarj-noqa: SARJ528 -- Only rewrite steps; preserve other native YAML values.
     if not is_object_mapping(value) or not is_object_list(steps := value.get("steps")):
         return value
     return {**value, "steps": [_expected_step(step) if index in targets else step for index, step in enumerate(steps)]}
 
 
-def _expected_step(value: object) -> object:
+def _expected_step(value: object) -> object:  # sarj-noqa: SARJ528 -- Preserve native YAML fields outside waitFor.
     return {**value, "waitFor": ["-"]} if is_object_mapping(value) else value

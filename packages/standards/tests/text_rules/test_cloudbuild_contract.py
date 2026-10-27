@@ -2,12 +2,17 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from yaml.nodes import MappingNode, SequenceNode
 
 from sarj_standards.libs.linting.cloudbuild import CloudBuildParseError, check_cloudbuild, compose_documents
 from sarj_standards.libs.yaml_boundary import mapping_items, sequence_items
+
+
+if TYPE_CHECKING:
+    from pydantic import JsonValue
 
 
 def _alias_graph(branches: int) -> str:
@@ -44,7 +49,7 @@ def test_build_contract(source: str, count: int) -> None:
     ],
     ids=("forward-dependency", "shell-source-substitution", "script-argument"),
 )
-def test_json_builds_share_yaml_semantics(steps: list[dict[str, object]], count: int) -> None:
+def test_json_builds_share_yaml_semantics(steps: list[dict[str, JsonValue]], count: int) -> None:
     source = json.dumps({"steps": steps}, indent=2)
     findings = check_cloudbuild(Path("cloudbuild.json"), source, selected=True)
     assert len(findings) == count

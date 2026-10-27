@@ -174,9 +174,7 @@ def _python_implementation(module: str, class_name: str, slug: str, code: str, *
         if example_factory == "python"
         else "from pathlib import Path"
     )
-    return f'''"""{code} — {summary}"""
-
-from __future__ import annotations
+    return f"""from __future__ import annotations
 
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
@@ -209,7 +207,7 @@ class {class_name}(Rule):
     @override
     {signature} -> list[Diagnostic]:
         raise NotImplementedError("TODO: implement conservative detection")
-'''
+"""
 
 
 def _python_test(module: str, class_name: str, snake: str) -> str:

@@ -15,10 +15,10 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] -- repository co
 import sys
 import tempfile
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Annotated, Final, NoReturn, TypeIs
+from typing import TYPE_CHECKING, Annotated, Final, NoReturn
 
 from packaging.version import InvalidVersion, Version
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, JsonValue, ValidationError
 from repo_standards.core.commit_message import check_local_commit_message_file
 import typer
 
@@ -29,7 +29,6 @@ from sarj_standards.libs.adoption.configs import CONFIG_NAMES
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.linting.policy import Policy
 from sarj_standards.libs.rules import RuleSelector
-from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 _TEXT_DIAGNOSTIC_LIMIT: Final = 50
@@ -46,7 +45,7 @@ if TYPE_CHECKING:
 
 
 class _CorpusLintReport(BaseModel):
-    diagnostics: list[dict[str, object]]
+    diagnostics: list[dict[str, JsonValue]]
 
 
 _NEXT_STEPS = (
@@ -1551,7 +1550,7 @@ def _cmd_rule_evaluate_manifest(args: _Args, root: Path) -> int:
 
     command = _corpus_evaluation_command(args)
 
-    diagnostics: list[dict[str, object]] = []
+    diagnostics: list[dict[str, JsonValue]] = []
     batches: list[dict[str, object]] = []
 
     def observe(source: object, batch: object, stdout: bytes, _stderr: bytes) -> None:
@@ -1634,19 +1633,18 @@ def _corpus_evaluation_command(args: _Args) -> list[str]:
 
 
 def _corpus_diagnostic(
-    diagnostic: dict[str, object],
+    diagnostic: dict[str, JsonValue],
     corpus: str,
     *,
     private: bool,
-) -> dict[str, object]:
-    def rewrite(value: object) -> object:
-        if _is_object_list(value):
+) -> dict[str, JsonValue]:
+    def rewrite(value: JsonValue) -> JsonValue:
+        if isinstance(value, list):
             return [rewrite(item) for item in value]
-        table = _object_table(value)
-        if table is None:
+        if not isinstance(value, dict):
             return value
-        rewritten: dict[str, object] = {}
-        for key, item in table.items():
+        rewritten: dict[str, JsonValue] = {}
+        for key, item in value.items():
             if key == "path" and isinstance(item, str):
                 rewritten[key] = "<private-corpus-file>" if private else f"{corpus}/{item}"
             else:
@@ -1654,21 +1652,10 @@ def _corpus_diagnostic(
         return rewritten
 
     rendered = rewrite(diagnostic)
-    table = _object_table(rendered)
-    if table is None:  # pragma: no cover - input is a dictionary.
+    if not isinstance(rendered, dict):  # pragma: no cover - input is a dictionary.
         msg = "corpus diagnostic rendering failed"
         raise TypeError(msg)
-    return table
-
-
-def _is_object_list(value: object) -> TypeIs[list[object]]:
-    return isinstance(value, list)
-
-
-def _object_table(value: object) -> dict[str, object] | None:
-    if not is_object_mapping(value):
-        return None
-    return {key: item for key, item in value.items() if isinstance(key, str)}
+    return rendered
 
 
 def cmd_observe(args: _Args) -> int:
@@ -1829,7 +1816,7 @@ def _validate_analysis_output(args: _Args, root: Path) -> bool:
     return False
 
 
-def _machine_adoption_gate(root: Path) -> object | None:
+def _machine_adoption_gate(root: Path) -> AnalysisReport | None:
     from sarj_standards.libs.adoption import doctor, service  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
     from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.diagnostics only when this selected operation executes.
         Completion,
@@ -1939,7 +1926,7 @@ def _merge_sync_findings(
     return _SyncFindings(diagnostics=diagnostics, issues=issues)
 
 
-def _machine_input_error(root: Path, message: str) -> object:
+def _machine_input_error(root: Path, message: str) -> AnalysisReport:
     from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level] -- machine formats stay lazy
         Completion,
         ExecutionIssue,
@@ -2020,8 +2007,7 @@ def _prepare_report_parent(root: Path, output: Path) -> None:
 
 
 def _write_report(root: Path, output: Path, payload: str, *, output_format: str) -> None:
-    # Revalidate immediately before the write as a defense against a parent path
-    # being replaced after the pre-analysis check.
+    # Recheck the parent path immediately before writing to prevent replacement races.
     destination = _report_destination(root, output, output_format=output_format)
     parent = destination.parent
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{destination.name}.", suffix=".tmp", dir=parent)
@@ -2582,8 +2568,7 @@ def _baseline_analysis_reports(args: _Args, root: Path, selected: list[str] | No
         operations.append(partial(_baseline_external_report, root, selected, trust, "shellcheck"))
     if args.jobs == 1 or len(operations) <= 1:
         return [operation() for operation in operations]
-    # Multiple operations share one bounded pool with serial inner analyzers;
-    # a single operation uses its own worker budget. Check every result first.
+    # Inner analyzers run serially under this shared worker budget.
     with ThreadPoolExecutor(max_workers=args.jobs, thread_name_prefix="baseline") as workers:
         pending = [workers.submit(operation) for operation in operations]
         return [result.result() for result in pending]
@@ -2599,8 +2584,7 @@ def _baseline_scan_rules(args: _Args) -> _BaselineScanRules:
     scoped_rules = _analysis_rules_for_baseline(args.baseline_rules) if args.baseline_cmd == "update" else None
     upstream_eslint = bool(_upstream_eslint_rules_for_baseline(args.baseline_rules))
     if upstream_eslint and scoped_rules is not None:
-        # One selected ESLint scan below covers both upstream and custom
-        # findings. Validate custom selectors before removing that duplicate scan.
+        # Validate selectors before combining their upstream and custom scans.
         for selector in scoped_rules:
             if (
                 selector.startswith("eslint:")

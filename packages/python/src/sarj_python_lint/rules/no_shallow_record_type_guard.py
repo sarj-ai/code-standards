@@ -61,7 +61,7 @@ class NoShallowRecordTypeGuard(Rule):
     id = "no-shallow-record-type-guard"
     code = "SARJ514"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Do not promise a local record's contract from a container-only check.",
         rationale="An empty dict or tuple passes a container-only check while lacking a TypedDict's required key or a NamedTuple's named attributes and record API. A guard annotation makes callers trust that missing contract.",
         remediation="Validate the required record shape and field contracts, or keep an honest container return type. For a NamedTuple, checking its actual class can establish nominal membership; tuple membership alone cannot.",
@@ -143,7 +143,7 @@ class NoShallowRecordTypeGuard(Rule):
                         statement.col_offset + 1,
                         self.code,
                         "Container-only isinstance does not prove this local record's required shape; validate its fields or retain an honest container contract.",
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                     )
                 )
         return findings

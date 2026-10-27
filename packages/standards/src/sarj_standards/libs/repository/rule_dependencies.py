@@ -31,7 +31,7 @@ class _LockedParserPackage(BaseModel):
 class _ParserLock(BaseModel):
     model_config = ConfigDict(strict=True)
     lockfile_version: Literal[3] = Field(alias="lockfileVersion")
-    packages: dict[str, object]
+    packages: dict[str, object]  # sarj-noqa: SARJ528 -- Unselected lock entries stay unvalidated.
 
 
 @dataclass(frozen=True, slots=True)

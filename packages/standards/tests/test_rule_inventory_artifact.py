@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -11,11 +12,15 @@ from sarj_standards.cli.main import main
 from sarj_standards.libs.repository import rule_inventory_artifact
 
 
+if TYPE_CHECKING:
+    from pydantic import JsonValue
+
+
 ROOT = Path(__file__).resolve().parents[3]
 
 
 @pytest.mark.parametrize("schema", [True, 1.0, "1", None], ids=("boolean", "float", "string", "null"))
-def test_inventory_requires_an_integer_schema_version(schema: object) -> None:
+def test_inventory_requires_an_integer_schema_version(schema: bool | float | str | None) -> None:
     with pytest.raises(ValueError, match="unsupported rule inventory schemaVersion"):
         rule_inventory_artifact.validate({"schemaVersion": schema, "rules": []})
 
@@ -98,7 +103,7 @@ def test_inventory_validation_rejects_unsorted_rules(tmp_path: Path) -> None:
 def test_sync_is_idempotent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     destination = tmp_path / "packages/standards/src/sarj_standards/configs/rule-inventory.v1.json"
     destination.parent.mkdir(parents=True)
-    inventory: dict[str, object] = {
+    inventory: dict[str, JsonValue] = {
         "schemaVersion": 1,
         "rules": [
             {
@@ -111,7 +116,7 @@ def test_sync_is_idempotent(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
         ],
     }
 
-    def build_inventory(_root: Path) -> dict[str, object]:
+    def build_inventory(_root: Path) -> dict[str, JsonValue]:
         return inventory
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- artifact builder interception is the behavior under test.

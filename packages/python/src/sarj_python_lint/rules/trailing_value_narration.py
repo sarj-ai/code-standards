@@ -40,8 +40,7 @@ _NUMBER_RE = re.compile(
 )
 _WORD_RE = re.compile(r"[A-Za-z]+(?:'[a-z]+)?|\d[\d_]*(?:\.\d[\d_]*)?")
 
-# Words that name the unit rather than the quantity — the one thing the code
-# does not say, and the reason the fix is a *name*, not a deletion.
+# Unit words belong in names; the unnamed quantity cannot be recovered from a number alone.
 UNIT_WORDS = frozenset(
     {
         "bytes",

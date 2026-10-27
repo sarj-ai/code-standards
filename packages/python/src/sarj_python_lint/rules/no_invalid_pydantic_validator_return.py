@@ -51,7 +51,7 @@ class NoInvalidPydanticValidatorReturn(Rule):
     id = "no-invalid-pydantic-validator-return"
     code = "SARJ515"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="A terminal field validator must not return a literal contradicting its stored field type.",
         rationale="Pydantic trusts the result of after and plain field validators without validating it against the field again. A correctly annotated validator can therefore store an integer in a string field while the model still promises a string to callers.",
         remediation="Return a value satisfying every targeted field's stored contract. Split validators for different field domains, or perform input conversion in a before validator so the normal field validation follows it. Preserve intentional validation chains and wire serializers.",
@@ -61,7 +61,7 @@ class NoInvalidPydanticValidatorReturn(Rule):
             "Checks stable direct module-level BaseModel classes containing one synchronous field-validator method, plain annotated fields, and optional literal defaults. Inheritance, configuration, custom methods, field metadata, class decorators and escaped or mutated model classes are excluded.",
             "The validator must have the canonical field_validator/classmethod stack, explicit literal field targets, mode after or plain (including omitted default after), two required positional parameters, and a sole primitive literal return, optionally after a docstring. Before, wrap, serializer, unknown and composed validator contracts abstain.",
             "Only contradictions with builtin scalar types, None, canonical Optional/Union and closed string Literal domains are proved. Numeric assignability preserves bool as int and int as float/complex. Opaque aliases, numeric Literal domains, containers and annotation graphs exceeding fixed budgets abstain.",
-            "Every targeted field must exist; unknown-field diagnostics belong to their existing owner. Multiple validators are excluded because a later validator can repair an intermediate value. One warning identifies all contradictory fields for the returned literal.",
+            "Every targeted field must exist; unknown-field diagnostics belong to their existing owner. Multiple validators are excluded because a later validator can repair an intermediate value. One diagnostic identifies all contradictory fields for the returned literal.",
             "Generated and vendor files are excluded; authored tests remain checked. No autofix changes validation phase, chooses domain values or narrows a public contract.",
         ),
         examples=(
@@ -141,7 +141,7 @@ class NoInvalidPydanticValidatorReturn(Rule):
                         returned.node.col_offset + 1,
                         self.code,
                         f"This terminal validator returns a literal outside the stored contract of {', '.join(sorted(fields))}. Return valid field values or validate converted input before storing it.",
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                     )
                 )
         return findings

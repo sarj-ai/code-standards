@@ -312,8 +312,7 @@ def _classify_concat_context(
     elif isinstance(node, ast.Call) and _is_regex_call(node, regex_bindings, context):
         _exclude_regex_chains(node, excluded, context)
     elif isinstance(node, ast.JoinedStr):
-        # Rewriting a concat already nested in an f-string merely
-        # trades one interpolation expression for a nested f-string.
+        # Nested f-strings would merely replace one existing interpolation expression with another.
         excluded.update(id(sub) for sub in walk(node) if isinstance(sub, ast.BinOp))
 
 

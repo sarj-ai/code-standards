@@ -415,7 +415,7 @@ class Finding:
 
 
 class ManifestPolicyError(ValueError):
-    """An applicable dependency manifest cannot be parsed safely."""
+    pass
 
 
 _MAX_PYTHON_POLICY_SOURCE_BYTES: Final = 500_000
@@ -683,7 +683,10 @@ def _table(value: object) -> Mapping[str, object]:
     return as_table(value)
 
 
-def _string_list(value: object, where: str) -> tuple[str, ...]:
+def _string_list(
+    value: object,  # sarj-noqa: SARJ528 -- Validate raw TOML dependency-list members.
+    where: str,
+) -> tuple[str, ...]:
     if value is None:
         return ()
     values = list_field({"value": value}, "value")
@@ -693,7 +696,10 @@ def _string_list(value: object, where: str) -> tuple[str, ...]:
     return tuple(item for item in values if isinstance(item, str))
 
 
-def _dependency_group_list(value: object, where: str) -> tuple[str, ...]:
+def _dependency_group_list(
+    value: object,  # sarj-noqa: SARJ528 -- Validate raw TOML dependency-group strings and tables.
+    where: str,
+) -> tuple[str, ...]:
     items = list_field({"value": value}, "value")
     if not isinstance(value, list):
         msg = f"{where} must be a list"

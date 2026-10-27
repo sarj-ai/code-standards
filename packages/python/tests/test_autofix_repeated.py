@@ -3,16 +3,11 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 from types import CodeType, FunctionType
-from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_python_lint.autofix import fix_source
 from sarj_python_lint.rules import REGISTRY
-
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 
 _RULE = "no-repeated-structured-string-literal"
@@ -52,8 +47,8 @@ def _result(source: str) -> object:
     return _invoke(FunctionType(function, {}))
 
 
-def _invoke(function: Callable[[], object]) -> object:
-    return function()
+def _invoke(function: FunctionType) -> object:
+    return function()  # pyright: ignore[reportAny] -- FunctionType executes compiled fixture code with an opaque native return.
 
 
 @pytest.mark.parametrize("identifier", ["sql_query", "查询", "ｑｕｅｒｙ"])

@@ -33,7 +33,11 @@ def _workflow_job(job_name: str, filename: str = "ci.yml") -> dict[object, objec
     return job
 
 
-def _ci_steps(job_name: str, filename: str = "ci.yml") -> list[dict[object, object]]:
+def _ci_steps(
+    job_name: str, filename: str = "ci.yml"
+) -> list[  # sarj-noqa: SARJ528 -- workflow YAML steps preserve unchecked native values while only collection shapes are validated.
+    dict[object, object]
+]:
     job = _workflow_job(job_name, filename)
     steps = job["steps"]
     assert is_object_list(steps)
@@ -41,7 +45,14 @@ def _ci_steps(job_name: str, filename: str = "ci.yml") -> list[dict[object, obje
     return [dict(step) for step in steps if is_object_mapping(step)]
 
 
-def _named_step(steps: list[dict[object, object]], name: str) -> dict[object, object]:
+def _named_step(
+    steps: list[  # sarj-noqa: SARJ528 -- selects an unchanged native YAML record without validating unrelated metadata.
+        dict[object, object]
+    ],
+    name: str,
+) -> dict[  # sarj-noqa: SARJ528 -- selects an unchanged native YAML record without validating unrelated metadata.
+    object, object
+]:
     return next(step for step in steps if step.get("name") == name)
 
 
@@ -85,7 +96,12 @@ def _record_commands(root: Path, *names: str) -> dict[str, str]:
 
 
 def _run_ci_step(
-    step: dict[object, object], *, root: Path, environment: dict[str, str]
+    step: dict[  # sarj-noqa: SARJ528 -- executes a validated run string while preserving the remaining native YAML step values.
+        object, object
+    ],
+    *,
+    root: Path,
+    environment: dict[str, str],
 ) -> subprocess.CompletedProcess[str]:
     command = step["run"]
     assert isinstance(command, str)

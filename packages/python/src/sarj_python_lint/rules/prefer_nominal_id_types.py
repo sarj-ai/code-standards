@@ -517,8 +517,7 @@ def _class_id_roles(node: ast.ClassDef, imports: ImportIndex, facts: _TypeFacts)
             else _role(name, statement.annotation, imports, facts, allow_bare_id=True)
         )
         previous = roles.get(name)
-        # The final annotation owns the field. Equivalent redeclarations retain
-        # the existing diagnostic anchor and its exact local suppression.
+        # Equivalent redeclarations preserve the diagnostic anchor and its exact local suppression.
         if role is not None and previous is not None and role.carrier == previous.carrier:
             continue
         roles[name] = role

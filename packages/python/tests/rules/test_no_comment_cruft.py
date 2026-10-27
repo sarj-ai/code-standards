@@ -254,6 +254,108 @@ def test_flags_dummy_translational_comments():
 @pytest.mark.parametrize(
     "body",
     [
+        "NOTE: Helpers",
+        "NB: Imports",
+        "Note: First, load the account.",
+        "NB: Then, save the result.",
+        "Note: Return the result",
+        "NOTE: Helper function to format the result.",
+        "NB: Let's create the response.",
+        "Data models",
+        "Database queries:",
+        "Error handling",
+        "Local helpers",
+        "Module constants",
+        "Private helpers",
+        "Public API",
+        "Public helpers",
+        "Request handlers",
+        "Response models",
+        "Type aliases:",
+        "NOTE: Type   aliases:",
+    ],
+)
+def test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony(body: str) -> None:
+    findings = _standalone(body)
+    assert len(findings) == 1
+    assert "narrates" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "NOTE: Return the result only when committed",
+        "NB: First, load the account because ordering matters.",
+        "NOTE: First, wait 20ms for the upstream cache.",
+        "NOTE: First, load the account. See https://example.com/API-123",
+        "NOTE: Helper function required by the vendor.",
+        "NB: Module constants are shared across workers",
+        "Type aliases preserve the serialized contract",
+        "Error handling defaults to rejection",
+        "NOTE: The response must not contain credentials.",
+        "Notes: Helpers are resolved dynamically.",
+    ],
+)
+def test_editorial_prefixes_keep_constraints_and_unmatched_context(body: str) -> None:
+    assert _standalone(body) == []
+
+
+def test_section_labels_inside_an_expression_remain_content() -> None:
+    source = "labels = [\n    # Type aliases\n    'type UserId = str',\n]\n"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "a failed lookup is tried again later",
+        "the response presents an unavailable state",
+        "a missing result stops the operation",
+        "only the follow-up read settles it",
+    ],
+)
+def test_trailing_exception_walkthroughs_are_errors(body: str) -> None:
+    source = f"try:\n    run()\nexcept Exception:  # {body}\n    recover()\n"
+    findings = _check(source)
+    assert len(findings) == 1
+    assert findings[0].line == 3
+    assert "Exception-handler prose" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "sarj-noqa: SARJ016 -- legacy compatibility boundary",
+        "noqa: BLE001",
+        "type: ignore[assignment]",
+        "fmt: skip",
+        "never swallow the cancellation signal",
+        "otherwise the transaction would remain locked",
+        "the provider requires this recovery path",
+        "see https://example.com/INC-123",
+        "SPDX-License-Identifier: MIT",
+    ],
+)
+def test_trailing_exception_directives_and_hidden_constraints_remain_protected(body: str) -> None:
+    source = f"try:\n    run()\nexcept Exception:  # {body}\n    recover()\n"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'TEXT = "except Exception: # a missing result stops the operation"\n',
+        "try:\n    run()\nexcept Exception:\n    recover()  # a missing result stops the operation\n",
+        "try:\n    run()\nexcept Exception: recover()  # a missing result stops the operation\n",
+    ],
+)
+def test_exception_comment_detection_uses_real_header_tokens(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
         "finally the invariant holds again",
         "firstName is required by the upstream API",
         "now-deprecated path kept for back-compat",
@@ -531,8 +633,7 @@ def test_preamble_and_embedded_banner_both_flag():
 
 
 def test_heading_underline_beneath_prose_comment_is_not_a_banner():
-    # Minimized from trio's epoll design essay: an RST-style underline directly
-    # beneath a texty comment line is typography inside a prose block.
+    # Trio's epoll essay uses RST underlines as prose typography.
     src = "x = 1\n\n# Some facts about epoll\n# ----------------------\n#\n# It is like a dict.\ny = 2\n"
     assert _check(src) == []
 
@@ -1100,8 +1201,6 @@ def test_isolated_phase_marker_flags():
 
 
 def test_region_prose_with_a_full_stop_is_not_a_marker():
-    # One first-party site carries a short noun phrase that would pass the
-    # title shape if a sentence-final period were allowed.
     assert _standalone("Region centroids for map_pan.") == []
 
 

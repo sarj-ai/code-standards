@@ -69,7 +69,7 @@ class NativeToolError(ValueError):
 
 
 class NativeToolMissingError(NativeToolError):
-    """No installed native executable is available for attestation."""
+    pass
 
 
 MISE_REFS: Final = MappingProxyType(
@@ -110,8 +110,6 @@ def checked_runtime_tool(tool: NativeTool, *, root: Path, runner: ProcessRunner 
 
 
 def _installed_tool(tool: NativeTool, *, root: Path, runner: ProcessRunner, managed: bool) -> NativeTool:
-    # Injected runners implement the native-tool protocol directly. Production
-    # resolves an immutable absolute executable before attesting its version.
     if runner is not run_process:
         return _attest(tool, root=root, runner=runner)
     adjacent = shutil.which(tool.name, path=str(Path(sys.executable).parent))

@@ -87,7 +87,7 @@ class PreferDiscriminatedModelUnion(Rule):
     id = "prefer-discriminated-model-union"
     code = "SARJ510"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Give data unions explicit Literal discriminators and express tag-dependent payloads as variants.",
         rationale=(
             "An explicit shared tag identifies data variants and supports field-based narrowing. "
@@ -107,7 +107,7 @@ class PreferDiscriminatedModelUnion(Rule):
         limitations=(
             "Declared module-level unions of at least two source-visible direct dataclasses, Pydantic BaseModels or TypedDicts require a shared disjoint Literal field. PEP 604, typing Union, Optional, Annotated, forward references and bounded local aliases are supported; a None branch is allowed.",
             "The explicit-tag policy is a modeling preference: nominal variants already support isinstance narrowing. Scalar/container unions, inline annotations, generic or inherited variants, behavior classes, unresolved variants and dynamic or ambiguous namespaces are excluded. Imported tag aliases are not resolved; an explicit literal field paired with an unresolved imported or local class domain abstains, as do opaque explicit Literal domains. Qualified imported domains and unsupported computed aliases remain uncertain rather than proving a missing tag.",
-            "String, bytes, integer, Boolean and None tag values are supported. Boolean and integer Literal values retain their distinct static types; use identity checks when equality would conflate their runtime values. A bounded hierarchy of shared literal fields may distinguish nested groups; overlapping tags without a further discriminator still warn. Nested Literal domains and transparent Final, ReadOnly, Annotated and local alias wrappers are supported. TypedDict tags must be required; dataclass ClassVar tags must have a value. Direct import-proven InitVar annotations without defaults are constructor inputs rather than instance tags; quoted, wrapped, locally aliased or defaulted InitVar forms remain uncertain. Import-proven typing final decorators preserve record recognition. Explicit Pydantic callable Discriminators, bounded stable reusable metadata, single-value plain local class namespaces, literal immutable tuple projections and imported pydantic.types constructors are respected; source-proven string field names, including local bindings and concatenation, still need Literal fields. Source-proven string discriminator writes through stable aliases invalidate callable coverage; opaque mutation, helper escapes and excessive alias graphs abstain. Module bindings are independent of unrelated local parameters and their attribute writes; class annotation shadows and global rebinding remain excluded. Other runtime configuration and default correctness remain separate contracts. No automatic field addition is safe for every constructor or serializer.",
+            "String, bytes, integer, Boolean and None tag values are supported. Boolean and integer Literal values retain their distinct static types; use identity checks when equality would conflate their runtime values. A bounded hierarchy of shared literal fields may distinguish nested groups; overlapping tags without a further discriminator still fail. Nested Literal domains and transparent Final, ReadOnly, Annotated and local alias wrappers are supported. TypedDict tags must be required; dataclass ClassVar tags must have a value. Direct import-proven InitVar annotations without defaults are constructor inputs rather than instance tags; quoted, wrapped, locally aliased or defaulted InitVar forms remain uncertain. Import-proven typing final decorators preserve record recognition. Explicit Pydantic callable Discriminators, bounded stable reusable metadata, single-value plain local class namespaces, literal immutable tuple projections and imported pydantic.types constructors are respected; source-proven string field names, including local bindings and concatenation, still need Literal fields. Source-proven string discriminator writes through stable aliases invalidate callable coverage; opaque mutation, helper escapes and excessive alias graphs abstain. Module bindings are independent of unrelated local parameters and their attribute writes; class annotation shadows and global rebinding remain excluded. Other runtime configuration and default correctness remain separate contracts. No automatic field addition is safe for every constructor or serializer.",
             "For nullable-field dependencies, only stable direct module-level import-proven Pydantic BaseModel subclasses with pure direct after model validators are inspected.",
             "Bounded paths may contain finite tag comparisons or literal-container membership, None identity tests, Boolean combinations, nested guards and returns of the same instance. Every rejection region must prove one tag-dependent nullable-field requirement; joint missing-field or independent-tag-axis conditions abstain.",
             "Tags must use imported Literal domains, optionally composed through direct unions, with at least two distinct homogeneous string, integer or Boolean values, optionally including an explicit None state. Mixed primitive families, bool/int equality collisions, open or computed tags abstain. Payloads must explicitly include None in a union, imported Union or Optional.",
@@ -115,7 +115,7 @@ class PreferDiscriminatedModelUnion(Rule):
             "A field required by every admitted tag value is a common field constraint rather than evidence for a discriminated union and is excluded.",
             "Unsupported Field validation constraints cannot prove non-null payload inhabitance; defaults, aliases and passive metadata remain eligible. Literal exception messages or local assignments of those messages are supported with import-proven builtin rejection types.",
             "Opaque helpers, effectful validators, inherited models, model mutation or escape, ambiguous namespaces, tests and generated files are excluded. The analyzer bounds validator nodes, Boolean depth, paths and rejection regions; complex forms abstain.",
-            "This warning requests domain modeling review; it does not require absent payloads in other variants or change external compatibility automatically.",
+            "This error requires explicit data modeling; it does not require absent payloads in other variants or change external compatibility automatically.",
         ),
         examples=(
             RuleExample(
@@ -221,7 +221,7 @@ class PreferDiscriminatedModelUnion(Rule):
                     f"`{model.name}` requires nullable `{first.payload}` when `{first.tag}` is {first.value!r}. "
                     "Consider a discriminated model union with that payload non-nullable in the matching variant; "
                     "preserve every other accepted combination and the external contract.",
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
             )
         return diagnostics

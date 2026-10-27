@@ -33,8 +33,17 @@ _FAIL = "fail"
 
 # Enough of the operand to identify it in the message without pasting a screenful.
 _OPERAND_PREVIEW_CHARS = 40
-_UNKNOWN = object()
-_DEFERRED_TRUTHY = object()
+
+
+class _ScalarMarker:
+    __slots__ = ()
+
+
+type _ScalarValue = bool | int | float | str | bytes | _ScalarMarker | None
+
+
+_UNKNOWN = _ScalarMarker()
+_DEFERRED_TRUTHY = _ScalarMarker()
 
 
 class NoTautologicalExpect(Rule):
@@ -195,7 +204,7 @@ def _bound_tautologies(context: PythonFileContext) -> list[_Tautology]:
 
 def _function_bound_tautologies(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_Tautology]:
     found: list[_Tautology] = []
-    bindings: dict[str, object] = {}
+    bindings: dict[str, _ScalarValue] = {}
     for statement in function.body:
         if _record_scalar_assignment(statement, bindings):
             continue
@@ -210,7 +219,7 @@ def _function_bound_tautologies(function: ast.FunctionDef | ast.AsyncFunctionDef
     return found
 
 
-def _record_scalar_assignment(statement: ast.stmt, bindings: dict[str, object]) -> bool:
+def _record_scalar_assignment(statement: ast.stmt, bindings: dict[str, _ScalarValue]) -> bool:
     match statement:
         case (
             ast.Assign(targets=[ast.Name(id=name)], value=value) | ast.AnnAssign(target=ast.Name(id=name), value=value)
@@ -229,7 +238,7 @@ def _record_scalar_assignment(statement: ast.stmt, bindings: dict[str, object]) 
     return False
 
 
-def _scalar_value(node: ast.expr, bindings: dict[str, object]) -> object:
+def _scalar_value(node: ast.expr, bindings: dict[str, _ScalarValue]) -> _ScalarValue:
     if isinstance(node, ast.Name):
         return bindings.get(node.id, _UNKNOWN)
     if isinstance(node, ast.Constant):
@@ -247,7 +256,7 @@ def _scalar_value(node: ast.expr, bindings: dict[str, object]) -> object:
     return _UNKNOWN
 
 
-def _scalar_condition(node: ast.expr, bindings: dict[str, object]) -> bool | None:
+def _scalar_condition(node: ast.expr, bindings: dict[str, _ScalarValue]) -> bool | None:
     if isinstance(node, ast.BoolOp):
         values = [_scalar_condition(value, bindings) for value in node.values]
         if None in values:

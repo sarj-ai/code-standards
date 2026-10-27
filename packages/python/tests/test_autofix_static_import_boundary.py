@@ -6,16 +6,11 @@ from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 import sys
 from types import ModuleType
-from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_python_lint.autofix import fix_source
 from sarj_python_lint.rules import REGISTRY
-
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 
 _RULE_ID = "prefer-direct-import-module"
@@ -33,7 +28,8 @@ def _load_source(path: Path, source: str) -> ModuleType:
     return module
 
 
-def _plugin(namespace: Mapping[str, object]) -> ModuleType:
+def _plugin(module: ModuleType) -> ModuleType:
+    namespace: dict[str, object] = vars(module)
     value = namespace["plugin"]
     assert isinstance(value, ModuleType)
     return value
@@ -74,6 +70,6 @@ def test_static_import_rewrite_loses_an_observable_loader_call(
         calls.clear()
         changed = _load_source(tmp_path / "rewritten_loader.py", rewritten)
         assert not calls
-        assert _plugin(vars(original)) is _plugin(vars(changed)) is sys
+        assert _plugin(original) is _plugin(changed) is sys
         assert builtins.__import__ is canonical_import
         assert sys.modules["sys"] is cached_sys is sys
