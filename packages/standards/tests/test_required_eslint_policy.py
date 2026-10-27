@@ -10,6 +10,7 @@ from sarj_standards import api
 from sarj_standards.libs.adoption import manifest
 from sarj_standards.libs.adoption.manifest import Manifest
 from sarj_standards.libs.diagnostics import Completion, Severity, TrustMode, baseline
+from sarj_standards.libs.json_boundary import normalize_json_value, parse_json
 from sarj_standards.libs.linting.analysis import report_from_tools
 from sarj_standards.libs.linting.external import analyze_external, run_process
 from sarj_standards.libs.linting.policy import Policy
@@ -59,6 +60,53 @@ def eslint_project(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     return tmp_path
+
+
+def test_required_eslint_loads_consumer_peers_outside_the_plugin_store(
+    eslint_project: Path, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    typescript = Path(__file__).resolve().parents[2] / "typescript"
+    plugin = tmp_path_factory.mktemp("plugin-store")
+    shutil.copy2(typescript / "package.json", plugin / "package.json")
+    shutil.copytree(typescript / "dist", plugin / "dist")
+    package = normalize_json_value(parse_json((plugin / "package.json").read_text(encoding="utf-8")))
+    assert isinstance(package, dict)
+    for kind in ("dependencies", "peerDependencies"):
+        dependencies = package[kind]
+        assert isinstance(dependencies, dict)
+        for name in dependencies:
+            destination = plugin / "node_modules" / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.symlink_to(typescript / "node_modules" / name, target_is_directory=True)
+    consumer_link = eslint_project / "node_modules/@sarj/eslint-plugin"
+    consumer_link.unlink()
+    consumer_link.symlink_to(plugin, target_is_directory=True)
+
+    probe = run_process(
+        (
+            "node",
+            "--eval",
+            (
+                "require('node:module').createRequire(require.resolve('@sarj/eslint-plugin'))"
+                ".resolve('@eslint-community/eslint-plugin-eslint-comments')"
+            ),
+        ),
+        cwd=eslint_project,
+    )
+    assert probe.returncode == 1
+    assert "Cannot find module '@eslint-community/eslint-plugin-eslint-comments'" in probe.stderr
+
+    path = eslint_project / "sample.ts"
+    path.write_text(
+        "// @ts-ignore -- SDK declaration omits the runtime property\nconst item: string = 1;\n", encoding="utf-8"
+    )
+    tools = analyze_external(
+        [str(path)], root=eslint_project, trust=TrustMode.TRUSTED, capabilities=frozenset({"eslint"})
+    )
+    assert tools[0].completion is Completion.COMPLETE, tools[0].issues
+    finding = next(item for item in tools[0].diagnostics if item.rule_id == "@typescript-eslint/ban-ts-comment")
+    assert "required-source-policy" in finding.tags
+    assert not baseline.is_baselineable(finding)
 
 
 @pytest.mark.parametrize(

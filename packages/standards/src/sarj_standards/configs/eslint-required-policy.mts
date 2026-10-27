@@ -7,8 +7,7 @@ const require = createRequire(resolve("package.json"));
 const { ESLint } = require("eslint") as typeof import("eslint");
 const tseslint =
   require("typescript-eslint") as typeof import("typescript-eslint");
-const pluginRequire = createRequire(require.resolve("@sarj/eslint-plugin"));
-const comments = pluginRequire(
+const comments = require(
   "@eslint-community/eslint-plugin-eslint-comments",
 ) as NativeESLint.Plugin;
 const sarj = require("@sarj/eslint-plugin") as NativeESLint.Plugin & {
