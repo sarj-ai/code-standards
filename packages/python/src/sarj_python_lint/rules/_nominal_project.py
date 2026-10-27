@@ -100,20 +100,33 @@ class NominalProjectFacts:
     # One request owns these caches; subsequent requests see source changes.
     def __init__(self) -> None:
         self._distributions: dict[Path, tuple[_Distribution, ...]] = {}
-        self._sources: dict[Path, dict[str, NominalSource]] = {}
-        self._scopes: dict[Path, dict[str, NominalSource]] = {}
+        self._sources: dict[tuple[Path, bool], dict[str, NominalSource]] = {}
+        self._scopes: dict[tuple[Path, bool], dict[str, NominalSource]] = {}
 
-    def sources(self, path: Path, first_party: FirstPartyFacts) -> dict[str, NominalSource]:
+    def sources(
+        self, path: Path, first_party: FirstPartyFacts, *, include_generated: bool = False
+    ) -> dict[str, NominalSource]:
         owner = distribution_root(path, facts=first_party)
         root = first_party.project_root(path)
         if owner is None or root is None:
             return {}
-        if owner in self._scopes:
-            return self._scopes[owner]
+        key = (owner, include_generated)
+        if key in self._scopes:
+            return self._scopes[key]
         distributions = self._accessible_distributions(owner, root)
-        sources = self._merge_sources(distributions)
-        self._scopes[owner] = sources
+        sources = self._merge_sources(distributions, include_generated=include_generated)
+        self._scopes[key] = sources
         return sources
+
+    def owns_source(self, path: Path, source: Path, first_party: FirstPartyFacts) -> bool:
+        owner = distribution_root(path, facts=first_party)
+        root = first_party.project_root(path)
+        target = distribution_root(source, facts=first_party)
+        if owner is None or root is None or target is None:
+            return False
+        # Source ownership also applies to generated wrappers; nominal inventories
+        # deliberately keep their separate generated-source exclusion.
+        return any(distribution.root == target for distribution in self._accessible_distributions(owner, root))
 
     def _accessible_distributions(self, owner: Path, root: Path) -> tuple[_Distribution, ...]:
         if root not in self._distributions:
@@ -144,13 +157,16 @@ class NominalProjectFacts:
             )
         )
 
-    def _merge_sources(self, distributions: tuple[_Distribution, ...]) -> dict[str, NominalSource]:
+    def _merge_sources(
+        self, distributions: tuple[_Distribution, ...], *, include_generated: bool = False
+    ) -> dict[str, NominalSource]:
         sources: dict[str, NominalSource] = {}
         ambiguous: set[str] = set()
         for distribution in distributions:
-            if distribution.root not in self._sources:
-                self._sources[distribution.root] = _sources(distribution.root)
-            for module, source in self._sources[distribution.root].items():
+            key = (distribution.root, include_generated)
+            if key not in self._sources:
+                self._sources[key] = _sources(distribution.root, include_generated=include_generated)
+            for module, source in self._sources[key].items():
                 if module in sources:
                     ambiguous.add(module)
                 sources[module] = source
@@ -234,7 +250,7 @@ def _files(root: Path, pattern: str) -> list[Path]:
     return found
 
 
-def _sources(root: Path) -> dict[str, NominalSource]:
+def _sources(root: Path, *, include_generated: bool = False) -> dict[str, NominalSource]:
     sources: dict[str, NominalSource] = {}
     ambiguous: set[str] = set()
     total_bytes = 0
@@ -248,7 +264,7 @@ def _sources(root: Path) -> dict[str, NominalSource]:
         module = _module_name(root, path)
         if not module:
             continue
-        source = _source(path)
+        source = _source(path, include_generated=include_generated)
         if source is None:
             continue
         if module in sources:
@@ -268,12 +284,12 @@ def _module_name(root: Path, path: Path) -> str | None:
     return ".".join(parts[:-1] if parts[-1] == "__init__.py" else (*parts[:-1], path.stem)) or None
 
 
-def _source(path: Path) -> NominalSource | None:
+def _source(path: Path, *, include_generated: bool = False) -> NominalSource | None:
     try:
         if path.is_symlink() or path.stat().st_size > _MAX_BYTES:
             return None
         text = read_python_source(path)
-        if is_generated(path, text):
+        if not include_generated and is_generated(path, text):
             return None
     except OSError, UnicodeError, SyntaxError:
         return None

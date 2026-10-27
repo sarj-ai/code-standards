@@ -20,6 +20,7 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._imports import ABC_SOURCES, TYPING_SOURCES, ImportIndex
 from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._service_http_callbacks import http_callback_dispatch
 from sarj_python_lint.rules.require_port_for_service import (
     annotation_tail,
     called_self_field,
@@ -67,7 +68,8 @@ class RequireExplicitServiceContract(ProjectRule):
             "The bounded analysis follows directly retained constructor parameters and private instance helpers; dynamic field aliases and structurally implemented Protocols declared only by external consumers are not inferred.",
             "An unannotated bare callback factory does not by itself establish a service collaborator. Called collaborator methods and proven native callback dispatch remain in scope.",
             "Executor dispatch requires a directly acquired or uniquely assigned asyncio event loop, or asyncio.to_thread, and an explicit callback argument. Wrapper dispatchers and ambiguous starred arguments are not inferred.",
-            "HTTP client construction and request calls require stable native imports and an unescaped local client binding. Merely constructing or closing a client, unknown factories, mutated clients, and unrelated request methods are excluded.",
+            "HTTP client construction and request calls require stable native imports and an unescaped local client binding. An awaited typed callback invoked with a locally constructed first-party wrapper also qualifies when its active constructor or entered lifecycle reaches a source-proven native HTTP client factory. This establishes a resource dispatch boundary; the callback's network behavior is not inferred.",
+            "First-party wrapper source may be generated, but must belong to the owning distribution or a declared workspace dependency. Unknown third-party wrappers, conditional or decorated lifecycle/helper dispatch, mere construction or cleanup without callback dispatch, mutated or escaped clients, and non-HTTP values abstain.",
             "Method signatures are checked by the type checker. This explicit-contract policy has no automatic rewrite; preserve required framework boundaries with a reasoned exact-code exception.",
         ),
         examples=(
@@ -213,7 +215,8 @@ class RequireExplicitServiceContract(ProjectRule):
                     code=self.code,
                     severity=Severity.ERROR,
                     message=(
-                        f"`{node.name}` invokes a collaborator or HTTP boundary from "
+                        # Existing baselines fingerprint the diagnostic message.
+                        f"`{node.name}` invokes a retained collaborator from "
                         f"{', '.join(sorted(operations))} without a declared ABC or Protocol covering its service operations."
                     ),
                 )
@@ -334,7 +337,7 @@ def _is_service_role(node: ast.ClassDef, context: PythonFileContext) -> bool:
         bool(parts & BOUNDARY_DIRECTORIES)
         or node.name.endswith(BOUNDARY_SUFFIXES)
         or (
-            any(marker in context.source for marker in ("run_in_executor", "to_thread", "httpx"))
+            any(marker in context.source for marker in ("run_in_executor", "to_thread", "httpx", "Callable"))
             and bool(_collaborator_operations(node, context, boundary_only=True))
         )
     )
@@ -400,7 +403,7 @@ def operations_for_fields(
     boundary_only: bool = False,
     context: PythonFileContext | None = None,
 ) -> frozenset[str]:
-    if not fields and (context is None or "httpx" not in context.source):
+    if not fields and (context is None or not any(marker in context.source for marker in ("httpx", "Callable"))):
         return frozenset()
     methods = [method for method in class_methods(node) if _instance_operation(method, imports)]
     callers: dict[str, set[str]] = defaultdict(set)
@@ -496,7 +499,7 @@ class _CollaboratorCalls(ast.NodeVisitor):
         if (
             (not self.boundary_only and self._calls_retained(node.func))
             or (callback is not None and called_self_field(callback) in self.fields)
-            or _native_http_call(node, self.context)
+            or _http_boundary_call(node, self.context)
         ):
             self.found = True
         if (
@@ -612,7 +615,9 @@ def _run_in_executor_callback(node: ast.Call) -> ast.expr | None:
 _HTTP_OPERATIONS = frozenset({"request", "get", "post", "put", "patch", "delete", "head", "options", "send", "stream"})
 
 
-def _native_http_call(node: ast.Call, context: PythonFileContext | None) -> bool:
+def _http_boundary_call(node: ast.Call, context: PythonFileContext | None) -> bool:
+    if http_callback_dispatch(node, context):
+        return True
     if (
         context is None
         or "httpx" not in context.source

@@ -420,6 +420,10 @@ def test_cli_rejects_missing_revision(repository: Path, capsys: pytest.CaptureFi
         ("sql", "no-excessive-cognitive-complexity", "error", 1),
         ("python", "no-excessive-cognitive-complexity-extra", "error", 1),
         ("python", "no-blanket-suppression", "off", 1),
+        ("sql", "no-analytical-queries-in-transactional-db", "error", 0),
+        ("sql", "no-analytical-queries-in-transactional-db", "off", 1),
+        ("python", "no-analytical-queries-in-transactional-db", "error", 1),
+        ("sql", "no-analytical-queries-in-transactional-db-extra", "error", 1),
     ],
 )
 def test_error_first_approval_is_exact_and_does_not_allow_disabled_rules(

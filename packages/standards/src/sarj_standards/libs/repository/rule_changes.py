@@ -73,6 +73,9 @@ _ERROR_FIRST_APPROVALS: Final = frozenset(
         # User-approved blocking suppression integrity, qualified with native
         # checker repros, labeled cases, and pinned-corpus/performance evidence.
         "python:no-blanket-suppression",
+        # User-approved blocking datastore architecture policy, qualified with
+        # native paired-engine labels and pinned consumer/performance evidence.
+        "sql:no-analytical-queries-in-transactional-db",
     }
 )
 

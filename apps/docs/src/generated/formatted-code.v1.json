@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "8646c9501de06d551d5a412379f824a7929ecd82aaf245bdda1a5d8dced29ecf",
-  "cliSha256": "955efc67183889b5e2dc4f2ef3ffe39f61aba29e8a6035dd548aee510daa1f7f",
+  "catalogSha256": "b8150ba70396f6a4f3db9393bdd5853ddbf216f46cd0d2725b34a0c830ed1be3",
+  "cliSha256": "4c07400e2b2da1d9b58112e126ec0c7e5440f4b9a7bb87f93a25557da87b2308",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -8128,15 +8128,15 @@
           "files": [
             {
               "path": "app/account_store.py",
-              "source": "import psycopg\n\nQUERY = \"SELECT SUM(amount) FROM ledger WHERE account_id = %s FOR UPDATE\"\n"
+              "source": "import psycopg\n\nQUERY = \"SELECT EXISTS(SELECT 1 FROM ledger WHERE account_id = %s)\"\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "app/account_store.py",
-          "id": "bounded-transactional-aggregate",
+          "id": "operational-existence-lookup",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "PostgreSQL preserves a bounded transactional invariant"
+          "title": "PostgreSQL performs an operational existence lookup"
         },
         {
           "expectedCount": 1,
@@ -16548,6 +16548,71 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "An existing-table backfill immediately removes its legacy column"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:no-analytical-queries-in-transactional-db": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "queries/events.sql",
+              "source": "-- dialect: clickhouse\nSELECT\n  team_id,\n  COUNT(*)\nFROM\n  event\nGROUP BY\n  team_id;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "queries/events.sql",
+          "id": "analytical-rollup",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "ClickHouse owns a reporting rollup"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "queries/events.sql",
+              "source": "SELECT\n  COUNT(*)\nFROM\n  event\nWHERE\n  id = $1;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "queries/events.sql",
+          "id": "operational-count",
+          "outcome": "reject",
+          "scenarioId": "operational-read",
+          "title": "A transactional count still violates the datastore policy"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "queries/events.sql",
+              "source": "SELECT\n  EXISTS (\n    SELECT\n      1\n    FROM\n      event\n    WHERE\n      id = $1\n  );\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "queries/events.sql",
+          "id": "operational-existence",
+          "outcome": "accept",
+          "scenarioId": "operational-read",
+          "title": "A transactional existence check uses an indexed predicate"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "queries/events.sql",
+              "source": "SELECT DISTINCT\n  team_id\nFROM\n  event;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "queries/events.sql",
+          "id": "transactional-deduplication",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Transactional SQL deduplicates reporting rows"
         }
       ],
       "optionsSchemaSource": null

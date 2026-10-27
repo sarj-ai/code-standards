@@ -1192,5 +1192,24 @@
     "Raw public selector parsing retains exact documented exceptions and resolves internal nominal IDs; no blanket baseline was introduced.",
     "Settings namespace matching is advisory; generic modifiers and non-field metadata are excluded. Existing nested APIs and source precedence still require review.",
     "The second distinct 100 checks and SQL analytical-query policy are separate follow-up work; they are not claimed complete here."
-  ]
+  ],
+  "post_merge_audit": {
+    "state": "passed",
+    "cases": 100,
+    "distinct_from_initial_100": true,
+    "per_rule": {
+      "fstring": 25,
+      "nominal": 25,
+      "settings": 25,
+      "service": 25
+    },
+    "python_lint_version": "1.76.0",
+    "contracts_version": "0.4.1",
+    "source": "fresh PyPI wheel installation, outside the editable checkout",
+    "wheel_sha256": "4fec8c82a97ead7ef2ca844d01cffd5cc970d1ead23ae164da62c960160afc04",
+    "failed": 0,
+    "skipped": 0,
+    "seconds": 22.74,
+    "command": "Isolated Python 3.15.0 / pytest 9.1.1, 100 native rule regression cases and CLI controls; actual installed distribution and temporary-root assertions."
+  }
 }
