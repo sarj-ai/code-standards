@@ -19,6 +19,8 @@ from sarj_standards.libs.typed_containers import is_object_list, is_object_mappi
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from pydantic import JsonValue
+
 
 MANIFEST_NAME: Final = ".sarj-standards.toml"
 MANIFEST_SCHEMA: Final = 4
@@ -879,9 +881,12 @@ def eslint_peers() -> dict[str, str]:
     return {name: pin for name, pin in table.items() if isinstance(pin, str)}
 
 
-def eslint_overrides() -> dict[str, object]:
-    parsed: object = parse_json(PEERS_JSON.read_text(encoding="utf-8"))
-    return table_field(as_table(parsed), "npmOverrides")
+def eslint_overrides() -> dict[str, JsonValue]:
+    parsed = parse_json(PEERS_JSON.read_text(encoding="utf-8"))
+    if not isinstance(parsed, dict):
+        return {}
+    overrides = parsed.get("npmOverrides")
+    return dict(overrides) if isinstance(overrides, dict) else {}
 
 
 def _exclusion_sections(manifest: Manifest) -> list[str]:

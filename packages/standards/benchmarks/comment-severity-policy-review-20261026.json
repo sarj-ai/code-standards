@@ -1,0 +1,1814 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-26",
+  "method": {
+    "comments": "100 distinct source and boundary reviews. Quoting and newline variants are separate semantic deletion cases. This is not 100 identical executions or 100 new rules.",
+    "severity": "61 distinct source-owned warning policies plus 39 distinct positive/negative semantic boundary reviews; not 100 repeated executions or 100 code iterations. Full repository regression gate is separate."
+  },
+  "error_first_authorization": "Explicit user request promotes supported policies immediately; architectural and intent-dependent warnings retain review severity.",
+  "promoted_warning_codes": [
+    "SARJ049",
+    "SARJ504",
+    "SARJ507",
+    "SARJ508",
+    "SARJ509",
+    "SARJ510",
+    "SARJ511",
+    "SARJ512",
+    "SARJ513",
+    "SARJ514",
+    "SARJ515",
+    "SARJ528"
+  ],
+  "comment_reviews": [
+    {
+      "pass_number": 1,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "triple-double / '\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 2,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "triple-double / '\\r\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 3,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "triple-single / '\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 4,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "triple-single / '\\r\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 5,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "double / '\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 6,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "double / '\\r\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 7,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "single / '\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 8,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "single / '\\r\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 9,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "raw / '\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 10,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "raw / '\\r\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 11,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "unicode-prefix / '\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 12,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "unicode-prefix / '\\r\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 13,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "escaped-newline / '\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 14,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "escaped-newline / '\\r\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 15,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "physical-multiline / '\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 16,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "physical-multiline / '\\r\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 17,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "parenthesized-concatenation / '\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 18,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "parenthesized-concatenation / '\\r\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 19,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "non-ascii / '\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 20,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "non-ascii / '\\r\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 21,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "empty / '\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 22,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_deletion_preserves_other_statements_and_converges",
+      "case": "empty / '\\r\\n'",
+      "expected": "ERROR; delete complete docstring only, retain AST body and converge"
+    },
+    {
+      "pass_number": 23,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_fix_preserves_headers_directives_and_end_of_file",
+      "case": "shebang",
+      "expected": "delete docstring while preserving exact header and tail bytes"
+    },
+    {
+      "pass_number": 24,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_fix_preserves_headers_directives_and_end_of_file",
+      "case": "encoding",
+      "expected": "delete docstring while preserving exact header and tail bytes"
+    },
+    {
+      "pass_number": 25,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_fix_preserves_headers_directives_and_end_of_file",
+      "case": "license",
+      "expected": "delete docstring while preserving exact header and tail bytes"
+    },
+    {
+      "pass_number": 26,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_fix_preserves_headers_directives_and_end_of_file",
+      "case": "formatter-directive",
+      "expected": "delete docstring while preserving exact header and tail bytes"
+    },
+    {
+      "pass_number": 27,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_fix_preserves_headers_directives_and_end_of_file",
+      "case": "leading-blank-and-no-final-newline",
+      "expected": "delete docstring while preserving exact header and tail bytes"
+    },
+    {
+      "pass_number": 28,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_fix_preserves_headers_directives_and_end_of_file",
+      "case": "main-guard",
+      "expected": "delete docstring while preserving exact header and tail bytes"
+    },
+    {
+      "pass_number": 29,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_docstring_fix_preserves_headers_directives_and_end_of_file",
+      "case": "docstring-only",
+      "expected": "delete docstring while preserving exact header and tail bytes"
+    },
+    {
+      "pass_number": 30,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_deletion_respects_metadata_and_lexical_boundaries",
+      "case": "same-line-statement",
+      "expected": "preserve source exactly"
+    },
+    {
+      "pass_number": 31,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_deletion_respects_metadata_and_lexical_boundaries",
+      "case": "trailing-comment",
+      "expected": "preserve source exactly"
+    },
+    {
+      "pass_number": 32,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_deletion_respects_metadata_and_lexical_boundaries",
+      "case": "secondary-string",
+      "expected": "preserve source exactly"
+    },
+    {
+      "pass_number": 33,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_deletion_respects_metadata_and_lexical_boundaries",
+      "case": "bare-doc-consumer",
+      "expected": "preserve source exactly"
+    },
+    {
+      "pass_number": 34,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_deletion_respects_metadata_and_lexical_boundaries",
+      "case": "namespace-escape",
+      "expected": "preserve source exactly"
+    },
+    {
+      "pass_number": 35,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_deletion_respects_metadata_and_lexical_boundaries",
+      "case": "locals-escape",
+      "expected": "preserve source exactly"
+    },
+    {
+      "pass_number": 36,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_deletion_respects_metadata_and_lexical_boundaries",
+      "case": "vars-escape",
+      "expected": "preserve source exactly"
+    },
+    {
+      "pass_number": 37,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_deletion_respects_metadata_and_lexical_boundaries",
+      "case": "wildcard",
+      "expected": "preserve source exactly"
+    },
+    {
+      "pass_number": 38,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_deletion_respects_metadata_and_lexical_boundaries",
+      "case": "module-escape",
+      "expected": "preserve source exactly"
+    },
+    {
+      "pass_number": 39,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_deletion_respects_metadata_and_lexical_boundaries",
+      "case": "frame-escape",
+      "expected": "preserve source exactly"
+    },
+    {
+      "pass_number": 40,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_deletion_respects_metadata_and_lexical_boundaries",
+      "case": "frame-alias",
+      "expected": "preserve source exactly"
+    },
+    {
+      "pass_number": 41,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_deletion_respects_metadata_and_lexical_boundaries",
+      "case": "exported-module",
+      "expected": "preserve source exactly"
+    },
+    {
+      "pass_number": 42,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_autofix_rejects_unparseable_source_without_rewriting",
+      "case": "malformed-source",
+      "expected": "fail closed with existing ValueError API; no rewritten source is returned"
+    },
+    {
+      "pass_number": 43,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_deletion_respects_metadata_and_lexical_boundaries",
+      "case": "generated",
+      "expected": "preserve source exactly"
+    },
+    {
+      "pass_number": 44,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_deletion_respects_metadata_and_lexical_boundaries",
+      "case": "doctest",
+      "expected": "preserve source exactly"
+    },
+    {
+      "pass_number": 45,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_deletion_respects_metadata_and_lexical_boundaries",
+      "case": "non-docstring-expression",
+      "expected": "preserve source exactly"
+    },
+    {
+      "pass_number": 46,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_deletion_respects_metadata_and_lexical_boundaries",
+      "case": "fstring",
+      "expected": "preserve source exactly"
+    },
+    {
+      "pass_number": 47,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_module_deletion_respects_metadata_and_lexical_boundaries",
+      "case": "bytes",
+      "expected": "preserve source exactly"
+    },
+    {
+      "pass_number": 48,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_direct_current_module_help_and_getdoc_are_consumers",
+      "case": "'help(sys.modules[__name__])'",
+      "expected": "no finding and no deletion"
+    },
+    {
+      "pass_number": 49,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_direct_current_module_help_and_getdoc_are_consumers",
+      "case": "'inspect.getdoc(sys.modules[__name__])'",
+      "expected": "no finding and no deletion"
+    },
+    {
+      "pass_number": 50,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_direct_current_module_help_and_getdoc_are_consumers",
+      "case": "'current = sys.modules[__name__]\\nhelp(current)'",
+      "expected": "no finding and no deletion"
+    },
+    {
+      "pass_number": 51,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_direct_current_module_help_and_getdoc_are_consumers",
+      "case": "'current = sys.modules[__name__]\\ninspect.getdoc(current)'",
+      "expected": "no finding and no deletion"
+    },
+    {
+      "pass_number": 52,
+      "source": "packages/python/tests/test_autofix_module_docstrings.py",
+      "test": "test_cli_deletes_module_docstring_and_reports_clean_file",
+      "case": "CLI --fix exits 0 and writes source",
+      "expected": "docstring deleted; no SARJ420 diagnostic remains"
+    },
+    {
+      "pass_number": 53,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony",
+      "case": "'NOTE: Helpers'",
+      "expected": "one mechanical-comment error"
+    },
+    {
+      "pass_number": 54,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony",
+      "case": "'NB: Imports'",
+      "expected": "one mechanical-comment error"
+    },
+    {
+      "pass_number": 55,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony",
+      "case": "'Note: First, load the account.'",
+      "expected": "one mechanical-comment error"
+    },
+    {
+      "pass_number": 56,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony",
+      "case": "'NB: Then, save the result.'",
+      "expected": "one mechanical-comment error"
+    },
+    {
+      "pass_number": 57,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony",
+      "case": "'Note: Return the result'",
+      "expected": "one mechanical-comment error"
+    },
+    {
+      "pass_number": 58,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony",
+      "case": "'NOTE: Helper function to format the result.'",
+      "expected": "one mechanical-comment error"
+    },
+    {
+      "pass_number": 59,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony",
+      "case": "\"NB: Let's create the response.\"",
+      "expected": "one mechanical-comment error"
+    },
+    {
+      "pass_number": 60,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony",
+      "case": "'Data models'",
+      "expected": "one mechanical-comment error"
+    },
+    {
+      "pass_number": 61,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony",
+      "case": "'Database queries:'",
+      "expected": "one mechanical-comment error"
+    },
+    {
+      "pass_number": 62,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony",
+      "case": "'Error handling'",
+      "expected": "one mechanical-comment error"
+    },
+    {
+      "pass_number": 63,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony",
+      "case": "'Local helpers'",
+      "expected": "one mechanical-comment error"
+    },
+    {
+      "pass_number": 64,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony",
+      "case": "'Module constants'",
+      "expected": "one mechanical-comment error"
+    },
+    {
+      "pass_number": 65,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony",
+      "case": "'Private helpers'",
+      "expected": "one mechanical-comment error"
+    },
+    {
+      "pass_number": 66,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony",
+      "case": "'Public API'",
+      "expected": "one mechanical-comment error"
+    },
+    {
+      "pass_number": 67,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony",
+      "case": "'Public helpers'",
+      "expected": "one mechanical-comment error"
+    },
+    {
+      "pass_number": 68,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony",
+      "case": "'Request handlers'",
+      "expected": "one mechanical-comment error"
+    },
+    {
+      "pass_number": 69,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony",
+      "case": "'Response models'",
+      "expected": "one mechanical-comment error"
+    },
+    {
+      "pass_number": 70,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony",
+      "case": "'Type aliases:'",
+      "expected": "one mechanical-comment error"
+    },
+    {
+      "pass_number": 71,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_and_multiword_labels_do_not_hide_ceremony",
+      "case": "'NOTE: Type   aliases:'",
+      "expected": "one mechanical-comment error"
+    },
+    {
+      "pass_number": 72,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_keep_constraints_and_unmatched_context",
+      "case": "'NOTE: Return the result only when committed'",
+      "expected": "preserve substantive constraint; no finding"
+    },
+    {
+      "pass_number": 73,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_keep_constraints_and_unmatched_context",
+      "case": "'NB: First, load the account because ordering matters.'",
+      "expected": "preserve substantive constraint; no finding"
+    },
+    {
+      "pass_number": 74,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_keep_constraints_and_unmatched_context",
+      "case": "'NOTE: First, wait 20ms for the upstream cache.'",
+      "expected": "preserve substantive constraint; no finding"
+    },
+    {
+      "pass_number": 75,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_keep_constraints_and_unmatched_context",
+      "case": "'NOTE: First, load the account. See https://example.com/API-123'",
+      "expected": "preserve substantive constraint; no finding"
+    },
+    {
+      "pass_number": 76,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_keep_constraints_and_unmatched_context",
+      "case": "'NOTE: Helper function required by the vendor.'",
+      "expected": "preserve substantive constraint; no finding"
+    },
+    {
+      "pass_number": 77,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_keep_constraints_and_unmatched_context",
+      "case": "'NB: Module constants are shared across workers'",
+      "expected": "preserve substantive constraint; no finding"
+    },
+    {
+      "pass_number": 78,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_keep_constraints_and_unmatched_context",
+      "case": "'Type aliases preserve the serialized contract'",
+      "expected": "preserve substantive constraint; no finding"
+    },
+    {
+      "pass_number": 79,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_keep_constraints_and_unmatched_context",
+      "case": "'Error handling defaults to rejection'",
+      "expected": "preserve substantive constraint; no finding"
+    },
+    {
+      "pass_number": 80,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_keep_constraints_and_unmatched_context",
+      "case": "'NOTE: The response must not contain credentials.'",
+      "expected": "preserve substantive constraint; no finding"
+    },
+    {
+      "pass_number": 81,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_editorial_prefixes_keep_constraints_and_unmatched_context",
+      "case": "'Notes: Helpers are resolved dynamically.'",
+      "expected": "preserve substantive constraint; no finding"
+    },
+    {
+      "pass_number": 82,
+      "source": "packages/python/tests/rules/test_no_comment_cruft.py",
+      "test": "test_section_labels_inside_an_expression_remain_content",
+      "case": "bracketed expression content",
+      "expected": "no finding"
+    },
+    {
+      "pass_number": 83,
+      "source": "packages/python/tests/test_autofix_comments.py",
+      "test": "test_content_free_section_labels_are_safely_deleted",
+      "case": "'Helpers'",
+      "expected": "delete label only; retain exact executable AST coordinates and converge"
+    },
+    {
+      "pass_number": 84,
+      "source": "packages/python/tests/test_autofix_comments.py",
+      "test": "test_content_free_section_labels_are_safely_deleted",
+      "case": "'Imports:'",
+      "expected": "delete label only; retain exact executable AST coordinates and converge"
+    },
+    {
+      "pass_number": 85,
+      "source": "packages/python/tests/test_autofix_comments.py",
+      "test": "test_content_free_section_labels_are_safely_deleted",
+      "case": "'Type aliases'",
+      "expected": "delete label only; retain exact executable AST coordinates and converge"
+    },
+    {
+      "pass_number": 86,
+      "source": "packages/python/tests/test_autofix_comments.py",
+      "test": "test_content_free_section_labels_are_safely_deleted",
+      "case": "'NOTE: Type aliases:'",
+      "expected": "delete label only; retain exact executable AST coordinates and converge"
+    },
+    {
+      "pass_number": 87,
+      "source": "packages/python/tests/test_autofix_comments.py",
+      "test": "test_content_free_section_labels_are_safely_deleted",
+      "case": "'NB: Error handling'",
+      "expected": "delete label only; retain exact executable AST coordinates and converge"
+    },
+    {
+      "pass_number": 88,
+      "source": "packages/python/tests/test_autofix_comments.py",
+      "test": "test_prose_narration_and_untracked_work_require_manual_deletion",
+      "case": "'NOTE: Return the result'",
+      "expected": "emit diagnostic; leave prose unchanged automatically"
+    },
+    {
+      "pass_number": 89,
+      "source": "packages/python/tests/test_autofix_comments.py",
+      "test": "test_prose_narration_and_untracked_work_require_manual_deletion",
+      "case": "'Helper function to format output'",
+      "expected": "emit diagnostic; leave prose unchanged automatically"
+    },
+    {
+      "pass_number": 90,
+      "source": "packages/python/tests/test_autofix_comments.py",
+      "test": "test_prose_narration_and_untracked_work_require_manual_deletion",
+      "case": "'TODO: add a guard'",
+      "expected": "emit diagnostic; leave prose unchanged automatically"
+    },
+    {
+      "pass_number": 91,
+      "source": "packages/python/tests/rules/test_no_restated_comment.py",
+      "test": "test_flags_zero_information_comment",
+      "case": "Get profile by national ID / profile = self._store.get_profile_by_national_id(national_id, bank_id)",
+      "expected": "one SARJ049 ERROR, exact original source location"
+    },
+    {
+      "pass_number": 92,
+      "source": "packages/python/tests/rules/test_no_restated_comment.py",
+      "test": "test_flags_zero_information_comment",
+      "case": "Update last login / await self.user_store.update_last_login(user_id)",
+      "expected": "one SARJ049 ERROR, exact original source location"
+    },
+    {
+      "pass_number": 93,
+      "source": "packages/python/tests/rules/test_no_restated_comment.py",
+      "test": "test_flags_zero_information_comment",
+      "case": "Create token pair / tokens = self.jwt_service.create_token_pair(user)",
+      "expected": "one SARJ049 ERROR, exact original source location"
+    },
+    {
+      "pass_number": 94,
+      "source": "packages/python/tests/rules/test_no_restated_comment.py",
+      "test": "test_flags_zero_information_comment",
+      "case": "Complete onboarding / _complete_onboarding(client, national_id)",
+      "expected": "one SARJ049 ERROR, exact original source location"
+    },
+    {
+      "pass_number": 95,
+      "source": "packages/python/tests/rules/test_no_restated_comment.py",
+      "test": "test_flags_zero_information_comment",
+      "case": "Format amounts for voice / formatted = format_currency_for_voice(amount)",
+      "expected": "one SARJ049 ERROR, exact original source location"
+    },
+    {
+      "pass_number": 96,
+      "source": "packages/python/tests/rules/test_no_restated_comment.py",
+      "test": "test_flags_zero_information_comment",
+      "case": "set_inheritable / s1.set_inheritable(False)",
+      "expected": "one SARJ049 ERROR, exact original source location"
+    },
+    {
+      "pass_number": 97,
+      "source": "packages/python/tests/rules/test_no_restated_comment.py",
+      "test": "test_flags_zero_information_comment",
+      "case": "return the user / return get_user(user_id)",
+      "expected": "one SARJ049 ERROR, exact original source location"
+    },
+    {
+      "pass_number": 98,
+      "source": "packages/python/tests/rules/test_no_restated_comment.py",
+      "test": "test_one_unmatched_word_keeps_the_comment",
+      "case": "Get bank profile by national ID",
+      "expected": "unmatched domain word prevents finding"
+    },
+    {
+      "pass_number": 99,
+      "source": "packages/python/tests/rules/test_no_restated_comment.py",
+      "test": "test_no_prefix_matching",
+      "case": "valid config versus validate(configure_all())",
+      "expected": "arbitrary prefix overlap prevents finding"
+    },
+    {
+      "pass_number": 100,
+      "source": "packages/python/tests/rules/test_no_restated_comment.py",
+      "test": "test_plural_folds_to_singular",
+      "case": "format amounts versus format_amount(x)",
+      "expected": "one lexical restatement error"
+    }
+  ],
+  "severity_reviews": [
+    {
+      "pass": 1,
+      "kind": "warning-policy-review",
+      "code": "SARJ437",
+      "id": "complex-postgres-query-requires-architecture-review",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 2,
+      "kind": "warning-policy-review",
+      "code": "SARJ506",
+      "id": "delete-route-returns-no-content",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 3,
+      "kind": "warning-policy-review",
+      "code": "SARJ524",
+      "id": "duplicate-pytest-fixture-params",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 4,
+      "kind": "warning-policy-review",
+      "code": "SARJ428",
+      "id": "fakes-in-shared-location",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 5,
+      "kind": "warning-policy-review",
+      "code": "SARJ094",
+      "id": "fastapi-explicit-openapi-contract",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 6,
+      "kind": "warning-policy-review",
+      "code": "SARJ412",
+      "id": "iac-source-coupled-test",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 7,
+      "kind": "warning-policy-review",
+      "code": "SARJ020",
+      "id": "no-analytical-aggregation-in-postgres-store",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 8,
+      "kind": "warning-policy-review",
+      "code": "SARJ507",
+      "id": "no-async-function-cache",
+      "decision": "promote-error"
+    },
+    {
+      "pass": 9,
+      "kind": "warning-policy-review",
+      "code": "SARJ513",
+      "id": "no-contradictory-type-guard",
+      "decision": "promote-error"
+    },
+    {
+      "pass": 10,
+      "kind": "warning-policy-review",
+      "code": "SARJ500",
+      "id": "no-create-verb-in-post-path",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 11,
+      "kind": "warning-policy-review",
+      "code": "SARJ497",
+      "id": "no-defaulted-environment-setting",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 12,
+      "kind": "warning-policy-review",
+      "code": "SARJ522",
+      "id": "no-dual-shape-model-field-reader",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 13,
+      "kind": "warning-policy-review",
+      "code": "SARJ496",
+      "id": "no-duplicate-field-validator-body",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 14,
+      "kind": "warning-policy-review",
+      "code": "SARJ505",
+      "id": "no-exception-text-in-500-detail",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 15,
+      "kind": "warning-policy-review",
+      "code": "SARJ498",
+      "id": "no-folded-bad-request-not-found",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 16,
+      "kind": "warning-policy-review",
+      "code": "SARJ499",
+      "id": "no-hasattr",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 17,
+      "kind": "warning-policy-review",
+      "code": "SARJ471",
+      "id": "no-injected-module-loader",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 18,
+      "kind": "warning-policy-review",
+      "code": "SARJ511",
+      "id": "no-invalid-pydantic-bypass",
+      "decision": "promote-error"
+    },
+    {
+      "pass": 19,
+      "kind": "warning-policy-review",
+      "code": "SARJ515",
+      "id": "no-invalid-pydantic-validator-return",
+      "decision": "promote-error"
+    },
+    {
+      "pass": 20,
+      "kind": "warning-policy-review",
+      "code": "SARJ508",
+      "id": "no-loguru-exc-info",
+      "decision": "promote-error"
+    },
+    {
+      "pass": 21,
+      "kind": "warning-policy-review",
+      "code": "SARJ509",
+      "id": "no-loguru-printf-format",
+      "decision": "promote-error"
+    },
+    {
+      "pass": 22,
+      "kind": "warning-policy-review",
+      "code": "SARJ469",
+      "id": "no-nullable-dependency-fallback",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 23,
+      "kind": "warning-policy-review",
+      "code": "SARJ512",
+      "id": "no-partial-type-is",
+      "decision": "promote-error"
+    },
+    {
+      "pass": 24,
+      "kind": "warning-policy-review",
+      "code": "SARJ402",
+      "id": "no-raw-source-text-test-oracle",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 25,
+      "kind": "warning-policy-review",
+      "code": "SARJ531",
+      "id": "no-redundant-local-alias",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 26,
+      "kind": "warning-policy-review",
+      "code": "SARJ049",
+      "id": "no-restated-comment",
+      "decision": "promote-error"
+    },
+    {
+      "pass": 27,
+      "kind": "warning-policy-review",
+      "code": "SARJ514",
+      "id": "no-shallow-record-type-guard",
+      "decision": "promote-error"
+    },
+    {
+      "pass": 28,
+      "kind": "warning-policy-review",
+      "code": "SARJ503",
+      "id": "no-slash-collection-root-under-prefix",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 29,
+      "kind": "warning-policy-review",
+      "code": "SARJ436",
+      "id": "no-whole-request-response-payload-in-log",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 30,
+      "kind": "warning-policy-review",
+      "code": "SARJ502",
+      "id": "no-work-verb-get-route",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 31,
+      "kind": "warning-policy-review",
+      "code": "SARJ042",
+      "id": "opaque-parametrize-case-needs-id",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 32,
+      "kind": "warning-policy-review",
+      "code": "SARJ062",
+      "id": "over-mocked-test",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 33,
+      "kind": "warning-policy-review",
+      "code": "SARJ516",
+      "id": "prefer-bulk-upsert",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 34,
+      "kind": "warning-policy-review",
+      "code": "SARJ494",
+      "id": "prefer-declarative-batch-validation",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 35,
+      "kind": "warning-policy-review",
+      "code": "SARJ529",
+      "id": "prefer-direct-import-module",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 36,
+      "kind": "warning-policy-review",
+      "code": "SARJ510",
+      "id": "prefer-discriminated-model-union",
+      "decision": "promote-error"
+    },
+    {
+      "pass": 37,
+      "kind": "warning-policy-review",
+      "code": "SARJ532",
+      "id": "prefer-grouped-settings",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 38,
+      "kind": "warning-policy-review",
+      "code": "SARJ059",
+      "id": "prefer-library-fake",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 39,
+      "kind": "warning-policy-review",
+      "code": "SARJ453",
+      "id": "prefer-match-exception-dispatch",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 40,
+      "kind": "warning-policy-review",
+      "code": "SARJ446",
+      "id": "prefer-monkeypatch-for-process-state-in-test",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 41,
+      "kind": "warning-policy-review",
+      "code": "SARJ480",
+      "id": "prefer-native-string-check",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 42,
+      "kind": "warning-policy-review",
+      "code": "SARJ082",
+      "id": "prefer-non-nullable-collection",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 43,
+      "kind": "warning-policy-review",
+      "code": "SARJ528",
+      "id": "prefer-precise-object-contract",
+      "decision": "promote-error"
+    },
+    {
+      "pass": 44,
+      "kind": "warning-policy-review",
+      "code": "SARJ518",
+      "id": "prefer-psycopg-executemany",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 45,
+      "kind": "warning-policy-review",
+      "code": "SARJ527",
+      "id": "prefer-pydantic-model-assertion",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 46,
+      "kind": "warning-policy-review",
+      "code": "SARJ526",
+      "id": "prefer-pytest-dependency-fixtures",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 47,
+      "kind": "warning-policy-review",
+      "code": "SARJ468",
+      "id": "prefer-required-constructor-parameters",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 48,
+      "kind": "warning-policy-review",
+      "code": "SARJ530",
+      "id": "prefer-typed-settings-field",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 49,
+      "kind": "warning-policy-review",
+      "code": "SARJ076",
+      "id": "prefer-walrus-comprehension-filter",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 50,
+      "kind": "warning-policy-review",
+      "code": "SARJ525",
+      "id": "pytest-fixture-returns-closed-resource",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 51,
+      "kind": "warning-policy-review",
+      "code": "SARJ413",
+      "id": "repeated-static-call-cases",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 52,
+      "kind": "warning-policy-review",
+      "code": "SARJ018",
+      "id": "replay-contract-insert-requires-duplicate-policy",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 53,
+      "kind": "warning-policy-review",
+      "code": "SARJ504",
+      "id": "require-exp-on-jwt-decode",
+      "decision": "promote-error"
+    },
+    {
+      "pass": 54,
+      "kind": "warning-policy-review",
+      "code": "SARJ462",
+      "id": "require-explicit-psycopg-transaction",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 55,
+      "kind": "warning-policy-review",
+      "code": "SARJ071",
+      "id": "require-port-for-service",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 56,
+      "kind": "warning-policy-review",
+      "code": "SARJ521",
+      "id": "require-pydantic-for-mapping-shape",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 57,
+      "kind": "warning-policy-review",
+      "code": "SARJ517",
+      "id": "store-field-update-reuses-upsert",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 58,
+      "kind": "warning-policy-review",
+      "code": "SARJ421",
+      "id": "store-get-delegates-to-bulk-read",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 59,
+      "kind": "warning-policy-review",
+      "code": "SARJ495",
+      "id": "test-without-explicit-oracle",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 60,
+      "kind": "warning-policy-review",
+      "code": "SARJ407",
+      "id": "timestamp-order-requires-tiebreaker",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 61,
+      "kind": "warning-policy-review",
+      "code": "SARJ435",
+      "id": "typed-error-reasons",
+      "decision": "retain-warning"
+    },
+    {
+      "pass": 62,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ507",
+      "id": "no-async-function-cache",
+      "case": "cached-coroutine-function",
+      "title": "A standard cache retains an exhausted coroutine",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 63,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ507",
+      "id": "no-async-function-cache",
+      "case": "fresh-coroutine-function",
+      "title": "Each call creates a fresh coroutine",
+      "expected": 0,
+      "actual": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 64,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ513",
+      "id": "no-contradictory-type-guard",
+      "case": "consistent-primitive-promise",
+      "title": "Recognize the primitive promised to callers",
+      "expected": 0,
+      "actual": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 65,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ513",
+      "id": "no-contradictory-type-guard",
+      "case": "constant-false-is-legal-partial-guard",
+      "title": "TypeGuard can intentionally recognize no inputs",
+      "expected": 0,
+      "actual": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 66,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ513",
+      "id": "no-contradictory-type-guard",
+      "case": "constant-true-claims-text",
+      "title": "A constant result does not prove a primitive type",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 67,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ513",
+      "id": "no-contradictory-type-guard",
+      "case": "wrong-primitive-promise",
+      "title": "An integer test does not prove a string",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 68,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ511",
+      "id": "no-invalid-pydantic-bypass",
+      "case": "construct-invalid-list-member",
+      "title": "Unchecked list elements must satisfy the stored field type",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 69,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ511",
+      "id": "no-invalid-pydantic-bypass",
+      "case": "construct-invalid-tag",
+      "title": "Unchecked construction stores a tag outside the declared vocabulary",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 70,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ511",
+      "id": "no-invalid-pydantic-bypass",
+      "case": "construct-trusted-list-members",
+      "title": "Trusted list elements preserve the field contract",
+      "expected": 0,
+      "actual": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 71,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ511",
+      "id": "no-invalid-pydantic-bypass",
+      "case": "construct-trusted-valid-tag",
+      "title": "Trusted construction still satisfies the declared vocabulary",
+      "expected": 0,
+      "actual": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 72,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ515",
+      "id": "no-invalid-pydantic-validator-return",
+      "case": "before-output-is-revalidated",
+      "title": "Input conversion is followed by ordinary field validation",
+      "expected": 0,
+      "actual": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 73,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ515",
+      "id": "no-invalid-pydantic-validator-return",
+      "case": "invalid-after-output",
+      "title": "An after validator stores an incompatible primitive unchanged",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 74,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ515",
+      "id": "no-invalid-pydantic-validator-return",
+      "case": "plain-output-is-not-revalidated",
+      "title": "A plain validator also bypasses subsequent field validation",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 75,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ515",
+      "id": "no-invalid-pydantic-validator-return",
+      "case": "valid-after-output",
+      "title": "The validator output satisfies the stored field contract",
+      "expected": 0,
+      "actual": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 76,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ508",
+      "id": "no-loguru-exc-info",
+      "case": "loguru-exception-option",
+      "title": "Loguru captures the exception through opt",
+      "expected": 0,
+      "actual": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 77,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ508",
+      "id": "no-loguru-exc-info",
+      "case": "stdlib-argument-on-loguru",
+      "title": "A standard logging argument does not capture the exception",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 78,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ509",
+      "id": "no-loguru-printf-format",
+      "case": "brace-values-rendered",
+      "title": "Brace fields render positional diagnostic values",
+      "expected": 0,
+      "actual": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 79,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ509",
+      "id": "no-loguru-printf-format",
+      "case": "printf-values-ignored",
+      "title": "Loguru leaves printf placeholders unchanged",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 80,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ512",
+      "id": "no-partial-type-is",
+      "case": "declared-literal-rejected",
+      "title": "Every declared literal belongs to the TypeIs target",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 81,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ512",
+      "id": "no-partial-type-is",
+      "case": "partial-type-guard",
+      "title": "TypeGuard permits an intentional partial predicate",
+      "expected": 0,
+      "actual": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 82,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ512",
+      "id": "no-partial-type-is",
+      "case": "positive-is-not-all-integers",
+      "title": "Zero is still an integer in the false branch",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 83,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ512",
+      "id": "no-partial-type-is",
+      "case": "total-literal-equality",
+      "title": "Equality recognizes every member of a singleton target",
+      "expected": 0,
+      "actual": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 84,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ512",
+      "id": "no-partial-type-is",
+      "case": "truthiness-bool-value-filter",
+      "title": "A value filter can return an ordinary bool",
+      "expected": 0,
+      "actual": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 85,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ512",
+      "id": "no-partial-type-is",
+      "case": "truthiness-is-not-text-membership",
+      "title": "Truthiness can accept integers and reject the empty string",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 86,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ514",
+      "id": "no-shallow-record-type-guard",
+      "case": "honest-container-contract",
+      "title": "Unchecked contents retain a container contract",
+      "expected": 0,
+      "actual": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 87,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ514",
+      "id": "no-shallow-record-type-guard",
+      "case": "nominal-named-tuple-membership",
+      "title": "Check the actual named tuple class for nominal membership",
+      "expected": 0,
+      "actual": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 88,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ514",
+      "id": "no-shallow-record-type-guard",
+      "case": "unchecked-named-attribute",
+      "title": "Tuple membership does not establish a named record",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 89,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ514",
+      "id": "no-shallow-record-type-guard",
+      "case": "unchecked-required-key",
+      "title": "A dictionary check does not prove a required key",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 90,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ510",
+      "id": "prefer-discriminated-model-union",
+      "case": "literal-tag-dependent-payload",
+      "title": "An after validator encodes a field dependency that its type cannot express",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 91,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ510",
+      "id": "prefer-discriminated-model-union",
+      "case": "literal-tags-preserve-constructor-calls",
+      "title": "Explicit tags preserve positional constructor calls with init=False",
+      "expected": 0,
+      "actual": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 92,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ510",
+      "id": "prefer-discriminated-model-union",
+      "case": "untagged-data-variants",
+      "title": "Data variants lack a common explicit tag",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 93,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ510",
+      "id": "prefer-discriminated-model-union",
+      "case": "variants-preserve-other-accepted-states",
+      "title": "Only the email variant requires an address; pickup preserves its optional address",
+      "expected": 0,
+      "actual": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 94,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ528",
+      "id": "prefer-precise-object-contract",
+      "case": "module-contract",
+      "title": "A module result has its standard type",
+      "expected": 0,
+      "actual": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 95,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ528",
+      "id": "prefer-precise-object-contract",
+      "case": "opaque-importer",
+      "title": "The importer erases its module result",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 96,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ528",
+      "id": "prefer-precise-object-contract",
+      "case": "safe-autofix-result",
+      "title": "The proven private literal return already has its precise type",
+      "expected": 0,
+      "actual": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 97,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ528",
+      "id": "prefer-precise-object-contract",
+      "case": "safe-autofix-subset",
+      "title": "Existing source proof permits a narrow convergent fix",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 98,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ504",
+      "id": "require-exp-on-jwt-decode",
+      "case": "exp-optional",
+      "title": "A token without exp is accepted",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    },
+    {
+      "pass": 99,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ504",
+      "id": "require-exp-on-jwt-decode",
+      "case": "exp-required",
+      "title": "The verifier requires exp",
+      "expected": 0,
+      "actual": 0,
+      "result": "pass"
+    },
+    {
+      "pass": 100,
+      "kind": "labeled-boundary-review",
+      "code": "SARJ439",
+      "id": "prefer-match-value-dispatch",
+      "case": "terminal-qualified-value-dispatch",
+      "title": "Two terminal qualified equality branches retain fallback",
+      "expected": 1,
+      "actual": 1,
+      "result": "pass"
+    }
+  ],
+  "limits": [
+    "These ledgers record policy and boundary reviews; full native verification is a separate gate.",
+    "Private corpus source, identities, local paths and identifying hashes are excluded.",
+    "Useful constraints, references, legal notices, tool directives and actual documentation consumers retain explicit protections.",
+    "PostgreSQL ordinary, partial and expression indexes remain separate from CREATE TABLE."
+  ],
+  "enforcement": {
+    "SARJ016": "Reject prefixed narration, bounded section labels and exception-header prose; preserve real constraints, references and directives.",
+    "SARJ049": "Restated comments emit errors.",
+    "SARJ099": "Unconsumed module docstrings emit errors; standalone deletion is offered only when metadata, legal notices, encoding and remaining syntax are preserved.",
+    "SARJ420": "Ordinary unconsumed class prose emits errors; actual documentation consumers and framework contracts remain protected.",
+    "SARJ434": "Exact ordered paragraph lines that mechanically repeat AST-owned direct call names emit errors from two lines and twelve words; unproven prose and technical explanations are preserved. The safe deletion subset remains stricter.",
+    "SARJ439": "Two terminal qualified-value equality branches plus fallback emit an error when subject and namespace stability are proven. No new automatic rewrite.",
+    "SARJ510": "Both model and data unions without a shared disjoint Literal discriminator emit errors. Constructor and serialized compatibility remain a manual contract decision.",
+    "SARJ528": "Opaque application contracts emit errors; source-proven raw validators, parser outputs, framework hooks and genuinely opaque interoperation retain their contracts.",
+    "SARJ121": "New unconditional empty PostgreSQL tables inline equivalent constraints when ordering, table state and constraint semantics allow. No automatic SQL rewrite."
+  },
+  "suppression_boundary": "A broad exclusion of SARJ420 does not disable the independent SARJ099 module policy. Embedded suppression text inside a string is not a source comment.",
+  "fact_preservation_audit": {
+    "changed_comment_blocks": 129,
+    "source_and_test_files": 76,
+    "facts_preserved_in_concise_comments": 79,
+    "facts_preserved_in_code_types_validation_or_tests": 46,
+    "redundant_historical_or_architectural_notes": 3,
+    "obsolete_module_doc_heuristic_notes": 1,
+    "lost_facts": 0,
+    "removed_class_docs_reviewed": 18,
+    "class_doc_facts_lost": 0,
+    "method": "Each changed block was compared with current names, types, validation and tests; unchanged moved blocks were excluded. Technical facts were not treated as valueless."
+  },
+  "corpus_qualification": {
+    "schema_version": 1,
+    "measurement_status": "Fresh integrated candidate measurements complete; selected live hits fully reviewed by exact source and diagnostic identity.",
+    "measured_at": "2026-10-27T10:38:10.842898+00:00",
+    "live_hit_review": {
+      "population": 302,
+      "selected": 80,
+      "labels_carried_by_exact_identity": 80,
+      "pending_manual_cases": 0,
+      "counts_by_code": {
+        "SARJ016": {
+          "TP_ERROR": 7
+        },
+        "SARJ099": {
+          "TP_ERROR": 1
+        },
+        "SARJ420": {
+          "TP_ERROR": 41
+        },
+        "SARJ439": {
+          "TP_ERROR": 1
+        },
+        "SARJ510": {
+          "TP_ERROR": 5
+        },
+        "SARJ528": {
+          "TP_ERROR": 25
+        }
+      },
+      "not_a_recall_estimate": true
+    },
+    "historical_review": {
+      "status": "Historical findings retained unchanged, not current measurements",
+      "selected": 113,
+      "sarj434_false_positive_counts": {
+        "FP_ADVISORY": 11,
+        "FP_ERROR": 21
+      },
+      "exact_historical_fp_diagnostics_still_observed": 0,
+      "exact_historical_fp_diagnostics_not_observed": 32,
+      "absence_is_not_automatic_fix_credit": true
+    },
+    "labeled_examples": {
+      "status": "passed",
+      "rules": 17,
+      "authored_examples": 72,
+      "measured_examples": 72,
+      "case_level_confusion": {
+        "TP": 41,
+        "FP": 0,
+        "FN": 0,
+        "TN": 31
+      },
+      "excluded_or_unexecuted": 0,
+      "canonical_rule_failures": 0
+    },
+    "performance": {
+      "baseline": {
+        "cold_median_import_and_analysis_seconds": 51.445568628958426,
+        "whole_process_round_median_seconds": 99.479248,
+        "cold_cpu_median_seconds": 50.261039,
+        "warm_analysis_median_seconds": 48.88940615998581,
+        "warm_cpu_median_seconds": 47.798498,
+        "peak_process_rss_kib": 348988,
+        "cold_samples": 3,
+        "warm_samples": 3
+      },
+      "upstream": {
+        "cold_median_import_and_analysis_seconds": 39.823517566896044,
+        "whole_process_round_median_seconds": 80.62936,
+        "cold_cpu_median_seconds": 39.282874,
+        "warm_analysis_median_seconds": 35.43456328299362,
+        "warm_cpu_median_seconds": 34.929463,
+        "peak_process_rss_kib": 348980,
+        "cold_samples": 3,
+        "warm_samples": 3
+      },
+      "integration_upstream": {
+        "cold_median_import_and_analysis_seconds": 39.10923097713385,
+        "whole_process_round_median_seconds": 79.44301899999999,
+        "cold_cpu_median_seconds": 38.003748,
+        "warm_analysis_median_seconds": 35.48692453908734,
+        "warm_cpu_median_seconds": 34.97028799999999,
+        "peak_process_rss_kib": 348860,
+        "cold_samples": 3,
+        "warm_samples": 3
+      },
+      "candidate": {
+        "cold_median_import_and_analysis_seconds": 44.36493031994905,
+        "whole_process_round_median_seconds": 96.704314,
+        "cold_cpu_median_seconds": 43.794247999999996,
+        "warm_analysis_median_seconds": 47.285922067123465,
+        "warm_cpu_median_seconds": 46.765727,
+        "peak_process_rss_kib": 399344,
+        "cold_samples": 3,
+        "warm_samples": 3
+      },
+      "control": {
+        "cold_median_import_and_analysis_seconds": 4.664284809026867,
+        "whole_process_round_median_seconds": 8.050512,
+        "cold_cpu_median_seconds": 4.604043,
+        "warm_analysis_median_seconds": 2.8424470321042463,
+        "warm_cpu_median_seconds": 2.838155,
+        "peak_process_rss_kib": 81852,
+        "cold_samples": 3,
+        "warm_samples": 3
+      },
+      "candidate_to_baseline_ratios": {
+        "cold_median_import_and_analysis_seconds": 0.862366409824777,
+        "whole_process_round_median_seconds": 0.9721053983037748,
+        "cold_cpu_median_seconds": 0.8713359069238501,
+        "warm_analysis_median_seconds": 0.9672018087596503,
+        "warm_cpu_median_seconds": 0.978393233193227,
+        "peak_process_rss_kib": 1.144291494263413
+      },
+      "candidate_to_upstream_ratios": {
+        "cold_median_import_and_analysis_seconds": 1.1140384634638134,
+        "whole_process_round_median_seconds": 1.199368493065057,
+        "cold_cpu_median_seconds": 1.114843277505612,
+        "warm_analysis_median_seconds": 1.3344575941145507,
+        "warm_cpu_median_seconds": 1.3388618943268609,
+        "peak_process_rss_kib": 1.1443177259441801
+      },
+      "candidate_to_integration_upstream_ratios": {
+        "cold_median_import_and_analysis_seconds": 1.134385136488316,
+        "whole_process_round_median_seconds": 1.2172789405196196,
+        "cold_cpu_median_seconds": 1.1523665507938847,
+        "warm_analysis_median_seconds": 1.332488590693173,
+        "warm_cpu_median_seconds": 1.337298880695521,
+        "peak_process_rss_kib": 1.1447113455254256
+      },
+      "focused_rule_overhead": {
+        "cold_seconds": 39.700645510922186,
+        "warm_seconds": 44.44347503501922
+      }
+    },
+    "qualification_profile": "post583-five-modes-v1",
+    "performance_acceptance": {
+      "original_baseline_maximum_ratio": 1.25,
+      "all_six_original_baseline_ratios_within_budget": true,
+      "integration_upstream_warm_wall_ratio": 1.332488590693173,
+      "integration_upstream_cost_disclosed": true,
+      "baseline_and_inputs_repinned": false
+    },
+    "comparator_context": {
+      "baseline": "unchanged original baseline",
+      "upstream": "unchanged previous integrated upstream comparator",
+      "integration_upstream": "separately pinned current integration upstream comparator"
+    },
+    "measurement_method": "Three fresh-process cold/warm rounds for original baseline, previous upstream comparator, separately pinned integration_upstream, candidate and control; all five modes use the original unchanged 468-file/6,741,860-byte corpus and default 250-file bound. Projecting each round onto the four previous modes preserves their exact prior relative order. Cold includes fresh-interpreter imports without flushing the host page cache; warm repeats once in the same batch process. Control remains no-secret-in-log on the candidate engine. The fixed1.25 budget uses only the original baseline; both upstream ratios are additional disclosed comparators. Focused overhead is not full-ruleset performance.",
+    "limits": [
+      "Live-hit labels and labeled example confusion are separate cohorts.",
+      "Changed source or diagnostic identities require fresh human review.",
+      "No private source, paths, revisions or identifying hashes are included in this aggregate.",
+      "Historical performance is never substituted for this new report.",
+      "SARJ434 abstains from prose that cannot be mechanically proved redundant; one previously reviewed noisy walkthrough with a retainable fact now abstains.",
+      "No unknown live findings were converted into positive labels; exact identity transfer reuses actual prior manual judgments.",
+      "The fixed25% budget is against the original baseline. Against the separately pinned integration upstream, focused cold time rises13.4%, warm time33.2%, and peak process RSS14.5%.",
+      "Original-baseline timings vary across historical runs. Ratios below one in this run are not a claim that the complete product became faster.",
+      "Cold means a fresh interpreter, without flushing the host filesystem cache."
+    ],
+    "scope": {
+      "files": 468,
+      "bytes": 6741860,
+      "affected_python_rules": 17,
+      "full_native_ruleset_performance_measured": false,
+      "live_hit_sampling": "Complete intended-service census plus the predeclared deterministic random sample of up to 25 maintained-source findings per code."
+    },
+    "review_context": {
+      "sampled_class_docs_with_meaningful_constraints": 13,
+      "constraint_remediation": "Preserve hidden constraints in concise local comments or executable contracts; class docs do not receive automatic deletion.",
+      "sampled_opaque_contracts_requiring_explicit_boundary_reasons": 10,
+      "sampled_opaque_contracts_with_expressible_closed_domains": 15
+    }
+  },
+  "upstream_policy_reconciliation": {
+    "original_review_decisions_preserved": true,
+    "comment_and_severity_review_counts_unchanged": true,
+    "independent_upstream_changes": [
+      {
+        "code": "SARJ020",
+        "severity_review_pass": 7,
+        "original_review_decision": "retain-warning",
+        "current_default_level": "error",
+        "context": "Upstream independently made the transactional SQL architecture policy blocking after this audit; it is excluded from this change's twelve promotions.",
+        "source": "https://github.com/sarj-ai/code-standards/pull/1825"
+      }
+    ]
+  },
+  "integration_continuity": {
+    "qualified_upstream_commit": "583c5c9781f670bf2a826b12e5bbe54e0030a68a",
+    "integrated_upstream_commit": "635c0b4f6cf3cafe25891c5587e731ac3a373e86",
+    "affected_python_rules": 17,
+    "candidate_python_and_contracts_source_unchanged": true,
+    "candidate_root_project_metadata_unchanged": true,
+    "upstream_python_and_contracts_projection_unchanged": true,
+    "immutable_corpus_and_qualification_reports_unchanged": true,
+    "measurements_and_original_comparator_references_retained": true,
+    "new_measurements_or_repinning": false,
+    "scope": "Both upstream commits have the same measured Python/contracts projection. The retained 17-rule results apply to the identical engine and immutable corpus. The React Doctor adapter and complete Standards bundle were not benchmarked."
+  }
+}

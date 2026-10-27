@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from pydantic import JsonValue
 import pytest
 
 from sarj_standards.libs.adoption.manifest import PreparedTarget
@@ -14,7 +15,6 @@ from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting.devops_tools import checked_tool, invoke
 from sarj_standards.libs.linting.prepared_devops import analyze_prepared
 from sarj_standards.libs.schema_boundary import validate_local_schema
-from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 if TYPE_CHECKING:
@@ -29,10 +29,10 @@ class _ClosureFixture:
     root: Path
     schema: Path
     shared: Path
-    target: dict[str, object]
+    target: dict[str, JsonValue]
 
 
-def _closure(root: Path, reference: object) -> _ClosureFixture:
+def _closure(root: Path, reference: JsonValue) -> _ClosureFixture:
     schema = root / "nested" / "pod.json"
     schema.parent.mkdir(parents=True)
     schema.write_text(json.dumps({"$schema": _DIALECT, "$ref": reference}), encoding="utf-8")
@@ -44,7 +44,7 @@ def _closure(root: Path, reference: object) -> _ClosureFixture:
     manifest.write_text(
         "apiVersion: serving.knative.dev/v1\nkind: Service\nmetadata:\n  name: example\n", encoding="utf-8"
     )
-    target: dict[str, object] = {
+    target: dict[str, JsonValue] = {
         "id": "example",
         "source": "deploy.yaml",
         "source_sha256": sha256(source.read_bytes()).hexdigest(),
@@ -61,7 +61,7 @@ def _closure(root: Path, reference: object) -> _ClosureFixture:
 
 def _report(fixture: _ClosureFixture) -> ToolReport:
     artifacts = fixture.target["artifacts"]
-    assert is_object_mapping(artifacts)
+    assert isinstance(artifacts, dict)
     artifacts["nested/pod.json"] = sha256(fixture.schema.read_bytes()).hexdigest()
     receipt = fixture.root / "receipt.json"
     receipt.write_text(json.dumps({"version": 1, "targets": [fixture.target]}), encoding="utf-8")
@@ -128,7 +128,7 @@ def test_normalized_schema_reference_retains_artifact_checks(tmp_path: Path, mut
     fixture = _closure(tmp_path, "../shared.json#/definitions/value")
     shared = fixture.shared
     artifacts = fixture.target["artifacts"]
-    assert is_object_mapping(artifacts)
+    assert isinstance(artifacts, dict)
     match mutation:
         case "missing-hash":
             artifacts.pop("shared.json")
@@ -178,7 +178,7 @@ def test_relative_schema_cycle_is_bounded_and_example_refs_are_data(tmp_path: Pa
         encoding="utf-8",
     )
     artifacts = fixture.target["artifacts"]
-    assert is_object_mapping(artifacts)
+    assert isinstance(artifacts, dict)
     artifacts["shared.json"] = sha256(shared.read_bytes()).hexdigest()
     assert _report(fixture).completion is Completion.COMPLETE
     assert _report(fixture).completion is Completion.COMPLETE

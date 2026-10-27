@@ -322,8 +322,7 @@ _CAMEL_RE = re.compile(r"[A-Z][a-z0-9]+|[A-Z]+(?![a-z])|[a-z0-9]+")
 _MIN_METHODS = 3
 _MIN_LINES = 25
 
-# The line-count arm needs a second entry point (method or nested class) before a
-# long class counts as a protocol implementation rather than a canned-data factory.
+# A long class needs a second entry point to distinguish a protocol implementation from a data factory.
 _MIN_ENTRY_POINTS = 2
 
 # Directory segments that hold shared test doubles but are not `tests/`.

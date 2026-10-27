@@ -325,9 +325,13 @@ def _revision_text(root: Path, revision: str, relative: str) -> str | None:
 
 def _private_refs(
     root: Path,
-    public: Mapping[str, object],
+    public: Mapping[  # sarj-noqa: SARJ528 -- Merge native TOML policy values without normalization.
+        str, object
+    ],
     private_refs_path: Path | None,
-) -> Mapping[str, object]:
+) -> Mapping[  # sarj-noqa: SARJ528 -- Merge native TOML policy values without normalization.
+    str, object
+]:
     local_path = private_refs_path or root / _PRIVATE_REFS_FILE
     if local_path.is_file():
         try:
@@ -690,7 +694,13 @@ def _optional_text(table: Mapping[str, object], key: str) -> str:
     return value
 
 
-def _required_texts(table: Mapping[str, object], keys: tuple[str, ...], label: str) -> tuple[str, ...]:
+def _required_texts(
+    table: Mapping[  # sarj-noqa: SARJ528 -- Validate selected text fields in raw TOML policy tables.
+        str, object
+    ],
+    keys: tuple[str, ...],
+    label: str,
+) -> tuple[str, ...]:
     values = tuple(text_field(table, key) for key in keys)
     missing = tuple(key for key, value in zip(keys, values, strict=True) if not value)
     if missing:
@@ -699,7 +709,11 @@ def _required_texts(table: Mapping[str, object], keys: tuple[str, ...], label: s
     return tuple(value or "" for value in values)
 
 
-def _filename_rules(values: Iterable[object]) -> Iterable[FilenameRule]:
+def _filename_rules(
+    values: Iterable[  # sarj-noqa: SARJ528 -- Validate each raw TOML entry before constructing FilenameRule.
+        object
+    ],
+) -> Iterable[FilenameRule]:
     for value in values:
         table = as_table(value)
         _known_keys(table, frozenset({"glob", "label", "pattern"}), "filename rule")
@@ -707,7 +721,11 @@ def _filename_rules(values: Iterable[object]) -> Iterable[FilenameRule]:
         yield FilenameRule(glob, _compile_policy_regex(pattern, "filename rule"), label)
 
 
-def _rule_families(values: Iterable[object]) -> Iterable[RuleFamily]:
+def _rule_families(
+    values: Iterable[  # sarj-noqa: SARJ528 -- Validate each raw TOML entry before constructing RuleFamily.
+        object
+    ],
+) -> Iterable[RuleFamily]:
     for value in values:
         table = as_table(value)
         _known_keys(
@@ -724,7 +742,11 @@ def _rule_families(values: Iterable[object]) -> Iterable[RuleFamily]:
         yield RuleFamily(name, source, tests, registry, extension, test_pattern, registry_pattern)
 
 
-def _config_references(values: Iterable[object]) -> Iterable[ConfigReference]:
+def _config_references(
+    values: Iterable[  # sarj-noqa: SARJ528 -- Validate each raw TOML entry before constructing ConfigReference.
+        object
+    ],
+) -> Iterable[ConfigReference]:
     for value in values:
         table = as_table(value)
         _known_keys(table, frozenset({"glob", "pattern"}), "config reference")
@@ -732,7 +754,11 @@ def _config_references(values: Iterable[object]) -> Iterable[ConfigReference]:
         yield ConfigReference(glob, _compile_policy_regex(pattern, "config reference", re.MULTILINE))
 
 
-def _version_references(values: Iterable[object]) -> Iterable[VersionReference]:
+def _version_references(
+    values: Iterable[  # sarj-noqa: SARJ528 -- Validate each raw TOML entry before constructing VersionReference.
+        object
+    ],
+) -> Iterable[VersionReference]:
     for value in values:
         table = as_table(value)
         _known_keys(table, frozenset({"format", "path", "selector", "version"}), "version reference")

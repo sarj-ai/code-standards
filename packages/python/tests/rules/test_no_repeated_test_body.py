@@ -836,8 +836,6 @@ def test_two(async_client):
 
 
 def test_a_fixture_reading_terminal_routes_keeps_distinct_contracts():
-    # The parameter names are identity, so declaring the same fixture and using
-    # it identically is what re-groups the two.
     src = """
 def test_one(client):
     response = client.get("/x")

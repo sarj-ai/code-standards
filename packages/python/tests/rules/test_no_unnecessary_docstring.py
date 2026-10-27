@@ -273,7 +273,7 @@ def test_cross_module_pydantic_inheritance_is_exempt(tmp_path: Path) -> None:
     assert rule.check(response_path, response_source) == []
 
 
-def test_syntax_required_class_and_function_docstrings_are_exempt_but_a_module_is_not() -> None:
+def test_class_only_prose_is_an_error_but_function_stubs_remain_exempt() -> None:
     source = '''"""Human-only module prose."""
 
 class Marker:
@@ -285,7 +285,7 @@ def marker() -> None:
 
     findings = _check(source)
 
-    assert [(finding.line, finding.code) for finding in findings] == [(1, "SARJ420")]
+    assert [(finding.line, finding.code) for finding in findings] == [(1, "SARJ420"), (4, "SARJ420")]
 
 
 @pytest.mark.parametrize(
@@ -312,6 +312,28 @@ def test_suppression_requires_a_reason_and_cannot_live_inside_docstring_text() -
 
     assert [finding.code for finding in _check(bare)] == ["SARJ420"]
     assert [finding.code for finding in _check(embedded)] == ["SARJ420"]
+
+
+@pytest.mark.parametrize(
+    "docstring",
+    [
+        '"""Text quoting # sarj-noqa: SARJ420 -- explanation."""',
+        '"""Text.\n    # sarj-noqa: SARJ420 -- explanation."""',
+        '"""Text quoting # sarj-noqa: SARJ420 -- explanation."""  # sarj-noqa: SARJ420',
+    ],
+)
+def test_closing_line_suppression_text_requires_a_real_explained_comment(docstring: str) -> None:
+    source = f"class Example:\n    {docstring}\n    value = 1\n"
+    assert [finding.code for finding in _check(source)] == ["SARJ420"]
+
+
+def test_literal_suppression_text_does_not_mask_a_real_explained_source_comment() -> None:
+    source = (
+        "class Example:\n"
+        '    """Text quoting # sarj-noqa: SARJ420 -- example."""  # sarj-noqa: SARJ420 -- published docs\n'
+        "    value = 1\n"
+    )
+    assert _check(source) == []
 
 
 @pytest.mark.parametrize(
@@ -630,9 +652,9 @@ def test_import_aliases_of_source_decorators_are_resolved(tmp_path: Path, prefix
 @pytest.mark.parametrize(
     "decorator", ["dataclasses.dataclass", "dataclasses.dataclass()", "dataclasses.dataclass(frozen=True, slots=True)"]
 )
-def test_canonical_dataclass_reads_the_class_docstring(decorator: str) -> None:
+def test_dataclass_incidental_metadata_does_not_exempt_class_prose(decorator: str) -> None:
     source = f'import dataclasses\n\n@{decorator}\nclass Record:\n    """Read before fallback signature generation."""\n    value: int\n'
-    assert _check(source) == []
+    assert [finding.code for finding in _check(source)] == ["SARJ420"]
 
 
 @pytest.mark.parametrize(
@@ -642,9 +664,9 @@ def test_canonical_dataclass_reads_the_class_docstring(decorator: str) -> None:
         ("from dataclasses import dataclass as model", "model"),
     ],
 )
-def test_dataclass_aliases_preserve_canonical_identity(prefix: str, decorator: str) -> None:
+def test_dataclass_aliases_do_not_exempt_class_prose(prefix: str, decorator: str) -> None:
     source = f'{prefix}\n\n@{decorator}\nclass Record:\n    """Read as dataclass metadata."""\n    value: int\n'
-    assert _check(source) == []
+    assert [finding.code for finding in _check(source)] == ["SARJ420"]
 
 
 @pytest.mark.parametrize(
@@ -679,9 +701,9 @@ def test_transform_and_unknown_dataclass_options_are_not_doc_consumers(decorator
     assert [finding.code for finding in _check(source)] == ["SARJ420"]
 
 
-def test_unrelated_namespace_mutation_does_not_erase_canonical_metadata_reads() -> None:
+def test_unrelated_namespace_mutation_preserves_cache_consumer_only() -> None:
     source = 'import dataclasses\nimport functools\nimport other\nother.__dict__["dataclass"] = replacement\n@dataclasses.dataclass\nclass Record:\n    """Read as dataclass metadata."""\n    value: int\n@functools.lru_cache(maxsize=1)\ndef result():\n    """Copied cache metadata."""\n    return 1'
-    assert _check(source) == []
+    assert [finding.code for finding in _check(source)] == ["SARJ420"]
 
 
 @pytest.mark.parametrize("decorator", ["classmethod", "staticmethod", "builtins.classmethod", "builtins.staticmethod"])
@@ -728,8 +750,10 @@ def test_direct_functional_metadata_consumers_exempt_only_the_input(consumer: st
             else f"consumed = {consumer}(operation)",
         ]
     )
-    expected_line = 7 if consumer == "dataclasses.dataclass" else 4
-    assert [(finding.line, finding.code) for finding in _check(source)] == [(expected_line, "SARJ420")]
+    expected_lines = [4, 7] if consumer == "dataclasses.dataclass" else [4]
+    assert [(finding.line, finding.code) for finding in _check(source)] == [
+        (line, "SARJ420") for line in expected_lines
+    ]
 
 
 def test_nested_functional_consumer_preserves_lexical_owner_identity() -> None:
@@ -848,7 +872,7 @@ def test_unknown_function_decorator_order_cannot_borrow_the_original_doc(decorat
 
 @pytest.mark.parametrize(
     ("decorators", "expected"),
-    [("@unknown\n@dataclasses.dataclass", []), ("@dataclasses.dataclass\n@unknown", ["SARJ420"])],
+    [("@unknown\n@dataclasses.dataclass", ["SARJ420"]), ("@dataclasses.dataclass\n@unknown", ["SARJ420"])],
 )
 def test_unknown_class_decorator_order_cannot_borrow_the_original_doc(decorators: str, expected: list[str]) -> None:
     source = f'import dataclasses\n{decorators}\nclass Record:\n    """Original class metadata."""\n    value: int\n'
@@ -939,9 +963,9 @@ def test_factory_wrapper_body_can_later_replace_an_already_copied_doc(tmp_path: 
 
 
 @pytest.mark.parametrize("decorators", ["@dataclasses.dataclass\n@checked", "@checked\n@dataclasses.dataclass"])
-def test_source_proven_transparent_modifier_preserves_class_metadata(decorators: str) -> None:
+def test_transparent_modifiers_do_not_exempt_dataclass_prose(decorators: str) -> None:
     source = f'from typing import override as checked\nimport dataclasses\n{decorators}\nclass Record:\n    """Read by class metadata generation."""\n    value: int\n'
-    assert _check(source) == []
+    assert [finding.code for finding in _check(source)] == ["SARJ420"]
 
 
 @pytest.mark.parametrize(

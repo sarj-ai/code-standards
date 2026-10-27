@@ -15,9 +15,11 @@ from sarj_standards.schemas import RULE_CATALOG_SCHEMA
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from pydantic import JsonValue
+
 
 @pytest.mark.parametrize("schema", [True, 1.0, "1", None], ids=("boolean", "float", "string", "null"))
-def test_shipped_catalog_requires_an_integer_schema_version(tmp_path: Path, schema: object) -> None:
+def test_shipped_catalog_requires_an_integer_schema_version(tmp_path: Path, schema: bool | float | str | None) -> None:
     path = tmp_path / "catalog.json"
     path.write_text(json.dumps({"schemaVersion": schema, "rules": []}), encoding="utf-8")
 
@@ -38,7 +40,7 @@ def test_shipped_catalog_load_rejects_duplicate_keys(tmp_path: Path) -> None:
         rule_catalog_artifact.load(path)
 
 
-def _typescript_rule() -> dict[str, object]:
+def _typescript_rule() -> dict[str, JsonValue]:
     return {
         "engine": "eslint",
         "ruleId": "sample-rule",
@@ -258,7 +260,7 @@ def test_selector_index_rejects_aliases_that_resolve_to_multiple_rules(tmp_path:
     ],
 )
 def test_selector_index_rejects_duplicate_or_malformed_alias_metadata(
-    tmp_path: Path, rules: list[dict[str, object]]
+    tmp_path: Path, rules: list[dict[str, JsonValue]]
 ) -> None:
     path = tmp_path / "catalog.json"
     path.write_text(json.dumps({"schemaVersion": 1, "rules": rules}), encoding="utf-8")
@@ -295,7 +297,7 @@ def test_typescript_example_setup_round_trips_through_public_catalog() -> None:
         ("installedDependencies", [{"module": "zod", "version": "^4.6.5"}]),
     ],
 )
-def test_typescript_example_setup_rejects_malformed_metadata(field: str, value: object) -> None:
+def test_typescript_example_setup_rejects_malformed_metadata(field: str, value: JsonValue) -> None:
     payload = _typescript_rule()
     first = _object_table(_object_list(payload["examples"])[0])
     first[field] = value

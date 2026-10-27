@@ -84,8 +84,6 @@ def run(
         )
         result = 2 if result < 0 else result
         status = max(status, result)
-        # A linter can fix some findings and still report others. Continue the
-        # remaining tools; infrastructure errors stop this operation.
         if result > 1:
             break
     return FixResult(status, tuple(path for path, original in originals.items() if path.read_bytes() != original))

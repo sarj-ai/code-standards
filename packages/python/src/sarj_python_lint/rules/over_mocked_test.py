@@ -152,8 +152,7 @@ _INFRA_TOKENS = frozenset(
     }
 )
 
-# A test whose name or location says it is the composition-root test: stubbing
-# every adapter is the point of it.
+# Composition-root tests intentionally stub every adapter.
 _SEAM_TOKENS = frozenset(
     {
         "bootstrap",
@@ -167,9 +166,7 @@ _SEAM_TOKENS = frozenset(
     }
 )
 
-# Documentation suites sometimes execute every published example under one
-# deliberately broad boundary harness.  Requiring both tokens distinguishes
-# that role from an ordinary docs renderer or an ordinary examples test.
+# Both docs and examples tokens distinguish a published-example harness from ordinary rendering tests.
 _DOCUMENTATION_HARNESS_TOKENS = frozenset({"docs", "examples"})
 
 # Words inside a name, however it is cased: `MAX_RETRIES`, `RequestTimeout`,

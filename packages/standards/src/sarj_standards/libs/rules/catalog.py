@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import json
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Self
+
+from sarj_standards.libs.json_boundary import parse_json
 
 from .contracts import (
     CatalogRule,
@@ -17,6 +18,8 @@ from .contracts import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    from pydantic import JsonValue
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,19 +89,23 @@ class RuleCatalogDocument:
             msg = "catalog aliases must be unique and must not shadow live rule keys"
             raise ValueError(msg)
 
-    def as_public_dict(self) -> dict[str, object]:
+    def as_public_dict(self) -> dict[str, JsonValue]:
         return {
             "schemaVersion": self.schema_version,
             "rules": [self._rule_dict(rule) for rule in sorted(self.rules, key=lambda item: item.spec.key)],
         }
 
     @staticmethod
-    def _rule_dict(rule: DocumentedRule) -> dict[str, object]:
+    def _rule_dict(rule: DocumentedRule) -> dict[str, JsonValue]:
         spec = rule.spec
         examples = sorted(
             (example for example in spec.examples if example.public),
             key=lambda example: example.example_id,
         )
+        languages: list[JsonValue] = [
+            language.value for language in sorted(spec.languages, key=lambda item: item.value)
+        ]
+        aliases: list[JsonValue] = [*sorted(spec.aliases)]
         return {
             "key": spec.key,
             "engine": spec.engine.value,
@@ -108,15 +115,15 @@ class RuleCatalogDocument:
             "rationale": spec.rationale,
             "remediation": spec.remediation,
             "category": spec.category.value,
-            "languages": sorted(language.value for language in spec.languages),
+            "languages": languages,
             "defaultLevel": spec.default_level.value,
             "autofix": spec.autofix.value,
             "status": rule.status.value,
-            "aliases": sorted(spec.aliases),
+            "aliases": aliases,
             "limitations": list(spec.limitations),
             "filePatterns": list(spec.file_patterns),
             "messageIds": list(spec.message_ids),
-            "optionsSchema": json.loads(spec.options_schema) if spec.options_schema is not None else None,
+            "optionsSchema": parse_json(spec.options_schema) if spec.options_schema is not None else None,
             "references": list(spec.references),
             "since": spec.since,
             "source": rule.source.as_posix(),
@@ -134,7 +141,7 @@ class RuleCatalogDocument:
                         for item in sorted(example.files, key=lambda item: item.path)
                     ],
                     **(
-                        {"ruleOptions": json.loads(example.rule_options_json)}
+                        {"ruleOptions": parse_json(example.rule_options_json)}
                         if example.rule_options_json is not None
                         else {}
                     ),

@@ -231,19 +231,19 @@ def test_generated_paths(path: str) -> None:
     assert NoShallowRecordTypeGuard().check(Path(path), _TYPED) == []
 
 
-def test_exact_suppression_and_warning() -> None:
+def test_exact_suppression_and_error() -> None:
     rule = NoShallowRecordTypeGuard()
     findings = rule.check(Path("tests/test_guards.py"), _TYPED)
     assert len(findings) == 1
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
     assert rule.check(Path("app/guards.py"), _TYPED.rstrip() + "  # sarj-noqa: SARJ514 -- trusted boundary\n") == []
     assert rule.check(Path("app/guards.py"), _TYPED.rstrip() + "  # sarj-noqa: SARJ513 -- different owner\n")
 
 
-def test_registered_warning_and_neighboring_owners(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_registered_error_and_neighboring_owners(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     path = tmp_path / "guards.py"
     path.write_text(_TYPED)
-    assert main(["check", "--rule", NoShallowRecordTypeGuard.id, str(path)]) == 0
+    assert main(["check", "--rule", NoShallowRecordTypeGuard.id, str(path)]) == 1
     assert "SARJ514" in capsys.readouterr().out
     rules = [
         NoShallowRecordTypeGuard.id,

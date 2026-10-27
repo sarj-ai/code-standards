@@ -165,7 +165,11 @@ def synchronize_issue(
             _run_gh(runner, "issue", "reopen", str(existing.number), "--repo", repository)
 
 
-def _matching_issue(issues: Sequence[dict[str, object]]) -> Issue | None:
+def _matching_issue(
+    issues: Sequence[  # sarj-noqa: SARJ528 -- Preserve raw rows from the existing JSON RootModel.
+        dict[str, object]
+    ],
+) -> Issue | None:
     for item in issues:
         number = item.get("number")
         if item.get("title") == _ISSUE_TITLE and type(number) is int:

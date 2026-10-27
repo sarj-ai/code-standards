@@ -26,8 +26,6 @@ def analyze_groups(
         raise ValueError(msg)
     if jobs == 1:
         return (*_run_group("native", native, root), *_run_group("external", external, root))
-    # External type analyzers retain their existing serial execution and shared
-    # deadlines. Only this boundary owns concurrency; no nested worker pools.
     with ThreadPoolExecutor(max_workers=2, thread_name_prefix="standards") as workers:
         native_result = workers.submit(_run_group, "native", native, root)
         external_result = workers.submit(_run_group, "external", external, root)

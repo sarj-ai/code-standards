@@ -267,8 +267,7 @@ class DocstringReturnsRestateSignature(Rule):
         if _names_fixed_tuple_positions(block, annotation):
             return
         stems = _result_stems(node, class_name, annotation)
-        # The whole-docstring case is SARJ050's; reporting it here too would
-        # make one deletion look like two findings.
+        # SARJ050 owns whole-docstring restatements, avoiding duplicate deletion findings.
         if restates(docstring, stems):
             return
         if not restates(block, stems):

@@ -110,8 +110,7 @@ _PRIMITIVE_ANNOTATIONS = frozenset(
 # substitutable collaborator: nobody swaps `ServerSettings` or `ViewportSize` in a test.
 _WEAK_COLLABORATOR_RE = re.compile(r"(?:Settings|Config|Configuration|Options|Logger|Log|Clock|Context|Size)$")
 
-# Runtime driver handles are implementation details of an adapter, not a port
-# that consumers substitute through.
+# Adapter driver handles are implementation details rather than consumer substitution ports.
 _DRIVER_HANDLE_ANNOTATIONS = frozenset(
     {
         "AsyncClient",
@@ -155,8 +154,7 @@ _DATA_BASES = frozenset(
 # Decorators that turn a class into a record.
 _DATA_DECORATORS = frozenset({"dataclass", "dataclasses", "define", "frozen", "mutable", "attrs", "attr", "s"})
 
-# Method decorators that mean the callable is not an instance method a consumer calls
-# through the port: descriptors, factories and namespaced helpers.
+# Descriptors, factories and namespaced helpers are not consumer-facing instance methods.
 _NON_METHOD_DECORATORS = frozenset({"property", "cached_property", "staticmethod", "classmethod"})
 
 # Method decorators that declare the class is already an interface without an ABC base.

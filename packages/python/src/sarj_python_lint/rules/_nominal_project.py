@@ -213,7 +213,12 @@ def _distribution(manifest: Path) -> _Distribution | None:
     return _Distribution(manifest.parent, canonicalize_name(name), frozenset(names), workspace)
 
 
-def _workspace(root: Path, document: dict[object, object]) -> _Workspace | None:
+def _workspace(
+    root: Path,
+    document: dict[  # sarj-noqa: SARJ528 -- preserve unchecked TOML children while the cursor validates each nested table.
+        object, object
+    ],
+) -> _Workspace | None:
     value: object = document
     for key in ("tool", "uv", "workspace"):
         if not _is_mapping(value):

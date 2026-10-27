@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -21,6 +22,10 @@ from sarj_standards.libs.release.process import (
 )
 from sarj_standards.libs.repository import rule_changes
 from sarj_standards.libs.rules import DefaultLevel
+
+
+if TYPE_CHECKING:
+    from pydantic import JsonValue
 
 
 _INVENTORY = Path("packages/standards/src/sarj_standards/configs/rule-inventory.v1.json")
@@ -38,7 +43,7 @@ def _git(root: Path, *args: str) -> str:
     return completed.stdout.strip()
 
 
-def _rule(rule_id: str, *, level: str = "warning", summary: str = "Summary") -> dict[str, object]:
+def _rule(rule_id: str, *, level: str = "warning", summary: str = "Summary") -> dict[str, JsonValue]:
     return {
         "key": f"python:{rule_id}",
         "engine": "python",
@@ -65,7 +70,7 @@ def _rule(rule_id: str, *, level: str = "warning", summary: str = "Summary") -> 
     }
 
 
-def _write_revision(root: Path, rules: list[dict[str, object]], message: str) -> str:
+def _write_revision(root: Path, rules: list[dict[str, JsonValue]], message: str) -> str:
     inventory_rules = [
         {
             "family": "typescript" if rule["engine"] == "eslint" else rule["engine"],
@@ -238,7 +243,9 @@ def test_changes_fails_when_inventory_and_catalog_disagree(repository: Path) -> 
 
 
 @pytest.mark.parametrize("schema", [True, 1.0], ids=("boolean", "float"))
-def test_changes_rejects_non_integer_schema_versions_in_the_selected_tree(repository: Path, schema: object) -> None:
+def test_changes_rejects_non_integer_schema_versions_in_the_selected_tree(
+    repository: Path, schema: bool | float
+) -> None:
     before = _write_revision(repository, [], "base")
     path = repository / _INVENTORY
     path.write_text(json.dumps({"schemaVersion": schema, "rules": []}), encoding="utf-8")
@@ -462,6 +469,7 @@ def test_error_first_approval_is_exact_and_does_not_allow_disabled_rules(
         "text:cloudbuild-contract",
         "python:no-interpreter-source-arguments",
         "python:no-blanket-suppression",
+        "sql:new-table-inline-constraints",
     ],
 )
 def test_explicit_devops_error_first_admission_preserves_exact_selector_scope(
@@ -1293,17 +1301,16 @@ class _ParserFixturePins:
 
 def _rule_comparison_parser_fixture_pins(repository: Path) -> _ParserFixturePins:
     from sarj_standards.libs.json_boundary import parse_json  # ruff: ignore[import-outside-top-level] -- fixture metadata is used only by native parser controls.
-    from sarj_standards.libs.typed_containers import is_object_mapping  # ruff: ignore[import-outside-top-level] -- narrow the actual lock at its test parser boundary.
 
     node = "v" + (repository / ".node-version").read_text().strip().removeprefix("v")
     locked = parse_json((repository / "packages/typescript/package-lock.json").read_text())
-    assert is_object_mapping(locked)
+    assert isinstance(locked, dict)
     packages = locked["packages"]
-    assert is_object_mapping(packages)
+    assert isinstance(packages, dict)
     wrapper = packages["node_modules/typescript"]
     runtime = packages["node_modules/@typescript/old"]
-    assert is_object_mapping(wrapper)
-    assert is_object_mapping(runtime)
+    assert isinstance(wrapper, dict)
+    assert isinstance(runtime, dict)
     package_pin, runtime_pin = wrapper["version"], runtime["version"]
     assert isinstance(package_pin, str)
     assert isinstance(runtime_pin, str)
@@ -1369,7 +1376,6 @@ def test_python_only_comparison_does_not_require_authoring_parser_metadata(repos
 
 def _change_rule_comparison_parser_metadata(repository: Path, case: str) -> None:
     from sarj_standards.libs.json_boundary import parse_json  # ruff: ignore[import-outside-top-level] -- fixture metadata is used only by native parser controls.
-    from sarj_standards.libs.typed_containers import is_object_mapping  # ruff: ignore[import-outside-top-level] -- narrow the actual lock at its test parser boundary.
 
     node = repository / ".node-version"
     lock = repository / "packages/typescript/package-lock.json"
@@ -1388,9 +1394,9 @@ def _change_rule_comparison_parser_metadata(repository: Path, case: str) -> None
             lock.write_text('{"packages":{},"packages":{}}')
         case _:
             payload = parse_json(lock.read_text())
-            assert is_object_mapping(payload)
+            assert isinstance(payload, dict)
             packages = payload["packages"]
-            assert is_object_mapping(packages)
+            assert isinstance(packages, dict)
             if case == "missing-runtime":
                 payload["packages"] = {
                     key: value for key, value in packages.items() if key != "node_modules/@typescript/old"
@@ -1404,6 +1410,6 @@ def _change_rule_comparison_parser_metadata(repository: Path, case: str) -> None
                 }
                 key, field, value = cases[case]
                 package = packages[key]
-                assert is_object_mapping(package)
+                assert isinstance(package, dict)
                 package[field] = value
             lock.write_text(json.dumps(payload))

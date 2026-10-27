@@ -7,6 +7,7 @@ from pathlib import Path
 import tracemalloc
 from typing import TYPE_CHECKING
 
+from pydantic import JsonValue
 import pytest
 
 from sarj_standards.libs.adoption.manifest import PreparedTarget
@@ -22,8 +23,8 @@ if TYPE_CHECKING:
 class _HashFixture:
     root: Path
     payload: Path
-    target: dict[str, object]
-    hashes: dict[str, str]
+    target: dict[str, JsonValue]
+    hashes: dict[str, JsonValue]
 
 
 def _fixture(root: Path, content: bytes = b"artifact content") -> _HashFixture:
@@ -37,8 +38,10 @@ def _fixture(root: Path, content: bytes = b"artifact content") -> _HashFixture:
     schema.write_text('{"type":"object","required":["metadata"]}', encoding="utf-8")
     payload = root / "payload.bin"
     payload.write_bytes(content)
-    hashes = {path.name: sha256(path.read_bytes()).hexdigest() for path in (manifest, schema, payload)}
-    target: dict[str, object] = {
+    hashes: dict[str, JsonValue] = {
+        path.name: sha256(path.read_bytes()).hexdigest() for path in (manifest, schema, payload)
+    }
+    target: dict[str, JsonValue] = {
         "id": "example",
         "source": "deploy.yaml",
         "source_sha256": sha256(source.read_bytes()).hexdigest(),

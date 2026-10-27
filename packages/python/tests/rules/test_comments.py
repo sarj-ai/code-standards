@@ -9,6 +9,7 @@ from sarj_python_lint.rules._comments import (
     comment_runs,
     content_tokens,
     has_external_reference,
+    has_legal_notice,
     is_protected,
     nested_comment_lines,
     restates,
@@ -31,6 +32,7 @@ from sarj_python_lint.rules._comments import (
         ("causal", "hoisted because the lock must already be held"),
         ("negation", "NOT a typo"),
         ("upstream", "workaround for the vendored parser"),
+        ("upstream-required", "helper required by the vendor contract"),
         ("invariant", "must run before any worker starts"),
         ("security", "compared in constant-time to avoid a timing attack"),
         ("vendor", "Twilio rejects a body over 1600 characters"),
@@ -52,6 +54,20 @@ def test_each_protected_signal_exempts_a_comment(signal: str, body: str) -> None
 )
 def test_the_floor_does_not_protect_a_pure_narration(body: str) -> None:
     assert not is_protected(body)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "Copyright 2026 Example Authors.",
+        "SPDX-License-Identifier: MIT",
+        "Licensed under the Apache license.",
+        "Permission is hereby granted to use this software.",
+        "All rights reserved.",
+    ],
+)
+def test_legal_notice_signals_are_shared_with_docstring_autofix(body: str) -> None:
+    assert has_legal_notice(body)
 
 
 def test_the_external_reference_signal_is_available_on_its_own() -> None:
@@ -128,7 +144,6 @@ def test_the_suppression_view_shares_the_same_pass() -> None:
 
 
 def test_a_file_the_tokenizer_rejects_raises_rather_than_reading_as_comment_free() -> None:
-    # Every caller catches this and returns no diagnostics; swallowing it here
-    # would instead report a broken file as having no comments at all.
+    # A malformed file must raise; treating it as comment-free would suppress its parsing failure.
     with pytest.raises((tokenize.TokenError, SyntaxError)):
         standalone_comments("def f(:\n")

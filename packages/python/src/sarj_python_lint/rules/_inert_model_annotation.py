@@ -5,7 +5,12 @@ from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
+    from types import EllipsisType
+
     from sarj_python_lint.rules._imports import ImportIndex
+
+
+type PythonLiteral = str | bytes | bool | int | float | complex | EllipsisType | None
 
 
 _BUILTINS = frozenset({"bool", "bytes", "dict", "float", "frozenset", "int", "list", "object", "set", "str", "tuple"})
@@ -140,7 +145,7 @@ def inert_direct_model_body(cls: ast.ClassDef, imports: ImportIndex) -> bool:
     return True
 
 
-def _model_literal_value(node: ast.expr | None) -> object:
+def _model_literal_value(node: ast.expr | None) -> PythonLiteral:
     if isinstance(node, ast.Constant):
         return node.value
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub) and isinstance(node.operand, ast.Constant):

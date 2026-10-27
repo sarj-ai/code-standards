@@ -129,8 +129,7 @@ class NamedRecordAtBoundaries(Rule):
             # a missing model.
             if _is_framework_hook(node, imports):
                 return
-            # SARJ094 owns visible routes. Hidden routes remain ordinary Python
-            # APIs here unless FastAPI already has a concrete named model.
+            # SARJ094 owns visible routes; hidden routes retain ordinary Python contract checks.
             routes = fastapi.routes(node)
             if any(not route.is_hidden for route in routes) or any(
                 _has_named_response_model(route.keywords.get("response_model"), semantics) for route in routes
@@ -301,8 +300,7 @@ def _classify_subscript_return(
         return "dict" if inner == "dict" else None
     if _is_type(node.value, imports, builtin="dict", typing_symbol="Dict"):
         return "dict" if _is_named_record_dict_args(node.slice, imports) else None
-    # Heterogeneous tuple returns are NOT flagged — multiple return values are
-    # idiomatic Python, not a missing data contract.
+    # Heterogeneous multiple return values are ordinary Python, outside this record policy.
     return None
 
 

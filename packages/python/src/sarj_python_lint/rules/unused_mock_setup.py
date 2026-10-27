@@ -83,8 +83,6 @@ _ASSERT_PREFIX = "assert"
 
 _FUNC_NODES = (ast.FunctionDef, ast.AsyncFunctionDef)
 
-# Bodies that belong to a different scope: they are visited when that scope is
-# itself processed as a function.
 _NESTED_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
 

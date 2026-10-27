@@ -115,8 +115,7 @@ def test_stale_candidate_exits_before_amending_or_publishing(tmp_path: Path, mon
             allowed_baseline_paths=frozenset(),
             allowed_paths=frozenset(),
         )
-    # The empty directory is intentionally not a Git checkout: any attempt to
-    # amend or push the stale candidate would fail this end-to-end guard test.
+    # The empty directory makes accidental amendment or push fail.
     assert "verification reached" in str(caught.value)
     assert not finished.exists()
     assert list(repo.iterdir()) == []
@@ -158,13 +157,17 @@ def test_full_transaction_cancels_dependency_update_before_staging(
                 return subprocess.CompletedProcess(command, 0, "a" * 40, "")
             return super().run(command, cwd=cwd, check=check, env=env)
 
-    def missing_status(*_args: object) -> rollout.Outcome:
+    def missing_status(_consumer: rollout.Consumer, _version: str, _runner: rollout.CommandRunner) -> rollout.Outcome:
         return rollout.Outcome(consumer, rollout.OutcomeState.MISSING)
 
-    def fresh_branch(*_args: object) -> rollout.BranchPreparation:
+    def fresh_branch(
+        _repo: Path, _version: str, _base_sha: str, _runner: rollout.CommandRunner
+    ) -> rollout.BranchPreparation:
         return rollout.BranchPreparation("standards-rollout/current", None)
 
-    def provisioned_tools(*_args: object) -> rollout.ProvisionedTools:
+    def provisioned_tools(
+        _repo: Path, _shim_directory: Path, _runner: rollout.CommandRunner, _environment: Mapping[str, str]
+    ) -> rollout.ProvisionedTools:
         return rollout.ProvisionedTools({"PATH": str(tmp_path)}, ())
 
     def read_base(_consumer: rollout.Consumer, _runner: rollout.CommandRunner) -> str:

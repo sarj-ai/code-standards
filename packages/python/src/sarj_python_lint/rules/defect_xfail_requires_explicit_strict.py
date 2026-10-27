@@ -32,9 +32,7 @@ _XFAIL = "xfail"
 _DEFECT_RE = re.compile(r"\b(bug|broken|defect|regression|incorrect|wrong|fixme)\b", re.IGNORECASE)
 _SHOULD_CONTRAST_RE = re.compile(r"\bshould\b.+\b(but|instead)\b", re.IGNORECASE)
 
-# A linked tracker issue is itself an explicit defect pin.  Keep this narrow to
-# GitHub's canonical issue route: arbitrary URLs frequently document platform
-# requirements or upstream behavior rather than a defect this test pins.
+# Only canonical GitHub issue URLs prove a pinned defect; other URLs may document requirements.
 _GITHUB_ISSUE_RE = re.compile(r"https?://github\.com/[^/\s]+/[^/\s]+/issues/\d+\b", re.IGNORECASE)
 
 # Reason text conceding the outcome genuinely varies run to run.

@@ -7,8 +7,9 @@ import re
 from typing import TYPE_CHECKING
 
 from jsonschema import FormatChecker
+from pydantic import JsonValue
 
-from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.json_boundary import normalize_json_value, parse_json
 from sarj_standards.libs.typed_containers import is_object_mapping
 
 
@@ -19,20 +20,28 @@ if TYPE_CHECKING:
 _SHA256 = "3ebb9f46d87276b72793722c86605ed3afdd90e9cf877536958682d71a00f979"
 _MAX_DURATION_SECONDS = 315_576_000_000
 FORMATS = FormatChecker()
-type JsonSchema = dict[str, object]
+type JsonSchema = dict[str, JsonValue]
 
 
 @FORMATS.checks("int64", raises=InvalidOperation)
-def _int64(value: object) -> bool:
+def _int64(
+    value: object,  # sarj-noqa: SARJ528 -- jsonschema FormatChecker accepts arbitrary Python instances.
+) -> bool:
     return _integer_string(value, bits=64)
 
 
 @FORMATS.checks("int32", raises=InvalidOperation)
-def _int32(value: object) -> bool:
+def _int32(
+    value: object,  # sarj-noqa: SARJ528 -- jsonschema FormatChecker accepts arbitrary Python instances.
+) -> bool:
     return _integer_string(value, bits=32)
 
 
-def _integer_string(value: object, *, bits: int) -> bool:
+def _integer_string(
+    value: object,  # sarj-noqa: SARJ528 -- Share the nonstring-preserving FormatChecker input contract.
+    *,
+    bits: int,
+) -> bool:
     if not isinstance(value, str):
         return True
     number = Decimal(value)
@@ -50,7 +59,9 @@ def _base64(value: object) -> bool:
 
 
 @FORMATS.checks("google-duration", raises=InvalidOperation)
-def _duration(value: object) -> bool:
+def _duration(
+    value: object,  # sarj-noqa: SARJ528 -- jsonschema FormatChecker accepts arbitrary Python instances.
+) -> bool:
     if not isinstance(value, str):
         return True
     match = re.fullmatch(r"-?([0-9]+)(?:\.[0-9]{1,9})?s", value)
@@ -66,4 +77,4 @@ def build_schema(directory: Path) -> JsonSchema:
     if not is_object_mapping(schema):
         message = "Pinned Cloud Build schema must contain an object"
         raise ValueError(message)
-    return {str(key): value for key, value in schema.items()}
+    return {str(key): normalize_json_value(value) for key, value in schema.items()}

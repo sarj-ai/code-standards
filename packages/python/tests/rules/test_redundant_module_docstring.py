@@ -49,7 +49,7 @@ def test_flags_corpus_path_restatements(path: str, docstring: str) -> None:
     assert findings[0].code == "SARJ099"
     assert findings[0].severity is Severity.ERROR
     assert (findings[0].line, findings[0].col) == (1, 1)
-    assert "filename" in findings[0].message
+    assert "module docstrings" in findings[0].message
 
 
 @pytest.mark.parametrize(
@@ -62,8 +62,8 @@ def test_flags_corpus_path_restatements(path: str, docstring: str) -> None:
         "Mouse operations are unavailable in headless sessions.",
     ],
 )
-def test_novel_behavior_architecture_and_consumer_tokens_keep_docstring(docstring: str) -> None:
-    assert _check(f'"""{docstring}"""\n\nVALUE = 1\n', "analysis/diagnostics.py") == []
+def test_module_policy_does_not_infer_consumption_from_prose(docstring: str) -> None:
+    assert len(_check(f'"""{docstring}"""\n\nVALUE = 1\n', "analysis/diagnostics.py")) == 1
 
 
 @pytest.mark.parametrize(
@@ -75,9 +75,9 @@ def test_novel_behavior_architecture_and_consumer_tokens_keep_docstring(docstrin
         "Logging utilities redact credentials.",
     ],
 )
-def test_filename_matching_keeps_novel_contracts(docstring: str) -> None:
+def test_hidden_constraints_belong_next_to_their_owner(docstring: str) -> None:
     path = "celery/utils/log.py" if docstring.startswith("Logging") else "_pytest/cacheprovider.py"
-    assert _check(f'"""{docstring}"""\n\nVALUE = 1\n', path) == []
+    assert len(_check(f'"""{docstring}"""\n\nVALUE = 1\n', path)) == 1
 
 
 @pytest.mark.parametrize(
@@ -87,8 +87,8 @@ def test_filename_matching_keeps_novel_contracts(docstring: str) -> None:
         ("scrapy/utils/signal.py", "Utilities for workers receiving signals."),
     ],
 )
-def test_work_vocabulary_outside_structural_phrase_keeps_docstring(path: str, docstring: str) -> None:
-    assert _check(f'"""{docstring}"""\n\nVALUE = 1\n', path) == []
+def test_module_policy_covers_behavioral_summaries(path: str, docstring: str) -> None:
+    assert len(_check(f'"""{docstring}"""\n\nVALUE = 1\n', path)) == 1
 
 
 @pytest.mark.parametrize(
@@ -102,12 +102,12 @@ def test_work_vocabulary_outside_structural_phrase_keeps_docstring(path: str, do
         "package/element.pyi",
     ],
 )
-def test_excluded_module_kinds_are_ignored(path: str) -> None:
-    assert _check('"""Element module."""\n\nVALUE = 1\n', path) == []
+def test_module_policy_covers_special_test_and_stub_modules(path: str) -> None:
+    assert len(_check('"""Element module."""\n\nVALUE = 1\n', path)) == 1
 
 
-def test_docstring_only_module_is_ignored() -> None:
-    assert _check('"""Element module."""\n') == []
+def test_docstring_only_module_is_an_error() -> None:
+    assert len(_check('"""Element module."""\n')) == 1
 
 
 @pytest.mark.parametrize(
@@ -118,8 +118,8 @@ def test_docstring_only_module_is_ignored() -> None:
         '"""Element module.\n\nNotes:\n    Element operations."""\n\nVALUE = 1\n',
     ],
 )
-def test_multiline_sections_and_multiple_sentences_are_ignored(source: str) -> None:
-    assert _check(source) == []
+def test_multiline_sections_and_multiple_sentences_are_errors(source: str) -> None:
+    assert len(_check(source)) == 1
 
 
 @pytest.mark.parametrize(
@@ -132,8 +132,8 @@ def test_multiline_sections_and_multiple_sentences_are_ignored(source: str) -> N
         "Element operations measured in milliseconds.",
     ],
 )
-def test_protected_and_value_markers_keep_docstring(docstring: str) -> None:
-    assert _check(f'"""{docstring}"""\n\nVALUE = 1\n') == []
+def test_references_and_facts_do_not_prove_a_module_consumer(docstring: str) -> None:
+    assert len(_check(f'"""{docstring}"""\n\nVALUE = 1\n')) == 1
 
 
 def test_generated_and_malformed_sources_are_ignored() -> None:
@@ -193,17 +193,17 @@ def test_visible_module_docstring_consumer_is_exempt(consumer: str) -> None:
     assert _check(source, "celery/utils/log.py") == []
 
 
-def test_shebang_script_is_exempt() -> None:
+def test_shebang_script_still_requires_a_module_doc_consumer() -> None:
     source = '#!/usr/bin/env python3\n"""Logging utilities."""\n\nVALUE = 1\n'
 
-    assert _check(source, "scripts/log.py") == []
+    assert len(_check(source, "scripts/log.py")) == 1
 
 
 @pytest.mark.parametrize(
     "guard",
     ['__name__ == "__main__"', '__name__ == "__main__" and ENABLED', '__name__ == "__main__" or FORCED'],
 )
-def test_main_guard_module_is_exempt(guard: str) -> None:
+def test_main_guard_still_requires_a_module_doc_consumer(guard: str) -> None:
     source = f'''\
 """Logging utilities."""
 
@@ -211,7 +211,7 @@ if {guard}:
     run()
 '''
 
-    assert _check(source, "scripts/log.py") == []
+    assert len(_check(source, "scripts/log.py")) == 1
 
 
 @pytest.mark.parametrize(
@@ -226,29 +226,29 @@ if {guard}:
         ("server/client.py", "Client for server."),
     ],
 )
-def test_relational_prose_is_preserved(path: str, docstring: str) -> None:
-    assert _check(f'"""{docstring}"""\n\nVALUE = 1\n', path) == []
+def test_relational_prose_requires_a_detected_consumer(path: str, docstring: str) -> None:
+    assert len(_check(f'"""{docstring}"""\n\nVALUE = 1\n', path)) == 1
 
 
 @pytest.mark.parametrize("docstring", ["Current logging utilities.", "Default logging utilities."])
-def test_semantic_qualifier_is_preserved(docstring: str) -> None:
-    assert _check(f'"""{docstring}"""\n\nVALUE = 1\n', "celery/utils/log.py") == []
+def test_semantic_qualifier_does_not_prove_a_consumer(docstring: str) -> None:
+    assert len(_check(f'"""{docstring}"""\n\nVALUE = 1\n', "celery/utils/log.py")) == 1
 
 
 @pytest.mark.parametrize("term", ["3", "سريع", "例外"])
-def test_numeric_or_non_latin_detail_is_preserved(term: str) -> None:
+def test_numeric_or_non_latin_detail_does_not_prove_a_consumer(term: str) -> None:
     source = f'"""Logging utilities {term}."""\n\nVALUE = 1\n'
 
-    assert _check(source, "celery/utils/log.py") == []
+    assert len(_check(source, "celery/utils/log.py")) == 1
 
 
 def test_number_present_in_filename_can_be_redundant() -> None:
     assert len(_check('"""Protocol version 3."""\n\nVALUE = 1\n', "protocol_version_3.py")) == 1
 
 
-def test_compound_path_order_is_significant() -> None:
+def test_module_policy_does_not_depend_on_path_word_order() -> None:
     assert len(_check('"""Parent child module."""\n\nVALUE = 1\n', "parent_child.py")) == 1
-    assert _check('"""Child parent module."""\n\nVALUE = 1\n', "parent_child.py") == []
+    assert len(_check('"""Child parent module."""\n\nVALUE = 1\n', "parent_child.py")) == 1
 
 
 @pytest.mark.parametrize(
@@ -259,8 +259,8 @@ def test_compound_path_order_is_significant() -> None:
         ("primary_fallback/selector.py", "Selector primary module."),
     ],
 )
-def test_partial_path_component_is_preserved(path: str, docstring: str) -> None:
-    assert _check(f'"""{docstring}"""\n\nVALUE = 1\n', path) == []
+def test_module_policy_does_not_depend_on_path_token_overlap(path: str, docstring: str) -> None:
+    assert len(_check(f'"""{docstring}"""\n\nVALUE = 1\n', path)) == 1
 
 
 def test_lowercase_compound_parent_is_reconstructed() -> None:
@@ -270,8 +270,8 @@ def test_lowercase_compound_parent_is_reconstructed() -> None:
 
 
 @pytest.mark.parametrize("path", ["retry_سريع.py", "retry_例外.py", "سريع_retry.py"])
-def test_partial_mixed_script_filename_is_preserved(path: str) -> None:
-    assert _check('"""Retry module."""\n\nVALUE = 1\n', path) == []
+def test_partial_mixed_script_filename_does_not_exempt_prose(path: str) -> None:
+    assert len(_check('"""Retry module."""\n\nVALUE = 1\n', path)) == 1
 
 
 @pytest.mark.parametrize(

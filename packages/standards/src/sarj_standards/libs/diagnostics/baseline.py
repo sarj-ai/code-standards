@@ -12,13 +12,15 @@ import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed read-only git argv.
 from typing import TYPE_CHECKING
 
+from pydantic import JsonValue
+
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.json_boundary import parse_unique_json
-from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
+from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping, Sequence
 
     from .models import Diagnostic
 
@@ -67,7 +69,7 @@ class Budget:
 @dataclass(frozen=True, slots=True)
 class _LoadedBaseline:
     text: str
-    entries: list[object]
+    entries: list[JsonValue]
     fingerprints: dict[str, int]
     provenance: Provenance | None
 
@@ -272,7 +274,10 @@ def _load_document(
     except (OSError, UnicodeError, ValueError, RecursionError) as exc:
         msg = f"cannot read diagnostic baseline {path}: {exc}"
         raise ValueError(msg) from exc
-    root = _string_object_dict(parsed, label="diagnostic baseline")
+    if not isinstance(parsed, dict):
+        msg = "diagnostic baseline must be an object"
+        raise TypeError(msg)
+    root = parsed
     schema_version = root.get("schemaVersion")
     if type(schema_version) is not int or schema_version not in {LEGACY_SCHEMA_VERSION, SCHEMA_VERSION}:
         msg = f"diagnostic baseline schemaVersion must equal {LEGACY_SCHEMA_VERSION} or {SCHEMA_VERSION}"
@@ -291,7 +296,7 @@ def _load_document(
             msg = "diagnostic baseline policy digest does not match the executing Standards bundle"
             raise ValueError(msg)
     entries = root.get("diagnostics")
-    if not is_object_list(entries):
+    if not isinstance(entries, list):
         msg = "diagnostic baseline diagnostics must be a list"
         raise TypeError(msg)
     return _LoadedBaseline(text, entries, _baseline_fingerprints(entries), origin)
@@ -306,7 +311,11 @@ def _read_baseline_text(path: Path) -> str:
     return content.decode("utf-8")
 
 
-def _baseline_fingerprints(entries: list[object]) -> dict[str, int]:
+def _baseline_fingerprints(
+    entries: Sequence[  # sarj-noqa: SARJ528 -- Validate each untrusted baseline entry before fingerprinting.
+        object
+    ],
+) -> dict[str, int]:
     fingerprints: dict[str, int] = {}
     for index, value in enumerate(entries):
         entry = _string_object_dict(value, label=f"diagnostic baseline entry {index}")
@@ -440,8 +449,8 @@ def _existing_json_indent(text: str) -> int | str:
     return 2
 
 
-def _diagnostic_entries(diagnostics: Iterable[Diagnostic]) -> list[dict[str, object]]:
-    entries: dict[str, dict[str, object]] = {}
+def _diagnostic_entries(diagnostics: Iterable[Diagnostic]) -> list[dict[str, str | int]]:
+    entries: dict[str, dict[str, str | int]] = {}
     for item in diagnostics:
         if item.fingerprint is None or not is_baselineable(item):
             continue
@@ -466,7 +475,7 @@ def _diagnostic_entries(diagnostics: Iterable[Diagnostic]) -> list[dict[str, obj
     )
 
 
-def _entry_selected(entry: dict[str, object], selectors: frozenset[str]) -> bool:
+def _entry_selected(entry: Mapping[str, object], selectors: frozenset[str]) -> bool:
     source = entry.get("source")
     rule_id = entry.get("ruleId")
     return (

@@ -146,8 +146,6 @@ def test_a_base_this_file_does_not_define_is_out_of_reach():
 
 
 def test_a_dotted_base_never_resolves_to_a_local_class():
-    # A subclass that shadows the name of the imported base it extends is not
-    # its own parent; matching on the last dotted part alone made it one.
     src = (
         "import upstream\n"
         "\n"

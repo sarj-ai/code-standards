@@ -257,14 +257,16 @@ def test_mixed_sibling_sequence_has_no_eligible_suffix() -> None:
 
 
 def test_membership_and_pattern_matching_are_not_safe_automatic_rewrites() -> None:
-    class UnhashableEqual:
+    class UnhashableEqual(str):  # ruff: ignore[subclass-builtin] - Exercise native str hash/equality overrides.
+        __slots__ = ()
+
         def __hash__(self) -> int:
             raise TypeError
 
         def __eq__(self, other: object) -> bool:
             return other == ".yaml"
 
-    def make_value() -> object:
+    def make_value() -> str:
         return UnhashableEqual()
 
     value = make_value()
@@ -281,7 +283,9 @@ def test_membership_and_pattern_matching_are_not_safe_automatic_rewrites() -> No
 def test_set_membership_invokes_hash_but_literal_pattern_does_not() -> None:
     calls: list[str] = []
 
-    class HashObserved:
+    class HashObserved(str):  # ruff: ignore[subclass-builtin] - Exercise native str hash/equality overrides.
+        __slots__ = ()
+
         def __hash__(self) -> int:
             calls.append("hash")
             return hash(".yaml")
@@ -290,7 +294,7 @@ def test_set_membership_invokes_hash_but_literal_pattern_does_not() -> None:
             calls.append("eq")
             return other == ".yaml"
 
-    def make_value() -> object:
+    def make_value() -> str:
         return HashObserved()
 
     value = make_value()
@@ -380,3 +384,105 @@ def test_three_plain_equality_terminal_siblings_are_supported() -> None:
 def test_numeric_module_constant_overlap_is_excluded_in_siblings() -> None:
     source = "FIRST = 1\nSECOND = 1.0\n" + _siblings("suffix == FIRST", "suffix == SECOND")
     assert _check(source) == []
+
+
+_QUALIFIED_SIBLINGS = (
+    "from provider import ErrorId\n"
+    "def classify(error_id):\n"
+    "    if error_id == ErrorId.INSUFFICIENT:\n        return insufficient()\n"
+    "    if error_id == ErrorId.INVALID_OPTION:\n        return invalid_option()\n"
+    "    return rejected()\n"
+)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        _QUALIFIED_SIBLINGS,
+        _QUALIFIED_SIBLINGS.replace(
+            "    if error_id == ErrorId.INVALID", "    elif error_id == ErrorId.INVALID"
+        ).replace("    return rejected()", "    else:\n        return rejected()"),
+        _QUALIFIED_SIBLINGS.replace("from provider import ErrorId", "import provider").replace(
+            "ErrorId.", "provider.ErrorId."
+        ),
+        _QUALIFIED_SIBLINGS.replace("from provider import ErrorId", "from provider import ErrorId as Codes").replace(
+            "ErrorId.", "Codes."
+        ),
+        _QUALIFIED_SIBLINGS.replace(
+            "from provider import ErrorId",
+            "from enum import StrEnum\nclass ErrorId(StrEnum):\n    INSUFFICIENT = 'insufficient'\n    INVALID_OPTION = 'invalid'",
+        ),
+        _QUALIFIED_SIBLINGS.replace("return insufficient()", "raise Insufficient").replace(
+            "return rejected()", "raise Rejected"
+        ),
+        _QUALIFIED_SIBLINGS.replace("def classify(error_id):", "def classify(error):\n    error_id = error.code"),
+        _QUALIFIED_SIBLINGS.replace("def classify", "async def classify"),
+        _QUALIFIED_SIBLINGS.replace("    if error_id", "    if (error_id", 1).replace(
+            "ErrorId.INSUFFICIENT:", "ErrorId.INSUFFICIENT):"
+        ),
+    ],
+)
+def test_terminal_qualified_values_share_one_dispatch_subject(source: str) -> None:
+    findings = _check(source)
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ439"
+    assert "'error_id'" in findings[0].message
+    assert fix_source(Path("app/dispatch.py"), source, rule_ids=[PreferMatchValueDispatch.id]) == source
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("ErrorId.INVALID_OPTION", "ErrorId.INSUFFICIENT"),
+        ("error_id == ErrorId.INVALID_OPTION", "other == ErrorId.INVALID_OPTION"),
+        ("error_id == ErrorId.INVALID_OPTION", "error_id == OtherId.INVALID_OPTION"),
+        ("error_id == ErrorId.INVALID_OPTION", "error_id != ErrorId.INVALID_OPTION"),
+        ("error_id == ErrorId.INVALID_OPTION", "error_id is ErrorId.INVALID_OPTION"),
+        ("error_id == ErrorId.INVALID_OPTION", "error_id == ErrorId.INVALID_OPTION and allowed"),
+        ("error_id == ErrorId.INVALID_OPTION", "error_id == ErrorId.INVALID_OPTION()"),
+        ("error_id == ErrorId.INVALID_OPTION", "error_id == INVALID_OPTION"),
+        ("error_id == ErrorId.INVALID_OPTION", "error_id == 'invalid'"),
+        ("return insufficient()", "insufficient()"),
+        ("return invalid_option()", "return insufficient()"),
+        ("    return rejected()\n", ""),
+        ("    if error_id == ErrorId.INVALID_OPTION:", "    checkpoint()\n    if error_id == ErrorId.INVALID_OPTION:"),
+        ("error_id ==", "error.code =="),
+        ("from provider import ErrorId", "from custom import *"),
+        ("from provider import ErrorId", "ErrorId = make_codes()"),
+        ("from provider import ErrorId", "from provider import ErrorId\nErrorId = other"),
+        ("from provider import ErrorId", "from provider import ErrorId\nErrorId.INSUFFICIENT = replacement"),
+        ("def classify(error_id):", "def classify(error_id, ErrorId):"),
+        ("from provider import ErrorId", "class ErrorId:\n    INSUFFICIENT = 1\n    INVALID_OPTION = 2"),
+    ],
+)
+def test_qualified_terminal_dispatch_near_misses(old: str, new: str) -> None:
+    assert _check(_QUALIFIED_SIBLINGS.replace(old, new)) == []
+
+
+@pytest.mark.parametrize(("minimum", "expected"), [("3.14", "error"), ("3.10", "error"), ("3.9", None)])
+def test_qualified_terminal_dispatch_respects_target_and_blocks(
+    tmp_path: Path, minimum: str, expected: str | None
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(f"[project]\nrequires-python = '>={minimum}'\n")
+    path = tmp_path / "dispatch.py"
+    path.write_text(_QUALIFIED_SIBLINGS)
+    findings = PreferMatchValueDispatch().check(path, _QUALIFIED_SIBLINGS)
+    assert [finding.severity.value for finding in findings] == ([expected] if expected else [])
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        _QUALIFIED_SIBLINGS.replace(
+            "def classify(error_id):", "def classify(error_id):\n    error_id = normalize(error_id)"
+        ),
+        _QUALIFIED_SIBLINGS.replace("def classify(error_id):", "def classify():\n    global error_id"),
+        _QUALIFIED_SIBLINGS.replace("return insufficient()", "error_id = normalized\n        return insufficient()"),
+    ],
+)
+def test_qualified_dispatch_with_nonlocal_or_rebound_subject_stays_advisory(tmp_path: Path, source: str) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nrequires-python = '>=3.14'\n")
+    path = tmp_path / "dispatch.py"
+    path.write_text(source)
+    findings = PreferMatchValueDispatch().check(path, source)
+    assert [finding.severity.value for finding in findings] == ["warning"]

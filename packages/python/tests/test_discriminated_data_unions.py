@@ -7,6 +7,7 @@ import sys
 import pytest
 from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language, RuleProblem
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.prefer_discriminated_model_union import PreferDiscriminatedModelUnion
 
 
@@ -428,6 +429,7 @@ def test_data_union_discriminator(case: EvaluationCase) -> None:
     assert len(findings) == (1 if case.expected is ExpectedOutcome.MATCH else 0)
     for finding in findings:
         assert finding.code == "SARJ510"
+        assert finding.severity is Severity.ERROR
         assert "discriminator" in finding.message
 
 

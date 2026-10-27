@@ -238,7 +238,7 @@ def test_docstring_keyword_only_boundaries_and_suppression() -> None:
     )
     assert len(_check(_BAD, "tests/test_models.py")) == 1
     finding = _check(_BAD)[0]
-    assert finding.severity is Severity.WARNING
+    assert finding.severity is Severity.ERROR
     assert finding.code == "SARJ515"
 
 

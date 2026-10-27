@@ -398,8 +398,7 @@ def _updated_manifest_text(path: Path, current_text: str, adopted: manifest.Mani
         set(manifest.ALL_CAPABILITIES) - set(adopted.enabled_capabilities) - set(adopted.disabled_capabilities)
     )
     if implicit_disabled:
-        # Version gates are effective capability choices too. Serialize them
-        # before a bundle bump can enable tools absent from this upgrade plan.
+        # Serialize capability gates before a bundle bump can activate tools outside this plan.
         updated = replace(
             adopted,
             version=manifest.adopted_version(),
@@ -559,8 +558,7 @@ def _apply_and_validate(
 ) -> int:
     _write_plan(plan, file_transaction)
     if install:
-        # PNPM validates the existing lockfile before resolving replacements.
-        # Retain its previously approved exact versions only until installation finishes.
+        # Keep PNPM's approved lockfile versions until installation finishes.
         policies = age_transition.retain_previous_approvals(file_transaction, plan.preconditions)
         status = lifecycle.execute(_upgrade_install_commands(plan))
         _mark_installer_writes(file_transaction)

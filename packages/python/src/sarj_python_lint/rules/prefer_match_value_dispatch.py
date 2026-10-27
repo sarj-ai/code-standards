@@ -51,15 +51,56 @@ class PreferMatchValueDispatch(Rule):
         autofix=AutofixPolicy.SAFE,
         limitations=(
             "Safe fixes require a closed private nested synchronous helper with proven inert containing scopes and exact primitive literal callers. Only comment-free literal-equality ladders on one parameter qualify; unknown subjects, callbacks, frame/closure escapes, sibling checks, grouped conditions and guards remain review-only.",
-            "ERROR is limited to direct literal equality ladders on an unrebound local parameter, without visible namespace access, in a project with a proven minimum Python version of 3.10. All other supported ladders remain WARNING; no autofix is offered.",
+            "ERROR covers direct literal equality ladders on an unrebound local parameter and terminal equality dispatch on a stable local name against distinct dotted values from one import-proven namespace or local enum. A proven minimum Python version of 3.10 and no visible namespace access are required. Other supported dispatch remains WARNING.",
             "Equality-only ladders require two or more tests on the same left-hand name or attribute chain, followed by else.",
             "Cases must be distinct string, bytes, or numeric literals, or singly bound module constants containing them; shadowed constants and singleton values are excluded.",
             "This is a readability suggestion, not proof of exhaustiveness or a safe automatic rewrite: attributes can have side effects and match evaluates its subject once.",
             "Grouped or guarded ladders and terminal sibling branches require three distinct arms on a bare name; only the last arm may have a selector-first guard.",
+            "Two or more terminal sibling equality branches with a terminal fallback, or an if/elif ladder with else, also qualify when comparing one bare name with distinct values from the same qualified namespace. Imported values are not assumed to be exhaustive enum members. This subset remains review-only because import attributes and equality may have custom behavior.",
             "Groups contain two to six distinct string literals in a tuple, list, or set. Set hashing and custom equality can differ from pattern matching; no runtime string type is inferred.",
             "Declared support for Python before 3.10 suppresses this recommendation when proven by the nearest project metadata or exact installed-distribution ownership. Missing or ambiguous target metadata retains advisory behavior; it does not prove a modern target.",
         ),
         examples=(
+            RuleExample(
+                example_id="terminal-qualified-value-dispatch",
+                scenario="qualified-terminal-dispatch",
+                title="Keep error variants and their fallback under one dispatch subject",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile(PurePosixPath("pyproject.toml"), "[project]\nrequires-python = '>=3.10'\n"),
+                    ExampleFile.python(
+                        "app/errors.py",
+                        "from provider import ErrorId\n"
+                        "def classify(error_id):\n"
+                        "    if error_id == ErrorId.INSUFFICIENT:\n        return insufficient()\n"
+                        "    if error_id == ErrorId.INVALID_OPTION:\n        return invalid_option()\n"
+                        "    return rejected()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/errors.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="qualified-value-match-retains-fallback",
+                scenario="qualified-terminal-dispatch",
+                title="Value cases preserve the terminal fallback",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/errors.py",
+                        "from provider import ErrorId\n"
+                        "def classify(error_id):\n"
+                        "    match error_id:\n"
+                        "        case ErrorId.INSUFFICIENT:\n            return insufficient()\n"
+                        "        case ErrorId.INVALID_OPTION:\n            return invalid_option()\n"
+                        "        case _:\n            return rejected()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/errors.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="stable-literal-parameter",
                 title="Dispatch a stable parameter through literal cases",
@@ -205,7 +246,7 @@ class PreferMatchValueDispatch(Rule):
         if candidates and context.session.python_target.has_declared_support_before(path, (3, 10)):
             return []
         provenance = context.static_resource_provenance if candidates else None
-        for node, subject in sorted(candidates, key=lambda candidate: candidate[0].lineno):
+        for node, subject, qualified in sorted(candidates, key=lambda candidate: candidate[0].lineno):
             findings.append(
                 Diagnostic(
                     path=path,
@@ -214,7 +255,11 @@ class PreferMatchValueDispatch(Rule):
                     code=self.code,
                     severity=(
                         Severity.ERROR
-                        if provenance is not None and _blocking_literal_dispatch(context, node, provenance)
+                        if provenance is not None
+                        and (
+                            _blocking_literal_dispatch(context, node, provenance)
+                            or (qualified and _blocking_qualified_dispatch(context, node, subject, provenance))
+                        )
                         else Severity.WARNING
                     ),
                     message=(
@@ -227,10 +272,10 @@ class PreferMatchValueDispatch(Rule):
         return findings
 
 
-def _candidate_dispatches(context: PythonFileContext, tree: ast.Module) -> list[tuple[ast.If, str]]:
+def _candidate_dispatches(context: PythonFileContext, tree: ast.Module) -> list[tuple[ast.If, str, bool]]:
     constants = _module_constants(tree, node_index=context.node_index)
     continuations: set[int] = set()
-    candidates: list[tuple[ast.If, str]] = []
+    candidates: list[tuple[ast.If, str, bool]] = []
     for node in context.nodes(ast.If):
         if id(node) in continuations:
             continue
@@ -240,13 +285,83 @@ def _candidate_dispatches(context: PythonFileContext, tree: ast.Module) -> list[
         subject = _dispatch_subject(chain.branches, constants)
         if subject is None:
             subject = _expanded_dispatch_subject(chain.branches, constants)
+        qualified = False
+        if subject is None:
+            subject = _qualified_dispatch_subject(chain.branches, context)
+            qualified = subject is not None
         if subject is not None:
-            candidates.append((node, subject))
+            candidates.append((node, subject, qualified))
     for branches in _terminal_sibling_dispatches(tree, node_index=context.node_index):
         subject = _expanded_dispatch_subject(branches, constants)
+        qualified = False
+        if subject is None:
+            subject = _qualified_dispatch_subject(branches, context)
+            qualified = subject is not None
         if subject is not None:
-            candidates.append((branches[0], subject))
+            candidates.append((branches[0], subject, qualified))
     return candidates
+
+
+def _qualified_dispatch_subject(branches: list[ast.If], context: PythonFileContext) -> str | None:
+    subject: str | None = None
+    namespace: str | None = None
+    members: set[str] = set()
+    bodies: set[tuple[str, ...]] = set()
+    for branch in branches:
+        match branch.test:
+            case ast.Compare(left=ast.Name(id=name), ops=[ast.Eq()], comparators=[ast.Attribute() as value]):
+                owner = _subject(value.value)
+            case _:
+                return None
+        body = tuple(ast.dump(statement) for statement in branch.body)
+        if owner is None or not _qualified_namespace(value.value, context):
+            return None
+        if (subject is not None and subject != name) or (namespace is not None and namespace != owner):
+            return None
+        if value.attr in members or body in bodies:
+            return None
+        subject, namespace = name, owner
+        members.add(value.attr)
+        bodies.add(body)
+    return subject if len(branches) >= _MIN_TESTS else None
+
+
+def _qualified_namespace(node: ast.expr, context: PythonFileContext) -> bool:
+    root = node
+    while isinstance(root, ast.Attribute):
+        root = root.value
+    if not isinstance(root, ast.Name):
+        return False
+    provenance = context.static_resource_provenance
+    if provenance.wildcard or provenance.dynamic_namespace or root.id in provenance.mutated:
+        return False
+    binding = provenance.binding(root.id, root)
+    if isinstance(binding, ast.alias):
+        return root.id in context.imports.bindings
+    return (
+        isinstance(binding, ast.ClassDef)
+        and isinstance(node, ast.Name)
+        and any(
+            context.imports.resolved_symbol(base, sources=frozenset({"enum"}))
+            in {"Enum", "IntEnum", "StrEnum", "ReprEnum"}
+            for base in binding.bases
+        )
+    )
+
+
+def _blocking_qualified_dispatch(
+    context: PythonFileContext, node: ast.If, subject: str, provenance: ResourceProvenance
+) -> bool:
+    if context.dynamic_namespace or not context.session.python_target.has_declared_minimum(context.path, (3, 10)):
+        return False
+    binding = provenance.binding(subject, node)
+    owner = provenance.scope(node)
+    return (
+        subject not in provenance.external_bindings
+        and isinstance(binding, ast.arg | ast.Name)
+        and isinstance(owner, ast.FunctionDef | ast.AsyncFunctionDef)
+        and provenance.scope(binding) is owner
+    )
 
 
 def _blocking_literal_dispatch(context: PythonFileContext, node: ast.If, provenance: ResourceProvenance) -> bool:
@@ -480,7 +595,7 @@ def _collect_terminal_siblings(field: list[ast.stmt], candidates: list[list[ast.
             branches.append(statement)
             continue
         if (
-            len(branches) >= _MIN_EXPANDED_ARMS
+            len(branches) >= _MIN_TESTS
             and isinstance(statement, (ast.Return, ast.Raise))
             and all(branch.body and isinstance(branch.body[-1], (ast.Return, ast.Raise)) for branch in branches)
         ):

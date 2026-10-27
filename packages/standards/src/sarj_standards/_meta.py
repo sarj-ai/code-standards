@@ -6,7 +6,7 @@ from pathlib import Path
 
 try:
     __version__ = version("code-standards")
-except PackageNotFoundError:  # running from an uninstalled source tree
+except PackageNotFoundError:
     __version__ = "0.0.0.dev0"
 
 CONFIGS_DIR: Path = Path(__file__).resolve().parent / "configs"

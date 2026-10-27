@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
     from pathlib import Path
 
+    from pydantic import JsonValue
+
 
 class PackageManager(StrEnum):
     NPM = "npm"
@@ -25,6 +27,9 @@ class PackageManager(StrEnum):
 class YarnVariant(StrEnum):
     CLASSIC = "classic"
     BERRY = "berry"
+
+
+type OverrideValue = str | dict[str, OverrideValue]
 
 
 #: Lockfiles in deterministic package-manager precedence order.
@@ -134,10 +139,10 @@ def _declared_manager(package_json: Path) -> PackageManager | None:
 class Overrides:
     #: The package-manager policy document key path, outermost first.
     key_path: tuple[str, ...]
-    entries: dict[str, object]
+    entries: dict[str, OverrideValue]
 
-    def as_document(self) -> dict[str, object]:
-        document: dict[str, object] = dict(self.entries)
+    def as_document(self) -> dict[str, OverrideValue]:
+        document: dict[str, OverrideValue] = dict(self.entries)
         for key in reversed(self.key_path):
             document = {key: document}
         return document
@@ -185,10 +190,10 @@ def pnpm_workspace_values(text: str) -> dict[str, str]:
     return values
 
 
-def _flatten(entries: Mapping[str, object], separator: str) -> Iterator[tuple[str, str]]:
+def _flatten(entries: Mapping[str, JsonValue], separator: str) -> Iterator[tuple[str, str]]:
     peers = manifest.eslint_peers()
     for parent, value in entries.items():
-        nested = manifest.as_table(value)
+        nested = value if isinstance(value, dict) else {}
         if not nested:
             yield parent, _resolved(value, peers)
             continue
@@ -196,7 +201,7 @@ def _flatten(entries: Mapping[str, object], separator: str) -> Iterator[tuple[st
             yield f"{parent}{separator}{child}", _resolved(pin, peers)
 
 
-def _resolved(value: object, peers: Mapping[str, str]) -> str:
+def _resolved(value: JsonValue, peers: Mapping[str, str]) -> str:
     if not isinstance(value, str):
         return str(value)
     if not value.startswith("$"):
@@ -204,10 +209,9 @@ def _resolved(value: object, peers: Mapping[str, str]) -> str:
     return peers.get(value.removeprefix("$"), value)
 
 
-def _resolved_tree(value: object) -> object:
-    nested = manifest.as_table(value)
-    if nested:
-        return {name: _resolved_tree(pin) for name, pin in nested.items()}
+def _resolved_tree(value: JsonValue) -> OverrideValue:
+    if isinstance(value, dict) and value:
+        return {name: _resolved_tree(pin) for name, pin in value.items()}
     return _resolved(value, manifest.eslint_peers())
 
 

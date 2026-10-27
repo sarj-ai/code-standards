@@ -50,7 +50,7 @@ class NoPartialTypeIs(Rule):
     id = "no-partial-type-is"
     code = "SARJ512"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="TypeIs must not reject a value belonging to its declared target type.",
         rationale=(
             "TypeIs narrows both branches. A positive-int or non-empty-container filter can return false for a valid "
@@ -179,7 +179,7 @@ class NoPartialTypeIs(Rule):
                     col=statement.col_offset + 1,
                     code=self.code,
                     message="TypeIs rejects a valid target member, making false-branch narrowing unsound; use bool for a value filter, or validate accepted values and reserve TypeGuard for sound partial recognition.",
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
             )
         return findings

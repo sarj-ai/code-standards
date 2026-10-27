@@ -7,6 +7,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import sys
+from typing import TYPE_CHECKING
 
 import pytest
 import yaml
@@ -14,6 +15,10 @@ import yaml
 from sarj_standards.cli.main import main
 from sarj_standards.libs.adoption import doctor, hooks, launcher, scaffold
 from sarj_standards.libs.repository import hooks as repository_hooks
+
+
+if TYPE_CHECKING:
+    from pydantic import JsonValue
 
 
 def _git(root: Path, *args: str) -> None:
@@ -238,13 +243,13 @@ def test_real_lefthook_hardens_a_configured_pre_push_hook(tmp_path: Path, extend
     ],
 )
 def test_conditioned_lefthook_checks_are_not_healthy_or_silently_rewired(
-    tmp_path: Path, scope: str, field: str, value: object
+    tmp_path: Path, scope: str, field: str, value: JsonValue
 ) -> None:
-    job: dict[str, object] = {
+    job: dict[str, JsonValue] = {
         "name": "standards",
         "run": f"{launcher.repository_command()} check --staged --trust-repository-code",
     }
-    pre_commit: dict[str, object] = {"jobs": [job]}
+    pre_commit: dict[str, JsonValue] = {"jobs": [job]}
     match scope:
         case "hook":
             pre_commit[field] = value

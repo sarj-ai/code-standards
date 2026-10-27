@@ -386,7 +386,6 @@ def test_docs_lint_dependencies_are_reproducible_and_compatible() -> None:
     assert _is_object_table(plugin_raw)
     assert plugin_raw.get("name") == "@sarj/eslint-plugin"
     assert plugin_raw.get("version") == manifest.eslint_peers()["@sarj/eslint-plugin"]
-    # Astro Check and typed lint use the supported API bridge; the current
-    # native compiler remains separately available for command-line checks.
+    # Astro uses the supported API bridge; command-line checks retain the native compiler.
     assert dependencies["typescript"] == "npm:@typescript/typescript6@6.0.2"
     assert dependencies["@typescript/native"] == "npm:typescript@7.0.2"

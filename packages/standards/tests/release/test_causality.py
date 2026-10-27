@@ -341,7 +341,7 @@ def test_non_publishable_push_is_a_clean_release_recovery_barrier(tmp_path: Path
             return ProcessResult(0, ".github/workflows/release.yml\0")
         return ProcessResult(0, "")
 
-    def tag_checker(*_args: object, **_kwargs: Unpack[VerifiedTagOptions]) -> bool:
+    def tag_checker(_root: Path, _target: str, **_kwargs: Unpack[VerifiedTagOptions]) -> bool:
         checked_tags.append("unexpected")
         return False
 

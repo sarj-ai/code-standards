@@ -36,6 +36,8 @@ from sarj_standards.schemas import RULE_CATALOG
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from pydantic import JsonValue
+
 
 _CATALOG_PATH: Final = Path("packages/standards/src/sarj_standards/schemas/rule-catalog.v1.json")
 _TYPESCRIPT_PACKAGE: Final = Path("packages/typescript")
@@ -100,41 +102,41 @@ class _SelectorMetadata:
     aliases: tuple[str, ...]
 
 
-def load(path: Path = RULE_CATALOG) -> dict[str, object]:
+def load(path: Path = RULE_CATALOG) -> dict[str, JsonValue]:
     try:
-        payload: object = parse_unique_json(path.read_text(encoding="utf-8"))
+        payload = parse_unique_json(path.read_text(encoding="utf-8"))
     except (OSError, ValueError, RecursionError) as exc:
         msg = f"cannot load shipped rule catalog {path}: {exc}"
         raise ValueError(msg) from exc
     if (
-        not _is_object(payload)
+        not isinstance(payload, dict)
         or type(payload.get("schemaVersion")) is not int
         or payload.get("schemaVersion") != 1
-        or not _is_array(payload.get("rules"))
+        or not isinstance(payload.get("rules"), list)
     ):
         msg = "shipped rule catalog must contain schemaVersion 1 and a rules array"
         raise ValueError(msg)
     return payload
 
 
+def _catalog_rules(value: JsonValue) -> list[JsonValue]:
+    if isinstance(value, list):
+        return value
+    msg = "shipped rule catalog must contain a rules array"
+    raise ValueError(msg)
+
+
 def warning_selectors(path: Path = RULE_CATALOG) -> frozenset[RuleSelector]:
-    rules = load(path)["rules"]
-    if not _is_array(rules):
-        msg = "shipped rule catalog must contain a rules array"
-        raise ValueError(msg)
+    rules = _catalog_rules(load(path)["rules"])
     return frozenset(
         RuleSelector.parse(_value_from_dict(value, "key"))
         for value in rules
-        if _is_object(value) and value.get("defaultLevel") == DefaultLevel.WARNING.value
+        if isinstance(value, dict) and value.get("defaultLevel") == DefaultLevel.WARNING.value
     )
 
 
 def selector_index(path: Path = RULE_CATALOG) -> SelectorIndex:
-    payload = load(path)
-    rules = payload.get("rules")
-    if not _is_array(rules):
-        msg = "shipped rule catalog must contain a rules array"
-        raise ValueError(msg)
+    rules = _catalog_rules(load(path).get("rules"))
     canonical_by_selector: dict[str, str] = {}
     aliases_by_canonical: dict[str, tuple[str, ...]] = {}
     for value in rules:
@@ -373,7 +375,7 @@ def _typescript_spec(value: object) -> RuleSpec:
     )
 
 
-def _value_from_dict(value: dict[str, object], name: str) -> str:
+def _value_from_dict(value: Mapping[str, object], name: str) -> str:
     item = value.get(name)
     if not isinstance(item, str) or not item:
         msg = f"TypeScript public metadata has invalid {name}"

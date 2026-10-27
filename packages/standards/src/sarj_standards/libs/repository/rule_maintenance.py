@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
     from pathlib import Path
 
+    from pydantic import JsonValue
+
 
 _FAMILIES: Final = (
     ("python", "sarj_python_lint.rules", "packages/python"),
@@ -114,8 +116,8 @@ def sync_ledger(root: Path, *, check: bool, writer: Callable[[Path, str], None] 
             source_renames["text", old_id] = rule_id
     retired = _retired(previous, root, source_renames)
     known = {str(entry.get("id")) for entry in retired}
-    old_rules = repository_table(previous.get("rules"))
-    old_codes = repository_table(previous.get("codes"))
+    old_rules = _ledger_table(previous.get("rules"))
+    old_codes = _ledger_table(previous.get("codes"))
     _append_removed_entries(old_rules, old_codes, rules, codes, retired=retired, known=known)
     updated = {
         "$comment": previous.get("$comment", "Rule compatibility ledger."),
@@ -138,12 +140,12 @@ def sync_ledger(root: Path, *, check: bool, writer: Callable[[Path, str], None] 
 
 
 def _append_removed_entries(
-    old_rules: dict[str, object],
-    old_codes: dict[str, object],
+    old_rules: dict[str, JsonValue],
+    old_codes: dict[str, JsonValue],
     rules: dict[str, list[str]],
     codes: dict[str, list[str]],
     *,
-    retired: list[dict[str, object]],
+    retired: list[dict[str, JsonValue]],
     known: set[str],
 ) -> None:
     for family, raw_names in old_rules.items():
@@ -151,12 +153,12 @@ def _append_removed_entries(
         for name in _string_list(raw_names):
             identifier = f"{prefix}{name}"
             if name not in rules.get(family, []) and identifier not in known:
-                retired.append(_retired_entry(identifier, family))
+                retired.append(dict(_retired_entry(identifier, family)))
                 known.add(identifier)
     for family, raw_codes in old_codes.items():
         for code in _string_list(raw_codes):
             if code not in codes.get(family, []) and code not in known:
-                retired.append(_retired_entry(code, "code"))
+                retired.append(dict(_retired_entry(code, "code")))
                 known.add(code)
 
 
@@ -180,9 +182,12 @@ def repository_table(value: object) -> dict[str, object]:
     return as_table(value)
 
 
-def _load_ledger(path: Path) -> dict[str, object]:
-    value: object = parse_json(path.read_text(encoding="utf-8"))
-    return repository_table(value)
+def _ledger_table(value: JsonValue) -> dict[str, JsonValue]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _load_ledger(path: Path) -> dict[str, JsonValue]:
+    return _ledger_table(parse_json(path.read_text(encoding="utf-8")))
 
 
 def _registry(module_name: str) -> Mapping[str, type[Rule]]:
@@ -213,11 +218,12 @@ def _is_rule_class(value: object) -> TypeIs[type[Rule]]:
 
 
 def _retired(
-    previous: Mapping[str, object],
+    previous: Mapping[str, JsonValue],
     root: Path,
     source_renames: Mapping[tuple[str, str], str],
-) -> list[dict[str, object]]:
-    entries = [repository_table(item) for item in _object_list(previous.get("retired"))]
+) -> list[dict[str, JsonValue]]:
+    retired = previous.get("retired")
+    entries = [_ledger_table(item) for item in retired] if isinstance(retired, list) else []
     derived_renames = set(source_renames)
     kept = [
         entry
@@ -262,13 +268,19 @@ def _retired(
     return kept
 
 
-def _retired_entry(identifier: str, kind: str) -> dict[str, object]:
+def _retired_entry(identifier: str, kind: str) -> dict[str, str | None]:
     return {"id": identifier, "kind": kind, "status": "removed", "replacement": None, "note": _PLACEHOLDER}
 
 
-def _object_list(value: object) -> list[object]:
-    return list_field({"value": value}, "value")
-
-
-def _string_list(value: object) -> list[str]:
+def _string_list(
+    value: object,  # sarj-noqa: SARJ528 -- Filter text from arbitrary raw list-field values.
+) -> list[str]:
     return [item for item in _object_list(value) if isinstance(item, str)]
+
+
+def _object_list(
+    value: object,  # sarj-noqa: SARJ528 -- Keep list_field fallback behavior and unchecked element values.
+) -> list[  # sarj-noqa: SARJ528 -- Keep list_field fallback behavior and unchecked element values.
+    object
+]:
+    return list_field({"value": value}, "value")

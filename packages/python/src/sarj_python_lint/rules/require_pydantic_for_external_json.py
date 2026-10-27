@@ -106,6 +106,10 @@ class _NamedBinding(NamedTuple):
     value: ast.expr
 
 
+class _ValidationToken:
+    __slots__ = ()
+
+
 class _ResponseCallables(NamedTuple):
     functions: frozenset[str]
     methods: frozenset[tuple[int, str]]
@@ -703,8 +707,8 @@ def _validated_names(
     if not validation_calls:
         return {}
     histories: dict[str, list[tuple[_Position, bool]]] = {}
-    tokens: dict[str, object] = {}
-    validated_tokens: set[object] = set()
+    tokens: dict[str, _ValidationToken] = {}
+    validated_tokens: set[_ValidationToken] = set()
     validator_names = _jsonschema_validator_names(function, imports, module_validator_names)
     for statement in function.body:
         position = _node_position(statement)
@@ -715,7 +719,7 @@ def _validated_names(
             and isinstance(statement.value, ast.Name)
         ):
             alias = statement.targets[0].id
-            token = tokens.setdefault(statement.value.id, object())
+            token = tokens.setdefault(statement.value.id, _ValidationToken())
             tokens[alias] = token
             histories.setdefault(alias, []).append((position, token in validated_tokens))
             continue
@@ -725,12 +729,12 @@ def _validated_names(
             and isinstance(statement.value, ast.Name)
         ):
             alias = statement.target.id
-            token = tokens.setdefault(statement.value.id, object())
+            token = tokens.setdefault(statement.value.id, _ValidationToken())
             tokens[alias] = token
             histories.setdefault(alias, []).append((position, token in validated_tokens))
             continue
         for name in _statement_bound_names(statement):
-            tokens[name] = object()
+            tokens[name] = _ValidationToken()
             histories.setdefault(name, []).append((position, False))
         if (
             not isinstance(statement, ast.Expr)
@@ -1667,14 +1671,14 @@ def _direct_validation_calls(function: ast.FunctionDef | ast.AsyncFunctionDef, i
 
 def _record_validated_tokens(
     call: ast.Call,
-    tokens: dict[str, object],
-    validated_tokens: set[object],
+    tokens: dict[str, _ValidationToken],
+    validated_tokens: set[_ValidationToken],
     histories: dict[str, list[tuple[_Position, bool]]],
 ) -> None:
     candidates = [*call.args[:1], *(keyword.value for keyword in call.keywords if keyword.arg == "instance")]
     for argument in candidates:
         if isinstance(argument, ast.Name):
-            token = tokens.setdefault(argument.id, object())
+            token = tokens.setdefault(argument.id, _ValidationToken())
             validated_tokens.add(token)
             for name, current_token in tokens.items():
                 if current_token is token:

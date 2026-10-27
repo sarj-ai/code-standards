@@ -41,6 +41,21 @@ def test_groups_excludes_directives_licenses_and_inline_comments() -> None:
     assert groups(Path("app.py"), source) == []
 
 
+@pytest.mark.parametrize("directive", ["pragma: no cover", "fmt: off", "SPDX-License-Identifier: MIT"])
+@pytest.mark.parametrize("position", [0, 1, 2])
+def test_directive_and_legal_runs_preserve_the_complete_aligned_paragraph(directive: str, position: int) -> None:
+    lines = ["This branch represents an integration failure.", "The integration harness owns this recovery path."]
+    lines.insert(position, directive)
+    source = "\n".join("# " + line for line in lines) + "\nvalue = 1\n"
+    assert groups(Path("app.py"), source) == []
+
+
+@pytest.mark.parametrize("separator", ["\n", "value = 1\n"])
+def test_directive_run_does_not_hide_an_independent_paragraph(separator: str) -> None:
+    source = "# pragma: no cover\n# An integration explanation.\n" + separator + "# A separate paragraph.\nvalue = 2\n"
+    assert [group.text for group in groups(Path("app.py"), source)] == ["A separate paragraph."]
+
+
 @pytest.mark.parametrize(
     "path",
     [Path("generated/client.py"), Path("vendor/client.py")],

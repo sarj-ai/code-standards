@@ -18,6 +18,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
     from pathlib import Path
 
+    from sarj_standards.cli.main import _Args  # pyright: ignore[reportPrivateUsage]  # sarj-noqa: SARJ048 -- mirrors the private callback contract intercepted by this test.
+
 
 @pytest.fixture
 def adopted_git_repo(tmp_path: Path) -> Path:
@@ -181,7 +183,7 @@ def test_staged_routes_refuse_unverifiable_index_flags_before_fix_planning(
     original = source.read_bytes()
     index_before = _index_snapshot(adopted_git_repo)
 
-    def unexpected_health(_root: Path, _paths: object, *, args: object) -> int:  # ruff: ignore[unused-function-argument] -- match the public staged health callback keyword.
+    def unexpected_health(_root: Path, _paths: Iterable[str], *, args: _Args) -> int:  # ruff: ignore[unused-function-argument] -- match the public staged health callback keyword.
         pytest.fail("unverifiable staged sources must be refused before adoption health or fixes")
 
     def unexpected_commands(
@@ -540,7 +542,7 @@ def test_staged_check_discovers_mixed_supported_paths_without_a_hook_filter(
     subprocess.run(("git", "add", "--", *names), cwd=adopted_git_repo, check=True)
     routed: list[tuple[str, ...]] = []
 
-    def healthy_adoption(_root: Path, _paths: object, *, args: object) -> int:  # ruff: ignore[unused-function-argument] -- callback keyword must match the CLI boundary.
+    def healthy_adoption(_root: Path, _paths: Iterable[str], *, args: _Args) -> int:  # ruff: ignore[unused-function-argument] -- callback keyword must match the CLI boundary.
         return 0
 
     def record_check(_root: Path, paths: Sequence[str] | None, **_options: bool | int) -> int:

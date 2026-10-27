@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Final, Literal, NamedTuple
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
+from pydantic import JsonValue
 from repo_standards.core.parser import parse_manifest_bytes
 from repo_standards.policy_sarj import SarjPolicy
 import yaml
@@ -30,15 +31,18 @@ from .configs import (
     eslint_preset_name,
     eslint_wiring_reaches_strict as _eslint_wiring_reaches_strict,
 )
-from .packagemanager import LOCKFILES, Overrides, PackageManager, YarnVariant
+from .packagemanager import LOCKFILES, Overrides, OverrideValue, PackageManager, YarnVariant
 
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 
+type _PackageValue = JsonValue | OverrideValue | dict[str, _PackageValue]
+
+
 class _JsonObjectResult(NamedTuple):
-    document: dict[str, object] | None
+    document: dict[str, JsonValue] | None
     error: str | None
 
 
@@ -229,9 +233,7 @@ def detect_adopted(root: Path, adopted: manifest.Manifest) -> Ecosystems:
     typescript = "eslint" in adopted.configs
     swift = not {"swiftformat", "swiftlint"}.isdisjoint(adopted.configs)
     kotlin = not {"ktlint", "detekt"}.isdisjoint(adopted.configs)
-    # An adopted manifest is authoritative. Do not auto-detect disabled
-    # ecosystems: a repository may intentionally contain several unowned mobile
-    # projects, and discovery would make an unrelated legacy migration ambiguous.
+    # The adopted manifest owns ecosystem selection; discovery can introduce unrelated legacy projects.
     python_root = _override(root, adopted.python_dest) if python else None
     typescript_root = _override(root, adopted.typescript_dest) if typescript else None
     swift_root = _validated_swift_override(root, adopted.swift_dest) if swift else None
@@ -844,8 +846,7 @@ def _with_reviewed_repository_rules(contents: bytes, requested: Sequence[str]) -
     entry = re.search(r"""(?m)^[ \t]*(?:enabled_rules|"enabled_rules"|'enabled_rules')[ \t]*=[ \t]*\[""", header)
     values = ", ".join(json.dumps(rule_id) for rule_id in missing)
     if entry is not None:
-        # Inserting at the start preserves existing array comments and all other
-        # policy tables, including exact capped Makefile exceptions.
+        # Prepending entries preserves array comments and capped Makefile exceptions.
         separator = ", " if configured.enabled_rules else ""
         if source[entry.end() :].startswith(("\n", "\r")):
             separator = separator.rstrip()
@@ -953,7 +954,12 @@ def _workflow_supports_mobile(path: Path, *, swift: bool, kotlin: bool) -> bool:
     return all(_mobile_job_prerequisites(job, swift=swift, kotlin=kotlin) for job in standards_jobs)
 
 
-def _mobile_job_prerequisites(job: Mapping[str, object], *, swift: bool, kotlin: bool) -> bool:
+def _mobile_job_prerequisites(
+    job: Mapping[str, object],  # sarj-noqa: SARJ528 -- Inspect native YAML job extensions.
+    *,
+    swift: bool,
+    kotlin: bool,
+) -> bool:
     runner = job.get("runs-on")
     if swift and (not isinstance(runner, str) or re.fullmatch(r"macos-(?:14|15|latest)", runner) is None):
         return False
@@ -1031,8 +1037,7 @@ def _wire_nested_eslint(path: Path, strict: Path) -> str | None:
         )
         is None
     ):
-        # An imported identifier, function result, or object is not known to be
-        # iterable. Spreading it could make ESLint crash after setup.
+        # An unproven iterable can crash ESLint when spread.
         return None
     relative = os.path.relpath(strict, path.parent).replace(os.sep, "/")
     specifier = relative if relative.startswith(".") else f"./{relative}"
@@ -1336,10 +1341,12 @@ def _plan_python(root: Path, plan: Plan, *, force: bool) -> None:
 
 
 def _validate_python_project(
-    pyproject: Path, document: Mapping[str, object], requires_python: object, python_target: str | None, plan: Plan
+    pyproject: Path,
+    document: Mapping[str, object],  # sarj-noqa: SARJ528 -- Preserve native TOML extension values.
+    requires_python: object,
+    python_target: str | None,
+    plan: Plan,
 ) -> bool:
-    # Transaction validation owns link rejection. Do not inspect a linked
-    # document deeply enough to replace the clearer mutation-safety error.
     if not is_link_like(pyproject) and (not isinstance(requires_python, str) or python_target is None):
         plan.errors.append(
             f"cannot safely adopt the Python Standards profile in {pyproject}: "
@@ -1381,7 +1388,9 @@ def _validate_python_project(
     return True
 
 
-def _ruff_policy_conflicts(lint: Mapping[str, object]) -> tuple[tuple[str, str], ...]:
+def _ruff_policy_conflicts(
+    lint: Mapping[str, object],  # sarj-noqa: SARJ528 -- Inspect unowned native TOML fields.
+) -> tuple[tuple[str, str], ...]:
     return tuple(
         (key, f"extend-{key}")
         for key in ("select", "ignore")
@@ -1390,7 +1399,11 @@ def _ruff_policy_conflicts(lint: Mapping[str, object]) -> tuple[tuple[str, str],
 
 
 def _plan_ruff_extension(
-    pyproject: Path, text: str, ruff: Mapping[str, object], plan: Plan, python_target: str | None
+    pyproject: Path,
+    text: str,
+    ruff: Mapping[str, object],  # sarj-noqa: SARJ528 -- Preserve native TOML policy values.
+    plan: Plan,
+    python_target: str | None,
 ) -> None:
     updated = _extend_ruff_replacement_policy(text)
     if python_target == "3.15":
@@ -1476,7 +1489,9 @@ def _plan_existing_pyright(pyright: Path, plan: Plan, python_target: str | None)
             plan.skips.append((pyright, f"already extends {_PYRIGHT_POLICY_PARENT}"))
 
 
-def _python_target(document: Mapping[str, object]) -> str | None:
+def _python_target(
+    document: Mapping[str, object],  # sarj-noqa: SARJ528 -- Reject invalid native TOML field values.
+) -> str | None:
     requires_python = manifest.table_field(document, "project").get("requires-python")
     if not isinstance(requires_python, str):
         return None
@@ -1518,12 +1533,12 @@ def _extend_ruff_replacement_policy(text: str) -> str:
 
 def _json_object(path: Path) -> _JsonObjectResult:
     try:
-        parsed: object = parse_json(path.read_text(encoding="utf-8"))
+        parsed = parse_json(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         return _JsonObjectResult(None, str(exc))
-    if not is_object_mapping(parsed):
+    if not isinstance(parsed, dict):
         return _JsonObjectResult(None, "expected a JSON object")
-    document = manifest.as_table(parsed)
+    document = dict(parsed)
     return _JsonObjectResult(document, None)
 
 
@@ -1664,7 +1679,7 @@ def _plan_yarn_workspace_peers(typescript_root: Path, plan: Plan) -> None:
     )
 
 
-def _merged_pnpm_workspace(text: str, entries: Mapping[str, object]) -> str:
+def _merged_pnpm_workspace(text: str, entries: Mapping[str, OverrideValue]) -> str:
     if re.search(r"""(?m)^(?:overrides|"overrides"|'overrides'):[ \t]*[^\s#]""", text):
         msg = "flow-style `overrides` is unsupported; convert it to a YAML block mapping and rerun setup"
         raise ValueError(msg)
@@ -1688,14 +1703,14 @@ def _merged_pnpm_workspace(text: str, entries: Mapping[str, object]) -> str:
 
 
 def _merged_npm_overrides(text: str, overrides: Overrides | None, *, client: PackageManager) -> str | None:
-    parsed: object = parse_json(text)
-    data = manifest.as_table(parsed)
-    if not data:
+    parsed = parse_json(text)
+    if not isinstance(parsed, dict) or not parsed:
         msg = "package.json must contain a non-empty JSON object"
         raise TypeError(msg)
+    data: dict[str, _PackageValue] = dict(parsed)
     changed = False
-    runtime_dependencies = manifest.table_field(data, "dependencies")
-    existing_peers = manifest.table_field(data, "devDependencies")
+    runtime_dependencies = _package_table(data.get("dependencies"))
+    existing_peers = _package_table(data.get("devDependencies"))
     updated_runtime = dict(runtime_dependencies)
     updated_peers = dict(existing_peers)
     for name, peer_version in manifest.eslint_peers().items():
@@ -1729,19 +1744,22 @@ def _merged_npm_overrides(text: str, overrides: Overrides | None, *, client: Pac
     return rendered + "\n" if text.endswith("\n") else rendered
 
 
-def _merge_override_entries(data: dict[str, object], overrides: Overrides, *, client: PackageManager) -> bool:
+def _package_table(value: _PackageValue | None) -> dict[str, _PackageValue]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _merge_override_entries(data: dict[str, _PackageValue], overrides: Overrides, *, client: PackageManager) -> bool:
     *outer, final = overrides.key_path
     container = data
     for key in outer:
-        container = manifest.table_field(container, key)
-    existing = manifest.table_field(container, final)
+        container = _package_table(container.get(key))
+    existing = _package_table(container.get(final))
     updated = dict(existing)
     for name, value in overrides.entries.items():
-        # A consumer may already override the same package for a different
-        # reason, so merge the inner table rather than replacing it.
+        # Merge nested overrides to preserve a consumer's independent package policy.
         current_value = updated.get(name)
-        current_entry = manifest.table_field(updated, name)
-        new_entry = manifest.as_table(value)
+        current_entry = _package_table(updated.get(name))
+        new_entry = _package_table(value)
         if new_entry and current_value is not None and not isinstance(current_value, dict):
             current_entry = {".": current_value}
         updated[name] = {**current_entry, **new_entry} if new_entry else value
@@ -1753,14 +1771,14 @@ def _merge_override_entries(data: dict[str, object], overrides: Overrides, *, cl
     return False
 
 
-def _align_npm_direct_dependency_overrides(overrides: dict[str, object]) -> None:
+def _align_npm_direct_dependency_overrides(overrides: dict[str, _PackageValue]) -> None:
     for name, pinned in manifest.eslint_peers().items():
         current = overrides.get(name)
         if isinstance(current, str):
             if current not in {pinned, f"${name}"}:
                 overrides[name] = f"${name}"
             continue
-        current_table = manifest.as_table(current)
+        current_table = _package_table(current)
         root_spec = current_table.get(".")
         if root_spec is not None and root_spec not in {pinned, f"${name}"}:
             overrides[name] = {**current_table, ".": f"${name}"}
@@ -1773,17 +1791,17 @@ def _semver_major(value: object) -> int | None:
     return int(match.group("major")) if match is not None else None
 
 
-def _has_path(data: Mapping[str, object], key_path: Sequence[str]) -> bool:
-    table: Mapping[str, object] = data
+def _has_path(data: Mapping[str, _PackageValue], key_path: Sequence[str]) -> bool:
+    table: Mapping[str, _PackageValue] = data
     for key in key_path[:-1]:
-        table = manifest.table_field(table, key)
+        table = _package_table(table.get(key))
     return key_path[-1] in table
 
 
-def _set_path(data: dict[str, object], key_path: Sequence[str], value: object) -> None:
+def _set_path(data: dict[str, _PackageValue], key_path: Sequence[str], value: _PackageValue) -> None:
     table = data
     for key in key_path[:-1]:
-        nested = manifest.table_field(table, key)
+        nested = _package_table(table.get(key))
         table[key] = nested
         table = nested
     table[key_path[-1]] = value
@@ -2096,7 +2114,9 @@ def _owned_hook_custom_keys(text: str) -> frozenset[str]:
     return frozenset(key for hook in _owned_hook_mappings(text) for key in hook if key in _CUSTOM_HOOK_SCOPE_KEYS)
 
 
-def _owned_hook_mappings(text: str) -> tuple[dict[str, object], ...]:
+def _owned_hook_mappings(
+    text: str,
+) -> tuple[dict[str, object], ...]:  # sarj-noqa: SARJ528 -- Preserve raw YAML hooks.
     try:
         parsed: object = parse_yaml(f"repos:\n{text}")
     except yaml.YAMLError as exc:
@@ -2112,7 +2132,9 @@ def _owned_hook_mappings(text: str) -> tuple[dict[str, object], ...]:
     )
 
 
-def _all_local_hook_mappings(text: str) -> tuple[dict[str, object], ...]:
+def _all_local_hook_mappings(
+    text: str,
+) -> tuple[dict[str, object], ...]:  # sarj-noqa: SARJ528 -- Retain native YAML fields.
     found: list[dict[str, object]] = []
     for block in hooks.precommit_repo_blocks(text):
         if block.repository != "local":
@@ -2439,8 +2461,7 @@ def _append_javascript_ci(
                 "          node-version: 24",
             )
         )
-        # setup-node prefers the image's cached Node 24, which on other runner images can predate the
-        # declared npm's engine floor; resolving the newest 24.x keeps the configured runner image-independent.
+        # Resolve the newest Node 24 release to satisfy npm engines across runner images.
         if configured_runner:
             lines.append("          check-latest: true")
     if (

@@ -12,11 +12,12 @@ from sarj_standards.libs.adoption import manifest
 from sarj_standards.libs.diagnostics import Completion, TrustMode
 from sarj_standards.libs.linting import external
 from sarj_standards.libs.linting.external import ProcessOutput, run_process
-from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from pydantic import JsonValue
 
 
 def _git(root: Path, *args: str) -> str:
@@ -83,7 +84,7 @@ def _change(root: Path, names: Sequence[str], *, staged: bool) -> None:
         _git(root, "commit", "-m", "Change selected workspaces")
 
 
-def _payload(root: Path, base: str, names: Sequence[str], *, staged: bool) -> dict[str, object]:
+def _payload(root: Path, base: str, names: Sequence[str], *, staged: bool) -> dict[str, JsonValue]:
     changed = _git(root, "diff", "--cached" if staged else base, "--name-only", "--diff-filter=ACMR").splitlines()
     return {
         "schemaVersion": 3,
@@ -416,10 +417,10 @@ def test_nested_project_change_does_not_require_enclosing_root_project(
     _change(root, ("app",), staged=staged)
     payload = _payload(root, base, ("app",), staged=staged)
     projects = payload["projects"]
-    assert is_object_list(projects)
+    assert isinstance(projects, list)
     app_project = projects[0]
-    assert is_object_mapping(app_project)
-    overrides: dict[str, dict[str, object]] = {
+    assert isinstance(app_project, dict)
+    overrides: dict[str, dict[str, JsonValue]] = {
         "empty": {},
         "incomplete": {"complete": False},
         "skipped": {"skippedChecks": ["lint"]},

@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
+    from pydantic import JsonValue
+
 
 def _mapping(value: object) -> dict[object, object]:
     assert is_object_mapping(value)
@@ -29,7 +31,7 @@ def _mapping(value: object) -> dict[object, object]:
 
 def _checkov(
     path: Path, *, code: str = "CKV_GCP_41", resource: str = "google_project_iam_member.app"
-) -> dict[str, object]:
+) -> dict[str, JsonValue]:
     return {
         "check_type": "kubernetes" if code.startswith("CKV_K8S") else "terraform",
         "results": {
@@ -53,7 +55,7 @@ def _checkov(
     }
 
 
-def _zizmor(path: Path) -> dict[str, object]:
+def _zizmor(path: Path) -> dict[str, JsonValue]:
     return {
         "version": "2.1.0",
         "runs": [
@@ -125,9 +127,9 @@ def test_checkov_rejects_incomplete_or_invalid_reports(tmp_path: Path, failure: 
     path.write_text("resource {}\n", encoding="utf-8")
     report = _checkov(path)
     results = report["results"]
-    assert is_object_mapping(results)
+    assert isinstance(results, dict)
     findings = results["failed_checks"]
-    assert is_object_list(findings)
+    assert isinstance(findings, list)
     finding = _mapping(findings[0])
     match failure:
         case "parsing-errors":
@@ -152,7 +154,7 @@ def test_checkov_malformed_or_empty_payload_never_passes(tmp_path: Path, payload
         security_tools.parse_checkov(payload, root=tmp_path)
 
 
-def _empty_checkov_summary() -> dict[str, object]:
+def _empty_checkov_summary() -> dict[str, JsonValue]:
     return {
         "passed": 0,
         "failed": 0,
@@ -182,7 +184,7 @@ def test_checkov_version_attested_zero_summary_is_a_complete_empty_scan(tmp_path
     ],
 )
 def test_checkov_bare_summary_never_hides_findings_errors_or_unattested_data(
-    tmp_path: Path, key: str, value: object
+    tmp_path: Path, key: str, value: JsonValue
 ) -> None:
     summary = _empty_checkov_summary()
     summary[key] = value
@@ -202,7 +204,7 @@ def test_zizmor_rejects_incomplete_or_invalid_reports(tmp_path: Path, failure: s
     path.write_text("on: push\n", encoding="utf-8")
     report = _zizmor(path)
     runs = report["runs"]
-    assert is_object_list(runs)
+    assert isinstance(runs, list)
     run = _mapping(runs[0])
     match failure:
         case "version":
@@ -408,7 +410,7 @@ def test_public_analysis_retains_only_the_selected_upstream_rule(
         path.write_text("on: push\n", encoding="utf-8")
         payload = _zizmor(path)
         runs = payload["runs"]
-        assert is_object_list(runs)
+        assert isinstance(runs, list)
         findings = _mapping(runs[0])["results"]
         assert is_object_list(findings)
         findings.append({**_mapping(findings[0]), "ruleId": "zizmor/dangerous-triggers"})
@@ -735,7 +737,7 @@ def test_zizmor_grouped_locations_preserve_one_finding_and_validate_every_primar
     path.write_text("name: fixture\n", encoding="utf-8")
     payload = _zizmor(path)
     runs = payload["runs"]
-    assert is_object_list(runs)
+    assert isinstance(runs, list)
     findings = _mapping(runs[0])["results"]
     assert is_object_list(findings)
     locations = _mapping(findings[0])["locations"]

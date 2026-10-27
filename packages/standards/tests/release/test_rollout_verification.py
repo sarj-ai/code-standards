@@ -16,6 +16,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
     from pathlib import Path
 
+    from pydantic import JsonValue
+
 
 @pytest.mark.parametrize("failed", ["", "prepare", "lint", "tests"])
 @pytest.mark.parametrize("jobs", [1, 2])
@@ -112,7 +114,7 @@ def test_parallel_timeout_retains_context_and_collects_other_failures(tmp_path: 
 
 
 @pytest.mark.parametrize("value", [True, 0, 3, 8, "2"])
-def test_invalid_verification_worker_budget_is_rejected(tmp_path: Path, value: object) -> None:
+def test_invalid_verification_worker_budget_is_rejected(tmp_path: Path, value: JsonValue) -> None:
     with pytest.raises(rollout.RolloutError, match="verify_jobs"):
         _consumer(
             tmp_path,
@@ -131,7 +133,7 @@ def test_invalid_verification_worker_budget_is_rejected(tmp_path: Path, value: o
     ["true", ["true"], [[]], [[1]], [[""]], [["true"]] * 17],
     ids=("scalar", "flat", "empty", "number", "blank", "too-many"),
 )
-def test_invalid_independent_commands_are_rejected(tmp_path: Path, value: object) -> None:
+def test_invalid_independent_commands_are_rejected(tmp_path: Path, value: JsonValue) -> None:
     with pytest.raises(rollout.RolloutError, match="verify_checks"):
         _consumer(
             tmp_path,
@@ -168,7 +170,7 @@ def test_registry_preserves_argv_and_serial_debugging(tmp_path: Path) -> None:
     [True, 3, "check", [""], [1], [["check"]]],
     ids=("boolean", "integer", "string", "empty-argument", "nonstring-argument", "nested-command"),
 )
-def test_invalid_metadata_command_is_rejected(tmp_path: Path, value: object) -> None:
+def test_invalid_metadata_command_is_rejected(tmp_path: Path, value: JsonValue) -> None:
     with pytest.raises(rollout.RolloutError, match="verify_metadata"):
         _consumer(
             tmp_path,
@@ -182,7 +184,7 @@ def test_invalid_metadata_command_is_rejected(tmp_path: Path, value: object) -> 
         )
 
 
-def _consumer(root: Path, entry: dict[str, object]) -> rollout.Consumer:
+def _consumer(root: Path, entry: dict[str, JsonValue]) -> rollout.Consumer:
     path = root / "registry.toml"
     path.write_text(
         "schema = 1\n[[consumer]]\n" + "\n".join(f"{key} = {json.dumps(value)}" for key, value in entry.items()) + "\n"

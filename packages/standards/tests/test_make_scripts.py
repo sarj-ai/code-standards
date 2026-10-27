@@ -9,7 +9,6 @@ import sys
 import pytest
 
 from sarj_standards.libs.json_boundary import parse_json
-from sarj_standards.libs.typed_containers import is_object_list
 
 
 _SCRIPTS = Path(__file__).resolve().parents[3] / ".github/scripts"
@@ -85,7 +84,7 @@ def test_python_dogfood_keeps_literal_paths_and_rejects_partial_inventory(
         assert not arguments.exists()
     else:
         argv = parse_json(arguments.read_text(encoding="utf-8"))
-        assert is_object_list(argv)
+        assert isinstance(argv, list)
         assert list(argv[-6:]) == ["--rule", "first-rule", "--rule", "second-rule", "--", source]
         assert list(argv[argv.index("--jobs") + 1 : argv.index("--jobs") + 2]) == ["2"]
         diagnostics = [f"native diagnostic {number}" for number in range(output_lines)]

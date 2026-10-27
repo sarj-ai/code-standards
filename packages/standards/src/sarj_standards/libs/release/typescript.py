@@ -79,7 +79,9 @@ def pack_typescript(
     return PackedArtifact(tarball, included)
 
 
-def _npm_pack_report(output: str) -> dict[str, object]:
+def _npm_pack_report(
+    output: str,
+) -> dict[str, object]:  # sarj-noqa: SARJ528 -- Preserve raw native decoder metadata.
     decoder = json.JSONDecoder()
     reports: list[dict[str, object]] = []
     for index, character in enumerate(output):
@@ -98,7 +100,9 @@ def _npm_pack_report(output: str) -> dict[str, object]:
     return reports[-1]
 
 
-def _as_pack_report(value: object) -> dict[str, object] | None:
+def _as_pack_report(
+    value: object,  # sarj-noqa: SARJ528 -- Validate raw decoder container shape.
+) -> dict[str, object] | None:  # sarj-noqa: SARJ528 -- Retain raw report fields for later checks.
     if is_object_list(value):
         if not value or not is_object_dict(value[0]):
             return None
@@ -113,14 +117,18 @@ def _as_pack_report(value: object) -> dict[str, object] | None:
     return reports[0] if len(reports) == 1 else None
 
 
-def _valid_pack_report(value: object) -> dict[str, object] | None:
+def _valid_pack_report(
+    value: object,  # sarj-noqa: SARJ528 -- Inspect raw decoder report keys.
+) -> dict[str, object] | None:  # sarj-noqa: SARJ528 -- Preserve later field-validation errors.
     if not is_object_dict(value):
         return None
     report = string_object_dict(value, label="npm pack report")
     return report if "filename" in report and "files" in report else None
 
 
-def _included_paths(value: object) -> tuple[str, ...]:
+def _included_paths(
+    value: object,  # sarj-noqa: SARJ528 -- Reject malformed native manifest arrays.
+) -> tuple[str, ...]:
     if not is_object_list(value):
         msg = "npm pack returned an invalid files manifest"
         raise TypeError(msg)

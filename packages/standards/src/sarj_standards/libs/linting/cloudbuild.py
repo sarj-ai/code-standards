@@ -31,7 +31,7 @@ _SHELL_LONG_VALUES = frozenset({"--rcfile", "--init-file"})
 
 
 class CloudBuildParseError(ValueError):
-    """The caller must expose malformed or ambiguous YAML as a coverage failure."""
+    pass
 
 
 class _UseSiteLoader(yaml.SafeLoader):
@@ -301,8 +301,6 @@ def _non_option(option: str) -> bool:
 
 
 def _has_build_substitution(source: str) -> bool:
-    # $$ is Cloud Build's literal dollar escape. Shell quoting does not protect
-    # a build-time substitution; script: uses environment variables instead.
     return any(
         match.group().lstrip("$").strip("{}") not in _SAFE_BUILTINS
         for match in _SUBSTITUTION.finditer(source.replace("$$", "\x00"))

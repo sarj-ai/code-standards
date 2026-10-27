@@ -45,7 +45,9 @@ def _workflow() -> dict[str, object]:
 def _rendered_workflow() -> str:
     values: list[str] = []
 
-    def collect(value: object) -> None:
+    def collect(
+        value: object,  # sarj-noqa: SARJ528 -- Traverse raw native YAML nodes.
+    ) -> None:
         if isinstance(value, str):
             values.append(value)
         elif _is_array(value):

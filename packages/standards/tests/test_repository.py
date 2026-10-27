@@ -19,6 +19,11 @@ from sarj_standards.libs.repository import comment_corpus, hooks, ledger, reposi
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from typing import Never
+
+    from pydantic import JsonValue
+
     from tests.call_contracts import RepositoryPolicyOptions, SubprocessOptions
 
 
@@ -854,7 +859,7 @@ def test_comment_corpus_removes_partial_output_after_failure(monkeypatch: pytest
     destination = tmp_path / "corpus.jsonl"
     failure = ExtractionError()
 
-    def fail(_roots: object) -> object:
+    def fail(_roots: Sequence[Path]) -> Never:
         raise failure
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- filesystem and tool lookup interception is the behavior under test.
@@ -1511,7 +1516,7 @@ def test_retired_rename_sync_preserves_historical_aliases_outside_live_source(tm
     renames = tmp_path / "packages" / "typescript" / "src" / "rules" / "_renamed-rules.ts"
     renames.parent.mkdir(parents=True)
     renames.write_text("export const renames = {};\n", encoding="utf-8")
-    previous = {
+    previous: dict[str, JsonValue] = {
         "retired": [
             {
                 "id": "historical-alias",

@@ -248,7 +248,7 @@ class FileTransaction:
 
 
 class _Untracked:
-    """Sentinel type for paths without a recorded standards write."""
+    pass
 
 
 _UNTRACKED: Final = _Untracked()

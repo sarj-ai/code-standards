@@ -243,7 +243,7 @@ def wait_for_lint_config_dependencies(
     attempts: int = 6,
     delay: timedelta = timedelta(seconds=10),
     checker: PublicationChecker = publication_exists,
-    sleeper: Callable[[float], object] = time.sleep,
+    sleeper: Callable[[float], None] = time.sleep,
 ) -> tuple[RegistryRequirement, ...]:
     if attempts < 1:
         message = "publication attempts must be at least one"

@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
+    from sarj_standards.libs.adoption.service import SyncPlan
     from sarj_standards.libs.linting.policy import Policy
     from sarj_standards.libs.linting.runner import GroupedPaths
     from tests.call_contracts import CheckOptions
@@ -176,7 +177,7 @@ def test_full_verify_uses_one_native_group_and_fails_on_actual_library_finding(
         api, "plan_sync", no_sync_plan
     )
 
-    def successful_sync(_plan: object, *, check: bool) -> _SyncSucceeded:
+    def successful_sync(_plan: SyncPlan | None, *, check: bool) -> _SyncSucceeded:
         assert check is True
         return _SyncSucceeded()
 

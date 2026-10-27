@@ -17,6 +17,8 @@ from sarj_standards.libs.typed_containers import is_object_list, is_object_mappi
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from pydantic import JsonValue
+
 
 def _cli(*args: str) -> subprocess.CompletedProcess[str]:
     command = list(args)
@@ -37,7 +39,7 @@ def _cli(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _project(root: Path, lockfile: str, package_json: dict[str, object] | None = None) -> Path:
+def _project(root: Path, lockfile: str, package_json: dict[str, JsonValue] | None = None) -> Path:
     (root / "package.json").write_text(json.dumps(package_json or {"name": "web"}, indent=2) + "\n", encoding="utf-8")
     (root / lockfile).write_text("", encoding="utf-8")
     return root
@@ -176,7 +178,7 @@ def test_lint_execution_can_never_install_from_the_network() -> None:
     ],
 )
 def test_yarn_dialect_follows_the_declared_package_manager(
-    tmp_path: Path, package_json: dict[str, object], expected: YarnVariant
+    tmp_path: Path, package_json: dict[str, JsonValue], expected: YarnVariant
 ) -> None:
     root = _project(tmp_path, "yarn.lock", package_json)
 

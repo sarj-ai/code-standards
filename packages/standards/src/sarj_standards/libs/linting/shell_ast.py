@@ -5,11 +5,12 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] -- catches bound
 from typing import TYPE_CHECKING
 
 from sarj_standards.libs.json_boundary import parse_json
-from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
+
+    from pydantic import JsonValue
 
 
 _MAX_CACHE_CHARACTERS = 1_048_576
@@ -17,11 +18,11 @@ _MAX_CACHE_ENTRIES = 128
 
 
 class ShellParseError(RuntimeError):
-    """Missing analyzer, resource limit or malformed analyzer output."""
+    pass
 
 
 class ShellSyntaxError(ValueError):
-    """The selected executable shell field does not parse."""
+    pass
 
 
 def _checked_executable() -> Path:
@@ -39,12 +40,12 @@ def _checked_executable() -> Path:
         return tool.executable
 
 
-def make_shell_parser() -> Callable[[str], Mapping[str, object]]:
+def make_shell_parser() -> Callable[[str], Mapping[str, JsonValue]]:
     executable: Path | None = None
     cache: dict[str, str] = {}
     retained_characters = 0
 
-    def parse(source: str) -> Mapping[str, object]:
+    def parse(source: str) -> Mapping[str, JsonValue]:
         nonlocal executable, retained_characters
         if executable is None:
             executable = _checked_executable()
@@ -64,11 +65,11 @@ def make_shell_parser() -> Callable[[str], Mapping[str, object]]:
     return parse
 
 
-def parse_shell(source: str, *, dialect: str = "bash") -> Mapping[str, object]:
+def parse_shell(source: str, *, dialect: str = "bash") -> Mapping[str, JsonValue]:
     return _parse_shell(source, executable=_checked_executable(), dialect=dialect)
 
 
-def _parse_shell(source: str, *, executable: Path, dialect: str) -> Mapping[str, object]:
+def _parse_shell(source: str, *, executable: Path, dialect: str) -> Mapping[str, JsonValue]:
     return _shell_tree(_shell_json(source, executable=executable, dialect=dialect))
 
 
@@ -93,13 +94,13 @@ def _shell_json(source: str, *, executable: Path, dialect: str) -> str:
     return result.stdout
 
 
-def _shell_tree(payload: str) -> Mapping[str, object]:
+def _shell_tree(payload: str) -> Mapping[str, JsonValue]:
     try:
         tree = parse_json(payload)
     except ValueError as error:
         msg = "shfmt returned invalid JSON"
         raise ShellParseError(msg) from error
-    if not is_object_mapping(tree) or tree.get("Type") != "File":
+    if not isinstance(tree, dict) or tree.get("Type") != "File":
         msg = "shfmt returned no File AST"
         raise ShellParseError(msg)
-    return {key: value for key, value in tree.items() if isinstance(key, str)}
+    return dict(tree)

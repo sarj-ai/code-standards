@@ -159,8 +159,6 @@ def _arguments(output: str, config: Path) -> tuple[str, ...]:
 
 def parse_jscpd(payload: str, root: Path, *, allows_path: Callable[[str], bool]) -> tuple[Diagnostic, ...]:
     root = root.resolve()
-    # One diagnostic per copied block, naming every other copy, lets the changed-line baseline
-    # report a duplicate when any of its copies is edited.
     copies: defaultdict[_Block, set[_Block]] = defaultdict(set)
     for clone in _Report.model_validate_json(payload).duplicates:
         first, second = _block(root, clone.first_file), _block(root, clone.second_file)

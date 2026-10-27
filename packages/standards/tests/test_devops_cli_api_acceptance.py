@@ -6,11 +6,13 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from pydantic import JsonValue
 import pytest
 
 from sarj_standards.api import Standards
 import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption.manifest import Manifest, PreparedTarget, adopted_version, as_table, list_field
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting.devops_tools import checked_tool
 
 
@@ -22,7 +24,7 @@ if TYPE_CHECKING:
 class _PreparedFixture:
     root: Path
     receipt: Path
-    target: dict[str, object]
+    target: dict[str, JsonValue]
 
 
 def _prepared_fixture(root: Path) -> _PreparedFixture:
@@ -37,7 +39,7 @@ def _prepared_fixture(root: Path) -> _PreparedFixture:
         '"type":"object","required":["apiVersion","kind","metadata"]}',
         encoding="utf-8",
     )
-    target: dict[str, object] = {
+    target: dict[str, JsonValue] = {
         "id": "example",
         "source": "deploy.yaml",
         "source_sha256": sha256(source.read_bytes()).hexdigest(),
@@ -72,8 +74,8 @@ def _paired_analysis(
     receipts: Sequence[Path] = (),
     targets: Sequence[str] = (),
     prepared_only: bool = False,
-) -> dict[str, object]:
-    documents: list[dict[str, object]] = []
+) -> dict[str, JsonValue]:
+    documents: list[dict[str, JsonValue]] = []
     arguments = ["--root", str(fixture.root), "analyze", "--format", "json"]
     if prepared_only:
         arguments.append("--prepared-only")
@@ -89,8 +91,9 @@ def _paired_analysis(
         status = cli.main(arguments)
         output = capsys.readouterr()
         assert not output.err
-        payload: object = json.loads(output.out)  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
-        document = as_table(payload)
+        payload = parse_json(output.out)
+        assert isinstance(payload, dict)
+        document = dict(payload)
         assert status == report.exit_code
         assert document == report.as_dict()
         assert document["root"] == "."

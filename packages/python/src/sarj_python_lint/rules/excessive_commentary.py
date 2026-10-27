@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import ast
 from pathlib import PurePosixPath
-import re
 from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import (
@@ -16,31 +14,12 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
-from sarj_python_lint.rules._ast_index import statement_blocks
-from sarj_python_lint.rules._comments import has_external_reference
-from sarj_python_lint.rules._prose_budget import (
-    groups,
-    has_technical_anchor,
-)
+from sarj_python_lint.rules._comment_narration import CommentNarration
+from sarj_python_lint.rules._prose_budget import groups
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
-
-
-_MIN_LINES = 3
-_MIN_WORDS = 20
-_ERROR_MIN_LINES = 4
-_ERROR_MIN_WORDS = 28
-_RATIONALE_RE = re.compile(
-    r"\b(?:because|otherwise|therefore|must|never|cannot|can't|required?|invariant|"
-    r"compatibility|security|race|atomic|deadlock|rollback|lock|data loss)\b",
-    re.IGNORECASE,
-)
-_RATIONALE_SO_RE = re.compile(r"\bso\s+(?:that|a|an|the|this|it|we|they)\b", re.IGNORECASE)
-_BULLET_RE = re.compile(r"^\s*(?:[-*+] |\d+[.)] )", re.MULTILINE)
-_ACCUMULATOR_METHODS = frozenset({"add", "append", "extend", "update"})
-_MIN_ACCUMULATOR_CALLS = 2
 
 
 @final
@@ -48,31 +27,48 @@ class ExcessiveCommentary(Rule):
     id = "excessive-commentary"
     code = "SARJ434"
     documentation = RuleDocumentation(
-        summary="Review long implementation comments; express behavior through code and keep constraints concise.",
+        summary="Delete comment paragraphs that exactly repeat the following ordered action names.",
         rationale=(
-            "A paragraph that narrates nearby implementation behavior competes with the code and can drift independently "
-            "from it."
+            "A paragraph that repeats the same action names in the same order adds a second copy of the implementation. "
+            "Comment length alone cannot distinguish noise from a necessary technical constraint."
         ),
         remediation=(
-            "Make behavior clear through names, types, validators and cohesive functions. Shorten remaining explanation "
-            "to a concise constraint or protocol reference. Keep necessary detail with an explained exact-code "
-            "exception; never delete a required constraint or create abstraction solely to satisfy this warning."
+            "Delete the duplicate narration and keep the authored action names. Preserve constraints, references, "
+            "uncertainty, ordering requirements and side-effect explanations that add meaning beyond those names."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.SAFE,
         limitations=(
-            "Safe fixes remove only an error-level four-or-more-line paragraph whose ordered plain-word lines exactly match all following zero-argument direct call identifiers in an otherwise exact initializer/accumulator-calls/return function body. Novel words, reordered calls, additional behavior, directives and meaningful prose remain review-only; each removed comment leaves its original blank line.",
-            "Contiguous standalone implementation comment blocks with at least three non-empty lines and 20 words are inspected.",
-            "The paragraph must immediately precede executable implementation code; narrative comments in tests and module setup are included.",
-            "The previously shipped accumulator pattern with a proven builtin collection remains an error; expanded implementation commentary is a warning. Paragraphs outside the exact authored-word safe subset require manual review and are not automatically deleted.",
-            "Rationale, technical vocabulary and external citations do not exempt a long paragraph from warning-level review. Their existing protection against accumulator errors remains intact.",
-            "Generated files, directives, licenses, structured lists, docstrings, inline comments and short constraints are excluded.",
+            "Safe fixes remove only a four-or-more-line paragraph whose ordered plain-word lines exactly match all following zero-argument direct call identifiers in an otherwise exact initializer/accumulator-calls/return function body. Each removed comment leaves its original blank line.",
+            "Contiguous standalone implementation comment blocks with at least two non-empty lines and 12 words are inspected.",
+            "An error requires each line to exactly repeat its corresponding direct zero-argument call identifier in the same order. Supported owners contain only those flat calls, single-name call assignments and call returns, or the exact accumulation shape.",
+            "Guards, loops, branches, additional statements, intervening comments, arguments, qualified calls, quoted text, novel words and meaning-bearing qualifiers cause abstention. Arbitrary prose is not inferred to be redundant from its length.",
+            "Technical facts and unproven narration produce no diagnostic. The rule emits no review-budget warnings.",
+            "Generated files, directives, licenses, docstrings, inline comments and short comments are excluded.",
         ),
         examples=(
             RuleExample(
                 example_id="activation-narration",
-                title="Implementation paragraph narrates a validation helper",
+                title="A paragraph exactly repeats two flat action names",
                 outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app.py",
+                        "def activate():\n"
+                        "    # Load current account profile activation settings\n"
+                        "    # Build current account profile activation response\n"
+                        "    load_current_account_profile_activation_settings()\n"
+                        "    return build_current_account_profile_activation_response()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="activation-rationale",
+                title="The original activation paragraph explains why all failures are returned",
+                outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
                         "app.py",
@@ -88,13 +84,14 @@ class ExcessiveCommentary(Rule):
                     ),
                 ),
                 focus_path=PurePosixPath("app.py"),
-                expected_count=1,
+                expected_count=0,
                 public=True,
             ),
             RuleExample(
                 example_id="durable-constraint",
                 title="A concrete compatibility constraint remains local",
                 outcome=ExampleOutcome.NO_MATCH,
+                scenario="durable-constraint",
                 files=(
                     ExampleFile.python(
                         "app.py",
@@ -105,7 +102,6 @@ class ExcessiveCommentary(Rule):
                 ),
                 focus_path=PurePosixPath("app.py"),
                 expected_count=0,
-                public=True,
             ),
             RuleExample(
                 example_id="safe-autofix-subset",
@@ -132,111 +128,22 @@ class ExcessiveCommentary(Rule):
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        path = context.path
-        source = context.source
-        tree = context.tree
-        if tree is None:
+        if context.tree is None:
             return []
-        implementation_lines = {
-            node.lineno
-            for node in context.nodes(ast.stmt)
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Import, ast.ImportFrom))
-        }
-        accumulator_lines = _narrated_accumulator_lines(context)
+        narration = CommentNarration(context)
         findings: list[Diagnostic] = []
-        for group in groups(path, source):
-            lines = tuple(stripped for line in group.text.splitlines() if (stripped := line.strip()))
-            words = len(group.text.split())
-            if group.kind != "comment" or len(lines) < _MIN_LINES or words < _MIN_WORDS:
+        for group in groups(context.path, context.source):
+            if narration.match(group) is None:
                 continue
-            comment_end_line = group.line + len(group.text.splitlines()) - 1
-            if comment_end_line + 1 not in implementation_lines:
-                continue
-            if _BULLET_RE.search(group.text):
-                continue
-            review_only = any(
-                (
-                    has_technical_anchor(group.text),
-                    has_external_reference(group.text),
-                    _RATIONALE_RE.search(group.text),
-                    _RATIONALE_SO_RE.search(group.text),
-                )
-            )
             findings.append(
                 Diagnostic(
-                    path,
+                    context.path,
                     group.line,
                     group.col,
                     self.code,
                     self.description,
-                    severity=(
-                        Severity.ERROR
-                        if not review_only
-                        and comment_end_line + 1 in accumulator_lines
-                        and len(lines) >= _ERROR_MIN_LINES
-                        and words >= _ERROR_MIN_WORDS
-                        else Severity.WARNING
-                    ),
+                    severity=Severity.ERROR,
                     column_encoding=group.column_encoding,
                 )
             )
         return findings
-
-
-def _narrated_accumulator_lines(context: PythonFileContext) -> set[int]:
-    lines: set[int] = set()
-    for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
-        for statements in statement_blocks(function.body):
-            _collect_accumulators(statements, lines, context)
-    return lines
-
-
-def _collect_accumulators(statements: list[ast.stmt], lines: set[int], context: PythonFileContext) -> None:
-    for index, statement in enumerate(statements):
-        name = empty_collection_name(statement, context)
-        if name is not None:
-            mutations = 0
-            for following in statements[index + 1 :]:
-                if not _is_accumulator_call(following, name):
-                    break
-                mutations += 1
-            if mutations >= _MIN_ACCUMULATOR_CALLS:
-                lines.add(statement.lineno)
-
-
-def empty_collection_name(statement: ast.stmt, context: PythonFileContext) -> str | None:
-    target: ast.expr | None = None
-    value: ast.expr | None = None
-    if isinstance(statement, ast.AnnAssign):
-        target, value = statement.target, statement.value
-    elif isinstance(statement, ast.Assign) and len(statement.targets) == 1:
-        target, value = statement.targets[0], statement.value
-    if not isinstance(target, ast.Name) or value is None:
-        return None
-    if isinstance(value, (ast.List, ast.Set)) and not value.elts:
-        return target.id
-    if isinstance(value, ast.Dict) and not value.keys:
-        return target.id
-    if (
-        isinstance(value, ast.Call)
-        and isinstance(value.func, ast.Name)
-        and value.func.id in {"dict", "list", "set"}
-        and not value.args
-        and not value.keywords
-    ):
-        provenance = context.static_resource_provenance
-        if provenance.builtin_namespace_untouched and provenance.binding(value.func.id, value.func) is None:
-            return target.id
-    return None
-
-
-def _is_accumulator_call(statement: ast.stmt, name: str) -> bool:
-    if not isinstance(statement, ast.Expr) or not isinstance(statement.value, ast.Call):
-        return False
-    function = statement.value.func
-    return (
-        isinstance(function, ast.Attribute)
-        and function.attr in _ACCUMULATOR_METHODS
-        and isinstance(function.value, ast.Name)
-        and function.value.id == name
-    )

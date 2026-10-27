@@ -991,8 +991,6 @@ class Big:
 
 
 def test_class_still_counts_as_a_caller_for_multi_caller_suppression():
-    # The class does not become invisible: a helper shared by a class and a
-    # function has two callers and stays out of scope.
     src = """
 def _shared() -> int:
     return 1

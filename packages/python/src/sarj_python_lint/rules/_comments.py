@@ -16,6 +16,16 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+_LICENSE_RE = re.compile(
+    r"copyright|license|licen[cs]ed|spdx|permission is hereby granted|all rights reserved",
+    re.IGNORECASE,
+)
+
+
+def has_legal_notice(body: str) -> bool:
+    return bool(_LICENSE_RE.search(body))
+
+
 # S1 — external references: URLs, tickets, RFCs, PEPs, CVEs, issues, and handles.
 _REF_RE = re.compile(
     r"https?://|\bRFC[- ]?\d+|\bPEP[- ]?\d+|\bCVE-\d{4}|"
@@ -57,7 +67,7 @@ _NEGATION_RE = re.compile(
 # S6 — upstream/vendor quirk, workaround provenance, or an external contract.
 _UPSTREAM_RE = re.compile(
     r"\b(?:upstream|workaround|quirk|backport|vendored|regression|fixed upstream|"
-    r"requires?\b|convention\b|rate.?limit|deprecat|opts? in(?:to)?\b|"
+    r"require[sd]?\b|convention\b|rate.?limit|deprecat|opts? in(?:to)?\b|"
     r"raises?\b.{0,60}\b(?:when|if|unless)\b)",
     re.IGNORECASE,
 )
@@ -111,6 +121,32 @@ def is_protected(body: str) -> bool:
 
 def has_external_reference(body: str) -> bool:
     return bool(_REF_RE.search(body))
+
+
+_NARRATION_MODALITY_RE = re.compile(r"\b(?:can|could|should|shall|may|might|must|will|would|cannot)\b", re.IGNORECASE)
+_NARRATION_LEAD_IN_RE = re.compile(r":$")
+_NARRATION_EMPHASIS_RE = re.compile(r"\*\w[^*]*\*|`[^`]+`")
+_NARRATION_NEGATION_RE = re.compile(r"\b(?:no|not|never|neither|nor|without|none|non)\b", re.IGNORECASE)
+_NARRATION_QUALIFIER_RE = re.compile(
+    r"\b(?:all|any|both|each|every|some|only|need|needs|needed|require|requires|required)\b|"
+    r"^\s*(?:and|after|before|finally|given|next|then|when)\b",
+    re.IGNORECASE,
+)
+_NARRATION_NAVIGATION_RE = re.compile(r"^\s*(?:sheet|slide|step)\s+\d+\s*(?:[:.\-]|$)", re.IGNORECASE)
+
+
+def has_narration_qualifier(body: str) -> bool:
+    return any(
+        pattern.search(body)
+        for pattern in (
+            _NARRATION_MODALITY_RE,
+            _NARRATION_LEAD_IN_RE,
+            _NARRATION_EMPHASIS_RE,
+            _NARRATION_NEGATION_RE,
+            _NARRATION_QUALIFIER_RE,
+            _NARRATION_NAVIGATION_RE,
+        )
+    )
 
 
 # Below this length an inflection strip would eat the word itself.

@@ -32,8 +32,7 @@ _SCOPE_NODES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
 
 type _Def = ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef
 
-# These decorators preserve an ordinary callable definition and do not register
-# it through user code at definition time. Unknown decorators are movement barriers.
+# These decorators preserve definitions without registration; unknown decorators remain movement barriers.
 _ORDER_TRANSPARENT_DECORATORS = frozenset({"classmethod", "staticmethod"})
 
 #: A repeated singledispatch implementation name cannot identify one movable target.
@@ -513,8 +512,7 @@ def _safe_movement(
 
 
 def _definition_executes_code(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    # Calls during definition can execute arbitrary code, including the caller
-    # before the moved helper has been initialized.
+    # Definition-time calls can reach a caller before its moved helper is initialized.
     return any(
         isinstance(child, (ast.Call, ast.Await, ast.Yield, ast.YieldFrom, ast.NamedExpr))
         for part in _definition_expressions(node)
@@ -882,8 +880,7 @@ def _runtime_nodes(stmts: list[ast.stmt]) -> Iterator[ast.expr]:
 
 
 def _nested_class_name_loads(definition: _Def) -> set[str]:
-    # Nested class closures are real references but have a distinct caller
-    # namespace. Do not erase them and claim another function is sole caller.
+    # Nested class closures count as references in a distinct caller namespace.
     return {
         name
         for child in _walk(definition)
@@ -942,8 +939,7 @@ def _local_alias_call_line(
         call = parents.get(id(use))
         if not isinstance(call, ast.Call) or call.func is not use or use.lineno <= assigned_line:
             return None
-        # A nested closure can escape through its own return value. Only calls
-        # made directly by this lexical function establish a nonescaping alias.
+        # Nested closures may escape; only direct calls in this lexical function prove a nonescaping alias.
         current: ast.AST = use
         while id(current) in parents:
             current = parents[id(current)]
@@ -1110,8 +1106,7 @@ def _resolved_node_loads(node: ast.AST, candidates: frozenset[str], blocked: set
             if value is not None:
                 yield from _resolved_loads((value,), candidates, blocked)
         case ast.ClassDef():
-            # Class namespaces and method closures have different lookup rules.
-            # Abstain instead of flattening them into the enclosing function.
+            # Class namespaces and method closures have distinct lookup rules.
             yield from _resolved_loads(
                 (*node.decorator_list, *node.bases, *(keyword.value for keyword in node.keywords)),
                 candidates,

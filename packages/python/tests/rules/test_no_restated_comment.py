@@ -51,7 +51,7 @@ def test_flags_zero_information_comment(comment: str, code: str):
     diags = _pair(comment, code)
     assert len(diags) == 1
     assert diags[0].code == "SARJ049"
-    assert diags[0].severity is Severity.WARNING
+    assert diags[0].severity is Severity.ERROR
     assert (diags[0].line, diags[0].col) == (2, 5)
 
 

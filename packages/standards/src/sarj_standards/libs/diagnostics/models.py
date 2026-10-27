@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256
 from pathlib import Path, PureWindowsPath
-from typing import Final, NewType, TypedDict
+from typing import Final, NamedTuple, NewType, NotRequired, TypedDict
 from urllib.parse import urlparse
 
 from sarj_standards.libs.typed_containers import is_object_tuple
@@ -17,6 +17,12 @@ FINGERPRINT_VERSION: Final = 1
 _SHA256_HEX_LENGTH: Final = 64
 AnalyzerId = NewType("AnalyzerId", str)
 InvocationId = NewType("InvocationId", str)
+
+
+class _EditKey(NamedTuple):
+    path: str
+    start_byte_offset: int
+    end_byte_offset: int
 
 
 class Severity(StrEnum):
@@ -67,6 +73,90 @@ class _CoverageNotice(TypedDict):
     disposition: str
 
 
+class _PositionData(TypedDict):
+    line: int
+    character: int
+
+
+class _RegionData(TypedDict):
+    start: _PositionData
+    end: _PositionData
+
+
+class _LocationData(TypedDict):
+    path: str
+    position: NotRequired[_PositionData]
+    range: NotRequired[_RegionData]
+
+
+class _RelatedLocationData(TypedDict):
+    label: str
+    location: _LocationData
+
+
+class _TextEditData(TypedDict):
+    location: _LocationData
+    replacement: str
+    expectedTextHash: NotRequired[str]
+
+
+class _FixData(TypedDict):
+    title: str
+    safety: str
+    edits: list[_TextEditData]
+
+
+class _RuleDescriptorData(TypedDict):
+    key: str
+    name: str
+    summary: str
+    helpUrl: NotRequired[str]
+    tags: NotRequired[list[str]]
+
+
+class _FingerprintData(TypedDict):
+    algorithm: int
+    value: str
+
+
+class _DiagnosticData(TypedDict):
+    code: str
+    message: str
+    severity: str
+    source: str
+    location: _LocationData
+    ruleId: NotRequired[str]
+    help: NotRequired[str]
+    helpUrl: NotRequired[str]
+    ruleKey: NotRequired[str]
+    relatedLocations: NotRequired[list[_RelatedLocationData]]
+    notes: NotRequired[list[str]]
+    fixes: NotRequired[list[_FixData]]
+    tags: NotRequired[list[str]]
+    fingerprint: NotRequired[_FingerprintData]
+
+
+class _ExecutionIssueData(TypedDict):
+    source: str
+    kind: str
+    message: str
+    exitCode: NotRequired[int]
+
+
+class _ToolReportData(TypedDict):
+    name: str
+    completion: str
+    diagnosticCount: int
+    issueCount: int
+    analyzerId: NotRequired[str]
+    invocationId: NotRequired[str]
+    cache: NotRequired[str]
+    version: NotRequired[str]
+    fileCount: NotRequired[int]
+    baselinedDiagnosticCount: NotRequired[int]
+    policyFailed: NotRequired[bool]
+
+
 _AnalysisReport = TypedDict(
     "_AnalysisReport",
     {
@@ -76,10 +166,10 @@ _AnalysisReport = TypedDict(
         "completion": str,
         "conclusion": str,
         "exitCode": int,
-        "rules": list[dict[str, object]],
-        "diagnostics": list[dict[str, object]],
-        "issues": list[dict[str, object]],
-        "tools": list[dict[str, object]],
+        "rules": list[_RuleDescriptorData],
+        "diagnostics": list[_DiagnosticData],
+        "issues": list[_ExecutionIssueData],
+        "tools": list[_ToolReportData],
         "coverage": list[_CoverageNotice],
     },
 )
@@ -128,7 +218,7 @@ class Position:
             msg = "source positions cannot be negative"
             raise ValueError(msg)
 
-    def as_dict(self) -> dict[str, int]:
+    def as_dict(self) -> _PositionData:
         return {"line": self.line, "character": self.character}
 
 
@@ -147,7 +237,7 @@ class Region:
             msg = "source region coordinates run backwards"
             raise ValueError(msg)
 
-    def as_dict(self) -> dict[str, dict[str, int]]:
+    def as_dict(self) -> _RegionData:
         return {"start": self.start.as_dict(), "end": self.end.as_dict()}
 
 
@@ -172,8 +262,8 @@ class Location:
         if self.region is not None:
             _require_instance(self.region, Region, "diagnostic region")
 
-    def as_dict(self) -> dict[str, object]:
-        result: dict[str, object] = {"path": self.path}
+    def as_dict(self) -> _LocationData:
+        result: _LocationData = {"path": self.path}
         if self.region is not None:
             result["range"] = self.region.as_dict()
         elif self.position is not None:
@@ -190,7 +280,7 @@ class RelatedLocation:
         _require_text(self.label, "related location label")
         _require_instance(self.location, Location, "related location")
 
-    def as_dict(self) -> dict[str, object]:
+    def as_dict(self) -> _RelatedLocationData:
         return {"label": self.label, "location": self.location.as_dict()}
 
 
@@ -214,8 +304,8 @@ class TextEdit:
                 msg = "expected text hash must be a lowercase SHA-256 digest"
                 raise ValueError(msg)
 
-    def as_dict(self) -> dict[str, object]:
-        result: dict[str, object] = {"location": self.location.as_dict(), "replacement": self.replacement}
+    def as_dict(self) -> _TextEditData:
+        result: _TextEditData = {"location": self.location.as_dict(), "replacement": self.replacement}
         if self.expected_text_hash is not None:
             result["expectedTextHash"] = self.expected_text_hash
         return result
@@ -251,7 +341,7 @@ class Fix:
                 msg = "fix edits must not overlap"
                 raise ValueError(msg)
 
-    def as_dict(self) -> dict[str, object]:
+    def as_dict(self) -> _FixData:
         return {"title": self.title, "safety": self.safety.value, "edits": [edit.as_dict() for edit in self.edits]}
 
 
@@ -271,8 +361,8 @@ class RuleDescriptor:
         _require_unique_text(self.tags, "rule tags")
         _validate_help_url(self.help_url)
 
-    def as_dict(self) -> dict[str, object]:
-        result: dict[str, object] = {"key": self.key, "name": self.name, "summary": self.summary}
+    def as_dict(self) -> _RuleDescriptorData:
+        result: _RuleDescriptorData = {"key": self.key, "name": self.name, "summary": self.summary}
         if self.help_url is not None:
             result["helpUrl"] = self.help_url
         if self.tags:
@@ -315,8 +405,8 @@ class Diagnostic:
         if self.fingerprint is not None:
             _require_text(self.fingerprint, "diagnostic fingerprint")
 
-    def as_dict(self) -> dict[str, object]:
-        result: dict[str, object] = {
+    def as_dict(self) -> _DiagnosticData:
+        result: _DiagnosticData = {
             "code": self.code,
             "message": self.message,
             "severity": self.severity.value,
@@ -357,8 +447,8 @@ class ExecutionIssue:
         if self.exit_code is not None:
             _require_int(self.exit_code, "execution issue exit code")
 
-    def as_dict(self) -> dict[str, object]:
-        result: dict[str, object] = {"source": self.source, "kind": self.kind, "message": self.message}
+    def as_dict(self) -> _ExecutionIssueData:
+        result: _ExecutionIssueData = {"source": self.source, "kind": self.kind, "message": self.message}
         if self.exit_code is not None:
             result["exitCode"] = self.exit_code
         return result
@@ -413,8 +503,8 @@ class ToolReport:
             msg = "baselined diagnostic count cannot be negative"
             raise ValueError(msg)
 
-    def as_dict(self) -> dict[str, object]:
-        result: dict[str, object] = {
+    def as_dict(self) -> _ToolReportData:
+        result: _ToolReportData = {
             "name": self.name,
             "completion": self.completion.value,
             "diagnosticCount": len(self.diagnostics),
@@ -530,12 +620,12 @@ def diagnostic_fingerprint(diagnostic: Diagnostic, *, anchor: str) -> str:
     return sha256(identity.encode("utf-8")).hexdigest()
 
 
-def _edit_key(edit: TextEdit) -> tuple[object, ...]:
+def _edit_key(edit: TextEdit) -> _EditKey:
     region = edit.location.region
     if region is None:
         msg = "text edit location must contain an exact range"
         raise ValueError(msg)
-    return (edit.location.path, region.start.byte_offset, region.end.byte_offset)
+    return _EditKey(edit.location.path, region.start.byte_offset, region.end.byte_offset)
 
 
 def _validate_help_url(value: str | None) -> None:

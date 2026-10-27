@@ -160,9 +160,6 @@ def test_a_new_analysis_observes_a_codegen_marker_created_in_the_same_tree(tmp_p
 
 
 def test_the_generator_script_next_to_its_config_stays_linted(tmp_path: Path) -> None:
-    # A generator's driver script is hand-written and sits beside its config;
-    # exempting the whole tree would drop its findings (12, in the corpus this
-    # was measured on) along with the generated package's noise.
     root = tmp_path / "api-client"
     (root / "api_client").mkdir(parents=True)
     (root / "codegen.config.yml").write_text("")
@@ -201,9 +198,6 @@ def test_is_generated_unions_both_halves() -> None:
 
 
 def test_generated_sdk_output_is_exempt_from_match_dispatch(tmp_path: Path) -> None:
-    # End-to-end: a real type-dispatch ladder fires at an ordinary path while
-    # the banner-less SDK tree remains exempt. The generated sentinel prologue
-    # itself is intentionally no longer diagnostic.
     dispatch_source = (
         _UNMARKED_GENERATED_SDK_SOURCE
         + """
