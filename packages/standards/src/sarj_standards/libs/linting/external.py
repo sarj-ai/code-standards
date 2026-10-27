@@ -1464,6 +1464,9 @@ def _parse_react_doctor_staged_with_full_fallback(
     full_argv: Sequence[str],
 ) -> tuple[Diagnostic, ...]:
     report = _ReactDoctorReport.model_validate_json(payload)
+    report = _react_doctor_without_untouched_empty_projects(
+        report, expected_projects=expected_projects, root=root, runner=runner, scope_root=cwd, staged=True
+    )
     scoped_projects = _react_doctor_scoped_project_set(
         report, expected_projects=expected_projects, root=root, runner=runner, scope_root=cwd, staged=True
     )
@@ -1513,6 +1516,9 @@ def _parse_react_doctor_changed_scope(
     projects: Sequence[Path],
 ) -> tuple[Diagnostic, ...]:
     report = _ReactDoctorReport.model_validate_json(payload)
+    report = _react_doctor_without_untouched_empty_projects(
+        report, expected_projects=expected_projects, root=root, runner=runner, scope_root=scope_root, staged=False
+    )
     allow_empty_projects = allow_empty_projects or _react_doctor_empty_changed_scope_has_no_source(
         report,
         projects=projects,
@@ -1530,6 +1536,51 @@ def _parse_react_doctor_changed_scope(
         include_warnings=False,
         require_react_detection=True,
     )
+
+
+def _react_doctor_without_untouched_empty_projects(
+    report: _ReactDoctorReport,
+    *,
+    expected_projects: frozenset[Path],
+    root: Path,
+    runner: ProcessRunner,
+    scope_root: Path,
+    staged: bool,
+) -> _ReactDoctorReport:
+    # Native scoped reports can include an enclosing project with no selected
+    # files. Treat that like an omission only after independently proving it.
+    requested_base = change_scope_base()
+    if not staged and (
+        report.diff is None
+        or report.diff.is_current_changes is None
+        or (requested_base and report.diff.base_branch != requested_base)
+    ):
+        return report
+    retained: list[_ReactDoctorProject] = []
+    for project in report.projects:
+        directory = _contained_report_directory(project, root)
+        empty = (
+            directory in expected_projects
+            and project.complete
+            and project.skipped_checks == ()
+            and not project.skipped_check_reasons
+            and not project.diagnostics
+            and project.analyzed_file_count == 0
+            and project.scanned_file_count == 0
+        )
+        if empty and _react_doctor_scope_has_no_source(
+            (directory,),
+            root=root,
+            runner=runner,
+            staged=staged,
+            scope_root=scope_root,
+            reported_base=None if staged or report.diff is None else report.diff.base_branch,
+            reported_changed_file_count=None if staged or report.diff is None else report.diff.changed_file_count,
+            known_projects=tuple(expected_projects),
+        ):
+            continue
+        retained.append(project)
+    return report.model_copy(update={"projects": tuple(retained)})
 
 
 def _react_doctor_scoped_project_set(
