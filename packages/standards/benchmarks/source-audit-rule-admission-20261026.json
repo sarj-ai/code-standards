@@ -328,8 +328,8 @@
     "unclassified_rule_findings": 0
   },
   "release_versions": {
-    "code-standards": "8.137.0",
-    "sarj-standards": "8.137.0",
+    "code-standards": "8.141.0",
+    "sarj-standards": "8.141.0",
     "sarj-python-lint": "1.82.0",
     "@sarj/eslint-plugin": "16.31.0"
   },
@@ -405,5 +405,19 @@
     },
     "history": "Historical qualification reports and preserved candidate commits retain their original diagnostic IDs, source frames, labels, counts and timing pairs. The mapping identifies current diagnostics without silently rewriting historical measurements.",
     "incoming_main": "The current candidate integrates the installed-wheel test-selection update from main 78fe755a878dbe4e8d67cb3d2b3e17f745cae629. Current full canonical verification, including a new TypeScript test run, supersedes conditional test-target reuse for delivery; no prior failed attempt is relabeled."
+  },
+  "post_320_reconciliation": {
+    "upstream_revision": "3202ba164d2003559789896de08647efea4373ac",
+    "previous_qualified_feature_revision": "09ef907970dfcb6891f6902cd7a52666bfc6c49a",
+    "previous_qualified_feature_tree": "65f03c74698519399ba6416461f39bb6dd09e0a6",
+    "integration_scope": "Main adopts repo-standards 6.13.0, its exact published dependency artifacts and GitHub action revision. That merge consumes Code/compat 8.137.0; this still-unpublished candidate advances only Code/compat and exact Code pins to 8.141.0. Python 1.82.0, TypeScript 16.31.0 and the eight lint-control implementation and test bytes remain unchanged.",
+    "current_release_versions": {
+      "code-standards": "8.141.0",
+      "sarj-standards": "8.141.0",
+      "sarj-python-lint": "1.82.0",
+      "@sarj/eslint-plugin": "16.31.0",
+      "repo-standards": "6.13.0"
+    },
+    "qualification_scope": "The earlier feature revision retains its completed composed canonical-target and hosted-CI qualification at its exact source frame. The new dependency/adoption and metadata integration requires fresh applicable native generation, repository/adoption tests, normal Git hooks and exact-head hosted CI. Historical corpus labels, votes, counts, diagnostic mappings and timing pairs are preserved; source-byte continuity alone supplies no new performance or external-runtime equivalence measurement."
   }
 }
