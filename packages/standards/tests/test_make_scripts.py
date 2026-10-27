@@ -15,9 +15,30 @@ from sarj_standards.libs.typed_containers import is_object_list
 _SCRIPTS = Path(__file__).resolve().parents[3] / ".github/scripts"
 
 
-@pytest.mark.parametrize(("failure", "expected"), [("", 0), ("git", 7), ("registry", 7), ("check", 9)])
+@pytest.mark.parametrize(
+    ("failure", "expected", "output_lines"),
+    [
+        ("", 0, 0),
+        ("", 0, 1),
+        ("", 0, 50),
+        ("", 0, 51),
+        ("", 0, 20000),
+        ("git", 7, 1),
+        ("registry", 7, 1),
+        ("check", 9, 0),
+        ("check", 9, 1),
+        ("check", 9, 51),
+        ("check", 9, 20000),
+        ("check", 37, 20000),
+        ("check", 141, 20000),
+    ],
+)
 def test_python_dogfood_keeps_literal_paths_and_rejects_partial_inventory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str, expected: int
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+    expected: int,
+    output_lines: int,
 ) -> None:
     source = "packages/python/src/with space\nand newline.py"
     path = tmp_path / source
@@ -39,13 +60,16 @@ def test_python_dogfood_keeps_literal_paths_and_rejects_partial_inventory(
         "    print('SARJ001 first-rule\\nSARJ002 second-rule')\n"
         "    sys.exit(7 if os.environ['FAILURE'] == 'registry' else 0)\n"
         "Path('arguments.json').write_text(json.dumps(sys.argv[1:]))\n"
-        "print('native diagnostic')\n"
-        "sys.exit(9 if os.environ['FAILURE'] == 'check' else 0)\n",
+        "for number in range(int(os.environ['OUTPUT_LINES'])):\n"
+        "    print(f'native diagnostic {number}', file=sys.stderr if number % 2 else sys.stdout, flush=True)\n"
+        "sys.exit(int(os.environ['CHECK_STATUS']) if os.environ['FAILURE'] == 'check' else 0)\n",
         encoding="utf-8",
     )
     uv.chmod(0o755)
     monkeypatch.setenv("PATH", str(tools), prepend=os.pathsep)
     monkeypatch.setenv("FAILURE", failure)
+    monkeypatch.setenv("OUTPUT_LINES", str(output_lines))
+    monkeypatch.setenv("CHECK_STATUS", str(expected))
     result = subprocess.run(
         ("bash", str(_SCRIPTS / "make-dogfood-python.sh"), "2"),
         cwd=tmp_path,
@@ -55,6 +79,7 @@ def test_python_dogfood_keeps_literal_paths_and_rejects_partial_inventory(
         timeout=10,
     )
     assert result.returncode == expected
+    assert not result.stderr
     arguments = tmp_path / "arguments.json"
     if failure in {"git", "registry"}:
         assert not arguments.exists()
@@ -63,8 +88,18 @@ def test_python_dogfood_keeps_literal_paths_and_rejects_partial_inventory(
         assert is_object_list(argv)
         assert list(argv[-6:]) == ["--rule", "first-rule", "--rule", "second-rule", "--", source]
         assert list(argv[argv.index("--jobs") + 1 : argv.index("--jobs") + 2]) == ["2"]
-        assert "native diagnostic" in result.stdout
-        assert ("0 blocking diagnostics" in result.stdout) is (not failure)
+        diagnostics = [f"native diagnostic {number}" for number in range(output_lines)]
+        if failure:
+            assert result.stdout == "\n".join(diagnostics) + "\n"
+        else:
+            displayed = diagnostics[:50]
+            if output_lines > 50:
+                displayed.append(
+                    f"dogfood: {output_lines - 50} additional output lines omitted; "
+                    "run sarj-python-lint check directly for full output"
+                )
+            displayed.append("dogfood: 2 Python rules, 1 source files, 0 blocking diagnostics")
+            assert result.stdout == "\n".join(displayed) + "\n"
 
 
 @pytest.mark.parametrize("directory_argument", [False, True])

@@ -33,6 +33,10 @@ if ((status != 0)); then
   exit "$status"
 fi
 if [[ -n "$output" ]]; then
-  printf '%s\n' "$output"
+  printf '%s\n' "$output" | awk '
+    NR <= 50 { print }
+    END {
+      if (NR > 50) printf "dogfood: %d additional output lines omitted; run sarj-python-lint check directly for full output\n", NR - 50
+    }'
 fi
 printf 'dogfood: %d Python rules, %d source files, 0 blocking diagnostics\n' "${#python_rules[@]}" "${#python_files[@]}"
