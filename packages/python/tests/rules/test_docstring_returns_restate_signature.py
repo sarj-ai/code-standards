@@ -382,8 +382,7 @@ def test_a_block_documenting_a_raise_is_left_alone():
 
 
 def test_a_schema_producing_decorator_exempts_the_docstring():
-    # The docstring reaches an OpenAPI document, so deleting a section of it
-    # changes an artefact rather than tidying a file.
+    # This docstring is published in OpenAPI; deleting its sections changes the external document.
     diags = _check('''
         @router.get("/widgets")
         def list_widgets(tenant_id: UUID) -> list[Widget]:

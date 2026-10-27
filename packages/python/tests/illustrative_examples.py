@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Rule, RuleExample
 
 
-type ExampleTest = Callable[[RuleExample], object]
+type ExampleTest = Callable[[RuleExample], None]
 
 
 def illustrative_examples(rule: type[Rule]) -> Callable[[ExampleTest], ExampleTest]:

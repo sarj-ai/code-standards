@@ -245,8 +245,7 @@ class _ConcatVisitor(ast.NodeVisitor):
         target_src = _src(self._accumulation_target(node))
         if any(target_src in names for names in self._while_probe_names):
             return True
-        # Only the INNERMOST loop's reads consume the growth per iteration; a
-        # read in an outer loop body sees only the finished inner accumulation.
+        # Only innermost-loop reads consume growth per iteration; outer reads see the completed accumulation.
         return bool(self._loop_reads) and target_src in self._loop_reads[-1]
 
     def _is_loop_local_target(self, node: ast.AugAssign | ast.Assign) -> bool:

@@ -29,12 +29,9 @@ _CODE_RE = re.compile(r"^SARJ\d{3}$")
 # The same shape unanchored, for finding the first code mentioned in prose.
 _CODE_IN_TEXT_RE = re.compile(r"SARJ\d{3}")
 
-# Every SARJ code ever allocated or reserved. A list records an identity's
-# ordered rename history; its final item is the live rule id.
+# Entries preserve every allocated code and its ordered rename history.
 _LEDGER_PATH = Path(__file__).parent / "code_ledger.json"
 
-# The rules directory, relative to the repo root — the path git history is walked
-# over to recover deleted rule modules.
 _RULES_DIR = "packages/python/src/sarj_python_lint/rules"
 
 _AUTHORED_EXAMPLES = tuple(
@@ -380,6 +377,5 @@ def test_reports_whether_history_can_still_corroborate_the_ledger() -> None:
             stacklevel=1,
         )
 
-    # Asserts the ledger is populated, not that history agrees with it: an empty ledger
-    # alongside a truncated history would leave nothing checking anything.
+    # An empty ledger would make a truncated-history comparison vacuous.
     assert recorded > 0, f"{_LEDGER_PATH.name} is empty, so no code is burned and any code can be reused."

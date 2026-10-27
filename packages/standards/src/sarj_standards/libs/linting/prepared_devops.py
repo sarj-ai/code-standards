@@ -44,6 +44,8 @@ from sarj_standards.libs.yaml_boundary import parse_yaml_documents
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+    from pydantic import JsonValue
+
     from sarj_standards.libs.adoption.manifest import PreparedTarget
     from sarj_standards.libs.linting.external import ProcessOutput
 
@@ -173,7 +175,7 @@ def _analyze_receipts(
     if len(selected) != len(set(selected)) or wanted - {target.id for target in declared}:
         msg = "prepared target selection contains duplicate or undeclared IDs"
         raise ValueError(msg)
-    targets: dict[str, tuple[Path, dict[str, object]]] = {}
+    targets: dict[str, tuple[Path, dict[str, JsonValue]]] = {}
     for receipt in receipts:
         path = receipt if receipt.is_absolute() else root / receipt
         for identifier, target in _receipt(path, root, declared).items():
@@ -190,19 +192,16 @@ def _analyze_receipts(
     )
 
 
-def _receipt(path: Path, root: Path, declared: Sequence[PreparedTarget]) -> dict[str, dict[str, object]]:
-    receipt = _table(parse_unique_json(_receipt_text(path)), "prepared receipt")
+def _receipt(path: Path, root: Path, declared: Sequence[PreparedTarget]) -> dict[str, dict[str, JsonValue]]:
+    receipt = _json_table(parse_unique_json(_receipt_text(path)), "prepared receipt")
     if type(receipt.get("version")) is not int or receipt.get("version") != 1 or set(receipt) != {"version", "targets"}:
         msg = "prepared receipt requires version 1 and targets"
         raise ValueError(msg)
-    targets = receipt.get("targets")
-    if not is_object_list(targets):
-        msg = "prepared receipt targets must be a list"
-        raise ValueError(msg)
+    targets = _json_list(receipt.get("targets"), "prepared receipt targets must be a list")
     allowed = {target.id: target.source for target in declared}
-    result: dict[str, dict[str, object]] = {}
+    result: dict[str, dict[str, JsonValue]] = {}
     for item in targets:
-        target = _table(item, "prepared target")
+        target = _json_table(item, "prepared target")
         if set(target) - _TARGET_FIELDS:
             msg = "prepared target contains unsupported fields"
             raise ValueError(msg)
@@ -222,6 +221,19 @@ def _receipt(path: Path, root: Path, declared: Sequence[PreparedTarget]) -> dict
         _verify_artifacts(path.parent, target)
         result[identifier] = target
     return result
+
+
+def _json_table(value: JsonValue, label: str) -> dict[str, JsonValue]:
+    if isinstance(value, dict):
+        return dict(value)
+    msg = f"{label} must be an object"
+    raise ValueError(msg)
+
+
+def _json_list(value: JsonValue, message: str) -> list[JsonValue]:
+    if isinstance(value, list):
+        return value
+    raise ValueError(message)
 
 
 def _receipt_text(path: Path) -> str:
@@ -250,7 +262,7 @@ def _verify_artifacts(directory: Path, target: Mapping[str, object]) -> None:
 
 
 def _analyze_target(
-    directory: Path, target: Mapping[str, object], *, root: Path, runner: ProcessRunner, trust_repository_code: bool
+    directory: Path, target: Mapping[str, JsonValue], *, root: Path, runner: ProcessRunner, trust_repository_code: bool
 ) -> ToolReport:
     identifier = _text(target, "id")
     source = _text(target, "source")
@@ -275,7 +287,7 @@ def _analyze_target(
 
 
 def _target_diagnostics(
-    directory: Path, target: Mapping[str, object], *, root: Path, runner: ProcessRunner, trust_repository_code: bool
+    directory: Path, target: Mapping[str, JsonValue], *, root: Path, runner: ProcessRunner, trust_repository_code: bool
 ) -> tuple[Diagnostic, ...]:
     kind = _text(target, "kind")
     if kind not in {"helm", "kubernetes", "cloud-run"}:
@@ -295,7 +307,7 @@ def _target_diagnostics(
         )
 
 
-def _validate_cloudrun(manifests: str, target: Mapping[str, object], *, directory: Path) -> tuple[Diagnostic, ...]:
+def _validate_cloudrun(manifests: str, target: Mapping[str, JsonValue], *, directory: Path) -> tuple[Diagnostic, ...]:
     if len(manifests.encode()) > MAX_MANIFEST_BYTES:
         msg = "Cloud Run manifests exceed 2 MiB"
         raise ValueError(msg)
@@ -325,14 +337,14 @@ def _validate_cloudrun(manifests: str, target: Mapping[str, object], *, director
     return tuple(findings)
 
 
-def _read_manifests(directory: Path, target: Mapping[str, object]) -> str:
+def _read_manifests(directory: Path, target: Mapping[str, JsonValue]) -> str:
     return "\n---\n".join(
         contained_file(directory, name).read_text(encoding="utf-8")
         for name in _strings(target.get("manifests"), "manifests")
     )
 
 
-def _render_helm(directory: Path, target: Mapping[str, object], *, root: Path, runner: ProcessRunner) -> str:
+def _render_helm(directory: Path, target: Mapping[str, JsonValue], *, root: Path, runner: ProcessRunner) -> str:
     release = _text(target, "release")
     if len(release) > _HELM_RELEASE_LENGTH or re.fullmatch(r"[a-z0-9](?:[-a-z0-9]*[a-z0-9])?", release) is None:
         msg = "prepared Helm release must be a valid release name, never a command option"
@@ -418,7 +430,7 @@ def _render_helm(directory: Path, target: Mapping[str, object], *, root: Path, r
 
 
 def _validate_manifests(
-    manifests: str, target: Mapping[str, object], *, directory: Path, work: Path, root: Path, runner: ProcessRunner
+    manifests: str, target: Mapping[str, JsonValue], *, directory: Path, work: Path, root: Path, runner: ProcessRunner
 ) -> tuple[Diagnostic, ...]:
     if len(manifests.encode()) > MAX_MANIFEST_BYTES:
         msg = "prepared manifest exceeds the bounded 2 MiB validation input"
@@ -495,7 +507,11 @@ def _target_namespace(target: Mapping[str, object]) -> str:
     return namespace
 
 
-def _resources(manifests: str, *, namespace: str = "default") -> tuple[dict[str, object], ...]:
+def _resources(
+    manifests: str, *, namespace: str = "default"
+) -> tuple[  # sarj-noqa: SARJ528 -- Preserve native YAML resources and scalar types.
+    dict[str, object], ...
+]:
     result: list[dict[str, object]] = []
     identities: set[tuple[str, str, str, str]] = set()
 
@@ -576,7 +592,7 @@ def _diagnostic(target: Mapping[str, object], source: str, rule: str, message: s
 def _closed_schema(
     path: Path,
     directory: Path,
-    target: Mapping[str, object],
+    target: Mapping[str, JsonValue],
     seen: set[tuple[Path, str]] | None = None,
     fragment: str = "",
 ) -> None:

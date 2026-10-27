@@ -770,8 +770,7 @@ def _contains_any(
     if imports.resolves(parsed, sources=_TYPING_SOURCES, symbol="Any"):
         return True
     if isinstance(parsed, ast.Name) and parsed.id in semantics.aliases and parsed.id not in seen:
-        # Module aliases retain their declaration scope, independent of a
-        # generic name at this annotation's use site.
+        # Module aliases resolve in declaration scope, independent of generic names at the use site.
         return _contains_any(semantics.aliases[parsed.id], semantics, seen=seen | {parsed.id})
     return any(
         _contains_any(child, semantics, seen=seen, shadowed=shadowed)

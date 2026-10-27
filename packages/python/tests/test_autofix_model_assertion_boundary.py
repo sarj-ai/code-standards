@@ -152,8 +152,7 @@ def test_autofix_model_assertion_rejected_rewrites_change_real_pytest_behavior(t
         (project / "pyproject.toml").write_text('[project]\nname="model-contract-boundary"\nversion="0.0.0"\n')
         (project / "test_user.py").write_text(source)
         (project / "conftest.py").write_text(case.plugin)
-        # Exercise the real pinned Pydantic model and ordinary pytest autouse
-        # hook; replacing the library with a fake would not prove this boundary.
+        # Use pinned Pydantic and pytest autouse behavior to exercise this boundary.
         result = subprocess.run(
             [sys.executable, "-m", "pytest", "-q", "test_user.py"],
             cwd=project,

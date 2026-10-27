@@ -58,7 +58,7 @@ from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelection, RuleSel
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Iterable, Sequence
     from pathlib import Path
 
     from tests.call_contracts import EslintSelectionOptions, ExternalAnalyzeOptions
@@ -107,7 +107,11 @@ def test_canonical_json_schema_is_bundled() -> None:
         lambda: ToolReport("", Completion.COMPLETE),
     ],
 )
-def test_public_models_reject_values_that_violate_their_schema(build: Callable[[], object]) -> None:
+def test_public_models_reject_values_that_violate_their_schema(
+    build: Callable[  # sarj-noqa: SARJ528 -- construction observer discards results from distinct public models and checks only validation exceptions.
+        [], object
+    ],
+) -> None:
     with pytest.raises(ValueError, match="must"):
         build()
 
@@ -120,7 +124,11 @@ def test_public_models_reject_values_that_violate_their_schema(build: Callable[[
         lambda: ExecutionIssue("fixture", "failure", "message", True),
     ],
 )
-def test_public_models_reject_boolean_in_integer_fields(build: Callable[[], object]) -> None:
+def test_public_models_reject_boolean_in_integer_fields(
+    build: Callable[  # sarj-noqa: SARJ528 -- construction observer discards results from distinct public models and checks only validation exceptions.
+        [], object
+    ],
+) -> None:
     with pytest.raises(TypeError, match="must be an integer"):
         build()
 
@@ -151,8 +159,10 @@ def test_baselined_metadata_survives_normalization_without_changing_gate_result(
     assert report.tools == (original,)
     assert report.exit_code == 0
     assert report.conclusion is Conclusion.PASSED
-    assert report.tools[0].as_dict()["diagnosticCount"] == 0
-    assert report.tools[0].as_dict()["baselinedDiagnosticCount"] == 2
+    serialized = report.tools[0].as_dict()
+    assert serialized["diagnosticCount"] == 0
+    assert "baselinedDiagnosticCount" in serialized
+    assert serialized["baselinedDiagnosticCount"] == 2
     assert '"baselinedDiagnosticCount": 2' in to_json(report)
     assert "2 existing finding(s) accepted by central diagnostic baseline" in to_text(report)
 
@@ -162,7 +172,7 @@ def test_zero_baselined_count_preserves_existing_serialization() -> None:
 
 
 @pytest.mark.parametrize("value", [None, 0, 1, "true"])
-def test_policy_failure_flag_requires_a_boolean(value: object) -> None:
+def test_policy_failure_flag_requires_a_boolean(value: str | int | None) -> None:
     with pytest.raises(TypeError, match="policy failure must be bool"):
         ToolReport("fixture", Completion.COMPLETE, policy_failed=value)  # pyright: ignore[reportArgumentType] -- Probe malformed public-model inputs.
 
@@ -262,7 +272,11 @@ def _invalid_diagnostics() -> ToolReport:
 
 
 @pytest.mark.parametrize("build", [_invalid_severity, _invalid_location, _invalid_position, _invalid_diagnostics])
-def test_public_models_reject_invalid_nested_runtime_types(build: Callable[[], object]) -> None:
+def test_public_models_reject_invalid_nested_runtime_types(
+    build: Callable[  # sarj-noqa: SARJ528 -- construction observer discards results from distinct public models and checks only validation exceptions.
+        [], object
+    ],
+) -> None:
     with pytest.raises(TypeError, match="must be"):
         build()
 
@@ -523,7 +537,7 @@ def test_raw_scoped_eslint_analysis_does_not_run_unselected_external_tools(
     source.write_text("export const value = 1;\n", encoding="utf-8")
     captured: list[object] = []
 
-    def analyze_external(*_args: object, **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
+    def analyze_external(_files: Sequence[str], **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
         captured.append(kwargs.get("capabilities"))
         return ()
 
@@ -549,7 +563,7 @@ def test_skipped_python_type_check_is_reported_as_not_requested_coverage(
     (tmp_path / ".sarj-standards.toml").write_text(adopted.render(), encoding="utf-8")
     captured: list[object] = []
 
-    def analyze_external(*_args: object, **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
+    def analyze_external(_files: Sequence[str], **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
         captured.append(kwargs.get("python_type_check"))
         return ()
 
@@ -572,7 +586,7 @@ def test_skipped_eslint_is_reported_as_not_requested_coverage(monkeypatch: pytes
     (tmp_path / ".sarj-standards.toml").write_text(adopted.render(), encoding="utf-8")
     captured: list[object] = []
 
-    def analyze_external(*_args: object, **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
+    def analyze_external(_files: Sequence[str], **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
         captured.append(kwargs.get("eslint"))
         return ()
 
@@ -593,7 +607,7 @@ def test_eslint_runs_by_default_without_a_coverage_notice(monkeypatch: pytest.Mo
     (tmp_path / ".sarj-standards.toml").write_text(adopted.render(), encoding="utf-8")
     captured: list[object] = []
 
-    def analyze_external(*_args: object, **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
+    def analyze_external(_files: Sequence[str], **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
         captured.append(kwargs.get("eslint"))
         return ()
 
@@ -617,10 +631,12 @@ def test_standards_analysis_forwards_scoped_eslint_suppression_policy_to_the_pro
     source.write_text("export const value = 1;\n", encoding="utf-8")
     seen: list[tuple[str, ...]] = []
 
-    def select_commands(*_args: object, **_kwargs: Unpack[EslintSelectionOptions]) -> EslintSelection:
+    def select_commands(
+        _root: Path, _paths: Iterable[str], **_kwargs: Unpack[EslintSelectionOptions]
+    ) -> EslintSelection:
         return EslintSelection((Command("eslint", ("npx", "eslint", "--", str(source)), tmp_path),), 0)
 
-    def local_argv(argv: Sequence[str], *_args: object) -> tuple[str, ...]:
+    def local_argv(argv: Sequence[str], _project: Path, _root: Path) -> tuple[str, ...]:
         return tuple(argv)
 
     def run_eslint(argv: Sequence[str], *, cwd: Path, timeout_seconds: float) -> external_module.ProcessOutput:
@@ -1250,7 +1266,9 @@ def test_eslint_can_be_left_to_repository_ci_while_react_doctor_still_runs(
     selected: list[str] = []
     react_doctor: list[bool] = []
 
-    def select_commands(*_args: object, **_kwargs: Unpack[EslintSelectionOptions]) -> EslintSelection:
+    def select_commands(
+        _root: Path, _paths: Iterable[str], **_kwargs: Unpack[EslintSelectionOptions]
+    ) -> EslintSelection:
         selected.append("eslint")
         return EslintSelection((), 0)
 

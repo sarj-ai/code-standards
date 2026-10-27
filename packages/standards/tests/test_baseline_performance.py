@@ -21,6 +21,7 @@ from sarj_standards.libs.linting.analysis import report_from_tools
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
     from sarj_standards.libs.diagnostics import AnalysisReport
@@ -40,7 +41,7 @@ def test_mixed_baseline_scans_overlap_once_and_preserve_selected_debt(
     calls: list[str] = []
 
     def analyze(
-        _self: api.Standards, _paths: object = None, **kwargs: Unpack[StandardsAnalyzeOptions]
+        _self: api.Standards, _paths: Sequence[str] | None = None, **kwargs: Unpack[StandardsAnalyzeOptions]
     ) -> AnalysisReport:
         assert "jobs" in kwargs
         assert "rules" in kwargs
@@ -50,7 +51,7 @@ def test_mixed_baseline_scans_overlap_once_and_preserve_selected_debt(
         ready.wait()
         return report_from_tools(tmp_path, ())
 
-    def eslint(_files: object, **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
+    def eslint(_files: Sequence[str], **kwargs: Unpack[ExternalAnalyzeOptions]) -> tuple[ToolReport, ...]:
         assert "capabilities" in kwargs
         assert kwargs["capabilities"] == frozenset({"eslint"})
         calls.append("eslint")
@@ -128,7 +129,7 @@ def test_single_baseline_operation_uses_requested_analysis_workers(
     seen: list[int] = []
 
     def analyze(
-        _self: api.Standards, _paths: object = None, **kwargs: Unpack[StandardsAnalyzeOptions]
+        _self: api.Standards, _paths: Sequence[str] | None = None, **kwargs: Unpack[StandardsAnalyzeOptions]
     ) -> AnalysisReport:
         assert "jobs" in kwargs
         assert kwargs["jobs"] == jobs

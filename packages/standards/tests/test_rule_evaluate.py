@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, NamedTuple, TypeGuard
 
+from pydantic import JsonValue
 import pytest
 
 from sarj_standards import __version__
@@ -24,7 +25,7 @@ _ERROR_SELECTOR = "python:no-cors-wildcard-with-credentials"
 
 class _EvaluationResult(NamedTuple):
     status: int
-    payload: dict[str, object]
+    payload: dict[str, JsonValue]
 
 
 def _source(root: Path) -> Path:
@@ -65,7 +66,7 @@ def _evaluate(root: Path, scope: str, capsys: pytest.CaptureFixture[str]) -> _Ev
             "app/render.py",
         ]
     )
-    payload: dict[str, object] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
+    payload: dict[str, JsonValue] = json.loads(capsys.readouterr().out)  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     return _EvaluationResult(status, payload)
 
 
@@ -81,9 +82,10 @@ def test_corpus_evaluation_runs_only_the_selected_rule(tmp_path: Path, capsys: p
     assert status == 1
     raw_diagnostics = payload["diagnostics"]
     assert isinstance(raw_diagnostics, list)
-    diagnostics: list[dict[str, object]] = raw_diagnostics  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
-    assert len(diagnostics) == 1
-    assert diagnostics[0]["ruleId"] == "no-string-concat-in-loop"
+    assert len(raw_diagnostics) == 1
+    diagnostic = raw_diagnostics[0]
+    assert isinstance(diagnostic, dict)
+    assert diagnostic["ruleId"] == "no-string-concat-in-loop"
 
 
 def test_corpus_evaluation_ignores_an_incompatible_consumer_manifest(
@@ -335,8 +337,8 @@ def test_warning_lifecycle_is_nonblocking_but_observable(
     corpus_diagnostics = corpus["diagnostics"]
     assert isinstance(effective_diagnostics, list)
     assert isinstance(corpus_diagnostics, list)
-    corpus_items: list[object] = corpus_diagnostics  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
-    effective_items: list[object] = effective_diagnostics  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
+    corpus_items: list[JsonValue] = corpus_diagnostics
+    effective_items: list[JsonValue] = effective_diagnostics
     corpus_diagnostic = corpus_items[0]
     effective_diagnostic = effective_items[0]
     assert _diagnostic(corpus_diagnostic)

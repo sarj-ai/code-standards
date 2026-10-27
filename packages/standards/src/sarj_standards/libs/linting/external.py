@@ -58,6 +58,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
     from typing import BinaryIO
 
+    from pydantic import JsonValue
+
     from .policy import Policy
 
 
@@ -118,8 +120,6 @@ _ANALYSIS_DEADLINE = timedelta(seconds=300)
 _REACT_DOCTOR_MAX_DURATION = timedelta(seconds=60)
 _REACT_DOCTOR_SMALL_CHANGE_MAX_FILES = 10
 _REACT_DOCTOR_MEDIUM_CHANGE_MAX_FILES = 50
-# Match the pinned native changed-source filter, independently of global routing.
-# Python $ also accepts a final newline; native JavaScript requires the true end.
 _REACT_DOCTOR_SOURCE_RE: Final = re.compile(r"\.(?:astro|tsx?|jsx?|mts|mjs|[hH][tT][mM][lL])\Z")
 _REACT_DOCTOR_GENERATED_BUNDLE_RE: Final = re.compile(r"\.(?:iife|umd|global|min)\.m?js\Z", re.IGNORECASE | re.ASCII)
 _REACT_DOCTOR_GENERATED_DIRECTORY_RE: Final = re.compile(r"(?:^|/)__generated__/")
@@ -242,7 +242,9 @@ class _ReactDoctorProject(_ReactDoctorProtocolModel):
     directory: str = Field(min_length=1)
     complete: bool
     diagnostics: tuple[_ReactDoctorDiagnostic, ...] = ()
-    skipped_checks: tuple[object, ...] | None = Field(default=None, alias="skippedChecks")
+    skipped_checks: tuple[object, ...] | None = Field(  # sarj-noqa: SARJ528 -- Count-only native payload.
+        default=None, alias="skippedChecks"
+    )
     skipped_check_reasons: dict[str, str] = Field(default_factory=dict, alias="skippedCheckReasons")
     analyzed_file_count: int | None = Field(default=None, alias="analyzedFileCount", ge=0)
     scanned_file_count: int | None = Field(default=None, alias="scannedFileCount", ge=0)
@@ -268,7 +270,9 @@ class _ReactDoctorReport(_ReactDoctorProtocolModel):
     # The v3 serializer emits this field only when degradation occurred.
     baseline_degraded: bool = Field(default=False, alias="baselineDegraded")
     diff: _ReactDoctorDiff | None = None
-    skipped_projects: tuple[object, ...] = Field(default=(), alias="skippedProjects")
+    skipped_projects: tuple[object, ...] = Field(  # sarj-noqa: SARJ528 -- Count-only native payload.
+        default=(), alias="skippedProjects"
+    )
     error: _ReactDoctorFailure | None
 
 
@@ -344,7 +348,7 @@ class ProcessOutput:
 
 
 class OutputLimitError(OSError):
-    """An analyzer exceeded the memory-safe structured-output contract."""
+    pass
 
 
 class ProcessRunner(Protocol):
@@ -1169,8 +1173,6 @@ def _local_eslint_argv(argv: Sequence[str], project: Path, root: Path) -> tuple[
         if current.parent == current:
             break
         current = current.parent
-    # The preflight owns the user-facing missing-dependency error. Reaching
-    # this branch means the filesystem changed between preflight and launch.
     relative = project.resolve().relative_to(root.resolve()).as_posix() or "."
     msg = f"local ESLint disappeared before execution for {relative}"
     raise OSError(msg)
@@ -1266,9 +1268,6 @@ def _invoke_react_doctor(
     allow_empty_projects: bool = False,
 ) -> ToolReport:
     name = "react-doctor"
-    # Hooks inspect the index and CI uses the native merge-base scope. A scoped
-    # baseline promotion explicitly requests a full scan so existing debt can be
-    # recorded even though the rollout itself changes no React source files.
     scope_base = None if staged or full_scan else change_scope_base()
     scope_args = _react_doctor_scope_args(staged=staged, full_scan=full_scan, base=scope_base)
     if scope_base and _react_doctor_changed_scope_is_disjoint(
@@ -1480,8 +1479,6 @@ def _parse_react_doctor_staged_with_full_fallback(
             require_react_detection=True,
         )
 
-    # Validate every staged coverage guarantee before using a full scan to
-    # recover diagnostics omitted by React Doctor's scoped project metadata.
     _parse_react_doctor_report(
         report,
         root=root,
@@ -1592,8 +1589,6 @@ def _react_doctor_scoped_project_set(
     scope_root: Path,
     staged: bool,
 ) -> frozenset[Path]:
-    # Scoped scans intentionally omit untouched workspaces. Prove that every
-    # omission is source-free using Git, independently of the analyzer's output.
     reported_projects = frozenset(_contained_report_directory(item, root) for item in report.projects)
     if not reported_projects or not reported_projects < expected_projects:
         return expected_projects
@@ -3156,8 +3151,6 @@ def parse_sarif(  # ruff: ignore[too-many-locals] -- protocol normalization keep
 
 
 def parse_basedpyright(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
-    # Native baseline modes print these notices before --outputjson, without a quiet flag.
-    # Strip only its complete framing; arbitrary logs and malformed JSON remain protocol failures.
     notice, separator, report_payload = payload.partition("\n\n")
     if separator and (
         _BASEDPYRIGHT_BASELINE_SHRINK_RE.fullmatch(notice) or _BASEDPYRIGHT_BASELINE_DISCARD_RE.fullmatch(notice)
@@ -3214,9 +3207,6 @@ def _private_helper_lines(path: Path) -> frozenset[int] | None:
         tree = ast.parse(path.read_text(encoding="utf-8"))
     except OSError, UnicodeDecodeError, SyntaxError:
         return None
-    # BasedPyright owns whether the function is unused. This only bounds its
-    # diagnostic to authored module-level helpers, preserving fixture, method,
-    # decorator, and production callback contracts.
     return frozenset(
         node.lineno
         for node in tree.body
@@ -3407,8 +3397,6 @@ def _react_doctor_location(
     documents: dict[Path, SourceDocument | None],
 ) -> Location:
     relative_path = _relative(path, root)
-    # React Doctor uses the protocol sentinel (0, 0) for project-level
-    # diagnostics that truthfully identify a file but no source position.
     if item.line == 0 or item.column == 0:
         return Location(relative_path)
     start = _one_based_position(
@@ -3451,9 +3439,6 @@ def _ruff_required_argv(files: Sequence[str]) -> tuple[str, ...]:
 def _deptry_argv(project: Path, scoped_files: Sequence[str]) -> tuple[str, ...]:
     config_args = ("--config", str(project / "pyproject.toml")) if (project / "pyproject.toml").is_file() else ()
     first_party = _deptry_first_party_modules(project)
-    # Deptry's option is repeatable, not comma-delimited. Passing multiple
-    # modules as one comma-joined value makes Deptry treat the entire string as
-    # one module name and can turn every intra-package import into DEP003.
     first_party_args = tuple(value for module in first_party for value in ("--known-first-party", module))
     return (
         _project_analyzer(project, "deptry"),
@@ -3512,7 +3497,12 @@ def _deptry_declared_packages(project: Path) -> tuple[_DeptryPackage, ...]:
     )
 
 
-def _deptry_uv_packages(project: Path, table: Mapping[str, object]) -> tuple[_DeptryPackage, ...]:
+def _deptry_uv_packages(
+    project: Path,
+    table: Mapping[  # sarj-noqa: SARJ528 -- Validate raw pyproject TOML build settings.
+        str, object
+    ],
+) -> tuple[_DeptryPackage, ...]:
     settings = manifest.table_field(manifest.table_field(table, "tool"), "uv")
     settings = manifest.table_field(settings, "build-backend")
     module_root = settings.get("module-root", "src")
@@ -3579,8 +3569,6 @@ def _eslint_batches(commands: Sequence[Command], *, root: Path) -> tuple[tuple[C
     for command in commands:
         boundary = max(index for index, value in enumerate(command.argv) if value == "--") + 1
         prefix = tuple(command.argv[:boundary])
-        # Selection already separates configuration owners. Repartitioning by
-        # package directory repeats type-program setup for a shared config.
         paths = command.argv[boundary:]
         chunks = _eslint_path_batches(prefix, paths)
         identifier = command.cwd.relative_to(root).as_posix() or "."
@@ -3692,13 +3680,11 @@ def _eslint_json_argv(argv: Sequence[str], *, pass_on_unpruned_suppressions: boo
 def _argv_file_count(argv: Sequence[str]) -> int:
     if "--" not in argv:
         return 0
-    # npm has both a package-manager delimiter and ESLint's file delimiter.
-    # The final delimiter is the analyzer boundary for every supported client.
     index = max(position for position, value in enumerate(argv) if value == "--")
     return len(argv) - index - 1
 
 
-def _loads(payload: str) -> object:
+def _loads(payload: str) -> JsonValue:
     if not payload.strip():
         msg = "analyzer returned empty structured output"
         raise ValueError(msg)
@@ -3744,7 +3730,11 @@ def _table(value: object, label: str) -> dict[str, object]:
     return table
 
 
-def _array(value: object, label: str) -> list[object]:
+def _array(
+    value: object, label: str
+) -> list[  # sarj-noqa: SARJ528 -- Copy the list while preserving unchecked element values.
+    object
+]:
     if not is_object_list(value):
         msg = f"{label} must be an array"
         raise TypeError(msg)
@@ -4042,8 +4032,6 @@ def _changed_scope_has_no_source(
         relative_path = Path(relative)
         if relative_path.is_absolute() or ".." in relative_path.parts:
             return False
-        # Keep containment lexical: resolving a changed symlink could move its
-        # apparent path outside the React project and incorrectly waive it.
         candidate = resolved_root / relative_path
         if candidate.is_relative_to(resolved_scope):
             scoped_changed_file_count += 1

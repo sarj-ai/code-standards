@@ -114,8 +114,7 @@ def _words(*values: str) -> frozenset[str]:
     return frozenset(values)
 
 
-# These units are intentionally finite; a new noun belongs here only after corpus
-# evidence shows that it is a unit, rather than merely a word near a number.
+# A new unit requires corpus evidence; nearby nouns alone do not establish measurement units.
 _UNITS: tuple[_Unit, ...] = (
     _Unit(
         "nanoseconds",
@@ -439,13 +438,11 @@ def _missing_unit(statement: ast.Assign | ast.AnnAssign, name: str, comment: str
     if isinstance(statement, ast.AnnAssign):
         declaration_tokens.update(_annotation_tokens(statement.annotation))
     mentioned = tuple(unit for unit in _UNITS if _comment_assigns_unit(comment, unit, value, declaration_tokens))
-    # A name carrying a different unit is contradictory, but appending a second
-    # suffix would worsen it; leave the conflict to a dedicated future rule.
+    # Appending a second unit suffix cannot repair an existing contradictory suffix.
     mentioned_name_tokens = frozenset(token for unit in mentioned for token in unit.name_tokens)
     if not declaration_tokens.isdisjoint(_CONFLICT_UNIT_NAME_TOKENS - mentioned_name_tokens):
         return None
-    # A rationale can mention several quantities; once the name identifies one,
-    # guessing that another quantity is the assigned value is unsafe.
+    # Once a name identifies one unit, other quantities in the rationale remain ambiguous.
     if any(not declaration_tokens.isdisjoint(unit.name_tokens) for unit in mentioned):
         return None
     return mentioned[0] if len(mentioned) == 1 else None

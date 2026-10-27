@@ -701,8 +701,7 @@ def test_a_double_wired_onto_an_injected_parameter_joins_that_collaborator():
 
 
 def test_wiring_two_separate_graphs_still_counts_two():
-    # The collapse is per object graph, not per test: six independent doubles,
-    # each with a corner filled in, are still six collaborators.
+    # Double collapsing is per object graph; six independent graphs remain six collaborators.
     src = """
         def test_thing():
             a = Mock()

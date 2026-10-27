@@ -216,6 +216,7 @@
       "index-concurrently",
       "insert-requires-replay-policy",
       "mixed-migration-phases",
+      "new-table-inline-constraints",
       "no-analytical-queries-in-transactional-db",
       "no-application-schema-check",
       "no-database-functions",
@@ -603,6 +604,7 @@
       "SARJ118",
       "SARJ119",
       "SARJ120",
+      "SARJ121",
       "SARJ122"
     ],
     "iac": [

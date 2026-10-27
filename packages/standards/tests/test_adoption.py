@@ -29,8 +29,9 @@ from sarj_standards.libs.repository import hooks as repository_hooks
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Sequence
 
+    from sarj_standards.cli.main import _Args  # pyright: ignore[reportPrivateUsage]  # sarj-noqa: SARJ048 -- mirrors the private callback contract intercepted by this test.
     from tests.call_contracts import SubprocessOptions
 
 
@@ -73,11 +74,11 @@ def test_doctor_leaves_maintainer_repository_policy_to_maintain_check(
 ) -> None:
     (tmp_path / ".sarj-standards.toml").write_text("[repository]\n")
 
-    def clean(_args: object) -> int:
+    def clean(_args: _Args) -> int:
         return 0
 
     def sync_cleanly(
-        _args: object,
+        _args: _Args,
         *,
         next_steps: bool,  # ruff: ignore[unused-function-argument] -- The sync dispatcher fixes this keyword.
     ) -> int:
@@ -559,11 +560,19 @@ def _embedded_findings(root: Path) -> list[doctor.Finding]:
     ]
 
 
-def _commit_policy_job(workflow: str) -> dict[str, object]:
+def _commit_policy_job(
+    workflow: str,
+) -> dict[  # sarj-noqa: SARJ528 -- workflow YAML assertions retain unchecked native values beyond the selected job fields.
+    str, object
+]:
     return manifest.as_table(manifest.as_table(_workflow_document(workflow)["jobs"])["commit-policy-v1"])
 
 
-def _workflow_document(workflow: str) -> dict[str, object]:
+def _workflow_document(
+    workflow: str,
+) -> dict[  # sarj-noqa: SARJ528 -- PyYAML workflow values remain native Python values until each fixture assertion checks a field.
+    str, object
+]:
     parsed: object = yaml.safe_load(workflow)  # pyright: ignore[reportAny] -- narrowed below.
     return manifest.as_table(parsed)
 
@@ -4018,7 +4027,7 @@ def test_doctor_git_walk_isolates_hook_environment_and_prunes_generated_paths(
     monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.bare")
     monkeypatch.setenv("GIT_CONFIG_VALUE_0", "true")
 
-    def git_files(*_args: object, **kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[bytes]:
+    def git_files(_args: Sequence[str], **kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[bytes]:
         assert "env" in kwargs
         environment = kwargs["env"]
         assert isinstance(environment, dict)
@@ -4640,7 +4649,7 @@ def test_failed_typescript_install_cleans_new_node_modules_and_normalizes_status
     _typescript_repo(tmp_path)
     plan = service.plan_init(tmp_path, configs=("eslint",), hook_manager="none", force=True)
 
-    def failed_install(_commands: object) -> int:
+    def failed_install(_commands: Iterable[lifecycle.Command]) -> int:
         partial = tmp_path / "node_modules" / "partial-install"
         partial.parent.mkdir()
         partial.write_text("partial\n", encoding="utf-8")

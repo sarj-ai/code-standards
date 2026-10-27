@@ -6,10 +6,8 @@ from pathlib import Path
 import re
 from typing import Final
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 import typer
-
-from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
 app = typer.Typer(help="Project pinned Google discovery into the bundled Build-only field schema")
@@ -17,7 +15,7 @@ app = typer.Typer(help="Project pinned Google discovery into the bundled Build-o
 
 _SHA256 = "5dda7ec6030b1dfec239653bc9006548d5db520ee79b339b25e5465e2013a069"
 _REQUIRED: Final = {"Build": ["steps"], "BuildStep": ["name"]}
-type JsonSchema = dict[str, object]
+type JsonSchema = dict[str, JsonValue]
 
 
 class _Field(BaseModel):
@@ -51,19 +49,20 @@ class _Field(BaseModel):
         if self.items is not None:
             result["items"] = self.items.as_schema()
         if self.values is not None:
-            return {
+            alternatives: JsonSchema = {
                 "anyOf": [
-                    {"type": "string", "enum": self.values},
+                    {"type": "string", "enum": [*self.values]},
                     {"type": "integer", "minimum": -(2**31), "maximum": 2**31 - 1},
                 ]
             }
+            return alternatives
         if self.format is not None:
             result["format"] = self.format
         return result
 
     def _object_schema(self) -> JsonSchema:
         required = _REQUIRED.get(self.identifier, []) if self.identifier is not None else []
-        properties: dict[str, JsonSchema | bool] = {}
+        properties: dict[str, JsonValue] = {}
         for key, definition in self.properties.items():
             field: JsonSchema | bool = definition.as_schema()
             if key not in required:
@@ -75,11 +74,11 @@ class _Field(BaseModel):
             "properties": properties,
             "additionalProperties": False if self.additional is None else self.additional.as_schema(),
         }
-        result["required"] = required
+        result["required"] = [*required]
         for name in required:
-            field = properties[name]
-            if isinstance(field, dict):
-                field["minItems" if name == "steps" else "minLength"] = 1
+            required_schema = properties[name]
+            if isinstance(required_schema, dict):
+                required_schema["minItems" if name == "steps" else "minLength"] = 1
         return result
 
 
@@ -111,14 +110,14 @@ def project_schema(source: Path) -> JsonSchema:
     }
 
 
-def _references(value: object) -> list[str]:
-    if is_object_mapping(value):
+def _references(value: JsonValue) -> list[str]:
+    if isinstance(value, dict):
         reference = value.get("$ref")
         result = [reference.removeprefix("#/definitions/")] if isinstance(reference, str) else []
         for child in value.values():
             result.extend(_references(child))
         return result
-    if is_object_list(value):
+    if isinstance(value, list):
         return [name for child in value for name in _references(child)]
     return []
 

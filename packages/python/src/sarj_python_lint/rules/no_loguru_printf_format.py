@@ -35,7 +35,7 @@ class NoLoguruPrintfFormat(Rule):
     id = "no-loguru-printf-format"
     code = "SARJ509"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Use brace formatting for positional values passed to Loguru.",
         rationale=(
             "Loguru formats messages with str.format rather than printf interpolation. A percent-style message "
@@ -53,7 +53,7 @@ class NoLoguruPrintfFormat(Rule):
             "The decoded literal message must contain a valid percent conversion and no brace fields; Unicode and hex escapes preserve conversions. Escaped percent signs alone, malformed templates, dynamic messages and expanded arguments are excluded.",
             "Standard logging, unknown receivers, stored aliases, shadowed or escaped imports, custom wrapper chains, keyword-only fields and generated files are excluded.",
             "Visible namespace or logger mutations invalidate import proof. Interprocedural effects and runtime monkeypatches are not resolved.",
-            "Argument types and printf arity are not generally inferred. Only the explicitly proven primitive subset is fixed; other warnings require formatting/structured-field review.",
+            "Argument types and printf arity are not generally inferred. Only the explicitly proven primitive subset is fixed; other findings require formatting/structured-field review.",
         ),
         examples=(
             RuleExample(
@@ -134,7 +134,7 @@ class NoLoguruPrintfFormat(Rule):
                     col=call.col_offset + 1,
                     code=self.code,
                     message="Loguru leaves printf placeholders unchanged; use brace fields or named structured fields for these values.",
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 ),
             )
         return diagnostics

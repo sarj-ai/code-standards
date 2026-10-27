@@ -170,8 +170,6 @@ def analyze_sources(
             )
         return tuple(reports)
 
-    # Every block is a separate short-lived analyzer process; overlapping files
-    # hides process start-up latency while map() keeps the serial report order.
     with ThreadPoolExecutor(thread_name_prefix="embedded-shell") as workers:
         return tuple(report for reports in workers.map(analyze, work) for report in reports)
 
@@ -383,8 +381,6 @@ def _only_projected_make_suffix(
     line = candidate.block.line
     if not 1 <= line <= len(lines):
         return False
-    # Make expansion can leave a separator after an empty optional argument.
-    # Keep authored whitespace and every other native formatting difference.
     return not lines[line - 1].endswith((" ", "\t", "\\"))
 
 

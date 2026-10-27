@@ -529,8 +529,7 @@ def _dominates(
         if parent is None:
             return False
         current = parent
-    # Exiting a with body can suppress an exception and skip its assignments.
-    # Only the same suite or an earlier enclosing-suite statement dominates.
+    # A with exit may suppress exceptions and skip assignments; only earlier dominating suites qualify.
     return isinstance(current, ast.stmt) and current in positions and positions[before] < positions[current]
 
 

@@ -428,8 +428,7 @@ def test_namespace_package_manager_with_mocked_consumer_needs_port(tmp_path: Pat
 
 
 def test_message_is_exactly_the_shipped_text() -> None:
-    # Pins the whole message, not a substring: mutation testing showed the constants
-    # could be replaced wholesale without a single test noticing.
+    # Mutation testing requires the complete diagnostic text to be pinned.
     assert _check(_SERVICE)[0].message == (
         "`ThingService` injects `ThingDAO` and exposes 2 public methods with no recognizable in-file "
         "or inherited port. If a real consumer needs substitution, define a small consumer-owned "
@@ -625,8 +624,6 @@ def test_route_handler_signatures_suppress(parameter: str) -> None:
 
 
 def test_the_same_class_without_the_web_parameter_fires() -> None:
-    # The other direction of the guard above: strip the framework vocabulary and the
-    # class is an ordinary unsubstitutable service again.
     assert len(_check(_handler_service("key: str"))) == 1
 
 

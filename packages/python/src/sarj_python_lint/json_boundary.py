@@ -10,8 +10,8 @@ def parse_json(text: str) -> object:
         raise ValueError(message) from error
 
 
-def _unique_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
+def _unique_pairs[T](pairs: list[tuple[str, T]]) -> dict[str, T]:
+    result: dict[str, T] = {}
     for key, value in pairs:
         if key in result:
             message = f"duplicate JSON key: {key}"

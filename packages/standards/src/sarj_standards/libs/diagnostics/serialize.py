@@ -2,9 +2,24 @@ from __future__ import annotations
 
 from heapq import nsmallest
 import json
+from typing import TYPE_CHECKING, NamedTuple
 from urllib.parse import quote
 
 from .models import AnalysisReport, Diagnostic, Fix, FixSafety, Location, Severity, TextEdit
+
+
+if TYPE_CHECKING:
+    from pydantic import JsonValue
+
+
+class _DiagnosticPriority(NamedTuple):
+    severity: int
+    path: str
+    line: int
+    character: int
+    source: str
+    code: str
+    message: str
 
 
 _GITHUB_ANNOTATION_LIMIT = 10
@@ -15,59 +30,49 @@ def to_json(report: AnalysisReport, *, indent: int | None = 2) -> str:
 
 
 def to_sarif(report: AnalysisReport) -> str:
-    rules = _sarif_rules(report)
-    payload: dict[str, object] = {
-        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
-        "version": "2.1.0",
-        "runs": [
+    notifications: list[JsonValue] = [
+        {"descriptor": {"id": issue.kind}, "message": {"text": issue.message}, "level": "error"}
+        for issue in report.issues
+    ]
+    notifications.extend(
+        {
+            "descriptor": {"id": "coverage-notice"},
+            "message": {"text": _coverage_line(item.source, item.reason, item.file_count)},
+            "level": "error" if item.blocking else "note",
+            "properties": {"disposition": item.disposition.value},
+        }
+        for item in report.coverage
+    )
+    notifications.extend(
+        {"descriptor": {"id": "baseline-notice"}, "message": {"text": line}, "level": "note"}
+        for line in _baseline_lines(report)
+    )
+    run: dict[str, JsonValue] = {
+        "tool": {
+            "driver": {
+                "name": "code-standards",
+                "informationUri": "https://github.com/sarj-ai/code-standards",
+                "rules": _sarif_rules(report),
+            }
+        },
+        "results": [_sarif_result(item) for item in report.diagnostics],
+        "columnKind": "utf16CodeUnits",
+        "invocations": [
             {
-                "tool": {
-                    "driver": {
-                        "name": "code-standards",
-                        "informationUri": "https://github.com/sarj-ai/code-standards",
-                        "rules": rules,
-                    }
-                },
-                "results": [_sarif_result(item) for item in report.diagnostics],
-                "columnKind": "utf16CodeUnits",
-                **(
-                    {
-                        "properties": {
-                            "policyFailedTools": [tool.name for tool in report.tools if tool.policy_failed],
-                            "exitCode": report.exit_code,
-                        }
-                    }
-                    if any(tool.policy_failed for tool in report.tools)
-                    else {}
-                ),
-                "invocations": [
-                    {
-                        "executionSuccessful": report.completion.value == "complete",
-                        "toolExecutionNotifications": [
-                            {"descriptor": {"id": issue.kind}, "message": {"text": issue.message}, "level": "error"}
-                            for issue in report.issues
-                        ]
-                        + [
-                            {
-                                "descriptor": {"id": "coverage-notice"},
-                                "message": {"text": _coverage_line(item.source, item.reason, item.file_count)},
-                                "level": "error" if item.blocking else "note",
-                                "properties": {"disposition": item.disposition.value},
-                            }
-                            for item in report.coverage
-                        ]
-                        + [
-                            {
-                                "descriptor": {"id": "baseline-notice"},
-                                "message": {"text": line},
-                                "level": "note",
-                            }
-                            for line in _baseline_lines(report)
-                        ],
-                    }
-                ],
+                "executionSuccessful": report.completion.value == "complete",
+                "toolExecutionNotifications": notifications,
             }
         ],
+    }
+    if any(tool.policy_failed for tool in report.tools):
+        run["properties"] = {
+            "policyFailedTools": [tool.name for tool in report.tools if tool.policy_failed],
+            "exitCode": report.exit_code,
+        }
+    payload: dict[str, JsonValue] = {
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [run],
     }
     return json.dumps(payload, indent=2, sort_keys=True) + "\n"
 
@@ -145,11 +150,11 @@ def _github_selection(
     }
 
 
-def _diagnostic_priority(diagnostic: Diagnostic) -> tuple[object, ...]:
+def _diagnostic_priority(diagnostic: Diagnostic) -> _DiagnosticPriority:
     severity = {Severity.ERROR: 0, Severity.WARNING: 1, Severity.INFO: 2}[diagnostic.severity]
     location = diagnostic.location
     position = location.region.start if location.region is not None else location.position
-    return (
+    return _DiagnosticPriority(
         severity,
         location.path,
         -1 if position is None else position.line,
@@ -228,7 +233,7 @@ def _coverage_line(source: str, reason: str, file_count: int) -> str:
     return f"code-standards coverage: {source} did not analyze {file_count} selected file(s): {reason}"
 
 
-def _sarif_rules(report: AnalysisReport) -> list[dict[str, object]]:
+def _sarif_rules(report: AnalysisReport) -> list[JsonValue]:
     by_code: dict[tuple[str, str], Diagnostic] = {}
     for diagnostic in report.diagnostics:
         by_code.setdefault((diagnostic.source, diagnostic.code), diagnostic)
@@ -243,8 +248,8 @@ def _sarif_rules(report: AnalysisReport) -> list[dict[str, object]]:
     ]
 
 
-def _sarif_result(diagnostic: Diagnostic) -> dict[str, object]:
-    result: dict[str, object] = {
+def _sarif_result(diagnostic: Diagnostic) -> dict[str, JsonValue]:
+    result: dict[str, JsonValue] = {
         "ruleId": _sarif_rule_id(diagnostic),
         "level": _sarif_level(diagnostic.severity),
         "message": {"text": diagnostic.message},
@@ -270,7 +275,7 @@ def _sarif_result(diagnostic: Diagnostic) -> dict[str, object]:
     return result
 
 
-def _sarif_fix(fix: Fix) -> dict[str, object]:
+def _sarif_fix(fix: Fix) -> dict[str, JsonValue]:
     grouped: dict[str, list[TextEdit]] = {}
     for edit in fix.edits:
         grouped.setdefault(edit.location.path, []).append(edit)
@@ -292,15 +297,15 @@ def _sarif_fix(fix: Fix) -> dict[str, object]:
     }
 
 
-def _sarif_physical(location: Location) -> dict[str, object]:
-    physical: dict[str, object] = {"artifactLocation": {"uri": quote(location.path, safe="/")}}
+def _sarif_physical(location: Location) -> dict[str, JsonValue]:
+    physical: dict[str, JsonValue] = {"artifactLocation": {"uri": quote(location.path, safe="/")}}
     region = _sarif_region(location)
     if region:
         physical["region"] = region
     return physical
 
 
-def _sarif_region(location: Location) -> dict[str, int]:
+def _sarif_region(location: Location) -> dict[str, JsonValue]:
     if location.region is not None:
         return {
             "startLine": location.region.start.line + 1,

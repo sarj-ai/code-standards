@@ -129,8 +129,6 @@ def analyze_application_modules(
 
 
 def _configuration_is_complete(tool: NativeTool, *, config: Path, root: Path, runner: ProcessRunner) -> bool:
-    # Production mode suppresses native configuration hints. Validate them in
-    # the same native tool before relying on its production graph.
     output = invoke(
         replace(tool, finding_exits=frozenset({1})),
         (

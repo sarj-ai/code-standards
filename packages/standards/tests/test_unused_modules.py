@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
+    from pydantic import JsonValue
+
 
 def _application(root: Path, *, application: bool = True) -> None:
     adopted = manifest.Manifest("8.47.0", ("eslint",), ".", ".", knip_application=application)
@@ -118,7 +120,7 @@ def test_native_production_scan_reports_authored_application_modules_as_warnings
     ],
 )
 def test_unknown_or_non_application_topology_is_inconclusive_without_execution(
-    tmp_path: Path, application: bool, config: dict[str, object], package: dict[str, object], trust: TrustMode
+    tmp_path: Path, application: bool, config: dict[str, JsonValue], package: dict[str, JsonValue], trust: TrustMode
 ) -> None:
     _application(tmp_path, application=application)
     (tmp_path / "knip.json").write_text(json.dumps({"entry": ["src/index.ts!"], "project": ["src/**/*.ts!"], **config}))

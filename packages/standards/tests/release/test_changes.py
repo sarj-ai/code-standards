@@ -216,7 +216,7 @@ def test_registry_visible_target_with_verified_tag_is_complete(tmp_path: Path) -
 def test_wrong_commit_verification_tag_fails_closed(tmp_path: Path) -> None:
     _manifests(tmp_path)
 
-    def reject_wrong_commit(*_args: object, **_kwargs: Unpack[TagVerifierOptions]) -> tuple[str, ...]:
+    def reject_wrong_commit(_root: Path, **_kwargs: Unpack[TagVerifierOptions]) -> tuple[str, ...]:
         message = "existing remote tag typescript-v1.0.0 points to wrong-commit"
         raise ValueError(message)
 

@@ -11,6 +11,7 @@ import sys
 import tomllib
 from typing import TYPE_CHECKING, override
 
+from pydantic import JsonValue
 from sarj_python_lint.interpreter_argv import UnprovableCommandError, classify_interpreter, unwrap_command
 import yaml
 from yaml.events import AliasEvent, MappingStartEvent, ScalarEvent, SequenceStartEvent
@@ -30,18 +31,16 @@ if TYPE_CHECKING:
     from yaml.error import Mark
 
 
-type ShellParser = Callable[[str], Mapping[str, object]]
+type ShellParser = Callable[[str], Mapping[str, JsonValue]]
 _MAX_DEPTH = 32
 _MAX_NODES = 100_000
 _WORKFLOW_PATH_COMPONENTS = 3
 _MAKE_UNKNOWN = "\0make_unknown\0"
-# Actions strings use single quotes and escape apostrophes as ''. Possessive
-# repetitions keep malformed or long expressions from causing backtracking.
 WORKFLOW_EXPRESSION_RE = re.compile(r"\$\{\{(?:[^'}]++|'(?:[^']++|'')*+'|}(?!}))*+\}\}")
 
 
 class ProgramProjectionError(ValueError):
-    """A selected executable field cannot be analyzed completely."""
+    pass
 
 
 @dataclass(frozen=True, slots=True)
@@ -281,8 +280,6 @@ def _container(node: Node) -> list[ExecutionBlock]:
     if command_argv is None:
         if isinstance(command, ScalarNode):
             return [_block(command)]
-            # Compose command strings are argv, NOT automatically shell source.
-            # A caller normalizes Compose separately.
         msg = "unsupported container command"
         raise ProgramProjectionError(msg)
     if arguments is not None and argument_argv is None:
@@ -369,7 +366,7 @@ def _make_shell_source(source: str, shell_parser: ShellParser) -> str:
 
 
 def _make_unknown_words(
-    node: object,
+    node: object,  # sarj-noqa: SARJ528 -- Walk unvalidated native shfmt AST members recursively.
     source: bytes,
     positions: Sequence[int],
     replacements: dict[int, bytes],
@@ -403,7 +400,9 @@ def _make_unknown_words(
 
 
 def _make_unknown_leaf(
-    node: Mapping[str, object],
+    node: Mapping[  # sarj-noqa: SARJ528 -- Validate offsets in raw shfmt node metadata.
+        str, object
+    ],
     source: bytes,
     positions: Sequence[int],
     replacements: dict[int, bytes],
@@ -421,7 +420,13 @@ def _make_unknown_leaf(
                 replacements[position] = replacement
 
 
-def _make_unknown_word(node: Mapping[str, object], preceding: bytes, quote: str) -> bytes | None:
+def _make_unknown_word(
+    node: Mapping[  # sarj-noqa: SARJ528 -- Inspect raw shfmt word metadata without coercion.
+        str, object
+    ],
+    preceding: bytes,
+    quote: str,
+) -> bytes | None:
     if "Hash" in node:
         return b"make_expansion"  # Proven shell comment data cannot assert a value.
     if node.get("Type") == "SglQuoted":
@@ -628,7 +633,9 @@ def _mise_template(value: str, *, execution: bool) -> str:
     return rendered
 
 
-def _mise_environment(value: object) -> None:
+def _mise_environment(
+    value: object,  # sarj-noqa: SARJ528 -- Native TOML environment values may include dates and tables.
+) -> None:
     if isinstance(value, str):
         _mise_template(value, execution=False)
     elif is_object_mapping(value):
@@ -702,7 +709,13 @@ def _toml_blocks(source: str) -> list[ExecutionBlock]:
     return blocks
 
 
-def _mise_task_blocks(task: Mapping[str, object], line: int, default_shell: str) -> list[ExecutionBlock]:
+def _mise_task_blocks(
+    task: Mapping[  # sarj-noqa: SARJ528 -- Validate run/env/shell within a raw TOML task.
+        str, object
+    ],
+    line: int,
+    default_shell: str,
+) -> list[ExecutionBlock]:
     _mise_environment(task.get("env"))
     shell = _mise_shell(task.get("shell", default_shell))
     run = task["run"]
@@ -717,7 +730,14 @@ def _mise_task_blocks(task: Mapping[str, object], line: int, default_shell: str)
     ]
 
 
-def _mise_task_fields(value: object) -> Mapping[str, object] | None:
+def _mise_task_fields(
+    value: object,
+) -> (
+    Mapping[  # sarj-noqa: SARJ528 -- Preserve unchecked native TOML task fields.
+        str, object
+    ]
+    | None
+):
     if isinstance(value, str):
         return {"run": value}
     if is_object_mapping(value) and "run" in value:
@@ -1521,7 +1541,11 @@ def _mapping(value: object) -> Mapping[str, object]:
     return {key: item for key, item in value.items() if isinstance(key, str)}
 
 
-def _nodes(value: object) -> list[Mapping[str, object]]:
+def _nodes(
+    value: object,
+) -> list[  # sarj-noqa: SARJ528 -- Validate native shfmt records without coercing their fields.
+    Mapping[str, object]
+]:
     if value is None:
         return []
     if not is_object_list(value):
@@ -1649,7 +1673,9 @@ def _shell_builtin_eval_index(words: tuple[str, ...]) -> int | None:
 
 
 def _shell_eval_embeds_program(
-    arguments: Sequence[Mapping[str, object]],
+    arguments: Sequence[  # sarj-noqa: SARJ528 -- shfmt AST words retain unvalidated native metadata.
+        Mapping[str, object]
+    ],
     parse_shell: ShellParser,
     depth: int,
     input_sources: dict[str, bool],
@@ -1676,7 +1702,12 @@ def _shell_eval_embeds_program(
 
 
 def _shell_input_sources(
-    redirections: Sequence[Mapping[str, object]], inherited: Mapping[str, bool] | None, *, redirected: set[str]
+    redirections: Sequence[  # sarj-noqa: SARJ528 -- Validate raw shfmt redirection records field by field.
+        Mapping[str, object]
+    ],
+    inherited: Mapping[str, bool] | None,
+    *,
+    redirected: set[str],
 ) -> dict[str, bool]:
     # Shell applies redirections left to right; only the final fd0 is stdin.
     descriptors = dict(inherited or {})
@@ -1818,8 +1849,6 @@ def block_embeds_program(block: ExecutionBlock, *, parse_shell: ShellParser) -> 
     ):
         return True
     if shell not in {"shell", "sh", "bash", "dash", "zsh", "ksh"}:
-        # Actions shell: python executes the run field as source regardless of
-        # whether that source happens to look like a shell command.
         if re.fullmatch(r"python(?:[23](?:\.\d+)?)?|node|perl|ruby|php", shell):
             return True
         msg = f"unsupported configuration execution shell: {shell}"

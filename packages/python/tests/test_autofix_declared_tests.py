@@ -52,8 +52,7 @@ def test_autofix_reuses_only_the_existing_identity_guarded_factory(newline: str)
     assert len(findings) == 1
     edits = fixes(PythonFileContext(_PATH, source), findings[0])
     assert len(edits) == 1
-    # The exact source is an oracle for retaining the entire fixture graph and
-    # every class, guard and call point; only one constructor identifier changes.
+    # Only the constructor identifier may change; the rest of the fixture graph is the oracle.
     assert apply_edits(source, edits) == expected
     assert source[edits[0].start : edits[0].end] == "Store"
     assert edits[0].replacement == "store_factory"

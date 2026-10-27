@@ -261,8 +261,7 @@ def _decorators_before(
 
 def _provider_modifications(statement: ast.stmt, state: _FixtureDecorators) -> frozenset[str]:
     if isinstance(statement, ast.ClassDef):
-        # Class bodies execute immediately; their local bindings stay local, but
-        # writes through imported provider modules affect subsequent decorators.
+        # Class bodies execute immediately; writes to imported providers affect subsequent decorators.
         return _decorators_before(
             statement.body,
             before_line=(statement.end_lineno or statement.lineno) + 1,

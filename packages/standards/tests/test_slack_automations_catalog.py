@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import json
-from typing import TYPE_CHECKING, TypeIs
+from typing import TYPE_CHECKING
 
 from jsonschema import Draft202012Validator
 import pytest
@@ -16,19 +16,10 @@ from sarj_standards.schemas._paths import SLACK_AUTOMATIONS_SCHEMA
 if TYPE_CHECKING:
     from pathlib import Path
 
-
-def _is_table(value: object) -> TypeIs[dict[str, object]]:
-    return isinstance(value, dict) and all(
-        isinstance(key, str)
-        for key in value  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
-    )
+    from pydantic import JsonValue
 
 
-def _is_list(value: object) -> TypeIs[list[object]]:
-    return isinstance(value, list)
-
-
-def _valid() -> dict[str, object]:
+def _valid() -> dict[str, JsonValue]:
     parsed = _load_json(
         json.dumps(
             {
@@ -109,37 +100,37 @@ def _valid() -> dict[str, object]:
             }
         )
     )
-    assert _is_table(parsed)
+    assert isinstance(parsed, dict)
     return parsed
 
 
-def _load_json(value: str) -> object:
+def _load_json(value: str) -> JsonValue:
     return parse_json(value)
 
 
-def _bot(document: dict[str, object]) -> dict[str, object]:
+def _bot(document: dict[str, JsonValue]) -> dict[str, JsonValue]:
     bots = document["botApps"]
-    assert _is_list(bots)
+    assert isinstance(bots, list)
     assert bots
-    assert _is_table(bots[0])
+    assert isinstance(bots[0], dict)
     return bots[0]
 
 
-def _integration(document: dict[str, object]) -> dict[str, object]:
+def _integration(document: dict[str, JsonValue]) -> dict[str, JsonValue]:
     integrations = document["integrations"]
-    assert _is_list(integrations)
+    assert isinstance(integrations, list)
     assert integrations
-    assert _is_table(integrations[0])
+    assert isinstance(integrations[0], dict)
     return integrations[0]
 
 
-def _write(path: Path, document: object) -> None:
+def _write(path: Path, document: JsonValue) -> None:
     path.write_text(json.dumps(document), encoding="utf-8")
 
 
-def _schema_accepts(schema: dict[str, object], document: object) -> bool:
+def _schema_accepts(schema: dict[str, JsonValue], document: JsonValue) -> bool:
     return Draft202012Validator(schema).is_valid(  # pyright: ignore[reportUnknownMemberType] -- jsonschema exposes an incomplete recursive JSON type.
-        document  # pyright: ignore[reportArgumentType] -- mutable test documents contain only JSON values.
+        document
     )
 
 
@@ -169,12 +160,12 @@ def test_shipped_json_schema_matches_the_runtime_contract() -> None:
 
 def test_shipped_json_schema_is_valid_draft_2020_12() -> None:
     schema = _load_json(SLACK_AUTOMATIONS_SCHEMA.read_text(encoding="utf-8"))
-    assert _is_table(schema)
+    assert isinstance(schema, dict)
 
     Draft202012Validator.check_schema(schema)
 
 
-def _contract_corpus() -> tuple[tuple[str, dict[str, object], bool], ...]:  # ruff: ignore[too-many-locals] -- keep each independent contract candidate and control explicit in this fixture corpus.
+def _contract_corpus() -> tuple[tuple[str, dict[str, JsonValue], bool], ...]:  # ruff: ignore[too-many-locals] -- keep each independent contract candidate and control explicit in this fixture corpus.
     valid = _valid()
 
     invalid_slug = deepcopy(valid)
@@ -201,9 +192,9 @@ def _contract_corpus() -> tuple[tuple[str, dict[str, object], bool], ...]:  # ru
 
     duplicate_system = deepcopy(valid)
     capability = _bot(duplicate_system)["capabilities"]
-    assert _is_list(capability)
+    assert isinstance(capability, list)
     assert capability
-    assert _is_table(capability[0])
+    assert isinstance(capability[0], dict)
     capability[0]["connectedSystemIds"] = ["slack", "slack"]
 
     null_summary = deepcopy(valid)
@@ -214,24 +205,24 @@ def _contract_corpus() -> tuple[tuple[str, dict[str, object], bool], ...]:  # ru
 
     invalid_cadence = deepcopy(valid)
     invalid_capabilities = _bot(invalid_cadence)["capabilities"]
-    assert _is_list(invalid_capabilities)
+    assert isinstance(invalid_capabilities, list)
     assert invalid_capabilities
-    assert _is_table(invalid_capabilities[0])
+    assert isinstance(invalid_capabilities[0], dict)
     invalid_triggers = invalid_capabilities[0]["triggers"]
-    assert _is_list(invalid_triggers)
+    assert isinstance(invalid_triggers, list)
     assert invalid_triggers
-    assert _is_table(invalid_triggers[0])
+    assert isinstance(invalid_triggers[0], dict)
     invalid_triggers[0]["cadence"] = None
 
     dedicated_with_two_personas = deepcopy(valid)
     dedicated_bot = _bot(dedicated_with_two_personas)
     personas = dedicated_bot["personas"]
-    assert _is_list(personas)
+    assert isinstance(personas, list)
     personas.append({"id": "second", "displayName": "Second", "summary": "A second persona."})
     dedicated_capabilities = dedicated_bot["capabilities"]
-    assert _is_list(dedicated_capabilities)
+    assert isinstance(dedicated_capabilities, list)
     assert dedicated_capabilities
-    assert _is_table(dedicated_capabilities[0])
+    assert isinstance(dedicated_capabilities[0], dict)
     dedicated_capabilities[0]["personaIds"] = ["sample", "second"]
 
     shared_with_one_persona = deepcopy(valid)
@@ -306,13 +297,13 @@ def _contract_corpus() -> tuple[tuple[str, dict[str, object], bool], ...]:  # ru
 def test_runtime_and_json_schema_share_structural_contract(
     tmp_path: Path,
     name: str,
-    document: dict[str, object],
+    document: dict[str, JsonValue],
     is_valid: bool,
 ) -> None:
     catalog = tmp_path / f"{name.replace(' ', '-')}.json"
     _write(catalog, document)
     schema = _load_json(SLACK_AUTOMATIONS_SCHEMA.read_text(encoding="utf-8"))
-    assert _is_table(schema)
+    assert isinstance(schema, dict)
     assert (validate_catalog(catalog) == ()) is is_valid
     assert _schema_accepts(schema, document) is is_valid
 
@@ -380,13 +371,13 @@ def test_catalog_accepts_shared_bot_personas_and_generic_private_channel_prose(t
     bot["identityKind"] = "shared"
     bot["summary"] = "Coordinates workflows across private channels without exposing identifiers."
     personas = bot["personas"]
-    assert _is_list(personas)
+    assert isinstance(personas, list)
     personas.append({"id": "second", "displayName": "Second", "summary": "A second persona."})
-    personas.sort(key=lambda persona: str(persona["id"]) if _is_table(persona) else "")
+    personas.sort(key=lambda persona: str(persona["id"]) if isinstance(persona, dict) else "")
     capabilities = bot["capabilities"]
-    assert _is_list(capabilities)
+    assert isinstance(capabilities, list)
     assert capabilities
-    assert _is_table(capabilities[0])
+    assert isinstance(capabilities[0], dict)
     capabilities[0]["personaIds"] = ["sample", "second"]
     catalog = tmp_path / "catalog.json"
     _write(catalog, document)
@@ -408,22 +399,22 @@ def test_catalog_rejects_broken_domain_references(tmp_path: Path, mutation: str,
     document = _valid()
     bot = _bot(document)
     capabilities = bot["capabilities"]
-    assert _is_list(capabilities)
+    assert isinstance(capabilities, list)
     assert capabilities
-    assert _is_table(capabilities[0])
+    assert isinstance(capabilities[0], dict)
     match mutation:
         case "unknown-persona":
             capabilities[0]["personaIds"] = ["missing"]
         case "unused-persona":
             bot["identityKind"] = "shared"
             personas = bot["personas"]
-            assert _is_list(personas)
+            assert isinstance(personas, list)
             personas.append({"id": "unused", "displayName": "Unused", "summary": "An unused persona."})
         case "unknown-system":
             capabilities[0]["connectedSystemIds"] = ["missing"]
         case "unused-system":
             systems = document["systems"]
-            assert _is_list(systems)
+            assert isinstance(systems, list)
             systems.insert(0, {"id": "other", "displayName": "Other"})
         case _:
             _integration(document)["consumerBotAppIds"] = ["missing"]
@@ -436,9 +427,9 @@ def test_catalog_rejects_broken_domain_references(tmp_path: Path, mutation: str,
 def test_webhook_source_must_be_declared_and_connected(tmp_path: Path) -> None:
     document = _valid()
     capability = _bot(document)["capabilities"]
-    assert _is_list(capability)
+    assert isinstance(capability, list)
     assert capability
-    assert _is_table(capability[0])
+    assert isinstance(capability[0], dict)
     capability[0]["triggers"] = [
         {
             "id": "incoming-record",
@@ -448,7 +439,7 @@ def test_webhook_source_must_be_declared_and_connected(tmp_path: Path) -> None:
         }
     ]
     systems = document["systems"]
-    assert _is_list(systems)
+    assert isinstance(systems, list)
     systems.insert(0, {"id": "other", "displayName": "Other"})
     catalog = tmp_path / "catalog.json"
     _write(catalog, document)
@@ -461,7 +452,7 @@ def test_catalog_rejects_nondeterministic_collection_order(tmp_path: Path) -> No
     second = deepcopy(_bot(document))
     second["id"] = "alpha-bot"
     bots = document["botApps"]
-    assert _is_list(bots)
+    assert isinstance(bots, list)
     bots.append(second)
     catalog = tmp_path / "catalog.json"
     _write(catalog, document)
@@ -476,12 +467,12 @@ def test_sorting_remains_a_runtime_only_invariant(tmp_path: Path) -> None:
     second = deepcopy(_bot(document))
     second["id"] = "alpha-bot"
     bots = document["botApps"]
-    assert _is_list(bots)
+    assert isinstance(bots, list)
     bots.append(second)
     catalog = tmp_path / "catalog.json"
     _write(catalog, document)
     schema = _load_json(SLACK_AUTOMATIONS_SCHEMA.read_text(encoding="utf-8"))
-    assert _is_table(schema)
+    assert isinstance(schema, dict)
 
     assert _schema_accepts(schema, document)
     assert any("botApps must be sorted" in finding.message for finding in validate_catalog(catalog))
@@ -493,7 +484,7 @@ def test_cross_entry_id_uniqueness_remains_a_runtime_only_invariant(tmp_path: Pa
     catalog = tmp_path / "catalog.json"
     _write(catalog, document)
     schema = _load_json(SLACK_AUTOMATIONS_SCHEMA.read_text(encoding="utf-8"))
-    assert _is_table(schema)
+    assert isinstance(schema, dict)
 
     assert _schema_accepts(schema, document)
     assert any("must not reuse an id" in finding.message for finding in validate_catalog(catalog))
@@ -514,7 +505,7 @@ def test_catalog_rejects_missing_or_escaping_repository_paths(tmp_path: Path) ->
 
     findings = validate_catalog(catalog, root=tmp_path)
     schema = _load_json(SLACK_AUTOMATIONS_SCHEMA.read_text(encoding="utf-8"))
-    assert _is_table(schema)
+    assert isinstance(schema, dict)
 
     assert _schema_accepts(schema, document)
     assert any("repository path does not exist" in finding.message for finding in findings)
@@ -524,7 +515,7 @@ def test_repository_manifest_path_must_resolve_to_a_file(tmp_path: Path) -> None
     catalog = _materialize_valid_catalog(tmp_path)
     document = _valid()
     configuration = _bot(document)["configuration"]
-    assert _is_table(configuration)
+    assert isinstance(configuration, dict)
     configuration["manifestPath"] = "src/sample-bot"
     _write(catalog, document)
 

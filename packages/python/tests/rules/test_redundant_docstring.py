@@ -103,8 +103,7 @@ def test_docstrings_carrying_value_are_kept(docstring: str):
 
 
 def test_function_tool_docstring_is_a_prompt():
-    # The docstring is shipped to the model as the tool description; deleting it
-    # changes what the agent does at runtime.
+    # The tool description is sent to the model, so deletion changes runtime behavior.
     src = 'from x import function_tool\n\n@function_tool\ndef get_balance(account_id: str):\n    """Get the balance for an account."""\n    return None\n'
     assert _check(src) == []
 

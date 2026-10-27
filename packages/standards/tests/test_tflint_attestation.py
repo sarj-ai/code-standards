@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
+    from sarj_standards.libs.linting.external import ProcessRunner
+
 
 def _source(*, root: Path, project: str) -> str:
     relative = f"{project}/main.tf"
@@ -163,7 +165,7 @@ def test_tflint_analysis_uses_the_executable_that_attested_its_plugin(
     lookups: list[Path] = []
     calls: list[tuple[str, ...]] = []
 
-    def checked_tool(name: str, *, root: Path, runner: object) -> NativeTool:
+    def checked_tool(name: str, *, root: Path, runner: ProcessRunner) -> NativeTool:
         assert name == "tflint"
         assert root == tmp_path / "project"
         assert callable(runner)

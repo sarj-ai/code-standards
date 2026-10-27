@@ -33,6 +33,7 @@ from sarj_iac_lint.rule_base import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from typing import Never
 
 
 _TFVARS_SUFFIX = ".tfvars"
@@ -106,7 +107,7 @@ _GENERATED_RE = re.compile(r"generated.{0,80}(?:do not edit|don't edit)", re.IGN
 @dataclass(frozen=True, slots=True)
 class _Canon:
     tag: str
-    value: object
+    value: bool | Decimal | str | tuple[_Canon, ...] | tuple[tuple[str, _Canon], ...] | None
 
 
 class _ValueParseResult(NamedTuple):
@@ -379,7 +380,7 @@ class _InputAssignment:
     line: int
     col: int
     is_json: bool = False
-    native: object = None
+    native: object = None  # sarj-noqa: SARJ528 -- Preserve uncoerced Decimal-aware JSONDecoder values, including nested raw payloads.
 
 
 @dataclass(frozen=True, slots=True)
@@ -546,8 +547,8 @@ def _assignments(path: Path, source: str) -> tuple[_InputAssignment, ...] | None
     return tuple(_InputAssignment(attr.name, attr.value, attr.line, attr.col) for attr in document(source).attributes)
 
 
-def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
+def _unique_json_object[T](pairs: list[tuple[str, T]]) -> dict[str, T]:
+    result: dict[str, T] = {}
     for key, value in pairs:
         if key in result:
             raise ValueError
@@ -555,7 +556,7 @@ def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
-def _reject_json_constant(_value: str) -> object:
+def _reject_json_constant(_value: str) -> Never:
     raise ValueError
 
 
@@ -640,8 +641,6 @@ def _assignment_canon(assignment: _InputAssignment, scalar_type: _ScalarType) ->
 
 
 def _number_string(value: Decimal) -> _Canon | None:
-    # Avoid decimal-context rounding and unbounded exponent expansion when a
-    # short numeric literal is converted into a potentially enormous string.
     if not value.is_finite() or abs(value.adjusted()) > _MAX_NUMBER_STRING_DIGITS:
         return None
     text = format(value, "f")
@@ -665,8 +664,6 @@ def _analyze_root(root: Path) -> _RootAnalysis:
     }
     values: dict[str, dict[str, _AssignmentValue]] = {}
     blind = list(_structural_blind(root, files))
-    # One report per ambiguous environment: every later conflict in it has the
-    # same cause and the same fix, so naming the first is the whole message.
     conflicted: set[str] = set()
     blind.extend(_auto_loaded_blind(files))
     for env, paths in files.items():

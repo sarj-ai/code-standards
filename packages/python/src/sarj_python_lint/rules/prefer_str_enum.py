@@ -501,9 +501,7 @@ class PreferStrEnum(Rule):
             node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp,
             active: dict[str, _ClusterEntry] | None,
         ) -> dict[str, _ClusterEntry] | None:
-            # Comprehension targets have their own implicit scope and can
-            # shadow the enclosing function's variables, so collect their
-            # comparisons separately rather than merging same-named keys.
+            # Comprehension targets have separate scopes; same-named comparisons cannot be merged across them.
             if active is None:
                 return None
             child_active: dict[str, _ClusterEntry] = {}
@@ -1744,9 +1742,7 @@ def _closed_domain_node_ids(
     closed_collections: dict[str, list[str]],
 ) -> frozenset[int]:
     closed: set[int] = set()
-    # A rejecting branch proves a closed domain only when it governs the whole
-    # function. Nested branches may be optional, repeated, or have their
-    # rejection caught before an open-domain fallback executes.
+    # Only whole-function rejection proves closure; nested rejection may be skipped, repeated or caught.
     for node in function.body:
         if isinstance(node, ast.If):
             _record_rejecting_membership_guard(node, imports, closed, closed_collections)

@@ -17,12 +17,14 @@ from sarj_python_lint.rule_base import (
     RuleDocumentation,
     RuleExample,
     Severity,
+    is_suppressed,
 )
 from sarj_python_lint.rules._annotation_semantics import scope_bound_names
 from sarj_python_lint.rules._ast_index import parent_map, walk as walk_ast
 from sarj_python_lint.rules._docstrings import docstring_expression
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._project_index import ProjectIndexSet, SourceUnit
+from sarj_python_lint.rules._suppression_comments import comment_lines
 
 
 if TYPE_CHECKING:
@@ -34,6 +36,7 @@ if TYPE_CHECKING:
 
 
 _DOCTEST_PROMPT = ">>>"
+_MODULE_DOCUMENTATION_IMPORTS = frozenset({"__main__", "pydoc"})
 _METADATA_MODULES = frozenset({"functools", "dataclasses", "builtins", "abc", "typing", "typing_extensions"})
 _METADATA_CALLABLE_NAMES = frozenset(
     {"wraps", "lru_cache", "cache", "dataclass", "classmethod", "staticmethod", "abstractmethod", "override"}
@@ -44,19 +47,6 @@ _BARE_METADATA_DECORATORS = frozenset(
     {"builtins.classmethod", "builtins.staticmethod", "functools.cache", "functools.lru_cache"}
 )
 _TRANSPARENT_METADATA_MODIFIERS = frozenset({"abc.abstractmethod", "typing.override", "typing_extensions.override"})
-_DATACLASS_OPTIONS = (
-    "init",
-    "repr",
-    "eq",
-    "order",
-    "unsafe_hash",
-    "frozen",
-    "match_args",
-    "kw_only",
-    "slots",
-    "weakref_slot",
-)
-
 _LIVEKIT_TOOL_DECORATORS = frozenset(
     {
         "livekit.agents.function_tool",
@@ -127,12 +117,14 @@ class NoUnnecessaryDocstring(ProjectRule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.SAFE,
         limitations=(
-            "Safe fixes require a second native error-level exact-name-restatement finding on an unescaped private nested synchronous nongenerator function. All references must be direct calls; public APIs, classes/modules, behavioral prose, escapes and metadata consumers remain review-only. Known frame and metadata capabilities, their import aliases and metadata field access prevent fixes.",
+            "Safe fixes delete standalone module docstrings with no detected consumer, dynamic namespace access or frame/metadata observation. Legal notices, adjacent string expressions, trailing comments and same-line code prevent deletion. A docstring-only module may become empty.",
+            "Function fixes require a second native error-level exact-name-restatement finding on an unescaped private nested synchronous nongenerator function. All references must be direct calls; public callable APIs, classes, behavioral function prose, escapes and metadata consumers remain review-only. Known frame and metadata capabilities, their import aliases and metadata field access prevent fixes.",
             "Containing callables must also be ordinary synchronous nongenerators with proven inert execution; unknown callouts, properties, overloads, reachable frame-exporting exceptions, and helper references crossing additional function, class, lambda, or comprehension scopes prevent fixes.",
             (
-                "Generated files, doctests, syntax-required stub bodies, schema classes, framework decorators, explicit "
+                "Generated files, doctests, syntax-required function stub bodies, schema classes, framework decorators, explicit "
                 "__doc__/help/getdoc consumers, canonical metadata-copy decorators, and local sarj-noqa suppressions are excluded."
             ),
+            "Ordinary class prose is checked even when it is the entire body or dataclass retains it as incidental metadata. Replace an otherwise empty class body with pass; explicit documentation consumers and schema descriptions remain protected.",
             (
                 "The rule is intentionally default-deny: public API documentation without mechanically visible "
                 "consumption needs an auditable SARJ420 suppression."
@@ -148,6 +140,31 @@ class NoUnnecessaryDocstring(ProjectRule):
             ),
         ),
         examples=(
+            RuleExample(
+                example_id="module-docstring-autofix",
+                scenario="module-docstring-autofix",
+                title="Unconsumed top-of-file prose is deleted",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py", '"""Service entry points.\n\nCoordinates requests.\n"""\nVALUE = 1\n'
+                    ),
+                ),
+                fixed_files=(ExampleFile.python("app/service.py", "VALUE = 1\n"),),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="module-docstring-consumer",
+                scenario="module-docstring-autofix",
+                title="A module description consumed at runtime is retained",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.python("app/service.py", '"""Service entry points."""\nDESCRIPTION = __doc__\n'),),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="safe-private-autofix-subset",
                 title="Unescaped private helper keeps its behavioral contract",
@@ -224,12 +241,27 @@ class NoUnnecessaryDocstring(ProjectRule):
             RuleExample(
                 example_id="canonical-metadata-consumers",
                 scenario="metadata-copy",
-                title="Standard-library decorators mechanically read or copy docstrings",
-                outcome=ExampleOutcome.NO_MATCH,
+                title="Incidental dataclass metadata does not justify prose",
+                outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.python(
                         "app/metadata.py",
                         'from dataclasses import dataclass\nfrom functools import lru_cache\n\n@dataclass(frozen=True, slots=True)\nclass Options:\n    """Read by dataclass metadata generation."""\n    limit: int\n\n@lru_cache(maxsize=1)\ndef options() -> Options:\n    """Copied onto the cache wrapper."""\n    return Options(limit=10)\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/metadata.py"),
+                expected_count=1,
+                public=False,
+            ),
+            RuleExample(
+                example_id="canonical-cache-consumer",
+                scenario="metadata-copy",
+                title="A cache wrapper copies the function's documentation",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/metadata.py",
+                        'from functools import lru_cache\n@lru_cache(maxsize=1)\ndef count() -> int:\n    """Copied onto the wrapper."""\n    return 1\n',
                     ),
                 ),
                 focus_path=PurePosixPath("app/metadata.py"),
@@ -313,8 +345,31 @@ def _docstring_owners(
     )
 
 
+def module_docstring_consumed(context: PythonFileContext) -> bool:
+    tree = context.tree
+    if tree is None:
+        return False
+    consumers = _explicit_docstring_consumers(
+        tree,
+        _owner_keys(tree),
+        metadata=_metadata_context_bindings(context, tree),
+        node_index=context.node_index,
+    )
+    return "__doc__" in consumers.names
+
+
+def module_docstring_may_escape(context: PythonFileContext) -> bool:
+    for node in context.nodes(ast.Import, ast.ImportFrom):
+        if isinstance(node, ast.Import):
+            if any(alias.name.partition(".")[0] in _MODULE_DOCUMENTATION_IMPORTS for alias in node.names):
+                return True
+        elif node.module is not None and node.module.partition(".")[0] in _MODULE_DOCUMENTATION_IMPORTS:
+            return True
+    return False
+
+
 def _is_syntax_required(owner: ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    return not isinstance(owner, ast.Module) and len(owner.body) == 1
+    return isinstance(owner, (ast.FunctionDef, ast.AsyncFunctionDef)) and len(owner.body) == 1
 
 
 def _owner_keys(tree: ast.Module) -> dict[int, str]:
@@ -333,7 +388,9 @@ def _suppressed_on_docstring(source_lines: list[str], expression: ast.Expr, code
     end_line = expression.end_lineno or expression.lineno
     if end_line < 1 or end_line > len(source_lines):
         return False
-    match = _SUPPRESSION_RE.search(source_lines[end_line - 1])
+    if not is_suppressed(source_lines, end_line, code):
+        return False
+    match = _SUPPRESSION_RE.search(comment_lines(tuple(source_lines)).get(end_line, ""))
     return match is not None and code in {item.strip().upper() for item in match.group("codes").split(",")}
 
 
@@ -350,7 +407,9 @@ def _explicit_docstring_consumers(
     consumed: set[str] = set()
     copied_owner_ids: set[int] = set()
     owner_index = _owner_index(owners)
-    aliases = _module_aliases(tree, owners, owner_index)
+    shadowed = _module_bound_names(tree)
+    imports = _import_bindings(tree, shadowed)
+    aliases = _module_aliases(tree, owners, owner_index, imports=imports)
     metadata_owners = _MetadataOwners(
         owner_keys,
         aliases,
@@ -360,9 +419,9 @@ def _explicit_docstring_consumers(
     )
     inspect_names: set[str] = set()
     getdoc_names: set[str] = set()
-    shadowed = _module_bound_names(tree)
-    imports = _import_bindings(tree, shadowed)
-    if _bare_module_docstring_consumed(tree, node_index=node_index):
+    if _bare_module_docstring_consumed(tree, node_index=node_index) or any(
+        isinstance(node, ast.Constant) and node.value == "__doc__" for node in walk_ast(tree, index=node_index)
+    ):
         consumed.add("__doc__")
     builtin_help_available = _doc_consumer_imports(tree, shadowed, inspect_names, getdoc_names)
 
@@ -372,6 +431,8 @@ def _explicit_docstring_consumers(
         is_help = function == "help" and builtin_help_available
         if (is_getdoc or is_help) and (key := _resolve_owner(node.args[0], owners, aliases, owner_index)):
             consumed.add(key)
+        if (is_getdoc or is_help) and _is_current_module_import(node.args[0], imports):
+            consumed.add("__doc__")
         resolved_function = _resolve_imported_name(node.func, imports)
         if (
             resolved_function in _LIVEKIT_TOOL_DECORATORS
@@ -433,6 +494,8 @@ def _resolve_owner(
     aliases: dict[str, str],
     owner_index: dict[str, tuple[str, ...]],
 ) -> str | None:
+    if "__doc__" in owners and _is_current_module_expression(node):
+        return "__doc__"
     name = _dotted_name(node)
     if name is None:
         return None
@@ -447,7 +510,7 @@ def _resolve_owner(
 
 
 def _module_aliases(
-    tree: ast.Module, owners: frozenset[str], owner_index: dict[str, tuple[str, ...]]
+    tree: ast.Module, owners: frozenset[str], owner_index: dict[str, tuple[str, ...]], *, imports: dict[str, str]
 ) -> dict[str, str]:
     aliases: dict[str, str] = {}
     invalid: set[str] = set()
@@ -463,11 +526,22 @@ def _module_aliases(
                 aliases.pop(target.id, None)
                 invalid.add(target.id)
                 continue
-            if _is_current_module_expression(value):
+            if _is_current_module_expression(value) or _is_current_module_import(value, imports):
                 aliases[target.id] = "__doc__"
             elif (resolved := _resolve_owner(value, owners, aliases, owner_index)) is not None:
                 aliases[target.id] = resolved
     return aliases
+
+
+def _is_current_module_import(node: ast.AST, imports: dict[str, str]) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and _resolve_imported_name(node.func, imports) == "importlib.import_module"
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Name)
+        and node.args[0].id == "__name__"
+        and not node.keywords
+    )
 
 
 def _is_current_module_expression(node: ast.AST) -> bool:
@@ -1848,24 +1922,10 @@ def _metadata_standard_decorator(
     bindings: _MetadataBindings,
 ) -> bool:
     if isinstance(owner, ast.ClassDef):
-        return _dataclass_reads_doc(decorator, bindings)
+        return False
     if isinstance(decorator, ast.Call):
         return _lru_cache_copies_doc(decorator, bindings)
     return _metadata_symbol(decorator, bindings) in _BARE_METADATA_DECORATORS
-
-
-def _dataclass_reads_doc(decorator: ast.expr, bindings: _MetadataBindings) -> bool:
-    target = decorator.func if isinstance(decorator, ast.Call) else decorator
-    if _metadata_symbol(target, bindings) != "dataclasses.dataclass":
-        return False
-    if not isinstance(decorator, ast.Call):
-        return True
-    if decorator.args:
-        return False
-    options = _metadata_call_options(decorator, _DATACLASS_OPTIONS)
-    return options is not None and all(
-        isinstance(value, ast.Constant) and isinstance(value.value, bool) for value in options.values()
-    )
 
 
 def _lru_cache_copies_doc(decorator: ast.expr, bindings: _MetadataBindings) -> bool:
@@ -1898,12 +1958,7 @@ def _metadata_explicit_owner(call: ast.Call, owners: _MetadataOwners) -> _Metada
     argument = _metadata_explicit_argument(call, owners.bindings)
     if argument is None:
         return None
-    declaration = _metadata_copy_owner(argument, owners)
-    if _metadata_symbol(call.func, owners.bindings) == "dataclasses.dataclass" and not isinstance(
-        declaration, ast.ClassDef
-    ):
-        return None
-    return declaration
+    return _metadata_copy_owner(argument, owners)
 
 
 def _metadata_explicit_argument(call: ast.Call, bindings: _MetadataBindings) -> ast.expr | None:
@@ -1927,8 +1982,6 @@ def _metadata_explicit_argument(call: ast.Call, bindings: _MetadataBindings) -> 
                 if typed is None or (isinstance(typed, ast.Constant) and isinstance(typed.value, bool))
                 else None
             )
-        case "dataclasses.dataclass":
-            return _metadata_dataclass_input(call)
         case _:
             return None
 
@@ -1946,18 +1999,6 @@ def _metadata_global_modules(node: ast.Global, imports: ImportIndex) -> frozense
         for name in node.names
         if name in imports.bindings and imports.bindings[name].module in _METADATA_MODULES
     )
-
-
-def _metadata_dataclass_input(call: ast.Call) -> ast.expr | None:
-    if len(call.args) != 1:
-        return None
-    options = _metadata_call_options(call, ("cls", *_DATACLASS_OPTIONS))
-    if options is not None and all(
-        name == "cls" or (isinstance(value, ast.Constant) and isinstance(value.value, bool))
-        for name, value in options.items()
-    ):
-        return call.args[0]
-    return None
 
 
 def _metadata_factory_input_doc_preserved(

@@ -54,14 +54,14 @@ class LefthookWrite(NamedTuple):
 
 
 class _UniqueKeyLoader(yaml.SafeLoader):
-    """Safe YAML loader that rejects duplicate resolved keys at every depth."""
+    pass
 
 
 def _construct_unique_mapping(
     loader: _UniqueKeyLoader,
     node: MappingNode,
     deep: bool = False,  # ruff: ignore[boolean-type-hint-positional-argument,boolean-default-value-positional-argument] -- PyYAML callback signature.
-) -> dict[object, object]:
+) -> dict[object, object]:  # sarj-noqa: SARJ528 -- Native YAML keys and values.
     explicit_keys: set[object] = set()
     for key_node, _value_node in mapping_items(node):
         if key_node.tag == "tag:yaml.org,2002:merge":
@@ -128,8 +128,8 @@ class _PrecommitRepoSection(NamedTuple):
 class _LefthookEntries(NamedTuple):
     text: str
     layout: str
-    entries: Mapping[str, object]
-    hook: Mapping[str, object]
+    entries: Mapping[str, object]  # sarj-noqa: SARJ528 -- Native YAML entries stay uninterpreted.
+    hook: Mapping[str, object]  # sarj-noqa: SARJ528 -- Native YAML hook extensions.
 
 
 class _LocatedBlock(NamedTuple):
@@ -206,7 +206,9 @@ def validate_precommit_configuration(text: str) -> None:
         raise ValueError(msg)
 
 
-def _parse_hook_configuration(text: str) -> object:
+def _parse_hook_configuration(
+    text: str,
+) -> object:  # sarj-noqa: SARJ528 -- Preserve native loader values.
     loader = _UniqueKeyLoader(text)
     try:
         return loader.get_single_data()  # pyright: ignore[reportAny] -- parser boundary
@@ -374,7 +376,9 @@ def runs_direct_repo_standards_check(root: Path) -> bool:
     return any(_runs_direct_repo_standards_check(value) for value in _lefthook_run_values(pre_commit))
 
 
-def _precommit_has_direct_repository_check(parsed: object) -> bool:
+def _precommit_has_direct_repository_check(
+    parsed: object,  # sarj-noqa: SARJ528 -- Inspect raw YAML through shape guards.
+) -> bool:
     return any(
         _runs_direct_repo_standards_check(hook.get("entry"))
         for raw_repository in manifest.list_field(manifest.as_table(parsed), "repos")
@@ -402,11 +406,11 @@ def lefthook_runs_staged_check(root: Path) -> bool:
 
 
 def _staged_job_scopes(
-    hook: Mapping[str, object],
+    hook: Mapping[str, object],  # sarj-noqa: SARJ528 -- Preserve native YAML job fields.
     *,
-    ancestors: tuple[Mapping[str, object], ...] = (),
+    ancestors: tuple[Mapping[str, object], ...] = (),  # sarj-noqa: SARJ528 -- Retain raw YAML scopes.
     depth: int = 0,
-) -> list[tuple[Mapping[str, object], ...]]:
+) -> list[tuple[Mapping[str, object], ...]]:  # sarj-noqa: SARJ528 -- Carry native YAML scope chains.
     if depth > _MAX_JOB_DEPTH:
         return []
     scopes = (*ancestors, hook)
@@ -425,7 +429,9 @@ def _staged_job_scopes(
     return found
 
 
-def _staged_job_conditions(scopes: tuple[Mapping[str, object], ...]) -> tuple[str, ...]:
+def _staged_job_conditions(
+    scopes: tuple[Mapping[str, object], ...],  # sarj-noqa: SARJ528 -- Inspect native YAML scope conditions.
+) -> tuple[str, ...]:
     conditions: set[str] = set()
     names = {name for scope in scopes if isinstance(name := scope.get("name"), str)}
     for index, scope in enumerate(scopes):
@@ -437,7 +443,11 @@ def _staged_job_conditions(scopes: tuple[Mapping[str, object], ...]) -> tuple[st
     return tuple(sorted(conditions))
 
 
-def _scope_conditions(scope: Mapping[str, object], *, hook_level: bool) -> set[str]:
+def _scope_conditions(
+    scope: Mapping[str, object],  # sarj-noqa: SARJ528 -- Unowned YAML condition values stay raw.
+    *,
+    hook_level: bool,
+) -> set[str]:
     keys: frozenset[str]
     if hook_level:
         keys = _HOOK_CONDITIONS
@@ -509,7 +519,12 @@ def wire_lefthook_commit_message_check(
 
 
 def _wire_existing_commit_message(
-    root: Path, path: Path, text: str, document: Mapping[str, object], *, runner_prefix: str | None
+    root: Path,
+    path: Path,
+    text: str,
+    document: Mapping[str, object],  # sarj-noqa: SARJ528 -- Preserve native YAML hook extensions.
+    *,
+    runner_prefix: str | None,
 ) -> LefthookWrite:
     commit_message = manifest.as_table(document.get("commit-msg"))
     if "commands" in commit_message:
@@ -695,10 +710,9 @@ def _runs_staged_check(value: object) -> bool:
     if not isinstance(value, str) or re.search(r"(?:&&|\|\||[;|`]|\$\()", value):
         return False
     migrated, count = launcher.rewrite_legacy_repository_invocations(value)
-    if count:
-        value = migrated
+    command = migrated if count else value
     try:
-        tokens = shlex.split(value)
+        tokens = shlex.split(command)
     except ValueError:
         return False
     source_tokens = shlex.split(SOURCE_STAGED_COMMAND)
@@ -729,9 +743,9 @@ def _runs_direct_repo_standards_check(value: object) -> bool:
 def _runs_commit_message_check(value: object) -> bool:
     if not isinstance(value, str) or re.search(r"(?:&&|\|\||[;|`]|\$\()", value):
         return False
-    value, _ = launcher.rewrite_legacy_repository_invocations(value)
+    command, _ = launcher.rewrite_legacy_repository_invocations(value)
     try:
-        tokens = shlex.split(value)
+        tokens = shlex.split(command)
     except ValueError:
         return False
     prefixes = (
@@ -788,7 +802,12 @@ def _canonical_commit_message_command(root: Path | None = None, *, runner_prefix
     return f"{prefix} commit-message {argument}"
 
 
-def _lefthook_run_values(value: object, *, depth: int = 0, seen: set[int] | None = None) -> list[str]:
+def _lefthook_run_values(
+    value: object,  # sarj-noqa: SARJ528 -- Traverse native YAML with cycle checks.
+    *,
+    depth: int = 0,
+    seen: set[int] | None = None,
+) -> list[str]:
     if depth > _MAX_JOB_DEPTH:
         return []
     visited: set[int] = set() if seen is None else seen
@@ -811,7 +830,9 @@ def _lefthook_run_values(value: object, *, depth: int = 0, seen: set[int] | None
     return []
 
 
-def _lefthook_run_values_from_entries(entries: Mapping[str, object]) -> list[str]:
+def _lefthook_run_values_from_entries(
+    entries: Mapping[str, object],  # sarj-noqa: SARJ528 -- Forward native YAML entries unchanged.
+) -> list[str]:
     return _lefthook_run_values(entries)
 
 

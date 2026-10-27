@@ -30,7 +30,7 @@ _SURROGATE_END = 0xDFFF
 
 
 class _InvalidHCLSourceError(ValueError):
-    """Signal a lexical or header failure that cannot produce a shared document."""
+    pass
 
 
 class _Span(NamedTuple):

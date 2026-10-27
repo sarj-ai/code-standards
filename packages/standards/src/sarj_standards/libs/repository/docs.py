@@ -102,7 +102,9 @@ def _render_readmes(root: Path) -> dict[Path, str]:
 
 def _root_readme(
     _root: Path,
-    packages: list[tuple[Path, str, str | None, dict[str, object]]],
+    packages: list[  # sarj-noqa: SARJ528 -- Package metadata includes native pyproject TOML values.
+        tuple[Path, str, str | None, dict[str, object]]
+    ],
 ) -> str:
     standards = packages[0][3]
     title = _title(_string(standards, "name"))
@@ -745,7 +747,11 @@ def _validate_cli_examples(path: Path, source: str) -> None:
     raise ValueError(msg)
 
 
-def _manifest(path: Path) -> dict[str, object]:
+def _manifest(
+    path: Path,
+) -> dict[  # sarj-noqa: SARJ528 -- Load JSON or native TOML package metadata unchanged.
+    str, object
+]:
     if path.suffix == ".toml":
         document = tomllib.loads(path.read_text(encoding="utf-8"))
         project: object = document.get("project")

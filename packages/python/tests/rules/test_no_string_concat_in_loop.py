@@ -954,8 +954,7 @@ def f(n):
 
 
 def test_for_loop_accumulation_still_fires_from_trio_shape():
-    # Distilled TP from trio's _raises_group repr assembly: a for-loop growing
-    # one string across iterations is the classic O(n²) shape.
+    # Trio's repr assembly supplies this O(n²) string-growth example.
     src = """
 def render(failed, indent_1):
     s = ''

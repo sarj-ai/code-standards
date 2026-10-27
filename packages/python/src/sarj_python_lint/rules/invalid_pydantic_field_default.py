@@ -77,7 +77,16 @@ _KNOWN_NON_NULL_TYPING = frozenset(
         "Type",
     }
 )
-_MISSING = object()
+
+
+class _MissingLiteral:
+    __slots__ = ()
+
+
+type _LiteralValue = str | bytes | bool | int | float | _MissingLiteral | None
+
+
+_MISSING = _MissingLiteral()
 _MAX_ALIAS_HOPS = 4
 _MAX_PATH_ANCESTORS = 12
 _MAX_IMPORTED_MODULE_BYTES = 256_000
@@ -90,12 +99,12 @@ class _LiteralDomain:
 
 class _LiteralKey(NamedTuple):
     value_type: type[object]
-    value: object
+    value: str | bytes | int | float | None
 
 
 class _BoundViolation(NamedTuple):
     bound_name: str
-    bound: object
+    bound: int | float
 
 
 class _AnnotationContract(NamedTuple):
@@ -299,7 +308,7 @@ def _resolve_annotation_contract(
     )
 
 
-def _literal_value(node: ast.expr) -> object:
+def _literal_value(node: ast.expr) -> _LiteralValue:
     match node:
         case ast.Constant(value=(str() | bytes() | bool() | int() | float() | None) as value):
             return value
@@ -311,7 +320,7 @@ def _literal_value(node: ast.expr) -> object:
             return _MISSING
 
 
-def _literal_key(value: object) -> _LiteralKey:
+def _literal_key(value: str | bytes | float | None) -> _LiteralKey:
     return _LiteralKey(type(value), value)
 
 
@@ -342,7 +351,7 @@ def _literal_members_domain(members: tuple[ast.expr, ...]) -> _LiteralDomain | N
     values: set[_LiteralKey] = set()
     for member in members:
         value = _literal_value(member)
-        if value is _MISSING or isinstance(value, float):
+        if value is _MISSING or not isinstance(value, str | bytes | bool | int | None):
             return None
         values.add(_literal_key(value))
     return _LiteralDomain(frozenset(values)) if values else None
@@ -441,7 +450,7 @@ def _invalid_default_message(
     if (
         literal is not _MISSING
         and domain is not None
-        and not isinstance(literal, float)
+        and isinstance(literal, str | bytes | bool | int | None)
         and _literal_key(literal) not in domain.values
     ):
         allowed = ", ".join(sorted(repr(item.value) for item in domain.values))
@@ -482,7 +491,7 @@ def _bound_violation(
     return None
 
 
-def _length_bound_violation(length: int, bounds: dict[str, object]) -> _BoundViolation | None:
+def _length_bound_violation(length: int, bounds: dict[str, _LiteralValue]) -> _BoundViolation | None:
     for name in ("min_length", "max_length"):
         bound = bounds.get(name, _MISSING)
         if not isinstance(bound, int) or isinstance(bound, bool) or bound < 0:
@@ -492,7 +501,7 @@ def _length_bound_violation(length: int, bounds: dict[str, object]) -> _BoundVio
     return None
 
 
-def _numeric_bound_violation(default: float, bounds: dict[str, object]) -> _BoundViolation | None:
+def _numeric_bound_violation(default: float, bounds: dict[str, _LiteralValue]) -> _BoundViolation | None:
     for name in ("gt", "ge", "lt", "le"):
         bound = bounds.get(name, _MISSING)
         if not isinstance(bound, (int, float)) or isinstance(bound, bool):
@@ -559,7 +568,7 @@ def _literal_container_length(node: ast.expr) -> int | None:
 
 def _constant_key(node: ast.expr) -> _LiteralKey | None:
     value = _literal_value(node)
-    if value is _MISSING:
+    if value is _MISSING or not isinstance(value, str | bytes | int | float | None):
         return None
     try:
         hash(value)

@@ -20,6 +20,7 @@ from sarj_standards.libs.linting.external import ProcessOutput
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
+    from typing import Never
 
     from sarj_standards.libs.adoption.doctor import Finding
     from sarj_standards.libs.diagnostics import AnalysisReport
@@ -407,12 +408,12 @@ def test_empty_pull_request_scope_does_not_expand_to_the_repository(
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts consumer path routing
         cli, "_changed_file_names", no_changed_files
     )
-    seen: list[tuple[str, ...] | None] = []
+    seen: list[Sequence[str] | None] = []
     original = Standards.analyze
 
     def capture_paths(
-        self: Standards, paths: tuple[str, ...] | None = None, **kwargs: Unpack[StandardsAnalyzeOptions]
-    ) -> object:
+        self: Standards, paths: Sequence[str] | None = None, **kwargs: Unpack[StandardsAnalyzeOptions]
+    ) -> AnalysisReport:
         seen.append(paths)
         return original(self, paths, **kwargs)
 
@@ -453,12 +454,12 @@ def test_non_default_push_runs_adoption_gate_without_expanding_to_repository(
     )
     monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
     monkeypatch.setenv("GITHUB_EVENT_PATH", str(event))
-    seen: list[tuple[str, ...] | None] = []
+    seen: list[Sequence[str] | None] = []
     original = Standards.analyze
 
     def capture_paths(
-        self: Standards, paths: tuple[str, ...] | None = None, **kwargs: Unpack[StandardsAnalyzeOptions]
-    ) -> object:
+        self: Standards, paths: Sequence[str] | None = None, **kwargs: Unpack[StandardsAnalyzeOptions]
+    ) -> AnalysisReport:
         seen.append(paths)
         return original(self, paths, **kwargs)
 
@@ -631,7 +632,9 @@ def test_check_rejects_output_outside_repository_before_analysis(
     source = tmp_path / "source.py"
     source.write_text("value = 1\n", encoding="utf-8")
 
-    def forbidden_analysis(*_args: object, **_kwargs: Unpack[StandardsAnalyzeOptions]) -> object:
+    def forbidden_analysis(
+        _self: Standards, _paths: Sequence[str] | None = None, **_kwargs: Unpack[StandardsAnalyzeOptions]
+    ) -> Never:
         pytest.fail("analysis ran before report output validation")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts consumer path routing
@@ -674,8 +677,8 @@ def test_native_workflow_health_failure_blocks_cli_before_analysis(
     def forbidden_analysis(
         _self: Standards,
         paths: Sequence[str] | None = None,
-        **_kwargs: bool | int | str | Sequence[str] | Sequence[Path],
-    ) -> object:
+        **_kwargs: Unpack[StandardsAnalyzeOptions],
+    ) -> Never:
         analyzed.append(paths)
         pytest.fail("native health drift must block the analyzer")
 

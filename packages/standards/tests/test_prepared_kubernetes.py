@@ -15,11 +15,14 @@ from sarj_standards.libs.linting.prepared_kubernetes import (
     normalize_findings,
     policy_resource,
 )
-from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
+from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from pathlib import Path
+
+    from pydantic import JsonValue
 
 
 def _object(value: object) -> dict[object, object]:
@@ -27,14 +30,16 @@ def _object(value: object) -> dict[object, object]:
     return value
 
 
-def _first_report(native: dict[object, object]) -> dict[object, object]:
+def _first_report(native: dict[str, JsonValue]) -> dict[str, JsonValue]:
     reports = native["Reports"]
-    assert is_object_list(reports)
+    assert isinstance(reports, list)
     assert reports
-    return _object(reports[0])
+    report = reports[0]
+    assert isinstance(report, dict)
+    return report
 
 
-def _pod() -> dict[str, object]:
+def _pod() -> dict[str, JsonValue]:
     return {
         "apiVersion": "v1",
         "kind": "Pod",
@@ -51,7 +56,7 @@ def _pod() -> dict[str, object]:
     }
 
 
-def _target() -> dict[str, object]:
+def _target() -> dict[str, str]:
     return {"id": "test-target", "source": "release.tf", "namespace": "work"}
 
 
@@ -81,7 +86,7 @@ def test_custom_kind_name_without_podspec_is_not_builtin_workload() -> None:
     assert "customChecks" not in build_config(resource)
 
 
-def _native(resource: dict[str, object], tmp_path: Path) -> str:
+def _native(resource: Mapping[str, JsonValue], tmp_path: Path) -> str:
     config, input_path = tmp_path / "policy.yaml", tmp_path / "input.yaml"
     config.write_text(yaml.safe_dump(build_config(resource)), encoding="utf-8")
     input_path.write_text(yaml.safe_dump(policy_resource(resource)), encoding="utf-8")
@@ -106,7 +111,7 @@ def _native(resource: dict[str, object], tmp_path: Path) -> str:
 
 def _exception(
     *, check: str = OMISSION_CHECK, container: str = "app", container_kind: str = "containers"
-) -> dict[str, object]:
+) -> dict[str, str]:
     return {
         "target": "test-target",
         "apiVersion": "v1",
@@ -148,7 +153,7 @@ def _exception(
     ),
 )
 def test_native_security_decisions_and_pinned_message_grammars(
-    security: dict[str, object], expected: set[str], tmp_path: Path
+    security: dict[str, JsonValue], expected: set[str], tmp_path: Path
 ) -> None:
     resource = _pod()
     resource["spec"] = {"containers": [{"name": "app", "image": "test", "securityContext": security}]}
@@ -183,7 +188,9 @@ def test_omission_covers_normal_init_and_ephemeral_containers(tmp_path: Path) ->
 )
 def test_omission_uses_original_workload_pod_spec_path(kind: str, tmp_path: Path) -> None:
     resource = _pod()
-    pod_spec = {"containers": [{"name": "app", "image": "test", "securityContext": {"runAsNonRoot": True}}]}
+    pod_spec: dict[str, JsonValue] = {
+        "containers": [{"name": "app", "image": "test", "securityContext": {"runAsNonRoot": True}}]
+    }
     resource["kind"] = kind
     resource["apiVersion"] = (
         "batch/v1" if kind in {"Job", "CronJob"} else "v1" if kind == "ReplicationController" else "apps/v1"
@@ -294,7 +301,7 @@ def test_exception_cannot_spread_to_other_identity(key: str, value: str, tmp_pat
     ],
     ids=("blank-reason", "duplicate", "unknown-check", "wrong-target", "extra-field"),
 )
-def test_invalid_exception_contract_fails_closed(entries: list[dict[str, object]]) -> None:
+def test_invalid_exception_contract_fails_closed(entries: list[dict[str, JsonValue]]) -> None:
     with pytest.raises(ValueError, match=r".+"):
         ExceptionSet.parse({**_target(), "exceptions": entries})
 
@@ -303,7 +310,8 @@ def test_invalid_exception_contract_fails_closed(entries: list[dict[str, object]
 def test_unknown_native_protocol_is_rejected_before_exception(mutation: str, tmp_path: Path) -> None:
     resource = _pod()
     resource["spec"] = {"containers": [{"name": "app", "image": "test", "securityContext": {"runAsNonRoot": True}}]}
-    native = _object(parse_json(_native(resource, tmp_path)))
+    native = parse_json(_native(resource, tmp_path))
+    assert isinstance(native, dict)
     match mutation:
         case "message" | "cel-error":
             _object(_first_report(native)["Diagnostic"])["Message"] = (

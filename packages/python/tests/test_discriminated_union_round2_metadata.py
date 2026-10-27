@@ -78,7 +78,7 @@ def test_carriers_require_a_proven_local_discriminator(source: str) -> None:
     findings = PreferDiscriminatedModelUnion().check(Path("app/access.py"), source)
     assert len(findings) == 1
     assert findings[0].code == "SARJ510"
-    assert findings[0].severity is Severity.WARNING
+    assert findings[0].severity is Severity.ERROR
 
 
 @pytest.mark.parametrize("carrier", [0, 1], ids=("namespace", "tuple"))
@@ -96,7 +96,7 @@ def test_string_field_carriers_require_disjoint_persistent_tags(carrier: int, *,
         )
     findings = PreferDiscriminatedModelUnion().check(Path("app/access.py"), source)
     assert len(findings) == (0 if tagged else 1)
-    assert all(finding.code == "SARJ510" and finding.severity is Severity.WARNING for finding in findings)
+    assert all(finding.code == "SARJ510" and finding.severity is Severity.ERROR for finding in findings)
 
 
 @pytest.mark.parametrize(

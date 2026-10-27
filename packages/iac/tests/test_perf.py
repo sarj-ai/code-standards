@@ -14,6 +14,8 @@ from sarj_iac_lint.rules import REGISTRY
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from sarj_iac_lint.rule_base import Diagnostic
+
 
 _RESOURCE_BLOCK = """\
 # resource block {i}
@@ -81,7 +83,7 @@ def test_no_rule_exceeds_absolute_budget(rule_timings: dict[str, float]) -> None
         )
 
 
-def _best_cpu_time_s(check: Callable[[Path, str], object], source: str) -> float:
+def _best_cpu_time_s(check: Callable[[Path, str], list[Diagnostic] | int], source: str) -> float:
     path = Path("synthetic.tf")
     check(path, source)
     best = float("inf")
@@ -92,7 +94,7 @@ def _best_cpu_time_s(check: Callable[[Path, str], object], source: str) -> float
     return best
 
 
-def _warm_growth_times(check: Callable[[Path, str], object]) -> _GrowthTimes:
+def _warm_growth_times(check: Callable[[Path, str], list[Diagnostic] | int]) -> _GrowthTimes:
     # Native parser caches and repeated checks are warm; this is not cold-parser coverage.
     return _GrowthTimes(base=_best_cpu_time_s(check, _SYNTHETIC_HCL), large=_best_cpu_time_s(check, _GROWTH_HCL))
 

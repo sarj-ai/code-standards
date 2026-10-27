@@ -40,7 +40,9 @@ _V2_CANDIDATES = tuple(Version(f"2.{minor}.{patch}") for minor in range(100) for
 
 
 class _ProjectTable(TypedDict):
-    dependencies: NotRequired[list[object]]
+    dependencies: NotRequired[  # sarj-noqa: SARJ528 -- The TOML guard proves only a list; malformed and native date members are refined individually.
+        list[object]
+    ]
 
 
 class _ProjectDocument(TypedDict):
@@ -330,7 +332,11 @@ def _document_depends_on_pydantic_v2(source: str) -> bool:
     return False
 
 
-def _project_dependencies(document: object) -> list[object]:
+def _project_dependencies(
+    document: object,
+) -> list[  # sarj-noqa: SARJ528 -- the TypeGuard proves list shape; malformed and native TOML members remain unchecked.
+    object
+]:
     if not _is_project_document(document):
         return []
     project = document.get("project")

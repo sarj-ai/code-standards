@@ -6,7 +6,6 @@ import pytest
 
 import sarj_standards.cli.main as cli
 from sarj_standards.libs.json_boundary import parse_json
-from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
 if TYPE_CHECKING:
@@ -33,14 +32,14 @@ def test_benchmark_reports_real_selected_analysis(tmp_path: Path, capsys: pytest
 
     assert status == 0
     report = parse_json(capsys.readouterr().out)
-    assert is_object_mapping(report)
+    assert isinstance(report, dict)
     assert report["files"] == 1
     assert report["rules"] == ["no-dunder-all"]
     samples = report["samples"]
-    assert is_object_list(samples)
+    assert isinstance(samples, list)
     assert len(samples) == 2
     for sample in samples:
-        assert is_object_mapping(sample)
+        assert isinstance(sample, dict)
         assert sample["diagnostics"] == 1
         assert sample["diagnostic_digest"]
 

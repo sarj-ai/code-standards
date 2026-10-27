@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "b8150ba70396f6a4f3db9393bdd5853ddbf216f46cd0d2725b34a0c830ed1be3",
-  "cliSha256": "018110be79cdf6c7a256aeaa2d28e182aa235f5717da9de8ac492a3845444623",
+  "catalogSha256": "7e0727ba7c250fe5bd569064c68be5f5487beeff935909088c05a13a71ceef47",
+  "cliSha256": "7820d299d6274d1e324afc57c98d7eba745e16461f108822bb8b3865c09d0920",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -7633,7 +7633,7 @@
           "files": [
             {
               "path": "app.py",
-              "source": "def activation_reasons():\n    # Everything standing between this integration and being usable.\n    # Returns all the reasons rather than the first failure.\n    # Someone activating a half-built integration wants the complete list.\n    # That avoids discovering one problem per round trip.\n    reasons = []\n    reasons.extend(integration_reasons())\n    reasons.extend(endpoint_reasons())\n    return reasons\n"
+              "source": "def activate():\n    # Load current account profile activation settings\n    # Build current account profile activation response\n    load_current_account_profile_activation_settings()\n    return build_current_account_profile_activation_response()\n"
             }
           ],
           "fixedFiles": [],
@@ -7641,22 +7641,22 @@
           "id": "activation-narration",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Implementation paragraph narrates a validation helper"
+          "title": "A paragraph exactly repeats two flat action names"
         },
         {
           "expectedCount": 0,
           "files": [
             {
               "path": "app.py",
-              "source": "# Legacy clients send `execution_phase` until API-812 is retired.\n# Keep the adapter at this boundary so internal models stay camelCase.\nphase = payload[\"execution_phase\"]\n"
+              "source": "def activation_reasons():\n    # Everything standing between this integration and being usable.\n    # Returns all the reasons rather than the first failure.\n    # Someone activating a half-built integration wants the complete list.\n    # That avoids discovering one problem per round trip.\n    reasons = []\n    reasons.extend(integration_reasons())\n    reasons.extend(endpoint_reasons())\n    return reasons\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "app.py",
-          "id": "durable-constraint",
+          "id": "activation-rationale",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "A concrete compatibility constraint remains local"
+          "title": "The original activation paragraph explains why all failures are returned"
         }
       ],
       "optionsSchemaSource": null
@@ -8502,6 +8502,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Dead code preserved as a comment"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service.py",
+              "source": "# NOTE: Keep this order because the registry caches it.\nregister()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.py",
+          "id": "prefixed-constraint",
+          "outcome": "accept",
+          "scenarioId": "editorial-prefixes",
+          "title": "An editorial prefix may still carry a real constraint"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service.py",
+              "source": "# NOTE: Type aliases\ntype UserId = str\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "service.py",
+              "source": "type UserId = str\n"
+            }
+          ],
+          "focusPath": "service.py",
+          "id": "prefixed-section-label",
+          "outcome": "reject",
+          "scenarioId": "editorial-prefixes",
+          "title": "An editorial prefix does not add meaning to a section label"
         },
         {
           "expectedCount": 0,
@@ -11883,15 +11918,15 @@
           "files": [
             {
               "path": "app/metadata.py",
-              "source": "from dataclasses import dataclass\nfrom functools import lru_cache\n\n\n@dataclass(frozen=True, slots=True)\nclass Options:\n    \"\"\"Read by dataclass metadata generation.\"\"\"\n\n    limit: int\n\n\n@lru_cache(maxsize=1)\ndef options() -> Options:\n    \"\"\"Copied onto the cache wrapper.\"\"\"\n    return Options(limit=10)\n"
+              "source": "from functools import lru_cache\n\n\n@lru_cache(maxsize=1)\ndef count() -> int:\n    \"\"\"Copied onto the wrapper.\"\"\"\n    return 1\n"
             }
           ],
           "fixedFiles": [],
           "focusPath": "app/metadata.py",
-          "id": "canonical-metadata-consumers",
+          "id": "canonical-cache-consumer",
           "outcome": "accept",
           "scenarioId": "metadata-copy",
-          "title": "Standard-library decorators mechanically read or copy docstrings"
+          "title": "A cache wrapper copies the function's documentation"
         },
         {
           "expectedCount": 0,
@@ -11922,6 +11957,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Human-only module, class, and function prose"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "\"\"\"Service entry points.\n\nCoordinates requests.\n\"\"\"\n\nVALUE = 1\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "app/service.py",
+              "source": "VALUE = 1\n"
+            }
+          ],
+          "focusPath": "app/service.py",
+          "id": "module-docstring-autofix",
+          "outcome": "reject",
+          "scenarioId": "module-docstring-autofix",
+          "title": "Unconsumed top-of-file prose is deleted"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "\"\"\"Service entry points.\"\"\"\n\nDESCRIPTION = __doc__\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "module-docstring-consumer",
+          "outcome": "accept",
+          "scenarioId": "module-docstring-autofix",
+          "title": "A module description consumed at runtime is retained"
         },
         {
           "expectedCount": 1,
@@ -13219,6 +13289,21 @@
           "title": "Use value cases and retain the fallback"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/errors.py",
+              "source": "from provider import ErrorId\n\n\ndef classify(error_id):\n    match error_id:\n        case ErrorId.INSUFFICIENT:\n            return insufficient()\n        case ErrorId.INVALID_OPTION:\n            return invalid_option()\n        case _:\n            return rejected()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/errors.py",
+          "id": "qualified-value-match-retains-fallback",
+          "outcome": "accept",
+          "scenarioId": "qualified-terminal-dispatch",
+          "title": "Value cases preserve the terminal fallback"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -13236,6 +13321,25 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Dispatch a stable parameter through literal cases"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/errors.py",
+              "source": "from provider import ErrorId\n\n\ndef classify(error_id):\n    if error_id == ErrorId.INSUFFICIENT:\n        return insufficient()\n    if error_id == ErrorId.INVALID_OPTION:\n        return invalid_option()\n    return rejected()\n"
+            },
+            {
+              "path": "pyproject.toml",
+              "source": "[project]\nrequires-python = \">=3.10\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/errors.py",
+          "id": "terminal-qualified-value-dispatch",
+          "outcome": "reject",
+          "scenarioId": "qualified-terminal-dispatch",
+          "title": "Keep error variants and their fallback under one dispatch subject"
         }
       ],
       "optionsSchemaSource": null
@@ -14765,31 +14869,36 @@
           "expectedCount": 0,
           "files": [
             {
-              "path": "celery/utils/log.py",
-              "source": "\"\"\"Logging utilities redact credentials.\"\"\"\n\nVALUE = 1\n"
+              "path": "app/service.py",
+              "source": "\"\"\"Service command help.\"\"\"\n\nDESCRIPTION = __doc__\n"
             }
           ],
           "fixedFiles": [],
-          "focusPath": "celery/utils/log.py",
-          "id": "module-contract",
+          "focusPath": "app/service.py",
+          "id": "module-consumer",
           "outcome": "accept",
           "scenarioId": "primary",
-          "title": "Docstring records a module contract"
+          "title": "Keep a module description consumed at runtime"
         },
         {
           "expectedCount": 1,
           "files": [
             {
-              "path": "celery/utils/log.py",
-              "source": "\"\"\"Logging utilities.\"\"\"\n\nVALUE = 1\n"
+              "path": "app/service.py",
+              "source": "\"\"\"Service entry points.\n\nCoordinates requests.\n\"\"\"\n\nVALUE = 1\n"
             }
           ],
-          "fixedFiles": [],
-          "focusPath": "celery/utils/log.py",
-          "id": "module-path-restatement",
+          "fixedFiles": [
+            {
+              "path": "app/service.py",
+              "source": "VALUE = 1\n"
+            }
+          ],
+          "focusPath": "app/service.py",
+          "id": "module-prose",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Docstring repeats the module path"
+          "title": "Delete the module's implementation walkthrough"
         }
       ],
       "optionsSchemaSource": null
@@ -16548,6 +16657,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "An existing-table backfill immediately removes its legacy column"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:new-table-inline-constraints": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_invite.sql",
+              "source": "CREATE TABLE invite (\n  id UUID PRIMARY KEY,\n  email TEXT,\n  accepted_at TIMESTAMPTZ\n);\n\nCREATE UNIQUE INDEX invite_open_email ON invite (LOWER(email))\nWHERE\n  accepted_at IS NULL;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_invite.sql",
+          "id": "inline-constraints-and-partial-index",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Inline constraints and a separate partial expression index"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001_invite.sql",
+              "source": "CREATE TABLE invite (id UUID, email TEXT);\n\nALTER TABLE invite\nADD CONSTRAINT invite_pkey PRIMARY KEY (id);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_invite.sql",
+          "id": "separate-new-table-primary-key",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The new table's primary key belongs in its definition"
         }
       ],
       "optionsSchemaSource": null

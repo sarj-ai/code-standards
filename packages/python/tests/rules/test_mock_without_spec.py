@@ -539,8 +539,6 @@ def test_thing():
 
 
 def test_recorder_that_is_never_called_is_still_flagged():
-    # The opposite case: a double merely bound and handed around is a stand-in
-    # for an object, and production code can attribute-access it unseen.
     src = """
 from unittest import mock
 

@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 # One statement per rule, each firing exactly once:
 # SARJ103 `CREATE TYPE ... AS ENUM`, SARJ109 `gen_random_uuid()` default,
 # SARJ112 unindexed cascading `REFERENCES`, SARJ104 `VARCHAR(n)`, SARJ106 `JSON`,
-# SARJ101 `TIMESTAMP`, SARJ102 + SARJ108 + SARJ110 the bare `CREATE INDEX` on a
+# SARJ101 `TIMESTAMP`, SARJ108 + SARJ110 the blocking `CREATE INDEX` on a
 # table this file does not create, SARJ111 a validating `ADD CONSTRAINT`,
 # SARJ105 an `INSERT` with no `ON CONFLICT`, SARJ113 the commented-out
 # `DROP TABLE`, SARJ114 `CREATE TRIGGER`, SARJ115 a
@@ -34,7 +34,8 @@ if TYPE_CHECKING:
 # SARJ117 one duplicate child-table index shape, and SARJ118 an application-owned
 # closed text value set repeated as a database CHECK, and SARJ119 the existing-
 # table constraint plus data write mixed with the surrounding expand phase,
-# and SARJ120 a stored SQL function.
+# SARJ120 a stored SQL function, and SARJ102 + SARJ121 an unguarded fresh table
+# followed by a separately declared primary key.
 _LEGACY_UUID_DEFAULT = "gen_random_uuid()"
 _ALL_RULES_TEMPLATE = """CREATE TYPE mood AS ENUM ('sad', 'ok');
 -- Create the children table used by the application in this database.
@@ -52,7 +53,7 @@ CREATE TABLE IF NOT EXISTS children (
     status TEXT CHECK (status IN ('queued', 'completed')),
     created_at TIMESTAMP
 );
-CREATE INDEX idx_orders_total ON orders (total);
+CREATE INDEX IF NOT EXISTS idx_orders_total ON orders (total);
 CREATE INDEX IF NOT EXISTS children_name_a ON children (name);
 CREATE INDEX IF NOT EXISTS children_owner ON children (owner_id);
 CREATE INDEX IF NOT EXISTS children_payload ON children (payload);
@@ -63,6 +64,8 @@ INSERT INTO children (id) VALUES ('a');
 SELECT * FROM children LIMIT 10 OFFSET 100;
 CREATE TRIGGER audit_child AFTER INSERT ON children EXECUTE FUNCTION audit_child();
 CREATE FUNCTION audit_child() RETURNS int LANGUAGE SQL AS $$ SELECT 1 $$;
+CREATE TABLE inline_contract (id uuid);
+ALTER TABLE inline_contract ADD PRIMARY KEY (id);
 """
 ALL_RULES = _ALL_RULES_TEMPLATE.replace("__LEGACY_UUID_DEFAULT__", _LEGACY_UUID_DEFAULT)
 
@@ -95,7 +98,7 @@ def _total(path: Path, source: str) -> int:
 def test_the_shared_source_fires_every_migration_rule_exactly_once() -> None:
     fired = {cls.code: len(cls().check(HAND_WRITTEN, ALL_RULES)) for cls in MIGRATION_RULES}
     assert fired == dict.fromkeys(fired, 1)
-    assert len(fired) == 19
+    assert len(fired) == 20
 
 
 @pytest.mark.parametrize("rule_cls", DUMP_EXEMPT, ids=_ids(DUMP_EXEMPT))
@@ -105,7 +108,7 @@ def test_each_rule_takes_the_dump_exemption(rule_cls: type[Rule]) -> None:
 
 
 def test_the_dump_exemption_suppresses_all_migration_findings() -> None:
-    assert _total(HAND_WRITTEN, ALL_RULES) == 19
+    assert _total(HAND_WRITTEN, ALL_RULES) == 20
     assert _total(Path("db/structure.sql"), ALL_RULES) == 0
 
 
@@ -141,7 +144,7 @@ def test_a_restore_directory_is_a_dump_signal() -> None:
 
 
 def test_a_hand_written_migration_next_to_those_names_is_still_judged() -> None:
-    assert _total(Path("db/migrations/schema_changes.sql"), ALL_RULES) == 19
+    assert _total(Path("db/migrations/schema_changes.sql"), ALL_RULES) == 20
 
 
 GENERATED = f"--> statement-breakpoint\n{ALL_RULES}"

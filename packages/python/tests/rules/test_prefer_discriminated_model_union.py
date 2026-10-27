@@ -242,7 +242,7 @@ def test_multiple_variant_requirements_produce_one_model_review() -> None:
     [finding] = _check(source)
     assert finding.line == 9
     assert finding.col == 9
-    assert finding.severity is Severity.WARNING
+    assert finding.severity is Severity.ERROR
     assert "preserve every other accepted combination" in finding.message
 
 
@@ -551,16 +551,14 @@ def test_deep_payload_union_keeps_proven_scalar_and_unknown_member_boundaries(me
 
 
 @pytest.mark.parametrize("scalar_count", [501, 3001])
-def test_supported_deep_union_preserves_the_warning_under_the_complete_profile(
-    tmp_path: Path, scalar_count: int
-) -> None:
+def test_supported_deep_union_preserves_the_error_under_the_complete_profile(tmp_path: Path, scalar_count: int) -> None:
     annotation = " | ".join(["str"] * scalar_count + ["None"])
     path = tmp_path / "models.py"
     path.write_text(_BASE.replace("str | None", annotation), encoding="utf-8", newline="")
     findings = analyze(list(REGISTRY), [path])
     warnings = [finding for finding in findings if finding.code == PreferDiscriminatedModelUnion.code]
     assert len(warnings) == 1
-    assert warnings[0].severity is Severity.WARNING
+    assert warnings[0].severity is Severity.ERROR
 
 
 def test_nearby_type_rules_keep_one_deterministic_model_review() -> None:
@@ -580,14 +578,16 @@ def test_nearby_type_rules_keep_one_deterministic_model_review() -> None:
         assert check_source(rules, Path("app/models.py"), replacement) == []
 
 
-def test_warning_registration_suppression_and_exit_behavior(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_error_registration_suppression_and_exit_behavior(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     result = check_source([PreferDiscriminatedModelUnion()], Path("app/models.py"), _BASE)
     assert len(result) == 1
     assert result[0].code == "SARJ510"
     path = tmp_path / "delivery.py"
     path.write_text(_BASE)
-    assert main(["check", "--rule", PreferDiscriminatedModelUnion.id, str(path)]) == 0
-    assert "SARJ510 warning:" in capsys.readouterr().out
+    assert main(["check", "--rule", PreferDiscriminatedModelUnion.id, str(path)]) == 1
+    output = capsys.readouterr().out
+    assert "SARJ510" in output
+    assert "warning:" not in output
     assert _check(_BASE, "tests/test_delivery.py") == []
 
 

@@ -8,7 +8,6 @@ import subprocess
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting.mobile_tools import semgrep_command
 from sarj_standards.libs.release.process import credential_free_environment
-from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
 _FIXTURES = Path(__file__).parent / "fixtures" / "devops-tool-admission"
@@ -16,12 +15,11 @@ _FIXTURES = Path(__file__).parent / "fixtures" / "devops-tool-admission"
 
 def test_upstream_compose_rules_fail_versionless_admission(tmp_path: Path) -> None:
     evidence = parse_json((_FIXTURES / "evidence.json").read_text(encoding="utf-8"))
-    assert is_object_mapping(evidence)
+    assert isinstance(evidence, dict)
     rules = evidence["rules"]
-    assert is_object_mapping(rules)
+    assert isinstance(rules, dict)
     for name, item in rules.items():
-        assert isinstance(name, str)
-        assert is_object_mapping(item)
+        assert isinstance(item, dict)
         payload = (_FIXTURES / "semgrep" / f"{name}.yaml").read_bytes()
         assert hashlib.sha256(payload).hexdigest() == item["sha256"]
     environment = credential_free_environment()
@@ -65,21 +63,21 @@ def test_upstream_compose_rules_fail_versionless_admission(tmp_path: Path) -> No
     )
     assert process.returncode == 0, process.stderr
     report = parse_json(process.stdout)
-    assert is_object_mapping(report)
+    assert isinstance(report, dict)
     assert report["errors"] == []
     paths = report["paths"]
-    assert is_object_mapping(paths)
+    assert isinstance(paths, dict)
     scanned = paths["scanned"]
-    assert is_object_list(scanned)
+    assert isinstance(scanned, list)
     assert set(scanned) == {
         str(_FIXTURES / "legacy-compose.yaml"),
         str(_FIXTURES / "modern-compose.yaml"),
     }
     results = report["results"]
-    assert is_object_list(results)
+    assert isinstance(results, list)
     hits: dict[str, set[str]] = {}
     for result in results:
-        assert is_object_mapping(result)
+        assert isinstance(result, dict)
         path, rule = result["path"], result["check_id"]
         assert isinstance(path, str)
         assert isinstance(rule, str)

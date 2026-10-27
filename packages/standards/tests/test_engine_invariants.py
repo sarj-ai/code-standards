@@ -72,8 +72,7 @@ def test_engine_matrix_exhausts_the_public_contract_and_schema() -> None:
     properties = _object(rule["properties"])
     engine = _object(properties["engine"])
 
-    # Upstream audits support selectors, but are documented in the third-party
-    # catalog rather than claiming source-owned rules and release families.
+    # Upstream selectors stay outside the source-owned catalog and release families.
     assert expected.isdisjoint(_UPSTREAM_ENGINES)
     assert expected | _UPSTREAM_ENGINES == set(RuleEngine)
     assert {_text(value) for value in _array(engine["enum"])} == {engine.value for engine in expected}

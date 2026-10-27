@@ -33,7 +33,7 @@ class NoLoguruExcInfo(Rule):
     id = "no-loguru-exc-info"
     code = "SARJ508"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Loguru exc_info=True adds a field rather than retaining the exception traceback.",
         rationale=(
             "Loguru accepts logging keyword arguments as structured fields. The standard logging `exc_info=True` "
@@ -141,7 +141,7 @@ class NoLoguruExcInfo(Rule):
                     col=keyword.col_offset + 1,
                     code=self.code,
                     message="Loguru treats exc_info=True as a field; use opt(exception=True) or exception() to retain the traceback.",
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 ),
             )
         return diagnostics

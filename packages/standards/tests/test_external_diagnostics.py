@@ -37,6 +37,8 @@ from sarj_standards.libs.linting.runner import GroupedPaths
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from pydantic import JsonValue
+
 
 @pytest.fixture
 def _fixed_host_memory(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -492,7 +494,9 @@ def test_ruff_name_becomes_code_when_plugin_diagnostic_omits_code(tmp_path: Path
 
     assert finding.code == "pytest-fixture-autouse"
     assert finding.rule_id == "pytest-fixture-autouse"
-    assert finding.as_dict()["ruleKey"] == "ruff:pytest-fixture-autouse"
+    serialized = finding.as_dict()
+    assert "ruleKey" in serialized
+    assert serialized["ruleKey"] == "ruff:pytest-fixture-autouse"
 
 
 def test_mobile_protocols_become_canonical_diagnostics(tmp_path: Path) -> None:
@@ -601,7 +605,7 @@ def test_mobile_protocols_become_canonical_diagnostics(tmp_path: Path) -> None:
 def test_mobsfscan_tolerates_known_swift_preview_partial_parsing_with_exact_coverage(tmp_path: Path) -> None:
     swift = tmp_path / "ContentView.swift"
     swift.write_text("#Preview { ContentView() }\n", encoding="utf-8")
-    payload: dict[str, object] = {
+    payload: dict[str, JsonValue] = {
         "errors": [{"level": "warn", "type": ["PartialParsing", []], "message": "unsupported Swift macro"}],
         "results": [],
         "paths": {"scanned": [str(swift)]},
@@ -611,7 +615,7 @@ def test_mobsfscan_tolerates_known_swift_preview_partial_parsing_with_exact_cove
 
 
 def test_mobsfscan_rejects_partial_parsing_without_proven_exact_coverage(tmp_path: Path) -> None:
-    payload: dict[str, object] = {
+    payload: dict[str, JsonValue] = {
         "errors": [{"level": "warn", "type": ["PartialParsing", []], "message": "unsupported Swift macro"}],
         "results": [],
     }
@@ -628,7 +632,7 @@ def test_mobsfscan_rejects_partial_parsing_without_proven_exact_coverage(tmp_pat
         pytest.param({"level": "warn", "type": "PartialParsing"}, id="malformed-type"),
     ],
 )
-def test_mobsfscan_rejects_fatal_or_malformed_semgrep_errors(tmp_path: Path, error: object) -> None:
+def test_mobsfscan_rejects_fatal_or_malformed_semgrep_errors(tmp_path: Path, error: dict[str, JsonValue]) -> None:
     with pytest.raises(ValueError, match="Semgrep engine reported 1 error"):
         parse_mobsfscan(json.dumps({"errors": [error], "results": []}), root=tmp_path)
 
@@ -1061,10 +1065,12 @@ def test_shellcheck_reports_zsh_as_uncovered_without_invocation(tmp_path: Path) 
         ("code", 0, r"comments\.0\.code"),
     ],
 )
-def test_shellcheck_rejects_malformed_protocol_fields(tmp_path: Path, field: str, value: object, message: str) -> None:
+def test_shellcheck_rejects_malformed_protocol_fields(
+    tmp_path: Path, field: str, value: str | int, message: str
+) -> None:
     source = tmp_path / "release.sh"
     source.write_text("echo ok\n", encoding="utf-8")
-    item: dict[str, object] = {
+    item: dict[str, JsonValue] = {
         "file": str(source),
         "line": 1,
         "endLine": 1,
@@ -1129,7 +1135,7 @@ def test_react_doctor_v3_json_becomes_a_blocking_canonical_region(tmp_path: Path
     source = tmp_path / "src" / "button.tsx"
     source.parent.mkdir()
     source.write_text("export const Button = () => <button />;\n", encoding="utf-8")
-    diagnostic: dict[str, object] = {
+    diagnostic: dict[str, JsonValue] = {
         "filePath": "src/button.tsx",
         "plugin": "react-doctor",
         "rule": "button-has-type",
@@ -1352,7 +1358,7 @@ def test_react_doctor_rejects_incomplete_projects(tmp_path: Path) -> None:
         ),
     ],
 )
-def test_react_doctor_incomplete_context_remains_blocking(tmp_path: Path, coverage: dict[str, object]) -> None:
+def test_react_doctor_incomplete_context_remains_blocking(tmp_path: Path, coverage: dict[str, JsonValue]) -> None:
     payload = _react_coverage_payload(tmp_path, coverage)
 
     with pytest.raises(ValueError, match="React Doctor") as caught:
@@ -1381,7 +1387,7 @@ def test_react_doctor_incomplete_context_preserves_unreported_coverage(tmp_path:
     assert "analyzed=None, scanned=None, skipped_checks=None" in str(caught.value)
 
 
-def _react_coverage_payload(root: Path, coverage: dict[str, object]) -> str:
+def _react_coverage_payload(root: Path, coverage: dict[str, JsonValue]) -> str:
     return json.dumps(
         {
             "schemaVersion": 3,
@@ -1413,7 +1419,7 @@ def _react_coverage_payload(root: Path, coverage: dict[str, object]) -> str:
         pytest.param({"lint": 3}, id="numeric-reason"),
     ],
 )
-def test_react_doctor_skipped_reasons_require_native_string_map(tmp_path: Path, reasons: object) -> None:
+def test_react_doctor_skipped_reasons_require_native_string_map(tmp_path: Path, reasons: JsonValue) -> None:
     with pytest.raises(ValidationError, match="skippedCheckReasons"):
         parse_react_doctor(_react_coverage_payload(tmp_path, {"skippedCheckReasons": reasons}), root=tmp_path)
 
@@ -1423,7 +1429,7 @@ def test_react_doctor_skipped_reasons_require_native_string_map(tmp_path: Path, 
     [pytest.param({}, id="omitted"), pytest.param({"skippedCheckReasons": {}}, id="empty-map")],
 )
 def test_react_doctor_optional_empty_reasons_preserve_complete_coverage(
-    tmp_path: Path, coverage: dict[str, object]
+    tmp_path: Path, coverage: dict[str, JsonValue]
 ) -> None:
     payload = _react_coverage_payload(tmp_path, {"scannedFileCount": 7, **coverage})
     assert parse_react_doctor(payload, root=tmp_path) == ()
@@ -1435,7 +1441,7 @@ def test_react_doctor_incomplete_report_retains_bounded_redacted_native_context(
 ) -> None:
     package = tmp_path / "package.json"
     package.write_text('{"dependencies":{"react":"19.0.0"}}\n', encoding="utf-8")
-    coverage: dict[str, object] = {
+    coverage: dict[str, JsonValue] = {
         "complete": False,
         "skippedChecks": ["lint"],
         "skippedCheckReasons": {
@@ -1489,7 +1495,9 @@ def test_react_doctor_incomplete_report_retains_bounded_redacted_native_context(
         ({"baselineDegraded": True}, "baseline degraded"),
     ],
 )
-def test_react_doctor_fails_closed_on_degraded_coverage(tmp_path: Path, extra: dict[str, object], message: str) -> None:
+def test_react_doctor_fails_closed_on_degraded_coverage(
+    tmp_path: Path, extra: dict[str, JsonValue], message: str
+) -> None:
     payload = {
         "schemaVersion": 3,
         "version": manifest.eslint_peers()["react-doctor"],
@@ -2400,7 +2408,7 @@ def test_react_doctor_staged_non_detection_falls_back_to_full_and_filters_exact_
     unrelated_source.write_text('export const Other = () => <img src="other.png" />;\n', encoding="utf-8")
     seen: list[tuple[str, ...]] = []
 
-    def diagnostic(path: Path) -> dict[str, object]:
+    def diagnostic(path: Path) -> dict[str, JsonValue]:
         return {
             "filePath": str(path),
             "plugin": "react-doctor",
@@ -2778,7 +2786,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
 def test_non_default_github_push_detection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    payload: dict[str, object],
+    payload: dict[str, JsonValue],
     expected: bool,
 ) -> None:
     event = tmp_path / "event.json"
@@ -4353,7 +4361,7 @@ def test_react_doctor_validates_empty_baseline_changed_scope_against_git(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     *,
-    payload_overrides: dict[str, object],
+    payload_overrides: dict[str, JsonValue],
     changed_paths: str,
     git_returncode: int,
     expected_completion: Completion,
@@ -4370,7 +4378,7 @@ def test_react_doctor_validates_empty_baseline_changed_scope_against_git(
     native_calls: list[tuple[str, ...]] = []
     # The pinned native serializer omits reactDetected and baselineDegraded
     # when a committed metadata-only diff has no eligible React source.
-    payload: dict[str, object] = {
+    payload: dict[str, JsonValue] = {
         "schemaVersion": 3,
         "sourceRevision": head,
         "mode": "baseline",
@@ -4466,7 +4474,7 @@ def test_react_doctor_rejects_invalid_common_ancestor_proof(
         encoding="utf-8",
     )
     seen: list[tuple[str, ...]] = []
-    payload: dict[str, object] = {
+    payload: dict[str, JsonValue] = {
         "schemaVersion": 3,
         "version": manifest.eslint_peers()["react-doctor"],
         "ok": True,

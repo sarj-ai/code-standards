@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 from pathlib import PurePosixPath
-import re
 from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import (
@@ -17,41 +16,12 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
-from sarj_python_lint.rules._ast_index import walk as walk_ast
-from sarj_python_lint.rules._comments import is_protected, split_identifier, stem
-from sarj_python_lint.rules._docstrings import VALUE_MARKER_RE, sections
-from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._docstrings import docstring_expression
+from sarj_python_lint.rules.no_unnecessary_docstring import module_docstring_consumed
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from sarj_python_lint._file_context import PythonFileContext
-    from sarj_python_lint.rules._ast_index import NodeIndex
-
-
-_SPECIAL_MODULES = frozenset({"__init__.py", "__main__.py"})
-_SUMMARY_ONLY = frozenset({"summary"})
-_SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
-_DOCSTRING_TOKEN_RE = re.compile(r"[^\W\d_]+(?:'[^\W\d_]+)?|\d+")
-_GRAMMATICAL_FILLER = frozenset({"a", "an", "the"})
-_MIN_DOUBLED_STEM_LENGTH = 2
-
-# These words describe existence rather than purpose; unknown words are evidence
-# that the docstring may say something the path cannot.
-_MODULE_FILLER_STEMS = frozenset(
-    stem(word)
-    for word in (
-        "class",
-        "function",
-        "helper",
-        "implementation",
-        "module",
-        "operation",
-        "utility",
-        "utils",
-    )
-)
 
 
 @final
@@ -59,41 +29,52 @@ class RedundantModuleDocstring(Rule):
     id: str = "redundant-module-docstring"
     code: str = "SARJ099"
     documentation = RuleDocumentation(
-        summary=("Module docstring only repeats the filename and, optionally, its immediate parent package."),
-        rationale="A one-line restatement of a module path duplicates information already visible to readers and search tools.",
-        remediation=(
-            "Remove the restatement after confirming module `__doc__` is not an external documentation or runtime "
-            "contract. Clarify author-controlled names or exports, and keep durable constraints."
-        ),
+        summary="Delete top-of-file module docstrings without a detected runtime or documentation consumer.",
+        rationale="Module prose creates a second maintenance surface; names and code structure should explain the implementation, with hidden constraints kept next to their owner.",
+        remediation="Delete the module docstring. Preserve legal notices as comments, express ordinary meaning through names and types, and move a necessary hidden constraint next to the code it governs. Keep externally consumed documentation with an explained exact-code exception.",
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         aliases=("module-docstring-restates-path",),
         limitations=(
-            "Only single-line summaries are compared, after generic module vocabulary is removed, with the complete normalized filename and optionally the complete immediate parent package.",
-            "Shebang and main-guard modules, visible `__doc__` reads or publication, special modules, stubs, generated files, multiline documentation, and protected technical facts are excluded.",
+            "The historical rule ID is retained for compatibility, but every unconsumed module docstring is checked, including multiline prose, tests, special modules, stubs and executable scripts.",
+            "Generated files, doctests, explicit __doc__/help/getdoc consumers and exact SARJ099 suppressions are excluded. Module consumer analysis is shared with SARJ420; when both rules are selected, SARJ099 takes diagnostic precedence.",
+            "Safe fixes delete standalone module docstrings only when SARJ420 also confirms no detected consumer. Visible dynamic namespace or frame observation, module escapes, adjacent strings, comments within the expression, same-line code and trailing comments prevent fixes.",
+            "A fix must retain source encoding and shebang interpretation. Unknown external documentation consumers require an explained local exception; classes and callable documentation remain owned by SARJ420.",
+            "Imports of __main__ or pydoc conservatively withhold module fixes because they can publish the module or its help. They do not establish that an imported __main__ is the current module, so diagnostics still require an explicit consumer proof or exception.",
+            "Legal/license notices are never automatically deleted. Keep their text as comments when removing the surrounding module docstring manually.",
         ),
         examples=(
             RuleExample(
-                example_id="module-path-restatement",
-                title="Docstring repeats the module path",
+                example_id="module-prose",
+                title="Delete the module's implementation walkthrough",
                 outcome=ExampleOutcome.MATCH,
-                files=(ExampleFile.python("celery/utils/log.py", '"""Logging utilities."""\n\nVALUE = 1\n'),),
-                focus_path=PurePosixPath("celery/utils/log.py"),
+                files=(
+                    ExampleFile.python(
+                        "app/service.py", '"""Service entry points.\n\nCoordinates requests.\n"""\nVALUE = 1\n'
+                    ),
+                ),
+                fixed_files=(ExampleFile.python("app/service.py", "VALUE = 1\n"),),
+                focus_path=PurePosixPath("app/service.py"),
                 expected_count=1,
                 public=True,
             ),
             RuleExample(
-                example_id="module-contract",
-                title="Docstring records a module contract",
+                example_id="module-consumer",
+                title="Keep a module description consumed at runtime",
                 outcome=ExampleOutcome.NO_MATCH,
-                files=(
-                    ExampleFile.python(
-                        "celery/utils/log.py", '"""Logging utilities redact credentials."""\n\nVALUE = 1\n'
-                    ),
-                ),
-                focus_path=PurePosixPath("celery/utils/log.py"),
+                files=(ExampleFile.python("app/service.py", '"""Service command help."""\nDESCRIPTION = __doc__\n'),),
+                focus_path=PurePosixPath("app/service.py"),
                 expected_count=0,
                 public=True,
+            ),
+            RuleExample(
+                example_id="safe-autofix-subset",
+                title="Unconsumed module prose has a convergent deletion fix",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("app/service.py", '"""Service module."""\nVALUE = 1\n'),),
+                fixed_files=(ExampleFile.python("app/service.py", "VALUE = 1\n"),),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
             ),
         ),
     )
@@ -101,32 +82,19 @@ class RedundantModuleDocstring(Rule):
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        path = context.path
-        source = context.source
-        if self._excluded_path(path) or context.generated or source.startswith("#!"):
-            return []
         tree = context.tree
-        if tree is None or len(tree.body) <= 1:
+        if context.generated or tree is None:
             return []
-        if _is_executable_module(tree) or _uses_module_docstring(tree, node_index=context.node_index):
+        expression = docstring_expression(tree)
+        if expression is None or ">>>" in (ast.get_docstring(tree, clean=False) or ""):
             return []
-        expression = tree.body[0]
-        if (
-            not isinstance(expression, ast.Expr)
-            or not isinstance(expression.value, ast.Constant)
-            or not isinstance(expression.value.value, str)
+        if module_docstring_consumed(context) or is_suppressed(
+            context.source_lines, expression.end_lineno or expression.lineno, self.code
         ):
-            return []
-        docstring = ast.get_docstring(tree, clean=True)
-        if not docstring or not self._is_plain_summary(expression, docstring):
-            return []
-        if not _restates_path(docstring, path):
-            return []
-        if is_suppressed(context.source_lines, expression.lineno, self.code):
             return []
         return [
             Diagnostic(
-                path=path,
+                path=context.path,
                 line=expression.lineno,
                 col=expression.col_offset + 1,
                 code=self.code,
@@ -134,99 +102,3 @@ class RedundantModuleDocstring(Rule):
                 severity=Severity.ERROR,
             )
         ]
-
-    @staticmethod
-    def _excluded_path(path: Path) -> bool:
-        return path.name in _SPECIAL_MODULES or path.suffix == ".pyi" or is_test_path(path)
-
-    @staticmethod
-    def _is_plain_summary(expression: ast.Expr, docstring: str) -> bool:
-        if expression.end_lineno != expression.lineno or "\n" in docstring:
-            return False
-        if frozenset(sections(docstring)) != _SUMMARY_ONLY:
-            return False
-        if len(_SENTENCE_END_RE.findall(docstring)) > 1:
-            return False
-        return not VALUE_MARKER_RE.search(docstring) and not is_protected(docstring)
-
-
-def _restates_path(docstring: str, path: Path) -> bool:
-    content_words = [
-        word
-        for match in _DOCSTRING_TOKEN_RE.finditer(docstring)
-        if (word := match.group(0).lower()) not in _GRAMMATICAL_FILLER
-        and _module_stem(word) not in _MODULE_FILLER_STEMS
-    ]
-    if not content_words:
-        return False
-    filename = _component_tokens(path.stem)
-    parent = _component_tokens(path.parent.name)
-    filename_stems = _component_stems(filename)
-    parent_stems = _component_stems(parent)
-    for split_at in range(len(content_words) + 1):
-        filename_words = content_words[:split_at]
-        parent_words = content_words[split_at:]
-        if not _matches_component(filename_words, filename, filename_stems):
-            continue
-        if not parent_words or _matches_component(parent_words, parent, parent_stems):
-            return True
-    return False
-
-
-def _component_tokens(component: str) -> list[str]:
-    tokens: list[str] = []
-    for chunk in component.split("_"):
-        if chunk.isascii():
-            tokens.extend(split_identifier(chunk))
-        else:
-            tokens.extend(match.group(0).lower() for match in _DOCSTRING_TOKEN_RE.finditer(chunk))
-    return tokens
-
-
-def _component_stems(tokens: list[str]) -> list[str]:
-    return [result for token in tokens if (result := _module_stem(token)) not in _MODULE_FILLER_STEMS]
-
-
-def _matches_component(words: list[str], tokens: list[str], token_stems: list[str]) -> bool:
-    word_stems = [_module_stem(word) for word in words]
-    if word_stems == token_stems:
-        return True
-    return bool(words) and "".join(words) == "".join(tokens)
-
-
-def _uses_module_docstring(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:
-    for node in walk_ast(tree, index=node_index):
-        if isinstance(node, ast.Name) and node.id == "__doc__" and isinstance(node.ctx, ast.Load):
-            return True
-        if isinstance(node, ast.Attribute) and node.attr == "__doc__":
-            return True
-        if isinstance(node, ast.Constant) and node.value == "__doc__":
-            return True
-    return False
-
-
-def _is_executable_module(tree: ast.Module) -> bool:
-    return any(isinstance(statement, ast.If) and _is_main_guard(statement.test) for statement in tree.body)
-
-
-def _is_main_guard(node: ast.expr) -> bool:
-    if isinstance(node, ast.BoolOp):
-        return any(_is_main_guard(value) for value in node.values)
-    if not isinstance(node, ast.Compare) or len(node.ops) != 1 or len(node.comparators) != 1:
-        return False
-    operands = (node.left, node.comparators[0])
-    return any(isinstance(operand, ast.Name) and operand.id == "__name__" for operand in operands) and any(
-        isinstance(operand, ast.Constant) and operand.value == "__main__" for operand in operands
-    )
-
-
-def _module_stem(word: str) -> str:
-    result = stem(word)
-    if (
-        result != word
-        and len(result) >= _MIN_DOUBLED_STEM_LENGTH
-        and result[-1] == result[-2]
-        and result[-1] not in "aeiou"
-    ):
-        return result[:-1]
-    return result

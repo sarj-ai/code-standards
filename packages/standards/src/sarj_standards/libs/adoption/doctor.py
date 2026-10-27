@@ -1282,8 +1282,7 @@ def _rewrite_age_gate_preapprovals(
 
     def npm_replacement(match: re.Match[str]) -> str:
         existing = [trimmed for item in match.group("value").split(",") if (trimmed := item.strip())]
-        # npm's exclusions are names, not versions. They are authored policy;
-        # preserve them while the dependency manifest pins the exact toolchain.
+        # npm exclusions match names; preserve authored policy while updating exact dependency pins.
         retained = [item for item in existing if item not in approvals]
         values = ",".join((*retained, *sorted(approvals)))
         prefix, suffix = match.group("prefix", "suffix")
@@ -1889,13 +1888,15 @@ def _check_eslint_peer_set(root: Path, typescript_root: Path) -> Iterator[Findin
         )
 
 
-def _contains_expected_mapping(actual: Mapping[str, object], expected: Mapping[str, object]) -> bool:
+def _contains_expected_mapping(
+    actual: Mapping[str, object],  # sarj-noqa: SARJ528 -- Native policy values remain opaque.
+    expected: Mapping[str, packagemanager.OverrideValue],
+) -> bool:
     for key, expected_value in expected.items():
         actual_value = actual.get(key)
-        expected_table = manifest.as_table(expected_value)
-        if expected_table:
+        if isinstance(expected_value, dict) and expected_value:
             actual_table = manifest.as_table(actual_value)
-            if not actual_table or not _contains_expected_mapping(actual_table, expected_table):
+            if not actual_table or not _contains_expected_mapping(actual_table, expected_value):
                 return False
         elif actual_value != expected_value:
             return False

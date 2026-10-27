@@ -24,6 +24,7 @@ from sarj_standards.libs.release.registry import (
 
 if TYPE_CHECKING:
     from pathlib import Path
+    from types import TracebackType
     from urllib.request import Request
 
 
@@ -260,7 +261,12 @@ def test_pypi_publication_requires_exact_version_in_simple_api(monkeypatch: pyte
         def __enter__(self) -> Self:
             return self
 
-        def __exit__(self, *_args: object) -> None:
+        def __exit__(
+            self,
+            _exc_type: type[BaseException] | None,
+            _exc_value: BaseException | None,
+            _traceback: TracebackType | None,
+        ) -> None:
             return None
 
         def read(self) -> bytes:
@@ -296,14 +302,19 @@ def test_pypi_simple_metadata_without_exact_version_is_not_ready(monkeypatch: py
         def __enter__(self) -> Self:
             return self
 
-        def __exit__(self, *_args: object) -> None:
+        def __exit__(
+            self,
+            _exc_type: type[BaseException] | None,
+            _exc_value: BaseException | None,
+            _traceback: TracebackType | None,
+        ) -> None:
             return None
 
         def read(self) -> bytes:
             return payload
 
     def open_url(
-        _request: object,
+        _request: Request,
         *,
         timeout: int,  # ruff: ignore[unused-function-argument] -- urlopen fixes this keyword.
     ) -> Response:
@@ -332,7 +343,12 @@ def test_publication_timeout_repeats_one_read_without_inventing_availability(
         def __enter__(self) -> Self:
             return self
 
-        def __exit__(self, *_args: object) -> None:
+        def __exit__(
+            self,
+            _exc_type: type[BaseException] | None,
+            _exc_value: BaseException | None,
+            _traceback: TracebackType | None,
+        ) -> None:
             return None
 
         def read(self) -> bytes:

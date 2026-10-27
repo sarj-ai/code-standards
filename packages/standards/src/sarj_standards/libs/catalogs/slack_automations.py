@@ -531,8 +531,8 @@ def render_schema() -> str:
     return json.dumps(document, indent=2, sort_keys=True) + "\n"
 
 
-def _object_without_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
-    result: dict[str, object] = {}
+def _object_without_duplicate_keys[T](pairs: list[tuple[str, T]]) -> dict[str, T]:
+    result: dict[str, T] = {}
     for key, value in pairs:
         if key in result:
             msg = f"duplicate JSON key: {key}"

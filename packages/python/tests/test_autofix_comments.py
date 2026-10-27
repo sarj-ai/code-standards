@@ -123,7 +123,7 @@ def test_accumulation_paragraph_needs_exact_ordered_ownership(old: str, new: str
     rule_id = "excessive-commentary"
     source = _example(RuleId(rule_id)).focus_file.source.replace(old, new)
     path = Path("app/service.py")
-    assert REGISTRY[rule_id]().check(path, source)
+    assert REGISTRY[rule_id]().check(path, source) == []
     assert fix_source(path, source, rule_ids=[rule_id]) == source
 
 
@@ -157,6 +157,25 @@ def test_many_exact_comment_candidates_batch_without_moving_code() -> None:
     assert ast.dump(ast.parse(fixed), include_attributes=True) == ast.dump(ast.parse(source), include_attributes=True)
     assert not REGISTRY[rule_id]().check(path, fixed)
     assert fix_source(path, fixed, rule_ids=[rule_id]) == fixed
+
+
+@pytest.mark.parametrize("body", ["Helpers", "Imports:", "Type aliases", "NOTE: Type aliases:", "NB: Error handling"])
+def test_content_free_section_labels_are_safely_deleted(body: str) -> None:
+    source = f"def load():\n    # {body}\n    load_profile()\n"
+    expected = "def load():\n\n    load_profile()\n"
+    path = Path("app/service.py")
+    fixed = fix_source(path, source, rule_ids=["no-comment-cruft"])
+    assert fixed == expected
+    assert ast.dump(ast.parse(fixed), include_attributes=True) == ast.dump(ast.parse(source), include_attributes=True)
+    assert fix_source(path, fixed, rule_ids=["no-comment-cruft"]) == fixed
+
+
+@pytest.mark.parametrize("body", ["NOTE: Return the result", "Helper function to format output", "TODO: add a guard"])
+def test_prose_narration_and_untracked_work_require_manual_deletion(body: str) -> None:
+    source = f"# {body}\nVALUE = 1\n"
+    path = Path("app/service.py")
+    assert REGISTRY["no-comment-cruft"]().check(path, source)
+    assert fix_source(path, source, rule_ids=["no-comment-cruft"]) == source
 
 
 @pytest.mark.parametrize("rule_id", _RULES)

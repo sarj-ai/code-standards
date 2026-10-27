@@ -66,8 +66,22 @@ _MUTATING_CALLEE_WORDS = frozenset(
 )
 
 
+type _StaticShape = tuple[
+    str,
+    str | _StaticShape | tuple[_StaticShape, ...] | tuple[tuple[_StaticShape, _StaticShape], ...],
+]
+type _AssertionSkeleton = tuple[
+    tuple[str, ...],
+    bool,
+    str,
+    tuple[_StaticShape, ...],
+    tuple[tuple[str | None, _StaticShape], ...],
+    _StaticShape | None,
+]
+
+
 class _AssertionShape(NamedTuple):
-    skeleton: object
+    skeleton: _AssertionSkeleton
     values: str
 
 
@@ -348,7 +362,7 @@ def _runs(
     unsafe_callees: frozenset[str],
 ) -> Iterator[list[ast.Assert]]:
     current: list[ast.Assert] = []
-    current_shape: object | None = None
+    current_shape: _AssertionSkeleton | None = None
     current_values: set[str] = set()
     for statement in test.body:
         if not isinstance(statement, ast.Assert) or _has_attached_comment(statement, comments):
@@ -408,7 +422,7 @@ def _assertion_shape(node: ast.Assert, unsafe_callees: frozenset[str]) -> _Asser
         or not _has_static_call_inputs(parsed.call)
     ):
         return None
-    skeleton = (
+    skeleton: _AssertionSkeleton = (
         callee,
         parsed.awaited,
         polarity,
@@ -471,7 +485,7 @@ def _static(node: ast.expr) -> bool:
             return False
 
 
-def _static_shape(node: ast.expr) -> object:
+def _static_shape(node: ast.expr) -> _StaticShape:
     match node:
         case ast.Constant(value=value):
             return ("constant", type(value).__name__)

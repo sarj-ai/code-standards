@@ -35,7 +35,7 @@ class NoAsyncFunctionCache(Rule):
     id = "no-async-function-cache"
     code = "SARJ507"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Standard library cache decorates a coroutine function and retains single-use coroutine objects.",
         rationale=(
             "`functools.cache`, `lru_cache`, and `cached_property` store the coroutine object returned by an async "
@@ -109,7 +109,7 @@ class NoAsyncFunctionCache(Rule):
                         "Standard library cache retains a single-use coroutine; remove it or use an async-aware "
                         "cache that stores awaited results."
                     ),
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 ),
             )
         return diagnostics

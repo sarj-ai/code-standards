@@ -111,8 +111,6 @@ def _analyze_batch(
     if hashlib.sha256(bundle.read_bytes()).hexdigest() != _SHA256:
         message = "Pinned GitHub action parser bundle digest does not match"
         raise ValueError(message)
-    # BasedPyright already installs this runtime in the core environment. Resolve
-    # its distribution directly; standalone action checks need no npm project.
     binary = "nodejs_wheel/node.exe" if sys.platform == "win32" else "nodejs_wheel/bin/node"
     node = distribution("nodejs-wheel-binaries").locate_file(binary)
     with tempfile.TemporaryDirectory(prefix="sarj-action-parser-") as directory:
