@@ -1034,6 +1034,10 @@ def standards_8129(tmp_path: Path, standards_lane: Standards8129Lane) -> Candida
     ):
         path = checkout / relative
         path.write_text(path.read_text().replace(old_revision, new_revision).replace("6.12.9", "6.13.0"))
+    native = checkout / ".github/scripts/setup-native-config-tests.sh"
+    source = native.read_text()
+    assert source.count("nginx=1.24.0-2ubuntu7.18 ") == 1
+    native.write_text(source.replace("nginx=1.24.0-2ubuntu7.18 ", "nginx=1.24.0-2ubuntu7.19 "))
     _set_standards_8129_version(checkout, standards_lane, "8.129.9", "8.129.10")
     return Candidate(checkout, standards_lane.STANDARDS_8129_ANCHOR, _commit(checkout))
 
@@ -1083,6 +1087,7 @@ def test_standards_8129_rejects_versions_outside_its_line(
         (".github/workflows/commit-policy.yml", "c61146c7137c", "0000000000ac"),
         (".sarj-standards.toml", 'rule_profile = "all"', 'rule_profile = "none"'),
         ("packages/standards-compat/pyproject.toml", "code-standards==8.129.10", "code-standards==8.129.9"),
+        (".github/scripts/setup-native-config-tests.sh", "ubuntu7.19", "ubuntu7.20"),
     ],
 )
 def test_standards_8129_rejects_drift_in_reviewed_files(
