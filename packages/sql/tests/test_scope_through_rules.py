@@ -8,9 +8,11 @@ import pytest
 from sarj_sql_lint.rules import REGISTRY
 from sarj_sql_lint.rules.enforce_timestamptz import EnforceTimestamptz
 from sarj_sql_lint.rules.idempotent_ddl import IdempotentDdl
+from sarj_sql_lint.rules.no_analytical_queries_in_transactional_db import NoAnalyticalQueriesInTransactionalDb
 from sarj_sql_lint.rules.no_application_schema_check import NoApplicationSchemaCheck
 from sarj_sql_lint.rules.no_create_trigger import NoCreateTrigger
 from sarj_sql_lint.rules.no_database_functions import NoDatabaseFunctions
+from sarj_sql_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_sql_lint.rules.no_pg_enum import NoPgEnum
 from sarj_sql_lint.rules.prefer_jsonb import PreferJsonb
 from sarj_sql_lint.rules.prefer_text_over_varchar import PreferTextOverVarchar
@@ -66,7 +68,7 @@ ALL_RULES = _ALL_RULES_TEMPLATE.replace("__LEGACY_UUID_DEFAULT__", _LEGACY_UUID_
 
 HAND_WRITTEN = Path("db/migrations/0001_init.sql")
 
-MIGRATION_RULES = tuple(rule_cls for rule_cls in REGISTRY.values() if rule_cls.code != "SARJ107")
+MIGRATION_RULES = tuple(rule_cls for rule_cls in REGISTRY.values() if rule_cls.code not in {"SARJ107", "SARJ122"})
 DUMP_EXEMPT = MIGRATION_RULES
 
 MODEL_REDIRECTING = (
@@ -105,6 +107,24 @@ def test_each_rule_takes_the_dump_exemption(rule_cls: type[Rule]) -> None:
 def test_the_dump_exemption_suppresses_all_migration_findings() -> None:
     assert _total(HAND_WRITTEN, ALL_RULES) == 19
     assert _total(Path("db/structure.sql"), ALL_RULES) == 0
+
+
+@pytest.mark.parametrize(
+    ("rule_cls", "query"),
+    [
+        (NoOffsetPagination, "SELECT id FROM event ORDER BY id LIMIT $1 OFFSET $2;"),
+        (NoAnalyticalQueriesInTransactionalDb, "SELECT COUNT(*) FROM event;"),
+    ],
+)
+def test_query_policies_enforce_authored_queries_and_exempt_dump_content(rule_cls: type[Rule], query: str) -> None:
+    path = Path("queries/events.sql")
+    assert len(rule_cls().check(path, query)) == 1
+    assert rule_cls().check(path, f"-- PostgreSQL database dump\n{query}") == []
+
+
+@pytest.mark.parametrize("path", ["db/schema.sql", "db/structure.sql", "db/restore/001.sql", "db/migrations/001.sql"])
+def test_analytical_query_policy_checks_authored_sql_at_dump_like_paths(path: str) -> None:
+    assert len(NoAnalyticalQueriesInTransactionalDb().check(Path(path), "SELECT COUNT(*) FROM event;")) == 1
 
 
 @pytest.mark.parametrize("name", ["structure.sql", "schema.sql"])

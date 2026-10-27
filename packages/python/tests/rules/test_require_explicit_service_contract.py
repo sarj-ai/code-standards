@@ -955,6 +955,22 @@ def test_one_operation_boundary_does_not_require_substitution_evidence(dependenc
     ) == ["SARJ465"]
 
 
+def test_legacy_collaborator_diagnostic_preserves_baseline_message() -> None:
+    source = (
+        "class ExampleService:\n"
+        "    def __init__(self, worker: Worker) -> None:\n"
+        "        self.worker = worker\n"
+        "    def run(self) -> None:\n"
+        "        self.worker.run()\n"
+    )
+    [finding] = RequireExplicitServiceContract().check(Path("app/service.py"), source)
+    # The native baseline uses this message as its diagnostic anchor.
+    assert finding.format() == (
+        "app/service.py:1:1: SARJ465 `ExampleService` invokes a retained collaborator from run "
+        "without a declared ABC or Protocol covering its service operations."
+    )
+
+
 def test_canonical_class_and_method_decorators_preserve_operation_identity() -> None:
     assert _check(
         """

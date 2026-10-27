@@ -136,7 +136,7 @@ _MYSQL_RE = re.compile(
 )
 
 _DIALECT_DIRECTIVE_RE = re.compile(
-    r"^\s*--\s*(?:sql-)?dialect\s*:\s*(postgres(?:ql)?|sqlite|mysql|mariadb)\s*$",
+    r"^\s*--\s*(?:sql-)?dialect\s*:\s*(postgres(?:ql)?|sqlite|mysql|mariadb|clickhouse|bigquery|duckdb|snowflake|redshift|trino|athena|databricks|spark)\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 _DBMATE_DIRECTIVE_RE = re.compile(

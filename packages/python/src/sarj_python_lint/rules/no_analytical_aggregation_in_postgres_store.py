@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, final, override
@@ -16,8 +15,8 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
-from sarj_python_lint.rules._ast_index import walk
-from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
+from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._transactional_sql import query_signal, transactional_queries
 
 
 if TYPE_CHECKING:
@@ -26,23 +25,8 @@ if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
 
 
-_QUERY_SHAPE = re.compile(r"\bSELECT\b[\s\S]*?\bFROM\b", re.IGNORECASE)
-_POSTGRES_OWNER = re.compile(
-    r"\b(?:psycopg|psycopg2|asyncpg|Postgres(?:ql)?|postgres_pool)\b"
-    r"|sqlalchemy\.dialects\.postgresql",
-    re.IGNORECASE,
-)
-_CLICKHOUSE_SQL = re.compile(
-    r"\barg(?:Max|Min)\b|\b_peerdb|\bJSONExtract|\buniqExact\b|\bgroupArray\b"
-    r"|\barrayJoin\b|\bquantile\w*\(",
-)
-_BIGQUERY_SQL = re.compile(
-    r"\b(?:FROM|JOIN)\s+`|\bAPPROX_COUNT_DISTINCT\s*\(|\bGENERATE_ARRAY\s*\("
-    r"|\b_PARTITIONTIME\b|\bSAFE_CAST\s*\(|\bPARSE_TIMESTAMP\s*\("
-    r"|\bCOUNTIF\s*\(|\bSTRUCT\s*\(",
-    re.IGNORECASE,
-)
-_MUTATION = re.compile(r"^\s*(?:UPDATE|DELETE|INSERT)\b", re.IGNORECASE)
+# Keep the historical standalone SARJ437 overlap stable. Combined runs give the
+# broader SARJ020 error precedence only when it actually emits a diagnostic.
 _TIME_BUCKET = re.compile(r"\b(?:DATE_TRUNC|TIME_BUCKET)\s*\(", re.IGNORECASE)
 _GROUP_BY = re.compile(r"\bGROUP\s+BY\b", re.IGNORECASE)
 _COMMON_AGGREGATE = re.compile(
@@ -138,26 +122,30 @@ class NoAnalyticalAggregationInPostgresStore(Rule):
     id: str = "no-analytical-aggregation-in-postgres-store"
     code: str = "SARJ020"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
-        summary="Potentially analytical PostgreSQL store queries require review.",
+        default_level=Severity.ERROR,
+        summary="Keep DISTINCT, GROUP BY, and SQL aggregates in analytical databases.",
         rationale=(
-            "Unbounded reporting and statistical scans can compete with transactional reads. "
-            "Transactional invariants, queue coordination, bounded hydration, and other strongly "
-            "consistent operational aggregates remain valid PostgreSQL work."
+            "Project architecture reserves deduplication, grouping, and aggregate queries for ClickHouse "
+            "or another analytical database, so reporting work does not compete with transactional reads. "
+            "This is a datastore policy; SQL syntax alone cannot establish a query's execution cost."
         ),
         remediation=(
-            "Review the query bounds and execution plan. Prefer ClickHouse for reporting, historical analysis, "
-            "and broad aggregations, with measured performance and an explicit freshness contract. "
-            "For PostgreSQL, document why the aggregate must remain transactional, with EXPLAIN evidence. "
-            "Do not add reporting-specific indexes without evaluating ClickHouse."
+            "Move reporting and aggregation to ClickHouse or another analytical database with an explicit "
+            "freshness contract. Use an indexed EXISTS or direct row lookup for operational existence checks. "
+            "Preserve atomicity for transactional invariants; use an exact, explained SARJ020 exception when "
+            "a reviewed invariant must remain in the transactional database."
         ),
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
-        aliases=("no-aggregation-in-store-query",),
+        aliases=("no-aggregation-in-store-query", "no-analytical-queries-in-transactional-db"),
         limitations=(
-            "Only SQL string literals in recognized store modules with positive PostgreSQL ownership evidence are analyzed.",
-            "Statistical aggregates, time-bucketed rollups, and broad grouped reporting shapes are reported; locked coordination reads and identity-bounded aggregates are excluded.",
-            "ClickHouse- and BigQuery-specific query syntax is excluded per query, including in mixed-backend modules.",
+            "Statically recoverable SQL in non-test, non-generated Python modules with native PostgreSQL, MySQL, or SQLite imports is analyzed, regardless of filename. The historical SARJ020 identifier is retained.",
+            "Every parsed SELECT DISTINCT (including DISTINCT ON), deduplicating UNION/INTERSECT/EXCEPT, GROUP BY, and built-in SQL aggregate is reported, including CTEs, nested writes, windowed aggregates, identity-bounded queries, and LIMIT queries. ALL set operations remain valid. This deliberately replaces the former reporting-size thresholds.",
+            "A single imported backend owns module SQL. Resolvable first-party query contracts and re-exports retain their native analytical-provider evidence. Mixed backend modules require a direct query sink on a source-proven native connection or annotated parameter; unresolved receivers and separately bound queries abstain.",
+            "Known ClickHouse, BigQuery, DuckDB, Snowflake, Trino, Athena, and Databricks drivers are analytical owners. Comments, scalar SQL values, identifiers, Python docstrings, and IS DISTINCT FROM do not trigger the policy.",
+            "SQLite multi-argument MIN/MAX and MySQL ANY_VALUE retain their scalar semantics; PostgreSQL ANY_VALUE remains an aggregate.",
+            "PostgreSQL pg_catalog aggregates and lowercase quoted built-ins retain native identity. Unknown schemas and distinct quoted uppercase PostgreSQL function names abstain. Executing EXPLAIN ANALYZE is analyzed; plan-only EXPLAIN and unsupported PostgreSQL EXPLAIN options abstain.",
+            "Dynamic SQL grammar, ORM expression trees, unknown wrappers, user-defined aggregates, and malformed SQL are not inferred. No automatic datastore migration is safe.",
         ),
         examples=(
             RuleExample(
@@ -177,13 +165,13 @@ class NoAnalyticalAggregationInPostgresStore(Rule):
                 public=True,
             ),
             RuleExample(
-                example_id="bounded-transactional-aggregate",
-                title="PostgreSQL preserves a bounded transactional invariant",
+                example_id="operational-existence-lookup",
+                title="PostgreSQL performs an operational existence lookup",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.python(
                         "app/account_store.py",
-                        'import psycopg\n\nQUERY = "SELECT SUM(amount) FROM ledger WHERE account_id = %s FOR UPDATE"\n',
+                        'import psycopg\n\nQUERY = "SELECT EXISTS(SELECT 1 FROM ledger WHERE account_id = %s)"\n',
                     ),
                 ),
                 focus_path=PurePosixPath("app/account_store.py"),
@@ -197,48 +185,25 @@ class NoAnalyticalAggregationInPostgresStore(Rule):
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         path = context.path
-        source = context.source
-        if not is_store_module(path) or context.generated or _POSTGRES_OWNER.search(source) is None:
+        if context.tree is None or is_test_path(path) or context.generated:
             return []
-        tree = context.tree
-        if tree is None:
-            return []
-
-        docstrings = context.docstring_node_ids
         diagnostics: list[Diagnostic] = []
-        consumed: set[int] = set()
-        for node in context.nodes(ast.Constant, ast.BinOp):
-            if id(node) in consumed or id(node) in docstrings:
-                continue
-            text_value = sql_string_value(node)
-            if text_value is None:
-                continue
-            if isinstance(node, ast.BinOp):
-                consumed.update(id(child) for child in walk(node))
-
-            sql = strip_sql_noise(text_value)
-            if (
-                _QUERY_SHAPE.search(sql) is None
-                or _MUTATION.search(sql)
-                or _CLICKHOUSE_SQL.search(sql)
-                or _BIGQUERY_SQL.search(sql)
-            ):
-                continue
-            signal = analytical_signal(sql)
+        for candidate in transactional_queries(context):
+            signal = query_signal(candidate.sql, dialect=candidate.dialect)
             if signal is None:
                 continue
+            node = candidate.node
             diagnostics.append(
                 Diagnostic(
                     path=path,
                     line=node.lineno,
                     col=node.col_offset + 1,
                     code=self.code,
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                     message=(
-                        f"Possible analytical PostgreSQL query ({signal}); review its bounds and execution plan. "
-                        "Prefer ClickHouse for reporting, historical analysis, and broad aggregations. "
-                        "For PostgreSQL, document why this aggregate must remain transactional, with EXPLAIN evidence. "
-                        "Do not add reporting-specific indexes without evaluating ClickHouse."
+                        f"{signal} belongs in ClickHouse or another analytical database under project policy. "
+                        "Use EXISTS or direct row lookups for operational reads. Preserve atomicity; "
+                        "a transactional invariant requires an exact, explained SARJ020 exception."
                     ),
                 )
             )

@@ -1,0 +1,368 @@
+from pathlib import Path
+
+import pytest
+from sarj_rule_contracts.examples import verify_native_rule
+
+from sarj_sql_lint.__main__ import analyze, main
+from sarj_sql_lint.rule_base import DefaultLevel, Diagnostic
+from sarj_sql_lint.rules.no_analytical_queries_in_transactional_db import NoAnalyticalQueriesInTransactionalDb
+
+
+def test_documented_examples() -> None:
+    verify_native_rule(NoAnalyticalQueriesInTransactionalDb, analyze)
+
+
+def _check(source: str, filename: str = "queries/events.sql") -> list[Diagnostic]:
+    return NoAnalyticalQueriesInTransactionalDb().check(Path(filename), source)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT DISTINCT id FROM event;",
+        "SELECT DISTINCT ON (team_id) id FROM event ORDER BY team_id;",
+        "SELECT team_id FROM event GROUP BY team_id;",
+        "SELECT team_id FROM event GROUP/* comment */BY team_id",
+        "SELECT team_id FROM event GROUP /* comment */ BY team_id",
+        "SELECT team_id FROM event GROUP-- comment\r\nBY team_id",
+        "SELECT team_id FROM event GROUP/* first\r\nsecond */BY team_id",
+        "SELECT team_id, COUNT(*) FROM event GROUP BY team_id LIMIT 1;",
+        "SELECT COUNT(*) FROM event;",
+        "SELECT COUNT(DISTINCT team_id) FROM event;",
+        "SELECT SUM(cost) FROM event;",
+        "SELECT AVG(cost) FROM event;",
+        "SELECT MIN(created_at) FROM event;",
+        "SELECT MAX(created_at) FROM event;",
+        "SELECT ARRAY_AGG(id) FROM event;",
+        "SELECT STRING_AGG(name, ',') FROM event;",
+        "SELECT JSONB_AGG(event) FROM event;",
+        "SELECT JSON_AGG(NULL), JSON_AGG(NULL) FROM event;",
+        "SELECT JSON_AGG(TRUE), JSON_AGG(FALSE) FROM event;",
+        "SELECT JSON_AGG(NULL), JSON_AGG(TRUE), JSON_AGG(FALSE);",
+        "SELECT BOOL_AND(active) FROM event;",
+        "SELECT STDDEV_POP(cost) FROM event;",
+        "SELECT VAR_SAMP(cost) FROM event;",
+        "SELECT CORR(cost, latency) FROM event;",
+        "SELECT PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY latency) FROM event;",
+        "SELECT COUNT(*) OVER (PARTITION BY team_id) FROM event;",
+        "WITH report AS (SELECT DISTINCT id FROM event) SELECT id FROM report;",
+        "SELECT id FROM event WHERE id IN (SELECT MIN(id) FROM event);",
+        "INSERT INTO report SELECT team_id, COUNT(*) FROM event GROUP BY team_id;",
+        "UPDATE report SET total = (SELECT COUNT(*) FROM event);",
+        "DELETE FROM report WHERE total < (SELECT COUNT(*) FROM event);",
+        "CREATE VIEW report AS SELECT DISTINCT id FROM event;",
+        "SELECT COUNT(*) FROM event WHERE id = %(event_id)s LIMIT 1;",
+        "SELECT COUNT(*) FROM event WHERE id = $1;",
+        "SELECT COUNT(1);",
+        "SELECT 1 GROUP BY 1;",
+    ],
+)
+def test_policy_query_shapes_are_blocking(query: str) -> None:
+    [finding] = _check(query)
+    assert finding.code == "SARJ122"
+    assert finding.severity is DefaultLevel.ERROR
+    assert "ClickHouse" in finding.message
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT id FROM event WHERE id = $1 LIMIT 1;",
+        "SELECT EXISTS(SELECT 1 FROM event WHERE id = $1);",
+        "SELECT id FROM event WHERE cost IS DISTINCT FROM 0;",
+        "SELECT id FROM event WHERE cost IS NOT DISTINCT FROM 0;",
+        "SELECT 'SELECT DISTINCT id FROM event' AS example FROM event;",
+        'SELECT "DISTINCT", "GROUP BY", "COUNT" FROM event;',
+        "SELECT id /* COUNT(*) GROUP BY id */ FROM event -- DISTINCT;",
+        "SELECT $$SELECT COUNT(*) FROM event; SELECT DISTINCT id FROM event$$ AS example;",
+        "SELECT $body$SELECT COUNT(*) FROM event$body$ AS example;",
+        "SELECT id FROM event WHERE id = %(count)s;",
+        "SELECT ROW_NUMBER() OVER (ORDER BY id) FROM event;",
+        "SELECT COALESCE(cost, 0) FROM event;",
+        "SELECT id FROM event UNION ALL SELECT id FROM archive;",
+        "CREATE TABLE event (id UUID PRIMARY KEY, total INTEGER);",
+        "SELECT DISTINCT FROM;",
+    ],
+)
+def test_near_misses_are_not_policy_violations(query: str) -> None:
+    assert _check(query) == []
+
+
+@pytest.mark.parametrize("dialect", ["postgres", "postgresql", "mysql", "mariadb", "sqlite"])
+def test_explicit_transactional_dialects(dialect: str) -> None:
+    [finding] = _check(f"-- sql-dialect: {dialect}\nSELECT DISTINCT id FROM event;")
+    assert finding.line == 2
+
+
+@pytest.mark.parametrize(
+    "dialect", ["clickhouse", "bigquery", "duckdb", "snowflake", "redshift", "trino", "athena", "spark", "databricks"]
+)
+def test_analytical_dialects_allow_same_queries(dialect: str) -> None:
+    assert _check(f"-- dialect: {dialect}\nSELECT DISTINCT id, COUNT(*) FROM event GROUP BY id;") == []
+    assert _check("SELECT DISTINCT id, COUNT(*) FROM event GROUP BY id;", f"{dialect}/queries/events.sql") == []
+
+
+def test_explicit_transactional_dialect_overrides_analytical_directory() -> None:
+    assert len(_check("-- dialect: postgres\nSELECT COUNT(*) FROM event;", "clickhouse/queries/events.sql")) == 1
+
+
+def test_analytical_directive_inside_data_does_not_change_backend() -> None:
+    assert len(_check("SELECT '-- dialect: clickhouse';\nSELECT DISTINCT id FROM event;")) == 1
+    assert len(_check("SELECT $$\n-- dialect: clickhouse\n$$;\nSELECT DISTINCT id FROM event;")) == 1
+
+
+@pytest.mark.parametrize(
+    "path", ["tests/events.sql", "fixtures/events.sql", "generated/events.sql", "queries/events.generated.sql"]
+)
+def test_nonproduction_source_is_excluded(path: str) -> None:
+    assert _check("SELECT COUNT(*) FROM event;", path) == []
+
+
+@pytest.mark.parametrize(
+    "header", ["-- @generated\n", "-- Code generated by tool. DO NOT EDIT.\n", "-- PostgreSQL database dump\n"]
+)
+def test_generated_or_dump_headers_are_excluded(header: str) -> None:
+    source = header + "SELECT COUNT(*) FROM event;"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("path", ["migrations/001.sql", "schema.sql", "scripts/report.sql", "analytics/report.sql"])
+def test_authored_sql_is_not_exempt_by_filename(path: str) -> None:
+    assert len(_check("SELECT DISTINCT id FROM event;", path)) == 1
+
+
+def test_one_finding_per_statement_with_physical_locations() -> None:
+    source = "-- header\r\nSELECT DISTINCT id, COUNT(*) FROM event GROUP BY id;\r\nSELECT id FROM event;\r\nSELECT %(param)s, SUM(cost) FROM event;\r\n"
+    findings = _check(source)
+    assert [(finding.line, finding.col) for finding in findings] == [(2, 8), (4, 19)]
+
+
+def test_group_comments_preserve_locations_and_later_native_function_identity() -> None:
+    source = '-- header\r\nSELECT id FROM event GROUP/* gap\r\n*/BY id;\r\nSELECT "SUM"(id) FROM event;\r\nSELECT pg_catalog."sum"(id) FROM event;'
+    findings = _check(source)
+    assert [(finding.line, finding.col) for finding in findings] == [(2, 22), (5, 19)]
+
+
+def test_malformed_statement_does_not_hide_later_query() -> None:
+    assert len(_check("SELECT DISTINCT FROM;\nSELECT COUNT(*) FROM event;")) == 1
+
+
+@pytest.mark.parametrize(("tail", "exit_code"), [("", 1), (" -- sarj-noqa: SARJ122 -- reviewed atomic invariant", 0)])
+def test_native_cli_policy_and_exact_exceptions(tmp_path: Path, tail: str, exit_code: int) -> None:
+    path = tmp_path / "events.sql"
+    source = f"SELECT COUNT(*) FROM event;{tail}\n"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    path.write_text(source)
+    assert main(["check", "--rule", NoAnalyticalQueriesInTransactionalDb.id, str(path)]) == exit_code
+
+
+@pytest.mark.parametrize(
+    ("dialect", "query", "count"),
+    [
+        ("postgres", "SELECT distinctrow FROM event", 0),
+        ("postgres", 'SELECT DISTINCT "id" FROM event', 1),
+        ("postgres", "SELECT DISTINCT 'value' FROM event", 1),
+        ("postgres", "SELECT DISTINCT $$value$$ FROM event", 1),
+        ("postgres", "SELECT DISTINCT NULL FROM event", 1),
+        ("postgres", 'SELECT "a--b" FROM event WHERE id IS DISTINCT FROM 0', 0),
+        ("postgres", 'SELECT "a--b" FROM event WHERE id IS NOT DISTINCT FROM 0', 0),
+        ("mysql", "SELECT DISTINCT 'value' FROM event", 1),
+        ("mysql", r"SELECT 'a\' GROUP BY id' FROM event", 0),
+        ("mysql", "SELECT `a--b` FROM event WHERE id IS DISTINCT FROM 0", 0),
+        ("mysql", "SELECT `a--b` FROM event WHERE id IS NOT DISTINCT FROM 0", 0),
+        ("sqlite", "SELECT DISTINCT 'value' FROM event", 1),
+        ("sqlite", "SELECT DISTINCT[a--b] FROM event", 1),
+        ("postgres", 'SELECT "distinctrow" FROM event', 0),
+        ("mysql", "SELECT DISTINCTROW id FROM event", 1),
+        ("mariadb", "SELECT DISTINCTROW id FROM event", 1),
+        ("postgres", 'SELECT "GROUP" /* gap */ "BY" FROM event', 0),
+        ("mysql", "SELECT `GROUP` /* gap */ `BY` FROM event", 0),
+        ("sqlite", "SELECT [GROUP] /* gap */ [BY] FROM event", 0),
+        ("sqlite", "SELECT [a--b], COUNT(*) FROM event", 1),
+        ("sqlite", "SELECT [a--b] FROM event GROUP BY [a--b]", 1),
+        ("sqlite", "SELECT `a--b` FROM event GROUP BY `a--b`", 1),
+        ("sqlite", "SELECT [a--b] FROM event GROUP/* gap */BY [a--b]", 1),
+        ("sqlite", "SELECT [a--b] FROM event GROUP-- gap\r\nBY [a--b]", 1),
+        ("sqlite", "SELECT [a/*b] FROM event GROUP/* gap */BY [a/*b]", 1),
+        ("sqlite", "SELECT DISTINCT [a--b] FROM event", 1),
+        ("sqlite", "SELECT [a--b] FROM event UNION SELECT [a--b] FROM archive", 1),
+        ("sqlite", "WITH [a--b] AS (SELECT id FROM event) SELECT id FROM [a--b] GROUP BY id", 1),
+        ("sqlite", "SELECT [a--b] FROM event; SELECT [a--b] FROM event GROUP/* gap */BY [a--b]", 1),
+        ("sqlite", "SELECT [a--b GROUP BY DISTINCT UNION] FROM event", 0),
+        ("sqlite", "SELECT [a/*b GROUP BY DISTINCT UNION] FROM event", 0),
+        ("sqlite", "SELECT [a--b] FROM event WHERE id IS DISTINCT FROM 0", 0),
+        ("sqlite", "SELECT [a--b] FROM event WHERE id IS NOT DISTINCT FROM 0", 0),
+        ("mysql", "SELECT `a--b` FROM event GROUP/* gap */BY `a--b`", 1),
+        ("mysql", "WITH `a--b` AS (SELECT id FROM event) SELECT id FROM `a--b` GROUP BY id", 1),
+        ("mysql", "SELECT `a/*b` FROM event GROUP-- gap\r\nBY `a/*b`", 1),
+        ("mariadb", "SELECT `a--b` FROM event GROUP BY `a--b`", 1),
+        ("mysql", "SELECT `a--b GROUP BY DISTINCT UNION` FROM event", 0),
+        ("mysql", "SELECT id FROM event GROUP/* gap */BY id", 1),
+        ("mysql", "SELECT id FROM event GROUP-- gap\r\nBY id", 1),
+        ("postgres", "SELECT 'GROUP/*keep*/BY' FROM event", 0),
+        ("postgres", 'SELECT pg_catalog."sum" /* gap */ (NULL) FROM event', 1),
+        ("postgres", 'SELECT public."sum" /* gap */ (NULL) FROM event', 0),
+        ("postgres", "SELECT XMLAGG(NULL) FROM event", 1),
+        ("postgres", "SELECT RANGE_INTERSECT_AGG(NULL) FROM event", 1),
+        ("sqlite", "SELECT JSONB_GROUP_ARRAY(NULL) FROM event", 1),
+        ("sqlite", "SELECT MIN(a,b) FROM event", 0),
+        ("sqlite", "SELECT MAX(a,b) FROM event", 0),
+        ("sqlite", "SELECT MIN(a) FROM event", 1),
+        ("sqlite", "SELECT TOTAL(cost) FROM event", 1),
+        ("sqlite", "SELECT JSON_GROUP_ARRAY(id) FROM event", 1),
+        ("sqlite", "SELECT JSON_GROUP_OBJECT(id,cost) FROM event", 1),
+        ("mysql", "SELECT ANY_VALUE(id) FROM event", 0),
+        ("mysql", "SELECT STD(cost) FROM event", 1),
+        ("mysql", "SELECT JSON_ARRAYAGG(id) FROM event", 1),
+        ("mysql", "SELECT JSON_OBJECTAGG(id,cost) FROM event", 1),
+        ("postgres", "SELECT ANY_VALUE(id) FROM event", 1),
+        ("postgres", "SELECT JSONB_OBJECT_AGG_UNIQUE_STRICT(id,cost) FROM event", 1),
+    ],
+)
+def test_dialect_specific_aggregate_and_scalar_semantics(dialect: str, query: str, count: int) -> None:
+    assert len(_check(f"-- dialect: {dialect}\n{query};")) == count
+
+
+@pytest.mark.parametrize(
+    ("dialect", "identifier"),
+    [
+        ("postgres", '"a--b GROUP BY DISTINCT UNION"'),
+        ("mysql", "`a--b GROUP BY DISTINCT UNION`"),
+        ("sqlite", "[a--b GROUP BY DISTINCT UNION]"),
+    ],
+)
+@pytest.mark.parametrize("gap", ["/* gap */", "-- gap\r\n", "/* first\r\nsecond */"])
+def test_group_locations_follow_dialect_quoted_identifiers_and_comments(
+    dialect: str, identifier: str, gap: str
+) -> None:
+    source = f"-- dialect: {dialect}\r\nSELECT {identifier} FROM event;\r\nSELECT {identifier} FROM event\r\nGROUP{gap}BY {identifier};\r\nSELECT {identifier} FROM archive;"
+    [finding] = _check(source)
+    assert (finding.line, finding.col) == (4, 1)
+    assert finding.message.startswith("GROUP BY belongs")
+
+
+@pytest.mark.parametrize(
+    "comment",
+    ["# GROUP BY", r"# 'a\' GROUP BY id'", "# DISTINCT UNION GROUP BY"],
+)
+def test_mysql_comment_keywords_cannot_own_a_group_exception(comment: str, tmp_path: Path) -> None:
+    path = tmp_path / "events.sql"
+    source = f"-- dialect: mysql\nSELECT id FROM event {comment} -- sarj-noqa: SARJ122 -- comment is not the grouping clause\nGROUP BY id;\n"
+    path.write_text(source)
+    [finding] = analyze([NoAnalyticalQueriesInTransactionalDb.id], [path])
+    assert (finding.line, finding.col) == (3, 1)
+    assert finding.message.startswith("GROUP BY belongs")
+
+
+@pytest.mark.parametrize("operation", ["UNION", "INTERSECT", "EXCEPT"])
+@pytest.mark.parametrize("all_gap", [" ", "/* gap */", "-- gap\r\n"])
+def test_set_operation_locations_skip_allowed_all_operations(operation: str, all_gap: str) -> None:
+    source = f"-- dialect: postgres\r\nSELECT id FROM event UNION{all_gap}ALL SELECT id FROM archive;\r\nSELECT id FROM event\r\nUNION{all_gap}ALL SELECT id FROM archive\r\n  {operation} SELECT id FROM report;"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    [finding] = _check(source)
+    expected_line = source[: source.index(f"  {operation}")].count("\n") + 1
+    assert (finding.line, finding.col) == (expected_line, 3)
+    assert finding.message.startswith("deduplicating set operation belongs")
+
+
+def test_exception_on_allowed_union_all_does_not_suppress_later_deduplication(tmp_path: Path) -> None:
+    path = tmp_path / "events.sql"
+    path.write_text(
+        "SELECT id FROM event\n"
+        "UNION ALL SELECT id FROM archive -- sarj-noqa: SARJ122 -- reviewed historical note\n"
+        "UNION SELECT id FROM report;\n"
+    )
+    [finding] = analyze([NoAnalyticalQueriesInTransactionalDb.id], [path])
+    assert (finding.line, finding.col) == (3, 1)
+
+
+@pytest.mark.parametrize(
+    ("query", "count"),
+    [
+        ("SELECT pg_catalog.sum(cost) FROM event", 1),
+        ('SELECT "pg_catalog"."sum"(cost) FROM event', 1),
+        ("SELECT pg_catalog.count(*) FROM event", 1),
+        ('SELECT "SUM"(cost) FROM event', 0),
+        ('SELECT "sum"(cost) FROM event', 1),
+        ('SELECT "JSONB_AGG"(cost) FROM event', 0),
+        ('SELECT "jsonb_agg"(cost) FROM event', 1),
+        ("SELECT public.jsonb_agg(cost) FROM event", 0),
+        ("SELECT app.sum(cost) FROM event", 0),
+        ('SELECT "PG_CATALOG".sum(cost) FROM event', 0),
+        ('SELECT %(value)s, "SUM"(cost) FROM event', 0),
+        ('SELECT %(value)s, "sum"(cost) FROM event', 1),
+        ('SELECT "JSON_AGG"(NULL), "JSON_AGG"(NULL) FROM event', 0),
+        ('SELECT "json_agg"(NULL), "json_agg"(NULL) FROM event', 1),
+        ('SELECT "JSON_AGG"(NULL), custom.json_agg(NULL) FROM event', 0),
+        ('SELECT "JSON_AGG"(NULL), JSON_AGG(NULL) FROM event', 1),
+        ('SELECT JSON_AGG(NULL), "JSON_AGG"(NULL) FROM event', 1),
+        ('SELECT "JSON_AGG"(TRUE), "JSON_AGG"(FALSE) FROM event', 0),
+        ('SELECT "JSON_AGG"("JSON_AGG"(NULL)), custom.json_agg(NULL) FROM event', 0),
+        ('SELECT "JSON_AGG"("JSON_AGG"(NULL)), JSON_AGG(FALSE) FROM event', 1),
+        ('WITH prior AS (SELECT "JSON_AGG"(NULL) FROM event) SELECT JSON_AGG(NULL) FROM prior', 1),
+        ('WITH prior AS (SELECT JSON_AGG(NULL) FROM event) SELECT "JSON_AGG"(NULL) FROM prior', 1),
+        ('WITH prior AS (SELECT custom.json_agg(NULL) FROM event) SELECT "JSON_AGG"(NULL) FROM prior', 0),
+        ('SELECT "JSON_AGG"(NULL) FROM event; SELECT JSON_AGG(NULL) FROM archive', 1),
+        ('SELECT "JSON_AGG"(NULL) FROM event; SELECT custom.json_agg(NULL) FROM archive', 0),
+        ('SELECT JSON_AGG(NULL); SELECT "JSON_AGG"(NULL)', 1),
+        ('SELECT "JSON_AGG"(NULL); SELECT JSON_AGG(NULL)', 1),
+        ('SELECT "JSON_AGG"(NULL); SELECT custom.json_agg(NULL)', 0),
+        ('SELECT custom.json_agg(NULL); SELECT "JSON_AGG"(NULL)', 0),
+        ("SELECT ';' AS marker; SELECT \"JSON_AGG\"(NULL), custom.json_agg(NULL)", 0),
+        ("SELECT $$;$$ AS marker; SELECT JSON_AGG(NULL), JSON_AGG(NULL)", 1),
+    ],
+)
+def test_builtin_function_identity_uses_original_sql(query: str, count: int) -> None:
+    assert len(_check(query)) == count
+
+
+def test_metadata_free_function_location_uses_matching_native_call() -> None:
+    query = 'SELECT "JSON_AGG"(NULL), JSON_AGG(NULL) FROM event'
+    [finding] = _check(query)
+    assert (finding.line, finding.col) == (1, query.index("JSON_AGG(NULL)") + 1)
+
+
+@pytest.mark.parametrize(
+    ("dialect", "prefix", "count"),
+    [
+        ("postgres", "EXPLAIN ANALYZE", 1),
+        ("postgres", "EXPLAIN ANALYZE VERBOSE", 1),
+        ("postgres", "EXPLAIN (ANALYZE)", 1),
+        ("postgres", "EXPLAIN (ANALYZE TRUE, BUFFERS)", 1),
+        ("postgres", "EXPLAIN (FORMAT JSON, ANALYZE ON)", 1),
+        ("postgres", "EXPLAIN (ANALYZE 1)", 1),
+        ("postgres", "EXPLAIN /* boundary */ ANALYZE", 1),
+        ("postgres", "EXPLAIN", 0),
+        ("postgres", "EXPLAIN VERBOSE", 0),
+        ("postgres", "EXPLAIN (ANALYZE FALSE)", 0),
+        ("postgres", "EXPLAIN (ANALYZE OFF)", 0),
+        ("postgres", "EXPLAIN (ANALYZE 0)", 0),
+        ("postgres", "EXPLAIN (FORMAT JSON)", 0),
+        ("postgres", "EXPLAIN (ANALYZE TRUE, ANALYZE TRUE)", 0),
+        ("mysql", "EXPLAIN ANALYZE", 1),
+        ("mysql", "EXPLAIN ANALYZE FORMAT=TREE", 1),
+        ("mysql", "EXPLAIN", 0),
+        ("mysql", "EXPLAIN FORMAT=JSON", 0),
+        ("sqlite", "EXPLAIN", 0),
+        ("sqlite", "EXPLAIN QUERY PLAN", 0),
+    ],
+)
+def test_only_executing_explain_queries_are_aggregation_work(dialect: str, prefix: str, count: int) -> None:
+    query = f"{prefix} SELECT COUNT(*) FROM event"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    assert len(_check(f"-- dialect: {dialect}\n{query};")) == count
+
+
+def test_explain_normalization_preserves_comments_semicolons_and_crlf_locations() -> None:
+    source = "-- header\r\nEXPLAIN (ANALYZE TRUE, BUFFERS)\r\nSELECT COUNT(*) FROM event WHERE label = 'a;b';\r\nSELECT id FROM event;\r\n"
+    [finding] = _check(source)
+    assert (finding.line, finding.col) == (3, 8)
+
+
+@pytest.mark.parametrize("operation", ["UNION", "INTERSECT", "EXCEPT"])
+@pytest.mark.parametrize("modifier", ["", "DISTINCT", "ALL"])
+def test_set_deduplication_cannot_bypass_distinct_policy(operation: str, modifier: str) -> None:
+    query = f"SELECT id FROM event {operation} {modifier} SELECT id FROM archive"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    assert len(_check(query)) == int(modifier != "ALL")
+
+
+def test_metadata_free_aggregate_keeps_its_original_function_location() -> None:
+    [finding] = _check("-- header\nSELECT JSON_AGG(id) FROM event;\n")
+    assert (finding.line, finding.col) == (2, 8)

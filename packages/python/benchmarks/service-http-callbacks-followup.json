@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "rule": "SARJ465",
+  "severity": "error",
+  "autofix": false,
+  "release_versions": {
+    "code-standards": "8.134.0",
+    "sarj-python-lint": "1.79.0"
+  },
+  "admission": "A newer motivating service invokes a typed callback with a declared first-party generated HTTP wrapper, escaping the previously released direct native-client proof.",
+  "policy": "Require an explicit ABC or Protocol for a service operation that awaits a typed callback using a source-proven active native HTTP wrapper. Preserve contract ancestry, value and lifecycle exclusions, unresolved ownership and escape guards.",
+  "selection": {
+    "source_files": {
+      "self": 1026,
+      "consumer": 2138,
+      "public": 80,
+      "labeled": 176,
+      "linked_queue": 2,
+      "linked_http_sdk": 6
+    },
+    "labeled_targets": 44,
+    "positive": 9,
+    "negative": 35,
+    "description": "Complete package Python in the candidate; complete tracked Python in one immutable private consumer; the same fixed public-source sample as SQL calibration; generic isolated namespace/distribution projects and two linked-source reproductions.",
+    "private_source_exported": false,
+    "private_pins": "Full source, project and lock input closures retained privately; no private source, locations or identifying pins exported."
+  },
+  "method": {
+    "baseline": "Released 1.76.0 detector in the current engine with only its legacy diagnostic message header normalized.",
+    "native_isolated_runner": true,
+    "trials_per_mode": 3,
+    "temperatures": [
+      "cold",
+      "warm"
+    ],
+    "unchanged_semantic_closures": "passed",
+    "complete_diagnostic_determinism": "passed",
+    "supporting_sdk_diagnostics_asserted_separately": true,
+    "project_roots_partitioned_before_native_analysis": true,
+    "private_consumer_code_executed": false,
+    "timing_context": "Median of three per-corpus trial totals, summing isolated batch analysis times for each temperature. Worker startup is excluded. Rule-focused measurements on the shared VM do not establish full-engine fleet overhead."
+  },
+  "results": {
+    "before": {
+      "labeled_confusion": {
+        "tp": 0,
+        "tn": 35,
+        "fp": 0,
+        "fn": 9
+      },
+      "supporting_sdk_findings": 0,
+      "corpora": {
+        "self": {
+          "findings": 0,
+          "cold_median_seconds": 54.8022,
+          "warm_median_seconds": 45.5726,
+          "peak_memory_mib": 563.37
+        },
+        "consumer": {
+          "findings": 24,
+          "cold_median_seconds": 130.8289,
+          "warm_median_seconds": 136.6895,
+          "peak_memory_mib": 763.2
+        },
+        "public": {
+          "findings": 0,
+          "cold_median_seconds": 0.6996,
+          "warm_median_seconds": 0.7478,
+          "peak_memory_mib": 104.93
+        },
+        "labeled": {
+          "findings": 0,
+          "cold_median_seconds": 0.2575,
+          "warm_median_seconds": 0.246,
+          "peak_memory_mib": 83.4
+        },
+        "linked_queue": {
+          "findings": 1,
+          "cold_median_seconds": 0.0111,
+          "warm_median_seconds": 0.0093,
+          "peak_memory_mib": 83.4
+        },
+        "linked_http_sdk": {
+          "findings": 0,
+          "cold_median_seconds": 0.0311,
+          "warm_median_seconds": 0.0274,
+          "peak_memory_mib": 83.4
+        }
+      }
+    },
+    "after": {
+      "labeled_confusion": {
+        "tp": 9,
+        "tn": 35,
+        "fp": 0,
+        "fn": 0
+      },
+      "supporting_sdk_findings": 0,
+      "corpora": {
+        "self": {
+          "findings": 0,
+          "cold_median_seconds": 51.7328,
+          "warm_median_seconds": 47.7473,
+          "peak_memory_mib": 562.79
+        },
+        "consumer": {
+          "findings": 24,
+          "cold_median_seconds": 145.7745,
+          "warm_median_seconds": 151.4385,
+          "peak_memory_mib": 763.21
+        },
+        "public": {
+          "findings": 0,
+          "cold_median_seconds": 0.6398,
+          "warm_median_seconds": 0.7525,
+          "peak_memory_mib": 105.55
+        },
+        "labeled": {
+          "findings": 9,
+          "cold_median_seconds": 0.3884,
+          "warm_median_seconds": 0.3587,
+          "peak_memory_mib": 83.4
+        },
+        "linked_queue": {
+          "findings": 1,
+          "cold_median_seconds": 0.0121,
+          "warm_median_seconds": 0.011,
+          "peak_memory_mib": 83.4
+        },
+        "linked_http_sdk": {
+          "findings": 1,
+          "cold_median_seconds": 0.0685,
+          "warm_median_seconds": 0.0734,
+          "peak_memory_mib": 83.4
+        }
+      }
+    }
+  },
+  "review": {
+    "new_consumer_findings_reviewed": 0,
+    "known_false_positive_count": 0,
+    "method": "Every newly added consumer diagnostic was independently inspected; unchanged findings were reconciled by complete diagnostic tuples. Private audit details remain in separate receipts.",
+    "independent_semantic_reviews": "Generated-client ownership, eager resource lifecycle, decorator and mutation guards, nominal source-cache isolation and baseline compatibility were reviewed independently. The finite labels and inspected findings do not establish universal precision or recall."
+  },
+  "compatibility": "Restoring the legacy SARJ465 message anchor retains all 24 preexisting consumer baseline identities without growing diagnostic baselines or withdrawing expanded service detection.",
+  "limits": [
+    "Proof is deliberately bounded to stable declared first-party HTTP wrappers and a single typed callback argument; opaque, mutated, decorated or escaping ownership abstains.",
+    "Generated providers are admitted for HTTP and SQL ownership proof; nominal-ID source inventory keeps its previous generated-source exclusion.",
+    "The original two campaigns of 100 distinct cases remain separate historical evidence; these 44 cases are additional semantic controls, not repeated claims of new hundred-pass audits.",
+    "Canonical repository verification and latest exact-head hosted CI remain separate merge gates."
+  ]
+}

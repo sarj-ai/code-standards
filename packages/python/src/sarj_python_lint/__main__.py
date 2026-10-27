@@ -166,6 +166,7 @@ def analyze(
 
 _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
     {
+        "SARJ020": frozenset({"SARJ437"}),
         "SARJ054": frozenset({"SARJ419"}),
         "SARJ448": frozenset({"SARJ419"}),
         "SARJ523": frozenset({"SARJ419"}),

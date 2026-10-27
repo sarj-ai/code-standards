@@ -216,6 +216,7 @@
       "index-concurrently",
       "insert-requires-replay-policy",
       "mixed-migration-phases",
+      "no-analytical-queries-in-transactional-db",
       "no-application-schema-check",
       "no-database-functions",
       "no-database-triggers",
@@ -601,7 +602,8 @@
       "SARJ117",
       "SARJ118",
       "SARJ119",
-      "SARJ120"
+      "SARJ120",
+      "SARJ122"
     ],
     "iac": [
       "SARJ201",
@@ -1208,6 +1210,13 @@
       "status": "renamed",
       "replacement": "no-analytical-aggregation-in-postgres-store",
       "note": "Replace sarj-no-aggregation-in-store-query with sarj-no-analytical-aggregation-in-postgres-store before upgrading."
+    },
+    {
+      "id": "no-analytical-queries-in-transactional-db",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "no-analytical-aggregation-in-postgres-store",
+      "note": "Replace sarj-no-analytical-queries-in-transactional-db with sarj-no-analytical-aggregation-in-postgres-store before upgrading."
     },
     {
       "id": "no-apirouter-root-trailing-slash",

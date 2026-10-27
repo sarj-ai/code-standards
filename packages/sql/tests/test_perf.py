@@ -7,6 +7,7 @@ import pytest
 from sarj_rule_contracts import RuleId
 
 from sarj_sql_lint.rules import REGISTRY
+from sarj_sql_lint.rules.no_analytical_queries_in_transactional_db import NoAnalyticalQueriesInTransactionalDb
 
 
 _STATEMENT_BLOCK = """\
@@ -70,3 +71,12 @@ def test_no_rule_is_algorithmic_outlier(rule_timings: dict[str, float]) -> None:
         f"{_RELATIVE_OUTLIER_FACTOR:.0f}x the median ({median * 1000:.2f} ms) — likely an "
         f"algorithmic regression: { {k: f'{v * 1000:.2f}ms' for k, v in slow.items()} }"
     )
+
+
+def test_analytical_policy_meets_existing_budgets_on_fresh_plain_sql(rule_timings: dict[str, float]) -> None:
+    source = _SYNTHETIC_SQL.replace("orders_", "cold_orders_")
+    seconds = _best_time_s(RuleId(NoAnalyticalQueriesInTransactionalDb.id), Path("fresh.sql"), source, repeats=1)
+    ordered = sorted(rule_timings.values())
+    ceiling = ordered[len(ordered) // 2] * _RELATIVE_OUTLIER_FACTOR + _RELATIVE_SLACK_S
+    assert seconds < ceiling
+    assert seconds / (source.count("\n") + 1) * 1_000_000 < _ABSOLUTE_MS_PER_KLOC

@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "release_versions": {
+    "code-standards": "8.134.0",
+    "sarj-python-lint": "1.79.0",
+    "sarj-sql-lint": "0.28.0"
+  },
+  "rules": {
+    "python": "SARJ020",
+    "sql": "SARJ122",
+    "severity": "error",
+    "autofix": false
+  },
+  "policy": "Transactional SQL rejects SELECT DISTINCT, GROUP BY, built-in aggregates including windowed/nested forms, and deduplicating UNION/INTERSECT/EXCEPT. Explicit analytical backends remain valid.",
+  "selection": {
+    "source_files": {
+      "self": 1026,
+      "consumer": 2483,
+      "public": 80,
+      "labeled": 367
+    },
+    "description": "Complete tracked package Python/SQL in the authoring checkout; immutable private consumer Python and tracked SQL; fixed-seed 80-file CPython sample plus sqlite3 sources; labeled semantic controls.",
+    "private_source_exported": false,
+    "private_pins": "Retained privately with full Python/project/lock semantic input closures; not exported."
+  },
+  "method": {
+    "native_isolated_runner": true,
+    "trials_per_mode": 3,
+    "temperatures": [
+      "cold",
+      "warm"
+    ],
+    "diagnostic_determinism": "passed",
+    "unchanged_semantic_closures": "passed",
+    "diagnostic_compatibility": "The qualified candidate also restores the legacy SARJ465 message anchor; unchanged findings retain existing baseline identities without changing expanded detector coverage.",
+    "performance_context": "Observed on the shared VM; concurrent admitted workloads can affect elapsed times.",
+    "baseline": "Original SARJ020 from the preceding public service-contract release, evaluated in the same current kernel; standalone baseline excludes new SARJ122.",
+    "labeled_expectations": "Independent positive/negative SQL shapes, overload/function identity, EXPLAIN execution, set operation, analytical driver, suppression, namespace/dependency/re-export controls."
+  },
+  "labeled_confusion": {
+    "before": {
+      "TP": 6,
+      "TN": 165,
+      "FP": 2,
+      "FN": 194
+    },
+    "after": {
+      "TP": 200,
+      "TN": 167,
+      "FP": 0,
+      "FN": 0
+    }
+  },
+  "diagnostic_counts": {
+    "before": {
+      "self": {},
+      "consumer": {
+        "SARJ437": 1
+      },
+      "public": {},
+      "labeled": {
+        "SARJ020": 8
+      }
+    },
+    "after": {
+      "self": {},
+      "consumer": {
+        "SARJ020": 10,
+        "SARJ122": 37
+      },
+      "public": {},
+      "labeled": {
+        "SARJ020": 112,
+        "SARJ122": 89
+      }
+    }
+  },
+  "performance": {
+    "before": {
+      "self": {
+        "cold_median_seconds": 4.7467,
+        "warm_median_seconds": 4.7,
+        "peak_memory_mib": 84.52
+      },
+      "consumer": {
+        "cold_median_seconds": 11.5391,
+        "warm_median_seconds": 10.5487,
+        "peak_memory_mib": 84.52
+      },
+      "public": {
+        "cold_median_seconds": 0.4376,
+        "warm_median_seconds": 0.4567,
+        "peak_memory_mib": 84.58
+      },
+      "labeled": {
+        "cold_median_seconds": 0.1749,
+        "warm_median_seconds": 0.1686,
+        "peak_memory_mib": 84.58
+      }
+    },
+    "after": {
+      "self": {
+        "cold_median_seconds": 4.9509,
+        "warm_median_seconds": 4.9417,
+        "peak_memory_mib": 85.44
+      },
+      "consumer": {
+        "cold_median_seconds": 16.6558,
+        "warm_median_seconds": 15.4285,
+        "peak_memory_mib": 91.4
+      },
+      "public": {
+        "cold_median_seconds": 0.5557,
+        "warm_median_seconds": 0.5654,
+        "peak_memory_mib": 85.73
+      },
+      "labeled": {
+        "cold_median_seconds": 0.5184,
+        "warm_median_seconds": 0.3965,
+        "peak_memory_mib": 85.73
+      }
+    }
+  },
+  "review": {
+    "schema_version": 1,
+    "method": "Independent per-file labels and complete diagnostic tuples were reconciled across three immutable before/after trials; every actual consumer finding was inspected.",
+    "consumer_review": {
+      "inspected_findings": 47,
+      "known_false_positive_count": 0
+    },
+    "semantic_closures": "passed",
+    "scope": "Finite supported-scope evaluation; private source, paths, identities and identifying pins remain in separate private receipts."
+  },
+  "scope_and_limits": [
+    "Python requires source-proven native transactional driver ownership; mixed backends require a proven native query receiver. Unknown dynamic sinks are not inferred.",
+    "First-party analytical contracts resolve only through the owning distribution and declared first-party dependencies; shared namespace package roots and type-only re-exports are covered.",
+    "Standalone SQL uses the existing PostgreSQL default, explicit dialect directives and established analytical database directories.",
+    "Plan-only EXPLAIN, comments, values, quoted case-sensitive user functions, scalar overloads and ALL set operations remain valid.",
+    "Existing complex-query advice is suppressed only when an unsuppressed SARJ020 error owns the same query.",
+    "No ORM or embedded TypeScript SQL ownership is claimed; a bounded consumer audit found no current transactional usage in those surfaces.",
+    "No database migration or blanket diagnostic baseline is generated. Reviewed atomic invariants require an exact reasoned exception."
+  ],
+  "references": [
+    "https://www.postgresql.org/docs/current/functions-aggregate.html",
+    "https://www.postgresql.org/docs/current/sql-syntax-lexical.html",
+    "https://www.postgresql.org/docs/current/sql-explain.html",
+    "https://www.sqlite.org/lang_aggfunc.html",
+    "https://www.sqlite.org/lang_corefunc.html",
+    "https://dev.mysql.com/doc/refman/8.4/en/aggregate-functions.html",
+    "https://dev.mysql.com/doc/refman/8.4/en/explain.html"
+  ]
+}
