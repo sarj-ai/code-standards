@@ -34,6 +34,7 @@ def run_wheel_tests(
     *,
     jobs: int = 4,
     pytest_args: Sequence[str] = (),
+    pytest_paths: Sequence[str] = (),
     changed: bool = False,
     base: str = "origin/main",
     runner: ProcessRunner = run_process,
@@ -41,9 +42,12 @@ def run_wheel_tests(
     if not 1 <= jobs <= _MAX_TEST_JOBS:
         msg = "test jobs must be between 1 and 16"
         raise ValueError(msg)
+    if changed and pytest_paths:
+        msg = "explicit test paths cannot be combined with --changed"
+        raise ValueError(msg)
     root = root.resolve()
     package = root / "packages/standards"
-    tests = ("tests/",)
+    tests = tuple(pytest_paths) or ("tests/",)
     test_files: int | None = None
     if changed:
         plan = select_tests(root, base=base)
@@ -118,12 +122,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         *,
         root: Annotated[Path, typer.Option("--root")] = Path(),
         jobs: Annotated[int, typer.Option("--jobs", min=1, max=_MAX_TEST_JOBS)] = 4,
+        pytest_paths: Annotated[
+            list[str] | None,
+            typer.Option(
+                "--test-path",
+                help="Run this pytest path or node ID instead of the full suite; repeat as needed.",
+            ),
+        ] = None,
         changed: Annotated[bool, typer.Option("--changed")] = False,
         base: Annotated[str, typer.Option("--base")] = "origin/main",
     ) -> None:
         nonlocal exit_code
         try:
-            run_wheel_tests(root, jobs=jobs, pytest_args=ctx.args, changed=changed, base=base)
+            run_wheel_tests(
+                root,
+                jobs=jobs,
+                pytest_args=ctx.args,
+                pytest_paths=pytest_paths or (),
+                changed=changed,
+                base=base,
+            )
         except ProcessFailureError as exc:
             exit_code = exc.returncode
         except (OSError, ValueError) as exc:

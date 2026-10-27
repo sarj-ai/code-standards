@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 import json
 from pathlib import Path
 import re
+import sys
 from threading import Barrier
 from typing import TYPE_CHECKING, ClassVar
 
@@ -12,13 +13,13 @@ import pytest
 import yaml
 
 from sarj_standards.libs.release import wheel_tests
-from sarj_standards.libs.release.process import ProcessResult
+from sarj_standards.libs.release.process import ProcessResult, run_process_environment
 from sarj_standards.libs.release.registry import RegistryRequirement, publication_results
 from sarj_standards.libs.release.status import release_status
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -227,3 +228,151 @@ def test_wheel_test_cli_rejects_unbounded_workers(jobs: str) -> None:
     with pytest.raises(SystemExit) as stopped:
         wheel_tests.main(["--jobs", jobs])
     assert stopped.value.code == 2
+
+
+@pytest.mark.parametrize(
+    ("paths", "filter_args", "expected"),
+    [
+        ((), (), ("test_selected", "test_unrelated")),
+        ((), ("-k", "selected"), ("test_selected",)),
+        (("tests/test_selected.py",), (), ("test_selected",)),
+        (("tests/test_selected.py::test_selected",), (), ("test_selected",)),
+        (("tests/test_selected.py", "tests/test_unrelated.py"), (), ("test_selected", "test_unrelated")),
+        ((), ("--rootdir=../..",), ("test_selected", "test_unrelated")),
+        (("tests/test_selected.py",), ("--rootdir=../..",), ("test_selected",)),
+        ((), ("-c", "../../pytest.ini"), ("test_selected", "test_unrelated")),
+        (("tests/test_selected.py",), ("-c", "../../pytest.ini"), ("test_selected",)),
+        (("tests/test_selected.py",), ("--pyargs",), ("test_selected",)),
+        ((), ("-o", "testpaths=src"), ("test_selected", "test_unrelated")),
+        (("tests/test_selected.py",), ("-o", "testpaths=src"), ("test_selected",)),
+    ],
+    ids=(
+        "default",
+        "legacy-filter",
+        "explicit-file",
+        "explicit-node",
+        "multiple-files",
+        "default-rootdir",
+        "explicit-rootdir",
+        "default-config",
+        "explicit-config",
+        "explicit-pyargs",
+        "default-testpaths",
+        "explicit-testpaths",
+    ),
+)
+def test_wheel_test_paths_control_native_pytest_collection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    paths: tuple[str, ...],
+    filter_args: tuple[str, ...],
+    expected: tuple[str, ...],
+) -> None:
+    package = tmp_path / "packages/standards"
+    tests = package / "tests"
+    tests.mkdir(parents=True)
+    (package / "pytest.ini").write_text("[pytest]\n")
+    (tmp_path / "pytest.ini").write_text("[pytest]\n")
+    source = package / "src"
+    source.mkdir()
+    (source / "test_outside.py").write_text("def test_outside():\n    pass\n")
+    for name in ("selected", "unrelated"):
+        (tests / f"test_{name}.py").write_text(f"def test_{name}():\n    pass\n")
+    collected: list[str] = []
+
+    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        assert cwd == tmp_path
+        assert not capture_output
+        if argv[1] == "build":
+            (Path(argv[-1]) / (Path(argv[4]).name + ".whl")).write_text("fresh")
+        return ProcessResult(0)
+
+    def execute(
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,
+        capture_output: bool = False,
+        environment: Mapping[str, str] | None,
+    ) -> ProcessResult:
+        assert not capture_output
+        assert environment is not None
+        isolated = dict(environment)
+        isolated["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+        isolated.pop("PYTEST_ADDOPTS", None)
+        result = run_process_environment(
+            (sys.executable, *argv[1:]), cwd=cwd, capture_output=True, environment=isolated
+        )
+        collected.extend(line.rsplit("::", 1)[-1] for line in result.stdout.splitlines() if "::test_" in line)
+        return result
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- execute only the private collection fixture at the prepared pytest boundary
+        wheel_tests,
+        "run_process_environment",
+        execute,
+    )
+    wheel_tests.run_wheel_tests(
+        tmp_path,
+        jobs=1,
+        pytest_paths=paths,
+        pytest_args=("--collect-only", "-p", "no:cacheprovider", *filter_args),
+        runner=runner,
+    )
+    assert tuple(collected) == expected
+
+
+def test_wheel_test_paths_reject_changed_plan_before_building(tmp_path: Path) -> None:
+    def runner(argv: tuple[str, ...], *, cwd: Path, capture_output: bool = False) -> ProcessResult:
+        pytest.fail(f"conflicting selections called {argv} in {cwd} (capture_output={capture_output})")
+
+    with pytest.raises(ValueError, match="explicit test paths cannot be combined with --changed"):
+        wheel_tests.run_wheel_tests(tmp_path, changed=True, pytest_paths=("tests/test_selected.py",), runner=runner)
+
+
+def test_wheel_test_cli_forwards_repeated_paths_and_pytest_arguments(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[tuple[Path, int, tuple[str, ...], tuple[str, ...], bool, str]] = []
+
+    def execute(
+        root: Path,
+        *,
+        jobs: int,
+        pytest_args: Sequence[str],
+        pytest_paths: Sequence[str],
+        changed: bool,
+        base: str,
+    ) -> None:
+        calls.append((root, jobs, tuple(pytest_paths), tuple(pytest_args), changed, base))
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- inspect the CLI boundary without building wheels or running application tests
+        wheel_tests,
+        "run_wheel_tests",
+        execute,
+    )
+    result = wheel_tests.main(
+        [
+            "--root",
+            str(tmp_path),
+            "--jobs",
+            "1",
+            "--test-path",
+            "tests/test_selected.py",
+            "--test-path",
+            "tests/test_other.py::test_other",
+            "-k",
+            "selected",
+            "--maxfail",
+            "1",
+        ]
+    )
+    assert result == 0
+    assert calls == [
+        (
+            tmp_path,
+            1,
+            ("tests/test_selected.py", "tests/test_other.py::test_other"),
+            ("-k", "selected", "--maxfail", "1"),
+            False,
+            "origin/main",
+        )
+    ]

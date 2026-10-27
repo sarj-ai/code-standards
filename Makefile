@@ -25,7 +25,7 @@ help:
 	@echo "         check-{versions-synced,no-private-refs,file-conventions} | release-check"
 	@echo "         rollout[-plan|-status|-reconcile] VERSION=<published-version>"
 	@echo "         Optional: CONSUMER=owner/repo@branch JOBS=4 DRY_RUN=1 CHANNEL=stable"
-	@echo "         test-{python,standards} TEST_JOBS=4 PYTEST_ARGS='-k release' | test -j4"
+	@printf '%s\n' "         test-{python,standards} TEST_JOBS=4 PYTEST_ARGS='-k release' | test -j4" "         test-standards PYTEST_ARGS='--test-path tests/release/test_distribution_performance.py'"
 	@echo "         test-plan | test-standards-changed BASE=origin/main"
 	@echo "         release-status COMMIT=origin/main | release-portability"
 	@echo "         rollout-check VERSION=<published-version> | docs-deploy-check"
