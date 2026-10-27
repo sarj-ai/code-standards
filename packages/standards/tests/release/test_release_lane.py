@@ -337,18 +337,19 @@ def test_cli_records_only_the_validated_lane(candidate: Candidate, lane: Publish
     assert output.read_text() == "lane=standards-maintenance\n"
 
 
+@pytest.mark.parametrize("branch", ["maintenance/standards-8.101", "maintenance/standards-8.129"])
 @pytest.mark.parametrize(
     "scenario",
     ["exact", "branch", "sha", "repository", "workflow", "event", "missing-terminal"],
 )
 def test_exact_push_safety_gate_rejects_other_run_identities(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scenario: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scenario: str, branch: str
 ) -> None:
     script = Path(__file__).resolve().parents[4] / ".github/scripts/release-require-checks.sh"
     binaries = tmp_path / "bin"
     binaries.mkdir()
     fixture = tmp_path / "responses.json"
-    fixture.write_text(json.dumps({"scenario": scenario, "sha": "a" * 40}))
+    fixture.write_text(json.dumps({"scenario": scenario, "sha": "a" * 40, "branch": branch}))
     (binaries / "gh").write_text(
         "#!/usr/bin/env python3\n"
         "import json, os, sys\n"
@@ -358,7 +359,7 @@ def test_exact_push_safety_gate_rejects_other_run_identities(
         "scenario = data['scenario']\n"
         "if '/workflows/' in endpoint:\n"
         "    workflow = endpoint.split('/workflows/')[1].split('/')[0]\n"
-        "    run = {'id': 123, 'head_sha': data['sha'], 'head_branch': 'maintenance/standards-8.101',\n"
+        "    run = {'id': 123, 'head_sha': data['sha'], 'head_branch': data['branch'],\n"
         "           'event': 'push', 'path': '.github/workflows/' + workflow, 'conclusion': None,\n"
         "           'head_repository': {'full_name': 'sarj-ai/code-standards'}}\n"
         "    updates = {'branch': {'head_branch': 'main'}, 'sha': {'head_sha': 'b' * 40},\n"
@@ -377,7 +378,7 @@ def test_exact_push_safety_gate_rejects_other_run_identities(
     monkeypatch.setenv("PATH", str(binaries), prepend=os.pathsep)
     monkeypatch.setenv("RELEASE_GATE_FIXTURE", str(fixture))
     monkeypatch.setenv("TARGET_SHA", "a" * 40)
-    monkeypatch.setenv("TARGET_BRANCH", "maintenance/standards-8.101")
+    monkeypatch.setenv("TARGET_BRANCH", branch)
     monkeypatch.setenv("GITHUB_REPOSITORY", "sarj-ai/code-standards")
 
     completed = subprocess.run(("bash", str(script)), check=False, capture_output=True, text=True, timeout=10)
@@ -969,3 +970,181 @@ def test_action_backport_retains_the_complete_commit_policy_cohort(
     )
     with pytest.raises(ValueError, match=message):
         lane.validate_lane(candidate.root, source_ref="refs/heads/maintenance/standards-8.101", commit=commit)
+
+
+_STANDARDS_8129_REF = "refs/heads/maintenance/standards-8.129"
+_REPO_STANDARDS_REVISIONS = ("a73ee177de7365b65d996218874a606c6af7bc05", "c61146c7137c764ac1371a99508771fc255a1767")
+_REPO_STANDARDS_ARTIFACTS = (
+    (
+        'sdist = { url = "https://files.pythonhosted.org/packages/93/0f/e608f7c6933d918cb9c533bbdaa90dd1d08424c252ea989ca85e26aa9e92/repo_standards-6.12.9.tar.gz", hash = "sha256:584dda3e9326f0df2b18df1cb66f45aa166045975fc6093e3f63916d13b97745", size = 128482, upload-time = "2026-10-24T16:12:06.422Z" }',
+        'sdist = { url = "https://files.pythonhosted.org/packages/68/95/0a753de79ff10fb29ec230e96ef6ed9600a1ef2a2bc693c2bf117954da46/repo_standards-6.13.0.tar.gz", hash = "sha256:f632d1440fc0bacb0e317bfbc5a317aefe63dcbb6dcd11404efdc43afd8b65c8", size = 130990, upload-time = "2026-10-27T20:50:45.62Z" }',
+    ),
+    (
+        '{ url = "https://files.pythonhosted.org/packages/87/15/6ee9f2a24528fd0b7bdf7bc2a067e7db8048603dbb2228bd4e7de1b3900e/repo_standards-6.12.9-py3-none-any.whl", hash = "sha256:5f3b1dee3013d647bdc9a2580e7acd0b115b717469ee64c1da866e7e45a5a31c", size = 148233, upload-time = "2026-10-24T16:12:05.081Z" }',
+        '{ url = "https://files.pythonhosted.org/packages/11/f4/b4aa5865a2142935e5d092597233584cf63c6f68a00648d8caa9493537c8/repo_standards-6.13.0-py3-none-any.whl", hash = "sha256:f13ae31795c09727c63478b9eb60a0fa5f53bcc54cdfc71bdd7055763de3bf69", size = 150773, upload-time = "2026-10-27T20:50:44.118Z" }',
+    ),
+)
+
+
+@runtime_checkable
+class Standards8129Lane(PublisherLane, Protocol):
+    STANDARDS_8129_ANCHOR: str
+    STANDARDS_8129_APPROVED_SHA256: dict[str, str]
+
+
+@pytest.fixture
+def standards_lane(lane: PublisherLane) -> Standards8129Lane:
+    assert isinstance(lane, Standards8129Lane)
+    return lane
+
+
+def _set_standards_8129_version(checkout: Path, lane: Standards8129Lane, before: str, after: str) -> None:
+    cli = checkout / lane.CLI_REFERENCE
+    old_cli_digest = hashlib.sha256(cli.read_bytes()).hexdigest()
+    for relative in lane.STANDARDS_8129_APPROVED_SHA256:
+        path = checkout / relative
+        path.write_text(path.read_text().replace(f'"{before}"', f'"{after}"').replace(f"=={before}", f"=={after}"))
+    cli.write_text(cli.read_text().replace(f"(v{before})", f"(v{after})"))
+    docs = checkout / lane.DOC_EXAMPLES
+    source = docs.read_text()
+    assert source.count(old_cli_digest) == 1
+    docs.write_text(source.replace(old_cli_digest, hashlib.sha256(cli.read_bytes()).hexdigest()))
+
+
+@pytest.fixture
+def standards_8129(tmp_path: Path, standards_lane: Standards8129Lane) -> Candidate:
+    repository = Path(__file__).resolve().parents[4]
+    checkout = tmp_path / "standards-8.129"
+    _git(tmp_path, "clone", "--quiet", "--shared", "--no-checkout", str(repository), str(checkout))
+    _git(checkout, "checkout", "--quiet", "--detach", standards_lane.STANDARDS_8129_ANCHOR)
+    lock = checkout / "packages/standards/uv.lock"
+    source = lock.read_text()
+    for before, after in _REPO_STANDARDS_ARTIFACTS:
+        assert source.count(before) == 1
+        source = source.replace(before, after)
+    lock.write_text(source)
+    old_revision, new_revision = _REPO_STANDARDS_REVISIONS
+    for relative in (
+        ".github/workflows/ci.yml",
+        ".github/workflows/commit-policy.yml",
+        "packages/standards/pyproject.toml",
+        "packages/standards/uv.lock",
+        "packages/standards/src/sarj_standards/libs/adoption/manifest.py",
+        "packages/standards/tests/test_repo_standards_pins.py",
+    ):
+        path = checkout / relative
+        path.write_text(path.read_text().replace(old_revision, new_revision).replace("6.12.9", "6.13.0"))
+    _set_standards_8129_version(checkout, standards_lane, "8.129.9", "8.129.10")
+    return Candidate(checkout, standards_lane.STANDARDS_8129_ANCHOR, _commit(checkout))
+
+
+def test_standards_8129_accepts_the_reviewed_repo_standards_adoption(
+    standards_8129: Candidate, lane: PublisherLane
+) -> None:
+    targets = {name: "true" if name == "standards" else "false" for name in lane.RELEASE_TARGETS}
+    assert (
+        lane.validate_lane(
+            standards_8129.root,
+            source_ref=_STANDARDS_8129_REF,
+            commit=standards_8129.commit,
+            detected_targets=json.dumps(targets),
+        )
+        == "standards-maintenance"
+    )
+
+
+def test_standards_8129_later_patch_reuses_the_reviewed_projection(
+    standards_8129: Candidate, standards_lane: Standards8129Lane
+) -> None:
+    _set_standards_8129_version(standards_8129.root, standards_lane, "8.129.10", "8.129.12")
+    commit = _commit(standards_8129.root)
+    assert (
+        standards_lane.validate_lane(standards_8129.root, source_ref=_STANDARDS_8129_REF, commit=commit)
+        == "standards-maintenance"
+    )
+
+
+@pytest.mark.parametrize("version", ["8.129.9", "8.130.0", "8.101.8"])
+def test_standards_8129_rejects_versions_outside_its_line(
+    standards_8129: Candidate, standards_lane: Standards8129Lane, version: str
+) -> None:
+    _set_standards_8129_version(standards_8129.root, standards_lane, "8.129.10", version)
+    commit = _commit(standards_8129.root)
+    with pytest.raises(ValueError, match=r"exact 8\.129\.x version"):
+        standards_lane.validate_lane(standards_8129.root, source_ref=_STANDARDS_8129_REF, commit=commit)
+
+
+@pytest.mark.parametrize(
+    ("relative", "before", "after"),
+    [
+        ("packages/standards/pyproject.toml", "repo-standards==6.13.0", "repo-standards==6.13.1"),
+        ("packages/standards/uv.lock", "sha256:f632d1440fc0", "sha256:0000d1440fc0"),
+        ("packages/standards/src/sarj_standards/libs/adoption/manifest.py", '"6.13.0"', '"6.13.1"'),
+        (".github/workflows/commit-policy.yml", "c61146c7137c", "0000000000ac"),
+        (".sarj-standards.toml", 'rule_profile = "all"', 'rule_profile = "none"'),
+        ("packages/standards-compat/pyproject.toml", "code-standards==8.129.10", "code-standards==8.129.9"),
+    ],
+)
+def test_standards_8129_rejects_drift_in_reviewed_files(
+    standards_8129: Candidate, lane: PublisherLane, relative: str, before: str, after: str
+) -> None:
+    path = standards_8129.root / relative
+    source = path.read_text()
+    assert before in source
+    path.write_text(source.replace(before, after, 1))
+    commit = _commit(standards_8129.root)
+    with pytest.raises(ValueError, match=f"reviewed repo-standards 6.13.0 projection in {re.escape(relative)}"):
+        lane.validate_lane(standards_8129.root, source_ref=_STANDARDS_8129_REF, commit=commit)
+
+
+def test_standards_8129_requires_the_complete_adoption(standards_8129: Candidate, lane: PublisherLane) -> None:
+    relative = "packages/standards/src/sarj_standards/libs/adoption/manifest.py"
+    _git(standards_8129.root, "checkout", standards_8129.anchor, "--", relative)
+    commit = _commit(standards_8129.root)
+    with pytest.raises(ValueError, match=f"projection in {re.escape(relative)}"):
+        lane.validate_lane(standards_8129.root, source_ref=_STANDARDS_8129_REF, commit=commit)
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "packages/standards/src/sarj_standards/libs/linting/external.py",
+        "packages/python/pyproject.toml",
+        ".gitleaks.toml",
+    ],
+)
+def test_standards_8129_rejects_unapproved_paths(standards_8129: Candidate, lane: PublisherLane, relative: str) -> None:
+    with (standards_8129.root / relative).open("a") as stream:
+        stream.write("\n# unreviewed\n")
+    commit = _commit(standards_8129.root)
+    with pytest.raises(ValueError, match=r"8\.129 policy or an unapproved path"):
+        lane.validate_lane(standards_8129.root, source_ref=_STANDARDS_8129_REF, commit=commit)
+
+
+def test_standards_8129_documentation_cannot_hide_catalog_drift(standards_8129: Candidate, lane: PublisherLane) -> None:
+    docs = standards_8129.root / lane.DOC_EXAMPLES
+    source, replaced = re.subn(r'"catalogSha256": "[0-9a-f]{64}"', f'"catalogSha256": "{"0" * 64}"', docs.read_text())
+    assert replaced == 1
+    docs.write_text(source)
+    commit = _commit(standards_8129.root)
+    with pytest.raises(ValueError, match="retain the legacy catalog"):
+        lane.validate_lane(standards_8129.root, source_ref=_STANDARDS_8129_REF, commit=commit)
+
+
+def test_standards_8129_cannot_publish_sibling_targets(standards_8129: Candidate, lane: PublisherLane) -> None:
+    targets = dict.fromkeys(lane.RELEASE_TARGETS, "false")
+    targets["python"] = "true"
+    with pytest.raises(ValueError, match="cannot publish sibling"):
+        lane.validate_lane(
+            standards_8129.root,
+            source_ref=_STANDARDS_8129_REF,
+            commit=standards_8129.commit,
+            detected_targets=json.dumps(targets),
+        )
+
+
+def test_standards_8129_candidate_cannot_use_the_8101_lane(standards_8129: Candidate, lane: PublisherLane) -> None:
+    with pytest.raises(ValueError, match="legacy policy or an unapproved path"):
+        lane.validate_lane(
+            standards_8129.root, source_ref="refs/heads/maintenance/standards-8.101", commit=standards_8129.commit
+        )

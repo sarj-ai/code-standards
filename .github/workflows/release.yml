@@ -26,7 +26,7 @@ name: release
 #   alone do not authorize reconciliation to publish.
 on:
   push:
-    branches: [main, maintenance/standards-8.101]
+    branches: [main, maintenance/standards-8.101, maintenance/standards-8.129]
   schedule:
     # Reconcile publication and durable verification-tag state after outages.
     # The same workflow identity preserves trusted-publisher provenance.
