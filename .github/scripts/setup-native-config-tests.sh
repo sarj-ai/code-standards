@@ -8,7 +8,7 @@ directory="$PWD"
 staging="$(mktemp -d "$directory/.native-packages.XXXXXXXX")"
 trap 'rm -rf -- "$staging"' EXIT
 cd "$staging"
-packages=(nginx=1.24.0-2ubuntu7.18 kamailio=5.7.4-1build7 prometheus=2.45.3+ds-2ubuntu0.3)
+packages=(nginx=1.24.0-2ubuntu7.19 kamailio=5.7.4-1build7 prometheus=2.45.3+ds-2ubuntu0.3)
 
 # Use the Ubuntu test runner's signed package metadata and native architecture.
 # apt-get trusts existing archive sizes; validate cached bytes against its metadata.

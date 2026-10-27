@@ -25,7 +25,7 @@ help:
 	@echo "         check-{versions-synced,no-private-refs,file-conventions} | release-check"
 	@echo "         rollout[-plan|-status|-reconcile] VERSION=<published-version>"
 	@echo "         Optional: CONSUMER=owner/repo@branch JOBS=4 DRY_RUN=1 CHANNEL=stable"
-	@echo "         test-standards TEST_JOBS=4 PYTEST_ARGS='-k release' | test -j4"
+	@echo "         test-{python,standards} TEST_JOBS=4 PYTEST_ARGS='-k release' | test -j4"
 	@echo "         test-plan | test-standards-changed BASE=origin/main"
 	@echo "         release-status COMMIT=origin/main | release-portability"
 	@echo "         rollout-check VERSION=<published-version> | docs-deploy-check"
@@ -59,8 +59,7 @@ verify:
 	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory doctor docs-check
 	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory format-check lint
 	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory --assume-old=typescript-build dogfood typecheck
-	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory --assume-old=typescript-build test
-	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory repo-check check-no-private-refs shell-check
+	+bash .github/scripts/make-local-check.sh bash .github/scripts/make-verify-tail.sh $(MAKE)
 
 doctor:
 	@$(STANDARDS) doctor
@@ -118,7 +117,7 @@ test-contracts:
 	uv --directory packages/contracts run pytest -q
 
 test-python:
-	uv --directory packages/python run --locked --with pytest-xdist==3.8.0 pytest -q $(if $(filter 1,$(TEST_JOBS)),,-n "$(TEST_JOBS)" --dist worksteal)
+	uv --directory packages/python run --locked --with pytest-xdist==3.8.0 pytest -q $(if $(filter 1,$(TEST_JOBS)),,-n "$(TEST_JOBS)" --dist worksteal) $(PYTEST_ARGS)
 
 test-sql:
 	uv --directory packages/sql run pytest -q
