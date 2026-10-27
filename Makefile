@@ -169,12 +169,7 @@ dogfood-typescript: typescript-build
 	npm --prefix packages/typescript run dogfood:built
 
 typecheck:
-	uv --directory packages/bootstrap run basedpyright
-	uv --directory packages/contracts run basedpyright
-	uv --directory packages/python run basedpyright
-	uv --directory packages/sql run basedpyright
-	uv --directory packages/iac run basedpyright
-	uv run --project packages/standards --frozen basedpyright --project packages/standards/pyrightconfig.json packages/standards/src packages/standards/tests .github/scripts/*.py
+	+bash .github/scripts/make-typecheck.sh $(MAKE) --no-print-directory $(if $(filter 1,$(TEST_JOBS)),--jobs=1,$(if $(filter -j%,$(MAKEFLAGS)),,--jobs=2))
 	npm --prefix packages/typescript run typecheck
 
 check-no-private-refs:
