@@ -1,0 +1,1144 @@
+{
+  "report_scope": "Historical Python/Slack revision4 fields below remain unchanged at their original687baseline/timestamps. Fresh workflow-only revision5 is a separate post_qualification_workflow_refresh component; timings are not repinned or pooled and repeated Slack cases are not double-counted.",
+  "status": "review-complete-with-declared-coverage-limits",
+  "qualification_revision": 4,
+  "evaluation": {
+    "worker_runs": 34,
+    "cold_and_warm_analyzer_invocations": 68,
+    "full_baseline_python_rules": 183,
+    "candidate_python_rules": 188,
+    "full_baseline_text_rules": 12,
+    "candidate_text_rules": 13,
+    "python_sample_files": 50,
+    "workflow_sample_files": 10,
+    "workflow_context_files": 55,
+    "historical_public_self_source_files": 9,
+    "inventory_file_copies": 145,
+    "analyzed_file_copies": 88,
+    "labeled_cases": 22,
+    "true_positive_diagnostics": 14,
+    "false_positive_diagnostics": 0,
+    "known_false_negative_cases": 2,
+    "labeled_true_negative_cases": 6,
+    "unclassified_target_hits": 0,
+    "unlabeled_no_hit_files": 69,
+    "target_diagnostic_additions": 14,
+    "target_diagnostic_removals": 0,
+    "non_target_diagnostic_changes": 0,
+    "legacy_owner_diagnostic_changes": 0,
+    "surfaced_parser_analyzer_failures": 0,
+    "unknown_rule_ids": 0,
+    "returned_duplicate_diagnostic_tuples": 0,
+    "cross_round_diagnostic_drift": 0,
+    "unchanged_workflow_semantic_findings": 7
+  },
+  "baseline_protocol": "Full immutable source baseline versus candidate on that baseline, with equal external lock entries/runtime and per-worker source, module-origin, inventory and digest guards. No disabled-rule-only control substitutes for the baseline.",
+  "selection": {
+    "eligibility_revision": 2,
+    "python_eligible_population": 2019,
+    "method": "Content-independent hash-ranked sample from one immutable repository tree, after disclosed known generated SDK/client/vendor/build path and generator-header exclusions; tests included. Fixed source frame and seed preserved across qualification revisions.",
+    "unknown_unmarked_generation_blindspot": true
+  },
+  "classification_by_rule": {
+    "async-executor-shutdown": {
+      "TP": 4,
+      "TN": 1
+    },
+    "async-subprocess-cancellation-cleanup": {
+      "TP": 2,
+      "TN": 1
+    },
+    "cancel-owned-task-without-join": {
+      "TP": 4,
+      "TN": 1
+    },
+    "failed-probe-zero-threshold": {
+      "TP": 2,
+      "FN": 1,
+      "TN": 1
+    },
+    "nan-hidden-by-builtin-min": {
+      "FN": 1,
+      "TP": 1,
+      "TN": 1
+    },
+    "slack-event-text-in-mrkdwn": {
+      "TP": 1,
+      "TN": 1
+    }
+  },
+  "async_owner": {
+    "new_warning_code": "SARJ537",
+    "new_warning_rule": "async-subprocess-cancellation-cleanup",
+    "legacy_synchronous_code": "SARJ464",
+    "legacy_default_severity": "error",
+    "historical_warning_proofs_preserved": true,
+    "legacy_limitation": "No synchronous legacy finding occurs in this source corpus; preservation is also checked by the separate native test prefix."
+  },
+  "known_unsupported_positive_scopes": [
+    "Deeper async subprocess-result wrapper provenance for failed-probe zero fallback",
+    "External encoder/array floating provenance for NaN reduction masking"
+  ],
+  "unlabeled_results": "The50Python sample files,10workflow sample files and9retained historical public self-source controls have no target hits. These69observations remain unlabeled/unknown, not true negatives or recall proof. The historical source snapshots do not claim current candidate self coverage.",
+  "performance": [
+    {
+      "cohort": "private-python-sample",
+      "rounds": 3,
+      "semantics": "Three alternating BASE/candidate fresh-process pairs. cold_total_seconds includes worker setup/source+runtime+version guards, engine imports and first analysis after initial stdlib prelude; warm_analysis_seconds is the second analysis in the same worker. runner_seconds covers startup, both analyses, guards and native runner overhead. No OS or bytecode cache eviction.",
+      "cold_total_seconds": {
+        "base_median": 12.897376431967132,
+        "candidate_median": 10.624896166031249,
+        "ratio": 0.8238029045734164,
+        "base_samples": [
+          12.897376431967132,
+          11.974003727082163,
+          14.292110119014978
+        ],
+        "candidate_samples": [
+          10.238583341939375,
+          10.624896166031249,
+          11.804981469991617
+        ],
+        "paired_candidate_minus_base": [
+          -2.658793090027757,
+          -1.3491075610509142,
+          -2.4871286490233615
+        ],
+        "paired_ratio": [
+          0.7938500822975334,
+          0.8873302871954537,
+          0.8259789052622569
+        ],
+        "paired_median_delta": -2.4871286490233615,
+        "paired_median_ratio": 0.8259789052622569,
+        "base_range": [
+          11.974003727082163,
+          14.292110119014978
+        ],
+        "candidate_range": [
+          10.238583341939375,
+          11.804981469991617
+        ]
+      },
+      "cold_analysis_seconds": {
+        "base_median": 11.044576902058907,
+        "candidate_median": 9.998215853003785,
+        "ratio": 0.9052601961728329,
+        "base_samples": [
+          11.044576902058907,
+          10.375578481005505,
+          12.647420117049478
+        ],
+        "candidate_samples": [
+          9.585979484952986,
+          9.998215853003785,
+          11.191718042013235
+        ],
+        "paired_candidate_minus_base": [
+          -1.4585974171059206,
+          -0.3773626280017197,
+          -1.4557020750362426
+        ],
+        "paired_ratio": [
+          0.8679354193428621,
+          0.9636297264106715,
+          0.8849012635332744
+        ],
+        "paired_median_delta": -1.4557020750362426,
+        "paired_median_ratio": 0.8849012635332744,
+        "base_range": [
+          10.375578481005505,
+          12.647420117049478
+        ],
+        "candidate_range": [
+          9.585979484952986,
+          11.191718042013235
+        ]
+      },
+      "warm_analysis_seconds": {
+        "base_median": 10.832974586985074,
+        "candidate_median": 10.338802192010917,
+        "ratio": 0.9543825759946059,
+        "base_samples": [
+          11.246120442985557,
+          9.626456653000787,
+          10.832974586985074
+        ],
+        "candidate_samples": [
+          10.018589716986753,
+          10.417185108992271,
+          10.338802192010917
+        ],
+        "paired_candidate_minus_base": [
+          -1.227530725998804,
+          0.7907284559914842,
+          -0.4941723949741572
+        ],
+        "paired_ratio": [
+          0.8908485168532548,
+          1.082141174525,
+          0.9543825759946059
+        ],
+        "paired_median_delta": -0.4941723949741572,
+        "paired_median_ratio": 0.9543825759946059,
+        "base_range": [
+          9.626456653000787,
+          11.246120442985557
+        ],
+        "candidate_range": [
+          10.018589716986753,
+          10.417185108992271
+        ]
+      },
+      "peak_rss_kib": {
+        "base_median": 92272,
+        "candidate_median": 92144,
+        "ratio": 0.9986127969481533,
+        "base_samples": [
+          92272,
+          92556,
+          92248
+        ],
+        "candidate_samples": [
+          91740,
+          92144,
+          92476
+        ],
+        "paired_candidate_minus_base": [
+          -532,
+          -412,
+          228
+        ],
+        "paired_ratio": [
+          0.9942344373157621,
+          0.9955486408228532,
+          1.0024715983002341
+        ],
+        "paired_median_delta": -412,
+        "paired_median_ratio": 0.9955486408228532,
+        "base_range": [
+          92248,
+          92556
+        ],
+        "candidate_range": [
+          91740,
+          92476
+        ]
+      },
+      "children_peak_rss_kib": {
+        "base_median": 0,
+        "candidate_median": 0,
+        "ratio": null,
+        "base_samples": [
+          0,
+          0,
+          0
+        ],
+        "candidate_samples": [
+          0,
+          0,
+          0
+        ],
+        "paired_candidate_minus_base": [
+          0,
+          0,
+          0
+        ],
+        "paired_ratio": [
+          null,
+          null,
+          null
+        ],
+        "paired_median_delta": 0,
+        "paired_median_ratio": null,
+        "base_range": [
+          0,
+          0
+        ],
+        "candidate_range": [
+          0,
+          0
+        ]
+      },
+      "runner_seconds": {
+        "base_median": 24.672119,
+        "candidate_median": 21.435868,
+        "ratio": 0.8688296291048208,
+        "base_samples": [
+          24.672119,
+          22.111547,
+          25.65042
+        ],
+        "candidate_samples": [
+          20.728018,
+          21.435868,
+          22.679544
+        ],
+        "paired_candidate_minus_base": [
+          -3.944101,
+          -0.6756790000000024,
+          -2.9708760000000005
+        ],
+        "paired_ratio": [
+          0.8401393491981779,
+          0.9694422556684974,
+          0.8841782707651571
+        ],
+        "paired_median_delta": -2.9708760000000005,
+        "paired_median_ratio": 0.8841782707651571,
+        "base_range": [
+          22.111547,
+          25.65042
+        ],
+        "candidate_range": [
+          20.728018,
+          22.679544
+        ]
+      },
+      "import_seconds": {
+        "base_median": 1.6446900019655004,
+        "candidate_median": 0.6266803130274639,
+        "ratio": 0.38103248167043297,
+        "base_samples": [
+          1.852799529908225,
+          1.5984252460766584,
+          1.6446900019655004
+        ],
+        "candidate_samples": [
+          0.6526038569863886,
+          0.6266803130274639,
+          0.6132634279783815
+        ],
+        "paired_candidate_minus_base": [
+          -1.2001956729218364,
+          -0.9717449330491945,
+          -1.031426573987119
+        ],
+        "paired_ratio": [
+          0.35222583255875184,
+          0.39206107046022537,
+          0.3728747832390882
+        ],
+        "paired_median_delta": -1.031426573987119,
+        "paired_median_ratio": 0.3728747832390882,
+        "base_range": [
+          1.5984252460766584,
+          1.852799529908225
+        ],
+        "candidate_range": [
+          0.6132634279783815,
+          0.6526038569863886
+        ]
+      },
+      "cold_peak_rss_kib": {
+        "base_median": 92272,
+        "candidate_median": 91568,
+        "ratio": 0.992370383214843,
+        "base_samples": [
+          92272,
+          92556,
+          92032
+        ],
+        "candidate_samples": [
+          91568,
+          92144,
+          91436
+        ],
+        "paired_candidate_minus_base": [
+          -704,
+          -412,
+          -596
+        ],
+        "paired_ratio": [
+          0.992370383214843,
+          0.9955486408228532,
+          0.9935239916550765
+        ],
+        "paired_median_delta": -596,
+        "paired_median_ratio": 0.9935239916550765,
+        "base_range": [
+          92032,
+          92556
+        ],
+        "candidate_range": [
+          91436,
+          92144
+        ]
+      }
+    },
+    {
+      "cohort": "private-workflow-sample",
+      "rounds": 3,
+      "semantics": "Three alternating BASE/candidate fresh-process pairs. cold_total_seconds includes worker setup/source+runtime+version guards, engine imports and first analysis after initial stdlib prelude; warm_analysis_seconds is the second analysis in the same worker. runner_seconds covers startup, both analyses, guards and native runner overhead. No OS or bytecode cache eviction.",
+      "cold_total_seconds": {
+        "base_median": 4.613615391892381,
+        "candidate_median": 3.2184903050074354,
+        "ratio": 0.6976069809944208,
+        "base_samples": [
+          4.243385241017677,
+          4.739868093049154,
+          4.613615391892381
+        ],
+        "candidate_samples": [
+          3.143639627029188,
+          3.2184903050074354,
+          3.2816083759535104
+        ],
+        "paired_candidate_minus_base": [
+          -1.099745613988489,
+          -1.5213777880417183,
+          -1.3320070159388706
+        ],
+        "paired_ratio": [
+          0.7408329549346454,
+          0.6790252896968242,
+          0.7112878073279278
+        ],
+        "paired_median_delta": -1.3320070159388706,
+        "paired_median_ratio": 0.7112878073279278,
+        "base_range": [
+          4.243385241017677,
+          4.739868093049154
+        ],
+        "candidate_range": [
+          3.143639627029188,
+          3.2816083759535104
+        ]
+      },
+      "cold_analysis_seconds": {
+        "base_median": 2.64165998599492,
+        "candidate_median": 2.405343996011652,
+        "ratio": 0.9105426166743162,
+        "base_samples": [
+          2.4834851829800755,
+          2.64165998599492,
+          2.647910774918273
+        ],
+        "candidate_samples": [
+          2.3423490739660338,
+          2.405343996011652,
+          2.4677358579356223
+        ],
+        "paired_candidate_minus_base": [
+          -0.14113610901404172,
+          -0.23631598998326808,
+          -0.18017491698265076
+        ],
+        "paired_ratio": [
+          0.9431701425153323,
+          0.9105426166743162,
+          0.931955820154774
+        ],
+        "paired_median_delta": -0.18017491698265076,
+        "paired_median_ratio": 0.931955820154774,
+        "base_range": [
+          2.4834851829800755,
+          2.647910774918273
+        ],
+        "candidate_range": [
+          2.3423490739660338,
+          2.4677358579356223
+        ]
+      },
+      "warm_analysis_seconds": {
+        "base_median": 2.3780137439025566,
+        "candidate_median": 2.311189113999717,
+        "ratio": 0.9718989723780259,
+        "base_samples": [
+          2.293005878920667,
+          2.3780137439025566,
+          2.3967949599027634
+        ],
+        "candidate_samples": [
+          2.2172424509190023,
+          2.311189113999717,
+          2.3171297219814733
+        ],
+        "paired_candidate_minus_base": [
+          -0.07576342800166458,
+          -0.06682462990283966,
+          -0.0796652379212901
+        ],
+        "paired_ratio": [
+          0.9669589037262621,
+          0.9718989723780259,
+          0.9667617634157066
+        ],
+        "paired_median_delta": -0.07576342800166458,
+        "paired_median_ratio": 0.9669589037262621,
+        "base_range": [
+          2.293005878920667,
+          2.3967949599027634
+        ],
+        "candidate_range": [
+          2.2172424509190023,
+          2.3171297219814733
+        ]
+      },
+      "peak_rss_kib": {
+        "base_median": 88092,
+        "candidate_median": 80760,
+        "ratio": 0.9167688325841166,
+        "base_samples": [
+          88092,
+          87896,
+          88100
+        ],
+        "candidate_samples": [
+          80760,
+          80748,
+          80916
+        ],
+        "paired_candidate_minus_base": [
+          -7332,
+          -7148,
+          -7184
+        ],
+        "paired_ratio": [
+          0.9167688325841166,
+          0.9186766178210612,
+          0.9184562996594778
+        ],
+        "paired_median_delta": -7184,
+        "paired_median_ratio": 0.9184562996594778,
+        "base_range": [
+          87896,
+          88100
+        ],
+        "candidate_range": [
+          80748,
+          80916
+        ]
+      },
+      "children_peak_rss_kib": {
+        "base_median": 88092,
+        "candidate_median": 80760,
+        "ratio": 0.9167688325841166,
+        "base_samples": [
+          88092,
+          87896,
+          88100
+        ],
+        "candidate_samples": [
+          80760,
+          80748,
+          80916
+        ],
+        "paired_candidate_minus_base": [
+          -7332,
+          -7148,
+          -7184
+        ],
+        "paired_ratio": [
+          0.9167688325841166,
+          0.9186766178210612,
+          0.9184562996594778
+        ],
+        "paired_median_delta": -7184,
+        "paired_median_ratio": 0.9184562996594778,
+        "base_range": [
+          87896,
+          88100
+        ],
+        "candidate_range": [
+          80748,
+          80916
+        ]
+      },
+      "runner_seconds": {
+        "base_median": 7.487662,
+        "candidate_median": 5.903706,
+        "ratio": 0.7884578657530213,
+        "base_samples": [
+          6.964597,
+          7.561845,
+          7.487662
+        ],
+        "candidate_samples": [
+          5.770273,
+          5.903706,
+          6.0302
+        ],
+        "paired_candidate_minus_base": [
+          -1.194324,
+          -1.6581390000000003,
+          -1.4574620000000005
+        ],
+        "paired_ratio": [
+          0.8285149880172535,
+          0.7807229584843381,
+          0.8053515236131118
+        ],
+        "paired_median_delta": -1.4574620000000005,
+        "paired_median_ratio": 0.8053515236131118,
+        "base_range": [
+          6.964597,
+          7.561845
+        ],
+        "candidate_range": [
+          5.770273,
+          6.0302
+        ]
+      },
+      "import_seconds": {
+        "base_median": 1.965704616974108,
+        "candidate_median": 0.8131463089957833,
+        "ratio": 0.4136665814253892,
+        "base_samples": [
+          1.7599000580376014,
+          2.0982081070542336,
+          1.965704616974108
+        ],
+        "candidate_samples": [
+          0.8012905530631542,
+          0.8131463089957833,
+          0.8138725180178881
+        ],
+        "paired_candidate_minus_base": [
+          -0.9586095049744472,
+          -1.2850617980584502,
+          -1.1518320989562199
+        ],
+        "paired_ratio": [
+          0.4553045778955444,
+          0.3875432118777747,
+          0.4140360209718164
+        ],
+        "paired_median_delta": -1.1518320989562199,
+        "paired_median_ratio": 0.4140360209718164,
+        "base_range": [
+          1.7599000580376014,
+          2.0982081070542336
+        ],
+        "candidate_range": [
+          0.8012905530631542,
+          0.8138725180178881
+        ]
+      },
+      "cold_peak_rss_kib": {
+        "base_median": 87768,
+        "candidate_median": 80660,
+        "ratio": 0.9190137635584723,
+        "base_samples": [
+          87708,
+          87768,
+          87972
+        ],
+        "candidate_samples": [
+          80632,
+          80748,
+          80660
+        ],
+        "paired_candidate_minus_base": [
+          -7076,
+          -7020,
+          -7312
+        ],
+        "paired_ratio": [
+          0.9193232088292972,
+          0.9200164068908941,
+          0.9168826444777883
+        ],
+        "paired_median_delta": -7076,
+        "paired_median_ratio": 0.9193232088292972,
+        "base_range": [
+          87708,
+          87972
+        ],
+        "candidate_range": [
+          80632,
+          80748
+        ]
+      }
+    }
+  ],
+  "performance_assessment": "Paired median first-analysis deltas are -1.456s/-11.51% on Python and -0.180s/-6.80% on workflows; paired median warm deltas are -0.494s/-4.56% and -0.076s/-3.30%. All pairs are retained, including a Python warm pair+0.791s/+8.21%. RSS medians are Python92272\u219292144KiB and workflows88092\u219280760KiB. Shared-VM and unnormalized source/bytecode/import caches prevent causal speedup, memory-improvement or worst-case overhead claims.",
+  "native_prefix_qualification": {
+    "python_meta_new_and_legacy_tests_passed": 1729,
+    "text_meta_and_rule_tests_passed": 584,
+    "slack_rule_tests_within_text_total_passed": 91,
+    "distinct_from_corpus_case_counts": true,
+    "strict_python_types": "passed",
+    "complete_applicable_native_lint": "passed; existing warnings retained"
+  },
+  "blockers": [],
+  "limits": [
+    "Hash-ranked sample is unbiased only within the disclosed eligibility frame",
+    "Known path and header exclusions do not recognize all generated source; unknown markerless generation may remain",
+    "Sparse source-only sample does not reproduce full application module graphs",
+    "No application imports, services, model loads or Slack messages",
+    "Known-positive sources with unsupported deeper async/encoder provenance remain declared FNs, not clean negatives",
+    "Nine historical public self-source byte controls are retained exactly; they do not claim coverage of current candidate source.",
+    "Whole source snapshot baselines share identical locked dependencies/runtime; source module origins and every source file are guarded",
+    "Peak RSS is per-process lifetime high-water in KiB on Linux; child RSS reported separately",
+    "No kernel cache eviction or CPU isolation on shared VM",
+    "Zero target hits in the69unlabeled files do not establish TN counts, recall or complete per-rule applicability.",
+    "Rule-level unsupported/malformed-input abstentions are not separately instrumented; their count is unknown. The two known misses remain FNs.",
+    "The workflow sample has no literal official Slack action invocation; custom transports and dynamic action identities are outside the supported Slack profile, so these no-hit timings do not exercise the positive Slack dataflow path.",
+    "Related lifecycle snapshots are correlated witnesses, not independent production incidents.",
+    "Returned diagnostics are already deduplicated by native analyzers; zero duplicate tuples describes returned diagnostics, not hidden internal emissions.",
+    "Cold total includes source/runtime guards and engine imports; startup outside that timer is included in runner time. Process-cold does not mean disk/OS/bytecode-cache cold.",
+    "Process and child peak RSS are separate lifetime high-water measurements, not a simultaneous summed process-tree memory peak.",
+    "All timing pairs/outliers are retained; three shared-VM rounds establish no causal speedup or worst-case overhead bound.",
+    "Revision4 uses a fresh matched upstream Python/SQL source baseline; every fixture byte, label, selection seed and expected outcome is unchanged, with no new semantic owner remaps.",
+    "Shared installed internal package metadata uses candidate release versions for both source roles; exact immutable baseline module sources and origins are independently checked.",
+    "Source-tree bytecode caches were not normalized; a post-run inspection found baseline without caches and candidate with caches. Lower cold/import timings do not establish a rule-caused speedup.",
+    "Native Python suppression/generated/test-file boundaries pass separately; the source corpus does not measure exclusion/suppression rates or exercise configured repository-policy filtering. No dedicated Slack YAML inline-suppression claim is made."
+  ],
+  "baseline_commit": "687ba48803b91a932911ed2afca5f5a2f1362f87",
+  "version_frame": {
+    "baseline_source": {
+      "code-standards": "8.134.0",
+      "sarj-python-lint": "1.79.0",
+      "sarj-sql-lint": "0.28.0"
+    },
+    "candidate_source": {
+      "code-standards": "8.135.0",
+      "sarj-python-lint": "1.80.0",
+      "sarj-sql-lint": "0.28.0"
+    },
+    "equal_workspace_versions": {
+      "sarj-rule-contracts": "0.4.1",
+      "sarj-iac-lint": "0.30.1"
+    },
+    "common_installed_internal_metadata": "Candidate-stamped for both roles; actual internal sources/module origins remain independently pinned. Full external dependency lock entries and runtime are equal."
+  },
+  "suppression_and_exclusion_limits": {
+    "python_boundaries": "Native fixtures cover code-specific suppression and generated-source abstention for all five Python profiles; both numeric owners also have runtime-test-file exclusions.",
+    "corpus_applicability_counts": "Not instrumented; unsupported/excluded/suppressed/clean no-hit inputs cannot be distinguished.",
+    "repository_policy_smoke_test": false,
+    "slack_inline_suppression_qualified": false
+  },
+  "fresh_native_corpus_slack_controls": {
+    "original_source_target_findings": 1,
+    "plain_text_repair_target_findings": 0,
+    "provenance": "Current full-registry source-corpus driver; separate from native preflight test counts."
+  },
+  "post_qualification_workflow_refresh": {
+    "qualification_revision": 5,
+    "comparison_scope": "workflow-only",
+    "status": "manual-review-complete-with-disclosed-limits",
+    "baseline_commit": "d4d058a618941d5eb54adc4cdc3dd47c56bf52f9",
+    "version_frame": {
+      "baseline_source": {
+        "code-standards": "8.135.1",
+        "sarj-python-lint": "1.79.0",
+        "sarj-sql-lint": "0.28.0"
+      },
+      "candidate_source": {
+        "code-standards": "8.137.0",
+        "sarj-python-lint": "1.80.0",
+        "sarj-sql-lint": "0.28.0"
+      },
+      "common_installed_internal_metadata": "Candidate-stamped for both roles; exact source/module origins and full equal external lock entries independently guarded."
+    },
+    "evaluation": {
+      "worker_runs": 10,
+      "analyzer_invocations": 20,
+      "active_inventory_entries": 69,
+      "analyzed_workflow_copies": 12,
+      "workflow_sample_files": 10,
+      "workflow_context_files": 55,
+      "full_baseline_text_rules": 12,
+      "candidate_text_rules": 13,
+      "labeled_cases": 2,
+      "true_positive_diagnostics": 1,
+      "labeled_true_negative_cases": 1,
+      "false_positive_diagnostics": 0,
+      "false_negative_cases_within_two_labels": 0,
+      "unlabeled_sample_zeroes": 10,
+      "target_diagnostic_additions": 1,
+      "non_target_diagnostic_changes": 0,
+      "unclassified_target_hits": 0,
+      "returned_duplicate_tuples": 0,
+      "surfaced_parser_analyzer_failures": 0,
+      "unknown_rule_ids": 0,
+      "cross_round_diagnostic_drift": 0,
+      "unchanged_workflow_semantic_findings": 7
+    },
+    "fixed_frame": "Same three workflow cohorts, original labels/bytes/paths/selection seed and expected1/0 outcomes. No source expansion/reselection or semantic owner remap. Full145historical fixture identities preserved; only69text/context entries are active.",
+    "case_accounting": "Fresh1TP/1TN confirms the same original/repair Slack case already counted in the historical14TP/6TN total; it adds no distinct production case or new combined count. The ten sample workflow zeroes are the same subset of the historical69unknown observations. Python FNs/TNs and nine historical self-source controls were not rerun or reclassified.",
+    "positive_path": "The fixed original still reports exactlyone warning and its plain-text companion zero. No application imports/services/messages or framework execution occurs.",
+    "native_incoming_preflight": {
+      "changed_python_files_checked": 2,
+      "complete_applicable_native_errors": 0,
+      "advisory_warnings": 33,
+      "execution_issues": 0,
+      "selected_strict_types_errors": 0,
+      "react_scope_tests_passed": 364,
+      "normal_typescript_build": "passed",
+      "version_catalog_cli_docs_and_formatted_projection_sync": "passed",
+      "canonical_gate": "This related preflight is not full canonical verification; final direct make/native hooks/exact-commit review/exact-head CI remain separate."
+    },
+    "performance": {
+      "cohort": "private-workflow-sample",
+      "paired_rounds": 3,
+      "method": "Alternating BASE/candidate fresh workers; cold_analysis is first native analysis, warm_analysis second in same worker. cold_total/import includes source/runtime guards and module imports. No OS or bytecode cache eviction.",
+      "metrics": {
+        "cold_total_seconds": {
+          "base_median": 4.587373456917703,
+          "candidate_median": 3.1538395771058276,
+          "ratio_of_medians": 0.6875044307434521,
+          "base_samples": [
+            4.186956165009178,
+            4.682088419096544,
+            4.587373456917703
+          ],
+          "candidate_samples": [
+            3.0635622029658407,
+            3.1623784840339795,
+            3.1538395771058276
+          ],
+          "paired_candidate_minus_base": [
+            -1.1233939620433375,
+            -1.519709935062565,
+            -1.4335338798118755
+          ],
+          "paired_ratios": [
+            0.7316919695907839,
+            0.6754204963613635,
+            0.6875044307434521
+          ],
+          "paired_median_delta": -1.4335338798118755,
+          "paired_median_ratio": 0.6875044307434521,
+          "base_range": [
+            4.186956165009178,
+            4.682088419096544
+          ],
+          "candidate_range": [
+            3.0635622029658407,
+            3.1623784840339795
+          ]
+        },
+        "cold_analysis_seconds": {
+          "base_median": 2.6178849939024076,
+          "candidate_median": 2.365554118063301,
+          "ratio_of_medians": 0.9036126963457763,
+          "base_samples": [
+            2.4183892520377412,
+            2.777008287026547,
+            2.6178849939024076
+          ],
+          "candidate_samples": [
+            2.353666801005602,
+            2.397764088003896,
+            2.365554118063301
+          ],
+          "paired_candidate_minus_base": [
+            -0.06472245103213936,
+            -0.3792441990226507,
+            -0.25233087583910674
+          ],
+          "paired_ratios": [
+            0.9732373723636077,
+            0.8634342573645243,
+            0.9036126963457763
+          ],
+          "paired_median_delta": -0.25233087583910674,
+          "paired_median_ratio": 0.9036126963457763,
+          "base_range": [
+            2.4183892520377412,
+            2.777008287026547
+          ],
+          "candidate_range": [
+            2.353666801005602,
+            2.397764088003896
+          ]
+        },
+        "warm_analysis_seconds": {
+          "base_median": 2.2475908120395616,
+          "candidate_median": 2.1927618170157075,
+          "ratio_of_medians": 0.9756054372841559,
+          "base_samples": [
+            2.2475908120395616,
+            2.3457037130137905,
+            2.189374378998764
+          ],
+          "candidate_samples": [
+            2.12830362690147,
+            2.2840334409847856,
+            2.1927618170157075
+          ],
+          "paired_candidate_minus_base": [
+            -0.11928718513809144,
+            -0.06167027202900499,
+            0.0033874380169436336
+          ],
+          "paired_ratios": [
+            0.946926644966196,
+            0.9737092661418137,
+            1.0015472173463968
+          ],
+          "paired_median_delta": -0.06167027202900499,
+          "paired_median_ratio": 0.9737092661418137,
+          "base_range": [
+            2.189374378998764,
+            2.3457037130137905
+          ],
+          "candidate_range": [
+            2.12830362690147,
+            2.2840334409847856
+          ]
+        },
+        "import_seconds": {
+          "base_median": 1.9050801320699975,
+          "candidate_median": 0.7646143960300833,
+          "ratio_of_medians": 0.4013555037179871,
+          "base_samples": [
+            1.768566912971437,
+            1.9050801320699975,
+            1.9694884630152956
+          ],
+          "candidate_samples": [
+            0.7098954019602388,
+            0.7646143960300833,
+            0.7882854590425268
+          ],
+          "paired_candidate_minus_base": [
+            -1.0586715110111982,
+            -1.1404657360399142,
+            -1.1812030039727688
+          ],
+          "paired_ratios": [
+            0.40139584018764457,
+            0.4013555037179871,
+            0.4002488330577262
+          ],
+          "paired_median_delta": -1.1404657360399142,
+          "paired_median_ratio": 0.4013555037179871,
+          "base_range": [
+            1.768566912971437,
+            1.9694884630152956
+          ],
+          "candidate_range": [
+            0.7098954019602388,
+            0.7882854590425268
+          ]
+        },
+        "cold_peak_rss_kib": {
+          "base_median": 87856,
+          "candidate_median": 80624,
+          "ratio_of_medians": 0.9176834820615553,
+          "base_samples": [
+            87856,
+            87664,
+            87920
+          ],
+          "candidate_samples": [
+            80776,
+            80624,
+            80460
+          ],
+          "paired_candidate_minus_base": [
+            -7080,
+            -7040,
+            -7460
+          ],
+          "paired_ratios": [
+            0.9194135858677837,
+            0.9196933747034131,
+            0.9151501364877161
+          ],
+          "paired_median_delta": -7080,
+          "paired_median_ratio": 0.9194135858677837,
+          "base_range": [
+            87664,
+            87920
+          ],
+          "candidate_range": [
+            80460,
+            80776
+          ]
+        },
+        "peak_rss_kib": {
+          "base_median": 88112,
+          "candidate_median": 80624,
+          "ratio_of_medians": 0.915017250771745,
+          "base_samples": [
+            88112,
+            87664,
+            88176
+          ],
+          "candidate_samples": [
+            81032,
+            80624,
+            80588
+          ],
+          "paired_candidate_minus_base": [
+            -7080,
+            -7040,
+            -7588
+          ],
+          "paired_ratios": [
+            0.9196477210822589,
+            0.9196933747034131,
+            0.9139448375975322
+          ],
+          "paired_median_delta": -7080,
+          "paired_median_ratio": 0.9196477210822589,
+          "base_range": [
+            87664,
+            88176
+          ],
+          "candidate_range": [
+            80588,
+            81032
+          ]
+        },
+        "children_peak_rss_kib": {
+          "base_median": 88112,
+          "candidate_median": 80624,
+          "ratio_of_medians": 0.915017250771745,
+          "base_samples": [
+            88112,
+            87664,
+            88176
+          ],
+          "candidate_samples": [
+            81032,
+            80624,
+            80588
+          ],
+          "paired_candidate_minus_base": [
+            -7080,
+            -7040,
+            -7588
+          ],
+          "paired_ratios": [
+            0.9196477210822589,
+            0.9196933747034131,
+            0.9139448375975322
+          ],
+          "paired_median_delta": -7080,
+          "paired_median_ratio": 0.9196477210822589,
+          "base_range": [
+            87664,
+            88176
+          ],
+          "candidate_range": [
+            80588,
+            81032
+          ]
+        },
+        "runner_seconds": {
+          "base_median": 7.093909,
+          "candidate_median": 5.758359,
+          "ratio_of_medians": 0.8117328541992855,
+          "base_samples": [
+            6.781826,
+            7.504464,
+            7.093909
+          ],
+          "candidate_samples": [
+            5.499107,
+            5.87426,
+            5.758359
+          ],
+          "paired_candidate_minus_base": [
+            -1.2827189999999993,
+            -1.630204,
+            -1.3355500000000005
+          ],
+          "paired_ratios": [
+            0.810859346730512,
+            0.7827687626991081,
+            0.8117328541992855
+          ],
+          "paired_median_delta": -1.3355500000000005,
+          "paired_median_ratio": 0.810859346730512,
+          "base_range": [
+            6.781826,
+            7.504464
+          ],
+          "candidate_range": [
+            5.499107,
+            5.87426
+          ]
+        }
+      },
+      "assessment": "Paired median first-analysis delta is -0.252s/-9.64%; paired median warm delta is -0.062s/-2.63%. All pairs are retained, including a warm pair+0.0034s/+0.15%. Process peak-RSS medians are88112\u219280624KiB; child values are reported separately. Unnormalized caches (baseline0,candidate467source pyc files), common candidate-stamped internal metadata and shared-VM variation prevent causal speedup, memory-improvement or worst-case overhead claims.",
+      "post_run_source_cache_files": {
+        "base": 0,
+        "candidate": 467
+      },
+      "rss_units": "Linux KiB lifetime process and child high-waters reported separately; not summed simultaneous process-tree peak."
+    },
+    "limits": [
+      "All ten sample workflow zeroes remain unlabeled/unknown, not TN or recall proof.",
+      "The selected workflow sample has no literal official Slack action invocation; this timing panel does not exercise the positive Slack path. Original/repair controls run once per role and do not establish representative positive-path latency.",
+      "Unsupported/excluded/suppressed/malformed rule-level abstentions are not separately instrumented; their count is unknown. No dedicated Slack YAML inline-suppression rate or repository-policy smoke-test claim.",
+      "Seven sharedSARJ310findings are ordinary unchanged embedded-program diagnostics, not parser errors. Zero surfaced parser/analyzer failures does not prove all unsupported input was analyzed.",
+      "Every timing/RSS pair and outlier is retained; three shared-VM rounds establish no causal speedup or general/worst-case cost bound.",
+      "Source caches were not normalized; lower startup/import values cannot be attributed to the rule.",
+      "Returned tuples are already deduplicated by analyzers; zero duplicates does not prove no internal duplicate emission.",
+      "No fresh Python/TS corpus or legacy464 qualification occurs in this text-only refresh. Those prior frames and both known numeric FNs remain historical and explicit."
+    ]
+  },
+  "historical_measurement_continuity": "Incoming React parser changes an imported text module and all-source guard bytes. Original Pythonv4 and TSv3 measurements retain original baselines/timestamps. Even old Python whole-worker cold/import/RSS includes those guards, so no byte-identical current whole-worker timing equivalence is claimed. Python analyzer diagnostics/analysis-path source closure is unchanged under the separately recorded incoming impact; field applicability remains limited.",
+  "post_qualification_verification_only_repository_update": {
+    "integrated_upstream_revision": "635c0b4f6cf3cafe25891c5587e731ac3a373e86",
+    "measurement_baseline_retained": "d4d058a618941d5eb54adc4cdc3dd47c56bf52f9",
+    "scope": "Verification-only Makefile help/test-python PYTEST_ARGS append and explicitmise npm12.2.1 selection; that npmversion was already used by the actual measurement. No application/runtime/test/lock/package-version source changed.",
+    "guard_identity": "All483measured Python runtime source guard bytes, worker/harness and fixed fixture inputs remain unchanged. Currentrepositoryhead note does not repin, pool or rerun the completed workflow measurements.",
+    "delivery_gate": "Qualification preserves the original make's three successful native phases, six completed test groups, exit code 2 and failed fourth phase at their original tree. An exact upstream input comparison carries forward only source-compatible completed checks; fresh affected preflights, Standards tests, TypeScript configuration and repository/privacy/shell checks complete under the current final shared native lease. Every test group was actually executed; an older TypeScript result was not substituted. Inputs outside the reviewed transition remain unchanged. PYTEST_ARGS and PYTEST_ADDOPTS remain empty. The earlier evidence-only tree is linked by an exact scalar transition and fresh metadata checks. A subsequent authored-ESLint hook helper and regression-test repair suppresses only native file-ignored notices; real rule warnings and errors remain blocking. Exact input comparisons and fresh targeted native checks qualify that verification-only repair and these evidence clarifications without repeating unchanged engine tests. No earlier make is claimed to have executed these later changes."
+  },
+  "post_a5_reconciliation": {
+    "upstream_revision": "a5fe4cce13fe8966299d46dee0041cd53bd92318",
+    "upstream_changed_paths": 292,
+    "integration_scope": "This integration changes Python and Standards runtime code, SQL rules, shared contracts, IaC and Bootstrap. Earlier benchmark observations and the 48,906-test qualification retain their original source frames; they are not measurements or full verification of this integrated tree.",
+    "current_versions": {
+      "code-standards": "8.137.0",
+      "sarj-standards": "8.137.0",
+      "sarj-python-lint": "1.82.0",
+      "sarj-rule-contracts": "0.4.2",
+      "sarj-sql-lint": "0.29.0",
+      "sarj-iac-lint": "0.30.2",
+      "sarj-standards-bootstrap": "2.1.9",
+      "@sarj/eslint-plugin": "16.31.0",
+      "repo-standards": "6.12.9"
+    },
+    "compatibility_repair": "The Slack detector now carries the native parser JsonValue contract through its internal records and narrows builtin JSON dictionaries and lists at that boundary. An unused private exception docstring was removed. The bounded detection profile and existing diagnostic severity policies are preserved.",
+    "fresh_targeted_verification": {
+      "feature_python_files": 20,
+      "native_lint_blocking_errors": 0,
+      "native_lint_execution_issues": 0,
+      "remaining_SARJ521_advisories": 3,
+      "strict_python_and_standards_github_type_errors": 0,
+      "python_tests_passed": 187,
+      "slack_tests_passed": 91,
+      "scope": "The complete applicable native lint rules, Ruff and both strict type projects passed, followed by the five affected Python test files and the Slack test file. These targeted repetitions are separate from earlier qualification totals."
+    },
+    "typescript_target_reuse": "Reuse of the historical 12,178-test, 206-file TypeScript target requires exact current input proof: 490 tracked test inputs, 525 Node source/configuration/lock inputs, the 132 feature ESLint catalog and display projections, the relevant ledger projection, the fresh locked installation and tool identities, and all ten emitted JavaScript/declaration artifacts. Other native targets and test groups require fresh current-tree verification.",
+    "delivery_requirements": "Current native verification obligations, normal Git hooks, independent immutable-commit review and required exact-head CI are separate delivery requirements. Historical timing samples and classifications remain at their recorded frames; this integration note supplies no new performance or false-positive rate measurement."
+  },
+  "post_review_numeric_boundary": {
+    "scope": "SARJ534 float conversion boundary follow-up",
+    "change": "Resolve stable local literal aliases before classifying built-in float conversions. Abstain on int/bool-typed argument casts and aliases beyond the existing proof-depth bound. Closed finite integer, boolean and string conversions no longer supply an invented NaN witness; a proven NaN string alias remains supported.",
+    "validation": "Focused boundary regressions are part of the current native qualification. Historical corpus labels, counts and timing pairs remain at their original frame; no new corpus or performance claim is inferred from these regression cases.",
+    "remaining_transport_boundary": "The Slack transport profile does not prove that a GITHUB_OUTPUT append redirect targets stdout. A stderr-only append can produce a warning in an independently broken payload transport; warning-only severity and no automatic rewrite are preserved."
+  },
+  "current_diagnostic_allocation": {
+    "reason": "Three draft diagnostic IDs overlapped a separate unpublished local candidate. This candidate moves only those IDs; the other worktree is unchanged. Rule slugs, votes, severity and automatic-fix policy stay the same.",
+    "diagnostic_mapping": {
+      "SARJ533": "SARJ538",
+      "SARJ534": "SARJ539",
+      "SARJ535": "SARJ540"
+    },
+    "history": "Historical qualification reports and preserved candidate commits retain their original diagnostic IDs, source frames, labels, counts and timing pairs. The mapping identifies current diagnostics without silently rewriting historical measurements.",
+    "incoming_main": "The current candidate integrates the installed-wheel test-selection update from main 78fe755a878dbe4e8d67cb3d2b3e17f745cae629. Current full canonical verification, including a new TypeScript test run, supersedes conditional test-target reuse for delivery; no prior failed attempt is relabeled."
+  },
+  "post_320_reconciliation": {
+    "upstream_revision": "3202ba164d2003559789896de08647efea4373ac",
+    "previous_qualified_feature_revision": "09ef907970dfcb6891f6902cd7a52666bfc6c49a",
+    "previous_qualified_feature_tree": "65f03c74698519399ba6416461f39bb6dd09e0a6",
+    "integration_scope": "Main adopts repo-standards 6.13.0, its exact published dependency artifacts and GitHub action revision. That merge consumes Code/compat 8.137.0; this still-unpublished candidate advances only Code/compat and exact Code pins to 8.141.0. Python 1.82.0, TypeScript 16.31.0 and the eight lint-control implementation and test bytes remain unchanged.",
+    "current_release_versions": {
+      "code-standards": "8.141.0",
+      "sarj-standards": "8.141.0",
+      "sarj-python-lint": "1.82.0",
+      "@sarj/eslint-plugin": "16.31.0",
+      "repo-standards": "6.13.0"
+    },
+    "qualification_scope": "The earlier feature revision retains its completed composed canonical-target and hosted-CI qualification at its exact source frame. The new dependency/adoption and metadata integration requires fresh applicable native generation, repository/adoption tests, normal Git hooks and exact-head hosted CI. Historical corpus labels, votes, counts, diagnostic mappings and timing pairs are preserved; source-byte continuity alone supplies no new performance or external-runtime equivalence measurement."
+  }
+}

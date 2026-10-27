@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noEmit": true,
+    "types": [],
+    "paths": { "zod": ["./fake-zod.ts"] }
+  },
+  "include": ["guard.ts", "fake-zod.ts"]
+}

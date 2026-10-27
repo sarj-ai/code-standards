@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "7e0727ba7c250fe5bd569064c68be5f5487beeff935909088c05a13a71ceef47",
-  "cliSha256": "183c1a00e19b6c6e55b77c8c082fa3e8f997da96151bcf6e0914c0fa3e28452b",
+  "catalogSha256": "a3e7dd347586157b4962d6d1df2ef9425663f5b20274abf5bf715f209de223a8",
+  "cliSha256": "317bd70dcbbfb1fdcb7cc0047e2fce3e032662f3e6e8a932fa6a01a83046cf3e",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -1161,6 +1161,21 @@
           "expectedCount": 1,
           "files": [
             {
+              "path": "src/actions.ts",
+              "source": "\"use server\";\nconst errorMessage = (error: unknown) =>\n  error instanceof Error ? error.message : \"Unknown error\";\nexport async function save() {\n  try {\n    await persist();\n  } catch (error) {\n    return { ok: false, message: errorMessage(error) };\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/actions.ts",
+          "id": "caught-message-in-server-action",
+          "outcome": "reject",
+          "scenarioId": "server-action",
+          "title": "Keep Server Action results independent of caught details"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
               "path": "src/route.ts",
               "source": "function handle() {\n  try {\n    run();\n  } catch (error) {\n    return Response.json(\n      { error: error instanceof Error ? error.message : \"Internal server error\" },\n      { status: 500 },\n    );\n  }\n}\n"
             }
@@ -1186,6 +1201,21 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Keep internal failure details server-side"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/actions.ts",
+              "source": "\"use server\";\nexport async function save() {\n  try {\n    await persist();\n  } catch (error) {\n    captureException(error);\n    return { ok: false, message: \"Could not save\" };\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/actions.ts",
+          "id": "public-server-action-failure",
+          "outcome": "accept",
+          "scenarioId": "server-action",
+          "title": "Return a stable public Server Action failure"
         }
       ],
       "optionsSchemaSource": null
@@ -2190,6 +2220,27 @@
           "files": [
             {
               "path": "src/filter.ts",
+              "source": "import { z } from \"zod\";\nexport const UuidSchema: z.ZodUUID = z.uuid();\nexport function isUuid(value: unknown): boolean {\n  return UuidSchema.safeParse(value).success;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/filter.ts",
+          "id": "boolean-uuid-filter",
+          "installedDependencies": [
+            {
+              "module": "zod",
+              "version": "4.6.7"
+            }
+          ],
+          "outcome": "accept",
+          "scenarioId": "uuid",
+          "title": "Keep a UUID value filter boolean"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/filter.ts",
               "source": "function isPositive(value: number): boolean {\n  return value > 0;\n}\n"
             }
           ],
@@ -2214,6 +2265,27 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Zero remains a number when the predicate returns false"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/guard.ts",
+              "source": "import { z } from \"zod\";\nexport const UuidSchema: z.ZodUUID = z.uuid();\nexport function isUuid(value: unknown): value is string {\n  return UuidSchema.safeParse(value).success;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/guard.ts",
+          "id": "partial-uuid-predicate",
+          "installedDependencies": [
+            {
+              "module": "zod",
+              "version": "4.6.7"
+            }
+          ],
+          "outcome": "reject",
+          "scenarioId": "uuid",
+          "title": "A rejected UUID candidate can still be a string"
         }
       ],
       "optionsSchemaSource": null
@@ -7191,6 +7263,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:async-executor-shutdown": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/lifecycle.py",
+              "source": "import asyncio\nfrom concurrent.futures import ThreadPoolExecutor\n\n\nasync def close():\n    executor = ThreadPoolExecutor()\n    await asyncio.to_thread(executor.shutdown, wait=True)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/lifecycle.py",
+          "id": "shutdown-in-worker-thread",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Await waiting shutdown outside the event-loop thread"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/lifecycle.py",
+              "source": "from concurrent.futures import ThreadPoolExecutor\n\n\nasync def close():\n    executor = ThreadPoolExecutor()\n    executor.shutdown(wait=True)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/lifecycle.py",
+          "id": "waiting-shutdown-in-async",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Waiting shutdown runs on the event-loop thread"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:async-mock-call-without-await-assertion": {
       "examples": [
         {
@@ -7312,6 +7419,76 @@
           "outcome": "reject",
           "scenarioId": "await-length-evidence",
           "title": "An empty await history still has nonnegative length"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:async-subprocess-cancellation-cleanup": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/processes.py",
+              "source": "import asyncio\nfrom contextlib import suppress\n\n\nasync def run(args):\n    process = await asyncio.create_subprocess_exec(\n        *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE\n    )\n    try:\n        return await process.communicate()\n    except asyncio.CancelledError:\n        if process.returncode is None:\n            with suppress(ProcessLookupError):\n                process.kill()\n        await process.communicate()\n        raise\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/processes.py",
+          "id": "async-child-cancellation-cleanup",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Settle the owned child before propagating cancellation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/processes.py",
+              "source": "import asyncio\n\n\nasync def run(args):\n    process = await asyncio.create_subprocess_exec(\n        *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE\n    )\n    return await process.communicate()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/processes.py",
+          "id": "async-wait-without-cancellation-cleanup",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Cancelling communication can leave the owned child running"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:cancel-owned-task-without-join": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/lifecycle.py",
+              "source": "import asyncio\nfrom contextlib import asynccontextmanager\n\n\n@asynccontextmanager\nasync def lifespan():\n    task = asyncio.create_task(work())\n    try:\n        yield\n    finally:\n        task.cancel()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/lifecycle.py",
+          "id": "cancel-without-settlement",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Cancelling does not wait for the owned child"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/lifecycle.py",
+              "source": "import asyncio\nfrom contextlib import asynccontextmanager\n\n\n@asynccontextmanager\nasync def lifespan():\n    task = asyncio.create_task(work())\n    try:\n        yield\n    finally:\n        task.cancel()\n        await asyncio.gather(task, return_exceptions=True)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/lifecycle.py",
+          "id": "join-owned-child",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Wait for the child before the lifespan returns"
         }
       ],
       "optionsSchemaSource": null
@@ -7657,6 +7834,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "The original activation paragraph explains why all failures are returned"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:failed-probe-zero-threshold": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/recovery.py",
+              "source": "import subprocess\n\n\ndef read_status():\n    try:\n        result = subprocess.run(\n            [\"service\", \"status\"], capture_output=True, text=True, check=False\n        )\n    except (subprocess.TimeoutExpired, OSError):\n        return None\n    return None if result.returncode else result.stdout\n\n\ndef active_count():\n    output = read_status()\n    return None if output is None else output.count(\"active\")\n\n\ndef recovered(baseline: int) -> bool:\n    if (active_count() or 0) >= baseline:\n        return True\n    return False\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/recovery.py",
+          "id": "failed-probe-accepted-as-zero",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Keep failed observation distinct from zero"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/recovery.py",
+              "source": "import subprocess\n\n\ndef read_status():\n    try:\n        result = subprocess.run(\n            [\"service\", \"status\"], capture_output=True, text=True, check=False\n        )\n    except (subprocess.TimeoutExpired, OSError):\n        return None\n    return None if result.returncode else result.stdout\n\n\ndef active_count():\n    output = read_status()\n    return None if output is None else output.count(\"active\")\n\n\ndef recovered(baseline: int) -> bool:\n    observed = active_count()\n    if observed is not None and observed >= baseline:\n        return True\n    return False\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/recovery.py",
+          "id": "failed-probe-rejected",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Reject a missing observation explicitly"
         }
       ],
       "optionsSchemaSource": null
@@ -8082,6 +8294,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Public API returns an unnamed record"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:nan-hidden-by-builtin-min": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/export_validation.py",
+              "source": "import math\n\n\ndef validate(single: float, batched: float) -> None:\n    if not math.isfinite(single) or not math.isfinite(batched):\n        raise ValueError(\"Invalid export\")\n    lowest = min(single, batched)\n    if lowest < 0.99:\n        raise ValueError(\"Invalid export\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/export_validation.py",
+          "id": "candidates-checked-first",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Validate each floating candidate"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/export_validation.py",
+              "source": "import math\n\n\ndef validate(single: float, batched: float) -> None:\n    lowest = min(single, batched)\n    if not math.isfinite(lowest) or lowest < 0.99:\n        raise ValueError(\"Invalid export\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/export_validation.py",
+          "id": "nan-hidden-before-finite-check",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not validate only the reduced value"
         }
       ],
       "optionsSchemaSource": null
@@ -18047,6 +18294,49 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not preapprove every secret-value read"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "text:slack-event-text-in-mrkdwn": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": ".github/workflows/notify.yml",
+              "source": "name: Notify\non: pull_request\njobs:\n  notify:\n    runs-on: ubuntu-latest\n    steps:\n      - id: payload\n        env:\n          TITLE: ${{ github.event.pull_request.title }}\n        run: bash scripts/slack_payload.sh\n      - uses: slackapi/slack-github-action@v4\n        with:\n          webhook-type: incoming-webhook\n          webhook: ${{ secrets.SLACK_WEBHOOK }}\n          payload: ${{ steps.payload.outputs.payload }}\n"
+            },
+            {
+              "path": "scripts/slack_payload.sh",
+              "source": "#!/usr/bin/env bash\npayload=$(jq -nc --arg title \"$TITLE\" '{blocks: [{type: \"section\", text: {type: \"plain_text\", text: $title}}]}')\nprintf 'payload=%s\\n' \"$payload\" >> \"$GITHUB_OUTPUT\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": ".github/workflows/notify.yml",
+          "id": "plain-event-text",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A PR title remains plain text"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": ".github/workflows/notify.yml",
+              "source": "name: Notify\non: pull_request\njobs:\n  notify:\n    runs-on: ubuntu-latest\n    steps:\n      - id: payload\n        env:\n          TITLE: ${{ github.event.pull_request.title }}\n        run: bash scripts/slack_payload.sh\n      - uses: slackapi/slack-github-action@v4\n        with:\n          webhook-type: incoming-webhook\n          webhook: ${{ secrets.SLACK_WEBHOOK }}\n          payload: ${{ steps.payload.outputs.payload }}\n"
+            },
+            {
+              "path": "scripts/slack_payload.sh",
+              "source": "#!/usr/bin/env bash\npayload=$(jq -nc --arg title \"$TITLE\" '{blocks: [{type: \"section\", text: {type: \"mrkdwn\", text: $title}}]}')\nprintf 'payload=%s\\n' \"$payload\" >> \"$GITHUB_OUTPUT\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": ".github/workflows/notify.yml",
+          "id": "raw-event-markup",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A PR title reaches Slack markup unchanged"
         }
       ],
       "optionsSchemaSource": null

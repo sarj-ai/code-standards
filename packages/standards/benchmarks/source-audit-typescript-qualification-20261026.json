@@ -1,0 +1,357 @@
+{
+  "schema": 1,
+  "qualification_revision": 3,
+  "status": "qualified-warning-with-disclosed-blindspots",
+  "rules_extended": 2,
+  "comparison_frame": {
+    "description": "Fresh matched comparison against the updated upstream library/cache implementation and dependency graph, including removal of the former SonarJS dependency.",
+    "external_locked_dependency_records_each": 570,
+    "package_and_lock_equal_after_root_publication_version_normalization": true,
+    "corpus_sources_labels_configs_and_worker_preserved": true,
+    "previous_timings_pooled": false,
+    "candidate_precision_amendment": "Returns nested in for-in/of bodies, including async iteration, now abstain. UUID closure requires every safeParse call to have one direct non-spread argument. These narrowings preserve the fixed corpus; their new adversarial controls belong to the separately qualified native focused suite."
+  },
+  "unbiased_sample": {
+    "population": "Fully reconstructable newly added TypeScript-family file occurrences in the archived 550-PR sample, hash-ranked independently of source text with no path/test/generated-content filtering. It does not represent all existing code.",
+    "eligible_file_occurrences": 249,
+    "eligible_unique_contents": 245,
+    "selected_files": 40,
+    "selected_unique_contents": 40,
+    "source_files_available": 40,
+    "native_rule_findings": 0,
+    "parse_gap_files": 0,
+    "files_with_checker_diagnostics": 37,
+    "checker_clean_files": 3,
+    "files_with_unresolved_dependency_diagnostics": 30,
+    "files_with_unresolved_module_diagnostics": 30,
+    "files_with_relative_extension_profile_diagnostics": 25,
+    "files_with_missing_jsx_runtime_diagnostics": 12,
+    "files_with_dependency_or_compiler_profile_gaps": 37,
+    "unavailable_archived_pr_diffs": 1,
+    "rejected_incomplete_reconstructions": 3,
+    "sample_test_path_files": 19,
+    "sample_generated_path_files": 1,
+    "interpretation": "All forty zeroes remain unlabeled observations, not correctness TN. Compiler/dependency closure was not reconstructed. Test/generated paths were retained by selection; each owner preserves its documented source gates."
+  },
+  "labeled_counts": {
+    "unlabeled_sample_files": 40,
+    "labeled_safe_files": 8,
+    "labeled_safe_case_files": 7,
+    "support_module_files": 1,
+    "safe_file_count_note": "Eight safe files represent seven case files plus one supporting local API module; that support module is not an extra TN case.",
+    "new_tp_files": 6,
+    "new_tp_findings": 7,
+    "existing_tp_files": 2,
+    "existing_tp_findings": 2,
+    "known_fn_files": 2,
+    "boundary_abstention_files": 4,
+    "suppressed_files": 2,
+    "deliberate_parser_gap_files": 1,
+    "total_parser_gap_files": 1
+  },
+  "labeled_case_counts": {
+    "new_profile_true_positive_cases": 6,
+    "new_profile_true_positive_findings": 7,
+    "preserved_existing_true_positive_cases": 2,
+    "preserved_existing_true_positive_findings": 2,
+    "true_negative_cases": 7,
+    "support_module_files": 1,
+    "known_false_negative_cases": 2,
+    "intentional_boundary_abstentions": 4,
+    "suppression_controls": 2,
+    "deliberate_parser_gap_files": 1,
+    "unlabeled_sample_files": 40
+  },
+  "inspected_false_positive_findings": 0,
+  "duplicates": 0,
+  "unclassified_rule_findings": 0,
+  "non_target_diagnostic_differences": 0,
+  "checker_diagnostic_differences": 0,
+  "rule_finding_counts": {
+    "base": {
+      "sarj/no-exception-text-in-5xx-response": 2
+    },
+    "candidate": {
+      "sarj/no-exception-text-in-5xx-response": 6,
+      "sarj/no-partial-type-predicate": 3
+    }
+  },
+  "performance": {
+    "method": "3 paired rounds, alternating order; every corpus batch is a fresh native Node process. Cold includes dependency loading and program construction; warm reuses only in-process native parser/program cache. No OS page-cache eviction claim.",
+    "medians": {
+      "base": {
+        "cold_ms_median": 4314.533463,
+        "warm_ms_median": 442.91055099999994,
+        "process_wall_seconds_median": 6.189765,
+        "peak_rss_kb_median": 530472
+      },
+      "candidate": {
+        "cold_ms_median": 4916.573878,
+        "warm_ms_median": 401.5819119999999,
+        "process_wall_seconds_median": 6.807446,
+        "peak_rss_kb_median": 528328
+      }
+    },
+    "candidate_to_base": {
+      "cold_ms_median": 1.1395377785716343,
+      "warm_ms_median": 0.9066885200483741,
+      "process_wall_seconds_median": 1.0997907028780574,
+      "peak_rss_kb_median": 0.9959583163673106
+    },
+    "scope": "Full immutable plugin builds compared with the same two affected owners enabled in both versions. This is not an all-rules application benchmark or a disabled-rule-only control.",
+    "interpretation": "Shared-VM observations only: candidate cold median was 13.95% higher and wall median 9.98% higher; warm median was 9.33% lower and peak-RSS median 0.40% lower. Paired cold ratios vary from 0.917 to 1.140. These measurements establish neither a speedup nor a general or worst-case overhead bound. Prior qualification timings are preserved separately and are not pooled.",
+    "paired_observations": [
+      {
+        "round": 1,
+        "variant": "base",
+        "cold_ms": 5398.670517,
+        "warm_ms": 558.2916480000004,
+        "process_wall_seconds": 7.691361,
+        "peak_rss_kib": 531444
+      },
+      {
+        "round": 1,
+        "variant": "candidate",
+        "cold_ms": 4948.00324,
+        "warm_ms": 401.5819119999999,
+        "process_wall_seconds": 6.807446,
+        "peak_rss_kib": 532400
+      },
+      {
+        "round": 2,
+        "variant": "candidate",
+        "cold_ms": 4916.573878,
+        "warm_ms": 446.6349190000003,
+        "process_wall_seconds": 6.890383,
+        "peak_rss_kib": 528328
+      },
+      {
+        "round": 2,
+        "variant": "base",
+        "cold_ms": 4314.533463,
+        "warm_ms": 442.91055099999994,
+        "process_wall_seconds": 6.189765,
+        "peak_rss_kib": 530472
+      },
+      {
+        "round": 3,
+        "variant": "base",
+        "cold_ms": 4215.547922,
+        "warm_ms": 389.0644160000004,
+        "process_wall_seconds": 6.043047,
+        "peak_rss_kib": 529528
+      },
+      {
+        "round": 3,
+        "variant": "candidate",
+        "cold_ms": 4069.1842050000005,
+        "warm_ms": 355.88718500000004,
+        "process_wall_seconds": 5.720442,
+        "peak_rss_kib": 528092
+      }
+    ],
+    "observed_ranges": {
+      "base": {
+        "cold_ms": {
+          "min": 4215.547922,
+          "max": 5398.670517
+        },
+        "warm_ms": {
+          "min": 389.0644160000004,
+          "max": 558.2916480000004
+        },
+        "process_wall_seconds": {
+          "min": 6.043047,
+          "max": 7.691361
+        },
+        "peak_rss_kib": {
+          "min": 529528,
+          "max": 531444
+        }
+      },
+      "candidate": {
+        "cold_ms": {
+          "min": 4069.1842050000005,
+          "max": 4948.00324
+        },
+        "warm_ms": {
+          "min": 355.88718500000004,
+          "max": 446.6349190000003
+        },
+        "process_wall_seconds": {
+          "min": 5.720442,
+          "max": 6.890383
+        },
+        "peak_rss_kib": {
+          "min": 528092,
+          "max": 532400
+        }
+      }
+    },
+    "paired_ratios": [
+      {
+        "round": 1,
+        "cold": 0.9165225446559698,
+        "warm": 0.7193048891893858
+      },
+      {
+        "round": 2,
+        "cold": 1.1395377785716343,
+        "warm": 1.0084088491267402
+      },
+      {
+        "round": 3,
+        "cold": 0.9652800253470825,
+        "warm": 0.9147256093448538
+      }
+    ],
+    "peak_rss_units": "KiB on Linux; maximum worker lifetime high-water per paired round, then median of three rounds. Build-process memory is not included."
+  },
+  "runtime": {
+    "native_versions": {
+      "node": "v24.22.1",
+      "typescript": "6.0.3",
+      "typescriptPackageMetadata": "6.0.2",
+      "eslint": "10.13.0",
+      "parser": "8.72.0",
+      "zod": "4.6.7"
+    },
+    "application_imports_executed": false,
+    "live_services_called": false,
+    "native_batches": 12,
+    "unique_source_files": 65,
+    "checker_diagnostics_identical_between_versions": true,
+    "diagnostics_and_checker_output_stable_across_repeated_processes": true,
+    "suppression_controls_verified_by_actual_suppressed_messages": 2,
+    "new_public_contract_autofixes": 0,
+    "new_profile_no_autofix_case_controls": 6
+  },
+  "checker_information_gaps": {
+    "source_files_with_checker_diagnostics": 51,
+    "sample_files_with_checker_diagnostics": 37,
+    "labeled_or_support_files_with_checker_diagnostics": 14,
+    "checker_messages": 285,
+    "sample_checker_messages": 250,
+    "interpretation": "Counts refer to unique source files in one deterministic replicate. Recorded errors include absent project dependencies, synthetic module/JSX/library configuration and deliberate placeholder/invalid fixtures; no failing checker result is reported as a clean application typecheck."
+  },
+  "limitations": [
+    "Two labeled corpus defects remain undetected: a multistatement error helper and a locally aliased UUID schema. These counts apply only to the labeled corpus.",
+    "Additional excluded shapes include real returns nested in for-in/of bodies and UUID schemas with any safeParse options/spreads; narrowing proof scope can miss real defects.",
+    "The separate malformed fixture is a native parser information gap, not a TN. The forty-file sample itself has no parser failures.",
+    "Unresolved dependencies and compiler-profile gaps limit no-hit sample conclusions. Some labeled syntax-flow witnesses also have missing placeholders or declarations; they do not qualify application execution or framework integration.",
+    "The local native API model does not prove absence of external monkey-patching; visible local mutation/capabilities withdraw the proof.",
+    "Next directive/export syntax and official import boundaries are parsed. Next bundling, registration, services and application imports are not executed.",
+    "A raw exception-flow finding does not prove a credential or secret was disclosed.",
+    "Three alternating paired fresh-process comparisons provide shared-VM observations, without OS cache eviction, CPU isolation, causal speedup or worst-case cost claims.",
+    "Runtime TypeScript 6.0.3 and package metadata 6.0.2 are explicitly distinguished; compiler implementation bytes are not separately attested."
+  ],
+  "recommendation": {
+    "no-exception-text-in-5xx-response": "warning",
+    "no-partial-type-predicate": "warning",
+    "promotion": "No error promotion or consumer activation is qualified by this corpus."
+  },
+  "completed_at": "2026-10-27T04:53:45.941595+00:00",
+  "post_qualification_runtime_reuse": {
+    "description": "A later upstream integration added incremental build-state flags to project/tooling compiler configs. Normal-build emitted plugin runtime bytes, sources, locked dependencies and standalone corpus configs remain identical. The existing runtime measurements retain their original baseline and timestamps; no new benchmark, build-cache speedup or silent timing repin is claimed.",
+    "integrated_upstream_revision": "687ba48803b91a932911ed2afca5f5a2f1362f87",
+    "normal_native_build": "completed successfully before byte attestation",
+    "guarded_typescript_runtime_inputs": 207,
+    "reviewed_project_config_exception": "One compilerOptions.incremental=true addition; the tooling config has the same separately verified addition. All other guarded runtime inputs remain unchanged.",
+    "preserved_prepared_corpus_inputs": 68,
+    "identical_emitted_js_and_cjs_files": 4,
+    "measured_esm_sha256": "ea3d6155b5fff78b9a9a13f15d33e1a47e548737ac3e68ccb7e8dc9e4bdd11de",
+    "scope": "Original source/API/witness/type-gap/FP/FN and runtime cold/warm/peak-RSS observations remain pinned to their recorded v3 baseline and timestamps. Standalone fixture configs do not extend the changed project configs, and the measured ESM module is byte-identical. No old result or guard was rewritten.",
+    "limits": [
+      "Build/typecheck cache performance and build memory were not measured by v3.",
+      "The old corpus measured ESM index.js only. Other JS/CJS identities are preservation observations, not a claim that v3 executed those entrypoints.",
+      "Original runtime/compiler-package versions and Zod declaration hashes match. Additional installed entry/compiler hashes are newly recorded observations, not retroactive v3 implementation-byte attestations.",
+      "Native canonical checks must still qualify the integrated head; this helper does not replace any required check or native hook."
+    ]
+  },
+  "post_d4d_runtime_reuse": {
+    "status": "recorded TypeScript inputs and emitted runtime preserved after a successful normal native build",
+    "upstream_revision": "d4d058a618941d5eb54adc4cdc3dd47c56bf52f9",
+    "observed_release_frame": {
+      "code-standards": "8.137.0",
+      "@sarj/eslint-plugin": "16.31.0"
+    },
+    "normal_native_build_passed": true,
+    "npm_install_or_ci_in_preflight": false,
+    "continuity_observations": {
+      "emitted_js_cjs_files": 4,
+      "emitted_declaration_files": 6,
+      "measured_esm_sha256": "ea3d6155b5fff78b9a9a13f15d33e1a47e548737ac3e68ccb7e8dc9e4bdd11de",
+      "recorded_compiler_sha256": "d3f3cd2b04b7f466f4484df921b744223f7bd1f3e353ec9110bdf52695b983d5",
+      "runtime_source_package_and_shared_config_inputs": 207,
+      "tracked_TS_source_test_fixture_config_helper_and_command_inputs": 491,
+      "recorded_node_manifest_and_compiler_inputs": 1166,
+      "recorded_module_entrypoints": 9,
+      "prepared_corpus_inputs": 68,
+      "focused_native_test_and_fixture_inputs": 5,
+      "tracked_execution_inputs_with_exact_verification_only_exception": 1
+    },
+    "original_corpus_frame_preserved": {
+      "qualification_revision": 3,
+      "baseline_commit": "db10ee7de1ace45ca5496e7529ecedf695ca41fe",
+      "metrics_and_timings_changed": false,
+      "new_corpus_or_performance_run": false,
+      "prior_incremental_config_reuse_amendment_changed": false
+    },
+    "installation_assumption": "Normal locked-package and unchanged existing Node installation; no npm install/ci since the historical native TS target. Recorded metadata, compiler, module entrypoints, tools and outputs compare equal. This is not a retrospective byte inventory of all node_modules or every inherited environment variable.",
+    "qualification_limit": "This amendment adds continuity observations only. It does not claim new whole-make completion or change coverage, sample labels, type gaps, false-negative counts or historical timings. The final integrated freeze and retained-target guard still require separate validation.",
+    "verification_only_followup": {
+      "upstream_revision": "635c0b4f6cf3cafe25891c5587e731ac3a373e86",
+      "parent_build_frame_preserved": "d4d058a618941d5eb54adc4cdc3dd47c56bf52f9",
+      "exact_changed_paths": [
+        "Makefile",
+        "mise.toml"
+      ],
+      "changes": "Makefile help names both Python/Standards test selectors and appends PYTEST_ARGS only to the Python test recipe; mise explicitly pins npm12.2.1, already used in the actual native/corpus runs. The TS test target and all TS source, tests, dependencies and emitted runtime stay unchanged.",
+      "transitions": {
+        "Makefile": {
+          "old_sha256": "d76e60e2d2831ce688962da61aa009b06b0004cb8f1298fde3daaf5fc2e7cf5e",
+          "new_sha256": "3df9e888259970b99000b46016a24ff4288158b653c5c86726f7035d21025f0d",
+          "new_git_blob": "fe094aa766b569caa596875976859c0732ec0a9b"
+        },
+        "mise.toml": {
+          "old_sha256": "bd404ba2a8eaa6d058b99aa8a68b48d2d4d967755f1a06ba9176877ff6e0e7fc",
+          "new_sha256": "41ebd543368039e4c6764649f22f794566f52b0730a9810bf0082b8cdbf96afd",
+          "new_git_blob": "70e128a2d3049f645b1684a1e65229eed67bcd22"
+        }
+      },
+      "retained_target_exception": "Only this exact Makefile blob/hash transition is allowed among the491 tracked TS execution inputs. The complete two-path exception is pinned; the native wrapper and external supervisor remain historical exact.",
+      "fresh_python_requirement": "PYTEST_ARGS and PYTEST_ADDOPTS must be empty or unset so the new whole-make run executes every Python test.",
+      "new_build_or_benchmark_executed": false,
+      "historical_metrics_reframed": false
+    }
+  },
+  "post_a5_reconciliation": {
+    "upstream_revision": "a5fe4cce13fe8966299d46dee0041cd53bd92318",
+    "upstream_changed_paths": 292,
+    "integration_scope": "This integration changes Python and Standards runtime code, SQL rules, shared contracts, IaC and Bootstrap. Earlier benchmark observations and the 48,906-test qualification retain their original source frames; they are not measurements or full verification of this integrated tree.",
+    "current_versions": {
+      "code-standards": "8.137.0",
+      "sarj-standards": "8.137.0",
+      "sarj-python-lint": "1.82.0",
+      "sarj-rule-contracts": "0.4.2",
+      "sarj-sql-lint": "0.29.0",
+      "sarj-iac-lint": "0.30.2",
+      "sarj-standards-bootstrap": "2.1.9",
+      "@sarj/eslint-plugin": "16.31.0",
+      "repo-standards": "6.12.9"
+    },
+    "compatibility_repair": "The Slack detector now carries the native parser JsonValue contract through its internal records and narrows builtin JSON dictionaries and lists at that boundary. An unused private exception docstring was removed. The bounded detection profile and existing diagnostic severity policies are preserved.",
+    "fresh_targeted_verification": {
+      "feature_python_files": 20,
+      "native_lint_blocking_errors": 0,
+      "native_lint_execution_issues": 0,
+      "remaining_SARJ521_advisories": 3,
+      "strict_python_and_standards_github_type_errors": 0,
+      "python_tests_passed": 187,
+      "slack_tests_passed": 91,
+      "scope": "The complete applicable native lint rules, Ruff and both strict type projects passed, followed by the five affected Python test files and the Slack test file. These targeted repetitions are separate from earlier qualification totals."
+    },
+    "typescript_target_reuse": "Reuse of the historical 12,178-test, 206-file TypeScript target requires exact current input proof: 490 tracked test inputs, 525 Node source/configuration/lock inputs, the 132 feature ESLint catalog and display projections, the relevant ledger projection, the fresh locked installation and tool identities, and all ten emitted JavaScript/declaration artifacts. Other native targets and test groups require fresh current-tree verification.",
+    "delivery_requirements": "Current native verification obligations, normal Git hooks, independent immutable-commit review and required exact-head CI are separate delivery requirements. Historical timing samples and classifications remain at their recorded frames; this integration note supplies no new performance or false-positive rate measurement."
+  }
+}

@@ -1,0 +1,423 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-26",
+  "method": "Three independent reviewers evaluated every candidate against current owners, demonstrated harm, deterministic scope, valid exceptions and maintenance cost. A majority of at least two yes votes admits a candidate; native qualification and independent implementation review remain separate gates.",
+  "candidate_count": 15,
+  "ballot_count": 45,
+  "accepted_count": 8,
+  "rules": [
+    {
+      "number": 1,
+      "title": "Server-action exception disclosure",
+      "votes": {
+        "reviewer-a": "yes",
+        "reviewer-b": "yes",
+        "reviewer-c": "yes"
+      },
+      "decision": "include",
+      "repository": "code-standards",
+      "reason": "Three independent reviewers accepted the implemented deterministic scope. New coverage ships as warnings without automatic rewrites; existing unrelated errors remain unchanged. See calibration records for supported cases and explicit limits.",
+      "initial_votes": {
+        "reviewer-a": "yes",
+        "reviewer-b": "yes",
+        "reviewer-c": "yes"
+      },
+      "owner_id": "eslint:no-exception-text-in-5xx-response",
+      "new_coverage_level": "warning"
+    },
+    {
+      "number": 2,
+      "title": "Constrained UUID predicates claiming string",
+      "votes": {
+        "reviewer-a": "yes",
+        "reviewer-b": "yes",
+        "reviewer-c": "yes"
+      },
+      "decision": "include",
+      "repository": "code-standards",
+      "reason": "Three independent reviewers accepted the implemented deterministic scope. New coverage ships as warnings without automatic rewrites; existing unrelated errors remain unchanged. See calibration records for supported cases and explicit limits.",
+      "initial_votes": {
+        "reviewer-a": "yes",
+        "reviewer-b": "yes",
+        "reviewer-c": "yes"
+      },
+      "owner_id": "eslint:no-partial-type-predicate",
+      "new_coverage_level": "warning"
+    },
+    {
+      "number": 3,
+      "title": "Failed numeric probes accepted through zero fallback",
+      "votes": {
+        "reviewer-a": "yes",
+        "reviewer-b": "yes",
+        "reviewer-c": "yes"
+      },
+      "decision": "include",
+      "repository": "code-standards",
+      "reason": "Three independent reviewers accepted the implemented deterministic scope. New coverage ships as warnings without automatic rewrites; existing unrelated errors remain unchanged. See calibration records for supported cases and explicit limits.",
+      "initial_votes": {
+        "reviewer-a": "yes",
+        "reviewer-b": "yes",
+        "reviewer-c": "yes"
+      },
+      "owner_id": "SARJ538",
+      "new_coverage_level": "warning"
+    },
+    {
+      "number": 4,
+      "title": "NaN hidden by builtin min/max",
+      "votes": {
+        "reviewer-a": "yes",
+        "reviewer-b": "yes",
+        "reviewer-c": "yes"
+      },
+      "decision": "include",
+      "repository": "code-standards",
+      "reason": "Three independent reviewers accepted the implemented deterministic scope. New coverage ships as warnings without automatic rewrites; existing unrelated errors remain unchanged. See calibration records for supported cases and explicit limits.",
+      "initial_votes": {
+        "reviewer-a": "yes",
+        "reviewer-b": "yes",
+        "reviewer-c": "yes"
+      },
+      "owner_id": "SARJ539",
+      "new_coverage_level": "warning"
+    },
+    {
+      "number": 5,
+      "title": "Blocking executor shutdown on an event loop",
+      "votes": {
+        "reviewer-a": "yes",
+        "reviewer-b": "yes",
+        "reviewer-c": "yes"
+      },
+      "decision": "include",
+      "repository": "code-standards",
+      "reason": "Three independent reviewers accepted the implemented deterministic scope. New coverage ships as warnings without automatic rewrites; existing unrelated errors remain unchanged. See calibration records for supported cases and explicit limits.",
+      "initial_votes": {
+        "reviewer-a": "yes",
+        "reviewer-b": "yes",
+        "reviewer-c": "yes"
+      },
+      "owner_id": "SARJ540",
+      "new_coverage_level": "warning"
+    },
+    {
+      "number": 6,
+      "title": "Owned tasks cancelled without joining",
+      "votes": {
+        "reviewer-a": "yes",
+        "reviewer-b": "yes",
+        "reviewer-c": "yes"
+      },
+      "decision": "include",
+      "repository": "code-standards",
+      "reason": "Three independent reviewers accepted the implemented deterministic scope. New coverage ships as warnings without automatic rewrites; existing unrelated errors remain unchanged. See calibration records for supported cases and explicit limits.",
+      "initial_votes": {
+        "reviewer-a": "yes",
+        "reviewer-b": "yes",
+        "reviewer-c": "yes"
+      },
+      "owner_id": "SARJ536",
+      "new_coverage_level": "warning"
+    },
+    {
+      "number": 7,
+      "title": "Owned subprocess cancellation cleanup",
+      "votes": {
+        "reviewer-a": "yes",
+        "reviewer-b": "yes",
+        "reviewer-c": "yes"
+      },
+      "decision": "include",
+      "repository": "code-standards",
+      "reason": "Three independent reviewers reaffirmed the exact bounded async cancellation profile as its own warning owner. This preserves the existing synchronous SARJ464 ERROR contract and the native public-example severity invariant. No detection scope widening, autofix or meta-test waiver is included.",
+      "initial_votes": {
+        "reviewer-a": "yes",
+        "reviewer-b": "yes",
+        "reviewer-c": "yes"
+      },
+      "owner_id": "SARJ537",
+      "new_coverage_level": "warning"
+    },
+    {
+      "number": 8,
+      "title": "Event-controlled Slack markup",
+      "votes": {
+        "reviewer-a": "yes",
+        "reviewer-b": "yes",
+        "reviewer-c": "yes"
+      },
+      "decision": "include",
+      "repository": "code-standards",
+      "reason": "Three independent reviewers accepted the implemented deterministic scope. New coverage ships as warnings without automatic rewrites; existing unrelated errors remain unchanged. See calibration records for supported cases and explicit limits.",
+      "initial_votes": {
+        "reviewer-a": "yes",
+        "reviewer-b": "yes",
+        "reviewer-c": "yes"
+      },
+      "owner_id": "SARJ316",
+      "new_coverage_level": "warning"
+    },
+    {
+      "number": 9,
+      "title": "Contradictory validated secret defaults",
+      "votes": {
+        "reviewer-a": "no",
+        "reviewer-b": "no",
+        "reviewer-c": "no"
+      },
+      "decision": "reject",
+      "repository": null,
+      "reason": "Missing configuration already produces the intended startup refusal; clarity alone does not establish material harm.",
+      "initial_votes": {
+        "reviewer-a": "no",
+        "reviewer-b": "no",
+        "reviewer-c": "no"
+      }
+    },
+    {
+      "number": 10,
+      "title": "CI selection misses tracked direct inputs",
+      "votes": {
+        "reviewer-a": "no",
+        "reviewer-b": "no",
+        "reviewer-c": "no"
+      },
+      "decision": "defer",
+      "repository": null,
+      "reason": "The implemented profile abstained on all four inspected production trees across three repositories. Seven committed seeds establish bounded correctness, with two warning groups covering three missing-input edges, two supported negatives and three intentional abstentions. Paired measurements also found material warm-path overhead. Three independent final votes defer shipping until representative real graph coverage and a performance budget are demonstrated. Preserve the tested prototype and immutable evidence.",
+      "initial_votes": {
+        "reviewer-a": "yes",
+        "reviewer-b": "yes",
+        "reviewer-c": "yes"
+      }
+    },
+    {
+      "number": 11,
+      "title": "FIFO lists with repeated front removal",
+      "votes": {
+        "reviewer-a": "no",
+        "reviewer-b": "no",
+        "reviewer-c": "no"
+      },
+      "decision": "reject",
+      "repository": null,
+      "reason": "No material queue-size or repeated-workload evidence was established.",
+      "initial_votes": {
+        "reviewer-a": "no",
+        "reviewer-b": "no",
+        "reviewer-c": "no"
+      }
+    },
+    {
+      "number": 12,
+      "title": "Absorbing Actions boolean expressions",
+      "votes": {
+        "reviewer-a": "no",
+        "reviewer-b": "no",
+        "reviewer-c": "yes"
+      },
+      "decision": "reject",
+      "repository": null,
+      "reason": "Two reviewers found the demonstrated intentional experiment insufficient to justify another enforcement rule.",
+      "initial_votes": {
+        "reviewer-a": "no",
+        "reviewer-b": "no",
+        "reviewer-c": "yes"
+      }
+    },
+    {
+      "number": 13,
+      "title": "Partial URL-userinfo redaction",
+      "votes": {
+        "reviewer-a": "no",
+        "reviewer-b": "no",
+        "reviewer-c": "no"
+      },
+      "decision": "reject",
+      "repository": null,
+      "reason": "Native database behavior and caller normalization remain unqualified.",
+      "initial_votes": {
+        "reviewer-a": "no",
+        "reviewer-b": "no",
+        "reviewer-c": "no"
+      }
+    },
+    {
+      "number": 14,
+      "title": "Wall-clock values in private duration state",
+      "votes": {
+        "reviewer-a": "no",
+        "reviewer-b": "no",
+        "reviewer-c": "no"
+      },
+      "decision": "reject",
+      "repository": null,
+      "reason": "Closed ownership of all state initializers, writes and reads remains unproved.",
+      "initial_votes": {
+        "reviewer-a": "no",
+        "reviewer-b": "no",
+        "reviewer-c": "no"
+      }
+    },
+    {
+      "number": 15,
+      "title": "Swallowed mandatory role-hardening failures",
+      "votes": {
+        "reviewer-a": "no",
+        "reviewer-b": "no",
+        "reviewer-c": "no"
+      },
+      "decision": "reject",
+      "repository": null,
+      "reason": "Mandatory hardening and independent deployment postcondition verification must be resolved together.",
+      "initial_votes": {
+        "reviewer-a": "no",
+        "reviewer-b": "no",
+        "reviewer-c": "no"
+      }
+    }
+  ],
+  "qualification_status": "Historical full Python/Slack revision4 and TypeScript revision3 evidence remains at its original frames. Fresh workflow-only revision5 independently confirms unchanged Slack original/repair outcomes after upstream scoped-React integration and Code8.137 metadata, without double-counting cases or pooling timings. New coverage remainsWARNING/noautofix; canonical/nativehooks/exactcommit/exactheadCI and field calibration remain separate. A subsequent two-path verification-only Makefile/mise integration preserves every measured runtime/fixture/worker byte and actualnpm12.2.1 identity. Workflowrevision5 retains its d4d baseline/timestamps; no second benchmark or timing repin is claimed. Qualification preserves the original make's three successful native phases, six completed test groups, exit code 2 and failed fourth phase at their original tree. An exact upstream input comparison carries forward only source-compatible completed checks; fresh affected preflights, Standards tests, TypeScript configuration and repository/privacy/shell checks complete under the current final shared native lease. Every test group was actually executed; an older TypeScript result was not substituted. Inputs outside the reviewed transition remain unchanged. PYTEST_ARGS and PYTEST_ADDOPTS remain empty. The earlier evidence-only tree is linked by an exact scalar transition and fresh metadata checks. A subsequent authored-ESLint hook helper and regression-test repair suppresses only native file-ignored notices; real rule warnings and errors remain blocking. Exact input comparisons and fresh targeted native checks qualify that verification-only repair and these evidence clarifications without repeating unchanged engine tests. No earlier make is claimed to have executed these later changes.",
+  "privacy": "Only aggregate admission decisions are public; source corpus, source identities and raw private evidence remain task-local.",
+  "initial_accepted_count": 9,
+  "initial_ballot_count": 45,
+  "supplemental_materiality_ballot_count": 3,
+  "scope_amendment_ballot_count": 6,
+  "scope_amendments": [
+    {
+      "number": 2,
+      "votes": {
+        "reviewer-a": "yes",
+        "reviewer-b": "yes",
+        "reviewer-c": "yes"
+      },
+      "scope": "Directly exported const UUID schemas under explicit local native-Zod semantics, visible mutation/escape exclusions, warning severity and no new autofix. External arbitrary monkey-patching remains unmodeled."
+    },
+    {
+      "number": 7,
+      "votes": {
+        "reviewer-a": "yes",
+        "reviewer-b": "yes",
+        "reviewer-c": "yes"
+      },
+      "scope": "The same native async-owned-subprocess cancellation profile now has standalone warning owner SARJ537. SARJ464 retains only its existing synchronous ERROR contract. Public examples remain visible and severity-consistent; no blanket test exception or shared-contract expansion."
+    }
+  ],
+  "rejected_count": 6,
+  "deferred_count": 1,
+  "not_included_count": 7,
+  "effective_ballot_count": 45,
+  "total_recorded_ballot_count": 54,
+  "qualification_reports": [
+    "source-audit-typescript-qualification-20261026.json",
+    "source-audit-python-slack-qualification-20261026.json"
+  ],
+  "coverage_summary": {
+    "typescript_new_true_positive_findings": 7,
+    "typescript_preserved_true_positive_findings": 2,
+    "typescript_labeled_true_negative_cases": 7,
+    "typescript_known_false_negative_cases": 2,
+    "typescript_unlabeled_sample_files": 40,
+    "typescript_sample_files_with_dependency_or_compiler_profile_gaps": 37,
+    "python_slack_true_positive_findings": 14,
+    "python_slack_labeled_true_negative_cases": 6,
+    "python_slack_known_false_negative_cases": 2,
+    "python_slack_unlabeled_no_hit_files": 69,
+    "inspected_false_positive_findings": 0,
+    "unclassified_rule_findings": 0
+  },
+  "release_versions": {
+    "code-standards": "8.141.0",
+    "sarj-standards": "8.141.0",
+    "sarj-python-lint": "1.82.0",
+    "@sarj/eslint-plugin": "16.31.0"
+  },
+  "post_qualification_metadata_update": "The final implementation has six new warning owners and two existing TypeScript extensions; synchronous SARJ464 retains its ERROR contract. After integrating upstream Python/SQL runtime changes, Python/Slack revision 4 reruns the unchanged bytes of all 145 fixture files, semantic labels and selection against the new exact baseline. It records 483 Python runtime source guards and matching external dependencies with explicit internal release-stamp normalization. TypeScript preserves its original revision 3 measurements after a normal native build and all four JS/CJS byte comparisons, 207 runtime-input guards with a reviewed project incremental-config exception, a separate tooling-config check and 68 prepared-input guards. Earlier raw evidence and the deferred repository prototype remain historical; timings are not silently repinned or pooled. A later incoming scoped-React parser change is qualified by a separate fresh workflow-only revision5 against its exact new baseline. All10workers/20analyses complete with the same originalSlack1/repair0,1TP/1TN,ten unlabeled sample zeroes and no inspectedFP/non-target changes/unknown/parser failures/duplicate tuples/repeat drift. These confirm existing cases and do not increase combined14TP/6TN totals. Three paired workflow rounds retain all timing/RSS observations; shared-VM and unnormalized caches prevent causal speedup or a worst-case bound. Original Pythonv4/TSv3 and the original full report retain their exact historical timing frames; old Python startup timers also hash changed Standards source, so whole-worker current equivalence is not claimed. Incoming complete native2file lint/types and364React tests pass; full direct canonical verification, normal hooks, immutable-commit review and exact-head requiredCI remain separate. A subsequent supervised normal build after scoped-React integration preserves all four emitted JS/CJS files, six declarations and recorded TypeScript runtime, compiler, dependency, fixture and tool inputs under the documented unchanged locked-installation assumption. Revision 3 retains its original frame and timing values. The exact two-path Makefile/mise verification-only follow-up permits only the reviewed Makefile transition among 491 tracked execution inputs, requires empty PYTEST_ARGS and PYTEST_ADDOPTS, and preserves the historical native wrapper and supervisor; it is not a new build, corpus run or whole-make completion claim.",
+  "implementation_counts": {
+    "new_rules": 6,
+    "existing_typescript_owners_extended": 2,
+    "unchanged_legacy_subprocess_owner": "SARJ464"
+  },
+  "qualification_date": "2026-10-27",
+  "native_preflight": {
+    "typescript_focused_tests": 316,
+    "python_metadata_new_and_legacy_tests": 1729,
+    "text_metadata_and_rule_tests": 584,
+    "slack_cases_within_text_total": 91,
+    "complete_applicable_native_lint": "passed; 16 advisory warnings remain",
+    "strict_types": "passed",
+    "new_async_owner": "SARJ537 WARNING",
+    "preserved_synchronous_owner": "SARJ464 ERROR",
+    "source_owned_examples_and_generated_artifacts": "synchronized"
+  },
+  "upstream_versions_preserved": {
+    "sarj-sql-lint": "0.28.0",
+    "repo-standards": "6.12.9"
+  },
+  "post_qualification_repository_integration": {
+    "upstream_revision": "583c5c9781f670bf2a826b12e5bbe54e0030a68a",
+    "scope": "Four bootstrap-only paths advance the launcher from 2.1.6 to 2.1.8 without dependency changes. All feature implementation and test bytes, all 483 Python runtime guards, and the TypeScript runtime, dependency and fixture inputs remain unchanged.",
+    "qualification_reuse": "Python/Slack revision 4 retains baseline 687ba48803b91a932911ed2afca5f5a2f1362f87; TypeScript revision 3 retains its recorded frame. No measurements are pooled or repinned.",
+    "canonical_gate": "The integrated bootstrap and final feature tree require fresh full native verification."
+  },
+  "post_a5_reconciliation": {
+    "upstream_revision": "a5fe4cce13fe8966299d46dee0041cd53bd92318",
+    "upstream_changed_paths": 292,
+    "integration_scope": "This integration changes Python and Standards runtime code, SQL rules, shared contracts, IaC and Bootstrap. Earlier benchmark observations and the 48,906-test qualification retain their original source frames; they are not measurements or full verification of this integrated tree.",
+    "current_versions": {
+      "code-standards": "8.137.0",
+      "sarj-standards": "8.137.0",
+      "sarj-python-lint": "1.82.0",
+      "sarj-rule-contracts": "0.4.2",
+      "sarj-sql-lint": "0.29.0",
+      "sarj-iac-lint": "0.30.2",
+      "sarj-standards-bootstrap": "2.1.9",
+      "@sarj/eslint-plugin": "16.31.0",
+      "repo-standards": "6.12.9"
+    },
+    "compatibility_repair": "The Slack detector now carries the native parser JsonValue contract through its internal records and narrows builtin JSON dictionaries and lists at that boundary. An unused private exception docstring was removed. The bounded detection profile and existing diagnostic severity policies are preserved.",
+    "fresh_targeted_verification": {
+      "feature_python_files": 20,
+      "native_lint_blocking_errors": 0,
+      "native_lint_execution_issues": 0,
+      "remaining_SARJ521_advisories": 3,
+      "strict_python_and_standards_github_type_errors": 0,
+      "python_tests_passed": 187,
+      "slack_tests_passed": 91,
+      "scope": "The complete applicable native lint rules, Ruff and both strict type projects passed, followed by the five affected Python test files and the Slack test file. These targeted repetitions are separate from earlier qualification totals."
+    },
+    "typescript_target_reuse": "Reuse of the historical 12,178-test, 206-file TypeScript target requires exact current input proof: 490 tracked test inputs, 525 Node source/configuration/lock inputs, the 132 feature ESLint catalog and display projections, the relevant ledger projection, the fresh locked installation and tool identities, and all ten emitted JavaScript/declaration artifacts. Other native targets and test groups require fresh current-tree verification.",
+    "delivery_requirements": "Current native verification obligations, normal Git hooks, independent immutable-commit review and required exact-head CI are separate delivery requirements. Historical timing samples and classifications remain at their recorded frames; this integration note supplies no new performance or false-positive rate measurement."
+  },
+  "post_review_numeric_boundary": {
+    "scope": "SARJ534 float conversion boundary follow-up",
+    "change": "Resolve stable local literal aliases before classifying built-in float conversions. Abstain on int/bool-typed argument casts and aliases beyond the existing proof-depth bound. Closed finite integer, boolean and string conversions no longer supply an invented NaN witness; a proven NaN string alias remains supported.",
+    "validation": "Focused boundary regressions are part of the current native qualification. Historical corpus labels, counts and timing pairs remain at their original frame; no new corpus or performance claim is inferred from these regression cases.",
+    "remaining_transport_boundary": "The Slack transport profile does not prove that a GITHUB_OUTPUT append redirect targets stdout. A stderr-only append can produce a warning in an independently broken payload transport; warning-only severity and no automatic rewrite are preserved."
+  },
+  "current_diagnostic_allocation": {
+    "reason": "Three draft diagnostic IDs overlapped a separate unpublished local candidate. This candidate moves only those IDs; the other worktree is unchanged. Rule slugs, votes, severity and automatic-fix policy stay the same.",
+    "diagnostic_mapping": {
+      "SARJ533": "SARJ538",
+      "SARJ534": "SARJ539",
+      "SARJ535": "SARJ540"
+    },
+    "history": "Historical qualification reports and preserved candidate commits retain their original diagnostic IDs, source frames, labels, counts and timing pairs. The mapping identifies current diagnostics without silently rewriting historical measurements.",
+    "incoming_main": "The current candidate integrates the installed-wheel test-selection update from main 78fe755a878dbe4e8d67cb3d2b3e17f745cae629. Current full canonical verification, including a new TypeScript test run, supersedes conditional test-target reuse for delivery; no prior failed attempt is relabeled."
+  },
+  "post_320_reconciliation": {
+    "upstream_revision": "3202ba164d2003559789896de08647efea4373ac",
+    "previous_qualified_feature_revision": "09ef907970dfcb6891f6902cd7a52666bfc6c49a",
+    "previous_qualified_feature_tree": "65f03c74698519399ba6416461f39bb6dd09e0a6",
+    "integration_scope": "Main adopts repo-standards 6.13.0, its exact published dependency artifacts and GitHub action revision. That merge consumes Code/compat 8.137.0; this still-unpublished candidate advances only Code/compat and exact Code pins to 8.141.0. Python 1.82.0, TypeScript 16.31.0 and the eight lint-control implementation and test bytes remain unchanged.",
+    "current_release_versions": {
+      "code-standards": "8.141.0",
+      "sarj-standards": "8.141.0",
+      "sarj-python-lint": "1.82.0",
+      "@sarj/eslint-plugin": "16.31.0",
+      "repo-standards": "6.13.0"
+    },
+    "qualification_scope": "The earlier feature revision retains its completed composed canonical-target and hosted-CI qualification at its exact source frame. The new dependency/adoption and metadata integration requires fresh applicable native generation, repository/adoption tests, normal Git hooks and exact-head hosted CI. Historical corpus labels, votes, counts, diagnostic mappings and timing pairs are preserved; source-byte continuity alone supplies no new performance or external-runtime equivalence measurement."
+  }
+}
