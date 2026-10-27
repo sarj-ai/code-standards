@@ -1,5 +1,6 @@
 # Match the native versions attested by doctor and the documentation formatter.
 [tools]
+npm = "12.2.1"
 uv = "0.13.5"
 "aqua:hashicorp/terraform" = "1.17.0"
 "aqua:koalaman/shellcheck" = "0.11.0"
