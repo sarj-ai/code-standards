@@ -3,6 +3,10 @@ from __future__ import annotations
 import ast
 from collections import Counter
 from dataclasses import dataclass
+from functools import cached_property
+from http import HTTPStatus
+import re
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from sarj_python_lint._source import read_python_source
@@ -19,19 +23,24 @@ HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "options", "h
 PARAM_MARKERS = frozenset({"Path", "Query", "Header", "Cookie", "Body", "Form", "File", "Depends", "Security"})
 SCHEMA_MARKERS = PARAM_MARKERS - {"Depends", "Security"}
 INJECTION_TYPES = frozenset({"Request", "Response", "WebSocket", "HTTPConnection", "BackgroundTasks", "SecurityScopes"})
-RESPONSE_TYPES = frozenset(
+_RESPONSE_DEFAULT_STATUSES = MappingProxyType(
     {
-        "Response",
-        "JSONResponse",
-        "HTMLResponse",
-        "PlainTextResponse",
-        "RedirectResponse",
-        "StreamingResponse",
-        "FileResponse",
-        "ORJSONResponse",
-        "UJSONResponse",
+        "Response": HTTPStatus.OK,
+        "JSONResponse": HTTPStatus.OK,
+        "HTMLResponse": HTTPStatus.OK,
+        "PlainTextResponse": HTTPStatus.OK,
+        "RedirectResponse": HTTPStatus.TEMPORARY_REDIRECT,
+        "StreamingResponse": HTTPStatus.OK,
+        "FileResponse": HTTPStatus.OK,
+        "ORJSONResponse": HTTPStatus.OK,
+        "UJSONResponse": HTTPStatus.OK,
     }
 )
+RESPONSE_TYPES = frozenset(_RESPONSE_DEFAULT_STATUSES)
+_STARLETTE_RESPONSE_TYPES = RESPONSE_TYPES - {"ORJSONResponse", "UJSONResponse"}
+_JSON_RESPONSE_TYPES = frozenset({"JSONResponse", "ORJSONResponse", "UJSONResponse"})
+NO_BODY_STATUSES = frozenset({204, 205, 304})
+_STATUS_MEMBER = re.compile(r"HTTP_(\d{3})_[A-Z0-9_]+")
 _DEPENDENCY_MARKERS = frozenset({"Depends", "Security"})
 _CONSTRUCTOR_SOURCES = frozenset({"fastapi", "fastapi.applications", "fastapi.routing"})
 _MAX_IMPORTED_MODULE_BYTES = 500_000
@@ -50,6 +59,7 @@ class Route:
     inherited_responses: ast.expr | None = None
     inherited_response_class: ast.expr | None = None
     inherited_prefix: ast.expr | None = None
+    inherited_has_unpack: bool = False
 
     @property
     def keywords(self) -> dict[str, ast.expr]:
@@ -154,6 +164,7 @@ class FastapiIndex:
         self.receiver_kinds: dict[_ReceiverKey, Literal["FastAPI", "APIRouter"]] = {}
         self.hidden_receivers: set[_ReceiverKey] = set()
         self.receiver_defaults: dict[_ReceiverKey, dict[str, ast.expr]] = {}
+        self.unpacked_receivers: set[_ReceiverKey] = set()
         self.decorators: dict[_ReceiverKey, _DecoratorBinding] = {}
         self.bound_names: set[_ReceiverKey] = set()
         self._node_scopes: dict[int, int] = {}
@@ -391,6 +402,8 @@ class FastapiIndex:
                 for keyword in value.keywords
                 if keyword.arg in {"responses", "default_response_class", "prefix"}
             }
+            if any(keyword.arg is None for keyword in value.keywords):
+                self.unpacked_receivers.add(key)
         if self._constructor_is_hidden(value):
             self.hidden_receivers.add(key)
 
@@ -494,6 +507,7 @@ class FastapiIndex:
                 inherited_responses=defaults.get("responses"),
                 inherited_response_class=defaults.get("default_response_class"),
                 inherited_prefix=defaults.get("prefix"),
+                inherited_has_unpack=origin in self.unpacked_receivers,
             )
             for route_method in route_methods
         )
@@ -537,6 +551,167 @@ class FastapiIndex:
                 return attribute
             case _:
                 return ""
+
+    def status_code(self, node: ast.expr | None) -> int | None:
+        if isinstance(node, ast.Constant) and isinstance(node.value, int):
+            return node.value
+        if not isinstance(node, (ast.Name, ast.Attribute)) or self._is_shadowed_in_enclosing_scope(node):
+            return None
+        qualified = self.imports.resolved_qualified_name(node) or ""
+        module, _, member = qualified.rpartition(".")
+        if (
+            module == "starlette.status"
+            and module not in self._unstable_native_providers
+            and (match := _STATUS_MEMBER.fullmatch(member))
+        ):
+            return int(match.group(1))
+        if not isinstance(node, ast.Attribute):
+            return None
+        owner = self._status_provider(node.value)
+        if owner in self._unstable_native_providers:
+            return None
+        if owner == "starlette.status" and (match := _STATUS_MEMBER.fullmatch(node.attr)):
+            return int(match.group(1))
+        if owner == "http.HTTPStatus":
+            status = HTTPStatus.__members__.get(node.attr)
+            return status.value if status is not None else None
+        return None
+
+    def operation_status_code(self, route: Route) -> int | None:
+        node = route.keywords.get("status_code")
+        if node is None and route.has_unpack:
+            return None
+        if node is None or (isinstance(node, ast.Constant) and node.value is None):
+            if not self.response_classes_are_stable:
+                return None
+            if route.has_unpack and "response_class" not in route.keywords:
+                return None
+            response_class = route.keywords.get("response_class") or route.inherited_response_class
+            if response_class is None:
+                return None if route.inherited_has_unpack else HTTPStatus.OK
+            response_name = self.response_class_name(response_class)
+            return _RESPONSE_DEFAULT_STATUSES.get(response_name) if response_name is not None else None
+        return self.status_code(node)
+
+    def response_class_name(self, node: ast.expr) -> str | None:
+        if not self.response_classes_are_stable:
+            return None
+        return self._native_response_name(self._response_import(node))
+
+    def can_infer_json_response(self, route: Route) -> bool:
+        if route.has_unpack:
+            return False
+        status = self.operation_status_code(route)
+        if status is None or status in NO_BODY_STATUSES:
+            return False
+        response_class = route.keywords.get("response_class") or route.inherited_response_class
+        if response_class is None:
+            return not route.inherited_has_unpack and self.response_classes_are_stable
+        return self.response_class_name(response_class) in _JSON_RESPONSE_TYPES
+
+    @property
+    def response_classes_are_stable(self) -> bool:
+        return "responses" not in self._unstable_native_providers
+
+    @staticmethod
+    def _native_response_name(qualified: str | None) -> str | None:
+        if qualified is None:
+            return None
+        module, _, name = qualified.rpartition(".")
+        if module == "fastapi" and name == "Response":
+            return name
+        if module == "fastapi.responses" and name in RESPONSE_TYPES:
+            return name
+        if module == "starlette.responses" and name in _STARLETTE_RESPONSE_TYPES:
+            return name
+        return None
+
+    def _response_import(self, node: ast.expr) -> str | None:
+        if not isinstance(node, (ast.Name, ast.Attribute)) or self._is_shadowed_in_enclosing_scope(node):
+            return None
+        qualified = self.imports.resolved_qualified_name(node)
+        if isinstance(node, ast.Name) and qualified is None:
+            binding = self.imports.bindings.get(node.id)
+            return binding.module if binding is not None and binding.symbol is None else None
+        if isinstance(node, ast.Attribute) and qualified is None:
+            module = self.imports.resolved_qualified_name(node.value)
+            return f"{module}.{node.attr}" if module is not None else None
+        return qualified
+
+    def _status_provider(self, node: ast.expr) -> str | None:
+        if not isinstance(node, (ast.Name, ast.Attribute)) or self._is_shadowed_in_enclosing_scope(node):
+            return None
+        qualified = self.imports.resolved_qualified_name(node)
+        if isinstance(node, ast.Name) and qualified is None:
+            binding = self.imports.bindings.get(node.id)
+            qualified = (
+                binding.module
+                if binding is not None and binding.symbol is None and binding.module != "fastapi.status"
+                else None
+            )
+        # FastAPI exports Starlette's status module rather than a status submodule.
+        if qualified == "fastapi.status":
+            return "starlette.status"
+        return qualified if qualified in {"starlette.status", "http.HTTPStatus"} else None
+
+    @cached_property
+    def _unstable_native_providers(self) -> frozenset[str]:
+        providers: set[str] = set()
+        route_calls: set[int] = set()
+        for node in walk_ast(self.tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                route_calls.update(id(route.decorator) for route in self.routes(node))
+                continue
+            values = self._provider_values(node)
+            if not values:
+                continue
+            for value in values:
+                if (provider := self._status_provider(value)) is not None:
+                    providers.add(provider)
+            for value in self._response_provider_values(node, values, route_calls):
+                qualified = self._response_import(value)
+                if qualified in {"fastapi.responses", "starlette.responses"} or self._native_response_name(qualified):
+                    providers.add("responses")
+        return frozenset(providers)
+
+    @staticmethod
+    def _provider_values(node: ast.AST) -> tuple[ast.expr, ...]:
+        match node:
+            case ast.Attribute(value=value, ctx=ast.Store() | ast.Del()):
+                return node, value
+            case ast.Assign(value=value) | ast.AnnAssign(value=ast.expr() as value) | ast.NamedExpr(value=value):
+                return (value,)
+            case ast.Return(value=ast.expr() as value):
+                return (value,)
+            case ast.Call(args=args, keywords=keywords):
+                return (*args, *(keyword.value for keyword in keywords))
+            case _:
+                return ()
+
+    def _response_provider_values(
+        self, node: ast.AST, values: tuple[ast.expr, ...], route_calls: set[int]
+    ) -> tuple[ast.expr, ...]:
+        if not isinstance(node, ast.Call):
+            return values
+        trusted_keyword = self._trusted_response_keyword(node, route_calls)
+        return (*node.args, *(keyword.value for keyword in node.keywords if keyword.arg != trusted_keyword))
+
+    def _trusted_response_keyword(self, node: ast.Call, route_calls: set[int]) -> str | None:
+        trusted_keyword = "response_class" if id(node) in route_calls else None
+        if (
+            any(keyword.arg == "default_response_class" for keyword in node.keywords)
+            and self.constructor_kind(node) is not None
+        ):
+            return "default_response_class"
+        if not isinstance(node.func, ast.Attribute) or node.func.attr not in {"include_router", "add_api_route"}:
+            return trusted_keyword
+        scope = self._node_scopes.get(id(node), 0)
+        receiver = _binding_name(node.func.value)
+        if receiver.startswith("self."):
+            scope = self._node_classes.get(id(node)) or scope
+        if self._receiver_key(scope, receiver) is None:
+            return trusted_keyword
+        return "default_response_class" if node.func.attr == "include_router" else "response_class"
 
     @staticmethod
     def _root_name(node: ast.Attribute) -> str:

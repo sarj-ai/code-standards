@@ -613,12 +613,237 @@ async def delete_items() -> None:
     assert _check(source) == []
 
 
-@pytest.mark.parametrize("status_code", ["204", "304", "status.HTTP_204_NO_CONTENT", "status.HTTP_304_NOT_MODIFIED"])
+@pytest.mark.parametrize(
+    "status_code",
+    [
+        "204",
+        "205",
+        "304",
+        "status.HTTP_204_NO_CONTENT",
+        "status.HTTP_205_RESET_CONTENT",
+        "status.HTTP_304_NOT_MODIFIED",
+    ],
+)
 def test_no_content_response_does_not_require_response_class(status_code: str):
     source = _source(f"""
 @router.delete("/items", summary="Delete items", description="Deletes items.", status_code={status_code})
 async def delete_items() -> Response:
     return Response(status_code={status_code})
+""")
+    assert _check(source) == []
+
+
+def test_reset_content_does_not_add_a_custom_response_annotation_requirement():
+    source = _source("""
+class EmptyResponse(Response):
+    pass
+
+@router.delete("/items", status_code=205)
+async def delete_items() -> EmptyResponse:
+    return EmptyResponse(status_code=205)
+""")
+    assert _check(source) == []
+
+
+def test_reset_content_accepts_inherited_response_metadata_without_a_body_schema():
+    source = _source("""
+reset_router = APIRouter(default_response_class=Response, responses={205: {"description": "Reset view"}})
+
+@reset_router.post("/reset", status_code=status.HTTP_205_RESET_CONTENT)
+async def reset() -> Response:
+    return Response(status_code=status.HTTP_205_RESET_CONTENT)
+""")
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("setup", "status"),
+    [
+        ("MODULE_LABEL = str(status)", "status.HTTP_204_NO_CONTENT"),
+        ("alias = status; alias.HTTP_204_NO_CONTENT = selected", "status.HTTP_204_NO_CONTENT"),
+        ("def select_status(): return 204", "select_status()"),
+    ],
+)
+def test_unresolved_explicit_status_does_not_guess_a_response_body(setup: str, status: str):
+    source = _source(f"""
+{setup}
+
+@router.delete("/items", status_code={status})
+async def delete_items() -> Response:
+    return Response(status_code=204)
+""")
+    assert _check(source) == []
+
+
+def test_unresolved_status_does_not_guess_the_status_of_a_documented_record():
+    source = _source("""
+MODULE_LABEL = str(status)
+
+@router.post("/items", status_code=status.HTTP_201_CREATED, responses={201: {"model": ItemResponse}})
+async def create_item():
+    return {"id": "item-1"}
+""")
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("status", ["", ", status_code=None", ", status_code=200"])
+def test_known_default_status_keeps_record_inference_on_its_primary_response(status: str):
+    source = _source(f"""
+@router.post("/items", responses={{201: {{"model": ItemResponse}}}}{status})
+async def create_item():
+    return {{"id": "item-1"}}
+""")
+    assert any("fixed-shape dictionary" in finding.message for finding in _check(source))
+
+
+@pytest.mark.parametrize("status", ["", ", status_code=None", ", status_code=200"])
+def test_known_default_status_preserves_response_metadata_requirements(status: str):
+    source = _source(f"""
+@router.get("/items"{status})
+async def read_items() -> Response:
+    return Response("items")
+""")
+    assert any("response_class" in finding.message for finding in _check(source))
+
+
+def test_unpacked_metadata_does_not_guess_a_missing_alternate_response():
+    source = _source("""
+OPTIONS = {"responses": {404: {"description": "Missing"}}}
+
+@router.get("/items", status_code=200, **OPTIONS)
+async def read_items() -> ItemResponse:
+    raise HTTPException(status_code=404)
+""")
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("status", ["", ", status_code=None"])
+def test_redirect_response_default_is_its_native_status(status: str):
+    source = _source(f"""
+@router.get("/redirect", response_class=RedirectResponse{status})
+async def redirect() -> RedirectResponse:
+    return RedirectResponse("/target", status_code=307)
+""")
+    assert all("[metadata]" in finding.message for finding in _check(source))
+
+
+@pytest.mark.parametrize("constructor", ["default_response_class=RedirectResponse", "**OPTIONS"])
+def test_inherited_response_default_does_not_guess_a_json_body(constructor: str):
+    source = _source(f"""
+OPTIONS = {{"default_response_class": RedirectResponse}}
+redirect_router = APIRouter({constructor})
+alias = redirect_router
+
+@alias.get("/redirect")
+async def redirect() -> RedirectResponse:
+    return RedirectResponse("/target", status_code=307)
+""")
+    assert all("[metadata]" in finding.message for finding in _check(source))
+
+
+def test_custom_response_default_is_not_assumed_to_be_200():
+    source = _source("""
+class ResetResponse(Response):
+    def __init__(self, content=None, status_code=205):
+        super().__init__(content=content, status_code=status_code)
+
+@router.get("/reset", response_class=ResetResponse)
+async def reset() -> Response:
+    return Response(status_code=205)
+""")
+    assert all("[metadata]" in finding.message for finding in _check(source))
+
+
+@pytest.mark.parametrize("metadata", ["", ", status_code=None", ", status_code=200"])
+def test_unstable_response_provider_does_not_guess_default_body_metadata(metadata: str):
+    source = _source(f"""
+import fastapi.responses as wire
+wire.JSONResponse.media_type = None
+
+@router.get("/items"{metadata})
+async def read_items() -> Response:
+    return Response("items")
+""")
+    assert all("[metadata]" in finding.message for finding in _check(source))
+
+
+def test_response_provider_uncertainty_keeps_literal_status_validation():
+    source = _source("""
+import fastapi.responses as wire
+mutate(wire)
+
+@router.get("/items", status_code=700)
+async def read_items() -> Response:
+    return Response("items", status_code=700)
+""")
+    assert any("[status]" in finding.message for finding in _check(source))
+
+
+def test_response_provider_uncertainty_keeps_known_alternate_response_validation():
+    source = _source("""
+import fastapi.responses as wire
+mutate(wire)
+
+@router.get("/items", status_code=200)
+async def read_items() -> ItemsResponse:
+    raise HTTPException(status_code=404)
+""")
+    assert any("404" in finding.message and "responses" in finding.message for finding in _check(source))
+
+
+def test_constructor_unpacked_responses_do_not_guess_an_omitted_alternate():
+    source = _source("""
+OPTIONS = {"responses": {404: {"description": "Missing"}}}
+configured = APIRouter(**OPTIONS)
+
+@configured.get("/items", status_code=200)
+async def read_items() -> ItemResponse:
+    raise HTTPException(status_code=404)
+""")
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "shadow",
+    [
+        "status = provider",
+        "from project import status",
+        "status.HTTP_404_NOT_FOUND = replacement",
+        "del status.HTTP_404_NOT_FOUND",
+        "setattr(status, 'HTTP_404_NOT_FOUND', replacement)",
+        "alias = status; alias.HTTP_404_NOT_FOUND = replacement",
+    ],
+)
+def test_local_status_changes_do_not_guess_an_escaping_response_code(shadow: str):
+    source = _source(f"""
+@router.get("/items", status_code=200)
+async def read_items() -> ItemResponse:
+    {shadow}
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+""")
+    assert _check(source) == []
+
+
+def test_conflicting_status_enum_import_does_not_guess_an_escaping_response_code():
+    source = _source("""
+from http import HTTPStatus as Codes
+from project import HTTPStatus as Codes
+
+@router.get("/items", status_code=200)
+async def read_items() -> ItemResponse:
+    raise HTTPException(status_code=Codes.NOT_FOUND)
+""")
+    assert _check(source) == []
+
+
+def test_mutation_through_an_imported_alias_does_not_guess_an_escaping_response_code():
+    source = _source("""
+from starlette import status as codes
+
+@router.get("/items", status_code=200)
+async def read_items() -> ItemResponse:
+    codes.HTTP_404_NOT_FOUND = replacement
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 """)
     assert _check(source) == []
 
@@ -706,8 +931,8 @@ async def users() -> UserResponse:
 @pytest.mark.parametrize(
     ("imports", "status_expr"),
     [
-        ("from fastapi.status import HTTP_404_NOT_FOUND", "HTTP_404_NOT_FOUND"),
-        ("import fastapi.status as http_status", "http_status.HTTP_404_NOT_FOUND"),
+        ("from starlette.status import HTTP_404_NOT_FOUND", "HTTP_404_NOT_FOUND"),
+        ("from fastapi import status as http_status", "http_status.HTTP_404_NOT_FOUND"),
         ("import http", "http.HTTPStatus.NOT_FOUND"),
     ],
 )
@@ -799,6 +1024,41 @@ async def me_again() -> UserResponse: ...
     messages = [diagnostic.message for diagnostic in _check(source)]
     assert any("[routing]" in message and "shadowed" in message for message in messages)
     assert any("[routing]" in message and "duplicate" in message for message in messages)
+
+
+@pytest.mark.parametrize("first_path", ["/items", "/{item_id}"])
+def test_mutually_exclusive_routes_do_not_imply_a_duplicate_or_shadow(first_path: str):
+    parameter = "item_id: Annotated[str, Path()]" if "{" in first_path else ""
+    source = _source(f"""
+if enabled:
+    @router.get("{first_path}", status_code=200)
+    async def preferred({parameter}) -> str:
+        return "preferred"
+else:
+    @router.get("/items", status_code=200)
+    async def fallback() -> str:
+        return "fallback"
+""")
+    assert _check(source) == []
+
+
+def test_conditional_route_does_not_hide_an_unconditional_duplicate():
+    source = _source("""
+if enabled:
+    @router.get("/items", status_code=200)
+    async def optional() -> str:
+        return "optional"
+
+@router.get("/items", status_code=200)
+async def first() -> str:
+    return "first"
+
+@router.get("/items", status_code=200)
+async def second() -> str:
+    return "second"
+""")
+    [finding] = _check(source)
+    assert finding.message == "[routing] duplicate GET /items route."
 
 
 def test_independent_router_factories_do_not_conflict():

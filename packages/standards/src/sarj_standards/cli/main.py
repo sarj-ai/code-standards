@@ -2115,7 +2115,7 @@ def _staged_file_names(root: Path, *, include_deleted: bool = True) -> list[str]
         cwd=root,
         check=True,
         capture_output=True,
-        env=_git_environment(),
+        env=_git_environment(staged=True),
     )
     names = [part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0") if part]
     return list(dict.fromkeys(names))
@@ -2179,13 +2179,16 @@ def _unstaged_versions(root: Path, staged_paths: Iterable[str]) -> tuple[str, ..
     if git is None:
         msg = "git is required for --staged"
         raise OSError(msg)
+    # Compare contents without refreshing the index or applying presentation-only textconv.
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
-        [git, "diff", "--name-only", "-z"],
+        [git, "-c", "diff.autoRefreshIndex=false", "diff", "--no-textconv", "--exit-code", "--name-only", "-z"],
         cwd=root,
-        check=True,
+        check=False,
         capture_output=True,
-        env=_git_environment(),
+        env=_git_environment(staged=True),
     )
+    if completed.returncode not in {0, 1}:
+        completed.check_returncode()
     unstaged = {part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0") if part}
     selected = set(_repository_relative_names(root, staged_paths))
     if selected:
@@ -2194,7 +2197,7 @@ def _unstaged_versions(root: Path, staged_paths: Iterable[str]) -> tuple[str, ..
             cwd=root,
             check=True,
             capture_output=True,
-            env=_git_environment(),
+            env=_git_environment(staged=True),
         )
         unstaged.update(
             entry[2:].decode("utf-8", errors="surrogateescape")
@@ -2221,11 +2224,11 @@ def _repository_relative_names(root: Path, paths: Iterable[str]) -> list[str]:
     return list(dict.fromkeys(relative_names))
 
 
-def _git_environment() -> dict[str, str]:
+def _git_environment(*, staged: bool = False) -> dict[str, str]:
     return {
         name: value
-        for name, value in os.environ.items()  # ruff: ignore[banned-api] -- intentionally sanitize Git hook routing.
-        if name in _GIT_SAFE_ENV
+        for name, value in os.environ.items()  # ruff: ignore[banned-api] -- staged hooks retain only Git's prospective index selection in addition to the closed environment.
+        if name in _GIT_SAFE_ENV or (staged and name == "GIT_INDEX_FILE")
     }
 
 

@@ -6,6 +6,7 @@ import os
 import shlex
 import shutil
 import subprocess
+import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -46,6 +47,262 @@ def adopted_git_repo(tmp_path: Path) -> Path:
         env={},
     )
     return tmp_path
+
+
+@pytest.mark.parametrize("relative", [False, True])
+@pytest.mark.parametrize("invalid", [False, True])
+def test_staged_check_uses_only_the_pending_index(
+    adopted_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    relative: bool,
+    invalid: bool,
+) -> None:
+    repository = adopted_git_repo
+    unrelated = repository / "requirements-unrelated.in"
+    unrelated.write_text("pytz==2026.1\n", encoding="utf-8")
+    subprocess.run(("git", "add", unrelated.name), cwd=repository, check=True)
+    ordinary_index = repository / ".git/index"
+    ordinary_before = ordinary_index.read_bytes()
+    pending_index = repository / ".git/pending-index"
+    monkeypatch.setenv("GIT_INDEX_FILE", ".git/pending-index" if relative else str(pending_index))
+    subprocess.run(("git", "read-tree", "HEAD"), cwd=repository, check=True)
+    selected = repository / "requirements-pending.in"
+    selected.write_text("pytz==2026.1\n" if invalid else "packaging==26.3\n", encoding="utf-8")
+    subprocess.run(("git", "add", selected.name), cwd=repository, check=True)
+    pending_before = pending_index.read_bytes()
+    monkeypatch.setenv("GIT_OPTIONAL_LOCKS", "1")
+    for variable in (
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_OBJECT_DIRECTORY",
+        "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+        "GIT_CONFIG_GLOBAL",
+    ):
+        monkeypatch.setenv(variable, str(repository / "unrelated-git-state"))
+    monkeypatch.chdir(repository.parent)
+    capsys.readouterr()
+
+    assert cli.main(["--root", str(repository), "check", "--staged"]) == int(invalid)
+
+    output = capsys.readouterr()
+    assert ("LIB008" in output.out) is invalid
+    assert unrelated.name not in output.out + output.err
+    assert ordinary_index.read_bytes() == ordinary_before
+    assert pending_index.read_bytes() == pending_before
+
+
+@pytest.mark.parametrize("command", ["check", "fix"])
+@pytest.mark.parametrize("textconv", [False, True])
+def test_pending_index_refuses_unstaged_bytes_before_checking_or_fixing(
+    adopted_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    command: str,
+    *,
+    textconv: bool,
+) -> None:
+    repository = adopted_git_repo
+    source = repository / "source.py"
+    ordinary_before = (repository / ".git/index").read_bytes()
+    pending_index = repository / ".git/pending-index"
+    monkeypatch.setenv("GIT_INDEX_FILE", str(pending_index))
+    subprocess.run(("git", "read-tree", "HEAD"), cwd=repository, check=True)
+    source.write_bytes(b"value = 2\n")
+    subprocess.run(("git", "add", source.name), cwd=repository, check=True)
+    pending_before = pending_index.read_bytes()
+    source.write_bytes(b"value = 1\n")
+    marker = repository / ".git/textconv-called"
+    if textconv:
+        driver = repository / ".git/textconv.py"
+        driver.write_text(
+            f"from pathlib import Path\nPath({str(marker)!r}).write_bytes(b'called')\nprint('same rendered source')\n",
+            encoding="utf-8",
+        )
+        (repository / ".git/info/attributes").write_text("source.py diff=fixture\n", encoding="utf-8")
+        subprocess.run(
+            ("git", "config", "diff.fixture.textconv", shlex.join((sys.executable, str(driver)))),
+            cwd=repository,
+            check=True,
+        )
+    arguments = ["--root", str(repository), command, "--staged"]
+    if command == "check":
+        arguments.append("--fix")
+
+    assert cli.main(arguments) == 2
+
+    assert "files with unstaged content" in capsys.readouterr().err
+    assert not marker.exists()
+    assert source.read_bytes() == b"value = 1\n"  # sarj-noqa: SARJ402 -- refusal preserves exact source bytes.
+    assert pending_index.read_bytes() == pending_before
+    assert (repository / ".git/index").read_bytes() == ordinary_before
+
+
+@pytest.mark.parametrize("flag", ["--assume-unchanged", "--skip-worktree"])
+def test_pending_index_flags_are_checked_instead_of_ordinary_flags(
+    adopted_git_repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], flag: str
+) -> None:
+    repository = adopted_git_repo
+    pending_index = repository / ".git/pending-index"
+    monkeypatch.setenv("GIT_INDEX_FILE", str(pending_index))
+    subprocess.run(("git", "read-tree", "HEAD"), cwd=repository, check=True)
+    _stage_hidden_index_source(repository, "flagged.py", (flag,), dirty=False)
+    pending_before = pending_index.read_bytes()
+
+    assert cli.main(["--root", str(repository), "check", "--staged", "--fix"]) == 2
+
+    assert "unverifiable Git index flags" in capsys.readouterr().err
+    assert pending_index.read_bytes() == pending_before
+
+
+def test_pending_index_deletion_does_not_resurrect_worktree_content(
+    adopted_git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository = adopted_git_repo
+    pending_index = repository / ".git/pending-index"
+    monkeypatch.setenv("GIT_INDEX_FILE", str(pending_index))
+    subprocess.run(("git", "read-tree", "HEAD"), cwd=repository, check=True)
+    subprocess.run(("git", "rm", "--cached", "source.py"), cwd=repository, check=True, capture_output=True)
+    (repository / "source.py").write_bytes(b"def invalid syntax\n")
+    pending_before = pending_index.read_bytes()
+
+    assert cli.main(["--root", str(repository), "check", "--staged", "--format", "json"]) == 0
+
+    assert pending_index.read_bytes() == pending_before
+    assert cli.staged_fix_paths(repository, ()) == []
+
+
+def test_pending_index_can_select_an_initial_commit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True, env={})
+    selected = tmp_path / "source.py"
+    selected.write_bytes(b"value = 1\n")
+    pending_index = tmp_path / ".git/pending-index"
+    monkeypatch.setenv("GIT_INDEX_FILE", str(pending_index))
+    subprocess.run(("git", "add", selected.name), cwd=tmp_path, check=True)
+    pending_before = pending_index.read_bytes()
+
+    assert cli.staged_fix_paths(tmp_path, ()) == [str(selected)]
+
+    assert not (tmp_path / ".git/index").exists()
+    assert pending_index.read_bytes() == pending_before
+
+
+@pytest.mark.parametrize("command", ["check", "fix"])
+def test_pending_safe_fixes_preserve_both_indexes_and_unselected_source(
+    adopted_git_repo: Path, monkeypatch: pytest.MonkeyPatch, command: str
+) -> None:
+    repository = adopted_git_repo
+    unrelated = repository / "unrelated.py"
+    original = b"# ========\n"
+    unrelated.write_bytes(original)
+    subprocess.run(("git", "add", unrelated.name), cwd=repository, check=True)
+    ordinary_before = (repository / ".git/index").read_bytes()
+    pending_index = repository / ".git/pending-index"
+    monkeypatch.setenv("GIT_INDEX_FILE", str(pending_index))
+    subprocess.run(("git", "read-tree", "HEAD"), cwd=repository, check=True)
+    selected = repository / "cleanup.py"
+    selected.write_bytes(original)
+    subprocess.run(("git", "add", selected.name), cwd=repository, check=True)
+    pending_before = pending_index.read_bytes()
+
+    def no_external_formatters(
+        _root: Path,
+        _paths: Iterable[str],
+        *,
+        trusted: bool = True,  # ruff: ignore[unused-function-argument] -- preserve the formatter planner boundary while testing the real native fix.
+        eslint: bool = True,  # ruff: ignore[unused-function-argument] -- preserve the formatter planner boundary while testing the real native fix.
+    ) -> list[lifecycle.Command]:
+        return []
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise the real native fix and Git selection while isolating unrelated external formatting tools.
+        lifecycle, "selected_format_commands", no_external_formatters
+    )
+    arguments = ["--root", str(repository), command, "--staged"]
+    if command == "check":
+        arguments.append("--fix")
+
+    assert cli.main(arguments) == (1 if command == "check" else 0)
+
+    assert selected.read_bytes() == b"\n"  # sarj-noqa: SARJ402 -- the native fix preserves the exact line ending.
+    assert unrelated.read_bytes() == original
+    assert pending_index.read_bytes() == pending_before
+    assert (repository / ".git/index").read_bytes() == ordinary_before
+
+
+def test_pull_request_scope_ignores_the_pending_index(adopted_git_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repository = adopted_git_repo
+    base = subprocess.run(
+        ("git", "rev-parse", "HEAD"), cwd=repository, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    (repository / "source.py").write_bytes(b"value = 2\n")
+    subprocess.run(("git", "add", "source.py"), cwd=repository, check=True)
+    subprocess.run(
+        ("git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "changed"),
+        cwd=repository,
+        check=True,
+        env={},
+    )
+    monkeypatch.setenv("GIT_INDEX_FILE", str(repository / "missing-index"))
+    monkeypatch.setenv("GIT_DIR", str(repository / "unrelated-git-state"))
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", base)
+    routed: list[tuple[str, ...]] = []
+
+    def record_check(root: Path, paths: Sequence[str] | None, **options: bool | int) -> int:
+        assert root == repository
+        assert not options["staged"]
+        routed.append(tuple(paths or ()))
+        return 0
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- isolate language tools while proving native immutable Git diff scoping through the public CLI.
+        cli, "_run_canonical_check", record_check
+    )
+
+    assert cli.main(["--root", str(repository), "check"]) == 0
+    assert routed == [(str(repository / "source.py"),)]
+
+
+def test_native_partial_commit_checks_only_its_pending_requirements(adopted_git_repo: Path) -> None:
+    repository = adopted_git_repo
+    unrelated = repository / "requirements-unrelated.in"
+    unrelated.write_text("pytz==2026.1\n", encoding="utf-8")
+    selected = repository / "requirements-pending.in"
+    selected.write_text("packaging==26.3\n", encoding="utf-8")
+    subprocess.run(("git", "add", unrelated.name, selected.name), cwd=repository, check=True)
+    hook = repository / ".git/hooks/pre-commit"
+    hook.write_text(
+        f"#!{sys.executable}\n"
+        "from sarj_standards.cli.main import main\n"
+        f"raise SystemExit(main(['--root', {str(repository)!r}, 'check', '--staged']))\n",
+        encoding="utf-8",
+    )
+    hook.chmod(0o700)
+
+    result = subprocess.run(
+        (
+            "git",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.invalid",
+            "-c",
+            f"core.hooksPath={hook.parent}",
+            "commit",
+            "--only",
+            selected.name,
+            "-qm",
+            "partial commit",
+        ),
+        cwd=repository,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert subprocess.run(
+        ("git", "diff", "--cached", "--name-only"), cwd=repository, check=True, capture_output=True, text=True
+    ).stdout.splitlines() == [unrelated.name]
 
 
 def test_staged_check_routes_additions_renames_and_only_requested_files(
@@ -299,11 +556,13 @@ def test_explicit_staged_fixes_ignore_unrelated_hidden_index_flags(
 
 
 @pytest.mark.parametrize("output_format", ["text", "json", "sarif"])
-def test_staged_index_flag_read_failure_preserves_structured_input_errors(
+@pytest.mark.parametrize("failed_read", ["content-diff", "index-flags"])
+def test_staged_index_read_failure_preserves_structured_input_errors(
     adopted_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     output_format: str,
+    failed_read: str,
 ) -> None:
     source = adopted_git_repo / "source.py"
     original = b"# ========\nvalue = 2\n"
@@ -315,9 +574,13 @@ def test_staged_index_flag_read_failure_preserves_structured_input_errors(
     binaries = adopted_git_repo / "fixture-bin"
     binaries.mkdir()
     wrapper = binaries / "git"
+    failure = (
+        '[ "$1" = "-c" ] && [ "$2" = "diff.autoRefreshIndex=false" ]'
+        if failed_read == "content-diff"
+        else '[ "$1" = "--literal-pathspecs" ] && [ "$2" = "ls-files" ]'
+    )
     wrapper.write_text(
-        '#!/bin/sh\nif [ "$1" = "--literal-pathspecs" ] && [ "$2" = "ls-files" ]; then\n  exit 2\nfi\n'
-        f'exec {shlex.quote(executable)} "$@"\n',
+        f'#!/bin/sh\nif {failure}; then\n  exit 2\nfi\nexec {shlex.quote(executable)} "$@"\n',
         encoding="utf-8",
     )
     wrapper.chmod(0o755)
