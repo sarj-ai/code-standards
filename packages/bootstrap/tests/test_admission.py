@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 import json
 import os
 import select
@@ -18,6 +18,11 @@ from sarj_standards_bootstrap.admission import check_slot
 if TYPE_CHECKING:
     from collections.abc import Generator
     from pathlib import Path
+    from typing import TextIO
+
+
+if TYPE_CHECKING or os.name == "posix":
+    import fcntl
 
 
 pytestmark = pytest.mark.skipif(os.name != "posix", reason="POSIX exec/lock contract; Windows retains its launcher")
@@ -29,6 +34,21 @@ Path('started').touch()
 while not Path('release').exists():
     time.sleep(0.01)
 raise SystemExit(7)
+"""
+METADATA_PROBE = """\
+from pathlib import Path
+import fcntl, sys
+import sarj_standards_bootstrap as bootstrap
+original = fcntl.flock
+def observe(handle, operation):
+    try:
+        return original(handle, operation)
+    except BlockingIOError:
+        if Path(handle.name).name == 'queue.lock':
+            print('metadata contended', flush=True)
+        raise
+fcntl.flock = observe
+raise SystemExit(bootstrap.main(('check',)))
 """
 
 
@@ -49,7 +69,12 @@ def environment(tmp_path: Path) -> dict[str, str]:
 
 @contextmanager
 def _launch(
-    root: Path, environment: dict[str, str], *, command: str = "check", arguments: tuple[str, ...] = ()
+    root: Path,
+    environment: dict[str, str],
+    *,
+    command: str = "check",
+    arguments: tuple[str, ...] = (),
+    observe_metadata: bool = False,
 ) -> Generator[subprocess.Popen[str]]:
     root.mkdir()
     (root / ".sarj-standards.toml").write_text('schema = 4\nbundle = "9.8.7"\n', encoding="utf-8")
@@ -57,7 +82,9 @@ def _launch(
         [
             sys.executable,
             "-c",
-            f"import sarj_standards_bootstrap as b; raise SystemExit(b.main({(command, *arguments)!r}))",
+            METADATA_PROBE
+            if observe_metadata
+            else f"import sarj_standards_bootstrap as b; raise SystemExit(b.main({(command, *arguments)!r}))",
         ],
         cwd=root,
         env=environment,
@@ -86,6 +113,27 @@ def _waiting(process: subprocess.Popen[str]) -> None:
     ready, _, _ = select.select([process.stderr], [], [], 10)
     assert ready, "Contended launcher did not report its wait"
     assert "waiting" in os.read(process.stderr.fileno(), 4096).decode()
+
+
+@contextmanager
+def _contended_metadata(
+    tmp_path: Path, environment: dict[str, str], stage: str, *, timeout: float = 10
+) -> Generator[subprocess.Popen[str]]:
+    directory = tmp_path / "state"
+    directory.mkdir()
+    with ExitStack() as stack:
+        queue = stack.enter_context((directory / "queue.lock").open("a+", encoding="utf-8"))
+        if stage == "queue-position":
+            slot = stack.enter_context((directory / "slot-0.lock").open("a+", encoding="utf-8"))
+            fcntl.flock(slot, fcntl.LOCK_EX)
+        else:
+            fcntl.flock(queue, fcntl.LOCK_EX)
+        options = {**environment, "SARJ_LOCAL_CHECK_WAIT_SECONDS": str(timeout)}
+        process = stack.enter_context(_launch(tmp_path / "contended", options, observe_metadata=True))
+        if stage == "queue-position":
+            _waiting(process)
+            fcntl.flock(queue, fcntl.LOCK_EX)
+        yield process
 
 
 def test_workspaces_share_the_slot_until_the_exec_replacement_exits(
@@ -303,3 +351,169 @@ def test_invalid_capacity_fails_before_execution(
         process.communicate(timeout=10)
         assert process.returncode == 2
         assert not (root / "started").exists()
+
+
+@pytest.mark.parametrize("stage", ["registration", "queue-position"])
+def test_metadata_contention_honors_the_admission_deadline(
+    tmp_path: Path, environment: dict[str, str], stage: str
+) -> None:
+    with _contended_metadata(tmp_path, environment, stage, timeout=0.5) as process:
+        _, stderr = process.communicate(timeout=10)
+        assert process.returncode == 2, stderr
+        assert "within 0.5s" in stderr
+        assert "waiting for admission metadata lock" in stderr
+        assert stderr.count("Local checks: waiting") <= 1
+        assert not (tmp_path / "contended/started").exists()
+    assert not list((tmp_path / "state").glob("wait-*.lock"))
+
+
+@pytest.mark.parametrize("stage", ["registration", "queue-position"])
+def test_metadata_wait_remains_interruptible_and_cleans_its_ticket(
+    tmp_path: Path, environment: dict[str, str], stage: str
+) -> None:
+    with _contended_metadata(tmp_path, environment, stage) as process:
+        assert process.stdout is not None
+        ready, _, _ = select.select([process.stdout], [], [], 10)
+        assert ready, "Metadata contention was not observed"
+        assert "metadata contended" in os.read(process.stdout.fileno(), 4096).decode()
+        process.send_signal(signal.SIGINT)
+        assert process.wait(timeout=10) == 130
+        assert not (tmp_path / "contended/started").exists()
+    assert not list((tmp_path / "state").glob("wait-*.lock"))
+
+
+def test_registration_error_removes_its_new_ticket(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    original = fcntl.flock
+
+    def fail_ticket(handle: int | TextIO, operation: int) -> None:
+        if operation == fcntl.LOCK_EX:
+            message = "fixture ticket lock failure"
+            raise OSError(message)
+        original(handle, operation)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- The native flock boundary must fail after creating a real owned ticket.
+        fcntl, "flock", fail_ticket
+    )
+    with (
+        pytest.raises(OSError, match="fixture ticket lock failure"),
+        check_slot({"SARJ_LOCAL_CHECK_STATE_DIR": str(tmp_path)}),
+    ):
+        pytest.fail("Failed registration must not admit a check")
+    assert not list(tmp_path.glob("wait-*.lock"))
+
+
+def test_short_metadata_contentions_share_the_report_cadence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    clock = [0.0]
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Verify production reads the native monotonic clock rather than another time source.
+        time, "monotonic", lambda: clock[0]
+    )
+    with (
+        (tmp_path / "queue.lock").open("a+", encoding="utf-8") as held,
+        (tmp_path / "slot-0.lock").open("a+", encoding="utf-8") as occupied,
+    ):
+        fcntl.flock(held, fcntl.LOCK_EX)
+        fcntl.flock(occupied, fcntl.LOCK_EX)
+        queue_held = [True]
+
+        def release_after_poll(seconds: float) -> None:
+            clock[0] += seconds
+            fcntl.flock(held, fcntl.LOCK_UN if queue_held[0] else fcntl.LOCK_EX)
+            queue_held[0] = not queue_held[0]
+            if clock[0] >= 1:
+                fcntl.flock(occupied, fcntl.LOCK_UN)
+
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Native polling releases real lock contention at each sleep boundary.
+            time, "sleep", release_after_poll
+        )
+        with check_slot({"SARJ_LOCAL_CHECK_STATE_DIR": str(tmp_path), "SARJ_LOCAL_CHECK_WAIT_SECONDS": "10"}):
+            assert clock[0] >= 1
+    assert capsys.readouterr().err.count("waiting for admission metadata lock") == 1
+
+
+def test_zero_budget_still_admits_a_free_slot_and_removes_its_ticket(
+    tmp_path: Path, environment: dict[str, str]
+) -> None:
+    root = tmp_path / "zero-budget"
+    with _launch(root, {**environment, "SARJ_LOCAL_CHECK_WAIT_SECONDS": "0"}) as process:
+        _started(root)
+        assert not list((tmp_path / "state").glob("wait-*.lock"))
+        (root / "release").touch()
+        assert process.wait(timeout=10) == 7
+
+
+def test_expired_positive_budget_does_not_admit_even_when_metadata_is_free(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clock = iter([0.0, 1.0])
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Native clock expiry before registration must reject the real admission path.
+        time, "monotonic", lambda: next(clock, 1.0)
+    )
+    with (
+        pytest.raises(TimeoutError, match=r"within 0\.5s"),
+        check_slot({"SARJ_LOCAL_CHECK_STATE_DIR": str(tmp_path), "SARJ_LOCAL_CHECK_WAIT_SECONDS": "0.5"}),
+    ):
+        pytest.fail("Expired admission budget admitted a check")
+    assert not list(tmp_path.glob("wait-*.lock"))
+
+
+def test_budget_expiring_during_metadata_scan_does_not_acquire_a_free_slot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clock = [0.0]
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Verify admission reads native elapsed time after metadata inspection.
+        time, "monotonic", lambda: clock[0]
+    )
+    original = fcntl.flock
+
+    def expire_during_metadata(handle: int | TextIO, operation: int) -> None:
+        original(handle, operation)
+        if operation == fcntl.LOCK_EX | fcntl.LOCK_NB and list(tmp_path.glob("wait-*.lock")):
+            clock[0] = 1
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Advance native time at the real metadata-lock acquisition boundary.
+        fcntl, "flock", expire_during_metadata
+    )
+    with (
+        pytest.raises(TimeoutError, match=r"within 0\.5s"),
+        check_slot({"SARJ_LOCAL_CHECK_STATE_DIR": str(tmp_path), "SARJ_LOCAL_CHECK_WAIT_SECONDS": "0.5"}),
+    ):
+        pytest.fail("Metadata scan exhausted the budget before slot acquisition")
+    assert not list(tmp_path.glob("wait-*.lock"))
+
+
+def test_budget_expiring_at_an_occupied_slot_does_not_acquire_a_later_free_slot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clock = [0.0]
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Verify native deadline reads occur between real slot-lock probes.
+        time, "monotonic", lambda: clock[0]
+    )
+    original = fcntl.flock
+
+    def expire_after_occupied_slot(handle: int | TextIO, operation: int) -> None:
+        try:
+            original(handle, operation)
+        except BlockingIOError:
+            clock[0] = 1
+            raise
+
+    with (tmp_path / "slot-0.lock").open("a+", encoding="utf-8") as occupied:
+        fcntl.flock(occupied, fcntl.LOCK_EX)
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- The real occupied-slot syscall must consume the remaining deadline.
+            fcntl, "flock", expire_after_occupied_slot
+        )
+        with (
+            pytest.raises(TimeoutError, match=r"within 0\.5s"),
+            check_slot(
+                {
+                    "SARJ_LOCAL_CHECK_STATE_DIR": str(tmp_path),
+                    "SARJ_LOCAL_CHECK_WAIT_SECONDS": "0.5",
+                    "SARJ_LOCAL_CHECK_JOBS": "2",
+                }
+            ),
+        ):
+            pytest.fail("Occupied slot exhausted the budget before the next free slot")
+    assert not (tmp_path / "slot-1.lock").exists()
+    assert not list(tmp_path.glob("wait-*.lock"))
