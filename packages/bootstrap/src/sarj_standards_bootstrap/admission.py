@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
+from dataclasses import dataclass
 import json
 import math
 import os
@@ -14,11 +15,19 @@ from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
+    from typing import TextIO
 
 
 MAX_SLOTS: Final = 64
 LEASE_ENV: Final = "SARJ_LOCAL_CHECK_LEASE"
 JSON_PARSER: Callable[[str], dict[str, object] | list[object] | str | int | float | bool | None] = json.loads
+
+
+@dataclass(slots=True)
+class Wait:
+    started: float
+    timeout: float
+    next_report: float = 0
 
 
 @contextmanager
@@ -39,30 +48,26 @@ def check_slot(environment: dict[str, str]) -> Generator[None]:
         yield
         return
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-    started = time.monotonic()
-    next_report = started
-    with _registered_waiter(directory) as ticket_path:
-        yield from _wait_for_slot(
-            directory, slots, timeout, environment, started=started, next_report=next_report, ticket_path=ticket_path
-        )
+    wait = Wait(started=time.monotonic(), timeout=timeout)
+    with _registered_waiter(directory, wait) as ticket_path:
+        yield from _wait_for_slot(directory, slots, environment, wait, ticket_path)
 
 
 def _wait_for_slot(
     directory: Path,
     slots: int,
-    timeout: float,
     environment: dict[str, str],
-    *,
-    started: float,
-    next_report: float,
+    wait: Wait,
     ticket_path: Path,
 ) -> Generator[None]:
     import fcntl  # ruff: ignore[import-outside-top-level] -- POSIX admission path only.
 
     while True:
         capacity = _capacity(directory, slots)
-        position = _queue_position(directory, ticket_path)
+        position = _queue_position(directory, ticket_path, wait)
         for slot in range(capacity) if position == 1 else ():
+            if wait.timeout > 0 and time.monotonic() - wait.started >= wait.timeout:
+                _pause(wait, "shared slot")
             with (directory / f"slot-{slot}.lock").open("a+", encoding="utf-8") as handle:
                 try:
                     fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -85,34 +90,48 @@ def _wait_for_slot(
                 fcntl.fcntl(handle, fcntl.F_SETFD, flags & ~fcntl.FD_CLOEXEC)
                 yield
                 return
-        now = time.monotonic()
-        if now >= next_report:
-            sys.stderr.write(
-                f"Local checks: waiting for one of {capacity} shared slot(s) "
-                f"(queue position {position}; {now - started:.0f}s elapsed).\n"
-            )
-            sys.stderr.flush()
-            next_report = now + 15
-        if now - started >= timeout:
-            message = f"local checks: no shared slot became free within {timeout:g}s"
-            raise TimeoutError(message)
-        time.sleep(min(0.25, timeout - (now - started)))
+        _pause(wait, f"one of {capacity} shared slot(s); queue position {position}")
+
+
+def _pause(wait: Wait, description: str) -> None:
+    now = time.monotonic()
+    if now >= wait.next_report:
+        sys.stderr.write(f"Local checks: waiting for {description} ({now - wait.started:.2f}s elapsed).\n")
+        sys.stderr.flush()
+        wait.next_report = now + 15
+    remaining = wait.timeout - (now - wait.started)
+    if remaining <= 0:
+        message = f"local checks: no shared slot became free within {wait.timeout:g}s (waiting for {description})"
+        raise TimeoutError(message)
+    time.sleep(min(0.25, remaining))
+
+
+def _lock_queue(registration: TextIO, wait: Wait) -> None:
+    import fcntl  # ruff: ignore[import-outside-top-level] -- POSIX admission path only.
+
+    while True:
+        if wait.timeout > 0 and time.monotonic() - wait.started >= wait.timeout:
+            _pause(wait, "admission metadata lock")
+        try:
+            fcntl.flock(registration, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            _pause(wait, "admission metadata lock")
+        else:
+            return
 
 
 @contextmanager
-def _registered_waiter(directory: Path) -> Generator[Path]:
+def _registered_waiter(directory: Path, wait: Wait) -> Generator[Path]:
     import fcntl  # ruff: ignore[import-outside-top-level] -- POSIX admission path only.
 
     path = directory / f"wait-{time.time_ns():020d}-{secrets.token_hex(8)}.lock"
-    with (directory / "queue.lock").open("a+", encoding="utf-8") as registration:
-        fcntl.flock(registration, fcntl.LOCK_EX)
-        handle = path.open("x", encoding="utf-8")
-        fcntl.flock(handle, fcntl.LOCK_EX)
-    try:
-        with handle:
-            yield path
-    finally:
-        path.unlink(missing_ok=True)
+    with ExitStack() as stack:
+        with (directory / "queue.lock").open("a+", encoding="utf-8") as registration:
+            _lock_queue(registration, wait)
+            handle = stack.enter_context(path.open("x", encoding="utf-8"))
+            stack.callback(path.unlink, missing_ok=True)
+            fcntl.flock(handle, fcntl.LOCK_EX)
+        yield path
 
 
 def _capacity(directory: Path, slots: int) -> int:
@@ -130,11 +149,9 @@ def _capacity(directory: Path, slots: int) -> int:
     return capacity
 
 
-def _queue_position(directory: Path, ticket_path: Path) -> int:
-    import fcntl  # ruff: ignore[import-outside-top-level] -- POSIX admission path only.
-
+def _queue_position(directory: Path, ticket_path: Path, wait: Wait) -> int:
     with (directory / "queue.lock").open("a+", encoding="utf-8") as registration:
-        fcntl.flock(registration, fcntl.LOCK_EX)
+        _lock_queue(registration, wait)
         return _live_queue_position(directory, ticket_path)
 
 
