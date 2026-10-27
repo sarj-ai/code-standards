@@ -59,8 +59,7 @@ verify:
 	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory doctor docs-check
 	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory format-check lint
 	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory --assume-old=typescript-build dogfood typecheck
-	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory --assume-old=typescript-build test
-	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory repo-check check-no-private-refs shell-check
+	+bash .github/scripts/make-local-check.sh bash .github/scripts/make-verify-tail.sh $(MAKE)
 
 doctor:
 	@$(STANDARDS) doctor
