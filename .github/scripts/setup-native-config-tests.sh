@@ -12,7 +12,18 @@ packages=(nginx=1.24.0-2ubuntu7.19 kamailio=5.7.4-1build7 prometheus=2.45.3+ds-2
 
 # Use the Ubuntu test runner's signed package metadata and native architecture.
 # apt-get trusts existing archive sizes; validate cached bytes against its metadata.
-apt-get --print-uris download "${packages[@]}" >package-uris
+metadata_status=0
+apt-get --print-uris download "${packages[@]}" >package-uris || metadata_status=$?
+if [[ "$metadata_status" != 0 ]]; then
+  if [[ "${GITHUB_ACTIONS-}" != true || "${RUNNER_ENVIRONMENT-}" != github-hosted ]]; then
+    exit "$metadata_status"
+  fi
+  # Disposable hosted images can retain metadata from before these exact pins.
+  apt-cache policy "${packages[@]%%=*}" | sed -E 's#[[:alpha:]][[:alnum:]+.-]*:[^[:space:]]+#[package-index]#g'
+  sudo -n timeout 120s apt-get -o Acquire::Retries=0 -o Acquire::http::Timeout=15 \
+    -o Acquire::https::Timeout=15 -o APT::Update::Error-Mode=any update
+  apt-get --print-uris download "${packages[@]}" >package-uris
+fi
 archives=()
 while read -r _uri archive _size checksum extra; do
   if [[ -n "$extra" || "$archive" == */* || "$archive" == -* || "$archive" != *.deb ]]; then
