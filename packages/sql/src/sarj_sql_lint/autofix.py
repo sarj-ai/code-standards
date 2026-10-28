@@ -7,6 +7,7 @@ from sarj_rule_contracts import RuleId, TextEdit, apply_edits
 from sqlglot import exp
 from sqlglot.errors import SqlglotError
 
+from sarj_sql_lint._autofix_index_name import repair_index_name
 from sarj_sql_lint._autofix_literals import literal_edits
 from sarj_sql_lint._postgres import parse_postgres
 from sarj_sql_lint.rule_base import (
@@ -47,16 +48,24 @@ _PRESERVED_COMMENT = re.compile(
 
 
 def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None) -> str:
-    selected = tuple(REGISTRY) if rule_ids is None else tuple(rule_ids)
+    selected = tuple(RuleId(rule_id) for rule_id in (REGISTRY if rule_ids is None else rule_ids))
     if unknown := set(selected) - REGISTRY.keys():
         message = f"unknown SQL rules: {', '.join(sorted(unknown))}"
         raise ValueError(message)
-    if (
-        is_generated_migration(path, source)
-        or has_file_comment_match(source, _GENERATED_HEADER, limit=2048)
-        or not _parseable(source)
-    ):
+    if is_generated_migration(path, source) or has_file_comment_match(source, _GENERATED_HEADER, limit=2048):
         return source
+    if "invalid-postgres-ddl" in selected:
+        source = repair_index_name(path, source)
+    if not _parseable(source):
+        return source
+    edits = _selected_edits(path, source, selected)
+    if not edits:
+        return source
+    fixed = apply_edits(source, edits)
+    return fixed if _parseable(fixed) else source
+
+
+def _selected_edits(path: Path, source: str, selected: Sequence[RuleId]) -> list[TextEdit]:
     edits: list[TextEdit] = []
     for rule_id in selected:
         if rule_id not in {
@@ -78,11 +87,8 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
         elif rule_id in {"no-migration-comment-cruft", "no-long-migration-narration"}:
             edits.extend(_comment_edits(source, diagnostics, banners=rule_id == "no-migration-comment-cruft"))
         else:
-            edits.extend(literal_edits(source, diagnostics, RuleId(rule_id)))
-    if not edits:
-        return source
-    fixed = apply_edits(source, edits)
-    return fixed if _parseable(fixed) else source
+            edits.extend(literal_edits(source, diagnostics, rule_id))
+    return edits
 
 
 def _parseable(source: str) -> bool:

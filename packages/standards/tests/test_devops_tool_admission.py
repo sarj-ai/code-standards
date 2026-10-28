@@ -33,10 +33,6 @@ def test_upstream_compose_rules_fail_versionless_admission(tmp_path: Path) -> No
     executable = shutil.which("uvx")
     assert executable is not None
     prefix = (executable, *semgrep_command(offline=False)[1:])
-    installed = subprocess.run(
-        (*prefix, "--version"), env=environment, capture_output=True, text=True, check=True, timeout=120
-    )
-    assert installed.stdout.strip() == "1.182.1"
     process = subprocess.run(
         (
             *prefix,
@@ -64,6 +60,7 @@ def test_upstream_compose_rules_fail_versionless_admission(tmp_path: Path) -> No
     assert process.returncode == 0, process.stderr
     report = parse_json(process.stdout)
     assert isinstance(report, dict)
+    assert report["version"] == "1.182.1"
     assert report["errors"] == []
     paths = report["paths"]
     assert isinstance(paths, dict)

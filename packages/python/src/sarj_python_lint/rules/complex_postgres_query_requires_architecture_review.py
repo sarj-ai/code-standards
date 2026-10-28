@@ -20,6 +20,7 @@ from sarj_python_lint.rules._ast_index import nodes, walk
 from sarj_python_lint.rules._ast_names import unqualified_name as _call_name
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
+from sarj_python_lint.rules._store_sql import relation_key, store_queries
 from sarj_python_lint.rules.no_analytical_aggregation_in_postgres_store import analytical_signal
 
 
@@ -65,6 +66,7 @@ _COMBINED_JOIN_LIMIT = 3
 _COMBINED_STAGE_LIMIT = 4
 _WIDE_PROJECTION_LIMIT = 25
 _WIDE_PROJECTION_JOIN_LIMIT = 2
+_WIDE_SELF_JOIN_PROJECTION_LIMIT = 16
 
 
 class _ConstructorImport(NamedTuple):
@@ -175,14 +177,13 @@ def _recoverable_query_root(node: ast.expr, constructors: frozenset[str]) -> ast
 
 def _qualified_name(node: ast.expr) -> str:
     match node:
-        case ast.Name():
-            return node.id
-        case ast.Attribute():
-            owner = _qualified_name(node.value)
-            return f"{owner}.{node.attr}" if owner else node.attr
+        case ast.Name(id=name):
+            return name
+        case ast.Attribute(value=value, attr=attribute):
+            owner = _qualified_name(value)
+            return f"{owner}.{attribute}" if owner else attribute
         case _:
-            pass
-    return ""
+            return ""
 
 
 def _visible_constructors(
@@ -259,9 +260,9 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only statically recoverable SQL passed to execute, executemany, fetch, fetchrow, fetchval, or prepare in non-test modules with explicit PostgreSQL imports is analyzed, regardless of module filename.",
-            "Execution receivers must use a conventional database name; custom wrappers and dynamically obtained receivers abstain.",
-            "One direct, unambiguous simple-name binding in the same lexical scope is followed; standalone constants, branches, aliases, attributes, containers, wildcard imports, and cross-scope flow abstain.",
-            "Review covers derived relations in every SELECT (including LATERAL, CTEs, predicates and writes), four explicit or comma joins, six query stages, three joins plus four stages, or 25 projections plus two joins.",
+            "Execution receivers use a conventional database name or import-proven Psycopg ownership. Native execution additionally follows stable module/local SQL bindings and direct same-class query-forwarding wrappers; unknown receivers abstain.",
+            "Conventional receivers follow one direct, unambiguous same-scope binding. Native Psycopg recovery may follow bounded stable lexical bindings, including module constants. Unexecuted constants, branch-local assignments, mutable attributes, containers and unknown dynamic composition abstain.",
+            "Review covers derived relations in every SELECT (including LATERAL, CTEs, predicates and writes), four explicit or comma joins, six query stages, three joins plus four stages, or 25 projections plus two joins. A self join over the same explicit table also merits review at 16 projected expressions.",
             "Derived-relation review requires grouping, HAVING or windowing combined with joins or nested reads; expression density is not a separate trigger.",
             "Projection width alone is accepted, and UNION branches are measured independently; execution plans and production cardinality remain authoritative.",
             "ClickHouse and BigQuery syntax is excluded per query, including in mixed-backend modules.",
@@ -352,42 +353,57 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
         if not _is_postgres_module(tree, node_index=context.node_index):
             return []
 
-        docstrings = context.docstring_node_ids
-        parents = context.parents
-        query_roots = _query_roots(tree, parents, node_index=context.node_index)
-        diagnostics: list[Diagnostic] = []
-        consumed: set[int] = set()
-        for node in context.nodes(ast.Constant, ast.BinOp, ast.JoinedStr):
-            if id(node) in consumed or id(node) in docstrings or not _is_query_context(node, parents, query_roots):
-                continue
-            text_value = sql_string_value(node, interpolation_placeholder=_SQL_HOLE)
-            if text_value is None:
-                continue
-            if isinstance(node, (ast.BinOp, ast.JoinedStr)):
-                consumed.update(id(child) for child in walk(node))
-
-            signal = _query_architecture_signal(text_value, path)
+        diagnostics = _conventional_findings(context, self.code)
+        for query in store_queries(context):
+            signal = _query_architecture_signal(query.sql, path)
             if signal is None:
                 continue
-            guidance = _query_review_guidance(text_value)
-            diagnostics.append(
-                Diagnostic(
-                    path=path,
-                    line=node.lineno,
-                    col=node.col_offset + 1,
-                    code=self.code,
-                    severity=Severity.WARNING,
-                    message=(
-                        f"Complex PostgreSQL query: {signal}. Architecture review required;{guidance} "
-                        "Prefer ClickHouse for reporting, historical analysis, and broad aggregations. "
-                        "For transactional work, simplify the query or document why PostgreSQL is required, "
-                        "with query bounds and EXPLAIN evidence. Do not add reporting-specific indexes without "
-                        "evaluating ClickHouse. Syntax alone does not establish runtime cost or datastore placement."
-                    ),
-                )
+            node = query.node
+            diagnostics.append(_native_diagnostic(context, node, signal, self.code, query.sql))
+        unique = {(finding.line, finding.col): finding for finding in diagnostics}
+        return sorted(unique.values(), key=lambda finding: (finding.line, finding.col))
+
+
+def _conventional_findings(context: PythonFileContext, code: str) -> list[Diagnostic]:
+    path = context.path
+    docstrings = context.docstring_node_ids
+    parents = context.parents
+    tree = context.tree
+    if tree is None:
+        return []
+    query_roots = _query_roots(tree, parents, node_index=context.node_index)
+    diagnostics: list[Diagnostic] = []
+    consumed: set[int] = set()
+    for node in context.nodes(ast.Constant, ast.BinOp, ast.JoinedStr):
+        if id(node) in consumed or id(node) in docstrings or not _is_query_context(node, parents, query_roots):
+            continue
+        text_value = sql_string_value(node, interpolation_placeholder=_SQL_HOLE)
+        if text_value is None:
+            continue
+        if isinstance(node, (ast.BinOp, ast.JoinedStr)):
+            consumed.update(id(child) for child in walk(node))
+
+        signal = _query_architecture_signal(text_value, path)
+        if signal is None:
+            continue
+        guidance = _query_review_guidance(text_value)
+        diagnostics.append(
+            Diagnostic(
+                path=path,
+                line=node.lineno,
+                col=node.col_offset + 1,
+                code=code,
+                severity=Severity.WARNING,
+                message=(
+                    f"Complex PostgreSQL query: {signal}. Architecture review required;{guidance} "
+                    "Prefer ClickHouse for reporting, historical analysis, and broad aggregations. "
+                    "For transactional work, simplify the query or document why PostgreSQL is required, "
+                    "with query bounds and EXPLAIN evidence. Do not add reporting-specific indexes without "
+                    "evaluating ClickHouse. Syntax alone does not establish runtime cost or datastore placement."
+                ),
             )
-        diagnostics.sort(key=lambda diagnostic: (diagnostic.line, diagnostic.col))
-        return diagnostics
+        )
+    return diagnostics
 
 
 def _count_query_bindings(
@@ -473,12 +489,13 @@ def _query_architecture_signal(text_value: str, path: Path) -> str | None:
 
 
 def _parse_signal(sql: str) -> str | None:
-    import sqlglot  # ruff: ignore[import-outside-top-level] -- parse only SQL that passes cheap ownership and shape gates
     from sqlglot.errors import SqlglotError  # ruff: ignore[import-outside-top-level] -- paired with lazy parser import
+
+    from sarj_python_lint.rules._postgres import parse_postgres  # ruff: ignore[import-outside-top-level] -- unsupported SQL must not log private source.
 
     normalized = _COMPOSABLE_HOLE.sub(_SQL_HOLE, sql)
     try:
-        for statement in sqlglot.parse(normalized, read="postgres"):
+        for statement in parse_postgres(normalized):
             if statement is not None and (signal := _architecture_signal(statement)) is not None:
                 return signal
     except SqlglotError:
@@ -502,12 +519,43 @@ def _architecture_signal(statement: exp.Expr) -> str | None:
         return f"Query has {nested_queries} CTE/subquery stages"
     if maximum_joins >= _COMBINED_JOIN_LIMIT and nested_queries >= _COMBINED_STAGE_LIMIT:
         return f"Query combines {maximum_joins} JOINs with {nested_queries} CTE/subquery stages"
+    return _projection_width_signal(statement)
+
+
+def _projection_width_signal(statement: exp.Expr) -> str | None:
+    from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- only parsed projection shapes need types.
+
     for select in statement.find_all(exp.Select):
         projections = tuple(_expression_args(select, "expressions"))
         joins = tuple(join for join in _expression_args(select, "joins") if isinstance(join, exp.Join))
         if len(projections) >= _WIDE_PROJECTION_LIMIT and len(joins) >= _WIDE_PROJECTION_JOIN_LIMIT:
             return f"Joined query block has {len(projections)} projected expressions"
+        if len(projections) >= _WIDE_SELF_JOIN_PROJECTION_LIMIT and _self_join(select, joins):
+            return f"Self-joined query block has {len(projections)} projected expressions"
     return None
+
+
+def _native_diagnostic(context: PythonFileContext, node: ast.expr, signal: str, code: str, sql: str) -> Diagnostic:
+    return Diagnostic(
+        context.path,
+        node.lineno,
+        node.col_offset + 1,
+        code,
+        f"Complex PostgreSQL query: {signal}. Architecture review required;{_query_review_guidance(sql)} "
+        "Prefer ClickHouse for reporting, historical analysis, and broad aggregations. "
+        "For transactional work, simplify the query or document why PostgreSQL is required, "
+        "with query bounds and EXPLAIN evidence. Do not add reporting-specific indexes without "
+        "evaluating ClickHouse. Syntax alone does not establish runtime cost or datastore placement.",
+        severity=Severity.WARNING,
+    )
+
+
+def _self_join(select: exp.Select, joins: tuple[exp.Join, ...]) -> bool:
+    from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- compare only literal relation identities.
+
+    from_clause = _expression_arg(select, "from_")
+    root = relation_key(_expression_arg(from_clause, "this")) if isinstance(from_clause, exp.From) else None
+    return root is not None and any(relation_key(_expression_arg(join, "this")) == root for join in joins)
 
 
 def _derived_architecture_signal(statement: exp.Expr) -> str | None:

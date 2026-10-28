@@ -87,6 +87,7 @@ _SARJ_NOQA_RE = re.compile(
     re.IGNORECASE,
 )
 _NON_NEWLINE = re.compile(r"[^\r\n]")
+_PLAIN_SQL_RUN = re.compile(r"""[^'"`$/\[{-]+""")
 
 # A dollar-quote delimiter (`$$` or `$tag$`) where `tag` cannot start with a digit, preventing match with `$1`/`$2` positional parameters.
 _DOLLAR_DELIM_RE = re.compile(r"\$(?:[A-Za-z_\u0080-\U0010ffff][A-Za-z0-9_\u0080-\U0010ffff]*)?\$")
@@ -135,6 +136,7 @@ _MYSQL_RE = re.compile(
     re.IGNORECASE,
 )
 
+_DIALECT_WORD_RE = re.compile(r"dialect", re.IGNORECASE)
 _DIALECT_DIRECTIVE_RE = re.compile(
     r"^\s*--\s*(?:sql-)?dialect\s*:\s*(postgres(?:ql)?|sqlite|mysql|mariadb|clickhouse|bigquery|duckdb|snowflake|redshift|trino|athena|databricks|spark)\s*$",
     re.IGNORECASE | re.MULTILINE,
@@ -230,6 +232,8 @@ def _standalone_directive_comments(source: str) -> tuple[SourceComment, ...]:
 
 @lru_cache(maxsize=32)
 def declared_dialect(source: str) -> str | None:
+    if _DIALECT_WORD_RE.search(source) is None:
+        return None
     for comment in _standalone_directive_comments(source):
         match = _DIALECT_DIRECTIVE_RE.fullmatch(f"--{comment.body}")
         if match is None:
@@ -587,7 +591,12 @@ class _SqlMasker:
         self.chunk_start = 0
 
     def scan(self) -> _ScanResult:
+        no_dollars = "$" not in self.source
         while self.offset < len(self.source):
+            # Statement history only controls dollar bodies; lexical openers keep their existing branches.
+            if no_dollars and (plain := _PLAIN_SQL_RUN.match(self.source, self.offset)) is not None:
+                self.offset = plain.end()
+                continue
             self._scan_token()
         if self.chunk_start < len(self.source):
             self.out.append(self.source[self.chunk_start :])

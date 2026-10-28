@@ -87,6 +87,8 @@ def test_dialect_metadata_requires_a_file_comment(name: str, source: str, *, crl
         ("-- dialect: postgres", "postgresql"),
         ("-- sql-dialect: postgresql", "postgresql"),
         ("-- DIALECT: SQLITE", "sqlite"),
+        ("-- d\u0130alect: sqlite", "sqlite"),
+        ("SELECT 1;\r-- dialect: mysql\r", "mysql"),
         ("-- dialect: mysql", "mysql"),
         ("-- dialect: mariadb", "mysql"),
     ],

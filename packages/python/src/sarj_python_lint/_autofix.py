@@ -25,7 +25,7 @@ from sarj_python_lint._autofix_exhaustiveness import ExhaustivenessFixes
 from sarj_python_lint._autofix_parameters import ParameterFixes
 from sarj_python_lint._autofix_repeated import RepeatedLiteralFixes
 from sarj_python_lint._autofix_security import fixes as security_fixes
-from sarj_python_lint._autofix_sql_projection import fixes as sql_projection_fixes
+from sarj_python_lint._autofix_sql_projection import alias_fixes as sql_alias_fixes, fixes as sql_projection_fixes
 from sarj_python_lint._autofix_tests import fixes as testing_fixes
 from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint._fixes import apply_fixes as apply_native_fixes
@@ -458,6 +458,10 @@ def _sql_projection_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdi
     return sql_projection_fixes(source.context, diagnostic)
 
 
+def _sql_alias_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
+    return sql_alias_fixes(source.context, diagnostic)
+
+
 def _alias_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
     if not diagnostic.fixes:
         return source.aliases.fixes(diagnostic)
@@ -760,6 +764,8 @@ def _primitive_set(node: ast.expr) -> bool:
 
 
 def _dispatch_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
+    if diagnostic.code == "SARJ080" and diagnostic.severity is not Severity.ERROR:
+        return []
     for root in source.context.nodes(ast.If):
         if not _at(root, diagnostic):
             continue
@@ -1347,6 +1353,7 @@ def _parameter_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
 
 _BUILDERS: Final[dict[str, Callable[[_Source, Diagnostic], list[TextEdit]]]] = {
     "SARJ021": _sql_projection_fix,
+    "SARJ543": _sql_alias_fix,
     "SARJ002": _literal_loop_fix,
     "SARJ006": _enum_fix,
     "SARJ011": _security_fix,
