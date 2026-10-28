@@ -17,7 +17,9 @@ if TYPE_CHECKING:
 
 
 _LICENSE_RE = re.compile(
-    r"copyright|license|licen[cs]ed|spdx|permission is hereby granted|all rights reserved",
+    r"copyright|license|licen[cs]ed|spdx|permission is hereby granted|all rights reserved|"
+    r"©|\bredistribution\s+and\s+use\s+in\s+source\s+and\s+binary\s+forms\b|"
+    r"\bwithout\s+(?:any\s+)?warrant(?:y|ies)\b|\bdisclaims?\s+all\s+warranties\b",
     re.IGNORECASE,
 )
 
@@ -52,7 +54,10 @@ _CAUSAL_RE = re.compile(
     r"\b(?:because|otherwise|so that|or else|would (?:break|fail|race|deadlock|leak|clobber|loop|crash|page|stall)|"
     r"breaks?\b|so we don'?t|to avoid\b|caused\b|causes\b|gets? clobbered|"
     r"keeps? (?:us|it|them) from|doesn'?t\b.{0,24}\b(?:page|fire|break|leak|loop)|"
-    r"eat into|would otherwise|trade-?offs?\b)\b",
+    r"eat into|would otherwise|trade-?offs?\b)\b|"
+    r"^[A-Za-z][\w'-]*(?:[ \t]+[A-Za-z][\w'-]*)*[ \t]+"
+    r"(?:signals?|indicates?|imply|implies|duplicates?)[ \t]+"
+    r"[A-Za-z][\w'-]*(?:[ \t]+[A-Za-z][\w'-]*)*[.!]?$",
     re.IGNORECASE,
 )
 
@@ -68,15 +73,23 @@ _NEGATION_RE = re.compile(
 _UPSTREAM_RE = re.compile(
     r"\b(?:upstream|workaround|quirk|backport|vendored|regression|fixed upstream|"
     r"require[sd]?\b|convention\b|rate.?limit|deprecat|opts? in(?:to)?\b|"
-    r"raises?\b.{0,60}\b(?:when|if|unless)\b)",
+    r"raises?\b.{0,60}\b(?:when|if|unless)\b)|"
+    r"^[A-Za-z][\w'-]*(?:[ \t]+[A-Za-z][\w'-]*)*[ \t]+from[ \t]+"
+    r"(?:older|legacy)[ \t]+(?:callers|clients)[ \t]+"
+    r"(?:contains?|includes?|uses?|sends?|omits?)[ \t]+"
+    r"[A-Za-z][\w'-]*(?:[ \t]+[A-Za-z][\w'-]*)*[.!]?$",
     re.IGNORECASE,
 )
 
 # S7 — concurrency, ordering, or invariant vocabulary.
 _INVARIANT_RE = re.compile(
     r"\b(?:invariant|idempotent|race\b|deadlock|re-?entran|atomic|thread-?safe|signal-?safe|"
+    r"(?:at[ -](?:most|least)|exactly)[ -]once|"
     r"lexicographic(?:al(?:ly)?)?|monotonic|must (?:run|be|happen|come|stay|hit|converge|configure)|"
-    r"before any\b|lost the (?:claim )?race)\b",
+    r"before any\b|lost the (?:claim )?race)\b|"
+    r"^[A-Za-z][\w'-]*(?:[ \t]+[A-Za-z][\w'-]*)*[ \t]+(?:is|are)[ \t]+"
+    r"(?:the[ \t]+)?(?:normal|expected)[ \t]+(?:[A-Za-z][\w'-]*[ \t]+)*state[.!]?$|"
+    r"^Expected[ \t]+[A-Za-z][\w'-]*(?:[ \t]+[A-Za-z][\w'-]*)*[.!]?$",
     re.IGNORECASE,
 )
 

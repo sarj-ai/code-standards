@@ -3,8 +3,11 @@ from __future__ import annotations
 import re
 from typing import NamedTuple
 
+from sarj_sql_lint.rule_base import sql_comments
+
 
 _WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*")
+_SECTION = re.compile(r"^\s*(?:migrate:(?:up|down)\b|\+goose\s+(?:up|down)\b|changeset\s+\S+)", re.IGNORECASE)
 
 
 class Token(NamedTuple):
@@ -14,6 +17,10 @@ class Token(NamedTuple):
 
 
 type TableKey = tuple[str, ...]
+
+
+def migration_section_lines(source: str) -> tuple[int, ...]:
+    return tuple(comment.line for comment in sql_comments(source) if not comment.block and _SECTION.match(comment.body))
 
 
 def tokenize(text: str) -> list[Token] | None:

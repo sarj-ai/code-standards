@@ -35,7 +35,7 @@ export const NO_CONTRADICTORY_TYPE_PREDICATE_DOCUMENTATION = {
   rationale: "TypeScript trusts an explicit type predicate without verifying its implementation. A contradictory check can admit the wrong primitive, overclaim a closed literal or empty domain, accept null as a non-null object, or remove valid alternatives from the false branch.",
   remediation: "Match the predicate to every value the check accepts and rejects. Check literal membership for a closed domain and exclude null when promising a non-null object. Use a boolean return for an intentional value filter; preserve required public and callback contracts.",
   category: "correctness",
-  defaultLevel: "warning",
+  defaultLevel: "error",
   autofix: "safe",
   limitations: [
     "Automatic fixes replace the unsound predicate with boolean only for an unused private function declaration without overloads, exports, eval, comments in the predicate, or declaration-file ownership. Runtime checks are preserved; observed callable contracts remain manual.",

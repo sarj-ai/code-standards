@@ -50,6 +50,8 @@ def test_documented_examples() -> None:
         "ADD FOREIGN KEY (parent_id) REFERENCES parent",
         "ADD PRIMARY KEY (id) DEFERRABLE INITIALLY DEFERRED",
         "ADD UNIQUE (email) DEFERRABLE INITIALLY IMMEDIATE",
+        "ADD UNIQUE NULLS NOT DISTINCT (email)",
+        "ADD CONSTRAINT child_unique UNIQUE NULLS DISTINCT (email)",
         "ADD CONSTRAINT positive CHECK (id > 0), ADD UNIQUE (email)",
     ],
 )
@@ -62,6 +64,40 @@ def test_original_columns_can_have_inline_constraints(action: str) -> None:
 
 def test_plain_unique_index_can_use_a_named_unique_constraint() -> None:
     assert len(_check(_CREATE + "CREATE UNIQUE INDEX child_email_key ON child (email);")) == 1
+
+
+@pytest.mark.parametrize(
+    "consumer",
+    [
+        "ALTER TABLE child ADD PRIMARY KEY USING INDEX child_key;",
+        "ALTER TABLE child ADD CONSTRAINT child_unique UNIQUE USING INDEX child_key;",
+        "ALTER TABLE other ADD PRIMARY KEY USING INDEX child_key;",
+        "DROP INDEX child_key;",
+        "DROP INDEX IF EXISTS child_key;",
+        "DROP INDEX CONCURRENTLY child_key;",
+        "DROP INDEX other_key, child_key;",
+        "ALTER INDEX child_key RENAME TO renamed_key;",
+        "-- migrate:down\nDROP INDEX child_key;",
+    ],
+)
+def test_standalone_index_consumers_preserve_lifecycle_and_attachment(consumer: str) -> None:
+    source = _CREATE + "CREATE UNIQUE INDEX child_key ON child(id);\n" + consumer
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("table", "consumer", "expected"),
+    [
+        ("app.child", "DROP INDEX app.child_key;", 0),
+        ("app.child", "DROP INDEX child_key;", 0),
+        ("app.child", "DROP INDEX other.child_key;", 1),
+        ("child", "DROP INDEX other_key;", 1),
+        ("child", 'DROP INDEX "Child_key";', 1),
+    ],
+)
+def test_index_consumers_obey_schema_and_quoted_name_identity(table: str, consumer: str, expected: int) -> None:
+    source = f"CREATE TABLE {table}(id int); CREATE UNIQUE INDEX child_key ON {table}(id); {consumer}"
+    assert len(_check(source)) == expected
 
 
 @pytest.mark.parametrize(
@@ -247,6 +283,17 @@ def test_self_reference_to_an_inline_primary_key_is_eligible() -> None:
     assert len(_check(source)) == 1
 
 
+def test_later_unrelated_unique_key_does_not_hide_available_referenced_key() -> None:
+    source = (
+        "CREATE TABLE parent(id int PRIMARY KEY, other int);\n"
+        + _CREATE
+        + "CREATE UNIQUE INDEX other_key ON parent(other);\n"
+        "ALTER TABLE child ADD FOREIGN KEY(parent_id) REFERENCES parent(id);"
+    )
+    findings = _check(source)
+    assert [finding.line for finding in findings] == [3, 4]
+
+
 def test_same_named_creation_in_down_section_cannot_change_up_advice() -> None:
     source = (
         "-- migrate:up\n" + _CREATE + "ALTER TABLE child ADD FOREIGN KEY (parent_id) REFERENCES parent(id);\n"
@@ -301,6 +348,8 @@ def test_comments_strings_and_dollar_data_are_not_statements() -> None:
     [
         "CREATE TABLE child(id BIGINT; ALTER TABLE child ADD PRIMARY KEY(id);",
         _CREATE + "ALTER TABLE child ADD PRIMARY KEY();",
+        _CREATE + "ALTER TABLE child ADD CONSTRAINT . PRIMARY KEY(id);",
+        _CREATE + "ALTER TABLE child ADD CONSTRAINT . UNIQUE(id);",
         _CREATE + "ALTER TABLE child ADD FOREIGN KEY(parent_id) REFERENCES;",
         _CREATE + "ALTER TABLE child ADD CHECK ();",
         _CREATE + "CREATE UNIQUE INDEX broken ON child();",

@@ -214,6 +214,13 @@ def test_pydoc_generated_help_remains_unchanged(monkeypatch: pytest.MonkeyPatch)
         "Licensed under the Apache license.",
         "Permission is hereby granted to use this software.",
         "All rights reserved.",
+        'THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.',
+        'THE SOFTWARE IS PROVIDED "AS IS", WITHOUT\nWARRANTY OF ANY KIND.',
+        "Distributed WITHOUT ANY WARRANTY; without even the implied warranty of merchantability.",
+        "The authors disclaim all warranties regarding this software.",
+        "Redistribution and use in source and binary forms, with or without modification, are permitted.",
+        "© 2026 Example Authors.",
+        "© Example Corp.",
     ],
 )
 def test_module_docstring_policy_keeps_legal_notices_for_manual_comment_preservation(notice: str) -> None:
