@@ -167,7 +167,7 @@ function newScope(): LexicalScope {
 
 export function createSourceCoupledRule(
   name: string,
-  documentation: RuleDocumentation,
+  documentation: RuleDocumentation<Options>,
   sourceSuffixRe: RegExp,
 ) {
   return createRule<Options, MessageIds>({
