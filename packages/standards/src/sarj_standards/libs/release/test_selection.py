@@ -109,10 +109,13 @@ def _imports(source: Path, module: str = "") -> set[str]:
     # Deferred dispatcher imports belong to the release cohort, not unrelated CLI commands.
     nodes = _dispatcher_import_nodes(tree) if module == "sarj_standards.cli.main" else ast.walk(tree)
     for node in nodes:
-        if isinstance(node, ast.Import):
-            imports.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            imports.update(_from_import_names(node, package))
+        match node:
+            case ast.Import():
+                imports.update(alias.name for alias in node.names)
+            case ast.ImportFrom():
+                imports.update(_from_import_names(node, package))
+            case _:
+                pass
     return imports
 
 

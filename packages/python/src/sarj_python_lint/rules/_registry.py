@@ -250,6 +250,9 @@ from sarj_python_lint.rules.prefer_precise_object_contract import PreferPreciseO
 from sarj_python_lint.rules.prefer_psycopg_executemany import PreferPsycopgExecutemany
 from sarj_python_lint.rules.prefer_pydantic_model_assertion import PreferPydanticModelAssertion
 from sarj_python_lint.rules.prefer_pytest_dependency_fixtures import PreferPytestDependencyFixtures
+from sarj_python_lint.rules.prefer_runtime_validation import PreferRuntimeValidation
+from sarj_python_lint.rules.prefer_typed_cli import PreferTypedCli
+from sarj_python_lint.rules.prefer_typed_mapping_get import PreferTypedMappingGet
 from sarj_python_lint.rules.prefer_typed_settings_field import PreferTypedSettingsField
 from sarj_python_lint.rules.pytest_fixture_returns_closed_resource import PytestFixtureReturnsClosedResource
 from sarj_python_lint.rules.redundant_test_constructor_forwarder import RedundantTestConstructorForwarder
@@ -266,6 +269,9 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         AsyncExecutorShutdown.id: AsyncExecutorShutdown,
         NanHiddenByBuiltinMin.id: NanHiddenByBuiltinMin,
         FailedProbeZeroThreshold.id: FailedProbeZeroThreshold,
+        PreferTypedMappingGet.id: PreferTypedMappingGet,
+        PreferRuntimeValidation.id: PreferRuntimeValidation,
+        PreferTypedCli.id: PreferTypedCli,
         PreferGroupedSettings.id: PreferGroupedSettings,
         NoRedundantLocalAlias.id: NoRedundantLocalAlias,
         PytestFixtureReturnsClosedResource.id: PytestFixtureReturnsClosedResource,

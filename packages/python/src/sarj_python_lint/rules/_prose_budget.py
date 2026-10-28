@@ -228,10 +228,13 @@ def _decorator_terminal_names(node: ast.FunctionDef | ast.AsyncFunctionDef | ast
     names: set[str] = set()
     for decorator in node.decorator_list:
         target = decorator.func if isinstance(decorator, ast.Call) else decorator
-        if isinstance(target, ast.Name):
-            names.add(target.id.casefold())
-        elif isinstance(target, ast.Attribute):
-            names.add(target.attr.casefold())
+        match target:
+            case ast.Name():
+                names.add(target.id.casefold())
+            case ast.Attribute():
+                names.add(target.attr.casefold())
+            case _:
+                pass
     return frozenset(names)
 
 

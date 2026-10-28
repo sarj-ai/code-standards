@@ -274,20 +274,23 @@ def _value_key(
     scope: WiringScope,
     seen: frozenset[str] = frozenset(),
 ) -> str | None:
-    if isinstance(value, ast.Name):
-        if value.id in seen or value.id in scope.blocked:
-            return None
-        if value.id in scope.aliases:
-            return _value_key(
-                context,
-                project,
-                scope.aliases[value.id],
-                scope,
-                seen=seen | {value.id},
-            )
-        return f"fixture:{value.id}" if value.id in scope.parameters else None
-    if isinstance(value, ast.Constant):
-        return ast.dump(value)
+    match value:
+        case ast.Name():
+            if value.id in seen or value.id in scope.blocked:
+                return None
+            if value.id in scope.aliases:
+                return _value_key(
+                    context,
+                    project,
+                    scope.aliases[value.id],
+                    scope,
+                    seen=seen | {value.id},
+                )
+            return f"fixture:{value.id}" if value.id in scope.parameters else None
+        case ast.Constant():
+            return ast.dump(value)
+        case _:
+            pass
     if not isinstance(value, ast.Call):
         return None
     callee = unalias(value.func, scope.aliases)

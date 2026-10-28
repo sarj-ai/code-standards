@@ -284,14 +284,15 @@ class RestatedTestDocstring(Rule):
 
     def _walk(self, node: ast.AST, owner: ast.ClassDef | None, context: _ScanContext) -> None:
         for child in children(node):
-            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
-                self._check_collected_function(child, owner, context)
-            elif isinstance(child, ast.ClassDef):
-                if owner is None and _is_collectible_test_class(child, context.imports, context.module_opt_outs):
-                    self._check_class(child, context)
-                    self._walk(child, child, context)
-            else:
-                self._walk(child, owner, context)
+            match child:
+                case ast.FunctionDef() | ast.AsyncFunctionDef():
+                    self._check_collected_function(child, owner, context)
+                case ast.ClassDef():
+                    if owner is None and _is_collectible_test_class(child, context.imports, context.module_opt_outs):
+                        self._check_class(child, context)
+                        self._walk(child, child, context)
+                case _:
+                    self._walk(child, owner, context)
 
     def _check_collected_function(
         self, child: ast.FunctionDef | ast.AsyncFunctionDef, owner: ast.ClassDef | None, context: _ScanContext
@@ -556,8 +557,11 @@ def _bind_docstring_owner(
 
 
 def _target_names(node: ast.expr) -> set[str]:
-    if isinstance(node, ast.Name):
-        return {node.id}
-    if isinstance(node, ast.Tuple | ast.List):
-        return {name for element in node.elts for name in _target_names(element)}
+    match node:
+        case ast.Name():
+            return {node.id}
+        case ast.Tuple() | ast.List():
+            return {name for element in node.elts for name in _target_names(element)}
+        case _:
+            pass
     return set()

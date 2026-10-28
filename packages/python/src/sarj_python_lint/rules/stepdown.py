@@ -451,11 +451,14 @@ def _scope_declarations(statement: ast.stmt) -> Iterator[_Def]:
         yield statement
         return
     for child in _child_nodes(statement):
-        if isinstance(child, ast.stmt):
-            yield from _scope_declarations(child)
-        elif isinstance(child, (ast.ExceptHandler, ast.match_case)):
-            for nested in child.body:
-                yield from _scope_declarations(nested)
+        match child:
+            case ast.stmt():
+                yield from _scope_declarations(child)
+            case ast.ExceptHandler() | ast.match_case():
+                for nested in child.body:
+                    yield from _scope_declarations(nested)
+            case _:
+                pass
 
 
 def _builtin_imports(statement: ast.stmt) -> Iterator[tuple[str, str]]:

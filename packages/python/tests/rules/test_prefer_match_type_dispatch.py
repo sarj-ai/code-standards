@@ -86,36 +86,43 @@ _MIXED_CASES = (
         "non-terminating-prefix",
         Language.PYTHON,
         "def check(value):\n    if isinstance(value, str):\n        consume(value)\n    if isinstance(value, int):\n        consume(value)\n    elif isinstance(value, list):\n        consume(value)\n",
+        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "conditionally-terminating-prefix",
         Language.PYTHON,
         "def check(value, enabled):\n    if isinstance(value, str):\n        if enabled:\n            return 'text'\n    if isinstance(value, int):\n        consume(value)\n    elif isinstance(value, list):\n        consume(value)\n",
+        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "suppressing-context-manager",
         Language.PYTHON,
         "from contextlib import suppress\ndef check(value):\n    if isinstance(value, str):\n        with suppress(ValueError):\n            raise ValueError\n    if isinstance(value, int):\n        consume(value)\n    elif isinstance(value, list):\n        consume(value)\n",
+        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "prefix-else",
         Language.PYTHON,
         "def check(value):\n    if isinstance(value, str):\n        return 'text'\n    else:\n        log(value)\n    if isinstance(value, int):\n        consume(value)\n    elif isinstance(value, list):\n        consume(value)\n",
+        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "different-subject",
         Language.PYTHON,
         "def check(first, second):\n    if isinstance(first, str):\n        return 'text'\n    if isinstance(second, int):\n        consume(second)\n    elif isinstance(second, list):\n        consume(second)\n",
+        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "intervening-effect",
         Language.PYTHON,
         "def check(value):\n    if isinstance(value, str):\n        return 'text'\n    log(value)\n    if isinstance(value, int):\n        consume(value)\n    elif isinstance(value, list):\n        consume(value)\n",
+        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "repeated-type",
         Language.PYTHON,
         "def check(value):\n    if isinstance(value, str):\n        return 'text'\n    if isinstance(value, str):\n        consume(value)\n    elif isinstance(value, list):\n        consume(value)\n",
+        ExpectedOutcome.MATCH,
     ),
     EvaluationCase(
         "unknown-import",
@@ -161,8 +168,8 @@ _AST_CLASS_MUTATION_CASES = tuple(
         expected,
     )
     for case_id, mutation, expected in (
-        ("assigned-ast-class", "nodes.Name = (str, int)\n", ExpectedOutcome.NO_MATCH),
-        ("deleted-ast-class", "del nodes.Name\n", ExpectedOutcome.NO_MATCH),
+        ("assigned-ast-class", "nodes.Name = (str, int)\n", ExpectedOutcome.MATCH),
+        ("deleted-ast-class", "del nodes.Name\n", ExpectedOutcome.MATCH),
         ("unrelated-ast-attribute", "nodes.custom = True\n", ExpectedOutcome.MATCH),
         ("unchanged-ast-classes", "", ExpectedOutcome.MATCH),
     )
@@ -218,10 +225,10 @@ def test_mixed_dispatch_excludes_generated_source() -> None:
     assert _check(_MIXED_CASES[1].source, "generated/parser.py") == []
 
 
-def test_ordinary_two_arm_tail_remains_allowed() -> None:
+def test_ordinary_two_arm_tail_requires_match() -> None:
     source = "def check(value):\n    if isinstance(value, str):\n        consume(value)\n    elif isinstance(value, int):\n        consume(value)\n"
 
-    assert _check(source) == []
+    assert len(_check(source)) == 1
 
 
 @pytest.mark.parametrize(
@@ -243,7 +250,9 @@ def test_context_manager_branch_can_fall_through(body: str) -> None:
         "    if isinstance(value, str):\n        return 'str'\n"
         "    return 'fallback'\n"
     )
-    assert PreferMatchTypeDispatch().check(Path("app/classify.py"), source) == []
+    (finding,) = PreferMatchTypeDispatch().check(Path("app/classify.py"), source)
+    assert finding.line == source.splitlines().index("    if isinstance(value, int):") + 1
+    assert "2-branch" in finding.message
 
 
 @pytest.mark.parametrize("terminal", ["raise ValueError", "return await parse_value()"])
@@ -255,7 +264,9 @@ def test_async_context_manager_branch_can_fall_through(terminal: str) -> None:
         "    if isinstance(value, str):\n        return 'str'\n"
         "    return 'fallback'\n"
     )
-    assert PreferMatchTypeDispatch().check(Path("app/classify.py"), source) == []
+    (finding,) = PreferMatchTypeDispatch().check(Path("app/classify.py"), source)
+    assert finding.line == source.splitlines().index("    if isinstance(value, int):") + 1
+    assert "2-branch" in finding.message
 
 
 @pytest.mark.parametrize("with_statement", ["with managed():", "async with managed():"])
@@ -300,7 +311,7 @@ def parse(value: object):
     assert "3-branch isinstance ladder" in diagnostics[0].message
 
 
-def test_allows_two_branch_ladder() -> None:
+def test_two_branch_ladder_requires_match() -> None:
     source = """
 def parse(value: object):
     if isinstance(value, str):
@@ -310,7 +321,7 @@ def parse(value: object):
     return None
 """
 
-    assert _check(source) == []
+    assert len(_check(source)) == 1
 
 
 @pytest.mark.parametrize(
@@ -522,9 +533,10 @@ def dotted_tail(node: ast.expr) -> str | None:
         "if isinstance(node, ast.Name) and ready:\n        return node.id\n    if isinstance(node, ast.Attribute):\n        return node.attr\n    return None",
     ],
 )
-def test_allows_near_miss_two_arm_ast_projections(body: str) -> None:
+def test_two_arm_dispatch_requires_only_a_shared_subject(body: str) -> None:
     source = f"import ast\n\ndef dotted_tail(node, other, ready):\n    {body}\n"
-    assert _check(source) == []
+    expected = 0 if "isinstance(other," in body or "and ready" in body else 1
+    assert len(_check(source)) == expected
 
 
 def test_allows_nested_imported_class_guard() -> None:
@@ -1272,7 +1284,7 @@ def parse(value: object):
     assert _check(source) == []
 
 
-def test_allows_sequential_passthrough_guards() -> None:
+def test_sequential_passthrough_dispatch_requires_match() -> None:
     source = """
 def parse(value: object):
     if value is None:
@@ -1284,7 +1296,7 @@ def parse(value: object):
     return coerce(value)
 """
 
-    assert _check(source) == []
+    assert len(_check(source)) == 1
 
 
 def test_allows_repeated_captures_in_existing_match() -> None:
@@ -1378,3 +1390,34 @@ def parse(value: object):
     return None
 """
     assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    ("condition", "count"),
+    [
+        ("isinstance(value, str) or isinstance(value, bytes)", 1),
+        ("isinstance(value, (str, bytes)) or isinstance(value, int)", 1),
+        ("isinstance(value, str) or isinstance(value, int) or isinstance(value, list)", 1),
+        ("isinstance(value, str | bytes)", 0),
+        ("isinstance(value, (str, bytes))", 0),
+        ("isinstance(value, str) or isinstance(other, bytes)", 0),
+        ("isinstance(value, str) or ready", 0),
+        ("isinstance(value, str) or (isinstance(value, bytes) and ready)", 0),
+        ("isinstance(value, str) and isinstance(value, bytes)", 0),
+        ("not isinstance(value, str) or not isinstance(value, bytes)", 0),
+        ("isinstance(factory(), str) or isinstance(factory(), bytes)", 0),
+        ("isinstance(value, str) or isinstance(value, str)", 0),
+    ],
+)
+def test_repeated_or_type_checks_require_class_patterns(condition: str, count: int) -> None:
+    source = f"def classify(value, other, ready):\n    if {condition}:\n        return True\n    return False\n"
+    findings = _check(source)
+    assert len(findings) == count
+    assert all(finding.severity.value == "error" and not finding.fixes for finding in findings)
+
+
+def test_grouped_or_tail_is_owned_by_the_complete_dispatch() -> None:
+    source = "def label(value):\n    if isinstance(value, int):\n        return 'number'\n    elif isinstance(value, str) or isinstance(value, bytes):\n        return 'text'\n    return 'other'\n"
+    findings = _check(source)
+    assert len(findings) == 1
+    assert findings[0].line == 2

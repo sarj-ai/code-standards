@@ -323,10 +323,13 @@ class _Facts:
         return targets[0] in seen or self._safe_type_binding(targets[0], seen)
 
     def batch(self, expression: ast.expr, seen: frozenset[ast.AST] = frozenset()) -> _Batch | None:
-        if isinstance(expression, (ast.List, ast.Tuple)):
-            return _Batch()
-        if isinstance(expression, ast.Name):
-            return self._named_batch(expression, seen)
+        match expression:
+            case ast.List() | ast.Tuple():
+                return _Batch()
+            case ast.Name():
+                return self._named_batch(expression, seen)
+            case _:
+                pass
         value = expression.value if isinstance(expression, ast.Await) else expression
         if (
             not isinstance(value, ast.Call)
@@ -468,10 +471,13 @@ def _in_annotation(node: ast.AST, facts: _Facts) -> bool:
     child = node
     parent = context.parents.get(child)
     while parent is not None and not isinstance(parent, _SCOPES):
-        if isinstance(parent, (ast.arg, ast.AnnAssign)):
-            return parent.annotation is child
-        if isinstance(parent, ast.Call):
-            return False
+        match parent:
+            case ast.arg() | ast.AnnAssign():
+                return parent.annotation is child
+            case ast.Call():
+                return False
+            case _:
+                pass
         child, parent = parent, context.parents.get(parent)
     if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
         return parent.returns is child

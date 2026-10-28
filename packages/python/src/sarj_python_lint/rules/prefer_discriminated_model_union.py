@@ -293,10 +293,13 @@ def _stable_model_read(read: ast.Name, context: PythonFileContext) -> bool:
     while isinstance(parent, (ast.Subscript, ast.BinOp, ast.Tuple)):
         node = parent
         parent = context.parents.get(parent)
-    if isinstance(parent, (ast.arg, ast.AnnAssign)):
-        return parent.annotation is node
-    if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        return parent.returns is node
+    match parent:
+        case ast.arg() | ast.AnnAssign():
+            return parent.annotation is node
+        case ast.FunctionDef() | ast.AsyncFunctionDef():
+            return parent.returns is node
+        case _:
+            pass
     return isinstance(parent, ast.TypeAlias) and parent.value is node
 
 

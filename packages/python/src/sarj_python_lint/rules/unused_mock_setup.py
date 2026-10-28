@@ -628,10 +628,13 @@ def _constructor_observes_pending(stmt: ast.stmt, pending: dict[str, ast.stmt], 
 
 
 def _is_inert(stmt: ast.stmt, provenance: ResourceProvenance) -> bool:
-    if isinstance(stmt, (ast.Pass, ast.Import, ast.ImportFrom)):
-        return True
-    if isinstance(stmt, ast.Expr):
-        return isinstance(stmt.value, ast.Constant)
+    match stmt:
+        case ast.Pass() | ast.Import() | ast.ImportFrom():
+            return True
+        case ast.Expr():
+            return isinstance(stmt.value, ast.Constant)
+        case _:
+            pass
     if not isinstance(stmt, ast.Assign):
         return False
     if not all(isinstance(target, ast.Name) for target in stmt.targets):

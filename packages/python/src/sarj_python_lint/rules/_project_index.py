@@ -1257,10 +1257,13 @@ def _module_constructor_declarations(statement: ast.stmt) -> frozenset[str]:
 
 
 def _direct_functions(owner: ast.stmt) -> tuple[ast.FunctionDef | ast.AsyncFunctionDef, ...]:
-    if isinstance(owner, ast.FunctionDef | ast.AsyncFunctionDef):
-        return (owner,)
-    if isinstance(owner, ast.ClassDef):
-        return tuple(item for item in owner.body if isinstance(item, ast.FunctionDef | ast.AsyncFunctionDef))
+    match owner:
+        case ast.FunctionDef() | ast.AsyncFunctionDef():
+            return (owner,)
+        case ast.ClassDef():
+            return tuple(item for item in owner.body if isinstance(item, ast.FunctionDef | ast.AsyncFunctionDef))
+        case _:
+            pass
     return ()
 
 

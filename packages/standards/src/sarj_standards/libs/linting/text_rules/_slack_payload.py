@@ -254,10 +254,13 @@ def references_github_environment(program: str) -> bool:
         if node.get("Type") == "ParamExp" and _mapping(node.get("Param")).get("Value") == "GITHUB_ENV":
             return True
         for value in node.values():
-            if isinstance(value, dict):
-                pending.append(_mapping(value))
-            elif isinstance(value, list):
-                pending.extend(_nodes(value))
+            match value:
+                case dict():
+                    pending.append(_mapping(value))
+                case list():
+                    pending.extend(_nodes(value))
+                case _:
+                    pass
     return False
 
 

@@ -441,17 +441,20 @@ def _boundary_roles(
     imports: ImportIndex,
     facts: _TypeFacts,
 ) -> list[_IdRole]:
-    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        arguments = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
-        if node.args.vararg is not None:
-            arguments.append(node.args.vararg)
-        return [
-            role
-            for argument in arguments
-            if (role := _role(argument.arg, argument.annotation, imports, facts, allow_bare_id=True)) is not None
-        ]
-    if isinstance(node, ast.ClassDef):
-        return _class_id_roles(node, imports, facts)
+    match node:
+        case ast.FunctionDef() | ast.AsyncFunctionDef():
+            arguments = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
+            if node.args.vararg is not None:
+                arguments.append(node.args.vararg)
+            return [
+                role
+                for argument in arguments
+                if (role := _role(argument.arg, argument.annotation, imports, facts, allow_bare_id=True)) is not None
+            ]
+        case ast.ClassDef():
+            return _class_id_roles(node, imports, facts)
+        case _:
+            pass
     return []
 
 

@@ -339,10 +339,13 @@ def _is_builtin_bool_call(node: ast.expr, shadowed: frozenset[str]) -> bool:
 def _is_exact_set(node: ast.expr, exact: set[str], shadowed: frozenset[str]) -> bool:
     if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
         return f"{node.value.id}.{node.attr}" in exact
-    if isinstance(node, ast.Set | ast.SetComp):
-        return True
-    if isinstance(node, ast.Name):
-        return node.id in exact
+    match node:
+        case ast.Set() | ast.SetComp():
+            return True
+        case ast.Name():
+            return node.id in exact
+        case _:
+            pass
     return (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)

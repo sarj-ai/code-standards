@@ -111,14 +111,17 @@ def project_schema(source: Path) -> JsonSchema:
 
 
 def _references(value: JsonValue) -> list[str]:
-    if isinstance(value, dict):
-        reference = value.get("$ref")
-        result = [reference.removeprefix("#/definitions/")] if isinstance(reference, str) else []
-        for child in value.values():
-            result.extend(_references(child))
-        return result
-    if isinstance(value, list):
-        return [name for child in value for name in _references(child)]
+    match value:
+        case dict():
+            reference = value.get("$ref")
+            result = [reference.removeprefix("#/definitions/")] if isinstance(reference, str) else []
+            for child in value.values():
+                result.extend(_references(child))
+            return result
+        case list():
+            return [name for child in value for name in _references(child)]
+        case _:
+            pass
     return []
 
 

@@ -993,10 +993,13 @@ def _jwt_required_sequence(required: ast.expr) -> ast.expr | None:
     ):
         return None
     elements = [*required.elts, ast.Constant(value="exp")]
-    if isinstance(required, ast.List):
-        return ast.List(elts=elements, ctx=ast.Load())
-    if isinstance(required, ast.Tuple):
-        return ast.Tuple(elts=elements, ctx=ast.Load())
+    match required:
+        case ast.List():
+            return ast.List(elts=elements, ctx=ast.Load())
+        case ast.Tuple():
+            return ast.Tuple(elts=elements, ctx=ast.Load())
+        case _:
+            pass
     return ast.Set(elts=elements)
 
 

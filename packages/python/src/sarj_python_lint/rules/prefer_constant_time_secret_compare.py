@@ -383,11 +383,14 @@ def _external_lookup_is_password(node: ast.expr) -> bool:
 
 
 def _is_auth_mapping(node: ast.expr) -> bool:
-    if isinstance(node, ast.Name):
-        return node.id.lower() in _AUTH_MAPPING_WORDS
-    if isinstance(node, ast.Attribute):
-        root = _root_name(node)
-        return node.attr.lower() in _AUTH_MAPPING_WORDS and root is not None and root.lower() in {"req", "request"}
+    match node:
+        case ast.Name():
+            return node.id.lower() in _AUTH_MAPPING_WORDS
+        case ast.Attribute():
+            root = _root_name(node)
+            return node.attr.lower() in _AUTH_MAPPING_WORDS and root is not None and root.lower() in {"req", "request"}
+        case _:
+            pass
     return False
 
 
@@ -453,12 +456,15 @@ def _environment_names(module: ast.Module) -> frozenset[str]:
     names: set[str] = set()
     rebound: set[str] = set()
     for statement in module.body:
-        if isinstance(statement, ast.Import):
-            names.update(alias.asname or alias.name for alias in statement.names if alias.name == "os")
-        elif isinstance(statement, (ast.Assign, ast.AnnAssign)):
-            target, _ = _assignment_parts(statement)
-            if target is not None:
-                rebound.add(target)
+        match statement:
+            case ast.Import():
+                names.update(alias.asname or alias.name for alias in statement.names if alias.name == "os")
+            case ast.Assign() | ast.AnnAssign():
+                target, _ = _assignment_parts(statement)
+                if target is not None:
+                    rebound.add(target)
+            case _:
+                pass
     return frozenset(names - rebound)
 
 

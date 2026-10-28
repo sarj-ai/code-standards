@@ -262,10 +262,13 @@ class _ConcatVisitor(ast.NodeVisitor):
         return node.targets[0]
 
     def _is_in_loop_concat(self, node: ast.AST) -> TypeGuard[ast.AugAssign | ast.Assign]:
-        if isinstance(node, ast.AugAssign):
-            return isinstance(node.op, ast.Add) and self._is_string_growth(node.target, node.value)
-        if isinstance(node, ast.Assign):
-            return any(self._is_self_add_growth(target, node.value) for target in node.targets)
+        match node:
+            case ast.AugAssign():
+                return isinstance(node.op, ast.Add) and self._is_string_growth(node.target, node.value)
+            case ast.Assign():
+                return any(self._is_self_add_growth(target, node.value) for target in node.targets)
+            case _:
+                pass
         return False
 
     def _is_self_add_growth(self, target: ast.expr, value: ast.expr) -> bool:
@@ -489,10 +492,17 @@ def _other_add_operand(target: ast.expr, binop: ast.BinOp) -> ast.expr | None:
 
 
 def _annotation_is_str(annotation: ast.expr | None) -> bool:
-    if isinstance(annotation, ast.Name):
-        return annotation.id == "str"
-    if isinstance(annotation, ast.Attribute):
-        return isinstance(annotation.value, ast.Name) and annotation.value.id == "builtins" and annotation.attr == "str"
+    match annotation:
+        case ast.Name():
+            return annotation.id == "str"
+        case ast.Attribute():
+            return (
+                isinstance(annotation.value, ast.Name)
+                and annotation.value.id == "builtins"
+                and annotation.attr == "str"
+            )
+        case _:
+            pass
     if not isinstance(annotation, ast.Subscript):
         return False
     wrapper = annotation.value

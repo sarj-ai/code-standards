@@ -252,11 +252,14 @@ def _module_binding_counts(tree: ast.Module) -> Counter[str]:
     stack: list[ast.AST] = list(reversed(tree.body))
     while stack:
         node = stack.pop()
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            counts[node.name] += 1
-            continue
-        if isinstance(node, ast.Lambda):
-            continue
+        match node:
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                counts[node.name] += 1
+                continue
+            case ast.Lambda():
+                continue
+            case _:
+                pass
         if isinstance(node, ast.Import | ast.ImportFrom):
             counts.update(alias.asname or alias.name.partition(".")[0] for alias in node.names)
         elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store | ast.Del):
