@@ -11,6 +11,8 @@ from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
     from sarj_python_lint._file_context import PythonFileContext
 
 
@@ -757,7 +759,7 @@ def _metadata_tuple_index(node: ast.expr) -> int | None:
     return None
 
 
-def _metadata_alias_graph(tree: ast.Module, bindings: dict[str, list[ast.AST]]) -> dict[str, set[str]]:
+def _metadata_alias_graph(tree: ast.Module, bindings: Mapping[str, Sequence[ast.AST]]) -> dict[str, set[str]]:
     graph: dict[str, set[str]] = {}
     for node in tree.body:
         binding = _value_binding(node)

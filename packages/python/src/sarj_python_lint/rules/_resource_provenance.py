@@ -8,27 +8,16 @@ from typing import TYPE_CHECKING, final
 from weakref import ReferenceType, ref
 
 from sarj_python_lint.rules._ast_index import has_own_yield
-from sarj_python_lint.rules._runtime_bindings import RuntimeBindings
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._runtime_bindings import RuntimeBindings
 
 
-_SCOPES = (
-    ast.Module,
-    ast.FunctionDef,
-    ast.AsyncFunctionDef,
-    ast.ClassDef,
-    ast.Lambda,
-    ast.ListComp,
-    ast.SetComp,
-    ast.DictComp,
-    ast.GeneratorExp,
-)
 _RESOURCE_OWNERS = MappingProxyType(
     {
         "builtins": frozenset({"open"}),
@@ -84,8 +73,9 @@ class ResourceProvenance:
         )
         self.parents = context.parents
         self.require_static_namespace = require_static_namespace
-        self.bindings: dict[ast.AST | None, dict[str, list[ast.AST]]] = defaultdict(lambda: defaultdict(list))
-        self.reads: dict[str, list[ast.Name]] = defaultdict(list)
+        self.inventory = context.binding_inventory
+        self.bindings = self.inventory.bindings
+        self.reads = self.inventory.reads
         self._reads_by_binding: dict[str, dict[ast.AST, list[ast.Name]]] = {}
         self._runtime_reads_by_binding: dict[str, dict[ast.AST, list[ast.Name]]] = {}
         self._import_read_safety: dict[str, bool] = {}
@@ -93,22 +83,10 @@ class ResourceProvenance:
         self.async_contract_cache: dict[ast.AsyncFunctionDef, bool] = {}
         self.import_contract_cache: dict[str, bool] = {}
         self.runtime_import_cache: dict[ast.alias, bool] = {}
-        self.wildcard = False
-        self.mutated: set[str] = set()
-        self.external_bindings: set[str] = set()
-        for node in context.nodes(ast.AST):
-            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
-                self.reads[node.id].append(node)
-
-            for name in _bound_names(node):
-                self.bindings[self._binding_scope(node)][name].append(node)
-                self.wildcard |= name == "*"
-            if isinstance(node, ast.Global | ast.Nonlocal):
-                self.external_bindings.update(node.names)
-            if isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store | ast.Del):
-                root = _root_name(node)
-                if root is not None:
-                    self.mutated.add(root)
+        self.wildcard = self.inventory.wildcard
+        # Some analyses refine mutation ownership for their own policy.
+        self.mutated = set(self.inventory.mutated)
+        self.external_bindings = self.inventory.external_bindings
 
     @property
     def context(self) -> PythonFileContext:
@@ -123,31 +101,7 @@ class ResourceProvenance:
         return builtin_namespace_untouched(self.context)
 
     def scope(self, node: ast.AST) -> ast.AST | None:
-        parent = self.parents.get(node)
-        while parent is not None:
-            if isinstance(parent, ast.arguments) and (node in parent.defaults or node in parent.kw_defaults):
-                parent = self.parents.get(parent)
-            elif isinstance(parent, _SCOPES) and not (
-                (
-                    isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
-                    and node in parent.decorator_list
-                )
-                or (isinstance(parent, ast.ClassDef) and (node in parent.bases or node in parent.keywords))
-            ):
-                return parent
-            if parent is None:
-                return None
-            node = parent
-            parent = self.parents.get(parent)
-        return None
-
-    def _binding_scope(self, node: ast.AST) -> ast.AST | None:
-        scope = self.scope(node)
-        parent = self.parents.get(node)
-        if isinstance(parent, ast.NamedExpr) and parent.target is node:
-            while isinstance(scope, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
-                scope = self.scope(scope)
-        return scope
+        return self.inventory.scope(node)
 
     def binding(self, name: str, at: ast.AST) -> ast.AST | None:
         scope = self.scope(at)
@@ -160,13 +114,13 @@ class ResourceProvenance:
 
     @cached_property
     def runtime_bindings(self) -> RuntimeBindings:
-        return RuntimeBindings(self.context, self.bindings)
+        return self.context.runtime_bindings
 
     def runtime_binding(self, name: str, at: ast.AST) -> ast.AST | None:
         nodes = self.runtime_bindings.lookup(self.scope(at), name)
         if not nodes:
             return None
-        return nodes[0] if len(nodes) == 1 or self._same_import_bindings(list(nodes)) else None
+        return nodes[0] if len(nodes) == 1 or self._same_import_bindings(nodes) else None
 
     def runtime_import_name(self, node: ast.expr) -> str | None:
         root = _root_name(node)
@@ -265,7 +219,7 @@ class ResourceProvenance:
             self.context.path, module, level, facts=self.context.session.first_party
         )
 
-    def _same_import_bindings(self, nodes: list[ast.AST]) -> bool:
+    def _same_import_bindings(self, nodes: Sequence[ast.AST]) -> bool:
         targets: set[tuple[str, str | None, int, str]] = set()
         for node in nodes:
             if not isinstance(node, ast.alias):
@@ -575,25 +529,3 @@ def import_name_for_binding(expression: ast.expr, binding: ast.alias, parent: as
         case _:
             return None
     return ".".join((prefix, *reversed(attributes)))
-
-
-def _bound_names(node: ast.AST) -> tuple[str, ...]:
-    match node:
-        case ast.Name(id=name, ctx=ast.Store() | ast.Del()) | ast.arg(arg=name):
-            return (name,)
-        case ast.alias():
-            return (node.asname or node.name.partition(".")[0],)
-        case (
-            ast.FunctionDef(name=name)
-            | ast.AsyncFunctionDef(name=name)
-            | ast.ClassDef(name=name)
-            | ast.ExceptHandler(name=str() as name)
-            | ast.MatchAs(name=str() as name)
-            | ast.MatchStar(name=str() as name)
-            | ast.MatchMapping(rest=str() as name)
-        ):
-            return (name,)
-        case ast.Global(names=names) | ast.Nonlocal(names=names):
-            return tuple(names)
-        case _:
-            return ()

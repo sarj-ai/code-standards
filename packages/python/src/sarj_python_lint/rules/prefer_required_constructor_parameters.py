@@ -21,6 +21,8 @@ from sarj_python_lint.rules._paths import is_test_path
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
@@ -138,7 +140,7 @@ def _binding(provenance: ResourceProvenance, name: str, at: ast.AST) -> ast.AST 
     scope = provenance.scope(at)
     deferred = False
     while scope is not None:
-        bindings = provenance.bindings.get(scope, {}).get(name, [])
+        bindings = provenance.bindings.get(scope, {}).get(name, ())
         directives = [binding for binding in bindings if isinstance(binding, ast.Global | ast.Nonlocal)]
         if directives and not isinstance(scope, ast.Module):
             return _declared_binding(provenance, name, at, scope, bindings)
@@ -164,7 +166,7 @@ def _declared_binding(
     name: str,
     at: ast.AST,
     scope: ast.AST,
-    bindings: list[ast.AST],
+    bindings: Sequence[ast.AST],
 ) -> ast.AST | None:
     # Declarations redirect lookup without replacing values; subsequent writes retain conservative warnings.
     bindings = _evaluated_bindings(provenance.context, bindings, at)
@@ -177,7 +179,7 @@ def _declared_binding(
     )
     if destination is None or _directed_write(provenance, destination, name, at):
         return None
-    bindings = _value_bindings(provenance.bindings.get(destination, {}).get(name, []))
+    bindings = _value_bindings(provenance.bindings.get(destination, {}).get(name, ()))
     bindings = _visible_bindings(bindings, destination, at, deferred=_deferred(provenance.context, at))
     return bindings[0] if len(bindings) == 1 else None
 
@@ -186,7 +188,7 @@ def _nonlocal_scope(provenance: ResourceProvenance, scope: ast.AST, name: str) -
     outer = _enclosing_scope(provenance, scope)
     while outer is not None:
         if isinstance(outer, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
-            bindings = provenance.bindings.get(outer, {}).get(name, [])
+            bindings = provenance.bindings.get(outer, {}).get(name, ())
             if bindings and not any(isinstance(binding, ast.Global | ast.Nonlocal) for binding in bindings):
                 return outer
         outer = _enclosing_scope(provenance, outer)
@@ -197,7 +199,7 @@ def _directed_write(provenance: ResourceProvenance, destination: ast.AST, name: 
     for scope, names in provenance.bindings.items():
         if scope is None or isinstance(scope, ast.Module):
             continue
-        bindings = names.get(name, [])
+        bindings = names.get(name, ())
         directives = [binding for binding in bindings if isinstance(binding, ast.Global | ast.Nonlocal)]
         writes = _value_bindings(bindings)
         if not directives or not writes or not _evaluated_bindings(provenance.context, writes, at):
@@ -212,17 +214,17 @@ def _directed_write(provenance: ResourceProvenance, destination: ast.AST, name: 
     return False
 
 
-def _evaluated_bindings(context: PythonFileContext, bindings: list[ast.AST], at: ast.AST) -> list[ast.AST]:
+def _evaluated_bindings(context: PythonFileContext, bindings: Sequence[ast.AST], at: ast.AST) -> Sequence[ast.AST]:
     if _deferred(context, at):
         return bindings
     return [binding for binding in bindings if _position(binding) <= _position(at)]
 
 
-def _value_bindings(bindings: list[ast.AST]) -> list[ast.AST]:
+def _value_bindings(bindings: Sequence[ast.AST]) -> list[ast.AST]:
     return [binding for binding in bindings if not isinstance(binding, ast.Global | ast.Nonlocal)]
 
 
-def _visible_bindings(bindings: list[ast.AST], scope: ast.AST, at: ast.AST, *, deferred: bool) -> list[ast.AST]:
+def _visible_bindings(bindings: Sequence[ast.AST], scope: ast.AST, at: ast.AST, *, deferred: bool) -> Sequence[ast.AST]:
     if deferred:
         return bindings
     earlier = [binding for binding in bindings if getattr(binding, "lineno", 0) <= getattr(at, "lineno", 0)]
