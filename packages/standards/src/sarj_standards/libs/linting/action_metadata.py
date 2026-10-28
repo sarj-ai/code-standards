@@ -22,11 +22,11 @@ from sarj_standards.libs.diagnostics import (
     ToolReport,
 )
 from sarj_standards.libs.filesystem import read_prefix
-from sarj_standards.libs.linting.external import run_process
+from sarj_standards.libs.linting.external import DEFAULT_EXECUTOR, process_request
 
 
 if TYPE_CHECKING:
-    from sarj_standards.libs.linting.external import ProcessRunner
+    from sarj_standards.libs.linting.external import ProcessExecutor
 
 _SHA256 = "7408ae0434ecd92441b1bd32a267e181231493e3f8319ad94655fa781c8ba26a"
 _MAX_SOURCE_BYTES = 2 * 1024 * 1024
@@ -55,7 +55,7 @@ class _Results(RootModel[list[_Result]]):
 
 
 def analyze_actions(
-    *, root: Path, paths: tuple[str, ...], runner: ProcessRunner = run_process
+    *, root: Path, paths: tuple[str, ...], runner: ProcessExecutor = DEFAULT_EXECUTOR
 ) -> tuple[ToolReport, ...]:
     selected = tuple(dict.fromkeys(name for name in paths if Path(name).name in {"action.yml", "action.yaml"}))
     if not selected:
@@ -73,7 +73,7 @@ def analyze_actions(
         )
 
 
-def _analyze_selected(root: Path, selected: tuple[str, ...], *, runner: ProcessRunner) -> tuple[ToolReport, ...]:
+def _analyze_selected(root: Path, selected: tuple[str, ...], *, runner: ProcessExecutor) -> tuple[ToolReport, ...]:
     reports: list[ToolReport] = []
     documents: dict[str, SourceDocument] = {}
     size = 0
@@ -105,7 +105,7 @@ def _document(root: Path, name: str) -> SourceDocument:
 
 
 def _analyze_batch(
-    root: Path, documents: dict[str, SourceDocument], *, runner: ProcessRunner
+    root: Path, documents: dict[str, SourceDocument], *, runner: ProcessExecutor
 ) -> tuple[ToolReport, ...]:
     bundle = CONFIGS_DIR / "action-parser.cjs"
     if hashlib.sha256(bundle.read_bytes()).hexdigest() != _SHA256:
@@ -120,7 +120,7 @@ def _analyze_batch(
             encoding="utf-8",
         )
         argv = (str(node), str(bundle), str(source))
-        output = run_process(argv, cwd=root, timeout_seconds=30) if runner is run_process else runner(argv, cwd=root)
+        output = runner.run(process_request(argv, cwd=root, timeout_seconds=30))
     if output.returncode:
         message = f"GitHub action parser failed: {output.stderr.strip()[-_MAX_FAILURE_CHARS:]}"
         raise ValueError(message)

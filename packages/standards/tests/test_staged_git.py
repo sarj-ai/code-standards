@@ -23,7 +23,7 @@ from sarj_standards.libs.staged_git import staged_environment
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-    from sarj_standards.libs.linting.external import ProcessRunner
+    from sarj_standards.libs.linting.process import ProcessExecutor
     from sarj_standards.libs.rules import RuleSelection
 
 
@@ -260,27 +260,20 @@ def test_default_react_runner_receives_validated_index_without_changing_security
     monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
     monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.worktree")
     monkeypatch.setenv("GIT_CONFIG_VALUE_0", str(tmp_path.parent / "foreign"))
-    calls: list[tuple[tuple[str, ...], dict[str, str], float]] = []
-    security_runners: list[ProcessRunner] = []
+    calls: list[external.ProcessRequest] = []
+    security_runners: list[ProcessExecutor] = []
 
-    def capture_process(
-        arguments: Sequence[str],
-        *,
-        cwd: Path,
-        environment: dict[str, str],
-        timeout_seconds: float = 900,
-        input_path: Path | None = None,
-    ) -> external.ProcessOutput:
-        assert cwd == tmp_path
-        assert input_path is None
-        calls.append((tuple(arguments), environment.copy(), timeout_seconds))
+    def capture_process(request: external.ProcessRequest) -> external.ProcessOutput:
+        assert request.cwd == tmp_path
+        assert request.input_bytes is None
+        calls.append(request)
         return external.ProcessOutput(0, "", "")
 
     def observe_security(
         files: Sequence[str],
         *,
         root: Path,
-        runner: ProcessRunner,
+        runner: ProcessExecutor,
         capabilities: frozenset[str] | None,
         security_selection: RuleSelection | None = None,
     ) -> tuple[api.ToolReport, ...]:
@@ -296,7 +289,7 @@ def test_default_react_runner_receives_validated_index_without_changing_security
         *,
         projects: Sequence[Path],
         root: Path,
-        runner: ProcessRunner,
+        runner: ProcessExecutor,
         use_local_binary: bool,
         file_count: int,
         staged: bool,
@@ -308,7 +301,7 @@ def test_default_react_runner_receives_validated_index_without_changing_security
         assert file_count == 1
         assert staged
         assert not full_scan
-        runner(("git", "diff", "--cached", "--name-only"), cwd=root)
+        runner.run(external.process_request(("git", "diff", "--cached", "--name-only"), cwd=root))
         return api.ToolReport("react-doctor", api.Completion.COMPLETE)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observe the default process environment and deadline without starting third-party analyzer runtimes.
@@ -332,15 +325,18 @@ def test_default_react_runner_receives_validated_index_without_changing_security
     )
 
     assert [report.name for report in reports] == ["react-doctor"]
-    assert security_runners == [external.run_process]
-    assert calls[0][0] == ("git", "diff", "--cached", "--name-only")
-    assert calls[0][1]["GIT_INDEX_FILE"] == str(pending)
-    assert {name for name in calls[0][1] if name.startswith("GIT_")} == {"GIT_INDEX_FILE", "GIT_OPTIONAL_LOCKS"}
+    assert security_runners == [external.DEFAULT_EXECUTOR]
+    assert calls[0].argv == ("git", "diff", "--cached", "--name-only")
+    assert calls[0].environment["GIT_INDEX_FILE"] == str(pending)
+    assert {name for name in calls[0].environment if name.startswith("GIT_")} == {
+        "GIT_INDEX_FILE",
+        "GIT_OPTIONAL_LOCKS",
+    }
     external._security_runner(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- verify the existing bounded security transport against the captured default runner identity.
-        security_runners[0], ("checkov", "--version"), cwd=tmp_path, name="checkov"
+        security_runners[0], external.process_request(("checkov", "--version"), cwd=tmp_path), name="checkov"
     )
-    assert calls[-1][2] == 300
-    assert "GIT_INDEX_FILE" not in calls[-1][1]
+    assert calls[-1].timeout_seconds == 300
+    assert "GIT_INDEX_FILE" not in calls[-1].environment
 
 
 @pytest.mark.parametrize(

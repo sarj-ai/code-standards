@@ -12,6 +12,7 @@ from sarj_standards.libs.adoption import manifest
 from sarj_standards.libs.diagnostics import Completion, TrustMode
 from sarj_standards.libs.linting import external
 from sarj_standards.libs.linting.external import ProcessOutput, run_process
+from tests.process_fakes import FakeProcessExecutor
 
 
 if TYPE_CHECKING:
@@ -162,7 +163,7 @@ def test_scoped_scan_accepts_untouched_omissions_and_preserves_diagnostics(
         root,
         projects=tuple(sorted((root / "packages").iterdir())),
         root=root,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=len(names),
         staged=staged,
@@ -206,7 +207,7 @@ def test_scoped_scan_keeps_coverage_failures_blocking(
         root,
         projects=tuple(sorted((root / "packages").iterdir())),
         root=root,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=1,
         staged=staged,
@@ -249,7 +250,7 @@ def test_changed_scan_requires_matching_verified_scope(workspace: _Workspace, fa
         root,
         projects=tuple(sorted((root / "packages").iterdir())),
         root=root,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=1,
         staged=False,
@@ -284,7 +285,7 @@ def test_staged_omissions_use_index_instead_of_worktree(workspace: _Workspace) -
         root,
         projects=tuple(sorted((root / "packages").iterdir())),
         root=root,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=1,
         staged=True,
@@ -318,7 +319,7 @@ def test_staged_omissions_cannot_hide_source_path_changes(workspace: _Workspace,
         root,
         projects=tuple(sorted((root / "packages").iterdir())),
         root=root,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=2,
         staged=True,
@@ -364,7 +365,7 @@ def test_staged_full_fallback_retains_complete_workspace_coverage(
         root,
         projects=tuple(sorted((root / "packages").iterdir())),
         root=root,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=2 if type_changed_source else 1,
         staged=True,
@@ -456,7 +457,7 @@ def test_nested_project_change_does_not_require_enclosing_root_project(
         root,
         projects=(root, *sorted((root / "packages").iterdir())),
         root=root,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=2 if root_source_changed else 1,
         staged=staged,
@@ -514,7 +515,7 @@ def test_empty_changed_scope_checks_type_changes(
         (str(project / "package.json"),),
         root=root,
         trust=TrustMode.SAFE,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         capabilities=frozenset({"react-doctor"}),
         include_react_doctor=True,
     )
@@ -556,7 +557,7 @@ def test_empty_degraded_scope_cannot_substitute_selected_base(workspace: _Worksp
         (str(project / "package.json"),),
         root=root,
         trust=TrustMode.SAFE,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         capabilities=frozenset({"react-doctor"}),
         include_react_doctor=True,
     )
@@ -619,7 +620,7 @@ def test_empty_changed_scope_proves_the_native_tracked_worktree(
         (str(project / "package.json"),),
         root=root,
         trust=TrustMode.SAFE,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         capabilities=frozenset({"react-doctor"}),
         include_react_doctor=True,
     )
@@ -667,7 +668,7 @@ def test_empty_changed_scope_keeps_native_untracked_exclusions(workspace: _Works
         (str(project / "package.json"),),
         root=root,
         trust=TrustMode.SAFE,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         capabilities=frozenset({"react-doctor"}),
         include_react_doctor=True,
     )
@@ -730,7 +731,7 @@ def test_empty_changed_scope_uses_the_requested_bases_common_ancestor(
         (str(project / "package.json"),),
         root=root,
         trust=TrustMode.SAFE,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         capabilities=frozenset({"react-doctor"}),
         include_react_doctor=True,
     )
@@ -827,7 +828,7 @@ def test_scoped_scan_matches_native_source_eligibility(
         root,
         projects=tuple(sorted((root / "packages").iterdir())),
         root=root,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=2 if partial else 1,
         staged=staged,
@@ -866,7 +867,7 @@ def test_native_excluded_source_keeps_changed_scope_guards(workspace: _Workspace
         root,
         projects=tuple(sorted((root / "packages").iterdir())),
         root=root,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=1,
         staged=False,
@@ -890,7 +891,7 @@ def test_generated_checkout_parent_does_not_exclude_authored_source(workspace: _
         root,
         projects=tuple(sorted((root / "packages").iterdir())),
         root=root,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=1,
         staged=False,
@@ -905,7 +906,7 @@ class _ReactIndexFixture:
     enclosing: Path
     child: Path
     pending: Path
-    runner: external.ProcessRunner
+    runner: external.ProcessExecutor
 
 
 @dataclass(frozen=True)
@@ -946,7 +947,7 @@ def _opposing_react_indexes(
     )
     parent_path = (enclosing / "view.tsx").relative_to(root).as_posix()
     if pending_parent_changed:
-        added = runner(("git", "add", "--", parent_path), cwd=root)
+        added = runner.run(external.process_request(("git", "add", "--", parent_path), cwd=root))
         assert added.returncode == 0, added.stderr
     else:
         _git(root, "add", "--", parent_path)
@@ -965,7 +966,7 @@ def test_staged_empty_parent_uses_validated_pending_index(
     if pending_parent_changed:
         expected_pending, expected_default = expected_default, expected_pending
     assert set(_git(root, "diff", "--cached", "--name-only").splitlines()) == expected_default
-    pending = fixture.runner(("git", "diff", "--cached", "--name-only"), cwd=root)
+    pending = fixture.runner.run(external.process_request(("git", "diff", "--cached", "--name-only"), cwd=root))
     assert pending.returncode == 0, pending.stderr
     assert set(pending.stdout.splitlines()) == expected_pending
     payload = _payload(fixture.enclosing, _git(root, "rev-parse", "HEAD"), ("leaf",), staged=True)
@@ -990,7 +991,7 @@ def test_staged_empty_parent_uses_validated_pending_index(
     def execute(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         if argv[0] == "git":
             assert cwd == root
-            return fixture.runner(argv, cwd=cwd)
+            return fixture.runner.run(external.process_request(argv, cwd=cwd))
         assert cwd == fixture.enclosing
         return ProcessOutput(1, json.dumps(payload), "")
 
@@ -998,7 +999,7 @@ def test_staged_empty_parent_uses_validated_pending_index(
         fixture.enclosing,
         projects=(fixture.enclosing, fixture.child),
         root=root,
-        runner=execute,
+        runner=FakeProcessExecutor(execute),
         use_local_binary=False,
         file_count=2 if pending_parent_changed else 1,
         staged=True,

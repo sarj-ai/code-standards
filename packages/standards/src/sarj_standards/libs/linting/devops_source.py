@@ -21,7 +21,7 @@ from sarj_standards.libs.diagnostics import (
 )
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting.devops_tools import NativeToolError, checked_tool, invoke
-from sarj_standards.libs.linting.external import ProcessOutput, ProcessRunner, run_process
+from sarj_standards.libs.linting.external import DEFAULT_EXECUTOR, ProcessExecutor, ProcessOutput
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
@@ -55,7 +55,7 @@ def analyze_sources(
     paths: tuple[str, ...],
     selected: frozenset[str] = SUPPORTED,
     trust_repository_code: bool = False,
-    runner: ProcessRunner = run_process,
+    runner: ProcessExecutor = DEFAULT_EXECUTOR,
     compose_version: str | None = None,
     shared_shellcheck: bool = False,
     scope: tuple[str, ...] | None = None,
@@ -128,7 +128,7 @@ def _select_sources(root: Path, paths: tuple[str, ...]) -> SourcePaths:
 def _compose_reports(
     root: Path,
     paths: tuple[str, ...],
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     *,
     version: str | None,
     scope: tuple[str, ...] | None,
@@ -182,7 +182,7 @@ def _compose_selected(project: tuple[Path, ...], scopes: tuple[Path, ...], *, po
 
 
 def _actionlint_report(
-    root: Path, paths: tuple[Path, ...], runner: ProcessRunner, *, shared_shellcheck: bool = False
+    root: Path, paths: tuple[Path, ...], runner: ProcessExecutor, *, shared_shellcheck: bool = False
 ) -> ToolReport:
     shellcheck_path = ""
     if not shared_shellcheck:
@@ -254,7 +254,7 @@ def _json_tool(
     paths: tuple[Path, ...],
     parser: Callable[[str, Path], tuple[Diagnostic, ...]],
     *,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     tool: NativeTool | None = None,
 ) -> ToolReport:
     try:  # ruff: ignore[too-many-statements-in-try-clause] -- one boundary normalizes native execution and structured protocol failures.
@@ -403,7 +403,7 @@ def _project_inputs(paths: tuple[Path, ...]) -> tuple[tuple[Path, tuple[Path, ..
 def _terraform_reports(
     root: Path,
     paths: tuple[Path, ...],
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     *,
     formatting_paths: tuple[Path, ...],
     trust_repository_code: bool,
@@ -471,7 +471,7 @@ def _terraform_reports(
 
 
 def _tflint_reports(
-    root: Path, paths: tuple[Path, ...], runner: ProcessRunner, *, trust_repository_code: bool
+    root: Path, paths: tuple[Path, ...], runner: ProcessExecutor, *, trust_repository_code: bool
 ) -> tuple[ToolReport, ...]:
     if not trust_repository_code:
         return (
@@ -484,7 +484,7 @@ def _tflint_reports(
     )
 
 
-def _tflint_report(root: Path, project: Path, paths: tuple[Path, ...], runner: ProcessRunner) -> ToolReport:
+def _tflint_report(root: Path, project: Path, paths: tuple[Path, ...], runner: ProcessExecutor) -> ToolReport:
     config = str(_CONFIGS / "tflint.strict.hcl")
     try:
         tool = checked_tool("tflint", root=project, runner=runner)
@@ -505,7 +505,7 @@ def _tflint_report(root: Path, project: Path, paths: tuple[Path, ...], runner: P
     )
 
 
-def _compose_report(root: Path, paths: tuple[Path, ...], runner: ProcessRunner, *, version: str | None) -> ToolReport:
+def _compose_report(root: Path, paths: tuple[Path, ...], runner: ProcessExecutor, *, version: str | None) -> ToolReport:
     try:  # ruff: ignore[too-many-statements-in-try-clause] -- one boundary owns static Compose output coverage.
         if version is None:
             message = "Compose static validation requires an explicit manifest [devops].compose_version consumer pin"

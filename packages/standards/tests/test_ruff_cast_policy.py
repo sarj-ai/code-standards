@@ -11,6 +11,7 @@ from sarj_standards.libs.diagnostics import Completion, TrustMode, baseline
 from sarj_standards.libs.linting.analysis import report_from_tools
 from sarj_standards.libs.linting.external import ProcessOutput, analyze_external, run_process
 from sarj_standards.libs.linting.policy import Policy
+from tests.process_fakes import FakeProcessExecutor
 
 
 if TYPE_CHECKING:
@@ -119,7 +120,11 @@ def test_cast_policy_execution_failure_is_not_a_clean_result(tmp_path: Path) -> 
         return run_process(argv, cwd=cwd)
 
     reports = analyze_external(
-        [str(path)], root=tmp_path, trust=TrustMode.TRUSTED, capabilities=frozenset({"ruff"}), runner=runner
+        [str(path)],
+        root=tmp_path,
+        trust=TrustMode.TRUSTED,
+        capabilities=frozenset({"ruff"}),
+        runner=FakeProcessExecutor(runner),
     )
 
     assert reports[0].completion is Completion.FAILED
@@ -222,7 +227,11 @@ def test_source_disappearing_after_native_execution_is_incomplete(tmp_path: Path
         return result
 
     reports = analyze_external(
-        [str(path)], root=tmp_path, trust=TrustMode.TRUSTED, capabilities=frozenset({"ruff"}), runner=runner
+        [str(path)],
+        root=tmp_path,
+        trust=TrustMode.TRUSTED,
+        capabilities=frozenset({"ruff"}),
+        runner=FakeProcessExecutor(runner),
     )
 
     assert reports[0].completion is Completion.FAILED

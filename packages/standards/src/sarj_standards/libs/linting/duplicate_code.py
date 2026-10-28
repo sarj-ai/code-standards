@@ -24,7 +24,7 @@ from sarj_standards.libs.diagnostics import (
     diagnostic_fingerprint,
 )
 from sarj_standards.libs.linting.devops_tools import NativeTool, checked_tool, invoke
-from sarj_standards.libs.linting.external import ProcessRunner, read_bounded_report, redact_message, run_process
+from sarj_standards.libs.linting.external import DEFAULT_EXECUTOR, ProcessExecutor, read_bounded_report, redact_message
 
 
 if TYPE_CHECKING:
@@ -114,7 +114,7 @@ def analyze_duplicates(
     root: Path,
     paths: Sequence[str],
     allows_path: Callable[[str], bool],
-    runner: ProcessRunner = run_process,
+    runner: ProcessExecutor = DEFAULT_EXECUTOR,
 ) -> ToolReport:
     root = root.resolve()
     try:
@@ -126,7 +126,7 @@ def analyze_duplicates(
     return ToolReport(SOURCE, Completion.COMPLETE, diagnostics=diagnostics, version=tool.version)
 
 
-def _run(tool: NativeTool, *, root: Path, paths: Sequence[str], runner: ProcessRunner) -> str:
+def _run(tool: NativeTool, *, root: Path, paths: Sequence[str], runner: ProcessExecutor) -> str:
     with tempfile.TemporaryDirectory(prefix="code-standards-jscpd-") as directory:
         # An explicit config stops jscpd from merging the repository's .jscpd.json or package.json settings.
         config = Path(directory) / "config.json"

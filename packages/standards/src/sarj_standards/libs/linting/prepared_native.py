@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from sarj_standards.libs.diagnostics import Diagnostic
-    from sarj_standards.libs.linting.external import ProcessRunner
+    from sarj_standards.libs.linting.external import ProcessExecutor
 
 type NativeKind = Literal["systemd", "nginx", "kamailio", "prometheus-config", "prometheus-rules", "compose"]
 _MAX_CLOSURE_BYTES: Final = 64 * 1024 * 1024
@@ -66,7 +66,7 @@ def validate_native(
     target: Mapping[str, object],
     *,
     root: Path,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     trust_repository_code: bool,
 ) -> tuple[Diagnostic, ...]:
     config = _NativeConfig.model_validate(target)
@@ -86,7 +86,7 @@ def validate_native(
     return ()
 
 
-def _native_tool(config: _NativeConfig, *, root: Path, runner: ProcessRunner) -> NativeTool:
+def _native_tool(config: _NativeConfig, *, root: Path, runner: ProcessExecutor) -> NativeTool:
     if config.kind == "compose":
         tool = checked_tool("docker", root=root, runner=runner, expected_version=config.native_version)
         return replace(tool, finding_exits=frozenset())

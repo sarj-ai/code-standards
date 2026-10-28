@@ -14,7 +14,9 @@ from sarj_standards.libs.adoption.service import plan_init
 from sarj_standards.libs.diagnostics import Completion, Severity, TrustMode
 from sarj_standards.libs.linting import external, security_tools
 from sarj_standards.libs.linting.external import ProcessOutput, analyze_external
+from sarj_standards.libs.linting.process import ProcessRequest, RequestExecutor
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
+from tests.process_fakes import FakeProcessExecutor
 
 
 if TYPE_CHECKING:
@@ -305,7 +307,11 @@ def test_security_routing_uses_actual_selected_source_and_offline_managed_config
         return ProcessOutput(1, json.dumps(_checkov(terraform)), "")
 
     reports = analyze_external(
-        [str(tmp_path)], root=tmp_path, trust=TrustMode.SAFE, runner=run, capabilities=frozenset({"zizmor", "checkov"})
+        [str(tmp_path)],
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=FakeProcessExecutor(run),
+        capabilities=frozenset({"zizmor", "checkov"}),
     )
     assert [report.name for report in reports] == ["zizmor", "checkov"]
     assert all(report.completion is Completion.COMPLETE for report in reports)
@@ -324,7 +330,11 @@ def test_process_and_protocol_failures_are_execution_issues(tmp_path: Path, code
         return ProcessOutput(code, payload, "")
 
     report = analyze_external(
-        [str(path)], root=tmp_path, trust=TrustMode.SAFE, runner=run, capabilities=frozenset({"checkov"})
+        [str(path)],
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=FakeProcessExecutor(run),
+        capabilities=frozenset({"checkov"}),
     )[0]
     assert report.completion is Completion.FAILED
     assert report.issues
@@ -340,13 +350,18 @@ def test_zizmor_exit_one_is_audit_failure_even_with_findings(tmp_path: Path) -> 
         return ProcessOutput(1, json.dumps(_zizmor(path)), "")
 
     report = analyze_external(
-        [str(path)], root=tmp_path, trust=TrustMode.SAFE, runner=run, capabilities=frozenset({"zizmor"})
+        [str(path)],
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=FakeProcessExecutor(run),
+        capabilities=frozenset({"zizmor"}),
     )[0]
     assert report.completion is Completion.FAILED
 
 
+@pytest.mark.parametrize("decorated", [False, True], ids=("bare", "recording"))
 def test_security_process_preserves_environment_allowlist_and_timeout(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, decorated: bool
 ) -> None:
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "synthetic")
     monkeypatch.setenv("GITHUB_TOKEN", "synthetic")
@@ -356,9 +371,13 @@ def test_security_process_preserves_environment_allowlist_and_timeout(
         monkeypatch.setenv(key, str(tmp_path / key))
     expected = ProcessOutput(37, "child output", "child diagnostic")
 
-    def bounded(
-        argv: Sequence[str], *, cwd: Path, environment: dict[str, str], timeout_seconds: float
-    ) -> ProcessOutput:
+    def bounded(request: ProcessRequest) -> ProcessOutput:
+        argv, cwd, environment, timeout_seconds = (
+            request.argv,
+            request.cwd,
+            request.environment,
+            request.timeout_seconds,
+        )
         assert argv == ("checkov",)
         assert cwd == tmp_path
         assert "AWS_ACCESS_KEY_ID" not in environment
@@ -369,10 +388,20 @@ def test_security_process_preserves_environment_allowlist_and_timeout(
         assert timeout_seconds == 300
         return expected
 
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept the production process boundary; injected runners bypass the environment and timeout controls being tested.
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observe the actual request after security policy and optional executor decoration.
         external, "_run_process", bounded
     )
-    assert external._security_runner(external.run_process, ("checkov",), cwd=tmp_path, name="checkov") == expected  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _security_runner contract directly with controlled fixture data.
+    executor = (
+        RequestExecutor(external.DEFAULT_EXECUTOR.run, external.DEFAULT_EXECUTOR.capabilities)
+        if decorated
+        else external.DEFAULT_EXECUTOR
+    )
+    assert (
+        external._security_runner(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _security_runner contract directly with controlled fixture data.
+            executor, external.process_request(("checkov",), cwd=tmp_path), name="checkov"
+        )
+        == expected
+    )
 
 
 def test_upstream_selectors_and_exclusions_use_canonical_ids(tmp_path: Path) -> None:
@@ -505,7 +534,11 @@ def test_terraform_json_is_routed_to_checkov(tmp_path: Path) -> None:
         return ProcessOutput(1, json.dumps(_checkov(path)), "")
 
     reports = analyze_external(
-        [str(path)], root=tmp_path, trust=TrustMode.SAFE, runner=run, capabilities=frozenset({"checkov"})
+        [str(path)],
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=FakeProcessExecutor(run),
+        capabilities=frozenset({"checkov"}),
     )
     assert len(reports) == 1
     assert reports[0].completion is Completion.COMPLETE
@@ -650,7 +683,7 @@ def test_explicit_zizmor_audit_enables_auditor_persona_without_relaxing_protocol
         [str(path)],
         root=tmp_path,
         trust=TrustMode.SAFE,
-        runner=run,
+        runner=FakeProcessExecutor(run),
         capabilities=frozenset({"zizmor"}),
         security_selection=RuleSelection(frozenset({RuleSelector.parse("zizmor:concurrency-limits")}))
         if selected
@@ -690,7 +723,7 @@ def test_explicit_checkov_selection_limits_checks_and_preserves_terraform_provid
         paths,
         root=tmp_path,
         trust=TrustMode.SAFE,
-        runner=run,
+        runner=FakeProcessExecutor(run),
         capabilities=frozenset({"checkov"}),
         security_selection=RuleSelection(frozenset({RuleSelector.parse(f"checkov:{code}")})),
     )
@@ -720,7 +753,11 @@ def test_zizmor_uses_one_canonical_invocation_for_workflows_and_composite_action
         return ProcessOutput(0, json.dumps(_zizmor(path)), "")
 
     reports = analyze_external(
-        [str(path)], root=tmp_path, trust=TrustMode.SAFE, runner=run, capabilities=frozenset({"zizmor"})
+        [str(path)],
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=FakeProcessExecutor(run),
+        capabilities=frozenset({"zizmor"}),
     )
     assert len(calls) == 1
     assert len(reports) == 1

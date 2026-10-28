@@ -18,6 +18,7 @@ from sarj_python_lint import __version__
 from sarj_python_lint._analysis_session import AnalysisSession
 from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint._filesystem import atomic_write_text
+from sarj_python_lint._prepared_sources import PreparedSourceInputs
 from sarj_python_lint._source import read_python_source
 from sarj_python_lint.json_boundary import is_object_mapping, parse_json
 from sarj_python_lint.rule_base import Diagnostic, ProjectRule, Rule, Severity, is_suppressed
@@ -29,6 +30,8 @@ from sarj_python_lint.suppression_policy import PROTECTED_SUPPRESSION_CODES
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from sarj_rule_contracts import SourceCatalog
 
 
 SKIP_DIR_NAMES = frozenset(
@@ -101,7 +104,9 @@ def _canonical_rule_ids(rule_names: Sequence[str]) -> list[RuleId]:
     return list(dict.fromkeys(RuleId(name if name in REGISTRY else aliases.get(name, name)) for name in rule_names))
 
 
-def _check(rule_names: Sequence[str], paths: list[Path], *, jobs: int = 1) -> list[Diagnostic]:
+def _check(
+    rule_names: Sequence[str], paths: list[Path], *, jobs: int = 1, sources: SourceCatalog | None = None
+) -> list[Diagnostic]:
     rule_ids = _canonical_rule_ids(rule_names)
     unknown = [rid for rid in rule_ids if rid not in REGISTRY]
     if unknown:
@@ -109,28 +114,79 @@ def _check(rule_names: Sequence[str], paths: list[Path], *, jobs: int = 1) -> li
         sys.stderr.write(f"available: {', '.join(sorted(REGISTRY))}\n")
         raise SystemExit(2)
     rules = [REGISTRY[rid]() for rid in rule_ids]
-    session = AnalysisSession()
+    source_inputs = None if sources is None else PreparedSourceInputs(sources)
+    session = AnalysisSession() if source_inputs is None else AnalysisSession(source_inputs=source_inputs)
     for rule in rules:
         rule.prepare_session(session)
     clear_path_caches()
     expanded = expand_paths(paths)
-    loaded = {path: read_python_source(path) for path in expanded}
-    project_rules = [rule for rule in rules if isinstance(rule, ProjectRule)]
-    if project_rules:
-        indexes = ProjectIndexSet.build(expanded, loaded, facts=session.first_party)
-        session.project = indexes
-        for rule in project_rules:
-            rule.prepare(indexes)
-    if jobs > 1 and len(loaded) > 1:
-        from sarj_python_lint._parallel import check_parallel  # ruff: ignore[import-outside-top-level] -- serial API users do not need multiprocessing.
-
-        parallel = check_parallel([type(rule) for rule in rules], loaded, session.project, jobs=jobs)
-        if parallel is not None:
-            return parallel
+    loaded = (
+        _load_python_sources(expanded, sources)
+        if source_inputs is None
+        else _load_python_sources(expanded, sources, source_inputs=source_inputs)
+    )
+    _prepare_project(rules, expanded, loaded, session, source_inputs=source_inputs)
+    parallel = _parallel_diagnostics(rules, loaded, session, jobs=jobs, source_inputs=source_inputs)
+    if parallel is not None:
+        return parallel
     diags: list[Diagnostic] = []
     for p, source in loaded.items():
         diags.extend(check_source(rules, p, source, session=session))
     return diags
+
+
+def _load_python_sources(
+    paths: Sequence[Path], sources: SourceCatalog | None, *, source_inputs: PreparedSourceInputs | None = None
+) -> dict[Path, str]:
+    if sources is None:
+        return {path: read_python_source(path) for path in paths}
+    loaded = {path: read_python_source(path, sources=sources) for path in paths}
+    if source_inputs is not None:
+        for path in loaded:
+            snapshot = sources.get(path)
+            if snapshot is not None:
+                source_inputs.remember_selected(path, snapshot)
+    return loaded
+
+
+def _prepare_project(
+    rules: list[Rule],
+    expanded: list[Path],
+    loaded: dict[Path, str],
+    session: AnalysisSession,
+    *,
+    source_inputs: PreparedSourceInputs | None,
+) -> None:
+    project_rules = [rule for rule in rules if isinstance(rule, ProjectRule)]
+    if not project_rules:
+        return
+    indexes = (
+        ProjectIndexSet.build(expanded, loaded, facts=session.first_party)
+        if source_inputs is None
+        else ProjectIndexSet.build(expanded, loaded, facts=session.first_party, source_inputs=source_inputs)
+    )
+    session.project = indexes
+    for rule in project_rules:
+        rule.prepare(indexes)
+
+
+def _parallel_diagnostics(
+    rules: list[Rule],
+    loaded: dict[Path, str],
+    session: AnalysisSession,
+    *,
+    jobs: int,
+    source_inputs: PreparedSourceInputs | None,
+) -> list[Diagnostic] | None:
+    if jobs <= 1 or len(loaded) <= 1:
+        return None
+    from sarj_python_lint._parallel import check_parallel  # ruff: ignore[import-outside-top-level] -- serial API users do not need multiprocessing.
+
+    if source_inputs is None:
+        return check_parallel([type(rule) for rule in rules], loaded, session.project, jobs=jobs)
+    return check_parallel(
+        [type(rule) for rule in rules], loaded, session.project, jobs=jobs, source_inputs=source_inputs
+    )
 
 
 def check_source(
@@ -159,11 +215,12 @@ def analyze(
     baseline: Path | None = None,
     root: Path | None = None,
     jobs: int = 1,
+    sources: SourceCatalog | None = None,
 ) -> list[Diagnostic]:
     if jobs < 1:
         msg = "jobs must be at least 1"
         raise ValueError(msg)
-    diagnostics = _check(rule_ids, paths, jobs=jobs)
+    diagnostics = _check(rule_ids, paths, jobs=jobs, sources=sources)
     return diagnostics if baseline is None else _apply_baseline(diagnostics, _read_baseline(baseline), root=root)
 
 

@@ -12,6 +12,7 @@ from sarj_standards.libs.adoption.manifest import ALL_CAPABILITIES, MANIFEST_NAM
 from sarj_standards.libs.diagnostics import Completion, Diagnostic, Severity
 from sarj_standards.libs.linting.duplicate_code import TEST_GLOBS, analyze_duplicates, parse_jscpd
 from sarj_standards.libs.linting.external import ProcessOutput, analyze_external
+from tests.process_fakes import FakeProcessExecutor
 
 
 if TYPE_CHECKING:
@@ -57,7 +58,7 @@ def _jscpd(report: str | None, *, calls: list[tuple[tuple[str, ...], Path]], ver
             (output / "jscpd-report.json").write_text(report)
         return ProcessOutput(0, "", "")
 
-    return runner
+    return FakeProcessExecutor(runner)
 
 
 def test_every_copy_is_reported_on_its_own_lines_and_names_the_others(tmp_path: Path) -> None:

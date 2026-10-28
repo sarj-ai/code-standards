@@ -14,12 +14,14 @@ from typing import TYPE_CHECKING, ClassVar, NamedTuple, final
 from sarj_rule_contracts import (
     AutofixPolicy as AutofixPolicy,
     DefaultLevel as DefaultLevel,
+    DiagnosticSeverity as DiagnosticSeverity,
     ExampleFile as ExampleFile,
     ExampleOutcome as ExampleOutcome,
     NativeRuleSpec as NativeRuleSpec,
     RuleCategory as RuleCategory,
     RuleDocumentation as RuleDocumentation,
     RuleExample as RuleExample,
+    diagnostic_severity,
 )
 
 
@@ -836,7 +838,10 @@ class Diagnostic:
     col: int
     code: str
     message: str
-    severity: DefaultLevel = DefaultLevel.ERROR
+    severity: DiagnosticSeverity = DefaultLevel.ERROR
+
+    def __post_init__(self) -> None:
+        diagnostic_severity(self.severity)
 
     def format(self) -> str:
         label = "warning: " if self.severity is DefaultLevel.WARNING else ""
