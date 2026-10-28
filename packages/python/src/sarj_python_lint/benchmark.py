@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 import hashlib
 import json
 from os.path import commonpath
@@ -8,7 +8,7 @@ from pathlib import Path
 from statistics import median
 import sys
 from time import perf_counter
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from sarj_rule_contracts import RuleId
 import typer
@@ -21,12 +21,21 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
 
+type MemoryScope = Literal["process-lifetime-self", "unsupported"]
+
+
 @dataclass(frozen=True, slots=True)
 class BenchmarkSample:
     seconds: float
     diagnostics: int
     diagnostic_digest: str
     peak_memory_bytes: int | None
+    memory_scope: MemoryScope = field(init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "memory_scope", "unsupported" if self.peak_memory_bytes is None else "process-lifetime-self"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +49,8 @@ class BenchmarkReport:
 
 
 def peak_memory_bytes() -> int | None:
+    if sys.platform not in {"linux", "darwin"}:
+        return None
     try:
         import resource  # ruff: ignore[import-outside-top-level] — optional Unix-only memory instrumentation.
     except ImportError:
@@ -98,7 +109,8 @@ def measure(
                 ).encode()
             )
             digest.update(b"\n")
-        samples.append(BenchmarkSample(elapsed, len(diagnostics), digest.hexdigest(), peak_memory_bytes()))
+        peak = peak_memory_bytes()
+        samples.append(BenchmarkSample(elapsed, len(diagnostics), digest.hexdigest(), peak))
     if len({sample.diagnostic_digest for sample in samples}) != 1:
         msg = "diagnostics changed between benchmark repetitions"
         raise RuntimeError(msg)

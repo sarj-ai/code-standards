@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, ClassVar, Final
 
 from sarj_rule_contracts import (
     AutofixPolicy as AutofixPolicy,
+    DiagnosticSeverity as DiagnosticSeverity,
     ExampleFile as ExampleFile,
     ExampleOutcome as ExampleOutcome,
     NativeRuleSpec as NativeRuleSpec,
@@ -17,6 +18,7 @@ from sarj_rule_contracts import (
     RuleDocumentation as RuleDocumentation,
     RuleExample as RuleExample,
     Severity as Severity,
+    diagnostic_severity,
 )
 
 from sarj_python_lint._python_target import PythonTargetFacts
@@ -100,9 +102,12 @@ class Diagnostic:
     col: int
     code: str
     message: str
-    severity: Severity = Severity.ERROR
+    severity: DiagnosticSeverity = Severity.ERROR
     column_encoding: ColumnEncoding = ColumnEncoding.UTF8_BYTES
     fixes: tuple[Fix, ...] = ()
+
+    def __post_init__(self) -> None:
+        diagnostic_severity(self.severity)
 
     def format(self) -> str:
         label = "warning: " if self.severity is Severity.WARNING else ""

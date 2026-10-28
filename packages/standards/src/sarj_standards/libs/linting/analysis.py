@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from importlib import import_module
 from pathlib import Path
 import time
 from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
+
+from sarj_rule_contracts import SourceCatalog, SourceSnapshot
 
 from sarj_standards.libs.diagnostics import (
     AnalysisReport,
@@ -97,7 +99,9 @@ class _RuleMetadata(Protocol):
 
 @runtime_checkable
 class _CheckerModule(Protocol):
-    def analyze(self, rule_ids: list[str], paths: list[Path]) -> Sequence[_NativeDiagnostic]: ...
+    def analyze(
+        self, rule_ids: list[str], paths: list[Path], *, sources: SourceCatalog | None = None
+    ) -> Sequence[_NativeDiagnostic]: ...
 
 
 @runtime_checkable
@@ -133,6 +137,7 @@ def analyze(
         tool = ToolReport("sarj-standards", Completion.FAILED, issues=(issue,))
         return AnalysisReport(root, Completion.FAILED, Conclusion.INCONCLUSIVE, (tool,))
 
+    sources = SourceCatalog()
     reports = tuple(
         report
         for report in (
@@ -141,6 +146,7 @@ def analyze(
                 "sarj_python_lint",
                 routed.python,
                 root,
+                sources=sources,
                 python_baseline=python_baseline,
                 rule_ids=_selected_ids(rule_selection, RuleEngine.PYTHON),
             ),
@@ -149,6 +155,7 @@ def analyze(
                 "sarj_sql_lint",
                 routed.sql,
                 root,
+                sources=sources,
                 rule_ids=_selected_ids(rule_selection, RuleEngine.SQL),
             ),
             _native_report(
@@ -156,6 +163,7 @@ def analyze(
                 "sarj_iac_lint",
                 routed.iac,
                 root,
+                sources=sources,
                 rule_ids=_selected_ids(rule_selection, RuleEngine.IAC),
             ),
             _text_report(
@@ -265,13 +273,16 @@ def _native_report(
     files: Sequence[str],
     root: Path,
     *,
+    sources: SourceCatalog,
     python_baseline: Path | None = None,
     rule_ids: frozenset[str] | None = None,
 ) -> ToolReport | None:
     if not files or rule_ids == frozenset():
         return None
     try:
-        return _run_native(name, package, files, root, python_baseline=python_baseline, rule_ids=rule_ids)
+        return _run_native(
+            name, package, files, root, sources=sources, python_baseline=python_baseline, rule_ids=rule_ids
+        )
     except Exception as exc:  # ruff: ignore[blind-except] -- one analyzer failure must not erase other tool results.
         issue = ExecutionIssue(name, "analyzer-failure", f"{type(exc).__name__}: {exc}")
         return ToolReport(name, Completion.FAILED, issues=(issue,))
@@ -283,6 +294,7 @@ def _run_native(
     files: Sequence[str],
     root: Path,
     *,
+    sources: SourceCatalog,
     python_baseline: Path | None,
     rule_ids: frozenset[str] | None,
 ) -> ToolReport:
@@ -308,14 +320,21 @@ def _run_native(
             paths,
             baseline=python_baseline,
             root=root,
+            sources=sources,
         )
     else:
-        native_result = checker_module.analyze(selected_rules, paths)
+        native_result = checker_module.analyze(selected_rules, paths, sources=sources)
     cache: dict[Path, SourceDocument | PythonSourceDocument | None] = {}
     resolved_paths: dict[Path, Path] = {}
     diagnostics = tuple(
         normalize_native(
-            item, source=name, root=root, metadata=metadata, documents=cache, resolved_paths=resolved_paths
+            item,
+            source=name,
+            root=root,
+            metadata=metadata,
+            documents=cache,
+            resolved_paths=resolved_paths,
+            sources=sources,
         )
         for item in native_result
     )
@@ -354,16 +373,29 @@ class PythonSourceDocument:
     encoding: str
     utf8_source: bytes
     source_hash: str
+    _raw_source_hash: str | None = field(default=None, init=False, repr=False, compare=False)
+
+    @property
+    def raw_source_hash(self) -> str:
+        digest = self._raw_source_hash
+        if digest is None:
+            digest = sha256(self.raw).hexdigest()
+            object.__setattr__(self, "_raw_source_hash", digest)  # ruff: ignore[unnecessary-dunder-call] -- frozen documents permit only their private lazy cache to change.
+        return digest
 
     @classmethod
     def read(cls, path: Path) -> Self:
+        return cls.from_snapshot(SourceSnapshot.read(path))
+
+    @classmethod
+    def from_snapshot(cls, snapshot: SourceSnapshot) -> Self:
         from sarj_python_lint import python_source_encoding, python_source_hash  # ruff: ignore[import-outside-top-level] -- only the selected Python engine needs these source contracts.
 
-        raw = path.read_bytes()
+        raw = snapshot.raw
         encoding = python_source_encoding(raw)
-        text = raw.decode(encoding)
+        text = snapshot.decode(encoding).text
         return cls(
-            SourceDocument(path, text),
+            SourceDocument(snapshot.path, text),
             raw,
             encoding,
             raw if encoding == "utf-8" else text.encode("utf-8"),
@@ -395,22 +427,27 @@ def normalize_native(
     metadata: Mapping[str, _NativeRuleMetadata],
     documents: dict[Path, SourceDocument | PythonSourceDocument | None],
     resolved_paths: dict[Path, Path] | None = None,
+    sources: SourceCatalog | None = None,
 ) -> Diagnostic:
+    snapshot = None if sources is None else sources.get(item.path)
+    if sources is not None and snapshot is None:
+        msg = f"native diagnostic source was not captured: {item.path}"
+        raise ValueError(msg)
     resolved = None if resolved_paths is None else resolved_paths.get(item.path)
     if resolved is None:
         resolved = item.path.resolve()
         if resolved_paths is not None:
             resolved_paths[item.path] = resolved
-    document = documents.get(resolved)
-    if resolved not in documents:
+    document_key = item.path if sources is not None else resolved
+    document = documents.get(document_key)
+    if document_key not in documents:
         try:
-            document = (
-                PythonSourceDocument.read(resolved) if source == "sarj-python-lint" else SourceDocument.read(resolved)
-            )
+            captured = snapshot if snapshot is not None else SourceSnapshot.read(resolved)
+            document = _native_document(captured, source)
         except OSError, UnicodeError, SyntaxError:
             document = None
-        documents[resolved] = document
-    position = _native_position(item, source, document) if document is not None else None
+        documents[document_key] = document
+    position = _native_position(item, source, document)
     rule_id, help_text = metadata.get(item.code, (None, None))
     tags: tuple[str, ...] = ()
     if source == "sarj-python-lint":
@@ -432,17 +469,31 @@ def normalize_native(
     )
 
 
+def _native_document(snapshot: SourceSnapshot, source: str) -> SourceDocument | PythonSourceDocument:
+    if source == "sarj-python-lint":
+        return PythonSourceDocument.from_snapshot(snapshot)
+    if source in {"sarj-sql-lint", "sarj-iac-lint"}:
+        # Replacement decoding can collapse invalid byte sequences; only strict UTF-8 proves this coordinate view.
+        return SourceDocument(snapshot.path, snapshot.decode("utf-8").text)
+    return SourceDocument.from_snapshot(snapshot)
+
+
 def _native_position(
-    item: _NativeDiagnostic, source: str, document: SourceDocument | PythonSourceDocument
+    item: _NativeDiagnostic, source: str, document: SourceDocument | PythonSourceDocument | None
 ) -> Position | None:
     if source != "sarj-python-lint":
-        return document.point(line=item.line, column=item.col)
+        return None if document is None else document.point(line=item.line, column=item.col)
     if not isinstance(item, _ColumnEncodingDiagnostic):
         msg = "Python diagnostic does not declare its column encoding"
         raise TypeError(msg)
-    if str(item.column_encoding) == "utf8-bytes":
-        return document.byte_point(line=item.line, column=item.col)
-    return document.point(line=item.line, column=item.col)
+    match str(item.column_encoding):
+        case "utf8-bytes":
+            return None if document is None else document.byte_point(line=item.line, column=item.col)
+        case "codepoints":
+            return None if document is None else document.point(line=item.line, column=item.col)
+        case _:
+            msg = "Python diagnostic column encoding must be utf8-bytes or codepoints"
+            raise ValueError(msg)
 
 
 def _python_fixes(
@@ -466,6 +517,7 @@ def _python_fixes(
                     Location(relative, region=Region(start, end)),
                     edit.replacement,
                     sha256(document.raw[start.byte_offset : end.byte_offset]).hexdigest(),
+                    expected_source_hash=document.raw_source_hash,
                 )
             )
         else:
@@ -475,9 +527,16 @@ def _python_fixes(
 
 
 def _severity(item: _NativeDiagnostic) -> Severity:
-    if isinstance(item, _SeverityDiagnostic) and str(item.severity) == "warning":
-        return Severity.WARNING
-    return Severity.ERROR
+    if not isinstance(item, _SeverityDiagnostic):
+        return Severity.ERROR
+    match str(item.severity):
+        case "warning":
+            return Severity.WARNING
+        case "error":
+            return Severity.ERROR
+        case _:
+            msg = "native diagnostic severity must be error or warning"
+            raise ValueError(msg)
 
 
 def _text_report(

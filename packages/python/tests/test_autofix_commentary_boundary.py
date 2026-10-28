@@ -47,15 +47,20 @@ def test_meaning_beyond_action_names_preserves_the_comments(kind: str, newline: 
     assert fix_source(_PATH, source, rule_ids=[]) == source
 
 
-@pytest.mark.parametrize("severity", [Severity.WARNING, Severity.OFF])
-def test_any_nonerror_diagnostic_refuses_the_otherwise_safe_shape(severity: Severity) -> None:
+def test_warning_diagnostic_refuses_the_otherwise_safe_shape() -> None:
     documentation = REGISTRY[_RULE].documentation
     assert documentation is not None
     example = next(item for item in documentation.examples if item.example_id == "safe-autofix-subset")
     source = example.focus_file.source
     finding = REGISTRY[_RULE]().check(_PATH, source)[0]
     assert finding.severity is Severity.ERROR
-    assert CommentFixes(PythonFileContext(_PATH, source)).fixes(replace(finding, severity=severity)) == []
+    assert CommentFixes(PythonFileContext(_PATH, source)).fixes(replace(finding, severity=Severity.WARNING)) == []
+
+
+def test_off_severity_cannot_be_emitted_as_a_diagnostic() -> None:
+    finding = Diagnostic(_PATH, 1, 1, "SARJ434", "duplicate narration")
+    with pytest.raises(ValueError, match="native diagnostic severity must be error or warning"):
+        replace(finding, severity=Severity.OFF)
 
 
 def test_original_error_fix_still_converges_beside_preserved_technical_prose() -> None:

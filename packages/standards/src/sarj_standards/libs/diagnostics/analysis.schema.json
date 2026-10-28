@@ -64,7 +64,8 @@
       "properties": {
         "location": { "$ref": "#/$defs/location" },
         "replacement": { "type": "string" },
-        "expectedTextHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        "expectedTextHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "expectedSourceHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
     },
     "fix": {

@@ -7,7 +7,7 @@ import yaml
 
 from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting.devops_tools import checked_tool, invoke
-from sarj_standards.libs.linting.external import run_process
+from sarj_standards.libs.linting.external import DEFAULT_EXECUTOR
 from sarj_standards.libs.linting.prepared_kubernetes import (
     OMISSION_CHECK,
     ExceptionSet,
@@ -103,7 +103,7 @@ def _native(resource: Mapping[str, JsonValue], tmp_path: Path) -> str:
             str(input_path),
         ),
         root=tmp_path,
-        runner=run_process,
+        runner=DEFAULT_EXECUTOR,
     )
     assert result.stdout.strip(), result.stderr
     return result.stdout

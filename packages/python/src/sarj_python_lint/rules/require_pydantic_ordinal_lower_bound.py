@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, ClassVar, final, override
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
+    DiagnosticSeverity,
     ExampleFile,
     ExampleOutcome,
     Rule,
@@ -506,7 +507,7 @@ def _ordinal_class_findings(
     source_lines: list[str],
     *,
     code: str,
-    severity: Severity,
+    severity: DiagnosticSeverity,
 ) -> list[Diagnostic]:
     diagnostics: list[Diagnostic] = []
     validated = _validated_fields(cls, imports)

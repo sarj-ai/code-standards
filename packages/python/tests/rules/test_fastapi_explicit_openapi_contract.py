@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import tokenize
 from typing import TYPE_CHECKING
 
 import pytest
@@ -12,8 +11,6 @@ from sarj_python_lint.rules.named_record_at_boundaries import NamedRecordAtBound
 
 
 if TYPE_CHECKING:
-    from typing import TextIO
-
     from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
@@ -503,7 +500,7 @@ async def me(user: CurrentUser) -> UserResponse:
     assert any("explicit Annotated metadata" in diagnostic.message for diagnostic in diagnostics)
 
 
-def test_imported_module_is_parsed_once_per_source_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_imported_module_is_read_once_per_source_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     package = _temporary_package(tmp_path)
     dependency = package / "dependencies.py"
     dependency.write_text(
@@ -511,16 +508,16 @@ def test_imported_module_is_parsed_once_per_source_file(tmp_path: Path, monkeypa
         "CurrentUser = Annotated[User, Depends(current_user)]\n",
         encoding="utf-8",
     )
-    original_open = tokenize.open
+    original_read_bytes = Path.read_bytes
     reads: list[Path] = []
 
-    def counted_open(path: Path) -> TextIO:
+    def counted_read_bytes(path: Path) -> bytes:
         if path == dependency:
             reads.append(path)
-        return original_open(path)
+        return original_read_bytes(path)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- native Python source reads are intercepted to verify cache behavior through the public rule.
-        tokenize, "open", counted_open
+        Path, "read_bytes", counted_read_bytes
     )
     source = _source("""
 from .dependencies import CurrentUser

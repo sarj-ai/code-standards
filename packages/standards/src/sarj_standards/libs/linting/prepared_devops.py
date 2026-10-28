@@ -24,7 +24,7 @@ from sarj_standards.libs.filesystem import read_prefix
 from sarj_standards.libs.json_boundary import parse_json, parse_unique_json
 from sarj_standards.libs.linting.chart_schemas import validate_chart_schemas
 from sarj_standards.libs.linting.devops_tools import NativeToolError, checked_tool, invoke
-from sarj_standards.libs.linting.external import ProcessRunner, run_process
+from sarj_standards.libs.linting.external import DEFAULT_EXECUTOR, ProcessExecutor
 from sarj_standards.libs.linting.prepared_kubernetes import (
     ExceptionSet,
     build_config,
@@ -137,7 +137,7 @@ def analyze_prepared(
     root: Path,
     declared: Sequence[PreparedTarget],
     selected: Sequence[str] = (),
-    runner: ProcessRunner = run_process,
+    runner: ProcessExecutor = DEFAULT_EXECUTOR,
     trust_repository_code: bool = False,
 ) -> tuple[ToolReport, ...]:
     try:
@@ -165,7 +165,7 @@ def _analyze_receipts(
     root: Path,
     declared: Sequence[PreparedTarget],
     selected: Sequence[str],
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     trust_repository_code: bool,
 ) -> tuple[ToolReport, ...]:
     wanted = set(selected) if selected else {target.id for target in declared}
@@ -262,7 +262,12 @@ def _verify_artifacts(directory: Path, target: Mapping[str, object]) -> None:
 
 
 def _analyze_target(
-    directory: Path, target: Mapping[str, JsonValue], *, root: Path, runner: ProcessRunner, trust_repository_code: bool
+    directory: Path,
+    target: Mapping[str, JsonValue],
+    *,
+    root: Path,
+    runner: ProcessExecutor,
+    trust_repository_code: bool,
 ) -> ToolReport:
     identifier = _text(target, "id")
     source = _text(target, "source")
@@ -287,7 +292,12 @@ def _analyze_target(
 
 
 def _target_diagnostics(
-    directory: Path, target: Mapping[str, JsonValue], *, root: Path, runner: ProcessRunner, trust_repository_code: bool
+    directory: Path,
+    target: Mapping[str, JsonValue],
+    *,
+    root: Path,
+    runner: ProcessExecutor,
+    trust_repository_code: bool,
 ) -> tuple[Diagnostic, ...]:
     kind = _text(target, "kind")
     if kind not in {"helm", "kubernetes", "cloud-run"}:
@@ -344,7 +354,7 @@ def _read_manifests(directory: Path, target: Mapping[str, JsonValue]) -> str:
     )
 
 
-def _render_helm(directory: Path, target: Mapping[str, JsonValue], *, root: Path, runner: ProcessRunner) -> str:
+def _render_helm(directory: Path, target: Mapping[str, JsonValue], *, root: Path, runner: ProcessExecutor) -> str:
     release = _text(target, "release")
     if len(release) > _HELM_RELEASE_LENGTH or re.fullmatch(r"[a-z0-9](?:[-a-z0-9]*[a-z0-9])?", release) is None:
         msg = "prepared Helm release must be a valid release name, never a command option"
@@ -430,7 +440,7 @@ def _render_helm(directory: Path, target: Mapping[str, JsonValue], *, root: Path
 
 
 def _validate_manifests(
-    manifests: str, target: Mapping[str, JsonValue], *, directory: Path, work: Path, root: Path, runner: ProcessRunner
+    manifests: str, target: Mapping[str, JsonValue], *, directory: Path, work: Path, root: Path, runner: ProcessExecutor
 ) -> tuple[Diagnostic, ...]:
     if len(manifests.encode()) > MAX_MANIFEST_BYTES:
         msg = "prepared manifest exceeds the bounded 2 MiB validation input"

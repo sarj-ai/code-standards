@@ -891,14 +891,13 @@ def checkov_process(monkeypatch: pytest.MonkeyPatch) -> None:
         {"passed": 0, "failed": 0, "skipped": 0, "parsing_errors": 0, "resource_count": 0, "checkov_version": "3.3.30"}
     )
 
-    def run(
-        argv: Sequence[str], *, cwd: Path, environment: dict[str, str], timeout_seconds: float = 900
-    ) -> external.ProcessOutput:
+    def run(request: external.ProcessRequest) -> external.ProcessOutput:
+        argv = request.argv
         if "checkov==3.3.30" in argv:
             assert "--offline" in argv
             assert "--skip-download" in argv
             return external.ProcessOutput(0, payload, "")
-        return original(argv, cwd=cwd, environment=environment, timeout_seconds=timeout_seconds)
+        return original(request)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- replaces only Checkov's process response; CLI, parser, and baseline behavior run normally without a provisioned scanner cache.
         external, "_run_process", run

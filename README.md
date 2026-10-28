@@ -85,7 +85,9 @@ Measure native Python analysis and diagnostic stability with:
 code-standards --root . maintain rules bench packages/python/src --repeats 5
 ```
 
-The JSON report includes file and byte counts, source and diagnostic digests, per-run timings, and process peak memory. It excludes interpreter startup; peak memory is the process high-water mark. Use fresh processes for cold-start and independent memory comparisons.
+The JSON report includes file and byte counts, source and diagnostic digests, per-run timings, and process peak memory. Native timings exclude interpreter startup. Peak memory covers the current process's lifetime, including imports and earlier work, and excludes child processes; unsupported platforms report no memory measurement.
+
+`packages/python/benchmarks/compare.py` alternates fresh baseline and candidate workers over the same baseline Python corpus. It reports native and startup-inclusive timings; operating-system caches remain untouched. Its default five-run medians do not establish tail latency, statistical confidence, or warm-cache edit performance. Implementation identities cover Python and contracts sources, selected local native/build artifacts, and selected build, dependency, and version inputs. Selected symlinks and unreadable inputs fail qualification. Installed dependencies and compiler caches excluded from these identities require separate environment qualification. Process peaks do not measure aggregate worker memory or establish an analysis-only memory improvement.
 
 ### Rule artifact provenance
 

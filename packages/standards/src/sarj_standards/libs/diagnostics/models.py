@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from hashlib import sha256
 from pathlib import Path, PureWindowsPath
@@ -98,6 +98,7 @@ class _TextEditData(TypedDict):
     location: _LocationData
     replacement: str
     expectedTextHash: NotRequired[str]
+    expectedSourceHash: NotRequired[str]
 
 
 class _FixData(TypedDict):
@@ -289,6 +290,7 @@ class TextEdit:
     location: Location
     replacement: str
     expected_text_hash: str | None = None
+    expected_source_hash: str | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         _require_instance(self.location, Location, "text edit location")
@@ -297,17 +299,17 @@ class TextEdit:
             raise ValueError(msg)
         _require_text(self.replacement, "text edit replacement", allow_empty=True)
         if self.expected_text_hash is not None:
-            _require_text(self.expected_text_hash, "expected text hash")
-            if len(self.expected_text_hash) != _SHA256_HEX_LENGTH or any(
-                char not in "0123456789abcdef" for char in self.expected_text_hash
-            ):
-                msg = "expected text hash must be a lowercase SHA-256 digest"
-                raise ValueError(msg)
+            _require_sha256(self.expected_text_hash, "expected text hash")
+        if self.expected_source_hash is not None:
+            _require_sha256(self.expected_source_hash, "expected source hash")
 
-    def as_dict(self) -> _TextEditData:
+    def as_dict(self, *, include_fix_source_hashes: bool = False) -> _TextEditData:
+        _require_instance(include_fix_source_hashes, bool, "include fix source hashes")
         result: _TextEditData = {"location": self.location.as_dict(), "replacement": self.replacement}
         if self.expected_text_hash is not None:
             result["expectedTextHash"] = self.expected_text_hash
+        if include_fix_source_hashes and self.expected_source_hash is not None:
+            result["expectedSourceHash"] = self.expected_source_hash
         return result
 
 
@@ -340,9 +342,15 @@ class Fix:
             ):
                 msg = "fix edits must not overlap"
                 raise ValueError(msg)
+        _require_matching_edit_sources(self.edits)
 
-    def as_dict(self) -> _FixData:
-        return {"title": self.title, "safety": self.safety.value, "edits": [edit.as_dict() for edit in self.edits]}
+    def as_dict(self, *, include_fix_source_hashes: bool = False) -> _FixData:
+        _require_instance(include_fix_source_hashes, bool, "include fix source hashes")
+        return {
+            "title": self.title,
+            "safety": self.safety.value,
+            "edits": [edit.as_dict(include_fix_source_hashes=include_fix_source_hashes) for edit in self.edits],
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -405,7 +413,8 @@ class Diagnostic:
         if self.fingerprint is not None:
             _require_text(self.fingerprint, "diagnostic fingerprint")
 
-    def as_dict(self) -> _DiagnosticData:
+    def as_dict(self, *, include_fix_source_hashes: bool = False) -> _DiagnosticData:
+        _require_instance(include_fix_source_hashes, bool, "include fix source hashes")
         result: _DiagnosticData = {
             "code": self.code,
             "message": self.message,
@@ -425,7 +434,7 @@ class Diagnostic:
         if self.notes:
             result["notes"] = list(self.notes)
         if self.fixes:
-            result["fixes"] = [item.as_dict() for item in self.fixes]
+            result["fixes"] = [item.as_dict(include_fix_source_hashes=include_fix_source_hashes) for item in self.fixes]
         if self.tags:
             result["tags"] = list(self.tags)
         if self.fingerprint is not None:
@@ -581,7 +590,8 @@ class AnalysisReport:
     def ok(self) -> bool:
         return self.exit_code == 0
 
-    def as_dict(self) -> _AnalysisReport:
+    def as_dict(self, *, include_fix_source_hashes: bool = False) -> _AnalysisReport:
+        _require_instance(include_fix_source_hashes, bool, "include fix source hashes")
         rules: dict[str, RuleDescriptor] = {}
         for item in self.diagnostics:
             key = f"{item.source}:{item.rule_id or item.code}"
@@ -599,7 +609,9 @@ class AnalysisReport:
             "conclusion": self.conclusion.value,
             "exitCode": self.exit_code,
             "rules": [rules[key].as_dict() for key in sorted(rules)],
-            "diagnostics": [item.as_dict() for item in self.diagnostics],
+            "diagnostics": [
+                item.as_dict(include_fix_source_hashes=include_fix_source_hashes) for item in self.diagnostics
+            ],
             "issues": [item.as_dict() for item in self.issues],
             "tools": [item.as_dict() for item in self.tools],
             "coverage": [item.as_dict() for item in self.coverage],
@@ -626,6 +638,18 @@ def _edit_key(edit: TextEdit) -> _EditKey:
         msg = "text edit location must contain an exact range"
         raise ValueError(msg)
     return _EditKey(edit.location.path, region.start.byte_offset, region.end.byte_offset)
+
+
+def _require_matching_edit_sources(edits: tuple[TextEdit, ...]) -> None:
+    source_hashes: dict[str, str] = {}
+    for edit in edits:
+        digest = edit.expected_source_hash
+        if digest is None:
+            continue
+        path = edit.location.path
+        if source_hashes.setdefault(path, digest) != digest:
+            msg = f"fix edits for {path} must refer to the same source revision"
+            raise ValueError(msg)
 
 
 def _validate_help_url(value: str | None) -> None:
@@ -657,6 +681,13 @@ def _require_unique_text(value: tuple[str, ...], label: str) -> None:
 def _require_text(value: object, label: str, *, allow_empty: bool = False) -> None:
     if type(value) is not str or (not allow_empty and not value):
         msg = f"{label} must not be empty"
+        raise ValueError(msg)
+
+
+def _require_sha256(value: str, label: str) -> None:
+    _require_text(value, label)
+    if len(value) != _SHA256_HEX_LENGTH or any(char not in "0123456789abcdef" for char in value):
+        msg = f"{label} must be a lowercase SHA-256 digest"
         raise ValueError(msg)
 
 

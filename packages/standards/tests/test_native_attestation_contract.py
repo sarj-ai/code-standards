@@ -18,6 +18,8 @@ from sarj_standards.libs.linting.devops_tools import (
     checked_tool,
 )
 from sarj_standards.libs.linting.external import ProcessOutput, run_process
+from sarj_standards.libs.linting.process import ProcessCapabilities, ProcessRequest, RequestExecutor
+from tests.process_fakes import FakeProcessExecutor
 
 
 if TYPE_CHECKING:
@@ -45,7 +47,7 @@ def test_shellcheck_rejects_nonexact_version_protocol(*, tmp_path: Path, payload
         return ProcessOutput(status, payload, "")
 
     with pytest.raises(NativeToolError, match="exact version"):
-        checked_tool("shellcheck", root=tmp_path, runner=runner)
+        checked_tool("shellcheck", root=tmp_path, runner=FakeProcessExecutor(runner))
 
 
 @pytest.mark.parametrize(
@@ -63,7 +65,7 @@ def test_shellcheck_accepts_exact_version_line(*, tmp_path: Path, payload: str) 
         assert tuple(argv) == ("shellcheck", "--version")
         return ProcessOutput(0, payload, "")
 
-    assert checked_tool("shellcheck", root=tmp_path, runner=runner).version == "0.11.0"
+    assert checked_tool("shellcheck", root=tmp_path, runner=FakeProcessExecutor(runner)).version == "0.11.0"
 
 
 def test_tflint_core_version_uses_packaged_config_with_injected_runner(*, tmp_path: Path) -> None:
@@ -78,7 +80,7 @@ def test_tflint_core_version_uses_packaged_config_with_injected_runner(*, tmp_pa
         assert not config.is_relative_to(tmp_path)
         return ProcessOutput(0, "TFLint version 0.65.0", "")
 
-    assert checked_tool("tflint", root=tmp_path, runner=runner).version == "0.65.0"
+    assert checked_tool("tflint", root=tmp_path, runner=FakeProcessExecutor(runner)).version == "0.65.0"
 
 
 @pytest.mark.parametrize("state", ["missing", "wrong-version", "deadline", "valid"])
@@ -134,7 +136,8 @@ def test_canonical_discovery_keeps_missing_and_invalid_distinct(
         assert path is None or path == str(Path(sys.executable).parent)
         return str(executable) if name == "shellcheck" and payload is not None else None
 
-    def runner(argv: Sequence[str], *, cwd: Path, timeout_seconds: float = 900) -> ProcessOutput:
+    def runner(request: ProcessRequest) -> ProcessOutput:
+        argv, cwd, timeout_seconds = request.argv, request.cwd, request.timeout_seconds
         assert cwd == tmp_path
         assert argv[0] == str(executable)
         calls.append((tuple(argv), timeout_seconds))
@@ -144,21 +147,18 @@ def test_canonical_discovery_keeps_missing_and_invalid_distinct(
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- replace process-global executable discovery while exercising the canonical public resolver's production path.
         shutil, "which", resolve
     )
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observe production runner identity and deadline; a protocol-injected runner bypasses executable discovery by contract.
-        devops_tools, "run_process", runner
-    )
     if payload is None:
         with pytest.raises(NativeToolMissingError):
-            checked_tool("shellcheck", root=tmp_path, runner=runner)
+            checked_tool("shellcheck", root=tmp_path, runner=RequestExecutor(runner, ProcessCapabilities()))
         assert not calls
     elif payload != "version: 0.11.0":
         with pytest.raises(NativeToolError, match="exact version") as error:
-            checked_tool("shellcheck", root=tmp_path, runner=runner)
+            checked_tool("shellcheck", root=tmp_path, runner=RequestExecutor(runner, ProcessCapabilities()))
         assert not isinstance(error.value, NativeToolMissingError)
         assert calls
         assert calls == [((str(executable), "--version"), 5)]
     else:
-        tool = checked_tool("shellcheck", root=tmp_path, runner=runner)
+        tool = checked_tool("shellcheck", root=tmp_path, runner=RequestExecutor(runner, ProcessCapabilities()))
         assert tool.executable == executable
         assert calls == [((str(executable), "--version"), 5)]
 

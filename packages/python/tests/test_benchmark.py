@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint import benchmark
 from sarj_python_lint.benchmark import measure
 
 
@@ -27,6 +28,10 @@ def test_benchmark_reports_reproducible_findings_and_changed_input(tmp_path: Pat
         sample.seconds > 0 and (sample.peak_memory_bytes is None or sample.peak_memory_bytes > 0)
         for sample in report.samples
     )
+    assert all(
+        sample.memory_scope == ("unsupported" if sample.peak_memory_bytes is None else "process-lifetime-self")
+        for sample in report.samples
+    )
     path.write_text("value = 1\n", encoding="utf-8")
     changed = measure([path], ["no-dunder-all"], repeats=1)
     assert changed.source_digest != report.source_digest
@@ -36,6 +41,29 @@ def test_benchmark_reports_reproducible_findings_and_changed_input(tmp_path: Pat
 def test_benchmark_rejects_empty_repetitions() -> None:
     with pytest.raises(ValueError, match="repeats must be positive"):
         measure([], repeats=0)
+
+
+@pytest.mark.parametrize(
+    ("peak", "scope"), [(123, "process-lifetime-self"), (None, "unsupported")], ids=("measured", "unsupported")
+)
+def test_benchmark_sample_preserves_four_positional_arguments(peak: int | None, scope: str) -> None:
+    sample = benchmark.BenchmarkSample(0.25, 1, "digest", peak)
+    assert sample.seconds == pytest.approx(0.25)
+    assert sample.diagnostics == 1
+    assert sample.diagnostic_digest == "digest"
+    assert sample.peak_memory_bytes == peak
+    assert sample.memory_scope == scope
+
+
+def test_benchmark_reports_unsupported_memory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "app.py"
+    path.write_text("value = 1\n", encoding="utf-8")
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- force the optional platform-memory boundary while preserving real analysis and its unsupported-result mapping.
+        benchmark, "peak_memory_bytes", lambda: None
+    )
+    sample = measure([path], ["no-dunder-all"], repeats=1).samples[0]
+    assert sample.peak_memory_bytes is None
+    assert sample.memory_scope == "unsupported"
 
 
 def test_fingerprints_are_independent_of_checkout_directory(tmp_path: Path) -> None:

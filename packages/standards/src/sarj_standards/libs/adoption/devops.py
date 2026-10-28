@@ -12,7 +12,7 @@ from .doctor import Finding
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from sarj_standards.libs.linting.external import ProcessRunner
+    from sarj_standards.libs.linting.external import ProcessExecutor
 
     from .lifecycle import Command
 
@@ -133,9 +133,9 @@ def install_commands(
     return tuple(commands)
 
 
-def health_findings(root: Path, files: Sequence[Path], *, runner: ProcessRunner | None = None) -> tuple[Finding, ...]:
+def health_findings(root: Path, files: Sequence[Path], *, runner: ProcessExecutor | None = None) -> tuple[Finding, ...]:
     from sarj_standards.libs.linting.devops_tools import TOOLS, checked_tool  # ruff: ignore[import-outside-top-level] -- read-only doctor checks start after adoption modules initialize.
-    from sarj_standards.libs.linting.external import run_process  # ruff: ignore[import-outside-top-level] -- reuse bounded native runner.
+    from sarj_standards.libs.linting.external import DEFAULT_EXECUTOR  # ruff: ignore[import-outside-top-level] -- reuse bounded native runner.
 
     from .doctor import Finding, Level  # ruff: ignore[import-outside-top-level] -- doctor record boundary avoids recursive module imports.
 
@@ -155,7 +155,7 @@ def health_findings(root: Path, files: Sequence[Path], *, runner: ProcessRunner 
             checked_tool(
                 name,
                 root=root,
-                runner=run_process if runner is None else runner,
+                runner=DEFAULT_EXECUTOR if runner is None else runner,
                 expected_version=adopted.compose_version if name == "docker" else None,
             )
         except (OSError, ValueError, subprocess.SubprocessError) as error:

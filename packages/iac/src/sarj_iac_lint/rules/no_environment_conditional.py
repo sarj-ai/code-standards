@@ -10,6 +10,7 @@ from sarj_iac_lint.rule_base import (
     AutofixPolicy,
     DefaultLevel,
     Diagnostic,
+    DiagnosticSeverity,
     ExampleFile,
     ExampleOutcome,
     Rule,
@@ -119,7 +120,7 @@ _GENERATED_RE = re.compile(r"generated.{0,80}(?:do not edit|don't edit)", re.IGN
 class _Use(NamedTuple):
     identity: str
     shape: str
-    severity: DefaultLevel = DefaultLevel.ERROR
+    severity: DiagnosticSeverity = DefaultLevel.ERROR
 
 
 class _AssertionBlockKind(StrEnum):
