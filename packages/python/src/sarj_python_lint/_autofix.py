@@ -1356,7 +1356,7 @@ _BUILDERS: Final[dict[str, Callable[[_Source, Diagnostic], list[TextEdit]]]] = {
 
 
 def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None) -> str:
-    from sarj_python_lint.__main__ import check_source  # ruff: ignore[import-outside-top-level] -- the CLI imports this entry point lazily.
+    from sarj_python_lint.__main__ import check_context  # ruff: ignore[import-outside-top-level] -- the CLI imports this entry point lazily.
 
     selected = list(REGISTRY) if rule_ids is None else list(rule_ids)
     rules = [REGISTRY[rule_id]() for rule_id in selected if REGISTRY[rule_id].code in _BUILDERS]
@@ -1370,7 +1370,7 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
     while (fingerprint := sha256(current.encode("utf-8")).digest()) not in seen:
         seen.add(fingerprint)
         context = PythonFileContext(path, current)
-        diagnostics = check_source(rules, path, current)
+        diagnostics = check_context(rules, context)
         candidates = _candidate_edits(context, diagnostics)
         if not candidates:
             return current
@@ -1385,6 +1385,8 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
 
 
 def _candidate_edits(context: PythonFileContext, diagnostics: Sequence[Diagnostic]) -> list[list[TextEdit]]:
+    if not diagnostics:
+        return []
     view = _Source(context, diagnostics)
     return [
         edits

@@ -28,7 +28,7 @@ _ARCHITECTURES: Final = MappingProxyType({"aarch64": "arm64", "amd64": "x86_64"}
 _EXPORT_ASSIGNMENT_PARTS: Final = 2
 _UVX_PATH_MARKER: Final = "# sarj-standards: uvx-path"
 _EMPTY_INDEX_MARKER: Final = "# sarj-standards: empty-index gate"
-_PRECOMMIT_CALL: Final = 'call_lefthook run "pre-commit" --no-auto-install "$@"'
+_PRECOMMIT_CALL: Final = 'call_lefthook run "pre-commit" --no-auto-install --no-stage-fixed "$@"'
 
 
 def install(root: Path) -> int:
@@ -122,17 +122,23 @@ def _harden_precommit_entry(contents: str, root: Path) -> str:
 
 
 def managed_hook_call(hook_type: str) -> str:
+    if hook_type == "pre-commit":
+        return _PRECOMMIT_CALL
     return f'call_lefthook run "{hook_type}" --no-auto-install "$@"'
 
 
 def _harden_managed_call(contents: str, *, hook_type: str) -> str:
     expected = managed_hook_call(hook_type)
-    if contents.count(expected) == 1:
-        return contents
     original = f'call_lefthook run "{hook_type}" "$@"'
-    if contents.count(original) != 1:
+    candidates: tuple[str, ...] = (original,)
+    if hook_type == "pre-commit":
+        candidates += ('call_lefthook run "pre-commit" --no-auto-install "$@"',)
+    if sum(contents.count(call) for call in (expected, *candidates)) != 1:
         msg = f"installed Lefthook hook has no unique {hook_type} entry point"
         raise OSError(msg)
+    if expected in contents:
+        return contents
+    original = next(call for call in candidates if call in contents)
     return contents.replace(original, expected, 1)
 
 

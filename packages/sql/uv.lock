@@ -201,7 +201,7 @@ dev = [
 
 [[package]]
 name = "sarj-sql-lint"
-version = "0.30.0"
+version = "0.32.0"
 source = { editable = "." }
 dependencies = [
     { name = "sarj-rule-contracts" },

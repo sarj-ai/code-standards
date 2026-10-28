@@ -27,10 +27,12 @@ from repo_standards.repository import parse_baseline_bytes as parse_repository_b
 import typer
 import yaml
 
+from sarj_standards import __version__ as _controller_version
 from sarj_standards.libs.adoption import (
     doctor as adoption_doctor,
     hooks as adoption_hooks,
     launcher,
+    lifecycle as adoption_lifecycle,
     manifest as adoption_manifest,
     packagemanager as adoption_packagemanager,
     repository_baseline,
@@ -38,6 +40,7 @@ from sarj_standards.libs.adoption import (
     uvtool as adoption_uvtool,
 )
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.linting import eslint_directives, native_byte_bridge
 from sarj_standards.libs.release import metadata_verification, retirement
 from sarj_standards.libs.release.verification_process import BaseWatch
 from sarj_standards.libs.repository import ledger as rule_ledger, rule_catalog_artifact
@@ -49,6 +52,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Mapping, Sequence
 
     from pydantic import JsonValue
+
+
+_NO_DIRECTIVE_REWRITES: Mapping[str, eslint_directives.SourcePostimage] = MappingProxyType({})
+_ESLINT_SOURCE_SUFFIXES = frozenset({".cjs", ".cts", ".js", ".jsx", ".mjs", ".mts", ".ts", ".tsx"})
 
 DEFAULT_REGISTRY = Path(".sarj-standards-rollout.toml")
 DEFAULT_WORKFLOW_RUNNER = "ubuntu-latest"
@@ -889,6 +896,148 @@ def validate_rollout_native_pins(
     return permitted
 
 
+def prepare_unused_eslint_directives(
+    repo: Path,
+    runner: CommandRunner,
+    tool_prefix: tuple[str, ...],
+    *,
+    environment: Mapping[str, str],
+    version: str,
+    base_sha: str,
+) -> Mapping[str, eslint_directives.SourcePostimage]:
+    adopted = adoption_manifest.load(repo)
+    if adopted is None or "eslint" not in adopted.configs or "eslint" not in adopted.enabled_capabilities:
+        return _NO_DIRECTIVE_REWRITES
+    if re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", base_sha) is None:
+        msg = "unused directive cleanup requires the exact immutable consumer base"
+        raise RolloutError(msg)
+    native_environment = native_byte_bridge.child_environment(environment)
+    listed = runner.run(
+        ("git", "--no-optional-locks", "ls-files", "--cached", "-z"),
+        cwd=repo,
+        env=native_environment,
+        check=False,
+    )
+    if listed.returncode != 0:
+        msg = "could not enumerate tracked ESLint directive inputs"
+        raise RolloutError(msg)
+    selected = tuple(
+        relative
+        for relative in (listed.stdout or "").split("\0")
+        if relative and Path(relative).suffix.lower() in _ESLINT_SOURCE_SUFFIXES
+    )
+
+    def run_native(
+        command: adoption_lifecycle.Command,
+    ) -> subprocess.CompletedProcess[str]:
+        return runner.run((*tool_prefix, *command.argv), cwd=command.cwd, env=native_environment, check=False)
+
+    try:
+        expected = eslint_directives.plan(repo, selected, run=run_native)
+    except (OSError, TypeError, ValueError) as exc:
+        msg = f"canonical unused ESLint directive cleanup is invalid: {exc}"
+        raise RolloutError(msg) from exc
+    if expected and version != _controller_version:
+        msg = f"unused directive planning requires controller {version}; running {_controller_version}"
+        raise RolloutError(msg)
+    try:
+        _validate_directive_tree(
+            repo,
+            {relative: (proof.before, proof.mode) for relative, proof in expected.items()},
+            runner,
+            revision=base_sha,
+        )
+        eslint_directives.apply(repo, expected)
+    except (OSError, TypeError, ValueError) as exc:
+        msg = f"canonical unused ESLint directive cleanup is invalid: {exc}"
+        raise RolloutError(msg) from exc
+    return expected
+
+
+def validate_rollout_directives(
+    repo: Path,
+    expected: Mapping[str, eslint_directives.SourcePostimage],
+    runner: CommandRunner,
+    *,
+    revision: str = "",
+) -> frozenset[str]:
+    try:
+        permitted = eslint_directives.validate(repo, expected)
+    except (OSError, TypeError, ValueError) as exc:
+        msg = "source differs from its immutable native ESLint directive postimage"
+        raise RolloutError(msg) from exc
+    if not revision or not permitted:
+        return permitted
+    _validate_directive_tree(
+        repo,
+        {relative: (proof.after, proof.mode) for relative, proof in expected.items()},
+        runner,
+        revision=revision,
+    )
+    return permitted
+
+
+def _validate_directive_tree(
+    repo: Path,
+    expected: Mapping[str, tuple[bytes, int]],
+    runner: CommandRunner,
+    *,
+    revision: str,
+) -> None:
+    if not expected:
+        return
+    if re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}|HEAD", revision) is None:
+        msg = "native directive proof requires an exact source revision"
+        raise RolloutError(msg)
+    tree = runner.run(
+        (
+            "git",
+            "--literal-pathspecs",
+            "--no-replace-objects",
+            "ls-tree",
+            "-r",
+            "-z",
+            revision,
+            "--",
+            *sorted(expected),
+        ),
+        cwd=repo,
+    )
+    observed: set[str] = set()
+    for entry in (tree.stdout or "").split("\0"):
+        if not entry:
+            continue
+        try:
+            metadata, relative = entry.split("\t", maxsplit=1)
+            mode, kind, object_id = metadata.split()
+        except ValueError as exc:
+            msg = "committed directive tree record is malformed"
+            raise RolloutError(msg) from exc
+        if relative not in expected or relative in observed:
+            msg = "committed directive tree contains an unexpected or duplicate path"
+            raise RolloutError(msg)
+        contents, permission_mode = expected[relative]
+        wanted_mode = "100755" if permission_mode & 0o111 else "100644"
+        wanted_id = _directive_blob_identity(contents, object_id)
+        if kind != "blob" or mode != wanted_mode or object_id != wanted_id:
+            msg = f"committed source differs from its native directive postimage: {relative}"
+            raise RolloutError(msg)
+        observed.add(relative)
+    if observed != expected.keys():
+        msg = "committed directive postimage paths are missing"
+        raise RolloutError(msg)
+
+
+def _directive_blob_identity(contents: bytes, object_id: str) -> str:
+    payload = b"blob " + str(len(contents)).encode("ascii") + b"\0" + contents
+    if re.fullmatch(r"[0-9a-f]{40}", object_id) is not None:
+        return hashlib.sha1(payload, usedforsecurity=False).hexdigest()
+    if re.fullmatch(r"[0-9a-f]{64}", object_id) is not None:
+        return hashlib.sha256(payload).hexdigest()
+    msg = "committed directive object identity is invalid"
+    raise RolloutError(msg)
+
+
 def _tracked_shell_blobs(
     repo: Path, revision: str, paths: Sequence[str], runner: CommandRunner
 ) -> dict[str, retirement.NativePinRewrite]:
@@ -966,14 +1115,16 @@ def amend_safe_changes(
     allowed_baseline_paths: frozenset[str] = frozenset(),
     allowed_paths: frozenset[str] = DEFAULT_ALLOWED_ROLLOUT_PATHS,
     native_pin_rewrites: Mapping[str, retirement.NativePinRewrite] | None = None,
+    directive_rewrites: Mapping[str, eslint_directives.SourcePostimage] = _NO_DIRECTIVE_REWRITES,
 ) -> bool:
     native_paths = validate_rollout_native_pins(repo, native_pin_rewrites or {}, runner)
+    directive_paths = validate_rollout_directives(repo, directive_rewrites, runner)
     paths = changed_paths(repo, runner)
     if not paths:
         return False
     reject_unsafe_diff(
         paths,
-        allowed_source_paths=native_paths,
+        allowed_source_paths=native_paths | directive_paths,
         allowed_workflow_paths=allowed_workflow_paths,
         allowed_baseline_paths=allowed_baseline_paths,
         allowed_paths=allowed_paths,
@@ -985,6 +1136,7 @@ def amend_safe_changes(
         ("git", "-c", "core.hooksPath=/dev/null", "commit", "--amend", "-m", message),
         cwd=repo,
     )
+    validate_rollout_directives(repo, directive_rewrites, runner, revision="HEAD")
     return True
 
 
@@ -1530,13 +1682,7 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
     report("checking current adoption")
     existing = status_one(consumer, version, runner)
     _require_new_activation_patch(existing, enable_repository_rules)
-    retry_verification = existing.state is OutcomeState.BLOCKED and existing.detail.startswith(
-        VERIFICATION_FAILED_DETAIL
-    )
-    if existing.state is OutcomeState.BLOCKED and not retry_verification:
-        msg = f"{consumer.name}: {existing.detail}: {existing.url}"
-        raise RolloutError(msg)
-    if existing.state is not OutcomeState.MISSING and not retry_verification:
+    if not _rollout_update_required(consumer, existing):
         return existing
     if dry_run:
         return Outcome(consumer, OutcomeState.WOULD_CREATE, detail=rollout_branch(version))
@@ -1595,6 +1741,7 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
         except ValueError as exc:
             raise RolloutError(str(exc)) from exc
         failures: list[str] = []
+        directive_rewrites = _NO_DIRECTIVE_REWRITES
         report("updating bundle and dependencies")
         with consumer_work_runner(consumer, runner, base_sha, phase="preparation") as candidate_runner:
             try:
@@ -1622,6 +1769,21 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
                 consumer, repo, candidate_runner, baseline_rules, tool_prefix, tool=tool, environment=unauthenticated
             )
             allowed_baseline_paths |= frozenset(path.relative_to(repo).as_posix() for path in repository_baselines)
+            if bootstrap is None:
+                if eslint_directives.SUPPORTS_DIRECTIVE_REWRITES:
+                    report("preparing canonical unused ESLint directive cleanup")
+                    directive_rewrites = prepare_unused_eslint_directives(
+                        repo,
+                        candidate_runner,
+                        tool_prefix,
+                        environment=unauthenticated,
+                        version=version,
+                        base_sha=base_sha,
+                    )
+                else:
+                    report("leaving ESLint directives unchanged: canonical rewrites require POSIX privacy checks")
+            assert_baseline_unchanged(baseline_path, expected_baseline)
+            assert_baselines_unchanged(repository_baselines)
             report("diagnosing adoption")
             doctor = candidate_runner.run((*tool_prefix, *tool, "doctor"), cwd=repo, env=unauthenticated, check=False)
             if doctor.returncode != 0:
@@ -1636,12 +1798,13 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
         worktree_paths = changed_paths(repo, runner)
         allowed_workflow_paths = pin_workflow_paths | canonical_commit_policy_workflow_paths(repo, worktree_paths)
         retired_paths = _validate_rollout_retirements(repo, retired_rewrites)
+        directive_paths = validate_rollout_directives(repo, directive_rewrites, runner)
         native_pin_rewrites = native_bootstrap_rewrites(repo, base_sha, worktree_paths, runner, version=version)
         native_paths = validate_rollout_native_pins(repo, native_pin_rewrites, runner)
         retired_baselines = frozenset(path for path in retired_paths if "baseline" in path.lower())
         reject_unsafe_diff(
             worktree_paths,
-            allowed_source_paths=retired_paths | native_paths,
+            allowed_source_paths=retired_paths | native_paths | directive_paths,
             allowed_workflow_paths=allowed_workflow_paths,
             allowed_baseline_paths=allowed_baseline_paths | retired_baselines,
             allowed_paths=allowed_paths,
@@ -1650,6 +1813,7 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
         runner.run(("git", "add", "--", *worktree_paths), cwd=repo)
         message = managed_commit_message(version, staged_tree_sha(repo, runner))
         runner.run(("git", "-c", "core.hooksPath=/dev/null", "commit", "-m", message), cwd=repo)
+        validate_rollout_directives(repo, directive_rewrites, runner, revision="HEAD")
         if bootstrap is not None:
             failures.append("consumer bootstrap failed:\n" + verification_detail(bootstrap))
         else:
@@ -1671,6 +1835,7 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
                 allowed_baseline_paths=allowed_baseline_paths,
                 allowed_paths=allowed_paths,
                 native_pin_rewrites=native_pin_rewrites,
+                directive_rewrites=directive_rewrites,
             )
             if verification_failure_detail:
                 failures.append("consumer verification failed:\n" + verification_failure_detail)
@@ -1679,9 +1844,10 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
         allowed_workflow_paths = pin_workflow_paths | canonical_commit_policy_workflow_paths(repo, branch_paths)
         _validate_rollout_retirements(repo, retired_rewrites)
         validate_rollout_native_pins(repo, native_pin_rewrites, runner, revision="HEAD")
+        directive_paths = validate_rollout_directives(repo, directive_rewrites, runner, revision="HEAD")
         reject_unsafe_diff(
             branch_paths,
-            allowed_source_paths=retired_paths | native_paths,
+            allowed_source_paths=retired_paths | native_paths | directive_paths,
             allowed_workflow_paths=allowed_workflow_paths,
             allowed_baseline_paths=allowed_baseline_paths | retired_baselines,
             allowed_paths=allowed_paths,
@@ -1704,6 +1870,16 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
         branch_paths=branch_paths,
         verification_failure=verification_failure,
     )
+
+
+def _rollout_update_required(consumer: Consumer, existing: Outcome) -> bool:
+    retry_verification = existing.state is OutcomeState.BLOCKED and existing.detail.startswith(
+        VERIFICATION_FAILED_DETAIL
+    )
+    if existing.state is OutcomeState.BLOCKED and not retry_verification:
+        msg = f"{consumer.name}: {existing.detail}: {existing.url}"
+        raise RolloutError(msg)
+    return existing.state is OutcomeState.MISSING or retry_verification
 
 
 def update_consumer_bundle(
@@ -2702,6 +2878,7 @@ def _verify_rollout_patch(
     allowed_paths: frozenset[str],
     standards_tool: tuple[str, ...] = (),
     native_pin_rewrites: Mapping[str, retirement.NativePinRewrite] | None = None,
+    directive_rewrites: Mapping[str, eslint_directives.SourcePostimage] = _NO_DIRECTIVE_REWRITES,
 ) -> str:
     verification_failure_detail = ""
     for attempt in range(MAX_VERIFICATION_ATTEMPTS):
@@ -2740,6 +2917,7 @@ def _verify_rollout_patch(
             allowed_baseline_paths=allowed_baseline_paths,
             allowed_paths=allowed_paths,
             native_pin_rewrites=native_pin_rewrites,
+            directive_rewrites=directive_rewrites,
         )
         if verification.returncode == 0 and not mutated:
             break

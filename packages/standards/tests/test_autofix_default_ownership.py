@@ -110,6 +110,27 @@ def test_explicit_directory_selection_keeps_unselected_sources(tmp_path: Path, m
     assert other.read_bytes() == original
 
 
+def test_default_native_formatting_preserves_generated_headers_and_fixes_authored_source(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "example"\nversion = "0.0.0"\n[tool.ruff.lint]\nselect = ["F401"]\n',
+        encoding="utf-8",
+    )
+    _adopt(tmp_path, configs=("ruff",), python_dest=".")
+    generated = tmp_path / "generated.py"
+    original = b"# AUTO-GENERATED; DO NOT EDIT\nimport os\n"
+    generated.write_bytes(original)
+    authored = tmp_path / "authored.py"
+    authored.write_bytes(b"import os\n")
+
+    result = api.Standards(tmp_path).fix()
+
+    assert result.ok
+    assert generated.read_bytes() == original
+    assert authored.read_bytes() == b""
+    assert authored in {change.path for change in result.changes}
+    assert generated not in {change.path for change in result.changes}
+
+
 @pytest.mark.parametrize("name", ["large.ts", "large.yml"])
 def test_check_discovery_keeps_its_existing_size_guard(tmp_path: Path, name: str) -> None:
     path = tmp_path / name

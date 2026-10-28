@@ -30,7 +30,7 @@ from sarj_rule_contracts import RuleEngine, RuleSelection
 import yaml
 
 from sarj_standards.libs.adoption import manifest, packagemanager
-from sarj_standards.libs.adoption.lifecycle import Command, select_eslint_commands
+from sarj_standards.libs.adoption.lifecycle import Command, EslintSelection, select_eslint_commands
 from sarj_standards.libs.diagnostics import (
     AnalyzerId,
     Completion,
@@ -46,6 +46,7 @@ from sarj_standards.libs.diagnostics import (
     TrustMode,
 )
 from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.staged_git import staged_environment
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
@@ -378,6 +379,7 @@ def analyze_external(
     execute = run_process if runner is None else runner
     try:
         normalized_trust = TrustMode(trust)
+        react_execute = _staged_react_runner(root, runner=runner) if react_doctor_staged else execute
         root, contained, routed = _prepare_inputs(files, root, policy=policy, grouped=grouped)
     except (OSError, ValueError) as exc:
         issue = ExecutionIssue("external", "invalid-input", str(exc))
@@ -463,19 +465,15 @@ def analyze_external(
         from .devops_schema import analyze_source_schemas  # ruff: ignore[import-outside-top-level] -- schema validation is a selected local runtime adapter.
 
         reports.extend(analyze_source_schemas(root=root, paths=tuple(routed.text)))
-    if not eslint or (capabilities is not None and "eslint" not in capabilities):
-        eslint_commands = ()
-        unowned_eslint = 0
-    else:
-        try:
-            eslint_commands, unowned_eslint = select_eslint_commands(
-                root, routed.typescript, label="analysis", expand_directories=True
-            )
-        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
-            message = redact_message(f"{type(exc).__name__}: {exc}", root)
-            issue = ExecutionIssue("eslint", "configuration-failure", message)
-            reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
-            return tuple(reports)
+    try:
+        eslint_commands, unowned_eslint = _analysis_eslint_selection(
+            root, routed.typescript, enabled=eslint, capabilities=capabilities
+        )
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        message = redact_message(f"{type(exc).__name__}: {exc}", root)
+        issue = ExecutionIssue("eslint", "configuration-failure", message)
+        reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
+        return tuple(reports)
     if unowned_eslint:
         issue = ExecutionIssue(
             "eslint",
@@ -589,7 +587,7 @@ def analyze_external(
                 react_root,
                 projects=react_projects,
                 root=root,
-                runner=execute,
+                runner=react_execute,
                 use_local_binary=runner is None,
                 file_count=max(len(routed.typescript), 1),
                 staged=react_doctor_staged,
@@ -613,6 +611,23 @@ def analyze_external(
         )
         for report in reports
     )
+
+
+def _staged_react_runner(root: Path, *, runner: ProcessRunner | None) -> ProcessRunner:
+    environment = staged_environment(root)
+    if runner is not None:
+        return runner
+    if (index_file := environment.get("GIT_INDEX_FILE")) is not None:
+        return partial(_run_staged_process, index_file=index_file)
+    return run_process
+
+
+def _analysis_eslint_selection(
+    root: Path, files: Sequence[str], *, enabled: bool, capabilities: frozenset[str] | None
+) -> EslintSelection:
+    if not enabled or (capabilities is not None and "eslint" not in capabilities):
+        return EslintSelection((), 0)
+    return select_eslint_commands(root, files, label="analysis", expand_directories=True)
 
 
 def _quality_reports(
@@ -2511,6 +2526,12 @@ def _nearest_project(start: Path, root: Path, markers: Sequence[str]) -> Path:
     return root
 
 
+def _run_staged_process(argv: Sequence[str], *, cwd: Path, index_file: str) -> ProcessOutput:
+    environment = _analysis_environment()
+    environment["GIT_INDEX_FILE"] = index_file
+    return _run_process(argv, cwd=cwd, environment=environment)
+
+
 def run_process(argv: Sequence[str], *, cwd: Path, timeout_seconds: float = _TIMEOUT.total_seconds()) -> ProcessOutput:
     return _run_process(argv, cwd=cwd, environment=_analysis_environment(), timeout_seconds=timeout_seconds)
 
@@ -2681,6 +2702,7 @@ def _analysis_environment() -> dict[str, str]:
         if key in _SAFE_ENVIRONMENT_KEYS or key.startswith("LC_")
     }
     environment["TFLINT_DISABLE_VERSION_CHECK"] = "true"
+    environment["GIT_OPTIONAL_LOCKS"] = "0"
     return environment
 
 

@@ -233,10 +233,30 @@ def test_default_tool_policy_does_not_change_warning_or_serialization_behavior(t
     assert "policyFailedTools" not in to_sarif(report)
 
 
-@pytest.mark.parametrize("path", ["/absolute.py", "../escape.py", "C:\\private\\file.py", "C:relative.py"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/absolute.py",
+        "../escape.py",
+        "C:\\private\\file.py",
+        "C:relative.py",
+        "c:/private/file.py",
+        "z:relative.py",
+        "//server/share/file.py",
+        "\\\\server\\share\\file.py",
+    ],
+)
 def test_location_requires_portable_repository_relative_path(path: str) -> None:
     with pytest.raises(ValueError, match="repository-relative"):
         Location(path)
+
+
+@pytest.mark.parametrize("path", ["0:probe.toml", "9:relative.py", "_:relative.py", "dir/0:probe.toml"])
+def test_location_retains_literal_colon_paths_without_a_windows_drive(path: str) -> None:
+    location = Location(path)
+
+    assert location.path == path
+    assert location.as_dict() == {"path": path}
 
 
 def _invalid_severity() -> Diagnostic:

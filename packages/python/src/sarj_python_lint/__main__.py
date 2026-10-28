@@ -136,15 +136,18 @@ def _check(rule_names: Sequence[str], paths: list[Path], *, jobs: int = 1) -> li
 def check_source(
     rules: list[Rule], p: Path, source: str, *, session: AnalysisSession | None = None
 ) -> list[Diagnostic]:
-    context = PythonFileContext(p, source, session)
+    return check_context(rules, PythonFileContext(p, source, session))
+
+
+def check_context(rules: list[Rule], context: PythonFileContext) -> list[Diagnostic]:
     if rules and context.tree is None:
-        msg = f"selected Python source could not be parsed: {p}"
+        msg = f"selected Python source could not be parsed: {context.path}"
         raise ValueError(msg)
     source_lines = context.source_lines
     raw = [diagnostic for rule in rules for diagnostic in rule.check_context(context)]
     return deduplicate_diagnostics(
         [diagnostic for diagnostic in raw if not is_suppressed(source_lines, diagnostic.line, diagnostic.code)],
-        source=source,
+        source=context.source,
         context=context,
     )
 

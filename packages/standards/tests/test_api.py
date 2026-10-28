@@ -350,6 +350,26 @@ def test_standards_facade_fix_uses_the_adopted_nested_typescript_destination(
     assert [command.cwd for command in planned] == [web]
 
 
+def test_standards_facade_reports_actual_native_changes_and_the_fixed_point(tmp_path: Path) -> None:
+    source = tmp_path / "source.py"
+    source.write_bytes(b"# ========\nvalue = 1\n")
+    (tmp_path / ".sarj-standards.toml").write_text(Manifest(api.__version__, (), ".", ".").render(), encoding="utf-8")
+    standards = api.Standards(tmp_path)
+
+    first = standards.fix([source.name])
+
+    assert source.read_bytes() == b"\nvalue = 1\n"
+    assert first.status is api.Status.CHANGED
+    assert first.exit_code == 0
+    assert first.changes == (api.Change("update", "applied safe fixes", source),)
+
+    second = standards.fix([source.name])
+
+    assert second.status is api.Status.OK
+    assert second.changes == ()
+    assert source.read_bytes() == b"\nvalue = 1\n"
+
+
 def test_standards_facade_rejects_selected_paths_outside_root(tmp_path: Path) -> None:
     outside = tmp_path.parent / "outside.py"
     outside.write_text("value = 1\n", encoding="utf-8")

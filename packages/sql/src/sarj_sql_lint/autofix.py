@@ -79,6 +79,8 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
             edits.extend(_comment_edits(source, diagnostics, banners=rule_id == "no-migration-comment-cruft"))
         else:
             edits.extend(literal_edits(source, diagnostics, RuleId(rule_id)))
+    if not edits:
+        return source
     fixed = apply_edits(source, edits)
     return fixed if _parseable(fixed) else source
 

@@ -115,6 +115,20 @@ def test_generated_stub_is_not_explicitly_routed_or_staged(tmp_path: Path) -> No
     assert not runner.accepts_hook_path(source, root=tmp_path)
 
 
+@pytest.mark.parametrize("suffix", [".py", ".pyi", ".ts", ".toml", ".yaml", ".tf"])
+def test_generated_header_discovery_matches_explicit_and_staged_routing(tmp_path: Path, suffix: str) -> None:
+    generated = tmp_path / f"generated-source{suffix}"
+    generated.write_text("# AUTO-GENERATED; DO NOT EDIT\nvalue = 1\n", encoding="utf-8")
+    authored = tmp_path / f"authored-source{suffix}"
+    authored.write_text('value = "AUTO-GENERATED; DO NOT EDIT"\n', encoding="utf-8")
+
+    assert runner.group_paths([str(generated)]) == runner.GroupedPaths()
+    assert runner.group_paths([str(tmp_path)]) == runner.group_paths([str(authored)])
+    assert runner.group_format_paths([str(tmp_path)]) == runner.group_format_paths([str(authored)])
+    assert not runner.accepts_hook_path(generated, root=tmp_path)
+    assert runner.accepts_hook_path(authored, root=tmp_path)
+
+
 def test_stub_selects_native_python_checker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     source = tmp_path / "service.pyi"
     source.write_text("def parse(value: str) -> int: ...\n", encoding="utf-8")

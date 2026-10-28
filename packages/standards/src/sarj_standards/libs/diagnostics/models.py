@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256
-from pathlib import Path, PureWindowsPath
+from pathlib import Path, PurePosixPath
+import re
 from typing import Final, NamedTuple, NewType, NotRequired, TypedDict
 from urllib.parse import urlparse
 
@@ -15,6 +16,7 @@ SCHEMA_URI: Final = "https://standards.sarj.ai/schemas/analysis/v1"
 ANALYSIS_SCHEMA: Final = Path(__file__).with_name("analysis.schema.json")
 FINGERPRINT_VERSION: Final = 1
 _SHA256_HEX_LENGTH: Final = 64
+_WINDOWS_DRIVE = re.compile(r"^[A-Za-z]:")
 AnalyzerId = NewType("AnalyzerId", str)
 InvocationId = NewType("InvocationId", str)
 
@@ -249,9 +251,8 @@ class Location:
 
     def __post_init__(self) -> None:
         _require_text(self.path, "location path")
-        path = Path(self.path)
-        windows = PureWindowsPath(self.path)
-        if path.is_absolute() or windows.is_absolute() or windows.drive or ".." in path.parts or "\\" in self.path:
+        path = PurePosixPath(self.path)
+        if path.is_absolute() or _WINDOWS_DRIVE.match(self.path) or ".." in path.parts or "\\" in self.path:
             msg = "diagnostic location must be a repository-relative path"
             raise ValueError(msg)
         if self.position is not None and self.region is not None:

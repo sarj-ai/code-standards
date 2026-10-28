@@ -433,7 +433,7 @@ def _is_routable_discovered_file(path: Path, *, validate_sources: bool = True) -
         raise
     except OSError:
         return False
-    return True
+    return not _has_generated_header(path)
 
 
 def _validate_source_file(path: Path, display: str) -> None:

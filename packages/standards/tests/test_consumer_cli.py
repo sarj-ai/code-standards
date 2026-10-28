@@ -12,9 +12,11 @@ from sarj_standards.api import Standards
 import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import devops, manifest
 from sarj_standards.libs.adoption.manifest import as_table, list_field
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting.analysis import report_from_tools
 from sarj_standards.libs.linting.devops_tools import TOOLS
 from sarj_standards.libs.linting.external import ProcessOutput
+from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
 if TYPE_CHECKING:
@@ -123,6 +125,57 @@ def test_setup_uses_one_global_repository_root(tmp_path: Path) -> None:
     assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
     assert (tmp_path / ".sarj-standards.toml").is_file()
     assert (tmp_path / ".github" / "workflows" / "standards.yml").is_file()
+
+
+@pytest.mark.parametrize(
+    ("operands", "expected_status", "expected_completion", "unknown_files"),
+    [
+        pytest.param(("--root=operand.py",), 1, "complete", 0, id="literal-root-equals-operand"),
+        pytest.param(("--root", "ordinary.py"), 2, "partial", 1, id="literal-root-operand-and-ordinary-file"),
+    ],
+)
+def test_root_named_file_operands_remain_literal_after_separator(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    operands: tuple[str, ...],
+    expected_status: int,
+    expected_completion: str,
+    unknown_files: int,
+) -> None:
+    contents = "__all__ = []\n"
+    for name in operands:
+        (tmp_path / name).write_text(contents, encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    status = cli.main(["analyze", "--format", "json", "--", *operands])
+
+    captured = capsys.readouterr()
+    payload = parse_json(captured.out)
+    assert is_object_mapping(payload), captured.out
+    assert status == expected_status, payload
+    assert payload.get("exitCode") == expected_status, payload
+    assert payload.get("root") == ".", payload
+    assert payload.get("completion") == expected_completion, payload
+    expected_coverage = (
+        [
+            {
+                "source": "sarj-standards",
+                "reason": "no bundled analyzer accepts the selected file type",
+                "fileCount": unknown_files,
+                "disposition": "failed",
+            }
+        ]
+        if unknown_files
+        else []
+    )
+    assert payload.get("coverage") == expected_coverage, payload
+    diagnostics = payload.get("diagnostics")
+    assert is_object_list(diagnostics), payload
+    assert any(is_object_mapping(item) and item.get("code") == "SARJ438" for item in diagnostics), payload
+    assert not captured.err
+    assert all((tmp_path / name).read_text(encoding="utf-8") == contents for name in operands)
 
 
 def test_tools_only_requires_adoption_without_creating_wiring(tmp_path: Path) -> None:

@@ -24,7 +24,6 @@ _UNUSED_API_DIRECTIVE = re.compile(
     r"#\s*ruff:\s*(?:noqa\s*:\s*TID251|file-ignore\s*\[\s*(?:TID251|banned-api)\s*\])\s*\Z",
     re.IGNORECASE,
 )
-_MIN_PARAGRAPH_LINES = 4
 
 
 @final
@@ -57,7 +56,7 @@ class CommentFixes:
         if diagnostic.code == "SARJ054" and self._unused_api_directive(token):
             return [self._remove(token)]
         if diagnostic.code == "SARJ434" and diagnostic.severity is Severity.ERROR:
-            paragraph = self._restates_accumulation(token)
+            paragraph = self._restates_narration(token)
             return [self._remove(comment) for comment in paragraph]
         return []
 
@@ -114,18 +113,14 @@ class CommentFixes:
             case _:
                 return False
 
-    def _restates_accumulation(self, first: tokenize.TokenInfo) -> list[tokenize.TokenInfo]:
+    def _restates_narration(self, first: tokenize.TokenInfo) -> list[tokenize.TokenInfo]:
         group = self.prose_groups.get((first.start[0], first.start[1] + 1))
         if group is None:
             return []
         if self.narration is None:
             self.narration = CommentNarration(self.context)
         matched = self.narration.match(group)
-        if (
-            matched is not None
-            and matched.kind == "accumulation"
-            and len(matched.comment_lines) >= _MIN_PARAGRAPH_LINES
-        ):
+        if matched is not None:
             return [self.comments[line] for line in matched.comment_lines]
         return []
 

@@ -16,6 +16,7 @@ from pydantic import JsonValue
 
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.json_boundary import parse_unique_json
+from sarj_standards.libs.staged_git import isolated_environment, staged_environment
 from sarj_standards.libs.typed_containers import is_object_mapping
 
 
@@ -80,6 +81,10 @@ def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None 
         return None
     if not staged and _GIT_SHA.fullmatch(base) is None:
         return ChangedLineScope(frozenset(), {}, failed=True)
+    try:
+        environment = staged_environment(root) if staged else isolated_environment()
+    except OSError, ValueError:
+        return ChangedLineScope(frozenset(), {}, failed=True)
     git = shutil.which("git")
     if git is None:
         return ChangedLineScope(frozenset(), {}, failed=True)
@@ -105,6 +110,7 @@ def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None 
         names = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed Git argv with literal repository-relative paths.
             (*common, "--name-status", "-z", "--"),
             cwd=root,
+            env=environment,
             check=False,
             capture_output=True,
             timeout=30,
@@ -116,6 +122,7 @@ def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None 
         patch = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed Git argv with literal repository-relative paths.
             (*common, "--unified=0", "--no-color", "--src-prefix=a/", "--dst-prefix=b/", "--", *selected),
             cwd=root,
+            env=environment,
             check=False,
             capture_output=True,
             timeout=30,
