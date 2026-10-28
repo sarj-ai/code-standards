@@ -848,7 +848,9 @@ jobs:
         run: uv run --frozen python -m sarj_standards.libs.adoption.native_bootstrap
       - name: Install and attest integration native tools
         if: steps.reuse.outputs.reused != 'true'
-        run: uv run --frozen python -m sarj_standards.libs.release.native_test_setup --root ../..
+        run: |
+          sudo apt-get update
+          uv run --frozen python -m sarj_standards.libs.release.native_test_setup --root ../..
       - name: Test against the built wheel
         if: steps.reuse.outputs.reused != 'true'
         run: bash ../../.github/scripts/release-test-wheel.sh

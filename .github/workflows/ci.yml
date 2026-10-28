@@ -702,7 +702,9 @@ jobs:
         run: uv run --no-project python -m sarj_standards.libs.adoption.native_bootstrap
       - name: Install and attest integration native tools
         if: needs.changes.outputs.reviewed-wheels != 'true'
-        run: uv run --no-project python -m sarj_standards.libs.release.native_test_setup --root ../..
+        run: |
+          sudo apt-get update
+          uv run --no-project python -m sarj_standards.libs.release.native_test_setup --root ../..
       - name: Run affected wheel tests (full on shared changes or scheduled/manual audits)
         if: needs.changes.outputs.reviewed-wheels != 'true'
         env:
@@ -879,7 +881,9 @@ jobs:
         run: uv run --project packages/standards python -m sarj_standards.libs.adoption.native_bootstrap
       - name: Install and attest integration native tools
         if: needs.changes.outputs.reviewed-ci != 'true'
-        run: uv run --project packages/standards python -m sarj_standards.libs.release.native_test_setup --root .
+        run: |
+          sudo apt-get update
+          uv run --project packages/standards python -m sarj_standards.libs.release.native_test_setup --root .
       - name: Record effective CPU capacity
         if: needs.changes.outputs.reviewed-ci != 'true'
         run: nproc
