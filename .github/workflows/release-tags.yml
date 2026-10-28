@@ -12,7 +12,8 @@ jobs:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       (github.event.workflow_run.head_branch == 'main' ||
-       github.event.workflow_run.head_branch == 'maintenance/standards-8.101') &&
+       github.event.workflow_run.head_branch == 'maintenance/standards-8.101' ||
+       github.event.workflow_run.head_branch == 'maintenance/standards-8.129') &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10

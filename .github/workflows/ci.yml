@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, maintenance/standards-8.101]
+    branches: [main, maintenance/standards-8.101, maintenance/standards-8.129]
   workflow_dispatch:
   schedule:
     - cron: '23 9 * * 1'
@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Measure pull-request size
-        uses: sarj-ai/repo-standards@a73ee177de7365b65d996218874a606c6af7bc05 # v6.12.9
+        uses: sarj-ai/repo-standards@c61146c7137c764ac1371a99508771fc255a1767 # v6.13.0
 
   changes:
     name: Detect affected checks
@@ -702,7 +702,9 @@ jobs:
         run: uv run --no-project python -m sarj_standards.libs.adoption.native_bootstrap
       - name: Install and attest integration native tools
         if: needs.changes.outputs.reviewed-wheels != 'true'
-        run: uv run --no-project python -m sarj_standards.libs.release.native_test_setup --root ../..
+        run: |
+          sudo apt-get update
+          uv run --no-project python -m sarj_standards.libs.release.native_test_setup --root ../..
       - name: Run affected wheel tests (full on shared changes or scheduled/manual audits)
         if: needs.changes.outputs.reviewed-wheels != 'true'
         env:
@@ -879,7 +881,9 @@ jobs:
         run: uv run --project packages/standards python -m sarj_standards.libs.adoption.native_bootstrap
       - name: Install and attest integration native tools
         if: needs.changes.outputs.reviewed-ci != 'true'
-        run: uv run --project packages/standards python -m sarj_standards.libs.release.native_test_setup --root .
+        run: |
+          sudo apt-get update
+          uv run --project packages/standards python -m sarj_standards.libs.release.native_test_setup --root .
       - name: Record effective CPU capacity
         if: needs.changes.outputs.reviewed-ci != 'true'
         run: nproc
