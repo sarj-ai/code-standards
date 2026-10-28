@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "da586328983b2f030bbe56a7c6031381bde737c0fb7617ae642188df33e508e5",
-  "cliSha256": "99ca2fe4e61f73871c7f7228c907919234f8ae7642af5caa6b8e5a5abfe30b75",
+  "catalogSha256": "e919792f0903ec06957ceabf64a332d6547fdcd7d1f3ce5699db692aeb67c55f",
+  "cliSha256": "515328cdc4e4fbb84ecc540a97e07f63d5246f9f91100dcd2eed453afab1b064",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -9051,6 +9051,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-custom-control-flow-exception": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/content.py",
+              "source": "class UnsupportedContent(ValueError):\n    pass\n\n\ndef read_content(known: bool) -> str:\n    if not known:\n        raise UnsupportedContent(\"Unsupported content\")\n    return \"content\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/content.py",
+          "id": "empty-domain-exception",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A local marker hides a domain outcome outside the return contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/content.py",
+              "source": "from dataclasses import dataclass\nfrom typing import Literal\n\n\n@dataclass(frozen=True)\nclass Content:\n    value: str\n    kind: Literal[\"content\"] = \"content\"\n\n\n@dataclass(frozen=True)\nclass Unsupported:\n    kind: Literal[\"unsupported\"] = \"unsupported\"\n\n\ndef read_content(known: bool) -> Content | Unsupported:\n    return Content(\"content\") if known else Unsupported()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/content.py",
+          "id": "tagged-domain-result",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The return contract represents the expected unsupported outcome"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-database-programmability": {
       "examples": [
         {
@@ -9187,6 +9222,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Construct the desired mapping directly"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-discarded-tagged-outcome": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/outcomes.py",
+              "source": "from typing import Literal\nfrom pydantic import BaseModel\n\n\nclass Accepted(BaseModel):\n    kind: Literal[\"accepted\"]\n    value: str\n\n\nclass Rejected(BaseModel):\n    kind: Literal[\"rejected\"]\n    reason: str\n\n\ntype Outcome = Accepted | Rejected\n\n\ndef check(value: str) -> Outcome:\n    return Accepted(kind=\"accepted\", value=value)\n\n\ncheck(\"value\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/outcomes.py",
+          "id": "discarded-outcome",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A tagged outcome is discarded"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/outcomes.py",
+              "source": "from typing import Literal\nfrom pydantic import BaseModel\n\n\nclass Accepted(BaseModel):\n    kind: Literal[\"accepted\"]\n    value: str\n\n\nclass Rejected(BaseModel):\n    kind: Literal[\"rejected\"]\n    reason: str\n\n\ntype Outcome = Accepted | Rejected\n\n\ndef check(value: str) -> Outcome:\n    return Accepted(kind=\"accepted\", value=value)\n\n\ndef run() -> Outcome:\n    return check(\"value\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/outcomes.py",
+          "id": "forwarded-outcome",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The caller forwards the outcome"
         }
       ],
       "optionsSchemaSource": null
@@ -11058,6 +11128,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-recording-store": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/fakes/store.py",
+              "source": "class Store:\n    def get(self, key): ...\n    def upsert(self, item): ...\n\n\nclass Recording(Store):\n    def __init__(self):\n        self.writes = []\n\n    def upsert(self, item):\n        self.writes.append(item)\n        return super().upsert(item)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/fakes/store.py",
+          "id": "delegating-spy",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A spy retains actual persistence"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/fakes/store.py",
+              "source": "class Store:\n    def get(self, key): ...\n    def upsert(self, item): ...\n\n\nclass Recording(Store):\n    def __init__(self):\n        self.writes = []\n\n    def upsert(self, item):\n        self.writes.append(item)\n        return item\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/fakes/store.py",
+          "id": "recording-persistence",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Recording replaces persistence"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-redundant-local-alias": {
       "examples": [
         {
@@ -11279,6 +11384,41 @@
           "outcome": "accept",
           "scenarioId": "public-private-alias",
           "title": "Give the implementation its intended public name"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-redundant-sql-alias": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/call_store.py",
+              "source": "from psycopg.sql import SQL\n\nQUERY = SQL(\"SELECT call.id FROM call WHERE id = %s\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/call_store.py",
+          "id": "direct-names",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use the existing relation and column names"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/call_store.py",
+              "source": "from psycopg.sql import SQL\n\nQUERY = SQL(\"SELECT call.id AS id FROM call AS call WHERE id = %s\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/call_store.py",
+          "id": "self-aliases",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Aliases repeat the existing names"
         }
       ],
       "optionsSchemaSource": null
@@ -12658,6 +12798,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:prefer-application-model-joins": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/scenario_store.py",
+              "source": "from psycopg import AsyncCursor\n\n\nasync def load(cursor: AsyncCursor):\n    await cursor.execute(\n        'SELECT s.id, u.email FROM scenario s LEFT JOIN \"user\" u ON u.id = s.actor_id WHERE s.id = %s',\n        (1,),\n    )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/scenario_store.py",
+          "id": "cross-model-join",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Separate model relations share one SQL projection"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/scenario_store.py",
+              "source": "from psycopg import AsyncCursor\n\n\nasync def load(cursor: AsyncCursor):\n    await cursor.execute(\n        \"SELECT s.id, u.email FROM scenario s LEFT JOIN scenario u ON u.id = s.actor_id WHERE s.id = %s\",\n        (1,),\n    )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/scenario_store.py",
+          "id": "self-join",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A self join does not prove distinct model ownership"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:prefer-autospec-for-callable-mock": {
       "examples": [
         {
@@ -13947,6 +14122,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Immutable empty default keeps omission non-nullable"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-optional-composite": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Usage(BaseModel):\n    actor_id: str\n    actor_name: str | None\n    since: str\n\n\nclass State(BaseModel):\n    in_use: Usage | None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "one-optional-composite",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A present usage value can still have an unavailable actor name"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel\n\n\nclass State(BaseModel):\n    in_use_by: str | None\n    in_use_by_name: str | None\n    in_use_since: str | None\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "scattered-optional-value",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Review a usage value split across nullable fields"
         }
       ],
       "optionsSchemaSource": null
@@ -16494,6 +16704,76 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:store-insert-requires-explicit-conflict-policy": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/fixtures/rows.py",
+              "source": "from psycopg import AsyncCursor\n\n\nclass RowsFixture:\n    def __init__(self, cursor: AsyncCursor):\n        self.cursor = cursor\n\n    async def insert(self):\n        await self.cursor.execute(\n            \"INSERT INTO item(id) VALUES(%s) ON CONFLICT DO NOTHING\", (1,)\n        )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/fixtures/rows.py",
+          "id": "fixture-declared-policy",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A fixture declares its duplicate behavior"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/fixtures/rows.py",
+              "source": "from psycopg import AsyncCursor\n\n\nclass RowsFixture:\n    def __init__(self, cursor: AsyncCursor):\n        self.cursor = cursor\n\n    async def insert(self):\n        await self.cursor.execute(\"INSERT INTO item(id) VALUES(%s)\", (1,))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/fixtures/rows.py",
+          "id": "fixture-insert-policy",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Fixture inserts need an explicit duplicate decision"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:store-mutation-command-fanout": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/item_store.py",
+              "source": "from psycopg import AsyncCursor\n\n\nclass ItemStore:\n    def __init__(self, cursor: AsyncCursor):\n        self.cursor = cursor\n\n    async def upsert(self, item):\n        await self.cursor.execute(\n            \"INSERT INTO item(id, name) VALUES(%s, %s) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name\",\n            (item.id, item.name),\n        )\n\n    async def set_name_before_start(self, key, name):\n        await self.cursor.execute(\n            \"UPDATE item SET name=%s WHERE id=%s AND started_at IS NULL\", (name, key)\n        )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/item_store.py",
+          "id": "conditional-setter",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Review a separate guarded setter"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/item_store.py",
+              "source": "from psycopg import AsyncCursor\n\n\nclass ItemStore:\n    def __init__(self, cursor: AsyncCursor):\n        self.cursor = cursor\n\n    async def upsert(self, item):\n        await self.cursor.execute(\n            \"INSERT INTO item(id, name) VALUES(%s, %s) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name\",\n            (item.id, item.name),\n        )\n\n    async def set_name_before_start(self, key, name):\n        await self.cursor.execute(\n            \"UPDATE other SET name=%s WHERE id=%s AND started_at IS NULL\", (name, key)\n        )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/item_store.py",
+          "id": "different-relation",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Different relation ownership is preserved"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:subprocess-kill-without-reap": {
       "examples": [
         {
@@ -16725,6 +17005,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A private test helper's callers never vary a singleton option"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:combine-alter-table": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001_retire_version.sql",
+              "source": "ALTER TABLE\nCALL\nDROP CONSTRAINT IF EXISTS call_scenario_version_fkey;\n\nALTER TABLE\nCALL\nDROP COLUMN IF EXISTS scenario_version_id;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_retire_version.sql",
+          "id": "combine-related-drops",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Drop a legacy foreign key and its column together"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_retire_version.sql",
+              "source": "ALTER TABLE\nCALL\nDROP CONSTRAINT IF EXISTS call_scenario_version_fkey,\nDROP COLUMN IF EXISTS scenario_version_id;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_retire_version.sql",
+          "id": "combined-drops",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "One statement retains the drop order and guards"
         }
       ],
       "optionsSchemaSource": null
@@ -17094,6 +17409,76 @@
           "outcome": "accept",
           "scenarioId": "explicit-schema-replay",
           "title": "A replay guard for the exact qualified target is retained"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:invalid-concurrent-ddl": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001_index.sql",
+              "source": "-- migrate:up transaction:false\nCREATE INDEX CONCURRENTLY account_email ON account (email);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001_index.sql",
+          "id": "nontransactional-concurrent-index",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The runner explicitly executes the concurrent index outside a transaction"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001_index.sql",
+              "source": "-- migrate:up\nCREATE INDEX CONCURRENTLY account_email ON account (email);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001_index.sql",
+          "id": "transactional-concurrent-index",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A concurrent index build cannot execute in the runner's transaction"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:invalid-postgres-ddl": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001_index.sql",
+              "source": "CREATE UNIQUE INDEX item_key ON app.item USING btree (id) INCLUDE (label);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001_index.sql",
+          "id": "supported-unique-btree",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A B-tree index supports uniqueness and included columns"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001_index.sql",
+              "source": "CREATE UNIQUE INDEX item_key ON item USING hash (id);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001_index.sql",
+          "id": "unsupported-unique-hash",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A built-in hash index cannot enforce uniqueness"
         }
       ],
       "optionsSchemaSource": null
@@ -17539,6 +17924,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Owned rollback instruction records an operational constraint"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:no-null-comparison": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "queries/events.sql",
+              "source": "SELECT\n  id\nFROM\n  event\nWHERE\n  archived_at IS NULL\n  AND state IS DISTINCT FROM $1;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "queries/events.sql",
+          "id": "explicit-null-predicates",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use predicates with explicit null semantics"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "queries/events.sql",
+              "source": "SELECT\n  id\nFROM\n  event\nWHERE\n  archived_at = NULL;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "queries/events.sql",
+          "id": "ordinary-null-equality",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Ordinary equality does not test for missing values"
         }
       ],
       "optionsSchemaSource": null

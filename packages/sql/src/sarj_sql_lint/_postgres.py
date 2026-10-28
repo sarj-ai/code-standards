@@ -7,10 +7,10 @@ from sqlglot.dialects.postgres import Postgres
 
 
 def parse_postgres(source: str) -> list[exp.Expr | None]:
-    return parse(source, read=_PostgresForLint)
+    return parse(source, read=PostgresForLint)
 
 
-class _PostgresForLint(Postgres):
+class PostgresForLint(Postgres):
     class Parser(Postgres.Parser):
         @override
         def _warn_unsupported(self) -> None:

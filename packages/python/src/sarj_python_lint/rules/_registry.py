@@ -228,7 +228,9 @@ from sarj_python_lint.rules.nan_hidden_by_builtin_min import NanHiddenByBuiltinM
 from sarj_python_lint.rules.no_conflicting_pydantic_alias_validation import NoConflictingPydanticAliasValidation
 from sarj_python_lint.rules.no_contradictory_type_guard import NoContradictoryTypeGuard
 from sarj_python_lint.rules.no_create_verb_in_post_path import NoCreateVerbInPostPath
+from sarj_python_lint.rules.no_custom_control_flow_exception import NoCustomControlFlowException
 from sarj_python_lint.rules.no_defaulted_environment_setting import NoDefaultedEnvironmentSetting
+from sarj_python_lint.rules.no_discarded_tagged_outcome import NoDiscardedTaggedOutcome
 from sarj_python_lint.rules.no_duplicate_field_validator_body import NoDuplicateFieldValidatorBody
 from sarj_python_lint.rules.no_exception_text_in_500_detail import NoExceptionTextIn500Detail
 from sarj_python_lint.rules.no_folded_bad_request_not_found import NoFoldedBadRequestNotFound
@@ -237,15 +239,19 @@ from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossi
 from sarj_python_lint.rules.no_invalid_pydantic_bypass import NoInvalidPydanticBypass
 from sarj_python_lint.rules.no_invalid_pydantic_validator_return import NoInvalidPydanticValidatorReturn
 from sarj_python_lint.rules.no_partial_type_is import NoPartialTypeIs
+from sarj_python_lint.rules.no_recording_store import NoRecordingStore
 from sarj_python_lint.rules.no_redundant_local_alias import NoRedundantLocalAlias
+from sarj_python_lint.rules.no_redundant_sql_alias import NoRedundantSqlAlias
 from sarj_python_lint.rules.no_shallow_record_type_guard import NoShallowRecordTypeGuard
 from sarj_python_lint.rules.no_slash_collection_root_under_prefix import NoSlashCollectionRootUnderPrefix
 from sarj_python_lint.rules.no_unknown_pydantic_validator_field import NoUnknownPydanticValidatorField
 from sarj_python_lint.rules.no_work_verb_get_route import NoWorkVerbGetRoute
+from sarj_python_lint.rules.prefer_application_model_joins import PreferApplicationModelJoins
 from sarj_python_lint.rules.prefer_bulk_upsert import PreferBulkUpsert
 from sarj_python_lint.rules.prefer_direct_import_module import PreferDirectImportModule
 from sarj_python_lint.rules.prefer_discriminated_model_union import PreferDiscriminatedModelUnion
 from sarj_python_lint.rules.prefer_grouped_settings import PreferGroupedSettings
+from sarj_python_lint.rules.prefer_optional_composite import PreferOptionalComposite
 from sarj_python_lint.rules.prefer_precise_object_contract import PreferPreciseObjectContract
 from sarj_python_lint.rules.prefer_psycopg_executemany import PreferPsycopgExecutemany
 from sarj_python_lint.rules.prefer_pydantic_model_assertion import PreferPydanticModelAssertion
@@ -259,11 +265,23 @@ from sarj_python_lint.rules.redundant_test_constructor_forwarder import Redundan
 from sarj_python_lint.rules.repeated_unimplemented_test_contract import RepeatedUnimplementedTestContract
 from sarj_python_lint.rules.require_exp_on_jwt_decode import RequireExpOnJwtDecode
 from sarj_python_lint.rules.store_field_update_reuses_upsert import StoreFieldUpdateReusesUpsert
+from sarj_python_lint.rules.store_insert_requires_explicit_conflict_policy import (
+    StoreInsertRequiresExplicitConflictPolicy,
+)
+from sarj_python_lint.rules.store_mutation_command_fanout import StoreMutationCommandFanout
 from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOracle
 
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoDiscardedTaggedOutcome.id: NoDiscardedTaggedOutcome,
+        StoreInsertRequiresExplicitConflictPolicy.id: StoreInsertRequiresExplicitConflictPolicy,
+        StoreMutationCommandFanout.id: StoreMutationCommandFanout,
+        PreferApplicationModelJoins.id: PreferApplicationModelJoins,
+        NoRecordingStore.id: NoRecordingStore,
+        NoRedundantSqlAlias.id: NoRedundantSqlAlias,
+        NoCustomControlFlowException.id: NoCustomControlFlowException,
+        PreferOptionalComposite.id: PreferOptionalComposite,
         AsyncSubprocessCancellationCleanup.id: AsyncSubprocessCancellationCleanup,
         CancelOwnedTaskWithoutJoin.id: CancelOwnedTaskWithoutJoin,
         AsyncExecutorShutdown.id: AsyncExecutorShutdown,

@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
     from sarj_python_lint.rules._copy_on_write import CopyOnWriteAnalysis
     from sarj_python_lint.rules._resource_provenance import ResourceProvenance
+    from sarj_python_lint.rules._store_sql import StoreQuery
     from sarj_python_lint.rules._test_provenance import TestProvenance
 
 
@@ -31,6 +32,7 @@ class PythonFileContext:
         self.path = path
         self.source = source
         self.session = session if session is not None else AnalysisSession()
+        self.store_queries: tuple[StoreQuery, ...] | None = None
 
     @cached_property
     def symbol_source(self) -> str:
