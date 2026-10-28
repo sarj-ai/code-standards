@@ -19,6 +19,8 @@ from sarj_standards.libs.json_boundary import parse_unique_json
 from sarj_standards.libs.staged_git import isolated_environment, staged_environment
 from sarj_standards.libs.typed_containers import is_object_mapping
 
+from . import initial_import
+
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping, Sequence
@@ -88,9 +90,20 @@ def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None 
     git = shutil.which("git")
     if git is None:
         return ChangedLineScope(frozenset(), {}, failed=True)
+    try:
+        context = initial_import.load(root, staged=staged)
+    except ValueError:
+        return ChangedLineScope(frozenset(), {}, failed=True)
+    # The validated index equals source; immutable endpoints keep both patch reads on that exact delta.
     comparison = ("--cached",) if staged else (f"{base}...HEAD",)
+    if context is not None:
+        comparison = (context.parent, context.source)
+        alternate_objects = initial_import.git_environment().get("GIT_ALTERNATE_OBJECT_DIRECTORIES")
+        if alternate_objects is not None:
+            environment["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = alternate_objects
     common = (
         git,
+        *(("--no-replace-objects", "--no-lazy-fetch") if context is not None else ()),
         "--literal-pathspecs",
         "-c",
         "core.quotePath=true",
@@ -106,6 +119,18 @@ def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None 
         return None
     if sum(len(os.fsencode(path)) + 1 for path in selected) > _MAX_DIFF_PATH_BYTES:
         selected = ()
+    return _read_changed_scope(root, common, selected, environment, staged=staged, context=context)
+
+
+def _read_changed_scope(
+    root: Path,
+    common: tuple[str, ...],
+    selected: tuple[str, ...],
+    environment: dict[str, str],
+    *,
+    staged: bool,
+    context: initial_import.InitialImport | None,
+) -> ChangedLineScope:
     try:
         names = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed Git argv with literal repository-relative paths.
             (*common, "--name-status", "-z", "--"),
@@ -130,6 +155,10 @@ def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None 
     except OSError, ValueError, subprocess.TimeoutExpired:
         return ChangedLineScope(frozenset(), {}, failed=True)
     if names.returncode != 0 or patch.returncode != 0:
+        return ChangedLineScope(frozenset(), {}, failed=True)
+    try:
+        initial_import.validate(root, context, staged=staged)
+    except ValueError:
         return ChangedLineScope(frozenset(), {}, failed=True)
     affected = changes.paths & frozenset(selected) if selected else changes.paths
     return ChangedLineScope(affected, _changed_lines_from_patch(patch.stdout.decode("utf-8", errors="surrogateescape")))

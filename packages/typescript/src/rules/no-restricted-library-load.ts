@@ -35,7 +35,7 @@ export const NO_RESTRICTED_LIBRARY_LOAD_DOCUMENTATION = {
     { id: "runtime-load", title: "Do not load a restricted library at runtime", outcome: "match", files: [{ path: "src/client.ts", source: "const client = require('axios');" }], focusPath: "src/client.ts", expectedCount: 1, public: true, ruleOptions: [{ libraries: [{ id: "LIB101", module: "axios", replacement: "Ky" }] }] },
     { id: "static-import-owned-upstream", title: "Leave static restrictions to the owning import rule", outcome: "no-match", files: [{ path: "src/client.ts", source: "import axios from 'axios';" }], focusPath: "src/client.ts", expectedCount: 0, ruleOptions: [{ libraries: [{ id: "LIB101", module: "axios", replacement: "Ky" }] }] },
   ],
-} as const satisfies RuleDocumentation;
+} as const satisfies RuleDocumentation<Options>;
 
 function staticModule(node: TSESTree.Node | undefined): string | null {
   node = node === undefined ? undefined : unwrapExpression(node);

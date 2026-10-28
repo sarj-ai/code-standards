@@ -82,6 +82,28 @@ def test_staged_context_accepts_only_the_selected_worktree_index(
     assert os.environ["GIT_INDEX_FILE"] == value  # ruff: ignore[banned-api] -- the public guard must not mutate process-global routing for concurrent callers.
 
 
+@pytest.mark.parametrize(
+    "variable",
+    ["GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_SHALLOW", "GIT_QUARANTINE_PATH"],
+)
+def test_ordinary_pending_indexes_reject_object_store_overrides(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, variable: str
+) -> None:
+    root = tmp_path / "repository"
+    _repository(root)
+    pending = root / ".git/pending-index"
+    shutil.copyfile(root / ".git/index", pending)
+    before = pending.read_bytes()
+    monkeypatch.delenv("SARJ_STANDARDS_INITIAL_IMPORT_SOURCE", raising=False)
+    monkeypatch.setenv("GIT_INDEX_FILE", str(pending))
+    monkeypatch.setenv(variable, str(root / ".git/objects"))
+
+    with pytest.raises(ValueError, match="unsupported object-store context"):
+        staged_environment(root)
+
+    assert pending.read_bytes() == before
+
+
 def test_public_analysis_accepts_a_same_worktree_pending_index_without_mutating_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

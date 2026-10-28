@@ -48,6 +48,7 @@ from .libs.diagnostics import (
     ToolReport as ToolReport,
     TrustMode as TrustMode,
     baseline as diagnostic_baseline,
+    initial_import,
     to_github as to_github,
     to_json as to_json,
     to_sarif as to_sarif,
@@ -316,6 +317,10 @@ class Standards:
                 staged_environment(self.root)
             except (OSError, ValueError) as exc:
                 return _failed_analysis(self.root, "invalid-input", str(exc))
+        try:
+            import_context = initial_import.load(self.root, staged=staged)
+        except ValueError as exc:
+            return _failed_analysis(self.root, "invalid-input", str(exc))
         external = external or bool(upstream_rules.ids)
         try:
             normalized_trust = TrustMode(trust)
@@ -327,8 +332,18 @@ class Standards:
         except (OSError, TypeError, ValueError) as exc:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         if prepared_only:
-            return _prepared_only_analysis(
-                self.root, adopted, prepared_devops, prepared_targets, paths=paths, rules=rules, trust=normalized_trust
+            return _validated_initial_import(
+                _prepared_only_analysis(
+                    self.root,
+                    adopted,
+                    prepared_devops,
+                    prepared_targets,
+                    paths=paths,
+                    rules=rules,
+                    trust=normalized_trust,
+                ),
+                import_context,
+                staged=staged,
             )
         try:
             selection_policy = _selection_policy(self.root, adopted, normalized_mode)
@@ -369,16 +384,24 @@ class Standards:
         )
         coverage.extend(_prepared_coverage(adopted, prepared_devops))
         if not external:
-            native = report_from_tools(self.root, native_analysis())
-            changed_scope = _analysis_changed_scope(self.root, native, baseline_budget, staged=staged)
+            combined = report_from_tools(self.root, native_analysis())
+            changed_scope = _analysis_changed_scope(self.root, combined, baseline_budget, staged=staged)
             _native_typescript_coverage(selected_groups, adopted, rule_selection, coverage)
             if normalized_mode in {AnalysisMode.POLICY, AnalysisMode.OBSERVE}:
-                native = _with_warning_severity(native, _warning_rule_keys(normalized_mode, rule_selection))
-            return _with_coverage(
-                _without_baselined_diagnostics(
-                    native, baseline_budget.counts, changed_scope=changed_scope, provenance=baseline_budget.provenance
+                combined = _with_warning_severity(combined, _warning_rule_keys(normalized_mode, rule_selection))
+            return _validated_initial_import(
+                _with_coverage(
+                    _without_baselined_diagnostics(
+                        combined,
+                        baseline_budget.counts,
+                        changed_scope=changed_scope,
+                        provenance=baseline_budget.provenance,
+                    ),
+                    coverage,
                 ),
-                coverage,
+                import_context,
+                staged=staged,
+                changed_scope=changed_scope,
             )
         coverage.extend(
             _source_analyzer_coverage(
@@ -423,11 +446,16 @@ class Standards:
             else frozenset(),
             upstream_rules=upstream_rules,
         )
-        return _with_coverage(
-            _without_baselined_diagnostics(
-                combined, baseline_budget.counts, changed_scope=changed_scope, provenance=baseline_budget.provenance
+        return _validated_initial_import(
+            _with_coverage(
+                _without_baselined_diagnostics(
+                    combined, baseline_budget.counts, changed_scope=changed_scope, provenance=baseline_budget.provenance
+                ),
+                coverage,
             ),
-            coverage,
+            import_context,
+            staged=staged,
+            changed_scope=changed_scope,
         )
 
     def run(
@@ -719,6 +747,28 @@ def _failed_analysis(root: Path, kind: str, message: str) -> AnalysisReport:
     issue = ExecutionIssue("sarj-standards", kind, message)
     tool = ToolReport("sarj-standards", Completion.FAILED, issues=(issue,))
     return AnalysisReport(root, Completion.FAILED, Conclusion.INCONCLUSIVE, (tool,))
+
+
+def _validated_initial_import(
+    report: AnalysisReport,
+    context: initial_import.InitialImport | None,
+    *,
+    staged: bool,
+    changed_scope: diagnostic_baseline.ChangedLineScope | None = None,
+) -> AnalysisReport:
+    failure: str | None = None
+    try:
+        initial_import.validate(report.root, context, staged=staged)
+    except ValueError as exc:
+        failure = str(exc)
+    if failure is None and context is not None and changed_scope is not None and changed_scope.failed:
+        failure = "initial-import changed-line comparison failed"
+    if failure is None:
+        return report
+    return _with_coverage(
+        report_from_tools(report.root, (*report.tools, *_failed_analysis(report.root, "invalid-input", failure).tools)),
+        report.coverage,
+    )
 
 
 def _analysis_changed_scope(

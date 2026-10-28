@@ -305,10 +305,13 @@ def _safe_field_call(call: ast.Call, context: PythonFileContext) -> bool:
 
 
 def _safe_annotation(annotation: ast.expr, context: PythonFileContext) -> bool:
-    if isinstance(annotation, ast.Constant):
-        return annotation.value is None or annotation.value is Ellipsis
-    if isinstance(annotation, ast.Name):
-        return annotation.id in _BUILTINS and context.imports.builtin_is_unshadowed(annotation.id)
+    match annotation:
+        case ast.Constant():
+            return annotation.value is None or annotation.value is Ellipsis
+        case ast.Name():
+            return annotation.id in _BUILTINS and context.imports.builtin_is_unshadowed(annotation.id)
+        case _:
+            pass
     if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
         return _safe_annotation(annotation.left, context) and _safe_annotation(annotation.right, context)
     if not isinstance(annotation, ast.Subscript):

@@ -542,25 +542,28 @@ def _bare_tuple_arity(value: ast.expr) -> int:
 
 
 def _collect_fixture_imports(statement: ast.stmt, names: set[str], roots: dict[str, str], modified: set[str]) -> None:
-    if isinstance(statement, ast.Import):
-        for alias in statement.names:
-            local = alias.asname or alias.name.split(".")[0]
-            roots.pop(local, None)
-            names.discard(local)
-            if alias.name in {"pytest", "pytest_asyncio"} and alias.name not in modified:
-                roots[local] = alias.name
-    elif isinstance(statement, ast.ImportFrom):
-        for alias in statement.names:
-            local = alias.asname or alias.name
-            roots.pop(local, None)
-            names.discard(local)
-            if (
-                statement.level == 0
-                and statement.module in {"pytest", "pytest_asyncio"}
-                and statement.module not in modified
-                and alias.name == "fixture"
-            ):
-                names.add(local)
+    match statement:
+        case ast.Import():
+            for alias in statement.names:
+                local = alias.asname or alias.name.split(".")[0]
+                roots.pop(local, None)
+                names.discard(local)
+                if alias.name in {"pytest", "pytest_asyncio"} and alias.name not in modified:
+                    roots[local] = alias.name
+        case ast.ImportFrom():
+            for alias in statement.names:
+                local = alias.asname or alias.name
+                roots.pop(local, None)
+                names.discard(local)
+                if (
+                    statement.level == 0
+                    and statement.module in {"pytest", "pytest_asyncio"}
+                    and statement.module not in modified
+                    and alias.name == "fixture"
+                ):
+                    names.add(local)
+        case _:
+            pass
 
 
 def _string_tuple_arity(

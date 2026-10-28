@@ -259,11 +259,14 @@ def _is_mock_assertion(func: ast.expr) -> bool:
 
 
 def _callee_name(func: ast.expr) -> str | None:
-    if isinstance(func, ast.Name):
-        return func.id
-    if isinstance(func, ast.Attribute):
-        parent = _callee_name(func.value)
-        return f"{parent}.{func.attr}" if parent is not None else None
+    match func:
+        case ast.Name():
+            return func.id
+        case ast.Attribute():
+            parent = _callee_name(func.value)
+            return f"{parent}.{func.attr}" if parent is not None else None
+        case _:
+            pass
     return None
 
 

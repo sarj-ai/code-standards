@@ -33,8 +33,8 @@ export interface ExampleFile {
 }
 
 /** A reviewed example. It remains private unless `public: true` is explicit. */
-export interface RuleExample {
-  readonly ruleOptions?: readonly unknown[];
+export interface RuleExample<Options extends readonly unknown[] = readonly unknown[]> {
+  readonly ruleOptions?: Readonly<Options>;
   readonly installedDependencies?: readonly { readonly module: string; readonly version: string }[];
   readonly id: string;
   readonly scenarioId?: string;
@@ -48,7 +48,7 @@ export interface RuleExample {
 }
 
 /** Human-authored fields that cannot be derived from the ESLint rule module. */
-export interface RuleDocumentation {
+export interface RuleDocumentation<Options extends readonly unknown[] = readonly unknown[]> {
   readonly summary: string;
   readonly rationale: string;
   readonly remediation: string;
@@ -61,7 +61,7 @@ export interface RuleDocumentation {
   readonly filePatterns?: readonly string[];
   readonly references?: readonly string[];
   readonly since?: string;
-  readonly examples?: readonly RuleExample[];
+  readonly examples?: readonly RuleExample<Options>[];
 }
 
 /** Complete native record exposed to catalog generation without changing ESLint metadata. */
@@ -119,7 +119,7 @@ type SourceRuleConfiguration<
   Options extends readonly unknown[],
   MessageIds extends string,
 > = RuleConfiguration<Options, MessageIds> & {
-  readonly documentation?: RuleDocumentation;
+  readonly documentation?: RuleDocumentation<NoInfer<Options>>;
 };
 
 /** Create an ESLint rule and attach validated documentation as a non-enumerable native spec. */
@@ -211,7 +211,7 @@ function publicFile(file: ExampleFile): ExampleFile {
 
 function nativeSpec<Options extends readonly unknown[], MessageIds extends string>(
   config: RuleConfiguration<Options, MessageIds>,
-  documentation: RuleDocumentation,
+  documentation: RuleDocumentation<Options>,
 ): NativeRuleSpec {
   const { name, meta } = config;
   if (!KEBAB_CASE.test(name)) throw new TypeError("rule ID must be lowercase kebab-case");

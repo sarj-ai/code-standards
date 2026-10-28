@@ -38,7 +38,7 @@ export const NO_STORAGE_IN_STATELESS_MODULES_DOCUMENTATION = {
     { id: "system-of-record", title: "Read from the system of record", outcome: "no-match", files: [{ path: "src/engineer-digest/post.ts", source: "const issues = await linear.listIssues();" }], focusPath: "src/engineer-digest/post.ts", expectedCount: 0, public: true, ruleOptions: [{ modules: ["[\\\\/]engineer-digest[\\\\/]"] }] },
     { id: "private-storage", title: "Do not write private state in a stateless module", outcome: "match", files: [{ path: "src/engineer-digest/post.ts", source: "export {}; await kv.put('digest:last', timestamp);" }], focusPath: "src/engineer-digest/post.ts", expectedCount: 1, public: true, ruleOptions: [{ modules: ["[\\\\/]engineer-digest[\\\\/]"] }] },
   ],
-} as const satisfies RuleDocumentation;
+} as const satisfies RuleDocumentation<Options>;
 
 /** Compile regex sources. Invalid configuration must fail loudly. */
 function compile(patterns: readonly string[]): RegExp[] {

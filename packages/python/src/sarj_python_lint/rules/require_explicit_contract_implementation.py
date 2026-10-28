@@ -304,10 +304,13 @@ class _InjectionVisitor(ast.NodeVisitor):
         )
 
     def _origin(self, value: ast.expr) -> ClassSummary | None:
-        if isinstance(value, ast.Name):
-            return self.origins.get(value.id)
-        if isinstance(value, ast.Call):
-            return self.project.class_for(self.unit, value.func)
+        match value:
+            case ast.Name():
+                return self.origins.get(value.id)
+            case ast.Call():
+                return self.project.class_for(self.unit, value.func)
+            case _:
+                pass
         return None
 
 

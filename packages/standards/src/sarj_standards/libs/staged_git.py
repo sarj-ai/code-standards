@@ -6,6 +6,7 @@ import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- bounded read-only Git context queries validate a hook index before source tools run.
 from typing import Final
 
+from .diagnostics import initial_import
 from .filesystem import is_link_like
 
 
@@ -13,7 +14,7 @@ _SAFE_ENVIRONMENT: Final = frozenset(
     {"HOME", "LANG", "LC_ALL", "LC_CTYPE", "PATH", "SYSTEMDRIVE", "SYSTEMROOT", "TMPDIR", "XDG_CONFIG_HOME"}
 )
 _UNSUPPORTED_OBJECT_CONTEXT: Final = frozenset(
-    {"GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_SHALLOW", "GIT_QUARANTINE_PATH"}
+    {"GIT_OBJECT_DIRECTORY", "GIT_NAMESPACE", "GIT_SHALLOW", "GIT_QUARANTINE_PATH"}
 )
 
 
@@ -60,7 +61,7 @@ def _validated_index(root: Path, supplied: str, environment: dict[str, str]) -> 
     if common and Path(common).resolve() != _git_path(root, "--git-common-dir", environment):
         message = "active Git index has a foreign GIT_COMMON_DIR context"
         raise ValueError(message)
-    if any(os.environ.get(name) for name in _UNSUPPORTED_OBJECT_CONTEXT):  # ruff: ignore[banned-api] -- alternate object stores cannot establish the selected worktree's pending-index provenance.
+    if any(os.environ.get(name) for name in _UNSUPPORTED_OBJECT_CONTEXT):  # ruff: ignore[banned-api] -- object-store routing cannot establish the selected worktree's pending-index provenance.
         message = "active Git index has an unsupported object-store context"
         raise ValueError(message)
     # Git interprets a relative INDEX_FILE after -C/cwd selects the repository.
@@ -72,6 +73,12 @@ def _validated_index(root: Path, supplied: str, environment: dict[str, str]) -> 
             "active Git index must be a regular non-symlink file directly inside the selected worktree Git directory"
         )
         raise ValueError(message)
+    alternate_objects = os.environ.get("GIT_ALTERNATE_OBJECT_DIRECTORIES")  # ruff: ignore[banned-api] -- only an independently validated initial import may borrow its immutable source history.
+    if alternate_objects:
+        if initial_import.load(root, staged=True) is None:
+            message = "active Git index has an unsupported object-store context"
+            raise ValueError(message)
+        environment["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = alternate_objects
     return candidate.resolve(strict=True)
 
 

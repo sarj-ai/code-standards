@@ -530,11 +530,13 @@ def _contains_key(value: JsonValue, key: str, depth: int = 0) -> bool:
     if depth >= _MAX_CONFIGURATION_DEPTH:
         msg = "formatter configuration is too deeply nested"
         raise ValueError(msg)
-    if isinstance(value, dict):
-        return key in value or any(_contains_key(item, key, depth + 1) for item in value.values())
-    if isinstance(value, list):
-        return any(_contains_key(item, key, depth + 1) for item in value)
-    return False
+    match value:
+        case dict():
+            return key in value or any(_contains_key(item, key, depth + 1) for item in value.values())
+        case list():
+            return any(_contains_key(item, key, depth + 1) for item in value)
+        case _:
+            return False
 
 
 def eslint(

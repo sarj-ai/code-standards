@@ -261,10 +261,13 @@ class PreferSelfTypeAnnotation(Rule):
             def visit_ClassDef(self, node: ast.ClassDef) -> None:
                 self.class_stack.append(node)
                 for child in node.body:
-                    if isinstance(child, ast.ClassDef):
-                        self.visit(child)
-                    elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                        self._check_func(child)
+                    match child:
+                        case ast.ClassDef():
+                            self.visit(child)
+                        case ast.FunctionDef() | ast.AsyncFunctionDef():
+                            self._check_func(child)
+                        case _:
+                            pass
                 self.class_stack.pop()
 
             def _check_func(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:

@@ -40,6 +40,7 @@ from sarj_python_lint.rules import (
 from sarj_python_lint.rules._ast_index import object_list
 from sarj_python_lint.rules._closed_helpers import dynamic_namespace
 from sarj_python_lint.rules._resource_provenance import ResourceProvenance
+from sarj_python_lint.rules.prefer_match_type_dispatch import body_terminates
 
 
 if TYPE_CHECKING:
@@ -760,9 +761,15 @@ def _primitive_set(node: ast.expr) -> bool:
 
 def _dispatch_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
     for root in source.context.nodes(ast.If):
-        if not _at(root, diagnostic) or source.comments_between(root.lineno, _last_line(root)):
+        if not _at(root, diagnostic):
             continue
-        matched = _dispatch_match(root, source.context, type_dispatch=diagnostic.code == "SARJ080")
+        type_dispatch = diagnostic.code == "SARJ080"
+        roots = _dispatch_roots(root, source.context) if type_dispatch else [root]
+        if source.comments_between(root.lineno, _last_line(roots[-1])) or (
+            len(roots) > 1 and any(source.full_statement(branch) is None for branch in roots)
+        ):
+            continue
+        matched = _dispatch_match(roots, source.context, type_dispatch=type_dispatch)
         if matched is None or not isinstance(matched.subject, ast.Name):
             continue
         if not _dispatch_parameter(root, matched.subject, source):
@@ -770,15 +777,39 @@ def _dispatch_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
         rendered = ast.unparse(matched)
         indent = source.lines[root.lineno - 1][: root.col_offset]
         newline = "\r\n" if "\r\n" in source.text else "\n"
-        return [source.replace(root, (newline + indent).join(rendered.splitlines()))]
+        return [
+            TextEdit(
+                source.span(root).start, source.span(roots[-1]).end, (newline + indent).join(rendered.splitlines())
+            )
+        ]
     return []
 
 
-def _dispatch_match(root: ast.If, context: PythonFileContext, *, type_dispatch: bool) -> ast.Match | None:
+def _dispatch_roots(root: ast.If, context: PythonFileContext) -> list[ast.If]:
+    if root.orelse:
+        return [root]
+    parent = context.parents.get(root)
+    for field in ("body", "orelse", "finalbody"):
+        value: object = getattr(parent, field, None)
+        if not object_list(value) or root not in value:
+            continue
+        branches: list[ast.If] = []
+        for statement in value[value.index(root) :]:
+            if isinstance(statement, ast.If) and statement.orelse:
+                return [root]
+            if not isinstance(statement, ast.If) or not body_terminates(statement.body):
+                break
+            branches.append(statement)
+        return branches or [root]
+    return [root]
+
+
+def _dispatch_match(roots: Sequence[ast.If], context: PythonFileContext, *, type_dispatch: bool) -> ast.Match | None:
     cases: list[ast.match_case] = []
-    branch = root
+    pending = list(reversed(roots))
     subject: ast.Name | None = None
-    while True:
+    while pending:
+        branch = pending.pop()
         if type_dispatch and _type_parameter_reference(branch.test, context):
             return None
         pattern = _dispatch_pattern(branch.test, type_dispatch=type_dispatch)
@@ -787,11 +818,12 @@ def _dispatch_match(root: ast.If, context: PythonFileContext, *, type_dispatch: 
         subject = pattern[0]
         cases.append(ast.match_case(pattern=pattern[1], guard=None, body=branch.body))
         if len(branch.orelse) == 1 and isinstance(branch.orelse[0], ast.If):
-            branch = branch.orelse[0]
-            continue
-        if branch.orelse:
+            pending.append(branch.orelse[0])
+        elif branch.orelse:
             cases.append(ast.match_case(pattern=ast.MatchAs(), guard=None, body=branch.orelse))
-        return ast.Match(subject=subject, cases=cases)
+    if subject is None or (type_dispatch and len(cases) == 1):
+        return None
+    return ast.Match(subject=subject, cases=cases)
 
 
 def _dispatch_pattern(test: ast.expr, *, type_dispatch: bool) -> tuple[ast.Name, ast.pattern] | None:
@@ -993,10 +1025,13 @@ def _jwt_required_sequence(required: ast.expr) -> ast.expr | None:
     ):
         return None
     elements = [*required.elts, ast.Constant(value="exp")]
-    if isinstance(required, ast.List):
-        return ast.List(elts=elements, ctx=ast.Load())
-    if isinstance(required, ast.Tuple):
-        return ast.Tuple(elts=elements, ctx=ast.Load())
+    match required:
+        case ast.List():
+            return ast.List(elts=elements, ctx=ast.Load())
+        case ast.Tuple():
+            return ast.Tuple(elts=elements, ctx=ast.Load())
+        case _:
+            pass
     return ast.Set(elts=elements)
 
 

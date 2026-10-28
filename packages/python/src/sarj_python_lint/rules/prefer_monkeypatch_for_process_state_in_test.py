@@ -217,10 +217,15 @@ def _mutation(
         if mutation is not None:
             return mutation
     target: ast.expr | None = None
-    if isinstance(node, ast.Assign):
-        target = next((item for item in node.targets if _is_modules_item(item, module_imports, local_imports)), None)
-    elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
-        target = node.target
+    match node:
+        case ast.Assign():
+            target = next(
+                (item for item in node.targets if _is_modules_item(item, module_imports, local_imports)), None
+            )
+        case ast.AnnAssign() | ast.AugAssign():
+            target = node.target
+        case _:
+            pass
     if target is not None and _is_modules_item(target, module_imports, local_imports):
         return _Mutation(
             target,

@@ -37,7 +37,7 @@ def _baseline(version: int, *, fingerprints: tuple[str, ...] = ()) -> bytes:
     )
 
 
-@pytest.mark.parametrize(("before", "after"), [(18, 19), (18, 20), (19, 20), (25, 26), (25, 27), (26, 27)])
+@pytest.mark.parametrize(("before", "after"), [(18, 19), (18, 20), (19, 20), (25, 26), (25, 27), (26, 27), (28, 29)])
 @pytest.mark.parametrize(
     "fingerprints",
     [pytest.param((), id="empty-baseline"), pytest.param(("f" * 64, "a" * 64), id="retained-fingerprints")],
@@ -94,7 +94,10 @@ def test_policy27_retains_existing_debt_and_explicit_warning_choice(
     assert migrated == original.replace(f'"policy_version": {before}'.encode(), b'"policy_version": 27')
 
 
-@pytest.mark.parametrize(("before", "after"), [(22, 26), (24, 26), (26, 25), (24, 27), (27, 26), (26, 28), (27, 28)])
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [(22, 26), (24, 26), (26, 25), (24, 27), (27, 26), (26, 28), (27, 28), (27, 29), (25, 29), (26, 29)],
+)
 def test_policy26_migration_does_not_allow_unreviewed_jumps_or_downgrades(before: int, after: int) -> None:
     original = _baseline(before, fingerprints=("b" * 64,))
 
@@ -118,29 +121,71 @@ def test_policy28_migrates_empty_baselines_without_changing_the_warning_ratchet(
     assert migrated == original.replace(b'"policy_version": 27', b'"policy_version": 28')
 
 
-@pytest.mark.parametrize(("before", "after"), [(26, 28), (28, 27), (28, 29)])
+@pytest.mark.parametrize(("before", "after"), [(26, 28), (28, 27), (29, 28), (28, 30), (27, 30), (25, 29), (26, 29)])
 def test_empty_baselines_do_not_authorize_other_policy_transitions(before: int, after: int) -> None:
     with pytest.raises(ValueError, match="requires a separately reviewed compatibility decision"):
         repository_baseline.migrate(_baseline(before), _MANIFEST, target_policy_version=after)
 
 
-def test_setup_plans_and_applies_the_empty_policy27_baseline_migration(tmp_path: Path) -> None:
+@pytest.mark.parametrize("include_warnings", [None, False, True])
+@pytest.mark.parametrize(
+    "fingerprints",
+    [pytest.param((), id="empty-debt"), pytest.param(("a" * 64, "f" * 64), id="existing-debt")],
+)
+def test_policy29_preserves_existing_debt_and_warning_choice(
+    include_warnings: bool | None, fingerprints: tuple[str, ...]
+) -> None:
+    original = _baseline(28, fingerprints=fingerprints)
+    if include_warnings is not None:
+        original = original.replace(
+            b'"schema_version": 2',
+            b'"schema_version": 2,\r\n\t"include_warnings": ' + str(include_warnings).lower().encode("ascii"),
+        )
+
+    migrated = repository_baseline.migrate(original, _MANIFEST, target_policy_version=29)
+
+    assert migrated == original.replace(b'"policy_version": 28', b'"policy_version": 29')
+
+
+@pytest.mark.parametrize("include_warnings", [None, False, True])
+def test_empty_policy27_to29_equals_the_two_reviewed_steps(include_warnings: bool | None) -> None:
+    original = _baseline(27)
+    if include_warnings is not None:
+        original = original.replace(
+            b'"schema_version": 2',
+            b'"schema_version": 2,\r\n\t"include_warnings": ' + str(include_warnings).lower().encode("ascii"),
+        )
+
+    intermediate = repository_baseline.migrate(original, _MANIFEST, target_policy_version=28)
+    composed = repository_baseline.migrate(intermediate, _MANIFEST, target_policy_version=29)
+    direct = repository_baseline.migrate(original, _MANIFEST, target_policy_version=29)
+
+    assert direct == composed == original.replace(b'"policy_version": 27', b'"policy_version": 29')
+
+
+@pytest.mark.parametrize("before", [27, 28])
+def test_setup_plans_and_applies_the_current_compatible_baseline_migration(tmp_path: Path, before: int) -> None:
     manifest = tmp_path / ".repo-standards" / "repository.toml"
     manifest.parent.mkdir()
     manifest.write_bytes(_MANIFEST)
     path = tmp_path / repository_baseline.PATH
-    original = _baseline(27)
+    original = _baseline(before)
     path.write_bytes(original)
 
     plan = service.plan_init(tmp_path)
 
     assert not plan.scaffold.errors
     assert (
-        dict(plan.scaffold.writes)[path] == original.replace(b'"policy_version": 27', b'"policy_version": 28').decode()
+        dict(plan.scaffold.writes)[path]
+        == original.replace(
+            f'"policy_version": {before}'.encode(), f'"policy_version": {SarjPolicy.policy_version}'.encode()
+        ).decode()
     )
     assert path.read_bytes() == original
     scaffold.apply(plan.scaffold)
-    assert path.read_bytes() == original.replace(b'"policy_version": 27', b'"policy_version": 28')
+    assert path.read_bytes() == original.replace(
+        f'"policy_version": {before}'.encode(), f'"policy_version": {SarjPolicy.policy_version}'.encode()
+    )
     assert path not in dict(service.plan_init(tmp_path).scaffold.writes)
 
 
@@ -150,8 +195,8 @@ def test_rollout_accepts_the_empty_migration_and_rejects_other_baseline_changes(
     manifest.parent.mkdir()
     manifest.write_bytes(_MANIFEST)
     path = tmp_path / repository_baseline.PATH
-    original = _baseline(27).replace(b'"schema_version": 2', b'"schema_version": 2,\r\n\t"include_warnings": true')
-    migrated = repository_baseline.migrate(original, _MANIFEST, target_policy_version=28)
+    original = _baseline(28).replace(b'"schema_version": 2', b'"schema_version": 2,\r\n\t"include_warnings": true')
+    migrated = repository_baseline.migrate(original, _MANIFEST, target_policy_version=SarjPolicy.policy_version)
     path.write_bytes(migrated)
 
     assert rollout.repository_baseline_migration(tmp_path, original) == {path: migrated}

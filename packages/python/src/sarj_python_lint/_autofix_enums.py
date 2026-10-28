@@ -164,7 +164,7 @@ class EnumFixes:
 
     def _stable_alias(self, alias: ast.TypeAlias) -> bool:
         if any(
-            bindings.get(alias.name.id, []) not in ([], [alias.name]) for bindings in self.provenance.bindings.values()
+            bindings.get(alias.name.id, ()) not in {(), (alias.name,)} for bindings in self.provenance.bindings.values()
         ):
             return False
         if any(

@@ -185,12 +185,15 @@ class UnusedMockSetup(Rule):
         if tree is None or dynamic_namespace(context):
             return []
 
+        functions = context.nodes(*_FUNC_NODES)
+        if not any(_has_mock_origin_candidate(fn) for fn in functions):
+            return []
         provenance = context.resource_provenance
         if not provenance.builtin_namespace_untouched:
             return []
         seen: set[tuple[int, int]] = set()
         diags: list[Diagnostic] = []
-        for fn in context.nodes(*_FUNC_NODES):
+        for fn in functions:
             for finding in _dead_setups(fn, provenance):
                 position = (finding.node.lineno, finding.node.col_offset + 1)
                 if position in seen:
@@ -208,6 +211,14 @@ class UnusedMockSetup(Rule):
                 )
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
+
+
+def _has_mock_origin_candidate(fn: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    # Every accepted origin is a direct assignment of a call; extra candidate targets are harmless.
+    return any(
+        isinstance(statement, ast.Assign | ast.AnnAssign) and isinstance(statement.value, ast.Call)
+        for statement in fn.body
+    )
 
 
 def _dead_setups(fn: ast.FunctionDef | ast.AsyncFunctionDef, provenance: ResourceProvenance) -> Iterator[_Finding]:
@@ -628,10 +639,13 @@ def _constructor_observes_pending(stmt: ast.stmt, pending: dict[str, ast.stmt], 
 
 
 def _is_inert(stmt: ast.stmt, provenance: ResourceProvenance) -> bool:
-    if isinstance(stmt, (ast.Pass, ast.Import, ast.ImportFrom)):
-        return True
-    if isinstance(stmt, ast.Expr):
-        return isinstance(stmt.value, ast.Constant)
+    match stmt:
+        case ast.Pass() | ast.Import() | ast.ImportFrom():
+            return True
+        case ast.Expr():
+            return isinstance(stmt.value, ast.Constant)
+        case _:
+            pass
     if not isinstance(stmt, ast.Assign):
         return False
     if not all(isinstance(target, ast.Name) for target in stmt.targets):
