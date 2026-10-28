@@ -34,7 +34,7 @@ export const NO_INVALID_TYPED_MUTATION_DOCUMENTATION = {
   rationale: "Object.assign, Reflect.set and property descriptors accept values that a normal typed property assignment rejects. They can invalidate a domain object's contract while subsequent reads retain its original type.",
   remediation: "Use an assignment that satisfies the declared property type, or construct and validate a complete replacement. Preserve any deliberate construction or external compatibility contract; do not cast away the incompatibility.",
   category: "correctness",
-  defaultLevel: "warning",
+  defaultLevel: "error",
   autofix: "none",
   limitations: [
     "Requires type information and an explicitly annotated local const initialized with a plain own-data object literal. Only non-exported, stable bindings without escapes or nested captures qualify. Deletes and descriptors that can lock writability or configurability invalidate storage provenance. The closed non-union contract must declare the initialized data property; parameters, opaque constructors/factories, accessor, method, indexed, callable and unresolved generic targets are excluded.",

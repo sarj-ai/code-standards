@@ -563,7 +563,7 @@ def _wrapped_annotation(node: ast.Subscript, symbol: str | None, *, required: bo
 
 
 def _direct_initvar_field(field: ast.AnnAssign, context: PythonFileContext, provenance: ResourceProvenance) -> bool:
-    if field.value is not None or not isinstance(field.annotation, ast.Subscript):
+    if not isinstance(field.annotation, ast.Subscript):
         return False
     target = field.annotation.value
     if not _untouched(target, provenance) or not context.module_imports.resolves(

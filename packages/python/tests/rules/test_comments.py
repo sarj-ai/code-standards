@@ -34,6 +34,9 @@ from sarj_python_lint.rules._comments import (
         ("upstream", "workaround for the vendored parser"),
         ("upstream-required", "helper required by the vendor contract"),
         ("invariant", "must run before any worker starts"),
+        ("delivery-at-most-once", "writes stay at-most-once"),
+        ("delivery-at-least-once", "the broker delivers at least once"),
+        ("delivery-exactly-once", "the transfer is exactly-once"),
         ("security", "compared in constant-time to avoid a timing attack"),
         ("vendor", "Twilio rejects a body over 1600 characters"),
     ],
@@ -64,10 +67,21 @@ def test_the_floor_does_not_protect_a_pure_narration(body: str) -> None:
         "Licensed under the Apache license.",
         "Permission is hereby granted to use this software.",
         "All rights reserved.",
+        'THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.',
+        'THE SOFTWARE IS PROVIDED "AS IS", WITHOUT\nWARRANTY OF ANY KIND.',
+        "Distributed WITHOUT ANY WARRANTY; without even the implied warranty of merchantability.",
+        "The authors disclaim all warranties regarding this software.",
+        "Redistribution and use in source and binary forms, with or without modification, are permitted.",
+        "© 2026 Example Authors.",
     ],
 )
 def test_legal_notice_signals_are_shared_with_docstring_autofix(body: str) -> None:
     assert has_legal_notice(body)
+
+
+@pytest.mark.parametrize("body", ["Read the warranty_state field.", "Redistribute cached keys.", "Software helpers."])
+def test_ordinary_code_vocabulary_is_not_a_legal_notice(body: str) -> None:
+    assert not has_legal_notice(body)
 
 
 def test_the_external_reference_signal_is_available_on_its_own() -> None:

@@ -106,7 +106,7 @@ requires-dist = [
     { name = "pydantic", specifier = "==2.14.1" },
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "referencing", specifier = "==0.37.0" },
-    { name = "repo-standards", specifier = "==6.13.0" },
+    { name = "repo-standards", specifier = "==6.14.0" },
     { name = "ruff", specifier = "==0.17.2" },
     { name = "sarj-iac-lint", editable = "../iac" },
     { name = "sarj-python-lint", editable = "../python" },
@@ -514,7 +514,7 @@ wheels = [
 
 [[package]]
 name = "repo-standards"
-version = "6.13.0"
+version = "6.14.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conventional-pre-commit" },
@@ -522,9 +522,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/68/95/0a753de79ff10fb29ec230e96ef6ed9600a1ef2a2bc693c2bf117954da46/repo_standards-6.13.0.tar.gz", hash = "sha256:f632d1440fc0bacb0e317bfbc5a317aefe63dcbb6dcd11404efdc43afd8b65c8", size = 130990, upload-time = "2026-10-27T20:50:45.62Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8a/a3/54e8be32a45b4cc2bb6baeb13cfc5d7172f48305cf48178312df8870e951/repo_standards-6.14.0.tar.gz", hash = "sha256:cda2e71aa46924fc37f67e15f1e110c4c466d576186872b0c8e343d49d6093d6", size = 133991, upload-time = "2026-10-28T05:24:29.791Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/11/f4/b4aa5865a2142935e5d092597233584cf63c6f68a00648d8caa9493537c8/repo_standards-6.13.0-py3-none-any.whl", hash = "sha256:f13ae31795c09727c63478b9eb60a0fa5f53bcc54cdfc71bdd7055763de3bf69", size = 150773, upload-time = "2026-10-27T20:50:44.118Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/d1/b5a41539549a3fbcf15f44b2d810cb6cf96fa4ec726c6c28ee43456ec32e/repo_standards-6.14.0-py3-none-any.whl", hash = "sha256:10cf5cb168e8abbdbe87ecc9d3a35def84d9ee4dd90d8a550593aeed18e9b313", size = 154619, upload-time = "2026-10-28T05:24:28.291Z" },
 ]
 
 [[package]]
@@ -667,7 +667,7 @@ dev = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "1.82.0"
+version = "1.83.0"
 source = { editable = "../python" }
 dependencies = [
     { name = "packaging" },
@@ -710,7 +710,7 @@ dev = [
 
 [[package]]
 name = "sarj-sql-lint"
-version = "0.29.0"
+version = "0.30.0"
 source = { editable = "../sql" }
 dependencies = [
     { name = "sarj-rule-contracts" },
