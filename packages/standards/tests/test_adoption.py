@@ -1760,11 +1760,21 @@ def test_ci_snippet_for_a_typescript_repo_does_not_require_a_python_project(
     assert "fetch-depth: 0" in workflow
     assert "  push:\n    branches: [main]\n" in workflow
     assert "  merge_group:\n" in workflow
-    assert (
-        "SARJ_STANDARDS_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}"
-        in workflow
-    )
+    assert "(github.event.pull_request.base.sha || github.event.merge_group.base_sha ||" in workflow
     assert "check --staged" not in workflow
+
+
+def test_generated_ci_base_expression_passes_native_actionlint(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    workflow = tmp_path / ".github" / "workflows" / "standards.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(scaffold.github_ci_workflow(tmp_path), encoding="utf-8")
+    actionlint = shutil.which("actionlint")
+    assert actionlint is not None, "native actionlint is required for generated workflow validation"
+    completed = subprocess.run(
+        (actionlint, str(workflow)), cwd=tmp_path, check=False, capture_output=True, text=True, timeout=30
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
 
 
 @pytest.mark.parametrize(
@@ -1822,8 +1832,12 @@ def test_generated_ci_initial_push_keeps_native_baseline_boundaries(
     assert isinstance(step, dict)
     assert step["shell"] == "bash"
     assert step["env"] == {
-        "SARJ_STANDARDS_BASE": "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}",
-        "SARJ_GITHUB_REF_CREATED": "${{ github.event.created }}",
+        "SARJ_STANDARDS_BASE": (
+            "${{ !(github.event_name == 'push' && github.event.created && "
+            "github.event.before == '0000000000000000000000000000000000000000') && "
+            "(github.event.pull_request.base.sha || github.event.merge_group.base_sha || "
+            "github.event.before) || '' }}"
+        ),
     }
     command = step["run"]
     assert isinstance(command, str)
@@ -1838,11 +1852,23 @@ def test_generated_ci_initial_push_keeps_native_baseline_boundaries(
     )
     command = command.replace(native_command, shlex.join((sys.executable, "-c", probe)))
     environment = credential_free_environment()
-    environment.pop("SARJ_STANDARDS_BASE", None)
-    environment.update(GITHUB_EVENT_NAME=event, SARJ_GITHUB_REF_CREATED=created)
+    environment["GITHUB_EVENT_NAME"] = event
     selected = {"zero": "0" * 40, "head": head, "malformed": "not-a-commit", "missing": None}[base_kind]
-    if selected is not None:
-        environment["SARJ_STANDARDS_BASE"] = selected
+    event_file = tmp_path / "github-event.json"
+    event_file.write_text(
+        json.dumps(
+            {
+                "push": {"created": created == "true", "before": selected},
+                "pull_request": {"pull_request": {"base": {"sha": selected}}},
+                "merge_group": {"merge_group": {"base_sha": selected}},
+                "workflow_dispatch": {},
+            }[event]
+        ),
+        encoding="utf-8",
+    )
+    environment["GITHUB_EVENT_PATH"] = str(event_file)
+    # GitHub resolves the declarative expression before launching the native command.
+    environment["SARJ_STANDARDS_BASE"] = selected if expected_base_present and selected is not None else ""
     completed = subprocess.run(
         ("bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", command),
         cwd=tmp_path,
@@ -1856,7 +1882,7 @@ def test_generated_ci_initial_push_keeps_native_baseline_boundaries(
     observed = parse_json(completed.stdout)
     assert isinstance(observed, dict)
     assert observed == {
-        "base": selected if expected_base_present else None,
+        "base": selected if expected_base_present else "",
         "baselined": expected_baselined,
         "completion": "complete",
     }

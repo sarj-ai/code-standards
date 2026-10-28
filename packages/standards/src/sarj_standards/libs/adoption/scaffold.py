@@ -2401,14 +2401,12 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
             "      - name: Run standards",
             "        shell: bash",
             "        env:",
-            "          SARJ_STANDARDS_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}",
-            "          SARJ_GITHUB_REF_CREATED: ${{ github.event.created }}",
-            "        run: |",
-            '          if [[ "${GITHUB_EVENT_NAME:-}" == push && "${SARJ_GITHUB_REF_CREATED:-}" == true &&',
-            '            "${SARJ_STANDARDS_BASE:-}" == 0000000000000000000000000000000000000000 ]]; then',
-            "            unset SARJ_STANDARDS_BASE",
-            "          fi",
-            f"          {runner} check --trust-repository-code --format github",
+            "          SARJ_STANDARDS_BASE: >-",
+            "            ${{ !(github.event_name == 'push' && github.event.created &&",
+            "            github.event.before == '0000000000000000000000000000000000000000') &&",
+            "            (github.event.pull_request.base.sha || github.event.merge_group.base_sha ||",
+            "            github.event.before) || '' }}",
+            f"        run: {runner} check --trust-repository-code --format github",
         )
     )
     return "\n".join(lines) + "\n"
