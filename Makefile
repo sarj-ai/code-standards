@@ -18,7 +18,7 @@ COMMIT ?= HEAD
 ROLLOUT_OPTIONS = --registry "$(REGISTRY)" --jobs "$(JOBS)"
 ROLLOUT_TARGET = --channel "$(CHANNEL)" $(if $(CONSUMER),--consumer "$(CONSUMER)")
 
-.PHONY: help setup build typescript-build verify doctor docs-artifacts-check docs-code-sync docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-portability release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger rollout rollout-plan rollout-status rollout-reconcile rollout-check docs-deploy-check shell-check test-typescript test-bootstrap test-contracts test-python test-sql test-iac test-standards test-tsconfig release-status test-plan test-standards-changed
+.PHONY: help setup build typescript-build verify doctor docs-artifacts-check docs-code-sync docs-check test lint dogfood dogfood-python dogfood-typescript format-check typecheck repo-check check-no-private-refs check-file-conventions check-versions-synced release-check release-portability release-check-lock-age release-check-tags release-check-typescript sync-rule-ledger rollout rollout-plan rollout-status rollout-reconcile rollout-check docs-deploy-check shell-check test-typescript test-bootstrap test-contracts test-python test-sql test-iac test-standards test-tsconfig release-status test-plan test-standards-changed verify-test-typescript verify-test-python verify-test-standards
 
 help:
 	@echo "Targets: setup | verify | doctor | build | test | lint | dogfood | typecheck"
@@ -59,7 +59,7 @@ verify:
 	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory doctor docs-check
 	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory format-check lint
 	+bash .github/scripts/make-local-check.sh $(MAKE) --no-print-directory --assume-old=typescript-build dogfood typecheck
-	+bash .github/scripts/make-local-check.sh bash .github/scripts/make-verify-tail.sh $(MAKE)
+	+bash .github/scripts/make-verify-tail.sh "$(VERIFY_TEST_MODE)" $(MAKE)
 
 doctor:
 	@$(STANDARDS) doctor
@@ -105,25 +105,23 @@ build:
 	uv --directory packages/standards build
 	uv --directory packages/standards-compat build
 
-test: check-versions-synced test-typescript test-bootstrap test-contracts test-python test-sql test-iac test-standards test-tsconfig
+TEST_TYPESCRIPT := test-typescript
+TEST_PYTHON := test-bootstrap test-contracts test-python test-sql test-iac
+TEST_STANDARDS := test-standards test-tsconfig
+VERIFY_TEST_MODE = $(if $(or $(filter -j% --jobserver-auth=% --jobserver-fds=%,$(MFLAGS)),$(findstring k,$(firstword $(MFLAGS)))),aggregate,grouped)
+test: check-versions-synced $(TEST_TYPESCRIPT) $(TEST_PYTHON) $(TEST_STANDARDS)
+verify-test-typescript: check-versions-synced $(TEST_TYPESCRIPT)
+verify-test-python: $(TEST_PYTHON)
+verify-test-standards: $(TEST_STANDARDS)
 
 test-typescript:
 	npm --prefix packages/typescript test
 
-test-bootstrap:
-	uv --directory packages/bootstrap run pytest -q
-
-test-contracts:
-	uv --directory packages/contracts run pytest -q
+test-bootstrap test-contracts test-sql test-iac:
+	uv --directory packages/$(patsubst test-%,%,$@) run pytest -q
 
 test-python:
 	uv --directory packages/python run --locked --with pytest-xdist==3.8.0 pytest -q $(if $(filter 1,$(TEST_JOBS)),,-n "$(TEST_JOBS)" --dist worksteal) $(PYTEST_ARGS)
-
-test-sql:
-	uv --directory packages/sql run pytest -q
-
-test-iac:
-	uv --directory packages/iac run pytest -q
 
 test-standards: typescript-build
 	bash .github/scripts/make-native-test-tools.sh uv run --project packages/standards --frozen python -m sarj_standards.libs.release.wheel_tests --root . --jobs "$(TEST_JOBS)" $(PYTEST_ARGS)
