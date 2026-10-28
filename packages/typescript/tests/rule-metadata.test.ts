@@ -13,7 +13,7 @@ import {
 const SUMMARY = "Report the representative construct.";
 
 function documentedRule(documentation: RuleDocumentation) {
-  return createRule<readonly [], "message">({
+  return createRule<readonly unknown[], "message">({
     name: "representative-rule",
     documentation,
     meta: {
