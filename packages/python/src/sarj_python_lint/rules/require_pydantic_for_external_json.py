@@ -823,12 +823,15 @@ class _OriginResolver:
 
     def origins(self, expression: ast.expr, resolving: frozenset[str] = frozenset()) -> frozenset[ast.Call]:
         expression = _unwrap_await(expression)
-        if isinstance(expression, ast.Name):
-            if expression.id in resolving or (value := self.bindings.get(expression.id)) is None:
-                return frozenset()
-            return self.origins(value, resolving | {expression.id})
-        if isinstance(expression, ast.Call):
-            return self._call_origins(expression, resolving)
+        match expression:
+            case ast.Name():
+                if expression.id in resolving or (value := self.bindings.get(expression.id)) is None:
+                    return frozenset()
+                return self.origins(value, resolving | {expression.id})
+            case ast.Call():
+                return self._call_origins(expression, resolving)
+            case _:
+                pass
         found_origins: set[ast.Call] = set()
         for child in ast.iter_child_nodes(expression):
             if isinstance(child, ast.expr):
@@ -1110,10 +1113,13 @@ class _WrapperReferences:
 
 
 def _reference_escapes(node: ast.AST, contains_reference: Callable[[ast.AST], bool]) -> bool:
-    if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda):
-        return contains_reference(node)
-    if isinstance(node, ast.List | ast.Tuple | ast.Set | ast.Dict):
-        return contains_reference(node)
+    match node:
+        case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() | ast.Lambda():
+            return contains_reference(node)
+        case ast.List() | ast.Tuple() | ast.Set() | ast.Dict():
+            return contains_reference(node)
+        case _:
+            pass
     if isinstance(node, ast.Attribute | ast.Subscript) and isinstance(node.ctx, ast.Store | ast.Del):
         return contains_reference(node.value)
     return False

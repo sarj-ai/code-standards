@@ -587,10 +587,13 @@ def _base_names(node: ast.ClassDef, aliases: dict[str, str] | None = None) -> li
     names: list[str] = []
     for base in node.bases:
         target = base.value if isinstance(base, ast.Subscript) else base
-        if isinstance(target, ast.Name):
-            names.append((aliases or {}).get(target.id, target.id))
-        elif isinstance(target, ast.Attribute):
-            names.append(target.attr)
+        match target:
+            case ast.Name():
+                names.append((aliases or {}).get(target.id, target.id))
+            case ast.Attribute():
+                names.append(target.attr)
+            case _:
+                pass
     return names
 
 

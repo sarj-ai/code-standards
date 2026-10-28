@@ -305,10 +305,13 @@ def base_names(node: ast.ClassDef) -> set[str]:
     names: set[str] = set()
     for base in node.bases:
         target = base.value if isinstance(base, ast.Subscript) else base
-        if isinstance(target, ast.Attribute):
-            names.add(target.attr)
-        elif isinstance(target, ast.Name):
-            names.add(target.id)
+        match target:
+            case ast.Attribute():
+                names.add(target.attr)
+            case ast.Name():
+                names.add(target.id)
+            case _:
+                pass
     return names
 
 

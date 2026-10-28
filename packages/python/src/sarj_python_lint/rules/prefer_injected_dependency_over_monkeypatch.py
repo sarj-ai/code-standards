@@ -583,10 +583,13 @@ def _alias_binding(node: ast.AST, handles: set[str]) -> tuple[str, str] | None:
 
 
 def _target_names(node: ast.expr) -> set[str]:
-    if isinstance(node, ast.Name):
-        return {node.id}
-    if isinstance(node, (ast.List, ast.Tuple)):
-        return {name for element in node.elts for name in _target_names(element)}
+    match node:
+        case ast.Name():
+            return {node.id}
+        case ast.List() | ast.Tuple():
+            return {name for element in node.elts for name in _target_names(element)}
+        case _:
+            pass
     return set()
 
 

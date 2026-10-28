@@ -239,11 +239,14 @@ def _record_scalar_assignment(statement: ast.stmt, bindings: dict[str, _ScalarVa
 
 
 def _scalar_value(node: ast.expr, bindings: dict[str, _ScalarValue]) -> _ScalarValue:
-    if isinstance(node, ast.Name):
-        return bindings.get(node.id, _UNKNOWN)
-    if isinstance(node, ast.Constant):
-        value: object = node.value
-        return value if value is None or isinstance(value, (bool, int, float, str, bytes)) else _UNKNOWN
+    match node:
+        case ast.Name():
+            return bindings.get(node.id, _UNKNOWN)
+        case ast.Constant():
+            value: object = node.value
+            return value if value is None or isinstance(value, (bool, int, float, str, bytes)) else _UNKNOWN
+        case _:
+            pass
     if isinstance(node, ast.UnaryOp):
         value = _scalar_value(node.operand, bindings)
         if isinstance(node.op, ast.Not) and value is not _UNKNOWN:
@@ -332,10 +335,13 @@ def _match_arm_markers(node: ast.Match) -> set[ast.AST]:
 
 
 def _always_fails(stmt: ast.stmt) -> bool:
-    if isinstance(stmt, ast.Raise):
-        return True
-    if isinstance(stmt, ast.Assert):
-        return _is_always_falsy_literal(stmt.test)
+    match stmt:
+        case ast.Raise():
+            return True
+        case ast.Assert():
+            return _is_always_falsy_literal(stmt.test)
+        case _:
+            pass
     return isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call) and _called_method(stmt.value) == _FAIL
 
 
@@ -356,10 +362,13 @@ def _fixed_truth_reason(test: ast.expr) -> str | None:
     kind = _nonempty_container_kind(test)
     if kind is not None:
         return f"a non-empty {kind} display is truthy whatever it contains"
-    if isinstance(test, ast.GeneratorExp):
-        return "a generator expression creates a truthy iterator without checking its yielded values"
-    if isinstance(test, ast.Lambda):
-        return "a lambda expression creates a truthy function without calling its body"
+    match test:
+        case ast.GeneratorExp():
+            return "a generator expression creates a truthy iterator without checking its yielded values"
+        case ast.Lambda():
+            return "a lambda expression creates a truthy function without calling its body"
+        case _:
+            pass
     return None
 
 
@@ -390,10 +399,13 @@ def _nonempty_container_kind(node: ast.expr) -> str | None:
 def _is_always_falsy_literal(node: ast.expr) -> bool:
     if _constant_truth(node) is False:
         return True
-    if isinstance(node, (ast.List, ast.Tuple)):
-        return not node.elts
-    if isinstance(node, ast.Dict):
-        return not node.keys
+    match node:
+        case ast.List() | ast.Tuple():
+            return not node.elts
+        case ast.Dict():
+            return not node.keys
+        case _:
+            pass
     return False
 
 

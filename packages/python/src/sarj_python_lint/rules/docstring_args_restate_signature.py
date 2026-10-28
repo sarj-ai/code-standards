@@ -160,10 +160,13 @@ class DocstringArgsRestateSignature(Rule):
         pending: list[tuple[ast.AST, str | None]] = [(child, class_name) for child in reversed(children(node))]
         while pending:
             child, owner = pending.pop()
-            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                self._check_function(child, owner, path, imports, diags)
-            elif isinstance(child, ast.ClassDef):
-                owner = child.name
+            match child:
+                case ast.FunctionDef() | ast.AsyncFunctionDef():
+                    self._check_function(child, owner, path, imports, diags)
+                case ast.ClassDef():
+                    owner = child.name
+                case _:
+                    pass
             pending.extend((nested, owner) for nested in reversed(children(child)))
 
     def _check_function(

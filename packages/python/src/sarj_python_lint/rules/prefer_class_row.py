@@ -147,12 +147,13 @@ class _PsycopgImports:
     def from_tree(cls, tree: ast.Module) -> _PsycopgImports:
         imports = cls()
         for statement in tree.body:
-            if isinstance(statement, ast.Import):
-                imports._add_import(statement)
-            elif isinstance(statement, ast.ImportFrom):
-                imports._add_from_import(statement)
-            else:
-                imports._remove(_bound_names((statement,)))
+            match statement:
+                case ast.Import():
+                    imports._add_import(statement)
+                case ast.ImportFrom():
+                    imports._add_from_import(statement)
+                case _:
+                    imports._remove(_bound_names((statement,)))
         return imports
 
     def _add_import(self, node: ast.Import) -> None:
@@ -460,10 +461,13 @@ def _is_rebound_between(scoped_nodes: list[ast.AST], name: str, start: int, end:
 
 def _writes_name(node: ast.stmt, name: str) -> bool:
     targets: list[ast.expr] = []
-    if isinstance(node, ast.Assign):
-        targets = [*node.targets]
-    elif isinstance(node, (ast.AugAssign, ast.AnnAssign)):
-        targets = [node.target]
+    match node:
+        case ast.Assign():
+            targets = [*node.targets]
+        case ast.AugAssign() | ast.AnnAssign():
+            targets = [node.target]
+        case _:
+            pass
     return any(_target_root(target) == name for target in targets)
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from sarj_python_lint.rules._imports import ImportIndex
@@ -8,6 +9,15 @@ from sarj_python_lint.rules._imports import ImportIndex
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
+
+
+_MAX_ALIAS_DEPTH = 32
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedAnnotation:
+    expression: ast.expr
+    at: ast.expr
 
 
 class AnnotationOrigins:
@@ -18,6 +28,39 @@ class AnnotationOrigins:
             node: ImportIndex.from_tree(ast.Module(body=[node], type_ignores=[]))
             for node in context.nodes(ast.Import, ast.ImportFrom)
         }
+
+    def alias_value(self, node: ast.Name, at: ast.AST) -> ast.expr | None:
+        value = self.context.annotation_semantics.aliases.get(node.id)
+        if value is None:
+            return None
+        binding = self.provenance.binding(node.id, at)
+        if not isinstance(binding, ast.Name):
+            return None
+        parent = self.context.parents.get(binding)
+        if isinstance(parent, ast.TypeAlias | ast.AnnAssign) and parent.value is value:
+            return value
+        return None
+
+    def resolve_annotation(self, node: ast.expr, *, at: ast.expr | None = None) -> ResolvedAnnotation | None:
+        current = node
+        scope = node if at is None else at
+        seen: set[str] = set()
+        for _ in range(_MAX_ALIAS_DEPTH):
+            parsed = self.context.annotation_semantics.parse(current)
+            if parsed is None:
+                return None
+            if isinstance(parsed, ast.Name):
+                if self.shadowed(parsed.id, scope):
+                    return None
+                value = self.alias_value(parsed, scope)
+                if value is not None:
+                    if parsed.id in seen:
+                        return None
+                    seen.add(parsed.id)
+                    current = scope = value
+                    continue
+            return ResolvedAnnotation(parsed, scope)
+        return None
 
     def shadowed(self, name: str, at: ast.AST) -> bool:
         return type_parameter_shadow(name, at, self.context)

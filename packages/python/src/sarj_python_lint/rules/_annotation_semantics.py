@@ -158,10 +158,13 @@ def _bound_names(statement: ast.stmt) -> set[str]:
 
 
 def _target_names(node: ast.expr) -> set[str]:
-    if isinstance(node, ast.Name):
-        return {node.id}
-    if isinstance(node, (ast.List, ast.Tuple)):
-        return {name for item in node.elts for name in _target_names(item)}
+    match node:
+        case ast.Name():
+            return {node.id}
+        case ast.List() | ast.Tuple():
+            return {name for item in node.elts for name in _target_names(item)}
+        case _:
+            pass
     return set()
 
 

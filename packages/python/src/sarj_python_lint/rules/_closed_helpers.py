@@ -115,7 +115,7 @@ def call_matches(function: ast.FunctionDef, call: ast.Call) -> bool:
 def stable_class(context: PythonFileContext, declaration: ast.ClassDef, provenance: ResourceProvenance) -> bool:
     if declaration.decorator_list or declaration.keywords or context.parents.get(declaration) is not context.tree:
         return False
-    return provenance.bindings.get(context.tree, {}).get(declaration.name) == [declaration]
+    return provenance.bindings.get(context.tree, {}).get(declaration.name) == (declaration,)
 
 
 def plain_class_members(

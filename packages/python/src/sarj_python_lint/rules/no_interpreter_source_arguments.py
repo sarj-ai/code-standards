@@ -12,7 +12,7 @@ from sarj_python_lint.rule_base import (
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
-    ProjectRule,
+    Rule,
     RuleCategory,
     RuleDocumentation,
     RuleExample,
@@ -22,7 +22,10 @@ from sarj_python_lint.rule_base import (
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator, Sequence
+
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._imports import ImportIndex
 
 
 _SUBPROCESS = frozenset(
@@ -41,7 +44,7 @@ class ProcessArguments:
 
 
 @final
-class NoInterpreterSourceArguments(ProjectRule):
+class NoInterpreterSourceArguments(Rule):
     id = "no-interpreter-source-arguments"
     code = "SARJ484"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
@@ -125,27 +128,14 @@ class NoInterpreterSourceArguments(ProjectRule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if context.generated or context.tree is None:
             return []
-        imports = context.imports
-        replaced = {
-            name
-            for node in context.nodes(ast.Attribute)
-            if isinstance(node.ctx, (ast.Store, ast.Del))
-            and (name := imports.resolved_qualified_name(node)) is not None
-        }
         findings: list[Diagnostic] = []
-        for call in context.nodes(ast.Call):
-            sink = imports.resolved_qualified_name(call.func)
-            if sink is None or sink in replaced or is_suppressed(context.source_lines, call.lineno, self.code):
-                continue
-            argv = _literal_argv(call, sink)
-            if argv is None:
-                continue
-            kind = classify_interpreter(argv).kind
-            channel = "process argv" if kind == "inline" else None
-            if kind == "stdin" and _literal_python_stdin(call, sink, argv):
-                channel = "process stdin"
-            if channel is None:
-                continue
+        for call, channel in _interpreter_source_channels(
+            context.imports,
+            context.nodes(ast.Attribute),
+            context.nodes(ast.Call),
+            source_lines=context.source_lines,
+            code=self.code,
+        ):
             findings.append(
                 Diagnostic(
                     path=context.path,
@@ -157,6 +147,33 @@ class NoInterpreterSourceArguments(ProjectRule):
                 )
             )
         return findings
+
+
+def _interpreter_source_channels(
+    imports: ImportIndex,
+    attributes: Sequence[ast.Attribute],
+    calls: Sequence[ast.Call],
+    *,
+    source_lines: Sequence[str],
+    code: str,
+) -> Iterator[tuple[ast.Call, str]]:
+    replaced = {
+        name
+        for node in attributes
+        if isinstance(node.ctx, (ast.Store, ast.Del)) and (name := imports.resolved_qualified_name(node)) is not None
+    }
+    for call in calls:
+        sink = imports.resolved_qualified_name(call.func)
+        if sink is None or sink in replaced or is_suppressed(source_lines, call.lineno, code):
+            continue
+        argv = _literal_argv(call, sink)
+        if argv is None:
+            continue
+        kind = classify_interpreter(argv).kind
+        if kind == "inline":
+            yield call, "process argv"
+        elif kind == "stdin" and _literal_python_stdin(call, sink, argv):
+            yield call, "process stdin"
 
 
 def _literal_python_stdin(call: ast.Call, sink: str, argv: tuple[str, ...]) -> bool:
