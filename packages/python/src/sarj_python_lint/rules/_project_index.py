@@ -141,6 +141,7 @@ class ClassSummary:
 
 @dataclass(frozen=True, slots=True)
 class SourceUnit:
+    # Indexes borrow tree and imports; callers must keep them unchanged for each index's lifetime.
     path: Path
     module: str | None
     source: str
@@ -194,6 +195,10 @@ def imports_outside(tree: ast.Module | None, modules: frozenset[str]) -> bool:
 
 @final
 class ProjectIndexSet:
+    # Borrowed ASTs and import mappings must stay unchanged for this index's lifetime.
+    # They remain mutable Python objects; in-place mutation can leave cached facts stale.
+    # Use with_unit() with a fresh unit, or rebuild from an updated source snapshot.
+    # Snapshots capture source strings, not later AST or import mutations.
     def __init__(self, units: Mapping[Path, SourceUnit], roots: Sequence[Path] = ()) -> None:
         self._units = MappingProxyType(dict(units))
         self._roots = tuple(roots)
@@ -550,13 +555,17 @@ class ProjectIndexSet:
     def constructor_consumers(self, unit: SourceUnit, name: str) -> frozenset[tuple[Path, str]]:
         if unit.module is None:
             return frozenset()
-        target = SymbolRef(unit.module, name)
-        consumers: set[tuple[Path, str]] = set()
+        return self._constructor_consumers.get(SymbolRef(unit.module, name), frozenset())
+
+    @cached_property
+    def _constructor_consumers(self) -> Mapping[SymbolRef, frozenset[tuple[Path, str]]]:
+        consumers: dict[SymbolRef, set[tuple[Path, str]]] = {}
         for candidate in self._units.values():
             if candidate.tree is None:
                 continue
-            consumers.update(_unit_constructor_consumers(candidate, candidate.tree, target))
-        return frozenset(consumers)
+            for symbol, owner in _unit_constructor_consumers(candidate, candidate.tree):
+                consumers.setdefault(symbol, set()).add((candidate.path, owner))
+        return MappingProxyType({symbol: frozenset(owners) for symbol, owners in consumers.items()})
 
     def constructor_operations(self, unit: SourceUnit, name: str) -> frozenset[tuple[Path, str]]:
         if unit.module is None:
@@ -582,27 +591,38 @@ class ProjectIndexSet:
     def direct_subclasses(self, unit: SourceUnit, name: str) -> frozenset[tuple[Path, str]]:
         if unit.module is None:
             return frozenset()
-        target = SymbolRef(unit.module, name)
-        return frozenset(
-            (candidate.path, node.name)
-            for candidate in self._units.values()
-            if candidate.tree is not None
-            for node in candidate.tree.body
-            if isinstance(node, ast.ClassDef)
-            and any(_direct_base_symbol(candidate, base) == target for base in node.bases)
-        )
+        return self._direct_subclasses.get(SymbolRef(unit.module, name), frozenset())
+
+    @cached_property
+    def _direct_subclasses(self) -> Mapping[SymbolRef, frozenset[tuple[Path, str]]]:
+        subclasses: dict[SymbolRef, set[tuple[Path, str]]] = {}
+        for candidate in self._units.values():
+            if candidate.tree is None:
+                continue
+            for node in candidate.tree.body:
+                if not isinstance(node, ast.ClassDef):
+                    continue
+                for base in node.bases:
+                    if (symbol := _direct_base_symbol(candidate, base)) is not None:
+                        subclasses.setdefault(symbol, set()).add((candidate.path, node.name))
+        return MappingProxyType({symbol: frozenset(owners) for symbol, owners in subclasses.items()})
 
     def typed_class_consumers(self, unit: SourceUnit, name: str) -> frozenset[tuple[Path, str]]:
         if unit.module is None:
             return frozenset()
-        target = SymbolRef(unit.module, name)
-        return frozenset(
-            (candidate.path, owner.name)
-            for candidate in self._units.values()
-            if candidate.tree is not None
-            for owner in candidate.tree.body
-            if isinstance(owner, ast.ClassDef) and _class_has_typed_dependency(candidate, owner, target)
-        )
+        return self._typed_class_consumers.get(SymbolRef(unit.module, name), frozenset())
+
+    @cached_property
+    def _typed_class_consumers(self) -> Mapping[SymbolRef, frozenset[tuple[Path, str]]]:
+        consumers: dict[SymbolRef, set[tuple[Path, str]]] = {}
+        for candidate in self._units.values():
+            if candidate.tree is None:
+                continue
+            for owner in candidate.tree.body:
+                if isinstance(owner, ast.ClassDef):
+                    for symbol in _class_typed_dependencies(candidate, owner):
+                        consumers.setdefault(symbol, set()).add((candidate.path, owner.name))
+        return MappingProxyType({symbol: frozenset(owners) for symbol, owners in consumers.items()})
 
     @cached_property
     def _mock_specs(self) -> Mapping[SymbolRef, frozenset[Path]]:
@@ -1195,29 +1215,23 @@ def _python_files(root: Path) -> Iterator[Path]:
                 yield parent / name
 
 
-def _unit_constructor_consumers(
-    candidate: SourceUnit, tree: ast.Module, target: SymbolRef
-) -> Iterator[tuple[Path, str]]:
+def _unit_constructor_consumers(candidate: SourceUnit, tree: ast.Module) -> Iterator[tuple[SymbolRef, str]]:
     for owner in tree.body:
         if not isinstance(owner, ast.ClassDef):
             continue
-        initializer = next(
-            (
-                statement
-                for statement in owner.body
-                if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)) and statement.name == "__init__"
-            ),
-            None,
-        )
-        if initializer is None:
+        for symbol in _constructor_annotation_symbols(candidate, owner):
+            yield symbol, owner.name
+
+
+def _constructor_annotation_symbols(candidate: SourceUnit, owner: ast.ClassDef) -> Iterator[SymbolRef]:
+    for initializer in _direct_functions(owner):
+        if initializer.name != "__init__":
             continue
         parameters = (*initializer.args.posonlyargs, *initializer.args.args, *initializer.args.kwonlyargs)
-        if any(
-            _annotation_contains_symbol(candidate, parameter.annotation, target)
-            for parameter in parameters
-            if parameter.arg != "self"
-        ):
-            yield (candidate.path, owner.name)
+        for parameter in parameters:
+            if parameter.arg != "self":
+                yield from _annotation_symbols(candidate, parameter.annotation)
+        return
 
 
 def _unit_constructor_operations(
@@ -1374,19 +1388,16 @@ def _bound_constructor_names(node: ast.AST) -> frozenset[str]:
     return frozenset(names)
 
 
-def _class_has_typed_dependency(unit: SourceUnit, owner: ast.ClassDef, target: SymbolRef) -> bool:
+def _class_typed_dependencies(unit: SourceUnit, owner: ast.ClassDef) -> Iterator[SymbolRef]:
     for statement in owner.body:
-        if isinstance(statement, ast.AnnAssign) and _annotation_contains_symbol(unit, statement.annotation, target):
-            return True
+        if isinstance(statement, ast.AnnAssign):
+            yield from _annotation_symbols(unit, statement.annotation)
         if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         parameters = (*statement.args.posonlyargs, *statement.args.args, *statement.args.kwonlyargs)
-        if any(
-            parameter.arg not in {"self", "cls"} and _annotation_contains_symbol(unit, parameter.annotation, target)
-            for parameter in parameters
-        ):
-            return True
-    return False
+        for parameter in parameters:
+            if parameter.arg not in {"self", "cls"}:
+                yield from _annotation_symbols(unit, parameter.annotation)
 
 
 def _mock_spec_targets(unit: SourceUnit, call: ast.Call) -> Iterator[SymbolRef]:
@@ -1444,17 +1455,15 @@ def _absolute_import_symbol(statement: ast.stmt, name: str) -> SymbolRef | None:
     return None
 
 
-def _annotation_contains_symbol(unit: SourceUnit, annotation: ast.expr | None, target: SymbolRef) -> bool:
+def _annotation_symbols(unit: SourceUnit, annotation: ast.expr | None) -> Iterator[SymbolRef]:
     if annotation is None:
-        return False
+        return
     if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
-        with suppress(SyntaxError):
+        with suppress(SyntaxError, UnicodeError, RecursionError):
             annotation = ast.parse(annotation.value, mode="eval").body
-    return any(
-        _resolve(unit, candidate) == target
-        for candidate in walk_ast(annotation)
-        if isinstance(candidate, (ast.Name, ast.Attribute))
-    )
+    for candidate in walk_ast(annotation):
+        if isinstance(candidate, (ast.Name, ast.Attribute)) and (symbol := _resolve(unit, candidate)) is not None:
+            yield symbol
 
 
 def _record_import(node: ast.stmt, package: str, result: dict[str, SymbolRef]) -> None:

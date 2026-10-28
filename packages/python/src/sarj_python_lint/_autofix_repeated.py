@@ -115,7 +115,7 @@ class RepeatedLiteralFixes:
 
     def _stable_binding(self, binding: ast.Name, literal: ast.Constant, parent: ast.FunctionDef) -> bool:
         return (
-            self.provenance.bindings.get(parent, {}).get(binding.id) == [binding]
+            self.provenance.bindings.get(parent, {}).get(binding.id) == (binding,)
             and self.provenance.binding(binding.id, literal) is binding
             and binding.id not in self.provenance.external_bindings
             and (binding.lineno, binding.col_offset + 1) not in self.locations
