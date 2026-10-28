@@ -1457,6 +1457,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
                 self.doctor_runs = 0
                 self.commands: list[tuple[str, ...]] = []
                 self.push_environments: list[Mapping[str, str] | None] = []
+                self.provisioned_path: str | None = None
 
             def run(
                 self,
@@ -1468,6 +1469,15 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             ) -> subprocess.CompletedProcess[str]:
                 rendered = tuple(command)
                 self.commands.append(rendered)
+                if rendered == (
+                    "gh",
+                    "api",
+                    "--method",
+                    "GET",
+                    "--paginate",
+                    "repos/example/consumer/pulls?state=closed&head=example%3Astandards-rollout%2Fcurrent&base=main&per_page=100",
+                ):
+                    return subprocess.CompletedProcess(rendered, 0, "[]", "")
                 if rendered[:3] == ("gh", "repo", "clone"):
                     return subprocess.CompletedProcess(rendered, 0, "", "")
                 if rendered[:4] == ("git", "-c", "core.hooksPath=/dev/null", "push"):
@@ -1583,7 +1593,8 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             _runner: rollout.CommandRunner,
             _environment: Mapping[str, str],
         ) -> rollout.ProvisionedTools:
-            return rollout.ProvisionedTools({"PATH": "/tools"}, ("mise", "exec", "--"))
+            runner.provisioned_path = _environment["PATH"]
+            return rollout.ProvisionedTools({"PATH": runner.provisioned_path}, ("mise", "exec", "--"))
 
         pull_request_calls = 0
 
@@ -1650,7 +1661,8 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
 
         assert result.state == expected_state
         assert runner.verification_runs == expected_verification_runs
-        assert runner.push_environments == [{"PATH": "/tools", "GH_TOKEN": "push-secret"}]
+        assert runner.provisioned_path is not None
+        assert runner.push_environments == [{"PATH": runner.provisioned_path, "GH_TOKEN": "push-secret"}]
         assert not subprocess.run(
             ("git", "status", "--porcelain"), cwd=repo, check=True, capture_output=True, text=True
         ).stdout
@@ -1741,7 +1753,9 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         preparation = rollout.BranchPreparation("standards-rollout/current", previous_sha, tree_sha, base_sha)
         runner = FakeRunner([(0, ""), (0, base_sha), (0, head_sha), (0, tree_sha)])
 
-        pushed = rollout.push_rollout_head(tmp_path, consumer(), preparation, base_sha, runner, environment={})
+        pushed = rollout.push_rollout_head(
+            tmp_path, consumer(), preparation, base_sha, runner, version="5.8.1", environment={}
+        )
 
         assert pushed == previous_sha
         assert not any("push" in command for command in runner.commands)
@@ -1771,7 +1785,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         runner = FakeRunner([(0, ""), (0, base_sha), (0, head_sha), (0, tree_sha), (0, "")])
 
         pushed = rollout.push_rollout_head(
-            tmp_path, consumer(), preparation, base_sha, runner, environment={"PATH": "/tools"}
+            tmp_path, consumer(), preparation, base_sha, runner, version="5.8.1", environment={"PATH": "/tools"}
         )
 
         assert pushed == head_sha

@@ -77,6 +77,13 @@ class FleetRunner:
                 msg = "temporary GitHub outage"
                 raise rollout.RolloutError(msg)
             output = "[]"
+        elif tuple(command[:5]) == ("gh", "api", "--method", "GET", "--paginate"):
+            assert len(command) == 6
+            assert command[-1] in {
+                f"repos/{consumer.repository}/pulls?state=closed&head=example%3Astandards-rollout%2Fcurrent&base=main&per_page=100"
+                for consumer in FLEET
+            }
+            output = "[]"
         elif tuple(command[:2]) == ("gh", "api"):
             repository = command[2].removeprefix("repos/").removesuffix("/contents/.sarj-standards.toml")
             version = VERSION if repository in self.adopted else "8.31.1"
