@@ -427,10 +427,13 @@ class OpaqueContractFacts:
 
     def _enclosing_assertion(self, node: ast.AST) -> ast.Assert | None:
         while (parent := self.context.parents.get(node)) is not None:
-            if isinstance(parent, ast.Assert):
-                return parent
-            if isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
-                return None
+            match parent:
+                case ast.Assert():
+                    return parent
+                case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.Lambda():
+                    return None
+                case _:
+                    pass
             node = parent
         return None
 
@@ -534,11 +537,14 @@ class OpaqueContractFacts:
             return None
         if isinstance(node, ast.Name):
             binding = self.facts.provenance.runtime_binding(node.id, node)
-            if isinstance(binding, ast.arg):
-                return binding
-            if isinstance(binding, ast.Name):
-                value = self.assigned(binding, node)
-                return self.parameter(value, depth=depth + 1) if value is not None else None
+            match binding:
+                case ast.arg():
+                    return binding
+                case ast.Name():
+                    value = self.assigned(binding, node)
+                    return self.parameter(value, depth=depth + 1) if value is not None else None
+                case _:
+                    pass
         receiver = _projection_receiver(node)
         parameter = self.parameter(receiver, depth=depth + 1) if receiver is not None else None
         return parameter if self._raw_annotation(parameter) else None
@@ -993,12 +999,13 @@ def _projection_receiver(node: ast.expr) -> ast.expr | None:
 
 
 def _control_condition(node: ast.AST, parent: ast.AST) -> tuple[ast.expr, bool] | None:
-    if isinstance(parent, ast.IfExp):
-        accepted, rejected = node is parent.body, node is parent.orelse
-    elif isinstance(parent, ast.If):
-        accepted, rejected = node in parent.body, node in parent.orelse
-    else:
-        return None
+    match parent:
+        case ast.IfExp():
+            accepted, rejected = node is parent.body, node is parent.orelse
+        case ast.If():
+            accepted, rejected = node in parent.body, node in parent.orelse
+        case _:
+            return None
     return (parent.test, accepted) if accepted or rejected else None
 
 

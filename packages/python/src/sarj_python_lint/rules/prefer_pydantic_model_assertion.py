@@ -132,16 +132,19 @@ def _asserted_field(statement: ast.stmt, context: PythonFileContext) -> ast.Attr
 
 
 def _boolean_or_none(expected: ast.expr, context: PythonFileContext) -> bool:
-    if isinstance(expected, ast.Constant):
-        return expected.value is None or isinstance(expected.value, bool)
-    if isinstance(expected, ast.Name):
-        binding = context.static_resource_provenance.binding(expected.id, expected)
-        return (
-            isinstance(binding, ast.arg)
-            and isinstance(binding.annotation, ast.Name)
-            and binding.annotation.id == "bool"
-            and context.imports.builtin_is_unshadowed("bool")
-        )
+    match expected:
+        case ast.Constant():
+            return expected.value is None or isinstance(expected.value, bool)
+        case ast.Name():
+            binding = context.static_resource_provenance.binding(expected.id, expected)
+            return (
+                isinstance(binding, ast.arg)
+                and isinstance(binding.annotation, ast.Name)
+                and binding.annotation.id == "bool"
+                and context.imports.builtin_is_unshadowed("bool")
+            )
+        case _:
+            pass
     return False
 
 

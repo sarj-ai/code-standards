@@ -157,7 +157,10 @@ def _hook_transaction_targets(hooks_dir: Path, configured: frozenset[str]) -> tu
 
 def run(argv: list[str] | None = None) -> int:
     try:
-        return _run(list(sys.argv[1:] if argv is None else argv))
+        # The native hook manager owns this protocol rather than domain CLI fields.
+        return _run(
+            list(sys.argv[1:] if argv is None else argv)  # sarj-noqa: SARJ533 -- native hook forwarding
+        )
     except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
         sys.stderr.write(f"error: {exc}\n")
         return 2

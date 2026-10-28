@@ -925,10 +925,13 @@ def _factory_collaborator(node: ast.ClassDef, facts: _FactoryClassFacts, imports
         parameter.arg for parameter in (*init.args.posonlyargs, *init.args.args, *init.args.kwonlyargs)
     )
     for statement in init.body:
-        if isinstance(statement, ast.Raise):
-            return None
-        if isinstance(statement, ast.Return):
-            break
+        match statement:
+            case ast.Raise():
+                return None
+            case ast.Return():
+                break
+            case _:
+                pass
         if not _factory_falls_through(statement):
             return None
         available_names.difference_update(_factory_statement_bindings(statement))
@@ -1267,10 +1270,13 @@ def _local_port_names(classes: list[ast.ClassDef], imports: ImportIndex) -> set[
 def _module_bound_names(tree: ast.Module) -> set[str]:
     bound_names: set[str] = set()
     for node in tree.body:
-        if isinstance(node, ast.ClassDef):
-            bound_names.add(node.name)
-        elif isinstance(node, ast.ImportFrom | ast.Import):
-            bound_names.update(alias.asname or alias.name.rpartition(".")[2] for alias in node.names)
+        match node:
+            case ast.ClassDef():
+                bound_names.add(node.name)
+            case ast.ImportFrom() | ast.Import():
+                bound_names.update(alias.asname or alias.name.rpartition(".")[2] for alias in node.names)
+            case _:
+                pass
     return bound_names
 
 
@@ -1313,14 +1319,15 @@ def _has_unsupported_control_flow(statements: list[ast.stmt]) -> bool:
 
 
 def _self_field_assignment(node: ast.stmt) -> tuple[set[str], ast.expr] | None:
-    if isinstance(node, ast.Assign):
-        targets: list[ast.expr] = list(node.targets)
-        value = node.value
-    elif isinstance(node, ast.AnnAssign):
-        targets = [node.target]
-        value = node.value
-    else:
-        return None
+    match node:
+        case ast.Assign():
+            targets: list[ast.expr] = list(node.targets)
+            value = node.value
+        case ast.AnnAssign():
+            targets = [node.target]
+            value = node.value
+        case _:
+            return None
     if value is None:
         return None
     fields = {

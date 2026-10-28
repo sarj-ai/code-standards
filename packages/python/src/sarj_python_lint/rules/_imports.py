@@ -141,10 +141,13 @@ def _module_non_import_bindings(tree: ast.Module) -> set[str]:
 
 
 def _target_names(node: ast.expr) -> set[str]:
-    if isinstance(node, ast.Name):
-        return {node.id}
-    if isinstance(node, (ast.Tuple, ast.List)):
-        return {name for element in node.elts for name in _target_names(element)}
+    match node:
+        case ast.Name():
+            return {node.id}
+        case ast.Tuple() | ast.List():
+            return {name for element in node.elts for name in _target_names(element)}
+        case _:
+            pass
     return set()
 
 

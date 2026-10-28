@@ -290,14 +290,17 @@ def _statement_fallbacks(
     if parameter is None:
         return {}
     body = statement.body[0]
-    if isinstance(body, ast.Assign):
-        value = (
-            body.value if len(body.targets) == 1 and _is_fallback_target(body.targets[0], parameter, receiver) else None
-        )
-    elif isinstance(body, ast.AnnAssign):
-        value = body.value if _is_fallback_target(body.target, parameter, receiver) else None
-    else:
-        value = None
+    match body:
+        case ast.Assign():
+            value = (
+                body.value
+                if len(body.targets) == 1 and _is_fallback_target(body.targets[0], parameter, receiver)
+                else None
+            )
+        case ast.AnnAssign():
+            value = body.value if _is_fallback_target(body.target, parameter, receiver) else None
+        case _:
+            value = None
     return {parameter: False} if value is not None and resolver.is_runtime_config(value, shadowed) else {}
 
 
@@ -369,10 +372,13 @@ def _directly_bound_names(statement: ast.stmt) -> set[str]:
 
 
 def _target_names(target: ast.expr) -> set[str]:
-    if isinstance(target, ast.Name):
-        return {target.id}
-    if isinstance(target, (ast.Tuple, ast.List)):
-        return {name for element in target.elts for name in _target_names(element)}
+    match target:
+        case ast.Name():
+            return {target.id}
+        case ast.Tuple() | ast.List():
+            return {name for element in target.elts for name in _target_names(element)}
+        case _:
+            pass
     return set()
 
 
@@ -540,18 +546,19 @@ class RuntimeConfigResolver:
 def _imports(tree: ast.Module, current_module: str | None, *, is_package: bool = False) -> dict[str, _Binding]:
     bindings: dict[str, _Binding] = {}
     for statement in tree.body:
-        if isinstance(statement, ast.Import):
-            _bind_import_modules(statement, bindings)
-        elif isinstance(statement, ast.ImportFrom):
-            module = _absolute_module(statement, current_module, is_package=is_package)
-            if module is None:
-                continue
-            for alias in statement.names:
-                if alias.name != "*":
-                    bindings[alias.asname or alias.name] = _Binding(module, alias.name)
-        else:
-            for name in _directly_bound_names(statement):
-                bindings.pop(name, None)
+        match statement:
+            case ast.Import():
+                _bind_import_modules(statement, bindings)
+            case ast.ImportFrom():
+                module = _absolute_module(statement, current_module, is_package=is_package)
+                if module is None:
+                    continue
+                for alias in statement.names:
+                    if alias.name != "*":
+                        bindings[alias.asname or alias.name] = _Binding(module, alias.name)
+            case _:
+                for name in _directly_bound_names(statement):
+                    bindings.pop(name, None)
     return bindings
 
 
@@ -580,11 +587,14 @@ def _resolve_expression(expression: ast.expr, imports: dict[str, _Binding]) -> t
 
 
 def _attribute_parts(expression: ast.expr) -> tuple[str, ...] | None:
-    if isinstance(expression, ast.Name):
-        return (expression.id,)
-    if isinstance(expression, ast.Attribute):
-        parent = _attribute_parts(expression.value)
-        return (*parent, expression.attr) if parent is not None else None
+    match expression:
+        case ast.Name():
+            return (expression.id,)
+        case ast.Attribute():
+            parent = _attribute_parts(expression.value)
+            return (*parent, expression.attr) if parent is not None else None
+        case _:
+            pass
     return None
 
 
@@ -654,14 +664,15 @@ def _stable_module_symbols(tree: ast.Module) -> frozenset[str]:
 
 def _assigned_factory(tree: ast.Module, symbol: str) -> ast.expr | None:
     for statement in tree.body:
-        if isinstance(statement, ast.Assign):
-            targets = statement.targets
-            value = statement.value
-        elif isinstance(statement, ast.AnnAssign):
-            targets = [statement.target]
-            value = statement.value
-        else:
-            continue
+        match statement:
+            case ast.Assign():
+                targets = statement.targets
+                value = statement.value
+            case ast.AnnAssign():
+                targets = [statement.target]
+                value = statement.value
+            case _:
+                continue
         if value is not None and isinstance(value, ast.Call) and any(_is_name(target, symbol) for target in targets):
             return value.func
     return None

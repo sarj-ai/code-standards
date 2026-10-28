@@ -173,13 +173,16 @@ def _annotation(node: ast.expr | None, imports: ImportIndex) -> _Kind | None:
 
 def _functions(statements: list[ast.stmt], imports: ImportIndex) -> Iterator[tuple[_Function, dict[str, _Binding]]]:
     for statement in statements:
-        if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
-            yield statement, {}
-        elif isinstance(statement, ast.ClassDef):
-            attributes = _class_bindings(statement, imports)
-            for method in statement.body:
-                if isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef):
-                    yield method, attributes
+        match statement:
+            case ast.FunctionDef() | ast.AsyncFunctionDef():
+                yield statement, {}
+            case ast.ClassDef():
+                attributes = _class_bindings(statement, imports)
+                for method in statement.body:
+                    if isinstance(method, ast.FunctionDef | ast.AsyncFunctionDef):
+                        yield method, attributes
+            case _:
+                pass
 
 
 def _class_bindings(owner: ast.ClassDef, imports: ImportIndex) -> dict[str, _Binding]:
@@ -203,10 +206,13 @@ def _class_bindings(owner: ast.ClassDef, imports: ImportIndex) -> dict[str, _Bin
 
 
 def _load_key(node: ast.expr) -> str:
-    if isinstance(node, ast.Name):
-        return _key(ast.Name(id=node.id, ctx=ast.Load()))
-    if isinstance(node, ast.Attribute):
-        return _key(ast.Attribute(value=node.value, attr=node.attr, ctx=ast.Load()))
+    match node:
+        case ast.Name():
+            return _key(ast.Name(id=node.id, ctx=ast.Load()))
+        case ast.Attribute():
+            return _key(ast.Attribute(value=node.value, attr=node.attr, ctx=ast.Load()))
+        case _:
+            pass
     return _key(node)
 
 
@@ -329,17 +335,20 @@ class _Analysis:
                 state.writes.add(binding.connection)
 
     def sql(self, node: ast.expr, state: _State, seen: frozenset[str]) -> str | None:
-        if isinstance(node, ast.Name):
-            if node.id in seen:
+        match node:
+            case ast.Name():
+                if node.id in seen:
+                    return None
+                value = state.constants.get(node.id, self.constants.get(node.id))
+                return self.sql(value, state, seen | {node.id}) if value else None
+            case ast.Call():
+                if self.imports.resolves(node.func, sources=frozenset({"psycopg.sql"}), symbol="SQL") and node.args:
+                    return self.sql(node.args[0], state, seen)
+                if isinstance(node.func, ast.Attribute) and node.func.attr == "format":
+                    return self.sql(node.func.value, state, seen)
                 return None
-            value = state.constants.get(node.id, self.constants.get(node.id))
-            return self.sql(value, state, seen | {node.id}) if value else None
-        if isinstance(node, ast.Call):
-            if self.imports.resolves(node.func, sources=frozenset({"psycopg.sql"}), symbol="SQL") and node.args:
-                return self.sql(node.args[0], state, seen)
-            if isinstance(node.func, ast.Attribute) and node.func.attr == "format":
-                return self.sql(node.func.value, state, seen)
-            return None
+            case _:
+                pass
         return sql_string_value(node)
 
 

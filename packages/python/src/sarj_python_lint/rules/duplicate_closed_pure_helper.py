@@ -170,10 +170,13 @@ def _pure_body(function: ast.FunctionDef, context: PythonFileContext) -> bool:
 
 
 def _native_type(expression: ast.expr, types: dict[str, str]) -> str | None:
-    if isinstance(expression, ast.Name):
-        return types.get(expression.id)
-    if isinstance(expression, ast.Constant):
-        return "str" if isinstance(expression.value, str) else "int" if type(expression.value) is int else None
+    match expression:
+        case ast.Name():
+            return types.get(expression.id)
+        case ast.Constant():
+            return "str" if isinstance(expression.value, str) else "int" if type(expression.value) is int else None
+        case _:
+            pass
     if not isinstance(expression, ast.Call) or expression.keywords or not isinstance(expression.func, ast.Attribute):
         return None
     receiver = _native_type(expression.func.value, types)

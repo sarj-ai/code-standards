@@ -720,10 +720,13 @@ def _owner_bindings(owner: _Callable, namespace_observers: frozenset[int]) -> _O
     nodes = tuple(walk_ast(owner))
     names: defaultdict[str, list[ast.Name | ast.arg]] = defaultdict(list)
     for node in nodes:
-        if isinstance(node, ast.Name):
-            names[node.id].append(node)
-        elif isinstance(node, ast.arg):
-            names[node.arg].append(node)
+        match node:
+            case ast.Name():
+                names[node.id].append(node)
+            case ast.arg():
+                names[node.arg].append(node)
+            case _:
+                pass
     return _OwnerBindings(
         names=dict(names),
         external=frozenset(

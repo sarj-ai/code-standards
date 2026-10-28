@@ -373,12 +373,13 @@ class _MockNames:
     def from_tree(cls, tree: ast.Module) -> _MockNames:
         found = cls()
         for stmt in tree.body:
-            if isinstance(stmt, ast.Import):
-                found._add_plain_import(stmt)
-            elif isinstance(stmt, ast.ImportFrom):
-                found._add_from_import(stmt)
-            else:
-                found._remove_bound_names(_bound_names((stmt,)))
+            match stmt:
+                case ast.Import():
+                    found._add_plain_import(stmt)
+                case ast.ImportFrom():
+                    found._add_from_import(stmt)
+                case _:
+                    found._remove_bound_names(_bound_names((stmt,)))
         return found
 
     def _add_plain_import(self, node: ast.Import) -> None:

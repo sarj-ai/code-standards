@@ -2825,7 +2825,10 @@ def cmd_commit_message(args: _Args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    raw_argv = _root_option_first(sys.argv[1:] if argv is None else argv)
+    # Compatibility ordering preserves the complete argv for typed Typer.
+    raw_argv = _root_option_first(
+        sys.argv[1:] if argv is None else argv  # sarj-noqa: SARJ533 -- typed CLI forwarding
+    )
     status: int | None = None
 
     def dispatch(args: _Args) -> int:

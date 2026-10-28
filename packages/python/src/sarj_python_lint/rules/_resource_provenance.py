@@ -225,12 +225,13 @@ class ResourceProvenance:
             if not isinstance(node, ast.alias):
                 return False
             parent = self.parents.get(node)
-            if isinstance(parent, ast.Import):
-                targets.add(("import", None, 0, node.name))
-            elif isinstance(parent, ast.ImportFrom):
-                targets.add(("from", parent.module, parent.level, node.name))
-            else:
-                return False
+            match parent:
+                case ast.Import():
+                    targets.add(("import", None, 0, node.name))
+                case ast.ImportFrom():
+                    targets.add(("from", parent.module, parent.level, node.name))
+                case _:
+                    return False
         return len(targets) == 1
 
     def imported(self, node: ast.expr, qualified: str) -> bool:

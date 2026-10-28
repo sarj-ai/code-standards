@@ -406,11 +406,14 @@ class _NamespaceFlow:
     def plain_dict(self, value: ast.expr, *, depth: int = 0) -> bool:
         if depth >= _MAX_DEPTH:
             return False
-        if isinstance(value, ast.Name):
-            assigned = self.assigned(value)
-            return assigned is not None and self.plain_dict(assigned, depth=depth + 1)
-        if isinstance(value, ast.IfExp):
-            return self.plain_dict(value.body, depth=depth + 1) and self.plain_dict(value.orelse, depth=depth + 1)
+        match value:
+            case ast.Name():
+                assigned = self.assigned(value)
+                return assigned is not None and self.plain_dict(assigned, depth=depth + 1)
+            case ast.IfExp():
+                return self.plain_dict(value.body, depth=depth + 1) and self.plain_dict(value.orelse, depth=depth + 1)
+            case _:
+                pass
         return isinstance(value, ast.Dict) or (isinstance(value, ast.Call) and self.native.dict_call(value))
 
     def _collect(self, value: ast.expr, *, execution: ast.Call, depth: int = 0) -> None:
@@ -436,10 +439,13 @@ class _NamespaceFlow:
     def _input(self, value: ast.expr, *, depth: int = 0) -> set[ast.arg]:
         if depth >= _MAX_DEPTH:
             return set()
-        if isinstance(value, ast.Name):
-            return self._name_input(value, depth)
-        if isinstance(value, ast.Dict):
-            return self._dictionary_inputs(value, depth)
+        match value:
+            case ast.Name():
+                return self._name_input(value, depth)
+            case ast.Dict():
+                return self._dictionary_inputs(value, depth)
+            case _:
+                pass
         if isinstance(value, ast.Call) and self.native.dict_call(value):
             return self._constructor_inputs(value, depth)
         found: set[ast.arg] = set()
@@ -652,13 +658,16 @@ class _NamespaceEscapes:
             return None
         binding = self.flow.binding(value)
         found: set[ast.AST] = {binding} if binding is not None else set()
-        if isinstance(value, ast.Name):
-            assigned = self.flow.assigned(value)
-            if isinstance(assigned, ast.Name | ast.Subscript):
-                previous = self._carrier_roots(assigned, depth=depth + 1)
-                return None if previous is None else found | previous
-        elif isinstance(value, ast.Subscript):
-            return self._carrier_roots(value.value, depth=depth + 1)
+        match value:
+            case ast.Name():
+                assigned = self.flow.assigned(value)
+                if isinstance(assigned, ast.Name | ast.Subscript):
+                    previous = self._carrier_roots(assigned, depth=depth + 1)
+                    return None if previous is None else found | previous
+            case ast.Subscript():
+                return self._carrier_roots(value.value, depth=depth + 1)
+            case _:
+                pass
         return found
 
 

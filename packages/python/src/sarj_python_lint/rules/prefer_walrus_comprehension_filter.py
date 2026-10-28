@@ -132,13 +132,16 @@ def _calls_in_immediate_scope(expression: ast.expr) -> list[ast.Call]:
         current = stack.pop()
         if current is not expression and isinstance(current, _DEFERRED_SCOPES):
             continue
-        if isinstance(current, (ast.Await, ast.Yield, ast.YieldFrom, ast.NamedExpr)):
-            continue
-        if isinstance(current, ast.Call):
-            if any(isinstance(descendant, ast.Call) for child in children(current) for descendant in walk(child)):
+        match current:
+            case ast.Await() | ast.Yield() | ast.YieldFrom() | ast.NamedExpr():
                 continue
-            calls.append(current)
-            continue
+            case ast.Call():
+                if any(isinstance(descendant, ast.Call) for child in children(current) for descendant in walk(child)):
+                    continue
+                calls.append(current)
+                continue
+            case _:
+                pass
         stack.extend(reversed(children(current)))
     return calls
 

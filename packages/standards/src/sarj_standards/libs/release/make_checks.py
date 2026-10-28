@@ -26,7 +26,11 @@ def check_tags(root: Path, command: tuple[str, ...], *, runner: ProcessRunner = 
 
 
 def main() -> int:
-    return check_tags(Path.cwd(), tuple(sys.argv[1:]))
+    # This fixed Make adapter forwards an executable vector to the typed CLI.
+    return check_tags(
+        Path.cwd(),
+        tuple(sys.argv[1:]),  # sarj-noqa: SARJ533 -- native executable-vector forwarding
+    )
 
 
 if __name__ == "__main__":

@@ -172,10 +172,13 @@ class TimestampOrderRequiresTiebreaker(Rule):
 
 
 def _is_fully_static_string(node: ast.expr) -> bool:
-    if isinstance(node, ast.Constant):
-        return isinstance(node.value, str)
-    if isinstance(node, ast.JoinedStr):
-        return all(isinstance(value, ast.Constant) and isinstance(value.value, str) for value in node.values)
+    match node:
+        case ast.Constant():
+            return isinstance(node.value, str)
+        case ast.JoinedStr():
+            return all(isinstance(value, ast.Constant) and isinstance(value.value, str) for value in node.values)
+        case _:
+            pass
     return (
         isinstance(node, ast.BinOp)
         and isinstance(node.op, ast.Add)

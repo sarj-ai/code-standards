@@ -486,10 +486,13 @@ def _imports_model_namespace(context: PythonFileContext) -> bool:
 
 
 def _reference_name(node: ast.AST) -> str | None:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
+    match node:
+        case ast.Name():
+            return node.id
+        case ast.Attribute():
+            return node.attr
+        case _:
+            pass
     return node.name if isinstance(node, ast.alias) else None
 
 

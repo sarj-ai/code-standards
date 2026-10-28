@@ -241,10 +241,13 @@ class FastapiIndex:
         for node in walk_ast(tree):
             if self._node_scopes[id(node)] != 0:
                 continue
-            if isinstance(node, ast.Import):
-                self._read_import(node)
-            elif isinstance(node, ast.ImportFrom):
-                self._read_import_from(node)
+            match node:
+                case ast.Import():
+                    self._read_import(node)
+                case ast.ImportFrom():
+                    self._read_import_from(node)
+                case _:
+                    pass
 
     def _read_import(self, node: ast.Import) -> None:
         for alias in node.names:
