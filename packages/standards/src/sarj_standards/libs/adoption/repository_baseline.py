@@ -28,7 +28,10 @@ PATH = ".repo-standards/baseline.json"
 # enabling it still leaves every new finding unaccepted by the warning ratchet.
 # Policy 28 changes operational-script-tests identities; only empty policy 27
 # baselines remain compatible. Accepted debt still requires a separate review.
-_COMPATIBLE_TRANSITIONS = frozenset({(18, 19), (18, 20), (19, 20), (25, 26), (25, 27), (26, 27)})
+# Policy 29 adds a default-disabled migration warning. Existing finding
+# identities and manifest scope remain unchanged; preserve all accepted debt.
+# Empty policy 27 baselines may compose the reviewed 27 -> 28 -> 29 steps.
+_COMPATIBLE_TRANSITIONS = frozenset({(18, 19), (18, 20), (19, 20), (25, 26), (25, 27), (26, 27), (28, 29)})
 _POLICY_VERSION = re.compile(rb'("policy_version"\s*:\s*)[0-9]+(?=\s*[,}])')
 
 
@@ -59,7 +62,7 @@ def migrate(contents: bytes, manifest: bytes, *, target_policy_version: int) -> 
     if baseline.policy_version == target_policy_version:
         return contents
     transition = (baseline.policy_version, target_policy_version)
-    empty_compatible = transition == (27, 28) and not baseline.fingerprints
+    empty_compatible = transition in {(27, 28), (27, 29)} and not baseline.fingerprints
     if transition not in _COMPATIBLE_TRANSITIONS and not empty_compatible:
         msg = (
             f"repository baseline migration {baseline.policy_version} -> {target_policy_version} "

@@ -359,6 +359,38 @@ def test_committed_repository_comparison_forwards_exact_event_base(
     assert repository_requests[0].as_of == datetime.now(UTC).date()
 
 
+@pytest.mark.parametrize("has_makefile", [False, True])
+def test_initial_push_uses_native_empty_comparison_without_waiving_makefile_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, has_makefile: bool
+) -> None:
+    selected_manifest = _adopt(tmp_path)
+    selected_manifest.write_text(
+        'repository_id = "fixture"\ncomponents = []\nenabled_rules = ["repository/artifacts/makefile-growth"]\n',
+        encoding="utf-8",
+    )
+    if has_makefile:
+        (tmp_path / "Makefile").write_text("check:\n\tuv run pytest\n", encoding="utf-8")
+    subprocess.run(("git", "init", "--quiet"), cwd=tmp_path, check=True)
+    _commit(tmp_path)
+    event_path = tmp_path / "github-event.json"
+    event_path.write_text(json.dumps({"created": True, "before": "0" * 40}), encoding="utf-8")
+    monkeypatch.setenv("SARJ_STANDARDS_BASE", "")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_path))
+
+    report = repo_standards.analyze(tmp_path, staged=False)
+
+    assert report is not None
+    assert report.issues == ()
+    assert report.baselined_count == 0
+    assert [item.rule_id for item in report.diagnostics] == (
+        ["repository/artifacts/makefile-growth"] if has_makefile else []
+    )
+    if has_makefile:
+        assert report.diagnostics[0].severity.value == _makefile_severity()
+        assert any(note.startswith("Git comparison: empty; base ") for note in report.diagnostics[0].notes)
+
+
 def test_committed_repository_comparison_prefers_explicit_base_and_ignores_worktree_activation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

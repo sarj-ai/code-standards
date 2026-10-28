@@ -10,13 +10,15 @@ from pathlib import Path
 import re
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed read-only git argv.
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from pydantic import JsonValue
 
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.json_boundary import parse_unique_json
 from sarj_standards.libs.typed_containers import is_object_mapping
+
+from . import initial_import
 
 
 if TYPE_CHECKING:
@@ -46,6 +48,10 @@ class ChangedLineScope:
 class _ChangedPaths:
     paths: frozenset[str]
     renamed: bool
+
+
+class _DiffOptions(TypedDict, total=False):
+    env: dict[str, str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,9 +89,17 @@ def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None 
     git = shutil.which("git")
     if git is None:
         return ChangedLineScope(frozenset(), {}, failed=True)
+    try:
+        context = initial_import.load(root, staged=staged)
+    except ValueError:
+        return ChangedLineScope(frozenset(), {}, failed=True)
+    # The validated index equals source; immutable endpoints keep both patch reads on that exact delta.
     comparison = ("--cached",) if staged else (f"{base}...HEAD",)
+    if context is not None:
+        comparison = (context.parent, context.source)
     common = (
         git,
+        *(("--no-replace-objects", "--no-lazy-fetch") if context is not None else ()),
         "--literal-pathspecs",
         "-c",
         "core.quotePath=true",
@@ -101,6 +115,18 @@ def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None 
         return None
     if sum(len(os.fsencode(path)) + 1 for path in selected) > _MAX_DIFF_PATH_BYTES:
         selected = ()
+    return _read_changed_scope(root, common, selected, staged=staged, context=context)
+
+
+def _read_changed_scope(
+    root: Path,
+    common: tuple[str, ...],
+    selected: tuple[str, ...],
+    *,
+    staged: bool,
+    context: initial_import.InitialImport | None,
+) -> ChangedLineScope:
+    options: _DiffOptions = {"env": initial_import.git_environment()} if context is not None else {}
     try:
         names = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed Git argv with literal repository-relative paths.
             (*common, "--name-status", "-z", "--"),
@@ -108,6 +134,7 @@ def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None 
             check=False,
             capture_output=True,
             timeout=30,
+            **options,
         )
         changes = _changed_paths(names.stdout)
         if changes.renamed:
@@ -119,10 +146,15 @@ def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None 
             check=False,
             capture_output=True,
             timeout=30,
+            **options,
         )
     except OSError, ValueError, subprocess.TimeoutExpired:
         return ChangedLineScope(frozenset(), {}, failed=True)
     if names.returncode != 0 or patch.returncode != 0:
+        return ChangedLineScope(frozenset(), {}, failed=True)
+    try:
+        initial_import.validate(root, context, staged=staged)
+    except ValueError:
         return ChangedLineScope(frozenset(), {}, failed=True)
     affected = changes.paths & frozenset(selected) if selected else changes.paths
     return ChangedLineScope(affected, _changed_lines_from_patch(patch.stdout.decode("utf-8", errors="surrogateescape")))
