@@ -1468,6 +1468,15 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             ) -> subprocess.CompletedProcess[str]:
                 rendered = tuple(command)
                 self.commands.append(rendered)
+                if rendered == (
+                    "gh",
+                    "api",
+                    "--method",
+                    "GET",
+                    "--paginate",
+                    "repos/example/consumer/pulls?state=closed&head=example%3Astandards-rollout%2Fcurrent&base=main&per_page=100",
+                ):
+                    return subprocess.CompletedProcess(rendered, 0, "[]", "")
                 if rendered[:3] == ("gh", "repo", "clone"):
                     return subprocess.CompletedProcess(rendered, 0, "", "")
                 if rendered[:4] == ("git", "-c", "core.hooksPath=/dev/null", "push"):
@@ -1741,7 +1750,9 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         preparation = rollout.BranchPreparation("standards-rollout/current", previous_sha, tree_sha, base_sha)
         runner = FakeRunner([(0, ""), (0, base_sha), (0, head_sha), (0, tree_sha)])
 
-        pushed = rollout.push_rollout_head(tmp_path, consumer(), preparation, base_sha, runner, environment={})
+        pushed = rollout.push_rollout_head(
+            tmp_path, consumer(), preparation, base_sha, runner, version="5.8.1", environment={}
+        )
 
         assert pushed == previous_sha
         assert not any("push" in command for command in runner.commands)
@@ -1771,7 +1782,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
         runner = FakeRunner([(0, ""), (0, base_sha), (0, head_sha), (0, tree_sha), (0, "")])
 
         pushed = rollout.push_rollout_head(
-            tmp_path, consumer(), preparation, base_sha, runner, environment={"PATH": "/tools"}
+            tmp_path, consumer(), preparation, base_sha, runner, version="5.8.1", environment={"PATH": "/tools"}
         )
 
         assert pushed == head_sha

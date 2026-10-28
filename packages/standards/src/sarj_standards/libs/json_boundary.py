@@ -15,6 +15,20 @@ def parse_json(text: str) -> JsonValue:
     return json.loads(text)  # pyright: ignore[reportAny] -- untyped parser boundary.
 
 
+def parse_json_documents(text: str) -> list[JsonValue]:
+    decoder = json.JSONDecoder()
+    documents: list[JsonValue] = []
+    offset = 0
+    while offset < len(text):
+        if text[offset] in " \t\r\n":
+            offset += 1
+            continue
+        decoded: tuple[JsonValue, int] = decoder.raw_decode(text, offset)
+        document, offset = decoded
+        documents.append(document)
+    return documents
+
+
 def parse_unique_json(text: str) -> JsonValue:
     return json.loads(text, object_pairs_hook=_unique_pairs, parse_constant=_reject_json_constant)  # pyright: ignore[reportAny] -- untyped parser boundary.
 
