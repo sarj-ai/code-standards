@@ -344,10 +344,13 @@ def _supported_json_context(call: ast.Call, context: PythonFileContext) -> bool:
     child: ast.AST = call
     parent = context.parents.get(child)
     while parent is not None:
-        if isinstance(parent, ast.Lambda | ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
-            return False
-        if isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            return isinstance(child, ast.stmt)
+        match parent:
+            case ast.Lambda() | ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp():
+                return False
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                return isinstance(child, ast.stmt)
+            case _:
+                pass
         child = parent
         parent = context.parents.get(child)
     return True
@@ -597,10 +600,13 @@ def _inside_assertion(call: ast.Call, context: PythonFileContext) -> bool:
     child: ast.AST = call
     parent = context.parents.get(call)
     while parent is not None:
-        if isinstance(parent, ast.Assert):
-            return child is parent.test
-        if isinstance(parent, (ast.Lambda, ast.GeneratorExp, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            return False
+        match parent:
+            case ast.Assert():
+                return child is parent.test
+            case ast.Lambda() | ast.GeneratorExp() | ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                return False
+            case _:
+                pass
         child = parent
         parent = context.parents.get(parent)
     return False

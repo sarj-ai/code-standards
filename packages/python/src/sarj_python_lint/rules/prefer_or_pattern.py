@@ -185,10 +185,13 @@ def _is_mergeable_arm(case: ast.match_case) -> bool:
 
 
 def _is_irrefutable(pattern: ast.pattern) -> bool:
-    if isinstance(pattern, ast.MatchAs):
-        return pattern.pattern is None or _is_irrefutable(pattern.pattern)
-    if isinstance(pattern, ast.MatchOr):
-        return any(_is_irrefutable(member) for member in pattern.patterns)
+    match pattern:
+        case ast.MatchAs():
+            return pattern.pattern is None or _is_irrefutable(pattern.pattern)
+        case ast.MatchOr():
+            return any(_is_irrefutable(member) for member in pattern.patterns)
+        case _:
+            pass
     return False
 
 

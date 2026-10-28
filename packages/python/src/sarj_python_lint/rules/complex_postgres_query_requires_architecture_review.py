@@ -174,11 +174,14 @@ def _recoverable_query_root(node: ast.expr, constructors: frozenset[str]) -> ast
 
 
 def _qualified_name(node: ast.expr) -> str:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        owner = _qualified_name(node.value)
-        return f"{owner}.{node.attr}" if owner else node.attr
+    match node:
+        case ast.Name():
+            return node.id
+        case ast.Attribute():
+            owner = _qualified_name(node.value)
+            return f"{owner}.{node.attr}" if owner else node.attr
+        case _:
+            pass
     return ""
 
 

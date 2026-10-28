@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "358d0b69e51a2b0fed1294c99dd08ef71d5565d3cbe005380a104d4adf4c7aed",
-  "cliSha256": "244c47c58e22d0fa3478b4189f4345aa77051fb3a027ca6ea8179808ca7a500e",
+  "catalogSha256": "da586328983b2f030bbe56a7c6031381bde737c0fb7617ae642188df33e508e5",
+  "cliSha256": "24144469387c7339cfe4e23f4ed2aad2ff98de713c54ed017de556c791251359",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -13456,6 +13456,36 @@
           "title": "Class patterns make the type dispatch explicit"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/types.py",
+              "source": "def is_text(value):\n    match value:\n        case str() | bytes():\n            return True\n    return False\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/types.py",
+          "id": "or-class-pattern",
+          "outcome": "accept",
+          "scenarioId": "or-type-dispatch",
+          "title": "One OR pattern declares shared handling"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/types.py",
+              "source": "def is_text(value):\n    if isinstance(value, str) or isinstance(value, bytes):\n        return True\n    return False\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/types.py",
+          "id": "repeated-isinstance-or",
+          "outcome": "reject",
+          "scenarioId": "or-type-dispatch",
+          "title": "Repeated boolean checks share one type subject"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -13514,6 +13544,36 @@
           "outcome": "reject",
           "scenarioId": "two-arm-ast-projection",
           "title": "Two isinstance returns project one AST identifier shape"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/types.py",
+              "source": "def label(value):\n    match value:\n        case str():\n            return \"text\"\n        case bytes():\n            return \"binary\"\n    return \"other\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/types.py",
+          "id": "two-class-patterns",
+          "outcome": "accept",
+          "scenarioId": "two-type-dispatch",
+          "title": "Class patterns name both alternatives"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/types.py",
+              "source": "def label(value):\n    if isinstance(value, str):\n        return \"text\"\n    elif isinstance(value, bytes):\n        return \"binary\"\n    return \"other\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/types.py",
+          "id": "two-type-dispatch",
+          "outcome": "reject",
+          "scenarioId": "two-type-dispatch",
+          "title": "Two branches already repeat the same type dispatch"
         }
       ],
       "optionsSchemaSource": null
@@ -14359,6 +14419,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:prefer-runtime-validation": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from typing import TypeGuard\n\n\ndef is_record(value: object) -> TypeGuard[dict[str, str]]:\n    return isinstance(value, dict)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "type-guard-assertion",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A claimed narrowing is not a schema validator"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/records.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Record(BaseModel):\n    name: str\n\n\ndef parse_record(value: object) -> Record:\n    return Record.model_validate(value)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/records.py",
+          "id": "validated-result",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Return a validated domain value"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:prefer-self-documenting-constant": {
       "examples": [
         {
@@ -14684,6 +14779,136 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Typed tuple-compatible record"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-typed-cli": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/cli.py",
+              "source": "import typer\n\n\ndef main(service: str, attempts: int = 3) -> None:\n    deploy(service, attempts)\n\n\nif __name__ == \"__main__\":\n    typer.run(main)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/cli.py",
+          "id": "annotated-typer",
+          "outcome": "accept",
+          "scenarioId": "command-annotations",
+          "title": "Typer parses the declared parameter type"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/cli.py",
+              "source": "import sys\n\n\ndef main(arguments: list[str]) -> None:\n    deploy(arguments[0])\n\n\nmain(sys.argv[1:])\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/cli.py",
+          "id": "raw-argv",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Positional strings hide the CLI contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/cli.py",
+              "source": "import typer\n\n\ndef main(service: str, attempts: int = 3) -> None:\n    deploy(service, attempts)\n\n\nif __name__ == \"__main__\":\n    typer.run(main)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/cli.py",
+          "id": "typed-typer",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The command declares each argument"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/cli.py",
+              "source": "import typer\n\n\ndef main(service):\n    deploy(service)\n\n\ntyper.run(main)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/cli.py",
+          "id": "untyped-typer",
+          "outcome": "reject",
+          "scenarioId": "command-annotations",
+          "title": "Typer still needs parameter annotations"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-typed-mapping-get": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/state.py",
+              "source": "def service_name(state: dict[str, object]):\n    return state.get(\"name\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/state.py",
+          "id": "opaque-get",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The field has no declared type"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/state.py",
+              "source": "from typing import TypedDict\n\n\nclass State(TypedDict):\n    name: str\n\n\ndef service_name(state: State) -> str | None:\n    return state.get(\"name\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/state.py",
+          "id": "typed-get",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "TypedDict retains the field contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/state.py",
+              "source": "import json\n\n\ndef name(text: str):\n    state = json.loads(text)\n    return state.get(\"name\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/state.py",
+          "id": "unchecked-json",
+          "outcome": "reject",
+          "scenarioId": "decoded-json",
+          "title": "Decoded JSON still needs validation"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/state.py",
+              "source": "from pydantic import BaseModel\n\n\nclass State(BaseModel):\n    name: str\n\n\ndef name(text: str) -> str:\n    return State.model_validate_json(text).name\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/state.py",
+          "id": "validated-json",
+          "outcome": "accept",
+          "scenarioId": "decoded-json",
+          "title": "Validate JSON before reading its fields"
         }
       ],
       "optionsSchemaSource": null

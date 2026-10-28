@@ -397,10 +397,13 @@ def _scoped_regex_names(context: PythonFileContext, imports: Sequence[ast.Import
 def _in_callable_scope(node: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> bool:
     current = node
     while (parent := parents.get(current)) is not None:
-        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-            return True
-        if isinstance(parent, ast.ClassDef):
-            return False
+        match parent:
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.Lambda():
+                return True
+            case ast.ClassDef():
+                return False
+            case _:
+                pass
         current = parent
     return False
 

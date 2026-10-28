@@ -1283,22 +1283,22 @@ def _metadata_deferred_header(scope: _MetadataScope, child: ast.AST, *, outside_
 def _metadata_annotation_class(scope: _MetadataScope, bindings: _MetadataBindings) -> ast.ClassDef | None:
     node: ast.AST = scope
     while (parent := bindings.parents.get(node)) is not None:
-        if isinstance(parent, ast.ClassDef):
-            return parent
-        if isinstance(
-            parent,
-            (
-                ast.Module,
-                ast.FunctionDef,
-                ast.AsyncFunctionDef,
-                ast.Lambda,
-                ast.ListComp,
-                ast.SetComp,
-                ast.DictComp,
-                ast.GeneratorExp,
-            ),
-        ):
-            return None
+        match parent:
+            case ast.ClassDef():
+                return parent
+            case (
+                ast.Module()
+                | ast.FunctionDef()
+                | ast.AsyncFunctionDef()
+                | ast.Lambda()
+                | ast.ListComp()
+                | ast.SetComp()
+                | ast.DictComp()
+                | ast.GeneratorExp()
+            ):
+                return None
+            case _:
+                pass
         node = parent
     return None
 
@@ -1683,10 +1683,13 @@ def _metadata_factory(
 def _metadata_direct_imports(tree: ast.Module) -> frozenset[str]:
     names: set[str] = set()
     for statement in tree.body:
-        if isinstance(statement, ast.Import):
-            names.update(alias.asname or alias.name.partition(".")[0] for alias in statement.names)
-        elif isinstance(statement, ast.ImportFrom):
-            names.update(alias.asname or alias.name for alias in statement.names)
+        match statement:
+            case ast.Import():
+                names.update(alias.asname or alias.name.partition(".")[0] for alias in statement.names)
+            case ast.ImportFrom():
+                names.update(alias.asname or alias.name for alias in statement.names)
+            case _:
+                pass
     return frozenset(names)
 
 

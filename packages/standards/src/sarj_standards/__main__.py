@@ -6,7 +6,8 @@ from sarj_standards import __version__
 
 
 def main(argv: list[str] | None = None) -> int:
-    arguments = sys.argv[1:] if argv is None else argv
+    # The launcher probes the exact version before typed Typer dispatch.
+    arguments = sys.argv[1:] if argv is None else argv  # sarj-noqa: SARJ533 -- typed CLI forwarding
     if arguments == ["--version"]:
         sys.stdout.write(f"code-standards {__version__}\n")
         return 0

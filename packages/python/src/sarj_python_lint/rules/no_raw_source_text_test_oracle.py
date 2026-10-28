@@ -585,11 +585,14 @@ class FunctionAnalyzer(ast.NodeVisitor):
 
     @override
     def generic_visit(self, node: ast.AST) -> None:
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda):
-            return
-        if isinstance(node, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
-            self._invalidate_comprehension_writes(node)
-            return
+        match node:
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() | ast.Lambda():
+                return
+            case ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp():
+                self._invalidate_comprehension_writes(node)
+                return
+            case _:
+                pass
         super().generic_visit(node)
 
     def _invalidate_comprehension_writes(self, node: ast.expr) -> None:
@@ -1124,10 +1127,13 @@ def _raw_text_oracle(
     node: ast.expr,
     flow: _TextFlow,
 ) -> bool:
-    if isinstance(node, ast.Lambda | ast.GeneratorExp):
-        return False
-    if isinstance(node, ast.ListComp | ast.SetComp | ast.DictComp):
-        return _comprehension_oracle(node, flow)
+    match node:
+        case ast.Lambda() | ast.GeneratorExp():
+            return False
+        case ast.ListComp() | ast.SetComp() | ast.DictComp():
+            return _comprehension_oracle(node, flow)
+        case _:
+            pass
     if isinstance(node, ast.Compare) and _raw_text_comparison(node, flow):
         return True
     if _consumed_generator_oracle(node, flow):

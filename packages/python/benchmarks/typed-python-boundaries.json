@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "baseline": "78fe755a878dbe4e8d67cb3d2b3e17f745cae629",
+  "release_versions": {
+    "python": "1.84.0",
+    "standards": "8.144.0",
+    "bootstrap": "2.1.10"
+  },
+  "rules": {
+    "SARJ080": "error",
+    "SARJ528": "error",
+    "SARJ533": "error",
+    "SARJ534": "warning",
+    "SARJ535": "warning"
+  },
+  "selection": {
+    "self_sample": 120,
+    "self_sampling_seed": 528,
+    "self_population": 482,
+    "stdlib_sample": 80,
+    "stdlib_sampling_seed": 528,
+    "labeled_total": 114,
+    "labeled_valid": 111,
+    "malformed_rejections": 3,
+    "private_motivating_sources": 1,
+    "private_source_exported": false
+  },
+  "method": {
+    "runner": "run_isolated_corpora",
+    "timing_trials_per_variant": 3,
+    "timing_modes": [
+      "cold",
+      "warm"
+    ],
+    "variant_order": "Alternating baseline/candidate order; warm follows cold in each fresh process.",
+    "scope": "Every registered Python rule on identical pinned source snapshots. The self snapshot and semantic manifests come from the baseline Git revision; current implementation is independently dogfooded. Labeled native evaluation selects the five affected rules and treats malformed source as an explicit public-analyzer rejection.",
+    "performance_budget_ratio": 1.25,
+    "context": "Shared VM timings; finite source samples do not prove complete inference."
+  },
+  "labeled_confusion": {
+    "TP": 51,
+    "TN": 60,
+    "FP": 0,
+    "FN": 0
+  },
+  "parser_rejection_contract": "All three malformed-source fixtures are rejected by the public analyzer; rule-local malformed behavior is also covered by native unit tests.",
+  "diagnostic_determinism": "All repeated timing rows match within each variant/corpus/mode.",
+  "performance_and_findings": {
+    "baseline": {
+      "self": {
+        "cold": {
+          "median_seconds": 60.572993995971046,
+          "peak_memory_mib": 392.8359375
+        },
+        "warm": {
+          "median_seconds": 55.545149546000175,
+          "peak_memory_mib": 392.8359375
+        },
+        "diagnostics": {
+          "SARJ026": 19,
+          "SARJ468": 1,
+          "SARJ093": 7,
+          "SARJ521": 10
+        }
+      },
+      "stdlib": {
+        "cold": {
+          "median_seconds": 25.261515481979586,
+          "peak_memory_mib": 108.3828125
+        },
+        "warm": {
+          "median_seconds": 28.50652325898409,
+          "peak_memory_mib": 110.39453125
+        },
+        "diagnostics": {
+          "SARJ442": 37,
+          "SARJ444": 63,
+          "SARJ420": 707,
+          "SARJ099": 52,
+          "SARJ468": 135,
+          "SARJ439": 8,
+          "SARJ023": 50,
+          "SARJ477": 54,
+          "SARJ016": 85,
+          "SARJ438": 29,
+          "SARJ026": 17,
+          "SARJ419": 12,
+          "SARJ096": 6,
+          "SARJ499": 60,
+          "SARJ006": 3,
+          "SARJ050": 1,
+          "SARJ002": 2,
+          "SARJ049": 5,
+          "SARJ430": 1,
+          "SARJ084": 4,
+          "SARJ086": 1,
+          "SARJ447": 6,
+          "SARJ469": 1,
+          "SARJ039": 1
+        }
+      },
+      "motivating": {
+        "cold": {
+          "median_seconds": 0.4093533819541335,
+          "peak_memory_mib": 94.01171875
+        },
+        "warm": {
+          "median_seconds": 0.42608732695225626,
+          "peak_memory_mib": 94.01171875
+        },
+        "diagnostics": {
+          "SARJ420": 1,
+          "SARJ528": 2,
+          "SARJ521": 2
+        }
+      }
+    },
+    "candidate": {
+      "self": {
+        "cold": {
+          "median_seconds": 55.829563077073544,
+          "peak_memory_mib": 389.4140625
+        },
+        "warm": {
+          "median_seconds": 55.53402436990291,
+          "peak_memory_mib": 389.45703125
+        },
+        "diagnostics": {
+          "SARJ534": 7,
+          "SARJ535": 116,
+          "SARJ026": 19,
+          "SARJ080": 24,
+          "SARJ533": 3,
+          "SARJ468": 1,
+          "SARJ093": 7,
+          "SARJ521": 10
+        }
+      },
+      "stdlib": {
+        "cold": {
+          "median_seconds": 27.187222438980825,
+          "peak_memory_mib": 108.4296875
+        },
+        "warm": {
+          "median_seconds": 25.615213162032887,
+          "peak_memory_mib": 111.19140625
+        },
+        "diagnostics": {
+          "SARJ442": 37,
+          "SARJ444": 63,
+          "SARJ420": 707,
+          "SARJ099": 52,
+          "SARJ468": 135,
+          "SARJ439": 8,
+          "SARJ023": 50,
+          "SARJ477": 54,
+          "SARJ016": 85,
+          "SARJ438": 29,
+          "SARJ026": 17,
+          "SARJ419": 12,
+          "SARJ096": 6,
+          "SARJ499": 60,
+          "SARJ006": 3,
+          "SARJ050": 1,
+          "SARJ002": 2,
+          "SARJ049": 5,
+          "SARJ533": 3,
+          "SARJ430": 1,
+          "SARJ084": 4,
+          "SARJ086": 1,
+          "SARJ080": 2,
+          "SARJ447": 6,
+          "SARJ469": 1,
+          "SARJ039": 1
+        }
+      },
+      "motivating": {
+        "cold": {
+          "median_seconds": 0.43723889300599694,
+          "peak_memory_mib": 94.88671875
+        },
+        "warm": {
+          "median_seconds": 0.40794307191390544,
+          "peak_memory_mib": 94.88671875
+        },
+        "diagnostics": {
+          "SARJ420": 1,
+          "SARJ528": 2,
+          "SARJ534": 2,
+          "SARJ533": 1,
+          "SARJ535": 10,
+          "SARJ521": 2
+        }
+      }
+    }
+  },
+  "candidate_baseline_ratios": {
+    "self": {
+      "cold": 0.9216906643377574,
+      "warm": 0.999799709314167
+    },
+    "stdlib": {
+      "cold": 1.0762308563148142,
+      "warm": 0.8985737379938123
+    },
+    "motivating": {
+      "cold": 1.068120876194417,
+      "warm": 0.9574165813188246
+    }
+  },
+  "public_source_closure_digests": {
+    "self-full-closure": "sha256:a4d314116ae1b0926f3020a78afd646b12ea92faa9db59e7df170191f0859867",
+    "stdlib-full-closure": "sha256:44d620f95f0ea6532f98dff34a1ce0077a6b21008c40e0c4403502d1569d1f04",
+    "labeled-full-closure": "sha256:6be986b3d3299d2563efe458c5d2a3ad229850dc2e5641de16ae3c5e9f042000"
+  },
+  "canonical_migration": {
+    "dispatches": 102,
+    "files": 65,
+    "branch_bodies_and_literals_preserved": true,
+    "explicit_fallthrough_arms": 91,
+    "documented_cli_forwarding_exceptions": 5
+  },
+  "qualification_history": {
+    "measured_dispatch_migration": {
+      "dispatches": 101,
+      "files": 64,
+      "explicit_fallthrough_arms": 90
+    },
+    "measured_release_versions": {
+      "python": "1.84.0",
+      "standards": "8.140.0"
+    },
+    "initial_labeled_batch": "The public analyzer rejected malformed fixtures, so no label result was claimed from the timing batch.",
+    "repair": "Reused all complete timing trials and evaluated the same pinned labeled sources separately, requiring worker exit zero and explicit parser rejections."
+  },
+  "limitations": [
+    "Import and mutation ambiguity, unresolved external returns and unsupported generic/composite contracts can cause documented false negatives.",
+    "The new CLI and validation migrations require manual review of arguments, coercion, missing-field defaults and exit behavior.",
+    "Native protocol forwarders can retain explained exact-code exceptions.",
+    "Private source, paths and identifying hashes are excluded from this report."
+  ],
+  "semantic_closure_verified_against_git_blobs": 490,
+  "candidate_python_contracts_source_digest": "sha256:70a83bb2a68540ea6c8f83e0d6dcb482de48b5ef875a56612429c987ccbb88f4",
+  "post_qualification_integration": "The dependency-free bootstrap launcher received a fifth exact CLI-forwarding exception and patch version 2.1.10; its runtime AST is unchanged. Main 03d0fce12a5443540281b923a8925de6e659126a subsequently added independently qualified audit controls and maintenance-release handling. The integrated bundle uses free version 8.144.0. Timings, labels and the candidate source digest retain the original pre-integration qualification frame; they are not a combined-current-engine performance claim. The five affected rule implementations are unchanged. A later integration of main 49fd07810105798a5b8b1277b7f9aa6ddebff60b preserves reviewed comment, constraint, explicit-input coverage and typed TypeScript example fixes; the combined delivery tree requires separate exact-head CI qualification."
+}

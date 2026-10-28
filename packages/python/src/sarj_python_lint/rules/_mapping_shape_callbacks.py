@@ -59,14 +59,17 @@ class RawMappingCallbacks:
     def callback(self, node: ast.expr, *, seen: frozenset[ast.AST] = frozenset()) -> _Function | None:
         if len(seen) >= _MAX_DEPTH:
             return None
-        if isinstance(node, ast.Call):
-            return (
-                self._partial(node, seen)
-                if self.qualified(node.func, node) == "functools.partial"
-                else self._method(node, "__call__", seen)
-            )
-        if isinstance(node, ast.Attribute):
-            return self._method(node.value, node.attr, seen)
+        match node:
+            case ast.Call():
+                return (
+                    self._partial(node, seen)
+                    if self.qualified(node.func, node) == "functools.partial"
+                    else self._method(node, "__call__", seen)
+                )
+            case ast.Attribute():
+                return self._method(node.value, node.attr, seen)
+            case _:
+                pass
         if not isinstance(node, ast.Name) or not self._stable(node.id) or self.shadowed(node.id, node):
             return None
         binding = self.provenance.binding(node.id, node)
@@ -144,10 +147,13 @@ class RawMappingCallbacks:
     def _function(self, node: ast.AST) -> _Function | None:
         current = self.context.parents.get(node)
         while current is not None:
-            if isinstance(current, ast.FunctionDef | ast.AsyncFunctionDef):
-                return current
-            if isinstance(current, ast.ClassDef | ast.Lambda):
-                return None
+            match current:
+                case ast.FunctionDef() | ast.AsyncFunctionDef():
+                    return current
+                case ast.ClassDef() | ast.Lambda():
+                    return None
+                case _:
+                    pass
             current = self.context.parents.get(current)
         return None
 

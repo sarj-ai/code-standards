@@ -659,28 +659,37 @@ class CopyOnWriteAnalysis:
         return _Value(_Shape("dict", element=element), shared_children=shared, fields=tuple(fields.items()))
 
     def _write(self, target: ast.expr, bindings: Mapping[str, _Value]) -> None:
-        if isinstance(target, (ast.Tuple, ast.List)):
-            for item in target.elts:
-                self._write(item, bindings)
-        elif isinstance(target, (ast.Attribute, ast.Subscript)):
-            owner = self._value(target.value, bindings)
-            if (
-                owner is not None
-                and owner.borrowed
-                and (
-                    isinstance(target, ast.Subscript)
-                    or (owner.shape.model is not None and self.models.field(owner.shape.model, target.attr) is not None)
-                )
-            ):
-                self.mutations.append(Mutation(target, self._before))
+        match target:
+            case ast.Tuple() | ast.List():
+                for item in target.elts:
+                    self._write(item, bindings)
+            case ast.Attribute() | ast.Subscript():
+                owner = self._value(target.value, bindings)
+                if (
+                    owner is not None
+                    and owner.borrowed
+                    and (
+                        isinstance(target, ast.Subscript)
+                        or (
+                            owner.shape.model is not None
+                            and self.models.field(owner.shape.model, target.attr) is not None
+                        )
+                    )
+                ):
+                    self.mutations.append(Mutation(target, self._before))
+            case _:
+                pass
 
     def _expression(self, node: ast.AST, bindings: dict[str, _Value]) -> None:
-        if isinstance(node, (ast.Lambda, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            return
-        if isinstance(node, ast.NamedExpr):
-            self._expression(node.value, bindings)
-            self._bind(node.target, self._value(node.value, bindings), bindings)
-            return
+        match node:
+            case ast.Lambda() | ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                return
+            case ast.NamedExpr():
+                self._expression(node.value, bindings)
+                self._bind(node.target, self._value(node.value, bindings), bindings)
+                return
+            case _:
+                pass
         if isinstance(node, ast.Call) and self._mutator_call(node, bindings):
             self.mutations.append(Mutation(node, self._before))
         if isinstance(node, (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)):
