@@ -84,6 +84,9 @@ _ERROR_FIRST_APPROVALS: Final = frozenset(
         # User-approved strict new-table constraints; preserve separate PostgreSQL
         # partial/expression indexes and existing-table migration contracts.
         "sql:new-table-inline-constraints",
+        # Explicit user-approved blocking policy for compatible adjacent ALTER
+        # actions; preserve transaction, section, identity and command boundaries.
+        "sql:combine-alter-table",
     }
 )
 

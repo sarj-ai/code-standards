@@ -32,6 +32,48 @@ def _mask(source: str) -> str:
     return masked
 
 
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        pytest.param(
+            "SELECT café, Δέλτα FROM entries;\r\nSELECT live;",
+            "SELECT café, Δέλτα FROM entries;\r\nSELECT live;",
+            id="unicode-code",
+        ),
+        pytest.param(
+            "SELECT \"semi;colon\", 'one;two'; SELECT live;",
+            "SELECT " + " " * 12 + ", " + " " * 9 + "; SELECT live;",
+            id="quoted-values-and-identifiers",
+        ),
+        pytest.param(
+            "SELECT E'it\\'s; text'; SELECT live;",
+            "SELECT E" + " " * 13 + "; SELECT live;",
+            id="escape-string",
+        ),
+        pytest.param(
+            "SELECT a-b, a/b; /* outer /* inner */ ; 'hidden' */\r-- note\rSELECT live;",
+            "SELECT a-b, a/b; " + " " * 34 + "\r" + " " * 7 + "\rSELECT live;",
+            id="nested-comments",
+        ),
+        pytest.param(
+            "SELECT {{ item }}, {% if enabled %}name{% endif %}, {# hidden ; 'quote' #}id; SELECT live;",
+            "SELECT " + " " * 10 + ", " + " " * 16 + "name" + " " * 11 + ", " + " " * 22 + "id; SELECT live;",
+            id="templates",
+        ),
+        pytest.param(
+            "SELECT ARRAY[1, 2], indexed[3], [cross;name], `tick;name` FROM entries; SELECT live;",
+            "SELECT ARRAY[1, 2], indexed[3], [cross;name], `tick;name` FROM entries; SELECT live;",
+            id="identifier-openers",
+        ),
+    ],
+)
+def test_plain_scan_runs_preserve_public_outputs_and_offsets(source: str, expected: str) -> None:
+    actual = _mask(source)
+    assert actual == expected
+    assert mask_sql(source, mask_dollar_literals=True) == expected
+    assert actual.index("SELECT live") == source.index("SELECT live")
+
+
 @pytest.mark.parametrize("gap", ["\n", "\r\n", "\n-- a comment\n", "\t-- a comment\r\n \t"])
 @pytest.mark.parametrize("prefix", ["E", "e"])
 def test_continued_escape_strings_keep_following_ddl_visible(gap: str, prefix: str) -> None:

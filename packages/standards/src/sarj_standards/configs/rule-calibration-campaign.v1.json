@@ -2949,6 +2949,102 @@
       "state": "pending",
       "evidence": "Known Any/object/JsonValue string mappings, unchecked JSON, local returns, aliases and chained reads have paired controls. Precise maps, TypedDicts, raw normalization callbacks and unproven receivers retain their documented boundaries. The pinned pre-integration record packages/python/benchmarks/typed-python-boundaries.json covers five affected rules with 111 valid labeled cases (51 TP, 60 TN, zero inspected FP/FN) and three explicit malformed-source rejections. Its repeated cold/warm measurements retain their historical source frame; they are not fleet-recall or combined-current-engine performance claims. Private source and identifying pins remain private. Broader field calibration remains pending.",
       "outcome": "Ship SARJ535 at WARNING without autofix. Validate external data into named models and use precise trusted internal contracts. Preserve typed get calls and review missing-field/default behavior manually; field calibration remains pending."
+    },
+    {
+      "task": "rule-audit/python/prefer-optional-composite",
+      "family": "python",
+      "ruleId": "prefer-optional-composite",
+      "state": "pending",
+      "evidence": "2026-10-28 bounded SQL/model review. Focused examples and regressions cover explicitly nullable field groups, annotation ownership, aliases, overlapping prefixes, and valid independent state. The shared immutable 35-file comparison against published 8.147.0 reports 71 reviewed additions, zero removals or duplicates, and six repaired false-positive controls clear across the affected owners. These aggregate observations are not per-rule precision or recall estimates. Broader field calibration remains pending.",
+      "outcome": "SARJ541: Stage at WARNING without autofix. Review an optional composite without inferring joint presence from a name prefix; preserve public wire/schema contracts and independent nullability. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/python/no-custom-control-flow-exception",
+      "family": "python",
+      "ruleId": "no-custom-control-flow-exception",
+      "state": "pending",
+      "evidence": "2026-10-28 bounded SQL/model review. Focused examples and regressions cover directly raised name-only local exceptions, stable identities, payload-bearing exceptions, validator protocols, and exact suppressions. The shared immutable 35-file comparison against published 8.147.0 reports 71 reviewed additions, zero removals or duplicates, and six repaired false-positive controls clear across the affected owners. These aggregate observations are not per-rule precision or recall estimates. Broader field calibration remains pending.",
+      "outcome": "SARJ542: Stage at WARNING without autofix. Consider typed outcomes for expected domain failures while preserving framework validation, cancellation, unwinding, and genuine exceptional protocols. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/python/no-redundant-sql-alias",
+      "family": "python",
+      "ruleId": "no-redundant-sql-alias",
+      "state": "pending",
+      "evidence": "2026-10-28 bounded SQL/model review. Focused examples and regressions cover direct same-name SQL aliases, quoted identifiers, recoverable Psycopg SQL, namespace mutations, and exact suppressions. The shared immutable 35-file comparison against published 8.147.0 reports 71 reviewed additions, zero removals or duplicates, and six repaired false-positive controls clear across the affected owners. These aggregate observations are not per-rule precision or recall estimates. Broader field calibration remains pending.",
+      "outcome": "SARJ543: Stage at WARNING without autofix. Review only proven redundant projection or table aliases; preserve different output names, unresolved expressions, and dynamic SQL identities. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/python/no-recording-store",
+      "family": "python",
+      "ruleId": "no-recording-store",
+      "state": "pending",
+      "evidence": "2026-10-28 bounded SQL/model review. Focused examples and regressions cover source-visible get/upsert contracts, recording implementations, value construction, delegated spies, unknown effects, and exact suppressions. The shared immutable 35-file comparison against published 8.147.0 reports 71 reviewed additions, zero removals or duplicates, and six repaired false-positive controls clear across the affected owners. These aggregate observations are not per-rule precision or recall estimates. Broader field calibration remains pending.",
+      "outcome": "SARJ544: Stage at WARNING without autofix. Prefer isolated PostgreSQL fixtures for recording-only persistence doubles; preserve real delegation, SQL-backed stores, and unsupported contracts. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/python/prefer-application-model-joins",
+      "family": "python",
+      "ruleId": "prefer-application-model-joins",
+      "state": "pending",
+      "evidence": "2026-10-28 bounded SQL/model review. Focused examples and regressions cover distinct concrete relations, same-relation joins, query ownership, unresolved fragments, lock-sensitive shapes, and exact suppressions. The shared immutable 35-file comparison against published 8.147.0 reports 71 reviewed additions, zero removals or duplicates, and six repaired false-positive controls clear across the affected owners. These aggregate observations are not per-rule precision or recall estimates. Broader field calibration remains pending.",
+      "outcome": "SARJ545: Stage at WARNING without autofix. Treat distinct-relation joins as architecture review candidates; preserve atomicity, consistency, lock scope, and justified database joins. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/python/store-mutation-command-fanout",
+      "family": "python",
+      "ruleId": "store-mutation-command-fanout",
+      "state": "pending",
+      "evidence": "2026-10-28 bounded SQL/model review. Focused examples and regressions cover model write commands beside mutation-method fanout, delegation, distinct contracts, unsupported method shapes, and exact suppressions. The shared immutable 35-file comparison against published 8.147.0 reports 71 reviewed additions, zero removals or duplicates, and six repaired false-positive controls clear across the affected owners. These aggregate observations are not per-rule precision or recall estimates. Broader field calibration remains pending.",
+      "outcome": "SARJ546: Stage at WARNING without autofix. Review consolidation around the existing model write command while preserving update-only, partial-update, concurrency, and distinct command semantics. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/python/store-insert-requires-explicit-conflict-policy",
+      "family": "python",
+      "ruleId": "store-insert-requires-explicit-conflict-policy",
+      "state": "pending",
+      "evidence": "2026-10-28 bounded SQL/model review. Focused examples and regressions cover store INSERTs without SQL ON CONFLICT, supported query wrappers, insert-select shapes, explicit policies, and exact suppressions. The shared immutable 35-file comparison against published 8.147.0 reports 71 reviewed additions, zero removals or duplicates, and six repaired false-positive controls clear across the affected owners. These aggregate observations are not per-rule precision or recall estimates. Broader field calibration remains pending.",
+      "outcome": "SARJ547: Stage at WARNING without autofix. Require review of missing SQL ON CONFLICT regardless of the Python method name; choose conflict targets and duplicate behavior explicitly. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/python/no-discarded-tagged-outcome",
+      "family": "python",
+      "ruleId": "no-discarded-tagged-outcome",
+      "state": "pending",
+      "evidence": "2026-10-28 bounded SQL/model review. Focused examples and regressions cover discarded module-function outcomes, string-tagged record proofs, prepared imports, rebinding, class shadows, async calls, and consumed values. The shared immutable 35-file comparison against published 8.147.0 reports 71 reviewed additions, zero removals or duplicates, and six repaired false-positive controls clear across the affected owners. These aggregate observations are not per-rule precision or recall estimates. Broader field calibration remains pending.",
+      "outcome": "SARJ548: Stage at WARNING without autofix. Use or forward source-proven tagged outcomes; consuming a value does not prove exhaustive handling. Preserve unknown methods, generic contracts, and unresolved providers. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/sql/combine-alter-table",
+      "family": "sql",
+      "ruleId": "combine-alter-table",
+      "state": "pending",
+      "evidence": "2026-10-28 bounded SQL/model review. Focused examples and regressions cover adjacent compatible ALTER actions, exact relation identity, transaction/section boundaries, modifiers, dependencies, and exact suppressions. The shared immutable 35-file comparison against published 8.147.0 reports 71 reviewed additions, zero removals or duplicates, and six repaired false-positive controls clear across the affected owners. These aggregate observations are not per-rule precision or recall estimates. Broader field calibration remains pending.",
+      "outcome": "SARJ123: Retain the explicitly approved ERROR policy without autofix. Combine only proven compatible adjacent ALTER TABLE statements; preserve command, migration, relation, and dependency boundaries. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/sql/no-null-comparison",
+      "family": "sql",
+      "ruleId": "no-null-comparison",
+      "state": "pending",
+      "evidence": "2026-10-28 bounded SQL/model review. Focused examples and regressions cover ordinary NULL comparisons, NULL-bearing scalar NOT IN lists, valid row cases, parser boundaries, and exact suppressions. The shared immutable 35-file comparison against published 8.147.0 reports 71 reviewed additions, zero removals or duplicates, and six repaired false-positive controls clear across the affected owners. These aggregate observations are not per-rule precision or recall estimates. Broader field calibration remains pending.",
+      "outcome": "SARJ124: Stage at WARNING without autofix. Review explicit NULL intent while preserving PostgreSQL three-valued logic, row semantics, and unsupported expression boundaries. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/sql/invalid-concurrent-ddl",
+      "family": "sql",
+      "ruleId": "invalid-concurrent-ddl",
+      "state": "pending",
+      "evidence": "2026-10-28 bounded SQL/model review. Focused examples and regressions cover complete concurrent DDL forms, explicit transaction contexts, multiple-index restrictions, valid options, and exact suppressions. The shared immutable 35-file comparison against published 8.147.0 reports 71 reviewed additions, zero removals or duplicates, and six repaired false-positive controls clear across the affected owners. These aggregate observations are not per-rule precision or recall estimates. Broader field calibration remains pending.",
+      "outcome": "SARJ125: Stage at WARNING without autofix. Report source-proven invalid concurrent DDL contexts/options; preserve valid PostgreSQL forms and unknown caller or migration-runner contexts. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/sql/invalid-postgres-ddl",
+      "family": "sql",
+      "ruleId": "invalid-postgres-ddl",
+      "state": "pending",
+      "evidence": "2026-10-28 bounded SQL/model review. Focused examples and regressions cover known invalid PostgreSQL index/constraint combinations, valid neighboring forms, unsupported syntax, and exact suppressions. The shared immutable 35-file comparison against published 8.147.0 reports 71 reviewed additions, zero removals or duplicates, and six repaired false-positive controls clear across the affected owners. These aggregate observations are not per-rule precision or recall estimates. Broader field calibration remains pending.",
+      "outcome": "SARJ126: Stage at WARNING without autofix. Review only supported invalid PostgreSQL forms; preserve valid index/constraint options and avoid inventing an automatic schema rewrite. Full campaign completion is not claimed."
     }
   ]
 }

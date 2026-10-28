@@ -328,5 +328,13 @@
   "SARJ537": "async-subprocess-cancellation-cleanup",
   "SARJ538": "failed-probe-zero-threshold",
   "SARJ539": "nan-hidden-by-builtin-min",
-  "SARJ540": "async-executor-shutdown"
+  "SARJ540": "async-executor-shutdown",
+  "SARJ541": "prefer-optional-composite",
+  "SARJ542": "no-custom-control-flow-exception",
+  "SARJ543": "no-redundant-sql-alias",
+  "SARJ544": "no-recording-store",
+  "SARJ545": "prefer-application-model-joins",
+  "SARJ546": "store-mutation-command-fanout",
+  "SARJ547": "store-insert-requires-explicit-conflict-policy",
+  "SARJ548": "no-discarded-tagged-outcome"
 }

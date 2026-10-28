@@ -9,16 +9,18 @@ from sarj_python_lint.rule_base import (
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
-    Rule,
+    ProjectRule,
     RuleCategory,
     RuleDocumentation,
     RuleExample,
     Severity,
 )
 from sarj_python_lint.rules._annotation_semantics import bit_or_members as _flatten_union
+from sarj_python_lint.rules._declared_contracts import MODEL_BASES, DeclaredContracts
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
@@ -26,6 +28,7 @@ if TYPE_CHECKING:
 
 
 _MIN_BRANCHES = 2
+_MIN_REVIEW_BRANCHES = 2
 _ISINSTANCE_ARGS = 2
 _BUILTIN_TYPES = frozenset(
     {
@@ -78,13 +81,19 @@ class _TypeBranch(NamedTuple):
     types: frozenset[str]
 
 
+class _ReviewBranch(NamedTuple):
+    subject: str
+    types: frozenset[str]
+    model_or_enum: bool
+
+
 class _Dispatch(NamedTuple):
     subject: str
     branch_count: int
 
 
 @final
-class PreferMatchTypeDispatch(Rule):
+class PreferMatchTypeDispatch(ProjectRule):
     id: str = "prefer-match-type-dispatch"
     code: str = "SARJ080"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
@@ -102,6 +111,7 @@ class PreferMatchTypeDispatch(Rule):
         limitations=(
             "Safe fixes require a closed private nested synchronous helper with proven inert containing scopes and exact primitive literal callers. Only comment-free builtin class-check ladders on one parameter qualify; unknown subjects, callbacks, frame/closure escapes, sibling checks, grouped conditions, guards and custom classes remain review-only.",
             "General dispatch requires two or more adjacent, unguarded `isinstance` branches over the same simple name. Repeated isinstance calls joined only by or on that same name are also checked; use an OR class pattern for shared behavior. A single isinstance call with a type union remains allowed.",
+            "Additional review warnings require at least one source-proven Pydantic/Enum branch. Native-only sequences retain the established proof and exclusions. Mixed model/builtin dispatch is supported; review warnings have no automatic fixes.",
             "A terminating sibling prefix may precede a two-arm if/elif tail whose bodies can fall through. Preserve nested checks inside case bodies rather than moving them into case guards.",
             "The checked types must be unshadowed builtins, undecorated module-local classes without an explicit or known locally inherited custom metaclass, or proven stdlib ast classes; unresolved imports, runtime type groups, repeated type references, generated files, and non-terminating sibling checks are excluded.",
             "Local ancestry must resolve to stable undeclared-metaclass classes or proven builtin/stdlib ast bases. External bases, runtime base aliases, and parameterized base expressions remain excluded because their metaclass or __class_getitem__ effects are unproven.",
@@ -382,6 +392,7 @@ class PreferMatchTypeDispatch(Rule):
                 occupied={(finding.line, finding.col) for finding in findings},
             )
         )
+        findings.extend(_review_dispatch_findings(context, local_classes, unsafe_bindings, findings))
         if findings and context.session.python_target.has_declared_support_before(path, (3, 10)):
             return []
         findings = list({(finding.line, finding.col): finding for finding in findings}.values())
@@ -425,6 +436,118 @@ def _or_dispatch_findings(
                 )
             )
     return findings
+
+
+def _review_dispatch_findings(
+    context: PythonFileContext,
+    local_classes: frozenset[str],
+    unsafe_bindings: frozenset[str],
+    existing: list[Diagnostic],
+) -> list[Diagnostic]:
+    contracts = DeclaredContracts(context)
+    used = {item.line for item in existing}
+    findings: list[Diagnostic] = []
+    for candidates in _review_sequences(context, used):
+        branches = _review_dispatch_proven(candidates, context, contracts, local_classes, unsafe_bindings)
+        if branches is None:
+            continue
+        used.update(branch.lineno for branch in branches)
+        statement = branches[0]
+        findings.append(
+            Diagnostic(
+                context.path,
+                statement.lineno,
+                statement.col_offset + 1,
+                "SARJ080",
+                "Review this runtime type dispatch as match/case class patterns; preserve branch order, "
+                "fallbacks and nested guards. This broader recommendation has no automatic rewrite.",
+                severity=Severity.WARNING,
+            )
+        )
+    return findings
+
+
+def _review_sequences(context: PythonFileContext, used: set[int]) -> Iterator[Iterator[ast.If]]:
+    blocks = (block for owner in context.nodes(ast.AST) for block in _statement_blocks(owner))
+    for block in blocks:
+        yield from _review_block(block, used)
+
+
+def _review_block(statements: list[ast.stmt], used: set[int]) -> Iterator[Iterator[ast.If]]:
+    for index, statement in enumerate(statements):
+        if not isinstance(statement, ast.If):
+            continue
+        branches = _review_branches(statements, index)
+        if statement.lineno in used:
+            used.update(branch.lineno for branch in branches)
+        else:
+            yield branches
+
+
+def _review_dispatch_proven(
+    branches: Iterable[ast.If],
+    context: PythonFileContext,
+    contracts: DeclaredContracts,
+    local_classes: frozenset[str],
+    unsafe_bindings: frozenset[str],
+) -> list[ast.If] | None:
+    proven: list[ast.If] = []
+    subject: str | None = None
+    seen: set[str] = set()
+    has_model_or_enum = False
+    for node in branches:
+        branch = _review_branch(node, context, contracts, local_classes, unsafe_bindings)
+        if branch is None or (subject is not None and branch.subject != subject) or seen & branch.types:
+            return None
+        subject = branch.subject
+        seen.update(branch.types)
+        has_model_or_enum |= branch.model_or_enum
+        proven.append(node)
+    return proven if len(proven) >= _MIN_REVIEW_BRANCHES and has_model_or_enum else None
+
+
+def _review_branches(statements: list[ast.stmt], index: int) -> Iterator[ast.If]:
+    first = statements[index]
+    if not isinstance(first, ast.If):
+        return
+    yield first
+    current = first
+    while len(current.orelse) == 1 and isinstance(current.orelse[0], ast.If):
+        current = current.orelse[0]
+        yield current
+    if current is not first:
+        return
+    for position in range(index + 1, len(statements)):
+        statement = statements[position]
+        if current.orelse or not _body_terminates(current.body) or not isinstance(statement, ast.If):
+            return
+        yield statement
+        current = statement
+        if statement.orelse:
+            return
+
+
+def _review_branch(
+    node: ast.If,
+    context: PythonFileContext,
+    contracts: DeclaredContracts,
+    local_classes: frozenset[str],
+    unsafe_bindings: frozenset[str],
+) -> _ReviewBranch | None:
+    test = node.test
+    match test:
+        case ast.Call(func=ast.Name(id="isinstance"), args=[ast.Name(id=subject), kind], keywords=[]):
+            pass
+        case _:
+            return None
+    if known := _type_references(kind, context.imports, local_classes, unsafe_bindings):
+        return _ReviewBranch(subject, known, model_or_enum=False)
+    if not isinstance(kind, ast.Name | ast.Attribute):
+        return None
+    model = contracts.class_type(kind, at=test)
+    if model is None or not contracts.inherits(model, MODEL_BASES | {"enum.Enum", "enum.IntEnum", "enum.StrEnum"}):
+        return None
+    return _ReviewBranch(subject, frozenset({f"{model.unit.module}.{model.declaration.name}"}), model_or_enum=True)
 
 
 def _unshadowed_module_classes(

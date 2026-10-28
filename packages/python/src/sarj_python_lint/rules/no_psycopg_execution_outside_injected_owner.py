@@ -33,6 +33,7 @@ _POOL_MODULES = frozenset({"psycopg_pool"})
 _POOL_TYPES = frozenset({"AsyncConnectionPool", "ConnectionPool"})
 _CONNECTION_MODULES = frozenset({"psycopg"})
 _CONNECTION_TYPES = frozenset({"AsyncConnection", "Connection"})
+_CURSOR_TYPES = frozenset({"AsyncCursor", "Cursor", "AsyncServerCursor", "ServerCursor", "AsyncRawCursor", "RawCursor"})
 _EXECUTE_METHODS = frozenset({"execute", "executemany"})
 _REFLECTIVE_WRITE_ARG_COUNT = 2
 _LANGUAGE_ROOT_PATH_DEPTH = 2
@@ -84,8 +85,8 @@ class NoPsycopgExecutionOutsideInjectedOwner(Rule):
         autofix=AutofixPolicy.NONE,
         aliases=("sql-requires-injected-pool-owner",),
         limitations=(
-            "Only import-proven psycopg Connection or AsyncConnection and psycopg_pool ConnectionPool or AsyncConnectionPool flows are classified.",
-            "Straightforward constructor injection, connection and cursor context managers, aliases, rebindings, and conservative control-flow joins are followed; interprocedural flows remain unreported.",
+            "Only import-proven psycopg connection/cursor and psycopg_pool ConnectionPool or AsyncConnectionPool flows are classified. A free helper receiving an imported Cursor or AsyncCursor retains external execution ownership.",
+            "Straightforward constructor injection, connection and cursor context managers, aliases, rebindings, and conservative control-flow joins are followed. Mutated module namespaces and class-local annotation shadows abstain. Cursor parameters of class methods have unknown interprocedural ownership and do not establish an external execution origin.",
             "Collected test modules, conftest.py, migrations, generated files, conventional operational-script roots, and literal SELECT 1 probes are excluded. Shared test-support helpers must use an injected owner.",
         ),
         examples=(
@@ -160,14 +161,20 @@ def psycopg_execution_calls(
     if tree is None:
         return []
     types = _type_index(tree)
-    ownership = {node: _class_ownership(node, types) for node in context.nodes(ast.ClassDef)}
+    annotations = {node: _class_annotation_types(node, types) for node in context.nodes(ast.ClassDef)}
+    ownership = {node: _class_ownership(node, types, annotations[node]) for node in context.nodes(ast.ClassDef)}
     calls: list[ast.Call] = []
     for scope in _function_scopes(tree):
         owned = ownership[scope.owner] if scope.owner is not None else _ClassOwnership(frozenset(), frozenset())
         calls.extend(
-            _FunctionAnalyzer(types, owned, include_injected=include_injected, include_probes=include_probes).analyze(
-                scope.function
-            )
+            _FunctionAnalyzer(
+                types,
+                owned,
+                annotation_types=annotations[scope.owner] if scope.owner is not None else types,
+                include_injected=include_injected,
+                include_probes=include_probes,
+                track_cursor_parameters=include_injected or scope.owner is None,
+            ).analyze(scope.function)
         )
     return calls
 
@@ -175,10 +182,12 @@ def psycopg_execution_calls(
 def _type_index(tree: ast.Module) -> _TypeIndex:
     counts = _module_binding_counts(tree)
     aliases = _module_type_aliases(tree, counts)
+    imports = ImportIndex.from_tree(tree, module_scope_only=True)
     preliminary = _TypeIndex(
-        ImportIndex.from_tree(tree, module_scope_only=True),
+        imports,
         aliases,
-        frozenset(name for name, count in counts.items() if count > 1),
+        frozenset(name for name, count in counts.items() if count > 1)
+        | _namespace_mutated_roots(tree, aliases, imports),
         frozenset(),
     )
     globals_ = {
@@ -198,6 +207,46 @@ def _type_index(tree: ast.Module) -> _TypeIndex:
         and counts.get(statement.target.id) == 1
     )
     return _TypeIndex(preliminary.imports, aliases, preliminary.ambiguous, frozenset(globals_))
+
+
+def _class_annotation_types(cls: ast.ClassDef, types: _TypeIndex) -> _TypeIndex:
+    bindings = _module_binding_counts(ast.Module(body=cls.body, type_ignores=[]))
+    return _TypeIndex(types.imports, types.aliases, types.ambiguous | frozenset(bindings), types.globals)
+
+
+def _namespace_mutated_roots(tree: ast.Module, aliases: dict[str, ast.expr], imports: ImportIndex) -> frozenset[str]:
+    roots: set[str] = set()
+    pending_nodes: list[ast.AST] = [tree]
+    while pending_nodes:
+        node = pending_nodes.pop()
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
+            continue
+        if root := _namespace_mutation_root(node):
+            roots.add(root)
+        pending_nodes.extend(ast.iter_child_nodes(node))
+    pending = list(roots)
+    while pending:
+        root = pending.pop()
+        origin = _root_name(aliases.get(root))
+        if origin and origin not in roots:
+            roots.add(origin)
+            pending.append(origin)
+    return frozenset(roots) | _related_import_roots(roots, imports)
+
+
+def _related_import_roots(roots: set[str], imports: ImportIndex) -> frozenset[str]:
+    modules = {target.module for root in roots if (target := imports.bindings.get(root)) is not None}
+    return frozenset(name for name, target in imports.bindings.items() if target.module in modules)
+
+
+def _namespace_mutation_root(node: ast.AST) -> str:
+    match node:
+        case ast.Attribute(ctx=ast.Store() | ast.Del()):
+            return _root_name(node)
+        case ast.Call(func=ast.Name(id="setattr" | "delattr"), args=args) if len(args) >= _REFLECTIVE_WRITE_ARG_COUNT:
+            return _root_name(args[0])
+        case _:
+            return ""
 
 
 def _database_annotation(node: ast.expr | None, types: _TypeIndex, seen: frozenset[str] = frozenset()) -> bool:
@@ -228,15 +277,12 @@ def _annotation_kind(
 ) -> str | None:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return _string_annotation_kind(node.value, types, seen)
-    if isinstance(node, ast.Name) and node.id in types.aliases and node.id not in seen:
-        return _annotation_kind(types.aliases[node.id], types, seen | {node.id})
     if _root_name(node) in types.ambiguous:
         return None
-    if node is not None:
-        if any(types.imports.resolves(node, sources=_POOL_MODULES, symbol=name) for name in _POOL_TYPES):
-            return "pool"
-        if any(types.imports.resolves(node, sources=_CONNECTION_MODULES, symbol=name) for name in _CONNECTION_TYPES):
-            return "connection"
+    if isinstance(node, ast.Name) and node.id in types.aliases and node.id not in seen:
+        return _annotation_kind(types.aliases[node.id], types, seen | {node.id})
+    if node is not None and (kind := _native_annotation_kind(node, types)) is not None:
+        return kind
     match node:
         case ast.Subscript(value=value, slice=content):
             return _subscript_annotation_kind(value, content, types, seen)
@@ -248,7 +294,17 @@ def _annotation_kind(
             return None
 
 
-def _class_ownership(cls: ast.ClassDef, types: _TypeIndex) -> _ClassOwnership:
+def _native_annotation_kind(node: ast.expr, types: _TypeIndex) -> str | None:
+    if any(types.imports.resolves(node, sources=_POOL_MODULES, symbol=name) for name in _POOL_TYPES):
+        return "pool"
+    if any(types.imports.resolves(node, sources=_CONNECTION_MODULES, symbol=name) for name in _CONNECTION_TYPES):
+        return "connection"
+    if any(types.imports.resolves(node, sources=_CONNECTION_MODULES, symbol=name) for name in _CURSOR_TYPES):
+        return "cursor"
+    return None
+
+
+def _class_ownership(cls: ast.ClassDef, types: _TypeIndex, annotation_types: _TypeIndex) -> _ClassOwnership:
     constructors = [
         node
         for node in cls.body
@@ -257,7 +313,7 @@ def _class_ownership(cls: ast.ClassDef, types: _TypeIndex) -> _ClassOwnership:
     injected: set[str] = set()
     external: set[str] = set()
     if len(constructors) == 1:
-        _constructor_ownership(constructors[0], types, injected, external)
+        _constructor_ownership(constructors[0], types, annotation_types, injected, external)
     methods = [
         method
         for method in cls.body
@@ -272,11 +328,14 @@ def _class_ownership(cls: ast.ClassDef, types: _TypeIndex) -> _ClassOwnership:
 def _constructor_ownership(
     constructor: ast.FunctionDef | ast.AsyncFunctionDef,
     types: _TypeIndex,
+    annotation_types: _TypeIndex,
     injected: set[str],
     external: set[str],
 ) -> None:
     parameters = {
-        argument.arg for argument in _arguments(constructor) if _database_annotation(argument.annotation, types)
+        argument.arg
+        for argument in _arguments(constructor)
+        if _database_annotation(argument.annotation, annotation_types)
     }
     origins = dict.fromkeys(parameters, _Origin.INJECTED)
     for statement in constructor.body:
@@ -408,12 +467,21 @@ def _function_scopes(tree: ast.Module) -> list[_FunctionScope]:
 @final
 class _FunctionAnalyzer:
     def __init__(
-        self, types: _TypeIndex, ownership: _ClassOwnership, *, include_injected: bool, include_probes: bool
+        self,
+        types: _TypeIndex,
+        ownership: _ClassOwnership,
+        *,
+        annotation_types: _TypeIndex,
+        include_injected: bool,
+        include_probes: bool,
+        track_cursor_parameters: bool,
     ) -> None:
         self._types = types
+        self._annotation_types = annotation_types
         self._ownership = ownership
         self._allowed_origins = frozenset(_Origin) if include_injected else frozenset({_Origin.EXTERNAL})
         self._include_probes = include_probes
+        self._track_cursor_parameters = track_cursor_parameters
         self._findings: list[ast.Call] = []
         self._shadowed: set[str] = set()
 
@@ -421,7 +489,8 @@ class _FunctionAnalyzer:
         state = {
             argument.arg: _Origin.EXTERNAL
             for argument in _arguments(function)
-            if _database_annotation(argument.annotation, self._types)
+            if (kind := _annotation_kind(argument.annotation, self._annotation_types)) is not None
+            and (kind != "cursor" or self._track_cursor_parameters)
         }
         self._shadowed = {argument.arg for argument in _arguments(function)}
         if function.name == "__init__":
@@ -681,7 +750,7 @@ class _FunctionAnalyzer:
 def _database_creator(node: ast.expr | None, types: _TypeIndex, shadowed: set[str] | None = None) -> bool:
     if not isinstance(node, ast.Call):
         return False
-    if shadowed and _root_name(node.func) in shadowed:
+    if _root_name(node.func) in types.ambiguous or (shadowed and _root_name(node.func) in shadowed):
         return False
     if _annotation_kind(node.func, types) is not None:
         return True
@@ -706,39 +775,28 @@ def _arguments(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.arg
 
 def _module_binding_counts(tree: ast.Module) -> dict[str, int]:
     counts: dict[str, int] = {}
-
-    def add(name: str) -> None:
-        counts[name] = counts.get(name, 0) + 1
-
-    class Collector(ast.NodeVisitor):
-        @override
-        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-            add(node.name)
-
-        @override
-        def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-            add(node.name)
-
-        @override
-        def visit_ClassDef(self, node: ast.ClassDef) -> None:
-            add(node.name)
-
-        @override
-        def visit_Import(self, node: ast.Import) -> None:
-            for alias in node.names:
-                add(alias.asname or alias.name.split(".", maxsplit=1)[0])
-
-        @override
-        def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-            for alias in node.names:
-                add(alias.asname or alias.name)
-
-        @override
-        def visit_Name(self, node: ast.Name) -> None:
-            if isinstance(node.ctx, ast.Store | ast.Del):
-                add(node.id)
-
-    Collector().visit(tree)
+    pending: list[ast.AST] = [tree]
+    while pending:
+        node = pending.pop()
+        match node:
+            case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) | ast.ClassDef(name=name):
+                counts[name] = counts.get(name, 0) + 1
+                continue
+            case ast.Import(names=aliases):
+                names = [alias.asname or alias.name.split(".", maxsplit=1)[0] for alias in aliases]
+                for name in names:
+                    counts[name] = counts.get(name, 0) + 1
+                continue
+            case ast.ImportFrom(names=aliases):
+                for alias in aliases:
+                    name = alias.asname or alias.name
+                    counts[name] = counts.get(name, 0) + 1
+                continue
+            case ast.Name(id=name, ctx=ast.Store() | ast.Del()):
+                counts[name] = counts.get(name, 0) + 1
+            case _:
+                pass
+        pending.extend(ast.iter_child_nodes(node))
     return counts
 
 

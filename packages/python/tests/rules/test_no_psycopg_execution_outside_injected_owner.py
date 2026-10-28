@@ -3,8 +3,11 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint._file_context import PythonFileContext
+from sarj_python_lint.rules._store_sql import store_queries
 from sarj_python_lint.rules.no_psycopg_execution_outside_injected_owner import (
     NoPsycopgExecutionOutsideInjectedOwner,
+    psycopg_execution_calls,
 )
 
 
@@ -587,3 +590,330 @@ async def seeded(pool: AsyncConnectionPool):
         await conn.execute("INSERT INTO work_queue DEFAULT VALUES")
 """
     assert len(_check(source, path)) == expected_count
+
+
+@pytest.mark.parametrize(
+    "cursor_type", ["Cursor", "AsyncCursor", "ServerCursor", "AsyncServerCursor", "RawCursor", "AsyncRawCursor"]
+)
+def test_import_proven_cursor_parameters_do_not_hide_free_sql_ownership(cursor_type: str) -> None:
+    source = f"""from psycopg import {cursor_type}
+async def read_row(cursor: {cursor_type}[dict[str, object]]):
+    await cursor.execute("SELECT id FROM scenario_version WHERE id = %s", (1,))
+"""  # ruff: ignore[hardcoded-sql-expression] -- a fixed parser fixture, never executed.
+    findings = _check(source, "app/stores/version_rows.py")
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ415"
+
+
+def test_injected_cursor_has_a_narrow_class_owner() -> None:
+    source = """from psycopg import AsyncCursor
+class VersionRows:
+    def __init__(self, cursor: AsyncCursor[dict[str, object]]):
+        self.cursor = cursor
+    async def read(self):
+        await self.cursor.execute("SELECT id FROM scenario_version WHERE id = %s", (1,))
+"""
+    assert _check(source, "app/stores/version_rows.py") == []
+    context = PythonFileContext(Path("app/stores/version_rows.py"), source)
+    assert len(psycopg_execution_calls(context, include_injected=True, include_probes=False)) == 1
+    assert len(list(store_queries(context))) == 1
+
+
+def test_borrowed_class_cursor_parameters_remain_available_to_shared_sql_analysis() -> None:
+    source = """from psycopg import AsyncCursor
+from psycopg_pool import AsyncConnectionPool
+
+class Store:
+    def __init__(self, pool: AsyncConnectionPool):
+        self.pool = pool
+
+    async def mark(self, cursor: AsyncCursor):
+        await cursor.execute("UPDATE calls SET retry = true")
+
+    async def _mark(self, cursor: AsyncCursor):
+        await cursor.execute("UPDATE calls SET retry = true")
+
+    @classmethod
+    async def mark_class(cls, cursor: AsyncCursor):
+        await cursor.execute("UPDATE calls SET retry = true")
+
+    @staticmethod
+    async def mark_static(cursor: AsyncCursor):
+        await cursor.execute("UPDATE calls SET retry = true")
+"""
+    assert _check(source) == []
+    context = PythonFileContext(Path("app/store.py"), source)
+    assert psycopg_execution_calls(context, include_injected=False, include_probes=False) == []
+    assert len(psycopg_execution_calls(context, include_injected=True, include_probes=False)) == 4
+    assert {query.method.name for query in store_queries(context) if query.method is not None} == {
+        "mark",
+        "_mark",
+        "mark_class",
+        "mark_static",
+    }
+
+
+def test_class_cursor_annotation_does_not_prove_the_callers_transaction_origin() -> None:
+    source = """from psycopg import Cursor
+
+class Rows:
+    def read(self, cursor: Cursor):
+        cursor.execute("SELECT id FROM calls")
+"""
+    assert _check(source) == []
+
+
+def test_nested_cursor_helper_has_free_ownership_inside_an_injected_class() -> None:
+    source = """from psycopg import AsyncCursor
+from psycopg_pool import AsyncConnectionPool
+
+class Store:
+    def __init__(self, pool: AsyncConnectionPool):
+        self.pool = pool
+
+    async def mark(self):
+        async def free_helper(cursor: AsyncCursor):
+            await cursor.execute("UPDATE calls SET retry = true")
+"""
+    findings = _check(source)
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ415"
+
+
+@pytest.mark.parametrize(
+    "method",
+    [
+        """    def mark(self, conn: Connection):
+        conn.execute("UPDATE calls SET retry = true")
+""",
+        """    def mark(self, pool: ConnectionPool):
+        with pool.connection() as conn:
+            conn.execute("UPDATE calls SET retry = true")
+""",
+        """    def mark(self, cursor: Cursor):
+        cursor.execute("SELECT id FROM calls")
+        conn = psycopg.connect("postgresql://db")
+        conn.execute("UPDATE calls SET retry = true")
+""",
+        """    def mark(self, cursor: Cursor):
+        cursor = Cursor(connection)
+        cursor.execute("UPDATE calls SET retry = true")
+""",
+    ],
+    ids=["connection-parameter", "pool-parameter", "local-connection", "local-cursor"],
+)
+def test_borrowed_cursor_boundary_preserves_other_external_class_origins(method: str) -> None:
+    source = (
+        """import psycopg
+from psycopg import Connection, Cursor
+from psycopg_pool import ConnectionPool
+
+class Store:
+    def __init__(self, pool: ConnectionPool):
+        self.pool = pool
+
+"""
+        + method
+    )
+    findings = _check(source)
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ415"
+    assert findings[0].severity.value == "error"
+
+
+def test_unrelated_cursor_annotations_and_rebindings_stay_unproven() -> None:
+    source = """from other_driver import AsyncCursor
+async def read_row(cursor: AsyncCursor):
+    await cursor.execute("SELECT id FROM scenario_version")
+"""
+    assert _check(source) == []
+    shadowed = """from psycopg import AsyncCursor
+AsyncCursor = CustomCursor
+async def read_row(cursor: AsyncCursor):
+    await cursor.execute("SELECT id FROM scenario_version")
+"""
+    assert _check(shadowed) == []
+
+
+@pytest.mark.parametrize(
+    ("setup", "annotation"),
+    [
+        ("import psycopg as driver", "driver.Cursor"),
+        ("from psycopg import Cursor as DbCursor", "DbCursor"),
+        ("import psycopg as driver\nDbCursor = driver.Cursor", "DbCursor"),
+    ],
+    ids=["native-module-alias", "native-symbol-alias", "module-type-alias"],
+)
+def test_stable_native_cursor_aliases_keep_free_execution_visible(setup: str, annotation: str) -> None:
+    source = """__SETUP__
+
+def helper(cursor: __CURSOR__):
+    cursor.execute("SELECT id FROM calls")
+""".replace("__SETUP__", setup).replace("__CURSOR__", annotation)
+    assert len(_check(source)) == 1
+    context = PythonFileContext(Path("app/cursor_helpers.py"), source)
+    assert len(psycopg_execution_calls(context, include_injected=True, include_probes=False)) == 1
+
+
+@pytest.mark.parametrize(
+    ("setup", "annotation"),
+    [
+        ("import psycopg\npsycopg.Cursor = FakeCursor", "psycopg.Cursor"),
+        ("import psycopg\ndel psycopg.Cursor", "psycopg.Cursor"),
+        ("import psycopg\nsetattr(psycopg, 'Cursor', FakeCursor)", "psycopg.Cursor"),
+        ("import psycopg\ndelattr(psycopg, 'Cursor')", "psycopg.Cursor"),
+        ("from psycopg import Cursor\nCursor = FakeCursor", "Cursor"),
+        ("import psycopg as driver\ndriver.Cursor = FakeCursor", "driver.Cursor"),
+        ("import psycopg\ndriver = psycopg\ndriver.Cursor = FakeCursor", "psycopg.Cursor"),
+        (
+            "import psycopg\ndriver = psycopg\nmodule = driver\nsetattr(module, 'Cursor', FakeCursor)",
+            "psycopg.Cursor",
+        ),
+        ("import psycopg\nDbCursor = psycopg.Cursor\npsycopg.Cursor = FakeCursor", "DbCursor"),
+    ],
+    ids=[
+        "attribute-replacement",
+        "attribute-deletion",
+        "reflective-replacement",
+        "reflective-deletion",
+        "symbol-rebinding",
+        "native-module-alias-mutation",
+        "assigned-module-alias-mutation",
+        "assigned-module-alias-chain-mutation",
+        "type-alias-with-mutated-module",
+    ],
+)
+def test_mutated_cursor_namespace_does_not_manufacture_import_proven_execution(setup: str, annotation: str) -> None:
+    source = """__SETUP__
+
+def helper(cursor: __CURSOR__):
+    cursor.execute("SELECT id FROM calls")
+""".replace("__SETUP__", setup).replace("__CURSOR__", annotation)
+    assert _check(source) == []
+    context = PythonFileContext(Path("app/cursor_helpers.py"), source)
+    assert psycopg_execution_calls(context, include_injected=True, include_probes=False) == []
+    assert list(store_queries(context)) == []
+
+
+@pytest.mark.parametrize(
+    ("setup", "shadow", "annotation"),
+    [
+        ("from psycopg import Cursor", "Cursor = FakeCursor", "Cursor"),
+        ("import psycopg as driver", "driver = FakeModule", "driver.Cursor"),
+        ("from psycopg import Cursor\nDbCursor = Cursor", "DbCursor = FakeCursor", "DbCursor"),
+        ("from psycopg import Connection", "Connection = FakeConnection", "Connection"),
+        (
+            "from psycopg_pool import ConnectionPool",
+            "ConnectionPool = FakePool",
+            "ConnectionPool",
+        ),
+    ],
+    ids=["cursor", "module", "type-alias", "connection", "pool"],
+)
+def test_class_local_shadows_do_not_prove_parameter_or_constructor_annotations(
+    setup: str, shadow: str, annotation: str
+) -> None:
+    source = (
+        """__SETUP__
+
+class Rows:
+    __SHADOW__
+
+    def __init__(self, client: __CLIENT__):
+        self.client = client
+
+    def read(self, client: __CLIENT__):
+        client.execute("SELECT id FROM calls")
+
+    def read_injected(self):
+        self.client.execute("SELECT id FROM calls")
+""".replace("__SETUP__", setup)
+        .replace("__SHADOW__", shadow)
+        .replace("__CLIENT__", annotation)
+    )
+    assert _check(source) == []
+    context = PythonFileContext(Path("app/store.py"), source)
+    assert psycopg_execution_calls(context, include_injected=True, include_probes=False) == []
+    assert list(store_queries(context)) == []
+
+
+def test_class_local_annotation_shadow_does_not_hide_runtime_global_constructor() -> None:
+    source = """from psycopg import Cursor
+
+class Rows:
+    Cursor = FakeCursor
+
+    def read(self, connection):
+        cursor = Cursor(connection)
+        cursor.execute("SELECT id FROM calls")
+"""
+    assert len(_check(source)) == 1
+    context = PythonFileContext(Path("app/store.py"), source)
+    assert len(psycopg_execution_calls(context, include_injected=True, include_probes=False)) == 1
+
+
+@pytest.mark.parametrize(
+    "alias",
+    ["NativeCursor = psycopg.Cursor", "from psycopg import Cursor as NativeCursor"],
+    ids=["attribute-valued-alias", "cross-import-alias"],
+)
+def test_mutated_native_class_alias_revokes_other_constructor_spellings(alias: str) -> None:
+    source = """import psycopg
+from psycopg import Cursor as OtherCursor
+__ALIAS__
+
+class FakeCursor:
+    def execute(self, query):
+        return None
+
+def make_fake(cls, connection):
+    return FakeCursor()
+
+NativeCursor.__new__ = make_fake
+
+def read(connection):
+    cursor = psycopg.Cursor(connection)
+    cursor.execute("SELECT id FROM calls")
+
+def read_other_alias(connection):
+    cursor = OtherCursor(connection)
+    cursor.execute("SELECT id FROM calls")
+""".replace("__ALIAS__", alias)
+    assert _check(source) == []
+    context = PythonFileContext(Path("app/cursor_helpers.py"), source)
+    assert psycopg_execution_calls(context, include_injected=True, include_probes=False) == []
+    assert list(store_queries(context)) == []
+    untouched = source.replace("NativeCursor.__new__ = make_fake", "")
+    assert len(_check(untouched)) == 2
+    untouched_context = PythonFileContext(Path("app/cursor_helpers.py"), untouched)
+    assert len(psycopg_execution_calls(untouched_context, include_injected=True, include_probes=False)) == 2
+
+
+def test_mutating_a_psycopg_class_alias_preserves_untouched_pool_module_origins() -> None:
+    source = """import psycopg
+from psycopg import Cursor as NativeCursor
+from psycopg_pool import ConnectionPool
+
+class FakeCursor:
+    def execute(self, query):
+        return None
+
+def make_fake(cls, connection):
+    return FakeCursor()
+
+NativeCursor.__new__ = make_fake
+
+def read(connection):
+    cursor = psycopg.Cursor(connection)
+    cursor.execute("SELECT id FROM calls")
+
+def write(pool: ConnectionPool):
+    with pool.connection() as connection:
+        connection.execute("UPDATE calls SET retry = true")
+"""
+    findings = _check(source)
+    assert len(findings) == 1
+    assert "UPDATE calls" in source.splitlines()[findings[0].line - 1]
+    context = PythonFileContext(Path("app/cursor_helpers.py"), source)
+    assert len(psycopg_execution_calls(context, include_injected=True, include_probes=False)) == 1
+    assert [query.method.name for query in store_queries(context) if query.method is not None] == ["write"]
