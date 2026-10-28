@@ -24,7 +24,7 @@ export const NO_CONTRADICTORY_OVERLOAD_RETURN_DOCUMENTATION = {
   summary: "Preserve the input/result relationship promised by literal overloads.",
   rationale: "TypeScript checks an overload implementation against an overall envelope, without proving each input/result relationship. A function can compile while returning the opposite domain variant for every advertised literal input.",
   remediation: "Return the variant promised for each input. Prefer a checked case map or separate variant-specific operations when that makes the relationship explicit; retain overloads required by public APIs.",
-  category: "correctness", defaultLevel: "warning", autofix: "safe",
+  category: "correctness", defaultLevel: "error", autofix: "safe",
   limitations: [
     "Automatic fixes align only an unused private complete same-file overload group with its existing literal implementation results. Binding aliases, exports, merges, eval, declaration files, comments, nonliteral result syntax and observed callers preserve manual ownership; runtime checks and returned values never change.",
     "Requires type information and a top-level non-generic, synchronous function with two to 32 unique, single-required-parameter overloads. Each public input must be a directly authored string, finite number, boolean or null literal. Broad, duplicate, aliased, optional, rest and multi-parameter inputs are excluded.",

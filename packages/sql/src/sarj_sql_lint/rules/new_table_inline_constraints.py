@@ -22,7 +22,6 @@ from sarj_sql_lint.rule_base import (
     mask_sql,
     mask_sql_literals_and_comments,
     source_location,
-    sql_comments,
 )
 from sarj_sql_lint.rules._constraint_analysis import (
     TableKey,
@@ -33,6 +32,7 @@ from sarj_sql_lint.rules._constraint_analysis import (
     is_identifier_token,
     is_validating_add_action,
     matching_paren,
+    migration_section_lines,
     sequence,
     split_actions,
     table_actions,
@@ -46,7 +46,6 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_SECTION = re.compile(r"^\s*(?:migrate:(?:up|down)\b|\+goose\s+(?:up|down)\b|changeset\s+\S+)", re.IGNORECASE)
 _NON_NEWLINE = re.compile(r"[^\r\n]")
 _NON_PRODUCTION = frozenset({"test", "tests", "testing", "__tests__", "fixtures", "vendor", "node_modules"})
 _MAX_RELATION_PARTS = 2
@@ -61,6 +60,22 @@ class _Statement(NamedTuple):
 class _FreshTable(NamedTuple):
     columns: frozenset[str]
     start: int
+
+
+class _Definition(NamedTuple):
+    start: int
+    columns: frozenset[str] | None
+
+
+class _UniqueIndex(NamedTuple):
+    name: TableKey
+    table: TableKey
+    columns: frozenset[str]
+
+
+class _IndexConsumers(NamedTuple):
+    exact: dict[TableKey, int]
+    by_name: dict[str, int]
 
 
 @final
@@ -84,8 +99,8 @@ class NewTableInlineConstraints(Rule):
         limitations=(
             "Only authored PostgreSQL migrations and unconditional empty CREATE TABLE definitions are checked. Conditional creation, dumps, generated migrations, fixtures, LIKE, inheritance, and partition definitions are excluded.",
             "Unknown SQL, data statements, transaction or migration-section boundaries, and alterations other than inline constraint candidates revoke the empty-table proof. NOT VALID, NOT ENFORCED, and USING INDEX contracts remain separate.",
-            "Foreign keys remain separate when their referenced table or unique key is declared after the child definition in the same section; cyclic table dependencies are not reordered.",
-            "Only plain unique indexes over original columns without guards, ordering, expressions, predicates, concurrency, or physical options are candidates for an inline UNIQUE constraint. No automatic rewrite changes catalog objects or migration behavior.",
+            "Foreign keys remain separate when their referenced table or matching unique key is declared after the child definition in the same section; cyclic table dependencies are not reordered. Unknown key expressions retain conservative ordering checks.",
+            "Only plain unique indexes over original columns without guards, ordering, expressions, predicates, concurrency, or physical options are candidates for an inline UNIQUE constraint. Later named index attachment, alteration, or removal preserves the standalone index contract, including Down sections. No automatic rewrite changes catalog objects or migration behavior.",
             "Relation matching preserves explicit schemas and quoted identifier case; search_path, catalog-qualified foreign-key targets, and unsupported unquoted identifier spellings are not inferred.",
         ),
         examples=(
@@ -134,6 +149,7 @@ class NewTableInlineConstraints(Rule):
             return []
         statements = tuple(_statements(source))
         definitions = _definition_positions(statements)
+        consumers = _index_consumers(statements)
         fresh: dict[TableKey, _FreshTable] = {}
         findings: list[Diagnostic] = []
         previous_section = -1
@@ -143,7 +159,7 @@ class NewTableInlineConstraints(Rule):
                 previous_section = statement.section
             if _track_creation(statement, fresh):
                 continue
-            if _has_inline_candidate(statement, fresh, definitions):
+            if _has_inline_candidate(statement, fresh, definitions, consumers):
                 location = source_location(source, statement.start + statement.tokens[0].start)
                 findings.append(
                     Diagnostic(
@@ -164,7 +180,7 @@ def _statements(source: str) -> Iterator[_Statement]:
     masked = mask_sql_literals_and_comments(source, mask_dollar_literals=True)
     for start, end in dollar_quoted_spans(source):
         masked = masked[:start] + _NON_NEWLINE.sub(" ", masked[start:end]) + masked[end:]
-    sections = [comment.line for comment in sql_comments(source) if not comment.block and _SECTION.match(comment.body)]
+    sections = migration_section_lines(source)
     start = 0
     for end in (*[match.start() for match in re.finditer(r";", mask_sql(masked))], len(masked)):
         text = masked[start:end]
@@ -193,13 +209,34 @@ def _create_target(tokens: list[Token]) -> tuple[TableKey, int] | None:
     return identifier(tokens, cursor)
 
 
-def _definition_positions(statements: tuple[_Statement, ...]) -> dict[tuple[int, TableKey], tuple[int, ...]]:
-    definitions: dict[tuple[int, TableKey], tuple[int, ...]] = {}
+def _definition_positions(statements: tuple[_Statement, ...]) -> dict[tuple[int, TableKey], tuple[_Definition, ...]]:
+    definitions: dict[tuple[int, TableKey], tuple[_Definition, ...]] = {}
     for statement in statements:
         if (table := _definition_target(statement.tokens)) is not None:
             key = (statement.section, table)
-            definitions[key] = (*definitions.get(key, ()), statement.start)
+            definitions[key] = (
+                *definitions.get(key, ()),
+                _Definition(statement.start, _defined_key_columns(statement.tokens)),
+            )
     return definitions
+
+
+def _defined_key_columns(tokens: list[Token]) -> frozenset[str] | None:
+    if (indexed := _plain_unique_index(tokens)) is not None:
+        return indexed.columns
+    altered = table_actions(tokens)
+    if altered is None or len(altered[1]) != 1:
+        return None
+    action = altered[1][0]
+    cursor = 3 if consume(action, 1, "CONSTRAINT") else 1
+    if sequence(action, cursor, ("PRIMARY", "KEY")):
+        cursor += 2
+    elif consume(action, cursor, "UNIQUE"):
+        cursor = _after_unique_nulls(action, cursor + 1)
+    else:
+        return None
+    columns = _column_list(action, cursor)
+    return columns[0] if columns is not None else None
 
 
 def _definition_target(tokens: list[Token]) -> TableKey | None:
@@ -257,7 +294,8 @@ def _track_creation(statement: _Statement, fresh: dict[TableKey, _FreshTable]) -
 def _has_inline_candidate(
     statement: _Statement,
     fresh: dict[TableKey, _FreshTable],
-    definitions: dict[tuple[int, TableKey], tuple[int, ...]],
+    definitions: dict[tuple[int, TableKey], tuple[_Definition, ...]],
+    consumers: _IndexConsumers,
 ) -> bool:
     tokens = statement.tokens
     if (parsed := table_actions(tokens)) is not None:
@@ -267,14 +305,19 @@ def _has_inline_candidate(
             _inline_action(action, origin, statement.section, definitions) for action in actions
         )
     indexed = _plain_unique_index(tokens)
-    return indexed is not None and indexed[0] in fresh and indexed[1] <= fresh[indexed[0]].columns
+    return (
+        indexed is not None
+        and indexed.table in fresh
+        and indexed.columns <= fresh[indexed.table].columns
+        and not _has_later_index_consumer(indexed, statement.start, consumers)
+    )
 
 
 def _inline_action(
     action: list[Token],
     origin: _FreshTable,
     section: int,
-    definitions: dict[tuple[int, TableKey], tuple[int, ...]],
+    definitions: dict[tuple[int, TableKey], tuple[_Definition, ...]],
 ) -> bool:
     if not consume(action, 0, "ADD"):
         return False
@@ -287,7 +330,10 @@ def _inline_action(
         return False
     cursor = 1
     if consume(action, cursor, "CONSTRAINT"):
-        cursor += 2
+        name = identifier(action, cursor + 1)
+        if name is None or len(name[0]) != 1:
+            return False
+        cursor = name[1]
     if sequence(action, cursor, ("FOREIGN", "KEY")):
         return _inline_foreign_key(action, cursor, origin, section=section, definitions=definitions)
     if consume(action, cursor, "CHECK"):
@@ -295,7 +341,7 @@ def _inline_action(
     if sequence(action, cursor, ("PRIMARY", "KEY")):
         cursor += 2
     elif consume(action, cursor, "UNIQUE"):
-        cursor += 1
+        cursor = _after_unique_nulls(action, cursor + 1)
     else:
         return False
     columns = _column_list(action, cursor)
@@ -308,7 +354,7 @@ def _inline_foreign_key(
     origin: _FreshTable,
     *,
     section: int,
-    definitions: dict[tuple[int, TableKey], tuple[int, ...]],
+    definitions: dict[tuple[int, TableKey], tuple[_Definition, ...]],
 ) -> bool:
     columns = _column_list(action, cursor + 2)
     if columns is None or not columns[0] <= origin.columns:
@@ -317,25 +363,36 @@ def _inline_foreign_key(
     parsed_reference = identifier(action, reference + 1) if reference is not None else None
     if parsed_reference is None or not is_validating_add_action(action):
         return False
-    target, _ = parsed_reference
-    return len(target) <= _MAX_RELATION_PARTS and _reference_precedes_origin(target, origin, section, definitions)
+    target, end = parsed_reference
+    referenced_columns = _column_list(action, end)
+    return len(target) <= _MAX_RELATION_PARTS and _reference_precedes_origin(
+        target, origin, section, definitions, referenced_columns[0] if referenced_columns is not None else None
+    )
 
 
 def _reference_precedes_origin(
     target: TableKey,
     origin: _FreshTable,
     section: int,
-    definitions: dict[tuple[int, TableKey], tuple[int, ...]],
+    definitions: dict[tuple[int, TableKey], tuple[_Definition, ...]],
+    referenced_columns: frozenset[str] | None,
 ) -> bool:
     return not any(
-        position > origin.start
+        definition.start > origin.start
+        and (referenced_columns is None or definition.columns is None or referenced_columns == definition.columns)
         for (candidate_section, candidate), positions in definitions.items()
         if candidate_section == section
         and (
             candidate[-2:] == target[-2:] or (candidate[-1] == target[-1] and (len(candidate) == 1 or len(target) == 1))
         )
-        for position in positions
+        for definition in positions
     )
+
+
+def _after_unique_nulls(tokens: list[Token], cursor: int) -> int:
+    if sequence(tokens, cursor, ("NULLS", "NOT", "DISTINCT")):
+        return cursor + 3
+    return cursor + 2 if sequence(tokens, cursor, ("NULLS", "DISTINCT")) else cursor
 
 
 def _column_list(tokens: list[Token], opening: int) -> tuple[frozenset[str], int] | None:
@@ -358,7 +415,7 @@ def _column_list(tokens: list[Token], opening: int) -> tuple[frozenset[str], int
     return frozenset(name[0][0] for name in names if name is not None), closing + 1
 
 
-def _plain_unique_index(tokens: list[Token]) -> tuple[TableKey, frozenset[str]] | None:
+def _plain_unique_index(tokens: list[Token]) -> _UniqueIndex | None:
     if not sequence(tokens, 0, ("CREATE", "UNIQUE", "INDEX")):
         return None
     name = identifier(tokens, 3)
@@ -369,7 +426,44 @@ def _plain_unique_index(tokens: list[Token]) -> tuple[TableKey, frozenset[str]] 
         return None
     table, opening = parsed
     columns = _column_list(tokens, opening)
-    return (table, columns[0]) if columns is not None and columns[1] == len(tokens) else None
+    return _UniqueIndex(name[0], table, columns[0]) if columns is not None and columns[1] == len(tokens) else None
+
+
+def _index_consumers(statements: tuple[_Statement, ...]) -> _IndexConsumers:
+    exact: dict[TableKey, int] = {}
+    by_name: dict[str, int] = {}
+    for statement in statements:
+        for consumed in _consumed_indexes(statement.tokens):
+            exact[consumed] = statement.start
+            by_name[consumed[-1]] = statement.start
+    return _IndexConsumers(exact, by_name)
+
+
+def _has_later_index_consumer(indexed: _UniqueIndex, start: int, consumers: _IndexConsumers) -> bool:
+    index_name = (*indexed.table[:-1], *indexed.name)
+    if len(index_name) == 1:
+        return consumers.by_name.get(index_name[0], -1) > start
+    return max(consumers.exact.get(index_name, -1), consumers.exact.get(indexed.name, -1)) > start
+
+
+def _consumed_indexes(tokens: list[Token]) -> Iterator[TableKey]:
+    if sequence(tokens, 0, ("ALTER", "INDEX")) or sequence(tokens, 0, ("DROP", "INDEX")):
+        cursor = 2
+        if consume(tokens, cursor, "CONCURRENTLY"):
+            cursor += 1
+        if sequence(tokens, cursor, ("IF", "EXISTS")):
+            cursor += 2
+        while (parsed := identifier(tokens, cursor)) is not None:
+            yield parsed[0]
+            cursor = parsed[1]
+            if cursor >= len(tokens) or tokens[cursor].text != ",":
+                break
+            cursor += 1
+    if table_actions(tokens) is not None:
+        top = top_level_tokens(tokens)
+        for cursor in range(len(top)):
+            if sequence(top, cursor, ("USING", "INDEX")) and (parsed := identifier(top, cursor + 2)) is not None:
+                yield parsed[0]
 
 
 def _preserves_fresh_tables(tokens: list[Token]) -> bool:

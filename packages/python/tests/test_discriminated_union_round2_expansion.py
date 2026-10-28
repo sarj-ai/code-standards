@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import InitVar, asdict, dataclass, fields
 from pathlib import Path, PurePosixPath
 
 import pytest
@@ -72,6 +73,55 @@ def test_round2_expansion_contexts(case: EvaluationCase) -> None:
 
 
 @pytest.mark.parametrize(
+    "annotation",
+    ["InitVar[str] = ''", "InitVar[Literal['request']] = 'request'", "InitVar[object] = object()"],
+)
+@pytest.mark.parametrize(
+    ("imports", "annotation_owner"),
+    [
+        ("from dataclasses import dataclass, InitVar", "InitVar"),
+        ("from dataclasses import dataclass, InitVar as Input", "Input"),
+        ("from dataclasses import dataclass\nimport dataclasses as dc", "dc.InitVar"),
+    ],
+)
+def test_defaulted_constructor_only_input_cannot_hide_missing_data_tag(
+    annotation: str, imports: str, annotation_owner: str
+) -> None:
+    source = (
+        _BASE.replace("from dataclasses import dataclass, InitVar", imports)
+        .replace("    team_id: str", f"    team_id: str\n    request: {annotation}")
+        .replace("    group: str", f"    group: str\n    request: {annotation}")
+        .replace("request: InitVar", f"request: {annotation_owner}")
+        + "type Access = Team | Global\n"
+    )
+    findings = PreferDiscriminatedModelUnion().check(Path("app/access.py"), source)
+    assert len(findings) == 1
+    assert findings[0].severity.value == "error"
+
+
+def test_defaulted_initvar_is_absent_from_the_serialized_data_contract() -> None:
+    @dataclass
+    class Team:
+        team_id: str
+        request: InitVar[str] = "request"
+
+    team = Team("team-1", "caller-context")
+    assert asdict(team) == {"team_id": "team-1"}
+    assert tuple(field.name for field in fields(Team)) == ("team_id",)
+
+
+@pytest.mark.parametrize("rebind", ["InitVar = custom_input", "dataclass = custom_record"])
+def test_defaulted_initvar_requires_its_actual_unrebound_dataclass_owner(rebind: str) -> None:
+    source = (
+        _BASE.replace("from typing import Annotated, Literal", f"from typing import Annotated, Literal\n{rebind}")
+        .replace("    team_id: str", "    team_id: str\n    request: InitVar[str] = ''")
+        .replace("    group: str", "    group: str\n    request: InitVar[str] = ''")
+        + "type Access = Team | Global\n"
+    )
+    assert PreferDiscriminatedModelUnion().check(Path("app/access.py"), source) == []
+
+
+@pytest.mark.parametrize(
     "source",
     [
         _CASES[2]
@@ -89,20 +139,29 @@ def test_direct_initvar_import_identity(source: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "source",
+    ("source", "expected_count"),
     [
-        _CASES[2].source.replace("request: InitVar[str]", "request: Annotated[InitVar[str], 'transport']"),
-        _CASES[2]
-        .source.replace("@dataclass\nclass Team", "type Input = InitVar[str]\n@dataclass\nclass Team")
-        .replace("request: InitVar[str]", "request: Input"),
-        _CASES[2]
-        .source.replace("@dataclass\nclass Team", "Input = InitVar[str]\n@dataclass\nclass Team")
-        .replace("request: InitVar[str]", "request: Input"),
-        _CASES[3]
-        .source.replace("kind: InitVar[Literal['team']]", "kind: InitVar[Literal['team']] = 'team'")
-        .replace("kind: InitVar[Literal['global']]", "kind: InitVar[Literal['global']] = 'global'")
-        .replace("team_id: str", "team_id: str = ''")
-        .replace("group: str", "group: str = ''"),
+        (_CASES[2].source.replace("request: InitVar[str]", "request: Annotated[InitVar[str], 'transport']"), 0),
+        (
+            _CASES[2]
+            .source.replace("@dataclass\nclass Team", "type Input = InitVar[str]\n@dataclass\nclass Team")
+            .replace("request: InitVar[str]", "request: Input"),
+            0,
+        ),
+        (
+            _CASES[2]
+            .source.replace("@dataclass\nclass Team", "Input = InitVar[str]\n@dataclass\nclass Team")
+            .replace("request: InitVar[str]", "request: Input"),
+            0,
+        ),
+        (
+            _CASES[3]
+            .source.replace("kind: InitVar[Literal['team']]", "kind: InitVar[Literal['team']] = 'team'")
+            .replace("kind: InitVar[Literal['global']]", "kind: InitVar[Literal['global']] = 'global'")
+            .replace("team_id: str", "team_id: str = ''")
+            .replace("group: str", "group: str = ''"),
+            1,
+        ),
     ],
     ids=(
         "annotated-stored-field",
@@ -111,5 +170,7 @@ def test_direct_initvar_import_identity(source: str) -> None:
         "defaulted-class-attribute",
     ),
 )
-def test_initvar_alias_wrappers_and_defaults_remain_conservative(source: str) -> None:
-    assert not PreferDiscriminatedModelUnion().check(Path("app/access.py"), source)
+def test_initvar_alias_wrappers_and_defaults_follow_storage_contract(source: str, expected_count: int) -> None:
+    findings = PreferDiscriminatedModelUnion().check(Path("app/access.py"), source)
+    assert len(findings) == expected_count
+    assert all(finding.code == "SARJ510" for finding in findings)

@@ -22,6 +22,25 @@ _RULES = (
 )
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        "Retries duplicate the transfer.",
+        "A checksum mismatch signals corrupted storage.",
+        "A missing record is the normal empty-cache state.",
+        "Input from older callers contains this sentinel.",
+        "Expected empty cache.",
+    ],
+)
+def test_exception_causal_claims_are_retained_by_comment_fixes(body: str) -> None:
+    source = f"try:\n    run()\nexcept Exception:  # {body}\n    recover()\n"
+    path = Path("app/service.py")
+    assert REGISTRY["no-comment-cruft"]().check(path, source) == []
+    fixed = fix_source(path, source, rule_ids=["no-comment-cruft"])
+    assert fixed == source
+    assert fix_source(path, fixed, rule_ids=["no-comment-cruft"]) == fixed
+
+
 def _example(rule_id: RuleId) -> RuleExample:
     documentation = REGISTRY[rule_id].documentation
     assert documentation is not None

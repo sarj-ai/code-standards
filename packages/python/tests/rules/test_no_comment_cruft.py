@@ -312,6 +312,11 @@ def test_section_labels_inside_an_expression_remain_content() -> None:
         "the response presents an unavailable state",
         "a missing result stops the operation",
         "only the follow-up read settles it",
+        "Retry the failed read",
+        "Signal the waiting worker",
+        "Check normal cache state.",
+        "Expect an empty cache.",
+        "Process input from older callers.",
     ],
 )
 def test_trailing_exception_walkthroughs_are_errors(body: str) -> None:
@@ -334,6 +339,14 @@ def test_trailing_exception_walkthroughs_are_errors(body: str) -> None:
         "the provider requires this recovery path",
         "see https://example.com/INC-123",
         "SPDX-License-Identifier: MIT",
+        "Only this read is retried; writes stay at-most-once.",
+        "The broker delivers at least once.",
+        "The transfer is exactly-once.",
+        "Retries duplicate the transfer.",
+        "A checksum mismatch signals corrupted storage.",
+        "A missing record is the normal empty-cache state.",
+        "Input from older callers contains this sentinel.",
+        "Expected empty cache.",
     ],
 )
 def test_trailing_exception_directives_and_hidden_constraints_remain_protected(body: str) -> None:

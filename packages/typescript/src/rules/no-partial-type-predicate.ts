@@ -37,7 +37,7 @@ export const NO_PARTIAL_TYPE_PREDICATE_DOCUMENTATION = {
   rationale: "Type predicates narrow both branches, and TypeScript trusts their implementation. A positive-number or non-empty-string predicate can return false for a value belonging to its promised type, causing callers to treat that value as a different type.",
   remediation: "Use a boolean return for an intentional value filter, or recognize every member of the promised type. Preserve required callback and public contracts; a refined domain may need a distinct validated type. Recheck false-branch callers when changing a predicate.",
   category: "correctness",
-  defaultLevel: "warning",
+  defaultLevel: "error",
   autofix: "safe",
   limitations: [
     "Automatic fixes replace the unsound predicate with boolean only for an unused private function declaration without overloads, exports, eval, comments in the predicate, or declaration-file ownership. Runtime checks are preserved; observed callable contracts remain manual.",
