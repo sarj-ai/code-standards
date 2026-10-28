@@ -815,3 +815,111 @@ def test_density_and_named_aggregate_stages_alone_are_allowed(query: str) -> Non
 def test_parentheses_preserve_combined_set_operation_complexity(branch: str) -> None:
     query = "SELECT * FROM (" + branch + " UNION ALL SELECT org_id FROM b) totals"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
     assert len(_check(f"import psycopg\ncursor.execute({query!r})\n", "metrics.py")) == 1
+
+
+def test_native_cursor_follows_executed_module_constant_and_reports_original_sql() -> None:
+    columns = ", ".join(f"version.field_{position}" for position in range(20))
+    source = f"""from psycopg import AsyncCursor
+QUERY = "SELECT {columns} FROM item version LEFT JOIN item base ON base.id=version.base_id WHERE version.id=%s"
+async def read(cursor: AsyncCursor):
+    await cursor.execute(QUERY, (1,))
+"""  # ruff: ignore[hardcoded-sql-expression] -- parser fixture, never executed.
+    [finding] = _check(source)
+    assert finding.line == 2
+    assert "Self-joined" in finding.message
+    assert "20 projected expressions" in finding.message
+
+
+def test_native_module_sql_binding_is_not_borrowed_after_shadowing() -> None:
+    source = """from psycopg import AsyncCursor
+QUERY = "SELECT id FROM item JOIN a ON TRUE JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE"
+async def read(cursor: AsyncCursor, QUERY):
+    await cursor.execute(QUERY)
+"""
+    assert _check(source) == []
+    assert (
+        _check(
+            source.replace("cursor: AsyncCursor, QUERY", "cursor: AsyncCursor").replace(
+                "    await", "    QUERY = 'SELECT id FROM item'\n    await"
+            )
+        )
+        == []
+    )
+
+
+def test_native_constants_with_intervening_rebind_do_not_manufacture_coverage() -> None:
+    source = """from psycopg import AsyncCursor
+QUERY = "SELECT id FROM item JOIN a ON TRUE JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE"
+QUERY = runtime_query()
+async def read(cursor: AsyncCursor):
+    await cursor.execute(QUERY)
+"""
+    assert _check(source) == []
+
+
+def test_wide_self_join_threshold_preserves_ordinary_single_table_hydration() -> None:
+    columns = ", ".join(f"a.field_{position}" for position in range(16))
+    query = f"SELECT {columns} FROM item a JOIN item b ON b.id=a.parent_id"  # ruff: ignore[hardcoded-sql-expression] -- parser fixture, never executed.
+    assert len(_check(f"import psycopg\ncursor.execute({query!r})")) == 1
+    assert _check(f"import psycopg\ncursor.execute({query.replace(' JOIN item b ON b.id=a.parent_id', '')!r})") == []
+
+
+def test_native_shared_query_is_reported_once_and_unused_constant_stays_silent() -> None:
+    source = """from psycopg import AsyncCursor
+QUERY = "SELECT id FROM item JOIN a ON TRUE JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE"
+async def read(cursor: AsyncCursor):
+    await cursor.execute(QUERY)
+    await cursor.execute(QUERY)
+"""
+    assert len(_check(source)) == 1
+    assert _check(source.split("async def", maxsplit=1)[0]) == []
+
+
+@pytest.mark.parametrize(
+    ("instance_mutation", "class_mutation", "expected_tables"),
+    [
+        ("", "", ("alpha", "beta")),
+        ("", "AlphaStore._run = replacement", ("beta",)),
+        ("", "del AlphaStore._run", ("beta",)),
+        ("    def replace(self, replacement):\n        self._run = replacement\n", "", ("beta",)),
+        ("    def replace(self):\n        del self._run\n", "", ("beta",)),
+    ],
+    ids=["unchanged", "class-replacement", "class-deletion", "instance-replacement", "instance-deletion"],
+)
+def test_same_named_query_wrappers_keep_mutations_scoped_to_their_owner(
+    instance_mutation: str, class_mutation: str, expected_tables: tuple[str, ...]
+) -> None:
+    source = """from psycopg import AsyncCursor
+
+class AlphaStore:
+    async def _run(self, cursor: AsyncCursor, query: str):
+        await cursor.execute(query)
+
+    async def read(self, cursor: AsyncCursor):
+        await self._run(
+            cursor,
+            "SELECT alpha.id FROM alpha "
+            "JOIN a ON TRUE JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE",
+        )
+
+__INSTANCE_MUTATION__
+class BetaStore:
+    async def _run(self, cursor: AsyncCursor, query: str):
+        await cursor.execute(query)
+
+    async def read(self, cursor: AsyncCursor):
+        await self._run(
+            cursor,
+            "SELECT beta.id FROM beta "
+            "JOIN a ON TRUE JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE",
+        )
+
+__CLASS_MUTATION__
+""".replace("__INSTANCE_MUTATION__", instance_mutation).replace("__CLASS_MUTATION__", class_mutation)
+    findings = _check(source)
+    expected_lines = [
+        next(number for number, line in enumerate(source.splitlines(), start=1) if f"SELECT {table}.id" in line)
+        for table in expected_tables
+    ]
+    assert [finding.line for finding in findings] == expected_lines
+    assert all(finding.code == "SARJ437" and finding.severity is Severity.WARNING for finding in findings)

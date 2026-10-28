@@ -16,9 +16,16 @@ if TYPE_CHECKING:
 
 @final
 class FakeRolloutRunner:
-    def __init__(self, responses: list[tuple[int, str]] | None = None, *, probe_consumer_release: bool = True) -> None:
+    def __init__(
+        self,
+        responses: list[tuple[int, str]] | None = None,
+        *,
+        probe_consumer_release: bool = True,
+        closed_pull_responses: list[tuple[int, str]] | None = None,
+    ) -> None:
         self.probe_consumer_release = probe_consumer_release
         self.responses: list[tuple[int, str]] = list(responses or [])
+        self.closed_pull_responses: list[tuple[int, str]] = list(closed_pull_responses or [])
         self.commands: list[tuple[str, ...]] = []
         self.environments: list[Mapping[str, str] | None] = []
         self.working_directories: list[Path | None] = []
@@ -35,7 +42,9 @@ class FakeRolloutRunner:
         self.commands.append(rendered)
         self.environments.append(env)
         self.working_directories.append(cwd)
-        if self.probe_consumer_release and cwd is not None and command[-1] == "--version" and "uvx" in command:
+        if rendered[:2] == ("gh", "api") and "--paginate" in rendered and "state=closed" in rendered[-1]:
+            returncode, stdout = self.closed_pull_responses.pop(0) if self.closed_pull_responses else (0, "[]")
+        elif self.probe_consumer_release and cwd is not None and command[-1] == "--version" and "uvx" in command:
             version = command[command.index("--from") + 1].removeprefix("code-standards==")
             returncode, stdout = 0, f"code-standards {version}"
         else:

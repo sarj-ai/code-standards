@@ -4,12 +4,15 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from sarj_sql_lint.rules.add_constraint_requires_not_valid import AddConstraintRequiresNotValid
+from sarj_sql_lint.rules.combine_alter_table import CombineAlterTable
 from sarj_sql_lint.rules.enforce_timestamptz import EnforceTimestamptz
 from sarj_sql_lint.rules.excessive_commentary import ExcessiveCommentary
 from sarj_sql_lint.rules.idempotent_ddl import IdempotentDdl
 from sarj_sql_lint.rules.index_budget import IndexBudget
 from sarj_sql_lint.rules.index_concurrently import IndexConcurrently
 from sarj_sql_lint.rules.insert_requires_on_conflict import InsertRequiresOnConflict
+from sarj_sql_lint.rules.invalid_concurrent_ddl import InvalidConcurrentDdl
+from sarj_sql_lint.rules.invalid_postgres_ddl import InvalidPostgresDdl
 from sarj_sql_lint.rules.mixed_migration_phases import MixedMigrationPhases
 from sarj_sql_lint.rules.new_table_inline_constraints import NewTableInlineConstraints
 from sarj_sql_lint.rules.no_analytical_queries_in_transactional_db import NoAnalyticalQueriesInTransactionalDb
@@ -18,6 +21,7 @@ from sarj_sql_lint.rules.no_comment_cruft import NoCommentCruft
 from sarj_sql_lint.rules.no_create_trigger import NoCreateTrigger
 from sarj_sql_lint.rules.no_database_functions import NoDatabaseFunctions
 from sarj_sql_lint.rules.no_duplicate_index import NoDuplicateIndex
+from sarj_sql_lint.rules.no_null_comparison import NoNullComparison
 from sarj_sql_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_sql_lint.rules.no_pg_enum import NoPgEnum
 from sarj_sql_lint.rules.prefer_jsonb import PreferJsonb
@@ -35,6 +39,10 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        InvalidPostgresDdl.id: InvalidPostgresDdl,
+        InvalidConcurrentDdl.id: InvalidConcurrentDdl,
+        NoNullComparison.id: NoNullComparison,
+        CombineAlterTable.id: CombineAlterTable,
         NewTableInlineConstraints.id: NewTableInlineConstraints,
         NoAnalyticalQueriesInTransactionalDb.id: NoAnalyticalQueriesInTransactionalDb,
         NoDatabaseFunctions.id: NoDatabaseFunctions,

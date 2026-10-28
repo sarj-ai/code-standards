@@ -64,6 +64,9 @@ TOOLS: Final = MappingProxyType(
 )
 
 
+_VERSION_QUERY_TIMEOUTS: Final = MappingProxyType({"knip": 15})
+
+
 class NativeToolError(ValueError):
     pass
 
@@ -139,7 +142,12 @@ def _installed_tool(tool: NativeTool, *, root: Path, runner: ProcessRunner, mana
 
 
 def _attest(tool: NativeTool, *, root: Path, runner: ProcessRunner) -> NativeTool:
-    output = _version_output(_argv(tool, tool.version_args), root=root, runner=runner)
+    output = _version_output(
+        _argv(tool, tool.version_args),
+        root=root,
+        runner=runner,
+        timeout_seconds=_VERSION_QUERY_TIMEOUTS.get(tool.name, 5),
+    )
     actual = _version(tool, output.stderr if tool.version_stderr else output.stdout)
     if output.returncode or actual != tool.version:
         msg = f"{tool.name} {actual} is installed; exact version {tool.version} is required"
@@ -147,9 +155,15 @@ def _attest(tool: NativeTool, *, root: Path, runner: ProcessRunner) -> NativeToo
     return tool
 
 
-def _version_output(argv: Sequence[str], *, root: Path, runner: ProcessRunner) -> ProcessOutput:
+def _version_output(
+    argv: Sequence[str], *, root: Path, runner: ProcessRunner, timeout_seconds: float = 5
+) -> ProcessOutput:
     try:
-        return run_process(argv, cwd=root, timeout_seconds=5) if runner is run_process else runner(argv, cwd=root)
+        return (
+            run_process(argv, cwd=root, timeout_seconds=timeout_seconds)
+            if runner is run_process
+            else runner(argv, cwd=root)
+        )
     except subprocess.TimeoutExpired as error:
         msg = f"{Path(argv[0]).name} query timed out after {error.timeout} seconds"
         raise NativeToolError(msg) from error

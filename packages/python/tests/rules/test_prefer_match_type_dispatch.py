@@ -5,6 +5,7 @@ import pytest
 from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language, RuleProblem
 
 from sarj_python_lint.__main__ import check_source
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.prefer_match_type_dispatch import PreferMatchTypeDispatch
 
 
@@ -1421,3 +1422,173 @@ def test_grouped_or_tail_is_owned_by_the_complete_dispatch() -> None:
     findings = _check(source)
     assert len(findings) == 1
     assert findings[0].line == 2
+
+
+_REVIEW_PATH = Path("app/models.py")
+
+
+def _review_check(source: str) -> list[Diagnostic]:
+    return PreferMatchTypeDispatch().check(_REVIEW_PATH, source)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "if isinstance(value, str):\n    return value\nif isinstance(value, bytes):\n    return value.decode()\nreturn value",
+        "if isinstance(value, str):\n    consume(value)\nelif isinstance(value, bytes):\n    consume(value)\nreturn None",
+    ],
+    ids=["terminating-siblings", "if-elif"],
+)
+def test_builtin_two_arm_dispatch_retains_native_error(body: str) -> None:
+    source = "def normalize(value: object):\n" + "\n".join("    " + line for line in body.splitlines()) + "\n"
+    findings = _review_check(source)
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.ERROR
+
+
+def test_native_only_try_dispatch_retains_upstream_abstention() -> None:
+    source = """def normalize(value):
+    if isinstance(value, str):
+        return value
+    if isinstance(value, int):
+        try:
+            return str(value)
+        except ValueError:
+            return value
+    return value
+"""
+    assert _review_check(source) == []
+
+
+def test_pydantic_shapes_are_proven_classes() -> None:
+    source = """from pydantic import BaseModel
+class Added(BaseModel):
+    language: str
+class Removed(BaseModel):
+    language: str
+class Changed(BaseModel):
+    language: str
+
+def apply(value: Added | Removed | Changed):
+    if isinstance(value, Added):
+        return 'add'
+    if isinstance(value, Removed):
+        return 'remove'
+    return 'change'
+"""
+    findings = _review_check(source)
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.WARNING
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [("Language", "str"), ("str", "Language")],
+    ids=["enum-first", "builtin-first"],
+)
+def test_local_enum_dispatch_with_builtin_fallback(first: str, second: str) -> None:
+    source = f"""from enum import StrEnum
+class Language(StrEnum):
+    ENGLISH = 'en'
+def normalize(value: object):
+    if isinstance(value, {first}):
+        return value
+    if isinstance(value, {second}):
+        return Language(value)
+    return value
+"""
+    [finding] = _review_check(source)
+    assert finding.severity is Severity.WARNING
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def f(value):\n    if isinstance(value, str):\n        consume(value)\n    if isinstance(value, object):\n        consume(value)\n",
+        "def f(value):\n    if isinstance(value, str) and ready():\n        return value\n    if isinstance(value, bytes):\n        return value\n",
+        "def f(value):\n    if isinstance(value, str):\n        return value\n    if isinstance(value, str):\n        return value\n",
+        "def f(value, other):\n    if isinstance(value, str):\n        return value\n    if isinstance(other, bytes):\n        return other\n",
+        "def f(value):\n    if isinstance(value.part, str):\n        return value\n    if isinstance(value.part, bytes):\n        return value\n",
+        "from unknown import First, Second\ndef f(value):\n    if isinstance(value, First):\n        return value\n    if isinstance(value, Second):\n        return value\n",
+        "def f(value, isinstance):\n    if isinstance(value, str):\n        return value\n    if isinstance(value, bytes):\n        return value\n",
+        "def f(value, kinds):\n    if isinstance(value, kinds):\n        return value\n    if isinstance(value, bytes):\n        return value\n",
+    ],
+)
+def test_unsafe_or_non_dispatch_checks_remain(source: str) -> None:
+    assert _review_check(source) == []
+
+
+def test_established_three_arm_error_does_not_gain_duplicate_warning() -> None:
+    source = "def f(value):\n    if isinstance(value, str):\n        return 1\n    if isinstance(value, bytes):\n        return 2\n    if isinstance(value, int):\n        return 3\n"
+    findings = _review_check(source)
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.ERROR
+
+
+def test_source_proven_model_dispatch_warning_has_no_automatic_fix() -> None:
+    source = """from pydantic import BaseModel
+class Added(BaseModel):
+    language: str
+class Removed(BaseModel):
+    language: str
+
+def apply(value: Added | Removed):
+    if isinstance(value, Added):
+        return 'added'
+    elif isinstance(value, Removed):
+        return 'removed'
+    return 'other'
+"""
+    [finding] = check_source([PreferMatchTypeDispatch()], _REVIEW_PATH, source)
+    assert finding.severity is Severity.WARNING
+    assert finding.fixes == ()
+
+
+def test_unrelated_terminal_guards_preserve_a_two_arm_dispatch_suffix() -> None:
+    guards = "".join(f"    if value == {number}:\n        return 'guard'\n" for number in range(128))
+    source = (
+        "def normalize(value):\n" + guards + "    if isinstance(value, str):\n        return 'text'\n"
+        "    if isinstance(value, bytes):\n        return 'binary'\n"
+        "    return 'fallback'\n"
+    )
+    [finding] = _review_check(source)
+    assert (finding.line, finding.col, finding.severity) == (len(guards.splitlines()) + 2, 5, Severity.ERROR)
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    ["isinstance(value, Unknown)", "isinstance(other, int)", "isinstance(value, (str, int))"],
+    ids=["unsupported-type", "different-subject", "overlapping-types"],
+)
+def test_rejected_dispatch_prefix_preserves_its_valid_tail(prefix: str) -> None:
+    source = f"""from vendor import Unknown
+def normalize(value, other):
+    if {prefix}:
+        return 'prefix'
+    if isinstance(value, str):
+        return 'text'
+    if isinstance(value, bytes):
+        return 'binary'
+    return 'fallback'
+"""
+    findings = _review_check(source)
+    assert [(item.line, item.col, item.severity) for item in findings] == [(5, 5, Severity.ERROR)]
+
+
+def test_native_only_mixed_tail_retains_the_upstream_ladder_anchor() -> None:
+    source = """def normalize(value):
+    if isinstance(value, str):
+        return 'text'
+    if isinstance(value, bytes):
+        consume(value)
+    elif isinstance(value, int):
+        consume(value)
+    else:
+        if isinstance(value, float):
+            return 'float'
+        elif isinstance(value, complex):
+            return 'complex'
+    return 'fallback'
+"""
+    findings = _review_check(source)
+    assert [(item.line, item.col, item.severity) for item in findings] == [(4, 5, Severity.ERROR)]

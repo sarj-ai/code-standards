@@ -759,6 +759,8 @@ def _primitive_set(node: ast.expr) -> bool:
 
 
 def _dispatch_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
+    if diagnostic.code == "SARJ080" and diagnostic.severity is not Severity.ERROR:
+        return []
     for root in source.context.nodes(ast.If):
         if not _at(root, diagnostic) or source.comments_between(root.lineno, _last_line(root)):
             continue

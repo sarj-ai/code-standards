@@ -8,6 +8,7 @@ from sarj_rule_contracts import RuleId
 
 from sarj_sql_lint.rules import REGISTRY
 from sarj_sql_lint.rules.no_analytical_queries_in_transactional_db import NoAnalyticalQueriesInTransactionalDb
+from sarj_sql_lint.rules.no_null_comparison import NoNullComparison
 
 
 _STATEMENT_BLOCK = """\
@@ -80,3 +81,19 @@ def test_analytical_policy_meets_existing_budgets_on_fresh_plain_sql(rule_timing
     ceiling = ordered[len(ordered) // 2] * _RELATIVE_OUTLIER_FACTOR + _RELATIVE_SLACK_S
     assert seconds < ceiling
     assert seconds / (source.count("\n") + 1) * 1_000_000 < _ABSOLUTE_MS_PER_KLOC
+
+
+def test_null_comparison_meets_existing_budgets_on_fresh_migration_sql(rule_timings: dict[str, float]) -> None:
+    source = "\n".join(
+        (
+            _SYNTHETIC_SQL.replace("orders_", "null_gate_orders_"),
+            "SELECT id FROM null_gate_orders_0 WHERE note = NULL;",
+        )
+    )
+    path = Path("fresh_null.sql")
+    seconds = _best_time_s(RuleId(NoNullComparison.id), path, source, repeats=1)
+    ordered = sorted(rule_timings.values())
+    ceiling = ordered[len(ordered) // 2] * _RELATIVE_OUTLIER_FACTOR + _RELATIVE_SLACK_S
+    assert seconds < ceiling
+    assert seconds / (source.count("\n") + 1) * 1_000_000 < _ABSOLUTE_MS_PER_KLOC
+    assert len(NoNullComparison().check(path, source)) == 1
