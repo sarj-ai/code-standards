@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { verifyRuleExamples } from "../src/verify-rule-examples.js";
 import { createRule, type RuleDocumentation } from "../src/rules/_docs.js";
 
-const DOCUMENTATION: RuleDocumentation = {
+const DOCUMENTATION: RuleDocumentation<[]> = {
   summary: "Reject debugger statements in an executable example.",
   rationale: "A debugger statement interrupts execution.",
   remediation: "Remove the debugger statement.",
@@ -28,7 +28,7 @@ const DOCUMENTATION: RuleDocumentation = {
   ],
 };
 
-function probeRule(implemented: boolean, documentation: RuleDocumentation = DOCUMENTATION) {
+function probeRule(implemented: boolean, documentation: RuleDocumentation<[]> = DOCUMENTATION) {
   return createRule<[], "debugger">({
     name: "example-probe",
     documentation,

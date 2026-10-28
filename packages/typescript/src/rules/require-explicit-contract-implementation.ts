@@ -21,6 +21,8 @@ const ESCAPED_CLASSES = new WeakMap<
   ts.Program,
   Map<string, ReadonlySet<ts.Symbol>>
 >();
+// Parser updates replace source identities; cached syntax belongs to the immutable source.
+const PROTOTYPE_MUTATIONS = new WeakMap<ts.SourceFile, boolean>();
 
 export const REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION = {
   defaultLevel: "error",
@@ -95,6 +97,8 @@ export const REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION = {
 } as const satisfies RuleDocumentation;
 
 function hasPrototypeMutation(source: ts.SourceFile): boolean {
+  const cached = PROTOTYPE_MUTATIONS.get(source);
+  if (cached !== undefined) return cached;
   function visit(node: ts.Node): boolean | undefined {
     const member = memberName(node);
     if (
@@ -112,7 +116,9 @@ function hasPrototypeMutation(source: ts.SourceFile): boolean {
       return true;
     return ts.forEachChild(node, visit);
   }
-  return visit(source) === true;
+  const mutated = visit(source) === true;
+  PROTOTYPE_MUTATIONS.set(source, mutated);
+  return mutated;
 }
 
 function memberName(node: ts.Node): string | null {

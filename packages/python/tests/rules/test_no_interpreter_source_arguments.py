@@ -1,12 +1,22 @@
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 from sarj_rule_contracts.examples import verify_native_rule
 
 from sarj_python_lint.__main__ import analyze
+import sarj_python_lint._parallel as parallel_engine
 from sarj_python_lint.rule_base import Severity
+from sarj_python_lint.rules._project_index import ProjectIndexSet
 from sarj_python_lint.rules.no_interpreter_source_arguments import NoInterpreterSourceArguments
+
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
+    from sarj_python_lint.rule_base import Diagnostic, Rule
+    from sarj_python_lint.rules._first_party import FirstPartyFacts
 
 
 _CASES = (
@@ -95,6 +105,60 @@ def test_exact_suppression_and_error_level() -> None:
 
 def test_generated_sources_abstain() -> None:
     assert not NoInterpreterSourceArguments().check(Path("generated/check.py"), _CASES[0][1])
+
+
+@pytest.mark.parametrize("jobs", [1, 2])
+def test_selected_rule_preserves_diagnostics_without_preparing_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, jobs: int
+) -> None:
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "example"\nversion = "0.1.0"\n')
+    sources = {
+        tmp_path / "argv.py": "import subprocess\nsubprocess.run(['python3', '-c', '1'])\n",
+        tmp_path / "stdin.py": "import subprocess\nsubprocess.run(['python3', '-'], input='print(1)', text=True)\n",
+        tmp_path / "module.py": "import subprocess\nsubprocess.run(['python3', '-m', 'tools.check'])\n",
+        tmp_path / "shadowed.py": "from subprocess import run\nrun = other\nrun(['python3', '-c', '1'])\n",
+        tmp_path / "generated" / "check.py": "import subprocess\nsubprocess.run(['python3', '-c', '1'])\n",
+    }
+    for path, source in sources.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source)
+    (tmp_path / "unselected.py").write_text("from typing import NewType\nRecordId = NewType('RecordId', int)\n")
+    expected = [
+        finding for path, source in sources.items() for finding in NoInterpreterSourceArguments().check(path, source)
+    ]
+    assert [(finding.path.name, finding.code, finding.line, finding.col) for finding in expected] == [
+        ("argv.py", "SARJ484", 2, 1),
+        ("stdin.py", "SARJ484", 2, 1),
+    ]
+
+    def unexpected_build(
+        paths: Sequence[Path],
+        loaded: Mapping[Path, str],
+        *,
+        facts: FirstPartyFacts | None = None,
+    ) -> ProjectIndexSet:
+        pytest.fail(
+            f"file-only interpreter rule prepared a project index for {len(paths)} selected paths and {len(loaded)} "
+            f"sources (shared facts present: {facts is not None})"
+        )
+
+    original_parallel = parallel_engine.check_parallel
+    observed_projects: list[ProjectIndexSet | None] = []
+
+    def observe_parallel(
+        rule_types: list[type[Rule]], loaded: dict[Path, str], project: ProjectIndexSet | None, *, jobs: int
+    ) -> list[Diagnostic] | None:
+        observed_projects.append(project)
+        return original_parallel(rule_types, loaded, project, jobs=jobs)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- fail at project preparation to prove the selected rule needs no project scan.
+        ProjectIndexSet, "build", unexpected_build
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observe the actual spawned boundary and retain its worker execution.
+        parallel_engine, "check_parallel", observe_parallel
+    )
+    assert analyze([NoInterpreterSourceArguments.id], list(sources), jobs=jobs) == expected
+    assert observed_projects == ([None] if jobs == 2 else [])
 
 
 _STDIN_CASES = (
