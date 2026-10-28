@@ -97,9 +97,11 @@ REPO_STANDARDS_ACTION_PROJECTIONS: Final[dict[str, str]] = {
 STANDARDS_8129_REF = "refs/heads/maintenance/standards-8.129"
 STANDARDS_8129_ANCHOR = "ce60e543d9e44f49c2326a6e560e7d950aac043e"
 STANDARDS_8129_ANCHOR_VERSION = "8.129.9"
-# The #1840 repo-standards 6.13.0 adoption projected onto 8.129.9. Digests cover the
-# candidate bytes with its version rewritten to 8.129.9, so later patches reuse the review.
+# The #1840 repo-standards 6.13.0 adoption projected onto 8.129.9, plus the a5fe4cce nginx
+# pin that replaces the build Ubuntu removed. Digests cover the candidate bytes with its
+# version rewritten to 8.129.9, so later patches reuse the review.
 STANDARDS_8129_APPROVED_SHA256: Final[dict[str, str]] = {
+    ".github/scripts/setup-native-config-tests.sh": "ba4bb12b004afc80782b1be2f66e6ce3026153974cfc88a07fbed20a649d5360",
     ".github/workflows/commit-policy.yml": "1eb42f3cd1a5f1531bdd1311105ad3f375541e5585c5bc384b1cec5d21fbfd33",
     ".sarj-standards.toml": "2be1a237322f0d2aa7a7e49862934f0414a9999ccc77cea8d75817e87a868eef",
     f"{PACKAGE}/pyproject.toml": "86391f9d9f50fd614b81ce5fefbc26afc93bc9607dba294c55843dafcda40165",
