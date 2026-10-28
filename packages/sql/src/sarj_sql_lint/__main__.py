@@ -7,7 +7,7 @@ import stat
 import sys
 from typing import TYPE_CHECKING, Annotated
 
-from sarj_rule_contracts import RuleId, fix_file
+from sarj_rule_contracts import NewlinePolicy, RuleId, fix_file
 import typer
 
 from sarj_sql_lint import __version__
@@ -19,6 +19,8 @@ from sarj_sql_lint.rules.require_fk_index import index_analysis_session
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
+
+    from sarj_rule_contracts import SourceCatalog
 
 
 SKIP_DIR_NAMES = frozenset(
@@ -61,7 +63,7 @@ def _expand_paths(paths: list[Path]) -> list[Path]:
     return out
 
 
-def _check(rule_names: Sequence[str], paths: list[Path]) -> list[Diagnostic]:
+def _check(rule_names: Sequence[str], paths: list[Path], *, sources: SourceCatalog | None = None) -> list[Diagnostic]:
     unknown = [name for name in rule_names if name not in REGISTRY]
     if unknown:
         sys.stderr.write(f"unknown rule(s): {', '.join(unknown)}\n")
@@ -72,7 +74,11 @@ def _check(rule_names: Sequence[str], paths: list[Path]) -> list[Diagnostic]:
     expanded = _expand_paths(paths)
     diags: list[Diagnostic] = []
     for p in expanded:
-        source = p.read_text(encoding="utf-8", errors="replace")
+        source = (
+            p.read_text(encoding="utf-8", errors="replace")
+            if sources is None
+            else sources.capture(p).decode("utf-8", errors="replace", newlines=NewlinePolicy.UNIVERSAL).text
+        )
         for rule in rules:
             diags.extend(d for d in rule.check(p, source) if not is_suppressed(source, d.line, d.code))
     return diags
@@ -81,9 +87,11 @@ def _check(rule_names: Sequence[str], paths: list[Path]) -> list[Diagnostic]:
 def analyze(
     rule_ids: Sequence[str],  # sarj-noqa: SARJ093 -- Public parsing boundary accepts raw names.
     paths: list[Path],
+    *,
+    sources: SourceCatalog | None = None,
 ) -> list[Diagnostic]:
     with index_analysis_session():
-        return _check(rule_ids, paths)
+        return _check(rule_ids, paths, sources=sources)
 
 
 @dataclass

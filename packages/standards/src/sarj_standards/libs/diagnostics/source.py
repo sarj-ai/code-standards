@@ -7,6 +7,8 @@ from pathlib import Path
 import re
 from typing import TYPE_CHECKING, NamedTuple
 
+from sarj_rule_contracts import SourceSnapshot
+
 from .models import Position, Region
 
 
@@ -28,7 +30,7 @@ class SourceDocument:
     _lines: tuple[str, ...] = field(init=False, repr=False)
     _line_byte_offsets: tuple[int, ...] = field(init=False, repr=False)
     _byte_length: int = field(init=False, repr=False)
-    _utf16_indexes: dict[int, _Utf16Index] = field(init=False, repr=False)
+    _utf16_indexes: dict[int, _Utf16Index] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         lines = tuple(re.findall(r".*?(?:\r\n|\r|\n)|.+\Z", self.text, flags=re.DOTALL)) or ("",)
@@ -46,7 +48,11 @@ class SourceDocument:
 
     @classmethod
     def read(cls, path: Path) -> Self:
-        return cls(path, path.read_bytes().decode("utf-8", errors="surrogateescape"))
+        return cls.from_snapshot(SourceSnapshot.read(path))
+
+    @classmethod
+    def from_snapshot(cls, snapshot: SourceSnapshot) -> Self:
+        return cls(snapshot.path, snapshot.decode("utf-8", errors="surrogateescape").text)
 
     def point(self, *, line: int, column: int) -> Position | None:
         if line < 1 or column < 1 or line > len(self._lines):

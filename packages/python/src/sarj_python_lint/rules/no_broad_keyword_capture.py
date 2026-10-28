@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, ClassVar, final
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
+    DiagnosticSeverity,
     ExampleFile,
     ExampleOutcome,
     Rule,
@@ -271,7 +272,7 @@ def _interface_severity(
     context: PythonFileContext,
     semantics: AnnotationSemantics,
     mutated_members: frozenset[str],
-) -> Severity:
+) -> DiagnosticSeverity:
     if function.name.startswith("__") and function.name.endswith("__"):
         return Severity.WARNING
     if any(

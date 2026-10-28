@@ -12,10 +12,13 @@ import sarj_standards.cli.main as cli
 from sarj_standards.libs.diagnostics import Completion, TrustMode
 from sarj_standards.libs.linting import external as external_module
 from sarj_standards.libs.linting.external import ProcessOutput, analyze_external, parse_basedpyright, run_process
+from tests.process_fakes import FakeProcessExecutor
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from sarj_standards.libs.linting.process import ProcessRequest
 
 
 class _TypeSummary(BaseModel):
@@ -74,7 +77,7 @@ def test_native_python_selection_preserves_project_config_and_diagnostics(
         [str(selected if selection == "file" else project)],
         root=tmp_path,
         trust=TrustMode.SAFE,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         capabilities=frozenset({"pyright"}),
     )
 
@@ -151,16 +154,18 @@ def test_full_cli_keeps_the_configured_python_project_scope(
     )
     commands: list[tuple[str, ...]] = []
     outputs: list[ProcessOutput] = []
+    execute = external_module.DEFAULT_EXECUTOR.run
 
-    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
-        output = run_process(argv, cwd=cwd)
+    def runner(request: ProcessRequest) -> ProcessOutput:
+        argv = request.argv
+        output = execute(request)
         if Path(argv[0]).name == "basedpyright":
             commands.append(tuple(argv))
             outputs.append(output)
         return output
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observe the native analyzer boundary while exercising full CLI routing.
-        external_module, "run_process", runner
+        external_module.DEFAULT_EXECUTOR, "run", runner
     )
     status = cli.main(["--root", str(tmp_path), "analyze", *arguments, "--external", "--format", "json"])
     capsys.readouterr()

@@ -5,16 +5,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, final
 
+from sarj_python_lint._prepared_sources import LOCAL_MODULE_MAX_BYTES, NeedsSerialSourceError
 from sarj_python_lint._source import python_source_encoding
 from sarj_python_lint.rules._imports import ImportIndex
 
 
 if TYPE_CHECKING:
+    from sarj_python_lint._prepared_sources import PreparedSourceInputs
     from sarj_python_lint.rules._first_party import FirstPartyFacts
 
 
 _MAX_ANCESTORS = 24
-_MAX_MODULE_BYTES = 256_000
+_MAX_MODULE_BYTES = LOCAL_MODULE_MAX_BYTES
 LOCAL_SOURCE_CACHE_LIMIT = 512
 
 
@@ -34,7 +36,8 @@ class LocalSourceKeys:
 
 @final
 class LocalSourceFacts:
-    def __init__(self) -> None:
+    def __init__(self, *, source_inputs: PreparedSourceInputs | None = None) -> None:
+        self._source_inputs = source_inputs
         self._resolutions: dict[tuple[Path, str | None, int], Path | None] = {}
         self._modules: dict[Path, LocalModule | None] = {}
 
@@ -48,7 +51,12 @@ class LocalSourceFacts:
             return self._resolutions[key]
         if len(self._resolutions) >= LOCAL_SOURCE_CACHE_LIMIT:
             return None
-        result = _resolve_module(current, module, level, facts=facts)
+        if self._source_inputs is not None and self._source_inputs.sealed:
+            result = self._source_inputs.resolution(key)
+        else:
+            result = _resolve_module(current, module, level, facts=facts)
+            if self._source_inputs is not None:
+                self._source_inputs.record_resolution(key, result)
         self._resolutions[key] = result
         return result
 
@@ -57,7 +65,9 @@ class LocalSourceFacts:
             return self._modules[path]
         if len(self._modules) >= LOCAL_SOURCE_CACHE_LIMIT:
             return None
-        module = _read_module(path)
+        module = _read_module(path, source_inputs=self._source_inputs)
+        if module is None and self._source_inputs is not None:
+            self._source_inputs.record_failure(path)
         self._modules[path] = module
         return module
 
@@ -118,17 +128,39 @@ def _safe_path(path: Path, root: Path) -> bool:
     return False
 
 
-def _read_module(path: Path) -> LocalModule | None:
-    try:
-        with path.open("rb") as stream:
-            data = stream.read(_MAX_MODULE_BYTES + 1)
-        if len(data) > _MAX_MODULE_BYTES:
+def _read_module(path: Path, *, source_inputs: PreparedSourceInputs | None = None) -> LocalModule | None:
+    snapshot = None
+    if source_inputs is None:
+        try:
+            with path.open("rb") as stream:
+                data = stream.read(_MAX_MODULE_BYTES + 1)
+        except OSError, UnicodeError, SyntaxError:
             return None
+    else:
+        try:
+            snapshot = source_inputs.module_snapshot(path)
+        except OSError, UnicodeError, SyntaxError:
+            return None
+        if snapshot is None:
+            return None
+        data = snapshot.raw
+    if len(data) > _MAX_MODULE_BYTES:
+        return None
+    try:
         source = data.decode(python_source_encoding(data))
+    except UnicodeError, SyntaxError:
+        if source_inputs is not None and source_inputs.sealed:
+            raise NeedsSerialSourceError from None
+        return None
+    except OSError:
+        return None
+    try:
         tree = ast.parse(source, filename=str(path))
     except OSError, UnicodeError, SyntaxError:
         return None
     runtime_imports = ast.Module(
         body=[node for node in tree.body if isinstance(node, (ast.Import, ast.ImportFrom))], type_ignores=[]
     )
+    if source_inputs is not None and snapshot is not None:
+        source_inputs.remember_module(path, snapshot)
     return LocalModule(path, source, tree, ImportIndex.from_tree(runtime_imports))

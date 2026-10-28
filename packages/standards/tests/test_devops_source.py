@@ -16,6 +16,7 @@ from sarj_standards.libs.linting.devops_source import (
     parse_tflint,
 )
 from sarj_standards.libs.linting.external import ProcessOutput
+from tests.process_fakes import FakeProcessExecutor
 
 
 if TYPE_CHECKING:
@@ -41,7 +42,10 @@ def test_actionlint_clean_empty_protocol(tmp_path: Path) -> None:
         )
 
     reports = analyze_sources(
-        root=tmp_path, paths=(".github/workflows/test.yml",), selected=frozenset({"actionlint"}), runner=runner
+        root=tmp_path,
+        paths=(".github/workflows/test.yml",),
+        selected=frozenset({"actionlint"}),
+        runner=FakeProcessExecutor(runner),
     )
     assert reports[0].completion is Completion.COMPLETE
     assert any(argument.startswith("-shellcheck=") and argument != "-shellcheck=" for argument in calls[-1])
@@ -63,7 +67,10 @@ def test_actionlint_broken_protocol_is_fatal(tmp_path: Path, status: int, payloa
         )
 
     reports = analyze_sources(
-        root=tmp_path, paths=(".github/workflows/test.yml",), selected=frozenset({"actionlint"}), runner=runner
+        root=tmp_path,
+        paths=(".github/workflows/test.yml",),
+        selected=frozenset({"actionlint"}),
+        runner=FakeProcessExecutor(runner),
     )
     assert reports[0].completion is Completion.FAILED
     assert reports[0].issues
@@ -96,7 +103,10 @@ def test_actionlint_preserves_declared_runners_without_importing_ignores(tmp_pat
         return ProcessOutput(0, "", "")
 
     reports = analyze_sources(
-        root=tmp_path, paths=(".github/workflows/test.yml",), selected=frozenset({"actionlint"}), runner=runner
+        root=tmp_path,
+        paths=(".github/workflows/test.yml",),
+        selected=frozenset({"actionlint"}),
+        runner=FakeProcessExecutor(runner),
     )
     assert reports[0].completion is Completion.COMPLETE
     assert configurations == [{"self-hosted-runner": {"labels": ["blacksmith-2vcpu-ubuntu-2404"]}}]
@@ -113,7 +123,10 @@ def test_actionlint_invalid_runner_labels_fail_closed(tmp_path: Path, declaratio
         return ProcessOutput(0, "version: 0.11.0", "")
 
     reports = analyze_sources(
-        root=tmp_path, paths=(".github/workflows/test.yml",), selected=frozenset({"actionlint"}), runner=runner
+        root=tmp_path,
+        paths=(".github/workflows/test.yml",),
+        selected=frozenset({"actionlint"}),
+        runner=FakeProcessExecutor(runner),
     )
     assert reports[0].completion is Completion.FAILED
     assert "non-empty strings" in reports[0].issues[0].message
@@ -174,7 +187,9 @@ def test_hadolint_selects_dockerfile_variants_without_ignore_files(
         calls.append(tuple(argv))
         return ProcessOutput(0, "Haskell Dockerfile Linter 2.15.1" if "--version" in argv else "[]", "")
 
-    reports = analyze_sources(root=tmp_path, paths=(name,), selected=frozenset({"hadolint"}), runner=runner)
+    reports = analyze_sources(
+        root=tmp_path, paths=(name,), selected=frozenset({"hadolint"}), runner=FakeProcessExecutor(runner)
+    )
     if selected:
         assert len(reports) == 1
         assert reports[0].completion is Completion.COMPLETE
@@ -227,7 +242,10 @@ def test_untrusted_terraform_only_formats_and_never_initializes(tmp_path: Path) 
         return ProcessOutput(0, "", "")
 
     reports = analyze_sources(
-        root=tmp_path, paths=("iac/main.tf",), selected=frozenset({"terraform", "tflint"}), runner=runner
+        root=tmp_path,
+        paths=("iac/main.tf",),
+        selected=frozenset({"terraform", "tflint"}),
+        runner=FakeProcessExecutor(runner),
     )
     assert reports[0].completion is Completion.COMPLETE
     assert reports[1].completion is Completion.FAILED
@@ -245,7 +263,11 @@ def test_compose_static_contract_is_explicit(tmp_path: Path) -> None:
         return ProcessOutput(0, '{"version":"v5.6.1"}' if "version" in argv else '{"services":{}}', "")
 
     reports = analyze_sources(
-        root=tmp_path, paths=("compose.yaml",), selected=frozenset({"compose"}), runner=runner, compose_version="5.6.1"
+        root=tmp_path,
+        paths=("compose.yaml",),
+        selected=frozenset({"compose"}),
+        runner=FakeProcessExecutor(runner),
+        compose_version="5.6.1",
     )
     assert reports[0].name == "compose-static"
     assert reports[0].completion is Completion.COMPLETE
@@ -270,7 +292,9 @@ def test_json_terraform_is_never_passed_to_native_formatter(tmp_path: Path) -> N
         calls.append(tuple(argv))
         return ProcessOutput(0, "Terraform v1.17.0", "")
 
-    reports = analyze_sources(root=tmp_path, paths=("main.tf.json",), selected=frozenset({"terraform"}), runner=runner)
+    reports = analyze_sources(
+        root=tmp_path, paths=("main.tf.json",), selected=frozenset({"terraform"}), runner=FakeProcessExecutor(runner)
+    )
     assert reports[0].file_count == 0
     assert reports[1].completion is Completion.FAILED
     assert not any("fmt" in call or "init" in call for call in calls)
@@ -294,7 +318,7 @@ def test_terraform_formats_variables_and_tests_without_validating_them_as_module
         paths=names,
         selected=frozenset({"terraform", "tflint"}),
         trust_repository_code=True,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
     )
     assert len(reports) == 1
     assert reports[0].completion is Completion.COMPLETE
@@ -324,7 +348,7 @@ def test_zizmor_is_owned_by_the_canonical_security_adapter(tmp_path: Path) -> No
         root=tmp_path,
         paths=(".github/workflows/test.yml", "action.yml"),
         selected=frozenset({"zizmor"}),
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
     )
     assert reports == ()
     assert calls == []

@@ -5,7 +5,7 @@ from enum import StrEnum
 import json
 from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, Final, NewType, Self
+from typing import TYPE_CHECKING, Final, Literal, NewType, Self
 
 
 if TYPE_CHECKING:
@@ -148,6 +148,14 @@ class ExpectedOutcome(StrEnum):
 
 ExampleOutcome = ExpectedOutcome
 Severity = DefaultLevel
+type DiagnosticSeverity = Literal[DefaultLevel.ERROR, DefaultLevel.WARNING]
+
+
+def diagnostic_severity(value: DefaultLevel) -> DiagnosticSeverity:
+    if value is DefaultLevel.ERROR or value is DefaultLevel.WARNING:
+        return value
+    msg = "native diagnostic severity must be error or warning"
+    raise ValueError(msg)
 
 
 @dataclass(frozen=True, slots=True)

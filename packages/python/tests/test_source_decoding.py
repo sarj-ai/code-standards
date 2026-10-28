@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import ast
 import codecs
+import tokenize
 from typing import TYPE_CHECKING
 
 import pytest
+from sarj_rule_contracts import NewlinePolicy, SourceSnapshot
 
 from sarj_python_lint.__main__ import analyze, main
-from sarj_python_lint._source import read_python_source
+from sarj_python_lint._source import python_source_encoding, read_python_source
 from sarj_python_lint.ratchet import measure
 from sarj_python_lint.rules._first_party import FirstPartyFacts
 from sarj_python_lint.rules._local_source import LocalSourceFacts
@@ -19,6 +21,24 @@ if TYPE_CHECKING:
 
 
 _UNICODE_TEST = "from unittest.mock import Mock\ndef test_café():\n    naïve = Mock()\n    naïve.send()\n"
+
+
+@pytest.mark.parametrize("ending", ["\n", "\r\n", "\r"])
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-8-sig", "latin-1", "cp1252"])
+def test_snapshot_decoding_matches_python_text_stream_policy(tmp_path: Path, ending: str, encoding: str) -> None:
+    path = tmp_path / "source.py"
+    source = f"# coding: {encoding}\n" + "name = 'café'\nother = 1\n".replace("\n", ending)
+    path.write_bytes(source.encode(encoding))
+    with tokenize.open(path) as stream:
+        expected = stream.read()
+
+    snapshot = SourceSnapshot.read(path)
+    decoded = snapshot.decode(python_source_encoding(snapshot.raw), newlines=NewlinePolicy.UNIVERSAL)
+
+    assert decoded.text == read_python_source(path) == expected
+    assert "\r" not in decoded.text
+    assert not decoded.text.startswith("\ufeff")
+    assert snapshot.raw == source.encode(encoding)
 
 
 @pytest.mark.parametrize(

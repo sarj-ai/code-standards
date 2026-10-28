@@ -13,7 +13,10 @@ import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final
 
-from sarj_python_lint._source import read_python_source, symbol_prefilter_source
+from sarj_rule_contracts import SourceSnapshot
+
+from sarj_python_lint._prepared_sources import CapturedSource, NeedsSerialSourceError
+from sarj_python_lint._source import decode_python_source, read_python_source, symbol_prefilter_source
 from sarj_python_lint.rules._ast_index import NodeIndex, children, nodes, walk as walk_ast
 from sarj_python_lint.rules._first_party import FirstPartyFacts, project_root
 from sarj_python_lint.rules._imports import ImportIndex
@@ -24,6 +27,8 @@ from sarj_python_lint.rules._paths import is_generated
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence, Set as AbstractSet
     from typing import Self
+
+    from sarj_python_lint._prepared_sources import PreparedSourceInputs
 
 
 _SKIP_DIRS = frozenset(
@@ -147,12 +152,14 @@ class SourceUnit:
     source: str
     tree: ast.Module | None
     imports: Mapping[str, SymbolRef]
+    captured: CapturedSource | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class LoadedSource:
     path: Path
     source: str
+    captured: CapturedSource | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,13 +167,15 @@ class _IndexedSource:
     key: Path
     path: Path
     module: str | None
-    source: str
+    source: str | None
+    captured: CapturedSource | None = None
 
 
 @dataclass(frozen=True, slots=True)
 class ProjectSourceSnapshot:
     roots: tuple[Path, ...]
     units: tuple[_IndexedSource, ...]
+    aliases: tuple[tuple[Path, Path], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -199,9 +208,18 @@ class ProjectIndexSet:
     # They remain mutable Python objects; in-place mutation can leave cached facts stale.
     # Use with_unit() with a fresh unit, or rebuild from an updated source snapshot.
     # Snapshots capture source strings, not later AST or import mutations.
-    def __init__(self, units: Mapping[Path, SourceUnit], roots: Sequence[Path] = ()) -> None:
+    def __init__(
+        self,
+        units: Mapping[Path, SourceUnit],
+        roots: Sequence[Path] = (),
+        *,
+        aliases: Mapping[Path, Path] | None = None,
+        sealed: bool = False,
+    ) -> None:
         self._units = MappingProxyType(dict(units))
         self._roots = tuple(roots)
+        self._aliases = MappingProxyType({} if aliases is None else dict(aliases))
+        self._sealed = sealed
         self._namespace_mutation: dict[str, bool] = {}
         self._canonical_values: dict[SymbolRef, tuple[SymbolRef, ...]] = {}
         self._type_providers: dict[ast.Module, _TypeProviderFacts] = {}
@@ -220,24 +238,43 @@ class ProjectIndexSet:
         # module identities/order of the complete prepared source graph.
         return ProjectSourceSnapshot(
             self._roots,
-            tuple(_IndexedSource(key, unit.path, unit.module, unit.source) for key, unit in self._units.items()),
+            tuple(
+                _IndexedSource(
+                    key,
+                    unit.path,
+                    unit.module,
+                    None if unit.captured is not None and unit.captured.snapshot is not None else unit.source,
+                    unit.captured,
+                )
+                for key, unit in self._units.items()
+            ),
+            tuple(self._aliases.items()),
         )
 
     @classmethod
-    def from_source_snapshot(cls, snapshot: ProjectSourceSnapshot) -> Self:
+    def from_source_snapshot(cls, snapshot: ProjectSourceSnapshot, *, sealed: bool = False) -> Self:
         units: dict[Path, SourceUnit] = {}
         for source in snapshot.units:
+            text = source.source
+            if text is None:
+                if source.captured is None or source.captured.snapshot is None:
+                    raise NeedsSerialSourceError
+                try:
+                    text = decode_python_source(source.captured.snapshot)
+                except UnicodeError, SyntaxError:
+                    raise NeedsSerialSourceError from None
             tree: ast.Module | None = None
             with suppress(SyntaxError):
-                tree = ast.parse(source.source, filename=str(source.path))
+                tree = ast.parse(text, filename=str(source.path))
             units[source.key] = SourceUnit(
                 path=source.path,
                 module=source.module,
-                source=source.source,
+                source=text,
                 tree=tree,
                 imports=MappingProxyType(_imports(source.module, tree, is_package=source.path.name == "__init__.py")),
+                captured=source.captured,
             )
-        return cls(units, snapshot.roots)
+        return cls(units, snapshot.roots, aliases=dict(snapshot.aliases), sealed=sealed)
 
     @classmethod
     def build(
@@ -246,29 +283,50 @@ class ProjectIndexSet:
         loaded: Mapping[Path, str],
         *,
         facts: FirstPartyFacts | None = None,
+        source_inputs: PreparedSourceInputs | None = None,
     ) -> Self:
         roots = _project_roots(paths, facts=facts)
         sources: dict[Path, str] = {}
+        captures: dict[Path, CapturedSource] = {}
+        aliases: dict[Path, Path] = {}
         for path, source in loaded.items():
             try:
-                sources[path.resolve()] = source
+                resolved = path.resolve()
             except OSError:
                 continue
+            sources[resolved] = source
+            if source_inputs is not None:
+                aliases[path] = resolved
+                captured = source_inputs.associate_selected(path, resolved)
+                if captured is not None:
+                    captures[resolved] = captured
         for root in roots:
-            _load_root_sources(root, sources)
-        return cls(_units(sources, roots), roots)
+            if source_inputs is None:
+                _load_root_sources(root, sources)
+            else:
+                _load_root_sources(root, sources, captures=captures, source_inputs=source_inputs)
+        units = _units(sources, roots) if source_inputs is None else _units(sources, roots, captures=captures)
+        if source_inputs is not None:
+            for key, unit in units.items():
+                if unit.captured is not None:
+                    source_inputs.remember(key, unit.captured)
+        return cls(units, roots) if source_inputs is None else cls(units, roots, aliases=aliases)
 
     @classmethod
     def single(cls, path: Path, source: str) -> Self:
         return cls(_units({path: source}))
 
     def with_unit(self, unit: SourceUnit) -> Self:
-        return type(self)({**self._units, unit.path: unit}, self._roots)
+        return type(self)({**self._units, unit.path: unit}, self._roots, aliases=self._aliases, sealed=self._sealed)
 
     def unit(self, path: Path) -> SourceUnit | None:
         direct = self._units.get(path)
         if direct is not None:
             return direct
+        if path in self._aliases:
+            return self._units.get(self._aliases[path])
+        if self._sealed:
+            raise NeedsSerialSourceError
         try:
             return self._units.get(path.resolve())
         except OSError:
@@ -935,7 +993,12 @@ def _child_type_context(*, parent: ast.AST, child: ast.AST, inherited: bool) -> 
             return inherited
 
 
-def _units(sources: Mapping[Path, str], roots: Sequence[Path] = ()) -> dict[Path, SourceUnit]:
+def _units(
+    sources: Mapping[Path, str],
+    roots: Sequence[Path] = (),
+    *,
+    captures: Mapping[Path, CapturedSource] | None = None,
+) -> dict[Path, SourceUnit]:
     parsed: dict[Path, tuple[str | None, str, ast.Module | None]] = {}
     for path, source in sources.items():
         if not _is_index_candidate(symbol_prefilter_source(source)):
@@ -951,6 +1014,7 @@ def _units(sources: Mapping[Path, str], roots: Sequence[Path] = ()) -> dict[Path
             source=source,
             tree=tree,
             imports=MappingProxyType(_imports(module, tree, is_package=path.name == "__init__.py")),
+            captured=None if captures is None else captures.get(path),
         )
         for path, (module, source, tree) in parsed.items()
     }
@@ -1167,7 +1231,13 @@ def _class_summary(unit: SourceUnit, statement: ast.ClassDef, symbol: SymbolRef)
     )
 
 
-def _load_root_sources(root: Path, sources: dict[Path, str]) -> None:
+def _load_root_sources(
+    root: Path,
+    sources: dict[Path, str],
+    *,
+    captures: dict[Path, CapturedSource] | None = None,
+    source_inputs: PreparedSourceInputs | None = None,
+) -> None:
     count = 0
     source_chars = 0
     for path in _python_files(root):
@@ -1179,25 +1249,53 @@ def _load_root_sources(root: Path, sources: dict[Path, str]) -> None:
                 continue
         except OSError:
             continue
-        loaded_source = _read_bounded_source(root, path)
+        loaded_source = (
+            _read_bounded_source(root, path)
+            if source_inputs is None
+            else _read_bounded_source(root, path, source_inputs=source_inputs)
+        )
         if loaded_source is None:
             continue
         if source_chars + len(loaded_source.source) > _MAX_SOURCE_CHARS_PER_ROOT:
             break
         sources.setdefault(loaded_source.path, loaded_source.source)
+        if (
+            captures is not None
+            and loaded_source.captured is not None
+            and _is_index_candidate(symbol_prefilter_source(loaded_source.source))
+        ):
+            captures.setdefault(loaded_source.path, loaded_source.captured)
         source_chars += len(loaded_source.source)
         count += 1
 
 
-def _read_bounded_source(root: Path, path: Path) -> LoadedSource | None:
+def _read_bounded_source(
+    root: Path,
+    path: Path,
+    *,
+    source_inputs: PreparedSourceInputs | None = None,
+) -> LoadedSource | None:
     try:
         if path.is_symlink() or not path.is_file() or path.stat().st_size > _MAX_FILE_BYTES:
             return None
         resolved = path.resolve()
         resolved.relative_to(root.resolve())
-        return LoadedSource(resolved, read_python_source(resolved))
+        return _load_project_source(resolved, source_inputs=source_inputs)
     except OSError, ValueError, SyntaxError:
         return None
+
+
+def _load_project_source(path: Path, *, source_inputs: PreparedSourceInputs | None) -> LoadedSource | None:
+    if source_inputs is None:
+        return LoadedSource(path, read_python_source(path))
+    snapshot = source_inputs.project_snapshot(path)
+    if snapshot is None:
+        with path.open("rb") as stream:
+            raw = stream.read(_MAX_FILE_BYTES + 1)
+        if len(raw) > _MAX_FILE_BYTES:
+            return None
+        snapshot = SourceSnapshot(path, raw)
+    return LoadedSource(path, decode_python_source(snapshot), CapturedSource.from_snapshot(snapshot))
 
 
 def _python_files(root: Path) -> Iterator[Path]:

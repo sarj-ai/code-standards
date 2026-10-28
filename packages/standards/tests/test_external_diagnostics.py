@@ -31,7 +31,9 @@ from sarj_standards.libs.linting.external import (
     parse_swiftformat,
     parse_swiftlint,
 )
+from sarj_standards.libs.linting.process import ProcessRequest, RequestExecutor
 from sarj_standards.libs.linting.runner import GroupedPaths
+from tests.process_fakes import FakeProcessExecutor
 
 
 if TYPE_CHECKING:
@@ -95,7 +97,7 @@ def test_eslint_ignored_selected_file_is_incomplete_coverage(tmp_path: Path) -> 
         [str(source)],
         root=tmp_path,
         trust=TrustMode.TRUSTED,
-        runner=ignored,
+        runner=FakeProcessExecutor(ignored),
         capabilities=frozenset({"eslint"}),
     )
 
@@ -150,7 +152,7 @@ def test_deptry_runs_once_per_python_project_with_only_selected_warning_rules(
         (str(source),),
         root=tmp_path,
         trust=TrustMode.TRUSTED,
-        runner=run,
+        runner=FakeProcessExecutor(run),
         capabilities=frozenset({"deptry"}),
     )
 
@@ -185,7 +187,7 @@ def test_deptry_refuses_unbounded_project_fanout(tmp_path: Path) -> None:
         sources,
         root=tmp_path,
         trust=TrustMode.TRUSTED,
-        runner=run,
+        runner=FakeProcessExecutor(run),
         capabilities=frozenset({"deptry"}),
     )
 
@@ -217,7 +219,7 @@ def test_deptry_allows_the_bounded_project_limit(tmp_path: Path) -> None:
         sources,
         root=tmp_path,
         trust=TrustMode.TRUSTED,
-        runner=run,
+        runner=FakeProcessExecutor(run),
         capabilities=frozenset({"deptry"}),
     )
 
@@ -276,7 +278,7 @@ def test_eslint_batches_preserve_every_file_and_configuration_owner(
         selection,
         root=tmp_path,
         trust=TrustMode.TRUSTED,
-        runner=run,
+        runner=FakeProcessExecutor(run),
         capabilities=frozenset({"eslint"}),
         grouped=GroupedPaths(typescript=selection),
     )
@@ -337,7 +339,11 @@ def test_eslint_batch_failure_keeps_partial_findings_and_fails_closed(
         return ProcessOutput(1, json.dumps(payload), "")
 
     reports = analyze_external(
-        paths, root=tmp_path, trust=TrustMode.TRUSTED, runner=run, capabilities=frozenset({"eslint"})
+        paths,
+        root=tmp_path,
+        trust=TrustMode.TRUSTED,
+        runner=FakeProcessExecutor(run),
+        capabilities=frozenset({"eslint"}),
     )
 
     assert len(reports) == 2
@@ -364,7 +370,11 @@ def test_eslint_batches_do_not_reset_the_aggregate_deadline(monkeypatch: pytest.
         return ProcessOutput(0, _eslint_clean_payload(argv, cwd), "")
 
     reports = analyze_external(
-        paths, root=tmp_path, trust=TrustMode.TRUSTED, runner=run, capabilities=frozenset({"eslint"})
+        paths,
+        root=tmp_path,
+        trust=TrustMode.TRUSTED,
+        runner=FakeProcessExecutor(run),
+        capabilities=frozenset({"eslint"}),
     )
 
     assert calls == 1
@@ -398,7 +408,11 @@ def test_eslint_final_batch_over_deadline_keeps_findings_and_fails(
         return ProcessOutput(finding_count, json.dumps(payload), "")
 
     reports = analyze_external(
-        [str(source)], root=tmp_path, trust=TrustMode.TRUSTED, runner=run, capabilities=frozenset({"eslint"})
+        [str(source)],
+        root=tmp_path,
+        trust=TrustMode.TRUSTED,
+        runner=FakeProcessExecutor(run),
+        capabilities=frozenset({"eslint"}),
     )
 
     assert len(reports[0].diagnostics) == finding_count
@@ -407,7 +421,10 @@ def test_eslint_final_batch_over_deadline_keeps_findings_and_fails(
 
 
 @pytest.mark.usefixtures("_fixed_host_memory")
-def test_eslint_batches_pass_only_remaining_time_to_subprocess(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize("decorated", [False, True], ids=("bare", "recording"))
+def test_eslint_batches_pass_only_remaining_time_to_subprocess(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, decorated: bool
+) -> None:
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- keep two transport calls to verify deadline sharing.
         external_module, "_ESLINT_ANALYSIS_BATCH_SIZE", 250
     )
@@ -422,19 +439,28 @@ def test_eslint_batches_pass_only_remaining_time_to_subprocess(monkeypatch: pyte
     timeouts: list[float] = []
     monkeypatch.setattr(time, "monotonic", lambda: elapsed)  # sarj-noqa: SARJ445 -- intercepts external tool routing
 
-    def run(argv: Sequence[str], *, cwd: Path, environment: dict[str, str], timeout_seconds: float) -> ProcessOutput:
+    def run(request: ProcessRequest) -> ProcessOutput:
         nonlocal elapsed
+        argv, cwd, environment = request.argv, request.cwd, request.environment
         assert Path(argv[0]).name == "node"
         assert Path(argv[1]).name == "eslint-selected-rules.mts"
         assert json.loads(argv[2])["full"] is True
         assert cwd == tmp_path
         assert environment["NODE_OPTIONS"] == "--max-old-space-size=4096"
-        timeouts.append(timeout_seconds)
+        assert request.deadline is not None
+        timeouts.append(request.deadline - time.monotonic())
         elapsed += 125.0
         return ProcessOutput(0, _eslint_clean_payload(argv, cwd), "")
 
     monkeypatch.setattr(external_module, "_run_process", run)  # sarj-noqa: SARJ445 -- intercepts external tool routing
-    reports = analyze_external(paths, root=tmp_path, trust=TrustMode.TRUSTED, capabilities=frozenset({"eslint"}))
+    runner = (
+        RequestExecutor(external_module.DEFAULT_EXECUTOR.run, external_module.DEFAULT_EXECUTOR.capabilities)
+        if decorated
+        else None
+    )
+    reports = analyze_external(
+        paths, root=tmp_path, trust=TrustMode.TRUSTED, capabilities=frozenset({"eslint"}), runner=runner
+    )
 
     assert timeouts == [300.0, 175.0]
     assert all(report.completion is Completion.COMPLETE for report in reports)
@@ -671,7 +697,7 @@ def test_mobile_capabilities_run_only_for_mobile_files(tmp_path: Path) -> None:
         [str(swift), str(kotlin)],
         root=tmp_path,
         trust=TrustMode.SAFE,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         capabilities=frozenset({"swiftformat", "swiftlint", "ktlint", "detekt", "mobile-security"}),
     )
 
@@ -735,7 +761,7 @@ def test_mobile_analyzers_use_manifest_destinations_and_pinned_mintfile(tmp_path
         [str(swift), str(kotlin)],
         root=tmp_path,
         trust=TrustMode.SAFE,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         capabilities=frozenset({"swiftformat", "swiftlint", "ktlint", "detekt"}),
     )
 
@@ -816,7 +842,7 @@ def test_mobile_analyzers_ignore_same_language_files_outside_manifest_destinatio
         [str(included_swift), str(included_kotlin), str(excluded_swift), str(excluded_kotlin)],
         root=tmp_path,
         trust=TrustMode.SAFE,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         capabilities=frozenset({"swiftformat", "ktlint", "mobile-security"}),
     )
 
@@ -857,7 +883,7 @@ def test_detekt_fails_closed_when_the_sarif_report_exceeds_the_output_limit(
         [str(kotlin)],
         root=tmp_path,
         trust=TrustMode.SAFE,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         capabilities=frozenset({"detekt"}),
     )
 
@@ -943,7 +969,7 @@ def test_mobile_config_parse_failures_return_a_failed_tool_report(tmp_path: Path
         [str(source)],
         root=tmp_path,
         trust=TrustMode.SAFE,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         capabilities=frozenset({"mobile-security"}),
     )
 
@@ -1017,7 +1043,7 @@ def test_shellcheck_runs_hermetically_for_supported_shell(tmp_path: Path) -> Non
         [str(source)],
         root=tmp_path,
         trust=TrustMode.SAFE,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         capabilities=frozenset({"shellcheck"}),
     )
 
@@ -1049,7 +1075,7 @@ def test_shellcheck_reports_zsh_as_uncovered_without_invocation(tmp_path: Path) 
         [str(source)],
         root=tmp_path,
         trust=TrustMode.SAFE,
-        runner=forbidden,
+        runner=FakeProcessExecutor(forbidden),
         capabilities=frozenset({"shellcheck"}),
     )
 
@@ -1119,9 +1145,9 @@ def test_shellcheck_exact_version_is_attested(monkeypatch: pytest.MonkeyPatch, t
         return ProcessOutput(0, "ShellCheck\nversion: 0.10.0\n", "")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts external tool routing
-        external_module,
-        "run_process",
-        old_version,
+        external_module.DEFAULT_EXECUTOR,
+        "run",
+        FakeProcessExecutor(old_version).run,
     )
 
     issue = external_module._shellcheck_version_issue(tmp_path)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _shellcheck_version_issue contract directly with controlled fixture data.
@@ -1462,7 +1488,7 @@ def test_react_doctor_incomplete_report_retains_bounded_redacted_native_context(
         (str(package),),
         root=tmp_path,
         trust=TrustMode.SAFE,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         capabilities=frozenset({"eslint"}),
         include_react_doctor=True,
         react_doctor_full_scan=True,
@@ -1648,7 +1674,7 @@ def test_react_metadata_only_scope_still_runs_doctor(tmp_path: Path, metadata_na
         (str(metadata),),
         root=tmp_path,
         trust=TrustMode.SAFE,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         include_react_doctor=True,
     )
 
@@ -1721,7 +1747,7 @@ def test_react_doctor_only_accepts_empty_degraded_changed_scope_without_project_
         project,
         projects=(project,),
         root=tmp_path,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=1,
         staged=False,
@@ -1773,7 +1799,7 @@ def test_react_doctor_skips_changed_scope_without_selected_project_source(
         tmp_path,
         projects=(project,),
         root=tmp_path,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=True,
         file_count=2,
         staged=False,
@@ -1844,11 +1870,11 @@ def test_react_doctor_retries_one_valid_upstream_baseline_degradation() -> None:
     bounded = external_module._react_doctor_baseline_retry_runner(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _react_doctor_baseline_retry_runner contract directly with controlled fixture data.
         command,
         root=Path("/repo"),
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         explicit_base=base,
     )
 
-    assert bounded(command, cwd=Path("/repo")) == ProcessOutput(0, "{}", "")
+    assert bounded.run(external_module.process_request(command, cwd=Path("/repo"))) == ProcessOutput(0, "{}", "")
     assert doctor_calls == 2
 
 
@@ -1871,11 +1897,13 @@ def test_react_doctor_repeated_baseline_degradation_is_not_retried_twice() -> No
     bounded = external_module._react_doctor_baseline_retry_runner(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _react_doctor_baseline_retry_runner contract directly with controlled fixture data.
         command,
         root=Path("/repo"),
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         explicit_base=base,
     )
 
-    assert bounded(command, cwd=Path("/repo")) == _degraded_react_doctor_output(base)
+    assert bounded.run(external_module.process_request(command, cwd=Path("/repo"))) == _degraded_react_doctor_output(
+        base
+    )
     assert doctor_calls == 2
 
 
@@ -1903,11 +1931,13 @@ def test_react_doctor_baseline_retry_stops_when_head_moves() -> None:
     bounded = external_module._react_doctor_baseline_retry_runner(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _react_doctor_baseline_retry_runner contract directly with controlled fixture data.
         command,
         root=Path("/repo"),
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         explicit_base=base,
     )
 
-    assert bounded(command, cwd=Path("/repo")) == _degraded_react_doctor_output(base)
+    assert bounded.run(external_module.process_request(command, cwd=Path("/repo"))) == _degraded_react_doctor_output(
+        base
+    )
     assert doctor_calls == 1
 
 
@@ -1948,7 +1978,7 @@ def test_react_doctor_disjoint_preflight_fails_closed_for_dirty_deleted_or_renam
     assert not external_module._react_doctor_changed_scope_is_disjoint(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _react_doctor_changed_scope_is_disjoint contract directly with controlled fixture data.
         (project,),
         root=tmp_path,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         scope_root=tmp_path,
         reported_base=base,
     )
@@ -2036,7 +2066,7 @@ def test_react_doctor_changed_scope_runs_for_project_or_ancestor_metadata(
         tmp_path,
         projects=(project,),
         root=tmp_path,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=1,
         staged=False,
@@ -2072,7 +2102,7 @@ def test_react_doctor_disjoint_preflight_checks_every_selected_project(tmp_path:
     assert not external_module._react_doctor_changed_scope_is_disjoint(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _react_doctor_changed_scope_is_disjoint contract directly with controlled fixture data.
         (web, admin),
         root=tmp_path,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         scope_root=tmp_path,
         reported_base=base,
     )
@@ -2106,7 +2136,7 @@ def test_react_doctor_disjoint_preflight_fails_closed_when_head_moves(tmp_path: 
     assert not external_module._react_doctor_changed_scope_is_disjoint(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _react_doctor_changed_scope_is_disjoint contract directly with controlled fixture data.
         (project,),
         root=tmp_path,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         scope_root=tmp_path,
         reported_base=base,
     )
@@ -2206,7 +2236,7 @@ def test_react_doctor_validates_reported_degraded_changed_scope_before_allowing_
         project,
         projects=(project,),
         root=tmp_path,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=2,
         staged=False,
@@ -2255,7 +2285,7 @@ def test_react_doctor_accepts_empty_staged_scope_without_selected_project_source
         tmp_path,
         projects=(project,),
         root=tmp_path,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=3,
         staged=True,
@@ -2309,7 +2339,7 @@ def test_react_doctor_rejects_empty_staged_scope_with_candidate_or_unsafe_path(
         tmp_path,
         projects=(project,),
         root=tmp_path,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=1,
         staged=True,
@@ -2347,7 +2377,7 @@ def test_react_doctor_empty_staged_scope_fails_closed_when_git_diff_fails(tmp_pa
         tmp_path,
         projects=(project,),
         root=tmp_path,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=1,
         staged=True,
@@ -2389,7 +2419,7 @@ def test_react_doctor_empty_degraded_scope_fails_closed_when_git_diff_fails(
         tmp_path,
         projects=(project,),
         root=tmp_path,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=1,
         staged=False,
@@ -2455,7 +2485,7 @@ def test_react_doctor_staged_non_detection_falls_back_to_full_and_filters_exact_
         tmp_path,
         projects=(project,),
         root=tmp_path,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=1,
         staged=True,
@@ -2503,7 +2533,7 @@ def test_react_doctor_full_scan_still_rejects_non_detection(tmp_path: Path) -> N
         tmp_path,
         projects=(project,),
         root=tmp_path,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=1,
         staged=False,
@@ -2542,7 +2572,7 @@ def test_react_doctor_staged_fallback_rejects_malformed_scoped_coverage(tmp_path
         tmp_path,
         projects=(project,),
         root=tmp_path,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=1,
         staged=True,
@@ -2608,7 +2638,7 @@ def test_react_doctor_staged_fallback_failures_remain_blocking(
         tmp_path,
         projects=(project,),
         root=tmp_path,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=1,
         staged=True,
@@ -2687,7 +2717,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
         tmp_path,
         projects=(tmp_path,),
         root=tmp_path,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=1,
         staged=True,
@@ -2707,7 +2737,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
         tmp_path,
         projects=(tmp_path,),
         root=tmp_path,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=1,
         staged=False,
@@ -2726,7 +2756,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
         tmp_path,
         projects=(tmp_path,),
         root=tmp_path,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=1,
         staged=False,
@@ -2741,7 +2771,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
         tmp_path,
         projects=(tmp_path,),
         root=tmp_path,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         use_local_binary=False,
         file_count=1,
         staged=False,
@@ -2948,7 +2978,7 @@ def test_eslint_fatal_message_is_an_execution_failure(tmp_path: Path) -> None:
     ) -> ProcessOutput:
         return ProcessOutput(1, payload, "")
 
-    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.TRUSTED, runner=fatal)
+    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.TRUSTED, runner=FakeProcessExecutor(fatal))
 
     assert len(reports) == 1
     assert reports[0].completion is Completion.FAILED
@@ -2974,7 +3004,7 @@ def test_missing_local_eslint_fails_before_package_manager_execution(
         pytest.fail("the package manager ran without a local ESLint installation")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts external tool routing
-        external_module, "run_process", forbidden
+        external_module.DEFAULT_EXECUTOR, "run", FakeProcessExecutor(forbidden).run
     )
 
     reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.TRUSTED)
@@ -2999,13 +3029,15 @@ def test_hoisted_eslint_above_analysis_root_is_accepted(monkeypatch: pytest.Monk
     binary.write_text("", encoding="utf-8")
     called: list[tuple[str, ...]] = []
 
-    def successful(argv: Sequence[str], *, cwd: Path, timeout_seconds: float) -> ProcessOutput:
-        assert 0 < timeout_seconds <= 300
+    def successful(request: ProcessRequest) -> ProcessOutput:
+        argv, cwd = request.argv, request.cwd
+        assert request.deadline is not None
+        assert 0 < request.deadline - time.monotonic() <= 300
         called.append(tuple(argv))
         return ProcessOutput(0, _eslint_clean_payload(argv, cwd), "")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts external tool routing
-        external_module, "_run_eslint_process", successful
+        external_module.DEFAULT_EXECUTOR, "run", successful
     )
 
     reports = analyze_external([str(source)], root=root, trust=TrustMode.TRUSTED)
@@ -3030,7 +3062,9 @@ def test_eslint_empty_output_preserves_package_manager_stderr(tmp_path: Path) ->
     ) -> ProcessOutput:
         return ProcessOutput(1, "", "ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command 'eslint' not found")
 
-    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.TRUSTED, runner=missing)
+    reports = analyze_external(
+        [str(source)], root=tmp_path, trust=TrustMode.TRUSTED, runner=FakeProcessExecutor(missing)
+    )
 
     assert len(reports) == 1
     issue = reports[0].issues[0]
@@ -3053,7 +3087,9 @@ def test_eslint_malformed_output_preserves_stderr_without_json_exception_name(tm
     ) -> ProcessOutput:
         return ProcessOutput(1, "not-json", "eslint could not load its local configuration")
 
-    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.TRUSTED, runner=broken)
+    reports = analyze_external(
+        [str(source)], root=tmp_path, trust=TrustMode.TRUSTED, runner=FakeProcessExecutor(broken)
+    )
 
     issue = reports[0].issues[0]
     assert issue.kind == "protocol-mismatch"
@@ -3113,7 +3149,11 @@ def test_basedpyright_native_notice_does_not_override_failure_status(
         return ProcessOutput(returncode, payload, "")
 
     reports = analyze_external(
-        (str(source),), root=tmp_path, trust=TrustMode.SAFE, runner=runner, capabilities=frozenset({"pyright"})
+        (str(source),),
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=FakeProcessExecutor(runner),
+        capabilities=frozenset({"pyright"}),
     )
 
     assert len(reports) == 1
@@ -3361,7 +3401,11 @@ def test_unused_function_diagnostics_are_bounded_advisory_test_helpers(
         return ProcessOutput(1, payload, "")
 
     reports = analyze_external(
-        (str(path),), root=tmp_path, trust=TrustMode.SAFE, runner=runner, capabilities=frozenset({"pyright"})
+        (str(path),),
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        runner=FakeProcessExecutor(runner),
+        capabilities=frozenset({"pyright"}),
     )
     findings = tuple(item for report in reports for item in report.diagnostics)
 
@@ -3496,7 +3540,9 @@ def test_safe_mode_never_executes_repository_eslint_config(tmp_path: Path) -> No
     ) -> ProcessOutput:
         pytest.fail("safe mode executed repository code")
 
-    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=forbidden)
+    reports = analyze_external(
+        [str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=FakeProcessExecutor(forbidden)
+    )
 
     assert len(reports) == 1
     assert reports[0].completion is Completion.FAILED
@@ -3517,7 +3563,7 @@ def test_string_safe_mode_never_executes_repository_eslint_config(tmp_path: Path
     ) -> ProcessOutput:
         pytest.fail("string safe mode executed repository code")
 
-    reports = analyze_external([str(source)], root=tmp_path, trust="safe", runner=forbidden)
+    reports = analyze_external([str(source)], root=tmp_path, trust="safe", runner=FakeProcessExecutor(forbidden))
 
     assert reports[0].issues[0].kind == "trust-required"
 
@@ -3533,7 +3579,9 @@ def test_signal_terminated_tool_is_an_execution_failure(tmp_path: Path) -> None:
     ) -> ProcessOutput:
         return ProcessOutput(-9, "[]", "")
 
-    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=terminated)
+    reports = analyze_external(
+        [str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=FakeProcessExecutor(terminated)
+    )
 
     assert all(report.completion is Completion.FAILED for report in reports)
     assert all(report.issues[0].exit_code == -9 for report in reports)
@@ -3551,7 +3599,9 @@ def test_finding_exit_without_diagnostics_fails_the_external_protocol(tmp_path: 
         payload = '{"generalDiagnostics":[]}' if argv[0] == "basedpyright" else "[]"
         return ProcessOutput(1, payload, "")
 
-    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=empty_finding_exit)
+    reports = analyze_external(
+        [str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=FakeProcessExecutor(empty_finding_exit)
+    )
 
     assert all(report.completion is Completion.FAILED for report in reports)
     assert all(report.issues[0].kind == "protocol-mismatch" for report in reports)
@@ -3626,7 +3676,7 @@ def test_malformed_nested_json_becomes_a_bounded_tool_failure(tmp_path: Path) ->
     ) -> ProcessOutput:
         return ProcessOutput(0, "[" * 100_000, "")
 
-    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=nested)
+    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=FakeProcessExecutor(nested))
 
     assert all(report.completion is Completion.FAILED for report in reports)
     assert all(len(report.issues[0].message) <= 1024 for report in reports)
@@ -3647,7 +3697,7 @@ def test_external_failure_redacts_secrets_and_absolute_paths(tmp_path: Path) -> 
             f"token=SUPERSECRET {cwd}/src/config /Users/alice/private/config https://docs.example.com/remediation",
         )
 
-    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=failed)
+    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=FakeProcessExecutor(failed))
     messages = "\n".join(issue.message for report in reports for issue in report.issues)
 
     assert "SUPERSECRET" not in messages
@@ -3689,7 +3739,7 @@ def test_python_external_tools_use_structured_output_without_uv(tmp_path: Path, 
             return ProcessOutput(0, "[]", "")
         return ProcessOutput(0, '{"generalDiagnostics":[]}', "")
 
-    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=runner)
+    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=FakeProcessExecutor(runner))
 
     assert [report.name for report in reports] == ["ruff", "basedpyright"]
     assert all(report.completion is Completion.COMPLETE for report in reports)
@@ -3718,7 +3768,7 @@ def test_python_external_tools_run_once_per_nearest_project(tmp_path: Path) -> N
         [str(source) for source in sources],
         root=tmp_path,
         trust=TrustMode.SAFE,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
     )
 
     assert [(name, cwd) for name, cwd, _argv in seen] == [
@@ -3753,7 +3803,7 @@ def test_basedpyright_uses_the_project_environment_for_import_resolution(tmp_pat
         payload = "[]" if argv[0] == "ruff" else '{"generalDiagnostics":[]}'
         return ProcessOutput(0, payload, "")
 
-    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=runner)
+    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=FakeProcessExecutor(runner))
 
     assert all(report.completion is Completion.COMPLETE for report in reports)
     assert seen[1][0] == str(analyzer)
@@ -3776,7 +3826,7 @@ def test_python_type_check_can_be_left_to_repository_ci(tmp_path: Path) -> None:
         return ProcessOutput(0, "[]", "")
 
     reports = analyze_external(
-        [str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=runner, python_type_check=False
+        [str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=FakeProcessExecutor(runner), python_type_check=False
     )
 
     assert [report.name for report in reports] == ["ruff"]
@@ -3800,7 +3850,7 @@ def test_basedpyright_prefers_a_parent_environment_over_a_nested_package_manifes
         payload = "[]" if argv[0] == "ruff" else '{"generalDiagnostics":[]}'
         return ProcessOutput(0, payload, "")
 
-    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=runner)
+    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=FakeProcessExecutor(runner))
 
     assert all(report.completion is Completion.COMPLETE for report in reports)
     assert seen[1] == ((str(analyzer), "--outputjson", "--baselinemode=discard", str(source)), project)
@@ -3836,7 +3886,7 @@ def test_basedpyright_selects_files_and_filters_unselected_diagnostics(tmp_path:
         ]
         return ProcessOutput(1, json.dumps({"generalDiagnostics": diagnostics}), "")
 
-    reports = analyze_external([str(selected)], root=tmp_path, trust=TrustMode.SAFE, runner=runner)
+    reports = analyze_external([str(selected)], root=tmp_path, trust=TrustMode.SAFE, runner=FakeProcessExecutor(runner))
 
     basedpyright = next(report for report in reports if report.name == "basedpyright")
     assert seen[1] == ("basedpyright", "--outputjson", "--baselinemode=discard", str(selected))
@@ -3870,7 +3920,7 @@ def test_python_tools_use_the_adopted_config_for_files_outside_its_directory(tmp
         payload = "[]" if argv[0] == "ruff" else '{"generalDiagnostics":[]}'
         return ProcessOutput(0, payload, "")
 
-    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=runner)
+    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=FakeProcessExecutor(runner))
 
     assert all(report.completion is Completion.COMPLETE for report in reports)
     assert seen == [
@@ -3919,7 +3969,7 @@ def test_external_analyzer_cannot_leak_a_path_outside_repository(tmp_path: Path)
             )
         return ProcessOutput(0, '{"generalDiagnostics":[]}', "")
 
-    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=runner)
+    reports = analyze_external([str(source)], root=tmp_path, trust=TrustMode.SAFE, runner=FakeProcessExecutor(runner))
     ruff = next(report for report in reports if report.name == "ruff")
 
     assert ruff.completion is Completion.FAILED
@@ -4027,7 +4077,11 @@ def test_deptry_scans_declared_wheel_sources_for_root_scripts_without_unrelated_
 
     selected = [str(script), str(source)] if select_child else [str(script)]
     reports = analyze_external(
-        selected, root=tmp_path, trust=TrustMode.SAFE, capabilities=frozenset({"deptry"}), runner=run
+        selected,
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        capabilities=frozenset({"deptry"}),
+        runner=FakeProcessExecutor(run),
     )
     assert len(calls) == (2 if select_child else 1)
     assert all(report.completion is Completion.COMPLETE for report in reports)
@@ -4062,7 +4116,11 @@ def test_deptry_declared_sources_overlap_without_duplicate_missing_dependency_fi
         return external_module.run_process(argv, cwd=cwd)
 
     reports = analyze_external(
-        [str(source)], root=tmp_path, trust=TrustMode.SAFE, capabilities=frozenset({"deptry"}), runner=run
+        [str(source)],
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        capabilities=frozenset({"deptry"}),
+        runner=FakeProcessExecutor(run),
     )
     assert len(reports) == 1
     assert reports[0].completion is Completion.COMPLETE
@@ -4142,7 +4200,11 @@ def test_deptry_uv_build_owns_only_declared_modules_for_selected_tests(
         return external_module.run_process(argv, cwd=cwd)
 
     reports = analyze_external(
-        [str(selected)], root=tmp_path, trust=TrustMode.SAFE, capabilities=frozenset({"deptry"}), runner=run
+        [str(selected)],
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        capabilities=frozenset({"deptry"}),
+        runner=FakeProcessExecutor(run),
     )
     assert len(calls) == len(reports) == 1
     assert reports[0].completion is Completion.COMPLETE
@@ -4210,7 +4272,11 @@ def test_deptry_uv_build_rejects_invalid_module_ownership_before_running(tmp_pat
         raise AssertionError(message)
 
     reports = analyze_external(
-        [str(selected)], root=project, trust=TrustMode.SAFE, capabilities=frozenset({"deptry"}), runner=unexpected
+        [str(selected)],
+        root=project,
+        trust=TrustMode.SAFE,
+        capabilities=frozenset({"deptry"}),
+        runner=FakeProcessExecutor(unexpected),
     )
     assert len(reports) == 1
     assert reports[0].completion is Completion.FAILED
@@ -4279,7 +4345,11 @@ def test_deptry_uv_build_default_stub_package_ownership(tmp_path: Path) -> None:
         return external_module.run_process(argv, cwd=cwd)
 
     reports = analyze_external(
-        [str(selected)], root=tmp_path, trust=TrustMode.SAFE, capabilities=frozenset({"deptry"}), runner=run
+        [str(selected)],
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        capabilities=frozenset({"deptry"}),
+        runner=FakeProcessExecutor(run),
     )
 
     assert len(calls) == len(reports) == 1
@@ -4434,7 +4504,7 @@ def test_react_doctor_validates_empty_baseline_changed_scope_against_git(
         (str(package),),
         root=tmp_path,
         trust=TrustMode.SAFE,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         capabilities=frozenset({"react-doctor"}),
         include_react_doctor=True,
     )
@@ -4503,7 +4573,7 @@ def test_react_doctor_rejects_invalid_common_ancestor_proof(
         (str(package),),
         root=tmp_path,
         trust=TrustMode.SAFE,
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
         capabilities=frozenset({"react-doctor"}),
         include_react_doctor=True,
     )

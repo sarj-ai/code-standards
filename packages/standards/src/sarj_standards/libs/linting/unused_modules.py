@@ -20,7 +20,7 @@ from sarj_standards.libs.diagnostics import (
 from sarj_standards.libs.json_boundary import parse_unique_json
 from sarj_standards.libs.linting.devops_tools import checked_tool, invoke
 from sarj_standards.libs.linting.duplicate_code import TEST_GLOBS
-from sarj_standards.libs.linting.external import ProcessRunner, redact_message, run_process
+from sarj_standards.libs.linting.external import DEFAULT_EXECUTOR, ProcessExecutor, redact_message
 from sarj_standards.libs.linting.runner import accepts_hook_path
 from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
@@ -75,7 +75,7 @@ def analyze_application_modules(
     root: Path,
     trust: TrustMode,
     allows_path: Callable[[str], bool],
-    runner: ProcessRunner = run_process,
+    runner: ProcessExecutor = DEFAULT_EXECUTOR,
 ) -> ToolReport:
     root = root.resolve()
     try:  # ruff: ignore[too-many-statements-in-try-clause] -- one boundary contains native configuration, attestation, and protocol failures.
@@ -128,7 +128,7 @@ def analyze_application_modules(
     return ToolReport("knip", Completion.COMPLETE, diagnostics=diagnostics, version=tool.version)
 
 
-def _configuration_is_complete(tool: NativeTool, *, config: Path, root: Path, runner: ProcessRunner) -> bool:
+def _configuration_is_complete(tool: NativeTool, *, config: Path, root: Path, runner: ProcessExecutor) -> bool:
     output = invoke(
         replace(tool, finding_exits=frozenset({1})),
         (

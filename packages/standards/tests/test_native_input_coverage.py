@@ -44,17 +44,15 @@ def test_native_read_failure_cannot_report_clean_analysis(
 ) -> None:
     source = tmp_path / name
     source.write_text("", encoding="utf-8")
-    original_read_text = Path.read_text
+    original_read_bytes = Path.read_bytes
 
-    def unreadable_text(
-        path: Path, encoding: str | None = None, errors: str | None = None, newline: str | None = None
-    ) -> str:
+    def unreadable_bytes(path: Path) -> bytes:
         if path == source:
             raise PermissionError(errno.EACCES, "Permission denied", str(path))
-        return original_read_text(path, encoding=encoding, errors=errors, newline=newline)
+        return original_read_bytes(path)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- fail the real native filesystem read while preserving Standards routing and normalization.
-        Path, "read_text", unreadable_text
+        Path, "read_bytes", unreadable_bytes
     )
 
     report = api.Standards(tmp_path).analyze([name], rules=[selector])

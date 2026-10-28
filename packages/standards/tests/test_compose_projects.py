@@ -14,6 +14,7 @@ from sarj_standards.libs.linting.devops_tools import TOOLS, checked_tool, invoke
 from sarj_standards.libs.linting.external import ProcessOutput, analyze_external
 from sarj_standards.libs.linting.policy import Policy
 from sarj_standards.libs.typed_containers import is_object_list
+from tests.process_fakes import FakeProcessExecutor
 
 
 if TYPE_CHECKING:
@@ -83,7 +84,9 @@ def test_overlay_order_is_the_declared_invocation_order(tmp_path: Path, files: t
             modes.append(value)
         return output
 
-    (report,) = analyze_sources(root=tmp_path, paths=("base.yaml",), selected=frozenset({"compose"}), runner=observer)
+    (report,) = analyze_sources(
+        root=tmp_path, paths=("base.yaml",), selected=frozenset({"compose"}), runner=FakeProcessExecutor(observer)
+    )
     assert report.completion is Completion.COMPLETE
     assert modes == [[f"MODE={expected}"]]
 

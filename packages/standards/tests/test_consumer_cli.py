@@ -15,6 +15,7 @@ from sarj_standards.libs.adoption.manifest import as_table, list_field
 from sarj_standards.libs.linting.analysis import report_from_tools
 from sarj_standards.libs.linting.devops_tools import TOOLS
 from sarj_standards.libs.linting.external import ProcessOutput
+from tests.process_fakes import FakeProcessExecutor
 
 
 if TYPE_CHECKING:
@@ -24,7 +25,7 @@ if TYPE_CHECKING:
 
     from sarj_standards.libs.adoption.doctor import Finding
     from sarj_standards.libs.diagnostics import AnalysisReport
-    from sarj_standards.libs.linting.external import ProcessRunner
+    from sarj_standards.libs.linting.external import ProcessExecutor
     from tests.call_contracts import CanonicalCheckOptions, StandardsAnalyzeOptions
 
 
@@ -45,7 +46,7 @@ PUBLIC_COMMANDS = (
 REMOVED_ALIASES = ("init", "sync", "verify", "format", "inspect", "upgrade", "repo", "list", "path", "peers")
 
 
-def _use_workflow_health_runner(monkeypatch: pytest.MonkeyPatch, root: Path, runner: ProcessRunner) -> None:
+def _use_workflow_health_runner(monkeypatch: pytest.MonkeyPatch, root: Path, runner: ProcessExecutor) -> None:
     health = devops.health_findings
 
     def attest(selected_root: Path, files: Sequence[Path]) -> tuple[Finding, ...]:
@@ -77,7 +78,7 @@ def native_workflow_versions(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) ->
         assert cwd == tmp_path.resolve()
         return _workflow_version_output(argv)
 
-    _use_workflow_health_runner(monkeypatch, tmp_path, version_query)
+    _use_workflow_health_runner(monkeypatch, tmp_path, FakeProcessExecutor(version_query))
 
 
 def _git_environment() -> dict[str, str]:
@@ -682,7 +683,7 @@ def test_native_workflow_health_failure_blocks_cli_before_analysis(
         analyzed.append(paths)
         pytest.fail("native health drift must block the analyzer")
 
-    _use_workflow_health_runner(monkeypatch, tmp_path, version_query)
+    _use_workflow_health_runner(monkeypatch, tmp_path, FakeProcessExecutor(version_query))
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- assert public CLI health gating before analyzer dispatch.
         Standards, "analyze", forbidden_analysis
     )

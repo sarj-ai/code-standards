@@ -25,8 +25,11 @@ class _DiagnosticPriority(NamedTuple):
 _GITHUB_ANNOTATION_LIMIT = 10
 
 
-def to_json(report: AnalysisReport, *, indent: int | None = 2) -> str:
-    return json.dumps(report.as_dict(), indent=indent, sort_keys=True) + "\n"
+def to_json(report: AnalysisReport, *, indent: int | None = 2, include_fix_source_hashes: bool = False) -> str:
+    return (
+        json.dumps(report.as_dict(include_fix_source_hashes=include_fix_source_hashes), indent=indent, sort_keys=True)
+        + "\n"
+    )
 
 
 def to_sarif(report: AnalysisReport) -> str:

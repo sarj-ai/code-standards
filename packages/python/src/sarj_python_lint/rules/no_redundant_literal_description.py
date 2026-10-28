@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, final, override
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
+    DiagnosticSeverity,
     ExampleFile,
     ExampleOutcome,
     Rule,
@@ -150,7 +151,7 @@ class NoRedundantLiteralDescription(Rule):
         diagnostics: list[Diagnostic] = []
 
         def collect_field_descriptions(
-            statement: ast.AnnAssign, field_name: str, domain: frozenset[str], *, severity: Severity
+            statement: ast.AnnAssign, field_name: str, domain: frozenset[str], *, severity: DiagnosticSeverity
         ) -> None:
             for field_call in _field_calls(statement, imports):
                 description = next(
@@ -195,7 +196,7 @@ class NoRedundantLiteralDescription(Rule):
         return diagnostics
 
 
-def _description_level(model: ast.ClassDef, context: PythonFileContext) -> Severity:
+def _description_level(model: ast.ClassDef, context: PythonFileContext) -> DiagnosticSeverity:
     return Severity.ERROR if _inert_description_model(model, context) else Severity.WARNING
 
 

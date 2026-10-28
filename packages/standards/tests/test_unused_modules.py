@@ -9,6 +9,7 @@ from sarj_standards.libs.adoption import devops, manifest
 from sarj_standards.libs.diagnostics import Completion, Severity, TrustMode
 from sarj_standards.libs.linting.external import ProcessOutput, analyze_external
 from sarj_standards.libs.linting.unused_modules import analyze_application_modules
+from tests.process_fakes import FakeProcessExecutor
 
 
 if TYPE_CHECKING:
@@ -58,7 +59,10 @@ def test_native_production_scan_reports_authored_application_modules_as_warnings
         )
 
     result = analyze_application_modules(
-        root=tmp_path, trust=TrustMode.TRUSTED, allows_path=lambda path: path != "src/ignored.ts", runner=runner
+        root=tmp_path,
+        trust=TrustMode.TRUSTED,
+        allows_path=lambda path: path != "src/ignored.ts",
+        runner=FakeProcessExecutor(runner),
     )
 
     assert result.completion is Completion.COMPLETE
@@ -129,7 +133,9 @@ def test_unknown_or_non_application_topology_is_inconclusive_without_execution(
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         pytest.fail(f"Unknown application graph must not run Knip: {argv!r} in {cwd}")
 
-    result = analyze_application_modules(root=tmp_path, trust=trust, allows_path=lambda _path: True, runner=runner)
+    result = analyze_application_modules(
+        root=tmp_path, trust=trust, allows_path=lambda _path: True, runner=FakeProcessExecutor(runner)
+    )
 
     assert result.completion is Completion.PARTIAL
     assert result.diagnostics == ()
@@ -144,7 +150,7 @@ def test_competing_native_configurations_are_inconclusive_without_choosing_an_ow
         pytest.fail(f"Competing configuration must not run Knip: {argv!r} in {cwd}")
 
     result = analyze_application_modules(
-        root=tmp_path, trust=TrustMode.TRUSTED, allows_path=lambda _path: True, runner=runner
+        root=tmp_path, trust=TrustMode.TRUSTED, allows_path=lambda _path: True, runner=FakeProcessExecutor(runner)
     )
 
     assert result.completion is Completion.PARTIAL
@@ -159,7 +165,7 @@ def test_pnpm_workspace_topology_is_inconclusive_without_execution(tmp_path: Pat
         pytest.fail(f"Workspace topology must not run Knip: {argv!r} in {cwd}")
 
     result = analyze_application_modules(
-        root=tmp_path, trust=TrustMode.TRUSTED, allows_path=lambda _path: True, runner=runner
+        root=tmp_path, trust=TrustMode.TRUSTED, allows_path=lambda _path: True, runner=FakeProcessExecutor(runner)
     )
 
     assert result.completion is Completion.PARTIAL
@@ -197,7 +203,7 @@ def test_incomplete_native_graph_never_produces_deletion_findings(
         return output
 
     result = analyze_application_modules(
-        root=tmp_path, trust=TrustMode.TRUSTED, allows_path=lambda _path: True, runner=runner
+        root=tmp_path, trust=TrustMode.TRUSTED, allows_path=lambda _path: True, runner=FakeProcessExecutor(runner)
     )
 
     assert result.completion is Completion.PARTIAL
@@ -217,7 +223,7 @@ def test_invalid_native_evidence_fails_analysis(tmp_path: Path, output: ProcessO
         return ProcessOutput(0, "6.42.1\n", "") if argv[1:] == ("--version",) else output
 
     result = analyze_application_modules(
-        root=tmp_path, trust=TrustMode.TRUSTED, allows_path=lambda _path: True, runner=runner
+        root=tmp_path, trust=TrustMode.TRUSTED, allows_path=lambda _path: True, runner=FakeProcessExecutor(runner)
     )
 
     assert result.completion is Completion.FAILED
@@ -281,10 +287,14 @@ def test_knip_is_opt_in_and_uses_existing_native_provisioning_contract(tmp_path:
         return ProcessOutput(0, "6.42.1\n", "") if argv[1:] == ("--version",) else ProcessOutput(0, _report(), "")
 
     disabled = analyze_external(
-        ("src/index.ts",), root=tmp_path, trust="trusted", capabilities=frozenset(), runner=runner
+        ("src/index.ts",), root=tmp_path, trust="trusted", capabilities=frozenset(), runner=FakeProcessExecutor(runner)
     )
     enabled = analyze_external(
-        ("src/index.ts",), root=tmp_path, trust="trusted", capabilities=frozenset({"knip"}), runner=runner
+        ("src/index.ts",),
+        root=tmp_path,
+        trust="trusted",
+        capabilities=frozenset({"knip"}),
+        runner=FakeProcessExecutor(runner),
     )
 
     assert disabled == ()
@@ -343,7 +353,7 @@ def test_manifest_driven_analysis_requires_both_knip_activation_choices(
         root=tmp_path,
         trust="trusted",
         capabilities=None if capabilities is None else frozenset(capabilities),
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
     )
 
     assert [report.name for report in reports] == (["knip"] if enabled else [])
@@ -357,7 +367,9 @@ def test_explicit_knip_request_without_application_intent_stays_inconclusive(tmp
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         pytest.fail(f"Undeclared application must not run Knip: {argv!r} in {cwd}")
 
-    reports = analyze_external((), root=tmp_path, trust="trusted", capabilities=frozenset({"knip"}), runner=runner)
+    reports = analyze_external(
+        (), root=tmp_path, trust="trusted", capabilities=frozenset({"knip"}), runner=FakeProcessExecutor(runner)
+    )
 
     assert len(reports) == 1
     assert reports[0].completion is Completion.PARTIAL
