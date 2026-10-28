@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -16,6 +17,7 @@ import yaml
 
 from sarj_standards import (
     __version__,
+    api,
 )
 from sarj_standards._meta import (
     CONFIGS_DIR,
@@ -25,7 +27,11 @@ from sarj_standards._meta import (
 import sarj_standards.cli.main as cli
 from sarj_standards.cli.main import main
 from sarj_standards.libs.adoption import doctor, hooks as adoption_hooks, lifecycle, manifest, scaffold, service
+from sarj_standards.libs.diagnostics import baseline
+from sarj_standards.libs.json_boundary import normalize_json_value, parse_json
+from sarj_standards.libs.release.process import credential_free_environment
 from sarj_standards.libs.repository import hooks as repository_hooks
+from sarj_standards.libs.yaml_boundary import parse_yaml
 
 
 if TYPE_CHECKING:
@@ -1754,11 +1760,132 @@ def test_ci_snippet_for_a_typescript_repo_does_not_require_a_python_project(
     assert "fetch-depth: 0" in workflow
     assert "  push:\n    branches: [main]\n" in workflow
     assert "  merge_group:\n" in workflow
-    assert (
-        "SARJ_STANDARDS_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}"
-        in workflow
-    )
+    assert "(github.event.pull_request.base.sha || github.event.merge_group.base_sha ||" in workflow
     assert "check --staged" not in workflow
+
+
+def test_generated_ci_base_expression_passes_native_actionlint(tmp_path: Path) -> None:
+    _python_repo(tmp_path)
+    workflow = tmp_path / ".github" / "workflows" / "standards.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text(scaffold.github_ci_workflow(tmp_path), encoding="utf-8")
+    actionlint = shutil.which("actionlint")
+    assert actionlint is not None, "native actionlint is required for generated workflow validation"
+    completed = subprocess.run(
+        (actionlint, str(workflow)), cwd=tmp_path, check=False, capture_output=True, text=True, timeout=30
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+
+
+@pytest.mark.parametrize(
+    ("event", "created", "base_kind", "expected_base_present", "expected_exit", "expected_baselined"),
+    [
+        pytest.param("push", "true", "zero", False, 0, 1, id="initial-push"),
+        pytest.param("push", "false", "head", True, 0, 1, id="ordinary-push"),
+        pytest.param("pull_request", "", "head", True, 0, 1, id="pull-request"),
+        pytest.param("merge_group", "", "head", True, 0, 1, id="merge-group"),
+        pytest.param("pull_request", "true", "zero", True, 1, 0, id="nonpush-zero-fails-closed"),
+        pytest.param("push", "false", "zero", True, 1, 0, id="noncreated-zero-fails-closed"),
+        pytest.param("push", "true", "malformed", True, 1, 0, id="malformed-base-fails-closed"),
+        pytest.param("workflow_dispatch", "", "missing", False, 0, 1, id="dispatch-without-base"),
+    ],
+)
+def test_generated_ci_initial_push_keeps_native_baseline_boundaries(
+    tmp_path: Path,
+    event: str,
+    created: str,
+    base_kind: str,
+    *,
+    expected_base_present: bool,
+    expected_exit: int,
+    expected_baselined: int,
+) -> None:
+    _python_repo(tmp_path)
+    (tmp_path / "app.py").write_text("logger.info('inherited', token=token)\n", encoding="utf-8")
+    adopted = manifest.Manifest(
+        __version__, (), ".", ".", hook_manager="none", diagnostic_baseline="diagnostic-baseline.json"
+    )
+    (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
+    report = api.Standards(tmp_path).analyze(["app.py"], mode=api.AnalysisMode.RAW, rules=["python:no-secret-in-log"])
+    assert len(report.diagnostics) == 1
+    (tmp_path / "diagnostic-baseline.json").write_text(
+        baseline.render(
+            report.diagnostics,
+            bundle_version=__version__,
+            consumer_base_sha="0" * 40,
+            catalog_digest=baseline.bundled_catalog_digest(),
+        ),
+        encoding="utf-8",
+    )
+    for arguments in (
+        ("init", "-q"),
+        ("add", "."),
+        ("-c", "user.name=CI Test", "-c", "user.email=ci@example.invalid", "commit", "-qm", "initial"),
+    ):
+        subprocess.run(("git", *arguments), cwd=tmp_path, check=True, capture_output=True)
+    head = subprocess.check_output(("git", "rev-parse", "HEAD"), cwd=tmp_path, text=True).strip()
+    parsed = manifest.as_table(parse_yaml(scaffold.github_ci_workflow(tmp_path)))
+    job = manifest.table_field(manifest.table_field(parsed, "jobs"), "standards")
+    steps = normalize_json_value(job["steps"])
+    assert isinstance(steps, list)
+    step = next(item for item in steps if isinstance(item, dict) and item.get("name") == "Run standards")
+    assert isinstance(step, dict)
+    assert step["shell"] == "bash"
+    assert step["env"] == {
+        "SARJ_STANDARDS_BASE": (
+            "${{ !(github.event_name == 'push' && github.event.created && "
+            "github.event.before == '0000000000000000000000000000000000000000') && "
+            "(github.event.pull_request.base.sha || github.event.merge_group.base_sha || "
+            "github.event.before) || '' }}"
+        ),
+    }
+    command = step["run"]
+    assert isinstance(command, str)
+    native_command = f"{BOOTSTRAP_COMMAND} check --trust-repository-code --format github"
+    assert command.count(native_command) == 1
+    probe = (
+        "import json, os; from sarj_standards import api; "
+        "report = api.Standards('.').analyze(['app.py'], rules=['python:no-secret-in-log']); "
+        "print(json.dumps({'base': os.environ.get('SARJ_STANDARDS_BASE'), "
+        "'baselined': sum(tool.baselined_count for tool in report.tools), "
+        "'completion': report.completion.value})); raise SystemExit(report.exit_code)"
+    )
+    command = command.replace(native_command, shlex.join((sys.executable, "-c", probe)))
+    environment = credential_free_environment()
+    environment["GITHUB_EVENT_NAME"] = event
+    selected = {"zero": "0" * 40, "head": head, "malformed": "not-a-commit", "missing": None}[base_kind]
+    event_file = tmp_path / "github-event.json"
+    event_file.write_text(
+        json.dumps(
+            {
+                "push": {"created": created == "true", "before": selected},
+                "pull_request": {"pull_request": {"base": {"sha": selected}}},
+                "merge_group": {"merge_group": {"base_sha": selected}},
+                "workflow_dispatch": {},
+            }[event]
+        ),
+        encoding="utf-8",
+    )
+    environment["GITHUB_EVENT_PATH"] = str(event_file)
+    # GitHub resolves the declarative expression before launching the native command.
+    environment["SARJ_STANDARDS_BASE"] = selected if expected_base_present and selected is not None else ""
+    completed = subprocess.run(
+        ("bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", command),
+        cwd=tmp_path,
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == expected_exit, completed.stderr
+    observed = parse_json(completed.stdout)
+    assert isinstance(observed, dict)
+    assert observed == {
+        "base": selected if expected_base_present else "",
+        "baselined": expected_baselined,
+        "completion": "complete",
+    }
 
 
 def test_setup_repairs_an_outdated_managed_yarn_workflow(tmp_path: Path) -> None:
