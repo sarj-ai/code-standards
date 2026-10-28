@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Annotated, NamedTuple, Protocol, TypeGuard, as
 from urllib.parse import quote
 
 from packaging.version import InvalidVersion, Version
+from pydantic import AliasPath, BaseModel, Field, ValidationError
 from repo_standards.repository import parse_baseline_bytes as parse_repository_baseline
 import typer
 import yaml
@@ -37,7 +38,7 @@ from sarj_standards.libs.adoption import (
     scaffold as adoption_scaffold,
     uvtool as adoption_uvtool,
 )
-from sarj_standards.libs.json_boundary import parse_json
+from sarj_standards.libs.json_boundary import parse_json, parse_json_documents
 from sarj_standards.libs.release import metadata_verification, retirement
 from sarj_standards.libs.release.verification_process import BaseWatch
 from sarj_standards.libs.repository import ledger as rule_ledger, rule_catalog_artifact
@@ -66,6 +67,7 @@ BOT_COMMIT_PREFIX = "chore(standards): adopt "
 MANIFEST = ".sarj-standards.toml"
 LS_REMOTE_FIELDS = 2
 COMMIT_WITH_PARENT_FIELDS = 2
+CLOSED_ROLLOUT_UNAVAILABLE = "closed managed rollout history is unavailable or incomplete; refusing automatic retry"
 PORCELAIN_RECORD_MINIMUM = 4
 MANAGED_TRAILER = "Standards-Rollout: managed/v1"
 MANAGED_TREE_TRAILER_PREFIX = "Standards-Rollout-Tree: "
@@ -615,7 +617,7 @@ def pull_request(consumer: Consumer, version: str, runner: CommandRunner) -> dic
             "--head",
             rollout_branch(version),
             "--json",
-            "state,mergedAt,url,headRefName,baseRefName,headRefOid,body",
+            "state,mergedAt,url,headRefName,baseRefName,headRefOid,body,isCrossRepository,headRepository,headRepositoryOwner",
             "--limit",
             "2",
         )
@@ -636,6 +638,107 @@ def pull_identity_matches(consumer: Consumer, version: str, pull: Mapping[str, o
         and pull.get("baseRefName") == consumer.branch
         and pr_marker(consumer, version) in str(pull.get("body", ""))
     )
+
+
+def same_repository_pull(consumer: Consumer, pull: Mapping[str, JsonValue]) -> bool:
+    try:
+        origin = _OpenPullOrigin.model_validate(pull, strict=True)
+    except ValidationError:
+        return False
+    return (
+        origin.is_cross_repository is False
+        and f"{origin.owner_login}/{origin.repository_name}".casefold() == consumer.repository.casefold()
+    )
+
+
+class _OpenPullOrigin(BaseModel, frozen=True):
+    is_cross_repository: bool = Field(validation_alias="isCrossRepository")
+    repository_name: str = Field(validation_alias=AliasPath("headRepository", "name"), min_length=1)
+    owner_login: str = Field(validation_alias=AliasPath("headRepositoryOwner", "login"), min_length=1)
+
+
+def closed_rollout_decline(consumer: Consumer, version: str, runner: CommandRunner) -> Outcome | None:
+    head = quote(f"{consumer.repository.partition('/')[0]}:{rollout_branch(version)}", safe="")
+    endpoint = f"repos/{consumer.repository}/pulls?state=closed&head={head}&base={quote(consumer.branch, safe='')}&per_page=100"
+    try:
+        result = runner.run(("gh", "api", "--method", "GET", "--paginate", endpoint), check=False)
+        pages = parse_json_documents(stdout(result)) if result.returncode == 0 else None
+        return _closed_history_decline(consumer, version, pages)
+    except OSError, RolloutError, json.JSONDecodeError:
+        return Outcome(consumer, OutcomeState.BLOCKED, detail=CLOSED_ROLLOUT_UNAVAILABLE)
+
+
+def _closed_history_decline(consumer: Consumer, version: str, pages: JsonValue) -> Outcome | None:
+    if not isinstance(pages, list) or not pages:
+        raise RolloutError(CLOSED_ROLLOUT_UNAVAILABLE)
+    for page in pages:
+        if not isinstance(page, list):
+            raise RolloutError(CLOSED_ROLLOUT_UNAVAILABLE)
+        for pull in page:
+            if (declined := _closed_pull_decline(consumer, version, pull)) is not None:
+                return declined
+    return None
+
+
+def _closed_pull_decline(consumer: Consumer, version: str, pull: JsonValue) -> Outcome | None:
+    if not isinstance(pull, dict):
+        raise RolloutError(CLOSED_ROLLOUT_UNAVAILABLE)
+    head, base = pull.get("head"), pull.get("base")
+    repositories = (_closed_pull_repository(head), _closed_pull_repository(base))
+    references = (_closed_pull_ref(head), _closed_pull_ref(base))
+    if _closed_pull_has_foreign_reference(consumer, version, repositories, references):
+        return None
+    body_value = pull.get("body")
+    body = body_value if isinstance(body_value, str) else ""
+    if pr_marker(consumer, version) not in body:
+        return None
+    merged_at = pull.get("merged_at")
+    if isinstance(merged_at, str) and merged_at:
+        return None
+    ownership = [line for line in body.splitlines() if PR_MARKER_PREFIX in line]
+    if ownership != [pr_marker(consumer, version)]:
+        raise RolloutError(CLOSED_ROLLOUT_UNAVAILABLE)
+    if desired_version(body) != version:
+        return None
+    url = pull.get("html_url")
+    if not isinstance(url, str) or not url:
+        raise RolloutError(CLOSED_ROLLOUT_UNAVAILABLE)
+    if (
+        any(name is None for name in (*repositories, *references))
+        or pull.get("state") != "closed"
+        or "merged_at" not in pull
+        or merged_at is not None
+    ):
+        raise RolloutError(CLOSED_ROLLOUT_UNAVAILABLE)
+    return Outcome(
+        consumer,
+        OutcomeState.BLOCKED,
+        url,
+        "managed rollout was closed without merging for this version; reopen that PR to retry",
+    )
+
+
+def _closed_pull_has_foreign_reference(
+    consumer: Consumer,
+    version: str,
+    repositories: tuple[str | None, str | None],
+    references: tuple[str | None, str | None],
+) -> bool:
+    expected_references = (rollout_branch(version), consumer.branch)
+    return any(name is not None and name.casefold() != consumer.repository.casefold() for name in repositories) or any(
+        name is not None and name != expected for name, expected in zip(references, expected_references, strict=True)
+    )
+
+
+def _closed_pull_repository(reference: JsonValue) -> str | None:
+    repository = reference.get("repo") if isinstance(reference, dict) else None
+    name = repository.get("full_name") if isinstance(repository, dict) else None
+    return name if isinstance(name, str) and name else None
+
+
+def _closed_pull_ref(reference: JsonValue) -> str | None:
+    name = reference.get("ref") if isinstance(reference, dict) else None
+    return name if isinstance(name, str) and name else None
 
 
 def live_consumer_base_sha(consumer: Consumer, runner: CommandRunner) -> str:
@@ -722,39 +825,40 @@ def failed_verification_outcome(consumer: Consumer, pull: Mapping[str, object], 
 
 def status_one(consumer: Consumer, version: str, runner: CommandRunner) -> Outcome:
     pull = pull_request(consumer, version, runner)
-    if pull is not None:
-        if not pull_identity_matches(consumer, version, pull):
-            return Outcome(
-                consumer,
-                OutcomeState.BLOCKED,
-                str(pull.get("url", "")),
-                "rollout PR ownership marker, head, or base does not match",
-            )
-        try:
-            desired = desired_version(str(pull.get("body", "")))
-            reject_rollout_downgrade(desired, version)
-        except RolloutError as exc:
-            return Outcome(consumer, OutcomeState.BLOCKED, str(pull.get("url", "")), str(exc))
-        if desired != version:
-            return Outcome(
-                consumer,
-                OutcomeState.MISSING,
-                str(pull.get("url", "")),
-                "open managed PR targets an older Standards release",
-            )
-        if VERIFICATION_FAILED_MARKER in str(pull.get("body", "")):
-            return failed_verification_outcome(consumer, pull, runner)
-        if (
-            pull.get("mergedAt") is None
-            and (provenance := open_pull_commit_provenance(consumer, pull, runner)) is not None
-        ):
-            return provenance
-        state = OutcomeState.MERGED if pull.get("mergedAt") else OutcomeState.PR_OPEN
-        return Outcome(consumer, state, str(pull.get("url", "")))
-    adopted = manifest_version(base_manifest(consumer, runner) or "")
-    if adopted == version:
-        return Outcome(consumer, OutcomeState.ALREADY_CURRENT)
-    return Outcome(consumer, OutcomeState.MISSING, detail=f"base branch has {adopted or 'no readable manifest'}")
+    if pull is None:
+        adopted = manifest_version(base_manifest(consumer, runner) or "")
+        if adopted == version:
+            return Outcome(consumer, OutcomeState.ALREADY_CURRENT)
+        if (declined := closed_rollout_decline(consumer, version, runner)) is not None:
+            return declined
+        return Outcome(consumer, OutcomeState.MISSING, detail=f"base branch has {adopted or 'no readable manifest'}")
+    if not pull_identity_matches(consumer, version, pull):
+        return Outcome(
+            consumer,
+            OutcomeState.BLOCKED,
+            str(pull.get("url", "")),
+            "rollout PR ownership marker, head, or base does not match",
+        )
+    try:
+        desired = desired_version(str(pull.get("body", "")))
+        reject_rollout_downgrade(desired, version)
+    except RolloutError as exc:
+        return Outcome(consumer, OutcomeState.BLOCKED, str(pull.get("url", "")), str(exc))
+    if desired != version:
+        if (declined := closed_rollout_decline(consumer, version, runner)) is not None:
+            return declined
+        return Outcome(
+            consumer,
+            OutcomeState.MISSING,
+            str(pull.get("url", "")),
+            "open managed PR targets an older Standards release",
+        )
+    if VERIFICATION_FAILED_MARKER in str(pull.get("body", "")):
+        return failed_verification_outcome(consumer, pull, runner)
+    if pull.get("mergedAt") is None and (provenance := open_pull_commit_provenance(consumer, pull, runner)) is not None:
+        return provenance
+    state = OutcomeState.MERGED if pull.get("mergedAt") else OutcomeState.PR_OPEN
+    return Outcome(consumer, state, str(pull.get("url", "")))
 
 
 def status(version: str, consumers: Sequence[Consumer], runner: CommandRunner, *, jobs: int = 1) -> tuple[Outcome, ...]:
@@ -1693,7 +1797,9 @@ def _apply_one(  # ruff: ignore[too-many-locals] - one transaction binds verific
             comparison=f"origin/{consumer.branch}...HEAD",
         )
         report("validating and pushing managed head")
-        pushed_head_sha = push_rollout_head(repo, consumer, preparation, base_sha, runner, environment=unauthenticated)
+        pushed_head_sha = push_rollout_head(
+            repo, consumer, preparation, base_sha, runner, version=version, environment=unauthenticated
+        )
     report("publishing pull request")
     return _publish_rollout_pull(
         consumer,
@@ -1766,8 +1872,23 @@ def push_rollout_head(
     base_sha: str,
     runner: CommandRunner,
     *,
+    version: str,
     environment: Mapping[str, str],
 ) -> str:
+    # Verification can outlive a decline. Only an owned reopened PR for this
+    # exact version overrides it; no Git transport runs before this read.
+    declined = closed_rollout_decline(consumer, version, runner)
+    if declined is not None:
+        pull = pull_request(consumer, version, runner)
+        if (
+            pull is None
+            or pull.get("state") != "OPEN"
+            or not same_repository_pull(consumer, pull)
+            or not pull_identity_matches(consumer, version, pull)
+            or desired_version(str(pull.get("body", ""))) != version
+        ):
+            msg = f"{consumer.name}: {declined.detail}: {declined.url}"
+            raise RolloutError(msg)
     assert_consumer_base_unchanged(repo, consumer, base_sha, runner)
     head_sha = stdout(runner.run(("git", "rev-parse", "HEAD"), cwd=repo))
     if re.fullmatch(r"[0-9a-f]{40}", head_sha) is None:
@@ -2417,6 +2538,8 @@ def _publish_rollout_pull(
     sleep: Callable[[float], None] = time.sleep,
 ) -> Outcome:
     pull = pull_request(consumer, version, runner)
+    if pull is None and (declined := closed_rollout_decline(consumer, version, runner)) is not None:
+        return declined
     if pull is not None:
         pull = _wait_for_pushed_pull_head(consumer, version, runner, pull, pushed_head_sha=pushed_head_sha, sleep=sleep)
     if pull is not None and pull.get("headRefOid") != pushed_head_sha:
