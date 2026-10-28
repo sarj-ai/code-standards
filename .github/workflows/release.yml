@@ -26,7 +26,7 @@ name: release
 #   alone do not authorize reconciliation to publish.
 on:
   push:
-    branches: [main, maintenance/standards-8.101]
+    branches: [main, maintenance/standards-8.101, maintenance/standards-8.129]
   schedule:
     # Reconcile publication and durable verification-tag state after outages.
     # The same workflow identity preserves trusted-publisher provenance.
@@ -853,7 +853,10 @@ jobs:
         run: uv run --frozen python -m sarj_standards.libs.adoption.native_bootstrap
       - name: Install and attest integration native tools
         if: steps.reuse.outputs.reused != 'true'
-        run: uv run --frozen python -m sarj_standards.libs.release.native_test_setup --root ../..
+        run: |
+          sudo sed -i '\|^https://archive\.ubuntu\.com/ubuntu/[[:blank:]]|s/priority:[0-9][0-9]*/priority:0/' /etc/apt/apt-mirrors.txt
+          sudo apt-get update
+          uv run --frozen python -m sarj_standards.libs.release.native_test_setup --root ../..
       - name: Test against the built wheel
         if: steps.reuse.outputs.reused != 'true'
         run: bash ../../.github/scripts/release-test-wheel.sh

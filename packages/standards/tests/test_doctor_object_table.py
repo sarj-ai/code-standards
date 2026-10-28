@@ -13,11 +13,13 @@ from sarj_standards.libs.json_boundary import parse_json
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from pydantic import JsonValue
+
 
 @pytest.mark.parametrize(
     "extra", [{}, {"nested": {}}, {"value": None}], ids=["minimal", "nested-metadata", "null-metadata"]
 )
-def test_doctor_accepts_actual_local_plugin_json_objects(tmp_path: Path, extra: dict[str, object]) -> None:
+def test_doctor_accepts_actual_local_plugin_json_objects(tmp_path: Path, extra: dict[str, JsonValue]) -> None:
     name = "@sarj/eslint-plugin"
     version = manifest.eslint_peers()[name]
     (tmp_path / "package.json").write_text(json.dumps({"devDependencies": {name: "file:plugin"}}))
@@ -51,7 +53,9 @@ def test_doctor_does_not_attest_unproved_json_object_keys(
         "mapping-view": MappingProxyType(metadata),
     }
 
-    def decoder(text: str) -> object:
+    def decoder(
+        text: str,
+    ) -> object:  # sarj-noqa: SARJ528 -- deliberately returns non-JSON native values to probe malformed metadata.
         return values[kind] if text == source else parse_json(text)
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise the public doctor metadata boundary when the decoder returns an object outside its promised string-key contract.

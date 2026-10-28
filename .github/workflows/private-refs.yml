@@ -2,7 +2,7 @@ name: private references
 
 on:
   push:
-    branches: [main, maintenance/standards-8.101]
+    branches: [main, maintenance/standards-8.101, maintenance/standards-8.129]
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
 

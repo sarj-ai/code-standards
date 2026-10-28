@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import ast
 from functools import cached_property
-from io import StringIO
+from io import BytesIO, StringIO
 import re
+import tokenize
 from typing import TYPE_CHECKING, final
 
 from sarj_rule_contracts import TextEdit
@@ -12,8 +13,10 @@ from sarj_python_lint._autofix_inert import inert_private_scope
 from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules import REGISTRY
 from sarj_python_lint.rules._closed_helpers import dynamic_namespace
-from sarj_python_lint.rules._docstrings import ARG_SECTIONS, section_ranges
+from sarj_python_lint.rules._comments import has_legal_notice
+from sarj_python_lint.rules._docstrings import ARG_SECTIONS, docstring_expression, section_ranges
 from sarj_python_lint.rules._prose_budget import groups
+from sarj_python_lint.rules.no_unnecessary_docstring import module_docstring_may_escape
 
 
 if TYPE_CHECKING:
@@ -178,6 +181,13 @@ class DocstringFixes:
         )
 
     def fixes(self, diagnostic: Diagnostic) -> list[TextEdit]:
+        if diagnostic.code in {"SARJ099", "SARJ420"}:
+            module_edits = self._module(diagnostic)
+            if module_edits:
+                return module_edits
+        return self._function(diagnostic)
+
+    def _function(self, diagnostic: Diagnostic) -> list[TextEdit]:
         for owner in self.context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
             if not owner.body or not private_unescaped_function(owner, self.context):
                 continue
@@ -196,33 +206,87 @@ class DocstringFixes:
             return self._labels(expression, diagnostic)
         return []
 
+    def _module(self, diagnostic: Diagnostic) -> list[TextEdit]:
+        tree = self.context.tree
+        if tree is None or not tree.body:
+            return []
+        expression = docstring_expression(tree)
+        if expression is None:
+            return []
+        if (
+            (expression.lineno, expression.col_offset + 1) not in self.unconsumed
+            or diagnostic.line != expression.lineno
+            or self._standalone(expression) is None
+        ):
+            return []
+        if (
+            dynamic_namespace(self.context)
+            or frame_metadata_observed(self.context)
+            or any(node.attr == "modules" for node in self.context.nodes(ast.Attribute))
+            or any(node.attr == "import_module" for node in self.context.nodes(ast.Attribute))
+            or any(node.name == "import_module" for node in self.context.nodes(ast.alias))
+        ):
+            return []
+        if module_docstring_may_escape(self.context):
+            return []
+        if has_legal_notice(ast.get_docstring(tree, clean=False) or ""):
+            return []
+        if not self._module_header_preserved(expression):
+            return []
+        return self._remove(tree, expression)
+
+    def _module_header_preserved(self, expression: ast.Expr) -> bool:
+        end_line = expression.end_lineno or expression.lineno
+        if any(
+            token.type == tokenize.COMMENT and expression.lineno <= token.start[0] <= end_line
+            for token in tokenize.generate_tokens(StringIO(self.context.source, newline="").readline)
+        ):
+            return False
+        original = self.context.source
+        candidate = original[: self.starts[expression.lineno - 1]] + original[self.starts[end_line] :]
+        if candidate.startswith("#!") != original.startswith("#!"):
+            return False
+        try:
+            original_encoding = tokenize.detect_encoding(BytesIO(original.encode("utf-8")).readline)[0]
+            candidate_encoding = tokenize.detect_encoding(BytesIO(candidate.encode("utf-8")).readline)[0]
+        except SyntaxError, LookupError:
+            return False
+        return original_encoding == candidate_encoding
+
     def _literal(self, expression: ast.Expr) -> tuple[int, int, str] | None:
+        bounds = self._standalone(expression)
+        if bounds is None:
+            return None
+        start, end = bounds
+        literal = self.context.source[start:end]
+        if literal[:3] not in {'"""', "'''"} or literal[-3:] != literal[:3] or "\\" in literal:
+            return None
+        return start, end, literal
+
+    def _standalone(self, expression: ast.Expr) -> tuple[int, int] | None:
         end_line = expression.end_lineno
         end_column = expression.end_col_offset
         if end_line is None or end_column is None:
             return None
         start = self._offset(expression.lineno, expression.col_offset)
         end = self._offset(end_line, end_column)
-        literal = self.context.source[start:end]
-        if literal[:3] not in {'"""', "'''"} or literal[-3:] != literal[:3] or "\\" in literal:
-            return None
         if self.context.source[self.starts[expression.lineno - 1] : start].strip():
             return None
         if self.context.source[end : self.starts[end_line]].strip():
             return None
-        return start, end, literal
+        return start, end
 
     def _offset(self, line: int, byte_column: int) -> int:
         return self.starts[line - 1] + len(self.lines[line - 1].encode("utf-8")[:byte_column].decode("utf-8"))
 
-    def _remove(self, owner: _Function, expression: ast.Expr) -> list[TextEdit]:
-        if not owner.body[1:]:
+    def _remove(self, owner: ast.Module | _Function, expression: ast.Expr) -> list[TextEdit]:
+        if not owner.body[1:] and not isinstance(owner, ast.Module):
             return []
-        next_statement = owner.body[1]
         if (
-            isinstance(next_statement, ast.Expr)
-            and isinstance(next_statement.value, ast.Constant)
-            and isinstance(next_statement.value.value, str)
+            len(owner.body) > 1
+            and isinstance(owner.body[1], ast.Expr)
+            and isinstance(owner.body[1].value, ast.Constant)
+            and isinstance(owner.body[1].value.value, str)
         ):
             return []
         end_line = expression.end_lineno or expression.lineno
@@ -239,8 +303,7 @@ class DocstringFixes:
             else frozenset({"Returns", "Return", "Yields", "Yield"})
         )
         ranges = [(start, end) for name, start, end in section_ranges(value.value) if name in wanted]
-        # The detector proves redundancy only for its preferred section heading.
-        # Other heading variants can carry independent, meaningful contracts.
+        # Other section headings may carry independent contracts; only the detector-owned heading can be removed.
         if len(ranges) != 1:
             return []
         document = value.value

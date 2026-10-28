@@ -135,8 +135,6 @@ def _registered_waiter(directory: Path, wait: Wait) -> Generator[Path]:
 
 
 def _capacity(directory: Path, slots: int) -> int:
-    # One operator-owned setting prevents old shell environments from forcing
-    # every repository back to a single slot. Changes also reach live waiters.
     policy = directory / "capacity.json"
     try:
         value = JSON_PARSER(policy.read_text(encoding="utf-8"))

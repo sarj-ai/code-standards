@@ -11,6 +11,8 @@ from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
     from sarj_python_lint._file_context import PythonFileContext
 
 
@@ -124,7 +126,7 @@ class _DataUnions:
                     message=f"Data union `{name}` has no shared disjoint Literal discriminator. "
                     "Add a common field such as `kind` or `scope` with non-overlapping Literal values "
                     "on every variant; preserve constructor and serialized contracts when choosing defaults.",
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
             )
         return findings
@@ -563,7 +565,7 @@ def _wrapped_annotation(node: ast.Subscript, symbol: str | None, *, required: bo
 
 
 def _direct_initvar_field(field: ast.AnnAssign, context: PythonFileContext, provenance: ResourceProvenance) -> bool:
-    if field.value is not None or not isinstance(field.annotation, ast.Subscript):
+    if not isinstance(field.annotation, ast.Subscript):
         return False
     target = field.annotation.value
     if not _untouched(target, provenance) or not context.module_imports.resolves(
@@ -757,7 +759,7 @@ def _metadata_tuple_index(node: ast.expr) -> int | None:
     return None
 
 
-def _metadata_alias_graph(tree: ast.Module, bindings: dict[str, list[ast.AST]]) -> dict[str, set[str]]:
+def _metadata_alias_graph(tree: ast.Module, bindings: Mapping[str, Sequence[ast.AST]]) -> dict[str, set[str]]:
     graph: dict[str, set[str]] = {}
     for node in tree.body:
         binding = _value_binding(node)

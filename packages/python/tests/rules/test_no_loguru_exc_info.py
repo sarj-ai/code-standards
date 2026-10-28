@@ -121,7 +121,7 @@ def test_labeled_cases(case: EvaluationCase) -> None:
     assert len(diagnostics) == int(case.expected is ExpectedOutcome.MATCH)
     for diagnostic in diagnostics:
         assert diagnostic.code == "SARJ508"
-        assert diagnostic.severity is Severity.WARNING
+        assert diagnostic.severity is Severity.ERROR
         assert "opt(exception=True)" in diagnostic.message
 
 
@@ -149,4 +149,4 @@ def test_public_examples() -> None:
 def test_native_normalized_keyword_identity_survives_the_prefilter(source: str, expected: int) -> None:
     diagnostics = NoLoguruExcInfo().check(Path("app/service.py"), source)
     assert len(diagnostics) == expected
-    assert all(item.code == "SARJ508" and item.severity is Severity.WARNING for item in diagnostics)
+    assert all(item.code == "SARJ508" and item.severity is Severity.ERROR for item in diagnostics)

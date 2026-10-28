@@ -40,11 +40,13 @@ def _code(rule: object) -> str:
 
 
 def _is_live(shipped: ledger.Ledger, kind: str, identifier: str) -> bool:
-    if kind == ledger.CODE:
-        return any(identifier in codes for codes in shipped.codes.values())
-    if kind == ledger.ESLINT:
-        return identifier.removeprefix("@sarj/") in shipped.rules.get(kind, ())
-    return identifier in shipped.rules.get(kind, ())
+    match kind:
+        case ledger.CODE:
+            return any(identifier in codes for codes in shipped.codes.values())
+        case ledger.ESLINT:
+            return identifier.removeprefix("@sarj/") in shipped.rules.get(kind, ())
+        case _:
+            return identifier in shipped.rules.get(kind, ())
 
 
 @pytest.fixture(name="shipped", scope="module")

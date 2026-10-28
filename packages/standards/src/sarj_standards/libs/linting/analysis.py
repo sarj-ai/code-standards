@@ -41,6 +41,18 @@ if TYPE_CHECKING:
     from .policy import Policy
 
 
+class _DiagnosticKey(NamedTuple):
+    source: str
+    code: str
+    path: str
+    line: int
+    character: int
+    end_line: int
+    end_character: int
+    severity: str
+    message: str
+
+
 @runtime_checkable
 class _NativeDiagnostic(Protocol):
     @property
@@ -230,11 +242,11 @@ def _normalized_tool_report(report: ToolReport) -> ToolReport:
     )
 
 
-def _diagnostic_key(diagnostic: Diagnostic) -> tuple[object, ...]:
+def _diagnostic_key(diagnostic: Diagnostic) -> _DiagnosticKey:
     location = diagnostic.location
     position = location.region.start if location.region is not None else location.position
     end = location.region.end if location.region is not None else None
-    return (
+    return _DiagnosticKey(
         diagnostic.source,
         diagnostic.code,
         location.path,

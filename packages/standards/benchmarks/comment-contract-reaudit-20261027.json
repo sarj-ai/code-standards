@@ -1,0 +1,3048 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-27",
+  "status": "review-complete-native-campaign-passed",
+  "method": {
+    "comments": "100 distinct authored source, autofix and consumer-boundary probes; baseline outcomes independently reproduced from the immutable baseline source.",
+    "severity": "84 distinct source-owned warning-policy reviews plus 16 executed interaction probes; policy inspection is separate from native fixture execution.",
+    "sql": "100 distinct labeled migration source probes compared against the immutable baseline; SQL case gaps are not counts of unique defects.",
+    "counting": "300 review rows; supplemental comment controls and original-source block reviews are reported separately and do not inflate these counts.",
+    "label_calibration": "Two comment probe labels were calibrated after inspecting incomplete syntax and banner ownership; that history is retained privately and the final 100 inputs remain fixed."
+  },
+  "warning_policy": {
+    "reviewed": 84,
+    "promoted_to_error": [
+      "eslint:no-contradictory-overload-return",
+      "eslint:no-contradictory-type-predicate",
+      "eslint:no-invalid-typed-mutation",
+      "eslint:no-invalid-zod-custom-parse",
+      "eslint:no-partial-type-predicate"
+    ],
+    "other_warnings_retained": 79,
+    "basis": "The five promotions prove violated declared contracts; architecture, intent and heuristic policies retain review severity.",
+    "cohort": "Original 84 warning-policy reviews; six new upstream warning policies are reported separately."
+  },
+  "findings": {
+    "comments": {
+      "primary_cases": 100,
+      "primary_baseline_defects": 6,
+      "supplemental_distinct_defects": 5,
+      "distinct_defects_repaired": 11,
+      "legal_autofix_safety_defects": 3,
+      "delivery_constraint_false_positives": 3,
+      "declarative_causal_claim_false_positives": 2,
+      "declared_state_and_compatibility_false_positives": 3,
+      "primary_baseline_diagnostics": {
+        "TP": 55,
+        "FP": 3,
+        "FN": 0,
+        "TN": 42
+      },
+      "primary_candidate_diagnostics": {
+        "TP": 55,
+        "FP": 0,
+        "FN": 0,
+        "TN": 45
+      },
+      "primary_diagnostic_unit": "One binary diagnostic outcome per selected canonical owner group across 100 fixed comment cases.",
+      "primary_unsafe_autofixes_before": 3,
+      "primary_unsafe_autofixes_after": 0,
+      "primary_candidate_passes": 100,
+      "primary_labeled_case_gaps": 0,
+      "supplemental_controls": 8,
+      "supplemental_controls_passed": 8,
+      "supplemental_casing_variant_is_not_an_additional_defect": true,
+      "final_precision_controls": 6,
+      "final_precision_controls_passed": 6,
+      "additional_call_syntax_guards": 3,
+      "additional_call_syntax_guards_passed": 3,
+      "initial_exploratory_sweep_cases": 6,
+      "initial_exploratory_sweep_history_retained": true,
+      "native_selected_owner_coverage": {
+        "cases": 100,
+        "groups": [
+          "SARJ099",
+          "SARJ420/SARJ050/SARJ085",
+          "SARJ016",
+          "SARJ434"
+        ],
+        "canonical_precedence_replacements": {
+          "SARJ050": 10
+        },
+        "unlabelled_code_counts": {}
+      }
+    },
+    "severity": {
+      "constructor_only_field_false_negatives_repaired": 1,
+      "interaction_probes": 16,
+      "interaction_probes_passed": 16,
+      "constructor_only_field_cases_share_one_defect": true,
+      "typescript_interaction_scope": "Two interaction probes execute primitive relation witnesses; native TypeScript detector fixtures remain a separate qualification gate."
+    },
+    "sql": {
+      "baseline_cases_passed": 80,
+      "baseline_case_gaps": 20,
+      "baseline_false_positive_cases": 6,
+      "candidate_cases_passed": 100,
+      "candidate_case_gaps": 0,
+      "case_gap_count_is_not_a_unique_defect_count": true,
+      "supplemental_resolution_controls": 24,
+      "supplemental_resolution_controls_passed": 24,
+      "supplemental_boundary": "Recognized SET and RESET identity changes invalidate unqualified freshness proofs while retaining explicit schema identity; executing DDL still clears all proofs.",
+      "introduced_qualified_relation_false_positive_boundary_repaired": true,
+      "supplemental_controls_are_not_unique_defect_counts": true,
+      "original_100_case_ledger_unchanged": true,
+      "diagnostic_confusion": {
+        "unit": "Binary diagnostic presence on 132 explicitly labelled rule/case pairs; selected-owner coverage only.",
+        "explicit_rule_case_pairs": 132,
+        "positive_pairs": 42,
+        "negative_pairs": 90,
+        "baseline": {
+          "TP": 29,
+          "FP": 6,
+          "FN": 13,
+          "TN": 84
+        },
+        "candidate": {
+          "TP": 42,
+          "FP": 0,
+          "FN": 0,
+          "TN": 90
+        },
+        "baseline_exact_count_matches": 112,
+        "candidate_exact_count_matches": 132,
+        "expected_labelled_diagnostics": 43,
+        "baseline_labelled_diagnostics": 35,
+        "candidate_labelled_diagnostics": 43,
+        "partial_count_case": {
+          "case_id": "SQL-065",
+          "expected_diagnostics": 2,
+          "baseline_diagnostics": 1,
+          "candidate_diagnostics": 2,
+          "note": "Binary presence was already positive; the missing second diagnostic is an exact-count miss, not a binary false negative."
+        },
+        "unlabelled_diagnostics_excluded_from_matrix": 3,
+        "implicit_zero_pairs_added": 0
+      },
+      "baseline_undercount_cases": 14,
+      "raw_finding_counts": {
+        "baseline": 38,
+        "candidate": 46,
+        "coverage": "Raw totals include three findings outside the explicit primary labels."
+      },
+      "supplemental_unlabelled_review": {
+        "count": 3,
+        "valid_additional_true_positives": 2,
+        "inherited_unsupported_invalid_input_hits": 1,
+        "all_unchanged_in_both_versions": true,
+        "changes_primary_labels": false,
+        "rows": [
+          {
+            "case_id": "SQL-SUPPLEMENT-01",
+            "owner": "SARJ121",
+            "classification": "supplementary_true_positive",
+            "reason": "The fresh table remains empty after a lock timeout setting; its simple CHECK can be declared inline.",
+            "present_in_baseline_and_candidate": true,
+            "changes_primary_labels": false
+          },
+          {
+            "case_id": "SQL-SUPPLEMENT-02",
+            "owner": "SARJ121",
+            "classification": "supplementary_true_positive",
+            "reason": "A separate ordinary index preserves the fresh table proof; the simple CHECK remains inline-capable.",
+            "present_in_baseline_and_candidate": true,
+            "changes_primary_labels": false
+          },
+          {
+            "case_id": "SQL-SUPPLEMENT-03",
+            "owner": "SARJ121",
+            "classification": "inherited_unsupported_invalid_PostgreSQL_input_hit",
+            "reason": "CHECK expressions cannot contain subqueries; this emitted SARJ121 advice is outside the valid PostgreSQL migration boundary and cannot be counted as a valid-migration true positive.",
+            "present_in_baseline_and_candidate": true,
+            "changes_primary_labels": false
+          }
+        ]
+      },
+      "selected_owner_coverage": {
+        "rule_codes": [
+          "SARJ121",
+          "SARJ111",
+          "SARJ122"
+        ],
+        "explicit_rule_case_pairs": 132,
+        "expected_labelled_diagnostics": 43,
+        "implicit_zero_pairs_added": 0
+      }
+    }
+  },
+  "original_source_review": {
+    "distinct_comment_blocks": 26,
+    "manual_error_blocks": 6,
+    "preserved_blocks": 20,
+    "all_comment_text_retained_by_autofix": true,
+    "class_and_callable_documentation_retained_by_autofix": true,
+    "module_only_deletion_preserves_remaining_ast": true,
+    "autofix_converges": true
+  },
+  "validation": {
+    "pure_probes": "passed",
+    "native_preflight": {
+      "status": "passed-historical-snapshot",
+      "python_tests": 604,
+      "sql_tests": 275,
+      "typescript_tests": 674,
+      "total_tests": 1553,
+      "typescript_test_files": 9,
+      "types_semantic_versions_catalog_sync": "passed",
+      "scope": "These 1,553 passing targeted tests precede the latest upstream owner extensions; they do not qualify the current combined tree."
+    },
+    "full_native_verification": {
+      "status": "passed-completed-campaign",
+      "original_command": "make verify",
+      "original_invocation": "interrupted without an exit receipt after three phases and six native suites passed",
+      "resume": "The remaining complete installed-wheel suite, tsconfig, repository, private-reference and shell targets completed with exit 0; no test filters or omitted targets.",
+      "native_test_targets": {
+        "test-typescript": {
+          "passed": 12178,
+          "files": 206
+        },
+        "test-bootstrap": {
+          "passed": 52
+        },
+        "test-contracts": {
+          "passed": 91
+        },
+        "test-python": {
+          "passed": 25505
+        },
+        "test-sql": {
+          "passed": 2448,
+          "skipped": 4
+        },
+        "test-iac": {
+          "passed": 1794
+        },
+        "test-standards": {
+          "passed": 7756,
+          "skipped": 9,
+          "duration": "827.22s (0:13:47)"
+        },
+        "test-tsconfig": {
+          "status": "PASS"
+        }
+      },
+      "tests_passed": 49824,
+      "tests_skipped": 13,
+      "all_input_bytes_unchanged": true,
+      "private_reference_scope": "The local target delegates its trusted private-reference scan to required hosted CI.",
+      "standalone_make_verify_exit_zero_claimed": false
+    },
+    "performance": {
+      "status": "passed-for-frozen-snapshot",
+      "scope": "Affected Python and SQL aggregates from the prior frozen 334-file patch snapshot; current combined registry cold imports, new upstream files and TypeScript performance were not measured.",
+      "rounds": 3,
+      "warm_runs_per_process": 3,
+      "corpora": 6,
+      "files": 685,
+      "total_records": 108,
+      "valid_inherited_records": 18,
+      "new_records": 90,
+      "budget_scope": "affected-engine-aggregate",
+      "maximum_ratio": 1.25,
+      "ratios_passed": 14,
+      "ratios_checked": 14,
+      "largest_aggregate_ratio": 1.0385028753879282,
+      "largest_aggregate_increase_percent": 3.850287538792818,
+      "cross_round_stable": true,
+      "control_stable": true,
+      "engine_aggregates": [
+        {
+          "engine": "python",
+          "metrics": {
+            "cold_import_and_analysis_seconds": {
+              "baseline": 46.11635509587359,
+              "candidate": 47.74123668996617,
+              "ratio": 1.0352343889866087
+            },
+            "cold_analysis_seconds": {
+              "baseline": 43.824271777877584,
+              "candidate": 41.366240199888125,
+              "ratio": 0.9439116389555098
+            },
+            "cold_cpu_seconds": {
+              "baseline": 45.77486700000001,
+              "candidate": 47.537330999999995,
+              "ratio": 1.0385028753879282
+            },
+            "cold_rss_kib": {
+              "baseline": 367316,
+              "candidate": 368180,
+              "ratio": 1.0023521981073518
+            },
+            "warm_analysis_seconds": {
+              "baseline": 48.001953918952495,
+              "candidate": 45.802522424957715,
+              "ratio": 0.9541803757049485
+            },
+            "warm_cpu_seconds": {
+              "baseline": 46.856027,
+              "candidate": 45.201593,
+              "ratio": 0.9646911164704597
+            },
+            "warm_rss_kib": {
+              "baseline": 411420,
+              "candidate": 412412,
+              "ratio": 1.002411161343639
+            }
+          },
+          "within_budget": true
+        },
+        {
+          "engine": "sql",
+          "metrics": {
+            "cold_import_and_analysis_seconds": {
+              "baseline": 1.9903178501408547,
+              "candidate": 1.9362619259627536,
+              "ratio": 0.972840557012401
+            },
+            "cold_analysis_seconds": {
+              "baseline": 0.2776664250995964,
+              "candidate": 0.27438871597405523,
+              "ratio": 0.9881955150884179
+            },
+            "cold_cpu_seconds": {
+              "baseline": 1.976519,
+              "candidate": 1.9329379999999998,
+              "ratio": 0.9779506293640485
+            },
+            "cold_rss_kib": {
+              "baseline": 46692,
+              "candidate": 45668,
+              "ratio": 0.9780690482309603
+            },
+            "warm_analysis_seconds": {
+              "baseline": 0.14028237608727068,
+              "candidate": 0.13593828806187958,
+              "ratio": 0.9690332588700336
+            },
+            "warm_cpu_seconds": {
+              "baseline": 0.1383100000000001,
+              "candidate": 0.13595799999999986,
+              "ratio": 0.9829947220012997
+            },
+            "warm_rss_kib": {
+              "baseline": 46692,
+              "candidate": 45668,
+              "ratio": 0.9780690482309603
+            }
+          },
+          "within_budget": true
+        }
+      ],
+      "informational_cohort_outliers_present": true,
+      "informational_cohort_results": [
+        {
+          "engine": "python",
+          "phase": "affected",
+          "ratios": {
+            "cold_import_and_analysis_seconds": 0.9881,
+            "cold_analysis_seconds": 0.9438,
+            "cold_cpu_seconds": 0.9911,
+            "cold_rss_kib": 1.0024,
+            "warm_analysis_seconds": 0.9548,
+            "warm_cpu_seconds": 0.9654,
+            "warm_rss_kib": 1.0024
+          },
+          "finding_counts": {
+            "baseline": {},
+            "candidate": {}
+          },
+          "informational_outliers": [],
+          "corpus_id": "CORPUS-01"
+        },
+        {
+          "engine": "python",
+          "phase": "control-before",
+          "ratios": {
+            "cold_import_and_analysis_seconds": 1.5191,
+            "cold_analysis_seconds": 1.0454,
+            "cold_cpu_seconds": 1.5214,
+            "cold_rss_kib": 1.0089,
+            "warm_analysis_seconds": 0.9005,
+            "warm_cpu_seconds": 0.9292,
+            "warm_rss_kib": 1.0093
+          },
+          "finding_counts": {
+            "baseline": {},
+            "candidate": {}
+          },
+          "informational_outliers": [
+            "cold_import_and_analysis_seconds",
+            "cold_cpu_seconds"
+          ],
+          "corpus_id": "CORPUS-01"
+        },
+        {
+          "engine": "python",
+          "phase": "control-after",
+          "ratios": {
+            "cold_import_and_analysis_seconds": 1.5485,
+            "cold_analysis_seconds": 1.065,
+            "cold_cpu_seconds": 1.5392,
+            "cold_rss_kib": 1.0115,
+            "warm_analysis_seconds": 0.9918,
+            "warm_cpu_seconds": 0.9963,
+            "warm_rss_kib": 1.0107
+          },
+          "finding_counts": {
+            "baseline": {},
+            "candidate": {}
+          },
+          "informational_outliers": [
+            "cold_import_and_analysis_seconds",
+            "cold_cpu_seconds"
+          ],
+          "corpus_id": "CORPUS-01"
+        },
+        {
+          "engine": "python",
+          "phase": "affected",
+          "ratios": {
+            "cold_import_and_analysis_seconds": 2.3951,
+            "cold_analysis_seconds": 1.0213,
+            "cold_cpu_seconds": 2.3991,
+            "cold_rss_kib": 1.0389,
+            "warm_analysis_seconds": 1.1887,
+            "warm_cpu_seconds": 1.1429,
+            "warm_rss_kib": 1.0324
+          },
+          "finding_counts": {
+            "baseline": {
+              "SARJ099": 1,
+              "SARJ420": 23,
+              "SARJ510": 5,
+              "SARJ439": 1,
+              "SARJ016": 6
+            },
+            "candidate": {
+              "SARJ099": 1,
+              "SARJ420": 23,
+              "SARJ510": 5,
+              "SARJ439": 1,
+              "SARJ016": 6
+            }
+          },
+          "informational_outliers": [
+            "cold_import_and_analysis_seconds",
+            "cold_cpu_seconds"
+          ],
+          "corpus_id": "CORPUS-02"
+        },
+        {
+          "engine": "python",
+          "phase": "control-before",
+          "ratios": {
+            "cold_import_and_analysis_seconds": 2.8969,
+            "cold_analysis_seconds": 0.9238,
+            "cold_cpu_seconds": 2.8795,
+            "cold_rss_kib": 1.0383,
+            "warm_analysis_seconds": 1.0273,
+            "warm_cpu_seconds": 1.0273,
+            "warm_rss_kib": 1.0393
+          },
+          "finding_counts": {
+            "baseline": {},
+            "candidate": {}
+          },
+          "informational_outliers": [
+            "cold_import_and_analysis_seconds",
+            "cold_cpu_seconds"
+          ],
+          "corpus_id": "CORPUS-02"
+        },
+        {
+          "engine": "python",
+          "phase": "control-after",
+          "ratios": {
+            "cold_import_and_analysis_seconds": 3.1177,
+            "cold_analysis_seconds": 0.9959,
+            "cold_cpu_seconds": 3.1203,
+            "cold_rss_kib": 1.0406,
+            "warm_analysis_seconds": 0.8829,
+            "warm_cpu_seconds": 0.8828,
+            "warm_rss_kib": 1.0406
+          },
+          "finding_counts": {
+            "baseline": {},
+            "candidate": {}
+          },
+          "informational_outliers": [
+            "cold_import_and_analysis_seconds",
+            "cold_cpu_seconds"
+          ],
+          "corpus_id": "CORPUS-02"
+        },
+        {
+          "engine": "python",
+          "phase": "affected",
+          "ratios": {
+            "cold_import_and_analysis_seconds": 2.4084,
+            "cold_analysis_seconds": 1.1819,
+            "cold_cpu_seconds": 2.4021,
+            "cold_rss_kib": 1.053,
+            "warm_analysis_seconds": 0.9216,
+            "warm_cpu_seconds": 0.9224,
+            "warm_rss_kib": 1.0546
+          },
+          "finding_counts": {
+            "baseline": {
+              "SARJ016": 10,
+              "SARJ434": 3,
+              "SARJ050": 10,
+              "SARJ420": 10,
+              "SARJ099": 25
+            },
+            "candidate": {
+              "SARJ016": 7,
+              "SARJ434": 3,
+              "SARJ050": 10,
+              "SARJ420": 10,
+              "SARJ099": 25
+            }
+          },
+          "informational_outliers": [
+            "cold_import_and_analysis_seconds",
+            "cold_cpu_seconds"
+          ],
+          "corpus_id": "CORPUS-03"
+        },
+        {
+          "engine": "python",
+          "phase": "control-before",
+          "ratios": {
+            "cold_import_and_analysis_seconds": 2.2101,
+            "cold_analysis_seconds": 0.8388,
+            "cold_cpu_seconds": 2.2273,
+            "cold_rss_kib": 1.0614,
+            "warm_analysis_seconds": 0.8604,
+            "warm_cpu_seconds": 0.8572,
+            "warm_rss_kib": 1.0614
+          },
+          "finding_counts": {
+            "baseline": {},
+            "candidate": {}
+          },
+          "informational_outliers": [
+            "cold_import_and_analysis_seconds",
+            "cold_cpu_seconds"
+          ],
+          "corpus_id": "CORPUS-03"
+        },
+        {
+          "engine": "python",
+          "phase": "control-after",
+          "ratios": {
+            "cold_import_and_analysis_seconds": 3.0081,
+            "cold_analysis_seconds": 0.8781,
+            "cold_cpu_seconds": 3.003,
+            "cold_rss_kib": 1.0636,
+            "warm_analysis_seconds": 0.8962,
+            "warm_cpu_seconds": 0.8962,
+            "warm_rss_kib": 1.0636
+          },
+          "finding_counts": {
+            "baseline": {},
+            "candidate": {}
+          },
+          "informational_outliers": [
+            "cold_import_and_analysis_seconds",
+            "cold_cpu_seconds"
+          ],
+          "corpus_id": "CORPUS-03"
+        },
+        {
+          "engine": "sql",
+          "phase": "affected",
+          "ratios": {
+            "cold_import_and_analysis_seconds": 0.9728,
+            "cold_analysis_seconds": 1.0053,
+            "cold_cpu_seconds": 0.9929,
+            "cold_rss_kib": 1.0,
+            "warm_analysis_seconds": 0.929,
+            "warm_cpu_seconds": 0.9473,
+            "warm_rss_kib": 1.0
+          },
+          "finding_counts": {
+            "baseline": {
+              "SARJ121": 32,
+              "SARJ111": 4,
+              "SARJ122": 2
+            },
+            "candidate": {
+              "SARJ121": 29,
+              "SARJ111": 15,
+              "SARJ122": 2
+            }
+          },
+          "informational_outliers": [],
+          "corpus_id": "CORPUS-04"
+        },
+        {
+          "engine": "sql",
+          "phase": "control-before",
+          "ratios": {
+            "cold_import_and_analysis_seconds": 0.9567,
+            "cold_analysis_seconds": 0.9145,
+            "cold_cpu_seconds": 0.9776,
+            "cold_rss_kib": 1.0,
+            "warm_analysis_seconds": 0.998,
+            "warm_cpu_seconds": 1.0146,
+            "warm_rss_kib": 1.0
+          },
+          "finding_counts": {
+            "baseline": {
+              "SARJ102": 126
+            },
+            "candidate": {
+              "SARJ102": 126
+            }
+          },
+          "informational_outliers": [],
+          "corpus_id": "CORPUS-04"
+        },
+        {
+          "engine": "sql",
+          "phase": "control-after",
+          "ratios": {
+            "cold_import_and_analysis_seconds": 0.9265,
+            "cold_analysis_seconds": 1.019,
+            "cold_cpu_seconds": 0.9367,
+            "cold_rss_kib": 1.0,
+            "warm_analysis_seconds": 1.4364,
+            "warm_cpu_seconds": 1.4309,
+            "warm_rss_kib": 1.0
+          },
+          "finding_counts": {
+            "baseline": {
+              "SARJ102": 126
+            },
+            "candidate": {
+              "SARJ102": 126
+            }
+          },
+          "informational_outliers": [
+            "warm_analysis_seconds",
+            "warm_cpu_seconds"
+          ],
+          "corpus_id": "CORPUS-04"
+        },
+        {
+          "engine": "sql",
+          "phase": "affected",
+          "ratios": {
+            "cold_import_and_analysis_seconds": 0.9625,
+            "cold_analysis_seconds": 1.0099,
+            "cold_cpu_seconds": 0.9621,
+            "cold_rss_kib": 1.0,
+            "warm_analysis_seconds": 0.8558,
+            "warm_cpu_seconds": 0.8556,
+            "warm_rss_kib": 1.0
+          },
+          "finding_counts": {
+            "baseline": {},
+            "candidate": {}
+          },
+          "informational_outliers": [],
+          "corpus_id": "CORPUS-05"
+        },
+        {
+          "engine": "sql",
+          "phase": "control-before",
+          "ratios": {
+            "cold_import_and_analysis_seconds": 0.9505,
+            "cold_analysis_seconds": 0.6678,
+            "cold_cpu_seconds": 0.9533,
+            "cold_rss_kib": 1.0,
+            "warm_analysis_seconds": 0.8224,
+            "warm_cpu_seconds": 0.8226,
+            "warm_rss_kib": 1.0
+          },
+          "finding_counts": {
+            "baseline": {},
+            "candidate": {}
+          },
+          "informational_outliers": [],
+          "corpus_id": "CORPUS-05"
+        },
+        {
+          "engine": "sql",
+          "phase": "control-after",
+          "ratios": {
+            "cold_import_and_analysis_seconds": 0.9465,
+            "cold_analysis_seconds": 1.3157,
+            "cold_cpu_seconds": 0.9473,
+            "cold_rss_kib": 1.0,
+            "warm_analysis_seconds": 0.9282,
+            "warm_cpu_seconds": 0.9283,
+            "warm_rss_kib": 1.0
+          },
+          "finding_counts": {
+            "baseline": {},
+            "candidate": {}
+          },
+          "informational_outliers": [
+            "cold_analysis_seconds"
+          ],
+          "corpus_id": "CORPUS-05"
+        },
+        {
+          "engine": "sql",
+          "phase": "affected",
+          "ratios": {
+            "cold_import_and_analysis_seconds": 0.9867,
+            "cold_analysis_seconds": 1.0018,
+            "cold_cpu_seconds": 0.9858,
+            "cold_rss_kib": 0.9781,
+            "warm_analysis_seconds": 1.1703,
+            "warm_cpu_seconds": 1.1443,
+            "warm_rss_kib": 0.9781
+          },
+          "finding_counts": {
+            "baseline": {
+              "SARJ121": 250
+            },
+            "candidate": {
+              "SARJ121": 250
+            }
+          },
+          "informational_outliers": [],
+          "corpus_id": "CORPUS-06"
+        },
+        {
+          "engine": "sql",
+          "phase": "control-before",
+          "ratios": {
+            "cold_import_and_analysis_seconds": 1.0386,
+            "cold_analysis_seconds": 1.1602,
+            "cold_cpu_seconds": 1.0417,
+            "cold_rss_kib": 0.9781,
+            "warm_analysis_seconds": 1.0991,
+            "warm_cpu_seconds": 1.0992,
+            "warm_rss_kib": 0.9781
+          },
+          "finding_counts": {
+            "baseline": {
+              "SARJ102": 500
+            },
+            "candidate": {
+              "SARJ102": 500
+            }
+          },
+          "informational_outliers": [],
+          "corpus_id": "CORPUS-06"
+        },
+        {
+          "engine": "sql",
+          "phase": "control-after",
+          "ratios": {
+            "cold_import_and_analysis_seconds": 1.089,
+            "cold_analysis_seconds": 1.2948,
+            "cold_cpu_seconds": 1.0853,
+            "cold_rss_kib": 0.9973,
+            "warm_analysis_seconds": 1.0913,
+            "warm_cpu_seconds": 1.0916,
+            "warm_rss_kib": 0.9973
+          },
+          "finding_counts": {
+            "baseline": {
+              "SARJ102": 500
+            },
+            "candidate": {
+              "SARJ102": 500
+            }
+          },
+          "informational_outliers": [
+            "cold_analysis_seconds"
+          ],
+          "corpus_id": "CORPUS-06"
+        }
+      ],
+      "limits": [
+        "The 25% budget is predeclared for engine aggregates; individual cohort and control outliers remain disclosed rather than being treated as separate budget passes.",
+        "Only this fixed local corpus is measured; these values are not a full-product speed or memory claim.",
+        "Warm RSS is a cumulative process high-water mark, not incremental allocation.",
+        "Live source, service and platform counts are unlabelled and are not precision or recall measurements.",
+        "The one-source service sample includes its pinned source and project metadata, without imported application context.",
+        "Final rebased package continuity and full native verification remain separate requirements."
+      ],
+      "integration_continuity": {
+        "prior_runtime_snapshot_files": 334,
+        "prior_files_byte_identical_except_registry": false,
+        "new_upstream_python_runtime_files": 7,
+        "selected_rule_and_core_helper_bodies_unchanged": false,
+        "new_registry_cold_imports_measured": false,
+        "combined_rebased_bundle_measured": false,
+        "typescript_engine_measured": false,
+        "scope": "Selected rule and core helper bodies were byte-identical except registry integration before the later copyright-symbol refinement. Current source includes both exceptions above. The measurements belong only to the prior frozen patch snapshot and do not measure the refinement, new imports, new upstream files or combined bundle.",
+        "post_snapshot_source_exceptions": [
+          "Upstream registry integrations and their new imports",
+          "The later copyright-symbol notice protection refinement"
+        ]
+      },
+      "post_snapshot_refinement": "The final copyright guard also protects a copyright symbol without a following year. This conservative refinement was added after the frozen measurement and passes its new autofix integration control and completed native verification campaign; no timing or input repinning is claimed."
+    },
+    "updated_typescript_and_upstream_helper_checks": {
+      "status": "passed",
+      "test_files": 9,
+      "tests": 726,
+      "native_type_build": "passed",
+      "native_full_rule_lint": "passed",
+      "canonical_catalog_preset_cli_docs_sync": "passed",
+      "scope": "Current combined TypeScript source, including the added UUID profile and supporting helpers."
+    },
+    "pure_probes_scope": "Fixed original review cohorts; the current combined TypeScript and upstream helpers additionally pass the recorded native 726-test refresh and completed native campaign.",
+    "final_copyright_marker_control": {
+      "status": "passed",
+      "notice_cases": 11,
+      "new_yearless_notice_cases": 1,
+      "before_fix": "The new integration parameter failed: the copyright notice was deleted.",
+      "after_fix": "All 11 integration parameters preserve the notice and retain the ERROR diagnostic.",
+      "static_lint_and_format": "passed",
+      "counting": "Refines the existing copyright-safety family; no additional primary review row or distinct defect is claimed."
+    },
+    "post_campaign_upstream_integration": {
+      "scope": "Nine upstream maintenance-release controller, workflow-allowlist and owning-test files; analyzer runtime, package versions and the 39 candidate file bodies are unchanged.",
+      "qualification": "Owning targeted native checks, normal commit/push hooks and exact-head hosted CI are recorded separately during delivery."
+    }
+  },
+  "comment_reviews": [
+    {
+      "case_id": "COMMENT-001",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "Ordinary module prose is deleted at ERROR.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-002",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "Multiline length does not exempt module prose.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-003",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "Empty module documentation is still a docstring.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-004",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "Ordinary single quoted string has module doc semantics.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-005",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "Raw literal deletion preserves the remaining AST.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-006",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "Unicode prefix remains an eligible module docstring.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-007",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "A standalone concatenated expression can be deleted as one span.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-008",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "Byte-to-character offsets preserve non-ASCII tails.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-009",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "CRLF removal preserves the remaining physical newlines.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-010",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "A docstring-only module may become empty.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-011",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "An already-active shebang is retained.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-012",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "Deleting prose must not activate a later shebang.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-013",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "An active UTF-8 cookie remains active.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-014",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "Deletion must not activate an encoding cookie.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-015",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "A comment inside a parenthesized expression is not deleted.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-016",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "A trailing authored note withholds the doc deletion.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-017",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "Same-line code withholds a whole-line edit.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-018",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "Deletion must not promote a secondary string to module documentation.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-019",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "A doctest is an executable documentation consumer.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-020",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "The module description is a runtime value.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-021",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "A later function reads the module global documentation.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-022",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "A parameter shadow does not prove a consumer; broad metadata gate withholds a fix.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-023",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "Escaped module globals can reveal __doc__ indirectly.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-024",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "An escaped module can expose documentation without an explicit read.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-025",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "Help consumes the current module's documentation.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-026",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "Aliases resolving a current-module import still consume prose.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-027",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "A standalone warranty disclaimer must remain for manual preservation.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-028",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "Redistribution conditions are legal text even without a license label.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-029",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "A symbol copyright notice is legal content.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-030",
+      "owner": "SARJ099/SARJ420",
+      "verdict": "pass",
+      "reason": "A code identifier containing warranty does not justify a legal exemption.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-031",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "Public APIs remain review-only despite exact name narration.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-032",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "An underscore does not prove a top-level function cannot escape.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-033",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "An inert private synchronous direct-call helper has the exact safe-fix proof.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-034",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "Returning the function exposes its metadata.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-035",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "An alias defeats the direct-reference-only proof.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-036",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "Behavioral prose lacks the second exact-name ERROR required for deletion.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-037",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "A generator's suspended frame keeps metadata observable.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-038",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "A coroutine helper is outside the safe subset.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-039",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "An opaque decorator can consume or export metadata.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-040",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "A visible frame capability withholds function deletion.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-041",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "A direct call in another closure is not an enclosing-scope proof.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-042",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "A comprehension introduces an additional function scope.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-043",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "A docstring-only class is reported but never left syntactically empty.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-044",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "Ordinary class prose is ERROR but no class autofix is supplied.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-045",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "Incidental dataclass metadata does not justify ordinary prose.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-046",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "Pydantic model documentation feeds JSON schema.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-047",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "Recognized enum schema metadata remains protected.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-048",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "The property descriptor copies the method documentation.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-049",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "Imported decorator identity survives aliasing.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-050",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "An explicit attribute consumer preserves callable prose.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-051",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "A visible owner alias is followed for help consumption.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-052",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "A getdoc import alias is still a consumer.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-053",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "A canonical cache wrapper copies __doc__.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-054",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "Default wraps assigned fields include __doc__.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-055",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "Explicitly excluding all assigned fields does not consume input docs.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-056",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "Click fills missing help from the docstring.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-057",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "Explicit non-None CLI help leaves prose unconsumed.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-058",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "A proven Typer receiver consumes callback docs.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-059",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "A proven FastAPI receiver publishes callback documentation.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-060",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "Explicit OpenAPI description disables the default doc consumer.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-061",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "A proven tool decorator consumes the function documentation.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-062",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "A raw schema bypasses the docstring consumer.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-063",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "A syntax-required callable body is not removed or reported.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-064",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "An explained exact-code suppression at the closing line preserves API docs.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-065",
+      "owner": "SARJ420",
+      "verdict": "pass",
+      "reason": "A module-rule suppression cannot suppress callable documentation policy.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-066",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "An unprotected exception walkthrough remains ERROR.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-067",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "A plain retry narration remains ERROR.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-068",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "Security constraints remain local.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-069",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "A deliberate negative constraint remains protected.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-070",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "A causal consequence provides a hidden constraint.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-071",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "An external requirement is a protected constraint.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-072",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "A traceable incident reference remains protected.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-073",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "A quantified duration is technical content.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-074",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "A version boundary carries technical meaning.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-075",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "Delivery guarantees must not be classified as narration.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-076",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "Space-separated delivery semantics remain constraints.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-077",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "Exactly-once behavior is a hidden contract.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-078",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "The word once alone does not create a delivery guarantee exemption.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-079",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "Tool directives cannot become prose deletion advice.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-080",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "An explained exact owner suppression remains supported.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-081",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "Commented-out implementation remains a diagnostic without automatic deletion.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-082",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "A visibly introduced syntax example remains documentation.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-083",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "Structured script metadata has a real external consumer.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-084",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "Malformed metadata cannot hide a valid commented assignment.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-085",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "A content-free section banner remains ERROR.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-086",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "A legal header's surrounding rule is preserved.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-087",
+      "owner": "SARJ016",
+      "verdict": "pass",
+      "reason": "A later legal notice does not exempt a preceding content-free banner; only the banner is safely removed.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-088",
+      "owner": "SARJ434",
+      "verdict": "pass",
+      "reason": "Exact four-line accumulation narration has a convergent safe deletion.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-089",
+      "owner": "SARJ434",
+      "verdict": "pass",
+      "reason": "A causal fact outside action names prevents paragraph deletion.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-090",
+      "owner": "SARJ434",
+      "verdict": "pass",
+      "reason": "A meaning-bearing quantifier prevents exact narration proof.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-091",
+      "owner": "SARJ434",
+      "verdict": "pass",
+      "reason": "Order-sensitive correspondence is required.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-092",
+      "owner": "SARJ434",
+      "verdict": "pass",
+      "reason": "Arguments invalidate the exact zero-argument-call proof.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-093",
+      "owner": "SARJ434",
+      "verdict": "pass",
+      "reason": "A qualified call is outside the narrow lexical proof.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-094",
+      "owner": "SARJ434",
+      "verdict": "pass",
+      "reason": "An interleaved authored note prevents whole-body narration classification.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-095",
+      "owner": "SARJ434",
+      "verdict": "pass",
+      "reason": "Extra statements invalidate the exact body shape.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-096",
+      "owner": "SARJ434",
+      "verdict": "pass",
+      "reason": "A guard carries control flow beyond flat accumulation.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-097",
+      "owner": "SARJ434",
+      "verdict": "pass",
+      "reason": "The accumulator itself must be returned.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-098",
+      "owner": "SARJ434",
+      "verdict": "pass",
+      "reason": "The proof supports a literal empty dictionary with update calls.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-099",
+      "owner": "SARJ434",
+      "verdict": "pass",
+      "reason": "Exact two-action narration is ERROR while fix remains restricted to accumulation.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "COMMENT-100",
+      "owner": "SARJ434",
+      "verdict": "pass",
+      "reason": "Quoted authored text is outside the plain-word deletion proof.",
+      "disposition": "retain-owner-boundary"
+    }
+  ],
+  "severity_reviews": [
+    {
+      "case_id": "SEVERITY-001",
+      "owner": "eslint:excessive-commentary",
+      "verdict": "retain-warning",
+      "reason": "The volume/header/narration intersection identifies a review candidate, while the protocol-constraint fixture proves that prose ownership and durable constraints need human judgment.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-002",
+      "owner": "eslint:no-bespoke-api-case-conversion",
+      "verdict": "retain-warning",
+      "reason": "Import-proven API receiver plus direct identifier case conversion shows duplication, but protocol compatibility may intentionally require that adapter.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-003",
+      "owner": "eslint:no-boolean-selector-parameter",
+      "verdict": "retain-warning",
+      "reason": "Pure value mappings and actual callable contracts abstain, but selecting two operations can still be a deliberate domain API; syntax does not decide its ownership.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-004",
+      "owner": "eslint:no-contradictory-overload-return",
+      "verdict": "promote-error",
+      "reason": "Unique literal overload inputs and a sole strict ternary prove concrete primitive or flat-data return values contradict their advertised result; invalid envelopes, effects, masking, brands and contextual APIs abstain.",
+      "disposition": "promote-error"
+    },
+    {
+      "case_id": "SEVERITY-005",
+      "owner": "eslint:no-contradictory-type-predicate",
+      "verdict": "promote-error",
+      "reason": "Actual typeof domains, strict-null admission or stable native Array.isArray supply a concrete false narrowing claim.",
+      "disposition": "promote-error"
+    },
+    {
+      "case_id": "SEVERITY-006",
+      "owner": "eslint:no-cors-wildcard-with-credentials",
+      "verdict": "retain-warning",
+      "reason": "Source resolves explicit wildcard origin and credentials opt-in, but custom receiver semantics and actual request use are not proven across every supported header/configuration surface.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-007",
+      "owner": "eslint:no-credential-in-browser-storage",
+      "verdict": "retain-warning",
+      "reason": "Static credential words on storage keys are the detection evidence; public tokens, non-authenticating credentials and neutral names demonstrate that key spelling cannot establish sensitive credential ownership.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-008",
+      "owner": "eslint:no-exception-text-in-5xx-response",
+      "verdict": "retain-warning",
+      "reason": "Caught message/stack reaches a returned literal 5xx JSON response, but the exception may contain deliberately public domain information; secret disclosure is not source-proven.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-009",
+      "owner": "eslint:no-excess-jsx-props",
+      "verdict": "retain-warning",
+      "reason": "A closed scalar receiver and own-data spread prove fields are outside its declared contract, but intentionally sharing a wider data object can remain a valid API choice; do not infer removal ownership.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-010",
+      "owner": "eslint:no-invalid-typed-mutation",
+      "verdict": "promote-error",
+      "reason": "Stable plain own-data local storage, native standard-library mutator and nonassignable concrete write establish a violated declared property contract; escapes, descriptors, aliases and opaque types withdraw proof.",
+      "disposition": "promote-error"
+    },
+    {
+      "case_id": "SEVERITY-011",
+      "owner": "eslint:no-invalid-zod-custom-parse",
+      "verdict": "promote-error",
+      "reason": "Actual native Zod v4 no-validator inline custom parse returns a mismatching primitive unchanged; dynamic inputs, composed validation, brands/enums and mutated/escaped namespace authority abstain.",
+      "disposition": "promote-error"
+    },
+    {
+      "case_id": "SEVERITY-012",
+      "owner": "eslint:no-numeric-search-param-coercion",
+      "verdict": "retain-warning",
+      "reason": "URLSearchParams provenance establishes parsing source but Number/parseInt may intentionally implement a permissive contract; schema choice is not determined by the expression alone.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-013",
+      "owner": "eslint:no-partial-type-predicate",
+      "verdict": "promote-error",
+      "reason": "A concrete promised-primitive member returns false, which makes the explicit two-branch narrowing contract unsound.",
+      "disposition": "promote-error"
+    },
+    {
+      "case_id": "SEVERITY-014",
+      "owner": "eslint:no-redundant-consumer-union",
+      "verdict": "retain-warning",
+      "reason": "Private pure scalar-consumer proof and proper native assignability support simplification, but this is representational guidance rather than a violated runtime or static consumer contract.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-015",
+      "owner": "eslint:no-restated-comment",
+      "verdict": "retain-warning",
+      "reason": "Token overlap and inflection are heuristic; reason, ordering, references and sibling-group boundaries are protected and require prose interpretation.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-016",
+      "owner": "eslint:no-restated-jsdoc",
+      "verdict": "retain-warning",
+      "reason": "Declaration-name overlap cannot prove documentation is dispensable.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-017",
+      "owner": "eslint:prefer-discriminated-union",
+      "verdict": "retain-warning",
+      "reason": "Exact producer field-presence proof is narrower than all legal consumers; legacy boolean/payload names do not prove forbidden partial success.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-018",
+      "owner": "eslint:prefer-millisecond-control-duration-schema",
+      "verdict": "retain-warning",
+      "reason": "Recognized numeric Zod timing keys infer control semantics from names; business duration and wire-protocol units can legitimately differ.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-019",
+      "owner": "eslint:prefer-minimal-parameter-contract",
+      "verdict": "retain-warning",
+      "reason": "Private read-only scalar consumption proves unused required fields but does not make the original contract incorrect; public, callback and independently named domain contracts abstain.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-020",
+      "owner": "eslint:prefer-module-level-refined-schema",
+      "verdict": "retain-warning",
+      "reason": "Local-independent Zod construction is not a general purity/schema-identity/module-initialization proof; moving callbacks or getter reads can alter behavior.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-021",
+      "owner": "eslint:prefer-native-fetch-in-server-actions",
+      "verdict": "retain-warning",
+      "reason": "Use-server directive and direct ky import prove a library choice, while retries, hooks and integration behavior require manual replacement review.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-022",
+      "owner": "eslint:prefer-node-crypto-hash",
+      "verdict": "retain-warning",
+      "reason": "One-shot source topology permits modern API guidance, but runtime support, encodings and timing/performance are not universally established; streaming remains accepted.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-023",
+      "owner": "eslint:prefer-node-fs-promises",
+      "verdict": "retain-warning",
+      "reason": "Synchronous node:fs provenance does not distinguish required startup/synchronous extension contracts; replacement changes the caller return contract.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-024",
+      "owner": "eslint:prefer-shared-zod-enum",
+      "verdict": "retain-warning",
+      "reason": "Equal ordered literal domains need not share business ownership or future evolution; extracting one named schema changes identity/initialization.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-025",
+      "owner": "eslint:prefer-whole-object-assertion",
+      "verdict": "retain-warning",
+      "reason": "Consecutive property assertions can intentionally express a partial or ordered getter contract; grouping can change read behavior and absent/undefined semantics.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-026",
+      "owner": "eslint:prefer-zod-parse-output-type",
+      "verdict": "retain-warning",
+      "reason": "Exact key/optionality/readonly and assignability proofs support deriving a type but do not make an independently named domain contract incorrect; explicit callable contracts abstain.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-027",
+      "owner": "eslint:require-sql-access-class",
+      "verdict": "retain-warning",
+      "reason": "Conventional receiver/execution names are heuristics; Map exclusions reduce known collisions but do not prove every custom receiver is a database or requires a class.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-028",
+      "owner": "iac:no-dead-environment-input",
+      "verdict": "retain-warning",
+      "reason": "Equal declared defaults and cross-environment scalar values can intentionally fail closed; filenames do not prove invocation order or environment ownership.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-029",
+      "owner": "iac:no-nested-conditional",
+      "verdict": "retain-warning",
+      "reason": "Nested choice syntax is a readability/ownership review; even bounded literal folding does not make every authored selection invalid.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-030",
+      "owner": "iac:no-plaintext-secret-env",
+      "verdict": "retain-warning",
+      "reason": "SECRET/TOKEN/PASSWORD suffixes establish naming evidence, not whether a value is a private credential; provider/protocol requirements need source-specific review.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-031",
+      "owner": "iac:no-project-secret-access-for-service-account",
+      "verdict": "retain-warning",
+      "reason": "Explicit project role/service-account scope is broad authority, but rotation/admin service requirements may intentionally span all secrets; per-secret policy remains an architectural review.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-032",
+      "owner": "iac:no-restated-comment",
+      "verdict": "retain-warning",
+      "reason": "Same-indentation short-token repetition can still document a durable local concern; token-preserving fixes do not prove prose redundancy.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-033",
+      "owner": "python:complex-postgres-query-requires-architecture-review",
+      "verdict": "retain-warning",
+      "reason": "Parsed executable join/stage/projection density is a reproducible complexity signal, not proof a relational query should leave PostgreSQL; named queue stages remain a valid boundary.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-034",
+      "owner": "python:delete-route-returns-no-content",
+      "verdict": "retain-warning",
+      "reason": "Same-file FastAPI DELETE returning no declared body makes 204 review useful, but externally established empty-200 contracts can be valid.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-035",
+      "owner": "python:duplicate-pytest-fixture-params",
+      "verdict": "retain-warning",
+      "reason": "Immutable values are actually duplicate, but dependent fixtures/hooks can observe generated IDs, indices or deliberate repeated execution.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-036",
+      "owner": "python:fakes-in-shared-location",
+      "verdict": "retain-warning",
+      "reason": "Top-level Fake/Stub-style names do not prove reuse across modules; scenario-local ownership is allowed and moving doubles can overcouple tests.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-037",
+      "owner": "python:fastapi-explicit-openapi-contract",
+      "verdict": "retain-warning",
+      "reason": "Duplicate literal operation IDs can be definite, but this owner also enforces explicit metadata/location policy when framework inference is valid; blanket error would overpromote mixed semantics.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-038",
+      "owner": "python:iac-source-coupled-test",
+      "verdict": "retain-warning",
+      "reason": "Source-text oracle dataflow is proven, but packaging/formatter/representation compatibility can deliberately own exact text outside conventional fixtures.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-039",
+      "owner": "python:no-create-verb-in-post-path",
+      "verdict": "retain-warning",
+      "reason": "Literal terminal create/add/new words are a route convention; deliberate RPC/integration endpoints remain valid and need an exact reasoned exception.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-040",
+      "owner": "python:no-defaulted-environment-setting",
+      "verdict": "retain-warning",
+      "reason": "Source proves a BaseSettings default but deployment-environment meaning is inferred from environment name/alias; not every such field selects resource isolation.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-041",
+      "owner": "python:no-dual-shape-model-field-reader",
+      "verdict": "retain-warning",
+      "reason": "Closed private helper topology and declared literal fields prove a normalization opportunity, not equivalence of model validation, mapping missing values and permissive legacy behavior.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-042",
+      "owner": "python:no-duplicate-field-validator-body",
+      "verdict": "retain-warning",
+      "reason": "Same structural body/mode can intentionally retain independent field contracts; info.field_name or separately evolving public validator identities prevent unconditional merging.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-043",
+      "owner": "python:no-exception-text-in-500-detail",
+      "verdict": "retain-warning",
+      "reason": "Caught exception/traceback/file reaches literal HTTP500 detail but source does not establish secrets or external error ownership; fixed detail is the accepted safer boundary.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-044",
+      "owner": "python:no-folded-bad-request-not-found",
+      "verdict": "retain-warning",
+      "reason": "Grouping literal400/404 status handling can intentionally share a public fallback.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-045",
+      "owner": "python:no-hasattr",
+      "verdict": "retain-warning",
+      "reason": "Builtin attribute probing may be legitimate reflection/raw interop; avoiding hasattr is an architectural type-contract preference, not a proven defect.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-046",
+      "owner": "python:no-injected-module-loader",
+      "verdict": "retain-warning",
+      "reason": "One fixed stdlib-import target shows an unnecessary injection candidate, while module discovery timing, optional dependency and import-cycle behavior require review.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-047",
+      "owner": "python:no-nullable-dependency-fallback",
+      "verdict": "retain-warning",
+      "reason": "Proven callable/settings fallback shows concrete dependency choice but an optional integration seam can intentionally preserve defaulting; removing it changes caller ownership.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-048",
+      "owner": "python:no-raw-source-text-test-oracle",
+      "verdict": "retain-warning",
+      "reason": "Static source provenance and assertion consumption identify possible representation coupling; compatibility/formatter/source distribution contracts can intentionally assert raw text.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-049",
+      "owner": "python:no-redundant-local-alias",
+      "verdict": "retain-warning",
+      "reason": "Unique initialized binding and matching-keyword use prove a simple alias, while frame-observation/conditional/local lifetime boundaries constrain removal; no correctness claim follows solely from redundancy.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-050",
+      "owner": "python:no-slash-collection-root-under-prefix",
+      "verdict": "retain-warning",
+      "reason": "Literal local router prefix proves a trailing slash route but clients may intentionally depend on that path/redirect contract.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-051",
+      "owner": "python:no-whole-request-response-payload-in-log",
+      "verdict": "retain-warning",
+      "reason": "Stable payload-to-log flow is visible but content sensitivity is not; empty/synthetic/public payload logging may be intentionally permitted.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-052",
+      "owner": "python:no-work-verb-get-route",
+      "verdict": "retain-warning",
+      "reason": "Terminal work-verb spelling suggests unsafe GET semantics but does not prove mutation; literal read suffixes and plural nouns are preserved.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-053",
+      "owner": "python:opaque-parametrize-case-needs-id",
+      "verdict": "retain-warning",
+      "reason": "Static opaque cases lack local readable IDs, but repository pytest_make_parametrize_id hooks and dynamic ID ownership are outside this detector.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-054",
+      "owner": "python:over-mocked-test",
+      "verdict": "retain-warning",
+      "reason": "Independently rooted double count is a composition heuristic; six collaborators can be an intentional external-boundary harness rather than an invalid test.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-055",
+      "owner": "python:prefer-bulk-upsert",
+      "verdict": "retain-warning",
+      "reason": "Matching source-declared scalar/bulk signatures prove API availability but batch duplicate handling, failures and per-row database effects can differ.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-056",
+      "owner": "python:prefer-declarative-batch-validation",
+      "verdict": "retain-warning",
+      "reason": "Homogeneous materialized model_validate loops show a named collection opportunity; batch error location/aggregation and model-validation effects still require review.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-057",
+      "owner": "python:prefer-direct-import-module",
+      "verdict": "retain-warning",
+      "reason": "Eager literal import_module has a static syntax alternative, but importer context, ordering and circular/optional dependency behavior can differ.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-058",
+      "owner": "python:prefer-grouped-settings",
+      "verdict": "retain-warning",
+      "reason": "Shared complete snake-case prefix is namespace evidence but cannot establish a common component or justify changing environment-variable/source behavior.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-059",
+      "owner": "python:prefer-library-fake",
+      "verdict": "retain-warning",
+      "reason": "Provider method/envelope matching suggests maintained tools but scenario-specific protocol seams and upstream feature coverage require independent judgment.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-060",
+      "owner": "python:prefer-match-exception-dispatch",
+      "verdict": "retain-warning",
+      "reason": "Terminating refined isinstance branches are a readability candidate; custom instance checks, overlapping imported classes and fallback semantics preclude unconditional rewrite.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-061",
+      "owner": "python:prefer-monkeypatch-for-process-state-in-test",
+      "verdict": "retain-warning",
+      "reason": "Direct process-state mutation is visible but valid manual teardown/restoration across yield is explicitly not inferred and may already own cleanup.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-062",
+      "owner": "python:prefer-native-string-check",
+      "verdict": "retain-warning",
+      "reason": "Unconstrained TypeAdapter(str) assertions and already JSON-encoded mapping checks can be simplified, but coercion/encoder behavior and assertion intent need review.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-063",
+      "owner": "python:prefer-non-nullable-collection",
+      "verdict": "retain-warning",
+      "reason": "None/list collapse proves one implementation treats absent input as empty, but explicit optional input and constructor API compatibility can remain meaningful.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-064",
+      "owner": "python:prefer-psycopg-executemany",
+      "verdict": "retain-warning",
+      "reason": "Typed cursor plus discarded invariant parameterized writes proves batching availability, not equivalence of statement timing/trigger/failure behavior.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-065",
+      "owner": "python:prefer-pydantic-model-assertion",
+      "verdict": "retain-warning",
+      "reason": "Declared consecutive model fields can form one projection assertion, but selected independent checks and custom field-read behavior remain valid.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-066",
+      "owner": "python:prefer-pytest-dependency-fixtures",
+      "verdict": "retain-warning",
+      "reason": "Stored/invoked Protocol or ABC collaborator topology proves a dependency, while construction scope/lifetime/test independence must be chosen by the test author.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-067",
+      "owner": "python:prefer-required-constructor-parameters",
+      "verdict": "retain-warning",
+      "reason": "Directly authored constructor defaults are choices, not automatically defects.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-068",
+      "owner": "python:prefer-typed-settings-field",
+      "verdict": "retain-warning",
+      "reason": "Enum/NewType/default URL/positive metadata supplies stronger domain evidence than names, but conversion and environment-source compatibility still need review.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-069",
+      "owner": "python:prefer-walrus-comprehension-filter",
+      "verdict": "retain-warning",
+      "reason": "Repeated AST-equal calls may intentionally perform two effects; a temporary result changes call count and therefore needs behavioral review.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-070",
+      "owner": "python:pytest-fixture-returns-closed-resource",
+      "verdict": "retain-warning",
+      "reason": "Proven stream/client context closes before fixture return, but intentionally testing closed resources and unreachable branches remain inspected valid exceptions.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-071",
+      "owner": "python:repeated-static-call-cases",
+      "verdict": "retain-warning",
+      "reason": "Three same-shape literal assertions suggest parameter cases, while call state and sequencing can be an intentional contract; mutator naming exclusions are not a purity proof.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-072",
+      "owner": "python:replay-contract-insert-requires-duplicate-policy",
+      "verdict": "retain-warning",
+      "reason": "Replay intent is inferred from callable names and conflict ownership is lexical per statement, so intentional failure or CTE policy cannot be universally ruled out.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-073",
+      "owner": "python:require-explicit-psycopg-transaction",
+      "verdict": "retain-warning",
+      "reason": "Typed locking-read/write topology is useful, but connection autocommit/default implicit transaction ownership and intentionally independent writes are not fully proven.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-074",
+      "owner": "python:require-port-for-service",
+      "verdict": "retain-warning",
+      "reason": "Service names/constructor calls/public method counts suggest a substitution seam; they do not establish an application-owned consumer contract or need for an extra interface.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-075",
+      "owner": "python:require-pydantic-for-mapping-shape",
+      "verdict": "retain-warning",
+      "reason": "Raw mapping key probes show a structural validation contract, but open formats and deliberately lightweight parser boundaries may legitimately retain manual checks.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-076",
+      "owner": "python:store-field-update-reuses-upsert",
+      "verdict": "retain-warning",
+      "reason": "Exact table/conflict-key/field/result topology identifies overlap, while UPDATE missing-row behavior differs from INSERT-or-update and needs explicit domain preservation.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-077",
+      "owner": "python:store-get-delegates-to-bulk-read",
+      "verdict": "retain-warning",
+      "reason": "Source-declared compatible singleton/bulk signatures do not prove missing-row, ordering, tenant and conflict behavior are equivalent; this remains architecture guidance.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-078",
+      "owner": "python:test-without-explicit-oracle",
+      "verdict": "retain-warning",
+      "reason": "A collected test without a visible assertion can intentionally prove no-throw behavior or delegate to opaque external helpers; it remains opt-in.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-079",
+      "owner": "python:timestamp-order-requires-tiebreaker",
+      "verdict": "retain-warning",
+      "reason": "*_at ordering spelling and bounded SQL are proven but schema uniqueness is not; a timestamp can already be unique and intended key cannot be inferred.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-080",
+      "owner": "python:typed-error-reasons",
+      "verdict": "retain-warning",
+      "reason": "Named exception plus joined list[str] does not prove a finite reason domain; dynamic file paths/messages remain legitimate context.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-081",
+      "owner": "sql:mixed-migration-phases",
+      "verdict": "retain-warning",
+      "reason": "Executable backfill/contract phase composition is proven but atomicity and locking/runtime/rollback/postcondition evidence can justify a single reviewed migration.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-082",
+      "owner": "sql:no-application-schema-check",
+      "verdict": "retain-warning",
+      "reason": "JSON functions/closed literal CHECK lists are syntactic ownership signals; shared writers can intentionally require database-level invariant enforcement.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-083",
+      "owner": "text:declarative-deployment-boundary",
+      "verdict": "retain-warning",
+      "reason": "Recognized operational command/configuration semantics establish possible infrastructure mutation, but shell function invocation and wrapper/execution context are not always proven.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-084",
+      "owner": "text:large-shell-program",
+      "verdict": "retain-warning",
+      "reason": "200 substantive physical lines are a size signal rather than complexity or rewrite-equivalence proof; continuation/data boundaries remain advisory.",
+      "disposition": "retain-warning"
+    },
+    {
+      "case_id": "SEVERITY-085",
+      "owner": "python:prefer-match-value-dispatch",
+      "verdict": "pass",
+      "reason": "Exactly two distinct qualified terminal equality branches with explicit fallback and a proven modern target must block.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SEVERITY-086",
+      "owner": "python:prefer-match-value-dispatch",
+      "verdict": "pass",
+      "reason": "Same-file import-proven enum owner has the same two-terminal-branch enforcement contract.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SEVERITY-087",
+      "owner": "python:prefer-match-value-dispatch",
+      "verdict": "pass",
+      "reason": "A declared Python3.9 target cannot use match syntax and must not receive the recommendation.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SEVERITY-088",
+      "owner": "python:prefer-match-value-dispatch",
+      "verdict": "pass",
+      "reason": "A globally owned subject lacks stable local evaluation authority; report only advisory.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SEVERITY-089",
+      "owner": "python:prefer-discriminated-model-union",
+      "verdict": "pass",
+      "reason": "Same defaulted constructor-only raw InitVar became an opaque common field; now ignored as non-data.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SEVERITY-090",
+      "owner": "python:prefer-discriminated-model-union",
+      "verdict": "pass",
+      "reason": "Constructor-only literal InitVar defaults cannot claim a serialized data discriminator either.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SEVERITY-091",
+      "owner": "python:prefer-discriminated-model-union",
+      "verdict": "pass",
+      "reason": "A real common disjoint stored Literal field satisfies the requested union requirement.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SEVERITY-092",
+      "owner": "python:prefer-discriminated-model-union",
+      "verdict": "pass",
+      "reason": "Source-proven nullable payload rejection for only one finite tag remains an ERROR; other accepted combinations remain legal.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SEVERITY-093",
+      "owner": "python:prefer-precise-object-contract",
+      "verdict": "pass",
+      "reason": "A genuine source-visible raw-validation input stays object, with the refined result str.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SEVERITY-094",
+      "owner": "python:prefer-precise-object-contract",
+      "verdict": "pass",
+      "reason": "A raw input cannot lend opacity to a proven scalar result; the output must narrow.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SEVERITY-095",
+      "owner": "python:prefer-precise-object-contract",
+      "verdict": "pass",
+      "reason": "Import-proven native parser returns legitimately raw values and retains its honest opaque output.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SEVERITY-096",
+      "owner": "python:prefer-precise-object-contract",
+      "verdict": "pass",
+      "reason": "A parser-like function name cannot hide an actual precise source-declared domain result.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SEVERITY-097",
+      "owner": "python:prefer-match-value-dispatch",
+      "verdict": "pass",
+      "reason": "Equivalent case bodies remain owned by branch-combination controls rather than repeated dispatch.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SEVERITY-098",
+      "owner": "python:prefer-match-value-dispatch",
+      "verdict": "pass",
+      "reason": "A local provider replacement cannot retain imported namespace authority.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SEVERITY-099",
+      "owner": "eslint:no-contradictory-overload-return",
+      "verdict": "pass",
+      "reason": "For each declared literal input the bad primitive/flat-data branch contradicts its declared tag; the corrected strict branch relation satisfies both.",
+      "disposition": "promote-error"
+    },
+    {
+      "case_id": "SEVERITY-100",
+      "owner": "eslint:no-partial-type-predicate",
+      "verdict": "pass",
+      "reason": "Zero belongs to the promised number domain but the positive-only guard returns false, disproving the explicit negative-branch narrowing promise.",
+      "disposition": "promote-error"
+    }
+  ],
+  "sql_reviews": [
+    {
+      "case_id": "SQL-001",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original empty-table columns support the identical inline constraint.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-002",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original empty-table columns support the identical inline constraint.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-003",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original empty-table columns support the identical inline constraint.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-004",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original empty-table columns support the identical inline constraint.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-005",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original empty-table columns support the identical inline constraint.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-006",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original empty-table columns support the identical inline constraint.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-007",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original empty-table columns support the identical inline constraint.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-008",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original empty-table columns support the identical inline constraint.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-009",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original empty-table columns support the identical inline constraint.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-010",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original empty-table columns support the identical inline constraint.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-011",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "NULLS NOT DISTINCT has the same inline table-constraint spelling.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-012",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Explicit NULLS DISTINCT has the same inline table-constraint spelling.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-013",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original empty-table columns support the identical inline constraint.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-014",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original empty-table columns support the identical inline constraint.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-015",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original empty-table columns support the identical inline constraint.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-016",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "PostgreSQL has no equivalent nonunique table constraint.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-017",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "A predicate changes the uniqueness domain.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-018",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Expression keys cannot become equivalent UNIQUE constraints.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-019",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Ordering remains a physical index contract.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-020",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Explicit collation remains a physical index contract.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-021",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Operator class remains a physical index contract.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-022",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Explicit access method is excluded by the documented plain-index boundary.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-023",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Included columns remain a physical index contract.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-024",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Storage options remain a physical index contract.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-025",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Tablespace remains a physical index contract.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-026",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The plain-index boundary intentionally excludes null behavior options.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-027",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Concurrency and transaction behavior remain separate.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-028",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Conditional existence preserves an existing object.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-029",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Unsupported index-name grammar abstains.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-030",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "ONLY is outside the documented plain-index boundary.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-031",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Converting a standalone index into a constraint changes later named-object lifecycle or attachment.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-032",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Converting a standalone index into a constraint changes later named-object lifecycle or attachment.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-033",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Converting a standalone index into a constraint changes later named-object lifecycle or attachment.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-034",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Converting a standalone index into a constraint changes later named-object lifecycle or attachment.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-035",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Converting a standalone index into a constraint changes later named-object lifecycle or attachment.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-036",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Converting a standalone index into a constraint changes later named-object lifecycle or attachment.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-037",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original empty-table columns support the identical inline constraint.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-038",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The action cannot preserve the original unconditional inline contract.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-039",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The action cannot preserve the original unconditional inline contract.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-040",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The action cannot preserve the original unconditional inline contract.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-041",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The action cannot preserve the original unconditional inline contract.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-042",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The action cannot preserve the original unconditional inline contract.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-043",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The action cannot preserve the original unconditional inline contract.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-044",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The action cannot preserve the original unconditional inline contract.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-045",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original same-table empty-definition proof has been revoked.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-046",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original same-table empty-definition proof has been revoked.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-047",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original same-table empty-definition proof has been revoked.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-048",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original same-table empty-definition proof has been revoked.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-049",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original same-table empty-definition proof has been revoked.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-050",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original same-table empty-definition proof has been revoked.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-051",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original same-table empty-definition proof has been revoked.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-052",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original same-table empty-definition proof has been revoked.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-053",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original same-table empty-definition proof has been revoked.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-054",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original same-table empty-definition proof has been revoked.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-055",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The original same-table empty-definition proof has been revoked.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-056",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "An unconditional temporary or unlogged relation is still initially empty.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-057",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "An unconditional temporary or unlogged relation is still initially empty.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-058",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "Existing rows cannot be excluded; PK does not support NOT VALID.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-059",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Inherited definitions are explicitly excluded.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-060",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "Quoted lowercase and unquoted names identify the same relation.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-061",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Quoted mixed-case and lowercase names identify different relations.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-062",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Different explicit schemas cannot share freshness.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-063",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "Moving the FK to the child definition would precede the referenced table.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-064",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The referenced key is already available at the child definition.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-065",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "A later unrelated key must not hide the already available explicit referenced key.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-066",
+      "owner": "SARJ121",
+      "verdict": "pass",
+      "reason": "The self-referenced key is already in the original table definition.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-067",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "A Down statement cannot inherit the Up empty-table proof.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-068",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "Goose transaction sections require independent proofs.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-069",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "Distinct changesets require independent proofs.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-070",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "SARJ111 owns validating checks on an existing table.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-071",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "SARJ121 owns an inline-capable fresh check.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-072",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "Explicit deferred validation preserves its contract.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-073",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "A populated relation must defer validation.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-074",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "Relation resolution or executed SQL can invalidate the prior empty-table proof.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-075",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "Relation resolution or executed SQL can invalidate the prior empty-table proof.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-076",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "Relation resolution or executed SQL can invalidate the prior empty-table proof.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-077",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "Relation resolution or executed SQL can invalidate the prior empty-table proof.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-078",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "Relation resolution or executed SQL can invalidate the prior empty-table proof.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-079",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "Relation resolution or executed SQL can invalidate the prior empty-table proof.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-080",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "Relation resolution or executed SQL can invalidate the prior empty-table proof.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-081",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "Relation resolution or executed SQL can invalidate the prior empty-table proof.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-082",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "Relation resolution or executed SQL can invalidate the prior empty-table proof.",
+      "disposition": "repair-owner-boundary"
+    },
+    {
+      "case_id": "SQL-083",
+      "owner": "SARJ111",
+      "verdict": "pass",
+      "reason": "Nonexecuting DDL preserves the empty-table ownership proof.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-084",
+      "owner": "SARJ111",
+      "verdict": "pass",
+      "reason": "Nonexecuting DDL preserves the empty-table ownership proof.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-085",
+      "owner": "SARJ111",
+      "verdict": "pass",
+      "reason": "Nonexecuting DDL preserves the empty-table ownership proof.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-086",
+      "owner": "SARJ111",
+      "verdict": "pass",
+      "reason": "Nonexecuting DDL preserves the empty-table ownership proof.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-087",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "A quoted semicolon cannot create statement boundaries.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-088",
+      "owner": "SARJ111/SARJ121/SARJ122",
+      "verdict": "pass",
+      "reason": "Comment text is not executable SQL.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-089",
+      "owner": "SARJ122",
+      "verdict": "pass",
+      "reason": "Malformed PostgreSQL CHECK subqueries are outside the documented AST policy; abstention is correct.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-090",
+      "owner": "SARJ122",
+      "verdict": "pass",
+      "reason": "A built-in aggregate violates transactional datastore policy.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-091",
+      "owner": "SARJ122",
+      "verdict": "pass",
+      "reason": "A scalar function is outside analytical query policy.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-092",
+      "owner": "SARJ111/SARJ121/SARJ122",
+      "verdict": "pass",
+      "reason": "Explicit analytical dialect owns aggregates.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-093",
+      "owner": "SARJ111/SARJ121/SARJ122",
+      "verdict": "pass",
+      "reason": "Independent statements retain their distinct owners.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-094",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "Generator-owned migrations are excluded.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-095",
+      "owner": "SARJ111/SARJ121/SARJ122",
+      "verdict": "pass",
+      "reason": "Content-identified database dumps are excluded.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-096",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "PostgreSQL-specific migration advice is excluded for MySQL.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-097",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "Empty referencing column lists cannot manufacture candidates.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-098",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "Empty CHECK expressions cannot manufacture candidates.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-099",
+      "owner": "SARJ111",
+      "verdict": "pass",
+      "reason": "A quoted section marker does not end the migration section.",
+      "disposition": "retain-owner-boundary"
+    },
+    {
+      "case_id": "SQL-100",
+      "owner": "SARJ111/SARJ121",
+      "verdict": "pass",
+      "reason": "Implicit primary-key foreign references still validate existing rows.",
+      "disposition": "retain-owner-boundary"
+    }
+  ],
+  "limits": [
+    "Review rows and pure probes do not substitute for full native qualification or performance measurements.",
+    "Authored boundary probes are not a recall estimate for an external corpus.",
+    "A zero primary-case gap count applies only to the declared labels, not to every possible prose contract.",
+    "Causal, state and compatibility guards recognize finite declaration grammar; they do not prove an assertion true.",
+    "Ordinary module documentation remains an error; legal text, observable metadata, actual consumers and unsafe edit boundaries withhold deletion.",
+    "Eligible class and callable findings remain ERROR; their edits stay manual unless the existing narrow safe-fix proof succeeds.",
+    "SQL advice preserves physical index contracts and deferred-validation ownership; no automatic SQL rewrite is introduced.",
+    "Private source, local paths, identifying names, revisions and hashes are excluded.",
+    "The historical review artifact is retained unchanged.",
+    "The SQL matrix covers only 132 explicit rule/case labels; three additional unchanged findings are separately reviewed.",
+    "Two supplementary findings are valid inline-constraint advice; an inherited hit on an invalid CHECK subquery is outside the supported parser boundary and is not a valid-PostgreSQL true positive.",
+    "No full-engine zero-false-positive claim or universal PostgreSQL semantic-validation claim follows from the selected labels.",
+    "The previous expanded default-zero SQL projection is omitted; only explicitly labelled rule/case pairs supply its binary confusion matrix.",
+    "The latest upstream UUID predicate profile retains ERROR and passes its current owning/helper checks; the earlier primitive-only witnesses are not its sole qualification.",
+    "The 1,553-test preflight remains historical; the current TypeScript/helper refresh passes 726 tests and the completed native campaign passes 49,824 tests. The original make verify invocation was interrupted; its remaining canonical targets passed in a recorded resume."
+  ],
+  "versions": {
+    "standards": "8.142.0",
+    "python": "1.83.0",
+    "sql": "0.30.0",
+    "typescript": "16.32.0"
+  },
+  "upstream_severity_supplement": {
+    "new_warning_policies_reviewed": 6,
+    "extended_owners_reviewed": 2,
+    "review_method": "Static source review; these eight supplemental reviews do not increase the original 100 severity-review count.",
+    "native_updated_owner_and_helper_checks": "passed: 726 tests across nine TypeScript files plus the completed native campaign",
+    "reviews": [
+      {
+        "case_id": "UPSTREAM-SEVERITY-01",
+        "owner": "python:async-executor-shutdown",
+        "verdict": "retain-warning",
+        "reason": "Native waiting-shutdown provenance is bounded, but pending work and actual event-loop blocking duration are not proven; shutdown policy remains an application decision.",
+        "disposition": "retain-warning"
+      },
+      {
+        "case_id": "UPSTREAM-SEVERITY-02",
+        "owner": "python:async-subprocess-cancellation-cleanup",
+        "verdict": "retain-warning",
+        "reason": "A locally created unguarded wait establishes a possible cancellation ownership gap; runtime cancellation, already-settled processes and external lifecycle ownership are not universally proven.",
+        "disposition": "retain-warning"
+      },
+      {
+        "case_id": "UPSTREAM-SEVERITY-03",
+        "owner": "python:cancel-owned-task-without-join",
+        "verdict": "retain-warning",
+        "reason": "The source proves missing local settlement after cancel, while task completion and downstream resource failure remain unproven. Preserve its explicit advisory boundary.",
+        "disposition": "retain-warning"
+      },
+      {
+        "case_id": "UPSTREAM-SEVERITY-04",
+        "owner": "python:failed-probe-zero-threshold",
+        "verdict": "retain-warning",
+        "reason": "The error-derived zero fallback is source-visible, but intentional zero-expectation skip semantics and caller constraints can be valid. Surrounding health-check failure is not proven.",
+        "disposition": "retain-warning"
+      },
+      {
+        "case_id": "UPSTREAM-SEVERITY-05",
+        "owner": "python:nan-hidden-by-builtin-min",
+        "verdict": "retain-warning",
+        "reason": "A later NaN can evade reduced-value finiteness checking, but the detector does not establish that every original candidate must govern acceptance or that another acceptance branch is satisfiable.",
+        "disposition": "retain-warning"
+      },
+      {
+        "case_id": "UPSTREAM-SEVERITY-06",
+        "owner": "text:slack-event-text-in-mrkdwn",
+        "verdict": "retain-warning",
+        "reason": "PR-event/output/Slack markup flow is bounded, but reusable-workflow callers, general guard satisfiability and external environment/builder mutation remain unmodeled. Static review alone does not justify a new blanket ERROR promotion.",
+        "disposition": "retain-warning"
+      },
+      {
+        "case_id": "UPSTREAM-SEVERITY-07",
+        "owner": "eslint:no-exception-text-in-5xx-response",
+        "verdict": "retain-warning",
+        "reason": "The new exported Server Action result profile follows caught details through guarded pure helpers; exception text can still be an intentional public domain contract, so retain review ownership.",
+        "disposition": "retain-warning"
+      },
+      {
+        "case_id": "UPSTREAM-SEVERITY-08",
+        "owner": "eslint:no-partial-type-predicate",
+        "verdict": "preserve-error-promotion",
+        "reason": "Existing concrete primitive witnesses justify ERROR. The newly merged UUID safeParse profile and its helpers pass the current owning/helper 726-test refresh and completed native campaign.",
+        "disposition": "preserve-error-promotion-current-owner-tests-passed"
+      }
+    ]
+  },
+  "requested_rule_coverage": [
+    {
+      "code": "SARJ439",
+      "owner": "prefer-match-value-dispatch",
+      "review_ids": [
+        "SEVERITY-085",
+        "SEVERITY-086",
+        "SEVERITY-087",
+        "SEVERITY-088",
+        "SEVERITY-097",
+        "SEVERITY-098"
+      ],
+      "outcome": "existing ERROR and advisory boundaries retained; enum dispatch coverage reviewed"
+    },
+    {
+      "code": "SARJ510",
+      "owner": "prefer-discriminated-model-union",
+      "review_ids": [
+        "SEVERITY-089",
+        "SEVERITY-090",
+        "SEVERITY-091",
+        "SEVERITY-092"
+      ],
+      "outcome": "retained ERROR; constructor-only InitVar discriminator bypass repaired"
+    },
+    {
+      "code": "SARJ528",
+      "owner": "prefer-precise-object-contract",
+      "review_ids": [
+        "SEVERITY-093",
+        "SEVERITY-094",
+        "SEVERITY-095",
+        "SEVERITY-096"
+      ],
+      "outcome": "retained ERROR; data-contract precision coverage reviewed"
+    }
+  ]
+}

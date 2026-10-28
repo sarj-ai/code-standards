@@ -4,11 +4,18 @@ import hashlib
 import io
 from pathlib import Path
 import tarfile
+from typing import TYPE_CHECKING
 
 from pydantic import RootModel
 import pytest
 
 from sarj_standards.libs.linting import mobile_tools
+
+
+if TYPE_CHECKING:
+    from sarj_standards.libs.linting.mobile_tools import (
+        _Artifact,  # pyright: ignore[reportPrivateUsage]  # sarj-noqa: SARJ048 -- mirrors the private callback contract intercepted by this test.
+    )
 
 
 class _MobileToolVersions(RootModel[dict[str, str]]):
@@ -56,7 +63,7 @@ def test_cached_tool_is_checksum_verified_without_network(tmp_path: Path, monkey
 def test_detekt_uses_the_pinned_jar_through_java(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     jar = tmp_path / "detekt.jar"
 
-    def provision(_artifact: object) -> Path:
+    def provision(_artifact: _Artifact) -> Path:
         return jar
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- cache and provisioning lookup interception is the behavior under test.

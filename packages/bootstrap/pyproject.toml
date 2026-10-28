@@ -1,6 +1,6 @@
 [project]
 name = "sarj-standards-bootstrap"
-version = "2.1.8"
+version = "2.1.10"
 description = "Manifest-driven launcher for an exact Sarj Standards bundle."
 readme = "README.md"
 requires-python = ">=3.14"

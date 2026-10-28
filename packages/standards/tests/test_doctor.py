@@ -20,6 +20,8 @@ from sarj_standards.libs.repository import ledger
 
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from tests.call_contracts import SubprocessOptions
 
 
@@ -145,7 +147,7 @@ def test_authored_files_git_walk_excludes_skills_but_keeps_agent_tools(
     def which(_name: str) -> str:
         return "/usr/bin/git"
 
-    def run(*_args: object, **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[bytes]:
+    def run(*_args: Sequence[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[bytes]:
         return subprocess.CompletedProcess(
             args=(),
             returncode=0,
@@ -511,7 +513,7 @@ def test_doctor_falls_back_to_bounded_filesystem_walk_when_git_times_out(
 ) -> None:
     (tmp_path / "requirements.txt").write_text("sarj-standards==0.0.1\n", encoding="utf-8")
 
-    def timed_out(*_args: object, **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[bytes]:
+    def timed_out(*_args: Sequence[str], **_kwargs: Unpack[SubprocessOptions]) -> subprocess.CompletedProcess[bytes]:
         command = "git"
         raise subprocess.TimeoutExpired(command, 5)
 

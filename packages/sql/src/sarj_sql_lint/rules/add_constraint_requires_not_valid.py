@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from bisect import bisect_right
 from pathlib import PurePosixPath
-import re
-from typing import TYPE_CHECKING, NamedTuple, final, override
+from typing import TYPE_CHECKING, final, override
 
 from sarj_sql_lint.rule_base import (
     AutofixPolicy,
@@ -22,23 +22,27 @@ from sarj_sql_lint.rule_base import (
     mask_sql_literals_and_comments,
     split_statements,
 )
+from sarj_sql_lint.rules._constraint_analysis import (
+    TableKey,
+    Token,
+    alter_table,
+    consume,
+    drop_table,
+    fresh_create_table,
+    identifier,
+    migration_section_lines,
+    sequence,
+    table_actions,
+    tokenize,
+    top_level_tokens,
+)
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
-_WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_$]*")
 _SAFE_BETWEEN_CREATE_AND_ALTER = frozenset({"COMMENT", "CREATE", "DROP", "GRANT", "REVOKE", "SET"})
-
-
-class _Token(NamedTuple):
-    text: str
-    start: int
-    quoted: bool = False
-
-
-type _TableKey = tuple[str, ...]
 
 
 @final
@@ -67,6 +71,7 @@ class AddConstraintRequiresNotValid(Rule):
             "Only PostgreSQL migration files and ALTER TABLE actions that directly add CHECK or foreign-key constraints are inspected.",
             "Foreign keys may use the referenced table's implicit primary key; NOT VALID and NOT ENFORCED constraints do not require deferred validation advice.",
             "A table is treated as fresh only after an unconditional empty CREATE TABLE in the same migration section; ambiguous or populating statements revoke that exemption.",
+            "Migration sections, executing table or materialized-view creation, extensions, and existing-table column rewrites revoke earlier empty-table proofs. Relation-resolution settings revoke unqualified proofs while preserving explicit schema identity; nonexecuting DDL retains them.",
             "Validation transactions are not inferred; the diagnostic explains that VALIDATE CONSTRAINT belongs in a later committed migration or transaction.",
         ),
         examples=(
@@ -177,49 +182,111 @@ class AddConstraintRequiresNotValid(Rule):
 
         diags: list[Diagnostic] = []
         masked = mask_sql_literals_and_comments(source)
-        fresh_tables: set[_TableKey] = set()
+        fresh_tables: set[TableKey] = set()
+        sections = migration_section_lines(source)
+        previous_section = -1
         for statement in split_statements(masked):
-            text = "\n".join(fragment for _, fragment in statement)
-            tokens = _tokenize(text)
+            tokens = tokenize("\n".join(fragment for _, fragment in statement))
             if tokens is None or not tokens:
                 fresh_tables.clear()
                 continue
-
-            created = _fresh_create_table(tokens)
-            if created is not None:
-                fresh_tables.add(created)
-                continue
-
-            altered = _alter_table(tokens)
-            if altered is not None:
-                table, actions, can_attach_existing_rows, renamed_to = altered
-                _update_fresh_tables_after_alter(
-                    fresh_tables,
-                    table,
-                    renamed_to=renamed_to,
-                    can_attach_existing_rows=can_attach_existing_rows,
-                )
-                diags.extend(_constraint_action_findings(actions, table, fresh_tables, statement, path, code=self.code))
-                continue
-
-            dropped = _drop_table(tokens)
-            if dropped is not None:
-                fresh_tables.discard(dropped)
-                continue
-
-            if tokens[0].text.upper() not in _SAFE_BETWEEN_CREATE_AND_ALTER:
-                # Unknown executable SQL may populate a table through a CTE,
-                # function, trigger, or dynamically constructed statement.
+            section = bisect_right(sections, locate(statement, tokens[0].start).line)
+            if section != previous_section:
                 fresh_tables.clear()
+                previous_section = section
+
+            _update_fresh_table_proof(tokens, fresh_tables)
+            altered = alter_table(tokens)
+            if altered is not None:
+                table, actions, _, _ = altered
+                diags.extend(_constraint_action_findings(actions, table, fresh_tables, statement, path, code=self.code))
 
         return diags
 
 
+def _update_fresh_table_proof(tokens: list[Token], fresh_tables: set[TableKey]) -> None:
+    resolution_setting = _changes_relation_resolution(tokens)
+    if resolution_setting:
+        fresh_tables.intersection_update({table for table in fresh_tables if len(table) > 1})
+    if _revokes_freshness(tokens, fresh_tables):
+        fresh_tables.clear()
+    created = fresh_create_table(tokens)
+    if created is not None:
+        fresh_tables.add(created)
+        return
+    altered = alter_table(tokens)
+    if altered is not None:
+        table, _, can_attach_existing_rows, renamed_to = altered
+        _update_fresh_tables_after_alter(
+            fresh_tables, table, renamed_to=renamed_to, can_attach_existing_rows=can_attach_existing_rows
+        )
+        return
+    dropped = drop_table(tokens)
+    if dropped is not None:
+        fresh_tables.discard(dropped)
+        return
+    if tokens[0].text.upper() not in _SAFE_BETWEEN_CREATE_AND_ALTER and not resolution_setting:
+        fresh_tables.clear()
+
+
+def _changes_relation_resolution(tokens: list[Token]) -> bool:
+    if consume(tokens, 0, "SET") or consume(tokens, 0, "RESET"):
+        cursor = 1
+        if consume(tokens, cursor, "LOCAL") or consume(tokens, cursor, "SESSION"):
+            cursor += 1
+        setting = identifier(tokens, cursor)
+        if setting is not None and setting[0][0].casefold() in {
+            "search_path",
+            "schema",
+            "role",
+            "authorization",
+            "session_authorization",
+            "all",
+        }:
+            return True
+    return False
+
+
+def _revokes_freshness(tokens: list[Token], fresh_tables: set[TableKey]) -> bool:
+    if consume(tokens, 0, "CREATE"):
+        return _creation_executes_query(tokens)
+    altered = table_actions(tokens)
+    return (
+        altered is not None
+        and altered[0] not in fresh_tables
+        and any(_rewrites_existing_column(action) for action in altered[1])
+    )
+
+
+def _creation_executes_query(tokens: list[Token]) -> bool:
+    if consume(tokens, 1, "EXTENSION"):
+        return True
+    top = top_level_tokens(tokens)
+    if not any(consume(top, cursor, "AS") for cursor in range(len(top))):
+        return False
+    if any(sequence(top, cursor, ("WITH", "NO", "DATA")) for cursor in range(len(top))):
+        return False
+    return any(consume(top, cursor, kind) for cursor in range(1, len(top)) for kind in ("TABLE", "MATERIALIZED"))
+
+
+def _rewrites_existing_column(action: list[Token]) -> bool:
+    if consume(action, 0, "ALTER"):
+        cursor = 2 if consume(action, 1, "COLUMN") else 1
+        column = identifier(action, cursor)
+        return column is not None and (
+            consume(action, column[1], "TYPE") or sequence(action, column[1], ("SET", "DATA", "TYPE"))
+        )
+    if not consume(action, 0, "ADD"):
+        return False
+    top = top_level_tokens(action)
+    return any(consume(top, cursor, word) for cursor in range(len(top)) for word in ("DEFAULT", "GENERATED"))
+
+
 def _update_fresh_tables_after_alter(
-    fresh_tables: set[_TableKey],
-    table: _TableKey,
+    fresh_tables: set[TableKey],
+    table: TableKey,
     *,
-    renamed_to: _TableKey | None,
+    renamed_to: TableKey | None,
     can_attach_existing_rows: bool,
 ) -> None:
     if renamed_to is not None and table in fresh_tables:
@@ -229,271 +296,10 @@ def _update_fresh_tables_after_alter(
         fresh_tables.discard(table)
 
 
-def _tokenize(text: str) -> list[_Token] | None:
-    tokens: list[_Token] = []
-    depth = 0
-    cursor = 0
-    while cursor < len(text):
-        char = text[cursor]
-        if char.isspace():
-            cursor += 1
-            continue
-        if char == '"':
-            end = _quoted_identifier_end(text, cursor)
-            if end >= len(text):
-                return None
-            tokens.append(_Token(text[cursor : end + 1], cursor, quoted=True))
-            cursor = end + 1
-            continue
-        if (word := _WORD.match(text, cursor)) is not None:
-            tokens.append(_Token(word.group(0), cursor))
-            cursor = word.end()
-            continue
-        if char == "(":
-            depth += 1
-        elif char == ")":
-            depth -= 1
-            if depth < 0:
-                return None
-        tokens.append(_Token(char, cursor))
-        cursor += 1
-    return tokens if depth == 0 else None
-
-
-def _fresh_create_table(tokens: list[_Token]) -> _TableKey | None:
-    cursor = 0
-    if not _consume(tokens, cursor, "CREATE"):
-        return None
-    cursor += 1
-    if _consume(tokens, cursor, "GLOBAL") or _consume(tokens, cursor, "LOCAL"):
-        cursor += 1
-    if (
-        _consume(tokens, cursor, "TEMP")
-        or _consume(tokens, cursor, "TEMPORARY")
-        or _consume(tokens, cursor, "UNLOGGED")
-    ):
-        cursor += 1
-    if not _consume(tokens, cursor, "TABLE"):
-        return None
-    cursor += 1
-    if _sequence(tokens, cursor, ("IF", "NOT", "EXISTS")):
-        return None
-    parsed = _identifier(tokens, cursor)
-    if parsed is None:
-        return None
-    table, cursor = parsed
-    if any(token.text.upper() == "AS" for token in _top_level_tokens(tokens[cursor:])):
-        return None
-    # A regular CREATE TABLE must contain a definition list. Requiring it also
-    # keeps malformed or partial statements from manufacturing an exemption.
-    return table if cursor < len(tokens) and tokens[cursor].text == "(" else None
-
-
-def _alter_table(tokens: list[_Token]) -> tuple[_TableKey, list[list[_Token]], bool, _TableKey | None] | None:
-    if not _sequence(tokens, 0, ("ALTER", "TABLE")):
-        return None
-    cursor = 2
-    if _sequence(tokens, cursor, ("IF", "EXISTS")):
-        cursor += 2
-    if _consume(tokens, cursor, "ONLY"):
-        cursor += 1
-    parsed = _identifier(tokens, cursor)
-    if parsed is None:
-        return None
-    table, cursor = parsed
-    if cursor < len(tokens) and tokens[cursor].text == "*":
-        cursor += 1
-    segments = _split_actions(tokens[cursor:])
-    if segments is None:
-        return None
-    renamed_to: _TableKey | None = None
-    if len(segments) == 1 and _sequence(segments[0], 0, ("RENAME", "TO")):
-        renamed = _identifier(segments[0], 2)
-        if renamed is not None:
-            name, end = renamed
-            if len(name) == 1 and end == len(segments[0]):
-                renamed_to = (*table[:-1], *name)
-    return (
-        table,
-        [segment for segment in segments if _is_validating_add_action(segment)],
-        any(_sequence(segment, 0, ("ATTACH", "PARTITION")) for segment in segments),
-        renamed_to,
-    )
-
-
-def _drop_table(tokens: list[_Token]) -> _TableKey | None:
-    if not _sequence(tokens, 0, ("DROP", "TABLE")):
-        return None
-    cursor = 2
-    if _sequence(tokens, cursor, ("IF", "EXISTS")):
-        cursor += 2
-    parsed = _identifier(tokens, cursor)
-    return None if parsed is None else parsed[0]
-
-
-def _identifier(tokens: list[_Token], cursor: int) -> tuple[_TableKey, int] | None:
-    parts: list[str] = []
-    while cursor < len(tokens):
-        token = tokens[cursor]
-        if not token.quoted and _WORD.fullmatch(token.text) is None:
-            return None
-        if token.quoted:
-            decoded = token.text[1:-1].replace('""', '"')
-            parts.append(decoded)
-        else:
-            parts.append(token.text.lower())
-        cursor += 1
-        if cursor >= len(tokens) or tokens[cursor].text != ".":
-            break
-        cursor += 1
-        if cursor == len(tokens):
-            return None
-    return (tuple(parts), cursor) if parts else None
-
-
-def _split_actions(tokens: list[_Token]) -> list[list[_Token]] | None:
-    if not tokens:
-        return None
-    actions: list[list[_Token]] = []
-    current: list[_Token] = []
-    depth = 0
-    for token in tokens:
-        if token.text == "(":
-            depth += 1
-        elif token.text == ")":
-            depth -= 1
-            if depth < 0:
-                return None
-        if token.text == "," and depth == 0:
-            if not current:
-                return None
-            actions.append(current)
-            current = []
-            continue
-        current.append(token)
-    if depth != 0 or not current:
-        return None
-    actions.append(current)
-    return actions
-
-
-def _is_validating_add_action(action: list[_Token]) -> bool:
-    if not action or action[0].text.upper() != "ADD":
-        return False
-    cursor = 1
-    if _consume(action, cursor, "CONSTRAINT"):
-        cursor += 1
-        if cursor >= len(action) or not _is_identifier_token(action[cursor]):
-            return False
-        cursor += 1
-        if cursor < len(action) and action[cursor].text == ".":
-            return False
-    if _consume(action, cursor, "CHECK"):
-        if cursor + 1 >= len(action) or action[cursor + 1].text != "(":
-            return False
-        close = _matching_paren(action, cursor + 1)
-        return close is not None and close > cursor + 2
-    if not _sequence(action, cursor, ("FOREIGN", "KEY")):
-        return False
-    return _is_foreign_key_action(action, cursor)
-
-
-def _is_identifier_token(token: _Token) -> bool:
-    return token.quoted or _WORD.fullmatch(token.text) is not None
-
-
-def _matching_paren(tokens: list[_Token], opening: int) -> int | None:
-    depth = 0
-    for index in range(opening, len(tokens)):
-        if tokens[index].text == "(":
-            depth += 1
-        elif tokens[index].text == ")":
-            depth -= 1
-            if depth == 0:
-                return index
-    return None
-
-
-def _top_level_tokens(tokens: list[_Token]) -> list[_Token]:
-    found: list[_Token] = []
-    depth = 0
-    for token in tokens:
-        if token.text == "(":
-            depth += 1
-        elif token.text == ")":
-            depth -= 1
-        elif depth == 0:
-            found.append(token)
-    return found
-
-
-def _consume(tokens: list[_Token], cursor: int, expected: str) -> bool:
-    return cursor < len(tokens) and not tokens[cursor].quoted and tokens[cursor].text.upper() == expected
-
-
-def _sequence(tokens: list[_Token], cursor: int, expected: tuple[str, ...]) -> bool:
-    return all(_consume(tokens, cursor + offset, word) for offset, word in enumerate(expected))
-
-
-def _quoted_identifier_end(text: str, cursor: int) -> int:
-    end = cursor + 1
-    while end < len(text):
-        if text[end] != '"':
-            end += 1
-            continue
-        if end + 1 < len(text) and text[end + 1] == '"':
-            end += 2
-            continue
-        break
-    return end
-
-
-def _is_foreign_key_action(action: list[_Token], cursor: int) -> bool:
-    columns_open = cursor + 2
-    if columns_open >= len(action) or action[columns_open].text != "(":
-        return False
-    columns_close = _matching_paren(action, columns_open)
-    if columns_close is None or not _valid_identifier_list(action[columns_open + 1 : columns_close]):
-        return False
-    references = next(
-        (index for index in range(columns_close + 1, len(action)) if _consume(action, index, "REFERENCES")),
-        None,
-    )
-    if references is None:
-        return False
-    referenced_table = _identifier(action, references + 1)
-    if referenced_table is None:
-        return False
-    _, referenced_columns_open = referenced_table
-    if referenced_columns_open == len(action):
-        return True
-    if action[referenced_columns_open].text != "(":
-        return any(
-            _consume(action, referenced_columns_open, keyword)
-            for keyword in ("MATCH", "ON", "DEFERRABLE", "INITIALLY", "ENFORCED", "NOT")
-        )
-    referenced_columns_close = _matching_paren(action, referenced_columns_open)
-    return referenced_columns_close is not None and _valid_identifier_list(
-        action[referenced_columns_open + 1 : referenced_columns_close]
-    )
-
-
-def _valid_identifier_list(tokens: list[_Token]) -> bool:
-    expect_identifier = True
-    for token in tokens:
-        if expect_identifier:
-            if not _is_identifier_token(token):
-                return False
-        elif token.text != ",":
-            return False
-        expect_identifier = not expect_identifier
-    return bool(tokens) and not expect_identifier
-
-
 def _constraint_action_findings(
-    actions: list[list[_Token]],
-    table: _TableKey,
-    fresh_tables: set[_TableKey],
+    actions: list[list[Token]],
+    table: TableKey,
+    fresh_tables: set[TableKey],
     statement: list[StatementFragment],
     path: Path,
     *,
@@ -519,7 +325,7 @@ def _constraint_action_findings(
     return diags
 
 
-def _action_skips_validation(action: list[_Token]) -> bool:
+def _action_skips_validation(action: list[Token]) -> bool:
     depth = 0
     for index, token in enumerate(action[:-1]):
         if token.text == "(":

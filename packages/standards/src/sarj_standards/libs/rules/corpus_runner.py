@@ -64,7 +64,7 @@ class IsolatedCorpusReport:
 
 
 class CorpusLintError(RuntimeError):
-    """A corpus batch timed out or the linter failed to execute."""
+    pass
 
 
 @dataclass(frozen=True, slots=True)

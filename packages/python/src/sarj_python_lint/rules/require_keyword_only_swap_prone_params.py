@@ -258,8 +258,7 @@ def _is_exempt_path(path: Path) -> bool:
 
 def _is_exempt(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     name = node.name
-    # Locally owned constructors are ordinary call sites and are especially
-    # prone to silent swaps. Other dunders implement fixed Python protocols.
+    # Owned constructors are ordinary calls; other dunders have fixed Python protocols.
     if name != "__init__" and name.startswith("__") and name.endswith("__"):
         return True
     # A variadic constructor commonly forwards a third-party/base signature;

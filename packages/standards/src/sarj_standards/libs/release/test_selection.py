@@ -106,14 +106,16 @@ def _imports(source: Path, module: str = "") -> set[str]:
     imports: set[str] = set()
     package = module if source.name == "__init__.py" else module.rpartition(".")[0]
     tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
-    # Release commands have their own complete cohort. Deferred imports in the
-    # CLI dispatcher affect those commands, not every unrelated CLI command.
+    # Deferred dispatcher imports belong to the release cohort, not unrelated CLI commands.
     nodes = _dispatcher_import_nodes(tree) if module == "sarj_standards.cli.main" else ast.walk(tree)
     for node in nodes:
-        if isinstance(node, ast.Import):
-            imports.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            imports.update(_from_import_names(node, package))
+        match node:
+            case ast.Import():
+                imports.update(alias.name for alias in node.names)
+            case ast.ImportFrom():
+                imports.update(_from_import_names(node, package))
+            case _:
+                pass
     return imports
 
 

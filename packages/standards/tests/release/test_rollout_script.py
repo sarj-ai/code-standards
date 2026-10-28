@@ -24,6 +24,9 @@ from .fakes import FakeRolloutRunner as FakeRunner
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+    from types import TracebackType
+
+    from pydantic import JsonValue
 
     from tests.call_contracts import TemporaryDirectoryOptions
 
@@ -1312,20 +1315,31 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             def __enter__(self) -> str:
                 return str(tmp_path)
 
-            def __exit__(self, *_args: object) -> None:
+            def __exit__(
+                self,
+                _exc_type: type[BaseException] | None,
+                _exc_value: BaseException | None,
+                _traceback: TracebackType | None,
+            ) -> None:
                 return None
 
-        def missing_status(*_args: object) -> rollout.Outcome:
+        def missing_status(
+            _consumer: rollout.Consumer, _version: str, _runner: rollout.CommandRunner
+        ) -> rollout.Outcome:
             return rollout.Outcome(consumer(), rollout.OutcomeState.MISSING)
 
-        def fresh_branch(*_args: object) -> rollout.BranchPreparation:
+        def fresh_branch(
+            _repo: Path, _version: str, _base_sha: str, _runner: rollout.CommandRunner
+        ) -> rollout.BranchPreparation:
             return rollout.BranchPreparation("standards-rollout/current", None)
 
         def fixed_temporary_directory(**kwargs: Unpack[TemporaryDirectoryOptions]) -> FixedTemporaryDirectory:
             assert kwargs == {"prefix": "standards-rollout-", "ignore_cleanup_errors": True}
             return FixedTemporaryDirectory()
 
-        def provisioned_tools(*_args: object) -> rollout.ProvisionedTools:
+        def provisioned_tools(
+            _repo: Path, _shim_directory: Path, _runner: rollout.CommandRunner, _environment: Mapping[str, str]
+        ) -> rollout.ProvisionedTools:
             return rollout.ProvisionedTools({"PATH": "/tools"}, ())
 
         monkeypatch.setattr(  # sarj-noqa: SARJ445 -- test supplies deterministic remote repository status
@@ -1428,7 +1442,12 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             def __enter__(self) -> str:
                 return str(tmp_path)
 
-            def __exit__(self, *_args: object) -> None:
+            def __exit__(
+                self,
+                _exc_type: type[BaseException] | None,
+                _exc_value: BaseException | None,
+                _traceback: TracebackType | None,
+            ) -> None:
                 return None
 
         @final
@@ -1572,7 +1591,7 @@ class TestRelease:  # ruff: ignore[too-many-public-methods] -- rollout state-mac
             _consumer: rollout.Consumer,
             _version: str,
             _runner: rollout.CommandRunner,
-        ) -> dict[str, object] | None:
+        ) -> dict[str, JsonValue] | None:
             nonlocal pull_request_calls
             pull_request_calls += 1
             if pull_request_calls == 1:

@@ -102,7 +102,9 @@ def _render_readmes(root: Path) -> dict[Path, str]:
 
 def _root_readme(
     _root: Path,
-    packages: list[tuple[Path, str, str | None, dict[str, object]]],
+    packages: list[  # sarj-noqa: SARJ528 -- Package metadata includes native pyproject TOML values.
+        tuple[Path, str, str | None, dict[str, object]]
+    ],
 ) -> str:
     standards = packages[0][3]
     title = _title(_string(standards, "name"))
@@ -316,6 +318,17 @@ def _package_usage(name: str, engine: str | None) -> str:
             "Exclusions, baselines, and severities still apply; Ruff selectors are not supported. "
             "Native linters and ESLint execute only selected rules. ESLint retains configured parsers, options, "
             "severities, and suppression directives.\n\n"
+            "For a history-free initial import, set `SARJ_STANDARDS_INITIAL_IMPORT_SOURCE` only on the initial "
+            "commit process to the full lowercase object ID of an available source commit with exactly one available "
+            "parent. HEAD must be an unborn branch; the entire staged tree must equal that commit, tracked worktree "
+            "files must match the index without hidden index flags, and nonignored files must be staged. Native staged "
+            "checks compare the source commit with its parent, preserving the usual changed-line failures for findings "
+            "introduced in that commit while allowing inherited diagnostic budgets. Validation runs before and after "
+            "analysis; all analyzers and baseline limits still apply. The caller must qualify the source commit "
+            "separately. Git replacement objects and lazy fetching are disabled; explicitly supplied temporary object "
+            "alternates may provide the source history without copying it into the new repository. Remove the input "
+            "and alternates before subsequent commits, pushes, and CI. Invalid or changed import context fails "
+            "analysis, including clean reports; ordinary checks without this input retain their existing behavior.\n\n"
             "Selected ESLint checks apply live inline suppressions and validate selected bulk suppression "
             "counts. The complete lint gate owns unused inline-directive and inline-configuration checks: "
             "a partial run cannot establish whether an unselected rule's directive is needed.\n\n"
@@ -745,7 +758,11 @@ def _validate_cli_examples(path: Path, source: str) -> None:
     raise ValueError(msg)
 
 
-def _manifest(path: Path) -> dict[str, object]:
+def _manifest(
+    path: Path,
+) -> dict[  # sarj-noqa: SARJ528 -- Load JSON or native TOML package metadata unchanged.
+    str, object
+]:
     if path.suffix == ".toml":
         document = tomllib.loads(path.read_text(encoding="utf-8"))
         project: object = document.get("project")

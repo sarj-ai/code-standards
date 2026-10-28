@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _manifest(root: Path, *, schema: object = 4, bundle: object = "5.16.5") -> None:
+def _manifest(root: Path, *, schema: int = 4, bundle: str = "5.16.5") -> None:
     root.mkdir(parents=True, exist_ok=True)
     (root / bootstrap.MANIFEST_NAME).write_text(
         f"schema = {schema!r}\nbundle = {bundle!r}\n".replace("'", '"'),

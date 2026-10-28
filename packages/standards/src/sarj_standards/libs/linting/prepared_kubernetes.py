@@ -14,6 +14,8 @@ from sarj_standards.libs.typed_containers import is_object_list, is_object_mappi
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from pydantic import JsonValue
+
 
 NATIVE_CHECKS = (
     "privileged-container",
@@ -50,6 +52,19 @@ def _table(value: object, label: str) -> dict[str, object]:
     return {key: item for key, item in value.items() if isinstance(key, str)}
 
 
+def _json_table(value: JsonValue, label: str) -> dict[str, JsonValue]:
+    if isinstance(value, dict):
+        return dict(value)
+    msg = f"{label} must be a string-keyed object"
+    raise ValueError(msg)
+
+
+def _json_list(value: JsonValue, message: str) -> list[JsonValue]:
+    if isinstance(value, list):
+        return value
+    raise ValueError(message)
+
+
 def _text(table: Mapping[str, object], key: str) -> str:
     value = table.get(key)
     if not isinstance(value, str) or not value.strip():
@@ -60,7 +75,7 @@ def _text(table: Mapping[str, object], key: str) -> str:
 
 @dataclass(frozen=True, slots=True)
 class PodSpecProjection:
-    spec: dict[str, object] | None
+    spec: dict[str, object] | None  # sarj-noqa: SARJ528 -- Native YAML extensions.
     path: tuple[str, ...] = ()
 
 
@@ -108,7 +123,13 @@ def _windows(spec: Mapping[str, object]) -> bool:
     return os is not None and _table(os, "Pod OS").get("name") == "windows"
 
 
-def _containers(spec: Mapping[str, object]) -> tuple[tuple[str, dict[str, object]], ...]:
+def _containers(
+    spec: Mapping[  # sarj-noqa: SARJ528 -- Keep native YAML container values during identity validation.
+        str, object
+    ],
+) -> tuple[  # sarj-noqa: SARJ528 -- Keep native YAML container values during identity validation.
+    tuple[str, dict[str, object]], ...
+]:
     result: list[tuple[str, dict[str, object]]] = []
     seen: set[str] = set()
     for kind in CONTAINER_KINDS:
@@ -155,11 +176,19 @@ def build_config(resource: Mapping[str, object]) -> KubeConfig:
     return config
 
 
-def policy_resource(resource: Mapping[str, object]) -> dict[str, object]:
+def policy_resource(
+    resource: Mapping[  # sarj-noqa: SARJ528 -- Strip policy annotations while preserving native YAML values.
+        str, object
+    ],
+) -> dict[  # sarj-noqa: SARJ528 -- Strip policy annotations while preserving native YAML values.
+    str, object
+]:
     return _table(_policy_value(resource), "policy resource")
 
 
-def _policy_value(value: object) -> object:
+def _policy_value(
+    value: object,  # sarj-noqa: SARJ528 -- Preserve opaque YAML scalars during recursive policy projection.
+) -> object:  # sarj-noqa: SARJ528 -- Preserve opaque YAML scalars during recursive policy projection.
     if is_object_list(value):
         return [_policy_value(item) for item in value]
     if not is_object_mapping(value):
@@ -286,7 +315,16 @@ def _verify_object(report: Mapping[str, object], resource: Mapping[str, object])
         raise ValueError(msg)
 
 
-def _matches(check: str, message: str, spec: Mapping[str, object] | None) -> tuple[tuple[str, dict[str, object]], ...]:
+def _matches(
+    check: str,
+    message: str,
+    spec: Mapping[  # sarj-noqa: SARJ528 -- Attribute findings to unchanged native YAML container records.
+        str, object
+    ]
+    | None,
+) -> tuple[  # sarj-noqa: SARJ528 -- Attribute findings to unchanged native YAML container records.
+    tuple[str, dict[str, object]], ...
+]:
     containers = () if spec is None else _containers(spec)
     if check == OMISSION_CHECK:
         if message != _OMISSION_MESSAGE or spec is None or _windows(spec):
@@ -313,17 +351,17 @@ def _matches(check: str, message: str, spec: Mapping[str, object] | None) -> tup
     return matches
 
 
-def _native_reports(payload: str, spec: Mapping[str, object] | None) -> tuple[dict[str, object], ...]:
-    parsed = _table(parse_json(payload), "kube-linter output")
-    summary = _table(parsed.get("Summary"), "kube-linter summary")
+def _native_reports(payload: str, spec: Mapping[str, object] | None) -> tuple[dict[str, JsonValue], ...]:
+    parsed = _json_table(parse_json(payload), "kube-linter output")
+    summary = _json_table(parsed.get("Summary"), "kube-linter summary")
     status = summary.get("ChecksStatus")
     if summary.get("KubeLinterVersion") != "0.8.3" or status not in {"Passed", "Failed"}:
         msg = "kube-linter summary is incomplete or has the wrong version"
         raise ValueError(msg)
-    reports: object = parsed.get("Reports")
+    reports = parsed.get("Reports")
     if reports is None and status == "Passed":
         reports = []
-    if not is_object_list(reports) or (status == "Passed" and reports) or (status == "Failed" and not reports):
+    if not isinstance(reports, list) or (status == "Passed" and reports) or (status == "Failed" and not reports):
         msg = "kube-linter findings do not agree with the completion summary"
         raise ValueError(msg)
     allowed = (
@@ -331,15 +369,12 @@ def _native_reports(payload: str, spec: Mapping[str, object] | None) -> tuple[di
         if spec is not None and _windows(spec)
         else {*NATIVE_CHECKS, *((OMISSION_CHECK,) if spec is not None else ())}
     )
-    checks = parsed.get("Checks")
-    if not is_object_list(checks):
-        msg = "kube-linter did not account for its enabled checks"
-        raise ValueError(msg)
-    names = [_text(_table(check, "native enabled check"), "name") for check in checks]
+    checks = _json_list(parsed.get("Checks"), "kube-linter did not account for its enabled checks")
+    names = [_text(_json_table(check, "native enabled check"), "name") for check in checks]
     if len(names) != len(allowed) or set(names) != allowed:
         msg = "kube-linter enabled check set is incomplete or unexpected"
         raise ValueError(msg)
-    result = tuple(_table(value, "kube-linter report") for value in reports)
+    result = tuple(_json_table(value, "kube-linter report") for value in reports)
     if any(_text(report, "Check") not in allowed for report in result):
         msg = "kube-linter reported an unexpected check"
         raise ValueError(msg)

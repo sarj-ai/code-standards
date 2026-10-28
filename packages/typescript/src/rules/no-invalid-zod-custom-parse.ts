@@ -20,7 +20,7 @@ export const NO_INVALID_ZOD_CUSTOM_PARSE_DOCUMENTATION = {
   rationale: "Without a validator, z.custom<T>() returns its input unchanged while promising T. A parsed primitive outside that value domain fabricates a contract the caller may trust.",
   remediation: "Provide actual validation, use the appropriate primitive schema, or retain an honest unknown result until validation. Preserve composed validators and independently owned domain contracts.",
   category: "correctness",
-  defaultLevel: "warning",
+  defaultLevel: "error",
   autofix: "none",
   limitations: [
     "Requires type information and a direct inline z.custom<T>().parse(primitiveLiteral) call with no custom validator or parse options. Recognizes runtime imports from zod or zod/v4 and native installed Zod v4 declarations; schema bindings, compositions, safeParse, dynamic inputs and indirect calls are excluded.",

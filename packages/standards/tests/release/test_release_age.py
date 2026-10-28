@@ -18,8 +18,10 @@ from sarj_standards.libs.release import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from pydantic import JsonValue
 
-def _lockfile(tmp_path: Path, packages: dict[str, object]) -> Path:
+
+def _lockfile(tmp_path: Path, packages: dict[str, JsonValue]) -> Path:
     path = tmp_path / "package-lock.json"
     path.write_text(json.dumps({"packages": packages}), encoding="utf-8")
     return path
@@ -66,7 +68,7 @@ def test_lockfile_release_age_checks_alias_targets(tmp_path: Path) -> None:
             "node_modules/@typescript/old": {"name": "typescript", "version": "6.0.3"},
         },
     )
-    publications = {
+    publications: dict[str, dict[str, JsonValue]] = {
         "typescript": {"time": {"7.0.2": "2025-01-25T12:00:00Z", "6.0.3": "2025-01-01T00:00:00Z"}},
         "@typescript/typescript6": {"time": {"6.0.2": "2025-01-01T00:00:00Z"}},
     }
@@ -131,7 +133,7 @@ def test_check_lockfile_release_age_uses_injected_clock_and_fetcher(tmp_path: Pa
             "node_modules/new": {"version": "2.0.0"},
         },
     )
-    publications = {
+    publications: dict[str, dict[str, JsonValue]] = {
         "old": {"time": {"1.0.0": "2025-01-01T00:00:00Z"}},
         "new": {"time": {"2.0.0": "2025-01-25T12:00:00Z"}},
     }

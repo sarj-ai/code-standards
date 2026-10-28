@@ -33,7 +33,11 @@ def _workflow_job(job_name: str, filename: str = "ci.yml") -> dict[object, objec
     return job
 
 
-def _ci_steps(job_name: str, filename: str = "ci.yml") -> list[dict[object, object]]:
+def _ci_steps(
+    job_name: str, filename: str = "ci.yml"
+) -> list[  # sarj-noqa: SARJ528 -- workflow YAML steps preserve unchecked native values while only collection shapes are validated.
+    dict[object, object]
+]:
     job = _workflow_job(job_name, filename)
     steps = job["steps"]
     assert is_object_list(steps)
@@ -41,7 +45,14 @@ def _ci_steps(job_name: str, filename: str = "ci.yml") -> list[dict[object, obje
     return [dict(step) for step in steps if is_object_mapping(step)]
 
 
-def _named_step(steps: list[dict[object, object]], name: str) -> dict[object, object]:
+def _named_step(
+    steps: list[  # sarj-noqa: SARJ528 -- selects an unchanged native YAML record without validating unrelated metadata.
+        dict[object, object]
+    ],
+    name: str,
+) -> dict[  # sarj-noqa: SARJ528 -- selects an unchanged native YAML record without validating unrelated metadata.
+    object, object
+]:
     return next(step for step in steps if step.get("name") == name)
 
 
@@ -85,7 +96,12 @@ def _record_commands(root: Path, *names: str) -> dict[str, str]:
 
 
 def _run_ci_step(
-    step: dict[object, object], *, root: Path, environment: dict[str, str]
+    step: dict[  # sarj-noqa: SARJ528 -- executes a validated run string while preserving the remaining native YAML step values.
+        object, object
+    ],
+    *,
+    root: Path,
+    environment: dict[str, str],
 ) -> subprocess.CompletedProcess[str]:
     command = step["run"]
     assert isinstance(command, str)
@@ -203,7 +219,7 @@ def test_release_has_no_manual_or_tag_publish_bypass() -> None:
     trigger = release.partition("\npermissions:\n")[0]
     assert "workflow_dispatch" not in trigger
     assert "tags:" not in trigger
-    assert "branches: [main, maintenance/standards-8.101]" in trigger
+    assert "branches: [main, maintenance/standards-8.101, maintenance/standards-8.129]" in trigger
     assert (
         re.search(r"(?m)^\s+path: .*dist/\*\s*$", release) is None
     )  # sarj-noqa: SARJ402 -- workflow text is the artifact-path contract
@@ -622,7 +638,7 @@ def test_documentation_deploy_is_revision_bound_self_verifying_and_single_site()
     verifier = (REPO_ROOT / "apps/docs/scripts/verify-deployment.ts").read_text(encoding="utf-8")
 
     assert (
-        "branches: [main, maintenance/standards-8.101]" in workflow
+        "branches: [main, maintenance/standards-8.101, maintenance/standards-8.129]" in workflow
     )  # sarj-noqa: SARJ402 -- workflow text is the deployment-policy contract
     assert _workflow_job("docs-deploy")["if"] == (
         "github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')"

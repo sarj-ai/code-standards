@@ -110,8 +110,7 @@ _PRIMITIVE_ANNOTATIONS = frozenset(
 # substitutable collaborator: nobody swaps `ServerSettings` or `ViewportSize` in a test.
 _WEAK_COLLABORATOR_RE = re.compile(r"(?:Settings|Config|Configuration|Options|Logger|Log|Clock|Context|Size)$")
 
-# Runtime driver handles are implementation details of an adapter, not a port
-# that consumers substitute through.
+# Adapter driver handles are implementation details rather than consumer substitution ports.
 _DRIVER_HANDLE_ANNOTATIONS = frozenset(
     {
         "AsyncClient",
@@ -155,8 +154,7 @@ _DATA_BASES = frozenset(
 # Decorators that turn a class into a record.
 _DATA_DECORATORS = frozenset({"dataclass", "dataclasses", "define", "frozen", "mutable", "attrs", "attr", "s"})
 
-# Method decorators that mean the callable is not an instance method a consumer calls
-# through the port: descriptors, factories and namespaced helpers.
+# Descriptors, factories and namespaced helpers are not consumer-facing instance methods.
 _NON_METHOD_DECORATORS = frozenset({"property", "cached_property", "staticmethod", "classmethod"})
 
 # Method decorators that declare the class is already an interface without an ABC base.
@@ -927,10 +925,13 @@ def _factory_collaborator(node: ast.ClassDef, facts: _FactoryClassFacts, imports
         parameter.arg for parameter in (*init.args.posonlyargs, *init.args.args, *init.args.kwonlyargs)
     )
     for statement in init.body:
-        if isinstance(statement, ast.Raise):
-            return None
-        if isinstance(statement, ast.Return):
-            break
+        match statement:
+            case ast.Raise():
+                return None
+            case ast.Return():
+                break
+            case _:
+                pass
         if not _factory_falls_through(statement):
             return None
         available_names.difference_update(_factory_statement_bindings(statement))
@@ -1269,10 +1270,13 @@ def _local_port_names(classes: list[ast.ClassDef], imports: ImportIndex) -> set[
 def _module_bound_names(tree: ast.Module) -> set[str]:
     bound_names: set[str] = set()
     for node in tree.body:
-        if isinstance(node, ast.ClassDef):
-            bound_names.add(node.name)
-        elif isinstance(node, ast.ImportFrom | ast.Import):
-            bound_names.update(alias.asname or alias.name.rpartition(".")[2] for alias in node.names)
+        match node:
+            case ast.ClassDef():
+                bound_names.add(node.name)
+            case ast.ImportFrom() | ast.Import():
+                bound_names.update(alias.asname or alias.name.rpartition(".")[2] for alias in node.names)
+            case _:
+                pass
     return bound_names
 
 
@@ -1315,14 +1319,15 @@ def _has_unsupported_control_flow(statements: list[ast.stmt]) -> bool:
 
 
 def _self_field_assignment(node: ast.stmt) -> tuple[set[str], ast.expr] | None:
-    if isinstance(node, ast.Assign):
-        targets: list[ast.expr] = list(node.targets)
-        value = node.value
-    elif isinstance(node, ast.AnnAssign):
-        targets = [node.target]
-        value = node.value
-    else:
-        return None
+    match node:
+        case ast.Assign():
+            targets: list[ast.expr] = list(node.targets)
+            value = node.value
+        case ast.AnnAssign():
+            targets = [node.target]
+            value = node.value
+        case _:
+            return None
     if value is None:
         return None
     fields = {

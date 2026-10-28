@@ -27,9 +27,7 @@ if TYPE_CHECKING:
 # its legacy noqa syntax accepts the code.
 ESCAPE_HATCH_SELECTORS = frozenset({"TID251", "BANNED-API"})
 
-# Matched as ruff accepts a file-level scoped suppression: case-insensitive on
-# the directive head, requiring a colon and at least one code (the code-less
-# form is Ruff PGH004's).
+# Ruff requires a scoped code after the case-insensitive directive head; PGH004 owns code-less forms.
 _RUFF_FILE_SUPPRESSION_RE = re.compile(
     r"^ruff:\s*(?:"
     r"noqa\s*:\s*(?P<noqa>[A-Za-z][A-Za-z0-9]*(?:\s*,\s*[A-Za-z][A-Za-z0-9]*)*)"

@@ -322,8 +322,7 @@ _CAMEL_RE = re.compile(r"[A-Z][a-z0-9]+|[A-Z]+(?![a-z])|[a-z0-9]+")
 _MIN_METHODS = 3
 _MIN_LINES = 25
 
-# The line-count arm needs a second entry point (method or nested class) before a
-# long class counts as a protocol implementation rather than a canned-data factory.
+# A long class needs a second entry point to distinguish a protocol implementation from a data factory.
 _MIN_ENTRY_POINTS = 2
 
 # Directory segments that hold shared test doubles but are not `tests/`.
@@ -588,10 +587,13 @@ def _base_names(node: ast.ClassDef, aliases: dict[str, str] | None = None) -> li
     names: list[str] = []
     for base in node.bases:
         target = base.value if isinstance(base, ast.Subscript) else base
-        if isinstance(target, ast.Name):
-            names.append((aliases or {}).get(target.id, target.id))
-        elif isinstance(target, ast.Attribute):
-            names.append(target.attr)
+        match target:
+            case ast.Name():
+                names.append((aliases or {}).get(target.id, target.id))
+            case ast.Attribute():
+                names.append(target.attr)
+            case _:
+                pass
     return names
 
 

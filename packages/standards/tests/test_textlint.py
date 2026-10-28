@@ -1620,6 +1620,7 @@ def test_registry_exposes_complete_neutral_rule_metadata() -> None:
         "large-shell-program",
         "no-unsafe-command-argument-interpolation",
         "no-wildcard-secret-read-permission",
+        "slack-event-text-in-mrkdwn",
         "workflow-embedded-program",
     }
 

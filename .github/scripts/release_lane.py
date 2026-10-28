@@ -13,11 +13,14 @@ import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- inspect only the trusted checkout's Git objects.
 import sys
 import tomllib
-from typing import Annotated, ClassVar, Final, Literal
+from typing import TYPE_CHECKING, Annotated, ClassVar, Final, Literal
 
 from pydantic import ConfigDict, JsonValue, RootModel
 import typer
 
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 MAINTENANCE_REF = "refs/heads/maintenance/standards-8.101"
 LEGACY_COMMIT = "14270016f74006a1c8fe2765d5a4258c6b4d4cb8"
@@ -91,6 +94,25 @@ REPO_STANDARDS_ACTION_PROJECTIONS: Final[dict[str, str]] = {
     ".github/workflows/ci.yml": "dd39d386dd144709848675ba4d33964b95d9d1dc5c8db15679034bb62f300628",
     ".github/workflows/commit-policy.yml": "4de0749743f162c9bc6ac08492c8bc458503157510df7927eb30d1319f1c0446",
 }
+STANDARDS_8129_REF = "refs/heads/maintenance/standards-8.129"
+STANDARDS_8129_ANCHOR = "ce60e543d9e44f49c2326a6e560e7d950aac043e"
+STANDARDS_8129_ANCHOR_VERSION = "8.129.9"
+# The #1840 repo-standards 6.13.0 adoption projected onto 8.129.9, plus the a5fe4cce nginx
+# pin that replaces the build Ubuntu removed. Digests cover the candidate bytes with its
+# version rewritten to 8.129.9, so later patches reuse the review.
+STANDARDS_8129_APPROVED_SHA256: Final[dict[str, str]] = {
+    ".github/scripts/setup-native-config-tests.sh": "ba4bb12b004afc80782b1be2f66e6ce3026153974cfc88a07fbed20a649d5360",
+    ".github/workflows/commit-policy.yml": "1eb42f3cd1a5f1531bdd1311105ad3f375541e5585c5bc384b1cec5d21fbfd33",
+    ".sarj-standards.toml": "2be1a237322f0d2aa7a7e49862934f0414a9999ccc77cea8d75817e87a868eef",
+    f"{PACKAGE}/pyproject.toml": "86391f9d9f50fd614b81ce5fefbc26afc93bc9607dba294c55843dafcda40165",
+    "packages/standards-compat/pyproject.toml": "1f2331e35501650e738c73095c03028db7957a8fc6590c8e313b81486fa25dd9",
+    f"{PACKAGE}/uv.lock": "7a20668feabcdf518842cd13a04778b80780983373e347ae1ec56eafdf7ec984",
+    CLI_REFERENCE: "3c5c75a45a04376d9f274b2df81eb707f6156bfcb6c431e19cb0f010be4e10a5",
+    f"{PACKAGE}/src/sarj_standards/libs/adoption/manifest.py": (
+        "83e489fca94e714c81dfe142aefbbb094356b9597929d70b77afe79d9b0f2e56"
+    ),
+    f"{PACKAGE}/tests/test_repo_standards_pins.py": "e56e8ecf5cf4ec6bd6c080f6a0e82a3b040ac3dfadffb36e5d5b3a09e2b3f74e",
+}
 RELEASE_TARGETS = frozenset({"typescript", "bootstrap", "contracts", "python", "sql", "iac", "standards", "tsconfig"})
 
 
@@ -100,7 +122,7 @@ class Lane(StrEnum):
 
 
 class ReleaseLaneError(ValueError):
-    """The checkout does not satisfy its named publication lane."""
+    pass
 
 
 class _Document(RootModel[dict[str, JsonValue]]):
@@ -131,10 +153,11 @@ def validate_lane(root: Path, *, source_ref: str, commit: str, detected_targets:
         raise ReleaseLaneError(msg)
     if source_ref == "refs/heads/main":
         return Lane.MAIN
-    if source_ref != MAINTENANCE_REF:
+    validate_maintenance = _MAINTENANCE_VALIDATORS.get(source_ref)
+    if validate_maintenance is None:
         msg = f"publication ref is not allowed: {source_ref}"
         raise ReleaseLaneError(msg)
-    _validate_maintenance(root, commit)
+    validate_maintenance(root, commit)
     if detected_targets is not None:
         targets = _Targets.model_validate_json(detected_targets)
         if targets.root.keys() != RELEASE_TARGETS:
@@ -147,14 +170,39 @@ def validate_lane(root: Path, *, source_ref: str, commit: str, detected_targets:
     return Lane.MAINTENANCE
 
 
-def _validate_maintenance(root: Path, commit: str) -> None:
+def _changed_since_anchor(root: Path, anchor: str, commit: str) -> frozenset[str]:
     if _git(root, "status", "--porcelain=v1", "--untracked-files=all"):
         msg = "maintenance publication requires a clean working tree"
         raise ReleaseLaneError(msg)
-    _git(root, "merge-base", "--is-ancestor", LEGACY_COMMIT, commit)
-    changed = frozenset(
-        path.decode() for path in _git(root, "diff", "--name-only", "-z", LEGACY_COMMIT, commit).split(b"\0") if path
+    _git(root, "merge-base", "--is-ancestor", anchor, commit)
+    return frozenset(
+        path.decode() for path in _git(root, "diff", "--name-only", "-z", anchor, commit).split(b"\0") if path
     )
+
+
+def _validate_standards_8129(root: Path, commit: str) -> None:
+    changed = _changed_since_anchor(root, STANDARDS_8129_ANCHOR, commit)
+    unexpected = changed - STANDARDS_8129_APPROVED_SHA256.keys() - TOOLING_PATHS - {DOC_EXAMPLES}
+    if unexpected:
+        msg = f"maintenance changes 8.129 policy or an unapproved path: {', '.join(sorted(unexpected))}"
+        raise ReleaseLaneError(msg)
+    version = _project_version(root, commit)
+    if re.fullmatch(r"8\.129\.[1-9][0-9]+", version) is None:
+        msg = "8.129 maintenance publication requires an exact 8.129.x version from 8.129.10"
+        raise ReleaseLaneError(msg)
+    for path, expected in STANDARDS_8129_APPROVED_SHA256.items():
+        current = _at(root, commit, path)
+        normalized = current.replace(version.encode(), STANDARDS_8129_ANCHOR_VERSION.encode())
+        if hashlib.sha256(normalized).hexdigest() != expected or current != normalized.replace(
+            STANDARDS_8129_ANCHOR_VERSION.encode(), version.encode()
+        ):
+            msg = f"8.129 maintenance must match the reviewed repo-standards 6.13.0 projection in {path}"
+            raise ReleaseLaneError(msg)
+    _validate_docs(root, STANDARDS_8129_ANCHOR, commit)
+
+
+def _validate_maintenance(root: Path, commit: str) -> None:
+    changed = _changed_since_anchor(root, LEGACY_COMMIT, commit)
     unexpected = (
         changed
         - BACKPORT_PATHS
@@ -171,7 +219,7 @@ def _validate_maintenance(root: Path, commit: str) -> None:
     action_backport = _validate_repo_standards_actions(root, commit, version, changed)
     for path in VERSION_PROJECTIONS:
         _validate_projection(root, commit, path, version)
-    _validate_docs(root, commit)
+    _validate_docs(root, LEGACY_COMMIT, commit)
     _validate_docs_dependencies(root, commit, version)
     _validate_adapter(root, commit, version)
     _validate_gitleaks(root, commit)
@@ -214,11 +262,16 @@ def _validate_repo_standards_actions(root: Path, commit: str, version: str, chan
     return True
 
 
-def _maintenance_version(root: Path, commit: str) -> str:
+def _project_version(root: Path, commit: str) -> str:
     project = _Document.model_validate(tomllib.loads(_at(root, commit, f"{PACKAGE}/pyproject.toml").decode())).root
     table = project.get("project")
     version = table.get("version") if isinstance(table, dict) else None
-    if not isinstance(version, str) or re.fullmatch(r"8\.101\.(?:[2-9]|[1-9][0-9]+)", version) is None:
+    return version if isinstance(version, str) else ""
+
+
+def _maintenance_version(root: Path, commit: str) -> str:
+    version = _project_version(root, commit)
+    if re.fullmatch(r"8\.101\.(?:[2-9]|[1-9][0-9]+)", version) is None:
         msg = "maintenance publication requires an exact 8.101.x version"
         raise ReleaseLaneError(msg)
     return version
@@ -242,8 +295,8 @@ def _matches_projection(original: bytes, current: bytes, path: str, version: str
     )
 
 
-def _validate_docs(root: Path, commit: str) -> None:
-    expected = _Document.model_validate_json(_at(root, LEGACY_COMMIT, DOC_EXAMPLES))
+def _validate_docs(root: Path, anchor: str, commit: str) -> None:
+    expected = _Document.model_validate_json(_at(root, anchor, DOC_EXAMPLES))
     expected.root["cliSha256"] = hashlib.sha256(_at(root, commit, CLI_REFERENCE)).hexdigest()
     if _Document.model_validate_json(_at(root, commit, DOC_EXAMPLES)) != expected:
         msg = "maintenance documentation must retain the legacy catalog, snippets and formatters"
@@ -283,6 +336,12 @@ def _validate_gitleaks(root: Path, commit: str) -> None:
     if hashlib.sha256(_at(root, commit, ".gitleaks.toml")).hexdigest() != APPROVED_GITLEAKS_SHA256:
         msg = "maintenance scanner configuration must match the exact reviewed public-digest projection"
         raise ReleaseLaneError(msg)
+
+
+_MAINTENANCE_VALIDATORS: Final[dict[str, Callable[[Path, str], None]]] = {
+    MAINTENANCE_REF: _validate_maintenance,
+    STANDARDS_8129_REF: _validate_standards_8129,
+}
 
 
 def main(argv: list[str] | None = None) -> int:

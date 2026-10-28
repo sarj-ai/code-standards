@@ -3,6 +3,7 @@ from __future__ import annotations
 from hashlib import sha256
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -14,7 +15,10 @@ from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting.devops_tools import TOOLS, checked_tool
 from sarj_standards.libs.linting.external import run_process, run_process_input
 from sarj_standards.libs.linting.prepared_devops import analyze_prepared
-from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
+
+
+if TYPE_CHECKING:
+    from pydantic import JsonValue
 
 
 _CASES = (
@@ -180,13 +184,13 @@ def test_terraform_template_is_rendered_before_systemd_validation_and_binds_its_
     version = run_process(("systemd-analyze", "--version"), cwd=tmp_path).stdout.splitlines()[0]
     receipt = _receipt(tmp_path, "systemd", "etc/systemd/system/example.service", content, version)
     payload = parse_json(receipt.read_text())
-    assert is_object_mapping(payload)
+    assert isinstance(payload, dict)
     targets = payload["targets"]
-    assert is_object_list(targets)
+    assert isinstance(targets, list)
     target = targets[0]
-    assert is_object_mapping(target)
+    assert isinstance(target, dict)
     target["source"] = "example.service.tftpl"
-    inputs = {
+    inputs: dict[str, JsonValue] = {
         name: sha256((tmp_path / name).read_bytes()).hexdigest()
         for name in ("example.service.tftpl", "variables.tfvars", "variables.tf")
     }

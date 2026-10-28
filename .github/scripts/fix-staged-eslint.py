@@ -172,7 +172,9 @@ def _local_commands(root: Path, commands: Sequence[lifecycle.Command]) -> tuple[
         raise RuntimeError(msg)
     return tuple(
         lifecycle.Command(
-            command.label, (node, str(entry), *command.argv[command.argv.index("eslint") + 1 :]), command.cwd
+            command.label,
+            (node, str(entry), "--no-warn-ignored", *command.argv[command.argv.index("eslint") + 1 :]),
+            command.cwd,
         )
         for command in commands
     )

@@ -140,7 +140,7 @@ def _check(source: str, path: Path = Path("app/guards.py")) -> list[Diagnostic]:
 def test_labeled_cases(case: EvaluationCase) -> None:
     findings = _check(case.source)
     assert len(findings) == (1 if case.expected is ExpectedOutcome.MATCH else 0)
-    assert all(finding.severity is Severity.WARNING for finding in findings)
+    assert all(finding.severity is Severity.ERROR for finding in findings)
 
 
 @pytest.mark.parametrize("example", NoPartialTypeIs.public_examples())
@@ -151,7 +151,7 @@ def test_public_examples(example: RuleExample) -> None:
 def test_metadata_and_exact_suppression() -> None:
     docs = NoPartialTypeIs.documentation
     assert docs is not None
-    assert docs.default_level is Severity.WARNING
+    assert docs.default_level is Severity.ERROR
     assert docs.autofix is AutofixPolicy.NONE
     finding = _check(_BASE)[0]
     assert (finding.code, finding.line, finding.col) == ("SARJ512", 3, 5)
@@ -188,12 +188,12 @@ def test_generated_and_vendor_paths(path: str) -> None:
     assert _check(_BASE, Path(path)) == []
 
 
-def test_registered_warning_is_nonblocking_and_suppression_is_exact(
+def test_registered_error_is_blocking_and_suppression_is_exact(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     path = tmp_path / "guards.py"
     path.write_text(_BASE)
-    assert main(["check", "--rule", NoPartialTypeIs.id, str(path)]) == 0
+    assert main(["check", "--rule", NoPartialTypeIs.id, str(path)]) == 1
     output = capsys.readouterr().out
     assert "SARJ512" in output
     assert "TypeIs rejects" in output
@@ -366,7 +366,7 @@ _DIRECT_CASES = (
 def test_direct_predicate_domains(case: EvaluationCase) -> None:
     findings = _check(case.source)
     assert len(findings) == int(case.expected is ExpectedOutcome.MATCH)
-    assert all(finding.severity is Severity.WARNING for finding in findings)
+    assert all(finding.severity is Severity.ERROR for finding in findings)
 
 
 @pytest.mark.parametrize("typing_module", ["typing", "typing_extensions"])

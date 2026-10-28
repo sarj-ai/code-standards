@@ -75,7 +75,11 @@ def test_no_two_packages_allocate_the_same_code() -> None:
     )
 
 
-def _published_hooks() -> list[Mapping[str, object]]:
+def _published_hooks() -> (
+    list[  # sarj-noqa: SARJ528 -- published hook YAML is shallowly validated and retains unchecked native metadata values.
+        Mapping[str, object]
+    ]
+):
     parsed: object = yaml.safe_load(_HOOKS_PATH.read_text(encoding="utf-8"))  # pyright: ignore[reportAny] -- inspect the untyped YAML hook document before checking its allocated rule codes.
     assert _is_object_list(parsed)
     return [manifest.as_table(item) for item in parsed]
@@ -85,7 +89,11 @@ def _is_object_list(value: object) -> TypeIs[list[object]]:
     return isinstance(value, list)
 
 
-def _published_hook() -> Mapping[str, object]:
+def _published_hook() -> (
+    Mapping[  # sarj-noqa: SARJ528 -- returns one shallowly validated YAML hook record with unchecked native metadata.
+        str, object
+    ]
+):
     hooks = _published_hooks()
     assert hooks
     return hooks[0]

@@ -168,7 +168,10 @@ def read_manifest_version_text(contents: str, manifest_format: ManifestFormat, *
     return version
 
 
-def _read_manifest_text(contents: str, manifest_format: ManifestFormat) -> dict[str, object]:
+def _read_manifest_text(
+    contents: str,
+    manifest_format: ManifestFormat,
+) -> dict[str, object]:  # sarj-noqa: SARJ528 -- Return native TOML or JSON metadata.
     if manifest_format == "json":
         untyped: object = parse_json(contents)
         return string_object_dict(untyped, label="release manifest")
@@ -304,7 +307,7 @@ def create_release_tags(
     publication_checker: PublicationChecker | None = None,
     attempts: int = 1,
     delay: timedelta = timedelta(0),
-    sleeper: Callable[[float], object] = time.sleep,
+    sleeper: Callable[[float], None] = time.sleep,
 ) -> TagSyncResult:
     from sarj_standards.libs.release.registry import (  # ruff: ignore[import-outside-top-level] -- avoid the tags/registry import cycle
         publication_exists,
@@ -375,7 +378,7 @@ def _wait_for_publications(
     *,
     attempts: int,
     delay_seconds: float,
-    sleeper: Callable[[float], object],
+    sleeper: Callable[[float], None],
 ) -> None:
     from sarj_standards.libs.release.registry import require_publication  # ruff: ignore[import-outside-top-level] -- avoid tags/registry import cycle.
 

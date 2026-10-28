@@ -33,8 +33,17 @@ _FAIL = "fail"
 
 # Enough of the operand to identify it in the message without pasting a screenful.
 _OPERAND_PREVIEW_CHARS = 40
-_UNKNOWN = object()
-_DEFERRED_TRUTHY = object()
+
+
+class _ScalarMarker:
+    __slots__ = ()
+
+
+type _ScalarValue = bool | int | float | str | bytes | _ScalarMarker | None
+
+
+_UNKNOWN = _ScalarMarker()
+_DEFERRED_TRUTHY = _ScalarMarker()
 
 
 class NoTautologicalExpect(Rule):
@@ -195,7 +204,7 @@ def _bound_tautologies(context: PythonFileContext) -> list[_Tautology]:
 
 def _function_bound_tautologies(function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_Tautology]:
     found: list[_Tautology] = []
-    bindings: dict[str, object] = {}
+    bindings: dict[str, _ScalarValue] = {}
     for statement in function.body:
         if _record_scalar_assignment(statement, bindings):
             continue
@@ -210,7 +219,7 @@ def _function_bound_tautologies(function: ast.FunctionDef | ast.AsyncFunctionDef
     return found
 
 
-def _record_scalar_assignment(statement: ast.stmt, bindings: dict[str, object]) -> bool:
+def _record_scalar_assignment(statement: ast.stmt, bindings: dict[str, _ScalarValue]) -> bool:
     match statement:
         case (
             ast.Assign(targets=[ast.Name(id=name)], value=value) | ast.AnnAssign(target=ast.Name(id=name), value=value)
@@ -229,12 +238,15 @@ def _record_scalar_assignment(statement: ast.stmt, bindings: dict[str, object]) 
     return False
 
 
-def _scalar_value(node: ast.expr, bindings: dict[str, object]) -> object:
-    if isinstance(node, ast.Name):
-        return bindings.get(node.id, _UNKNOWN)
-    if isinstance(node, ast.Constant):
-        value: object = node.value
-        return value if value is None or isinstance(value, (bool, int, float, str, bytes)) else _UNKNOWN
+def _scalar_value(node: ast.expr, bindings: dict[str, _ScalarValue]) -> _ScalarValue:
+    match node:
+        case ast.Name():
+            return bindings.get(node.id, _UNKNOWN)
+        case ast.Constant():
+            value: object = node.value
+            return value if value is None or isinstance(value, (bool, int, float, str, bytes)) else _UNKNOWN
+        case _:
+            pass
     if isinstance(node, ast.UnaryOp):
         value = _scalar_value(node.operand, bindings)
         if isinstance(node.op, ast.Not) and value is not _UNKNOWN:
@@ -247,7 +259,7 @@ def _scalar_value(node: ast.expr, bindings: dict[str, object]) -> object:
     return _UNKNOWN
 
 
-def _scalar_condition(node: ast.expr, bindings: dict[str, object]) -> bool | None:
+def _scalar_condition(node: ast.expr, bindings: dict[str, _ScalarValue]) -> bool | None:
     if isinstance(node, ast.BoolOp):
         values = [_scalar_condition(value, bindings) for value in node.values]
         if None in values:
@@ -323,10 +335,13 @@ def _match_arm_markers(node: ast.Match) -> set[ast.AST]:
 
 
 def _always_fails(stmt: ast.stmt) -> bool:
-    if isinstance(stmt, ast.Raise):
-        return True
-    if isinstance(stmt, ast.Assert):
-        return _is_always_falsy_literal(stmt.test)
+    match stmt:
+        case ast.Raise():
+            return True
+        case ast.Assert():
+            return _is_always_falsy_literal(stmt.test)
+        case _:
+            pass
     return isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call) and _called_method(stmt.value) == _FAIL
 
 
@@ -347,10 +362,13 @@ def _fixed_truth_reason(test: ast.expr) -> str | None:
     kind = _nonempty_container_kind(test)
     if kind is not None:
         return f"a non-empty {kind} display is truthy whatever it contains"
-    if isinstance(test, ast.GeneratorExp):
-        return "a generator expression creates a truthy iterator without checking its yielded values"
-    if isinstance(test, ast.Lambda):
-        return "a lambda expression creates a truthy function without calling its body"
+    match test:
+        case ast.GeneratorExp():
+            return "a generator expression creates a truthy iterator without checking its yielded values"
+        case ast.Lambda():
+            return "a lambda expression creates a truthy function without calling its body"
+        case _:
+            pass
     return None
 
 
@@ -381,10 +399,13 @@ def _nonempty_container_kind(node: ast.expr) -> str | None:
 def _is_always_falsy_literal(node: ast.expr) -> bool:
     if _constant_truth(node) is False:
         return True
-    if isinstance(node, (ast.List, ast.Tuple)):
-        return not node.elts
-    if isinstance(node, ast.Dict):
-        return not node.keys
+    match node:
+        case ast.List() | ast.Tuple():
+            return not node.elts
+        case ast.Dict():
+            return not node.keys
+        case _:
+            pass
     return False
 
 

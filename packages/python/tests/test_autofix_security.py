@@ -4,7 +4,6 @@ from hmac import compare_digest
 from inspect import currentframe
 from pathlib import Path
 from types import CodeType, FunctionType, SimpleNamespace
-from typing import TYPE_CHECKING
 
 import pytest
 from sarj_rule_contracts import apply_edits
@@ -13,10 +12,6 @@ from sarj_python_lint._autofix_security import fixes
 from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint.autofix import fix_source
 from sarj_python_lint.rules.prefer_constant_time_secret_compare import PreferConstantTimeSecretCompare
-
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 
 _RULE = "prefer-constant-time-secret-compare"
@@ -62,16 +57,21 @@ def _function(source: str) -> FunctionType:
     return FunctionType(function, {"compare_digest": compare_digest})
 
 
-def _reject_compare(_left: object, _right: object) -> bool:
+def _reject_compare(
+    _left: object,  # sarj-noqa: SARJ528 -- injected native comparison callback accepts every Python left operand.
+    _right: object,  # sarj-noqa: SARJ528 -- injected native comparison callback accepts every Python right operand.
+) -> bool:
     return False
 
 
-def _object_type(_value: object) -> type[object]:
+def _object_type(
+    _value: object,  # sarj-noqa: SARJ528 -- native type replacement accepts every Python value.
+) -> type[object]:
     return object
 
 
-def _invoke(function: Callable[[object, object], object], request: object, settings: object) -> object:
-    return function(request, settings)
+def _invoke(function: FunctionType, request: object, settings: object) -> object:
+    return function(request, settings)  # pyright: ignore[reportAny] -- FunctionType executes compiled fixture code with an opaque native return.
 
 
 @pytest.mark.parametrize("operator", ["==", "!="])
@@ -208,7 +208,9 @@ def test_security_autofix_refuses_unproved_type_source_capture_or_import_authori
 @pytest.mark.parametrize(
     ("provided", "expected"), [(b"a", b"a"), (b"a", b"b"), (b"", b""), (b"\0\xff", b"\0\xff"), ("a", b"a"), (1, b"a")]
 )
-def test_security_autofix_original_and_fixed_bytes_runtime(operator: str, provided: object, expected: object) -> None:
+def test_security_autofix_original_and_fixed_bytes_runtime(
+    operator: str, provided: bytes | str | int, expected: bytes
+) -> None:
     original = _SOURCE.replace(" == ", f" {operator} ")
     fixed = _fixed(original)
     assert fixed != original

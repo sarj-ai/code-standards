@@ -11,6 +11,7 @@ import sys
 import tarfile
 from typing import TYPE_CHECKING
 
+from pydantic import JsonValue
 import pytest
 
 from sarj_standards.libs.adoption.manifest import Manifest, PreparedTarget, load
@@ -19,7 +20,7 @@ from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting.external import ProcessOutput
 from sarj_standards.libs.linting.prepared_devops import analyze_prepared
 from sarj_standards.libs.linting.prepared_kubernetes import NATIVE_CHECKS, OMISSION_CHECK
-from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
+from sarj_standards.libs.typed_containers import is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml_documents
 
 
@@ -30,7 +31,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class _ReceiptFixture:
     path: Path
-    target: dict[str, object]
+    target: dict[str, JsonValue]
 
 
 def _receipt(root: Path, *, kind: str = "kubernetes") -> _ReceiptFixture:
@@ -43,7 +44,7 @@ def _receipt(root: Path, *, kind: str = "kubernetes") -> _ReceiptFixture:
     (directory / "schema.json").write_text(
         '{"type":"object","required":["apiVersion","kind","metadata"]}', encoding="utf-8"
     )
-    target: dict[str, object] = {
+    target: dict[str, JsonValue] = {
         "id": "example",
         "source": "deploy.yaml",
         "source_sha256": sha256((root / "deploy.yaml").read_bytes()).hexdigest(),
@@ -60,7 +61,7 @@ def _receipt(root: Path, *, kind: str = "kubernetes") -> _ReceiptFixture:
     return _ReceiptFixture(path, target)
 
 
-def _write_receipt(path: Path, target: dict[str, object]) -> None:
+def _write_receipt(path: Path, target: dict[str, JsonValue]) -> None:
     path.write_text(json.dumps({"version": 1, "targets": [target]}), encoding="utf-8")
 
 
@@ -406,11 +407,11 @@ def test_native_schema_result_must_identify_submitted_resource(field: str, *, mi
         if argv[0] != "kubeconform" or "-strict" not in argv:
             return output
         parsed = parse_json(output.stdout)
-        assert is_object_mapping(parsed)
+        assert isinstance(parsed, dict)
         resources = parsed["resources"]
-        assert is_object_list(resources)
-        native: object = resources[0]
-        assert is_object_mapping(native)
+        assert isinstance(resources, list)
+        native = resources[0]
+        assert isinstance(native, dict)
         parsed["resources"] = [
             {
                 key: "another-resource" if key == field else value
@@ -463,7 +464,9 @@ def test_wrong_schema_resource_identity_supersedes_schema_violation(tmp_path: Pa
     assert "resource identity" in report.issues[0].message
 
 
-def _scalar_receipt(root: Path, *, name: object, value: object, privileged: bool = False) -> _ReceiptFixture:
+def _scalar_receipt(
+    root: Path, *, name: str | bool, value: str | int | None, privileged: bool = False
+) -> _ReceiptFixture:
     fixture = _receipt(root)
     directory = fixture.path.parent
     resource = {
@@ -544,7 +547,7 @@ def test_quoted_scalar_security_findings_keep_upstream_ownership(tmp_path: Path)
 
 @pytest.mark.parametrize(("name", "value"), [(True, "value"), ("APP", 42)])
 def test_prepared_serialization_cannot_turn_invalid_scalar_types_into_strings(
-    tmp_path: Path, name: object, value: object
+    tmp_path: Path, name: str | bool, value: str | int
 ) -> None:
     fixture = _scalar_receipt(tmp_path, name=name, value=value)
     reports = analyze_prepared((fixture.path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),))

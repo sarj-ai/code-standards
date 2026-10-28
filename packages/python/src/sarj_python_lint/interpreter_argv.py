@@ -122,7 +122,7 @@ _MAX_WRAPPERS = 8
 
 
 class UnprovableCommandError(ValueError):
-    """A wrapper executable position cannot be established safely."""
+    pass
 
 
 def unwrap_command(
@@ -210,8 +210,7 @@ def _env_wrapper_index(arguments: Sequence[str]) -> int:
             index += 1
             break
         index += _env_option_size(arguments, index)
-    # Assignments follow options, including after --; later option-looking words
-    # are executable operands, not additional env options.
+    # After env assignments begin, option-looking words are executable operands, including after --.
     while index < len(arguments) and "=" in arguments[index]:
         if arguments[index].startswith("="):
             msg = "env assignment requires a nonempty variable name"
@@ -484,8 +483,7 @@ def _shell_short_option(arguments: Sequence[str], index: int, values: frozenset[
     for flag in flags:
         if flag in values:
             operand = _following_operand(arguments, index + consumed - 1)
-            # Bash shopt (-O) has a separate, version-dependent namespace. Keep
-            # it unproven until a native option contract is available.
+            # Bash shopt (-O) uses a separate versioned namespace; no native contract is proven here.
             if flag == "O" or operand not in _SHELL_NAMED_OPTIONS:
                 return ParsedOption(InterpreterInvocation("unknown"))
             consumed += 1

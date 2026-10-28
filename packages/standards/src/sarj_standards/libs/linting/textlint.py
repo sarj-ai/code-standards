@@ -1402,7 +1402,9 @@ def _blank_text_lines(lines: list[str], first: int, last: int) -> TextEdit:
     return TextEdit(start, start + len(original), "".join(re.findall(r"\r\n|\r|\n", original)))
 
 
-def _parsed_config_value(path: Path, source: str) -> object:
+def _parsed_config_value(
+    path: Path, source: str
+) -> object:  # sarj-noqa: SARJ528 -- Preserve native YAML and TOML values for equality checks.
     return tomllib.loads(source) if path.suffix.lower() == ".toml" else parse_yaml_documents(source)
 
 
@@ -1799,7 +1801,9 @@ def _workflow_action_mutates(action: _WorkflowAction) -> bool:
     )
 
 
-def _structured_config_document(suffix: str, source: str) -> object | None:
+def _structured_config_document(
+    suffix: str, source: str
+) -> object | None:  # sarj-noqa: SARJ528 -- Native TOML dates and times remain valid parser results.
     try:
         if suffix in {".json", ".jsonc"}:
             payload = _strip_jsonc_comments(source) if suffix == ".jsonc" else source

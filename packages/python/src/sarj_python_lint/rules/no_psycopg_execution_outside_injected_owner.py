@@ -639,10 +639,13 @@ class _FunctionAnalyzer:
         Visitor().visit(node)
 
     def _expression_origin(self, node: ast.expr | None, state: dict[str, _Origin]) -> _Origin | None:
-        if isinstance(node, ast.NamedExpr):
-            return self._expression_origin(node.value, state)
-        if isinstance(node, ast.Name):
-            return state.get(node.id) or (_Origin.EXTERNAL if node.id in self._types.globals else None)
+        match node:
+            case ast.NamedExpr():
+                return self._expression_origin(node.value, state)
+            case ast.Name():
+                return state.get(node.id) or (_Origin.EXTERNAL if node.id in self._types.globals else None)
+            case _:
+                pass
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "self":
             if node.attr in self._ownership.injected:
                 return _Origin.INJECTED

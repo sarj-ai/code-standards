@@ -74,7 +74,7 @@ _PRIMITIVE_CLASSES: Final[dict[str, type[object]]] = {
 @dataclass(slots=True)
 class _Value:
     kind: _Kind
-    literal: object = None
+    literal: bool | int | float | complex | str | bytes | None = None
     known: bool = False
     items: list[_Value] = field(default_factory=list)
     function: _Function | None = None
@@ -108,7 +108,7 @@ def _constant(value: object) -> _Value:
         bytes: _Kind.BYTES,
     }
     kind = kinds.get(type(value))
-    if kind is None:
+    if kind is None or not isinstance(value, bool | int | float | complex | str | bytes | None):
         raise _UnsafeError
     return _Value(kind, value, known=True)
 

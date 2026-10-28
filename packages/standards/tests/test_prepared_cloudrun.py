@@ -15,8 +15,10 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from pathlib import Path
 
+    from pydantic import JsonValue
 
-def _receipt(root: Path, document: Mapping[str, object], schema: Mapping[str, object], binding: str) -> Path:
+
+def _receipt(root: Path, document: Mapping[str, JsonValue], schema: Mapping[str, JsonValue], binding: str) -> Path:
     source = root / "delivery.tf"
     source.write_text("authored Cloud Run configuration\n", encoding="utf-8")
     directory = root / "prepared"
@@ -57,8 +59,12 @@ def _receipt(root: Path, document: Mapping[str, object], schema: Mapping[str, ob
 def test_cloudrun_exact_gvk_uses_hashed_local_schema(
     tmp_path: Path, api_version: str, kind: str, *, valid: bool
 ) -> None:
-    document = {"apiVersion": api_version, "kind": kind, "metadata": {"name": "example" if valid else 123}}
-    schema = {
+    document: dict[str, JsonValue] = {
+        "apiVersion": api_version,
+        "kind": kind,
+        "metadata": {"name": "example" if valid else 123},
+    }
+    schema: dict[str, JsonValue] = {
         "type": "object",
         "required": ["apiVersion", "kind", "metadata"],
         "properties": {
@@ -88,9 +94,9 @@ def test_cloudrun_exact_gvk_uses_hashed_local_schema(
     ],
 )
 def test_cloudrun_unknown_gvk_missing_binding_and_open_schema_fail_closed(
-    tmp_path: Path, api_version: str, kind: str, binding: str, schema: dict[str, object]
+    tmp_path: Path, api_version: str, kind: str, binding: str, schema: dict[str, JsonValue]
 ) -> None:
-    document = {"apiVersion": api_version, "kind": kind, "metadata": {"name": "example"}}
+    document: dict[str, JsonValue] = {"apiVersion": api_version, "kind": kind, "metadata": {"name": "example"}}
     path = _receipt(tmp_path, document, schema, binding)
     [report] = analyze_prepared((path,), root=tmp_path, declared=(PreparedTarget("cloudrun", "delivery.tf"),))
     assert report.completion is Completion.FAILED
@@ -99,7 +105,11 @@ def test_cloudrun_unknown_gvk_missing_binding_and_open_schema_fail_closed(
 
 
 def test_cloudrun_job_schema_tampering_fails_before_validation(tmp_path: Path) -> None:
-    document = {"apiVersion": "run.googleapis.com/v1", "kind": "Job", "metadata": {"name": "example"}}
+    document: dict[str, JsonValue] = {
+        "apiVersion": "run.googleapis.com/v1",
+        "kind": "Job",
+        "metadata": {"name": "example"},
+    }
     path = _receipt(tmp_path, document, {"type": "object"}, "run.googleapis.com/v1/Job")
     (path.parent / "schema.json").write_text("{}", encoding="utf-8")
     [report] = analyze_prepared((path,), root=tmp_path, declared=(PreparedTarget("cloudrun", "delivery.tf"),))

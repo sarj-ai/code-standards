@@ -33,6 +33,7 @@ from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules import (
     REGISTRY,
     duplicate_adjacent_exception_handler as exception_rule,
+    no_comment_cruft as comment_cruft_rule,
     prefer_collection_comprehension as collection_rule,
     prefer_or_pattern as pattern_rule,
 )
@@ -201,7 +202,11 @@ def _comment_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
     if token is None:
         return []
     body = token.string.removeprefix("#").strip()
-    if diagnostic.code == "SARJ016" and _SEPARATOR.fullmatch(body) is None:
+    if (
+        diagnostic.code == "SARJ016"
+        and _SEPARATOR.fullmatch(body) is None
+        and not comment_cruft_rule.is_section_label(body)
+    ):
         return []
     start = source.starts[token.start[0] - 1]
     if source.text[start : start + token.start[1]].strip():
@@ -988,10 +993,13 @@ def _jwt_required_sequence(required: ast.expr) -> ast.expr | None:
     ):
         return None
     elements = [*required.elts, ast.Constant(value="exp")]
-    if isinstance(required, ast.List):
-        return ast.List(elts=elements, ctx=ast.Load())
-    if isinstance(required, ast.Tuple):
-        return ast.Tuple(elts=elements, ctx=ast.Load())
+    match required:
+        case ast.List():
+            return ast.List(elts=elements, ctx=ast.Load())
+        case ast.Tuple():
+            return ast.Tuple(elts=elements, ctx=ast.Load())
+        case _:
+            pass
     return ast.Set(elts=elements)
 
 
@@ -1312,7 +1320,7 @@ _BUILDERS: Final[dict[str, Callable[[_Source, Diagnostic], list[TextEdit]]]] = {
     "SARJ011": _security_fix,
     **dict.fromkeys(_COMMENT_CODES, _comment_fix),
     **dict.fromkeys(_WALRUS_CODES, _walrus_fix),
-    **dict.fromkeys({"SARJ050", "SARJ086", "SARJ087", "SARJ092", "SARJ420"}, _docstring_fix),
+    **dict.fromkeys({"SARJ050", "SARJ086", "SARJ087", "SARJ092", "SARJ099", "SARJ420"}, _docstring_fix),
     "SARJ023": _stepdown_fix,
     "SARJ024": _repeated_fix,
     "SARJ032": _exhaustiveness_fix,

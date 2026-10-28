@@ -320,5 +320,13 @@
   "SARJ529": "prefer-direct-import-module",
   "SARJ530": "prefer-typed-settings-field",
   "SARJ531": "no-redundant-local-alias",
-  "SARJ532": "prefer-grouped-settings"
+  "SARJ532": "prefer-grouped-settings",
+  "SARJ533": "prefer-typed-cli",
+  "SARJ534": "prefer-runtime-validation",
+  "SARJ535": "prefer-typed-mapping-get",
+  "SARJ536": "cancel-owned-task-without-join",
+  "SARJ537": "async-subprocess-cancellation-cleanup",
+  "SARJ538": "failed-probe-zero-threshold",
+  "SARJ539": "nan-hidden-by-builtin-min",
+  "SARJ540": "async-executor-shutdown"
 }

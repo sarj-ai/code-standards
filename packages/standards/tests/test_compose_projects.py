@@ -13,12 +13,14 @@ from sarj_standards.libs.linting.devops_source import analyze_sources
 from sarj_standards.libs.linting.devops_tools import TOOLS, checked_tool, invoke
 from sarj_standards.libs.linting.external import ProcessOutput, analyze_external
 from sarj_standards.libs.linting.policy import Policy
-from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
+from sarj_standards.libs.typed_containers import is_object_list
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
+
+    from pydantic import JsonValue
 
 
 def _project(root: Path, files: tuple[str, ...]) -> None:
@@ -75,7 +77,7 @@ def test_overlay_order_is_the_declared_invocation_order(tmp_path: Path, files: t
         if "config" in argv and output.returncode == 0:
             value = parse_json(output.stdout)
             for key in ("services", "app", "environment"):
-                assert is_object_mapping(value)
+                assert isinstance(value, dict)
                 value = value[key]
             assert is_object_list(value)
             modes.append(value)
@@ -105,7 +107,7 @@ def test_unrelated_selection_does_not_run_declared_projects(tmp_path: Path) -> N
     [[[]], [["../outside.yaml"]], [["/absolute.yaml"]], [["nested\\escape.yaml"]], ["base.yaml"]],
     ids=("empty", "parent", "absolute", "backslash", "not-a-group"),
 )
-def test_invalid_project_declarations_fail_at_the_manifest_boundary(tmp_path: Path, files: object) -> None:
+def test_invalid_project_declarations_fail_at_the_manifest_boundary(tmp_path: Path, files: JsonValue) -> None:
     _project(tmp_path, ("base.yaml", "override.yaml"))
     path = tmp_path / manifest.MANIFEST_NAME
     source = path.read_text()

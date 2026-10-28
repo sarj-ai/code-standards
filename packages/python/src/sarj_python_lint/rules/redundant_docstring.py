@@ -148,14 +148,15 @@ class RedundantDocstring(Rule):
         context: _ScanContext,
     ) -> None:
         for child in children(node):
-            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                self._check_function(child, context)
-                self._walk(child, context)
-            elif isinstance(child, ast.ClassDef):
-                if not child.bases and not child.keywords and not child.decorator_list:
+            match child:
+                case ast.FunctionDef() | ast.AsyncFunctionDef():
+                    self._check_function(child, context)
                     self._walk(child, context)
-            else:
-                self._walk(child, context)
+                case ast.ClassDef():
+                    if not child.bases and not child.keywords and not child.decorator_list:
+                        self._walk(child, context)
+                case _:
+                    self._walk(child, context)
 
     def _check_function(
         self,

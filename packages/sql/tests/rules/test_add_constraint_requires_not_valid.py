@@ -458,3 +458,78 @@ def test_relation_rename_reuse_does_not_lend_freshness(source: str) -> None:
 )
 def test_fresh_relation_rename_and_nonrelation_renames_keep_safe_ownership(source: str) -> None:
     assert _check(source) == []
+
+
+@pytest.mark.parametrize("boundary", ["-- migrate:down", "-- +goose Down", "--changeset owner:2"])
+def test_migration_sections_do_not_share_an_empty_table_proof(boundary: str) -> None:
+    source = f"CREATE TABLE child(id int);\n{boundary}\nALTER TABLE child ADD CHECK(id > 0);"
+    diagnostics = _check(source)
+    assert len(diagnostics) == 1
+    assert diagnostics[0].line == 3
+
+
+@pytest.mark.parametrize(
+    "between",
+    [
+        "SET search_path = other;",
+        "SET LOCAL search_path = other;",
+        'SET "search_path" = other;',
+        "SET SCHEMA 'other';",
+        "RESET search_path;",
+        "RESET ROLE;",
+        "RESET SESSION AUTHORIZATION;",
+        "SET ROLE another;",
+        "SET SESSION AUTHORIZATION another;",
+        "SET session_authorization = 'another';",
+        "CREATE TABLE snapshot AS SELECT populate_child();",
+        "CREATE TEMP TABLE snapshot AS SELECT populate_child();",
+        "CREATE MATERIALIZED VIEW snapshot AS SELECT populate_child();",
+        "CREATE EXTENSION custom_extension;",
+        "ALTER TABLE existing ALTER COLUMN id TYPE int USING populate_child();",
+        "ALTER TABLE existing ALTER id SET DATA TYPE int;",
+        "ALTER TABLE existing ADD COLUMN copied int DEFAULT populate_child();",
+        "ALTER TABLE existing ADD COLUMN copied int GENERATED ALWAYS AS (populate_child()) STORED;",
+    ],
+)
+def test_relation_resolution_and_executing_ddl_revoke_the_empty_table_proof(between: str) -> None:
+    source = f"CREATE TABLE child(id int);\n{between}\nALTER TABLE child ADD CHECK(id > 0);"
+    diagnostics = _check(source)
+    assert len(diagnostics) == 1
+    assert diagnostics[0].line == 3
+
+
+@pytest.mark.parametrize(
+    "between",
+    [
+        "COMMENT ON TABLE child IS '-- migrate:down';",
+        "GRANT SELECT ON child TO reader;",
+        "SET LOCAL lock_timeout = '5s';",
+        "CREATE INDEX child_id ON child(id);",
+        "CREATE TABLE snapshot AS SELECT populate_child() WITH NO DATA;",
+        "CREATE MATERIALIZED VIEW snapshot AS SELECT populate_child() WITH NO DATA;",
+        "ALTER TABLE existing ALTER COLUMN type SET STATISTICS 100;",
+        "ALTER TABLE existing ALTER COLUMN id SET DEFAULT populate_child();",
+    ],
+)
+def test_nonexecuting_ddl_preserves_fresh_table_ownership(between: str) -> None:
+    source = f"CREATE TABLE child(id int);\n{between}\nALTER TABLE child ADD CHECK(id > 0);"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("relation", ["child", "public.child", '"public"."child"'])
+@pytest.mark.parametrize(
+    "setting",
+    [
+        "SET LOCAL search_path = other;",
+        "SET SCHEMA 'other';",
+        "SET ROLE another;",
+        "SET SESSION AUTHORIZATION another;",
+        "RESET search_path;",
+        "RESET ROLE;",
+        "RESET SESSION AUTHORIZATION;",
+        "RESET ALL;",
+    ],
+)
+def test_resolution_settings_preserve_explicitly_qualified_relation_identity(relation: str, setting: str) -> None:
+    source = f"CREATE TABLE {relation}(id int);\n{setting}\nALTER TABLE {relation} ADD CHECK(id > 0);"
+    assert len(_check(source)) == (1 if relation == "child" else 0)

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 import pytest
 from sarj_python_lint.__main__ import analyze
 from sarj_python_lint.rules.no_dunder_all import NoDunderAll
+from sarj_python_lint.rules.redundant_module_docstring import RedundantModuleDocstring
 from sarj_rule_contracts import ExampleFile, ExpectedOutcome, RuleExample
 from sarj_rule_contracts.examples import ExampleFinding, verify_examples, verify_native_rule
 from sarj_sql_lint.rules.prefer_text_over_varchar import PreferTextOverVarchar
@@ -231,6 +232,7 @@ def test_scaffolds_have_real_suffixes_warning_defaults_and_executable_tests(
     assert "verify_" in test
     assert "NotImplementedError" in source
     compile(source, str(plan.files[0][0]), "exec")
+    assert RedundantModuleDocstring().check(plan.files[0][0], source) == []
 
 
 def test_reservation_prevents_duplicate_codes_between_unprepared_rules(tmp_path: Path) -> None:

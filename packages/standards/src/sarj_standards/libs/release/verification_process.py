@@ -111,8 +111,7 @@ def _interrupt(
         try:
             stdout, stderr = process.communicate(timeout=2)
         except subprocess.TimeoutExpired as exc:
-            # A descendant that starts its own session may retain a pipe.
-            # Close our descriptors rather than waiting indefinitely for it.
+            # A detached descendant may retain a pipe; close descriptors after the timeout.
             stdout, stderr = _tail(exc.stdout), _tail(exc.stderr)
             if process.stdout is not None:
                 process.stdout.close()

@@ -6,6 +6,8 @@ from operator import itemgetter
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Final, Literal, TypedDict
 
+from pydantic import JsonValue
+
 from sarj_standards.libs.json_boundary import parse_unique_json
 from sarj_standards.libs.release.process import (
     ProcessBinaryRunner,
@@ -19,7 +21,6 @@ from sarj_standards.libs.release.process import (
 from sarj_standards.libs.repository.immutable_git import ImmutableGit, git_argv
 from sarj_standards.libs.repository.rule_dependencies import ModuleFingerprint, RuleDependencies
 from sarj_standards.libs.rules import DefaultLevel
-from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
 
 
 if TYPE_CHECKING:
@@ -70,12 +71,19 @@ _ERROR_FIRST_APPROVALS: Final = frozenset(
         # User-approved architecture policy: literal/import-proven interpreter source
         # bypasses the requested independently linted file/module boundary.
         "python:no-interpreter-source-arguments",
+        # User-requested blocking CLI policy: require typed Typer command
+        # contracts instead of raw argv parsing; qualified with paired native
+        # fixtures, inspected adapter exceptions and pinned corpus evidence.
+        "python:prefer-typed-cli",
         # User-approved blocking suppression integrity, qualified with native
         # checker repros, labeled cases, and pinned-corpus/performance evidence.
         "python:no-blanket-suppression",
         # User-approved blocking datastore architecture policy, qualified with
         # native paired-engine labels and pinned consumer/performance evidence.
         "sql:no-analytical-queries-in-transactional-db",
+        # User-approved strict new-table constraints; preserve separate PostgreSQL
+        # partial/expression indexes and existing-table migration contracts.
+        "sql:new-table-inline-constraints",
     }
 )
 
@@ -115,7 +123,7 @@ class RuleChangeSetV1(TypedDict):
 
 class _RevisionRules(TypedDict):
     descriptors: dict[str, RuleDescriptorV1]
-    catalog: dict[str, dict[str, object]]
+    catalog: dict[str, dict[str, JsonValue]]
     implementation_blobs: dict[str, tuple[ModuleFingerprint, ModuleFingerprint]]
 
 
@@ -213,7 +221,7 @@ def _change(
     }
 
 
-def _implementation_projection(rule: dict[str, object]) -> dict[str, object]:
+def _implementation_projection(rule: dict[str, JsonValue]) -> dict[str, JsonValue]:
     return {key: value for key, value in rule.items() if key not in _POLICY_FIELDS}
 
 
@@ -243,7 +251,7 @@ def _load_revision(  # ruff: ignore[too-many-locals] -- validates and joins two 
 
     inventory_by_key = _inventory_by_key(inventory_entries)
 
-    catalog_by_key: dict[str, dict[str, object]] = {}
+    catalog_by_key: dict[str, dict[str, JsonValue]] = {}
     for index, raw in enumerate(catalog_entries, start=1):
         entry = _object(raw, label=f"rule catalog entry {index}")
         key = _string(entry, "key")
@@ -312,8 +320,8 @@ def _load_revision(  # ruff: ignore[too-many-locals] -- validates and joins two 
     }
 
 
-def _inventory_by_key(inventory_entries: list[object]) -> dict[str, dict[str, object]]:
-    inventory_by_key: dict[str, dict[str, object]] = {}
+def _inventory_by_key(inventory_entries: list[JsonValue]) -> dict[str, dict[str, JsonValue]]:
+    inventory_by_key: dict[str, dict[str, JsonValue]] = {}
     for index, raw in enumerate(inventory_entries, start=1):
         entry = _object(raw, label=f"rule inventory entry {index}")
         if frozenset(entry) != _INVENTORY_ENTRY_FIELDS:
@@ -335,7 +343,7 @@ def _inventory_by_key(inventory_entries: list[object]) -> dict[str, dict[str, ob
     return inventory_by_key
 
 
-def _immutable_json(snapshot: ImmutableGit, path: str) -> dict[str, object]:
+def _immutable_json(snapshot: ImmutableGit, path: str) -> dict[str, JsonValue]:
     try:
         payload = parse_unique_json(snapshot.text(path))
     except (ValueError, RecursionError) as error:
@@ -344,7 +352,7 @@ def _immutable_json(snapshot: ImmutableGit, path: str) -> dict[str, object]:
     return _object(payload, label=path)
 
 
-def _rules_array(document: dict[str, object], *, label: str) -> list[object]:
+def _rules_array(document: dict[str, JsonValue], *, label: str) -> list[JsonValue]:
     if (
         type(document.get("schemaVersion")) is not int
         or document.get("schemaVersion") != 1
@@ -353,23 +361,20 @@ def _rules_array(document: dict[str, object], *, label: str) -> list[object]:
         msg = f"{label} must contain exactly schemaVersion 1 and rules"
         raise ValueError(msg)
     rules = document["rules"]
-    if not is_object_list(rules):
+    if not isinstance(rules, list):
         msg = f"{label} rules must be an array"
         raise TypeError(msg)
     return rules
 
 
-def _object(value: object, *, label: str) -> dict[str, object]:
-    if not is_object_mapping(value):
+def _object(value: JsonValue, *, label: str) -> dict[str, JsonValue]:
+    if not isinstance(value, dict):
         msg = f"{label} must be an object"
         raise TypeError(msg)
-    if not all(isinstance(key, str) for key in value):
-        msg = f"{label} must have string keys"
-        raise TypeError(msg)
-    return {key: item for key, item in value.items() if isinstance(key, str)}
+    return dict(value)
 
 
-def _string(value: dict[str, object], key: str) -> str:
+def _string(value: dict[str, JsonValue], key: str) -> str:
     item = value.get(key)
     if not isinstance(item, str) or not item:
         msg = f"rule field {key} must be a non-empty string"
@@ -377,7 +382,7 @@ def _string(value: dict[str, object], key: str) -> str:
     return item
 
 
-def _default_level(value: dict[str, object], *, key: str) -> DefaultLevel:
+def _default_level(value: dict[str, JsonValue], *, key: str) -> DefaultLevel:
     raw = _string(value, "defaultLevel")
     try:
         return DefaultLevel(raw)

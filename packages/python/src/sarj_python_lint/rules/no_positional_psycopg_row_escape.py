@@ -173,12 +173,15 @@ class NoPositionalPsycopgRowEscape(Rule):
 
 def _functions(tree: ast.Module) -> Iterator[tuple[ast.FunctionDef | ast.AsyncFunctionDef, ast.ClassDef | None]]:
     for statement in tree.body:
-        if isinstance(statement, ast.FunctionDef | ast.AsyncFunctionDef):
-            yield statement, None
-        elif isinstance(statement, ast.ClassDef):
-            for child in statement.body:
-                if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
-                    yield child, statement
+        match statement:
+            case ast.FunctionDef() | ast.AsyncFunctionDef():
+                yield statement, None
+            case ast.ClassDef():
+                for child in statement.body:
+                    if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
+                        yield child, statement
+            case _:
+                pass
 
 
 def _class_connection_attributes(tree: ast.Module, imports: ImportIndex) -> dict[tuple[int, str], _Shape]:
@@ -852,10 +855,13 @@ def _mutation_root(target: ast.expr) -> str | None:
 def _statement_mutation_roots(statement: ast.stmt) -> frozenset[str]:
     roots: set[str] = set()
     expressions = [child for child in ast.iter_child_nodes(statement) if isinstance(child, ast.expr)]
-    if isinstance(statement, ast.With | ast.AsyncWith):
-        expressions.extend(item.context_expr for item in statement.items)
-    elif isinstance(statement, ast.Match):
-        expressions.extend(case.guard for case in statement.cases if case.guard is not None)
+    match statement:
+        case ast.With() | ast.AsyncWith():
+            expressions.extend(item.context_expr for item in statement.items)
+        case ast.Match():
+            expressions.extend(case.guard for case in statement.cases if case.guard is not None)
+        case _:
+            pass
     nodes = (node for expression in expressions for node in walk_ast(expression))
     for node in nodes:
         root = _expression_mutation_root(node)

@@ -501,9 +501,7 @@ class PreferStrEnum(Rule):
             node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp,
             active: dict[str, _ClusterEntry] | None,
         ) -> dict[str, _ClusterEntry] | None:
-            # Comprehension targets have their own implicit scope and can
-            # shadow the enclosing function's variables, so collect their
-            # comparisons separately rather than merging same-named keys.
+            # Comprehension targets have separate scopes; same-named comparisons cannot be merged across them.
             if active is None:
                 return None
             child_active: dict[str, _ClusterEntry] = {}
@@ -1170,10 +1168,13 @@ def _local_bindings(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[_Local
             continue
         targets: list[ast.expr] = []
         value: ast.expr | None = None
-        if isinstance(node, ast.Assign):
-            targets, value = list(node.targets), node.value
-        elif isinstance(node, (ast.AnnAssign, ast.NamedExpr)):
-            targets, value = [node.target], node.value
+        match node:
+            case ast.Assign():
+                targets, value = list(node.targets), node.value
+            case ast.AnnAssign() | ast.NamedExpr():
+                targets, value = [node.target], node.value
+            case _:
+                pass
         if value is not None:
             bindings.extend(_LocalBinding(name, value) for target in targets for name in _bound_target_names(target))
         stack.extend(children(node))
@@ -1744,9 +1745,7 @@ def _closed_domain_node_ids(
     closed_collections: dict[str, list[str]],
 ) -> frozenset[int]:
     closed: set[int] = set()
-    # A rejecting branch proves a closed domain only when it governs the whole
-    # function. Nested branches may be optional, repeated, or have their
-    # rejection caught before an open-domain fallback executes.
+    # Only whole-function rejection proves closure; nested rejection may be skipped, repeated or caught.
     for node in function.body:
         if isinstance(node, ast.If):
             _record_rejecting_membership_guard(node, imports, closed, closed_collections)
@@ -1764,10 +1763,13 @@ def _statement_always_falls_through(statement: ast.stmt) -> bool:
     stack: list[ast.AST] = [statement]
     while stack:
         node = stack.pop()
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
-            continue
-        if isinstance(node, (ast.Return, ast.Yield, ast.YieldFrom, ast.Break, ast.Continue, ast.Raise)):
-            return False
+        match node:
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() | ast.Lambda():
+                continue
+            case ast.Return() | ast.Yield() | ast.YieldFrom() | ast.Break() | ast.Continue() | ast.Raise():
+                return False
+            case _:
+                pass
         stack.extend(children(node))
     return True
 
@@ -1893,21 +1895,24 @@ def _extract_compare(node: ast.Compare) -> _ExtractedCompare | None:
         return None
     op = node.ops[0]
     left, right = node.left, node.comparators[0]
-    if isinstance(op, (ast.Eq, ast.NotEq)):
-        return _extract_equality_compare(op, left, right)
-    if isinstance(op, (ast.In, ast.NotIn)):
-        key = _name_key(left)
-        if key is None:
-            return None
-        if not isinstance(right, (ast.Tuple, ast.List, ast.Set)) or not right.elts:
-            return None
-        values: list[str] = []
-        for elt in right.elts:
-            value = _str_const(elt)
-            if value is None:
+    match op:
+        case ast.Eq() | ast.NotEq():
+            return _extract_equality_compare(op, left, right)
+        case ast.In() | ast.NotIn():
+            key = _name_key(left)
+            if key is None:
                 return None
-            values.append(value)
-        return _ExtractedCompare(key, values, _MEMBERSHIP)
+            if not isinstance(right, (ast.Tuple, ast.List, ast.Set)) or not right.elts:
+                return None
+            values: list[str] = []
+            for elt in right.elts:
+                value = _str_const(elt)
+                if value is None:
+                    return None
+                values.append(value)
+            return _ExtractedCompare(key, values, _MEMBERSHIP)
+        case _:
+            pass
     return None
 
 
@@ -2133,10 +2138,13 @@ def _collect_method_owned_attributes(
 
 def _assignment_targets(node: ast.AST) -> list[ast.expr]:
     method_targets: list[ast.expr] = []
-    if isinstance(node, ast.Assign):
-        method_targets.extend(node.targets)
-    elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
-        method_targets.append(node.target)
+    match node:
+        case ast.Assign():
+            method_targets.extend(node.targets)
+        case ast.AnnAssign() | ast.AugAssign():
+            method_targets.append(node.target)
+        case _:
+            pass
     return method_targets
 
 
@@ -2201,8 +2209,11 @@ def _register_enum_subclasses(
 def _collect_class_owned_attributes(cls: ast.ClassDef, attributes: set[str]) -> None:
     for statement in cls.body:
         class_targets: list[ast.expr] = []
-        if isinstance(statement, ast.Assign):
-            class_targets.extend(statement.targets)
-        elif isinstance(statement, ast.AnnAssign):
-            class_targets.append(statement.target)
+        match statement:
+            case ast.Assign():
+                class_targets.extend(statement.targets)
+            case ast.AnnAssign():
+                class_targets.append(statement.target)
+            case _:
+                pass
         attributes.update(target.id for target in class_targets if isinstance(target, ast.Name))

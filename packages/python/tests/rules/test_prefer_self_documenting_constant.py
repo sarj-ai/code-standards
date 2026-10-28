@@ -464,7 +464,9 @@ def test_cli_reports_the_rule_as_a_blocking_error(tmp_path: Path, capsys: pytest
 
 
 def test_module_without_candidate_constants_skips_expensive_scans(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fail_if_called(*_args: object):
+    def fail_if_called(
+        *_args: object,  # sarj-noqa: SARJ528 -- MonkeyPatch callback fails on every unexpected argument tuple.
+    ):
         pytest.fail("source scans should be skipped without a numeric or status candidate")
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- interception proves candidate gating avoids source scans.

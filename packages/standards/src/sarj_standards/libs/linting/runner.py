@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 
 class _Rule(Protocol):
-    """Registry value shape shared by the three standards linters."""
+    pass
 
 
 @runtime_checkable

@@ -174,7 +174,7 @@ def test_labeled_cases(case: EvaluationCase) -> None:
     assert len(diagnostics) == int(case.expected is ExpectedOutcome.MATCH)
     for diagnostic in diagnostics:
         assert diagnostic.code == "SARJ507"
-        assert diagnostic.severity is Severity.WARNING
+        assert diagnostic.severity is Severity.ERROR
         assert "coroutine" in diagnostic.message
 
 

@@ -165,11 +165,14 @@ def _free_names(expression: ast.expr) -> Iterator[str]:
         node, shadowed = pending.pop()
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id not in shadowed:
             yield node.id
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef | ast.Lambda):
-            continue
-        if isinstance(node, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
-            pending.extend(_comprehension_scopes(node, shadowed))
-            continue
+        match node:
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() | ast.Lambda():
+                continue
+            case ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp():
+                pending.extend(_comprehension_scopes(node, shadowed))
+                continue
+            case _:
+                pass
         pending.extend((child, shadowed) for child in ast.iter_child_nodes(node))
 
 

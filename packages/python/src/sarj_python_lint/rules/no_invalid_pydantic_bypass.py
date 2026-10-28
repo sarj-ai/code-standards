@@ -63,7 +63,7 @@ class NoInvalidPydanticBypass(Rule):
     id = "no-invalid-pydantic-bypass"
     code = "SARJ511"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Do not create a provably invalid model through Pydantic validation bypass APIs.",
         rationale=(
             "model_construct and model_copy(update=...) store supplied values without validation. A contradictory "
@@ -305,10 +305,13 @@ def _safe_field_call(call: ast.Call, context: PythonFileContext) -> bool:
 
 
 def _safe_annotation(annotation: ast.expr, context: PythonFileContext) -> bool:
-    if isinstance(annotation, ast.Constant):
-        return annotation.value is None or annotation.value is Ellipsis
-    if isinstance(annotation, ast.Name):
-        return annotation.id in _BUILTINS and context.imports.builtin_is_unshadowed(annotation.id)
+    match annotation:
+        case ast.Constant():
+            return annotation.value is None or annotation.value is Ellipsis
+        case ast.Name():
+            return annotation.id in _BUILTINS and context.imports.builtin_is_unshadowed(annotation.id)
+        case _:
+            pass
     if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
         return _safe_annotation(annotation.left, context) and _safe_annotation(annotation.right, context)
     if not isinstance(annotation, ast.Subscript):
@@ -509,7 +512,11 @@ def _literal_value(node: ast.expr) -> object:
         return _UNKNOWN_LITERAL
 
 
-def _literal_incompatible(annotation: ast.expr, value: object, context: PythonFileContext) -> bool:
+def _literal_incompatible(
+    annotation: ast.expr,
+    value: object,  # sarj-noqa: SARJ528 -- recursive annotation checks consume native literal values including bytes, complex numbers and sets.
+    context: PythonFileContext,
+) -> bool:
     if isinstance(annotation, ast.Constant):
         return annotation.value is None and value is not None
     if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
@@ -523,7 +530,11 @@ def _literal_incompatible(annotation: ast.expr, value: object, context: PythonFi
     return _subscript_incompatible(annotation, value, context)
 
 
-def _subscript_incompatible(annotation: ast.Subscript, value: object, context: PythonFileContext) -> bool:
+def _subscript_incompatible(
+    annotation: ast.Subscript,
+    value: object,  # sarj-noqa: SARJ528 -- annotation wrappers recursively refine the unchecked native literal decoder result.
+    context: PythonFileContext,
+) -> bool:
     members = _members(annotation.slice)
     if _typing_wrapper(annotation, "Annotated", context):
         return bool(members) and _literal_incompatible(members[0], value, context)
@@ -567,7 +578,12 @@ def _builtin_incompatible(kind: str, value: object) -> bool:
             return False
 
 
-def _container_incompatible(kind: str, members: list[ast.expr], value: object, context: PythonFileContext) -> bool:
+def _container_incompatible(
+    kind: str,
+    members: list[ast.expr],
+    value: object,  # sarj-noqa: SARJ528 -- native literal container shape and unchecked members are validated recursively here.
+    context: PythonFileContext,
+) -> bool:
     if _builtin_incompatible(kind, value):
         return True
     if kind == "dict" and is_object_mapping(value) and len(members) == _PAIR_ARITY:
@@ -587,7 +603,13 @@ def _is_literal_items(value: object) -> TypeIs[list[object] | set[object] | froz
     return isinstance(value, list | set | frozenset | tuple)
 
 
-def _tuple_incompatible(members: list[ast.expr], value: tuple[object, ...], context: PythonFileContext) -> bool:
+def _tuple_incompatible(
+    members: list[ast.expr],
+    value: tuple[  # sarj-noqa: SARJ528 -- tuple shape is known; each native literal member still needs its annotation check.
+        object, ...
+    ],
+    context: PythonFileContext,
+) -> bool:
     if len(members) == _PAIR_ARITY and _ellipsis(members[1]):
         return any(_literal_incompatible(members[0], item, context) for item in value)
     if any(_ellipsis(member) for member in members):
@@ -649,5 +671,5 @@ def _excludes_none(annotation: ast.expr, context: PythonFileContext) -> bool:
 
 def _diagnostic(node: ast.expr, context: PythonFileContext, message: str) -> Diagnostic:
     return Diagnostic(
-        context.path, node.lineno, node.col_offset + 1, NoInvalidPydanticBypass.code, message, severity=Severity.WARNING
+        context.path, node.lineno, node.col_offset + 1, NoInvalidPydanticBypass.code, message, severity=Severity.ERROR
     )

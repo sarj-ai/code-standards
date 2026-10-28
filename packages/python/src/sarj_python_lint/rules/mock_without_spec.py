@@ -39,8 +39,7 @@ _UNSPECCED_FACTORIES = frozenset({"Mock", "MagicMock", "AsyncMock", "NonCallable
 # `patch`/`patch.object` install a MagicMock unless told otherwise.
 _PATCHERS = frozenset({"patch"})
 
-# Constructor and patcher keyword contracts differ. Mock accepts arbitrary
-# keyword attributes, so patch-only controls such as autospec do not constrain it.
+# Mock constructor keywords are arbitrary attributes; patch-only controls do not constrain them.
 _CONSTRUCTOR_CONTRACT_KEYWORDS = frozenset({"spec", "spec_set", "wraps"})
 _PATCH_CONTRACT_KEYWORDS = frozenset({"spec", "spec_set", "autospec", "wraps"})
 
@@ -776,15 +775,12 @@ def _keyword_supplies_contract(keyword: ast.keyword, names: _MockNames, symbol: 
     if keyword.arg == "create":
         return not isinstance(keyword.value, ast.Constant) or keyword.value.value is True
     if keyword.arg == "new":
-        # DEFAULT requests the patcher's normal generated mock; every other
-        # value, including None, is a concrete replacement.
+        # Only DEFAULT requests a generated mock; None and all other values are concrete replacements.
         return not names.is_default(keyword.value)
     if keyword.arg == "autospec":
         return not (isinstance(keyword.value, ast.Constant) and keyword.value.value in {None, False})
     if keyword.arg == "new_callable":
-        # Choosing another unrestricted Mock subclass changes callability or
-        # awaitability, not the collaborator contract. Unknown factories may
-        # create a concrete non-mock replacement, so decline to guess.
+        # Mock subclasses change callability, not collaborator contracts; unknown factories remain unproven.
         if isinstance(keyword.value, ast.Constant) and keyword.value.value is None:
             return False
         return names.resolve(keyword.value) not in _UNSPECCED_FACTORIES

@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rules._imports import ImportIndex
 
 
-_MIN_BRANCHES = 3
+_MIN_BRANCHES = 2
 _ISINSTANCE_ARGS = 2
 _BUILTIN_TYPES = frozenset(
     {
@@ -90,7 +90,7 @@ class PreferMatchTypeDispatch(Rule):
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
         summary="Prefer `match` for structural runtime type dispatch.",
         rationale=(
-            "A long mutually exclusive `isinstance` dispatch repeats its subject and hides the closed list of "
+            "A repeated mutually exclusive `isinstance` dispatch repeats its subject and hides the closed list of "
             "runtime shapes. Class patterns make the alternatives explicit without repeating the dispatch subject."
         ),
         remediation=(
@@ -101,7 +101,7 @@ class PreferMatchTypeDispatch(Rule):
         autofix=AutofixPolicy.SAFE,
         limitations=(
             "Safe fixes require a closed private nested synchronous helper with proven inert containing scopes and exact primitive literal callers. Only comment-free builtin class-check ladders on one parameter qualify; unknown subjects, callbacks, frame/closure escapes, sibling checks, grouped conditions, guards and custom classes remain review-only.",
-            "General dispatch requires three or more adjacent, unguarded `isinstance` branches over the same simple name. Two arms are checked only for an exact `ast.Name.id` / `ast.Attribute.attr` projection followed by a None-returning fallback.",
+            "General dispatch requires two or more adjacent, unguarded `isinstance` branches over the same simple name. Repeated isinstance calls joined only by or on that same name are also checked; use an OR class pattern for shared behavior. A single isinstance call with a type union remains allowed.",
             "A terminating sibling prefix may precede a two-arm if/elif tail whose bodies can fall through. Preserve nested checks inside case bodies rather than moving them into case guards.",
             "The checked types must be unshadowed builtins, undecorated module-local classes without an explicit or known locally inherited custom metaclass, or proven stdlib ast classes; unresolved imports, runtime type groups, repeated type references, generated files, and non-terminating sibling checks are excluded.",
             "Local ancestry must resolve to stable undeclared-metaclass classes or proven builtin/stdlib ast bases. External bases, runtime base aliases, and parameterized base expressions remain excluded because their metaclass or __class_getitem__ effects are unproven.",
@@ -229,6 +229,66 @@ class PreferMatchTypeDispatch(Rule):
                 public=True,
             ),
             RuleExample(
+                example_id="two-type-dispatch",
+                scenario="two-type-dispatch",
+                title="Two branches already repeat the same type dispatch",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/types.py",
+                        "def label(value):\n    if isinstance(value, str):\n        return 'text'\n    elif isinstance(value, bytes):\n        return 'binary'\n    return 'other'\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/types.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="two-class-patterns",
+                scenario="two-type-dispatch",
+                title="Class patterns name both alternatives",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/types.py",
+                        "def label(value):\n    match value:\n        case str():\n            return 'text'\n        case bytes():\n            return 'binary'\n    return 'other'\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/types.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="repeated-isinstance-or",
+                scenario="or-type-dispatch",
+                title="Repeated boolean checks share one type subject",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/types.py",
+                        "def is_text(value):\n    if isinstance(value, str) or isinstance(value, bytes):\n        return True\n    return False\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/types.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="or-class-pattern",
+                scenario="or-type-dispatch",
+                title="One OR pattern declares shared handling",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/types.py",
+                        "def is_text(value):\n    match value:\n        case str() | bytes():\n            return True\n    return False\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/types.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
                 example_id="safe-autofix-subset",
                 title="A proven subset has a convergent automatic fix",
                 outcome=ExampleOutcome.MATCH,
@@ -279,22 +339,25 @@ class PreferMatchTypeDispatch(Rule):
         if not imports.builtin_is_unshadowed("isinstance") or "isinstance" in unsafe_bindings or has_wildcard_import:
             return []
         local_classes = _unshadowed_module_classes(tree, all_nodes, imports, unsafe_bindings)
-        findings = _ladder_findings(
+        covered: set[int] = set()
+        findings = _sibling_findings(
             all_nodes,
             path,
             self.code,
             imports,
             local_classes,
             unsafe_bindings=unsafe_bindings,
+            covered=covered,
         )
         findings.extend(
-            _sibling_findings(
+            _ladder_findings(
                 all_nodes,
                 path,
                 self.code,
                 imports,
                 local_classes,
                 unsafe_bindings=unsafe_bindings,
+                covered=covered,
             )
         )
         findings.extend(
@@ -307,10 +370,61 @@ class PreferMatchTypeDispatch(Rule):
                 unsafe_bindings=unsafe_bindings,
             )
         )
+        findings.extend(
+            _or_dispatch_findings(
+                all_nodes,
+                path,
+                self.code,
+                imports,
+                local_classes,
+                unsafe_bindings=unsafe_bindings,
+                covered=covered,
+                occupied={(finding.line, finding.col) for finding in findings},
+            )
+        )
         if findings and context.session.python_target.has_declared_support_before(path, (3, 10)):
             return []
+        findings = list({(finding.line, finding.col): finding for finding in findings}.values())
         findings.sort(key=lambda diagnostic: (diagnostic.line, diagnostic.col))
         return findings
+
+
+def _or_dispatch_findings(
+    all_nodes: tuple[ast.AST, ...],
+    path: Path,
+    code: str,
+    imports: ImportIndex,
+    local_classes: frozenset[str],
+    *,
+    unsafe_bindings: frozenset[str],
+    covered: set[int],
+    occupied: set[tuple[int, int]],
+) -> list[Diagnostic]:
+    findings: list[Diagnostic] = []
+    for node in all_nodes:
+        if (
+            not isinstance(node, ast.If)
+            or id(node) in covered
+            or not isinstance(node.test, ast.BoolOp)
+            or not isinstance(node.test.op, ast.Or)
+        ):
+            continue
+        branch = _type_branch(node.test, imports, local_classes, unsafe_bindings)
+        if (
+            branch is not None
+            and len(branch.types) >= _MIN_BRANCHES
+            and (node.lineno, node.col_offset + 1) not in occupied
+        ):
+            findings.append(
+                _diagnostic(
+                    path,
+                    code,
+                    node,
+                    _Dispatch(branch.subject, len(node.test.values)),
+                    "isinstance OR condition",
+                )
+            )
+    return findings
 
 
 def _unshadowed_module_classes(
@@ -455,9 +569,10 @@ def _ladder_findings(
     local_classes: frozenset[str],
     *,
     unsafe_bindings: frozenset[str],
+    covered: set[int],
 ) -> list[Diagnostic]:
     findings: list[Diagnostic] = []
-    continuations: set[int] = set()
+    continuations = set(covered)
     for node in all_nodes:
         if not isinstance(node, ast.If) or id(node) in continuations:
             continue
@@ -468,9 +583,14 @@ def _ladder_findings(
             current = current.orelse[0]
             branches.append(current)
             child_ids.append(id(current))
+        if any(
+            isinstance(part, ast.Call) and isinstance(part.func, ast.Name) and part.func.id == "isinstance"
+            for part in ast.walk(node.test)
+        ):
+            continuations.update(child_ids)
         dispatch = _dispatch(branches, imports, local_classes, unsafe_bindings)
         if dispatch is not None:
-            continuations.update(child_ids)
+            covered.update(child_ids)
             findings.append(_diagnostic(path, code, node, dispatch, "isinstance ladder"))
     return findings
 
@@ -483,6 +603,7 @@ def _sibling_findings(
     local_classes: frozenset[str],
     *,
     unsafe_bindings: frozenset[str],
+    covered: set[int],
 ) -> list[Diagnostic]:
     findings: list[Diagnostic] = []
 
@@ -500,6 +621,7 @@ def _sibling_findings(
                         cursor += 1
             dispatch = _dispatch(run, imports, local_classes, unsafe_bindings)
             if dispatch is not None:
+                covered.update(id(branch) for branch in run[1:])
                 shape = (
                     "terminating isinstance prefix with if/elif tail"
                     if run[-2].orelse
@@ -697,6 +819,8 @@ def _type_branch(
     local_classes: frozenset[str],
     unsafe_bindings: frozenset[str],
 ) -> _TypeBranch | None:
+    if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.Or):
+        return _or_type_branch(test, imports, local_classes, unsafe_bindings)
     if not (
         isinstance(test, ast.Call)
         and isinstance(test.func, ast.Name)
@@ -708,6 +832,26 @@ def _type_branch(
         return None
     types = _type_references(test.args[1], imports, local_classes, unsafe_bindings)
     return _TypeBranch(test.args[0].id, types) if types else None
+
+
+def _or_type_branch(
+    test: ast.BoolOp,
+    imports: ImportIndex,
+    local_classes: frozenset[str],
+    unsafe_bindings: frozenset[str],
+) -> _TypeBranch | None:
+    parts = [_type_branch(value, imports, local_classes, unsafe_bindings) for value in test.values]
+    if any(part is None for part in parts):
+        return None
+    branches = [part for part in parts if part is not None]
+    if len({part.subject for part in branches}) != 1:
+        return None
+    combined_types: set[str] = set()
+    for part in branches:
+        if combined_types & part.types:
+            return None
+        combined_types.update(part.types)
+    return _TypeBranch(branches[0].subject, frozenset(combined_types))
 
 
 def _type_references(

@@ -2,29 +2,34 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TypeGuard
+from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.repository import third_party_catalog_artifact
+
+
+if TYPE_CHECKING:
+    from pydantic import JsonValue
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ARTIFACT = REPO_ROOT / "apps/docs/src/generated/third-party-rules.v1.json"
 
 
-def _object(value: object) -> dict[str, object]:
+def _object(value: JsonValue) -> dict[str, JsonValue]:
     assert isinstance(value, dict)
-    assert all(isinstance(key, str) for key in value)  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
-    return value  # pyright: ignore[reportUnknownVariableType] -- the fixture validates this decoded collection's runtime shape before asserting its contents.
+    return value
 
 
-def _is_array(value: object) -> TypeGuard[list[object]]:
-    return isinstance(value, list)
+def _text(value: JsonValue) -> str:
+    assert isinstance(value, str)
+    return value
 
 
-def _array(value: object) -> list[object]:
-    assert _is_array(value)
+def _array(value: JsonValue) -> list[JsonValue]:
+    assert isinstance(value, list)
     return value
 
 
@@ -74,7 +79,7 @@ def test_parse_ruff_metadata_indexes_name_only_preview_metadata() -> None:
 
 
 def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> None:
-    payload = _object(json.loads(ARTIFACT.read_text(encoding="utf-8")))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
+    payload = _object(parse_json(ARTIFACT.read_text(encoding="utf-8")))
     assert set(payload) == {"profiles", "providers", "rules", "schemaVersion"}
     assert payload["schemaVersion"] == 1
     assert payload["profiles"] == ["application", "standard"]
@@ -83,11 +88,11 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
     rules = [_object(value) for value in _array(payload["rules"])]
     for rule in rules:
         profiles = [_object(value) for value in _array(rule["profiles"])]
-        assert {profile["name"] for profile in profiles} == {"application", "standard"}
+        assert {_text(profile["name"]) for profile in profiles} == {"application", "standard"}
         assert profiles[0]["contexts"] == profiles[1]["contexts"]
-    provider_ids = {value["id"] for value in providers}
-    assert {value["provider"] for value in rules} <= provider_ids
-    assert {value["engine"] for value in providers} == {
+    provider_ids = {_text(value["id"]) for value in providers}
+    assert {_text(value["provider"]) for value in rules} <= provider_ids
+    assert {_text(value["engine"]) for value in providers} == {
         "checkov",
         "deptry",
         "detekt",
@@ -117,7 +122,7 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
         "typescript-eslint",
         "unicorn",
     } <= provider_ids
-    assert len({value["key"] for value in rules}) == len(rules)
+    assert len({_text(value["key"]) for value in rules}) == len(rules)
 
     _assert_react_doctor_inventory(providers, rules)
 
@@ -139,7 +144,7 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
         assert rule["autofix"] in {"always", "available", "none", "sometimes"}
         assert _array(rule["profiles"])
 
-    scopes = {value["id"]: value["projectionScope"] for value in providers}
+    scopes = {_text(value["id"]): value["projectionScope"] for value in providers}
     assert scopes["detekt"] == "config-explicit"
     assert scopes["ktlint"] == "config-explicit"
     assert scopes["swiftlint"] == "config-explicit"
@@ -151,7 +156,7 @@ def test_committed_third_party_catalog_has_a_closed_effective_inventory() -> Non
     assert not any(value["provider"] in {"swiftformat", "mobsfscan"} for value in rules)
 
 
-def _assert_react_doctor_inventory(providers: list[dict[str, object]], rules: list[dict[str, object]]) -> None:
+def _assert_react_doctor_inventory(providers: list[dict[str, JsonValue]], rules: list[dict[str, JsonValue]]) -> None:
     react_doctor = next(value for value in providers if value["id"] == "react-doctor")
     assert react_doctor == {
         "engine": "react-doctor",

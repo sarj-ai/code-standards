@@ -26,7 +26,9 @@ _CURRENT_TEST_MODULE: list[str] = [""]
 
 @runtime_checkable
 class _WorkerOutput(Protocol):
-    workeroutput: dict[str, object]
+    workeroutput: dict[  # sarj-noqa: SARJ528 -- pytest-xdist exposes an open Python metadata dictionary shared with other plugins.
+        str, object
+    ]
 
 
 @runtime_checkable
@@ -34,7 +36,14 @@ class _TemporaryConfig(Protocol):
     _tmp_path_factory: pytest.TempPathFactory
 
 
-def _worker_output(value: object) -> dict[str, object] | None:
+def _worker_output(
+    value: object,
+) -> (
+    dict[  # sarj-noqa: SARJ528 -- the runtime Protocol probes incoming worker metadata; consumers refine its values.
+        str, object
+    ]
+    | None
+):
     return value.workeroutput if isinstance(value, _WorkerOutput) else None
 
 

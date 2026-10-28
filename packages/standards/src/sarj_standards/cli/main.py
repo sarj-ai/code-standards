@@ -15,10 +15,10 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] -- repository co
 import sys
 import tempfile
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Annotated, Final, NoReturn, TypeIs
+from typing import TYPE_CHECKING, Annotated, Final, NoReturn
 
 from packaging.version import InvalidVersion, Version
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, JsonValue, ValidationError
 from repo_standards.core.commit_message import check_local_commit_message_file
 import typer
 
@@ -29,7 +29,6 @@ from sarj_standards.libs.adoption.configs import CONFIG_NAMES
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.linting.policy import Policy
 from sarj_standards.libs.rules import RuleSelector
-from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 _TEXT_DIAGNOSTIC_LIMIT: Final = 50
@@ -46,7 +45,7 @@ if TYPE_CHECKING:
 
 
 class _CorpusLintReport(BaseModel):
-    diagnostics: list[dict[str, object]]
+    diagnostics: list[dict[str, JsonValue]]
 
 
 _NEXT_STEPS = (
@@ -1551,7 +1550,7 @@ def _cmd_rule_evaluate_manifest(args: _Args, root: Path) -> int:
 
     command = _corpus_evaluation_command(args)
 
-    diagnostics: list[dict[str, object]] = []
+    diagnostics: list[dict[str, JsonValue]] = []
     batches: list[dict[str, object]] = []
 
     def observe(source: object, batch: object, stdout: bytes, _stderr: bytes) -> None:
@@ -1634,19 +1633,18 @@ def _corpus_evaluation_command(args: _Args) -> list[str]:
 
 
 def _corpus_diagnostic(
-    diagnostic: dict[str, object],
+    diagnostic: dict[str, JsonValue],
     corpus: str,
     *,
     private: bool,
-) -> dict[str, object]:
-    def rewrite(value: object) -> object:
-        if _is_object_list(value):
+) -> dict[str, JsonValue]:
+    def rewrite(value: JsonValue) -> JsonValue:
+        if isinstance(value, list):
             return [rewrite(item) for item in value]
-        table = _object_table(value)
-        if table is None:
+        if not isinstance(value, dict):
             return value
-        rewritten: dict[str, object] = {}
-        for key, item in table.items():
+        rewritten: dict[str, JsonValue] = {}
+        for key, item in value.items():
             if key == "path" and isinstance(item, str):
                 rewritten[key] = "<private-corpus-file>" if private else f"{corpus}/{item}"
             else:
@@ -1654,21 +1652,10 @@ def _corpus_diagnostic(
         return rewritten
 
     rendered = rewrite(diagnostic)
-    table = _object_table(rendered)
-    if table is None:  # pragma: no cover - input is a dictionary.
+    if not isinstance(rendered, dict):  # pragma: no cover - input is a dictionary.
         msg = "corpus diagnostic rendering failed"
         raise TypeError(msg)
-    return table
-
-
-def _is_object_list(value: object) -> TypeIs[list[object]]:
-    return isinstance(value, list)
-
-
-def _object_table(value: object) -> dict[str, object] | None:
-    if not is_object_mapping(value):
-        return None
-    return {key: item for key, item in value.items() if isinstance(key, str)}
+    return rendered
 
 
 def cmd_observe(args: _Args) -> int:
@@ -1829,7 +1816,7 @@ def _validate_analysis_output(args: _Args, root: Path) -> bool:
     return False
 
 
-def _machine_adoption_gate(root: Path) -> object | None:
+def _machine_adoption_gate(root: Path) -> AnalysisReport | None:
     from sarj_standards.libs.adoption import doctor, service  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
     from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.diagnostics only when this selected operation executes.
         Completion,
@@ -1939,7 +1926,7 @@ def _merge_sync_findings(
     return _SyncFindings(diagnostics=diagnostics, issues=issues)
 
 
-def _machine_input_error(root: Path, message: str) -> object:
+def _machine_input_error(root: Path, message: str) -> AnalysisReport:
     from sarj_standards.libs.diagnostics import (  # ruff: ignore[import-outside-top-level] -- machine formats stay lazy
         Completion,
         ExecutionIssue,
@@ -2020,8 +2007,7 @@ def _prepare_report_parent(root: Path, output: Path) -> None:
 
 
 def _write_report(root: Path, output: Path, payload: str, *, output_format: str) -> None:
-    # Revalidate immediately before the write as a defense against a parent path
-    # being replaced after the pre-analysis check.
+    # Recheck the parent path immediately before writing to prevent replacement races.
     destination = _report_destination(root, output, output_format=output_format)
     parent = destination.parent
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{destination.name}.", suffix=".tmp", dir=parent)
@@ -2179,9 +2165,26 @@ def _unstaged_versions(root: Path, staged_paths: Iterable[str]) -> tuple[str, ..
     if git is None:
         msg = "git is required for --staged"
         raise OSError(msg)
-    # Compare contents without refreshing the index or applying presentation-only textconv.
+    selected = set(_repository_relative_names(root, staged_paths))
+    if not selected:
+        return ()
+    # Keep the index byte-exact; compare text content and refine opaque binary records internally.
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
-        [git, "-c", "diff.autoRefreshIndex=false", "diff", "--no-textconv", "--exit-code", "--name-only", "-z"],
+        [
+            git,
+            "--literal-pathspecs",
+            "-c",
+            "diff.autoRefreshIndex=false",
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--exit-code",
+            "--numstat",
+            "-z",
+            "--no-renames",
+            "--",
+            *sorted(selected),
+        ],
         cwd=root,
         check=False,
         capture_output=True,
@@ -2189,8 +2192,12 @@ def _unstaged_versions(root: Path, staged_paths: Iterable[str]) -> tuple[str, ..
     )
     if completed.returncode not in {0, 1}:
         completed.check_returncode()
-    unstaged = {part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0") if part}
-    selected = set(_repository_relative_names(root, staged_paths))
+    entries = _numstat_entries(completed.stdout)
+    unstaged = {
+        path
+        for path, binary in entries.items()
+        if path in selected and (not binary or _binary_worktree_differs(root, git, path))
+    }
     if selected:
         tracked = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- literal selected paths and NUL records preserve authored filenames.
             [git, "--literal-pathspecs", "ls-files", "-v", "-z", "--", *sorted(selected)],
@@ -2205,6 +2212,60 @@ def _unstaged_versions(root: Path, staged_paths: Iterable[str]) -> tuple[str, ..
             if entry and (b"a" <= entry[:1] <= b"z" or entry[:1] == b"S")
         )
     return tuple(sorted(unstaged & selected))
+
+
+def _numstat_entries(output: bytes) -> dict[str, bool]:
+    if not output:
+        return {}
+    if not output.endswith(b"\0"):
+        msg = "git diff returned malformed numstat output"
+        raise OSError(msg)
+    entries: dict[str, bool] = {}
+    for record in output[:-1].split(b"\0"):
+        try:
+            added, deleted, raw_path = record.split(b"\t", 2)
+        except ValueError as exc:
+            msg = "git diff returned malformed numstat output"
+            raise OSError(msg) from exc
+        if not raw_path:
+            msg = "git diff returned malformed numstat output"
+            raise OSError(msg)
+        binary = added == deleted == b"-"
+        if not binary and not (added.isdigit() and deleted.isdigit()):
+            msg = "git diff returned malformed numstat output"
+            raise OSError(msg)
+        path = raw_path.decode("utf-8", errors="surrogateescape")
+        if path not in entries or not binary:
+            entries[path] = binary
+    return entries
+
+
+def _binary_worktree_differs(root: Path, git: str, path: str) -> bool:
+    # Binary numstat records can be stat-only. Internal patch generation compares canonical content and mode.
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv and literal selected path, no shell.
+        [
+            git,
+            "--literal-pathspecs",
+            "-c",
+            "diff.autoRefreshIndex=false",
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--exit-code",
+            "--patch",
+            "--no-renames",
+            "--no-color",
+            "--",
+            path,
+        ],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        env=_git_environment(staged=True),
+    )
+    if completed.returncode not in {0, 1}:
+        completed.check_returncode()
+    return bool(completed.stdout)
 
 
 def _repository_relative_names(root: Path, paths: Iterable[str]) -> list[str]:
@@ -2585,8 +2646,7 @@ def _baseline_analysis_reports(args: _Args, root: Path, selected: list[str] | No
         operations.append(partial(_baseline_external_report, root, selected, trust, "shellcheck"))
     if args.jobs == 1 or len(operations) <= 1:
         return [operation() for operation in operations]
-    # Multiple operations share one bounded pool with serial inner analyzers;
-    # a single operation uses its own worker budget. Check every result first.
+    # Inner analyzers run serially under this shared worker budget.
     with ThreadPoolExecutor(max_workers=args.jobs, thread_name_prefix="baseline") as workers:
         pending = [workers.submit(operation) for operation in operations]
         return [result.result() for result in pending]
@@ -2602,8 +2662,7 @@ def _baseline_scan_rules(args: _Args) -> _BaselineScanRules:
     scoped_rules = _analysis_rules_for_baseline(args.baseline_rules) if args.baseline_cmd == "update" else None
     upstream_eslint = bool(_upstream_eslint_rules_for_baseline(args.baseline_rules))
     if upstream_eslint and scoped_rules is not None:
-        # One selected ESLint scan below covers both upstream and custom
-        # findings. Validate custom selectors before removing that duplicate scan.
+        # Validate selectors before combining their upstream and custom scans.
         for selector in scoped_rules:
             if (
                 selector.startswith("eslint:")
@@ -2844,7 +2903,10 @@ def cmd_commit_message(args: _Args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    raw_argv = _root_option_first(sys.argv[1:] if argv is None else argv)
+    # Compatibility ordering preserves the complete argv for typed Typer.
+    raw_argv = _root_option_first(
+        sys.argv[1:] if argv is None else argv  # sarj-noqa: SARJ533 -- typed CLI forwarding
+    )
     status: int | None = None
 
     def dispatch(args: _Args) -> int:

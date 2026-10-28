@@ -1,48 +1,45 @@
 from __future__ import annotations
 
-import json
 import subprocess
-from typing import TYPE_CHECKING, TypeGuard
+from typing import TYPE_CHECKING
 
 import pytest
 from typer.testing import CliRunner
 
 from sarj_standards.cli.main import build_app, main
 from sarj_standards.libs.adoption.manifest import as_table, list_field
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.repository import rule_lifecycle
 from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelector
-from sarj_standards.libs.typed_containers import is_object_mapping
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
+    from pydantic import JsonValue
 
-def _parse(argv: Sequence[str]) -> dict[str, object]:
-    values: dict[str, object] = {}
+    from sarj_standards.cli.main import _Args  # pyright: ignore[reportPrivateUsage]  # sarj-noqa: SARJ048 -- mirrors the private callback contract intercepted by this test.
 
-    def capture(args: object) -> int:
-        parsed: object = vars(args)
-        if not _is_object(parsed):
-            msg = "command arguments have invalid values"
-            raise TypeError(msg)
-        values.update(parsed)
+
+def _parse(argv: Sequence[str]) -> _Args:
+    captured: list[_Args] = []
+
+    def capture(args: _Args) -> int:
+        captured.append(args)
         return 0
 
     result = CliRunner().invoke(build_app(capture), list(argv))
     if result.exception is not None:
         raise result.exception
-    return values
+    assert len(captured) == 1
+    return captured[0]
 
 
-def _report(output: str) -> dict[str, object]:
-    value: object = json.loads(output)  # pyright: ignore[reportAny] -- narrow untyped JSON at the boundary.
-    return as_table(value)
-
-
-def _is_object(value: object) -> TypeGuard[dict[str, object]]:
-    return is_object_mapping(value) and all(isinstance(key, str) for key in value)
+def _report(output: str) -> dict[str, JsonValue]:
+    value = parse_json(output)
+    assert isinstance(value, dict)
+    return value
 
 
 @pytest.mark.parametrize(
@@ -57,43 +54,43 @@ def _is_object(value: object) -> TypeGuard[dict[str, object]]:
 def test_selected_rule_arguments_are_typed_at_the_parser_boundary(argv: tuple[str, ...]) -> None:
     args = _parse(argv)
 
-    assert args["selected_rules"] == [RuleSelector(RuleEngine.PYTHON, RuleId("no-print"))]
+    assert args.selected_rules == [RuleSelector(RuleEngine.PYTHON, RuleId("no-print"))]
 
 
 def test_stage_warning_selector_is_typed_at_the_parser_boundary() -> None:
     args = _parse(("maintain", "rules", "stage-warning", "python:no-print"))
 
-    assert args["selector"] == RuleSelector(RuleEngine.PYTHON, RuleId("no-print"))
+    assert args.selector == RuleSelector(RuleEngine.PYTHON, RuleId("no-print"))
 
 
 def test_check_concurrency_defaults_to_two_and_can_be_serial() -> None:
-    assert _parse(("check",))["jobs"] == 2
-    assert _parse(("check", "--jobs", "1"))["jobs"] == 1
-    assert _parse(("check", "--jobs", "2"))["jobs"] == 2
+    assert _parse(("check",)).jobs == 2
+    assert _parse(("check", "--jobs", "1")).jobs == 1
+    assert _parse(("check", "--jobs", "2")).jobs == 2
     result = CliRunner().invoke(build_app(), ["check", "--jobs", "3"])
     assert result.exit_code == 2
 
 
 def test_check_runs_python_type_checking_unless_skipped() -> None:
-    assert _parse(("check",))["python_type_check"] is True
-    assert _parse(("check", "--skip-python-type-check"))["python_type_check"] is False
+    assert _parse(("check",)).python_type_check is True
+    assert _parse(("check", "--skip-python-type-check")).python_type_check is False
 
 
 def test_check_runs_eslint_unless_skipped() -> None:
-    assert _parse(("check",))["eslint"] is True
-    assert _parse(("check", "--skip-eslint"))["eslint"] is False
+    assert _parse(("check",)).eslint is True
+    assert _parse(("check", "--skip-eslint")).eslint is False
 
 
 def test_promote_error_selector_is_typed_at_the_parser_boundary() -> None:
     args = _parse(("maintain", "rules", "promote-error", "python:no-print"))
 
-    assert args["selector"] == RuleSelector(RuleEngine.PYTHON, RuleId("no-print"))
+    assert args.selector == RuleSelector(RuleEngine.PYTHON, RuleId("no-print"))
 
 
 @pytest.mark.parametrize("profile", ["standard", "application"])
 def test_legacy_profile_is_accepted_but_not_advertised(profile: str) -> None:
     args = _parse(("setup", "--profile", profile))
-    assert args["profile"] == profile
+    assert args.profile == profile
     result = CliRunner().invoke(build_app(), ["setup", "--help"])
     assert result.exit_code == 0
     assert "--profile" not in result.output
@@ -127,7 +124,7 @@ def test_stage_warning_prints_copy_pasteable_author_validation_steps(
 def test_evaluation_scope_is_typed_at_the_parser_boundary() -> None:
     args = _parse(("maintain", "rules", "evaluate", "--rule", "python:no-print", "--scope", "effective"))
 
-    scope = args["evaluation_scope"]
+    scope = args.evaluation_scope
     assert isinstance(scope, str)
     assert scope == "effective"
     assert type(scope) is not str

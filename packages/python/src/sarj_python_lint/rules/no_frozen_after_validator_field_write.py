@@ -168,8 +168,7 @@ def _is_frozen_direct_model(node: ast.ClassDef, imports: ImportIndex) -> bool:
     }
     if configs and (value := _model_config_frozen(configs[0], imports)) is not None:
         values.add(value)
-    # Conflicting or repeated configuration channels are deliberately left to
-    # Pydantic; the effective precedence is not safe to infer syntactically.
+    # Pydantic owns conflicting configuration channels; syntactic analysis cannot prove their precedence.
     return values == {True}
 
 

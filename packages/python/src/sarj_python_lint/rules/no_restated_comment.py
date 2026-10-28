@@ -26,6 +26,7 @@ from sarj_python_lint.rules._comments import (
     code_tokens,
     comment_runs,
     content_tokens,
+    has_narration_qualifier,
     is_protected,
     nested_comment_lines,
     restates,
@@ -62,18 +63,6 @@ _CODEY_RE = re.compile(r"^[\w.\[\]'\"]+\s*[:=]\s*\S|^[\w.]+\(")
 _CODE_KEYWORD_RE = re.compile(r"^(?:assert|return|raise|await|yield|del|import|from|print|global|nonlocal)\b")
 _CODE_SIGNAL_RE = re.compile(r"[=()\[\]{}]")
 _BANNERISH_RE = re.compile(r"[=\-─-╿*#~_.]{3,}|^[A-Z0-9 _:-]+$")
-
-# Modality, lead-ins, emphasis, and negation add meaning identifiers cannot.
-_MODALITY_RE = re.compile(r"\b(?:can|could|should|shall|may|might|must|will|would|cannot)\b", re.IGNORECASE)
-_LEAD_IN_RE = re.compile(r":$")
-_EMPHASIS_RE = re.compile(r"\*\w[^*]*\*|`[^`]+`")
-_NEGATION_WORD_RE = re.compile(r"\b(?:no|not|never|neither|nor|without|none|non)\b", re.IGNORECASE)
-_CONTEXT_QUALIFIER_RE = re.compile(
-    r"\b(?:all|any|both|each|every|some|only|need|needs|needed|require|requires|required)\b|"
-    r"^\s*(?:and|after|before|finally|given|next|then|when)\b",
-    re.IGNORECASE,
-)
-_NAVIGATION_HEADING_RE = re.compile(r"^\s*(?:sheet|slide|step)\s+\d+\s*(?:[:.\-]|$)", re.IGNORECASE)
 
 # A positive comment can usefully translate negatively expressed code.
 _CODE_NEGATION_RE = re.compile(r"\bnot\b|!=|\bis None\b|\.empty\(|assert(?:Not|False)")
@@ -173,11 +162,7 @@ def _protected_comment_body(body: str) -> bool:
         return True
     if _has_non_ascii_prose(body) or is_protected(body):
         return True
-    if _MODALITY_RE.search(body) or _LEAD_IN_RE.search(body) or _EMPHASIS_RE.search(body):
-        return True
-    if _NEGATION_WORD_RE.search(body):
-        return True
-    if _CONTEXT_QUALIFIER_RE.search(body) or _NAVIGATION_HEADING_RE.search(body):
+    if has_narration_qualifier(body):
         return True
     return len(body.split()) > _MAX_WORDS
 
@@ -251,11 +236,11 @@ class NoRestatedComment(Rule):
     id: str = "no-restated-comment"
     code: str = "SARJ049"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Short standalone comment lexically restates the immediately following simple action.",
         rationale=(
             "When a comment adds no rationale, scope, ordering, or constraint, it duplicates code and can become stale. "
-            "Lexical similarity is advisory rather than proof of author intent."
+            "Preserve comments that add a constraint or rationale rather than restating identifiers."
         ),
         remediation=(
             "Delete it if it merely narrates one statement. Preserve or rewrite comments that explain a reason, "
@@ -356,7 +341,7 @@ class NoRestatedComment(Rule):
                             f"Comment {body!r} appears to repeat the next action; delete it if it adds no reason, "
                             "constraint, consequence, ordering, or region label."
                         ),
-                        severity=Severity.WARNING,
+                        severity=Severity.ERROR,
                         column_encoding=ColumnEncoding.CODEPOINTS,
                     )
                 )

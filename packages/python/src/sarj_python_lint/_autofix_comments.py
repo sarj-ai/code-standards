@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING, final
 from sarj_rule_contracts import TextEdit
 
 from sarj_python_lint.rule_base import Severity
-from sarj_python_lint.rules.excessive_commentary import empty_collection_name
+from sarj_python_lint.rules._comment_narration import CommentNarration, same_words
+from sarj_python_lint.rules._prose_budget import groups
 from sarj_python_lint.rules.trailing_value_narration import UNIT_WORDS, number_key
 
 
@@ -18,16 +19,12 @@ if TYPE_CHECKING:
     from sarj_python_lint.rule_base import Diagnostic
 
 
-_IDENTIFIER = re.compile(r"[a-z]+(?:_[a-z]+)+\Z")
-_WORDS = re.compile(r"[A-Za-z]+(?:\s+[A-Za-z]+)*\.?\Z")
 _NUMBER_AND_UNIT = re.compile(r"([0-9][0-9_]*(?:\.[0-9_]+)?)\s*([A-Za-z]+)\Z")
 _UNUSED_API_DIRECTIVE = re.compile(
     r"#\s*ruff:\s*(?:noqa\s*:\s*TID251|file-ignore\s*\[\s*(?:TID251|banned-api)\s*\])\s*\Z",
     re.IGNORECASE,
 )
 _MIN_PARAGRAPH_LINES = 4
-_INITIALIZER_AND_RETURN_COUNT = 2
-_ACCUMULATOR_METHODS = frozenset({"add", "append", "extend", "update"})
 
 
 @final
@@ -46,6 +43,8 @@ class CommentFixes:
         self.statements: dict[int, list[ast.stmt]] = {}
         for statement in context.nodes(ast.stmt):
             self.statements.setdefault(statement.lineno, []).append(statement)
+        self.prose_groups = {(group.line, group.col): group for group in groups(context.path, context.source)}
+        self.narration: CommentNarration | None = None
 
     def fixes(self, diagnostic: Diagnostic) -> list[TextEdit]:
         token = self.comments.get(diagnostic.line)
@@ -82,7 +81,7 @@ class CommentFixes:
                 return (
                     statement.col_offset == comment.start[1]
                     and statement.lineno == statement.end_lineno
-                    and _same_words(comment, name)
+                    and same_words(comment.string.removeprefix("#").strip(), name)
                 )
             case _:
                 return False
@@ -116,35 +115,19 @@ class CommentFixes:
                 return False
 
     def _restates_accumulation(self, first: tokenize.TokenInfo) -> list[tokenize.TokenInfo]:
-        paragraph: list[tokenize.TokenInfo] = []
-        line = first.start[0]
-        while (comment := self.comments.get(line)) is not None:
-            if comment.start[1] != first.start[1] or self.lines[line - 1][: comment.start[1]].strip():
-                return []
-            paragraph.append(comment)
-            line += 1
-        if len(paragraph) < _MIN_PARAGRAPH_LINES:
+        group = self.prose_groups.get((first.start[0], first.start[1] + 1))
+        if group is None:
             return []
-        initialized = self._only_statement(line)
-        if initialized is None or (name := empty_collection_name(initialized, self.context)) is None:
-            return []
-        owner = self.context.parents.get(initialized)
-        if not isinstance(owner, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            return []
-        if len(owner.body) != len(paragraph) + _INITIALIZER_AND_RETURN_COUNT or owner.body[0] is not initialized:
-            return []
-        returned = owner.body[-1]
+        if self.narration is None:
+            self.narration = CommentNarration(self.context)
+        matched = self.narration.match(group)
         if (
-            not isinstance(returned, ast.Return)
-            or not isinstance(returned.value, ast.Name)
-            or returned.value.id != name
+            matched is not None
+            and matched.kind == "accumulation"
+            and len(matched.comment_lines) >= _MIN_PARAGRAPH_LINES
         ):
-            return []
-        for comment, statement in zip(paragraph, owner.body[1:-1], strict=True):
-            called = _accumulated_call(statement, name)
-            if called is None or not _same_words(comment, called):
-                return []
-        return paragraph
+            return [self.comments[line] for line in matched.comment_lines]
+        return []
 
     def _remove(self, comment: tokenize.TokenInfo) -> TextEdit:
         line = comment.start[0]
@@ -157,16 +140,6 @@ class CommentFixes:
         )
 
 
-def _same_words(comment: tokenize.TokenInfo, identifier: str) -> bool:
-    identifier = identifier.strip("_")
-    body = comment.string.removeprefix("#").strip()
-    return (
-        _IDENTIFIER.fullmatch(identifier) is not None
-        and _WORDS.fullmatch(body) is not None
-        and body.removesuffix(".").casefold().split() == identifier.split("_")
-    )
-
-
 def _literal_name_assignment(statement: ast.stmt) -> bool:
     return (
         isinstance(statement, ast.Assign)
@@ -175,17 +148,3 @@ def _literal_name_assignment(statement: ast.stmt) -> bool:
         and isinstance(statement.value, ast.Constant)
         and isinstance(statement.value.value, (str, bytes, int, float, complex, bool, type(None)))
     )
-
-
-def _accumulated_call(statement: ast.stmt, collection: str) -> str | None:
-    match statement:
-        case ast.Expr(
-            value=ast.Call(
-                func=ast.Attribute(value=ast.Name(id=name), attr=method),
-                args=[ast.Call(func=ast.Name(id=called), args=[], keywords=[])],
-                keywords=[],
-            )
-        ):
-            return called if name == collection and method in _ACCUMULATOR_METHODS else None
-        case _:
-            return None

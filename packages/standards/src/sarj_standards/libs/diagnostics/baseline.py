@@ -10,15 +10,19 @@ from pathlib import Path
 import re
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed read-only git argv.
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
+
+from pydantic import JsonValue
 
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.json_boundary import parse_unique_json
-from sarj_standards.libs.typed_containers import is_object_list, is_object_mapping
+from sarj_standards.libs.typed_containers import is_object_mapping
+
+from . import initial_import
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Mapping, Sequence
 
     from .models import Diagnostic
 
@@ -46,6 +50,10 @@ class _ChangedPaths:
     renamed: bool
 
 
+class _DiffOptions(TypedDict, total=False):
+    env: dict[str, str]
+
+
 @dataclass(frozen=True, slots=True)
 class RuleRemoval:
     contents: str
@@ -67,7 +75,7 @@ class Budget:
 @dataclass(frozen=True, slots=True)
 class _LoadedBaseline:
     text: str
-    entries: list[object]
+    entries: list[JsonValue]
     fingerprints: dict[str, int]
     provenance: Provenance | None
 
@@ -81,9 +89,17 @@ def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None 
     git = shutil.which("git")
     if git is None:
         return ChangedLineScope(frozenset(), {}, failed=True)
+    try:
+        context = initial_import.load(root, staged=staged)
+    except ValueError:
+        return ChangedLineScope(frozenset(), {}, failed=True)
+    # The validated index equals source; immutable endpoints keep both patch reads on that exact delta.
     comparison = ("--cached",) if staged else (f"{base}...HEAD",)
+    if context is not None:
+        comparison = (context.parent, context.source)
     common = (
         git,
+        *(("--no-replace-objects", "--no-lazy-fetch") if context is not None else ()),
         "--literal-pathspecs",
         "-c",
         "core.quotePath=true",
@@ -99,6 +115,18 @@ def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None 
         return None
     if sum(len(os.fsencode(path)) + 1 for path in selected) > _MAX_DIFF_PATH_BYTES:
         selected = ()
+    return _read_changed_scope(root, common, selected, staged=staged, context=context)
+
+
+def _read_changed_scope(
+    root: Path,
+    common: tuple[str, ...],
+    selected: tuple[str, ...],
+    *,
+    staged: bool,
+    context: initial_import.InitialImport | None,
+) -> ChangedLineScope:
+    options: _DiffOptions = {"env": initial_import.git_environment()} if context is not None else {}
     try:
         names = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed Git argv with literal repository-relative paths.
             (*common, "--name-status", "-z", "--"),
@@ -106,6 +134,7 @@ def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None 
             check=False,
             capture_output=True,
             timeout=30,
+            **options,
         )
         changes = _changed_paths(names.stdout)
         if changes.renamed:
@@ -117,10 +146,15 @@ def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None 
             check=False,
             capture_output=True,
             timeout=30,
+            **options,
         )
     except OSError, ValueError, subprocess.TimeoutExpired:
         return ChangedLineScope(frozenset(), {}, failed=True)
     if names.returncode != 0 or patch.returncode != 0:
+        return ChangedLineScope(frozenset(), {}, failed=True)
+    try:
+        initial_import.validate(root, context, staged=staged)
+    except ValueError:
         return ChangedLineScope(frozenset(), {}, failed=True)
     affected = changes.paths & frozenset(selected) if selected else changes.paths
     return ChangedLineScope(affected, _changed_lines_from_patch(patch.stdout.decode("utf-8", errors="surrogateescape")))
@@ -272,7 +306,10 @@ def _load_document(
     except (OSError, UnicodeError, ValueError, RecursionError) as exc:
         msg = f"cannot read diagnostic baseline {path}: {exc}"
         raise ValueError(msg) from exc
-    root = _string_object_dict(parsed, label="diagnostic baseline")
+    if not isinstance(parsed, dict):
+        msg = "diagnostic baseline must be an object"
+        raise TypeError(msg)
+    root = parsed
     schema_version = root.get("schemaVersion")
     if type(schema_version) is not int or schema_version not in {LEGACY_SCHEMA_VERSION, SCHEMA_VERSION}:
         msg = f"diagnostic baseline schemaVersion must equal {LEGACY_SCHEMA_VERSION} or {SCHEMA_VERSION}"
@@ -291,7 +328,7 @@ def _load_document(
             msg = "diagnostic baseline policy digest does not match the executing Standards bundle"
             raise ValueError(msg)
     entries = root.get("diagnostics")
-    if not is_object_list(entries):
+    if not isinstance(entries, list):
         msg = "diagnostic baseline diagnostics must be a list"
         raise TypeError(msg)
     return _LoadedBaseline(text, entries, _baseline_fingerprints(entries), origin)
@@ -306,7 +343,11 @@ def _read_baseline_text(path: Path) -> str:
     return content.decode("utf-8")
 
 
-def _baseline_fingerprints(entries: list[object]) -> dict[str, int]:
+def _baseline_fingerprints(
+    entries: Sequence[  # sarj-noqa: SARJ528 -- Validate each untrusted baseline entry before fingerprinting.
+        object
+    ],
+) -> dict[str, int]:
     fingerprints: dict[str, int] = {}
     for index, value in enumerate(entries):
         entry = _string_object_dict(value, label=f"diagnostic baseline entry {index}")
@@ -440,8 +481,8 @@ def _existing_json_indent(text: str) -> int | str:
     return 2
 
 
-def _diagnostic_entries(diagnostics: Iterable[Diagnostic]) -> list[dict[str, object]]:
-    entries: dict[str, dict[str, object]] = {}
+def _diagnostic_entries(diagnostics: Iterable[Diagnostic]) -> list[dict[str, str | int]]:
+    entries: dict[str, dict[str, str | int]] = {}
     for item in diagnostics:
         if item.fingerprint is None or not is_baselineable(item):
             continue
@@ -466,7 +507,7 @@ def _diagnostic_entries(diagnostics: Iterable[Diagnostic]) -> list[dict[str, obj
     )
 
 
-def _entry_selected(entry: dict[str, object], selectors: frozenset[str]) -> bool:
+def _entry_selected(entry: Mapping[str, object], selectors: frozenset[str]) -> bool:
     source = entry.get("source")
     rule_id = entry.get("ruleId")
     return (

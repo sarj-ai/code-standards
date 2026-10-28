@@ -16,6 +16,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
     from pathlib import Path
 
+    from pydantic import JsonValue
+
 _SCOPED_PACKAGE_PARTS = 2
 
 
@@ -44,7 +46,7 @@ def load_exact_exclusions(path: Path) -> frozenset[str]:
 
 
 class PackumentFetcher(Protocol):
-    def __call__(self, package_name: str, /) -> Mapping[str, object]: ...
+    def __call__(self, package_name: str, /) -> Mapping[str, JsonValue]: ...
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -124,13 +126,16 @@ def locked_registry_packages(lockfile: Path, policy: ReleaseAgePolicy) -> tuple[
     return tuple(sorted(identities))
 
 
-def _load_object(path: Path) -> dict[str, object]:
+def _load_object(path: Path) -> dict[str, JsonValue]:
     try:
-        untyped: object = parse_json(path.read_text(encoding="utf-8"))
+        parsed = parse_json(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         msg = f"could not read npm lockfile {path}: {exc}"
         raise ValueError(msg) from exc
-    return string_object_dict(untyped, label="npm lockfile")
+    if not isinstance(parsed, dict):
+        msg = "npm lockfile must contain an object or table"
+        raise TypeError(msg)
+    return dict(parsed)
 
 
 def _package_name(lock_path: str) -> str | None:
@@ -146,12 +151,15 @@ def _package_name(lock_path: str) -> str | None:
     return parts[0]
 
 
-def fetch_npm_packument(package_name: str) -> Mapping[str, object]:
+def fetch_npm_packument(package_name: str) -> Mapping[str, JsonValue]:
     url = f"https://registry.npmjs.org/{quote(package_name, safe='')}"
     request = Request(url, headers={"Accept": "application/json"})
     with urlopen(request, timeout=15) as response:  # ruff: ignore[suspicious-url-open-usage]  # pyright: ignore[reportAny] -- fixed trusted origin
-        untyped: object = json.load(response)  # pyright: ignore[reportAny] -- the stdlib decoder is untyped; validate this payload before using it as release metadata.
-    return string_object_dict(untyped, label=f"npm registry response for {package_name}")
+        parsed: JsonValue = json.load(response)  # pyright: ignore[reportAny] -- the stdlib decoder is untyped; validate this payload before using it as release metadata.
+    if not isinstance(parsed, dict):
+        msg = f"npm registry response for {package_name} must contain an object or table"
+        raise TypeError(msg)
+    return dict(parsed)
 
 
 def _utc_now() -> datetime:
@@ -205,11 +213,11 @@ def _check_identity(
     return None
 
 
-def _publication_time(packument: Mapping[str, object], version: str) -> _PublicationTime:
+def _publication_time(packument: Mapping[str, JsonValue], version: str) -> _PublicationTime:
     time_value = packument.get("time")
-    if not is_object_dict(time_value):
+    if not isinstance(time_value, dict):
         return _PublicationTime(available=False, published=None)
-    published = string_object_dict(time_value, label="npm publication times").get(version)
+    published = dict(time_value).get(version)
     if not isinstance(published, str):
         return _PublicationTime(available=False, published=None)
     try:

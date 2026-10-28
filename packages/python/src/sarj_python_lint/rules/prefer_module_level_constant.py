@@ -47,8 +47,7 @@ _FROZENSET_KIND = "frozenset"
 
 _RE_SOURCES = frozenset({"re"})
 
-#: Callables that read their argument and return a fresh value without retaining
-#: or mutating the original, so passing the binding to one is still a read.
+#: These calls return fresh values without retaining or mutating their arguments.
 _SAFE_BUILTIN_CALLEES = frozenset(
     {
         "all",

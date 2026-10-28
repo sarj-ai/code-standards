@@ -252,10 +252,13 @@ class FastapiIndex:
         for node in walk_ast(tree):
             if self._node_scopes[id(node)] != 0:
                 continue
-            if isinstance(node, ast.Import):
-                self._read_import(node)
-            elif isinstance(node, ast.ImportFrom):
-                self._read_import_from(node)
+            match node:
+                case ast.Import():
+                    self._read_import(node)
+                case ast.ImportFrom():
+                    self._read_import_from(node)
+                case _:
+                    pass
 
     def _read_import(self, node: ast.Import) -> None:
         for alias in node.names:
@@ -791,8 +794,7 @@ class FastapiIndex:
         if isinstance(node, ast.Attribute):
             root = self._root_name(node)
         node_scope = self._node_scopes.get(id(node), 0)
-        # The index records where the annotation is evaluated. A method body
-        # does not close over an intervening class namespace.
+        # Method bodies do not close over intervening class namespaces during annotation lookup.
         scope: int | None = node_scope
         while scope is not None and scope != 0:
             if (scope == node_scope or scope not in self._class_scopes) and _ReceiverKey(
@@ -979,8 +981,7 @@ def _resolve_module_path_without_checkout(current: Path, reference: _ImportedRef
             if package != current.parent and not current.is_relative_to(package):
                 continue
             candidates.update(_existing_module_files(ancestor.joinpath(*module_parts), ancestor))
-        # A detached directory of modules is also a valid, deliberately narrow
-        # import root. Do not search any of its parents for an unrelated module.
+        # A detached module directory is an import root; its parents may contain unrelated modules.
         candidates.update(_existing_module_files(current.parent.joinpath(*module_parts), current.parent))
     return next(iter(candidates)) if len(candidates) == 1 else None
 

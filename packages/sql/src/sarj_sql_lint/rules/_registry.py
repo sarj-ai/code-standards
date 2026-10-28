@@ -11,6 +11,7 @@ from sarj_sql_lint.rules.index_budget import IndexBudget
 from sarj_sql_lint.rules.index_concurrently import IndexConcurrently
 from sarj_sql_lint.rules.insert_requires_on_conflict import InsertRequiresOnConflict
 from sarj_sql_lint.rules.mixed_migration_phases import MixedMigrationPhases
+from sarj_sql_lint.rules.new_table_inline_constraints import NewTableInlineConstraints
 from sarj_sql_lint.rules.no_analytical_queries_in_transactional_db import NoAnalyticalQueriesInTransactionalDb
 from sarj_sql_lint.rules.no_application_schema_check import NoApplicationSchemaCheck
 from sarj_sql_lint.rules.no_comment_cruft import NoCommentCruft
@@ -34,6 +35,7 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NewTableInlineConstraints.id: NewTableInlineConstraints,
         NoAnalyticalQueriesInTransactionalDb.id: NoAnalyticalQueriesInTransactionalDb,
         NoDatabaseFunctions.id: NoDatabaseFunctions,
         ExcessiveCommentary.id: ExcessiveCommentary,

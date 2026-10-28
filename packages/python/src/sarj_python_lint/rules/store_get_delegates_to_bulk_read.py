@@ -727,10 +727,13 @@ class _DelegationSymbols:
 
 def _statement_delegation_call(statement: ast.stmt) -> tuple[ast.Call, bool] | None:
     expression: ast.expr | None = None
-    if isinstance(statement, (ast.Return, ast.Expr, ast.Assign, ast.AnnAssign)):
-        expression = statement.value
-    elif isinstance(statement, ast.If):
-        expression = statement.test
+    match statement:
+        case ast.Return() | ast.Expr() | ast.Assign() | ast.AnnAssign():
+            expression = statement.value
+        case ast.If():
+            expression = statement.test
+        case _:
+            pass
     if isinstance(expression, ast.NamedExpr):
         expression = expression.value
     if isinstance(expression, ast.Subscript):
@@ -772,10 +775,13 @@ def _bind_call(
 
 
 def _symbol(expression: ast.expr, bindings: dict[str, str]) -> str:
-    if isinstance(expression, ast.Name):
-        return bindings.get(expression.id, f"unknown:{expression.id}")
-    if isinstance(expression, ast.Attribute):
-        return f"attr:{_qualified_name(expression)}"
+    match expression:
+        case ast.Name():
+            return bindings.get(expression.id, f"unknown:{expression.id}")
+        case ast.Attribute():
+            return f"attr:{_qualified_name(expression)}"
+        case _:
+            pass
     if isinstance(expression, (ast.List, ast.Tuple, ast.Set)):
         elements = _closed_collection_elements(expression)
         if elements is not None and len(elements) == 1:
@@ -1032,11 +1038,14 @@ def _method_nodes(method: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.AS
 
 
 def _qualified_name(node: ast.expr) -> str:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        prefix = _qualified_name(node.value)
-        return f"{prefix}.{node.attr}" if prefix else node.attr
+    match node:
+        case ast.Name():
+            return node.id
+        case ast.Attribute():
+            prefix = _qualified_name(node.value)
+            return f"{prefix}.{node.attr}" if prefix else node.attr
+        case _:
+            pass
     return ""
 
 
@@ -1054,8 +1063,11 @@ def _record_behavior_signals(node: ast.AST, signals: set[str]) -> None:
 
 
 def _identifier_parts(node: ast.AST) -> tuple[str, ...]:
-    if isinstance(node, ast.Name):
-        return (node.id,)
-    if isinstance(node, ast.Attribute):
-        return (node.attr,)
+    match node:
+        case ast.Name():
+            return (node.id,)
+        case ast.Attribute():
+            return (node.attr,)
+        case _:
+            pass
     return ()

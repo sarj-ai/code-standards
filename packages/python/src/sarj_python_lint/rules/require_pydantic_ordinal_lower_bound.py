@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._imports import ImportIndex
+    from sarj_python_lint.rules._inert_model_annotation import PythonLiteral
 
 
 _ORDINAL = re.compile(
@@ -251,11 +252,14 @@ def _module_binding_counts(tree: ast.Module) -> Counter[str]:
     stack: list[ast.AST] = list(reversed(tree.body))
     while stack:
         node = stack.pop()
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            counts[node.name] += 1
-            continue
-        if isinstance(node, ast.Lambda):
-            continue
+        match node:
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef():
+                counts[node.name] += 1
+                continue
+            case ast.Lambda():
+                continue
+            case _:
+                pass
         if isinstance(node, ast.Import | ast.ImportFrom):
             counts.update(alias.asname or alias.name.partition(".")[0] for alias in node.names)
         elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store | ast.Del):
@@ -264,7 +268,7 @@ def _module_binding_counts(tree: ast.Module) -> Counter[str]:
     return counts
 
 
-def _literal_value(node: ast.expr | None) -> object:
+def _literal_value(node: ast.expr | None) -> PythonLiteral:
     if isinstance(node, ast.Constant):
         return node.value
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub) and isinstance(node.operand, ast.Constant):
@@ -274,7 +278,7 @@ def _literal_value(node: ast.expr | None) -> object:
     return None
 
 
-def _literal_keyword(call: ast.Call, name: str) -> object:
+def _literal_keyword(call: ast.Call, name: str) -> PythonLiteral:
     keyword = next((item for item in call.keywords if item.arg == name), None)
     if keyword is None:
         return None
@@ -606,7 +610,7 @@ def _field_contract(
     imports: ImportIndex,
     aliases: dict[str, ast.expr],
     class_bindings: frozenset[str],
-) -> tuple[object, object, tuple[ast.Call, ...]] | None:
+) -> tuple[PythonLiteral, PythonLiteral, tuple[ast.Call, ...]] | None:
     annotation_calls = tuple(
         metadata
         for metadata in _annotated_metadata(field.annotation, imports, aliases)
@@ -664,7 +668,7 @@ def _class_bindings(cls: ast.ClassDef) -> frozenset[str]:
 
 def _ordinal_field_default(
     field: ast.AnnAssign, assignment_call: ast.Call | None, calls: tuple[ast.Call, ...]
-) -> object:
+) -> PythonLiteral:
     if assignment_call is not None:
         default = _literal_keyword(assignment_call, "default")
         if default is None and assignment_call.args:

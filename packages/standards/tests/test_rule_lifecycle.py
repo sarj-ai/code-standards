@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,15 +19,22 @@ from sarj_standards.libs.repository import (
     rule_lifecycle,
     rule_maintenance,
 )
-from sarj_standards.libs.rules import DefaultLevel, RuleEngine, RuleId, RuleSelector
+from sarj_standards.libs.rules import DefaultLevel, RuleCatalogDocument, RuleEngine, RuleId, RuleSelector, RuleSpec
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
+
+    from pydantic import JsonValue
 
 
 _SELECTOR = RuleSelector(RuleEngine.PYTHON, RuleId("new-rule"))
 _SOURCE = "packages/python/src/sarj_python_lint/rules/new_rule.py"
+
+
+@dataclass(frozen=True, slots=True)
+class _SyncResult:
+    status: int
 
 
 def _files(root: Path) -> tuple[Path, ...]:
@@ -56,14 +63,14 @@ def _files(root: Path) -> tuple[Path, ...]:
 
 
 def _mock_builders(monkeypatch: pytest.MonkeyPatch, *, fail_catalog_sync: bool = False) -> None:
-    def build_inventory(_root: Path) -> dict[str, object]:
+    def build_inventory(_root: Path) -> dict[str, JsonValue]:
         return {
             "schemaVersion": 1,
             "rules": [{"family": "python", "id": "new-rule", "code": "SARJ999", "source": _SOURCE, "test": "y"}],
         }
 
-    def build_catalog(_root: Path) -> object:
-        return object()
+    def build_catalog(_root: Path) -> RuleCatalogDocument:
+        return RuleCatalogDocument(())
 
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- lifecycle orchestration interception is the behavior under test.
         rule_inventory_artifact,
@@ -95,18 +102,18 @@ def _mock_builders(monkeypatch: pytest.MonkeyPatch, *, fail_catalog_sync: bool =
         sync_warning_levels,
     )
 
-    def sync_to(relative: str, *, fail: bool = False) -> Callable[..., object]:
+    def sync_to(relative: str, *, fail: bool = False) -> Callable[..., _SyncResult]:
         def sync(
             root: Path,
             *,
             check: bool,
-            levels: object = None,  # ruff: ignore[unused-function-argument] -- Catalog synchronization fixes this keyword.
-            typescript: object = None,  # ruff: ignore[unused-function-argument] -- Catalog synchronization fixes this keyword.
+            levels: Mapping[str, DefaultLevel] | None = None,  # ruff: ignore[unused-function-argument] -- Catalog synchronization fixes this keyword.
+            typescript: tuple[RuleSpec, ...] | None = None,  # ruff: ignore[unused-function-argument] -- Catalog synchronization fixes this keyword.
             writer: Callable[[Path, str], None] | None = None,
-        ) -> object:
+        ) -> _SyncResult:
             if check:
                 status = 0 if (root / relative).read_text(encoding="utf-8") == '{"updated":true}\n' else 1
-                return type("Result", (), {"status": status})()
+                return _SyncResult(status)
             if fail:
                 msg = "catalog generation failed"
                 raise RuntimeError(msg)
@@ -114,7 +121,7 @@ def _mock_builders(monkeypatch: pytest.MonkeyPatch, *, fail_catalog_sync: bool =
                 transaction.atomic_write_text(root, root / relative, '{"updated":true}\n')
             else:
                 writer(root / relative, '{"updated":true}\n')
-            return type("Result", (), {"status": 0})()
+            return _SyncResult(0)
 
         return sync
 
@@ -236,10 +243,10 @@ def test_lifecycle_rollback_preserves_unwritten_and_unrelated_edits(
         _root: Path,
         *,
         check: bool,  # ruff: ignore[unused-function-argument] -- Catalog synchronization fixes this keyword.
-        levels: object = None,  # ruff: ignore[unused-function-argument] -- Catalog synchronization fixes this keyword.
-        typescript: object = None,  # ruff: ignore[unused-function-argument] -- Catalog synchronization fixes this keyword.
+        levels: Mapping[str, DefaultLevel] | None = None,  # ruff: ignore[unused-function-argument] -- Catalog synchronization fixes this keyword.
+        typescript: tuple[RuleSpec, ...] | None = None,  # ruff: ignore[unused-function-argument] -- Catalog synchronization fixes this keyword.
         writer: Callable[[Path, str], None] | None = None,  # ruff: ignore[unused-function-argument] -- Catalog synchronization fixes this keyword.
-    ) -> object:
+    ) -> None:
         catalog_path.write_text("concurrent catalog\n", encoding="utf-8")
         unrelated.write_text("concurrent package\n", encoding="utf-8")
         msg = "injected catalog failure"

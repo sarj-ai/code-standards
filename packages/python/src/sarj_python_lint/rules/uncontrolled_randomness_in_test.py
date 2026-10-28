@@ -245,10 +245,13 @@ def _is_collected_module(path: Path) -> bool:
 
 
 def _known_at_most_once(node: ast.expr) -> bool:
-    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
-        return len(node.elts) <= 1
-    if isinstance(node, ast.Dict):
-        return len(node.keys) <= 1
+    match node:
+        case ast.List() | ast.Tuple() | ast.Set():
+            return len(node.elts) <= 1
+        case ast.Dict():
+            return len(node.keys) <= 1
+        case _:
+            pass
     if not (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
@@ -265,27 +268,30 @@ def _known_at_most_once(node: ast.expr) -> bool:
 
 
 def _repeated_regions(node: ast.AST) -> tuple[ast.AST, ...]:
-    if isinstance(node, (ast.For, ast.AsyncFor)):
-        return (
-            ()
-            if _known_at_most_once(node.iter)
-            else tuple(
-                statement
-                for statement in node.body
-                if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+    match node:
+        case ast.For() | ast.AsyncFor():
+            return (
+                ()
+                if _known_at_most_once(node.iter)
+                else tuple(
+                    statement
+                    for statement in node.body
+                    if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                )
             )
-        )
-    if isinstance(node, ast.While):
-        if isinstance(node.test, ast.Constant) and not node.test.value:
-            return ()
-        return (
-            node.test,
-            *(
-                statement
-                for statement in node.body
-                if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
-            ),
-        )
+        case ast.While():
+            if isinstance(node.test, ast.Constant) and not node.test.value:
+                return ()
+            return (
+                node.test,
+                *(
+                    statement
+                    for statement in node.body
+                    if not isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                ),
+            )
+        case _:
+            pass
     if not isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
         return ()
     return _repeated_comprehension_regions(node)

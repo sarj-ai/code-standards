@@ -122,8 +122,8 @@ class _CheckovFinding(_ProtocolModel):
 class _CheckovResults(_ProtocolModel):
     failed_checks: tuple[_CheckovFinding, ...]
     parsing_errors: tuple[str, ...]
-    passed_checks: tuple[object, ...]
-    skipped_checks: tuple[object, ...]
+    passed_checks: tuple[object, ...]  # sarj-noqa: SARJ528 -- Passed-check payloads stay unvalidated.
+    skipped_checks: tuple[object, ...]  # sarj-noqa: SARJ528 -- Skipped-check payloads stay unvalidated.
 
 
 class _CheckovSummary(_ProtocolModel):
@@ -296,8 +296,6 @@ def parse_zizmor(payload: str, *, root: Path) -> tuple[Diagnostic, ...]:
                 msg = "zizmor returned an audit outside the pinned registry"
                 raise ValueError(msg)
             locations = tuple(_zizmor_location(location, root=root) for location in finding.locations)
-            # A grouped upstream finding may name several primary locations. Validate all
-            # locations, while retaining one canonical diagnostic per finding.
             location = locations[0]
             diagnostics.append(
                 _diagnostic(
@@ -437,7 +435,11 @@ def _source(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _yaml_documents(text: str) -> tuple[object, ...]:
+def _yaml_documents(
+    text: str,
+) -> tuple[  # sarj-noqa: SARJ528 -- SafeLoader returns native YAML scalars and containers.
+    object, ...
+]:
     try:
         return tuple(yaml.safe_load_all(text))
     except yaml.YAMLError as exc:
@@ -460,7 +462,13 @@ def _has_image_placeholder(path: Path, resource: str) -> bool:
     return False
 
 
-def _kubernetes_resources(documents: Iterable[object]) -> Iterable[dict[object, object]]:
+def _kubernetes_resources(
+    documents: Iterable[  # sarj-noqa: SARJ528 -- Filter resource structure without coercing native YAML values.
+        object
+    ],
+) -> Iterable[  # sarj-noqa: SARJ528 -- Filter resource structure without coercing native YAML values.
+    dict[object, object]
+]:
     for document in documents:
         if not is_object_mapping(document):
             continue

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint.rules.unused_mock_setup import UnusedMockSetup
 
 
@@ -816,8 +817,7 @@ async def test_lookup():
 
 
 def test_assertion_before_the_configuration_is_exempt():
-    # The assertion describes the state *before* the arrange block; the setup
-    # is for whatever the test does next.
+    # An assertion before setup does not consume the later configured mock.
     src = """
 def test_lookup():
     lookup.assert_not_called()
@@ -1322,3 +1322,94 @@ class TestBilling:
 """
     [diag] = _check(src)
     assert (diag.line, diag.col) == (9, 13)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "def test_values():\n    value = 1\n    return value\n",
+        "from unittest.mock import Mock as Factory\ndef test_values():\n    value: object = None\n",
+        "import unittest.mock as doubles\ndef test_values(mocker: object):\n    value = None\n",
+        (
+            "from unittest.mock import patch\n@patch('app.service')\n"
+            "def test_values(double):\n    double.return_value = 1\n"
+        ),
+        (
+            "def outer():\n    async def test_values(mocker):\n        value = 0\n"
+            "        for item in items:\n            value = provider()\n"
+        ),
+        (
+            "class TestValues:\n    def test_values(self, mocker):\n"
+            "        if enabled:\n            value = mocker.Mock()\n"
+        ),
+    ],
+    ids=("plain", "import-alias", "annotated-fixture", "patch-decorator", "nested-async", "conditional"),
+)
+def test_absent_direct_constructor_assignment_keeps_provenance_lazy(source: str) -> None:
+    context = PythonFileContext(Path(TEST_PATH), source)
+    assert UnusedMockSetup().check_context(context) == []
+    assert "resource_provenance" not in vars(context)
+    assert "binding_inventory" not in vars(context)
+
+
+@pytest.mark.parametrize(
+    ("prefix", "opening", "indent", "constructor", "annotation"),
+    [
+        ("from unittest.mock import Mock\n", "def test_value():\n", "    ", "Mock()", ""),
+        ("import unittest.mock\n", "async def test_value():\n", "    ", "unittest.mock.Mock()", ""),
+        (
+            "import unittest.mock as doubles\n",
+            "class TestValue:\n    def test_value(self):\n",
+            "        ",
+            "doubles.Mock()",
+            "",
+        ),
+        (
+            "from unittest.mock import AsyncMock as Factory\n",
+            "def outer():\n    async def test_value():\n",
+            "        ",
+            "Factory()",
+            ": object",
+        ),
+        (
+            "from unittest.mock import Mock, patch\n",
+            "@patch('app.clock')\ndef test_value(clock):\n",
+            "    ",
+            "Mock()",
+            "",
+        ),
+        ("", "def test_value(mocker: object):\n", "    ", "mocker.Mock()", ""),
+        ("", "def test_value(*, mocker):\n", "    ", "mocker.patch('app.service')", ""),
+        ("", "def test_value(mocker):\n", "    ", "mocker.patch.object(Holder, 'service')", ""),
+    ],
+    ids=(
+        "direct",
+        "qualified-async",
+        "module-alias-method",
+        "annotated-nested-async",
+        "decorated",
+        "fixture",
+        "keyword-fixture-patch",
+        "fixture-patch-object",
+    ),
+)
+def test_constructor_candidates_preserve_existing_function_discovery_and_resolvers(
+    prefix: str,
+    opening: str,
+    indent: str,
+    constructor: str,
+    annotation: str,
+) -> None:
+    source = (
+        f"{prefix}{opening}{indent}double{annotation} = {constructor}\n"
+        f"{indent}double.return_value = 1\n{indent}double.return_value = 2\n"
+    )
+    context = PythonFileContext(Path(TEST_PATH), source)
+    [diagnostic] = UnusedMockSetup().check_context(context)
+    assert diagnostic.code == "SARJ067"
+
+
+@pytest.mark.parametrize("assignment", ["first = second = provider()", "holder.value = provider()"])
+def test_extra_constructor_candidates_keep_the_complete_existing_analysis(assignment: str) -> None:
+    context = PythonFileContext(Path(TEST_PATH), f"def test_value():\n    {assignment}\n")
+    assert UnusedMockSetup().check_context(context) == []

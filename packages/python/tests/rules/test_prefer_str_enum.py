@@ -1872,7 +1872,7 @@ def render(kind: str) -> str:
 def test_closed_domain_dominance_scans_a_long_prefix_linearly(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = 0
 
-    def counted_fallthrough(_statement: object) -> bool:
+    def counted_fallthrough(_statement: ast.stmt) -> bool:
         nonlocal calls
         calls += 1
         return True

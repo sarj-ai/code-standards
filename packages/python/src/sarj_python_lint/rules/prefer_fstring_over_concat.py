@@ -312,8 +312,7 @@ def _classify_concat_context(
     elif isinstance(node, ast.Call) and _is_regex_call(node, regex_bindings, context):
         _exclude_regex_chains(node, excluded, context)
     elif isinstance(node, ast.JoinedStr):
-        # Rewriting a concat already nested in an f-string merely
-        # trades one interpolation expression for a nested f-string.
+        # Nested f-strings would merely replace one existing interpolation expression with another.
         excluded.update(id(sub) for sub in walk(node) if isinstance(sub, ast.BinOp))
 
 
@@ -398,10 +397,13 @@ def _scoped_regex_names(context: PythonFileContext, imports: Sequence[ast.Import
 def _in_callable_scope(node: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> bool:
     current = node
     while (parent := parents.get(current)) is not None:
-        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
-            return True
-        if isinstance(parent, ast.ClassDef):
-            return False
+        match parent:
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.Lambda():
+                return True
+            case ast.ClassDef():
+                return False
+            case _:
+                pass
         current = parent
     return False
 

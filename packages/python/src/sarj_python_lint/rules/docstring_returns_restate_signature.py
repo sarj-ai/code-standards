@@ -230,10 +230,13 @@ class DocstringReturnsRestateSignature(Rule):
         pending: list[tuple[ast.AST, str | None]] = [(child, class_name) for child in reversed(children(node))]
         while pending:
             child, owner = pending.pop()
-            if isinstance(child, ast.FunctionDef | ast.AsyncFunctionDef):
-                self._check_function(child, owner, path, imports, diags)
-            elif isinstance(child, ast.ClassDef):
-                owner = child.name
+            match child:
+                case ast.FunctionDef() | ast.AsyncFunctionDef():
+                    self._check_function(child, owner, path, imports, diags)
+                case ast.ClassDef():
+                    owner = child.name
+                case _:
+                    pass
             pending.extend((nested, owner) for nested in reversed(children(child)))
 
     def _check_function(
@@ -267,8 +270,7 @@ class DocstringReturnsRestateSignature(Rule):
         if _names_fixed_tuple_positions(block, annotation):
             return
         stems = _result_stems(node, class_name, annotation)
-        # The whole-docstring case is SARJ050's; reporting it here too would
-        # make one deletion look like two findings.
+        # SARJ050 owns whole-docstring restatements, avoiding duplicate deletion findings.
         if restates(docstring, stems):
             return
         if not restates(block, stems):
@@ -334,10 +336,13 @@ def _contains_yield(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     pending: list[ast.AST] = list(node.body)
     while pending:
         current = pending.pop()
-        if isinstance(current, (ast.Yield, ast.YieldFrom)):
-            return True
-        if isinstance(current, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
-            continue
+        match current:
+            case ast.Yield() | ast.YieldFrom():
+                return True
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() | ast.Lambda():
+                continue
+            case _:
+                pass
         pending.extend(children(current))
     return False
 

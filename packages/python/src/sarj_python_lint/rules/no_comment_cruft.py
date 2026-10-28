@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from io import StringIO
 from pathlib import PurePosixPath
 import re
 import tokenize
@@ -22,6 +23,8 @@ from sarj_python_lint.rules._comments import (
     PositionedComment,
     comment_runs,
     has_external_reference,
+    has_legal_notice,
+    is_protected,
     nested_comment_lines,
     standalone_comments,
     statement_comment_walls,
@@ -56,12 +59,6 @@ _DIRECTIVE_PREFIXES = (
     "nosemgrep",
     "-*-",
     "language=",
-)
-
-_LICENSE_RE = re.compile(
-    r"copyright|license|licen[cs]ed|spdx|permission is hereby granted|"
-    r"all rights reserved",
-    re.IGNORECASE,
 )
 
 _UNTRACKED_WORK_RE = re.compile(r"^(?:todo|fixme|hack|xxx|bug)\b", re.IGNORECASE)
@@ -122,8 +119,7 @@ _STEP_NARRATION_RE = re.compile(
 _RATIONALE_RE = re.compile(r"\b(?:because|since|so that|otherwise)\b", re.IGNORECASE)
 _RATIONALE_RUN_RE = re.compile(r"\b(?:because|since|so that|otherwise|if|unless|when|until)\b", re.IGNORECASE)
 
-# Markdown headings and embedded heading examples are content when they sit
-# inside an expression; the surrounding syntax already supplies structure.
+# Expression syntax already structures embedded Markdown headings.
 _MARKDOWN_HEADING_RE = re.compile(r"(?:^|\s)#{1,6}\s+\S")
 
 # Self-admitted meta-commentary — the "why later", not the why.
@@ -186,9 +182,21 @@ _SECTION_LABEL_WORDS = frozenset(
         "util",
         "utilities",
         "utils",
+        "data models",
+        "database queries",
+        "error handling",
+        "local helpers",
+        "module constants",
+        "private helpers",
+        "public api",
+        "public helpers",
+        "request handlers",
+        "response models",
+        "type aliases",
     }
 )
-_SECTION_LABEL_RE = re.compile(r"^([A-Za-z]+)\s*:?\s*$")
+_SECTION_LABEL_RE = re.compile(r"^([A-Za-z]+(?:[ \t]+[A-Za-z]+)?)\s*:?\s*$")
+_EDITORIAL_PREFIX_RE = re.compile(r"^(?:note|nb):\s+(?=\S)", re.IGNORECASE)
 
 # A "helper function" opener narrates mechanics without explaining intent.
 _HELPER_OPENER_RE = re.compile(
@@ -319,6 +327,10 @@ def _is_redundant_narration(
     nested: bool,
 ) -> bool:
     c = body.strip()
+    if _EDITORIAL_PREFIX_RE.match(c):
+        if is_protected(c):
+            return False
+        c = _EDITORIAL_PREFIX_RE.sub("", c, count=1)
     if not c or _looks_like_code(c):
         return False
     if _RATIONALE_RE.search(c):
@@ -329,41 +341,46 @@ def _is_redundant_narration(
         return True
     if _HELPER_OPENER_RE.match(c) or _LETS_RE.match(c):
         return True
-    words = c.split()
-    if (
-        len(words) <= _DUMMY_TRANSLATION_MAX_WORDS
-        and _DUMMY_TRANSLATION_RE.match(c)
-        and not any(ch in c for ch in "():=")
-    ):
-        # Exclude common rationale words and test markers.
-        lower_c = c.lower()
-        rationale_words = (
-            "when",
-            "because",
-            "if",
-            "so that",
-            "due to",
-            "for",
-            "instead of",
-            "to prevent",
-            "to avoid",
-            "only",
-        )
-        # Exclude single-word labels that commonly group tests.
-        if len(words) > 1 and not any(word in lower_c for word in rationale_words):
-            return True
-    if not nested and _is_section_label(c):
+    if _is_dummy_translation(c):
+        return True
+    if not nested and is_section_label(c):
         return True
     return isolated_enumeration and bool(_ENUMERATION_RE.match(c))
+
+
+def _is_dummy_translation(body: str) -> bool:
+    words = body.split()
+    if (
+        len(words) <= 1
+        or len(words) > _DUMMY_TRANSLATION_MAX_WORDS
+        or not _DUMMY_TRANSLATION_RE.match(body)
+        or any(character in body for character in "():=")
+    ):
+        return False
+    rationale_words = (
+        "when",
+        "because",
+        "if",
+        "so that",
+        "due to",
+        "for",
+        "instead of",
+        "to prevent",
+        "to avoid",
+        "only",
+    )
+    lowered = body.lower()
+    return not any(word in lowered for word in rationale_words)
 
 
 def _is_sentence_continuation(prev_body: str | None) -> bool:
     return bool(prev_body) and not _SENTENCE_END_RE.search(prev_body)
 
 
-def _is_section_label(body: str) -> bool:
-    match = _SECTION_LABEL_RE.match(body)
-    return match is not None and match.group(1).lower() in _SECTION_LABEL_WORDS
+def is_section_label(body: str) -> bool:
+    plain = _EDITORIAL_PREFIX_RE.sub("", body.strip(), count=1)
+    match = _SECTION_LABEL_RE.fullmatch(plain)
+    return match is not None and " ".join(match.group(1).lower().split()) in _SECTION_LABEL_WORDS
 
 
 def _is_heading_underline(body: str, prev_body: str | None) -> bool:
@@ -460,7 +477,7 @@ def _is_assign_or_call(snippet: str) -> bool:
 
 
 def _license_header_lines(standalone: list[PositionedComment]) -> frozenset[int]:
-    anchors = [line for line, _, body in standalone if line <= _LICENSE_HEADER_MAX_LINE and _LICENSE_RE.search(body)]
+    anchors = [line for line, _, body in standalone if line <= _LICENSE_HEADER_MAX_LINE and has_legal_notice(body)]
     return frozenset(
         line
         for anchor in anchors
@@ -481,11 +498,36 @@ class NoCommentCruft(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.SAFE,
         limitations=(
-            "Safe fixes remove only standalone punctuation separators; prose, disabled code, editor regions and directives remain for review.",
-            "Only standalone comments are classified; trailing comments, docstrings, directives, and referenced notes are excluded.",
+            "Safe fixes remove standalone punctuation separators and bounded content-free section labels, including NOTE/NB-prefixed labels; prose, disabled code, editor regions and directives remain for review.",
+            "Standalone comments and unprotected prose trailing a single-line exception header are classified; other trailing comments, docstrings, directives, and referenced notes are excluded.",
             "Generated files, license headers, doctests, grammar illustrations, and Sphinx configuration banners are excluded.",
         ),
         examples=(
+            RuleExample(
+                example_id="prefixed-section-label",
+                scenario="editorial-prefixes",
+                title="An editorial prefix does not add meaning to a section label",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("service.py", "# NOTE: Type aliases\ntype UserId = str\n"),),
+                fixed_files=(ExampleFile.python("service.py", "\ntype UserId = str\n"),),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="prefixed-constraint",
+                scenario="editorial-prefixes",
+                title="An editorial prefix may still carry a real constraint",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service.py", "# NOTE: Keep this order because the registry caches it.\nregister()\n"
+                    ),
+                ),
+                focus_path=PurePosixPath("service.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="commented-out-code",
                 title="Dead code preserved as a comment",
@@ -538,7 +580,7 @@ class NoCommentCruft(Rule):
             return []
         skip = _script_metadata_lines(source, standalone)
         standalone = [comment for comment in standalone if comment.line not in skip]
-        diags: dict[int, Diagnostic] = {}
+        diags = {finding.line: finding for finding in _trailing_exception_comments(context)}
         by_line = {line: (col, body) for line, col, body in standalone}
         skip = _doctest_block_lines(standalone) | _illustration_block_lines(standalone)
         referenced = _externally_referenced_lines(standalone)
@@ -654,7 +696,7 @@ class NoCommentCruft(Rule):
                 break
             leading.append(PositionedComment(line, col, body))
             prev_line = line
-        if any(_LICENSE_RE.search(body) for _, _, body in leading):
+        if any(has_legal_notice(body) for _, _, body in leading):
             return
         if not any(_HAS_LETTER_RE.search(body) for _, _, body in leading):
             return  # line-art logo, not prose a module docstring could carry
@@ -676,6 +718,35 @@ class NoCommentCruft(Rule):
                     ),
                     column_encoding=ColumnEncoding.CODEPOINTS,
                 )
+
+
+def _trailing_exception_comments(context: PythonFileContext) -> list[Diagnostic]:
+    if context.tree is None:
+        return []
+    headers = {handler.lineno for handler in context.nodes(ast.ExceptHandler)}
+    if not headers:
+        return []
+    findings: list[Diagnostic] = []
+    for token in tokenize.generate_tokens(StringIO(context.source, newline="").readline):
+        if token.type != tokenize.COMMENT or token.start[0] not in headers:
+            continue
+        prefix = context.source_lines[token.start[0] - 1][: token.start[1]].rstrip()
+        body = token.string.removeprefix("#").strip()
+        if not prefix.endswith(":") or not _HAS_LETTER_RE.search(body):
+            continue
+        if _is_directive(body) or has_legal_notice(body) or is_protected(body):
+            continue
+        findings.append(
+            Diagnostic(
+                path=context.path,
+                line=token.start[0],
+                col=token.start[1] + 1,
+                code=NoCommentCruft.code,
+                message="Exception-handler prose narrates the branch — delete it or express the outcome through names and control flow; retain a concise hidden constraint.",
+                column_encoding=ColumnEncoding.CODEPOINTS,
+            )
+        )
+    return findings
 
 
 def _commented_code_message(body: str, prev_body: str | None) -> str | None:

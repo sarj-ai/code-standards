@@ -4,7 +4,7 @@ import { RuleTester } from "@typescript-eslint/rule-tester";
 import { Linter } from "eslint";
 import { afterAll, describe, expect, it } from "vitest";
 
-import rule from "../../src/rules/no-exception-text-in-5xx-response.js";
+import rule, { NO_EXCEPTION_TEXT_IN_5XX_RESPONSE_DOCUMENTATION } from "../../src/rules/no-exception-text-in-5xx-response.js";
 
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
@@ -15,6 +15,8 @@ const RULE_TESTER = new RuleTester({ languageOptions: { parser: tsParser } });
 const PRODUCTION = "/repo/src/route.ts";
 const handler = (body: string, prefix = ""): string => `${prefix}\nfunction handle(){try{run();}catch(error){${body}}}`;
 const reply = (body: string, status = "500"): string => `return Response.json(${body},{status:${status}});`;
+const action = (body: string, prefix = '"use server";'): string => `${prefix}\nexport async function save(){try{await persist();}catch(error){${body}}}`;
+const MESSAGE_HELPER = 'const errorMessage = (error: unknown) => error instanceof Error ? error.message : "Unknown error";';
 
 RULE_TESTER.run("no-exception-text-in-5xx-response", rule, {
   valid: [
@@ -104,7 +106,85 @@ RULE_TESTER.run("no-exception-text-in-5xx-response", rule, {
   ].map((entry) => ({ filename: PRODUCTION, ...entry, errors: [{ messageId: "exceptionText" as const }] })),
 });
 
+RULE_TESTER.run("no-exception-text-in-5xx-response", rule, {
+  valid: [
+    { name: "public action failure example", code: NO_EXCEPTION_TEXT_IN_5XX_RESPONSE_DOCUMENTATION.examples[3].files[0].source },
+    { name: "client boundary", code: action('return {message:error.message};', '"use client";') },
+    { name: "ordinary exported async function", code: action('return {message:error.message};', '') },
+    { name: "unexported server helper", code: '"use server"; async function save(){try{await persist();}catch(error){return {message:error.message};}}' },
+    { name: "nested local catch cannot become an action boundary", code: '"use server"; export async function save(){return async()=>{try{await persist();}catch(error){return {message:error.message};}};}' },
+    { name: "nested callback return remains internal", code: action('return () => ({message:error.message});') },
+    { name: "unknown sanitizer helper", code: action('return {message:publicError(error)};') },
+    { name: "unknown helper consumer loses mutation proof", code: action('normalize(error);return {message:error.message};') },
+    { name: "mutable catch", code: action('error=publicFailure;return {message:error.message};') },
+    { name: "mutated catch alias", code: action('const alias=error;alias.message="Public";return {message:error.message};') },
+    { name: "mutated result alias", code: action('const result={message:error.message};result.message="Public";return result;') },
+    { name: "nested alias escape may sanitize result", code: action('const result={message:error.message};const wrapper={result};normalize(wrapper);return result;') },
+    { name: "payload spread has unknown final fields", code: action('return {message:error.message,...publicFields};') },
+    { name: "literal override removes caught details", code: action('return {message:error.message,message:"Public"};') },
+    { name: "serializer owns public fields", code: action('return {message:error.message,toJSON(){return {message:"Public"}}};') },
+    { name: "statically dead branch", code: action('return {message:false?error.message:"Public"};') },
+    { name: "message only controls a public selection", code: action('return {message:error.message?"Unavailable":"Failed"};') },
+    { name: "helper body mutates its parameter", code: action('return {message:errorMessage(error)};', '"use server"; const errorMessage=(error:unknown)=>{normalize(error);return error.message};') },
+    { name: "helper chains remain opaque", code: action('return {message:errorMessage(error)};', '"use server";const raw=(e:unknown)=>e.message;const errorMessage=(error:unknown)=>raw(error);') },
+    { name: "shadowed helper binding", code: action('const errorMessage=publicError;return {message:errorMessage(error)};', '"use server";'+MESSAGE_HELPER) },
+    { name: "shadowed Error constructor makes helper opaque", code: action('return {message:errorMessage(error)};', '"use server";const Error=PublicError;'+MESSAGE_HELPER) },
+    { name: "explicit helper output contract is not inferred", code: action('return {message:errorMessage(error)};', '"use server";const errorMessage=(error:unknown):"Public"=>error.message;') },
+    { name: "rebound exported function", code: action('return {message:error.message};')+'save=publicAction;' },
+    { name: "reflection invalidates local proof", code: action('eval("error.message = publicText");return {message:error.message};') },
+    { name: "prototype serializer override remains uncertain", code: action('return {message:error.message};', '"use server";Object.prototype.toJSON=publicSerializer;') },
+    { name: "dead statement branch cannot escape", code: action('if(false)return {message:error.message};return {message:"Public"};') },
+    { name: "dead else branch cannot escape", code: action('if(true)return {message:"Public"};else return {message:error.message};') },
+    { name: "dead loop cannot escape", code: action('while(false){return {message:error.message};}return {message:"Public"};') },
+    { name: "empty for-of cannot expose an action result", code: action('if(error instanceof Error){for(const item of []){return {message:error.message};}}return {message:"Public"};') },
+    { name: "empty for-in cannot expose an action result", code: action('if(error instanceof Error){for(const key in {}){return {message:error.message};}}return {message:"Public"};') },
+    { name: "unknown for-of iteration remains opaque", code: action('for(const item of items){return {message:error.message};}return {message:"Public"};') },
+    { name: "unknown for-in iteration remains opaque", code: action('for(const key in fields){return {message:error.message};}return {message:"Public"};') },
+    { name: "async iteration remains opaque", code: action('for await(const item of []){return {message:error.message};}return {message:"Public"};') },
+    { name: "earlier unconditional return cannot escape", code: action('return {message:"Public"};return {message:error.message};') },
+    { name: "earlier selected return cannot escape", code: action('if(true)return {message:"Public"};return {message:error.message};') },
+    { name: "finally overrides the raw result", code: action('try{return {message:error.message};}finally{return {message:"Public"};}') },
+    { name: "preceding labeled transfer remains opaque", code: action('done:{return {message:"Public"};}return {message:error.message};') },
+    { name: "preceding try transfer remains opaque", code: action('try{return {message:"Public"};}finally{}return {message:error.message};') },
+    { name: "preceding loop transfer remains opaque", code: action('while(true){return {message:"Public"};}return {message:error.message};') },
+    { name: "break makes a loop result unreachable", code: action('while(true){break;return {message:error.message};}return {message:"Public"};') },
+    { name: "preceding exhaustive switch remains opaque", code: action('switch(kind){case "ready":return {message:"Public"};default:return {message:"Public"};}return {message:error.message};') },
+    { name: "throwing finally overrides the raw result", code: action('try{return {message:error.message};}finally{throw new Error("Failed");}') },
+    { name: "ambient Error mutation invalidates helper purity", code: action('return {message:errorMessage(error)};', '"use server";globalThis.Error=class{static [Symbol.hasInstance](error){error.message="Public";return true;}};'+MESSAGE_HELPER) },
+    { name: "native hasInstance mutation invalidates helper purity", code: action('return {message:errorMessage(error)};', '"use server";Object.defineProperty(Error,Symbol.hasInstance,{value:error=>{error.message="Public";return true;}});'+MESSAGE_HELPER) },
+    { name: "ambient constructor alias can mutate hasInstance", code: action('return {message:errorMessage(error)};', '"use server";const Constructor=Error;configure(Constructor);'+MESSAGE_HELPER) },
+    { name: "whole global escape can replace Error", code: action('return {message:errorMessage(error)};', '"use server";configure(globalThis);'+MESSAGE_HELPER) },
+    { name: "exact action suppression", code: action('// eslint-disable-next-line @rule-tester/no-exception-text-in-5xx-response -- reviewed public failure\nreturn {message:error.message};') },
+    { name: "test action remains excluded", filename: '/repo/tests/actions.test.ts', code: action('return {message:error.message};') },
+    { name: "generated action remains excluded", filename: '/repo/src/generated/actions.ts', code: action('return {message:error.message};') },
+  ].map((entry)=>({filename:PRODUCTION,...entry})),
+  invalid: [
+    { name: "module directive and direct message", code: action('return {message:error.message};') },
+    { name: "ordinary guarded action return still escapes", code: action('if(error instanceof Error){return {message:error.message};}return {message:"Public"};') },
+    { name: "direct stack", code: action('return {detail:error.stack};') },
+    { name: "guarded message", code: action('return {message:error instanceof Error?error.message:"Unknown error"};') },
+    { name: "same-module pure helper example", code: NO_EXCEPTION_TEXT_IN_5XX_RESPONSE_DOCUMENTATION.examples[2].files[0].source },
+    { name: "function declaration helper", code: action('return {message:errorMessage(error)};', '"use server";function errorMessage(error:unknown){return error instanceof Error?error.message:"Unknown";}') },
+    { name: "broad string helper output is still raw", code: action('return {message:errorMessage(error)};', '"use server";function errorMessage(error:unknown):string{return error instanceof Error?error.message:"Unknown";}') },
+    { name: "const primitive alias", code: action('const message=error.message;return {message};') },
+    { name: "const object alias", code: action('const failure={message:error.message};return failure;') },
+    { name: "const caught identity alias", code: action('const failure=error;return {message:failure.message};') },
+    { name: "array result", code: action('return [error.message];') },
+    { name: "nested literal result", code: action('return {failure:{detail:error.stack}};') },
+    { name: "interpolation", code: action('return {message:`Failed: ${error.message}`};') },
+    { name: "function directive", code: 'export async function save(){"use server";try{await persist();}catch(error){return {message:error.message};}}' },
+    { name: "directive only counts in the prologue", code: '"use strict";"use server";export async function save(){try{await persist();}catch(error){return {message:error.message};}}' },
+    { name: "exported async arrow", code: '"use server";export const save=async()=>{try{await persist();}catch(error){return {message:error.message};}};' },
+    { name: "default export", code: '"use server";export default async function(){try{await persist();}catch(error){return {message:error.message};}}' },
+    { name: "export specifier resolves actual binding", code: '"use server";async function persistAction(){try{await persist();}catch(error){return {message:error.message};}}export {persistAction as save};' },
+    { name: "raw finally result can escape", code: action('try{return {message:"Public"};}finally{return {message:error.message};}') },
+    { name: "nontransferring finally does not hide a result", code: action('try{return {message:error.message};}finally{recordCompletion();}') },
+    { name: "direct native Error construction preserves helper semantics", code: action('return {message:errorMessage(error)};', '"use server";const other=new Error("Other");'+MESSAGE_HELPER) },
+  ].map((entry)=>({filename:PRODUCTION,...entry,errors:[{messageId:'serverActionExceptionText' as const}]})),
+});
+
 it.each([
+  { name: "exported JavaScript Server Action", source: action('return {message:error.message};'), matches: 1 },
   { name: "native response", source: handler(reply("{error:error.message}")), matches: 1 },
   { name: "aliased sanitizer", source: handler("const alias=error;alias.message='Public';" + reply("{error:error.message}")), matches: 0 },
   { name: "unknown consumer", source: handler("normalize(error);" + reply("{error:error.message}")), matches: 0 },

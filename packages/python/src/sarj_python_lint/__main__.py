@@ -187,12 +187,13 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
         # A proven external or nested request boundary already requires schema
         # validation at this field read. Retain standalone shape advice when
         # that more specific rule is unselected or locally suppressed.
-        "SARJ411": frozenset({"SARJ521"}),
+        "SARJ411": frozenset({"SARJ521", "SARJ535"}),
         # Any-valued mappings are the stronger correctness failure. SARJ008
         # still owns every fixed dictionary return when selected alone, while
         # an all-rules run emits one actionable diagnostic for this overlap.
         "SARJ447": frozenset({"SARJ008"}),
-        "SARJ450": frozenset({"SARJ521"}),
+        "SARJ450": frozenset({"SARJ521", "SARJ535"}),
+        "SARJ521": frozenset({"SARJ535"}),
         "SARJ457": frozenset({"SARJ045"}),
         "SARJ465": frozenset({"SARJ071"}),
         "SARJ491": frozenset({"SARJ400"}),
@@ -341,14 +342,9 @@ def _suppressed_diagnostics(
 
 def _suppressed_codes(codes: dict[str, set[Severity]]) -> set[tuple[str, Severity]]:
     suppressed = _precedence_suppressions(codes)
-    # SARJ094 is deliberately staged as a warning while teams calibrate the
-    # FastAPI contract policy. Its route-aware return finding still owns the
-    # overlapping annotation failure: emitting the blocking SARJ447 twin would
-    # defeat warning staging and give two remediations for one return contract.
+    # SARJ094 warning staging owns the overlapping return failure; its blocking twin would defeat that policy.
     if "SARJ094" in codes:
         suppressed.update(_route_contract_suppressions(codes))
-    # The promoted signature-restatement rules now block. Keep their errors and
-    # drop only the lower-severity typed-docstring twin at the same owner.
     if _typed_docstring_warning_is_superseded(codes):
         suppressed.add(("SARJ092", Severity.WARNING))
     return suppressed

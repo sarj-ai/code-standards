@@ -441,17 +441,20 @@ def _boundary_roles(
     imports: ImportIndex,
     facts: _TypeFacts,
 ) -> list[_IdRole]:
-    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-        arguments = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
-        if node.args.vararg is not None:
-            arguments.append(node.args.vararg)
-        return [
-            role
-            for argument in arguments
-            if (role := _role(argument.arg, argument.annotation, imports, facts, allow_bare_id=True)) is not None
-        ]
-    if isinstance(node, ast.ClassDef):
-        return _class_id_roles(node, imports, facts)
+    match node:
+        case ast.FunctionDef() | ast.AsyncFunctionDef():
+            arguments = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
+            if node.args.vararg is not None:
+                arguments.append(node.args.vararg)
+            return [
+                role
+                for argument in arguments
+                if (role := _role(argument.arg, argument.annotation, imports, facts, allow_bare_id=True)) is not None
+            ]
+        case ast.ClassDef():
+            return _class_id_roles(node, imports, facts)
+        case _:
+            pass
     return []
 
 
@@ -517,8 +520,7 @@ def _class_id_roles(node: ast.ClassDef, imports: ImportIndex, facts: _TypeFacts)
             else _role(name, statement.annotation, imports, facts, allow_bare_id=True)
         )
         previous = roles.get(name)
-        # The final annotation owns the field. Equivalent redeclarations retain
-        # the existing diagnostic anchor and its exact local suppression.
+        # Equivalent redeclarations preserve the diagnostic anchor and its exact local suppression.
         if role is not None and previous is not None and role.carrier == previous.carrier:
             continue
         roles[name] = role

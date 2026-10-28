@@ -77,7 +77,7 @@ def test_discriminated_union_metadata_followups(case: EvaluationCase) -> None:
     assert len(findings) == int(case.expected is ExpectedOutcome.MATCH)
     for finding in findings:
         assert finding.code == "SARJ510"
-        assert finding.severity is Severity.WARNING
+        assert finding.severity is Severity.ERROR
         assert finding.line == len(case.source.splitlines())
         assert finding.col == 1
 

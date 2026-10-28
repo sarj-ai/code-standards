@@ -540,8 +540,6 @@ class FakeClock(Clock):
     ["FakeRoom", "FakeJobContext", "FakeAgentSession", "ScriptedLLM", "FakeSTT", "FakeVAD", "_RecordingLLMStream"],
 )
 def test_livekit_style_extension_point_doubles_are_exempt(name: str):
-    # Generic words — llm, session, room, job, stt — are deliberately absent from
-    # the service tables precisely so these stay silent.
     src = f"""
 class {name}:
     def a(self):

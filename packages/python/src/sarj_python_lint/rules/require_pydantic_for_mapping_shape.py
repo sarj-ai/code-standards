@@ -178,14 +178,6 @@ class MappingShapeFacts(AnnotationOrigins):
             return False
         return self.subscription_annotation(parsed, at, mapping=mapping, depth=depth)
 
-    def alias_value(self, node: ast.Name, at: ast.AST) -> ast.expr | None:
-        binding = self.provenance.binding(node.id, at)
-        if not isinstance(binding, ast.Name) or not isinstance(
-            self.context.parents.get(binding), ast.TypeAlias | ast.AnnAssign
-        ):
-            return None
-        return self.semantics.aliases.get(node.id)
-
     def alias_annotation(self, node: ast.Name, at: ast.AST, *, mapping: bool, depth: int) -> bool:
         value = self.alias_value(node, at)
         return value is not None and self.annotation(value, value, mapping=mapping, depth=depth + 1)
@@ -225,14 +217,17 @@ class MappingShapeFacts(AnnotationOrigins):
     def field(self, node: ast.expr, *, seen: frozenset[ast.AST] = frozenset()) -> ast.expr | None:
         if len(seen) >= _MAX_DEPTH:
             return None
-        if isinstance(node, ast.NamedExpr):
-            return self.field(node.value, seen=seen)
-        if isinstance(node, ast.Name):
-            binding = self.provenance.binding(node.id, node)
-            if not isinstance(binding, ast.Name) or binding in seen or node.id in self.provenance.external_bindings:
-                return None
-            value = self.provenance.assignment_value(binding, node)
-            return self.field(value, seen=seen | {binding}) if value is not None else None
+        match node:
+            case ast.NamedExpr():
+                return self.field(node.value, seen=seen)
+            case ast.Name():
+                binding = self.provenance.binding(node.id, node)
+                if not isinstance(binding, ast.Name) or binding in seen or node.id in self.provenance.external_bindings:
+                    return None
+                value = self.provenance.assignment_value(binding, node)
+                return self.field(value, seen=seen | {binding}) if value is not None else None
+            case _:
+                pass
         if (
             isinstance(node, ast.Subscript)
             and isinstance(node.ctx, ast.Load)
@@ -257,10 +252,13 @@ def _test_assertion(node: ast.AST, context: PythonFileContext) -> bool:
         return False
     current: ast.AST | None = node
     while current is not None:
-        if isinstance(current, ast.Assert):
-            return True
-        if isinstance(current, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
-            return False
+        match current:
+            case ast.Assert():
+                return True
+            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.Lambda():
+                return False
+            case _:
+                pass
         current = context.parents.get(current)
     return False
 

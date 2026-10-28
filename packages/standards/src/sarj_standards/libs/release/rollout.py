@@ -48,6 +48,8 @@ from sarj_standards.libs.yaml_boundary import parse_yaml
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Mapping, Sequence
 
+    from pydantic import JsonValue
+
 DEFAULT_REGISTRY = Path(".sarj-standards-rollout.toml")
 DEFAULT_WORKFLOW_RUNNER = "ubuntu-latest"
 WORKFLOW_RUNNERS = frozenset(
@@ -210,7 +212,7 @@ class RolloutError(RuntimeError):
 
 
 class ConsumerBaseMovedError(RolloutError):
-    """A stale candidate needs reconciliation against the current base."""
+    pass
 
 
 def is_object(value: object) -> TypeGuard[dict[str, object]]:
@@ -345,7 +347,7 @@ class Outcome:
     detail: str = ""
     elapsed_seconds: float | None = None
 
-    def as_dict(self) -> dict[str, object]:
+    def as_dict(self) -> dict[str, str | float | None]:
         return {
             "name": self.consumer.name,
             "repository": self.consumer.repository,
@@ -475,10 +477,10 @@ def stdout(result: subprocess.CompletedProcess[str]) -> str:
     return (result.stdout or "").strip()
 
 
-def json_result(result: subprocess.CompletedProcess[str]) -> object:
+def json_result(result: subprocess.CompletedProcess[str]) -> JsonValue:
     rendered = stdout(result)
     try:
-        parsed: object = parse_json(rendered or "null")
+        parsed = parse_json(rendered or "null")
     except json.JSONDecodeError as exc:
         msg = f"command returned invalid JSON: {rendered[:200]}"
         raise RolloutError(msg) from exc
@@ -600,7 +602,7 @@ def base_manifest(
         return None
 
 
-def pull_request(consumer: Consumer, version: str, runner: CommandRunner) -> dict[str, object] | None:
+def pull_request(consumer: Consumer, version: str, runner: CommandRunner) -> dict[str, JsonValue] | None:
     result = runner.run(
         (
             "gh",
@@ -619,16 +621,16 @@ def pull_request(consumer: Consumer, version: str, runner: CommandRunner) -> dic
         )
     )
     payload = json_result(result)
-    if not is_array(payload) or not payload:
+    if not isinstance(payload, list) or not payload:
         return None
     if len(payload) != 1:
         msg = f"{consumer.name}: multiple rollout PRs exist for {rollout_branch(version)}"
         raise RolloutError(msg)
     first = payload[0]
-    return first if is_object(first) else None
+    return first if isinstance(first, dict) else None
 
 
-def pull_identity_matches(consumer: Consumer, version: str, pull: dict[str, object]) -> bool:
+def pull_identity_matches(consumer: Consumer, version: str, pull: Mapping[str, object]) -> bool:
     return (
         pull.get("headRefName") == rollout_branch(version)
         and pull.get("baseRefName") == consumer.branch
@@ -1715,9 +1717,7 @@ def update_consumer_bundle(
     sleep: Callable[[float], None] = time.sleep,
     enable_repository_rules: Sequence[str] = (),
 ) -> None:
-    # A consumer can provision a different uv than the release probe used.
-    # Refresh the dependency graph once; sibling releases can also be absent
-    # from cached index metadata. Subsequent commands reuse that cache.
+    # Refresh once for consumer-specific uv and newly published siblings; reuse its cache afterward.
     command = (*tool_prefix, tool[0], "--refresh", *tool[1:], "--version")
     for attempt in range(RELEASE_VISIBILITY_ATTEMPTS):
         result = runner.run(command, cwd=repo, env=environment, check=False)
@@ -1782,10 +1782,7 @@ def push_rollout_head(
         # consumer CI workflow, so the verified remote head stays in place.
         return preparation.previous_sha
     lease = force_with_lease(preparation.branch, preparation.previous_sha)
-    # Consumer code already ran through the registry-owned verification
-    # command without credentials. Disable Git hooks for the transport-only
-    # push so gh's credential helper can receive the App token without
-    # exposing it to repository-controlled hook code.
+    # Verification runs without credentials; disable transport hooks to isolate the App token.
     runner.run(
         ("git", "-c", "core.hooksPath=/dev/null", "push", lease, "-u", "origin", preparation.branch),
         cwd=repo,
@@ -2265,7 +2262,10 @@ def _baseline_jobs(entry: dict[str, object]) -> int:
 
 
 def _validated_baseline_paths(
-    entry: dict[str, object], baseline_rules_value: object, baseline_paths_value: object, baseline_update_value: object
+    entry: dict[str, object],  # sarj-noqa: SARJ528 -- Raw registry entry is error context.
+    baseline_rules_value: object,
+    baseline_paths_value: object,
+    baseline_update_value: object,
 ) -> tuple[str, ...]:
     if not is_array(baseline_rules_value) or not all(isinstance(item, str) and item for item in baseline_rules_value):
         msg = f"invalid promoted baseline rules: {entry!r}"
@@ -2293,7 +2293,11 @@ def _registry_strings(value: object) -> tuple[str, ...]:
     return tuple(item for item in value if isinstance(item, str)) if is_array(value) else ()
 
 
-def _collect_workflow_tools(jobs: dict[str, object], path: Path, requirements: dict[str, str]) -> None:
+def _collect_workflow_tools(
+    jobs: dict[str, object],  # sarj-noqa: SARJ528 -- Inspect native YAML workflow metadata.
+    path: Path,
+    requirements: dict[str, str],
+) -> None:
     for job_value in jobs.values():
         if not is_object(job_value):
             continue
@@ -2575,11 +2579,11 @@ def _wait_for_pushed_pull_head(
     consumer: Consumer,
     version: str,
     runner: CommandRunner,
-    pull: dict[str, object],
+    pull: dict[str, JsonValue],
     *,
     pushed_head_sha: str,
     sleep: Callable[[float], None],
-) -> dict[str, object]:
+) -> dict[str, JsonValue]:
     for attempt in range(PUSHED_HEAD_VISIBILITY_ATTEMPTS):
         if pull.get("headRefOid") == pushed_head_sha or not pull_identity_matches(consumer, version, pull):
             break
@@ -2832,8 +2836,7 @@ def run_consumer_verification(
             return standards
         return run(1, consumer.verify_metadata)
 
-    # Preparation may format or synchronize files. Finish it before independent,
-    # explicitly registered checks start reading the resulting candidate tree.
+    # Finish formatting and synchronization before parallel checks read the candidate tree.
     preparation = run(0, consumer.verify)
     if preparation.returncode != 0 or not consumer.verify_checks:
         return preparation

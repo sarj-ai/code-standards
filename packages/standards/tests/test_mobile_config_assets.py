@@ -37,7 +37,11 @@ class _RuleNames(RootModel[list[str]]):
     pass
 
 
-def _yaml_mapping(name: str) -> dict[str, object]:
+def _yaml_mapping(
+    name: str,
+) -> dict[  # sarj-noqa: SARJ528 -- RootModel validates only the YAML mapping shape and preserves native unvalidated field values.
+    str, object
+]:
     loaded = _yaml_object((_CONFIGS / name).read_text(encoding="utf-8"))
     return _MobileConfiguration.model_validate(loaded).root
 
@@ -46,7 +50,14 @@ def _yaml_object(source: str) -> object:
     return parse_yaml(source)
 
 
-def _table(parent: dict[str, object], key: str) -> dict[str, object]:
+def _table(
+    parent: dict[  # sarj-noqa: SARJ528 -- nested YAML mapping validation preserves unchecked native values and existing Pydantic errors.
+        str, object
+    ],
+    key: str,
+) -> dict[  # sarj-noqa: SARJ528 -- nested YAML mapping validation preserves unchecked native values and existing Pydantic errors.
+    str, object
+]:
     return _MobileConfiguration.model_validate(parent[key]).root
 
 

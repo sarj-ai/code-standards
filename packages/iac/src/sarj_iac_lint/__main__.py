@@ -6,6 +6,7 @@ from functools import partial
 import json
 import os
 from pathlib import Path
+import stat
 import sys
 import tempfile
 from typing import TYPE_CHECKING, Annotated
@@ -52,15 +53,16 @@ _MAX_FILE_BYTES = 500_000
 def _expand_paths(paths: list[Path]) -> list[Path]:
     out: list[Path] = []
     for p in paths:
-        if not p.exists():
+        try:
+            metadata = p.stat()
+        except FileNotFoundError as exc:
             msg = f"input does not exist: {p}"
-            raise ValueError(msg)
-        if p.is_file():
-            try:
-                if p.stat().st_size <= _MAX_FILE_BYTES:
-                    out.append(p)
-            except OSError:
-                pass
+            raise ValueError(msg) from exc
+        if stat.S_ISREG(metadata.st_mode):
+            if metadata.st_size > _MAX_FILE_BYTES:
+                msg = f"input exceeds the {_MAX_FILE_BYTES:,}-byte analysis limit: {p}"
+                raise ValueError(msg)
+            out.append(p)
             continue
         out.extend(_iter_directory_inputs(p))
     return out
@@ -83,10 +85,7 @@ def _check(rule_names: Sequence[str], paths: list[Path]) -> list[Diagnostic]:
     rules = [REGISTRY[RuleId(name)]() for name in rule_names]
     diags: list[Diagnostic] = []
     for p in _expand_paths(paths):
-        try:
-            source = p.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
+        source = p.read_text(encoding="utf-8", errors="replace")
         source_lines = source.splitlines()
         comments = _suppression_comments(p, source, source_lines)
         for rule in rules:

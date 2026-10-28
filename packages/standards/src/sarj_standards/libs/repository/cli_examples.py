@@ -16,7 +16,14 @@ if TYPE_CHECKING:
     from typing import TextIO
 
 
-def validate(examples: Sequence[object], *, invoke: Callable[[list[str]], int], output: TextIO) -> int:
+def validate(
+    examples: Sequence[  # sarj-noqa: SARJ528 -- Reject nontext decoded command examples before execution.
+        object
+    ],
+    *,
+    invoke: Callable[[list[str]], int],
+    output: TextIO,
+) -> int:
     for index, example in enumerate(examples):
         output.write(f"{index}\n")
         output.flush()

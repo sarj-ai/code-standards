@@ -51,7 +51,7 @@ class NoContradictoryTypeGuard(Rule):
     id = "no-contradictory-type-guard"
     code = "SARJ513"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Primitive type guards must agree with the builtin predicate they return.",
         rationale=(
             "A guard annotation does not validate its implementation. Returning an incompatible primitive predicate "
@@ -151,7 +151,7 @@ class NoContradictoryTypeGuard(Rule):
                     self.code,
                     "This guard's builtin predicate contradicts its primitive narrowing promise; align the target "
                     "and test, preserving TypeIs false-branch behavior and intentional TypeGuard partial predicates.",
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
             )
         return findings

@@ -16,6 +16,8 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._declared_contracts import MODEL_BASES, SETTINGS_BASES, DeclaredContracts
+from sarj_python_lint.rules._native_object_contracts import builtin_object
+from sarj_python_lint.rules._opaque_contracts import REFINEMENT_TYPES, OpaqueContractFacts
 from sarj_python_lint.rules._test_composition import call_arguments, direct_nodes
 from sarj_python_lint.rules.require_pydantic_for_mapping_shape import MappingShapeFacts
 
@@ -28,6 +30,7 @@ if TYPE_CHECKING:
 
 _TYPING = frozenset({"typing", "typing_extensions"})
 _MAX_TYPE_DEPTH = 32
+_VALIDATION_BASES = MODEL_BASES | SETTINGS_BASES | {"pydantic.RootModel", "pydantic.root_model.RootModel"}
 _FRAMEWORK_METHODS = frozenset(
     {"__eq__", "__ne__", "__hash__", "__get_pydantic_core_schema__", "__get_pydantic_json_schema__", "model_post_init"}
 )
@@ -38,7 +41,7 @@ class PreferPreciseObjectContract(Rule):
     id = "prefer-precise-object-contract"
     code = "SARJ528"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
+        default_level=Severity.ERROR,
         summary="Use a precise type for declared application contracts instead of object.",
         rationale="An object annotation hides the operations and data the caller actually supplies. It often spreads casts and handwritten shape checks into consumers.",
         remediation="Use a concrete domain type, Protocol, TypeVar, Pydantic model or JsonValue as appropriate. Importer callables return types.ModuleType. Keep object for genuinely opaque Python values and raw validation boundaries with an explained local exception when necessary; never replace it with Any or a cast.",
@@ -46,7 +49,11 @@ class PreferPreciseObjectContract(Rule):
         autofix=AutofixPolicy.SAFE,
         limitations=(
             "Safe fixes narrow only a bare builtin object return annotation to builtin str for a closed private nested synchronous helper returning one exact string literal, with every call used directly as an if test and all containing return contracts explicit. Existing inert/metadata/binding proofs must hold; public/domain/container/parameter/model contracts and other result uses remain review-only.",
-            "Checks builtin object in function signatures and class field annotations, including supported containers, callables, optional unions and quoted annotations. Local opaque values, object() sentinels, Literal/Annotated metadata, framework hooks, proven override signatures, and registered raw Pydantic callbacks are excluded. Functions that directly validate an object parameter through a source-visible model_validate call, positionally or with obj=, retain that raw boundary. JSON text inputs still require a text or byte contract. Aliases must resolve to their source declaration and their bodies use definition scope. Alias graphs are bounded and shared branches reuse their facts. Imported or shadowed application types named object are preserved. Genuine opaque public contracts can use an explained exact-code exception; narrowing outside the exact private truthiness-only subset remains manual.",
+            "Checks builtin object in function signatures and class field annotations, including supported containers, callables, optional unions and quoted annotations. Local opaque values, object() sentinels, Literal/Annotated metadata, framework hooks, proven override signatures, and registered raw Pydantic callbacks are excluded. Functions that directly validate an object parameter through a source-visible BaseModel, BaseSettings or RootModel model_validate call, positionally or with obj=, retain that raw boundary. JSON text inputs still require a text or byte contract. Aliases must resolve to their source declaration and their bodies use definition scope. Alias graphs are bounded and shared branches reuse their facts. Imported or shadowed application types named object are preserved. Genuine opaque public contracts can use an explained exact-code exception; narrowing outside the exact private truthiness-only subset remains manual.",
+            "An import-proven TypeGuard or TypeIs retains bare object on its guarded positional parameter and unchecked object slots in its declared refinement result; other object parameters remain checked. Guard correctness belongs to the type-guard rules. Universal type[object] class contracts and the return of a canonical module-level PEP 562 __getattr__ hook retain their opaque runtime contracts.",
+            "Ordinary raw validators retain object inputs tied to builtin isinstance, exact builtin type comparisons or an actual source-resolved TypeGuard/TypeIs through rejecting branches, actual type/refinement assertions, accepting terminal branches with a rejecting fallback, or conditional expressions. Stable projections from containers with unchecked value slots retain their raw root contract when those values are validated. Source-visible local and imported validators may delegate those inputs and raw results; precise result narrowing does not justify a bare object output. Related unchecked mapping projections and transforms retain unknown values; import-proven native parsers and JSONDecoder preserve raw outputs. Universal builtin and stdlib interoperation may retain raw inputs. Independent object parameters, domain constructors and unproven parser names remain checked. Source resolution and dataflow are bounded with cycle guards; rebinding, decorators and namespace mutation invalidate delegated proof.",
+            "Native opaque contracts include canonical ast.Constant.value reads and captures, FunctionType invocations, identity-only inputs and sys.getrefcount. Actual exec/eval globals and locals retain unknown values only through bounded native dict construction and alias flow; unrelated dictionaries and source domain factories do not borrow that ownership. Stub property returns on an import-proven runtime_checkable Protocol retain unchecked incoming attributes. Generic callable results, ordinary Protocol methods, application properties and unused parameters remain checked.",
+            "Raw input unions may include scalar or None branches; only genuine unchecked container branches seed raw projections. Mapping consumers that inspect only keys retain uninspected value slots. Projected aliases require simple statement dominance, and precise active guards permit typed consumption after validation. Native namespace output reads require a preceding direct function-scope execution and abstain after authored mutations. Benign builtins imports do not hide builtin object contracts; explicit object shadowing and source-visible object mutations remain outside scope.",
         ),
         examples=(
             RuleExample(
@@ -126,16 +133,21 @@ class PreferPreciseObjectContract(Rule):
             return []
         findings: list[Diagnostic] = []
         contracts = DeclaredContracts(context)
+        opaque = OpaqueContractFacts(context, facts)
         for owner, annotation in _contracts(context):
             if not _has_object(annotation, context, facts, at=annotation):
                 continue
             function = owner if isinstance(owner, ast.FunctionDef | ast.AsyncFunctionDef) else None
-            if function is not None and (
-                _framework(function, context)
-                or facts.raw_boundary(annotation)
-                or _validated_input(function, annotation, contracts)
-            ):
-                continue
+            if function is not None:
+                if _framework(function, context) or facts.raw_boundary(annotation):
+                    continue
+                if (
+                    _validated_input(function, annotation, contracts)
+                    or _refinement_boundary(function, annotation, context, facts)
+                    or _module_getattr_result(function, annotation, context)
+                    or opaque.owns(function, annotation)
+                ):
+                    continue
             findings.append(
                 Diagnostic(
                     context.path,
@@ -143,7 +155,7 @@ class PreferPreciseObjectContract(Rule):
                     annotation.col_offset + 1,
                     self.code,
                     "Replace object with the actual domain type, a narrow Protocol, a TypeVar or a validated Pydantic contract; importer callables return ModuleType. Keep genuinely opaque boundaries explicit.",
-                    severity=Severity.WARNING,
+                    severity=Severity.ERROR,
                 )
             )
         return findings
@@ -202,7 +214,16 @@ def _type_arguments(node: ast.expr, facts: MappingShapeFacts, at: ast.AST) -> li
             if wrapper in {"typing.Literal", "typing_extensions.Literal"}:
                 return []
             members = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
-            return members[:1] if wrapper in {"typing.Annotated", "typing_extensions.Annotated"} else members
+            if wrapper in {"typing.Annotated", "typing_extensions.Annotated"}:
+                return members[:1]
+            if len(members) == 1 and (
+                facts.builtin(node.value, "type", at)
+                or wrapper in {"builtins.type", "typing.Type", "typing_extensions.Type"}
+            ):
+                argument = facts.context.annotation_semantics.parse(members[0])
+                if argument is not None and _opaque(argument, facts, at):
+                    return []
+            return members
         case ast.BinOp(op=ast.BitOr()):
             return [node.left, node.right]
         case ast.List() | ast.Tuple():
@@ -212,7 +233,7 @@ def _type_arguments(node: ast.expr, facts: MappingShapeFacts, at: ast.AST) -> li
 
 
 def _opaque(node: ast.expr, facts: MappingShapeFacts, at: ast.AST) -> bool:
-    return facts.builtin(node, "object", at) or facts.qualified(node, at) == "builtins.object"
+    return builtin_object(node, facts, at)
 
 
 def _framework(function: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext) -> bool:
@@ -225,6 +246,49 @@ def _framework(function: ast.FunctionDef | ast.AsyncFunctionDef, context: Python
                 context.imports.resolves(node, sources=_TYPING, symbol="override") for node in function.decorator_list
             )
         )
+    )
+
+
+def _refinement_boundary(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    annotation: ast.expr,
+    context: PythonFileContext,
+    facts: MappingShapeFacts,
+) -> bool:
+    guard = context.annotation_semantics.parse(function.returns)
+    if not isinstance(guard, ast.Subscript) or (
+        function.returns is None or facts.qualified(guard.value, function.returns) not in REFINEMENT_TYPES
+    ):
+        return False
+    if annotation is function.returns:
+        return True
+    positional = (*function.args.posonlyargs, *function.args.args)
+    bound = isinstance(context.parents.get(function), ast.ClassDef) and not any(
+        facts.builtin(decorator, "staticmethod", decorator) for decorator in function.decorator_list
+    )
+    index = int(bound)
+    if len(positional) <= index:
+        return False
+    parameter = positional[index]
+    if annotation is parameter.annotation:
+        parsed = context.annotation_semantics.parse(annotation)
+        return parsed is not None and _opaque(parsed, facts, annotation)
+    return False
+
+
+def _module_getattr_result(
+    function: ast.FunctionDef | ast.AsyncFunctionDef, annotation: ast.expr, context: PythonFileContext
+) -> bool:
+    return (
+        annotation is function.returns
+        and context.parents.get(function) is context.tree
+        and isinstance(function, ast.FunctionDef)
+        and function.name == "__getattr__"
+        and len((*function.args.posonlyargs, *function.args.args)) == 1
+        and not function.args.kwonlyargs
+        and function.args.vararg is None
+        and function.args.kwarg is None
+        and not function.decorator_list
     )
 
 
@@ -250,6 +314,6 @@ def _validated_input(
         if not isinstance(value, ast.Name) or value.id not in parameters:
             continue
         model = contracts.class_type(node.func.value)
-        if model is not None and contracts.inherits(model, MODEL_BASES | SETTINGS_BASES):
+        if model is not None and contracts.inherits(model, _VALIDATION_BASES):
             return True
     return False

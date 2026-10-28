@@ -2,7 +2,7 @@
 set -euo pipefail
 
 case "$TARGET_BRANCH" in
-  main | maintenance/standards-8.101) ;;
+  main | maintenance/standards-8.101 | maintenance/standards-8.129) ;;
   *)
     echo "::error::publication branch is not allowed"
     exit 1
