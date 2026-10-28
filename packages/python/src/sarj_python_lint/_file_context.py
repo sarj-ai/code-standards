@@ -8,10 +8,12 @@ from sarj_python_lint._analysis_session import AnalysisSession
 from sarj_python_lint._source import python_source_lines, symbol_prefilter_source
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
 from sarj_python_lint.rules._ast_index import NodeIndex
+from sarj_python_lint.rules._binding_inventory import BindingInventory
 from sarj_python_lint.rules._fastapi import FastapiIndex
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._namespace_access import dynamic_namespace_access
 from sarj_python_lint.rules._paths import is_generated
+from sarj_python_lint.rules._runtime_bindings import RuntimeBindings
 
 
 if TYPE_CHECKING:
@@ -23,7 +25,7 @@ if TYPE_CHECKING:
     from sarj_python_lint.rules._test_provenance import TestProvenance
 
 
-@final
+@final  # ruff: ignore[too-many-public-methods] -- one file owns the lazy fact caches and their shared lifetime; splitting providers would duplicate semantic state.
 class PythonFileContext:
     def __init__(self, path: Path, source: str, session: AnalysisSession | None = None) -> None:
         self.path = path
@@ -84,6 +86,14 @@ class PythonFileContext:
     @property
     def parents(self) -> Mapping[ast.AST, ast.AST]:
         return self.node_index.parents
+
+    @cached_property
+    def binding_inventory(self) -> BindingInventory:
+        return BindingInventory.from_context(self)
+
+    @cached_property
+    def runtime_bindings(self) -> RuntimeBindings:
+        return RuntimeBindings(self, self.binding_inventory.bindings)
 
     @cached_property
     def imports(self) -> ImportIndex:

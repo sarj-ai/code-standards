@@ -420,7 +420,7 @@ def _single_keyword_read(
     keywords: Mapping[ast.Name, str],
 ) -> ast.Name | None:
     scope = provenance.scope(target)
-    if provenance.bindings.get(scope, {}).get(target.id) != [target]:
+    if provenance.bindings.get(scope, {}).get(target.id) != (target,):
         return None
     uses = provenance.binding_reads(target.id, target)
     if len(uses) != 1:
