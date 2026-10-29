@@ -1479,7 +1479,7 @@ def test_react_doctor_incomplete_report_retains_bounded_redacted_native_context(
         assert private not in issue.message
     assert len(seen) == 1
     assert seen[0][seen[0].index("--scope") + 1] == "full"
-    assert seen[0][seen[0].index("--max-duration") + 1] == "60"
+    assert seen[0][seen[0].index("--max-duration") + 1] == "300"
 
 
 @pytest.mark.parametrize(
@@ -2462,7 +2462,7 @@ def test_react_doctor_staged_non_detection_falls_back_to_full_and_filters_exact_
     scope_index = seen[3].index("--scope")
     assert seen[3][scope_index + 1] == "full"
     duration_index = seen[3].index("--max-duration")
-    assert int(seen[3][duration_index + 1]) >= 60
+    assert seen[3][duration_index + 1] == "300"
 
 
 def test_react_doctor_full_scan_still_rejects_non_detection(tmp_path: Path) -> None:
