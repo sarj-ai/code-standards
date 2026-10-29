@@ -20,18 +20,18 @@ RULE_TESTER.run("no-raw-env", rule, {
     { name: "preserves platform exemptions under a Node alias", code: 'import proc from "node:process"; const runtime = proc["env"]["NODE_ENV"];' },
     { name: "does not confuse injected config with Node process", code: "function read(process: {env: {KEY: string}}) { return process.env.KEY; }" },
     { name: "accepts the documented validated environment", code: NO_RAW_ENV_DOCUMENTATION.examples[0].files[0].source },
-    // Reading from a validated env module is the prescribed pattern.
+
     { code: "import { env } from '@/env'; const url = env.DATABASE_URL;" },
-    // Unrelated member access is fine.
+
     { code: "const x = process.cwd();" },
-    // A property named `env` on something other than `process` is fine.
+
     { code: "const x = config.env;" },
-    // An unknown property cannot establish the raw environment boundary.
+
     { code: "const x = process[member];" },
-    // `import.meta.env` on a non-import meta base is unrelated.
+
     { code: "const x = config.meta.env;" },
-    // Build-time constants are statically replaced by the bundler — there is no
-    // runtime env value to validate, so they are exempt.
+
+
     { code: "if (process.env.NODE_ENV === 'production') {}" },
     { code: "const dev = import.meta.env.DEV;" },
     { code: "const mode = import.meta.env.MODE;" },
@@ -153,12 +153,12 @@ RULE_TESTER.run("no-raw-env", rule, {
       code: "const { FOO } = process.env;",
       errors: [{ messageId: "noRawEnv" }],
     },
-    // Computed access into process.env is just as unvalidated as the dotted form.
+
     {
       code: "const url = process.env[key];",
       errors: [{ messageId: "noRawEnv" }],
     },
-    // A real runtime Vite var (not a build-time constant) still fires.
+
     {
       code: "const x = import.meta.env.VITE_X;",
       errors: [{ messageId: "noRawEnv" }],

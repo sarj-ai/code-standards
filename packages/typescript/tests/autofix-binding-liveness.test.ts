@@ -43,7 +43,7 @@ const EXAMPLES: readonly Example[] = [
   {name: "predicate sole alias stays manual", rule: "no-partial-type-predicate", source: PREDICATE, expected: PREDICATE, naive: PREDICATE.replace("value is Numeric", "boolean")},
 ];
 
-/** Use the actual imported compiler implementation, independently of the ESLint fix renderer. */
+
 function nativeDiagnostics(filename: string): readonly string[] {
   const options: ts.CompilerOptions = {strict: true, target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext,
     moduleResolution: ts.ModuleResolutionKind.Bundler, types: ["node"], typeRoots: [join(dirname(dirname(filename)), "node_modules", "@types")],

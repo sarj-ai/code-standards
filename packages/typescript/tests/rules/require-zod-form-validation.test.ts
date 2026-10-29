@@ -4,7 +4,7 @@ import { afterAll, describe, it } from "vitest";
 
 import rule, { REQUIRE_ZOD_FORM_VALIDATION_DOCUMENTATION } from "../../src/rules/require-zod-form-validation.js";
 
-// Bind vitest to RuleTester for proper test reporting
+
 import { verifyRuleExamples } from "../../src/verify-rule-examples.js";
 
 RuleTester.afterAll = afterAll;

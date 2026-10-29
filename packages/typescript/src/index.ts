@@ -1,3 +1,16 @@
+import preferDependencyInterface from "./rules/prefer-dependency-interface.js";
+import noMutatingInputWithResult from "./rules/no-mutating-input-with-result.js";
+import noNegativeOnlyHttpStatusAssertion from "./rules/no-negative-only-http-status-assertion.js";
+import preferTestFixtureReuse from "./rules/prefer-test-fixture-reuse.js";
+import noReturnDisposedResource from "./rules/no-return-disposed-resource.js";
+import requireJwtLifetime from "./rules/require-jwt-lifetime.js";
+import noDiscardedValidationResult from "./rules/no-discarded-validation-result.js";
+import productionDerivedTestCases from "./rules/production-derived-test-cases.js";
+import requireConstrainedSchemaInteger from "./rules/require-constrained-schema-integer.js";
+import noGenericJsonParser from "./rules/no-generic-json-parser.js";
+import noRedundantLocalAlias from "./rules/no-redundant-local-alias.js";
+import noTestComments from "./rules/no-test-comments.js";
+import noMutatingContainerTransform from "./rules/no-mutating-container-transform.js";
 import noRedundantConsumerUnion from "./rules/no-redundant-consumer-union.js";
 import preferMinimalParameterContract from "./rules/prefer-minimal-parameter-contract.js";
 import noExcessJsxProps from "./rules/no-excess-jsx-props.js";
@@ -140,6 +153,19 @@ import { RENAMED_RULES } from "./rules/_renamed-rules.js";
 import { RETIRED_RULES } from "./rules/_retired-rules.js";
 
 const RULES = {
+  "no-mutating-input-with-result": noMutatingInputWithResult,
+  "no-negative-only-http-status-assertion": noNegativeOnlyHttpStatusAssertion,
+  "production-derived-test-cases": productionDerivedTestCases,
+  "prefer-test-fixture-reuse": preferTestFixtureReuse,
+  "no-return-disposed-resource": noReturnDisposedResource,
+  "require-constrained-schema-integer": requireConstrainedSchemaInteger,
+  "no-discarded-validation-result": noDiscardedValidationResult,
+  "require-jwt-lifetime": requireJwtLifetime,
+  "prefer-dependency-interface": preferDependencyInterface,
+  "no-generic-json-parser": noGenericJsonParser,
+  "no-redundant-local-alias": noRedundantLocalAlias,
+  "no-test-comments": noTestComments,
+  "no-mutating-container-transform": noMutatingContainerTransform,
   "no-redundant-consumer-union": noRedundantConsumerUnion,
   "prefer-minimal-parameter-contract": preferMinimalParameterContract,
   "no-excess-jsx-props": noExcessJsxProps,
@@ -295,12 +321,21 @@ const ADVISORY_RULES = [
   "@sarj/no-boolean-selector-parameter",
   "@sarj/no-cors-wildcard-with-credentials",
   "@sarj/no-credential-in-browser-storage",
+  "@sarj/no-discarded-validation-result",
   "@sarj/no-exception-text-in-5xx-response",
   "@sarj/no-excess-jsx-props",
+  "@sarj/no-generic-json-parser",
+  "@sarj/no-mutating-container-transform",
+  "@sarj/no-mutating-input-with-result",
+  "@sarj/no-negative-only-http-status-assertion",
   "@sarj/no-numeric-search-param-coercion",
   "@sarj/no-redundant-consumer-union",
+  "@sarj/no-redundant-local-alias",
   "@sarj/no-restated-comment",
   "@sarj/no-restated-jsdoc",
+  "@sarj/no-return-disposed-resource",
+  "@sarj/no-test-comments",
+  "@sarj/prefer-dependency-interface",
   "@sarj/prefer-discriminated-union",
   "@sarj/prefer-millisecond-control-duration-schema",
   "@sarj/prefer-minimal-parameter-contract",
@@ -309,8 +344,12 @@ const ADVISORY_RULES = [
   "@sarj/prefer-node-crypto-hash",
   "@sarj/prefer-node-fs-promises",
   "@sarj/prefer-shared-zod-enum",
+  "@sarj/prefer-test-fixture-reuse",
   "@sarj/prefer-whole-object-assertion",
   "@sarj/prefer-zod-parse-output-type",
+  "@sarj/production-derived-test-cases",
+  "@sarj/require-constrained-schema-integer",
+  "@sarj/require-jwt-lifetime",
   "@sarj/require-sql-access-class",
 ] as const;
 
@@ -339,6 +378,19 @@ const RECOMMENDED_RULES = {
   "@sarj/no-unlocalized-jsx-text": ["error", { enabled: false }],
   "no-restricted-imports": LIBRARY_IMPORT_POLICY,
   "@sarj/no-restricted-library-load": ["error", { libraries: LIBRARY_POLICY }],
+  "@sarj/no-redundant-local-alias": "warn",
+  "@sarj/prefer-test-fixture-reuse": "warn",
+  "@sarj/no-negative-only-http-status-assertion": "warn",
+  "@sarj/no-mutating-input-with-result": "warn",
+  "@sarj/no-return-disposed-resource": "warn",
+  "@sarj/no-discarded-validation-result": "warn",
+  "@sarj/require-jwt-lifetime": "warn",
+  "@sarj/prefer-dependency-interface": "warn",
+  "@sarj/no-generic-json-parser": "warn",
+  "@sarj/require-constrained-schema-integer": "warn",
+  "@sarj/production-derived-test-cases": "warn",
+  "@sarj/no-test-comments": "warn",
+  "@sarj/no-mutating-container-transform": "warn",
   "@sarj/prefer-native-random-uuid": "error",
   "@sarj/prefer-shadcn-primitives": "error",
   "@sarj/excessive-commentary": "warn",
@@ -447,6 +499,19 @@ const RECOMMENDED_RULES = {
 } as const;
 
 const STRICT_RULES = {
+  "@sarj/no-discarded-validation-result": "warn",
+  "@sarj/no-generic-json-parser": "warn",
+  "@sarj/no-mutating-container-transform": "warn",
+  "@sarj/no-mutating-input-with-result": "warn",
+  "@sarj/no-negative-only-http-status-assertion": "warn",
+  "@sarj/no-redundant-local-alias": "warn",
+  "@sarj/no-return-disposed-resource": "warn",
+  "@sarj/no-test-comments": "warn",
+  "@sarj/prefer-dependency-interface": "warn",
+  "@sarj/prefer-test-fixture-reuse": "warn",
+  "@sarj/production-derived-test-cases": "warn",
+  "@sarj/require-constrained-schema-integer": "warn",
+  "@sarj/require-jwt-lifetime": "warn",
   "@sarj/no-excess-jsx-props": "warn",
   "@sarj/no-redundant-consumer-union": "warn",
   "@sarj/prefer-minimal-parameter-contract": "warn",

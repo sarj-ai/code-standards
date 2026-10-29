@@ -1,0 +1,1476 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-29",
+  "scope": "Every Python rule in the 200-rule registry at main 3d848ea71f4ee1b4c2c7469e8bfebf8f8e036e07 plus six rules added by this change; source-level applicability review, not an assertion of identical enforcement across languages.",
+  "decisionDefinitions": {
+    "existing-local": "Existing source-semantic TypeScript rule owns the stated bounded concern.",
+    "existing-upstream": "Maintained upstream rule owns the portable source form; availability does not imply every consumer enables the same preset.",
+    "native-semantics": "JavaScript/TypeScript syntax or runtime has materially different behavior; use native contracts instead of copying the Python detector.",
+    "new-local": "A bounded new TypeScript rule provides the identified portable source relationship.",
+    "extended-local": "An existing TypeScript rule gained the missing portable relationship.",
+    "new-upstream": "This change enables a maintained upstream rule.",
+    "python-api": "The Python rule's concrete failure depends on a Python runtime API absent from native JavaScript.",
+    "framework-specific": "The owning Python framework has no common TypeScript API to which this detector can be safely translated.",
+    "architecture-review": "The general concern is useful in review, but no equivalent source proof is supplied by the supported TypeScript runtime; names alone are deliberately insufficient.",
+    "shared-sql-policy": "The shared SQL engine owns the portable SQL concern; embedded driver/query-builder coverage is not implied."
+  },
+  "counts": {
+    "pythonRulesReviewed": 206,
+    "decisions": {
+      "architecture-review": 23,
+      "existing-local": 75,
+      "existing-upstream": 18,
+      "extended-local": 1,
+      "framework-specific": 20,
+      "native-semantics": 29,
+      "new-local": 24,
+      "new-upstream": 1,
+      "python-api": 11,
+      "shared-sql-policy": 4
+    }
+  },
+  "rules": [
+    {
+      "code": "SARJ463",
+      "ruleId": "async-cleanup-registered-synchronously",
+      "decision": "python-api",
+      "owner": "none",
+      "basis": "ExitStack.callback has no JavaScript equivalent; async disposers use the native async-disposal protocol."
+    },
+    {
+      "code": "SARJ540",
+      "ruleId": "async-executor-shutdown",
+      "decision": "python-api",
+      "owner": "none",
+      "basis": "Python executor.shutdown(wait=True) is not a Node API; do not infer blocking behavior from arbitrary shutdown methods."
+    },
+    {
+      "code": "SARJ456",
+      "ruleId": "async-mock-call-without-await-assertion",
+      "decision": "native-semantics",
+      "owner": "@sarj/no-silent-promise-catch; @typescript-eslint/no-floating-promises",
+      "basis": "Calling JavaScript async functions eagerly starts their body; Python AsyncMock called-versus-awaited semantics do not transfer."
+    },
+    {
+      "code": "SARJ537",
+      "ruleId": "async-subprocess-cancellation-cleanup",
+      "decision": "python-api",
+      "owner": "none",
+      "basis": "asyncio cancellation ownership is absent from native JavaScript promises; AbortSignal and ChildProcess lifecycles need API-specific evidence."
+    },
+    {
+      "code": "SARJ536",
+      "ruleId": "cancel-owned-task-without-join",
+      "decision": "python-api",
+      "owner": "none",
+      "basis": "Promises have no native cancel operation or asyncio.Task join lifecycle."
+    },
+    {
+      "code": "SARJ437",
+      "ruleId": "complex-postgres-query-requires-architecture-review",
+      "decision": "architecture-review",
+      "owner": "none",
+      "basis": "Psycopg/PostgreSQL execution-shape review is driver-specific. Arbitrary TypeScript SQL strings are not proof of an executable PostgreSQL query."
+    },
+    {
+      "code": "SARJ046",
+      "ruleId": "defect-xfail-requires-explicit-strict",
+      "decision": "native-semantics",
+      "owner": "Vitest test.fails",
+      "basis": "Vitest's expected-failure tests already fail when the callback unexpectedly passes; there is no pytest strict=False equivalent."
+    },
+    {
+      "code": "SARJ506",
+      "ruleId": "delete-route-returns-no-content",
+      "decision": "framework-specific",
+      "owner": "none",
+      "basis": "FastAPI route decorators/status declarations have no direct Next/server-action analogue; guessing a framework's response policy would overreach."
+    },
+    {
+      "code": "SARJ086",
+      "ruleId": "docstring-args-restate-signature",
+      "decision": "existing-local",
+      "owner": "@sarj/no-typed-doc-sections; @sarj/no-restated-jsdoc",
+      "basis": "Typed documentation sections and lexical JSDoc restatement are already covered; JavaScript JSDoc type contracts remain valid."
+    },
+    {
+      "code": "SARJ087",
+      "ruleId": "docstring-returns-restate-signature",
+      "decision": "existing-local",
+      "owner": "@sarj/no-typed-doc-sections; @sarj/no-restated-jsdoc",
+      "basis": "Existing documentation rules own repeated return contracts."
+    },
+    {
+      "code": "SARJ488",
+      "ruleId": "duplicate-adjacent-exception-handler",
+      "decision": "native-semantics",
+      "owner": "unicorn/no-duplicate-if-branches",
+      "basis": "JavaScript has one catch clause; duplicated typed exception clauses are not syntax it supports."
+    },
+    {
+      "code": "SARJ489",
+      "ruleId": "duplicate-closed-pure-helper",
+      "decision": "architecture-review",
+      "owner": "unicorn/consistent-function-scoping",
+      "basis": "Python's closed builtin regex/string helper proof does not establish equivalence of arbitrary JavaScript regex callbacks or Unicode string operations; no general duplicate-helper ban is added."
+    },
+    {
+      "code": "SARJ524",
+      "ruleId": "duplicate-pytest-fixture-params",
+      "decision": "existing-local",
+      "owner": "@sarj/no-duplicate-test-case",
+      "basis": "Vitest each/for literal case duplication is already covered; pytest fixture params are framework-specific."
+    },
+    {
+      "code": "SARJ434",
+      "ruleId": "excessive-commentary",
+      "decision": "existing-local",
+      "owner": "@sarj/excessive-commentary",
+      "basis": "Existing exact action-narration rule."
+    },
+    {
+      "code": "SARJ538",
+      "ruleId": "failed-probe-zero-threshold",
+      "decision": "python-api",
+      "owner": "none",
+      "basis": "subprocess count-result ownership and Python fallback contracts differ from Node child-process streams; no name-only probe detector is added."
+    },
+    {
+      "code": "SARJ428",
+      "ruleId": "fakes-in-shared-location",
+      "decision": "architecture-review",
+      "owner": "@sarj/no-first-party-module-mock; @sarj/no-unsafe-test-double-cast",
+      "basis": "Test-double ownership depends on consumer architecture; TypeScript structural inline collaborators can be valid and no generic fake-class placement rule is justified."
+    },
+    {
+      "code": "SARJ451",
+      "ruleId": "fastapi-class-router-contract",
+      "decision": "framework-specific",
+      "owner": "@sarj/require-explicit-service-contract; @sarj/require-interface-for-exported-class",
+      "basis": "FastAPI Router.build/response_model metadata is not a TypeScript framework API; existing service contracts cover the portable class boundary."
+    },
+    {
+      "code": "SARJ094",
+      "ruleId": "fastapi-explicit-openapi-contract",
+      "decision": "framework-specific",
+      "owner": "none",
+      "basis": "FastAPI OpenAPI declaration requirements cannot be imposed on Next server actions or every JavaScript router."
+    },
+    {
+      "code": "SARJ412",
+      "ruleId": "iac-source-coupled-test",
+      "decision": "existing-local",
+      "owner": "@sarj/iac-source-coupled-test",
+      "basis": "Existing parsed source-oracle rule."
+    },
+    {
+      "code": "SARJ400",
+      "ruleId": "invalid-pydantic-field-default",
+      "decision": "native-semantics",
+      "owner": "TypeScript assignability; zod/no-conflicting-checks",
+      "basis": "Typed schema defaults reject incompatible types; refinement-specific invalid defaults still require runtime schema tests rather than claiming full Pydantic parity."
+    },
+    {
+      "code": "SARJ040",
+      "ruleId": "mock-without-spec",
+      "decision": "existing-local",
+      "owner": "@sarj/no-unsafe-mock-casting; @sarj/no-unsafe-test-double-cast",
+      "basis": "TypeScript collaborators can use typed vi.fn and structural interfaces; unsafe casts are already checked. Python spec=True is not a JavaScript mock option."
+    },
+    {
+      "code": "SARJ008",
+      "ruleId": "named-record-at-boundaries",
+      "decision": "existing-local",
+      "owner": "@sarj/no-positional-tuple-return; @sarj/prefer-named-complex-return-type",
+      "basis": "Existing named return-contract rules."
+    },
+    {
+      "code": "SARJ539",
+      "ruleId": "nan-hidden-by-builtin-min",
+      "decision": "native-semantics",
+      "owner": "Math.min/Math.max",
+      "basis": "JavaScript Math.min/Math.max propagate NaN regardless of argument order; Python builtin min/max's order-dependent hiding does not occur."
+    },
+    {
+      "code": "SARJ408",
+      "ruleId": "negative-only-http-status-assertion",
+      "decision": "new-local",
+      "owner": "@sarj/no-negative-only-http-status-assertion",
+      "basis": "Source-proven fetch/native Response status tests now require an exact status oracle instead of merely excluding a 5xx."
+    },
+    {
+      "code": "SARJ020",
+      "ruleId": "no-analytical-aggregation-in-postgres-store",
+      "decision": "shared-sql-policy",
+      "owner": "sql:SARJ122",
+      "basis": "The shared SQL engine already owns transactional analytical-query policy for SQL input; do not claim that this automatically covers every TypeScript query builder."
+    },
+    {
+      "code": "SARJ447",
+      "ruleId": "no-any-mapping-types",
+      "decision": "existing-upstream",
+      "owner": "@typescript-eslint/no-explicit-any; @typescript-eslint/no-unsafe-assignment",
+      "basis": "Any-valued record annotations and propagation already have maintained upstream owners."
+    },
+    {
+      "code": "SARJ507",
+      "ruleId": "no-async-function-cache",
+      "decision": "native-semantics",
+      "owner": "JavaScript Promise",
+      "basis": "Promises can be awaited repeatedly; caching a promise does not reproduce Python's single-use coroutine-object defect."
+    },
+    {
+      "code": "SARJ089",
+      "ruleId": "no-bare-test-phase-comments",
+      "decision": "existing-local",
+      "owner": "@sarj/test-phase-label-comment; @sarj/no-test-comments",
+      "basis": "Existing phase-label control plus new general maintained-test prose policy."
+    },
+    {
+      "code": "SARJ482",
+      "ruleId": "no-before-validator-input-mutation",
+      "decision": "new-local",
+      "owner": "@sarj/no-mutating-input-with-result",
+      "basis": "Direct source-proven mutable object writes with returned values are covered; arbitrary Zod preprocess callbacks retain separate API-specific semantics."
+    },
+    {
+      "code": "SARJ523",
+      "ruleId": "no-blanket-suppression",
+      "decision": "existing-upstream",
+      "owner": "@eslint-community/eslint-comments/no-unlimited-disable; @typescript-eslint/ban-ts-comment",
+      "basis": "Existing suppression policy and local rationale controls own blanket disables."
+    },
+    {
+      "code": "SARJ477",
+      "ruleId": "no-broad-keyword-capture",
+      "decision": "existing-upstream",
+      "owner": "@typescript-eslint/no-explicit-any; @typescript-eslint/no-unsafe-argument",
+      "basis": "Typed object/rest parameter contracts replace Python **kwargs; broad any interfaces are already rejected."
+    },
+    {
+      "code": "SARJ016",
+      "ruleId": "no-comment-cruft",
+      "decision": "existing-local",
+      "owner": "@sarj/no-comment-cruft",
+      "basis": "Existing comment-cruft owner."
+    },
+    {
+      "code": "SARJ493",
+      "ruleId": "no-conflicting-pydantic-alias-validation",
+      "decision": "framework-specific",
+      "owner": "none",
+      "basis": "Pydantic alias validation configuration has no Zod equivalent: Zod object keys are declared directly."
+    },
+    {
+      "code": "SARJ426",
+      "ruleId": "no-conftest-test-module-import",
+      "decision": "framework-specific",
+      "owner": "none",
+      "basis": "pytest's implicit conftest loading is absent from JavaScript modules; ordinary fixture imports can be valid."
+    },
+    {
+      "code": "SARJ513",
+      "ruleId": "no-contradictory-type-guard",
+      "decision": "existing-local",
+      "owner": "@sarj/no-contradictory-type-predicate",
+      "basis": "Existing typed primitive/array predicate checks."
+    },
+    {
+      "code": "SARJ084",
+      "ruleId": "no-copied-inherited-docstring",
+      "decision": "existing-local",
+      "owner": "@sarj/no-restated-jsdoc",
+      "basis": "JSDoc restatement owner; runtime JavaScript type documentation is preserved."
+    },
+    {
+      "code": "SARJ028",
+      "ruleId": "no-cors-wildcard-with-credentials",
+      "decision": "existing-local",
+      "owner": "@sarj/no-cors-wildcard-with-credentials",
+      "basis": "Existing credentialed wildcard CORS control."
+    },
+    {
+      "code": "SARJ500",
+      "ruleId": "no-create-verb-in-post-path",
+      "decision": "framework-specific",
+      "owner": "none",
+      "basis": "FastAPI path-decorator grammar does not apply to Next actions or every Node router; no API ownership is inferred from route names alone."
+    },
+    {
+      "code": "SARJ542",
+      "ruleId": "no-custom-control-flow-exception",
+      "decision": "architecture-review",
+      "owner": "@sarj/require-assert-never; @sarj/no-broad-return-type",
+      "basis": "Portable typed-outcome guidance is supported by exhaustive typed contracts; name-only exception classes cannot establish expected domain control flow in JavaScript."
+    },
+    {
+      "code": "SARJ470",
+      "ruleId": "no-database-programmability",
+      "decision": "shared-sql-policy",
+      "owner": "sql:SARJ120; sql:SARJ114",
+      "basis": "Shared SQL engine owns database functions and triggers; JavaScript query-builder calls require driver-specific review."
+    },
+    {
+      "code": "SARJ497",
+      "ruleId": "no-defaulted-environment-setting",
+      "decision": "framework-specific",
+      "owner": "@sarj/no-raw-env",
+      "basis": "TypeScript environment access already has a settings boundary; Pydantic BaseSettings environment field defaults do not have one common JavaScript settings API."
+    },
+    {
+      "code": "SARJ442",
+      "ruleId": "no-delete-statement",
+      "decision": "new-local",
+      "owner": "@sarj/no-mutating-input-with-result",
+      "basis": "Direct borrowed-object field deletion in result-returning functions is covered. JavaScript property deletion remains valid in explicit void commands; a blanket Python del-statement ban is not copied."
+    },
+    {
+      "code": "SARJ548",
+      "ruleId": "no-discarded-tagged-outcome",
+      "decision": "new-local",
+      "owner": "@sarj/no-discarded-validation-result",
+      "basis": "Ignored Zod safeParse outcome is covered; arbitrary application result unions still need an explicit effect contract."
+    },
+    {
+      "code": "SARJ519",
+      "ruleId": "no-discarded-validation-result",
+      "decision": "new-local",
+      "owner": "@sarj/no-discarded-validation-result",
+      "basis": "Detects ignored schema parse outputs that visibly normalize/default/coerce/transform input."
+    },
+    {
+      "code": "SARJ092",
+      "ruleId": "no-docstring-type-restatement",
+      "decision": "existing-local",
+      "owner": "@sarj/no-typed-doc-sections; @sarj/no-restated-jsdoc",
+      "basis": "Existing JSDoc type-restatement controls."
+    },
+    {
+      "code": "SARJ522",
+      "ruleId": "no-dual-shape-model-field-reader",
+      "decision": "existing-local",
+      "owner": "@sarj/prefer-typed-reflection; @sarj/prefer-schema-for-api-payload",
+      "basis": "Typed field access and schema boundaries cover known contracts; there is no shared Pydantic-model-or-dict runtime in Zod."
+    },
+    {
+      "code": "SARJ438",
+      "ruleId": "no-dunder-all",
+      "decision": "native-semantics",
+      "owner": "JavaScript export declarations",
+      "basis": "JavaScript exports are syntax, not a separately maintained __all__ list. Banning exports would remove module contracts."
+    },
+    {
+      "code": "SARJ098",
+      "ruleId": "no-duplicate-dunder-all-entry",
+      "decision": "native-semantics",
+      "owner": "TypeScript/ECMAScript duplicate-export diagnostics",
+      "basis": "Duplicate exports are compiler/parser-owned; no mutable __all__ manifest exists."
+    },
+    {
+      "code": "SARJ496",
+      "ruleId": "no-duplicate-field-validator-body",
+      "decision": "framework-specific",
+      "owner": "none",
+      "basis": "Zod has no named decorator-based field validator registry; arbitrary repeated callbacks can differ by closure/context."
+    },
+    {
+      "code": "SARJ505",
+      "ruleId": "no-exception-text-in-500-detail",
+      "decision": "existing-local",
+      "owner": "@sarj/no-exception-text-in-5xx-response",
+      "basis": "Existing 5xx exception leakage rule."
+    },
+    {
+      "code": "SARJ444",
+      "ruleId": "no-excessive-cognitive-complexity",
+      "decision": "existing-local",
+      "owner": "@sarj/no-excessive-cognitive-complexity",
+      "basis": "Existing syntax-aware cognitive complexity control."
+    },
+    {
+      "code": "SARJ427",
+      "ruleId": "no-fastapi-on-event",
+      "decision": "framework-specific",
+      "owner": "none",
+      "basis": "Deprecated FastAPI on_event has no same API in JavaScript."
+    },
+    {
+      "code": "SARJ054",
+      "ruleId": "no-file-level-escape-hatch-suppression",
+      "decision": "existing-upstream",
+      "owner": "@eslint-community/eslint-comments/no-unlimited-disable; @typescript-eslint/ban-ts-comment",
+      "basis": "Native JavaScript suppression controls own the analogous escape hatch."
+    },
+    {
+      "code": "SARJ048",
+      "ruleId": "no-first-party-private-import",
+      "decision": "native-semantics",
+      "owner": "ECMAScript private fields; package exports; @sarj/prefer-ecmascript-private-members",
+      "basis": "Python underscore module names are conventions, not JavaScript access modifiers. Native private/export boundaries should not be replaced by spelling inference."
+    },
+    {
+      "code": "SARJ455",
+      "ruleId": "no-fixed-sleep-before-assert",
+      "decision": "existing-local",
+      "owner": "@sarj/no-sleep-in-test-body",
+      "basis": "Existing fixed-sleep test control."
+    },
+    {
+      "code": "SARJ485",
+      "ruleId": "no-fixed-sleep-in-loop",
+      "decision": "existing-local",
+      "owner": "@sarj/no-hand-rolled-sleep; @sarj/no-router-refresh-polling",
+      "basis": "Existing polling/sleep controls cover supported JavaScript forms; not every scheduled Node timer is a busy loop."
+    },
+    {
+      "code": "SARJ498",
+      "ruleId": "no-folded-bad-request-not-found",
+      "decision": "framework-specific",
+      "owner": "none",
+      "basis": "Python requests/status-code branch folding requires a particular HTTP-client protocol; arbitrary JavaScript integer branches are not proof of HTTP status handling."
+    },
+    {
+      "code": "SARJ401",
+      "ruleId": "no-frozen-after-validator-field-write",
+      "decision": "native-semantics",
+      "owner": "TypeScript readonly properties; @sarj/no-mutating-input-with-result",
+      "basis": "Readonly writes have compiler ownership; no Pydantic frozen after-validator lifecycle exists in Zod."
+    },
+    {
+      "code": "SARJ022",
+      "ruleId": "no-generic-single-export-module",
+      "decision": "existing-local",
+      "owner": "@sarj/no-generic-single-export-module",
+      "basis": "Existing generic module naming rule."
+    },
+    {
+      "code": "SARJ499",
+      "ruleId": "no-hasattr",
+      "decision": "existing-local",
+      "owner": "@sarj/prefer-typed-reflection; @sarj/no-in-operator-on-built-in-collections",
+      "basis": "Typed reflection is already checked. JavaScript in/hasOwn is necessary for sound unknown-value narrowing and cannot be banned as hasattr."
+    },
+    {
+      "code": "SARJ095",
+      "ruleId": "no-hidden-constructor-fallback",
+      "decision": "architecture-review",
+      "owner": "@sarj/require-explicit-service-contract; @sarj/require-port-for-service",
+      "basis": "Existing dependency architecture rules cover owned service contracts; arbitrary default constructor values need not be application-setting fallbacks."
+    },
+    {
+      "code": "SARJ491",
+      "ruleId": "no-impossible-pydantic-field-bounds",
+      "decision": "existing-local",
+      "owner": "@sarj/no-impossible-zod-literal-bounds; zod/no-conflicting-checks",
+      "basis": "Existing native Zod interval owners."
+    },
+    {
+      "code": "SARJ471",
+      "ruleId": "no-injected-module-loader",
+      "decision": "native-semantics",
+      "owner": "Static ES imports; no-restricted-imports",
+      "basis": "JavaScript static module loading is explicit; injecting a loader is not proof that a loader's bundler/runtime contract is redundant."
+    },
+    {
+      "code": "SARJ481",
+      "ruleId": "no-input-model-mutation",
+      "decision": "new-local",
+      "owner": "@sarj/no-mutating-input-with-result",
+      "basis": "Direct writes of locally declared mutable object parameter fields in result-returning functions."
+    },
+    {
+      "code": "SARJ484",
+      "ruleId": "no-interpreter-source-arguments",
+      "decision": "existing-upstream",
+      "owner": "no-eval; no-new-func; @sarj/no-restricted-library-load",
+      "basis": "Existing dynamic execution and library-load policies own JavaScript source execution; Python interpreter argv strings are not JavaScript source."
+    },
+    {
+      "code": "SARJ448",
+      "ruleId": "no-invalid-argument-name-suppression",
+      "decision": "existing-local",
+      "owner": "@sarj/require-camelcase-properties; @sarj/no-vague-suppression-description",
+      "basis": "Native property/alias and explained suppression policies cover the portable boundary; Python parameter snake_case is not JavaScript naming."
+    },
+    {
+      "code": "SARJ511",
+      "ruleId": "no-invalid-pydantic-bypass",
+      "decision": "existing-local",
+      "owner": "@sarj/no-invalid-zod-custom-parse; @sarj/no-invalid-typed-mutation",
+      "basis": "Existing typed invalid bypass and write controls."
+    },
+    {
+      "code": "SARJ515",
+      "ruleId": "no-invalid-pydantic-validator-return",
+      "decision": "native-semantics",
+      "owner": "TypeScript callback return assignability; @sarj/no-invalid-zod-custom-parse",
+      "basis": "Native callback signatures check annotated return types; custom unvalidated parser bypasses have an existing dedicated owner."
+    },
+    {
+      "code": "SARJ508",
+      "ruleId": "no-loguru-exc-info",
+      "decision": "python-api",
+      "owner": "none",
+      "basis": "Loguru exc_info is a Python-only logging API option."
+    },
+    {
+      "code": "SARJ509",
+      "ruleId": "no-loguru-printf-format",
+      "decision": "python-api",
+      "owner": "none",
+      "basis": "Loguru formatting conventions do not apply to Node loggers, whose formatting APIs differ."
+    },
+    {
+      "code": "SARJ479",
+      "ruleId": "no-mocked-pydantic-value-object",
+      "decision": "existing-local",
+      "owner": "@sarj/no-unsafe-mock-casting; @sarj/no-unsafe-test-double-cast",
+      "basis": "Typed value-object shape fabrication is already checked; Pydantic BaseModel isinstance identity has no general Zod object identity equivalent."
+    },
+    {
+      "code": "SARJ520",
+      "ruleId": "no-mutating-container-transform",
+      "decision": "new-local",
+      "owner": "@sarj/no-mutating-container-transform",
+      "basis": "Array-valued transforms track primitive array inputs/aliases, direct writes and native mutators; void commands/fresh copies stay valid."
+    },
+    {
+      "code": "SARJ425",
+      "ruleId": "no-nested-pydantic-field-validator",
+      "decision": "framework-specific",
+      "owner": "none",
+      "basis": "Zod validators are not resolved by nested-class decorator ownership."
+    },
+    {
+      "code": "SARJ469",
+      "ruleId": "no-nullable-dependency-fallback",
+      "decision": "architecture-review",
+      "owner": "@sarj/require-explicit-service-contract; @sarj/prefer-dependency-interface",
+      "basis": "Portable substitutability has explicit owners; optional input-to-default normalization is valid JavaScript and not necessarily a hidden dependency resolver."
+    },
+    {
+      "code": "SARJ025",
+      "ruleId": "no-offset-pagination",
+      "decision": "existing-local",
+      "owner": "@sarj/no-offset-pagination",
+      "basis": "Existing embedded SQL OFFSET control."
+    },
+    {
+      "code": "SARJ512",
+      "ruleId": "no-partial-type-is",
+      "decision": "existing-local",
+      "owner": "@sarj/no-partial-type-predicate",
+      "basis": "Existing typed false-branch predicate soundness control."
+    },
+    {
+      "code": "SARJ414",
+      "ruleId": "no-positional-psycopg-row-escape",
+      "decision": "native-semantics",
+      "owner": "Typed driver rows; @sarj/no-positional-tuple-return",
+      "basis": "TypeScript database drivers usually return named records; unnamed fixed result records already have an owner. Psycopg row_factory is Python-specific."
+    },
+    {
+      "code": "SARJ026",
+      "ruleId": "no-positional-tuple-record",
+      "decision": "existing-local",
+      "owner": "@sarj/no-positional-tuple-return",
+      "basis": "Existing fixed tuple-return record owner."
+    },
+    {
+      "code": "SARJ067",
+      "ruleId": "no-provably-dead-mock-configuration",
+      "decision": "architecture-review",
+      "owner": "@typescript-eslint/no-unused-vars",
+      "basis": "Unused bindings have upstream ownership; proving vi mock configuration cannot affect execution requires a separate mock protocol/control-flow proof, not Python Mock transfer."
+    },
+    {
+      "code": "SARJ415",
+      "ruleId": "no-psycopg-execution-outside-injected-owner",
+      "decision": "existing-local",
+      "owner": "@sarj/require-sql-access-class",
+      "basis": "Existing injected SQL ownership rule recognizes supported Node database/query-builder forms."
+    },
+    {
+      "code": "SARJ053",
+      "ruleId": "no-random-uuid-in-sql",
+      "decision": "shared-sql-policy",
+      "owner": "sql:SARJ109; @sarj/prefer-native-random-uuid",
+      "basis": "Shared SQL engine owns UUID defaults; native JS UUID policy is separate and is not claimed to enforce PostgreSQL UUIDv7 in arbitrary embedded queries."
+    },
+    {
+      "code": "SARJ429",
+      "ruleId": "no-raw-connection-in-tests",
+      "decision": "architecture-review",
+      "owner": "@sarj/prefer-test-fixture-reuse",
+      "basis": "Reuse source-proven database fixture instances. Raw SQL can be legitimate integration assertions; no blanket Node-driver call ban is inferred without that fixture/driver contract."
+    },
+    {
+      "code": "SARJ402",
+      "ruleId": "no-raw-source-text-test-oracle",
+      "decision": "existing-local",
+      "owner": "@sarj/source-coupled-test",
+      "basis": "Existing raw-source oracle control."
+    },
+    {
+      "code": "SARJ544",
+      "ruleId": "no-recording-store",
+      "decision": "architecture-review",
+      "owner": "@sarj/no-unsafe-test-double-cast; @sarj/require-explicit-contract-implementation",
+      "basis": "Recording-only collaborators can be valid isolated TypeScript unit tests; the Python PostgreSQL-backed test-store architecture is not a universal Node fake ban."
+    },
+    {
+      "code": "SARJ531",
+      "ruleId": "no-redundant-local-alias",
+      "decision": "new-local",
+      "owner": "@sarj/no-redundant-local-alias",
+      "basis": "Stable one-use local aliases forwarded into matching object shorthand fields are now reviewed; snapshots and typed contracts remain valid."
+    },
+    {
+      "code": "SARJ440",
+      "ruleId": "no-redundant-module-alias-exports",
+      "decision": "existing-upstream",
+      "owner": "unicorn/no-useless-re-export; no-restricted-imports",
+      "basis": "Maintained export and module-boundary rules own JavaScript re-exports; Python sys.modules replacement has no ES module equivalent."
+    },
+    {
+      "code": "SARJ543",
+      "ruleId": "no-redundant-sql-alias",
+      "decision": "shared-sql-policy",
+      "owner": "none",
+      "basis": "SQL alias removal is dialect/quoted-identifier-sensitive; this task does not claim a regex equivalent for arbitrary JavaScript SQL strings."
+    },
+    {
+      "code": "SARJ024",
+      "ruleId": "no-repeated-structured-string-literal",
+      "decision": "existing-local",
+      "owner": "@sarj/no-repeated-string-literal",
+      "basis": "Existing structured-string duplication owner."
+    },
+    {
+      "code": "SARJ066",
+      "ruleId": "no-repeated-test-body",
+      "decision": "existing-local",
+      "owner": "@sarj/duplicate-test-body",
+      "basis": "Existing substantial sibling test-body duplication owner."
+    },
+    {
+      "code": "SARJ410",
+      "ruleId": "no-repeated-unseeded-stdlib-random-in-test",
+      "decision": "architecture-review",
+      "owner": "none",
+      "basis": "The Python rule proves repeated stdlib PRNG sampling. JavaScript Math.random replacement, library seeds and test generators need an explicit runner/PRNG proof; a name-only random ban would reject valid stochastic contracts."
+    },
+    {
+      "code": "SARJ423",
+      "ruleId": "no-restated-closed-domain-description",
+      "decision": "existing-local",
+      "owner": "@sarj/no-restated-jsdoc; @sarj/prefer-shared-zod-enum",
+      "basis": "Existing prose/domain reuse rules cover known TS domains; a Zod schema description can legitimately differ from TS literal declarations."
+    },
+    {
+      "code": "SARJ049",
+      "ruleId": "no-restated-comment",
+      "decision": "existing-local",
+      "owner": "@sarj/no-restated-comment",
+      "basis": "Existing restated-comment owner."
+    },
+    {
+      "code": "SARJ012",
+      "ruleId": "no-secret-in-log",
+      "decision": "existing-local",
+      "owner": "@sarj/no-secret-in-log",
+      "basis": "Existing secret/whole-body logging owner."
+    },
+    {
+      "code": "SARJ021",
+      "ruleId": "no-select-star",
+      "decision": "existing-local",
+      "owner": "@sarj/no-select-star",
+      "basis": "Existing embedded SQL projection owner."
+    },
+    {
+      "code": "SARJ441",
+      "ruleId": "no-service-behavior-in-settings",
+      "decision": "architecture-review",
+      "owner": "@sarj/require-explicit-service-contract; @sarj/require-port-for-service",
+      "basis": "Pydantic settings classes are identifiable runtime types; arbitrary JavaScript Config-named objects do not prove settings ownership."
+    },
+    {
+      "code": "SARJ472",
+      "ruleId": "no-shallow-container-type-guard",
+      "decision": "existing-local",
+      "owner": "@sarj/no-contradictory-type-predicate",
+      "basis": "Existing primitive-element Array.isArray predicate checks."
+    },
+    {
+      "code": "SARJ514",
+      "ruleId": "no-shallow-record-type-guard",
+      "decision": "extended-local",
+      "owner": "@sarj/no-contradictory-type-predicate",
+      "basis": "Added named local record guards that promise required data fields from only typeof-object/null checks."
+    },
+    {
+      "code": "SARJ503",
+      "ruleId": "no-slash-collection-root-under-prefix",
+      "decision": "framework-specific",
+      "owner": "none",
+      "basis": "FastAPI APIRouter prefix and empty-path semantics do not transfer to all JavaScript routers."
+    },
+    {
+      "code": "SARJ057",
+      "ruleId": "no-statically-truthy-assertion",
+      "decision": "existing-local",
+      "owner": "@sarj/no-tautological-expect; node-test/no-useless-assertion",
+      "basis": "Existing constant assertion owners."
+    },
+    {
+      "code": "SARJ002",
+      "ruleId": "no-string-concat-in-loop",
+      "decision": "existing-local",
+      "owner": "@sarj/no-string-concat-in-loop",
+      "basis": "Existing repeated string accumulator owner."
+    },
+    {
+      "code": "SARJ458",
+      "ruleId": "no-swallowed-asyncio-cancellation",
+      "decision": "native-semantics",
+      "owner": "@sarj/no-silent-promise-catch; @typescript-eslint/no-floating-promises",
+      "basis": "JavaScript has no intrinsic asyncio cancellation exception; AbortError ownership varies by runtime and should not be inferred from an arbitrary error name."
+    },
+    {
+      "code": "SARJ478",
+      "ruleId": "no-test-method-grafting",
+      "decision": "existing-local",
+      "owner": "@sarj/no-first-party-module-mock",
+      "basis": "Existing first-party method/module replacement policy covers supported substitutions."
+    },
+    {
+      "code": "SARJ051",
+      "ruleId": "no-trailing-numeric-unit-assignment-comment",
+      "decision": "existing-local",
+      "owner": "@sarj/no-trailing-value-narration",
+      "basis": "Existing numeric/unit narration owner."
+    },
+    {
+      "code": "SARJ404",
+      "ruleId": "no-unique-violation-message-match",
+      "decision": "architecture-review",
+      "owner": "none",
+      "basis": "Psycopg UniqueViolation/constraint metadata is a driver-specific contract; Node database clients expose different error protocols and arbitrary message matching is not proven to be uniqueness control flow."
+    },
+    {
+      "code": "SARJ492",
+      "ruleId": "no-unknown-pydantic-validator-field",
+      "decision": "framework-specific",
+      "owner": "none",
+      "basis": "Zod object schema keys and callback typing replace Pydantic named field-validator decorators; no decorator field registry exists."
+    },
+    {
+      "code": "SARJ420",
+      "ruleId": "no-unnecessary-docstring",
+      "decision": "existing-local",
+      "owner": "@sarj/no-restated-jsdoc; @sarj/no-typed-doc-sections",
+      "basis": "Existing prose/doc section controls preserve executable JS JSDoc."
+    },
+    {
+      "code": "SARJ483",
+      "ruleId": "no-unused-copy-result",
+      "decision": "existing-upstream",
+      "owner": "unicorn/no-unused-builtin-method-return",
+      "basis": "Maintained unused replacement-return checks own recognized native copy/transformation APIs."
+    },
+    {
+      "code": "SARJ475",
+      "ruleId": "no-unused-underscored-keyword-parameter",
+      "decision": "existing-upstream",
+      "owner": "@typescript-eslint/no-unused-vars",
+      "basis": "Native unused parameter controls own JS/TS parameters; JavaScript has no Python keyword-only caller contract."
+    },
+    {
+      "code": "SARJ452",
+      "ruleId": "no-unused-value-marker",
+      "decision": "existing-upstream",
+      "owner": "@typescript-eslint/no-unused-vars; no-unused-expressions",
+      "basis": "Existing unused binding/expression controls; explicit void expression can intentionally mark a promise/side-effect boundary and is not an underscore assignment."
+    },
+    {
+      "code": "SARJ419",
+      "ruleId": "no-vague-suppression-description",
+      "decision": "existing-local",
+      "owner": "@sarj/no-vague-suppression-description",
+      "basis": "Existing exact suppression explanation owner."
+    },
+    {
+      "code": "SARJ436",
+      "ruleId": "no-whole-request-response-payload-in-log",
+      "decision": "existing-local",
+      "owner": "@sarj/no-secret-in-log",
+      "basis": "Rule explicitly includes raw request/response blob names, containers and supported serialization wrappers; not just credential fields."
+    },
+    {
+      "code": "SARJ502",
+      "ruleId": "no-work-verb-get-route",
+      "decision": "framework-specific",
+      "owner": "none",
+      "basis": "FastAPI GET route work-verb semantics do not establish arbitrary JavaScript function or Next action behavior."
+    },
+    {
+      "code": "SARJ042",
+      "ruleId": "opaque-parametrize-case-needs-id",
+      "decision": "framework-specific",
+      "owner": "vitest/valid-title",
+      "basis": "Opaque pytest IDs are not the same API as formatted Vitest table titles. Vitest has a maintained title validator, but it is not claimed as enabled or as proof of semantic case IDs."
+    },
+    {
+      "code": "SARJ062",
+      "ruleId": "over-mocked-test",
+      "decision": "architecture-review",
+      "owner": "@sarj/no-first-party-module-mock; @sarj/no-unsafe-test-double-cast",
+      "basis": "An arbitrary mock-count ceiling is a review heuristic tied to the runner and collaborator boundaries; no duplicate count rule is introduced without equivalent protocol evidence."
+    },
+    {
+      "code": "SARJ545",
+      "ruleId": "prefer-application-model-joins",
+      "decision": "architecture-review",
+      "owner": "@sarj/require-sql-access-class",
+      "basis": "Application-model joins require model/table ownership evidence. A general SQL JOIN ban in TypeScript would reject valid query-builder/relational operations."
+    },
+    {
+      "code": "SARJ474",
+      "ruleId": "prefer-autospec-for-callable-mock",
+      "decision": "native-semantics",
+      "owner": "Typed vi.fn<T>; TypeScript argument assignability",
+      "basis": "Typed JavaScript mocks check callable signatures at compilation; Python autospec's runtime binding protocol has no identical vi option."
+    },
+    {
+      "code": "SARJ516",
+      "ruleId": "prefer-bulk-upsert",
+      "decision": "architecture-review",
+      "owner": "none",
+      "basis": "A same-name Node upsert_many method does not prove the transaction/result/duplicate policy of its scalar peer; retain architectural review rather than infer bulk equivalence."
+    },
+    {
+      "code": "SARJ013",
+      "ruleId": "prefer-class-row",
+      "decision": "native-semantics",
+      "owner": "Typed Node driver records; @sarj/prefer-schema-for-api-payload",
+      "basis": "Node drivers commonly return named records and Zod validates object values; Psycopg class_row/dict_row is a Python API."
+    },
+    {
+      "code": "SARJ430",
+      "ruleId": "prefer-collection-comprehension",
+      "decision": "existing-upstream",
+      "owner": "unicorn/prefer-array-flat-map; unicorn/prefer-array-some; unicorn/prefer-object-from-entries",
+      "basis": "Maintained native collection operations own applicable JS builder shapes; JavaScript has no Python comprehension syntax."
+    },
+    {
+      "code": "SARJ011",
+      "ruleId": "prefer-constant-time-secret-compare",
+      "decision": "existing-local",
+      "owner": "@sarj/prefer-constant-time-secret-compare",
+      "basis": "Existing timing-safe authenticator comparison owner."
+    },
+    {
+      "code": "SARJ494",
+      "ruleId": "prefer-declarative-batch-validation",
+      "decision": "native-semantics",
+      "owner": "Zod array schema; @sarj/prefer-module-level-schema",
+      "basis": "Zod exposes declarative array parsing natively; arbitrary loops over schema.parse may intentionally attach per-item context and are not rewritten without a collection contract."
+    },
+    {
+      "code": "SARJ529",
+      "ruleId": "prefer-direct-import-module",
+      "decision": "existing-upstream",
+      "owner": "@typescript-eslint/no-require-imports; no-restricted-imports; @sarj/no-restricted-library-load",
+      "basis": "Static ES imports and dynamic library policy already own literal module loading."
+    },
+    {
+      "code": "SARJ510",
+      "ruleId": "prefer-discriminated-model-union",
+      "decision": "existing-local",
+      "owner": "@sarj/prefer-discriminated-union",
+      "basis": "Existing typed discriminated union owner."
+    },
+    {
+      "code": "SARJ068",
+      "ruleId": "prefer-fstring-over-concat",
+      "decision": "existing-upstream",
+      "owner": "prefer-template",
+      "basis": "Maintained template interpolation control."
+    },
+    {
+      "code": "SARJ532",
+      "ruleId": "prefer-grouped-settings",
+      "decision": "framework-specific",
+      "owner": "none",
+      "basis": "Pydantic BaseSettings prefix fields have no single JavaScript configuration runtime; grouping arbitrary common-name object keys would be a naming-only source freeze."
+    },
+    {
+      "code": "SARJ096",
+      "ruleId": "prefer-immutable-module-constant",
+      "decision": "existing-local",
+      "owner": "@sarj/prefer-immutable-module-constant",
+      "basis": "Existing module constant immutability owner."
+    },
+    {
+      "code": "SARJ445",
+      "ruleId": "prefer-injected-dependency-over-monkeypatch",
+      "decision": "existing-local",
+      "owner": "@sarj/no-first-party-module-mock; @sarj/require-explicit-contract-implementation",
+      "basis": "Existing injection/substitute ownership rules cover supported TS test replacement seams."
+    },
+    {
+      "code": "SARJ059",
+      "ruleId": "prefer-library-fake",
+      "decision": "architecture-review",
+      "owner": "@sarj/no-first-party-module-mock; @sarj/no-unsafe-mock-casting",
+      "basis": "Third-party fake/emulator availability is service-specific, not derivable from JavaScript source alone."
+    },
+    {
+      "code": "SARJ032",
+      "ruleId": "prefer-match-assert-never",
+      "decision": "existing-local",
+      "owner": "@sarj/require-assert-never; @typescript-eslint/switch-exhaustiveness-check",
+      "basis": "Existing exhaustiveness owners."
+    },
+    {
+      "code": "SARJ453",
+      "ruleId": "prefer-match-exception-dispatch",
+      "decision": "existing-local",
+      "owner": "@sarj/prefer-switch-for-repeated-equality",
+      "basis": "Guarded Python exception match syntax does not transfer to instanceof catch branches; simple value dispatch already has an owner."
+    },
+    {
+      "code": "SARJ080",
+      "ruleId": "prefer-match-type-dispatch",
+      "decision": "existing-local",
+      "owner": "@sarj/prefer-switch-for-repeated-equality",
+      "basis": "JavaScript has no structural pattern matching; only applicable repeated literal-value dispatch is promoted."
+    },
+    {
+      "code": "SARJ439",
+      "ruleId": "prefer-match-value-dispatch",
+      "decision": "existing-local",
+      "owner": "@sarj/prefer-switch-for-repeated-equality",
+      "basis": "Existing repeated-value dispatch owner."
+    },
+    {
+      "code": "SARJ039",
+      "ruleId": "prefer-module-level-constant",
+      "decision": "existing-local",
+      "owner": "@sarj/prefer-module-level-constant",
+      "basis": "Existing static value hoisting owner."
+    },
+    {
+      "code": "SARJ446",
+      "ruleId": "prefer-monkeypatch-for-process-state-in-test",
+      "decision": "framework-specific",
+      "owner": "Vitest vi.stubGlobal/vi.stubEnv lifecycle",
+      "basis": "Vitest supplies reversible process-state APIs, but the installed plugin has no prefer-vi-stub-global/prefer-vi-stub-env rules. Pytest monkeypatch ownership is not equivalent to automatic restoration of an arbitrary Vitest global mutation."
+    },
+    {
+      "code": "SARJ461",
+      "ruleId": "prefer-monotonic-for-elapsed-time",
+      "decision": "native-semantics",
+      "owner": "performance.now; @sarj/no-hand-rolled-sleep",
+      "basis": "JavaScript's monotonic performance API differs from Python time module bindings; arbitrary Date.now timestamps can be legitimate wall-clock records."
+    },
+    {
+      "code": "SARJ480",
+      "ruleId": "prefer-native-string-check",
+      "decision": "existing-upstream",
+      "owner": "@typescript-eslint/no-unnecessary-type-assertion; unicorn/prefer-string-slice; @sarj/no-generic-json-parser",
+      "basis": "String/JSON adapters have native type and generic-parser owners; do not rewrite arbitrary user decoder calls as Python str checks."
+    },
+    {
+      "code": "SARJ093",
+      "ruleId": "prefer-nominal-id-types",
+      "decision": "existing-local",
+      "owner": "@sarj/prefer-nominal-id-types",
+      "basis": "Existing nominal ID boundary owner."
+    },
+    {
+      "code": "SARJ082",
+      "ruleId": "prefer-non-nullable-collection",
+      "decision": "existing-local",
+      "owner": "@sarj/prefer-non-nullable-collection",
+      "basis": "Existing nullable collection contract owner."
+    },
+    {
+      "code": "SARJ541",
+      "ruleId": "prefer-optional-composite",
+      "decision": "architecture-review",
+      "owner": "@sarj/prefer-discriminated-union",
+      "basis": "Related optionals may describe independent states; TypeScript variants already have a supported discriminated-union owner rather than a universal object grouping mandate."
+    },
+    {
+      "code": "SARJ070",
+      "ruleId": "prefer-or-pattern",
+      "decision": "existing-upstream",
+      "owner": "no-duplicate-case; @sarj/prefer-switch-for-repeated-equality",
+      "basis": "JavaScript groups fall-through case labels natively; Python OR patterns have no distinct JS syntax."
+    },
+    {
+      "code": "SARJ528",
+      "ruleId": "prefer-precise-object-contract",
+      "decision": "existing-local",
+      "owner": "@sarj/no-broad-return-type; @sarj/prefer-minimal-parameter-contract; @sarj/prefer-typed-reflection",
+      "basis": "Existing bounded precise object contract controls; public/opaque object boundaries are preserved."
+    },
+    {
+      "code": "SARJ518",
+      "ruleId": "prefer-psycopg-executemany",
+      "decision": "python-api",
+      "owner": "none",
+      "basis": "Psycopg executemany's result/transaction contract does not prove Node SQL-client batch equivalence."
+    },
+    {
+      "code": "SARJ454",
+      "ruleId": "prefer-pydantic-json-value",
+      "decision": "native-semantics",
+      "owner": "Zod z.json",
+      "basis": "Zod supplies its own JSON validator; the new generic-parser field-read rule preserves legitimate opaque JSON forwarding."
+    },
+    {
+      "code": "SARJ527",
+      "ruleId": "prefer-pydantic-model-assertion",
+      "decision": "existing-local",
+      "owner": "@sarj/prefer-whole-object-assertion",
+      "basis": "Existing dense object/projection assertion owner."
+    },
+    {
+      "code": "SARJ526",
+      "ruleId": "prefer-pytest-dependency-fixtures",
+      "decision": "new-local",
+      "owner": "@sarj/prefer-test-fixture-reuse",
+      "basis": "Source-proven supplied class fixture reuse for Vitest/Playwright-style fixture runners."
+    },
+    {
+      "code": "SARJ476",
+      "ruleId": "prefer-pytest-fixture-injection",
+      "decision": "new-local",
+      "owner": "@sarj/prefer-test-fixture-reuse",
+      "basis": "Reuse already supplied fixture objects; Python pool fixture discovery is not copied into Node by naming alone."
+    },
+    {
+      "code": "SARJ460",
+      "ruleId": "prefer-regex-fullmatch",
+      "decision": "native-semantics",
+      "owner": "ECMAScript RegExp",
+      "basis": "JavaScript has no fullmatch method. Python match/search end-anchor semantics require a different regex proof; maintained regexp rules retain JS-specific authority."
+    },
+    {
+      "code": "SARJ468",
+      "ruleId": "prefer-required-constructor-parameters",
+      "decision": "architecture-review",
+      "owner": "TypeScript required parameter checking; @sarj/require-explicit-service-contract",
+      "basis": "Required parameters are enforced when declared; optional/default parameters can be valid domain APIs, so no blanket default ban is ported."
+    },
+    {
+      "code": "SARJ534",
+      "ruleId": "prefer-runtime-validation",
+      "decision": "existing-local",
+      "owner": "@sarj/prefer-schema-for-api-payload; @sarj/no-contradictory-type-predicate; @sarj/no-partial-type-predicate",
+      "basis": "Existing runtime boundary validation and sound-predicate controls."
+    },
+    {
+      "code": "SARJ097",
+      "ruleId": "prefer-self-documenting-constant",
+      "decision": "existing-local",
+      "owner": "@sarj/no-trailing-value-narration; @sarj/prefer-millisecond-control-duration-schema",
+      "basis": "Existing explicit unit/control-duration owners; arbitrary constants are not renamed solely from numeric values."
+    },
+    {
+      "code": "SARJ078",
+      "ruleId": "prefer-self-type-annotation",
+      "decision": "native-semantics",
+      "owner": "TypeScript polymorphic this return type",
+      "basis": "TypeScript natively supports polymorphic this; signatures may deliberately return a base contract, so no constructor-name-only rewrite is imposed."
+    },
+    {
+      "code": "SARJ431",
+      "ruleId": "prefer-set-isdisjoint",
+      "decision": "existing-upstream",
+      "owner": "unicorn/prefer-set-methods",
+      "basis": "Maintained JavaScript native Set disjointness owner."
+    },
+    {
+      "code": "SARJ006",
+      "ruleId": "prefer-str-enum",
+      "decision": "existing-local",
+      "owner": "@sarj/no-enum; @sarj/prefer-discriminated-union; @sarj/prefer-shared-zod-enum",
+      "basis": "TypeScript's chosen contract is Zod/literal domains, not Python StrEnum runtime objects."
+    },
+    {
+      "code": "SARJ015",
+      "ruleId": "prefer-struct-over-namedtuple",
+      "decision": "native-semantics",
+      "owner": "TypeScript named object/interface declarations; @sarj/no-positional-tuple-return",
+      "basis": "Python collections.namedtuple factory has no same JS API; named return records already have an owner."
+    },
+    {
+      "code": "SARJ533",
+      "ruleId": "prefer-typed-cli",
+      "decision": "framework-specific",
+      "owner": "none",
+      "basis": "Python Typer parser metadata is not a generic Node CLI framework; selecting a JS CLI library is a library-policy task."
+    },
+    {
+      "code": "SARJ535",
+      "ruleId": "prefer-typed-mapping-get",
+      "decision": "existing-local",
+      "owner": "@sarj/prefer-typed-reflection; @sarj/no-generic-json-parser",
+      "basis": "Typed record fields and focused JSON schemas cover the portable contract; legitimate dynamic Maps remain valid."
+    },
+    {
+      "code": "SARJ530",
+      "ruleId": "prefer-typed-settings-field",
+      "decision": "framework-specific",
+      "owner": "@sarj/no-raw-env; TypeScript assignability",
+      "basis": "Pydantic settings field default-derived domain inference has no shared JavaScript settings runtime; TS catches declared type/default mismatch."
+    },
+    {
+      "code": "SARJ432",
+      "ruleId": "prefer-walrus-awaited-none-guard",
+      "decision": "native-semantics",
+      "owner": "JavaScript assignment expressions",
+      "basis": "JavaScript permits assignment expressions already; a Python walrus-specific style rule would impose unrelated control-flow spelling."
+    },
+    {
+      "code": "SARJ076",
+      "ruleId": "prefer-walrus-comprehension-filter",
+      "decision": "native-semantics",
+      "owner": "JavaScript array methods",
+      "basis": "JavaScript has no comprehension filter syntax; callback/helper invocation effects must not be treated as repeated pure calls without proof."
+    },
+    {
+      "code": "SARJ081",
+      "ruleId": "prefer-walrus-regex-match",
+      "decision": "native-semantics",
+      "owner": "JavaScript RegExp.exec result binding",
+      "basis": "Python assignment-to-if spelling rule is not a distinct JavaScript operator feature; JS regex state also changes repeated-match semantics."
+    },
+    {
+      "code": "SARJ077",
+      "ruleId": "prefer-walrus-stream-loop",
+      "decision": "native-semantics",
+      "owner": "JavaScript assignment expressions",
+      "basis": "Python producer-loop walrus rewrite has no direct new JavaScript syntax requirement."
+    },
+    {
+      "code": "SARJ409",
+      "ruleId": "production-derived-test-cases",
+      "decision": "new-local",
+      "owner": "@sarj/production-derived-test-cases",
+      "basis": "Imported membership arrays in Vitest tables require an independent literal-membership oracle; deliberate enum/registry sweeps stay valid."
+    },
+    {
+      "code": "SARJ044",
+      "ruleId": "pytest-fixture-returns-bare-tuple",
+      "decision": "existing-local",
+      "owner": "@sarj/no-positional-tuple-return",
+      "basis": "Existing named return record rule covers fixed tuple fixture results; fixture callback data object shape remains framework-owned."
+    },
+    {
+      "code": "SARJ525",
+      "ruleId": "pytest-fixture-returns-closed-resource",
+      "decision": "new-local",
+      "owner": "@sarj/no-return-disposed-resource; @typescript-eslint/no-floating-promises",
+      "basis": "Explicit using/await using return escapes now have a source owner; awaited fixture-use lifecycle remains with typed promise checks."
+    },
+    {
+      "code": "SARJ085",
+      "ruleId": "redundant-class-docstring",
+      "decision": "existing-local",
+      "owner": "@sarj/no-restated-jsdoc",
+      "basis": "Existing JSDoc lexical repetition owner."
+    },
+    {
+      "code": "SARJ050",
+      "ruleId": "redundant-docstring",
+      "decision": "existing-local",
+      "owner": "@sarj/no-restated-jsdoc",
+      "basis": "Existing JSDoc lexical repetition owner."
+    },
+    {
+      "code": "SARJ099",
+      "ruleId": "redundant-module-docstring",
+      "decision": "existing-local",
+      "owner": "@sarj/no-restated-jsdoc; @sarj/no-comment-cruft",
+      "basis": "Existing redundant prose owners; executable JSDoc type/import contracts are preserved."
+    },
+    {
+      "code": "SARJ487",
+      "ruleId": "redundant-test-constructor-forwarder",
+      "decision": "existing-upstream",
+      "owner": "unicorn/no-useless-override",
+      "basis": "Maintained unnecessary constructor/override forwarding control owns supported JS forms."
+    },
+    {
+      "code": "SARJ045",
+      "ruleId": "repeated-kwarg-heavy-call-in-test",
+      "decision": "existing-local",
+      "owner": "@sarj/repeated-static-call-cases; @sarj/prefer-test-fixture-reuse",
+      "basis": "Existing case factoring plus newly reused supplied fixtures; JavaScript object literals are not Python keyword-argument calls."
+    },
+    {
+      "code": "SARJ413",
+      "ruleId": "repeated-static-call-cases",
+      "decision": "existing-local",
+      "owner": "@sarj/repeated-static-call-cases",
+      "basis": "Existing same-shape literal-call case factoring owner."
+    },
+    {
+      "code": "SARJ457",
+      "ruleId": "repeated-test-composition",
+      "decision": "new-local",
+      "owner": "@sarj/prefer-test-fixture-reuse",
+      "basis": "Supplied collaborator construction is now recognized for fixture reuse; arbitrary SUT constructors are not blanket banned."
+    },
+    {
+      "code": "SARJ490",
+      "ruleId": "repeated-unimplemented-test-contract",
+      "decision": "native-semantics",
+      "owner": "TypeScript interfaces; @sarj/require-explicit-contract-implementation",
+      "basis": "Typed structural test doubles need not implement every interface member with raising placeholder bodies; the compiler owns declared compatibility."
+    },
+    {
+      "code": "SARJ018",
+      "ruleId": "replay-contract-insert-requires-duplicate-policy",
+      "decision": "existing-local",
+      "owner": "@sarj/store-insert-requires-on-conflict",
+      "basis": "Existing embedded insert replay-policy review owner."
+    },
+    {
+      "code": "SARJ504",
+      "ruleId": "require-exp-on-jwt-decode",
+      "decision": "new-local",
+      "owner": "@sarj/require-jwt-lifetime; LIB106",
+      "basis": "jose verification must require exp or maxTokenAge; jsonwebtoken is already restricted in favor of jose."
+    },
+    {
+      "code": "SARJ467",
+      "ruleId": "require-explicit-contract-implementation",
+      "decision": "existing-local",
+      "owner": "@sarj/require-explicit-contract-implementation",
+      "basis": "Existing explicit substitute contract owner."
+    },
+    {
+      "code": "SARJ462",
+      "ruleId": "require-explicit-psycopg-transaction",
+      "decision": "python-api",
+      "owner": "@sarj/require-sql-access-class",
+      "basis": "Psycopg connection transaction ownership cannot be translated to arbitrary Node clients by method names; supported SQL access still has an injected owner."
+    },
+    {
+      "code": "SARJ465",
+      "ruleId": "require-explicit-service-contract",
+      "decision": "existing-local",
+      "owner": "@sarj/require-explicit-service-contract",
+      "basis": "Existing explicit service boundary contract owner."
+    },
+    {
+      "code": "SARJ486",
+      "ruleId": "require-injectable-retry-sleep",
+      "decision": "python-api",
+      "owner": "@sarj/no-hand-rolled-sleep; @sarj/require-fetch-timeout",
+      "basis": "Tenacity retry sleep injection has no same Node API; timers and retry libraries require their actual cancellation/ownership contracts."
+    },
+    {
+      "code": "SARJ034",
+      "ruleId": "require-keyword-only-swap-prone-params",
+      "decision": "native-semantics",
+      "owner": "Named TypeScript options objects; @sarj/prefer-nominal-id-types",
+      "basis": "JavaScript has no keyword-only parameter syntax. Role-separated nominal types already protect known ID swaps; arbitrary positional primitive signatures are not renamed automatically."
+    },
+    {
+      "code": "SARJ424",
+      "ruleId": "require-nodecode-for-splitting-settings-field",
+      "decision": "framework-specific",
+      "owner": "none",
+      "basis": "Pydantic-settings NoDecode is Python runtime metadata, not a Zod parsing option."
+    },
+    {
+      "code": "SARJ071",
+      "ruleId": "require-port-for-service",
+      "decision": "existing-local",
+      "owner": "@sarj/require-port-for-service",
+      "basis": "Existing consumer-owned port rule."
+    },
+    {
+      "code": "SARJ473",
+      "ruleId": "require-precise-factory-signature",
+      "decision": "native-semantics",
+      "owner": "TypeScript callable signatures; @typescript-eslint/no-explicit-any; @typescript-eslint/no-unsafe-call",
+      "basis": "Native compiler signatures check known object/callback fields; dynamic any factories already have upstream owners."
+    },
+    {
+      "code": "SARJ466",
+      "ruleId": "require-public-dependency-contract",
+      "decision": "new-local",
+      "owner": "@sarj/prefer-dependency-interface",
+      "basis": "Source-proven private readonly concrete dependencies with one declared local interface now prefer that existing interface."
+    },
+    {
+      "code": "SARJ411",
+      "ruleId": "require-pydantic-for-external-json",
+      "decision": "existing-local",
+      "owner": "@sarj/prefer-schema-for-api-payload",
+      "basis": "Existing source-proven external JSON validation rule."
+    },
+    {
+      "code": "SARJ521",
+      "ruleId": "require-pydantic-for-mapping-shape",
+      "decision": "new-local",
+      "owner": "@sarj/no-generic-json-parser; @sarj/no-contradictory-type-predicate",
+      "basis": "Focused JSON field contracts and unsound shallow named-record guards are covered; legitimate dictionary indexing remains valid."
+    },
+    {
+      "code": "SARJ450",
+      "ruleId": "require-pydantic-for-structured-payload",
+      "decision": "existing-local",
+      "owner": "@sarj/prefer-schema-for-api-payload; @sarj/no-generic-json-parser",
+      "basis": "Existing runtime validation plus focused known-field parsing; no FastAPI request object is inferred in JS."
+    },
+    {
+      "code": "SARJ418",
+      "ruleId": "require-pydantic-ordinal-lower-bound",
+      "decision": "new-local",
+      "owner": "@sarj/require-constrained-schema-integer",
+      "basis": "Direct numeric limit/version Zod fields require integer/lower bounds; this is a narrower explicit field policy, not a claim of arbitrary ordinal prose parsing."
+    },
+    {
+      "code": "SARJ088",
+      "ruleId": "restated-test-docstring",
+      "decision": "new-local",
+      "owner": "@sarj/no-test-comments",
+      "basis": "Maintained test prose is now banned while executable directives/legal/type contracts stay intact."
+    },
+    {
+      "code": "SARJ459",
+      "ruleId": "shared-mutable-pydantic-factory",
+      "decision": "existing-upstream",
+      "owner": "unicorn/no-array-fill-with-reference-type; unicorn/no-object-as-default-parameter",
+      "basis": "Maintained JS shared-mutable default/reference controls own native forms; Pydantic default_factory has no shared Zod lifecycle."
+    },
+    {
+      "code": "SARJ023",
+      "ruleId": "stepdown",
+      "decision": "existing-local",
+      "owner": "@sarj/stepdown",
+      "basis": "Existing caller-before-private-helper control."
+    },
+    {
+      "code": "SARJ517",
+      "ruleId": "store-field-update-reuses-upsert",
+      "decision": "architecture-review",
+      "owner": "none",
+      "basis": "Equivalent upsert/update ownership requires schema, transaction and method semantics. Matching JavaScript method names is insufficient for a safe source rule."
+    },
+    {
+      "code": "SARJ421",
+      "ruleId": "store-get-delegates-to-bulk-read",
+      "decision": "architecture-review",
+      "owner": "none",
+      "basis": "Single-read/bulk-read equivalence needs driver error/order/authorization contracts; a generic JS get/getMany spelling rule would reject valid APIs."
+    },
+    {
+      "code": "SARJ547",
+      "ruleId": "store-insert-requires-explicit-conflict-policy",
+      "decision": "existing-local",
+      "owner": "@sarj/store-insert-requires-on-conflict",
+      "basis": "Existing supported embedded replay-insert review is narrower than every Python store/fixture insert; raw SQL engine owns standalone replay policy."
+    },
+    {
+      "code": "SARJ546",
+      "ruleId": "store-mutation-command-fanout",
+      "decision": "architecture-review",
+      "owner": "none",
+      "basis": "Per-field persistence commands can express different authorization/atomicity contracts; their Python store architecture is not inferred from arbitrary JS method prefixes."
+    },
+    {
+      "code": "SARJ464",
+      "ruleId": "subprocess-kill-without-reap",
+      "decision": "python-api",
+      "owner": "none",
+      "basis": "Popen.kill/wait and asyncio process.wait are Python APIs. Node uses close/exit event listeners and detached process policies; no wait-method spelling copy is sound."
+    },
+    {
+      "code": "SARJ495",
+      "ruleId": "test-without-explicit-oracle",
+      "decision": "new-upstream",
+      "owner": "vitest/expect-expect",
+      "basis": "Enabled maintained upstream missing-oracle detection at warning with strict/application configuration regression tests."
+    },
+    {
+      "code": "SARJ407",
+      "ruleId": "timestamp-order-requires-tiebreaker",
+      "decision": "architecture-review",
+      "owner": "none",
+      "basis": "A deterministic cursor order requires query/order-key uniqueness evidence and database dialect. Existing no-offset-pagination remains the supported generic embedded SQL control."
+    },
+    {
+      "code": "SARJ435",
+      "ruleId": "typed-error-reasons",
+      "decision": "existing-local",
+      "owner": "@sarj/prefer-discriminated-union; @sarj/no-sentinel-return-on-catch; @sarj/require-assert-never",
+      "basis": "Typed outcome contracts and exhaustiveness already have source owners; arbitrary joined exception strings can be user-facing messages."
+    },
+    {
+      "code": "SARJ443",
+      "ruleId": "unused-test-factory-option",
+      "decision": "existing-upstream",
+      "owner": "@typescript-eslint/no-unused-vars; unicorn/no-unnecessary-parameters",
+      "basis": "Existing unused/unnecessary parameter controls own supported JS helper options; callback/contextual APIs are preserved."
+    },
+    {
+      "code": "SARJ549",
+      "ruleId": "no-async-client-in-constructor",
+      "decision": "architecture-review",
+      "owner": "@sarj/require-explicit-service-contract; @sarj/require-port-for-service",
+      "basis": "HTTPX client ownership is Python-specific. Native fetch does not allocate an HTTPX client; SDK constructor allocation requires provider-specific lifetime evidence. Existing service-contract controls cover dependency boundaries, without claiming equivalent client-lifetime enforcement."
+    },
+    {
+      "code": "SARJ550",
+      "ruleId": "prefer-pytest-fixture-contract",
+      "decision": "new-local",
+      "owner": "@sarj/prefer-dependency-interface; @sarj/prefer-test-fixture-reuse",
+      "basis": "Existing declared interface consumption plus source-proven fixture reuse; no ABC is invented from a class name."
+    },
+    {
+      "code": "SARJ551",
+      "ruleId": "no-test-comments",
+      "decision": "new-local",
+      "owner": "@sarj/no-test-comments",
+      "basis": "General maintained-test prose policy with legal/directive/type-contract preservation and whitespace-preserving safe fix."
+    },
+    {
+      "code": "SARJ552",
+      "ruleId": "no-generic-json-parser",
+      "decision": "new-local",
+      "owner": "@sarj/no-generic-json-parser",
+      "basis": "Known static field reads on open Zod parser outputs require focused object schemas; opaque JSON forwarding/storage remains valid."
+    },
+    {
+      "code": "SARJ553",
+      "ruleId": "require-constrained-api-integer",
+      "decision": "new-local",
+      "owner": "@sarj/require-constrained-schema-integer; @sarj/no-numeric-search-param-coercion",
+      "basis": "Explicit lower-bounded integer schema fields and validated URL numeric coercion; FastAPI annotations are not duplicated."
+    },
+    {
+      "code": "SARJ554",
+      "ruleId": "no-redundant-attribute-unpacking",
+      "decision": "new-local",
+      "owner": "@sarj/no-redundant-local-alias",
+      "basis": "Object shorthand single-use renames cover the portable JS binding case. Same-name tuple attribute unpacking has no exact JS tuple assignment equivalent; snapshots remain valid."
+    },
+    {
+      "code": "SARJ555",
+      "ruleId": "no-mutating-input-with-result",
+      "decision": "new-local",
+      "owner": "@sarj/no-mutating-input-with-result",
+      "basis": "Direct declared mutable object input writes in result-returning functions now have an explicit counterpart."
+    }
+  ]
+}

@@ -1,19 +1,19 @@
 // vitest: shared-module-graph
-/**
- * Keeps the shipped rule ledger equal to this plugin's rule set.
- *
- * Deleting an ESLint rule is not a lint-level change for the repos using it.
- * A flat config that still names it makes ESLint exit 2 before it reads a single
- * file — `Could not find "@sarj/<rule>" in plugin "@sarj"` — and the strict
- * config sets `reportUnusedDisableDirectives: "error"`, so every orphaned
- * `eslint-disable` is an error of its own. The repo becomes unlintable on the
- * upgrade, with nothing in the failure saying the rule went deliberately.
- *
- * `rule-ledger.json` is what `sarj-standards doctor` reads to name those
- * references BEFORE the upgrade. It only helps if it is current, so removing a
- * rule fails here until `make sync-rule-ledger` has run — and that script
- * retires rather than deletes, which is how the removal ends up recorded.
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -67,10 +67,10 @@ describe("rule ledger", () => {
   });
 
   it("records a rename only for a name that stopped resolving", () => {
-    // The ledger is what `doctor` reads to say "rewrite this reference". Saying
-    // that about a name the plugin still registers would send a consumer to
-    // change a line that works; saying nothing about one it no longer registers
-    // leaves them with `ESLint: exit 2` and no replacement to reach for.
+
+
+
+
     const registered = Object.keys(plugin.rules);
     const stillLive = LEDGER.retired
       .filter((entry) => entry.kind === "eslint" && entry.status === "renamed")

@@ -16,11 +16,11 @@ const RULE_TESTER = new RuleTester({
   },
 });
 
-// Most fixtures below carry a statement AFTER the `try`. That is deliberate: it
-// keeps them out of the terminal-error-boundary exemption so they go on pinning
-// what they were written to pin (which statements count toward the limit).
-// Fixtures that exercise the exemption itself are grouped at the end of each
-// list and say so.
+
+
+
+
+
 RULE_TESTER.run("no-fat-try-blocks", rule, {
   valid: [
     {
@@ -28,8 +28,8 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       options: [{ max: 5 }],
       code: `try { const a = one(); const b = two(); const c = three(); const d = four(); } catch (error) { handle(error); }`,
     },
-    // Generated request clients are template output, not hand-authored error
-    // handling worth reshaping.
+
+
     {
       code: `
         async function request() {
@@ -43,11 +43,11 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       filename: "/repo/src/openapi-gen/requests/core/request.ts",
     },
-    // Exactly three throwing (result-using) statements — at the limit.
+
     {
       code: NO_FAT_TRY_BLOCKS_DOCUMENTATION.examples[0].files[0].source,
     },
-    // Exactly three awaits — at the limit.
+
     {
       code: `
         async function f() {
@@ -60,8 +60,8 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // A binding-free one-call catch plus one-call finally is state
-    // orchestration around one operation, not unrelated error recovery.
+
+
     {
       name: "allows simple catch-finally orchestration",
       code: `
@@ -80,7 +80,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // Four statements but only three throw — pure member access is free.
+
     {
       code: `
         function f() {
@@ -94,8 +94,8 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // Dominant real-world pattern: ONE awaited action, then trailing
-    // fire-and-forget side effects (setters/toast/router/callback). Not fat.
+
+
     {
       code: `
         async function f() {
@@ -111,7 +111,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // Bare fire-and-forget call statements do not count (no await, value used).
+
     {
       code: `
         function f() {
@@ -125,7 +125,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // Pure array / object plumbing does not count, even when assigned.
+
     {
       code: `
         function f() {
@@ -140,8 +140,8 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // Async callbacks return rejected promises; the enclosing synchronous map
-    // call does not throw those callback failures into this catch.
+
+
     {
       code: `
         function f(rows) {
@@ -155,7 +155,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // Catchless try/finally is resource cleanup, not an error boundary.
+
     {
       code: `
         async function f() {
@@ -168,7 +168,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // Handler re-throws on its last statement — uniform error wrapping, exempt.
+
     {
       code: `
         async function f() {
@@ -185,7 +185,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // Handler re-throws (bare) — exempt.
+
     {
       code: `
         async function f() {
@@ -199,7 +199,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // Throwing calls only in the catch, not the try body.
+
     {
       code: `
         function f() {
@@ -214,7 +214,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // Calls only inside nested function bodies do not count toward the limit.
+
     {
       code: `
         function f() {
@@ -228,7 +228,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // Compound statements collapse to one each (an if/for/switch counts once).
+
     {
       code: `
         function f() {
@@ -241,8 +241,8 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // Long body of pure computation + a SINGLE awaited action. Only the await
-    // throws; reduce/map/filter/join and template literals are free.
+
+
     {
       code: `
         async function f() {
@@ -258,8 +258,8 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // ONE risky call then a fat tail of non-throwing cleanup: setState with a
-    // functional update, toast, console.log, analytics, optional callback.
+
+
     {
       code: `
         async function f() {
@@ -275,7 +275,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // finally with MANY cleanup statements but the try holds one await — exempt.
+
     {
       code: `
         async function f() {
@@ -291,7 +291,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // Building an accumulator in a loop then one await — loop collapses to one.
+
     {
       code: `
         async function f() {
@@ -306,7 +306,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // Destructuring + pure Object/Array plumbing + one await.
+
     {
       code: `
         async function f() {
@@ -321,9 +321,9 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // SSE / streaming API handler: ONE real await plus non-throwing web-platform
-    // constructors (TextEncoder / ReadableStream / Blob / Response). Only the
-    // await throws; the constructors are stream/response plumbing, not I/O.
+
+
+
     {
       code: `
         async function GET() {
@@ -339,9 +339,9 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // FP-3: the bare-call exemption must survive a guard. Six statements, but
-    // only the three awaits can throw — the three \`if\` guards each contain a
-    // fire-and-forget log plus a return.
+
+
+
     {
       code: `
         async function f(path) {
@@ -358,7 +358,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // FP-3: the same exemption through an \`else\` branch.
+
     {
       code: `
         function f(x) {
@@ -373,10 +373,10 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
     },
 
-    // --- Terminal error-propagating boundary (the 83%-of-findings exemption) ---
 
-    // HTTP route handler: the try is the whole body and the catch turns any
-    // failure into one error response. Nothing is mis-attributed.
+
+
+
     {
       code: `
         export async function POST(req) {
@@ -394,8 +394,8 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // RPC handler: the handler is a single bare call that converts the error to
-    // the transport's error type.
+
+
     {
       code: `
         async function getMaintenance(req, ctx) {
@@ -411,8 +411,8 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // Result-type boundary: logs the error and returns a typed error variant.
-    // Not a success-shaped swallow, so the exemption applies.
+
+
     {
       code: `
         async function createContact(input) {
@@ -429,8 +429,8 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // The exemption reaches through an \`if\` that is itself terminal — nothing
-    // in the function runs after the try either way.
+
+
     {
       code: `
         async function handler(req, res) {
@@ -463,8 +463,8 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // The purity model, negative side. These must STAY silent after `JSON.parse`
-    // and the Map/Set verbs stopped counting as pure by name.
+
+
     {
       code: `
         function h(xs) {
@@ -479,8 +479,8 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // `JSON.stringify` stays pure: it is overwhelmingly called on a value the
-    // same function just built. A recall choice, not an oversight.
+
+
     {
       code: `
         function j(a, b, c, d) {
@@ -495,9 +495,9 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
         }
       `,
     },
-    // Fire-and-forget `cache.set(...)` is still exempt structurally, so dropping
-    // `set` from the name-only pure list did not resurrect the class that
-    // `isBareCallStatement` exists to suppress.
+
+
+
     {
       code: `
         function m(cache) {
@@ -513,7 +513,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
     },
   ],
   invalid: [
-    // --- Upper bounds on the simple catch/finally orchestration exemption ---
+
     {
       name: "keeps simple catch without finally",
       code: `
@@ -794,8 +794,8 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-    // `JSON.parse` is the canonical throwing call and the canonical reason to
-    // write try/catch, and it was on the "pure, non-throwing" list.
+
+
     {
       code: `
         function f(a, b, c, d) {
@@ -811,8 +811,8 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-    // `PURE_METHODS` matched by method NAME only, so every I/O client that
-    // borrows the Map/Set vocabulary read as pure data plumbing.
+
+
     {
       code: `
         function g(client, redis, repo, api) {
@@ -828,8 +828,8 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-    // FP-3 must not over-suppress: a call whose RESULT is branched on still
-    // counts, even though the guard body is bare fire-and-forget.
+
+
     {
       code: `
         function f(x) {
@@ -844,7 +844,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-    // FP-3 must not over-suppress: a result-using call inside a guard body counts.
+
     {
       code: `
         function f(x) {
@@ -859,12 +859,12 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-    // Four result-using calls — boundary just over the limit.
+
     {
       code: NO_FAT_TRY_BLOCKS_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "fatTryBlock" }],
     },
-    // Four awaits — multiple independent I/O ops under one swallowing catch.
+
     {
       code: `
         async function f() {
@@ -879,7 +879,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-    // Mixed awaits and result-using sync calls push over the limit.
+
     {
       code: `
         async function f() {
@@ -894,7 +894,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-    // `new` (non-pure constructor) whose value is used counts.
+
     {
       code: `
         function f() {
@@ -909,7 +909,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-    // Handler does NOT re-throw (final statement swallows) — fires.
+
     {
       code: `
         async function f() {
@@ -926,7 +926,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-    // A conditional throw that is not the last statement does not exempt.
+
     {
       code: `
         async function f() {
@@ -944,8 +944,8 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-    // Nested-function calls are ignored, but the real throwing statements
-    // around them still push the count over the limit.
+
+
     {
       code: `
         function f() {
@@ -961,8 +961,8 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-    // Non-throwing web constructors are free, but four real awaits alongside
-    // them are still four throwing ops — must fire (no under-firing).
+
+
     {
       code: `
         async function f() {
@@ -980,13 +980,13 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       errors: [{ messageId: "fatTryBlock" }],
     },
 
-    // --- Upper bounds on the terminal-error-boundary exemption ---
-    // Each of these is a true positive from the corpus read. They must keep
-    // firing or the exemption has widened into a no-op.
 
-    // Clause (b): the handler INSPECTS the error and falls back to a different
-    // transport. Its last statement is a branch, not a hand-off, so which
-    // statement threw changes what the handler does.
+
+
+
+
+
+
     {
       code: `
         async function sendWelcomeMessage({ channelId, token, webhookUrl }) {
@@ -1006,9 +1006,9 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-    // Clause (a): the try is NOT terminal — the catch resets state and the
-    // function goes on to retry with another strategy, so a failure in an early
-    // statement silently changes what the retry sees.
+
+
+
     {
       code: `
         async function fetchTransactions(accountId) {
@@ -1028,9 +1028,9 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-    // Clause (d): a long body whose handler logs and returns an EMPTY ARRAY. A
-    // configuration bug in any one of these statements becomes "no contacts
-    // found" at the call site — the success-shaped swallow the rule exists for.
+
+
+
     {
       code: `
         async function getContacts(emails) {
@@ -1049,7 +1049,7 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-    // Clause (d), object shape: an empty object is just as success-shaped.
+
     {
       code: `
         async function loadSettings(orgId) {
@@ -1067,8 +1067,8 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-    // Clause (c): the handler never touches the error. A uniform 500 that
-    // discards the cause is not error propagation, it is a swallow.
+
+
     {
       code: `
         export async function GET(req) {
@@ -1085,8 +1085,8 @@ RULE_TESTER.run("no-fat-try-blocks", rule, {
       `,
       errors: [{ messageId: "fatTryBlock" }],
     },
-    // Clause (a): last in the LOOP body is not terminal — the next iteration
-    // runs after the handler.
+
+
     {
       code: `
         async function syncAll(ids) {

@@ -15,19 +15,19 @@ const RULE_TESTER = new RuleTester();
 
 RULE_TESTER.run("no-client-side-data-fetching", rule, {
   valid: [
-    // fetch outside useEffect is fine.
+
     { code: "async function load() { return await fetch('/x'); }" },
-    // Load the same data while rendering on the server.
+
     {
       code: NO_CLIENT_SIDE_DATA_FETCHING_DOCUMENTATION.examples[0].files[0].source,
       filename: NO_CLIENT_SIDE_DATA_FETCHING_DOCUMENTATION.examples[0].focusPath,
       languageOptions: { parserOptions: { ecmaFeatures: { jsx: true } } },
     },
-    // useState only.
+
     {
       code: "import { useState } from 'react'; const [x, setX] = useState(0);",
     },
-    // Non-GET fetch (e.g. POST analytics) is allowed.
+
     {
       code: "useEffect(() => { fetch('/api/x', { method: 'POST' }); }, []);",
     },
@@ -37,7 +37,7 @@ RULE_TESTER.run("no-client-side-data-fetching", rule, {
     {
       code: "useEffect(() => { ky('/api/x', { method: 'PUT' }); }, []);",
     },
-    // axios.create / axios.defaults are NOT HTTP method calls — must not flag.
+
     {
       code: "useEffect(() => { const instance = axios.create({ baseURL: '/' }); }, []);",
     },
@@ -50,7 +50,7 @@ RULE_TESTER.run("no-client-side-data-fetching", rule, {
     {
       code: "useEffect(() => { ky.create({ prefixUrl: '/api' }); superagent.agent(); }, []);",
     },
-    // Analytics endpoints are exempt (whole segment matches).
+
     {
       code: "useEffect(() => { fetch('/api/track/page-view'); }, []);",
     },
@@ -96,12 +96,12 @@ RULE_TESTER.run("no-client-side-data-fetching", rule, {
         { messageId: "noClientFetch" },
       ],
     },
-    // useLayoutEffect must also be caught.
+
     {
       code: "useLayoutEffect(() => { fetch('/api/users'); }, []);",
       errors: [{ messageId: "noClientFetch" }],
     },
-    // React.useEffect / React.useLayoutEffect namespaced form.
+
     {
       code: "React.useEffect(() => { fetch('/api/users'); }, []);",
       errors: [{ messageId: "noClientFetch" }],
@@ -110,7 +110,7 @@ RULE_TESTER.run("no-client-side-data-fetching", rule, {
       code: "React.useLayoutEffect(() => { axios.post('/api/x', {}); }, []);",
       errors: [{ messageId: "noClientFetch" }],
     },
-    // axios non-get methods are still data calls.
+
     {
       code: "useEffect(() => { axios.patch('/api/users/1', { name: 'x' }); }, []);",
       errors: [{ messageId: "noClientFetch" }],
@@ -121,7 +121,7 @@ RULE_TESTER.run("no-client-side-data-fetching", rule, {
         messageId: "noClientFetch" as const,
       })),
     },
-    // Substring-vs-segment regressions: these must NOT be exempted as analytics.
+
     {
       code: "useEffect(() => { fetch('/api/login'); }, []);",
       errors: [{ messageId: "noClientFetch" }],

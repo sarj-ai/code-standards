@@ -20,7 +20,7 @@ const SOURCE =
 const FIXED =
   "function premiumBook() { return 'premium'; }\nfunction regularBook() { return 'regular'; }\nexport function choices(): string[] { return [premiumBook(), regularBook(), premiumBook()]; }";
 
-/** Exercise source ownership independently of pending native typed detection. */
+
 function apply(source: string): ReturnType<Linter["verifyAndFix"]> {
   const adapter: TSESLint.RuleModule<"check", []> = {
     meta: {

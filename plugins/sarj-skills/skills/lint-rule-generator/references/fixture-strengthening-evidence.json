@@ -1,0 +1,139 @@
+{
+  "rule": "python:prefer-pytest-dependency-fixtures",
+  "code": "SARJ526",
+  "recommendation": "ship-warning",
+  "concrete_gap": "The prior dependency-graph detector missed constructing a second store already supplied by a typed fixture parameter.",
+  "existing_owners": [
+    "python:prefer-pytest-dependency-fixtures",
+    "python:prefer-pytest-fixture-injection",
+    "python:repeated-test-composition"
+  ],
+  "upstream_overlap": "pytest fixture mechanics do not prohibit manual construction; the relationship requires source and test dependency analysis.",
+  "passes": [
+    {
+      "pass": 1,
+      "focus": "exact-supplied-class",
+      "regression": "packages/python/tests/rules/test_prefer_pytest_dependency_fixtures.py::test_supplied_fixture_replaces_direct_construction[exact-type]",
+      "finding": "Detect a second direct constructor even when it is the test subject rather than a nested dependency."
+    },
+    {
+      "pass": 2,
+      "focus": "abstract-contract",
+      "regression": "packages/python/tests/rules/test_prefer_pytest_dependency_fixtures.py::test_supplied_fixture_replaces_direct_construction[existing-abc]",
+      "finding": "Resolve the supplied ABC and concrete implementation relationship instead of matching service names."
+    },
+    {
+      "pass": 3,
+      "focus": "forward-annotation",
+      "regression": "packages/python/tests/rules/test_prefer_pytest_dependency_fixtures.py::test_supplied_fixture_replaces_direct_construction[forward-annotation]",
+      "finding": "Follow supported annotation syntax without requiring concrete fixture types."
+    },
+    {
+      "pass": 4,
+      "focus": "pytest-collection-contexts",
+      "regression": "packages/python/tests/rules/test_prefer_pytest_dependency_fixtures.py::test_supplied_fixture_in_collected_test_forms",
+      "finding": "Cover async tests, keyword-only fixtures and collected plain test classes."
+    },
+    {
+      "pass": 5,
+      "focus": "branch-nesting",
+      "regression": "packages/python/tests/rules/test_prefer_pytest_dependency_fixtures.py::test_duplicate_fixture_inside_branch",
+      "finding": "Inspect direct test branches while preserving nested helper ownership."
+    },
+    {
+      "pass": 6,
+      "focus": "imported-constructor-alias",
+      "regression": "packages/python/tests/rules/test_prefer_pytest_dependency_fixtures.py::test_imported_aliased_constructor_reuses_abstract_fixture",
+      "finding": "Resolve the constructor imported under a different spelling against a source-visible abstract fixture."
+    },
+    {
+      "pass": 7,
+      "focus": "parametrized-input-boundary",
+      "regression": "packages/python/tests/rules/test_prefer_pytest_dependency_fixtures.py::test_parametrized_value_is_not_assumed_to_be_a_fixture",
+      "finding": "Exclude parametrized arguments; regression testing exposed and fixed qualified-name matching for mark.parametrize."
+    },
+    {
+      "pass": 8,
+      "focus": "lexical-ownership",
+      "regression": "packages/python/tests/rules/test_prefer_pytest_dependency_fixtures.py::test_keeps_constructor_failure_nested_and_shadowed_ownership",
+      "finding": "Preserve locally shadowed constructors and nested callbacks instead of guessing their ownership."
+    },
+    {
+      "pass": 9,
+      "focus": "constructor-failure-lifecycle",
+      "regression": "packages/python/tests/rules/test_prefer_pytest_dependency_fixtures.py::test_keeps_constructor_failure_nested_and_shadowed_ownership[constructor-failure]",
+      "finding": "Keep explicit pytest.raises construction under test and avoid automatic fixture lifecycle extraction."
+    },
+    {
+      "pass": 10,
+      "focus": "precedence-and-escape-hatches",
+      "regression": "packages/python/tests/rules/test_prefer_pytest_dependency_fixtures.py::test_no_duplicate_when_fixture_and_collaborator_detection_overlap; test_constructor_suppression_and_malformed_input",
+      "finding": "Deduplicate overlapping fixture/dependency findings and honor exact suppressions; regression testing exposed and fixed missing direct-check suppression."
+    }
+  ],
+  "test_evidence": {
+    "focused_python_final": {
+      "passed": 178,
+      "failed": 0,
+      "suites": 7
+    },
+    "typescript_fixture_and_disposal": {
+      "passed": 32,
+      "failed": 0,
+      "suites": 2
+    },
+    "targeted_builtin_source_analysis": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "targeted_python_types": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "qualificationStatus": "Recorded focused results precede this base/code reconciliation. Current source must complete the canonical make verify gate; no publication is asserted."
+  },
+  "fix_policy": "Existing authored identity-guard factory fixes remain unchanged. Duplicate supplied-instance findings never automatically replace construction or alter lifecycle.",
+  "known_limits": [
+    "Unannotated requested fixtures require a proven collaborator/settings relationship under the existing detector.",
+    "Generic, dynamic, imported opaque and unresolved types are not guessed.",
+    "Constructor variants require review and may need a typed factory fixture.",
+    "No claim of exhaustive project-wide corpus or performance qualification is made by this pass record."
+  ],
+  "companion_rules": {
+    "python:prefer-pytest-fixture-contract": "Expose an existing ABC/Protocol from a fixture, preserving observed implementation-specific consumers.",
+    "eslint:prefer-test-fixture-reuse": "Follow concrete constructors supplied by source-visible Vitest/Playwright test.extend fixtures.",
+    "eslint:no-return-disposed-resource": "Detect resources directly returned from explicit using/await using ownership scopes."
+  },
+  "additional_calibration": {
+    "native_httpx_clients": {
+      "cases": 13,
+      "result": "pass",
+      "boundary": "Runtime-proven Client/AsyncClient constructors, aliases, managed lifetimes, constructor failures, shadowing and fixture ownership."
+    },
+    "native_precedence": {
+      "focused_tests": 141,
+      "result": "pass",
+      "boundary": "Specific existing diagnostics own overlapping locations; standalone rules retain enforcement."
+    },
+    "comment_classification": "Ambiguous production basenames require actual collected test declarations; test directories and conftest retain full coverage."
+  },
+  "registryReconciliation": {
+    "baseCommit": "3d848ea71f4ee1b4c2c7469e8bfebf8f8e036e07",
+    "baseRules": 200,
+    "addedRules": 6,
+    "candidateRules": 206,
+    "immutableIncomingOwner": {
+      "code": "SARJ549",
+      "ruleId": "no-async-client-in-constructor"
+    },
+    "candidateCodes": {
+      "SARJ550": "prefer-pytest-fixture-contract",
+      "SARJ551": "no-test-comments",
+      "SARJ552": "no-generic-json-parser",
+      "SARJ553": "require-constrained-api-integer",
+      "SARJ554": "no-redundant-attribute-unpacking",
+      "SARJ555": "no-mutating-input-with-result"
+    },
+    "overlap": "The incoming rule owns synchronous constructor execution; fixture reuse owns collected test execution and does not descend into nested class bodies."
+  }
+}

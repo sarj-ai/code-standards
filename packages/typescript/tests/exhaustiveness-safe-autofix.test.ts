@@ -15,7 +15,7 @@ const SOURCE =
   "function assertNever(_value: never): void {}\nexport function render(kind: 'a' | 'b'): number { switch (kind) { case 'a': return 1; case 'b': return 2; default: break; } return 0; }";
 const FIXED = SOURCE.replace("default:", "default: assertNever(kind);");
 
-/** Exercise helper boundaries without asserting syntax-only native type evidence. */
+
 function apply(source: string): ReturnType<Linter["verifyAndFix"]> {
   const adapter: TSESLint.RuleModule<"check", []> = {
     meta: {

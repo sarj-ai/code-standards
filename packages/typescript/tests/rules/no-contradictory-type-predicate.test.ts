@@ -17,6 +17,11 @@ const TESTER = new RuleTester({ languageOptions: { parser, parserOptions: {
 
 TESTER.run("no-contradictory-type-predicate", rule, {
   valid: [
+    { name: "record property validation", code: 'type Account = { id: string }; function check(v: unknown): v is Account { return typeof v === "object" && v !== null && "id" in v && typeof v.id === "string"; }' },
+    { name: "optional-only record has no required field witness", code: 'type Account = { id?: string }; function check(v: unknown): v is Account { return typeof v === "object" && v !== null; }' },
+    { name: "index contract is not a named record", code: 'type Bag = Record<string, unknown>; function check(v: unknown): v is Bag { return typeof v === "object" && v !== null; }' },
+    { name: "generic record is outside the witness proof", code: 'type Account<T> = { id: T }; function check(v: unknown): v is Account<string> { return typeof v === "object" && v !== null; }' },
+    { name: "class construction has a separate runtime contract", code: 'class Account { id = ""; } function check(v: unknown): v is Account { return typeof v === "object" && v !== null; }' },
     { name: "public consistent predicate", code: NO_CONTRADICTORY_TYPE_PREDICATE_DOCUMENTATION.examples[0].files[0].source },
     { name: "overload publishes a sound narrower predicate", code: 'function isText(v: string | number): v is string; function isText(v: unknown): v is string | number { return typeof v === "string"; }' },
     { name: "overload publishes only a boolean contract", code: 'function isText(v: string): boolean; function isText(v: unknown): v is string | number { return typeof v === "string"; }' },
@@ -80,6 +85,12 @@ TESTER.run("no-contradictory-type-predicate", rule, {
     { name: "generated ownership", filename: 'guard.generated.ts', code: 'function check(v: unknown): v is string { return typeof v === "number"; }' },
   ],
   invalid: [
+    ...[
+      ["named record without fields", 'type Account = { id: string }; function check(v: unknown): v is Account { return typeof v === "object"; }'],
+      ["named record with null exclusion", 'type Account = { id: string }; function check(v: unknown): v is Account { return typeof v === "object" && v !== null; }'],
+      ["interface with reversed checks", 'interface Account { readonly id: string; } function check(v: unknown): v is Account { return null !== v && "object" === typeof v; }'],
+      ["already non-null object is still missing fields", 'type Account = { id: string }; function check(v: object): v is Account { return typeof v === "object"; }'],
+    ].map(([name, code]) => ({ name, code, output: null, errors: [{ messageId: "uncheckedRecordFields" as const }] })),
     { name: "preserves the sole named contradictory predicate binding", code: "export {}; type Numeric = number; function check(v: unknown): v is Numeric { return typeof v === \"string\"; }", output: null, errors: [{ messageId: "contradictoryPredicate" }] },
     { name: "corrects a contradiction with an independent exported type use", code: "export type Kept = Numeric; type Numeric = number; function check(v: unknown): v is Numeric { return typeof v === \"string\"; }", output: "export type Kept = Numeric; type Numeric = number; function check(v: unknown): boolean { return typeof v === \"string\"; }", errors: [{ messageId: "contradictoryPredicate" }] },
     { name: "corrects an unused private primitive guard", code: "export {}; function check(v:unknown): v is string { return typeof v === \"number\"; }", output: "export {}; function check(v:unknown): boolean { return typeof v === \"number\"; }", errors: [{ messageId: "contradictoryPredicate" }] },

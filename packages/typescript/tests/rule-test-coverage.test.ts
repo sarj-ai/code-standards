@@ -1,5 +1,5 @@
 // vitest: shared-module-graph
-/** Every shipped rule needs valid and invalid executable cases. */
+
 
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -14,7 +14,7 @@ import plugin, { RULES } from "../src/index.js";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RULE_TESTS_DIR = resolve(HERE, "rules");
 
-/** Every Sarj-owned rule exported or wired into a preset, de-duplicated. */
+
 function ruleNamesUnderTest(): string[] {
   const names = new Set(Object.keys(RULES));
   for (const preset of Object.values(plugin.configs)) {
@@ -25,7 +25,7 @@ function ruleNamesUnderTest(): string[] {
   return [...names].sort();
 }
 
-/** `const x = [...]` array literals declared at any depth in the file, by name. */
+
 function arrayConstants(source: ts.SourceFile): Map<string, ts.ArrayLiteralExpression> {
   const found = new Map<string, ts.ArrayLiteralExpression>();
   const visit = (node: ts.Node): void => {
@@ -48,13 +48,13 @@ function unwrap(value: ts.Expression): ts.Expression {
   return value;
 }
 
-/**
- * How many cases an `valid:` / `invalid:` value contributes.
- *
- * `undefined` means "could not be determined statically" — an imported array, a
- * function call — which is reported as a failure rather than assumed non-empty. A
- * gate that guesses in the permissive direction is the failure mode being fixed.
- */
+
+
+
+
+
+
+
 function countCases(
   value: ts.Expression,
   constants: Map<string, ts.ArrayLiteralExpression>,
@@ -112,7 +112,7 @@ interface CaseCounts {
   readonly invalid: number | undefined;
 }
 
-/** The `{ valid, invalid }` totals across every `<tester>.run(name, rule, {...})` call. */
+
 function caseCounts(filePath: string): CaseCounts {
   const source = ts.createSourceFile(
     filePath,
@@ -164,6 +164,12 @@ describe("every shipped rule is exercised by its own tests", () => {
 
   it("has rules to check", () => {
     expect(names.length).toBeGreaterThan(0);
+  });
+
+  it("configures every shipped rule in the strict preset", () => {
+    for (const name of Object.keys(RULES)) {
+      expect(plugin.configs.strict.rules).toHaveProperty(`@sarj/${name}`);
+    }
   });
 
   it("every preset rule has a known implementation owner", () => {
