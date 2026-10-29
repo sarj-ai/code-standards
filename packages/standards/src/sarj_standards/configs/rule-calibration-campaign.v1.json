@@ -3053,6 +3053,158 @@
       "state": "pending",
       "evidence": "Scoped calibration inspected 3,604 Python files from two immutable corpora. All three reported constructor allocations were reviewed as true positives, with no inspected false positives or duplicate findings. Focused positive and abstention controls are executable in the owning rule tests. Broader field calibration remains pending.",
       "outcome": "SARJ549: Retain the user-requested ERROR policy without autofix. Inject a caller-owned HTTPX AsyncClient and keep async lifetime management at the composition boundary. Import-proven eager construction is checked; shadowed, deferred, escaped and unresolved factory flows conservatively abstain. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/python/no-generic-json-parser",
+      "family": "python",
+      "ruleId": "no-generic-json-parser",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls are maintained in packages/python/tests/rules/test_no_generic_json_parser.py. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
+      "outcome": "SARJ552: Retain WARNING without autofix. Review import-proven open Pydantic parsers and consumed-field models; preserve declared arbitrary-JSON fields and reasoned schema-infrastructure exceptions. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/python/no-mutating-input-with-result",
+      "family": "python",
+      "ruleId": "no-mutating-input-with-result",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls are maintained in packages/python/tests/rules/test_no_mutating_input_with_result.py. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
+      "outcome": "SARJ555: Retain WARNING without autofix. Review direct borrowed-input attribute writes in result-returning functions, preserving None commands, copies, receiver state and existing model/container diagnostic owners. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/python/no-redundant-attribute-unpacking",
+      "family": "python",
+      "ruleId": "no-redundant-attribute-unpacking",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls are maintained in packages/python/tests/rules/test_no_redundant_attribute_unpacking.py. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
+      "outcome": "SARJ554: Retain WARNING without autofix. Limit advice to unconditional repeated attribute-name aliases; preserve branch normalization and intentional snapshots for review. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/python/no-test-comments",
+      "family": "python",
+      "ruleId": "no-test-comments",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls are maintained in packages/python/tests/rules/test_no_test_comments.py. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
+      "outcome": "SARJ551: Retain WARNING without autofix. Keep legal notices, tool directives, generated source, ambiguous production basenames and exact diagnostic precedence within their declared boundaries; no automatic deletion is provided. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/python/prefer-pytest-fixture-contract",
+      "family": "python",
+      "ruleId": "prefer-pytest-fixture-contract",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls are maintained in packages/python/tests/rules/test_prefer_pytest_fixture_contract.py. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
+      "outcome": "SARJ550: Retain WARNING without autofix. Review source-visible ABC/Protocol fixture contracts while preserving inherited abstract contracts and observed implementation-specific consumers. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/python/require-constrained-api-integer",
+      "family": "python",
+      "ruleId": "require-constrained-api-integer",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls are maintained in packages/python/tests/rules/test_require_constrained_api_integer.py. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
+      "outcome": "SARJ553: Retain WARNING without autofix. Review scalar FastAPI integer domains, explicit bounds and injection exclusions without guessing positive versus signed semantics from parameter names. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/typescript/no-discarded-validation-result",
+      "family": "typescript",
+      "ruleId": "no-discarded-validation-result",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls are maintained in packages/typescript/tests/rules/no-discarded-validation-result.test.ts. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
+      "outcome": "@sarj/no-discarded-validation-result: Retain WARNING without autofix. Review import-proven Zod outcomes and invoked output-changing operations; preserve plain throwing validation and schema fields merely named like transforms. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/typescript/no-generic-json-parser",
+      "family": "typescript",
+      "ruleId": "no-generic-json-parser",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls are maintained in packages/typescript/tests/rules/no-generic-json-parser.test.ts. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
+      "outcome": "@sarj/no-generic-json-parser: Retain WARNING without autofix. Review static field reads from proven open Zod parser outputs; preserve opaque JSON forwarding, dynamic indexing and unresolved schema ownership. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/typescript/no-mutating-container-transform",
+      "family": "typescript",
+      "ruleId": "no-mutating-container-transform",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls are maintained in packages/typescript/tests/rules/no-mutating-container-transform.test.ts. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
+      "outcome": "@sarj/no-mutating-container-transform: Retain WARNING without autofix. Review declared primitive-array transformations and supported alias/branch flow; preserve fresh copies, commands and unresolved mutation flows. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/typescript/no-mutating-input-with-result",
+      "family": "typescript",
+      "ruleId": "no-mutating-input-with-result",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls are maintained in packages/typescript/tests/rules/no-mutating-input-with-result.test.ts. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
+      "outcome": "@sarj/no-mutating-input-with-result: Retain WARNING without autofix. Review mutable data-field writes through source-declared object inputs with visible result returns; preserve readonly/compiler ownership, commands and opaque contracts. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/typescript/no-negative-only-http-status-assertion",
+      "family": "typescript",
+      "ruleId": "no-negative-only-http-status-assertion",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls are maintained in packages/typescript/tests/rules/no-negative-only-http-status-assertion.test.ts. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
+      "outcome": "@sarj/no-negative-only-http-status-assertion: Retain WARNING without autofix. Review proven native HTTP response status oracles within supported test callbacks; preserve exact assertions for the same response and unresolved clients. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/typescript/no-redundant-local-alias",
+      "family": "typescript",
+      "ruleId": "no-redundant-local-alias",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls are maintained in packages/typescript/tests/rules/no-redundant-local-alias.test.ts. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
+      "outcome": "@sarj/no-redundant-local-alias: Retain WARNING without autofix. Review stable single-use object-shorthand renames while preserving typed aliases, captures, snapshots and independently meaningful bindings. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/typescript/no-return-disposed-resource",
+      "family": "typescript",
+      "ruleId": "no-return-disposed-resource",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls are maintained in packages/typescript/tests/rules/no-return-disposed-resource.test.ts. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
+      "outcome": "@sarj/no-return-disposed-resource: Retain WARNING without autofix. Review direct using/await using resource returns and supported const aliases; preserve independent snapshots and consumers within the resource lifetime. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/typescript/no-test-comments",
+      "family": "typescript",
+      "ruleId": "no-test-comments",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls are maintained in packages/typescript/tests/rules/no-test-comments.test.ts. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
+      "outcome": "@sarj/no-test-comments: Retain WARNING and the cataloged safe autofix policy. Keep the cataloged safe comment-only fix within proven token-boundary, legal-notice and tool-directive exclusions; preserve strings and generated source. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/typescript/prefer-dependency-interface",
+      "family": "typescript",
+      "ruleId": "prefer-dependency-interface",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls are maintained in packages/typescript/tests/rules/prefer-dependency-interface.test.ts. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
+      "outcome": "@sarj/prefer-dependency-interface: Retain WARNING without autofix. Review private readonly dependencies with one existing local interface and only interface member use; preserve decorated, generic, escaping and implementation-specific contracts. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/typescript/prefer-test-fixture-reuse",
+      "family": "typescript",
+      "ruleId": "prefer-test-fixture-reuse",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls are maintained in packages/typescript/tests/rules/prefer-test-fixture-reuse.test.ts. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
+      "outcome": "@sarj/prefer-test-fixture-reuse: Retain WARNING without autofix. Review source-visible Vitest/Playwright fixture constructors and requested instances; preserve nested owners, mutable runners, factories and distinct constructor identities. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/typescript/production-derived-test-cases",
+      "family": "typescript",
+      "ruleId": "production-derived-test-cases",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls are maintained in packages/typescript/tests/rules/production-derived-test-cases.test.ts. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
+      "outcome": "@sarj/production-derived-test-cases: Retain WARNING without autofix. Review supported first-party imported case tables for an independent membership oracle; preserve valid literal oracles and avoid deleting dynamic tests. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/typescript/require-constrained-schema-integer",
+      "family": "typescript",
+      "ruleId": "require-constrained-schema-integer",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls are maintained in packages/typescript/tests/rules/require-constrained-schema-integer.test.ts. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
+      "outcome": "@sarj/require-constrained-schema-integer: Retain WARNING without autofix. Review explicit Zod limit/version field policy and same-chain bounds; preserve version zero, named domain schemas and documented sentinel contracts. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/typescript/require-jwt-lifetime",
+      "family": "typescript",
+      "ruleId": "require-jwt-lifetime",
+      "state": "pending",
+      "evidence": "Executable examples and focused controls are maintained in packages/typescript/tests/rules/require-jwt-lifetime.test.ts. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
+      "outcome": "@sarj/require-jwt-lifetime: Retain WARNING without autofix. Review import-proven returned JOSE verification results for exp requirements or finite token age, preserving zero age, opaque options and separate local claim validation. Full campaign completion is not claimed."
     }
   ]
 }

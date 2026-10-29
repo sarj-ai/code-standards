@@ -379,3 +379,55 @@ def test_owner_precedence_preserves_findings_when_source_cannot_parse() -> None:
     assert deduplicate_diagnostics(diagnostics, source=source) == expected
     context = PythonFileContext(Path("service.py"), source)
     assert deduplicate_diagnostics(diagnostics, source=source, context=context) == expected
+
+
+def test_native_http_client_precedence_preserves_standalone_fixture_advice(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "test_client.py"
+    clients = "from httpx import AsyncClient, ASGITransport, Client\n" + "\n".join(
+        f"async def test_case_{number}(app):\n"
+        "    async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:\n"
+        "        assert await client.get('/')\n"
+        for number in range(3)
+    )
+    source.write_text(
+        clients + "\ndef test_sync_client():\n    client = Client()\n    assert client\n", encoding="utf-8"
+    )
+    assert main(["check", "--rule", "prefer-pytest-dependency-fixtures", str(source)]) == 0
+    standalone = capsys.readouterr().out
+    assert standalone.count("SARJ526") == 4
+    assert (
+        main(
+            ["check", "--rule", "prefer-pytest-dependency-fixtures", "--rule", "repeated-test-composition", str(source)]
+        )
+        == 1
+    )
+    combined = capsys.readouterr().out
+    assert combined.count("SARJ457") == 3
+    assert combined.count("SARJ526") == 1
+
+
+def test_native_phase_comment_precedence_preserves_standalone_comment_policy(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "test_ready.py"
+    source.write_text(
+        "def test_ready():\n    # Arrange\n    value = 1\n    # A stale value is rejected.\n    assert value\n",
+        encoding="utf-8",
+    )
+    assert main(["check", "--rule", "no-test-comments", str(source)]) == 0
+    standalone = capsys.readouterr().out
+    assert standalone.count("SARJ551") == 2
+    assert main(["check", "--rule", "no-test-comments", "--rule", "no-bare-test-phase-comments", str(source)]) == 1
+    combined = capsys.readouterr().out
+    assert combined.count("SARJ089") == 1
+    assert combined.count("SARJ551") == 1
+    source.write_text(
+        "def test_ready():\n    # Arrange\n    value = 1\n    # A stale value is rejected.  # sarj-noqa: SARJ551 -- external protocol rationale\n    assert value\n",
+        encoding="utf-8",
+    )
+    assert main(["check", "--rule", "no-test-comments", "--rule", "no-bare-test-phase-comments", str(source)]) == 1
+    suppressed = capsys.readouterr().out
+    assert suppressed.count("SARJ089") == 1
+    assert "SARJ551" not in suppressed

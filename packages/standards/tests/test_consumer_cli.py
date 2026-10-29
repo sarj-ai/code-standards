@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 import os
 import subprocess
@@ -8,6 +9,7 @@ from typing import TYPE_CHECKING, Unpack
 
 import pytest
 
+from sarj_standards import __version__
 from sarj_standards.api import Standards
 import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import devops, manifest
@@ -15,6 +17,7 @@ from sarj_standards.libs.adoption.manifest import as_table, list_field
 from sarj_standards.libs.linting.analysis import report_from_tools
 from sarj_standards.libs.linting.devops_tools import TOOLS
 from sarj_standards.libs.linting.external import ProcessOutput
+from sarj_standards.libs.linting.policy import Policy
 from tests.process_fakes import FakeProcessExecutor
 
 
@@ -427,11 +430,84 @@ def test_empty_pull_request_scope_does_not_expand_to_the_repository(
     assert json.loads(capsys.readouterr().out)["diagnostics"] == []
 
 
-def test_react_doctor_trigger_keeps_metadata_and_deleted_typescript_out_of_the_analyzer_filter() -> None:
+@pytest.fixture
+def react_doctor_policy(tmp_path: Path) -> Policy:
+    adopted = manifest.Manifest(
+        version=__version__,
+        configs=(),
+        python_dest=".",
+        typescript_dest=".",
+        excluded_paths=("generated/**", "package.json"),
+    )
+    return Policy.from_manifest(tmp_path, adopted)
+
+
+@pytest.mark.parametrize(
+    ("paths", "expected"),
+    [
+        (("generated/client.ts",), False),
+        (("generated/deleted.tsx",), False),
+        (("src/component.tsx",), True),
+        (("src/deleted.tsx",), True),
+        (("generated/client.ts", "src/component.tsx"), True),
+        (("generated/client.ts", "package.json"), True),
+        (("package.json",), True),
+        (("web/tsconfig.json",), True),
+        (("README.md",), False),
+        ((), False),
+    ],
+)
+def test_react_doctor_trigger_respects_source_policy_and_keeps_metadata_and_deletions(
+    paths: tuple[str, ...], expected: bool, react_doctor_policy: Policy
+) -> None:
     trigger = cli._react_doctor_triggered_by  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _react_doctor_triggered_by contract directly with controlled fixture data.
-    assert trigger(("package.json",))
-    assert trigger(("src/deleted.tsx",))
-    assert not trigger(("README.md",))
+    assert trigger(paths, policy=react_doctor_policy) is expected
+
+
+def test_react_doctor_trigger_ignores_unsafe_source_symlink(tmp_path: Path, react_doctor_policy: Policy) -> None:
+    (tmp_path / "linked.tsx").symlink_to(tmp_path.parent / "outside.tsx")
+    trigger = cli._react_doctor_triggered_by  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise trigger routing on a temporary symlink without invoking an analyzer.
+    assert not trigger(("linked.tsx",), policy=react_doctor_policy)
+
+
+@pytest.mark.usefixtures("native_workflow_versions")
+def test_staged_excluded_typescript_does_not_force_react_doctor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname="fixture"\nversion="0"\nrequires-python=">=3.14"\n', encoding="utf-8"
+    )
+    git_environment = _git_environment()
+    subprocess.run(("git", "init"), cwd=tmp_path, check=True, capture_output=True, env=git_environment)
+    assert cli.main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
+    capsys.readouterr()
+    adopted = manifest.load(tmp_path)
+    assert adopted is not None
+    manifest.manifest_path(tmp_path).write_text(
+        replace(adopted, excluded_paths=("generated/**",)).render(), encoding="utf-8"
+    )
+    generated = tmp_path / "generated" / "client.ts"
+    generated.parent.mkdir()
+    generated.write_text("export const version = 1;\n", encoding="utf-8")
+    subprocess.run(
+        ("git", "add", "generated/client.ts"),
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        env=git_environment,
+    )
+    triggered: list[bool] = []
+
+    def capture_check(_root: Path, _paths: Sequence[str] | None, **kwargs: Unpack[CanonicalCheckOptions]) -> int:
+        triggered.append(kwargs.get("react_doctor_triggered", False))
+        return 0
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- inspect the CLI's analyzer selection without launching external tools.
+        cli, "_run_canonical_check", capture_check
+    )
+
+    assert cli.main(["--root", str(tmp_path), "check", "--staged"]) == 0
+    assert triggered == [False]
 
 
 @pytest.mark.usefixtures("native_workflow_versions")

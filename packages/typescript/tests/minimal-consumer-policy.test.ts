@@ -91,7 +91,7 @@ describe.each(FACTORIES)("%s minimal consumer policy", (_name, factory) => {
   });
 });
 
-/** Native before/after diagnostics and emitted JavaScript are independent of the fix renderer. */
+
 function nativeContract(source: string, noUnusedLocals = false): {readonly diagnostics: readonly number[]; readonly javascript: readonly string[]} {
   const filename = join(FIXTURE_ROOT, "autofix-native-contract.ts");
   const options: ts.CompilerOptions = {strict: true, target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext,

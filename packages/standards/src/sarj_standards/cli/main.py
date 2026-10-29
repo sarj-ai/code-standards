@@ -1257,7 +1257,9 @@ def _select_check_scope(args: _Args, root: Path, scope: _CheckScope) -> int | No
 def _select_staged_check(args: _Args, root: Path, scope: _CheckScope) -> int | None:
     try:
         staged_names = _staged_file_names(root)
-        scope.react_doctor_triggered = _react_doctor_triggered_by(staged_names)
+        scope.react_doctor_triggered = _react_doctor_triggered_by(
+            staged_names, policy=Policy.from_manifest(root, _declared_manifest(args))
+        )
         staged = _safe_staged_paths(root, _staged_file_names(root, include_deleted=False))
     except (OSError, subprocess.SubprocessError) as exc:
         if args.output_format != "text":
@@ -1311,7 +1313,9 @@ def _select_pull_request_check(args: _Args, root: Path, scope: _CheckScope, base
 
     try:
         changed_names = _changed_file_names(root, base)
-        scope.react_doctor_triggered = _react_doctor_triggered_by(changed_names)
+        scope.react_doctor_triggered = _react_doctor_triggered_by(
+            changed_names, policy=Policy.from_manifest(root, _declared_manifest(args))
+        )
         args.files = [
             path for path in _safe_staged_paths(root, changed_names) if runner.accepts_hook_path(Path(path), root=root)
         ]
@@ -2126,36 +2130,45 @@ def _changed_file_names(root: Path, base: str) -> list[str]:
     return [part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0") if part]
 
 
-def _react_doctor_triggered_by(paths: Iterable[str]) -> bool:
+def _react_doctor_triggered_by(paths: Iterable[str], *, policy: Policy) -> bool:
     return any(
-        Path(value).name in _REACT_DOCTOR_METADATA or Path(value).suffix.lower() in _REACT_DOCTOR_TYPESCRIPT_SUFFIXES
+        Path(value).name in _REACT_DOCTOR_METADATA
+        or (
+            Path(value).suffix.lower() in _REACT_DOCTOR_TYPESCRIPT_SUFFIXES
+            and (source := _safe_scope_path(policy.root, value)) is not None
+            and policy.allows_path(source)
+        )
         for value in paths
     )
 
 
 def _safe_staged_paths(root: Path, paths: Iterable[str]) -> list[str]:
-    repository = root.resolve()
-    safe: list[str] = []
-    for raw in paths:
-        if not raw:
-            continue
-        supplied = Path(raw)
-        lexical = Path(
-            os.path.abspath(  # ruff: ignore[os-path-abspath] -- preserve lexical symlink components before resolve.
-                supplied if supplied.is_absolute() else repository / supplied
-            )
+    return list(
+        dict.fromkeys(
+            str(path) for raw in paths if (path := _safe_scope_path(root, raw)) is not None and path.is_file()
         )
-        try:
-            relative = lexical.relative_to(repository)
-        except ValueError:
-            continue
-        cursor = repository
-        if any(is_link_like(cursor := cursor / part) for part in relative.parts):
-            continue
-        resolved = lexical.resolve()
-        if resolved.is_relative_to(repository) and resolved.is_file():
-            safe.append(str(resolved))
-    return list(dict.fromkeys(safe))
+    )
+
+
+def _safe_scope_path(root: Path, raw: str) -> Path | None:
+    repository = root.resolve()
+    if not raw:
+        return None
+    supplied = Path(raw)
+    lexical = Path(
+        os.path.abspath(  # ruff: ignore[os-path-abspath] -- preserve lexical symlink components before resolve.
+            supplied if supplied.is_absolute() else repository / supplied
+        )
+    )
+    try:
+        relative = lexical.relative_to(repository)
+    except ValueError:
+        return None
+    cursor = repository
+    if any(is_link_like(cursor := cursor / part) for part in relative.parts):
+        return None
+    resolved = lexical.resolve()
+    return resolved if resolved.is_relative_to(repository) else None
 
 
 def _unstaged_versions(root: Path, staged_paths: Iterable[str]) -> tuple[str, ...]:

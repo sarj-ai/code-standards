@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const CONFIG_ROOT = join(import.meta.dirname, "..", "..", "tsconfig");
 
-/** Check the remediation with the actual shared compiler policy. */
+
 function compile(sourceText: string): readonly number[] {
   const loaded = ts.readConfigFile(join(CONFIG_ROOT, "base.json"), (path) => ts.sys.readFile(path));
   const parsed = ts.parseJsonConfigFileContent(loaded.config, ts.sys, CONFIG_ROOT);

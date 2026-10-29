@@ -124,8 +124,8 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
         }
       `,
     },
-    // `+=` appears in the loop's TEST/UPDATE clause, not its body. Even though
-    // `i` is numeric this is doubly safe.
+
+
     {
       code: `
         let s = "";
@@ -143,7 +143,7 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
         }
       `,
     },
-    // Plain `=` assignment (not `+=`) in a loop is not accumulation.
+
     {
       code: `
         let s = "";
@@ -197,7 +197,7 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
         }
       `,
     },
-    // Declared inside the body of a while loop.
+
     {
       code: `
         while (queue.length) {
@@ -207,7 +207,7 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
         }
       `,
     },
-    // Declared in the body of the INNER loop — bounded by the inner pass.
+
     {
       code: `
         for (const row of rows) {
@@ -441,7 +441,7 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
       `,
       errors: [{ messageId: "noStringConcatInLoop" }],
     },
-    // Template-literal init.
+
     {
       code: `
         let s = \`\`;
@@ -451,7 +451,7 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
       `,
       errors: [{ messageId: "noStringConcatInLoop" }],
     },
-    // String init accumulated in a `while` loop.
+
     {
       code: `
         let s = "";
@@ -461,7 +461,7 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
       `,
       errors: [{ messageId: "noStringConcatInLoop" }],
     },
-    // String init accumulated in a `do-while` loop.
+
     {
       code: `
         let s = "";
@@ -471,7 +471,7 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
       `,
       errors: [{ messageId: "noStringConcatInLoop" }],
     },
-    // String variable declared in an outer scope, mutated inside a nested loop.
+
     {
       code: `
         let s = "";
@@ -483,7 +483,7 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
       `,
       errors: [{ messageId: "noStringConcatInLoop" }],
     },
-    // Single-quoted string init.
+
     {
       code: `
         let csv = '';
@@ -503,7 +503,7 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
       `,
       errors: [{ messageId: "noStringConcatInLoop" }],
     },
-    // Longhand with the target on the RIGHT of the `+` (`s = prefix + s`).
+
     {
       code: `
         let s = "";
@@ -513,7 +513,7 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
       `,
       errors: [{ messageId: "noStringConcatInLoop" }],
     },
-    // Longhand across a chained `+` (`s = s + a + b`).
+
     {
       code: `
         let s = "";
@@ -536,8 +536,8 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
       `,
       errors: [{ messageId: "noStringConcatInLoop" }],
     },
-    // Declared in the OUTER loop body but accumulated in the INNER loop: it
-    // still survives every inner iteration, so the growth is unbounded there.
+
+
     {
       code: `
         for (const row of rows) {
@@ -550,8 +550,8 @@ RULE_TESTER.run("no-string-concat-in-loop", rule, {
       `,
       errors: [{ messageId: "noStringConcatInLoop" }],
     },
-    // Declared in the loop's INITIALIZER, not its body — one binding for the
-    // whole loop, so it accumulates across iterations.
+
+
     {
       code: `
         for (let i = 0, s = ""; i < n; i++) {

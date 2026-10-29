@@ -1,47 +1,47 @@
-/**
- * Rule performance gates.
- *
- * ## What was wrong with the old shape
- *
- * Every timing was `linter.verify(SOURCE_TEXT, …)`, which PARSES the 1,800-line
- * source before running the rule. Measured on this machine: the parse costs
- * ~120 ms idle and ~305 ms under six-way load, while the rule itself costs
- * 0.3-4 ms. So 97-99% of every "rule timing" was the TypeScript parser, and:
- *
- * - the absolute `ms/1k LOC` budget was a gate on the parser's speed, not on any
- *   rule. `enforce-file-structure` was measured at 314-337 ms/1k LOC against a
- *   200 ms budget while a corpus sweep ran on the other cores, and passed in
- *   isolation — the rule had not changed by a microsecond;
- * - the "10x the median" outlier gate compared numbers that were all
- *   `parse + epsilon`, so it could not have caught a rule 10x slower than its
- *   peers. It was arithmetic on a constant.
- *
- * Wall-clock ratios still include time when only the measured rule is
- * descheduled. Bracketing that rule with parses cannot subtract that pause.
- * Current-thread CPU time measures the synchronous work being gated, excluding
- * scheduler delays and unrelated work on other V8 or Vitest threads.
- *
- * ## What it does now
- *
- * The source is parsed ONCE and the resulting `SourceCode` is handed to every
- * `verify` call, which skips the parser. What is left is the rule. The whole
- * file now runs in ~2 s instead of ~60 s, and the numbers mean what they say.
- *
- * Both gates are unchanged RATIOS of current-thread CPU milliseconds measured
- * in the same process, in the same run:
- *
- * - the absolute-style backstop is "a single rule must cost less than
- *   `MAX_RULE_COST_VS_PARSE` of what parsing the same file costs". Load and
- *   hardware move the numerator and the denominator together. The ceiling
- *   leaves room for faster parsers;
- * - the outlier gate is unchanged in spirit: no rule may exceed
- *   `RELATIVE_OUTLIER_FACTOR` times the median rule, which now compares rule
- *   costs rather than parse costs.
- *
- * A candidate that exceeds the absolute backstop is confirmed separately with
- * its rule timing bracketed by fresh parse timings. Confirmation remains useful
- * for JIT/GC variance; it no longer mistakes descheduling for algorithmic work.
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import { Linter, type SourceCode } from "eslint";
 import { threadCpuUsage } from "node:process";
@@ -50,8 +50,8 @@ import { describe, expect, it } from "vitest";
 
 import plugin from "../src/index.js";
 
-// A large synthetic source that exercises the patterns the rules look for: loops with
-// awaits and string concat, try/catch, fetch in effects, JSX, enums, zod, process.env.
+
+
 const BLOCK = (i: number): string => `
 async function handler_${i}(items: number[]): Promise<string> {
   let acc_${i} = "";
@@ -78,22 +78,22 @@ function View_${i}(): unknown {
 
 const SOURCE = Array.from({ length: 90 }, (_, i) => BLOCK(i)).join("\n");
 
-/**
- * A rule may cost at most this fraction of what parsing the same file costs.
- * Full-text gates reached 0.174 on a shared Linux CI runner while remaining
- * below 0.1 locally. The 0.25 ceiling preserves regression headroom without
- * turning ordinary parser or scheduler variance into a release block. It is a
- * catastrophe detector, not a microbenchmark target.
- */
+
+
+
+
+
+
+
 const MAX_RULE_COST_VS_PARSE = 0.25;
 const RELATIVE_OUTLIER_FACTOR = 10;
 
-/**
- * Absolute floor on the outlier ceiling, as a fraction of the SAME parse
- * measurement. It exists so that a registry of uniformly trivial rules cannot
- * collapse the ceiling onto the timer's own resolution; expressing it against
- * the parse keeps it load-proportional like everything else here.
- */
+
+
+
+
+
+
 const RELATIVE_SLACK_VS_PARSE = 0.01;
 
 const RULE_NAMES = Object.keys(plugin.rules);
@@ -128,13 +128,13 @@ function median(values: number[]): number {
   return sorted[Math.floor(sorted.length / 2)] ?? 0;
 }
 
-/**
- * The denominator: what it costs to parse `SOURCE` once, with no rules running.
- * Measured here, in this process, next to the rule timings, so it carries the
- * same machine speed and the same background load.
- */
-// Parsed once. Handing `verify` a `SourceCode` is what takes the parser out of
-// every subsequent measurement.
+
+
+
+
+
+
+
 LINTER.verify(SOURCE, NO_RULES, "synthetic.tsx");
 const PARSED: SourceCode = LINTER.getSourceCode();
 
@@ -219,10 +219,10 @@ describe("rule performance", () => {
   });
 
   it("parses once and measures the rules, not the parser", () => {
-    // Guard on the measurement itself: if a future refactor goes back to handing
-    // `verify` a string, every timing silently becomes a parse timing again and
-    // both gates below stop meaning anything. A rule cannot plausibly cost as
-    // much as a full parse.
+
+
+
+
     expect(PARSE_MS, "parse of the synthetic source did not register").toBeGreaterThan(1);
     const worstRatio = Math.max(...RULE_NAMES.map((name) => ruleRatio(name)));
     expect(

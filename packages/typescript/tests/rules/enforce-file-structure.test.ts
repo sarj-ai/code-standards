@@ -3,7 +3,7 @@ import { afterAll, describe, it } from "vitest";
 
 import rule, { ENFORCE_FILE_STRUCTURE_DOCUMENTATION } from "../../src/rules/enforce-file-structure.js";
 
-// Bind vitest to RuleTester for proper test reporting
+
 RuleTester.afterAll = afterAll;
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -16,17 +16,17 @@ const ACTION_FILENAME = "src/actions/create-user.ts";
 
 RULE_TESTER.run("enforce-file-structure", rule, {
   valid: [
-    // Canonical ordering: imports → types → constants → functions → exports
+
     {
       filename: NON_ACTION_FILENAME,
       code: ENFORCE_FILE_STRUCTURE_DOCUMENTATION.examples[0].files[0].source,
     },
-    // Only imports
+
     {
       filename: NON_ACTION_FILENAME,
       code: `import { z } from 'zod';`,
     },
-    // Functions then exports — no earlier sections
+
     {
       filename: NON_ACTION_FILENAME,
       code: `
@@ -34,7 +34,7 @@ RULE_TESTER.run("enforce-file-structure", rule, {
         export { add };
       `,
     },
-    // Server action file with 'use server' at top
+
     {
       filename: ACTION_FILENAME,
       code: `
@@ -43,10 +43,10 @@ RULE_TESTER.run("enforce-file-structure", rule, {
         export async function createUser() {}
       `,
     },
-    // A component living under an `actions/` directory that is NOT a Next.js
-    // server action (a UI dropdown, a Zustand store, a `*ActionService` class).
-    // Without a `use server` directive present, the path must NOT force one.
-    // Mirrors cal.com's `components/booking/actions/BookingActionsDropdown.tsx`.
+
+
+
+
     {
       filename: "apps/web/components/booking/actions/BookingActionsDropdown.tsx",
       code: `
@@ -57,8 +57,8 @@ RULE_TESTER.run("enforce-file-structure", rule, {
         }
       `,
     },
-    // A domain `*ActionService` under `lib/actions/` — a plain class, not an RSC
-    // server action. No directive present → not flagged.
+
+
     {
       filename: "packages/features/booking-audit/lib/actions/CreatedAuditActionService.ts",
       code: `
@@ -67,8 +67,8 @@ RULE_TESTER.run("enforce-file-structure", rule, {
         }
       `,
     },
-    // A bare `actions.ts` file with no `use server` directive — the filename
-    // alone must not force the directive.
+
+
     {
       filename: "app/dashboard/actions.ts",
       code: `
@@ -76,7 +76,7 @@ RULE_TESTER.run("enforce-file-structure", rule, {
         export const schema = z.string();
       `,
     },
-    // Multiple imports in a row
+
     {
       filename: NON_ACTION_FILENAME,
       code: `
@@ -85,7 +85,7 @@ RULE_TESTER.run("enforce-file-structure", rule, {
         export const x = 1;
       `,
     },
-    // Constants before functions
+
     {
       filename: NON_ACTION_FILENAME,
       code: `
@@ -93,8 +93,8 @@ RULE_TESTER.run("enforce-file-structure", rule, {
         const helper = () => 1;
       `,
     },
-    // A value const before a type — ordering among body statements is not
-    // enforced (step-down: only imports-first is required).
+
+
     {
       filename: NON_ACTION_FILENAME,
       code: `
@@ -102,10 +102,10 @@ RULE_TESTER.run("enforce-file-structure", rule, {
         type T = { a: number };
       `,
     },
-    // Step-down: a public exported function followed by a private helper
-    // function must NOT fire — this is the dominant TS layout. Mirrors the
-    // VS Code false-positive site (13k hits): `pauseCSSAnimationsWhenHidden`
-    // exported, `disposeVisibilityObserverIfEmpty` a private helper below it.
+
+
+
+
     {
       filename: NON_ACTION_FILENAME,
       code: `
@@ -115,9 +115,9 @@ RULE_TESTER.run("enforce-file-structure", rule, {
         function disposeVisibilityObserverIfEmpty() { return true; }
       `,
     },
-    // Step-down with a private *value* helper below the public function — an
-    // exported function is a function, the const below it is a declaration,
-    // and both share the same body, so ordering between them is free.
+
+
+
     {
       filename: NON_ACTION_FILENAME,
       code: `
@@ -125,8 +125,8 @@ RULE_TESTER.run("enforce-file-structure", rule, {
         const TEMPLATE = '<div></div>';
       `,
     },
-    // An exported interface among declarations must NOT fire: an exported
-    // interface IS a declaration, so a private const below it is fine.
+
+
     {
       filename: NON_ACTION_FILENAME,
       code: `
@@ -134,8 +134,8 @@ RULE_TESTER.run("enforce-file-structure", rule, {
         const DEFAULT_STATE = { hidden: false };
       `,
     },
-    // Exported declaration followed by a private helper function — the
-    // exported `type`/`enum`/`class` are declarations, not terminal exports.
+
+
     {
       filename: NON_ACTION_FILENAME,
       code: `
@@ -144,8 +144,8 @@ RULE_TESTER.run("enforce-file-structure", rule, {
         function origin(): Point { return { x: 0, y: 0 }; }
       `,
     },
-    // Generated `_namespaces` re-export barrel: interleaved `import * as X` /
-    // `export { X }`. Re-exports are neutral, so this passes.
+
+
     {
       filename: "src/_namespaces/ts.ts",
       code: `
@@ -155,7 +155,7 @@ RULE_TESTER.run("enforce-file-structure", rule, {
         export { server };
       `,
     },
-    // Pure re-export barrel with `export * from` / `export { … } from`.
+
     {
       filename: "src/index.ts",
       code: `
@@ -164,7 +164,7 @@ RULE_TESTER.run("enforce-file-structure", rule, {
         export { emit } from './emitter';
       `,
     },
-    // `transaction.ts` is NOT a server action (substring "action" must not match).
+
     {
       filename: "src/lib/transaction.ts",
       code: `
@@ -173,13 +173,13 @@ RULE_TESTER.run("enforce-file-structure", rule, {
         export function total(t: Transaction) { return t.amount * (1 + TAX_RATE); }
       `,
     },
-    // `redaction.ts` is NOT a server action either.
+
     {
       filename: "src/lib/redaction.ts",
       code: `export function redact(s: string) { return s; }`,
     },
-    // Test files often register Vitest mocks before importing the subject under
-    // test. That textual order is intentional setup, not module structure debt.
+
+
     {
       filename: "/repo/src/lib/integration/__tests__/token-validation.test.ts",
       code: `
@@ -203,7 +203,7 @@ RULE_TESTER.run("enforce-file-structure", rule, {
       output: null,
       errors: [{ messageId: "importsFirst" }],
     },
-    // A generated-looking comment after hand-written code cannot exempt the file.
+
     {
       filename: "/repo/src/workspace/types/GraphRoot.types.ts",
       code: `
@@ -214,7 +214,7 @@ RULE_TESTER.run("enforce-file-structure", rule, {
       `,
       errors: [{ messageId: "importsFirst" }],
     },
-    // One contiguous misplaced-import run is one defect.
+
     {
       filename: NON_ACTION_FILENAME,
       code: `
@@ -226,7 +226,7 @@ RULE_TESTER.run("enforce-file-structure", rule, {
       `,
       errors: [{ messageId: "importsFirst" }],
     },
-    // Two independent interleavings are two defects and stay two messages.
+
     {
       filename: NON_ACTION_FILENAME,
       code: `
@@ -239,13 +239,13 @@ RULE_TESTER.run("enforce-file-structure", rule, {
       `,
       errors: [{ messageId: "importsFirst" }, { messageId: "importsFirst" }],
     },
-    // Import after a body statement (an exported const) — imports must be first.
+
     {
       filename: NON_ACTION_FILENAME,
       code: ENFORCE_FILE_STRUCTURE_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "importsFirst" }],
     },
-    // Import after a type declaration — still imports-first.
+
     {
       filename: NON_ACTION_FILENAME,
       code: `
@@ -254,7 +254,7 @@ RULE_TESTER.run("enforce-file-structure", rule, {
       `,
       errors: [{ messageId: "importsFirst" }],
     },
-    // Import after a function — imports-first.
+
     {
       filename: NON_ACTION_FILENAME,
       code: `
@@ -263,8 +263,8 @@ RULE_TESTER.run("enforce-file-structure", rule, {
       `,
       errors: [{ messageId: "importsFirst" }],
     },
-    // Genuinely misplaced `use server`: the directive is present but sits after
-    // an import instead of being the first statement, so it is inert at runtime.
+
+
     {
       filename: ACTION_FILENAME,
       code: `
@@ -274,8 +274,8 @@ RULE_TESTER.run("enforce-file-structure", rule, {
       `,
       errors: [{ messageId: "useServerDirective" }],
     },
-    // Misplaced `use server` below a body statement, in a non-action filename —
-    // the trigger is the directive itself, not the path.
+
+
     {
       filename: NON_ACTION_FILENAME,
       code: `

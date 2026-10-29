@@ -37,7 +37,7 @@ RULE_TESTER.run("no-positional-tuple-return", rule, {
       name: "does not collide a nested interface name with an exported top-level interface",
       code: "export interface Loader {} namespace Internal { interface Loader { load(): [string, number]; } }",
     },
-    // --- The named form, which is the whole point. ---
+
     {
       code: "export function download(): { body: string; contentType: string | null } { return impl(); }",
     },
@@ -46,12 +46,12 @@ RULE_TESTER.run("no-positional-tuple-return", rule, {
       filename: "/repo/src/__generated__/api.ts",
       code: "export function pair(): [string, number] { return impl(); }",
     },
-    // --- Single-element tuple and array types are not positional records. ---
+
     { code: "export function one(): [string] { return impl(); }" },
     {
       code: "export function many(): Array<[string, number]> { return impl(); }",
     },
-    // --- No return annotation to judge. ---
+
     { code: "export function inferred() { return ['a', 1]; }" },
     {
       name: "allows an anonymous inline const-tuple callback",
@@ -292,7 +292,7 @@ RULE_TESTER.run("no-positional-tuple-return", rule, {
       code: "export function _decode(): [string, number] { return impl(); }",
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
-    // The canonical shape: distinct fields the caller must unpack by position.
+
     {
       code: "export function download(): [string, Headers, string | null] { return impl(); }",
       errors: [{ messageId: "noPositionalTupleReturn" }],
@@ -317,37 +317,37 @@ RULE_TESTER.run("no-positional-tuple-return", rule, {
       code: "export const resolve = (): [User, boolean] => impl();",
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
-    // Method on an exported class.
+
     {
       code: "export class Repo { find(): [Row, number] { return impl(); } }",
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
-    // Default export.
+
     {
       code: "export default function run(): [string, Error | null] { return impl(); }",
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
-    // --- Exported through a detached specifier, not the inline keyword. ---
+
     {
       code: "function split(s: string): [string, number] { return impl(s); }\nexport { split };",
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
-    // Renamed on the way out — the local binding is what the rule matches.
+
     {
       code: "function split(s: string): [string, number] { return impl(s); }\nexport { split as s };",
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
-    // One specifier list can export several bindings.
+
     {
       code: "function split(s: string): [string, number] { return impl(s); }\nconst other = 1;\nexport { other, split };",
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
-    // Arrow function assigned to a const, exported later.
+
     {
       code: "const resolve = (): [User, boolean] => impl();\nexport { resolve };",
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
-    // Every named declarator is checked, regardless of export status.
+
     {
       code: "const resolve = (): [User, boolean] => impl(), local = (): [User, boolean] => impl();\nexport { resolve };",
       errors: [
@@ -361,17 +361,17 @@ RULE_TESTER.run("no-positional-tuple-return", rule, {
         },
       ],
     },
-    // A method of a class exported later — the class name carries the export.
+
     {
       code: "class Repo { find(): [Row, number] { return impl(); } }\nexport { Repo };",
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
-    // `export default split` — the identifier form, not a declaration.
+
     {
       code: "function split(s: string): [string, number] { return impl(s); }\nexport default split;",
       errors: [{ messageId: "noPositionalTupleReturn" }],
     },
-    // TS `export =` assignment.
+
     {
       code: "function split(s: string): [string, number] { return impl(s); }\nexport = split;",
       errors: [{ messageId: "noPositionalTupleReturn" }],

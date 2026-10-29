@@ -1,34 +1,34 @@
-/**
- * Actually LOADS the shipped ESLint config.
- *
- * `strict-config-sync.test.ts` next door compares rule NAMES by parsing the
- * config as text; it never executes it, and `make lint` is ruff-only. So the
- * whole class of "the config is syntactically fine and semantically broken"
- * shipped undetected:
- *
- *   - a rule option that does not match the rule's schema
- *     ("unicorn/relative-url-style": ["error", "bogus"]),
- *   - a rule renamed or removed upstream
- *     ("unicorn/throw-new-error-RENAMED"),
- *   - a plugin that no longer exports what the config imports.
- *
- * Every one of those is a hard TypeError the moment ESLint normalises the
- * config, and a silent nothing until then. Both fault shapes above were
- * injected into the real config while writing this test and both failed it, so
- * the guard is verified rather than assumed.
- *
- * `calculateConfigForFile` is the cheapest call that forces full normalisation:
- * it resolves every config object, merges the `files`-scoped blocks for the
- * given path, and validates every rule id and every rule option against its
- * schema. It does NOT parse the file, so this stays fast and needs no tsconfig,
- * no type information, and no fixture source.
- *
- * The config is imported directly (rather than via `overrideConfigFile`) so that
- * Vitest's resolver applies: `vitest.config.ts` aliases `@sarj/eslint-plugin` to
- * this package's own `src/index.ts`, which means the test runs against the
- * working tree instead of a stale `dist/` and needs no build step. Every other
- * plugin the config imports is a real devDependency here.
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import { ESLint, type Linter } from "eslint";
 import js from "@eslint/js";
@@ -44,12 +44,12 @@ import strictConfig, {
 import { ADVISORY_RULES } from "../src/index.js";
 import { warningStageEslintRules } from "./_config.js";
 
-/**
- * Paths chosen to exercise every `files:`-scoped block in the config, because a
- * bad option inside an override only surfaces when that override merges in:
- * the base block, the `.tsx` filename-case + better-tailwindcss overrides, the
- * test-file relaxations and the design-system exemption.
- */
+
+
+
+
+
+
 const PROBE_PATHS = [
   "src/index.ts",
   "src/components/thing.tsx",
@@ -506,8 +506,8 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
 
     expect(parserOptions.projectService).toBe(true);
     expect(parserOptions.tsconfigRootDir).toBe(fileURLToPath(NESTED_MONOREPO_ROOT));
-    // Detection must keep typed rules active; merely setting parserOptions while
-    // spreading UNTYPED_RULE_OVERRIDES would still produce a false clean result.
+
+
     const configured = config.find(
       (entry) => entry.rules?.["@typescript-eslint/await-thenable"] !== undefined,
     );
@@ -635,8 +635,8 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     "resolves without error for %s",
     async (filePath) => {
       const resolved = await configFor(filePath);
-      // A config that resolved to nothing would pass a "did not throw" assertion
-      // while linting nothing at all, which is the failure this file exists for.
+
+
       expect(Object.keys(resolved.rules ?? {}).length).toBeGreaterThan(100);
     },
   );
@@ -692,20 +692,20 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     },
   );
 
-  /**
-   * The overrides have to still WIN after merging. Asserting only that the
-   * config loads would let a `files:` glob rot into matching nothing.
-   */
+
+
+
+
   it("applies the files-scoped overrides it declares", async () => {
-    // ESLint normalises severities to numbers by the time a config is
-    // computed: 0 = off, 2 = error.
-    // Boundary-named modules remain checked. The rule itself recognizes a
-    // validated env parser; the shared config must not hide unvalidated ones.
+
+
+
+
     const envConfig = await configFor("src/env/server-env.ts");
     expect(envConfig.rules?.["@sarj/no-raw-env"]).toEqual([2]);
 
-    // A severity-only override keeps the options the earlier block set, so
-    // compare the severity slot rather than the whole entry.
+
+
     const designSystemConfig = await configFor("src/components/ui/button.tsx");
     const forbidElements = designSystemConfig.rules?.["react/forbid-elements"];
     expect((forbidElements as unknown[])[0]).toBe(0);
@@ -759,8 +759,8 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
       ...UNICORN_SEMANTIC_ADVISORY_RULES,
     ].toSorted());
 
-    // Component identifiers are PascalCase, while component filenames remain
-    // kebab-case under the shared filename policy.
+
+
     const tsxConfig = await configFor("src/components/thing.tsx");
     const tsxNaming = tsxConfig.rules?.[
       "@typescript-eslint/naming-convention"
@@ -827,12 +827,12 @@ describe("the shipped eslint.strict.mjs actually loads", () => {
     expect([...nonErrors].sort()).toEqual([...ADVISORY_RULES]);
   });
 
-  /**
-   * Every rule id the config names must exist in a loaded plugin. ESLint already
-   * throws on an unknown id during normalisation, so this is belt-and-braces for
-   * the shape it does NOT throw on: a rule that resolved but is deprecated
-   * upstream, which is the step before removal and the last chance to notice.
-   */
+
+
+
+
+
+
   it("enables no rule that its plugin has marked deprecated", async () => {
     const resolved = await configFor("src/components/thing.tsx");
     const plugins = (resolved as unknown as { plugins: Record<string, { rules?: Record<string, { meta?: { deprecated?: unknown } }> }> }).plugins;

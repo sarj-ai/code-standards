@@ -19,7 +19,7 @@ const RULE_TESTER = new RuleTester({
   },
 });
 
-/** The rule only runs in test files, so every case has to look like one. */
+
 const FILENAME = "src/user.test.ts";
 
 RULE_TESTER.run("prefer-whole-object-assertion", rule, {
@@ -58,11 +58,11 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
     { name: "preserves a locally supplied custom expect", filename: FILENAME, code: "function check(expect: CustomAssertion) { expect(obj.a).toBe(1); expect(obj.b).toBe(2); }" },
     { name: "preserves a non-runner imported expect", filename: FILENAME, code: "import { expect } from './custom'; expect(obj.a).toBe(1); expect(obj.b).toBe(2);" },
     { name: "accepts the documented whole-object assertion", filename: FILENAME, code: PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION.examples[0].files[0].source },
-    // Already the combined form.
+
     { filename: FILENAME, code: `expect(obj).toMatchObject({ a: 1, b: 2 });` },
-    // A single assertion has nothing to combine with.
+
     { filename: FILENAME, code: `expect(obj.a).toBe(1);` },
-    // Different receivers are different assertions.
+
     {
       filename: FILENAME,
       code: `
@@ -70,8 +70,8 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(obj2.b).toBe(2);
       `,
     },
-    // Scope. The rule reported on production code before 2026-07 because it
-    // imported nothing from `_paths`; this is that latent bug, pinned.
+
+
     {
       filename: "src/user.ts",
       code: `
@@ -86,8 +86,8 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(obj.b).toBe(2);
       `,
     },
-    // --- Matcher allowlist. Each of these was reported AND autofixed before. ---
-    // Spy assertions: 238 sequences (7.6%) in the population.
+
+
     {
       filename: FILENAME,
       code: `
@@ -95,7 +95,7 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(mockRedis.set).toHaveBeenCalledWith("test:1", 2);
       `,
     },
-    // Matchers with no object-literal equivalent: 484 sequences (15.4%).
+
     {
       filename: FILENAME,
       code: `
@@ -111,8 +111,8 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(cal.embedConfig).toBeDefined();
       `,
     },
-    // Same receiver, same matcher, different expected values — the DOM /
-    // testing-library class, 64 sequences (2.0%).
+
+
     {
       filename: FILENAME,
       code: `
@@ -120,8 +120,8 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(utils.container).toHaveTextContent("b:success");
       `,
     },
-    // One un-mergeable matcher in the middle kills the whole run. This is the
-    // stated recall cost of the equivalence invariant, not an accident.
+
+
     {
       filename: FILENAME,
       code: `
@@ -130,8 +130,8 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(obj.c).toBe(3);
       `,
     },
-    // Duplicate key: merging produced `{ a: 1, a: 2 }` and silently deleted an
-    // assertion.
+
+
     {
       filename: FILENAME,
       code: `
@@ -155,8 +155,8 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(config[provider].region).toBe("me-central2");
       `,
     },
-    // Non-literal expected value: `toBe` is Object.is, `toMatchObject` is
-    // recursive structural equality. There is no equivalent merged form.
+
+
     {
       filename: FILENAME,
       code: `
@@ -171,8 +171,8 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(res.headers).toEqual({ "content-type": "application/json" });
       `,
     },
-    // A collection's size is not a property `toMatchObject` can describe, and
-    // `.length` mixed into element assertions was its own FP class (26, 0.8%).
+
+
     {
       filename: FILENAME,
       code: `
@@ -187,7 +187,7 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(results[0]).toEqual("a");
       `,
     },
-    // Impure receiver: the merged form would call `getUser()` once, not twice.
+
     {
       filename: FILENAME,
       code: `
@@ -195,7 +195,7 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(getUser().b).toBe(2);
       `,
     },
-    // Optional chaining changes what happens when the receiver is nullish.
+
     {
       filename: FILENAME,
       code: `
@@ -203,7 +203,7 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(obj?.b).toBe(2);
       `,
     },
-    // Known false negatives, recorded so a later change notices if they move.
+
     {
       filename: FILENAME,
       code: `
@@ -242,8 +242,8 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(obj.b).to.equal(2);
       `,
     },
-    // Indexed runs that do not start at 0 leave the leading elements
-    // unconstrained, so there is no array literal to suggest.
+
+
     {
       filename: FILENAME,
       code: `
@@ -268,7 +268,7 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(rows[1]).toEqual("b");
       `,
     },
-    // Element-wise `toBe` is identity; `toEqual` on the whole array is not.
+
     {
       filename: FILENAME,
       code: `
@@ -276,7 +276,7 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(rows[1]).toBe(b);
       `,
     },
-    // A statement between the assertions breaks the run.
+
     {
       filename: FILENAME,
       code: `
@@ -286,11 +286,11 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
       `,
     },
 
-    // --- The `expect(...)` shape itself. Both halves of the callee check are
-    // load-bearing and neither was pinned: with the NAME check gone any
-    // one-argument call whose result is `.toBe`d would be reported and
-    // "fixed" into an `expect(...).toMatchObject`, and with the ARITY check
-    // gone a two-argument `expect(actual, message)` would lose its message.
+
+
+
+
+
     {
       filename: FILENAME,
       code: `
@@ -306,10 +306,10 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
       `,
     },
 
-    // --- Receiver purity, in the two shapes the corpus actually contains ---
-    // An optional link anywhere in the chain parses as a ChainExpression, not a
-    // MemberExpression, and the merged form would also change what happens when
-    // `a` is nullish.
+
+
+
+
     {
       filename: FILENAME,
       code: `
@@ -317,9 +317,9 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(a?.b.d).toBe(2);
       `,
     },
-    // A computed access through a VARIABLE is not re-evaluable to the same
-    // thing: `k` may be reassigned between the statements. Only a literal
-    // subscript counts as pure.
+
+
+
     {
       filename: FILENAME,
       code: `
@@ -328,15 +328,15 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
       `,
     },
 
-    // --- What counts as a primitive literal ---
-    // A template literal with a substitution is a computed value, not a literal.
+
+
     {
       filename: FILENAME,
       code: "\n        expect(obj.a).toBe(`x${y}`);\n        expect(obj.b).toBe(`z${y}`);\n      ",
     },
-    // Only `-` and `+` make a unary expression constant. `!flag` is a computed
-    // boolean, and merging it would be the `toBe`-to-structural-equality
-    // downgrade.
+
+
+
     {
       filename: FILENAME,
       code: `
@@ -353,14 +353,14 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
       `,
     },
 
-    // --- Indexed runs: which subscripts are indices at all ---
-    // A fractional subscript is not an array index, so it is not part of a run
-    // that `expect(rows).toEqual([…])` could replace. The pair is chosen so the
-    // integer check is the ONLY thing suppressing the report: `{0.5, 1}` has as
-    // many members as the run has statements and a maximum of `run.length - 1`,
-    // so it satisfies the "indices are exactly 0..n-1" test and would be
-    // reported — with an array literal missing its first element — the moment
-    // 0.5 is allowed to count as an index.
+
+
+
+
+
+
+
+
     {
       filename: FILENAME,
       code: `
@@ -368,8 +368,8 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(rows[1]).toEqual("b");
       `,
     },
-    // A negative subscript parses as a unary expression rather than a literal,
-    // so it never reaches the index test at all.
+
+
     {
       filename: FILENAME,
       code: `
@@ -377,8 +377,8 @@ RULE_TESTER.run("prefer-whole-object-assertion", rule, {
         expect(rows[1]).toEqual("b");
       `,
     },
-    // Mixed matchers inside an indexed run: `toEqual` and `toStrictEqual` do not
-    // make the same comparison, so neither one describes the whole array.
+
+
     {
       filename: FILENAME,
       code: `
@@ -432,8 +432,8 @@ expect(config.stt.model).toBe("nova");`,
       errors: [{ messageId: "combineAssertions" }],
     },
     { name: "reports the documented member assertion run without rewriting it", filename: FILENAME, code: PREFER_WHOLE_OBJECT_ASSERTION_DOCUMENTATION.examples[1].files[0].source, output: null, errors: [{ messageId: "combineAssertions" }] },
-    // The surviving true positive: the exact shape the fixer can rewrite
-    // without changing what the test asserts.
+
+
     {
       filename: FILENAME,
       code: `
@@ -443,9 +443,9 @@ expect(config.stt.model).toBe("nova");`,
       output: null,
       errors: [{ messageId: "combineAssertions" }],
     },
-    // Boundary: mixed mergeable matchers and mixed literal kinds still merge,
-    // because on a primitive literal toBe / toEqual / toStrictEqual / toBeNull
-    // all agree with toMatchObject's per-key comparison.
+
+
+
     {
       filename: FILENAME,
       code: `
@@ -457,7 +457,7 @@ expect(config.stt.model).toBe("nova");`,
       output: null,
       errors: [{ messageId: "combineAssertions" }],
     },
-    // Boundary: a nested but still pure receiver stays in scope.
+
     {
       filename: FILENAME,
       code: `
@@ -489,8 +489,8 @@ expect(config.stt.model).toBe("nova");`,
         null,
       errors: [{ messageId: "combineAssertions" }],
     },
-    // Array-indexed run: different message, deliberately no fix, because
-    // `toEqual([…])` adds a length assertion the run never made.
+
+
     {
       filename: FILENAME,
       code: `
@@ -500,7 +500,7 @@ expect(config.stt.model).toBe("nova");`,
       output: null,
       errors: [{ messageId: "assertArrayOnce" }],
     },
-    // Boundary: the receiver of an indexed run may itself be indexed.
+
     {
       filename: FILENAME,
       code: `
@@ -511,13 +511,13 @@ expect(config.stt.model).toBe("nova");`,
       errors: [{ messageId: "assertArrayOnce" }],
     },
 
-    // --- THE SHAPE THAT ACTUALLY OCCURS ---
-    // Every case above states its assertions at module top level, which reaches
-    // the rule through the `Program` visitor. Real suites put them in an
-    // `it(…, () => { … })` callback, and that path runs only through
-    // `BlockStatement` — so the entire `BlockStatement` visitor could be deleted
-    // with the whole suite green, and the rule would have reported nothing in
-    // any test file ever written. Both run kinds are pinned in that shape.
+
+
+
+
+
+
+
     {
       filename: FILENAME,
       code: `it("returns the user", () => {
@@ -539,9 +539,9 @@ expect(config.stt.model).toBe("nova");`,
       errors: [{ messageId: "assertArrayOnce" }],
     },
 
-    // --- Receiver and expected-value shapes that ARE mergeable ---
-    // `this.x` inside a class-based test helper. `ThisExpression` is the one
-    // pure receiver that is not an identifier or a chain over one.
+
+
+
     {
       filename: FILENAME,
       code: `
@@ -551,16 +551,16 @@ expect(config.stt.model).toBe("nova");`,
       output: null,
       errors: [{ messageId: "combineAssertions" }],
     },
-    // A template literal with no substitutions is a string literal written with
-    // backticks, and merges verbatim.
+
+
     {
       filename: FILENAME,
       code: "\n        expect(obj.a).toBe(`x`);\n        expect(obj.b).toBe(`y`);\n      ",
       output: null,
       errors: [{ messageId: "combineAssertions" }],
     },
-    // A negative number parses as a unary expression rather than a literal, and
-    // is still a constant the merged object can carry.
+
+
     {
       filename: FILENAME,
       code: `
@@ -573,16 +573,16 @@ expect(config.stt.model).toBe("nova");`,
   ],
 });
 
-/**
- * The autofix regression suite.
- *
- * Before 2026-07 the fixer read `arguments[0]` of every assertion in the run and
- * dropped it into a `toMatchObject`, never looking at the matcher. Every input
- * below was silently rewritten into a weaker or broken test by `eslint --fix`.
- * `verifyAndFix` is used rather than the rule tester's `output` field because
- * what is being pinned is the *end state of a real fix pass*: if a future edit
- * reintroduces a matcher-blind fixer, this fails.
- */
+
+
+
+
+
+
+
+
+
+
 describe("prefer-whole-object-assertion autofix soundness", () => {
   const linter = new Linter();
   const config = [
@@ -591,9 +591,9 @@ describe("prefer-whole-object-assertion autofix soundness", () => {
       languageOptions: { parser: tsParser },
       plugins: { local: { rules: { "prefer-whole-object-assertion": rule } } },
       rules: { "local/prefer-whole-object-assertion": "error" },
-      // Off so these cases measure THIS fixer. ESLint's own unused-directive
-      // fixer deletes a stranded `eslint-disable-next-line` on the next pass,
-      // which would hide the orphaning rather than fix it.
+
+
+
       linterOptions: { reportUnusedDisableDirectives: "off" },
     },
   ] as unknown as Linter.Config[];
@@ -653,27 +653,27 @@ describe("prefer-whole-object-assertion autofix soundness", () => {
     expect(fix(code)).toBe(code);
   });
 
-  /**
-   * `__proto__` in an object literal is the prototype setter, not a key, so the
-   * fixer used to DELETE the assertion it claimed to be merging. Pinned three
-   * ways because the original shipped with tests that covered the report and
-   * never applied the fix: the language fact, the fixer's output, and the
-   * runtime consequence.
-   */
+
+
+
+
+
+
+
   describe("__proto__ is a prototype setter, not a key", () => {
     it("Object.keys drops it — the language fact the guard rests on", () => {
       expect(Object.keys({ __proto__: null, b: 2 })).toStrictEqual(["b"]);
-      // The quoted spelling is the same production, so quoting is not a fix.
+
       expect(Object.keys({ "__proto__": null, b: 2 })).toStrictEqual(["b"]);
     });
 
     it("the merged form would stop checking the prototype at all", () => {
       const received: Record<string, unknown> = Object.create({ marker: 1 }) as Record<string, unknown>;
       received["b"] = 2;
-      // What `expect(o.__proto__).toBe(null)` asserts:
+
       expect(Object.getPrototypeOf(received)).not.toBeNull();
-      // What a merged `toMatchObject({ __proto__: null, b: 2 })` would assert:
-      // only `b`. So the failing test would start passing.
+
+
       expect(received["b"]).toBe(2);
     });
 
@@ -689,11 +689,11 @@ describe("prefer-whole-object-assertion autofix soundness", () => {
     });
   });
 
-  /**
-   * A removed statement takes its own text but not the comment above it. Worst
-   * case that comment is an `eslint-disable-next-line`, which then points at the
-   * merged assertion and becomes a fresh unused-directive error.
-   */
+
+
+
+
+
   describe("comments inside the run", () => {
     it("does not orphan a leading comment", () => {
       const code = `expect(o.a).toBe(1);\n// b matters because the API returns it second\nexpect(o.b).toBe(2);\n`;

@@ -73,7 +73,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
       name: "leaves promise catch handlers to no-silent-promise-catch",
       code: "async function load() { return request().catch(() => []); }",
     },
-    // Rethrow — the canonical correct handling.
+
     {
       code: `
         function f() {
@@ -82,7 +82,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // Throws a wrapped error.
+
     {
       code: `
         function f() {
@@ -91,7 +91,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // Throw appears before a later return — still rethrows, not swallowed.
+
     {
       code: `
         function f() {
@@ -103,7 +103,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // Returns a meaningful computed value (function call).
+
     {
       code: `
         function f() {
@@ -112,7 +112,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // Returns a meaningful variable.
+
     {
       code: `
         function f() {
@@ -124,7 +124,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // Returns a member expression — meaningful.
+
     {
       code: `
         function f() {
@@ -133,7 +133,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // Returns a non-empty array literal — meaningful.
+
     {
       code: `
         function f() {
@@ -142,7 +142,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // Returns a non-empty object literal — meaningful.
+
     {
       code: `
         function f() {
@@ -151,7 +151,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // \`return 0\` is often legitimate — not flagged.
+
     {
       code: `
         function f() {
@@ -160,7 +160,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // \`return ""\` is often legitimate — not flagged.
+
     {
       code: `
         function f() {
@@ -169,7 +169,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // Bare \`return;\` — out of scope for this rule.
+
     {
       code: `
         function f() {
@@ -178,7 +178,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // Sentinel return is NOT the final statement — conservative, not flagged.
+
     {
       code: `
         function f() {
@@ -190,7 +190,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // Empty catch body — nothing returned, not flagged.
+
     {
       code: `
         function f() {
@@ -199,7 +199,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // Logs then rethrows — final statement is a throw, not a sentinel return.
+
     {
       code: `
         function f() {
@@ -211,7 +211,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // Real site: error IS logged (console.error), \`[]\` is a degraded return.
+
     {
       code: `
         function fetchRows() {
@@ -223,8 +223,8 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // Real site: error reported to a central handler, \`undefined\` is the
-    // declared \`T | undefined\` contract.
+
+
     {
       code: `
         function lookup(id) {
@@ -236,7 +236,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // Real site: logger receiver call before the sentinel return.
+
     {
       code: `
         function load() {
@@ -304,7 +304,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // Real site: \`new RegExp\` safe-construct — \`null\` on invalid pattern.
+
     {
       code: `
         function compile(pattern) {
@@ -313,7 +313,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
         }
       `,
     },
-    // Real site: boolean predicate — a normal path also returns a boolean.
+
     {
       code: `
         function hasFeature(name) {
@@ -491,7 +491,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
       errors: [{ messageId: "noSentinelReturn" }],
     },
 
-    // return null — bare swallow, function otherwise returns real data.
+
     {
       name: "does not treat a parse inside a nested callback as safe parsing",
       code: `
@@ -521,7 +521,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
       `,
       errors: [{ messageId: "noSentinelReturn" }],
     },
-    // return undefined — no logging, no safe-parse contract.
+
     {
       code: `
         function f() {
@@ -531,7 +531,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
       `,
       errors: [{ messageId: "noSentinelReturn" }],
     },
-    // return false — no normal-path boolean, so not a predicate contract.
+
     {
       code: `
         function f() {
@@ -541,7 +541,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
       `,
       errors: [{ messageId: "noSentinelReturn" }],
     },
-    // return [] — empty array, the classic idempotency-breaking swallow.
+
     {
       code: `
         function f() {
@@ -551,7 +551,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
       `,
       errors: [{ messageId: "noSentinelReturn" }],
     },
-    // return {} — empty object.
+
     {
       code: `
         function f() {
@@ -561,7 +561,7 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
       `,
       errors: [{ messageId: "noSentinelReturn" }],
     },
-    // Non-logging work then a sentinel return still swallows the error.
+
     {
       code: `
         function f() {
@@ -623,8 +623,8 @@ RULE_TESTER.run("no-sentinel-return-on-catch", rule, {
       `,
       errors: [{ messageId: "noSentinelReturn" }],
     },
-    // A throw inside a NESTED function does not count as rethrow for this catch,
-    // and register() neither logs nor reports the error.
+
+
     {
       code: `
         function f() {
