@@ -2423,7 +2423,8 @@ def ruff_project_groups(files: Sequence[str], root: Path) -> tuple[tuple[Path, P
     for raw_file in files:
         path = Path(raw_file).resolve()
         config = nearest(path.parent) or fallback
-        project = root if config is None else config.parent
+        # Adopted policy paths are repository-relative, including sources outside its Python destination.
+        project = root if config is None or config == fallback else config.parent
         grouped.setdefault((project, config), []).append(str(path))
     return tuple(
         (project, config, tuple(sorted(scoped_files)))

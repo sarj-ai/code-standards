@@ -15,6 +15,7 @@ import pytest
 import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import doctor, lifecycle, manifest, scaffold
 from sarj_standards.libs.adoption.packagemanager import PackageManager
+from sarj_standards.libs.diagnostics import Completion, TrustMode
 from sarj_standards.libs.linting import external
 
 
@@ -142,7 +143,7 @@ def _ruff_fallback_project(root: Path, *, overrides: tuple[manifest.ExclusionOve
     project.mkdir()
     config = project / "pyproject.toml"
     config.write_text(
-        '[tool.ruff]\nextend = ".ruff-strict.toml"\n[tool.ruff.lint.extend-per-file-ignores]\n"../api.py" = ["F401"]\n',
+        '[tool.ruff]\nextend = ".ruff-strict.toml"\n[tool.ruff.lint.extend-per-file-ignores]\n"api.py" = ["F401"]\n',
         encoding="utf-8",
     )
     (project / ".ruff-strict.toml").write_text('line-length = 120\n[lint]\nselect = ["F401"]\n', encoding="utf-8")
@@ -169,9 +170,9 @@ def test_selected_ruff_fixes_share_checking_fallback_authority(tmp_path: Path) -
     assert checked_paths == (str(source),)
     assert [command.label for command in commands] == ["Ruff fixes", "Ruff format"]
     for command in commands:
-        assert command.cwd == project == config.parent
+        assert command.cwd == project == tmp_path
         assert command.argv[command.argv.index("--config") + 1] == str(config)
-        assert command.argv[-2:] == ("--", "../api.py")
+        assert command.argv[-2:] == ("--", "api.py")
     assert "--no-unsafe-fixes" in commands[0].argv
 
 
@@ -193,7 +194,7 @@ def test_selected_ruff_fixes_keep_project_and_exclusion_groups(tmp_path: Path) -
     for fixed, formatted in zip(fixes, formats, strict=True):
         config = Path(fixed.argv[fixed.argv.index("--config") + 1])
         assert formatted.argv[formatted.argv.index("--config") + 1] == str(config)
-        assert fixed.cwd == formatted.cwd == config.parent
+        assert fixed.cwd == formatted.cwd == (nested if config == nested_config else tmp_path)
         assert "--no-unsafe-fixes" in fixed.argv
         source = (fixed.cwd / fixed.argv[-1]).resolve()
         assert source == (formatted.cwd / formatted.argv[-1]).resolve()
@@ -206,13 +207,13 @@ def test_selected_ruff_fixes_keep_project_and_exclusion_groups(tmp_path: Path) -
 
 
 def test_selected_ruff_fixes_resolve_relative_inputs_against_root(tmp_path: Path) -> None:
-    config = _ruff_fallback_project(tmp_path)
+    _ruff_fallback_project(tmp_path)
     source = tmp_path / "api.py"
     source.write_text("import os\n", encoding="utf-8")
     absolute = lifecycle.selected_format_commands(tmp_path, [str(source)])
     relative = lifecycle.selected_format_commands(tmp_path, ["api.py"])
     assert relative == absolute
-    assert all(command.cwd == config.parent for command in relative)
+    assert all(command.cwd == tmp_path for command in relative)
 
 
 def test_selected_ruff_fixes_execute_with_fallback_per_file_ignores(tmp_path: Path) -> None:
@@ -256,6 +257,138 @@ def test_selected_ruff_formatter_executes_with_fallback_line_length(tmp_path: Pa
     assert source.read_text(encoding="utf-8") == original
     assert lifecycle.execute((formatter,)) == 0
     assert source.read_text(encoding="utf-8") == original
+
+
+def _root_scoped_ruff_sources(root: Path) -> tuple[Path, ...]:
+    project = root / "python"
+    project.mkdir()
+    (project / "pyproject.toml").write_text(
+        '[tool.ruff]\ntarget-version = "py314"\n'
+        '[tool.ruff.per-file-target-version]\n"tools/legacy/**" = "py311"\n'
+        '[tool.ruff.lint]\npreview = true\nselect = ["UP035", "TC002", "S404", "S603", "TRY301"]\n'
+        "[tool.ruff.lint.per-file-ignores]\n"
+        '"python/feature/**/tests/**" = ["TC002"]\n'
+        '"python/scripts/test_command.py" = ["S404", "S603"]\n'
+        '"python/worker/**/tests/**" = ["TRY301"]\n',
+        encoding="utf-8",
+    )
+    (root / manifest.MANIFEST_NAME).write_text(
+        manifest.Manifest(
+            version=distribution_version("code-standards"),
+            configs=("ruff",),
+            python_dest="python",
+            typescript_dest=".",
+        ).render(),
+        encoding="utf-8",
+    )
+    cases = (
+        (
+            "tools/legacy/settings.py",
+            (
+                "from typing_extensions import override\n\n\nclass Parent:\n"
+                "    def run(self) -> None:\n        pass\n\n\nclass Provider(Parent):\n"
+                '    @override\n    def run(self) -> None:\n        try:\n            int("value")\n'
+                "        except (TypeError, ValueError):\n            pass\n"
+            ),
+        ),
+        (
+            "python/feature/tests/test_record.py",
+            (
+                "from __future__ import annotations\n\nfrom httpx import Client\n\n\n"
+                "def consume(client: Client) -> None:\n    pass\n"
+            ),
+        ),
+        (
+            "python/scripts/test_command.py",
+            (
+                "import subprocess\n\n\ndef execute(command: list[str]) -> None:\n"
+                "    subprocess.run(command, check=True)\n"
+            ),
+        ),
+        (
+            "python/worker/tests/test_error.py",
+            (
+                'def consume() -> None:\n    try:\n        raise ValueError("value")\n'
+                "    except ValueError:\n        return\n"
+            ),
+        ),
+    )
+    sources: list[Path] = []
+    for name, text in cases:
+        source = root / name
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text(text, encoding="utf-8")
+        sources.append(source)
+    legacy = root / "tools/legacy/pyproject.toml"
+    legacy.write_text('[project]\nname = "legacy"\nversion = "0.0.0"\nrequires-python = ">=3.11"\n', encoding="utf-8")
+    return tuple(sources)
+
+
+def test_ruff_analysis_resolves_adopted_policy_from_repository_root(tmp_path: Path) -> None:
+    sources = _root_scoped_ruff_sources(tmp_path)
+    controls = tmp_path / "controls"
+    controls.mkdir()
+    uncovered: list[Path] = []
+    for source in sources:
+        target = controls / source.name
+        target.write_bytes(source.read_bytes())
+        uncovered.append(target)
+
+    reports = external.analyze_external(
+        [str(source) for source in (*sources, *uncovered)],
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        capabilities=frozenset({"ruff"}),
+    )
+
+    assert reports
+    assert all(report.completion is Completion.COMPLETE and not report.issues for report in reports)
+    findings = [finding for report in reports for finding in report.diagnostics]
+    assert {finding.code for finding in findings} == {"UP035", "TC002", "S404", "S603", "TRY301"}
+    assert {finding.location.path for finding in findings} == {
+        source.relative_to(tmp_path).as_posix() for source in uncovered
+    }
+
+
+def test_ruff_fix_and_format_preserve_adopted_compatibility_and_ignores(tmp_path: Path) -> None:
+    sources = _root_scoped_ruff_sources(tmp_path)
+    originals = {source: source.read_bytes() for source in sources}
+    commands = lifecycle.selected_format_commands(tmp_path, [str(source) for source in sources])
+
+    assert lifecycle.execute(commands) == 0
+    assert {source: source.read_bytes() for source in sources} == originals
+    assert lifecycle.execute(commands) == 0
+    assert {source: source.read_bytes() for source in sources} == originals
+
+
+def test_ruff_preserves_distinct_package_config_context(tmp_path: Path) -> None:
+    legacy, _, command_source, _ = _root_scoped_ruff_sources(tmp_path)
+    project = tmp_path / "plugins/native"
+    project.mkdir(parents=True)
+    (project / "ruff.toml").write_text(
+        'target-version = "py311"\n[lint]\npreview = true\nselect = ["UP035", "S404", "S603"]\n'
+        '[lint.per-file-ignores]\n"tests/test_command.py" = ["S404", "S603"]\n',
+        encoding="utf-8",
+    )
+    sources = (project / "settings.py", project / "tests/test_command.py")
+    sources[1].parent.mkdir()
+    for source, original in zip(sources, (legacy, command_source), strict=True):
+        source.write_bytes(original.read_bytes())
+    originals = {source: source.read_bytes() for source in sources}
+
+    reports = external.analyze_external(
+        [str(source) for source in sources],
+        root=tmp_path,
+        trust=TrustMode.SAFE,
+        capabilities=frozenset({"ruff"}),
+    )
+    assert reports
+    assert all(report.completion is Completion.COMPLETE and not report.issues for report in reports)
+    assert not [finding for report in reports for finding in report.diagnostics]
+    commands = lifecycle.selected_format_commands(tmp_path, [str(source) for source in sources])
+    assert all(command.cwd == project for command in commands)
+    assert lifecycle.execute(commands) == 0
+    assert {source: source.read_bytes() for source in sources} == originals
 
 
 def test_setup_never_mutates_the_consumer_dependency_environment(tmp_path: Path) -> None:
