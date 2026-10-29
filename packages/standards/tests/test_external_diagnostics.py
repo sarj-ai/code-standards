@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 from pathlib import Path
 import shutil
@@ -1511,7 +1512,7 @@ def test_react_doctor_incomplete_report_retains_bounded_redacted_native_context(
         assert private not in issue.message
     assert len(seen) == 1
     assert seen[0][seen[0].index("--scope") + 1] == "full"
-    assert seen[0][seen[0].index("--max-duration") + 1] == "60"
+    assert 60 < float(seen[0][seen[0].index("--max-duration") + 1]) <= 900
 
 
 @pytest.mark.parametrize(
@@ -1847,6 +1848,144 @@ def _degraded_react_doctor_output(base: str) -> ProcessOutput:
         ),
         "",
     )
+
+
+@pytest.mark.parametrize(
+    ("timeout", "deadline", "remaining"),
+    [
+        pytest.param(900, None, 900, id="default-finite-budget"),
+        pytest.param(120.5, None, 120.5, id="full-scan-over-sixty-seconds"),
+        pytest.param(900, 150, 50, id="stricter-absolute-deadline"),
+        pytest.param(0.5, None, 0.5, id="positive-fractional-timeout"),
+        pytest.param(10, 100.25, 0.25, id="positive-fractional-deadline"),
+        pytest.param(0, None, 0, id="zero-timeout-no-launch"),
+        pytest.param(900, 99, 0, id="expired-deadline-no-launch"),
+    ],
+)
+def test_react_doctor_dispatch_uses_remaining_request_budget(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, timeout: float, deadline: float | None, remaining: float
+) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept the production monotonic lookup; test-only clock injection would change the adapter wiring under test.
+        time, "monotonic", lambda: 100.0
+    )
+
+    def clean_output(_argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        return ProcessOutput(0, "{}", "")
+
+    execute = FakeProcessExecutor(clean_output)
+    bounded = external_module._react_doctor_budget_runner(execute)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- verify native duration and subprocess deadline use the same remaining budget.
+    request = ProcessRequest(
+        ("react-doctor", "--max-duration", "900.0", "--json"),
+        tmp_path,
+        {"CI": "true"},
+        timeout_seconds=timeout,
+        deadline=deadline,
+        input_bytes=b"prepared input",
+        max_input_bytes=32,
+        max_stdout_bytes=128,
+        max_stderr_bytes=64,
+    )
+    if remaining == 0:
+        with pytest.raises(subprocess.TimeoutExpired):
+            bounded.run(request)
+        assert not execute.requests
+        return
+
+    assert bounded.run(request) == ProcessOutput(0, "{}", "")
+    dispatched = execute.requests[0]
+    assert float(dispatched.argv[dispatched.argv.index("--max-duration") + 1]) == pytest.approx(remaining)
+    assert dispatched.deadline == pytest.approx(100 + remaining)
+    assert replace(dispatched, argv=request.argv, deadline=request.deadline) == request
+    assert bounded.capabilities == execute.capabilities
+
+
+def test_react_doctor_fallback_retains_a_stricter_initial_budget(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    clock = [100.0]
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- control the existing monotonic boundary through real retry/fallback wiring without adding a test-only clock API.
+        time, "monotonic", lambda: clock[0]
+    )
+
+    def clean_output(_argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        return ProcessOutput(0, "{}", "")
+
+    execute = FakeProcessExecutor(clean_output)
+    bounded = external_module._react_doctor_budget_runner(execute)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- full fallback must not renew a stricter first dispatch budget.
+    bounded.run(
+        ProcessRequest(("react-doctor", "--staged", "--max-duration", "900.0"), tmp_path, {}, timeout_seconds=30)
+    )
+    clock[0] += 5
+    bounded.run(ProcessRequest(("react-doctor", "--scope", "full", "--max-duration", "900.0"), tmp_path, {}))
+    assert [float(item.argv[-1]) for item in execute.requests] == [30, 25]
+    assert [item.deadline for item in execute.requests] == [130, 130]
+    clock[0] = 130
+    with pytest.raises(subprocess.TimeoutExpired):
+        bounded.run(ProcessRequest(("react-doctor", "--scope", "full", "--max-duration", "900.0"), tmp_path, {}))
+    assert len(execute.requests) == 2
+
+
+def test_react_doctor_budget_leaves_git_requests_unchanged(tmp_path: Path) -> None:
+    def clean_output(_argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        return ProcessOutput(0, "{}", "")
+
+    execute = FakeProcessExecutor(clean_output)
+    bounded = external_module._react_doctor_budget_runner(execute)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- a git path matching the native flag is still a scope preflight, not a doctor scan.
+    request = ProcessRequest(("git", "diff", "--", "--max-duration"), tmp_path, {}, deadline=1)
+    assert bounded.run(request) == ProcessOutput(0, "{}", "")
+    assert execute.requests == [request]
+    assert execute.requests[0] is request
+
+
+@pytest.mark.parametrize(
+    ("elapsed", "expired"),
+    [pytest.param(20, False, id="retry-shares-remainder"), pytest.param(200, True, id="expired-retry-no-launch")],
+)
+def test_react_doctor_baseline_retry_shares_the_dispatch_deadline(
+    monkeypatch: pytest.MonkeyPatch, elapsed: float, expired: bool
+) -> None:
+    clock = [100.0]
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- control the existing monotonic boundary through real retry/fallback wiring without adding a test-only clock API.
+        time, "monotonic", lambda: clock[0]
+    )
+    base, head = "a" * 40, "b" * 40
+    command = ("react-doctor", "--scope", "changed", "--base", base, "--max-duration", "900.0")
+    calls = 0
+
+    def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        nonlocal calls
+        assert cwd == Path("/repo")
+        if argv[0] == "react-doctor":
+            calls += 1
+            clock[0] += elapsed
+            return _degraded_react_doctor_output(base) if calls == 1 else ProcessOutput(0, "{}", "")
+        clock[0] += 2
+        if argv[:2] == ("git", "rev-parse"):
+            return ProcessOutput(0, f"{base if argv[-1].startswith(base) else head}\n", "")
+        assert argv[:3] == ("git", "merge-base", "--is-ancestor")
+        return ProcessOutput(0, "", "")
+
+    execute = FakeProcessExecutor(runner)
+    budget = external_module._react_doctor_budget_runner(execute)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- compose the real retry outside the same doctor dispatch budget.
+    bounded = external_module._react_doctor_baseline_retry_runner(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise retry git checks and exact original argv matching.
+        command, root=Path("/repo"), runner=budget, explicit_base=base
+    )
+    request = ProcessRequest(command, Path("/repo"), {}, timeout_seconds=200, deadline=250.5)
+    if expired:
+        with pytest.raises(subprocess.TimeoutExpired):
+            bounded.run(request)
+        assert calls == 1
+    else:
+        assert bounded.run(request) == ProcessOutput(0, "{}", "")
+        assert calls == 2
+    doctor_requests = [item for item in execute.requests if "--max-duration" in item.argv]
+    assert [item.deadline for item in doctor_requests] == [250.5] * calls
+    assert float(doctor_requests[0].argv[-1]) == pytest.approx(148.5)
+    if not expired:
+        assert float(doctor_requests[1].argv[-1]) == pytest.approx(122.5)
 
 
 def test_react_doctor_retries_one_valid_upstream_baseline_degradation() -> None:
@@ -2429,7 +2568,13 @@ def test_react_doctor_empty_degraded_scope_fails_closed_when_git_diff_fails(
     assert "baseline degraded" in report.issues[0].message
 
 
-def test_react_doctor_staged_non_detection_falls_back_to_full_and_filters_exact_paths(tmp_path: Path) -> None:
+def test_react_doctor_staged_non_detection_falls_back_to_full_and_filters_exact_paths(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    clock = [100.0]
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- control the existing monotonic boundary through real retry/fallback wiring without adding a test-only clock API.
+        time, "monotonic", lambda: clock[0]
+    )
     project = tmp_path / "apps" / "web"
     project.mkdir(parents=True)
     staged_source = project / "staged.tsx"
@@ -2453,7 +2598,9 @@ def test_react_doctor_staged_non_detection_falls_back_to_full_and_filters_exact_
         assert cwd == tmp_path
         seen.append(tuple(argv))
         if argv[0] == "git":
+            clock[0] += 5
             return ProcessOutput(0, "apps/web/staged.tsx\0", "")
+        clock[0] += 20
         is_full = "--scope" in argv and argv[argv.index("--scope") + 1] == "full"
         diagnostics = [diagnostic(staged_source), diagnostic(unrelated_source)] if is_full else []
         return ProcessOutput(
@@ -2481,11 +2628,12 @@ def test_react_doctor_staged_non_detection_falls_back_to_full_and_filters_exact_
             "",
         )
 
+    execute = FakeProcessExecutor(runner)
     report = external_module._invoke_react_doctor(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the internal _invoke_react_doctor contract directly with controlled fixture data.
         tmp_path,
         projects=(project,),
         root=tmp_path,
-        runner=FakeProcessExecutor(runner),
+        runner=execute,
         use_local_binary=False,
         file_count=1,
         staged=True,
@@ -2500,7 +2648,9 @@ def test_react_doctor_staged_non_detection_falls_back_to_full_and_filters_exact_
     scope_index = seen[3].index("--scope")
     assert seen[3][scope_index + 1] == "full"
     duration_index = seen[3].index("--max-duration")
-    assert int(seen[3][duration_index + 1]) >= 60
+    assert float(seen[1][seen[1].index("--max-duration") + 1]) == pytest.approx(895)
+    assert float(seen[3][duration_index + 1]) == pytest.approx(870)
+    assert [item.deadline for item in execute.requests if "--max-duration" in item.argv] == [1000, 1000]
 
 
 def test_react_doctor_full_scan_still_rejects_non_detection(tmp_path: Path) -> None:
@@ -2794,7 +2944,7 @@ def test_react_doctor_uses_native_staged_scope_for_precommit(monkeypatch: pytest
     assert git_seen.count(("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}")) >= 2
     assert "--no-cache" in seen[0]
     duration_index = seen[0].index("--max-duration")
-    assert seen[0][duration_index + 1] == "12"
+    assert 60 < float(seen[0][duration_index + 1]) <= 900
 
 
 @pytest.mark.parametrize(
