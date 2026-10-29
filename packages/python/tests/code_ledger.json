@@ -336,5 +336,6 @@
   "SARJ545": "prefer-application-model-joins",
   "SARJ546": "store-mutation-command-fanout",
   "SARJ547": "store-insert-requires-explicit-conflict-policy",
-  "SARJ548": "no-discarded-tagged-outcome"
+  "SARJ548": "no-discarded-tagged-outcome",
+  "SARJ549": "no-async-client-in-constructor"
 }

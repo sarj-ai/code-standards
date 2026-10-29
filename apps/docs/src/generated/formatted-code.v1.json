@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "34532be8a8183a43c904e48367d6953e36bcb4363490d70ff1c83296e6626e32",
-  "cliSha256": "c193ea5cbe01032caaab2c6b0503369322e4ba2804d3c31107b8de11fc143c5c",
+  "catalogSha256": "3bbe9b18fd599dad781b3f64f96afa84083c5622fcdd3c23fe535bbd0bb2b5c7",
+  "cliSha256": "be91e2f52b0067818be4a88a614629cd81e0aee37ec685f71ecc7f435d2a2542",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -8464,6 +8464,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "A TypedDict preserves the record schema"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-async-client-in-constructor": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "import httpx\n\n\nclass Service:\n    def __init__(self):\n        self.client = httpx.AsyncClient()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "constructor-allocation",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Do not hide client allocation in a service constructor"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from contextlib import asynccontextmanager\nimport httpx\n\n\nclass Service:\n    def __init__(self, client: httpx.AsyncClient):\n        self.client = client\n\n\n@asynccontextmanager\nasync def service_scope(endpoint):\n    async with httpx.AsyncClient(base_url=endpoint) as client:\n        yield Service(client)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "scoped-injection",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Inject a client owned by the async composition scope"
         }
       ],
       "optionsSchemaSource": null
