@@ -774,13 +774,16 @@ def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(tmp_pat
         result = subprocess.run(
             command.argv,
             cwd=command.cwd,
-            env=native_byte_bridge.child_environment(isolated_environment()),
+            env=native_byte_bridge.child_environment(),
             capture_output=True,
             text=True,
             check=False,
             timeout=60,
         )
         statuses.append((command.label, result.returncode))
+        if command.label == "native Node runtime path":
+            assert result.returncode == 0, result
+            assert not result.stderr, result
         return result
 
     before_index = (tmp_path / ".git/index").read_bytes()

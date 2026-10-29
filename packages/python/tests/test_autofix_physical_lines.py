@@ -50,7 +50,7 @@ class _ShadowSource:
 
 
 def test_every_safe_python_rule_has_a_fixed_example_in_the_separator_matrix() -> None:
-    assert len(_SAFE_RULES) == 51
+    assert len(_SAFE_RULES) == 52
     assert {rule_id for rule_id, _ in _FIXED_EXAMPLES} == _SAFE_RULES
 
 
