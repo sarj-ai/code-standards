@@ -20,7 +20,7 @@ export const NO_TEST_COMMENTS_DOCUMENTATION = {
   limitations: [
     "Checks actual line and block comment tokens in recognized maintained test files, including test fixtures; strings and template text remain unchanged. Generated/vendor files are excluded.",
     "Legal notices, shebangs, TypeScript triple-slash references, coverage/build annotations and explicit lint/type/test/formatter directives remain allowed. Ordinary prose embedded in a directive remains the owning tool's responsibility.",
-    "The automatic fix removes comments and adjacent padding while retaining every line ending and necessary token boundary; it does not rename tests or remove executable statements. Ambiguous hyphen/underscore test basenames require a runtime testing-framework import; ordinary rule implementations ending in -test are preserved.",
+    "The automatic fix removes comments and adjacent padding while retaining every line ending and necessary token boundary; it does not rename tests or remove executable statements. Bare integration/e2e directories and ambiguous hyphen/underscore test basenames require another concrete test-path signal or a runtime testing-framework import; ordinary production integration modules and rule implementations ending in -test are preserved.",
   ],
   examples: [
     { id: "narrated-assertion", title: "Put behavior in the test name", outcome: "match", files: [{ path: "src/request.test.ts", source: "expect(result.status).toBe(409); // Confirm the rejected request\n" }], fixedFiles: [{ path: "src/request.test.ts", source: "expect(result.status).toBe(409);\n" }], focusPath: "src/request.test.ts", expectedCount: 1, public: true },
@@ -46,8 +46,9 @@ export default createRule<[], "testComment">({
   create(context) {
     if (!isTestFile(context) || isGeneratedFile(context, context.sourceCode.text)) return {};
     const filename = scopedFilename(context);
-    const unambiguous = /(?:^|\/)(?:tests?|__tests__|fixtures|__fixtures__|__mocks__|integration|e2e)\//u.test(filename) || /\.(?:test|spec|e2e|integration)\.[cm]?[jt]sx?$/u.test(filename);
+    const unambiguous = /(?:^|\/)(?:tests?|__tests__|fixtures|__fixtures__|__mocks__)\//u.test(filename) || /\.(?:test|spec|e2e|integration)\.[cm]?[jt]sx?$/u.test(filename);
     const framework = context.sourceCode.ast.body.some(statement => statement.type === AST_NODE_TYPES.ImportDeclaration && statement.importKind !== "type" &&
+      (statement.specifiers.length === 0 || statement.specifiers.some(specifier => specifier.type !== AST_NODE_TYPES.ImportSpecifier || specifier.importKind !== "type")) &&
       ["vitest", "@jest/globals", "@playwright/test", "bun:test", "node:test"].includes(statement.source.value));
     if (!unambiguous && !framework) return {};
     return {
