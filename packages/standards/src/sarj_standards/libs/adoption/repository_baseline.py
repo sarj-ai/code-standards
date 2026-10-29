@@ -31,7 +31,13 @@ PATH = ".repo-standards/baseline.json"
 # Policy 29 adds a default-disabled migration warning. Existing finding
 # identities and manifest scope remain unchanged; preserve all accepted debt.
 # Empty policy 27 baselines may compose the reviewed 27 -> 28 -> 29 steps.
-_COMPATIBLE_TRANSITIONS = frozenset({(18, 19), (18, 20), (19, 20), (25, 26), (25, 27), (26, 27), (28, 29)})
+# Policy 30 corrects counts for the opt-in migration warning introduced in 29.
+# Policy 28 debt predates that rule and keeps its identities. Empty policy 27
+# baselines compose the reviewed 27 -> 28 transition; empty 29 baselines have
+# no accepted warning debt to invalidate. Error-only policy 29 baselines also
+# exclude that warning; parsing an omitted include_warnings flag means False.
+# Nonempty policy 29 warning baselines still require a separate review.
+_COMPATIBLE_TRANSITIONS = frozenset({(18, 19), (18, 20), (19, 20), (25, 26), (25, 27), (26, 27), (28, 29), (28, 30)})
 _POLICY_VERSION = re.compile(rb'("policy_version"\s*:\s*)[0-9]+(?=\s*[,}])')
 
 
@@ -62,8 +68,9 @@ def migrate(contents: bytes, manifest: bytes, *, target_policy_version: int) -> 
     if baseline.policy_version == target_policy_version:
         return contents
     transition = (baseline.policy_version, target_policy_version)
-    empty_compatible = transition in {(27, 28), (27, 29)} and not baseline.fingerprints
-    if transition not in _COMPATIBLE_TRANSITIONS and not empty_compatible:
+    empty_compatible = transition in {(27, 28), (27, 29), (27, 30), (29, 30)} and not baseline.fingerprints
+    error_only_compatible = transition == (29, 30) and not baseline.include_warnings
+    if transition not in _COMPATIBLE_TRANSITIONS and not empty_compatible and not error_only_compatible:
         msg = (
             f"repository baseline migration {baseline.policy_version} -> {target_policy_version} "
             "requires a separately reviewed compatibility decision"
