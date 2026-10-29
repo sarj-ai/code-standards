@@ -174,3 +174,43 @@ def test_execution_wrappers_preserve_static_matches(expression: str) -> None:
         f"    cursor.execute({expression})\n"
     )
     assert len(NoRedundantSqlAlias().check(P, source)) == 1
+
+
+@pytest.mark.parametrize(
+    ("source", "expected_count"),
+    [
+        (
+            (
+                "def query():\n    from psycopg.sql import SQL as Statement\n"
+                '    return Statement("SELECT id AS id FROM call")\n'
+            ),
+            1,
+        ),
+        (
+            ('from psycopg.sql import SQL as SQL\nQUERY = SQL("SELECT id AS id FROM call")\n'),
+            1,
+        ),
+        (
+            ('from app.sql import SQL as Statement\nQUERY = Statement("SELECT id AS id FROM call")\n'),
+            0,
+        ),
+        (
+            ('QUERY = __import__("psycopg.sql", fromlist=["SQL"]).SQL("SELECT id AS id FROM call")\n'),
+            0,
+        ),
+        (
+            ('sql = __import__("psycopg.sql", fromlist=["SQL"])\nQUERY = sql.SQL("SELECT id AS id FROM call")\n'),
+            0,
+        ),
+        (
+            (
+                'SQL = getattr(__import__("psycopg.sql", fromlist=["SQL"]), "SQL")\n'
+                'QUERY = SQL("SELECT id AS id FROM call")\n'
+            ),
+            0,
+        ),
+        ('QUERY = SQL("SELECT id AS id FROM call")\n', 0),
+    ],
+)
+def test_import_proof_boundaries(source: str, expected_count: int) -> None:
+    assert len(NoRedundantSqlAlias().check(P, source)) == expected_count
