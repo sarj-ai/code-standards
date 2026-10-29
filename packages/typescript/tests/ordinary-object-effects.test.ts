@@ -10,6 +10,46 @@ import { expect, it } from "vitest";
 import { ordinaryObjectEffects } from "../src/rules/_ordinary-object-effects.js";
 import noExcessJSXProps from "../src/rules/no-excess-jsx-props.js";
 
+it("stops identity requests after proven unsafety while retaining later module edges", () => {
+  const root = mkdtempSync(join(tmpdir(), "ordinary-object-unsafe-work-"));
+  try {
+    const target = join(root, "target.ts");
+    const isolated = join(root, "isolated.ts");
+    const owner = join(root, "owner.ts");
+    writeFileSync(target, "export const value = 'Ada';\n");
+    writeFileSync(isolated, "export const value = 'Ada';\n");
+    const counts = [0, 256].map((tail) => {
+      writeFileSync(owner, `export const escapedObject = Object;\n${Array.from({length: tail}, (_, index) => `export const tail${index} = ${index};`).join("\n")}\nimport './target.js';\n`);
+      const program = ts.createProgram([owner, target, isolated], {
+        strict: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext,
+        moduleResolution: ts.ModuleResolutionKind.Bundler, types: [],
+      });
+      const source = program.getSourceFile(owner);
+      const dependency = program.getSourceFile(target);
+      const independent = program.getSourceFile(isolated);
+      if (!source || !dependency || !independent) throw new Error("Native work fixture was not loaded");
+      const checker = program.getTypeChecker();
+      const getSymbol = checker.getSymbolAtLocation.bind(checker);
+      let queries = 0;
+      checker.getSymbolAtLocation = (node) => {
+        if (node.getSourceFile() === source) queries++;
+        return getSymbol(node);
+      };
+      expect(ordinaryObjectEffects(program, dependency)).toBe(true);
+      const initialQueries = queries;
+      expect(ordinaryObjectEffects(program, source)).toBe(true);
+      expect(ordinaryObjectEffects(program, independent)).toBe(false);
+      expect(queries).toBe(initialQueries);
+      expect(ts.getPreEmitDiagnostics(program)).toEqual([]);
+      return initialQueries;
+    });
+    expect(counts[0]).toBeGreaterThan(0);
+    expect(counts[1]).toBe(counts[0]);
+  } finally {
+    rmSync(root, {recursive: true, force: true});
+  }
+});
+
 it("keeps source-graph and alias-depth limits independent of cache order", () => {
   const root = mkdtempSync(join(tmpdir(), "ordinary-object-effects-"));
   try {
@@ -431,3 +471,55 @@ function expectForwardingBoundary(program: ts.Program, root: string, file: strin
   expect(fixed.output).toBe(source);
   expect(fixed.messages).toEqual(messages);
 }
+
+it.each([
+  { mode: "invalid", suppression: "", noCheck: false, aliasDiagnostics: [1361] },
+  { mode: "suppressed", suppression: "// @ts-ignore\n", noCheck: false, aliasDiagnostics: [] },
+  { mode: "noCheck", suppression: "", noCheck: true, aliasDiagnostics: [] },
+])("checks erased alias effects before native diagnostics in both source orders: $mode", ({ suppression, noCheck, aliasDiagnostics }) => {
+  const root = mkdtempSync(join(tmpdir(), "ordinary-object-erased-alias-"));
+  try {
+    const files = new Map([
+      ["globals.d.ts", "declare const runtimeCapability: boolean;\n"],
+      ["seed.ts", "export const seed = {};\n"],
+      ["owner.ts", `import type {Marker} from './unsafe.js'; import type {seed} from './seed.js';\n${suppression}export const forwarded = seed;\nexport type Echo = Marker;\n`],
+      ["unsafe.ts", `import type {forwarded} from './owner.js'; export interface Marker {}\nruntimeCapability;\n${suppression}const copy = forwarded;\n`],
+      ["isolated.ts", "export const value = 'Ada';\n"],
+    ]);
+    for (const [file, source] of files) writeFileSync(join(root, file), source);
+    const expected = new Map([
+      ["seed.ts", { unsafe: false, diagnostics: [] }],
+      ["owner.ts", { unsafe: true, diagnostics: aliasDiagnostics }],
+      ["unsafe.ts", { unsafe: true, diagnostics: aliasDiagnostics }],
+      ["isolated.ts", { unsafe: false, diagnostics: [] }],
+    ]);
+    const sourceOrders: boolean[] = [];
+    for (const reverse of [false, true]) {
+      const roots = [...files.keys()].map((file) => join(root, file));
+      const program = ts.createProgram(reverse ? roots.reverse() : roots, {
+        strict: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext,
+        moduleResolution: ts.ModuleResolutionKind.Bundler, types: [], noCheck,
+      });
+      const nativeOrder = program.getSourceFiles().map((source) => source.fileName);
+      sourceOrders.push(nativeOrder.indexOf(join(root, "owner.ts")) < nativeOrder.indexOf(join(root, "unsafe.ts")));
+      const queries = reverse ? ["owner.ts", "unsafe.ts", "isolated.ts", "seed.ts"] : ["unsafe.ts", "owner.ts", "seed.ts", "isolated.ts"];
+      for (const file of [...queries, ...queries.reverse()]) {
+        const source = program.getSourceFile(join(root, file));
+        if (!source) throw new Error(`Missing erased-alias root: ${file}`);
+        expect(ordinaryObjectEffects(program, source), `${reverse}: ${file}`).toBe(expected.get(file)?.unsafe);
+      }
+      expect(program.getOptionsDiagnostics()).toEqual([]);
+      expect(program.getGlobalDiagnostics()).toEqual([]);
+      expect(program.getSyntacticDiagnostics()).toEqual([]);
+      for (const [file, { diagnostics }] of expected) {
+        const source = program.getSourceFile(join(root, file));
+        if (!source) throw new Error(`Missing erased-alias audit root: ${file}`);
+        expect(program.getSemanticDiagnostics(source).map((diagnostic) => diagnostic.code), file).toEqual(diagnostics);
+      }
+    }
+    expect(sourceOrders).toContain(true);
+    expect(sourceOrders).toContain(false);
+  } finally {
+    rmSync(root, {recursive: true, force: true});
+  }
+});
