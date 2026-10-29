@@ -192,7 +192,7 @@ class OpaqueContractFacts:
 
     def _find_checked(self, function: _Function) -> frozenset[ast.arg]:
         found = set(self.native.namespace(function).parameters())
-        terminal_rejection = _rejects(function.body)
+        terminal_rejection = self._rejects(function.body)
         for node in direct_nodes(function):
             if not self.reachable(node, function):
                 continue
@@ -206,7 +206,84 @@ class OpaqueContractFacts:
                 found.update(self._statement_parameters(node, terminal_rejection=terminal_rejection))
         found.update(self._identity_parameters(function))
         found.update(self._key_parameters(function))
+        found.update(self._model_iteration_parameters(function))
         return frozenset(found)
+
+    def _model_iteration_parameters(self, function: _Function) -> set[ast.arg]:
+        found: set[ast.arg] = set()
+        for parameter in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs):
+            if not self._opaque_iterable(parameter):
+                continue
+            loops = self._parameter_iterations(parameter, function)
+            if loops and all(self._validated_iteration(loop, function) for loop in loops):
+                found.add(parameter)
+        return found
+
+    def _opaque_iterable(self, parameter: ast.arg) -> bool:
+        if parameter.annotation is None:
+            return False
+        resolved = self.facts.resolve_annotation(parameter.annotation)
+        if resolved is None or not isinstance(resolved.expression, ast.Subscript):
+            return False
+        node = resolved.expression
+        return self.facts.qualified(node.value, resolved.at) in {
+            "collections.abc.Iterable",
+            "typing.Iterable",
+        } and _unknown_slot(node.slice, self.facts, resolved.at)
+
+    def _parameter_iterations(self, parameter: ast.arg, function: _Function) -> list[ast.For] | None:
+        loops: list[ast.For] = []
+        members = set(direct_nodes(function))
+        for read in self.facts.provenance.reads.get(parameter.arg, ()):
+            runtime = self.facts.provenance.runtime_binding(read.id, read)
+            if runtime is not parameter and self.facts.provenance.binding(read.id, read) is not parameter:
+                continue
+            if not self.reachable(read, function):
+                continue
+            owner = self.context.parents.get(read)
+            if (
+                runtime is not parameter
+                or not isinstance(owner, ast.For)
+                or owner not in members
+                or owner.iter is not read
+                or not isinstance(owner.target, ast.Name)
+            ):
+                return None
+            loops.append(owner)
+        return loops
+
+    def _validated_iteration(self, loop: ast.For, function: _Function) -> bool:
+        if not isinstance(loop.target, ast.Name):
+            return False
+        reads = [
+            read
+            for read in self.facts.provenance.reads.get(loop.target.id, ())
+            if (
+                self.facts.provenance.runtime_binding(read.id, read) is loop.target
+                or self.facts.provenance.binding(read.id, read) is loop.target
+            )
+            and self.reachable(read, function)
+        ]
+        members = set(direct_nodes(loop))
+        return bool(reads) and all(
+            self.facts.provenance.runtime_binding(read.id, read) is loop.target
+            and read in members
+            and self._model_element_read(read)
+            for read in reads
+        )
+
+    def _model_element_read(self, read: ast.Name) -> bool:
+        call = self.context.parents.get(read)
+        if isinstance(call, ast.keyword):
+            call = self.context.parents.get(call)
+        if not isinstance(call, ast.Call) or not isinstance(call.func, ast.Attribute):
+            return False
+        arguments = call_arguments(call, ("obj",))
+        if call.func.attr != "model_validate" or arguments is None or arguments.get("obj") is not read:
+            return False
+        contracts = DeclaredContracts(self.context)
+        model = contracts.class_type(call.func.value)
+        return model is not None and contracts.inherits(model, _VALIDATION_BASES)
 
     def _key_parameters(self, function: _Function) -> set[ast.arg]:
         found: set[ast.arg] = set()
@@ -337,7 +414,7 @@ class OpaqueContractFacts:
                 return set()
 
     def _if_parameters(self, node: ast.If) -> set[ast.arg]:
-        if _rejects(node.body):
+        if self._rejects(node.body):
             candidate = node.test
             if isinstance(candidate, ast.BoolOp) and isinstance(candidate.op, ast.Or):
                 candidate = candidate.values[0]
@@ -345,7 +422,7 @@ class OpaqueContractFacts:
                 return {parameter}
             if isinstance(candidate, ast.UnaryOp) and isinstance(candidate.op, ast.Not):
                 return self._predicate(candidate.operand)
-        return self._predicate(node.test) if _rejects(node.orelse) else set()
+        return self._predicate(node.test) if self._rejects(node.orelse) else set()
 
     def _match_parameters(self, node: ast.Match) -> set[ast.arg]:
         if not node.cases:
@@ -355,13 +432,28 @@ class OpaqueContractFacts:
             isinstance(last.pattern, ast.MatchAs)
             and last.pattern.name is None
             and last.guard is None
-            and _rejects(last.body)
+            and self._rejects(last.body)
         ):
             return set()
         parameter = self.parameter(node.subject)
         if parameter is not None and any(_class_pattern(case.pattern) for case in node.cases[:-1]):
             return {parameter}
         return set()
+
+    def _rejects(self, body: list[ast.stmt]) -> bool:
+        if _rejects(body):
+            return True
+        if not body or not isinstance(body[-1], ast.Expr) or not isinstance(body[-1].value, ast.Call):
+            return False
+        source = self._source(body[-1].value.func)
+        if source is None:
+            return False
+        _owner, function = source
+        return (
+            bool(function.body)
+            and isinstance(function.body[-1], ast.Raise)
+            and not any(isinstance(node, ast.Return | ast.Yield | ast.YieldFrom) for node in direct_nodes(function))
+        )
 
     def _predicate(self, expression: ast.expr) -> set[ast.arg]:
         if isinstance(expression, ast.BoolOp):

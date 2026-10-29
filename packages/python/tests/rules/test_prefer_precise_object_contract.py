@@ -87,6 +87,213 @@ def test_loader_default_does_not_hide_object_contract(rule: PreferPreciseObjectC
     assert len(rule.check(Path("app/contract.py"), source)) == 1
 
 
+_ITERABLE_MODEL = (
+    "from collections.abc import Iterable\nfrom pydantic import BaseModel\nclass Entry(BaseModel):\n    kid: str\n"
+)
+_ITERATED_VALIDATION = "def parse(values: Iterable[object]) -> None:\n    for item in values:\n        Entry.model_validate(item, from_attributes=True)\n"
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        pytest.param(_ITERABLE_MODEL + _ITERATED_VALIDATION, 0, id="validated-elements"),
+        pytest.param(
+            _ITERABLE_MODEL.replace("from collections.abc import Iterable", "from typing import Iterable as Items")
+            + _ITERATED_VALIDATION.replace("Iterable[object]", "Items[object]"),
+            0,
+            id="typing-import-alias",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL
+            + "type Items = Iterable[object]\n"
+            + _ITERATED_VALIDATION.replace("Iterable[object]", "Items"),
+            0,
+            id="source-type-alias",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL + _ITERATED_VALIDATION.replace("model_validate(item,", "model_validate(obj=item,"),
+            0,
+            id="keyword-raw-input",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL
+            + "from pydantic import ValidationError\n"
+            + "def parse(values: Iterable[object]) -> tuple[Entry, ...]:\n    entries: list[Entry] = []\n    for item in values:\n        try:\n            entry = Entry.model_validate(item, from_attributes=True)\n        except ValidationError:\n            continue\n        entries.append(entry)\n    return tuple(entries)\n",
+            0,
+            id="skip-malformed-attribute-backed-elements",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL + "def parse(values: Iterable[object]) -> None:\n    return\n",
+            1,
+            id="unused-input-is-not-validation",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL
+            + _ITERATED_VALIDATION.replace("        Entry", "        item.domain_only()\n        Entry"),
+            1,
+            id="unvalidated-domain-read-before-validation",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL + _ITERATED_VALIDATION + "        item.domain_only()\n",
+            1,
+            id="raw-element-still-not-a-domain-model",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL
+            + "def parse(values: Iterable[object]) -> object:\n    for item in values:\n        return item\n    return None\n",
+            2,
+            id="unvalidated-element-escapes",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL + _ITERATED_VALIDATION.replace("Entry.model_validate", "Unknown.model_validate"),
+            1,
+            id="unknown-model-provider",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL
+            + _ITERATED_VALIDATION.replace("        Entry", "        item = replacement\n        Entry"),
+            1,
+            id="rebound-element-does-not-validate-input",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL
+            + "def parse(values: Iterable[object]) -> None:\n    for item in values:\n        callbacks.append(lambda: Entry.model_validate(item))\n",
+            1,
+            id="deferred-element-escape",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL + _ITERATED_VALIDATION + "        callbacks.append(lambda: item.domain_only())\n",
+            1,
+            id="validated-element-also-escapes-through-lambda",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL + _ITERATED_VALIDATION + "    callbacks.append(lambda: values)\n",
+            1,
+            id="validated-iterator-also-escapes-through-lambda",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL + _ITERATED_VALIDATION + "        streams.append(item for _ in range(1))\n",
+            1,
+            id="validated-element-also-escapes-through-generator",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL + _ITERATED_VALIDATION + "    streams.append(values for _ in range(1))\n",
+            1,
+            id="validated-iterator-also-escapes-through-generator",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL + _ITERATED_VALIDATION + "    consume(item)\n",
+            1,
+            id="last-raw-element-escapes-after-loop",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL + _ITERATED_VALIDATION + "    values.domain_only()\n",
+            1,
+            id="unrelated-iterator-use",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL
+            + "def parse(values: Iterable[object]) -> None:\n    def later():\n        for item in values:\n            Entry.model_validate(item)\n    callbacks.append(later)\n",
+            1,
+            id="deferred-iterator-escape",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL + _ITERATED_VALIDATION.replace("        Entry", "        if False:\n            Entry"),
+            1,
+            id="unreachable-validation",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL
+            + _ITERATED_VALIDATION.replace("values: Iterable[object]", "values: Iterable[object], other: object"),
+            1,
+            id="unrelated-object-contract-remains",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL + _ITERATED_VALIDATION + "    for item in values:\n        consume(item)\n",
+            1,
+            id="every-input-use-needs-validation",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL
+            + _ITERATED_VALIDATION.replace("model_validate(item, from_attributes=True)", "model_validate_json(item)"),
+            1,
+            id="json-parser-needs-text-input",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL
+            + _ITERATED_VALIDATION.replace(
+                "model_validate(item, from_attributes=True)", "model_validate(*items, obj=item)"
+            ),
+            1,
+            id="ambiguous-validation-arguments",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL.replace("import Iterable", "import Sequence")
+            + _ITERATED_VALIDATION.replace("Iterable[object]", "Sequence[object]"),
+            1,
+            id="no-general-collection-exception",
+        ),
+        pytest.param(
+            _ITERABLE_MODEL + "class Iterable[T]: pass\n" + _ITERATED_VALIDATION,
+            1,
+            id="shadowed-iterable-provider",
+        ),
+    ],
+)
+def test_source_proven_iterable_model_validation(rule: PreferPreciseObjectContract, source: str, expected: int) -> None:
+    assert len(rule.check(Path("app/contracts.py"), source)) == expected
+
+
+@pytest.mark.parametrize(
+    ("provider", "expected"),
+    [
+        pytest.param(
+            "from typing import NoReturn\ndef halt(message: str) -> NoReturn:\n    raise SystemExit(message)\n",
+            0,
+            id="real-nonreturning-helper",
+        ),
+        pytest.param("def halt(message):\n    raise ValueError(message)\n", 0, id="body-proof-without-annotation"),
+        pytest.param(
+            "from typing import NoReturn\ndef halt(message: str) -> NoReturn:\n    return None\n",
+            1,
+            id="annotation-does-not-prove-rejection",
+        ),
+        pytest.param(
+            "def halt(message):\n    if message:\n        return None\n    raise ValueError(message)\n",
+            1,
+            id="early-return-path",
+        ),
+        pytest.param("async def halt(message):\n    raise ValueError(message)\n", 1, id="unawaited-async-helper"),
+        pytest.param("@decorate\ndef halt(message):\n    raise ValueError(message)\n", 1, id="decorated-helper"),
+        pytest.param(
+            "def halt(message):\n    yield message\n    raise ValueError(message)\n", 1, id="generator-is-not-rejection"
+        ),
+        pytest.param(
+            "def halt(message):\n    raise ValueError(message)\nhalt = replacement\n", 1, id="provider-rebound"
+        ),
+        pytest.param(
+            "def halt(message):\n    try:\n        raise ValueError(message)\n    finally:\n        return None\n",
+            1,
+            id="finally-suppresses-raise",
+        ),
+        pytest.param(
+            "def halt(message):\n    def local():\n        return message\n    raise ValueError(message)\n",
+            0,
+            id="nested-return-is-not-helper-return",
+        ),
+    ],
+)
+def test_rejecting_helper_requires_stable_source_and_no_return_path(
+    tmp_path: Path, rule: PreferPreciseObjectContract, provider: str, expected: int
+) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nrequires-python = '>=3.14'\n")
+    (tmp_path / "support.py").write_text(provider)
+    source = "from support import halt\ndef parse(value: object) -> str:\n    if not isinstance(value, str):\n        halt('not text')\n    return value\n"
+    path = tmp_path / "app.py"
+    path.write_text(source)
+    assert len(rule.check(path, source)) == expected
+
+
 @pytest.mark.parametrize(
     ("source", "expected"),
     [
