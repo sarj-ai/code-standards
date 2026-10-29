@@ -17,9 +17,15 @@ if TYPE_CHECKING:
     [
         ("no-database-functions", "CREATE FUNCTION f() RETURNS int LANGUAGE sql AS $$SELECT 1$$;", "SARJ120"),
         ("no-database-functions", "CREATE PROCEDURE f() LANGUAGE sql AS $$SELECT 1$$;", "SARJ120"),
+        ("no-database-functions", "ALTER FUNCTION f() SECURITY DEFINER;", "SARJ120"),
+        ("no-database-functions", "ALTER PROCEDURE p() SECURITY DEFINER;", "SARJ120"),
+        ("no-database-functions", "ALTER ROUTINE f() IMMUTABLE;", "SARJ120"),
         ("no-database-triggers", "CREATE TRIGGER t BEFORE UPDATE ON work EXECUTE FUNCTION f();", "SARJ114"),
         ("no-database-triggers", "CREATE EVENT TRIGGER t ON ddl_command_start EXECUTE FUNCTION f();", "SARJ114"),
         ("no-database-triggers", "ALTER EVENT TRIGGER t ENABLE ALWAYS;", "SARJ114"),
+        ("no-database-triggers", "ALTER TRIGGER t ON work RENAME TO next_t;", "SARJ114"),
+        ("no-database-triggers", "ALTER EVENT TRIGGER t OWNER TO app;", "SARJ114"),
+        ("no-database-triggers", "ALTER EVENT TRIGGER t RENAME TO next_t;", "SARJ114"),
         ("no-migration-comments", "COMMENT ON TABLE work IS 'work rows';", "SARJ128"),
     ],
 )

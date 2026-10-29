@@ -19,7 +19,6 @@ MIGRATION = Path("migrations/001.sql")
         "SELECT 1; -- sarj-noqa",
         "-- sarj-migration-atomicity: lock=bounded\nSELECT 1;",
         "COMMENT ON COLUMN settings.n IS 'positive';",
-        "COMMENT ON TABLE settings IS NULL;",
         "DO $$ BEGIN /* executable comment */ NULL; END $$;",
         "DO $$ BEGIN COMMENT ON TABLE t IS 'prose'; END $$;",
         "-- migrate:up this is a prose suffix\nSELECT 1;",
@@ -30,6 +29,46 @@ MIGRATION = Path("migrations/001.sql")
 def test_reports_all_non_executable_comments(source: str) -> None:
     [finding] = NoMigrationComments().check(MIGRATION, source)
     assert finding.code == "SARJ128"
+
+
+@pytest.mark.parametrize("value", ["NULL", "null", "''", "E''", "e''", "$$$$", "$empty$$empty$"])
+def test_comment_on_can_remove_existing_prose(value: str) -> None:
+    assert NoMigrationComments().check(MIGRATION, f"COMMENT ON TABLE settings IS {value};") == []
+
+
+@pytest.mark.parametrize("value", ["'NULL'", "E'NULL'", "' '", "E'\\n'", "$$NULL$$", "$$ $$", "'prose; IS NULL'"])
+def test_comment_removal_spelling_inside_nonempty_values_does_not_allow_prose(value: str) -> None:
+    [finding] = NoMigrationComments().check(MIGRATION, f"COMMENT ON TABLE settings IS {value};")
+    assert finding.code == "SARJ128"
+
+
+def test_comment_cleanup_does_not_hide_a_following_comment_statement() -> None:
+    source = "COMMENT ON TABLE settings IS NULL;\nCOMMENT ON TABLE settings IS 'prose';"
+    [finding] = NoMigrationComments().check(MIGRATION, source)
+    assert finding.line == 2
+
+
+def test_comment_cleanup_respects_quoted_identifiers_and_do_bodies() -> None:
+    source = 'DO $body$ BEGIN COMMENT ON COLUMN "IS NULL"."prose; IS" IS E\'\'; END $body$;'
+    assert NoMigrationComments().check(MIGRATION, source) == []
+    [finding] = NoMigrationComments().check(MIGRATION, source.replace("E''", "'NULL'"))
+    assert finding.code == "SARJ128"
+
+
+def test_comment_cleanup_cannot_be_inferred_from_scalar_or_dynamic_sql() -> None:
+    source = (
+        "SELECT 'COMMENT ON TABLE settings IS NULL;';\n"
+        "SELECT $$COMMENT ON TABLE settings IS 'prose';$$;\n"
+        "DO $$ BEGIN EXECUTE 'COMMENT ON TABLE settings IS NULL;'; END $$;"
+    )
+    assert NoMigrationComments().check(MIGRATION, source) == []
+
+
+def test_comment_cleanup_preserves_the_copy_input_boundary() -> None:
+    source = (
+        "COMMENT ON TABLE settings IS '';\nCOPY settings(body) FROM STDIN;\nCOMMENT ON TABLE settings IS 'data';\n\\.\n"
+    )
+    assert NoMigrationComments().check(MIGRATION, source) == []
 
 
 @pytest.mark.parametrize(

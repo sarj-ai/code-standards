@@ -20,6 +20,7 @@ from sarj_sql_lint.rule_base import (
     is_generated_migration,
     is_migration_source,
     mask_sql,
+    mask_sql_comments,
     redirect_to_model,
     source_location,
     sql_comments,
@@ -45,6 +46,10 @@ _RUNNER_DIRECTIVE = re.compile(
 _COMMENT_ON = re.compile(
     rf"(?<!{POSTGRES_IDENTIFIER_CONTINUATION})(?ai:COMMENT)[ \t\r\n\f\v]+(?ai:ON)(?!{POSTGRES_IDENTIFIER_CONTINUATION})"
 )
+_COMMENT_IS = re.compile(rf"(?<!{POSTGRES_IDENTIFIER_CONTINUATION})(?ai:IS)(?!{POSTGRES_IDENTIFIER_CONTINUATION})")
+_COMMENT_REMOVAL_VALUE = re.compile(
+    r"(?:(?ai:NULL|E'')|''|(?P<tag>\$(?:[A-Za-z_\u0080-\U0010ffff][A-Za-z0-9_\u0080-\U0010ffff]*)?\$)(?P=tag))"
+)
 
 
 @final
@@ -60,7 +65,8 @@ class NoMigrationComments(Rule):
         ),
         remediation=(
             "Express data invariants with SQL constraints and delete explanatory line/block comments and COMMENT ON "
-            "statements. Put deployment context in the change description. Retain only executable runner, dialect, "
+            "statements that store prose. COMMENT ON with NULL or an empty string may remove existing comments. "
+            "Put deployment context in the change description. Retain only executable runner, dialect, "
             "and statement-boundary directives. Migration sarj-noqa comments are also reported."
         ),
         category=RuleCategory.MAINTAINABILITY,
@@ -70,6 +76,7 @@ class NoMigrationComments(Rule):
             "Exact standalone dbmate, Goose, sql-migrate, Liquibase, Atlas, dialect and Drizzle breakpoint directives are preserved.",
             "PostgreSQL line and nested block comments are recognized; MySQL # comments are outside the shared scanner.",
             "Strings and quoted identifiers are not comments, including scalar dollar-quoted data. Comments in executable bodies are checked.",
+            "COMMENT ON cleanup using unquoted NULL or an empty plain, escape, or dollar-quoted string is allowed; quoted NULL and nonempty strings still store comments.",
             "Analysis stops before top-level COPY FROM STDIN; payloads and following commands are not inferred.",
             "The rule does not invent a constraint from arbitrary prose or delete comments automatically.",
         ),
@@ -125,7 +132,12 @@ class NoMigrationComments(Rule):
             for comment in sql_comments(source, mask_dollar_literals=True)
             if not _is_tool_directive(comment, lines)
         ]
-        for match in _COMMENT_ON.finditer(mask_sql(source, mask_dollar_literals=True)):
+        masked = mask_sql(source, mask_dollar_literals=True)
+        comment_statements = tuple(_COMMENT_ON.finditer(masked))
+        uncommented = mask_sql_comments(source) if comment_statements else source
+        for match in comment_statements:
+            if _removes_existing_comment(masked, uncommented, match.end()):
+                continue
             line, column = source_location(source, match.start())
             findings.append(
                 Diagnostic(
@@ -146,3 +158,14 @@ def _is_tool_directive(comment: SourceComment, lines: list[str]) -> bool:
         and not lines[comment.line - 1][: comment.column - 1].strip()
         and _RUNNER_DIRECTIVE.fullmatch(comment.body) is not None
     )
+
+
+def _removes_existing_comment(masked: str, uncommented: str, start: int) -> bool:
+    end = masked.find(";", start)
+    if end < 0:
+        end = len(masked)
+    separators = tuple(_COMMENT_IS.finditer(masked, start, end))
+    if not separators:
+        return False
+    value = uncommented[separators[-1].end() : end].strip()
+    return _COMMENT_REMOVAL_VALUE.fullmatch(value) is not None

@@ -53,7 +53,11 @@ def table_contracts(source: str) -> Iterator[TableContract]:
             except SqlglotError, RecursionError:
                 statements = []
             for statement in statements:
-                if isinstance(statement, exp.Create) and isinstance(schema := child(statement, "this"), exp.Schema):
+                if (
+                    isinstance(statement, exp.Create)
+                    and statement.find(exp.InheritsProperty) is None
+                    and isinstance(schema := child(statement, "this"), exp.Schema)
+                ):
                     yield TableContract(schema, start)
         start = separator + 1
 

@@ -62,11 +62,15 @@ def test_abstains_for_independent_tautological_impossible_or_unknown_checks(chec
     assert _check(f"CREATE TABLE job (requested BOOLEAN NOT NULL, confirmed BOOLEAN NOT NULL, CHECK ({check}));") == []
 
 
-@pytest.mark.parametrize("nullable", ["requested BOOLEAN", "requested INTEGER NOT NULL"])
+@pytest.mark.parametrize("nullable", ["requested BOOLEAN", "requested BOOLEAN NULL", "requested INTEGER NOT NULL"])
 def test_unproven_boolean_domain_is_not_guessed(nullable: str) -> None:
     assert (
         _check(f"CREATE TABLE job ({nullable}, confirmed BOOLEAN NOT NULL, CHECK (NOT confirmed OR requested));") == []
     )
+
+
+def test_explicitly_nullable_flags_are_not_treated_as_not_null() -> None:
+    assert _check("CREATE TABLE t (a BOOLEAN NULL, b BOOLEAN NULL, CHECK (NOT a OR b));") == []
 
 
 def test_quoted_columns_have_exact_case_and_diagnostics_have_source_offsets() -> None:

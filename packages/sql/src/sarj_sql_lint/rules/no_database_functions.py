@@ -29,8 +29,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-_CREATE_FUNCTION = re.compile(
-    rf"(?<!{POSTGRES_IDENTIFIER_CONTINUATION})(?P<ddl>CREATE\s+(?:OR\s+REPLACE\s+)?(?:FUNCTION|PROCEDURE))"
+_ROUTINE_DDL = re.compile(
+    rf"(?<!{POSTGRES_IDENTIFIER_CONTINUATION})(?P<ddl>"
+    r"CREATE\s+(?:OR\s+REPLACE\s+)?(?:FUNCTION|PROCEDURE)|ALTER\s+(?:FUNCTION|PROCEDURE|ROUTINE))"
     rf"(?!{POSTGRES_IDENTIFIER_CONTINUATION})",
     re.ASCII | re.IGNORECASE,
 )
@@ -48,7 +49,7 @@ class NoDatabaseFunctions(Rule):
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Reports PostgreSQL CREATE [OR REPLACE] FUNCTION and PROCEDURE, including temporary-schema functions. Calls to built-in or existing functions and DROP FUNCTION remain valid.",
+            "Reports PostgreSQL CREATE [OR REPLACE] FUNCTION/PROCEDURE and ALTER FUNCTION/PROCEDURE/ROUTINE, including temporary-schema routines. Calls to built-in or existing functions and DROP FUNCTION/PROCEDURE/ROUTINE remain valid.",
             "This is an organization-specific architecture policy. Comments, quoted values (including scalar and nested dollar-quoted strings), dumps, and non-PostgreSQL dialects are excluded. Executable DO and routine bodies remain visible.",
             "Generated migrations report against their owning model when one can be identified. Triggers are covered separately by SARJ114.",
             "Dynamically generated DDL inside procedural bodies is not inferred.",
@@ -123,7 +124,7 @@ class NoDatabaseFunctions(Rule):
         if is_dump_file(source, path) or not is_postgres_source(path, source):
             return []
         diagnostics: list[Diagnostic] = []
-        for match in _CREATE_FUNCTION.finditer(mask_sql(source, mask_dollar_literals=True)):
+        for match in _ROUTINE_DDL.finditer(mask_sql(source, mask_dollar_literals=True)):
             location = source_location(source, match.start("ddl"))
             diagnostics.append(
                 Diagnostic(

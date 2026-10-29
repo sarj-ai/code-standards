@@ -31,7 +31,8 @@ if TYPE_CHECKING:
 
 _INTRODUCE_TRIGGER = re.compile(
     rf"(?<!{POSTGRES_IDENTIFIER_CONTINUATION})(?:CREATE\s+(?:(?:OR\s+REPLACE|CONSTRAINT|EVENT)\s+)?TRIGGER|"
-    r"ALTER\s+EVENT\s+TRIGGER\s+[^;]+?\s+ENABLE|ALTER\s+TABLE\s+[^;]+?\s+ENABLE\s+(?:(?:ALWAYS|REPLICA)\s+)?TRIGGER)"
+    r"ALTER\s+TRIGGER|ALTER\s+EVENT\s+TRIGGER\s+[^;]+?\s+(?:ENABLE|RENAME|OWNER)|"
+    r"ALTER\s+TABLE\s+[^;]+?\s+ENABLE\s+(?:(?:ALWAYS|REPLICA)\s+)?TRIGGER)"
     rf"(?!{POSTGRES_IDENTIFIER_CONTINUATION})",
     re.ASCII | re.IGNORECASE | re.DOTALL,
 )
@@ -55,7 +56,7 @@ class NoCreateTrigger(Rule):
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "PostgreSQL CREATE TRIGGER, CREATE CONSTRAINT TRIGGER, CREATE EVENT TRIGGER, ALTER EVENT TRIGGER ENABLE, and ALTER TABLE ENABLE TRIGGER statements are reported.",
+            "Reports PostgreSQL CREATE [OR REPLACE] TRIGGER, CREATE CONSTRAINT TRIGGER, CREATE EVENT TRIGGER, all ALTER TRIGGER statements, ALTER EVENT TRIGGER ENABLE/RENAME/OWNER, and ALTER TABLE ENABLE TRIGGER. DROP TRIGGER/EVENT TRIGGER and ALTER TABLE/EVENT TRIGGER DISABLE remain valid cleanup.",
             "This is an organization-specific single-writer architecture policy, not a claim that triggers are invalid.",
             "Dump files and non-PostgreSQL dialects are excluded.",
             "Scalar and nested dollar-quoted values are excluded; executable DO and routine bodies remain visible.",

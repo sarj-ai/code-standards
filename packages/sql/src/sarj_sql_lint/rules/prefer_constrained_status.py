@@ -136,7 +136,10 @@ def _required_boolean(column: exp.ColumnDef) -> bool:
     return (
         isinstance(column.kind, exp.DataType)
         and column.kind.is_type(exp.DataType.Type.BOOLEAN)
-        and any(isinstance(item.kind, exp.NotNullColumnConstraint) for item in column.constraints)
+        and any(
+            isinstance(item.kind, exp.NotNullColumnConstraint) and item.kind.args.get("allow_null") is not True
+            for item in column.constraints
+        )
         and not any(isinstance(item.kind, exp.ComputedColumnConstraint) for item in column.constraints)
     )
 

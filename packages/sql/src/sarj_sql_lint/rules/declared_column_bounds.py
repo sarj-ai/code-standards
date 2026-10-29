@@ -41,18 +41,15 @@ if TYPE_CHECKING:
 _NUMBER = r"-?\d+(?:\.\d+)?"
 _ALTER_TABLE = re.compile(r"\bALTER\s+TABLE\b", re.IGNORECASE)
 _RANGE = re.compile(
-    rf"(?<![\w.])(?P<low>{_NUMBER})(?P<low_unit>ms|s|m|h|d|w)?\s*\.\.\s*"
-    rf"(?P<high>{_NUMBER})(?P<high_unit>ms|s|m|h|d|w)?(?![\w.])",
-    re.IGNORECASE,
+    rf"(?:(?P<label>(?:valid\s+)?range|capped|allowed(?:\s+range)?|between)\s*:?\s*)?"
+    rf"(?P<low>{_NUMBER})(?P<low_unit>ms|s|m|h|d|w)?\s*\.\.\s*"
+    rf"(?P<high>{_NUMBER})(?P<high_unit>ms|s|m|h|d|w)?",
+    re.IGNORECASE | re.ASCII,
 )
-_RANGE_LABEL = re.compile(r"\b(?:range|capped|allowed|valid|between)\b", re.IGNORECASE)
-_AMBIGUOUS_DECLARATION = re.compile(
-    r"\b(?:if|when|unless|except|previous|previously|formerly|historical|was|now|not|may|might)\b|\b(?:used to|no longer)\b",
-    re.IGNORECASE,
-)
-_POSITIVE = re.compile(r"(?:^|[;:])\s*(?:strictly\s+)?positive\b|\bmust be (?:strictly )?positive\b", re.IGNORECASE)
-_NONNEGATIVE = re.compile(r"(?:^|[;:])\s*non[ -]?negative\b|\bmust be non[ -]?negative\b", re.IGNORECASE)
-_INTERVAL_VALUE = re.compile(rf"\s*({_NUMBER})\s*([A-Za-z]+)\s*")
+_NULLABILITY_CLAUSE = re.compile(r"required|optional", re.IGNORECASE | re.ASCII)
+_POSITIVE = re.compile(r"(?:must\s+be\s+)?(?:strictly\s+)?positive", re.IGNORECASE | re.ASCII)
+_NONNEGATIVE = re.compile(r"(?:must\s+be\s+)?non[ -]?negative", re.IGNORECASE | re.ASCII)
+_INTERVAL_VALUE = re.compile(rf"\s*({_NUMBER})\s*([A-Za-z]+)\s*", re.ASCII)
 _SECONDS: Final[dict[str, Decimal]] = {
     "ms": Decimal("0.001"),
     "millisecond": Decimal("0.001"),
@@ -73,7 +70,8 @@ _SECONDS: Final[dict[str, Decimal]] = {
     "week": Decimal(604800),
     "weeks": Decimal(604800),
 }
-_INTEGERS = frozenset({"SMALLINT", "INT", "BIGINT", "TINYINT"})
+_INTEGER_BITS: Final[dict[str, int]] = {"SMALLINT": 16, "INT": 32, "BIGINT": 64}
+_INTEGERS = frozenset(_INTEGER_BITS)
 _NUMERIC = _INTEGERS | {"DECIMAL", "DOUBLE", "FLOAT"}
 
 
@@ -107,9 +105,9 @@ class DeclaredColumnBounds(Rule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Checks authored PostgreSQL migration CREATE TABLE columns with an attached range comment: labeled numeric a..b, explicit interval a-unit..b-unit, or explicit positive/non-negative declarations. Arbitrary names, defaults, signed amounts, offsets and undocumented limits do not imply a bound.",
-            "Understands literal numeric comparisons, BETWEEN, reversed comparisons and AND in inline/table CHECK constraints. Integer exclusive endpoints are normalized. Simple constant intervals use milliseconds through weeks; calendar months/years, casts on columns and computed bounds are not inferred.",
-            "Unknown CHECK expressions mentioning the column cause abstention, rather than a false claim that a complex constraint is missing. Files containing ALTER TABLE are excluded because staged constraints are not resolved. Domains, generated migrations and dumps are excluded.",
+            "Checks authored PostgreSQL migration CREATE TABLE columns with an attached standalone declaration: labeled numeric a..b, explicit interval a-unit..b-unit, or positive/non-negative forms, optionally prefixed by must be. Separate required/optional semicolon clauses are accepted. Qualifying, conditional, historical and arbitrary trailing prose is excluded rather than interpreted. Names, defaults, signed amounts, offsets and undocumented limits do not imply a bound.",
+            "Understands literal numeric comparisons, BETWEEN, reversed comparisons and AND in inline/table CHECK constraints. Native SMALLINT, INT and BIGINT limits contribute to the coverage proof, and integer exclusive endpoints are normalized. Simple constant intervals use milliseconds through weeks; calendar months/years, casts on columns and computed bounds are not inferred.",
+            "Unknown CHECK expressions mentioning the column cause abstention, rather than a false claim that a complex constraint is missing. Computed columns are excluded because their expression may enforce the declared bounds; ordinary defaults and identity generators do not establish a bound. Inherited tables and files containing ALTER TABLE are excluded because inherited/staged constraints are not resolved. User-defined types, including TINYINT domains, generated migrations and dumps are excluded.",
         ),
         examples=(
             RuleExample(
@@ -176,6 +174,8 @@ class DeclaredColumnBounds(Rule):
 
 
 def _missing_bounds(column: exp.ColumnDef, checks: tuple[exp.Expr, ...]) -> bool:
+    if any(isinstance(item.kind, exp.ComputedColumnConstraint) for item in column.constraints):
+        return False
     kind = column.kind.sql(comments=False).partition("(")[0] if isinstance(column.kind, exp.DataType) else ""
     if kind not in _NUMERIC | {"INTERVAL"}:
         return False
@@ -187,29 +187,43 @@ def _missing_bounds(column: exp.ColumnDef, checks: tuple[exp.Expr, ...]) -> bool
     actual = [_check_bounds(check, name, interval=kind == "INTERVAL") for check in checks]
     if any(bounds is None for bounds in actual):
         return False
+    actual.append(_intrinsic_bounds(kind))
     return not _covered(expected, actual, integer=kind in _INTEGERS)
 
 
+def _intrinsic_bounds(kind: str) -> list[_Bounds]:
+    bits = _INTEGER_BITS.get(kind)
+    if bits is None:
+        return []
+    magnitude = 1 << (bits - 1)
+    return [_Bounds(_Bound(Decimal(-magnitude)), _Bound(Decimal(magnitude - 1)))]
+
+
 def _declared_bounds(comments: list[str], *, interval: bool) -> _Bounds | None:
-    for comment in comments:
-        if _AMBIGUOUS_DECLARATION.search(comment):
-            continue
-        if (match := _RANGE.search(comment)) is not None:
-            low_unit, high_unit = match.group("low_unit"), match.group("high_unit")
-            if interval and low_unit and high_unit:
-                low = Decimal(match.group("low")) * _SECONDS[low_unit.lower()]
-                high = Decimal(match.group("high")) * _SECONDS[high_unit.lower()]
-            elif not interval and not low_unit and not high_unit and _RANGE_LABEL.search(comment):
-                low, high = Decimal(match.group("low")), Decimal(match.group("high"))
-            else:
-                continue
-            if low <= high:
-                return _Bounds(_Bound(low), _Bound(high))
-        if _NONNEGATIVE.search(comment):
-            return _Bounds(_Bound(Decimal(0)))
-        if _POSITIVE.search(comment):
-            return _Bounds(_Bound(Decimal(0), inclusive=False))
+    declaration = _declaration_text(" ".join(comments))
+    if declaration is None:
+        return None
+    if (match := _RANGE.fullmatch(declaration)) is not None:
+        low_unit, high_unit = match.group("low_unit"), match.group("high_unit")
+        if interval and low_unit and high_unit:
+            low = Decimal(match.group("low")) * _SECONDS[low_unit.lower()]
+            high = Decimal(match.group("high")) * _SECONDS[high_unit.lower()]
+        elif not interval and not low_unit and not high_unit and match.group("label"):
+            low, high = Decimal(match.group("low")), Decimal(match.group("high"))
+        else:
+            return None
+        return _Bounds(_Bound(low), _Bound(high)) if low <= high else None
+    if _NONNEGATIVE.fullmatch(declaration):
+        return _Bounds(_Bound(Decimal(0)))
+    if _POSITIVE.fullmatch(declaration):
+        return _Bounds(_Bound(Decimal(0), inclusive=False))
     return None
+
+
+def _declaration_text(comment: str) -> str | None:
+    clauses = [clause.strip() for clause in comment.strip().removesuffix(".").split(";")]
+    declarations = [clause for clause in clauses if _NULLABILITY_CLAUSE.fullmatch(clause) is None]
+    return declarations[0] if len(declarations) == 1 else None
 
 
 def _check_bounds(node: exp.Expr | None, name: str, *, interval: bool) -> list[_Bounds] | None:

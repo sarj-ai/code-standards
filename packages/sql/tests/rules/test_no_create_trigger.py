@@ -56,10 +56,27 @@ def test_reports_trigger_reenablement(source: str) -> None:
 @pytest.mark.parametrize(
     "source",
     [
+        "ALTER TRIGGER audit_call ON calls RENAME TO next_audit;",
+        "ALTER TRIGGER audit_call ON calls DEPENDS ON EXTENSION audit_extension;",
+        "ALTER TRIGGER audit_call ON calls NO DEPENDS ON EXTENSION audit_extension;",
+        "ALTER EVENT TRIGGER ddl_audit OWNER TO app;",
+        'ALTER EVENT TRIGGER "ddl_audit" RENAME TO next_audit;',
+    ],
+)
+def test_reports_trigger_definition_changes(source: str) -> None:
+    [finding] = _check(source)
+    assert finding.code == "SARJ114"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
         "-- CREATE TRIGGER is intentionally forbidden",
         "INSERT INTO docs(body) VALUES ('CREATE TRIGGER example');",
         "DROP TRIGGER IF EXISTS update_timestamp ON calls;",
         "ALTER TABLE calls DISABLE TRIGGER audit_call;",
+        "ALTER EVENT TRIGGER ddl_audit DISABLE;",
+        "DROP EVENT TRIGGER IF EXISTS ddl_audit;",
         "CREATE TABLE trigger_audit (id uuid PRIMARY KEY);",
         "SELECT $$CREATE TRIGGER example$$;",
         "SELECT $doc$; CREATE TRIGGER example$doc$;",
@@ -67,6 +84,9 @@ def test_reports_trigger_reenablement(source: str) -> None:
         "COMMENT ON TABLE docs IS $$ALTER TABLE batch ENABLE TRIGGER example$$;",
         "DO $$ BEGIN RAISE NOTICE $doc$CREATE TRIGGER example$doc$; END $$;",
         "CREATE FUNCTION docs() RETURNS text AS $body$ SELECT $doc$CREATE TRIGGER example$doc$; $body$ LANGUAGE SQL;",
+        "-- ALTER TRIGGER audit_call ON calls RENAME TO next_audit;",
+        "SELECT 'ALTER EVENT TRIGGER ddl_audit OWNER TO app;';",
+        "SELECT $$ALTER EVENT TRIGGER ddl_audit RENAME TO next_audit;$$;",
     ],
 )
 def test_ignores_non_executable_trigger_creation(source: str) -> None:
@@ -93,6 +113,8 @@ CREATE TRIGGER second AFTER UPDATE ON calls EXECUTE FUNCTION second_fn();
         "DO LANGUAGE 'plpgsql' $body$ BEGIN ALTER TABLE batch ENABLE TRIGGER audit; END $body$;",
         'DO /* code */ LANGUAGE "plpgsql" $body$ BEGIN CREATE TRIGGER audit AFTER INSERT ON batch EXECUTE FUNCTION audit(); END $body$;',
         "SELECT $doc$CREATE TRIGGER example$doc$; CREATE TRIGGER audit AFTER INSERT ON batch EXECUTE FUNCTION audit();",
+        "DO $$ BEGIN ALTER TRIGGER audit ON batch RENAME TO next_audit; END $$;",
+        "DO $$ BEGIN ALTER EVENT TRIGGER ddl_audit OWNER TO app; END $$;",
     ],
 )
 def test_genuine_trigger_ddl_survives_dollar_literal_masking(source: str) -> None:
@@ -107,14 +129,24 @@ def test_genuine_trigger_ddl_survives_dollar_literal_masking(source: str) -> Non
         "SELECT CREATE TRIGGER$label FROM docs;",
         "SELECT CREATE TRIGGER\u0301 FROM docs;",
         "SELECT CREATE TRİGGER FROM docs;",
+        "SELECT x$ALTER TRIGGER FROM docs;",
+        "SELECT x\u0301ALTER TRIGGER FROM docs;",
+        "SELECT ALTER TRIGGER$label FROM docs;",
+        "SELECT ALTER TRIGGER\u0301 FROM docs;",
     ],
 )
 def test_identifier_parts_are_not_trigger_keywords(source: str) -> None:
     assert _check(source) == []
 
 
-def test_copy_input_is_not_executable_trigger_ddl() -> None:
-    ddl = "CREATE TRIGGER audit AFTER INSERT ON calls EXECUTE FUNCTION audit();"
+@pytest.mark.parametrize(
+    "ddl",
+    [
+        "CREATE TRIGGER audit AFTER INSERT ON calls EXECUTE FUNCTION audit();",
+        "ALTER EVENT TRIGGER ddl_audit RENAME TO next_audit;",
+    ],
+)
+def test_copy_input_is_not_executable_trigger_ddl(ddl: str) -> None:
     source = f"COPY seed(body) FROM STDIN;\n{ddl}\n\\.\n{ddl}"
     assert _check(source) == []
     assert len(_check(f"{ddl}\n{source}")) == 1

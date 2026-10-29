@@ -29,6 +29,17 @@ _CASES = (
         ExpectedOutcome.MATCH,
     ),
     EvaluationCase("drop", Language.SQL, "DROP FUNCTION IF EXISTS fail_counter();"),
+    EvaluationCase("drop-procedure", Language.SQL, "DROP PROCEDURE IF EXISTS record_call();"),
+    EvaluationCase("drop-routine", Language.SQL, "DROP ROUTINE IF EXISTS record_call();"),
+    EvaluationCase("alter-function", Language.SQL, "ALTER FUNCTION app.f() SECURITY DEFINER;", ExpectedOutcome.MATCH),
+    EvaluationCase("alter-procedure", Language.SQL, "ALTER PROCEDURE app.p() SECURITY DEFINER;", ExpectedOutcome.MATCH),
+    EvaluationCase("alter-routine", Language.SQL, "ALTER ROUTINE app.f() IMMUTABLE;", ExpectedOutcome.MATCH),
+    EvaluationCase(
+        "alter-quoted-routine", Language.SQL, 'ALTER ROUTINE "App"."f"() SET SCHEMA archive;', ExpectedOutcome.MATCH
+    ),
+    EvaluationCase("alter-comment", Language.SQL, "-- ALTER FUNCTION app.f() IMMUTABLE;"),
+    EvaluationCase("alter-quoted-value", Language.SQL, "SELECT 'ALTER PROCEDURE app.p() SECURITY DEFINER;';"),
+    EvaluationCase("alter-dollar-value", Language.SQL, "SELECT $$ALTER ROUTINE app.f() IMMUTABLE;$$;"),
     EvaluationCase("builtin-call", Language.SQL, "SELECT uuidv7();"),
     EvaluationCase(
         "constraint", Language.SQL, "ALTER TABLE batch ADD CONSTRAINT fail_counter CHECK (false) NOT VALID;"
@@ -150,6 +161,11 @@ def test_every_function_in_an_anonymous_block_keeps_its_absolute_location() -> N
         "SELECT CREATE FUNCTION$label FROM docs;",
         "SELECT CREATE FUNCTION\u0301 FROM docs;",
         "SELECT CREATE FUNCTİON FROM docs;",
+        "SELECT x$ALTER FUNCTION FROM docs;",
+        "SELECT x\u0301ALTER PROCEDURE FROM docs;",
+        "SELECT ALTER ROUTINE$label FROM docs;",
+        "SELECT ALTER ROUTINE\u0301 FROM docs;",
+        "SELECT ALTER FUNCTİON FROM docs;",
     ],
 )
 def test_identifier_parts_are_not_routine_keywords(source: str) -> None:
@@ -162,9 +178,16 @@ def test_procedures_are_banned_with_functions(prefix: str) -> None:
     assert len(NoDatabaseFunctions().check(Path("supabase/migrations/001.sql"), source)) == 1
 
 
-def test_copy_input_is_not_executable_routine_ddl() -> None:
-    source = f"COPY seed(body) FROM STDIN;\n{_BAD}\n\\.\n{_BAD}"
+def test_alter_routine_in_executable_body_has_absolute_location() -> None:
+    source = "DO $$ BEGIN ALTER ROUTINE app.f() IMMUTABLE; END $$;"
+    [finding] = NoDatabaseFunctions().check(Path("supabase/migrations/001.sql"), source)
+    assert (finding.line, finding.col) == (1, source.index("ALTER") + 1)
+
+
+@pytest.mark.parametrize("ddl", [_BAD, "ALTER ROUTINE app.f() IMMUTABLE;"])
+def test_copy_input_is_not_executable_routine_ddl(ddl: str) -> None:
+    source = f"COPY seed(body) FROM STDIN;\n{ddl}\n\\.\n{ddl}"
     rule = NoDatabaseFunctions()
     path = Path("supabase/migrations/001.sql")
     assert rule.check(path, source) == []
-    assert len(rule.check(path, f"{_BAD}\n{source}")) == 1
+    assert len(rule.check(path, f"{ddl}\n{source}")) == 1
