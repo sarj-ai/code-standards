@@ -97,6 +97,11 @@ REPO_STANDARDS_ACTION_PROJECTIONS: Final[dict[str, str]] = {
 STANDARDS_8129_REF = "refs/heads/maintenance/standards-8.129"
 STANDARDS_8129_ANCHOR = "ce60e543d9e44f49c2326a6e560e7d950aac043e"
 STANDARDS_8129_ANCHOR_VERSION = "8.129.9"
+STANDARDS_8129_REACT_BUDGET_FIRST_PATCH = 12
+STANDARDS_8129_REACT_BUDGET_SHA256: Final[dict[str, str]] = {
+    f"{PACKAGE}/src/sarj_standards/libs/linting/external.py": "544b53659ceb73a6dbd5b6e12fff7b7d38b1a4f9cc5ec5d287399e4f708f5709",
+    f"{PACKAGE}/tests/test_external_diagnostics.py": "8eafe45b48bc86b9f507ee3e844c89f020291ee976e13e051feb932e98275d96",
+}
 # The #1840 repo-standards 6.13.0 adoption projected onto 8.129.9, plus the a5fe4cce nginx
 # pin that replaces the build Ubuntu removed. Digests cover the candidate bytes with its
 # version rewritten to 8.129.9, so later patches reuse the review.
@@ -182,15 +187,18 @@ def _changed_since_anchor(root: Path, anchor: str, commit: str) -> frozenset[str
 
 def _validate_standards_8129(root: Path, commit: str) -> None:
     changed = _changed_since_anchor(root, STANDARDS_8129_ANCHOR, commit)
-    unexpected = changed - STANDARDS_8129_APPROVED_SHA256.keys() - TOOLING_PATHS - {DOC_EXAMPLES}
-    if unexpected:
-        msg = f"maintenance changes 8.129 policy or an unapproved path: {', '.join(sorted(unexpected))}"
-        raise ReleaseLaneError(msg)
     version = _project_version(root, commit)
     if re.fullmatch(r"8\.129\.[1-9][0-9]+", version) is None:
         msg = "8.129 maintenance publication requires an exact 8.129.x version from 8.129.10"
         raise ReleaseLaneError(msg)
-    for path, expected in STANDARDS_8129_APPROVED_SHA256.items():
+    approved = dict(STANDARDS_8129_APPROVED_SHA256)
+    if int(version.rsplit(".", 1)[1]) >= STANDARDS_8129_REACT_BUDGET_FIRST_PATCH:
+        approved.update(STANDARDS_8129_REACT_BUDGET_SHA256)
+    unexpected = changed - approved.keys() - TOOLING_PATHS - {DOC_EXAMPLES}
+    if unexpected:
+        msg = f"maintenance changes 8.129 policy or an unapproved path: {', '.join(sorted(unexpected))}"
+        raise ReleaseLaneError(msg)
+    for path, expected in approved.items():
         current = _at(root, commit, path)
         normalized = current.replace(version.encode(), STANDARDS_8129_ANCHOR_VERSION.encode())
         if hashlib.sha256(normalized).hexdigest() != expected or current != normalized.replace(
