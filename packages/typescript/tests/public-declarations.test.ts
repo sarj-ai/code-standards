@@ -43,7 +43,7 @@ afterAll(async () => {
   await rm(prepared.directory, { recursive: true, force: true });
 });
 
-it("emits portable public declarations for inferred ESM and CommonJS rule exports", () => {
+it("emits portable Node declarations for inferred ESM and CommonJS rule exports", () => {
   if (fixture === undefined) throw new Error("The real declaration producer did not complete.");
   const consumer = ts.createProgram([...fixture.emitted, fixture.invalid], {
     ...fixture.options,
@@ -115,6 +115,7 @@ async function prepareDeclarations(): Promise<DeclarationFixture> {
       noEmitOnError: true,
       skipLibCheck: false,
       types: [],
+      lib: ["lib.es2022.d.ts"],
       target: ts.ScriptTarget.ES2022,
       module: ts.ModuleKind.NodeNext,
       moduleResolution: ts.ModuleResolutionKind.NodeNext,
@@ -129,6 +130,9 @@ async function prepareDeclarations(): Promise<DeclarationFixture> {
     const result = program.emit();
     expect(result.emitSkipped).toBe(false);
     expect(messages(result.diagnostics)).toEqual([]);
+    expect(
+      program.getTypeChecker().resolveName("HTMLElement", undefined, ts.SymbolFlags.Type, false),
+    ).toBeUndefined();
     expect(new Set(emitted.keys())).toEqual(
       new Set([
         join(directory, "consumer.d.mts"),
