@@ -12,6 +12,7 @@ import type { CliCommand } from "../src/lib/cli.ts";
 import { validateCatalog } from "../src/lib/catalog-validation.ts";
 import { parseReference } from "../src/lib/parse-reference.ts";
 import { record, text } from "./_json.ts";
+import { normalize, prefetchPythonExamples } from "./format-python-examples.ts";
 import * as prettierPluginSh from "prettier-plugin-sh";
 import prettierPluginToml from "prettier-plugin-toml";
 import { format as sqlFormat } from "sql-formatter";
@@ -100,10 +101,6 @@ async function installedVersion(packageName: string) {
   const version = text(metadata["version"], "formatter version");
   assert.match(version, /^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/u);
   return version;
-}
-
-function normalize(source: string) {
-  return `${source.replaceAll("\r\n", "\n").replaceAll("\r", "\n").trimEnd()}\n`;
 }
 
 // eslint-disable-next-line @sarj/stepdown -- adapter helpers precede the dispatcher they make readable.
@@ -338,6 +335,17 @@ else {
   const catalog: unknown = JSON.parse(catalogSource);
   validateCatalog(catalog);
   const cli = parseReference(JSON.parse(cliSource) as unknown);
+
+  await prefetchPythonExamples(
+    catalog.rules.flatMap((rule) =>
+      rule.examples.flatMap((example) => [
+        ...example.files,
+        ...example.fixedFiles,
+      ]),
+    ),
+    cache,
+    resolve(repositoryRoot, "packages/standards/.venv/bin/ruff"),
+  );
 
   const rules: Record<
     string,
