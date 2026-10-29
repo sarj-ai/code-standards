@@ -111,6 +111,7 @@ function sourceFacts(source: ts.SourceFile, analysis: Analysis): FileFacts {
     if (reflectiveMember(node, analysis)) unsafe = true;
     const value = identity(node, analysis);
     if (value === "incomplete" || value === "dynamic" || (protectedIdentity(value) && !containedUse(node))) unsafe = true;
+    if (unsafe) break;
   }
   return { unsafe, imports, jsx };
 }
