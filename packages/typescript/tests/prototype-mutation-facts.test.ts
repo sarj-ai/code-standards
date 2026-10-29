@@ -94,7 +94,7 @@ it("reuses the negative safety fact across candidates and repeated analysis", ()
     Array.from({ length: 8 }, () => "declareActualContract"),
   );
   expect(first.every((message) => message.fix === undefined)).toBe(true);
-  // One prototype safety walk and the existing once-per-Program escape walk.
+
   expect(sourceWalks(fixture.source)).toBe(2);
   expect(lint(fixture)).toEqual(first);
   expect(sourceWalks(fixture.source)).toBe(2);

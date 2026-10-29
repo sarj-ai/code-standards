@@ -1,16 +1,16 @@
 // vitest: shared-module-graph
-/**
- * `_comments.ts` is consumed by five rules and had no tests of its own.
- *
- * A shared helper's behaviour is only ever *incidentally* observed through its
- * consumers, and incidental observation does not pin constants: `no-comment-cruft`,
- * `no-restated-comment`, `jsdoc-restates-signature`, `trailing-value-narration`
- * and `no-type-member-comment-wall` between them left `NARRATION_MAX_WORDS`
- * survivable at both 3 and 60 — a comment-length budget that could be cut in half
- * or multiplied tenfold with the whole suite green. Each numeric threshold below
- * is therefore pinned from BOTH directions: one case that fails if the number
- * goes down, one that fails if it goes up.
- */
+
+
+
+
+
+
+
+
+
+
+
+
 
 import { describe, expect, it } from "vitest";
 
@@ -25,16 +25,16 @@ import {
   stem,
 } from "../../src/rules/_comments.js";
 
-/**
- * One statement for the whole narration group, so the only variable between the
- * cases is the comment's word count. Its head — everything before the first
- * `(` — supplies the tokens `user`, `profile`, `cache` and `session`.
- */
+
+
+
+
+
 const STATEMENT = "const userProfileCache = buildUserProfileCacheFromSession(session);";
 
 describe("restatesStatementHead: the narration length budget", () => {
-  // Kills NARRATION_MAX_WORDS 6 -> anything smaller (6 -> 3 was a live
-  // survivor): a six-word narration is still narration.
+
+
   it.each([
     ["Build the user profile cache session", 6, true],
     ["Build the user profile cache from session", 7, false],
@@ -43,12 +43,12 @@ describe("restatesStatementHead: the narration length budget", () => {
     expect(restatesStatementHead(comment, STATEMENT)).toBe(expected);
   });
 
-  // Kills NARRATION_MAX_WORDS 6 -> anything larger (6 -> 60 was a live
-  // survivor). Past the budget a comment is prose, and prose is not judged by
-  // whether its words appear in the line below — that is the whole reason the
-  // budget exists.
-  // Kills NARRATION_MIN_CONTENT 1 -> 0: a bare verb says nothing about WHICH
-  // code it describes, so there is nothing to have restated.
+
+
+
+
+
+
   it("needs at least one content word after the opening verb", () => {
     expect(restatesStatementHead("Build", STATEMENT)).toBe(false);
     expect(restatesStatementHead("Build the", STATEMENT)).toBe(false);
@@ -68,27 +68,27 @@ describe("restatesStatementHead: the narration length budget", () => {
 });
 
 describe("normalizeToken: the plural fold", () => {
-  // Kills TOKEN_PLURAL_MIN 4 -> larger: five letters is long enough to fold.
+
   it("folds a trailing plural on a word longer than the minimum", () => {
     expect(normalizeToken("Users")).toBe("user");
   });
 
-  // Kills TOKEN_PLURAL_MIN 4 -> smaller: at the minimum the word is left alone,
-  // because short words ending in `s` are usually not plurals.
+
+
   it("leaves a word at the minimum length alone", () => {
     expect(normalizeToken("bits")).toBe("bits");
   });
 
-  // `ss` is not a plural marker; folding it would turn `class` into `clas`.
+
   it("never folds a doubled s", () => {
     expect(normalizeToken("CLASS")).toBe("class");
   });
 });
 
 describe("stem: the inflection fold is symmetric", () => {
-  // The trailing-`e` strip is what makes `create` / `creates` / `creating`
-  // collapse to one stem; without it the -ing and -s forms reduce to `creat`
-  // while the base stays `create`, and a restatement reads as novel.
+
+
+
   it.each([
     ["create", "creat"],
     ["creates", "creat"],
@@ -102,8 +102,8 @@ describe("stem: the inflection fold is symmetric", () => {
     expect(stem("retries")).toBe("retry");
   });
 
-  // The length floor stops the fold eating short words whole: three characters
-  // must survive the suffix, and three must survive the trailing-`e` strip.
+
+
   it.each([
     { expected: "is", name: "two-letter word", word: "is" },
     { expected: "ads", name: "three-letter plural", word: "ads" },
@@ -139,9 +139,9 @@ describe("restates: exact or stemmed, never prefix", () => {
     expect(restates(["create", "user"], new Set(["creates", "user"]))).toBe(true);
   });
 
-  // The prefix match is what sank PR #98 at a ~60% false-positive rate:
-  // `service` matched `locationService` and every comment looked like a
-  // restatement. One token outside the code is enough to keep the comment.
+
+
+
   it("does not match a token that is merely a prefix of a code token", () => {
     expect(restates(["service"], new Set(["locationservice"]))).toBe(false);
   });
@@ -162,8 +162,8 @@ describe("isProtected: the exemption floor", () => {
     expect(isProtected(body)).toBe(true);
   });
 
-  // The floor has to have a floor: a comment that restates the code carries
-  // none of the nine signals, or the rules it gates would never fire at all.
+
+
   it("does not protect a bare restatement", () => {
     expect(isProtected("increment the counter")).toBe(false);
   });
@@ -172,8 +172,8 @@ describe("isProtected: the exemption floor", () => {
     expect(isProtected("the cache key includes the tenant slug")).toBe(false);
   });
 
-  // A vendor name as the mere OBJECT of a narration verb is not ascribed
-  // behaviour. That distinction is what holds the leak rate near 1%.
+
+
   it("does not protect a vendor name with no behaviour ascribed to it", () => {
     expect(isProtected("Create the prompt for Gemini")).toBe(false);
   });
@@ -192,8 +192,8 @@ describe("hasExternalReference: signal S1 on its own", () => {
     expect(hasExternalReference(body)).toBe(true);
   });
 
-  // The acronym exclusions exist because `UTF-8` and `SHA-256` have a ticket
-  // key's exact shape. Without them every encoding note reads as owned work.
+
+
   it.each(["encoded as UTF-8", "hashed with SHA-256", "wrapped in AES-256"])(
     "does not read %s as a ticket key",
     (body) => {

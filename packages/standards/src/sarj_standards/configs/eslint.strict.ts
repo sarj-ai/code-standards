@@ -1482,6 +1482,19 @@ export function createConfig(options: ConfigOptions = {}): Linter.Config[] {
       "@sarj/no-fat-try-blocks": ["error", { max: 5 }],
       "@sarj/no-cors-wildcard-with-credentials": "warn",
       "@sarj/no-secret-in-log": "error",
+      "@sarj/no-discarded-validation-result": "warn",
+      "@sarj/no-generic-json-parser": "warn",
+      "@sarj/no-mutating-container-transform": "warn",
+      "@sarj/no-mutating-input-with-result": "warn",
+      "@sarj/no-negative-only-http-status-assertion": "warn",
+      "@sarj/no-redundant-local-alias": "warn",
+      "@sarj/no-return-disposed-resource": "warn",
+      "@sarj/no-test-comments": "warn",
+      "@sarj/prefer-dependency-interface": "warn",
+      "@sarj/prefer-test-fixture-reuse": "warn",
+      "@sarj/production-derived-test-cases": "warn",
+      "@sarj/require-constrained-schema-integer": "warn",
+      "@sarj/require-jwt-lifetime": "warn",
       "@sarj/no-hand-rolled-sleep": "error",
       "@sarj/no-hand-rolled-spinner": "error",
       "@sarj/no-known-value-widening": "error",
@@ -1623,6 +1636,7 @@ export function createConfig(options: ConfigOptions = {}): Linter.Config[] {
       // matchers and accidental focused suites before the runner executes.
       "vitest/valid-expect": HAS_VITEST ? ["warn", { maxArgs: 2 }] : "off",
       "vitest/no-focused-tests": HAS_VITEST ? "warn" : "off",
+      "vitest/expect-expect": HAS_VITEST ? "warn" : "off",
 
       // eslint-plugin-jest can parse Bun's Jest-compatible `bun:test` API when
       // globalPackage is set above. These rules intentionally mirror only the

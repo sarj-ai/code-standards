@@ -256,7 +256,7 @@ describe.each(CONFIG_FACTORIES)("%s test framework safety opt-ins", (_name, fact
       overrideConfigFile: true,
       overrideConfig: [
         ...focusedConfig(factory, ["node"], [rule]),
-        // Permit the regression to pass when upstream learns this valid boundary.
+
         { linterOptions: { reportUnusedDisableDirectives: "off" } },
       ],
     });

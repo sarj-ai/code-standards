@@ -1,10 +1,16 @@
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from sarj_rule_contracts.examples import verify_native_rule
 
 from sarj_python_lint.__main__ import analyze
+from sarj_python_lint.rules._project_index import ProjectIndexSet
 from sarj_python_lint.rules.prefer_pytest_dependency_fixtures import PreferPytestDependencyFixtures
+
+
+if TYPE_CHECKING:
+    from sarj_python_lint.rule_base import ProjectRule
 
 
 _SERVICE = "import pytest\nfrom typing import Protocol\nclass Port(Protocol):\n    def read(self): ...\nclass Store:\n    def read(self): return 1\nclass Service:\n    def __init__(self, store: Port):\n        self.store = store\n    def read(self): return self.store.read()\n"
@@ -36,7 +42,7 @@ _CONTEXTS = (
 
 
 @pytest.fixture
-def rule() -> PreferPytestDependencyFixtures:
+def rule() -> ProjectRule:
     return PreferPytestDependencyFixtures()
 
 
@@ -50,7 +56,7 @@ def test_documented_examples() -> None:
 )
 def test_dependency_fixture_contracts(
     *,
-    rule: PreferPytestDependencyFixtures,
+    rule: ProjectRule,
     allocation: str,
     body: str,
     context: str,
@@ -75,7 +81,7 @@ def test_dependency_fixture_contracts(
         "store = Store()\nstore = provided\nservice = Service(store)\nassert service.read() == 1",
     ],
 )
-def test_keeps_fixtures_factories_and_construction_under_test(rule: PreferPytestDependencyFixtures, body: str) -> None:
+def test_keeps_fixtures_factories_and_construction_under_test(rule: ProjectRule, body: str) -> None:
     source = (
         _SERVICE
         + "def test_read(store, provided, make_store):\n"
@@ -84,7 +90,7 @@ def test_keeps_fixtures_factories_and_construction_under_test(rule: PreferPytest
     assert rule.check(Path("tests/test_service.py"), source) == []
 
 
-def test_settings_dependency_is_a_fixture(rule: PreferPytestDependencyFixtures) -> None:
+def test_settings_dependency_is_a_fixture(rule: ProjectRule) -> None:
     source = "from pydantic_settings import BaseSettings\nclass Settings(BaseSettings):\n    enabled: bool = True\ndef test_call():\n    settings = Settings()\n    assert call(settings=settings)\n"
     assert len(rule.check(Path("tests/test_settings.py"), source)) == 1
 
@@ -97,9 +103,7 @@ def test_settings_dependency_is_a_fixture(rule: PreferPytestDependencyFixtures) 
         "class TestRead(Base):\n    def test_read(self):",
     ],
 )
-def test_fixture_decorators_and_inherited_contracts_are_not_collected_tests(
-    rule: PreferPytestDependencyFixtures, header: str
-) -> None:
+def test_fixture_decorators_and_inherited_contracts_are_not_collected_tests(rule: ProjectRule, header: str) -> None:
     indent = "        " if header.startswith("class") else "    "
     source = (
         _SERVICE + header + "\n" + indent + "service = Service(Store())\n" + indent + "assert service.read() == 1\n"
@@ -111,9 +115,7 @@ def test_fixture_decorators_and_inherited_contracts_are_not_collected_tests(
     "call",
     ["Service(*prefix, Store())", "Service(store=Store(), **options)", "Service(existing, store=Store())"],
 )
-def test_unresolved_argument_binding_keeps_dependency_ownership(
-    rule: PreferPytestDependencyFixtures, call: str
-) -> None:
+def test_unresolved_argument_binding_keeps_dependency_ownership(rule: ProjectRule, call: str) -> None:
     source = _SERVICE + f"def test_read(prefix, options, existing):\n    service = {call}\n"
     assert rule.check(Path("tests/test_service.py"), source) == []
 
@@ -127,8 +129,148 @@ def test_unresolved_argument_binding_keeps_dependency_ownership(
     ],
 )
 @pytest.mark.parametrize("argument", ["STORE", "store=STORE"])
-def test_shared_module_collaborators_are_requested_as_fixtures(
-    rule: PreferPytestDependencyFixtures, binding: str, argument: str
-) -> None:
+def test_shared_module_collaborators_are_requested_as_fixtures(rule: ProjectRule, binding: str, argument: str) -> None:
     source = _SERVICE + binding + f"\ndef test_read():\n    service = Service({argument})\n"
     assert len(rule.check(Path("tests/test_service.py"), source)) == 1
+
+
+_CONTRACT = "from abc import ABC, abstractmethod\nclass Store(ABC):\n    @abstractmethod\n    def read(self) -> int: ...\nclass SqlStore(Store):\n    def read(self) -> int: return 1\n"
+
+
+@pytest.mark.parametrize(
+    ("annotation", "construction"),
+    [("SqlStore", "SqlStore()"), ("Store", "SqlStore()"), ('"Store"', "SqlStore()")],
+    ids=["exact-type", "existing-abc", "forward-annotation"],
+)
+def test_supplied_fixture_replaces_direct_construction(rule: ProjectRule, annotation: str, construction: str) -> None:
+    source = (
+        _CONTRACT + f"def test_read(store: {annotation}):\n    other = {construction}\n    assert other.read() == 1\n"
+    )
+    assert len(rule.check(Path("tests/test_store.py"), source)) == 1
+
+
+@pytest.mark.parametrize(
+    ("header", "indent"),
+    [
+        ("async def test_read(store: Store):", "    "),
+        ("def test_read(*, store: Store):", "    "),
+        ("class TestRead:\n    def test_read(self, store: Store):", "        "),
+    ],
+    ids=["async-test", "keyword-only-fixture", "collected-class"],
+)
+def test_supplied_fixture_in_collected_test_forms(rule: ProjectRule, header: str, indent: str) -> None:
+    source = _CONTRACT + header + f"\n{indent}other = SqlStore()\n{indent}assert other.read() == 1\n"
+    assert len(rule.check(Path("tests/test_store.py"), source)) == 1
+
+
+def test_duplicate_fixture_inside_branch(rule: ProjectRule) -> None:
+    source = (
+        _CONTRACT
+        + "def test_read(store: Store, enabled: bool):\n    if enabled:\n        other = SqlStore()\n        assert other.read() == 1\n"
+    )
+    assert len(rule.check(Path("tests/test_store.py"), source)) == 1
+
+
+@pytest.mark.parametrize("argnames", ['"store"', '["store"]', '("store",)'])
+def test_parametrized_value_is_not_assumed_to_be_a_fixture(rule: ProjectRule, argnames: str) -> None:
+    source = (
+        "import pytest\n"
+        + _CONTRACT
+        + f"@pytest.mark.parametrize({argnames}, [])\ndef test_read(store: Store):\n    other = SqlStore()\n"
+    )
+    assert rule.check(Path("tests/test_store.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "with pytest.raises(ValueError):\n    SqlStore()",
+        "def nested():\n    return SqlStore()\nassert nested",
+        "SqlStore = factory\nother = SqlStore()",
+    ],
+    ids=["constructor-failure", "nested-owner", "shadowed-constructor"],
+)
+def test_keeps_constructor_failure_nested_and_shadowed_ownership(rule: ProjectRule, body: str) -> None:
+    source = (
+        "import pytest\n"
+        + _CONTRACT
+        + "def test_read(store: Store, factory):\n"
+        + "".join("    " + line + "\n" for line in body.splitlines())
+    )
+    assert rule.check(Path("tests/test_store.py"), source) == []
+
+
+def test_no_duplicate_when_fixture_and_collaborator_detection_overlap(rule: ProjectRule) -> None:
+    source = (
+        _SERVICE.replace("class Store:", "class Store(Port):")
+        + "def test_read(store: Port):\n    service = Service(Store())\n"
+    )
+    diagnostics = rule.check(Path("tests/test_store.py"), source)
+    assert len(diagnostics) == 1
+
+
+def test_constructor_suppression_and_malformed_input(rule: ProjectRule) -> None:
+    source = (
+        _CONTRACT
+        + "def test_read(store: Store):\n    other = SqlStore()  # sarj-noqa: SARJ526 -- constructor configuration is the asserted contract\n"
+    )
+    assert rule.check(Path("tests/test_store.py"), source) == []
+    assert rule.check(Path("tests/test_store.py"), "def test_read(:") == []
+
+
+def test_imported_aliased_constructor_reuses_abstract_fixture(rule: ProjectRule, tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    package = tmp_path / "app"
+    package.mkdir()
+    (package / "__init__.py").write_text("")
+    declaration = package / "stores.py"
+    declaration.write_text(_CONTRACT)
+    test = tmp_path / "tests" / "test_store.py"
+    test.parent.mkdir()
+    source = "from app.stores import Store, SqlStore as Backend\ndef test_read(store: Store):\n    other = Backend()\n    assert other.read() == 1\n"
+    test.write_text(source)
+    sources = {declaration: declaration.read_text(), test: source}
+    rule.prepare(ProjectIndexSet.build(list(sources), sources))
+    assert len(rule.check(test, source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import httpx\nasync def test_read(client: httpx.AsyncClient):\n    other = httpx.AsyncClient()\n    assert other is not client\n",
+        "from httpx import AsyncClient as HttpClient\nasync def test_read(client: HttpClient):\n    async with HttpClient() as other:\n        assert other is not client\n",
+        "from httpx import AsyncClient\nasync def test_read():\n    async with AsyncClient() as client:\n        assert await client.get('/')\n",
+        "import httpx as http\ndef test_read():\n    with http.Client() as client:\n        assert client.get('/')\n",
+        "async def test_read():\n    from httpx import AsyncClient\n    async with AsyncClient() as client:\n        assert await client.get('/')\n",
+    ],
+    ids=["supplied-external-class", "import-alias", "single-managed-client", "sync-client", "local-import"],
+)
+def test_native_http_clients_are_supplied_by_fixtures(rule: ProjectRule, source: str) -> None:
+    assert len(rule.check(Path("tests/test_client.py"), source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import pytest\nimport httpx\ndef test_invalid_client():\n    with pytest.raises(ValueError):\n        httpx.Client(timeout=-1)\n",
+        "from pytest import raises as fails\nfrom httpx import AsyncClient\ndef test_invalid_client():\n    with fails(ValueError):\n        AsyncClient(timeout=-1)\n",
+        "from httpx import AsyncClient\nasync def test_read(AsyncClient):\n    client = AsyncClient()\n",
+        "import httpx\nhttpx.AsyncClient = custom\nasync def test_read():\n    client = httpx.AsyncClient()\n",
+        "from other import AsyncClient\nasync def test_read():\n    client = AsyncClient()\n",
+        "import pytest\nfrom httpx import AsyncClient\n@pytest.fixture\nasync def client():\n    async with AsyncClient() as value:\n        yield value\n",
+        "from httpx import AsyncClient\nasync def test_read():\n    async def helper():\n        return AsyncClient()\n    assert helper\n",
+        "from httpx import AsyncClient\nasync def test_read(client_factory):\n    client = client_factory()\n",
+    ],
+    ids=[
+        "constructor-error",
+        "aliased-error-context",
+        "shadowed-provider",
+        "patched-provider",
+        "unrelated-import",
+        "fixture-owner",
+        "nested-owner",
+        "requested-factory",
+    ],
+)
+def test_native_http_client_ownership_boundaries(rule: ProjectRule, source: str) -> None:
+    assert rule.check(Path("tests/test_client.py"), source) == []
