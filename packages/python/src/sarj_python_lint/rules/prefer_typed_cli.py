@@ -42,7 +42,7 @@ class PreferTypedCli(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Checks import-proven sys.argv reads, argparse/optparse parser construction, getopt parsing and Click command construction. sys.argv[0], assignment targets and forwarding through args= to a proven local Typer application are retained. A source-proven isolated, fixed-arity path transport with a raising guard and checked Path conversion is also retained.",
+            "Checks import-proven sys.argv reads, argparse/optparse parser construction, getopt parsing and Click command construction. sys.argv[0] and its direct nonempty guard with a literal string fallback, assignment targets and forwarding through args= to a proven local Typer application are retained. A source-proven isolated, fixed-arity path transport with a raising guard and checked Path conversion is also retained.",
             "Checks parameters of source-visible functions passed directly to typer.run or registered with a stable local Typer application's command/callback decorator. Missing annotations and bare Any/object, including Annotated wrappers, are reported. Ordinary functions and unrelated command decorators are excluded.",
             "Stable local import and application aliases are followed. Shadowed or mutated imports, wildcard imports, dynamic namespaces and generated/vendor files abstain. Imported command functions, dynamic registrations and composite erased types require separate type checking.",
             "No automatic rewrite: positional/option compatibility and conversion behavior require review. This policy does not claim every argparse or Click program is incorrectly validated.",
@@ -191,6 +191,20 @@ def _retained_argv(node: ast.expr, facts: AnnotationOrigins) -> bool:
         if isinstance(parent.slice, ast.Constant) and type(parent.slice.value) is int and parent.slice.value == 0:
             return True
         parent = facts.context.parents.get(parent)
+    match parent:
+        case ast.IfExp(
+            test=test,
+            body=ast.Subscript(value=arguments, slice=ast.Constant(value=index)),
+            orelse=ast.Constant(value=str()),
+        ):
+            return (
+                test is node
+                and type(index) is int
+                and index == 0
+                and facts.qualified(arguments, arguments) == "sys.argv"
+            )
+        case _:
+            pass
     if isinstance(parent, ast.keyword) and parent.arg == "args":
         call = facts.context.parents.get(parent)
         if isinstance(call, ast.Call) and _typer_app(call.func, facts):
