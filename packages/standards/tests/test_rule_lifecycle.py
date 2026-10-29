@@ -12,6 +12,7 @@ from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.linting import textlint
 from sarj_standards.libs.repository import (
     config_generation,
+    python_rule_descriptors,
     rule_catalog_artifact,
     rule_examples,
     rule_inventory_artifact,
@@ -209,6 +210,62 @@ def test_stage_warning_rolls_back_every_artifact_on_failure(
     assert tuple(path.read_bytes() for path in paths) == before
 
 
+@pytest.mark.parametrize("failure", ["catalog", "concurrent-descriptor"])
+def test_stage_warning_restores_descriptor_or_preserves_its_concurrent_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    paths = _files(tmp_path)
+    before = tuple(path.read_bytes() for path in paths)
+    registry = tmp_path / "packages/python/src/sarj_python_lint/rules/_registry.py"
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    registry.write_text(
+        "from types import MappingProxyType\n_AUTHORING_REGISTRY = MappingProxyType({})\n", encoding="utf-8"
+    )
+    destination = tmp_path / python_rule_descriptors.DESCRIPTOR_PATH
+    destination.write_text("old descriptors\n", encoding="utf-8")
+    _mock_builders(monkeypatch, fail_catalog_sync=failure == "catalog")
+
+    def projection(_root: Path) -> str:
+        if failure == "concurrent-descriptor":
+            destination.write_text("concurrent owner\n", encoding="utf-8")
+        return "SCHEMA_VERSION = 1\n"
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- descriptor source rendering and concurrent-owner changes exercise lifecycle rollback.
+        python_rule_descriptors, "render", projection
+    )
+    with pytest.raises((RuntimeError, OSError), match=r"catalog generation failed|changed concurrently"):
+        rule_lifecycle.stage_warning(tmp_path, _SELECTOR)
+    assert tuple(path.read_bytes() for path in paths) == before
+    expected = "old descriptors\n" if failure == "catalog" else "concurrent owner\n"
+    assert destination.read_text(encoding="utf-8") == expected
+
+
+def test_stage_warning_checks_and_synchronizes_descriptor_idempotently(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _files(tmp_path)
+    registry = tmp_path / "packages/python/src/sarj_python_lint/rules/_registry.py"
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    registry.write_text(
+        "from types import MappingProxyType\n_AUTHORING_REGISTRY = MappingProxyType({})\n", encoding="utf-8"
+    )
+    destination = tmp_path / python_rule_descriptors.DESCRIPTOR_PATH
+    destination.write_text("old descriptors\n", encoding="utf-8")
+    _mock_builders(monkeypatch)
+
+    def projection(_root: Path) -> str:
+        return "SCHEMA_VERSION = 1\n"
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- use a stable descriptor projection to verify lifecycle synchronization and check mode.
+        python_rule_descriptors, "render", projection
+    )
+    assert rule_lifecycle.stage_warning(tmp_path, _SELECTOR, check=True).status == 1
+    assert destination.read_text(encoding="utf-8") == "old descriptors\n"
+    assert rule_lifecycle.stage_warning(tmp_path, _SELECTOR).changed
+    assert destination.read_text(encoding="utf-8") == "SCHEMA_VERSION = 1\n"
+    assert not rule_lifecycle.stage_warning(tmp_path, _SELECTOR).changed
+
+
 def test_stage_warning_check_and_unknown_rule_never_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -404,6 +461,60 @@ def test_stage_warning_projects_new_severity_after_rule_was_imported(
         )
     )
     assert as_table(list_field(catalog, "rules")[0])["defaultLevel"] == "error"
+
+
+def test_fresh_inventory_and_cached_catalog_disagreement_rolls_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    paths = _files(tmp_path)
+    registry = tmp_path / "packages/python/src/sarj_python_lint/rules/_registry.py"
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    registry.write_text(
+        "from types import MappingProxyType\n_AUTHORING_REGISTRY = MappingProxyType({})\n", encoding="utf-8"
+    )
+    descriptor = tmp_path / python_rule_descriptors.DESCRIPTOR_PATH
+    descriptor.write_text("old descriptors\n", encoding="utf-8")
+    before = tuple(path.read_bytes() for path in (*paths, descriptor))
+    real_build = rule_catalog_artifact.build
+    real_sync = rule_catalog_artifact.sync
+    _mock_builders(monkeypatch)
+
+    def projection(_root: Path) -> str:
+        assert "default_level=Severity.WARNING" in paths[0].read_text(encoding="utf-8")
+        return "SCHEMA_VERSION = 1\nDESCRIPTORS: tuple = ()\n"
+
+    def cached_python_specs() -> tuple[RuleSpec, ...]:
+        assert descriptor.read_text(encoding="utf-8").startswith("SCHEMA_VERSION = 1\n")
+        assert paths[1].read_text(encoding="utf-8") == '{"updated":true}\n'
+        assert paths[3].read_text(encoding="utf-8") == '{"updated":true}\n'
+        return ()
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- descriptor generation must occur before the real catalog completeness failure.
+        python_rule_descriptors, "render", projection
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- retain the actual completeness validator while controlling the fresh source inventory.
+        rule_catalog_artifact, "build", real_build
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- the actual catalog synchronization must reject cached projections missing a fresh rule.
+        rule_catalog_artifact, "sync", real_sync
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- model a warm Python registry cached before this source rule was registered.
+        rule_catalog_artifact, "_python_specs", cached_python_specs
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- unrelated engine projections are empty in this one-rule workspace.
+        rule_catalog_artifact, "_sql_specs", lambda: ()
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- unrelated engine projections are empty in this one-rule workspace.
+        rule_catalog_artifact, "_iac_specs", lambda: ()
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- unrelated engine projections are empty in this one-rule workspace.
+        textlint, "REGISTRY", {}
+    )
+
+    with pytest.raises(ValueError, match="live rules missing source-owned documentation: python:new-rule"):
+        rule_lifecycle.stage_warning(tmp_path, _SELECTOR, typescript=())
+
+    assert tuple(path.read_bytes() for path in (*paths, descriptor)) == before
 
 
 def test_modular_text_severity_uses_ast_independent_of_field_order(tmp_path: Path) -> None:

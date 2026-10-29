@@ -17,6 +17,47 @@ if TYPE_CHECKING:
 
 _RULES = ("no-input-model-mutation", "no-before-validator-input-mutation", "no-unused-copy-result")
 
+_CONTAINED_MUTATIONS = (
+    "from pydantic import BaseModel, model_validator\n\n\n"
+    "class Attachment(BaseModel):\n    values: list[str]\n\n\n"
+    "class Record(BaseModel):\n    attachment: Attachment\n\n\n"
+    "def transform(record: Record) -> Record:\n"
+    "    child = record.attachment.model_copy(update={'values': []})\n"
+    "    parent = record.model_copy(update={'attachment': child})\n"
+    "    child.values = record.attachment.values\n"
+    "    parent.attachment.values.append('unsafe')\n    return parent\n\n\n"
+    "class BeforeRecord(BaseModel):\n    values: list[str]\n\n"
+    "    @model_validator(mode='before')\n    @classmethod\n"
+    "    def normalize(cls, data: dict[str, list[str]]) -> dict[str, list[str]]:\n"
+    "        child = {'values': []}\n        parent = {'nested': child}\n"
+    "        child['values'] = data['values']\n"
+    "        parent['nested']['values'].append('unsafe')\n        return parent['nested']\n"
+)
+
+
+@pytest.mark.parametrize("filename", ["app/records.py", "tests/test_records.py"])
+@pytest.mark.parametrize("suppressed", [None, "SARJ481", "SARJ482"])
+def test_contained_mutations_keep_rule_ownership_order_severity_and_suppression(
+    tmp_path: Path, filename: str, suppressed: str | None
+) -> None:
+    source = _CONTAINED_MUTATIONS
+    if suppressed is not None:
+        expression = (
+            "parent.attachment.values.append('unsafe')"
+            if suppressed == "SARJ481"
+            else "parent['nested']['values'].append('unsafe')"
+        )
+        source = source.replace(expression, f"{expression}  # sarj-noqa: {suppressed} -- explicit shared contract")
+    target = tmp_path / filename
+    target.parent.mkdir(parents=True)
+    target.write_text(source)
+
+    findings = analyze(list(_RULES), [target])
+
+    assert [(finding.code, finding.line, finding.col, finding.severity.value) for finding in findings] == [
+        finding for finding in [("SARJ481", 16, 5, "error"), ("SARJ482", 29, 9, "error")] if finding[0] != suppressed
+    ]
+
 
 @pytest.mark.skipif(sys.version_info < (3, 15), reason="Dictionary-unpacking comprehensions require Python 3.15")
 @pytest.mark.parametrize(

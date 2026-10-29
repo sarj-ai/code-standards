@@ -69,7 +69,7 @@ def measure(
         msg = "repeats must be positive"
         raise ValueError(msg)
     selected = [RuleId(name) for name in sorted(REGISTRY if rule_ids is None else rule_ids)]
-    unknown = sorted(set(selected) - REGISTRY.keys())
+    unknown = sorted(set(selected) - set(REGISTRY))
     if unknown:
         msg = f"unknown rule(s): {', '.join(unknown)}"
         raise ValueError(msg)

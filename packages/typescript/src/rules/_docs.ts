@@ -32,6 +32,28 @@ export interface ExampleFile {
   readonly source: string;
 }
 
+export interface ExamplePoint {
+  readonly line: number;
+  readonly column: number;
+}
+
+export interface ExampleLocation extends ExamplePoint {
+  readonly end?: ExamplePoint;
+}
+
+export interface SuggestionExpectation {
+  readonly messageId: string;
+  readonly output: string;
+}
+
+export interface DiagnosticExpectation {
+  readonly messageId: string;
+  readonly message: string;
+  readonly location: ExampleLocation;
+  readonly automaticFix: boolean;
+  readonly suggestions: readonly SuggestionExpectation[];
+}
+
 /** A reviewed example. It remains private unless `public: true` is explicit. */
 export interface RuleExample<Options extends readonly unknown[] = readonly unknown[]> {
   readonly ruleOptions?: Readonly<Options>;
@@ -43,9 +65,12 @@ export interface RuleExample<Options extends readonly unknown[] = readonly unkno
   readonly files: readonly ExampleFile[];
   readonly focusPath: string;
   readonly expectedCount: number;
+  readonly expectedDiagnostics?: readonly DiagnosticExpectation[];
   readonly public?: boolean;
   readonly fixedFiles?: readonly ExampleFile[];
 }
+
+export type PublicRuleExample = Omit<RuleExample, "expectedDiagnostics">;
 
 /** Human-authored fields that cannot be derived from the ESLint rule module. */
 export interface RuleDocumentation<Options extends readonly unknown[] = readonly unknown[]> {
@@ -95,7 +120,7 @@ export interface PublicRuleSpec {
   readonly since: string | null;
   readonly messageIds: readonly string[];
   readonly optionsSchema: object | null;
-  readonly examples: readonly RuleExample[];
+  readonly examples: readonly PublicRuleExample[];
 }
 
 const KEBAB_CASE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
@@ -189,8 +214,8 @@ export function publicDocumentation(
 }
 
 /** Copy an example through a closed field list so future private fields stay private. */
-function publicExample(example: RuleExample): RuleExample {
-  const copy: { -readonly [Field in keyof RuleExample]: RuleExample[Field] } = {
+function publicExample(example: RuleExample): PublicRuleExample {
+  const copy: { -readonly [Field in keyof PublicRuleExample]: PublicRuleExample[Field] } = {
     id: example.id,
     scenarioId: example.scenarioId ?? "primary",
     title: example.title,
@@ -243,7 +268,9 @@ function nativeSpec<Options extends readonly unknown[], MessageIds extends strin
     throw new TypeError("rule references must use https");
   }
   const examples = [...(documentation.examples ?? [])];
-  examples.forEach(validateExample);
+  const messageIds = Object.keys(meta.messages).sort();
+  const knownMessages = new Set(messageIds);
+  examples.forEach((example) => validateExample(example, knownMessages));
   assertUnique(examples.map((example) => example.id), "rule example IDs");
   const publicExamples = examples.filter((example) => example.public === true);
   const scenarios = new Set(publicExamples.map((example) => example.scenarioId ?? "primary"));
@@ -254,7 +281,6 @@ function nativeSpec<Options extends readonly unknown[], MessageIds extends strin
       throw new TypeError(`published example scenario ${scenario} must contain both matching and non-matching cases exactly once`);
     }
   }
-  const messageIds = Object.keys(meta.messages).sort();
   const schema = optionsSchema(meta.schema);
   const spec: NativeRuleSpec = {
     engine: "eslint",
@@ -295,7 +321,7 @@ function isObject(value: unknown): value is object {
   return value !== null && typeof value === "object";
 }
 
-function validateExample(example: RuleExample): void {
+function validateExample(example: RuleExample, messageIds: ReadonlySet<string>): void {
   if (!KEBAB_CASE.test(example.id)) {
     throw new TypeError("example ID must be lowercase kebab-case");
   }
@@ -330,6 +356,74 @@ function validateExample(example: RuleExample): void {
     throw new TypeError("example focus path must name one example file");
   }
   assertUnique((example.fixedFiles ?? []).map((file) => file.path), "fixed example file paths");
+  if (example.expectedDiagnostics !== undefined) {
+    validateExpectedDiagnostics(example.expectedDiagnostics, example, messageIds);
+  }
+}
+
+function validateExpectedDiagnostics(value: unknown, example: RuleExample, messageIds: ReadonlySet<string>): void {
+  if (!Array.isArray(value) || value.length !== example.expectedCount) {
+    throw new TypeError(`${example.id}: expectedDiagnostics must be an array matching expectedCount`);
+  }
+  const diagnostics: readonly unknown[] = value;
+  for (const diagnostic of diagnostics) {
+    validateExpectedDiagnostic(diagnostic, example.id, messageIds);
+  }
+}
+
+function validateExpectedDiagnostic(value: unknown, exampleId: string, messageIds: ReadonlySet<string>): void {
+  if (!isObject(value) ||
+      !("messageId" in value) || typeof value.messageId !== "string" || !messageIds.has(value.messageId) ||
+      !("message" in value) || typeof value.message !== "string" ||
+      !("location" in value) ||
+      !("automaticFix" in value) || typeof value.automaticFix !== "boolean" ||
+      !("suggestions" in value) || !Array.isArray(value.suggestions)) {
+    throw new TypeError(`${exampleId}: invalid expected diagnostic identity, message or delivery`);
+  }
+  assertFields(value, ["messageId", "message", "location", "automaticFix", "suggestions"], exampleId);
+  validateExpectedLocation(value.location, exampleId);
+  const suggestions: readonly unknown[] = value.suggestions;
+  for (const suggestion of suggestions) {
+    validateExpectedSuggestion(suggestion, exampleId, messageIds);
+  }
+}
+
+function validateExpectedSuggestion(value: unknown, exampleId: string, messageIds: ReadonlySet<string>): void {
+  if (!isObject(value) ||
+      !("messageId" in value) || typeof value.messageId !== "string" || !messageIds.has(value.messageId) ||
+      !("output" in value) || typeof value.output !== "string") {
+    throw new TypeError(`${exampleId}: invalid expected suggestion identity or output`);
+  }
+  assertFields(value, ["messageId", "output"], exampleId);
+}
+
+function validateExpectedLocation(value: unknown, exampleId: string): void {
+  if (!isObject(value) || !("line" in value) || !positiveCoordinate(value.line) ||
+      !("column" in value) || !positiveCoordinate(value.column)) {
+    throw new TypeError(`${exampleId}: expected diagnostic location requires positive integer coordinates`);
+  }
+  if (!("end" in value)) {
+    assertFields(value, ["line", "column"], exampleId);
+    return;
+  }
+  if (!isObject(value.end) || !("line" in value.end) || !positiveCoordinate(value.end.line) ||
+      !("column" in value.end) || !positiveCoordinate(value.end.column) ||
+      value.end.line < value.line || (value.end.line === value.line && value.end.column < value.column)) {
+    throw new TypeError(`${exampleId}: expected diagnostic end point must be complete and ordered`);
+  }
+  assertFields(value.end, ["line", "column"], exampleId);
+  assertFields(value, ["line", "column", "end"], exampleId);
+}
+
+function positiveCoordinate(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 1;
+}
+
+function assertFields(value: object, expected: readonly string[], exampleId: string): void {
+  const fields = Object.keys(value);
+  if (fields.length !== expected.length || fields.some((field) => !expected.includes(field))) {
+    throw new TypeError(`${exampleId}: unexpected or missing diagnostic expectation fields`);
+  }
 }
 
 function assertSafeRelativePath(path: string, label: string): void {

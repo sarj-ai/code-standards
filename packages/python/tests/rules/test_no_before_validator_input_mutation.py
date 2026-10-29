@@ -264,6 +264,48 @@ def _check(source: str, path: Path = Path("app/models.py")) -> list[Diagnostic]:
     return NoBeforeValidatorInputMutation().check(path, source)
 
 
+@pytest.mark.parametrize("receiver", ["parent['nested']", "child"])
+@pytest.mark.parametrize("borrowed", [False, True])
+def test_owned_mapping_child_replacement_updates_contained_aliases(receiver: str, *, borrowed: bool) -> None:
+    child = "{'values': []}" if borrowed else "dict(data)"
+    replacement = "data['values']" if borrowed else "[]"
+    source = (
+        "from pydantic import BaseModel, model_validator\n\n\n"
+        "class Record(BaseModel):\n    values: list[str]\n\n"
+        "    @model_validator(mode='before')\n    @classmethod\n"
+        "    def normalize(cls, data: dict[str, list[str]]) -> dict[str, list[str]]:\n"
+        f"        child = {child}\n        parent = {{'nested': child}}\n"
+        f"        child['values'] = {replacement}\n"
+        f"        {receiver}['values'].append('changed')\n        return parent['nested']\n"
+    )
+
+    findings = _check(source)
+
+    assert [(finding.code, finding.line, finding.col, finding.severity.value) for finding in findings] == (
+        [("SARJ482", 13, 9, "error")] if borrowed else []
+    )
+
+
+def test_equivalent_borrowed_mapping_summaries_survive_join() -> None:
+    source = (
+        "from pydantic import BaseModel, model_validator\n"
+        "class Record(BaseModel):\n    values: list[str]\n"
+        "    @model_validator(mode='before')\n    @classmethod\n"
+        "    def normalize(cls, data: dict[str, dict[str, list[str]]]):\n"
+        "        left = data['left']\n        right = data['right']\n"
+        "        if data:\n            parents = [left, right]\n"
+        "        else:\n            parents = [left, right]\n"
+        "        parents[0]['values'].append('unsafe')\n"
+        "        return {'values': parents[0]['values']}\n"
+    )
+
+    findings = _check(source)
+
+    assert [(finding.code, finding.line, finding.col, finding.severity.value) for finding in findings] == [
+        ("SARJ482", 13, 9, "error")
+    ]
+
+
 @pytest.mark.parametrize("case", _CASES, ids=[case.case_id for case in _CASES])
 def test_labeled_validator_cases(case: EvaluationCase) -> None:
     findings = _check(case.source)
