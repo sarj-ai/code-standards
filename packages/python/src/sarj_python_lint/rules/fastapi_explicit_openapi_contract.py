@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, ClassVar, NamedTuple, override
 
 from sarj_python_lint.rule_base import (
     Diagnostic,
+    DiagnosticSubject,
     ExampleFile,
     ExampleOutcome,
     Rule,
@@ -69,6 +70,7 @@ _CONVERTER_PATTERNS = MappingProxyType(
 class _Finding:
     node: ast.expr | ast.stmt | ast.arg
     message: str
+    subject: DiagnosticSubject | None = None
 
 
 class FastapiExplicitOpenapiContract(Rule):
@@ -282,6 +284,7 @@ class FastapiExplicitOpenapiContract(Rule):
                 code=self.code,
                 message=finding.message,
                 severity=Severity.WARNING,
+                subject=finding.subject,
             )
             for finding in sorted(
                 findings, key=lambda finding: (finding.node.lineno, finding.node.col_offset, finding.message)
@@ -543,7 +546,7 @@ def _check_return(
             _check_return_route(route, contract, index, problems)
     if not problems:
         return []
-    return [_Finding(function, f"[return] {'; '.join(sorted(problems))}.")]
+    return [_Finding(function, f"[return] {'; '.join(sorted(problems))}.", subject=DiagnosticSubject.RETURN)]
 
 
 def _check_inferred_return(
@@ -566,6 +569,7 @@ def _check_inferred_return(
             _Finding(
                 function,
                 "[return] fixed-shape dictionary requires a named return type or concrete response_model.",
+                subject=DiagnosticSubject.RETURN,
             )
         ]
     return []
@@ -698,6 +702,7 @@ def _check_projection(route: Route) -> list[_Finding]:
         _Finding(
             route.decorator,
             f"[return] {', '.join(projected)} leaves OpenAPI inaccurate; define a dedicated output model.",
+            subject=DiagnosticSubject.RETURN,
         )
     ]
 

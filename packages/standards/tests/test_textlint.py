@@ -3029,3 +3029,69 @@ def test_public_mise_examples_bind_findings_to_native_execution_fields(tmp_path:
     findings = textlint.check_paths([str(path)], root=tmp_path, rule_ids=frozenset({"workflow-embedded-program"}))
     expected_lines = [6] if example.outcome is ExpectedOutcome.MATCH else []
     assert [finding.line for finding in findings] == expected_lines
+
+
+@pytest.mark.parametrize(
+    ("filename", "known_dialect", "expected"),
+    [
+        ("service.py", None, False),
+        ("migration.sql", None, False),
+        ("notes.md", None, True),
+        (".env.example.py", None, True),
+        ("Dockerfile.service.py", None, True),
+        ("service.py", "bash", True),
+        (".dockerignore", "bash", False),
+    ],
+)
+def test_text_routing_with_known_dialect_never_reprobes(
+    filename: str, known_dialect: str | None, expected: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unexpected_probe(_path: Path) -> str | None:
+        msg = "known dialect, including None, must not be read again"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept global dialect lookup; injection would bypass the known-dialect no-read boundary.
+        textlint, "shell_dialect", unexpected_probe
+    )
+    assert textlint.is_text_path_with_dialect(Path(filename), known_dialect=known_dialect) is expected
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [("notes.md", True), ("Dockerfile", True), (".env.example.py", True), (".dockerignore", False)],
+)
+def test_public_text_routing_preserves_name_only_fastpaths(
+    filename: str, expected: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unexpected_probe(_path: Path) -> str | None:
+        msg = "pathname fast path must not probe shell content"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept the public predicate lookup; injection would bypass its pathname-only no-read contract.
+        textlint, "shell_dialect", unexpected_probe
+    )
+    assert textlint.is_text_path(Path(filename)) is expected
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected_dialect", "expected_text"),
+    [("missing.sh", "sh", True), ("missing.py", None, False), ("missing.zsh", "zsh", True)],
+)
+def test_known_dialect_preserves_missing_file_suffix_fallback(
+    filename: str, expected_dialect: str | None, expected_text: bool, tmp_path: Path
+) -> None:
+    path = tmp_path / filename
+    known_dialect = textlint.shell_dialect(path)
+
+    assert known_dialect == expected_dialect
+    assert textlint.is_text_path_with_dialect(path, known_dialect=known_dialect) is expected_text
+    assert textlint.is_text_path(path) is expected_text
+
+
+def test_public_text_routing_observes_edits_between_independent_calls(tmp_path: Path) -> None:
+    path = tmp_path / "service.py"
+    path.write_text("value = 1\n", encoding="utf-8")
+    assert not textlint.is_text_path(path)
+
+    path.write_text("#!/usr/bin/env bash\necho ok\n", encoding="utf-8")
+    assert textlint.is_text_path(path)

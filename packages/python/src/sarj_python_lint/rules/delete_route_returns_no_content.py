@@ -15,6 +15,7 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
+from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
 from sarj_python_lint.rules._route_shapes import RouteDecorator, http_status, route_decorators
 
 
@@ -109,7 +110,11 @@ def _declares_body(route: RouteDecorator, parents: Mapping[ast.AST, ast.AST]) ->
     function = parents.get(route.decorator)
     if not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef)) or function.returns is None:
         return False
-    return not (isinstance(function.returns, ast.Constant) and function.returns.value is None)
+    try:
+        annotation = AnnotationSemantics.parse(function.returns)
+    except RecursionError:
+        return True
+    return not (isinstance(annotation, ast.Constant) and annotation.value is None)
 
 
 def _lacks_no_content(route: RouteDecorator) -> bool:

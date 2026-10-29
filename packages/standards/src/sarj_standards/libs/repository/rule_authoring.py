@@ -9,7 +9,13 @@ from typing import TYPE_CHECKING
 from sarj_standards.libs.adoption import transaction
 from sarj_standards.libs.adoption.manifest import as_table, list_field
 from sarj_standards.libs.json_boundary import parse_json
-from sarj_standards.libs.repository import rule_catalog_artifact, rule_checkout, rule_examples, rule_registration
+from sarj_standards.libs.repository import (
+    python_rule_descriptors,
+    rule_catalog_artifact,
+    rule_checkout,
+    rule_examples,
+    rule_registration,
+)
 from sarj_standards.libs.rules import RuleEngine, RuleSelector, RuleSpec
 
 
@@ -34,11 +40,14 @@ class AuthoringPlan:
     code: str | None
     files: tuple[tuple[Path, str], ...]
     edits: tuple[rule_registration.FileEdit, ...] = ()
+    descriptors: python_rule_descriptors.DescriptorPlan | None = None
 
     def render(self, root: Path) -> str:
         lines = [f"rule: {self.selector}", f"code: {self.code or 'engine-native'}"]
         lines.extend(f"create: {path.relative_to(root)}" for path, _ in self.files)
         lines.extend(f"update: {edit.path.relative_to(root)}" for edit in self.edits)
+        if self.descriptors is not None:
+            lines.append(f"update: {self.descriptors.path.relative_to(root)}")
         lines.extend(
             (
                 "next: implement the detector and its examples; this plan includes registration and warning metadata",
@@ -112,21 +121,45 @@ def plan_new(root: Path, selector: RuleSelector, *, category: str, summary: str)
     if conflicts:
         msg = "rule scaffold target already exists: " + ", ".join(str(path.relative_to(root)) for path in conflicts)
         raise FileExistsError(msg)
-    return AuthoringPlan(selector, code, files, rule_registration.plan(root, selector, code, reserved=live))
+    return AuthoringPlan(
+        selector,
+        code,
+        files,
+        rule_registration.plan(root, selector, code, reserved=live),
+        python_rule_descriptors.plan(root) if selector.engine is RuleEngine.PYTHON else None,
+    )
 
 
 def apply(plan: AuthoringPlan, root: Path) -> None:
     edits = (*tuple(rule_registration.FileEdit(path, None, source) for path, source in plan.files), *plan.edits)
-    mutation = transaction.FileTransaction.capture(root, tuple(edit.path for edit in edits), explicit_only=True)
+    paths = tuple(edit.path for edit in edits)
+    if plan.descriptors is not None:
+        paths = (*paths, plan.descriptors.path)
+    mutation = transaction.FileTransaction.capture(root, paths, explicit_only=True)
     try:
-        for edit in edits:
-            transaction.assert_expected(root, edit.path, edit.before)
-            mutation.write_text(edit.path, edit.after)
+        _write_scaffold(plan, root, edits, mutation)
     except BaseException:
         rollback = mutation.rollback()
         if not rollback.ok:
             raise RuntimeError(rollback.render() or "rule scaffolding rollback was incomplete") from None
         raise
+
+
+def _write_scaffold(
+    plan: AuthoringPlan,
+    root: Path,
+    edits: tuple[rule_registration.FileEdit, ...],
+    mutation: transaction.FileTransaction,
+) -> None:
+    if plan.descriptors is not None:
+        transaction.assert_expected(root, plan.descriptors.path, plan.descriptors.before)
+    for edit in edits:
+        transaction.assert_expected(root, edit.path, edit.before)
+        mutation.write_text(edit.path, edit.after)
+    if plan.descriptors is not None:
+        rendered = python_rule_descriptors.render(root)
+        transaction.assert_expected(root, plan.descriptors.path, plan.descriptors.before)
+        mutation.write_text(plan.descriptors.path, rendered)
 
 
 def _next_code(root: Path, engine: RuleEngine, live: frozenset[str]) -> str | None:

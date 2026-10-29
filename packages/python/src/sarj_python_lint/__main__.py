@@ -15,23 +15,40 @@ from sarj_rule_contracts import RuleId
 import typer
 
 from sarj_python_lint import __version__
-from sarj_python_lint._analysis_session import AnalysisSession
-from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint._filesystem import atomic_write_text
 from sarj_python_lint._prepared_sources import PreparedSourceInputs
 from sarj_python_lint._source import read_python_source
 from sarj_python_lint.json_boundary import is_object_mapping, parse_json
-from sarj_python_lint.rule_base import Diagnostic, ProjectRule, Rule, Severity, is_suppressed
-from sarj_python_lint.rules import REGISTRY
-from sarj_python_lint.rules._paths import clear_path_caches
-from sarj_python_lint.rules._project_index import ProjectIndexSet
+from sarj_python_lint.rule_base import Diagnostic, DiagnosticSubject, ProjectRule, Rule, Severity, is_suppressed
 from sarj_python_lint.suppression_policy import PROTECTED_SUPPRESSION_CODES
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
 
     from sarj_rule_contracts import SourceCatalog
+
+    from sarj_python_lint._analysis_session import AnalysisSession
+    from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules import REGISTRY as REGISTRY  # ruff: ignore[runtime-import-in-type-checking-block] -- the lazy compatibility export has this type; eager loading would import every rule during help/version.
+
+
+def _rule_registry() -> Mapping[str, type[Rule]]:
+    try:
+        return REGISTRY
+    except NameError:
+        from sarj_python_lint.rules import REGISTRY as _REGISTRY  # ruff: ignore[import-outside-top-level] -- ordinary operations load the canonical owner; legacy module overrides take precedence.
+
+        return _REGISTRY
+
+
+def __getattr__(name: str) -> object:
+    if name == "REGISTRY":
+        from sarj_python_lint.rules._registry import REGISTRY as _REGISTRY  # ruff: ignore[import-outside-top-level] -- preserve the published export independently of temporary facade overrides.
+
+        return _REGISTRY
+    msg = f"module {__name__!r} has no attribute {name!r}"
+    raise AttributeError(msg)
 
 
 SKIP_DIR_NAMES = frozenset(
@@ -95,25 +112,34 @@ def _python_files(p: Path) -> list[Path]:
 
 
 def _canonical_rule_ids(rule_names: Sequence[str]) -> list[RuleId]:
-    aliases = {
-        alias: rule_id
-        for rule_id, cls in REGISTRY.items()
-        if (documentation := cls.documentation) is not None
-        for alias in documentation.aliases
-    }
-    return list(dict.fromkeys(RuleId(name if name in REGISTRY else aliases.get(name, name)) for name in rule_names))
+    from sarj_python_lint.rules._runtime_registry import canonical_aliases  # ruff: ignore[import-outside-top-level] -- class-free alias data is needed only by rule selection.
+
+    registry = _rule_registry()
+    aliases = canonical_aliases(registry)
+    if aliases is None:
+        aliases = {
+            alias: rule_id
+            for rule_id, cls in registry.items()
+            if (documentation := cls.documentation) is not None
+            for alias in documentation.aliases
+        }
+    return list(dict.fromkeys(RuleId(name if name in registry else aliases.get(name, name)) for name in rule_names))
 
 
 def _check(
     rule_names: Sequence[str], paths: list[Path], *, jobs: int = 1, sources: SourceCatalog | None = None
 ) -> list[Diagnostic]:
+    from sarj_python_lint._analysis_session import AnalysisSession  # ruff: ignore[import-outside-top-level] -- construct semantic state only for analysis.
+    from sarj_python_lint.rules._paths import clear_path_caches  # ruff: ignore[import-outside-top-level] -- analysis owns semantic cache lifetime.
+
+    registry = _rule_registry()
     rule_ids = _canonical_rule_ids(rule_names)
-    unknown = [rid for rid in rule_ids if rid not in REGISTRY]
+    unknown = [rid for rid in rule_ids if rid not in registry]
     if unknown:
         sys.stderr.write(f"unknown rule(s): {', '.join(unknown)}\n")
-        sys.stderr.write(f"available: {', '.join(sorted(REGISTRY))}\n")
+        sys.stderr.write(f"available: {', '.join(sorted(registry))}\n")
         raise SystemExit(2)
-    rules = [REGISTRY[rid]() for rid in rule_ids]
+    rules = [registry[rid]() for rid in rule_ids]
     source_inputs = None if sources is None else PreparedSourceInputs(sources)
     session = AnalysisSession() if source_inputs is None else AnalysisSession(source_inputs=source_inputs)
     for rule in rules:
@@ -160,6 +186,8 @@ def _prepare_project(
     project_rules = [rule for rule in rules if isinstance(rule, ProjectRule)]
     if not project_rules:
         return
+    from sarj_python_lint.rules._project_index import ProjectIndexSet  # ruff: ignore[import-outside-top-level] -- project rules own project indexing.
+
     indexes = (
         ProjectIndexSet.build(expanded, loaded, facts=session.first_party)
         if source_inputs is None
@@ -192,6 +220,8 @@ def _parallel_diagnostics(
 def check_source(
     rules: list[Rule], p: Path, source: str, *, session: AnalysisSession | None = None
 ) -> list[Diagnostic]:
+    from sarj_python_lint._file_context import PythonFileContext  # ruff: ignore[import-outside-top-level] -- source checks own native AST context construction.
+
     context = PythonFileContext(p, source, session)
     if rules and context.tree is None:
         msg = f"selected Python source could not be parsed: {p}"
@@ -287,7 +317,7 @@ class _DiagnosticOwners:
     def presence(self, diags: list[Diagnostic]) -> dict[tuple[Path, int, int], dict[str, set[Severity]]]:
         present: dict[tuple[Path, int, int], dict[str, set[Severity]]] = {}
         for diagnostic in diags:
-            if diagnostic.code == "SARJ094" and not diagnostic.message.startswith("[return]"):
+            if diagnostic.code == "SARJ094" and diagnostic.subject is not DiagnosticSubject.RETURN:
                 continue
             location = self.location(diagnostic)
             by_code = present.setdefault((diagnostic.path, location.line, location.column), {})
@@ -472,10 +502,11 @@ class _Result:
 
 
 def _explain(wanted: str) -> int:
+    registry = _rule_registry()
     key = wanted.strip()
-    cls = REGISTRY.get(key) or next((c for c in REGISTRY.values() if c.code.upper() == key.upper()), None)
+    cls = registry.get(key) or next((c for c in registry.values() if c.code.upper() == key.upper()), None)
     if cls is None:
-        sys.stderr.write(f"unknown rule: {wanted}\navailable: {', '.join(sorted(REGISTRY))}\n")
+        sys.stderr.write(f"unknown rule: {wanted}\navailable: {', '.join(sorted(registry))}\n")
         return 2
     sys.stdout.write(f"{cls.code}  {cls.id}\n{cls.description}\nexamples: {cls.examples_url()}\n")
     return 0
@@ -609,7 +640,7 @@ def _root(
 
 @app.command("list-rules", help="List available rule IDs.")
 def _list_rules() -> None:
-    for rid, cls in sorted(REGISTRY.items()):
+    for rid, cls in sorted(_rule_registry().items()):
         inst = cls()
         sys.stdout.write(f"{inst.code:8}  {rid:40}  {inst.description}\n")
 
@@ -641,8 +672,9 @@ def _check_command(
     if fix:
         from sarj_python_lint.autofix import fix_paths  # ruff: ignore[import-outside-top-level] -- load mutation support only for an explicit fix request.
 
+        registry = _rule_registry()
         canonical = _canonical_rule_ids(rule)
-        unknown = [rule_id for rule_id in canonical if rule_id not in REGISTRY]
+        unknown = [rule_id for rule_id in canonical if rule_id not in registry]
         if unknown:
             context.ensure_object(_Result).code = _run_check(rule, files, baseline, update_baseline, jobs=jobs)
             return

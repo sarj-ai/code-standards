@@ -61,6 +61,163 @@ class _Value:
     shared_children: bool = False
     fields: tuple[tuple[str, _Value], ...] = ()
     element: _Value | None = None
+    element_summary: _OwnershipSummary | None = None
+    origin: _OwnershipSummary | None = None
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class _OwnershipSummary:
+    # Equal ownership facts do not prove that alternative objects alias.
+    members: tuple[_Value, ...]
+
+
+type _ProfileNode = _Value | _Shape
+type _ProfilePair = tuple[_ProfileNode, _ProfileNode]
+
+
+def _same_profile(left: _ProfileNode, right: _ProfileNode, *, memo: dict[tuple[int, int], bool]) -> bool:
+    # Ownership profiles ignore summary identity/origin. Exact aliases still use
+    # is/id, and this memo lives only while both operand graphs remain reachable.
+    pending: list[tuple[_ProfileNode, _ProfileNode, tuple[_ProfilePair, ...] | None]] = [(left, right, None)]
+    while pending:
+        first, second, children = pending.pop()
+        key = id(first), id(second)
+        if key in memo:
+            continue
+        if first is second:
+            memo[key] = True
+        elif children is not None:
+            memo[key] = all(memo[id(a), id(b)] for a, b in children)
+        elif (parts := _profile_children(first, second)) is None:
+            memo[key] = False
+        else:
+            pending.append((first, second, parts))
+            pending.extend((a, b, None) for a, b in parts if (id(a), id(b)) not in memo)
+    return memo[id(left), id(right)]
+
+
+def _profile_children(left: _ProfileNode, right: _ProfileNode) -> tuple[_ProfilePair, ...] | None:
+    if isinstance(left, _Shape):
+        if not isinstance(right, _Shape) or left.kind != right.kind or left.model != right.model:
+            return None
+        return _profile_pair(left.element, right.element)
+    if (
+        not isinstance(right, _Value)
+        or left.borrowed != right.borrowed
+        or left.shared_children != right.shared_children
+        or len(left.fields) != len(right.fields)
+    ):
+        return None
+    children: list[_ProfilePair] = [(left.shape, right.shape)]
+    for (left_name, left_value), (right_name, right_value) in zip(left.fields, right.fields, strict=True):
+        if left_name != right_name:
+            return None
+        children.append((left_value, right_value))
+    elements = _profile_pair(_profile_element(left), _profile_element(right))
+    return None if elements is None else (*children, *elements)
+
+
+def _profile_pair(left: _ProfileNode | None, right: _ProfileNode | None) -> tuple[_ProfilePair, ...] | None:
+    if left is None or right is None:
+        return () if left is right else None
+    return ((left, right),)
+
+
+def _profile_element(value: _Value) -> _Value | None:
+    if value.element is not None:
+        return value.element
+    return None if value.element_summary is None else value.element_summary.members[0]
+
+
+def _value_order(roots: list[_Value], *, summaries: bool = True) -> list[_Value]:
+    ordered: list[_Value] = []
+    seen: set[int] = set()
+    pending: list[tuple[_Value | _OwnershipSummary, bool]] = [(value, False) for value in roots]
+    while pending:
+        value, complete = pending.pop()
+        if complete:
+            if isinstance(value, _Value):
+                ordered.append(value)
+            continue
+        if id(value) in seen:
+            continue
+        seen.add(id(value))
+        pending.append((value, True))
+        pending.extend((child, False) for child in _value_children(value, summaries=summaries))
+    return ordered
+
+
+def _value_children(value: _Value | _OwnershipSummary, *, summaries: bool) -> tuple[_Value | _OwnershipSummary, ...]:
+    if isinstance(value, _OwnershipSummary):
+        return value.members
+    children: list[_Value | _OwnershipSummary] = [child for _, child in value.fields]
+    if value.element is not None:
+        children.append(value.element)
+    if summaries:
+        children.extend(summary for summary in (value.element_summary, value.origin) if summary is not None)
+    return tuple(children)
+
+
+def _summary_value(summary: _OwnershipSummary, *, origin: _OwnershipSummary | None = None) -> _Value:
+    # Detach each lookup from the contributing objects and other lookups.
+    # Aliases assigned from this one lookup still share its returned value.
+    owner = summary if origin is None else origin
+    copies: dict[int, _Value] = {}
+    for value in _value_order([summary.members[0]], summaries=False):
+        copies[id(value)] = replace(
+            value,
+            fields=tuple((name, copies[id(child)]) for name, child in value.fields),
+            element=None if value.element is None else copies[id(value.element)],
+            origin=owner,
+        )
+    return copies[id(summary.members[0])]
+
+
+def _replace_owned_value(bindings: dict[str, _Value], owner: _Value, updated: _Value) -> None:
+    replacements: dict[int, _Value] = {}
+    summary_changes: dict[int, bool] = {}
+    if owner.origin is not None:
+        # An abstract value may designate any contributing object. Keep the
+        # explicitly updated alias, but do not retain stale concrete alternatives.
+        for possible in _value_order(list(owner.origin.members)):
+            if not possible.borrowed:
+                replacements[id(possible)] = _Value(_Shape())
+    replacements[id(owner)] = replace(updated, origin=None)
+    for value in _value_order(list(bindings.values())):
+        if id(value) in replacements:
+            continue
+        replacement = _rebuild_owned_parent(value, replacements, summary_changes)
+        if replacement is not None:
+            replacements[id(value)] = replacement
+    for name, value in bindings.items():
+        bindings[name] = replacements.get(id(value), value)
+
+
+def _rebuild_owned_parent(
+    value: _Value, replacements: dict[int, _Value], summary_changes: dict[int, bool]
+) -> _Value | None:
+    if value.origin is not None and _summary_changed(value.origin, replacements, summary_changes):
+        return _Value(_Shape())
+    fields = tuple((name, replacements.get(id(child), child)) for name, child in value.fields)
+    element = None if value.element is None else replacements.get(id(value.element), value.element)
+    summary = value.element_summary
+    if summary is not None and _summary_changed(summary, replacements, summary_changes):
+        element = _Value(_Shape())
+        summary = None
+    if (
+        any(child is not original for (_, child), (_, original) in zip(fields, value.fields, strict=True))
+        or element is not value.element
+        or summary is not value.element_summary
+    ):
+        return replace(value, fields=fields, element=element, element_summary=summary)
+    return None
+
+
+def _summary_changed(summary: _OwnershipSummary, replacements: dict[int, _Value], changes: dict[int, bool]) -> bool:
+    # Member dependencies precede each summary view in the transfer order.
+    if id(summary) not in changes:
+        changes[id(summary)] = any(id(member) in replacements for member in summary.members)
+    return changes[id(summary)]
 
 
 @dataclass(frozen=True, slots=True)
@@ -534,7 +691,13 @@ class CopyOnWriteAnalysis:
         if field is None:
             return None
         return dict(owner.fields).get(
-            node.attr, _Value(field, owner.borrowed or owner.shared_children, owner.borrowed or owner.shared_children)
+            node.attr,
+            _Value(
+                field,
+                owner.borrowed or owner.shared_children,
+                owner.borrowed or owner.shared_children,
+                origin=owner.origin,
+            ),
         )
 
     def _item_value(self, node: ast.Subscript, bindings: Mapping[str, _Value]) -> _Value | None:
@@ -547,6 +710,8 @@ class CopyOnWriteAnalysis:
             return None
         if owner.element is not None:
             return owner.element
+        if owner.element_summary is not None:
+            return _summary_value(owner.element_summary, origin=owner.origin)
         if isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str):
             field = dict(owner.fields).get(node.slice.value)
             if field is not None:
@@ -555,21 +720,38 @@ class CopyOnWriteAnalysis:
             owner.shape.element or _Shape(),
             owner.borrowed or owner.shared_children,
             owner.borrowed or owner.shared_children,
+            origin=owner.origin,
         )
 
     def _collection_value(self, node: ast.List | ast.Set | ast.Tuple, bindings: Mapping[str, _Value]) -> _Value:
         values = [self._value(item, bindings) for item in node.elts]
-        elements = [value.shape for value in values if value is not None]
-        shape = _Shape()
-        if elements and len(elements) == len(values) and all(item == elements[0] for item in elements):
-            shape = elements[0]
+        profiles: dict[tuple[int, int], bool] = {}
+        shape = self._collection_shape(values, profiles)
         kind = "list" if isinstance(node, ast.List) else "set" if isinstance(node, ast.Set) else "tuple"
-        element = values[0] if values and all(value == values[0] for value in values) else None
-        return _Value(_Shape(kind, element=shape), element=element or _Value(_Shape()))
+        element = values[0] if values else None
+        if element is not None and all(
+            value is not None and _same_profile(value, element, memo=profiles) for value in values
+        ):
+            if all(value is element for value in values):
+                return _Value(_Shape(kind, element=shape), element=element)
+            members = tuple(value for value in values if value is not None)
+            return _Value(_Shape(kind, element=shape), element_summary=_OwnershipSummary(members))
+        return _Value(_Shape(kind, element=shape), element=_Value(_Shape()))
+
+    @staticmethod
+    def _collection_shape(values: list[_Value | None], profiles: dict[tuple[int, int], bool]) -> _Shape:
+        elements = [value.shape for value in values if value is not None]
+        if (
+            elements
+            and len(elements) == len(values)
+            and all(_same_profile(item, elements[0], memo=profiles) for item in elements)
+        ):
+            return elements[0]
+        return _Shape()
 
     @staticmethod
     def _shallow(value: _Value) -> _Value:
-        return replace(value, borrowed=False, shared_children=value.borrowed or value.shared_children)
+        return replace(value, borrowed=False, shared_children=value.borrowed or value.shared_children, origin=None)
 
     def _call_value(self, node: ast.Call, bindings: Mapping[str, _Value]) -> _Value | None:
         if self._imports.resolves(node.func, sources=_TYPING, symbol="cast") and len(node.args) == _TWO_ARGUMENTS:
@@ -723,8 +905,13 @@ class CopyOnWriteAnalysis:
             return None
         if owner.element is not None:
             return owner.element
+        if owner.element_summary is not None:
+            return _summary_value(owner.element_summary, origin=owner.origin)
         return _Value(
-            owner.shape.element, owner.borrowed or owner.shared_children, owner.borrowed or owner.shared_children
+            owner.shape.element,
+            owner.borrowed or owner.shared_children,
+            owner.borrowed or owner.shared_children,
+            origin=owner.origin,
         )
 
     def _bind(self, target: ast.expr, value: _Value | None, bindings: dict[str, _Value]) -> None:
@@ -760,21 +947,31 @@ class CopyOnWriteAnalysis:
         fields = dict(owner.fields)
         fields[key] = value or _Value(_Shape())
         updated = replace(owner, fields=tuple(fields.items()))
-        for name, binding in tuple(bindings.items()):
-            if binding is owner:
-                bindings[name] = updated
+        _replace_owned_value(bindings, owner, updated)
 
     @staticmethod
     def _join(branches: list[dict[str, _Value]], bindings: dict[str, _Value]) -> None:
         bindings.clear()
-        if branches:
-            bindings.update(
-                {
-                    name: value
-                    for name, value in branches[0].items()
-                    if all(branch.get(name) == value for branch in branches[1:])
-                }
-            )
+        if not branches:
+            return
+        summaries: dict[tuple[int, ...], _Value] = {}
+        profiles: dict[tuple[int, int], bool] = {}
+        for name, value in branches[0].items():
+            if not all(
+                branch.get(name) is not None and _same_profile(branch[name], value, memo=profiles)
+                for branch in branches[1:]
+            ):
+                continue
+            alternatives = tuple(branch[name] for branch in branches)
+            if value.borrowed or all(alternative is value for alternative in alternatives):
+                bindings[name] = value
+                continue
+            # Equal branch facts preserve ownership, not a concrete alias to
+            # whichever alternative happened to be scanned first.
+            key = tuple(id(alternative) for alternative in alternatives)
+            if key not in summaries:
+                summaries[key] = _summary_value(_OwnershipSummary(alternatives))
+            bindings[name] = summaries[key]
 
     def _scan(self, statements: list[ast.stmt], bindings: dict[str, _Value]) -> None:
         for statement in statements:

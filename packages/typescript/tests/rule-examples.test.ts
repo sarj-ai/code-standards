@@ -222,7 +222,7 @@ describe("declarative example setup", () => {
   it("runs opt-in public examples while retaining empty production defaults", async () => {
     expect(restrictedLoad.defaultOptions).toEqual([{ libraries: [] }]);
     expect(statelessStorage.defaultOptions).toEqual([{}]);
-    await expect(verifyRuleExamples(restrictedLoad)).resolves.toBe(3);
+    await expect(verifyRuleExamples(restrictedLoad)).resolves.toBe(4);
     await expect(verifyRuleExamples(statelessStorage)).resolves.toBe(2);
   });
   it("uses the exact explicitly installed Zod declarations", async () => {
