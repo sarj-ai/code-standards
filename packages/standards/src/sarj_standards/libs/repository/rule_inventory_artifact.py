@@ -110,9 +110,17 @@ def load(path: Path = RULE_INVENTORY_PATH) -> RuleInventory:
 
 
 def build(root: Path) -> RuleInventory:
-    from sarj_standards.libs.repository import rule_maintenance  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.repository only when this selected operation executes.
+    from sarj_standards.libs.repository import (  # ruff: ignore[import-outside-top-level] -- source inventory selects the independent oracle rather than stale runtime membership.
+        python_rule_descriptors,
+        rule_maintenance,
+    )
 
-    return validate({"schemaVersion": SCHEMA_VERSION, "rules": rule_maintenance.inventory(root)})
+    python_entries = (
+        python_rule_descriptors.authoring_inventory(root) if python_rule_descriptors.enabled(root) else None
+    )
+    return validate(
+        {"schemaVersion": SCHEMA_VERSION, "rules": rule_maintenance.inventory(root, python_entries=python_entries)}
+    )
 
 
 def render(root: Path) -> str:
@@ -129,8 +137,33 @@ def render(root: Path) -> str:
 
 def sync(root: Path, *, check: bool, writer: Callable[[Path, str], None] | None = None) -> InventorySyncResult:
     from sarj_standards.libs.adoption import transaction  # ruff: ignore[import-outside-top-level] -- load sarj_standards.libs.adoption only when this selected operation executes.
+    from sarj_standards.libs.repository import python_rule_descriptors  # ruff: ignore[import-outside-top-level] -- descriptor qualification precedes runtime registry inventory.
 
-    destination = root.resolve() / _REPOSITORY_INVENTORY_PATH
+    repository = root.resolve()
+    if check or writer is not None:
+        return _synchronize(repository, check=check, writer=writer)
+    paths = (repository / _REPOSITORY_INVENTORY_PATH,)
+    if python_rule_descriptors.enabled(repository):
+        paths = (*paths, repository / python_rule_descriptors.DESCRIPTOR_PATH)
+    mutation = transaction.FileTransaction.capture(repository, paths, explicit_only=True)
+    try:
+        return _synchronize(repository, check=False, writer=mutation.write_text)
+    except BaseException:
+        rollback = mutation.rollback()
+        if not rollback.ok:
+            msg = rollback.render() or "rule inventory rollback was incomplete"
+            raise RuntimeError(msg) from None
+        raise
+
+
+def _synchronize(root: Path, *, check: bool, writer: Callable[[Path, str], None] | None) -> InventorySyncResult:
+    from sarj_standards.libs.adoption import transaction  # ruff: ignore[import-outside-top-level] -- direct sync callers retain atomic writes.
+    from sarj_standards.libs.repository import python_rule_descriptors  # ruff: ignore[import-outside-top-level] -- descriptor source checks must run before public registry inventory.
+
+    descriptors = python_rule_descriptors.sync(root, check=check, writer=writer)
+    if descriptors.status != 0:
+        return InventorySyncResult(descriptors.status, descriptors.message)
+    destination = root / _REPOSITORY_INVENTORY_PATH
     expected = render(root)
     try:
         current = destination.read_text(encoding="utf-8")
@@ -145,7 +178,7 @@ def sync(root: Path, *, check: bool, writer: Callable[[Path, str], None] | None 
             "drift: rule-inventory.v1.json differs from live registries; run `code-standards maintain rules sync`",
         )
     if writer is None:
-        transaction.atomic_write_text(root.resolve(), destination, expected)
+        transaction.atomic_write_text(root, destination, expected)
     else:
         writer(destination, expected)
     return InventorySyncResult(0, "updated: rule-inventory.v1.json")

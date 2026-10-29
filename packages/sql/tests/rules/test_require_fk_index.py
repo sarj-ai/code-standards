@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+from dataclasses import dataclass
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_sql_lint.__main__ import analyze
+from sarj_sql_lint.rules import require_fk_index as index_module
 from sarj_sql_lint.rules.require_fk_index import RequireFkIndex, index_analysis_session
 
 
 if TYPE_CHECKING:
+    from collections.abc import Generator, Iterator
+    from contextlib import AbstractContextManager
+
     from sarj_sql_lint.rule_base import Diagnostic, RuleExample
 
 
@@ -691,6 +698,276 @@ def test_nested_analysis_snapshot_abort_restores_outer_snapshot_and_direct_fresh
             abort_nested_analysis()
         assert _check(foreign_key, target) == []
     assert len(_check(foreign_key, target)) == 1
+
+
+_CASCADING_CHILD = "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE);\n"
+_CHILD_INDEX = "CREATE INDEX child_parent ON child(parent_id);\n"
+
+
+@pytest.mark.parametrize("failure", ["read", "stat"])
+def test_unavailable_real_covering_sibling_prevents_an_absence_finding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    root = _tree(tmp_path, {"000_child": _CASCADING_CHILD, "999_cover": _CHILD_INDEX})
+    target, covering = root / "000_child/migration.sql", root / "999_cover/migration.sql"
+    assert covering.read_bytes() == _CHILD_INDEX.encode()
+    source = target.read_text()
+    real_read = Path.read_text
+    real_stat = Path.stat
+
+    def denied_read(
+        path: Path, encoding: str | None = None, errors: str | None = None, newline: str | None = None
+    ) -> str:
+        if path == covering:
+            raise PermissionError(covering)
+        return real_read(path, encoding=encoding, errors=errors, newline=newline)
+
+    def denied_stat(path: Path, *, follow_symlinks: bool = True) -> os.stat_result:
+        if path == covering:
+            raise PermissionError(covering)
+        return real_stat(path, follow_symlinks=follow_symlinks)
+
+    if failure == "read":
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- fail one actual dependency read, preserving all other file evidence and the detector.
+            Path, "read_text", denied_read
+        )
+    else:
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- fail one actual dependency identity lookup, preserving real traversal and SQL parsing.
+            Path, "stat", denied_stat
+        )
+    assert _check(source, target) == []
+
+
+def test_oversized_real_covering_sibling_prevents_an_absence_finding(tmp_path: Path) -> None:
+    padding = "/*" + " " * (1_000_001 - len(_CHILD_INDEX.encode()) - 5) + "*/\n"
+    root = _tree(tmp_path, {"000_child": _CASCADING_CHILD, "999_cover": padding + _CHILD_INDEX})
+    target, covering = root / "000_child/migration.sql", root / "999_cover/migration.sql"
+    assert covering.stat().st_size == 1_000_001
+    assert covering.read_bytes().endswith(_CHILD_INDEX.encode())
+    assert _check(target.read_text(), target) == []
+
+
+@pytest.mark.parametrize("covering", [False, True], ids=("unknown-absence", "actual-cover-outside-budget"))
+def test_a_601st_real_migration_prevents_an_absence_finding(tmp_path: Path, *, covering: bool) -> None:
+    files = {"000_child": _CASCADING_CHILD, **{f"{number:03d}_neutral": "SELECT 1;\n" for number in range(1, 600)}}
+    files["999_cover"] = _CHILD_INDEX if covering else "SELECT 1;\n"
+    root = _tree(tmp_path, files)
+    target = root / "000_child/migration.sql"
+    candidates = sorted(root.rglob("*.sql"))
+    assert len(candidates) == 601
+    assert candidates[-1] == root / "999_cover/migration.sql"
+    assert _check(target.read_text(), target) == []
+
+
+def test_exactly_600_complete_migrations_can_prove_a_missing_index(tmp_path: Path) -> None:
+    root = _tree(
+        tmp_path,
+        {"000_child": _CASCADING_CHILD, **{f"{number:03d}_neutral": "SELECT 1;\n" for number in range(1, 600)}},
+    )
+    target = root / "000_child/migration.sql"
+    assert len(list(root.rglob("*.sql"))) == 600
+    assert [finding.code for finding in _check(target.read_text(), target)] == ["SARJ112"]
+
+
+def test_unobservable_subtree_with_a_real_index_prevents_an_absence_finding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _tree(tmp_path, {"000_child": _CASCADING_CHILD, "999_cover": _CHILD_INDEX})
+    target, hidden = root / "000_child/migration.sql", root / "999_cover"
+    assert (hidden / "migration.sql").read_bytes() == _CHILD_INDEX.encode()
+    source = target.read_text()
+    real_scandir = os.scandir
+
+    def denied_directory(path: str | os.PathLike[str]) -> AbstractContextManager[Iterator[os.DirEntry[str]]]:
+        if Path(path) == hidden:
+            raise PermissionError(hidden)
+        return real_scandir(path)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- fail a real scandir boundary that glob suppresses, retaining real entries elsewhere.
+        os, "scandir", denied_directory
+    )
+    assert _check(source, target) == []
+
+
+@dataclass(frozen=True, slots=True)
+class _UnclassifiableEntry:
+    entry: os.DirEntry[str]
+    blocked: Path
+
+    @property
+    def name(self) -> str:
+        return self.entry.name
+
+    @property
+    def path(self) -> str:
+        return self.entry.path
+
+    def is_dir(self, *, follow_symlinks: bool) -> bool:
+        if Path(self.entry.path) == self.blocked:
+            raise PermissionError(self.blocked)
+        return self.entry.is_dir(follow_symlinks=follow_symlinks)
+
+
+def test_unclassifiable_directory_cannot_hide_its_real_covering_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _tree(tmp_path, {"000_child": _CASCADING_CHILD, "999_cover": _CHILD_INDEX})
+    target, hidden = root / "000_child/migration.sql", root / "999_cover"
+    assert (hidden / "migration.sql").read_bytes() == _CHILD_INDEX.encode()
+    source = target.read_text()
+    real_scandir = os.scandir
+
+    @contextmanager
+    def unclassifiable(path: str | os.PathLike[str]) -> Generator[Iterator[_UnclassifiableEntry]]:
+        with real_scandir(path) as entries:
+            yield (_UnclassifiableEntry(entry, hidden) for entry in entries)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- forward actual directory entries and fail only one classification operation.
+        os, "scandir", unclassifiable
+    )
+    assert _check(source, target) == []
+
+
+def test_incomplete_session_stays_unknown_and_a_fresh_session_recovers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _tree(tmp_path, {"000_child": _CASCADING_CHILD, "999_other": "SELECT 1;\n"})
+    target, unknown = root / "000_child/migration.sql", root / "999_other/migration.sql"
+    source = target.read_text()
+    real_read = Path.read_text
+
+    def denied_read(
+        path: Path, encoding: str | None = None, errors: str | None = None, newline: str | None = None
+    ) -> str:
+        if path == unknown:
+            raise PermissionError(unknown)
+        return real_read(path, encoding=encoding, errors=errors, newline=newline)
+
+    with index_analysis_session():
+        with monkeypatch.context() as fault:
+            fault.setattr(  # sarj-noqa: SARJ445 -- establish a genuinely incomplete scan before testing its session lifetime.
+                Path, "read_text", denied_read
+            )
+            assert _check(source, target) == []
+        assert _check(source, target) == []
+    assert [finding.code for finding in _check(source, target)] == ["SARJ112"]
+
+
+@pytest.mark.parametrize("alias", ["same-path", "hardlink", "symlink"])
+def test_supplied_current_source_discharges_its_own_unreadable_physical_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    root = _tree(tmp_path, {"000_child": _CASCADING_CHILD + _CHILD_INDEX})
+    target = root / "000_child/migration.sql"
+    unreadable = target if alias == "same-path" else target.with_name("alias.sql")
+    if alias == "hardlink":
+        unreadable.hardlink_to(target)
+    elif alias == "symlink":
+        unreadable.symlink_to(target)
+    real_read = Path.read_text
+
+    def denied_read(
+        path: Path, encoding: str | None = None, errors: str | None = None, newline: str | None = None
+    ) -> str:
+        if path == unreadable:
+            raise PermissionError(unreadable)
+        return real_read(path, encoding=encoding, errors=errors, newline=newline)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- only the supplied current file's identity-matching disk alias is unreadable.
+        Path, "read_text", denied_read
+    )
+    with index_analysis_session():
+        assert [finding.code for finding in _check(_CASCADING_CHILD, target)] == ["SARJ112"]
+        assert _check(_CASCADING_CHILD + _CHILD_INDEX, target) == []
+
+
+def test_incomplete_fk_evidence_does_not_discard_another_sql_rules_finding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = (
+        "-- dialect: postgresql\n"
+        "CREATE TABLE child(parent_id int REFERENCES parent(id) ON DELETE CASCADE, payload json);\n"
+    )
+    root = _tree(tmp_path, {"000_child": source, "999_cover": _CHILD_INDEX})
+    target, covering = root / "000_child/migration.sql", root / "999_cover/migration.sql"
+    assert [finding.code for finding in analyze(["prefer-jsonb"], [target])] == ["SARJ106"]
+    real_read = Path.read_text
+
+    def denied_read(
+        path: Path, encoding: str | None = None, errors: str | None = None, newline: str | None = None
+    ) -> str:
+        if path == covering:
+            raise PermissionError(covering)
+        return real_read(path, encoding=encoding, errors=errors, newline=newline)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- make only the unselected FK dependency unavailable during real native multi-rule analysis.
+        Path, "read_text", denied_read
+    )
+    assert [finding.code for finding in analyze(["require-fk-index", "prefer-jsonb"], [target])] == ["SARJ106"]
+
+
+def test_incomplete_scan_keeps_known_positive_index_evidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = _tree(tmp_path, {"000_child": _CASCADING_CHILD, "001_cover": _CHILD_INDEX, "999_unknown": "SELECT 1;\n"})
+    target, unknown = root / "000_child/migration.sql", root / "999_unknown/migration.sql"
+    real_read = Path.read_text
+
+    def denied_read(
+        path: Path, encoding: str | None = None, errors: str | None = None, newline: str | None = None
+    ) -> str:
+        if path == unknown:
+            raise PermissionError(unknown)
+        return real_read(path, encoding=encoding, errors=errors, newline=newline)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- retain the real covering index while making a distinct dependency unavailable.
+        Path, "read_text", denied_read
+    )
+    with index_analysis_session():
+        evidence = index_module._sibling_indexes(target, ("child",))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- actual parsed positive evidence must survive an incomplete scan, beyond merely suppressing a negative finding.
+        assert {(index.table, index.columns) for index in evidence.indexes} == {(("child",), ("parent_id",))}
+        assert _check(_CASCADING_CHILD, target) == []
+
+
+@pytest.mark.parametrize("covered", [False, True], ids=("complete-uncovered", "known-cover"))
+def test_parse_cache_length_cutoff_does_not_limit_evidence(tmp_path: Path, *, covered: bool) -> None:
+    source = "/*" + " " * 16_385 + "*/\n" + (_CHILD_INDEX if covered else "SELECT 1;\n")
+    root = _tree(tmp_path, {"000_child": _CASCADING_CHILD, "999_index": source})
+    target = root / "000_child/migration.sql"
+    assert [finding.code for finding in _check(_CASCADING_CHILD, target)] == ([] if covered else ["SARJ112"])
+
+
+def test_session_cache_capacity_does_not_limit_evidence(tmp_path: Path) -> None:
+    with index_analysis_session():
+        for number in range(65):
+            root = _tree(tmp_path / str(number), {"000_child": _CASCADING_CHILD})
+            target = root / "000_child/migration.sql"
+            assert [finding.code for finding in _check(_CASCADING_CHILD, target)] == ["SARJ112"]
+
+
+@pytest.mark.parametrize("cover_name", ["cover.SQL", "cover.ſql"], ids=("ascii-case", "unicode-case"))
+def test_sibling_discovery_preserves_platform_glob_case(tmp_path: Path, cover_name: str) -> None:
+    root = _tree(tmp_path, {"000_child": _CASCADING_CHILD})
+    target = root / "000_child/migration.sql"
+    covering = root / cover_name
+    covering.write_text(_CHILD_INDEX, encoding="utf-8")
+    included_by_existing_glob_policy = covering in root.rglob("*.sql")
+    expected = [] if included_by_existing_glob_policy else ["SARJ112"]
+    assert [finding.code for finding in _check(_CASCADING_CHILD, target)] == expected
+
+
+@pytest.mark.parametrize("alias_kind", ["file", "directory"])
+def test_sibling_discovery_keeps_file_links_without_following_directory_links(tmp_path: Path, alias_kind: str) -> None:
+    root = _tree(tmp_path, {"000_child": _CASCADING_CHILD})
+    target = root / "000_child/migration.sql"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    covering = outside / "cover.sql"
+    covering.write_text(_CHILD_INDEX, encoding="utf-8")
+    if alias_kind == "file":
+        (root / "linked.sql").symlink_to(covering)
+    else:
+        (root / "linked").symlink_to(outside, target_is_directory=True)
+    expected = [] if alias_kind == "file" else ["SARJ112"]
+    assert [finding.code for finding in _check(_CASCADING_CHILD, target)] == expected
 
 
 def test_failed_analysis_cannot_leave_a_snapshot_in_direct_rule_calls(tmp_path: Path) -> None:

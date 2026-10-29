@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import ast
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 import re
@@ -77,6 +77,10 @@ class ColumnEncoding(StrEnum):
     CODEPOINTS = "codepoints"
 
 
+class DiagnosticSubject(StrEnum):
+    RETURN = "return"
+
+
 @dataclass(frozen=True, slots=True)
 class TextEdit:
     # Coordinates are one-based UTF-8 bytes after BOM removal; end positions are exclusive.
@@ -105,9 +109,13 @@ class Diagnostic:
     severity: DiagnosticSeverity = Severity.ERROR
     column_encoding: ColumnEncoding = ColumnEncoding.UTF8_BYTES
     fixes: tuple[Fix, ...] = ()
+    subject: DiagnosticSubject | None = field(default=None, kw_only=True)
 
     def __post_init__(self) -> None:
         diagnostic_severity(self.severity)
+        if self.subject is not None and type(self.subject) is not DiagnosticSubject:
+            msg = "diagnostic subject must be a DiagnosticSubject or None"
+            raise TypeError(msg)
 
     def format(self) -> str:
         label = "warning: " if self.severity is Severity.WARNING else ""

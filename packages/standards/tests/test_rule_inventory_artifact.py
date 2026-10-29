@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from importlib.util import find_spec
 import json
 from pathlib import Path
 import subprocess
@@ -7,9 +8,10 @@ import sys
 from typing import TYPE_CHECKING
 
 import pytest
+from sarj_python_lint.rule_metadata import authored_descriptors
 
 from sarj_standards.cli.main import main
-from sarj_standards.libs.repository import rule_inventory_artifact
+from sarj_standards.libs.repository import rule_inventory_artifact, rule_maintenance
 
 
 if TYPE_CHECKING:
@@ -34,9 +36,39 @@ def test_inventory_load_rejects_duplicate_keys(tmp_path: Path) -> None:
 
 
 def test_shipped_inventory_matches_live_registries() -> None:
-    result = rule_inventory_artifact.sync(ROOT, check=True)
+    python_entries: list[rule_inventory_artifact.RuleInventoryEntry] = []
+    for entry in authored_descriptors():
+        module = entry.module.replace(".", "/")
+        name = module.rsplit("/", maxsplit=1)[-1]
+        python_entries.append(
+            {
+                "family": "python",
+                "id": entry.rule_id,
+                "code": entry.code,
+                "source": f"packages/python/src/{module}.py",
+                "test": f"packages/python/tests/rules/test_{name}.py",
+            }
+        )
+    expected = rule_inventory_artifact.validate(
+        {"schemaVersion": 1, "rules": rule_maintenance.inventory(ROOT, python_entries=python_entries)}
+    )
+    assert rule_inventory_artifact.load() == expected
+    if _uses_selected_python_sources(ROOT):
+        result = rule_inventory_artifact.sync(ROOT, check=True)
+        assert result.status == 0, result.message
+    else:
+        with pytest.raises(RuntimeError, match="selected checkout's source packages"):
+            rule_inventory_artifact.sync(ROOT, check=True)
 
-    assert result.status == 0, result.message
+
+def _uses_selected_python_sources(root: Path) -> bool:
+    packages = (("standards", "sarj_standards"), ("contracts", "sarj_rule_contracts"), ("python", "sarj_python_lint"))
+    for package, module in packages:
+        spec = find_spec(module)
+        expected = root / f"packages/{package}/src/{module}/__init__.py"
+        if spec is None or spec.origin is None or Path(spec.origin).resolve() != expected.resolve():
+            return False
+    return True
 
 
 def test_runtime_load_does_not_import_rule_registries() -> None:

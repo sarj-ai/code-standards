@@ -9,6 +9,7 @@ from typing import Final
 from sarj_standards.libs.adoption import transaction
 from sarj_standards.libs.repository import (
     config_generation,
+    python_rule_descriptors,
     rule_catalog_artifact,
     rule_checkout,
     rule_inventory_artifact,
@@ -90,6 +91,8 @@ def _set_warning(
         )
 
     managed = (_INVENTORY_PATH, _CATALOG_PATH, _LEDGER_PATH, *_ESLINT_MANAGED_PATHS)
+    if python_rule_descriptors.enabled(repository):
+        managed = (*managed, python_rule_descriptors.DESCRIPTOR_PATH)
     paths = (edit.path, *(repository / path for path in managed))
     mutation = transaction.FileTransaction.capture(repository, paths, explicit_only=True)
     try:
@@ -146,6 +149,8 @@ def _unknown_selector_message(selector: RuleSelector, known: set[RuleSelector]) 
 def _derived_current(
     repository: Path, levels: dict[str, DefaultLevel], typescript: tuple[RuleSpec, ...] | None
 ) -> bool:
+    if python_rule_descriptors.sync(repository, check=True).status != 0:
+        return False
     results = (
         rule_inventory_artifact.sync(repository, check=True),
         rule_maintenance.sync_ledger(repository, check=True),
@@ -162,6 +167,10 @@ def _synchronize(
     levels: dict[str, DefaultLevel],
     typescript: tuple[RuleSpec, ...] | None,
 ) -> None:
+    descriptors = python_rule_descriptors.sync(repository, check=False, writer=mutation.write_text)
+    if descriptors.status != 0:
+        msg = "could not synchronize Python rule descriptors"
+        raise RuntimeError(msg)
     operations = (
         (rule_maintenance.sync_ledger, repository / _LEDGER_PATH),
         (rule_inventory_artifact.sync, repository / _INVENTORY_PATH),

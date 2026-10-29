@@ -75,6 +75,34 @@ export const PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION = {
       fixedFiles: [{ path: "src/autofix-example.ts", source: "const present = [{ id: 'kept' }, null].filter((value) => value !== null && value !== undefined);" }],
       focusPath: "src/autofix-example.ts",
       expectedCount: 1,
+      expectedDiagnostics: [{
+        messageId: "preferNullishPredicate",
+        message: "This built-in array contains only nullish or provably truthy values, so `filter(Boolean)` preserves runtime values but loses nullish narrowing. Use an explicit nullish predicate.",
+        location: { line: 1, column: 47, end: { line: 1, column: 54 } },
+        automaticFix: true,
+        suggestions: [{
+          messageId: "replaceBoolean",
+          output: "const present = [{ id: 'kept' }, null].filter((value) => value !== null && value !== undefined);",
+        }],
+      }],
+    },
+    {
+      id: "nonfresh-suggestion-only",
+      title: "Suggest a nullish predicate without assuming a fresh receiver",
+      outcome: "match",
+      files: [{ path: "src/users.ts", source: "declare const users: readonly ({ id: string } | null)[];\nconst present = users.filter(Boolean);" }],
+      focusPath: "src/users.ts",
+      expectedCount: 1,
+      expectedDiagnostics: [{
+        messageId: "preferNullishPredicate",
+        message: "This built-in array contains only nullish or provably truthy values, so `filter(Boolean)` preserves runtime values but loses nullish narrowing. Use an explicit nullish predicate.",
+        location: { line: 2, column: 30, end: { line: 2, column: 37 } },
+        automaticFix: false,
+        suggestions: [{
+          messageId: "replaceBoolean",
+          output: "declare const users: readonly ({ id: string } | null)[];\nconst present = users.filter((value) => value !== null && value !== undefined);",
+        }],
+      }],
     },
   ],
 } as const satisfies RuleDocumentation;

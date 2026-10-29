@@ -84,6 +84,87 @@ def test_warning_parity_check_detects_drift_in_either_direction(tmp_path: Path) 
     assert not config_generation.sync_warning_levels(tmp_path, check=True)
 
 
+def test_single_policy_table_tracks_catalog_levels_without_changing_options_or_membership(tmp_path: Path) -> None:
+    catalog, preset, strict, _application = _policy_repository(tmp_path)
+    before = preset.read_text(encoding="utf-8")
+
+    assert not config_generation.sync_warning_levels(tmp_path, check=True)
+    assert config_generation.sync_warning_levels(tmp_path, check=False)
+    assert config_generation.sync_warning_levels(tmp_path, check=True)
+    expected = before.replace('"@sarj/first-rule": ["error"', '"@sarj/first-rule": ["warn"')
+    expected = expected.replace('    "warn",\n    "strict",', '    "error",\n    "strict",')
+    assert preset.read_text(encoding="utf-8") == expected
+    assert '"@sarj/first-rule": ["warn", { option: true }]' in strict.read_text(encoding="utf-8")
+
+    catalog.write_text(
+        json.dumps({"schemaVersion": 1, "rules": [{"key": "eslint:second-rule", "defaultLevel": "warning"}]}),
+        encoding="utf-8",
+    )
+    assert not config_generation.sync_warning_levels(tmp_path, check=True)
+    assert config_generation.sync_warning_levels(tmp_path, check=False)
+    assert config_generation.sync_warning_levels(tmp_path, check=True)
+    assert preset.read_text(encoding="utf-8") == before
+
+
+def _policy_repository(root: Path) -> _RepositoryFiles:
+    files = _repository(root)
+    files.preset.write_text(
+        "const RULE_POLICY = {\n"
+        '  "@sarj/first-rule": ["error", "both"],\n'
+        '  "@sarj/second-rule": [\n'
+        '    "warn",\n'
+        '    "strict",\n'
+        "    () => [{ option: true }] as const,\n"
+        "  ],\n"
+        '  "no-restricted-imports": ["shared", "both", LIBRARY_IMPORT_POLICY],\n'
+        "} as const satisfies PresetPolicy;\n"
+        "const ADVISORY_RULES = Object.keys(RULE_POLICY).filter(isAdvisoryRuleName).toSorted();\n"
+        'const RECOMMENDED_RULES = presetRules("recommended");\n'
+        'const STRICT_RULES = presetRules("strict");\n',
+        encoding="utf-8",
+    )
+    return files
+
+
+def test_single_policy_missing_warning_rule_refuses_every_write(tmp_path: Path) -> None:
+    files = _policy_repository(tmp_path)
+    files.catalog.write_text(
+        json.dumps({"schemaVersion": 1, "rules": [{"key": "eslint:missing-rule", "defaultLevel": "warning"}]}),
+        encoding="utf-8",
+    )
+    before = tuple(path.read_bytes() for path in files)
+    with pytest.raises(ValueError, match="missing warning-stage ESLint rules: missing-rule"):
+        config_generation.sync_warning_levels(tmp_path, check=False)
+    assert tuple(path.read_bytes() for path in files) == before
+
+
+@pytest.mark.parametrize("variant", ["duplicate", "missing-end", "orphan-end", "mixed-legacy", "reversed", "unknown"])
+def test_ambiguous_or_unknown_policy_format_refuses_every_write(tmp_path: Path, variant: str) -> None:
+    files = _policy_repository(tmp_path)
+    source = files.preset.read_text(encoding="utf-8")
+    files.preset.write_text(_invalid_policy_source(source, variant), encoding="utf-8")
+    before = tuple(path.read_bytes() for path in files)
+    with pytest.raises(ValueError, match="TypeScript preset"):
+        config_generation.sync_warning_levels(tmp_path, check=False)
+    assert tuple(path.read_bytes() for path in files) == before
+
+
+def _invalid_policy_source(source: str, variant: str) -> str:
+    opening = "const RULE_POLICY = {\n"
+    closing = "} as const satisfies PresetPolicy;"
+    if variant == "duplicate":
+        return source.replace(opening, opening + opening)
+    if variant == "missing-end":
+        return source.replace(closing, "")
+    if variant == "orphan-end":
+        return source.replace(opening, "")
+    if variant == "mixed-legacy":
+        return f"{source}const ADVISORY_RULES = [\n] as const;\n"
+    if variant == "reversed":
+        return closing + "\n" + source.replace(closing, "")
+    return "const RULE_POLICY = unknownPolicy();\n"
+
+
 def test_canonical_library_generation_is_idempotent() -> None:
     assert config_generation.sync(check=True)
     generated = config_generation.generated_configs()

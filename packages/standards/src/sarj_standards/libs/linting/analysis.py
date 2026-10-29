@@ -302,7 +302,7 @@ def _run_native(
     checker_module, registry_module = _load_native(package)
     metadata = native_metadata(registry_module.REGISTRY)
     selected_rules = sorted(registry_module.REGISTRY) if rule_ids is None else sorted(rule_ids)
-    unknown = sorted(set(selected_rules) - registry_module.REGISTRY.keys())
+    unknown = sorted(set(selected_rules) - set(registry_module.REGISTRY))
     if unknown:
         msg = f"unknown {package} rule(s): {', '.join(unknown)}"
         raise ValueError(msg)

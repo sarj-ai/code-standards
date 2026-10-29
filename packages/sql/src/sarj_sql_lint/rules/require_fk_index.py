@@ -3,7 +3,9 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from enum import StrEnum
 from functools import lru_cache
+import os
 from pathlib import Path, PurePosixPath
 import re
 from stat import S_ISREG
@@ -59,9 +61,36 @@ class _FileIndexes:
     indexes: frozenset[_IndexedColumns]
 
 
-_INDEX_SNAPSHOTS: ContextVar[dict[Path, tuple[_FileIndexes, ...]] | None] = ContextVar(
-    "sql_index_analysis_snapshots", default=None
-)
+class _GapKind(StrEnum):
+    TRAVERSAL = "traversal"
+    CLASSIFICATION = "classification"
+    STAT = "stat"
+    READ = "read"
+    OWNER = "owner"
+    BYTE_LIMIT = "byte-limit"
+    FILE_LIMIT = "file-limit"
+
+
+@dataclass(frozen=True, slots=True)
+class _IndexGap:
+    kind: _GapKind
+    path: Path | None
+    identity: _FileIdentity | None
+
+
+@dataclass(frozen=True, slots=True)
+class _IndexScan:
+    files: tuple[_FileIndexes, ...]
+    gaps: tuple[_IndexGap, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _IndexEvidence:
+    indexes: frozenset[_IndexedColumns]
+    complete: bool
+
+
+_INDEX_SNAPSHOTS: ContextVar[dict[Path, _IndexScan] | None] = ContextVar("sql_index_analysis_snapshots", default=None)
 
 
 @contextmanager
@@ -161,19 +190,33 @@ def _tree_indexes(  # sarj-noqa: SARJ023 — bounded tree helpers stay adjacent.
     *,
     current_path: Path,
     current_file: _FileIdentity,
-) -> frozenset[_IndexedColumns]:
-    root = root.resolve()
-    current_path = current_path.resolve()
+) -> _IndexEvidence:
+    try:
+        root = root.resolve()
+        current_path = current_path.resolve()
+    except OSError:
+        return _IndexEvidence(frozenset(), complete=False)
     snapshots = _INDEX_SNAPSHOTS.get()
-    files = None if snapshots is None else snapshots.get(root)
-    if files is None:
-        files = _scan_tree_indexes(root)
+    scan = None if snapshots is None else snapshots.get(root)
+    if scan is None:
+        scan = _scan_tree_indexes(root)
         if snapshots is not None and len(snapshots) < _MAX_SNAPSHOT_ROOTS:
-            snapshots[root] = files
-    owners = _snapshot_current_paths(files, current_path, current_file)
-    return frozenset(
-        index for file in files if file.path not in owners and file.identity != current_file for index in file.indexes
+            snapshots[root] = scan
+    owners = _snapshot_current_paths(scan.files, current_path, current_file)
+    indexes = frozenset(
+        index
+        for file in scan.files
+        if file.path not in owners and file.identity != current_file
+        for index in file.indexes
     )
+    complete = all(_gap_is_current(gap, owners, current_file) for gap in scan.gaps)
+    return _IndexEvidence(indexes, complete)
+
+
+def _gap_is_current(gap: _IndexGap, owners: frozenset[Path], current_file: _FileIdentity) -> bool:
+    if gap.kind in {_GapKind.TRAVERSAL, _GapKind.FILE_LIMIT}:
+        return False
+    return gap.path in owners or gap.identity == current_file
 
 
 def _snapshot_current_paths(files: tuple[_FileIndexes, ...], current: Path, identity: _FileIdentity) -> frozenset[Path]:
@@ -191,23 +234,70 @@ def _snapshot_current_paths(files: tuple[_FileIndexes, ...], current: Path, iden
     return frozenset(owners)
 
 
-def _scan_tree_indexes(root: Path) -> tuple[_FileIndexes, ...]:
+def _scan_tree_indexes(root: Path) -> _IndexScan:
     files: list[_FileIndexes] = []
-    try:
-        candidates = sorted(root.rglob("*.sql"))[:_MAX_TREE_FILES]
-    except OSError:
-        return ()
-    for candidate in candidates:
+    gaps: list[_IndexGap] = []
+    candidates = _migration_sql_paths(root, gaps)
+    if len(candidates) > _MAX_TREE_FILES:
+        gaps.append(_IndexGap(_GapKind.FILE_LIMIT, None, None))
+    for candidate in candidates[:_MAX_TREE_FILES]:
         try:
             metadata = candidate.stat()
-            if metadata.st_size > _MAX_TREE_BYTES:
-                continue
+        except OSError:
+            gaps.append(_IndexGap(_GapKind.STAT, candidate, None))
+            continue
+        if not S_ISREG(metadata.st_mode):
+            continue
+        identity = _FileIdentity(metadata.st_dev, metadata.st_ino)
+        if metadata.st_size > _MAX_TREE_BYTES:
+            gaps.append(_IndexGap(_GapKind.BYTE_LIMIT, candidate, identity))
+            continue
+        try:
             text = candidate.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            gaps.append(_IndexGap(_GapKind.READ, candidate, identity))
+            continue
+        try:
             owner = candidate.resolve() if candidate.is_symlink() else candidate
         except OSError:
+            gaps.append(_IndexGap(_GapKind.OWNER, candidate, identity))
             continue
-        files.append(_FileIndexes(owner, _FileIdentity(metadata.st_dev, metadata.st_ino), _source_indexes(text)))
-    return tuple(files)
+        files.append(_FileIndexes(owner, identity, _source_indexes(text)))
+    return _IndexScan(tuple(files), tuple(gaps))
+
+
+def _migration_sql_paths(root: Path, gaps: list[_IndexGap]) -> list[Path]:
+    directories = [root]
+    paths: list[Path] = []
+    while directories:
+        directory = directories.pop()
+        for entry in _directory_entries(directory, gaps):
+            is_directory = _entry_is_directory(entry, gaps)
+            if is_directory is None:
+                continue
+            path = Path(entry.path)
+            if is_directory:
+                directories.append(path)
+            if path.match("*.sql"):
+                paths.append(path)
+    return sorted(paths)
+
+
+def _directory_entries(directory: Path, gaps: list[_IndexGap]) -> tuple[os.DirEntry[str], ...]:
+    try:
+        with os.scandir(directory) as entries:
+            return tuple(entries)
+    except OSError:
+        gaps.append(_IndexGap(_GapKind.TRAVERSAL, directory, None))
+        return ()
+
+
+def _entry_is_directory(entry: os.DirEntry[str], gaps: list[_IndexGap]) -> bool | None:
+    try:
+        return entry.is_dir(follow_symlinks=False)
+    except OSError:
+        gaps.append(_IndexGap(_GapKind.CLASSIFICATION, Path(entry.path), None))
+        return None
 
 
 def _source_indexes(source: str) -> frozenset[_IndexedColumns]:
@@ -230,23 +320,29 @@ def _index_entries(source: str) -> frozenset[_IndexedColumns]:
     )
 
 
-def _sibling_indexes(path: Path, table: _TableKey) -> set[tuple[str, ...]]:
-    try:
-        metadata = path.stat()
-    except OSError:
-        return set()
-    if not S_ISREG(metadata.st_mode):
-        return set()
+def _sibling_indexes(path: Path, table: _TableKey) -> _IndexEvidence:
     root = _migration_root(path)
     if root is None:
-        return set()
-    return {
-        columns
-        for indexed_table, columns in _tree_indexes(
-            root, current_path=path, current_file=_FileIdentity(metadata.st_dev, metadata.st_ino)
-        )
-        if _same_relation(indexed_table, table)
-    }
+        return _IndexEvidence(frozenset(), complete=True)
+    try:
+        metadata = path.stat()
+    except FileNotFoundError:
+        # Pure source checks can use a virtual migration path without a live tree.
+        try:
+            root.stat()
+        except FileNotFoundError:
+            return _IndexEvidence(frozenset(), complete=True)
+        except OSError:
+            pass
+        return _IndexEvidence(frozenset(), complete=False)
+    except OSError:
+        return _IndexEvidence(frozenset(), complete=False)
+    if not S_ISREG(metadata.st_mode):
+        return _IndexEvidence(frozenset(), complete=False)
+    evidence = _tree_indexes(root, current_path=path, current_file=_FileIdentity(metadata.st_dev, metadata.st_ino))
+    return _IndexEvidence(
+        frozenset(index for index in evidence.indexes if _same_relation(index.table, table)), evidence.complete
+    )
 
 
 def _same_relation(left: _TableKey, right: _TableKey) -> bool:
@@ -298,6 +394,7 @@ class RequireFkIndex(Rule):
             "Literal FALSE partial indexes cannot cover foreign keys. Other partial predicates retain conservative legacy coverage; arbitrary implication and migration-time index drops are not evaluated.",
             "Unicode escape identifiers (U&) and server-side identifier truncation are not resolved.",
             "A bounded scan includes indexes from sibling files in the same migration tree.",
+            "Unavailable or budget-excluded sibling evidence prevents a missing-index proof; known indexes remain usable.",
             "Schema dumps are excluded; add the owning change to an authored migration.",
         ),
         examples=(
@@ -346,18 +443,26 @@ class RequireFkIndex(Rule):
             if "REFERENCES" in stmt.upper() and (table_match := TABLE_SCOPE_PATTERN.search(stmt)):
                 full_table = normalize_sql_identifier(table_match.group(1))
                 table = sql_relation_key(table_match.group(1))
-                table_indexes = {
-                    columns
-                    for indexed_table, indexes in indexed_cols_by_table.items()
-                    if _same_relation(indexed_table, table)
-                    for columns in indexes
-                }
-                table_indexes |= _sibling_indexes(path, table)
+                table_indexes = self._local_table_indexes(indexed_cols_by_table, table)
+                siblings = _sibling_indexes(path, table)
+                table_indexes.update(index.columns for index in siblings.indexes)
 
                 ctx = _StmtContext(path, masked, stmt, char_offset, full_table, table_match.end(), is_dump)
-                diags.extend(self._check_fk_constraints(ctx, table_indexes))
+                if siblings.complete:
+                    diags.extend(self._check_fk_constraints(ctx, table_indexes))
 
         return diags
+
+    @staticmethod
+    def _local_table_indexes(
+        indexed_cols_by_table: dict[_TableKey, set[tuple[str, ...]]], table: _TableKey
+    ) -> set[tuple[str, ...]]:
+        return {
+            columns
+            for indexed_table, indexes in indexed_cols_by_table.items()
+            if _same_relation(indexed_table, table)
+            for columns in indexes
+        }
 
     def _check_fk_constraints(
         self,

@@ -17,10 +17,12 @@ from . import ledger, repository
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping
+    from collections.abc import Callable, Mapping, Sequence
     from pathlib import Path
 
     from pydantic import JsonValue
+
+    from .rule_inventory_artifact import RuleInventoryEntry
 
 
 _FAMILIES: Final = (
@@ -54,9 +56,21 @@ class SyncResult:
     message: str
 
 
-def inventory(root: Path) -> list[dict[str, str]]:
+def inventory(root: Path, *, python_entries: Sequence[RuleInventoryEntry] | None = None) -> list[dict[str, str]]:
     items: list[dict[str, str]] = []
     for family, module_name, package in _FAMILIES:
+        if family == "python" and python_entries is not None:
+            items.extend(
+                {
+                    "family": entry["family"],
+                    "id": entry["id"],
+                    "code": entry["code"],
+                    "source": entry["source"],
+                    "test": entry["test"],
+                }
+                for entry in python_entries
+            )
+            continue
         registry = _registry(module_name)
         for rule_id, rule in sorted(registry.items()):
             module = rule.__module__.replace(".", "/")

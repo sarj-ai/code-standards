@@ -86,6 +86,13 @@ describe("source-owned TypeScript rule metadata", () => {
         files: [{ path: "src/input.ts", source: "const value = 1;" }],
         focusPath: "src/input.ts",
         expectedCount: 1,
+        expectedDiagnostics: [{
+          messageId: "message",
+          message: "Representative diagnostic.",
+          location: { line: 1, column: 1, end: { line: 1, column: 2 } },
+          automaticFix: false,
+          suggestions: [],
+        }],
         public: true,
       },
       {
@@ -109,6 +116,9 @@ describe("source-owned TypeScript rule metadata", () => {
     expect(serialized).not.toContain("private-case");
     expect(serialized).not.toContain("secret");
     expect(serialized).not.toContain('"public"');
+    expect(serialized).not.toContain('"expectedDiagnostics"');
+    expect(rule.documentation?.examples[1]?.expectedDiagnostics).toHaveLength(1);
+    expect(Object.isFrozen(rule.documentation?.examples[1]?.expectedDiagnostics?.[0]?.location.end)).toBe(true);
     expect(published?.examples.every((example) => example.fixedFiles !== undefined)).toBe(true);
   });
 

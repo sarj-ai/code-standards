@@ -235,7 +235,7 @@ def _run_tool(
 
 
 def _select_rules(registry: Mapping[str, type[_Rule]], selected: frozenset[str]) -> dict[str, type[_Rule]]:
-    return {rule_id: rule for rule_id, rule in registry.items() if rule_id in selected}
+    return {rule_id: registry[rule_id] for rule_id in registry if rule_id in selected}
 
 
 def _load_tool(
@@ -553,7 +553,7 @@ def _route_path(grouped: GroupedPaths, path: Path, raw_path: str) -> None:
         grouped.unsupported_shell.append(raw_path)
     elif shell is not None:
         grouped.shellcheck.append(raw_path)
-    if textlint.is_text_path(path):
+    if textlint.is_text_path_with_dialect(path, known_dialect=shell):
         grouped.text.append(raw_path)
 
 
