@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 
 _COMPOSABLE_HOLE = re.compile(r"(?<!\{)\{(?:[A-Za-z_]\w*|\d*)\}(?!\})")
 _SQL_HOLE = "__sarj_sql_hole__"
+_STORE_SQL_HOLE = "__sarj_store_sql_hole__"
 _ASCII_FOLD = str.maketrans(ascii_uppercase, ascii_lowercase)
 
 
@@ -110,14 +111,13 @@ class NoRedundantSqlAlias(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if context.generated or context.tree is None:
             return []
+        # Both query recovery paths require an import-proven Psycopg symbol.
+        if not context.nodes(ast.Import, ast.ImportFrom):
+            return []
         candidates: dict[ast.expr, bool] = {}
         for query in store_queries(context):
             candidates[query.node] = candidates.get(query.node, False) or _statement_alias(query.statement)
-        closed_literal = owned_literal(context.tree)
-        if closed_literal is not None:
-            closed_query = literal_query(context.source, closed_literal)
-            if closed_query is not None:
-                candidates[closed_literal] = candidates.get(closed_literal, False) or _redundant_alias(closed_query)
+        _record_closed_literal(candidates, context.tree, context.source)
         for call in context.nodes(ast.Call):
             if context.static_resource_provenance.runtime_import_name(call.func) not in {
                 "psycopg.sql.SQL",
@@ -142,6 +142,16 @@ class NoRedundantSqlAlias(Rule):
             for node, redundant in candidates.items()
             if redundant and not is_suppressed(context.source_lines, node.lineno, self.code)
         ]
+
+
+def _record_closed_literal(candidates: dict[ast.expr, bool], tree: ast.Module, source: str) -> None:
+    closed_literal = owned_literal(tree)
+    if closed_literal is None:
+        return
+    closed_query = literal_query(source, closed_literal)
+    if closed_query is None:
+        return
+    candidates[closed_literal] = candidates.get(closed_literal, False) or _redundant_alias(closed_query)
 
 
 def _redundant_alias(source: str) -> bool:
@@ -196,4 +206,7 @@ def identifier_key(node: exp.Expr | None) -> str | None:
 
     if not isinstance(node, exp.Identifier):
         return None
-    return node.name if node.args.get("quoted") else node.name.translate(_ASCII_FOLD)
+    name = node.name
+    if _SQL_HOLE in name or _STORE_SQL_HOLE in name:
+        return None
+    return name if node.args.get("quoted") else name.translate(_ASCII_FOLD)

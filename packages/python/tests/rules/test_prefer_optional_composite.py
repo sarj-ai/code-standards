@@ -170,3 +170,85 @@ def test_exact_code_suppression_and_malformed_source() -> None:
     assert _check(source) == []
     assert check_source([PreferOptionalComposite()], P, source) == []
     assert _check("class State(BaseModel):\n    version_id: (") == []
+
+
+@pytest.mark.parametrize(
+    ("annotation", "imports"),
+    [
+        ("ClassVar[str]", "from typing import ClassVar\n"),
+        ("'ClassVar[str | None]'", "from typing import ClassVar\n"),
+        ("Annotated[ClassVar[str], 'meta']", "from typing import Annotated, ClassVar\n"),
+        ("Metadata", "from typing import ClassVar\ntype Metadata = ClassVar[str]\n"),
+    ],
+    ids=["required-classvar", "quoted-classvar", "annotated-classvar", "aliased-classvar"],
+)
+def test_class_metadata_sibling_does_not_block_instance_group(annotation: str, imports: str) -> None:
+    source = _model(
+        f"    version_id: str | None\n    version_number: int | None\n    version_label: {annotation} = 'meta'\n",
+        imports,
+    )
+    findings = _check(source)
+    assert len(findings) == 1
+    assert "version_label" not in findings[0].message
+
+
+def test_init_only_sibling_does_not_block_dataclass_instance_group() -> None:
+    source = (
+        "from dataclasses import dataclass, InitVar\n@dataclass()\nclass State:\n"
+        "    version_id: str | None\n    version_number: int | None\n    version_label: InitVar[str]\n"
+    )
+    assert len(_check(source)) == 1
+    assert _check(source.replace("InitVar[str]", "str")) == []
+
+
+@pytest.mark.parametrize(
+    "imports",
+    [
+        "import typing as t\nt.Optional = list\nfrom typing import Optional\n",
+        "from typing import Optional\nimport typing as t\nt.Optional = list\n",
+        "import typing_extensions as t\nt.Optional = list\nfrom typing_extensions import Optional\n",
+    ],
+    ids=["mutation-before-alias", "mutation-after-alias", "extensions-owner-mutation"],
+)
+def test_mutated_nullable_wrapper_owner_abstains(imports: str) -> None:
+    fields = "    version_id: Optional[str]\n    version_number: Optional[int]\n"
+    assert _check(_model(fields, imports)) == []
+    stable = "\n".join(line for line in imports.split("\n") if ".Optional =" not in line)
+    assert len(_check(_model(fields, stable))) == 1
+
+
+def test_quoted_nullable_wrapper_namespace_mutation_abstains() -> None:
+    source = _model(
+        "    version_id: 't.Optional[str]'\n    version_number: 't.Optional[int]'\n",
+        "import typing as t\n",
+    )
+    assert len(_check(source)) == 1
+    assert _check(source.replace("class State", "t.Optional = list\nclass State")) == []
+
+
+def test_class_value_shadowing_nullable_wrapper_abstains() -> None:
+    source = _model(
+        "    model_config = {'ignored_types': (type,)}\n    Optional = list\n"
+        "    version_id: Optional[str]\n    version_number: Optional[int]\n",
+        "from typing import Optional\n",
+    )
+    assert _check(source) == []
+    assert len(_check(source.replace("    Optional = list\n", "    unrelated = list\n"))) == 1
+
+
+def test_shadowed_or_mutated_metadata_sibling_still_blocks_group() -> None:
+    fields = "    version_id: str | None\n    version_number: int | None\n    version_label: ClassVar[str]\n"
+    shadowed = _model(
+        "    model_config = {'ignored_types': (type,)}\n    ClassVar = list\n" + fields,
+        "from typing import ClassVar\n",
+    )
+    mutated = _model(fields, "import typing as t\nfrom typing import ClassVar\nt.ClassVar = list\n")
+    assert _check(shadowed) == []
+    assert _check(mutated) == []
+    assert _check(_model(fields.replace("ClassVar[str]", "str"))) == []
+
+
+def test_mutated_record_owner_abstains_without_confusing_instance_writes() -> None:
+    source = _model("    version_id: str | None\n    version_number: int | None\n")
+    assert _check(source + "State.model_fields = {}\n") == []
+    assert len(_check(source + "def clear(state):\n    state.version_id = None\n")) == 1

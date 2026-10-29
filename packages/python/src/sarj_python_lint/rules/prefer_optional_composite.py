@@ -17,7 +17,7 @@ from sarj_python_lint.rule_base import (
     Severity,
     is_suppressed,
 )
-from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, bit_or_members
+from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, bit_or_members, scope_bound_names
 from sarj_python_lint.rules._paths import is_test_path
 from sarj_python_lint.rules._pydantic_field_contract import unique_members
 
@@ -105,7 +105,11 @@ class PreferOptionalComposite(Rule):
             return []
         findings: list[Diagnostic] = []
         for model in context.tree.body:
-            if not isinstance(model, ast.ClassDef) or provenance.binding(model.name, model) is not model:
+            if (
+                not isinstance(model, ast.ClassDef)
+                or provenance.binding(model.name, model) is not model
+                or model.name in provenance.mutated
+            ):
                 continue
             if not _pydantic_record(model, context, provenance) and not _plain_record(model, provenance):
                 continue
@@ -116,7 +120,7 @@ class PreferOptionalComposite(Rule):
 def _model_diagnostics(model: ast.ClassDef, context: PythonFileContext, code: str) -> list[Diagnostic]:
     fields = _optional_fields(model, context)
     findings: list[Diagnostic] = []
-    for prefix, group in _field_groups(fields, _required_names(model, fields)):
+    for prefix, group in _field_groups(fields, _required_names(model, fields, context)):
         anchor = group[0]
         if is_suppressed(context.source_lines, anchor.lineno, code):
             continue
@@ -188,11 +192,7 @@ def _plain_member(member: ast.stmt) -> bool:
 
 def _optional_fields(model: ast.ClassDef, context: PythonFileContext) -> list[ast.AnnAssign]:
     unique = unique_members(model)
-    class_names = {
-        member.target.id
-        for member in model.body
-        if isinstance(member, ast.AnnAssign) and isinstance(member.target, ast.Name)
-    }
+    class_names = scope_bound_names(model.body)
     fields: list[ast.AnnAssign] = []
     for member in model.body:
         if not isinstance(member, ast.AnnAssign) or not isinstance(member.target, ast.Name):
@@ -206,10 +206,27 @@ def _optional_fields(model: ast.ClassDef, context: PythonFileContext) -> list[as
 
 
 def _optional_annotation(annotation: ast.expr, class_names: set[str], context: PythonFileContext) -> bool:
+    parsed = _unshadowed_annotation(annotation, class_names)
+    return parsed is not None and not _metadata_annotation(parsed, context) and _nullable(parsed, context)
+
+
+def _unshadowed_annotation(annotation: ast.expr, class_names: set[str]) -> ast.expr | None:
     parsed = AnnotationSemantics.parse(annotation)
     if parsed is None or any(isinstance(node, ast.Name) and node.id in class_names for node in ast.walk(parsed)):
-        return False
-    return not _metadata_annotation(parsed, context) and _nullable(annotation, context)
+        return None
+    return parsed
+
+
+def _stable_qualified_name(expression: ast.expr, context: PythonFileContext) -> str | None:
+    qualified = context.module_imports.resolved_qualified_name(expression)
+    if qualified is None:
+        return None
+    owner = qualified.partition(".")[0]
+    for name in context.static_resource_provenance.mutated:
+        binding = context.module_imports.bindings.get(name)
+        if binding is not None and binding.module.partition(".")[0] == owner:
+            return None
+    return qualified
 
 
 def _nullable(annotation: ast.expr, context: PythonFileContext, *, seen: frozenset[str] = frozenset()) -> bool:
@@ -226,7 +243,10 @@ def _nullable(annotation: ast.expr, context: PythonFileContext, *, seen: frozens
         return _nullable_union(bit_or_members(parsed), context, seen)
     if not isinstance(parsed, ast.Subscript):
         return False
-    wrapper = context.module_imports.resolved_symbol(parsed.value, sources=frozenset(_TYPING))
+    qualified = _stable_qualified_name(parsed.value, context)
+    wrapper = (
+        qualified.rpartition(".")[2] if qualified is not None and qualified.rpartition(".")[0] in _TYPING else None
+    )
     if wrapper == "Optional":
         return True
     members = parsed.slice.elts if isinstance(parsed.slice, ast.Tuple) else [parsed.slice]
@@ -246,23 +266,29 @@ def _nullable_union(members: list[ast.expr], context: PythonFileContext, seen: f
     )
 
 
-def _required_names(model: ast.ClassDef, optional: list[ast.AnnAssign]) -> frozenset[str]:
+def _required_names(model: ast.ClassDef, optional: list[ast.AnnAssign], context: PythonFileContext) -> frozenset[str]:
     optional_nodes = {id(member) for member in optional}
-    return frozenset(
-        member.target.id
-        for member in model.body
-        if isinstance(member, ast.AnnAssign)
-        and isinstance(member.target, ast.Name)
-        and id(member) not in optional_nodes
-        and not member.target.id.startswith("_")
-    )
+    class_names = scope_bound_names(model.body)
+    required: set[str] = set()
+    for member in model.body:
+        if (
+            not isinstance(member, ast.AnnAssign)
+            or not isinstance(member.target, ast.Name)
+            or id(member) in optional_nodes
+            or member.target.id.startswith("_")
+        ):
+            continue
+        parsed = _unshadowed_annotation(member.annotation, class_names)
+        if parsed is None or not _metadata_annotation(parsed, context):
+            required.add(member.target.id)
+    return frozenset(required)
 
 
 def _metadata_annotation(annotation: ast.expr, context: PythonFileContext) -> bool:
     resolved = context.annotation_semantics.resolve_alias(annotation)
     if not isinstance(resolved, ast.Subscript):
         return False
-    qualified = context.module_imports.resolved_qualified_name(resolved.value)
+    qualified = _stable_qualified_name(resolved.value, context)
     if qualified in {f"{module}.ClassVar" for module in _TYPING} | {"dataclasses.InitVar"}:
         return True
     if qualified in {f"{module}.Annotated" for module in _TYPING}:

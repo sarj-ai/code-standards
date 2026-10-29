@@ -196,7 +196,8 @@ def _visible_constructors(
     scope_chain: list[int] = []
     current = owner
     while True:
-        scope_chain.append(id(current))
+        if current is owner or not isinstance(current, ast.ClassDef):
+            scope_chain.append(id(current))
         parent = parents.get(current)
         if parent is None:
             break
@@ -498,7 +499,7 @@ def _parse_signal(sql: str) -> str | None:
         for statement in parse_postgres(normalized):
             if statement is not None and (signal := _architecture_signal(statement)) is not None:
                 return signal
-    except SqlglotError:
+    except SqlglotError, RecursionError:
         return None
     return None
 
@@ -554,8 +555,17 @@ def _self_join(select: exp.Select, joins: tuple[exp.Join, ...]) -> bool:
     from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- compare only literal relation identities.
 
     from_clause = _expression_arg(select, "from_")
-    root = relation_key(_expression_arg(from_clause, "this")) if isinstance(from_clause, exp.From) else None
-    return root is not None and any(relation_key(_expression_arg(join, "this")) == root for join in joins)
+    relations = [_expression_arg(from_clause, "this")] if isinstance(from_clause, exp.From) else []
+    relations.extend(_expression_arg(join, "this") for join in joins)
+    seen: set[tuple[str, ...]] = set()
+    for relation in relations:
+        key = relation_key(relation)
+        if key is None or any(_SQL_HOLE in name for name in key):
+            continue
+        if key in seen:
+            return True
+        seen.add(key)
+    return False
 
 
 def _derived_architecture_signal(statement: exp.Expr) -> str | None:
@@ -647,7 +657,9 @@ def _record_sql_module_imports(node: ast.Import, owner_id: int, constructors: se
 
 def _query_review_guidance(text_value: str) -> str:
     coordination = re.search(
-        r"\b(?:FOR\s+(?:NO\s+KEY\s+)?UPDATE|FOR\s+SHARE|SKIP\s+LOCKED)\b", text_value, re.IGNORECASE
+        r"\b(?:FOR\s+(?:(?:NO\s+KEY\s+)?UPDATE|(?:KEY\s+)?SHARE)|SKIP\s+LOCKED)\b",
+        strip_sql_noise(text_value),
+        re.IGNORECASE,
     )
     return (
         " preserve the atomic statement; review bounds, ordering, and locks, then document its cardinality, "

@@ -7,7 +7,9 @@ import { Linter, type Rule } from "eslint";
 
 import type { DiagnosticExpectation, DocumentedRule, ExampleFile, ExampleLocation, RuleExample } from "./rules/_docs.js";
 
-type FixedSourceFormatter = (file: ExampleFile, example: RuleExample) => string | Promise<string>;
+export type { ExampleFile, RuleExample } from "./rules/_docs.js";
+
+export type FixedSourceFormatter = (file: ExampleFile, example: RuleExample) => string | Promise<string>;
 
 /** Execute all authored examples, including private regressions, in isolated projects. */
 export async function verifyRuleExamples<Options extends readonly unknown[], MessageIds extends string>(

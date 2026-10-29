@@ -1441,3 +1441,119 @@ def test_asserted_optional_scalar_guard_keeps_native_result_precise(rule: Prefer
 def test_assertion_keeps_independent_universal_input_boundaries(rule: PreferPreciseObjectContract, call: str) -> None:
     source = f"import json\ndef f(value: object) -> None:\n    assert {call}\n"
     assert rule.check(Path("app/contracts.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "    raw.domain_only()\n    return Payload.model_validate(raw)\n",
+        "    raw = Domain()\n    return Payload.model_validate(raw)\n",
+        "    return Payload(value='known')\n    Payload.model_validate(raw)\n",
+        "    if False:\n        Payload.model_validate(raw)\n    return Payload(value='known')\n",
+    ],
+)
+def test_model_validation_cannot_borrow_rebound_unsafe_or_unreachable_input(
+    rule: PreferPreciseObjectContract, body: str
+) -> None:
+    source = (
+        "from pydantic import BaseModel\nclass Payload(BaseModel):\n    value: str\n"
+        "def parse(raw: object) -> Payload:\n" + body
+    )
+    assert len(rule.check(Path("app/contracts.py"), source)) == 1
+
+
+@pytest.mark.parametrize("argument", ["raw", "obj=raw", "value"])
+@pytest.mark.parametrize("parameter", ["raw: object", "raw: dict[str, object]"])
+def test_model_validation_keeps_actual_raw_parameter_and_alias(
+    rule: PreferPreciseObjectContract, argument: str, parameter: str
+) -> None:
+    source = (
+        "from pydantic import BaseModel\nclass Payload(BaseModel):\n    value: str\n"
+        f"def parse({parameter}) -> Payload:\n    value = raw\n    return Payload.model_validate({argument})\n"
+    )
+    assert rule.check(Path("app/contracts.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "type Value = object\n",
+        "type Value = 'object'\n",
+        "type Item = object\ntype Value = Item\n",
+        "from typing import TypeAlias\nValue: TypeAlias = object\n",
+        "from builtins import object as Opaque\ntype Value = Opaque\n",
+    ],
+)
+@pytest.mark.parametrize("annotation", ["type[Value]", "Type[Value]", "'type[Value]'"])
+def test_universal_class_argument_resolves_bare_object_alias_in_definition_scope(
+    rule: PreferPreciseObjectContract, declaration: str, annotation: str
+) -> None:
+    source = "from typing import Type\n" + declaration + f"def choose[object](kind: {annotation}) -> None: ...\n"
+    assert rule.check(Path("app/contracts.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "type Value = list[object]\n",
+        "type Value = object | None\n",
+        "type Value = dict[str, object]\n",
+    ],
+)
+def test_universal_class_alias_does_not_hide_unchecked_container_or_union(
+    rule: PreferPreciseObjectContract, declaration: str
+) -> None:
+    source = declaration + "def choose(kind: type[Value]) -> None: ...\n"
+    assert len(rule.check(Path("app/contracts.py"), source)) == 1
+
+
+@pytest.mark.parametrize("prefix", ["from builtins import sum\n", "import builtins as b\n"])
+@pytest.mark.parametrize("annotation", ["type[object]", "type[Value]"])
+def test_benign_builtins_import_preserves_universal_class_contract(
+    rule: PreferPreciseObjectContract, prefix: str, annotation: str
+) -> None:
+    source = f"{prefix}type Value = object\ndef choose(kind: {annotation}) -> None: ...\n"
+    assert rule.check(Path("app/contracts.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "from custom import type\n",
+        "class type: pass\n",
+        "import builtins as b\nb.type = Custom\n",
+        "import builtins as b\nsetattr(b, 'type', Custom)\n",
+        "globals()['type'] = Custom\n",
+        "globals().update(type=Custom)\n",
+    ],
+)
+def test_universal_class_exemption_requires_actual_unmutated_builtin_type(
+    rule: PreferPreciseObjectContract, prefix: str
+) -> None:
+    assert len(rule.check(Path("app/contracts.py"), prefix + "def choose(kind: type[object]) -> None: ...\n")) == 1
+
+
+@pytest.mark.parametrize(
+    ("prefix", "annotation"),
+    [
+        ("import builtins as b\nb.type = Custom\n", "b.type[object]"),
+        ("import builtins as b\nsetattr(b, 'type', Custom)\n", "b.type[object]"),
+    ],
+)
+def test_native_class_alias_cannot_survive_symbol_or_module_mutation(
+    rule: PreferPreciseObjectContract, prefix: str, annotation: str
+) -> None:
+    source = prefix + f"def choose(kind: {annotation}) -> None: ...\n"
+    assert len(rule.check(Path("app/contracts.py"), source)) == 1
+
+
+@pytest.mark.parametrize("mutation", ["b.type = Custom", "setattr(b, 'type', Custom)"])
+def test_imported_class_capture_keeps_builtin_identity_after_module_mutation(
+    rule: PreferPreciseObjectContract, mutation: str
+) -> None:
+    source = (
+        "from builtins import type as Kind\nimport builtins as b\n"
+        + mutation
+        + "\ndef choose(kind: Kind[object]) -> None: ...\n"
+    )
+    assert rule.check(Path("app/contracts.py"), source) == []

@@ -20,7 +20,12 @@ from sarj_python_lint.rules.store_insert_requires_on_conflict import StoreInsert
 
 
 if TYPE_CHECKING:
+    from sqlglot import exp
+
     from sarj_python_lint._file_context import PythonFileContext
+
+
+_UNRESOLVED_SQL_IDENTIFIER = "__sarj_store_sql_hole__"
 
 
 _BAD = """from psycopg import AsyncCursor
@@ -44,8 +49,8 @@ class StoreInsertRequiresExplicitConflictPolicy(Rule):
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Checks recovered INSERT statements reaching import-proven Psycopg execution in recognized store modules or class-owned persistence helpers, including test fixtures and direct same-class forwarding wrappers. Generated Python and unknown or dynamically composed SQL abstain.",
-            "Any explicit PostgreSQL ON CONFLICT clause declares a policy. This rule does not prove its target, concurrency correctness, replay behavior or side effects. SELECT-side existence checks alone do not establish a concurrency-safe duplicate policy.",
+            "Checks recovered INSERT statements reaching import-proven Psycopg execution in recognized store modules or class-owned persistence helpers, including test fixtures and direct same-class forwarding wrappers. Generated Python and unresolved SQL identifiers outside an INSERT's own RETURNING expressions abstain. Unresolved fields wholly within its RETURNING expressions cannot supply a preceding ON CONFLICT clause and do not hide a missing policy; nested INSERTs establish their own RETURNING boundary.",
+            "Each recovered INSERT, including one inside a data-modifying CTE, needs its own explicit PostgreSQL ON CONFLICT clause to declare a policy. This rule does not prove its target, concurrency correctness, replay behavior or side effects. SELECT-side existence checks alone do not establish a concurrency-safe duplicate policy.",
             "Plain INSERT remains a review finding when Python handles UniqueViolation or a fixture comment states invalid-row intent; preserve those contracts with an explained exact exception.",
             "Replay-named store INSERT findings already owned by SARJ018 take precedence. This broader policy remains a warning and requires an explained exact exception for intentional database-error fixtures.",
         ),
@@ -80,18 +85,17 @@ class StoreInsertRequiresExplicitConflictPolicy(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if context.generated or context.tree is None or "INSERT" not in context.source.upper():
             return []
-        from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- only native SQL INSERT candidates need parser types.
-
-        replay_lines = {finding.line for finding in StoreInsertRequiresOnConflict().check_context(context)}
+        replay_positions = {
+            (finding.line, finding.col) for finding in StoreInsertRequiresOnConflict().check_context(context)
+        }
         findings: dict[tuple[int, int], Diagnostic] = {}
         for query in store_queries(context):
-            if not isinstance(query.statement, exp.Insert) or query.statement.args.get("conflict") is not None:
+            if (not is_store_module(context.path) and query.owner is None) or (
+                query.node.lineno,
+                query.node.col_offset + 1,
+            ) in replay_positions:
                 continue
-            relation = sql_child(query.statement, "this")
-            relation = sql_child(relation, "this") if isinstance(relation, exp.Schema) else relation
-            if relation_key(relation) is None:
-                continue
-            if (not is_store_module(context.path) and query.owner is None) or query.node.lineno in replay_lines:
+            if not _requires_explicit_conflict_policy(query.statement):
                 continue
             node = query.node
             findings[node.lineno, node.col_offset] = Diagnostic(
@@ -103,3 +107,25 @@ class StoreInsertRequiresExplicitConflictPolicy(Rule):
                 severity=Severity.WARNING,
             )
         return sorted(findings.values(), key=lambda finding: (finding.line, finding.col))
+
+
+def _requires_explicit_conflict_policy(statement: exp.Expr) -> bool:
+    from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- parser types load only for recovered SQL queries.
+
+    if not isinstance(statement, exp.Query | exp.Insert | exp.Update | exp.Delete | exp.Merge | exp.Copy):
+        return False
+    # An unresolved suffix can supply conflict policy; an INSERT's own RETURNING cannot.
+    for identifier in statement.find_all(exp.Identifier):
+        if _UNRESOLVED_SQL_IDENTIFIER not in identifier.name:
+            continue
+        boundary = identifier.find_ancestor(exp.Returning, exp.Insert)
+        if not isinstance(boundary, exp.Returning) or not isinstance(boundary.parent, exp.Insert):
+            return False
+    for insert in statement.find_all(exp.Insert):
+        if insert.args.get("conflict") is not None:
+            continue
+        relation = sql_child(insert, "this")
+        relation = sql_child(relation, "this") if isinstance(relation, exp.Schema) else relation
+        if relation_key(relation) is not None:
+            return True
+    return False

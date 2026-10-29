@@ -43,7 +43,7 @@ afterAll(async () => {
   await rm(prepared.directory, { recursive: true, force: true });
 });
 
-it("emits portable public declarations for inferred ESM and CommonJS rule exports", () => {
+it("emits portable Node declarations for inferred ESM and CommonJS rule exports", () => {
   if (fixture === undefined) throw new Error("The real declaration producer did not complete.");
   const consumer = ts.createProgram([...fixture.emitted, fixture.invalid], {
     ...fixture.options,
@@ -52,11 +52,11 @@ it("emits portable public declarations for inferred ESM and CommonJS rule export
   });
   const rejected = ts.getPreEmitDiagnostics(consumer);
   expect(rejected.map((diagnostic) => diagnostic.file?.fileName), messages(rejected).join("\n"))
-    .toEqual([fixture.invalid, fixture.invalid, fixture.invalid, fixture.invalid]);
+    .toEqual([fixture.invalid, fixture.invalid, fixture.invalid, fixture.invalid, fixture.invalid]);
   expect(new Set(rejected.map((diagnostic) => diagnostic.start === undefined || diagnostic.file === undefined
     ? -1
     : diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start).line)))
-    .toEqual(new Set([1, 2, 3, 4]));
+    .toEqual(new Set([1, 2, 3, 4, 6]));
 });
 
 async function prepareDeclarations(): Promise<DeclarationFixture> {
@@ -94,19 +94,27 @@ async function prepareDeclarations(): Promise<DeclarationFixture> {
     );
     const source = [
       'import plugin, { ADVISORY_RULES, STRICT_RULES } from "@sarj/eslint-plugin";',
+      'import { verifyRuleExamples, type ExampleFile, type RuleExample, type FixedSourceFormatter } from "./node_modules/@sarj/eslint-plugin/dist/rule-examples.js";',
       'export const selectedRule = plugin.rules["no-comment-cruft"];',
       'export const selectedRules = { "no-comment-cruft": selectedRule };',
       'export const configured: readonly ["error", { readonly enabled: false }] = STRICT_RULES["@sarj/prefer-logical-tailwind-utilities"];',
       'export const fromConfig: typeof configured = plugin.configs.recommended.rules["@sarj/prefer-logical-tailwind-utilities"];',
       'export const advisory: readonly string[] = ADVISORY_RULES;',
       'export const warning: "warn" = STRICT_RULES["@sarj/excessive-commentary"];',
+      'export const inferredFormatter = (file: ExampleFile, example: RuleExample) => example.public ? file.source : Promise.resolve(file.source);',
+      'export const formatter: FixedSourceFormatter = inferredFormatter;',
+      'export const verificationSetup = { formatFixedSource: formatter };',
+      'export const verifyWithFormatter = () => verifyRuleExamples(selectedRule, verificationSetup);',
+      'export const verifier = verifyRuleExamples;',
       "",
     ].join("\n");
     const entrypoints = ["mts", "cts"].map((extension) =>
       join(directory, `consumer.${extension}`),
     );
     await Promise.all(
-      entrypoints.map((entrypoint) => writeFile(entrypoint, source)),
+      entrypoints.map((entrypoint) => writeFile(entrypoint, entrypoint.endsWith(".cts")
+        ? source.replace("dist/rule-examples.js", "dist/rule-examples.cjs")
+        : source)),
     );
     const options: ts.CompilerOptions = {
       strict: true,
@@ -115,6 +123,7 @@ async function prepareDeclarations(): Promise<DeclarationFixture> {
       noEmitOnError: true,
       skipLibCheck: false,
       types: [],
+      lib: ["lib.es2022.d.ts"],
       target: ts.ScriptTarget.ES2022,
       module: ts.ModuleKind.NodeNext,
       moduleResolution: ts.ModuleResolutionKind.NodeNext,
@@ -129,6 +138,9 @@ async function prepareDeclarations(): Promise<DeclarationFixture> {
     const result = program.emit();
     expect(result.emitSkipped).toBe(false);
     expect(messages(result.diagnostics)).toEqual([]);
+    expect(
+      program.getTypeChecker().resolveName("HTMLElement", undefined, ts.SymbolFlags.Type, false),
+    ).toBeUndefined();
     expect(new Set(emitted.keys())).toEqual(
       new Set([
         join(directory, "consumer.d.mts"),
@@ -145,6 +157,8 @@ async function prepareDeclarations(): Promise<DeclarationFixture> {
       'plugin.configs.recommended.rules["@sarj/no-enum"];',
       'ADVISORY_RULES.push("@sarj/excessive-commentary");',
       'STRICT_RULES["@sarj/prefer-logical-tailwind-utilities"][1].enabled = true;',
+      'import type { FixedSourceFormatter } from "./node_modules/@sarj/eslint-plugin/dist/rule-examples.js";',
+      'const invalidFormatter: FixedSourceFormatter = () => ({ source: "unexpected object" });',
       "",
     ].join("\n"));
     return { directory, emitted: [...emitted.keys()], invalid, options };

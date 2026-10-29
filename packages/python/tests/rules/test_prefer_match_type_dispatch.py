@@ -1592,3 +1592,183 @@ def test_native_only_mixed_tail_retains_the_upstream_ladder_anchor() -> None:
 """
     findings = _review_check(source)
     assert [(item.line, item.col, item.severity) for item in findings] == [(4, 5, Severity.ERROR)]
+
+
+@pytest.mark.parametrize(
+    ("preamble", "first", "second"),
+    [
+        ("import builtins", "builtins.str", "builtins.bytes"),
+        ("import builtins as native", "native.str", "native.bytes"),
+        ("from builtins import str as Text, bytes as Binary", "Text", "Binary"),
+        ("from builtins import str as int, bytes", "int", "bytes"),
+        ("import builtins as native", "(native.str, native.bytes)", "native.int"),
+        ("import builtins as native", "native.str | native.bytes", "native.int"),
+    ],
+)
+def test_dispatch_accepts_proven_builtin_imports(preamble: str, first: str, second: str) -> None:
+    source = f"""{preamble}
+def normalize(value):
+    if isinstance(value, {first}): return 'first'
+    elif isinstance(value, {second}): return 'second'
+    return 'other'
+"""
+    [finding] = check_source([PreferMatchTypeDispatch()], _REVIEW_PATH, source)
+    assert finding.severity is Severity.ERROR
+    assert finding.fixes == ()
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "native.str = (str, bytes)",
+        "del native.str",
+        "setattr(native, 'str', (str, bytes))",
+        "delattr(native, 'str')",
+        "setattr(native, field, object)",
+        "native.__dict__['str'] = (str, bytes)",
+        "vars(native)['str'] = (str, bytes)",
+        "native.isinstance = custom_check",
+        "setattr(native, 'isinstance', custom_check)",
+        "native = object()",
+    ],
+)
+def test_builtin_import_dispatch_requires_stable_namespace(mutation: str) -> None:
+    source = f"""import builtins as native
+{mutation}
+def normalize(value):
+    if isinstance(value, native.str): return 'text'
+    elif isinstance(value, native.bytes): return 'bytes'
+    return 'other'
+"""
+    assert _review_check(source) == []
+
+
+@pytest.mark.parametrize("symbol", ["PyCF_ONLY_AST", "PyCF_OPTIMIZED_AST", "MissingType", "walk"])
+def test_stdlib_ast_reference_requires_an_exported_class(symbol: str) -> None:
+    source = f"""import ast
+def normalize(value):
+    if isinstance(value, ast.{symbol}): return 'first'
+    elif isinstance(value, ast.Name): return 'name'
+    return 'other'
+"""
+    assert _review_check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [("expr", "stmt"), ("NodeVisitor", "NodeTransformer"), ("Name", "Attribute")],
+)
+def test_known_stdlib_ast_classes_remain_eligible(first: str, second: str) -> None:
+    source = f"""import ast as syntax
+def normalize(value):
+    if isinstance(value, syntax.{first}): return 'first'
+    elif isinstance(value, syntax.{second}): return 'second'
+    return 'other'
+"""
+    [finding] = _review_check(source)
+    assert finding.severity is Severity.ERROR
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["setattr(syntax, 'Name', (str, bytes))", "delattr(syntax, 'Name')", "setattr(syntax, field, object)"],
+)
+def test_ast_attribute_mutators_invalidate_class_identity(mutation: str) -> None:
+    source = f"""import ast as syntax
+{mutation}
+def normalize(value):
+    if isinstance(value, syntax.Name): return 'name'
+    elif isinstance(value, syntax.Attribute): return 'attribute'
+    return 'other'
+"""
+    assert _review_check(source) == []
+
+
+@pytest.mark.parametrize("base", ["Enum", "IntEnum", "StrEnum", "BaseModel"])
+def test_model_review_requires_proven_ancestor_import_identity(base: str) -> None:
+    module = "pydantic" if base == "BaseModel" else "enum"
+    source = f"""from {module} import {base}
+{base} = object
+class Kind({base}): pass
+def normalize(value):
+    if isinstance(value, Kind): return 'kind'
+    elif isinstance(value, str): return 'text'
+    return 'other'
+"""
+    assert _review_check(source) == []
+
+
+def test_model_review_excludes_inherited_factory_metaclass() -> None:
+    source = """from enum import Enum, EnumType
+class Factory(EnumType):
+    def __new__(mcls, name, bases, namespace):
+        if name == 'Child': return (str, bytes)
+        return super().__new__(mcls, name, bases, namespace)
+class Parent(Enum, metaclass=Factory): pass
+class Child(Parent): pass
+def normalize(value):
+    if isinstance(value, Child): return 'text'
+    elif isinstance(value, int): return 'number'
+    return 'other'
+def replacement(value):
+    match value:
+        case Child(): return 'text'
+        case int(): return 'number'
+    return 'other'
+assert normalize('value') == 'text'
+try:
+    replacement('value')
+except TypeError:
+    pass
+else:
+    raise AssertionError('An inherited factory metaclass can replace its class with a runtime tuple')
+"""
+    exec(compile(source, "<reviewed-enum-metaclass-example>", "exec"), {})  # ruff: ignore[exec-builtin] -- execute the authored runtime-contract proof without external inputs.
+    assert _review_check(source) == []
+
+
+def test_model_review_preserves_stable_inheritance_and_nominal_mixins() -> None:
+    source = """from pydantic import BaseModel
+class Mixin: pass
+class Parent(BaseModel): pass
+class Child(Parent, Mixin): pass
+def normalize(value):
+    if isinstance(value, Child): return 'model'
+    elif isinstance(value, str): return 'text'
+    return 'other'
+"""
+    [finding] = check_source([PreferMatchTypeDispatch()], _REVIEW_PATH, source)
+    assert finding.severity is Severity.WARNING
+    assert finding.fixes == ()
+
+
+def test_builtin_import_dispatch_respects_exact_suppression() -> None:
+    source = """import builtins as native
+def normalize(value):
+    if isinstance(value, native.str):  # sarj-noqa: SARJ080 — legacy adapter boundary
+        return 'text'
+    elif isinstance(value, native.bytes):
+        return 'bytes'
+    return 'other'
+"""
+    assert check_source([PreferMatchTypeDispatch()], _REVIEW_PATH, source) == []
+
+
+def test_native_owned_sequence_retains_one_error_before_independent_model_dispatch() -> None:
+    declarations = "".join(f"class Type{index}: pass\n" for index in range(64))
+    branches = "".join(f"    if isinstance(value, Type{index}): return {index}\n" for index in range(64))
+    source = (
+        "from enum import Enum\n"
+        + declarations
+        + "class Kind(Enum): ITEM = 1\n"
+        + "def normalize(value):\n"
+        + branches
+        + "    return 'other'\n"
+        + "def describe(value):\n"
+        + "    if isinstance(value, Kind): return 'kind'\n"
+        + "    elif isinstance(value, str): return 'text'\n"
+        + "    return 'other'\n"
+    )
+    findings = check_source([PreferMatchTypeDispatch()], _REVIEW_PATH, source)
+    assert [finding.severity for finding in findings] == [Severity.ERROR, Severity.WARNING]
+    assert all(finding.fixes == () for finding in findings)
