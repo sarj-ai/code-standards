@@ -3,6 +3,7 @@ from .contracts import (
     AutofixPolicy as AutofixPolicy,
     CatalogRule as CatalogRule,
     DefaultLevel as DefaultLevel,
+    DiagnosticSeverity as DiagnosticSeverity,
     EvaluationCase as EvaluationCase,
     ExampleDependency as ExampleDependency,
     ExampleFile as ExampleFile,
@@ -24,5 +25,15 @@ from .contracts import (
     RuleSpec as RuleSpec,
     RuleStatus as RuleStatus,
     Severity as Severity,
+    diagnostic_severity as diagnostic_severity,
 )
 from .files import fix_file as fix_file
+from .source import (
+    ByteDigest as ByteDigest,
+    DecodedSource as DecodedSource,
+    DocumentIdentity as DocumentIdentity,
+    NewlinePolicy as NewlinePolicy,
+    SourceCatalog as SourceCatalog,
+    SourceSnapshot as SourceSnapshot,
+    TextDigest as TextDigest,
+)

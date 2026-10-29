@@ -11,13 +11,14 @@ from sarj_standards.libs.linting import devops_source
 from sarj_standards.libs.linting.devops_source import analyze_sources
 from sarj_standards.libs.linting.devops_tools import TOOLS, NativeTool
 from sarj_standards.libs.linting.external import ProcessOutput, run_process
+from tests.process_fakes import FakeProcessExecutor
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from pathlib import Path
 
-    from sarj_standards.libs.linting.external import ProcessRunner
+    from sarj_standards.libs.linting.process import ProcessExecutor
 
 
 def _source(*, root: Path, project: str) -> str:
@@ -43,7 +44,11 @@ def test_tflint_reuses_attestation_per_project_without_cross_invocation_cache(*,
     for _ in range(2):
         calls.clear()
         reports = analyze_sources(
-            root=tmp_path, paths=paths, selected=frozenset({"tflint"}), trust_repository_code=True, runner=runner
+            root=tmp_path,
+            paths=paths,
+            selected=frozenset({"tflint"}),
+            trust_repository_code=True,
+            runner=FakeProcessExecutor(runner),
         )
         assert all(report.completion is Completion.COMPLETE for report in reports)
         assert all(report.version == "0.65.0" for report in reports)
@@ -88,7 +93,11 @@ def test_tflint_reuse_preserves_fail_closed_protocols(
         return ProcessOutput(status, payload, "")
 
     reports = analyze_sources(
-        root=tmp_path, paths=(path,), selected=frozenset({"tflint"}), trust_repository_code=True, runner=runner
+        root=tmp_path,
+        paths=(path,),
+        selected=frozenset({"tflint"}),
+        trust_repository_code=True,
+        runner=FakeProcessExecutor(runner),
     )
     assert reports[0].completion is Completion.FAILED
     assert reports[0].issues
@@ -118,7 +127,11 @@ def test_tflint_reuse_retains_native_diagnostic_locations(*, tmp_path: Path, sta
         return ProcessOutput(status, payload, "")
 
     reports = analyze_sources(
-        root=tmp_path, paths=(path,), selected=frozenset({"tflint"}), trust_repository_code=True, runner=runner
+        root=tmp_path,
+        paths=(path,),
+        selected=frozenset({"tflint"}),
+        trust_repository_code=True,
+        runner=FakeProcessExecutor(runner),
     )
     assert reports[0].completion is Completion.COMPLETE
     assert len(reports[0].diagnostics) == 1
@@ -132,7 +145,9 @@ def test_tflint_untrusted_inputs_never_attest_or_execute(*, tmp_path: Path) -> N
     def runner(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         pytest.fail(f"untrusted input must not execute {argv!r} at {cwd!r}")
 
-    reports = analyze_sources(root=tmp_path, paths=(path,), selected=frozenset({"tflint"}), runner=runner)
+    reports = analyze_sources(
+        root=tmp_path, paths=(path,), selected=frozenset({"tflint"}), runner=FakeProcessExecutor(runner)
+    )
     assert reports[0].completion is Completion.FAILED
     assert reports[0].issues
 
@@ -165,10 +180,10 @@ def test_tflint_analysis_uses_the_executable_that_attested_its_plugin(
     lookups: list[Path] = []
     calls: list[tuple[str, ...]] = []
 
-    def checked_tool(name: str, *, root: Path, runner: ProcessRunner) -> NativeTool:
+    def checked_tool(name: str, *, root: Path, runner: ProcessExecutor) -> NativeTool:
         assert name == "tflint"
         assert root == tmp_path / "project"
-        assert callable(runner)
+        assert runner is executor
         binary = verified if not lookups else replacement
         lookups.append(binary)
         return NativeTool(
@@ -187,11 +202,16 @@ def test_tflint_analysis_uses_the_executable_that_attested_its_plugin(
             return ProcessOutput(0, "TFLint version 0.65.0\n+ ruleset.google (0.40.0)", "")
         return ProcessOutput(0, '{"errors":[],"issues":[]}', "")
 
+    executor = FakeProcessExecutor(runner)
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- default executable discovery is under test; injected process runners bypass its absolute-path resolver.
         devops_source, "checked_tool", checked_tool
     )
     reports = analyze_sources(
-        root=tmp_path, paths=(path,), selected=frozenset({"tflint"}), trust_repository_code=True, runner=runner
+        root=tmp_path,
+        paths=(path,),
+        selected=frozenset({"tflint"}),
+        trust_repository_code=True,
+        runner=executor,
     )
     assert reports[0].completion is Completion.COMPLETE
     assert lookups == [verified]

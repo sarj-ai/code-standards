@@ -7,16 +7,51 @@ import os
 from pathlib import Path
 import platform
 import shutil
+import stat
 from statistics import median
 import subprocess  # ruff: ignore[suspicious-subprocess-import] — fresh workers isolate timing and peak memory.
 import sys
 from time import perf_counter
-from typing import Annotated
+from typing import Annotated, Literal, Never
 
 import typer
 
 
 _DEFAULT_PYTHON = Path(sys.executable)
+_PACKAGES = ("python", "contracts")
+_ARTIFACT_ROOTS = tuple(
+    f"packages/{package}/{directory}"
+    for package in _PACKAGES
+    for directory in ("src", "native", "rust", "build", "dist")
+)
+_MANIFEST_NAMES = (
+    "pyproject.toml",
+    "uv.lock",
+    "uv.toml",
+    "Cargo.toml",
+    "Cargo.lock",
+    "rust-toolchain",
+    "rust-toolchain.toml",
+    "build.rs",
+    "CMakeLists.txt",
+    "meson.build",
+    "meson_options.txt",
+    "setup.py",
+    "setup.cfg",
+    "MANIFEST.in",
+)
+_ARTIFACT_MANIFESTS = (
+    "mise.toml",
+    ".python-version",
+    ".node-version",
+    *_MANIFEST_NAMES,
+    *(f"packages/{package}/{name}" for package in _PACKAGES for name in _MANIFEST_NAMES),
+)
+_EXCLUDED_DIRECTORIES = frozenset({"__pycache__", "node_modules", "target", "venv"})
+_PRIVATE_NAMES = frozenset({"credentials", "credentials.json", "credentials.toml", "secrets.json", "secrets.toml"})
+_EXCLUDED_SUFFIXES = frozenset({".key", ".pem", ".pfx", ".p12", ".pyc", ".pyo"})
+
+type MemoryScope = Literal["process-lifetime-self", "unsupported"]
 
 _WORKER = """
 import hashlib, json, sys, time
@@ -31,17 +66,20 @@ findings = analyze(sorted(REGISTRY), paths)
 elapsed = time.perf_counter() - start
 rows = [[str(d.path.relative_to(corpus)), d.line, d.col, d.code, d.message, d.severity.value,
          d.column_encoding.value] for d in findings]
-try:
-    import resource
-except ImportError:
-    peak = None
-else:
-    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+peak = None
+if sys.platform in {'linux', 'darwin'}:
+    try:
+        import resource
+    except ImportError:
+        pass
+    else:
+        peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
 print(json.dumps({
     'native_seconds': elapsed,
     'diagnostics': len(findings),
     'diagnostic_digest': hashlib.sha256(json.dumps(rows).encode()).hexdigest(),
     'peak_memory_bytes': peak if peak is None or sys.platform == 'darwin' else peak * 1024,
+    'memory_scope': 'unsupported' if peak is None else 'process-lifetime-self',
     'rules': len(REGISTRY),
     'imported_from': sarj_python_lint.__file__,
     'python_version': sys.version,
@@ -54,6 +92,7 @@ class BaselineIdentity:
     commit: str
     source_tree: str
     source_digest: str
+    implementation: ImplementationIdentity
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +100,8 @@ class ImplementationIdentity:
     python_source_digest: str
     contracts_source_digest: str
     harness_digest: str
+    artifact_digest: str
+    artifact_files: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +113,7 @@ class Sample:
     rules: int
     imported_from: str
     python_version: str
+    memory_scope: MemoryScope
     startup_inclusive_seconds: float = 0.0
     round: int = 0
 
@@ -81,6 +123,7 @@ class Median:
     native_seconds: float
     startup_inclusive_seconds: float
     peak_memory_bytes: float | None
+    memory_scope: MemoryScope
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,9 +141,12 @@ class Comparison:
     time_reduction_pct: float
 
 
-def fingerprint(root: Path) -> str:
+def fingerprint(root: Path, *, paths: list[Path] | None = None) -> str:
     digest = hashlib.sha256()
-    for path in sorted(root.rglob("*.py")):
+    for path in sorted(root.rglob("*.py") if paths is None else paths):
+        if path.is_symlink():
+            msg = f"benchmark input must not be a symlink: {path}"
+            raise ValueError(msg)
         digest.update(str(path.relative_to(root)).encode())
         digest.update(b"\0")
         digest.update(path.read_bytes())
@@ -122,19 +168,108 @@ def baseline_identity(checkout: Path) -> BaselineIdentity:
     if git_output(checkout, "status", "--porcelain"):
         msg = "baseline checkout must be clean"
         raise ValueError(msg)
+    implementation = implementation_identity(checkout)
     return BaselineIdentity(
         git_output(checkout, "rev-parse", "HEAD"),
         git_output(checkout, "rev-parse", "HEAD:packages/python/src"),
         fingerprint(checkout / "packages/python/src"),
+        implementation,
     )
 
 
 def implementation_identity(checkout: Path) -> ImplementationIdentity:
+    artifacts = _implementation_artifacts(checkout)
+    digest = hashlib.sha256()
+    for path in artifacts:
+        digest.update(path.relative_to(checkout).as_posix().encode())
+        digest.update(b"\0")
+        digest.update(hashlib.sha256(path.read_bytes()).digest())
+        digest.update(b"\0")
+    python_root = checkout / "packages/python/src"
+    contracts_root = checkout / "packages/contracts/src"
     return ImplementationIdentity(
-        fingerprint(checkout / "packages/python/src"),
-        fingerprint(checkout / "packages/contracts/src"),
+        fingerprint(
+            python_root, paths=[path for path in artifacts if path.suffix == ".py" and path.is_relative_to(python_root)]
+        ),
+        fingerprint(
+            contracts_root,
+            paths=[path for path in artifacts if path.suffix == ".py" and path.is_relative_to(contracts_root)],
+        ),
         hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        digest.hexdigest(),
+        tuple(path.relative_to(checkout).as_posix() for path in artifacts),
     )
+
+
+def _implementation_artifacts(checkout: Path) -> list[Path]:
+    paths: set[Path] = set()
+    for relative in ("packages", *(f"packages/{package}" for package in _PACKAGES)):
+        _artifact_stat(checkout / relative)
+    for relative in _ARTIFACT_MANIFESTS:
+        path = checkout / relative
+        metadata = _artifact_stat(path)
+        if metadata is None:
+            continue
+        if not stat.S_ISREG(metadata.st_mode):
+            msg = f"implementation manifest must be a regular file: {path}"
+            raise ValueError(msg)
+        paths.add(path)
+    for relative in _ARTIFACT_ROOTS:
+        root = checkout / relative
+        metadata = _artifact_stat(root)
+        if metadata is None:
+            continue
+        if not stat.S_ISDIR(metadata.st_mode):
+            msg = f"implementation artifact root must be a directory: {root}"
+            raise ValueError(msg)
+        for directory, subdirectories, files in os.walk(root, onerror=_raise_artifact_error):
+            paths.update(_directory_artifacts(checkout, Path(directory), subdirectories, files))
+    return sorted(paths)
+
+
+def _directory_artifacts(
+    checkout: Path, directory: Path, subdirectories: list[str], filenames: list[str]
+) -> list[Path]:
+    subdirectories[:] = [
+        name for name in subdirectories if not _excluded_artifact((directory / name).relative_to(checkout))
+    ]
+    for name in subdirectories:
+        if _artifact_stat(directory / name) is None:
+            raise FileNotFoundError(directory / name)
+    paths: list[Path] = []
+    for name in filenames:
+        path = directory / name
+        if _excluded_artifact(path.relative_to(checkout)):
+            continue
+        metadata = _artifact_stat(path)
+        if metadata is None or not stat.S_ISREG(metadata.st_mode):
+            msg = f"implementation artifact must be a regular file: {path}"
+            raise ValueError(msg)
+        paths.append(path)
+    return paths
+
+
+def _excluded_artifact(path: Path) -> bool:
+    return (
+        any(part.startswith(".") or part in _EXCLUDED_DIRECTORIES for part in path.parts)
+        or path.name.lower() in _PRIVATE_NAMES
+        or path.suffix.lower() in _EXCLUDED_SUFFIXES
+    )
+
+
+def _artifact_stat(path: Path) -> os.stat_result | None:
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError:
+        return None
+    if stat.S_ISLNK(metadata.st_mode):
+        msg = f"implementation artifact must not be a symlink: {path}"
+        raise ValueError(msg)
+    return metadata
+
+
+def _raise_artifact_error(error: OSError) -> Never:
+    raise error
 
 
 def sample(checkout: Path, interpreter: Path, corpus: Path, round_number: int) -> Sample:
@@ -168,6 +303,7 @@ def summarize(rows: list[Sample]) -> Median:
         median(item.native_seconds for item in rows),
         median(item.startup_inclusive_seconds for item in rows),
         median(memory) if memory else None,
+        "process-lifetime-self" if memory else "unsupported",
     )
 
 

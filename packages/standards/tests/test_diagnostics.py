@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import codecs
 import json
+import time
 import tokenize
 from typing import TYPE_CHECKING, Unpack
 
@@ -55,12 +56,14 @@ from sarj_standards.libs.linting import external as external_module
 from sarj_standards.libs.linting.analysis import analyze as analyze_paths, normalize_native, report_from_tools
 from sarj_standards.libs.linting.policy import Policy
 from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelection, RuleSelector
+from tests.process_fakes import FakeProcessExecutor
 
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sequence
     from pathlib import Path
 
+    from sarj_standards.libs.linting.process import ProcessRequest
     from tests.call_contracts import EslintSelectionOptions, ExternalAnalyzeOptions
 
 
@@ -521,7 +524,9 @@ def test_disabled_external_capabilities_are_not_executed(monkeypatch: pytest.Mon
         called.append("external")
         return external_module.ProcessOutput(0, "[]", "")
 
-    monkeypatch.setattr(external_module, "run_process", forbidden)  # sarj-noqa: SARJ445 -- intercepts analyzer dispatch
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observe actual default-executor dispatch; replacing the analysis path would bypass the unselected-tool boundary.
+        external_module.DEFAULT_EXECUTOR, "run", FakeProcessExecutor(forbidden).run
+    )
     report = api.Standards(tmp_path).analyze(["app.py"], external=True, trust=TrustMode.TRUSTED)
 
     assert report.exit_code == 0
@@ -639,8 +644,10 @@ def test_standards_analysis_forwards_scoped_eslint_suppression_policy_to_the_pro
     def local_argv(argv: Sequence[str], _project: Path, _root: Path) -> tuple[str, ...]:
         return tuple(argv)
 
-    def run_eslint(argv: Sequence[str], *, cwd: Path, timeout_seconds: float) -> external_module.ProcessOutput:
-        assert 0 < timeout_seconds <= 300
+    def run_eslint(request: ProcessRequest) -> external_module.ProcessOutput:
+        argv, cwd = request.argv, request.cwd
+        assert request.deadline is not None
+        assert 0 < request.deadline - time.monotonic() <= 300
         assert cwd == tmp_path
         seen.append(tuple(argv))
         return external_module.ProcessOutput(
@@ -664,7 +671,7 @@ def test_standards_analysis_forwards_scoped_eslint_suppression_policy_to_the_pro
         installed_eslint,
     )
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercepts analyzer dispatch
-        external_module, "_run_eslint_process", run_eslint
+        external_module.DEFAULT_EXECUTOR, "run", run_eslint
     )
 
     report = api.Standards(tmp_path).analyze(

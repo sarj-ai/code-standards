@@ -37,8 +37,9 @@ MANIFEST = Manifest(api.__version__, ("ruff",), ".", ".")
         (SOURCE, FIXED),
         (SOURCE.replace("\n", "\r\n"), FIXED.replace("\n", "\r\n")),
         (SOURCE.replace("item", "\u00e9l\u00e9ment"), FIXED.replace("item", "\u00e9l\u00e9ment")),
+        ("\ufeff" + SOURCE, "\ufeff" + FIXED),
     ],
-    ids=("lf", "crlf", "unicode"),
+    ids=("lf", "crlf", "unicode", "bom"),
 )
 def test_report_safe_python_edits(tmp_path: Path, source: str, expected: str) -> None:
     path = tmp_path / "case.py"
@@ -55,11 +56,14 @@ def test_report_safe_python_edits(tmp_path: Path, source: str, expected: str) ->
         region = edit.location.region
         assert region is not None
         assert edit.expected_text_hash == sha256(raw[region.start.byte_offset : region.end.byte_offset]).hexdigest()
+        assert edit.expected_source_hash == sha256(raw).hexdigest()
         changed = (
             changed[: region.start.byte_offset] + edit.replacement.encode("utf-8") + changed[region.end.byte_offset :]
         )
     assert changed == expected.encode("utf-8")
     assert '"fixes"' in to_json(report)
+    assert '"expectedSourceHash"' not in to_json(report)
+    assert sha256(raw).hexdigest() in to_json(report, include_fix_source_hashes=True)
     assert '"fixes"' in to_sarif(report)
     assert path.read_bytes() == raw
 

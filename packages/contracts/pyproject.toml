@@ -1,6 +1,6 @@
 [project]
 name = "sarj-rule-contracts"
-version = "0.4.2"
+version = "0.5.0"
 description = "Shared immutable rule metadata and executable examples for Sarj linters."
 readme = "README.md"
 requires-python = ">=3.14"

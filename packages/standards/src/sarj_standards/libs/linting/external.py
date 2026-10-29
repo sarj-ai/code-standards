@@ -50,6 +50,17 @@ from sarj_standards.libs.typed_containers import is_object_list, is_object_mappi
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
 from . import mobile_tools, security_tools
+from .execution_plan import RuffProjectPlan, ShellCheckFamilyPlan
+from .process import (
+    OutputLimitError as OutputLimitError,
+    ProcessCapabilities,
+    ProcessExecutor as ProcessExecutor,
+    ProcessOutput as ProcessOutput,
+    ProcessRequest as ProcessRequest,
+    RequestExecutor,
+    ToolResolution,
+    executor_capabilities,
+)
 from .runner import GroupedPaths, accepts_hook_path, group_paths
 from .shell_policy import SHELLCHECK_ARGS
 
@@ -61,6 +72,9 @@ if TYPE_CHECKING:
     from pydantic import JsonValue
 
     from .policy import Policy
+
+
+type ProcessRunner = ProcessExecutor
 
 
 class _ReactDoctorSelection(NamedTuple):
@@ -340,19 +354,14 @@ class _ShellCheckReport(BaseModel):
     comments: tuple[_ShellCheckDiagnostic, ...]
 
 
-@dataclass(frozen=True, slots=True)
-class ProcessOutput:
-    returncode: int
-    stdout: str
-    stderr: str
+class LocalProcessExecutor:
+    capabilities = ProcessCapabilities()
+
+    def run(self, request: ProcessRequest) -> ProcessOutput:
+        return _run_process(request)
 
 
-class OutputLimitError(OSError):
-    pass
-
-
-class ProcessRunner(Protocol):
-    def __call__(self, argv: Sequence[str], *, cwd: Path) -> ProcessOutput: ...
+DEFAULT_EXECUTOR = LocalProcessExecutor()
 
 
 def analyze_external(
@@ -360,7 +369,7 @@ def analyze_external(
     *,
     root: Path,
     trust: TrustMode | str,
-    runner: ProcessRunner | None = None,
+    runner: ProcessExecutor | None = None,
     policy: Policy | None = None,
     capabilities: frozenset[str] | None = None,
     grouped: GroupedPaths | None = None,
@@ -375,11 +384,12 @@ def analyze_external(
     python_type_check: bool = True,
     eslint: bool = True,
 ) -> tuple[ToolReport, ...]:
-    execute = run_process if runner is None else runner
     try:
+        execute = DEFAULT_EXECUTOR if runner is None else runner
+        local_tools = executor_capabilities(execute).tool_resolution is ToolResolution.LOCAL
         normalized_trust = TrustMode(trust)
         root, contained, routed = _prepare_inputs(files, root, policy=policy, grouped=grouped)
-    except (OSError, ValueError) as exc:
+    except (OSError, TypeError, ValueError) as exc:
         issue = ExecutionIssue("external", "invalid-input", str(exc))
         return (ToolReport("external", Completion.FAILED, issues=(issue,)),)
     reports: list[ToolReport] = []
@@ -393,9 +403,7 @@ def analyze_external(
         )
     )
     reports.extend(
-        _shell_source_reports(
-            routed, root=root, runner=execute, capabilities=capabilities, attest_version=runner is None
-        )
+        _shell_source_reports(routed, root=root, runner=execute, capabilities=capabilities, attest_version=local_tools)
     )
     try:
         reports.extend(
@@ -404,7 +412,7 @@ def analyze_external(
                 root=root,
                 runner=execute,
                 capabilities=capabilities,
-                managed_tools=runner is None,
+                managed_tools=local_tools,
             )
         )
     except (OSError, TypeError, ValueError, RecursionError, yaml.YAMLError, zipfile.BadZipFile) as exc:
@@ -516,7 +524,7 @@ def analyze_external(
                 )
                 reports.append(ToolReport("eslint", Completion.FAILED, issues=(issue,)))
                 continue
-            if runner is None and (issue := _missing_eslint_issue(command.cwd, root)) is not None:
+            if local_tools and (issue := _missing_eslint_issue(command.cwd, root)) is not None:
                 reports.append(
                     ToolReport(
                         "eslint",
@@ -528,15 +536,9 @@ def analyze_external(
                     )
                 )
                 continue
-            execute_eslint = (
-                partial(
-                    _run_eslint_process,
-                    timeout_seconds=max(
-                        0.0, _ANALYSIS_DEADLINE.total_seconds() - (time.monotonic() - analysis_started)
-                    ),
-                )
-                if runner is None
-                else runner
+            execute_eslint = RequestExecutor(
+                partial(_execute_eslint, execute, deadline=analysis_started + _ANALYSIS_DEADLINE.total_seconds()),
+                executor_capabilities(execute),
             )
             reports.append(
                 _invoke(
@@ -554,7 +556,7 @@ def analyze_external(
                         full=True,
                         pass_on_unpruned_suppressions=pass_on_unpruned_eslint_suppressions,
                     )
-                    if runner is None
+                    if local_tools
                     else _eslint_json_argv(
                         command.argv,
                         pass_on_unpruned_suppressions=pass_on_unpruned_eslint_suppressions,
@@ -590,7 +592,7 @@ def analyze_external(
                 projects=react_projects,
                 root=root,
                 runner=execute,
-                use_local_binary=runner is None,
+                use_local_binary=local_tools,
                 file_count=max(len(routed.typescript), 1),
                 staged=react_doctor_staged,
                 full_scan=react_doctor_full_scan,
@@ -616,7 +618,7 @@ def analyze_external(
 
 
 def _quality_reports(
-    root: Path, *, capabilities: frozenset[str] | None, policy: Policy | None, trust: TrustMode, runner: ProcessRunner
+    root: Path, *, capabilities: frozenset[str] | None, policy: Policy | None, trust: TrustMode, runner: ProcessExecutor
 ) -> tuple[ToolReport, ...]:
     if capabilities is None or capabilities.isdisjoint(manifest.QUALITY_ANALYZERS):
         return ()
@@ -645,7 +647,7 @@ def _security_reports(
     files: Sequence[str],
     *,
     root: Path,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     capabilities: frozenset[str] | None,
     security_selection: RuleSelection | None = None,
 ) -> tuple[ToolReport, ...]:
@@ -683,7 +685,9 @@ def _security_reports(
                     ),
                     cwd=root,
                     root=root,
-                    runner=partial(_security_runner, runner, name="zizmor"),
+                    runner=RequestExecutor(
+                        partial(_security_runner, runner, name="zizmor"), executor_capabilities(runner)
+                    ),
                     parser=security_tools.parse_zizmor,
                     version=security_tools.VERSIONS["zizmor"],
                     invocation_id=InvocationId(f"batch-{start // _ESLINT_BATCH_SIZE + 1}"),
@@ -699,7 +703,7 @@ def _checkov_reports(
     selected: security_tools.SecurityInputs,
     *,
     root: Path,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     checkov_checks: frozenset[str] | None,
 ) -> tuple[ToolReport, ...]:
     reports: list[ToolReport] = []
@@ -730,7 +734,9 @@ def _checkov_reports(
                     ),
                     cwd=root,
                     root=root,
-                    runner=partial(_security_runner, runner, name="checkov"),
+                    runner=RequestExecutor(
+                        partial(_security_runner, runner, name="checkov"), executor_capabilities(runner)
+                    ),
                     parser=security_tools.parse_checkov,
                     version=security_tools.VERSIONS["checkov"],
                     invocation_id=InvocationId(f"{framework}:batch-{start // _ESLINT_BATCH_SIZE + 1}"),
@@ -741,12 +747,8 @@ def _checkov_reports(
     return tuple(reports)
 
 
-def _security_runner(runner: ProcessRunner, argv: Sequence[str], *, cwd: Path, name: str) -> ProcessOutput:
-    output = (
-        _run_process(argv, cwd=cwd, environment=_analysis_environment(), timeout_seconds=300)
-        if runner is run_process
-        else runner(argv, cwd=cwd)
-    )
+def _security_runner(runner: ProcessExecutor, request: ProcessRequest, *, name: str) -> ProcessOutput:
+    output = runner.run(replace(request, timeout_seconds=min(request.timeout_seconds, 300)))
     if name == "zizmor" and output.returncode != 0:
         msg = f"zizmor audit failed with exit {output.returncode}"
         raise OSError(msg)
@@ -757,7 +759,7 @@ def _mobile_source_reports(
     grouped: GroupedPaths,
     *,
     root: Path,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     capabilities: frozenset[str] | None,
     managed_tools: bool,
 ) -> tuple[ToolReport, ...]:
@@ -1024,7 +1026,7 @@ def _invoke_text_tool(
     *,
     cwd: Path,
     root: Path,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     parser: ProtocolParser,
     finding_codes: frozenset[int],
     file_count: int,
@@ -1033,7 +1035,7 @@ def _invoke_text_tool(
 ) -> ToolReport:
     started = time.monotonic()
     try:  # ruff: ignore[too-many-statements-in-try-clause] -- one boundary normalizes process failures and diagnostics.
-        output = runner(argv, cwd=cwd)
+        output = runner.run(process_request(argv, cwd=cwd))
         if output.returncode in fatal_codes or output.returncode not in {0, *finding_codes}:
             message = redact_message(output.stderr.strip() or f"{name} exited {output.returncode}", root)
             issue = ExecutionIssue(name, "tool-failure", message, output.returncode)
@@ -1074,14 +1076,14 @@ def _invoke_detekt(
     *,
     cwd: Path,
     root: Path,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     file_count: int,
 ) -> ToolReport:
     started = time.monotonic()
     try:  # ruff: ignore[too-many-statements-in-try-clause] -- one boundary owns report lifecycle and protocol checks.
         with tempfile.TemporaryDirectory(prefix="code-standards-detekt-") as temporary_directory:
             report_path = Path(temporary_directory) / "report.sarif"
-            output = runner((*argv, "--report", f"sarif:{report_path}"), cwd=cwd)
+            output = runner.run(process_request((*argv, "--report", f"sarif:{report_path}"), cwd=cwd))
             if output.returncode in {1, 3} or output.returncode not in {0, _DETEKT_FINDINGS}:
                 message = redact_message(output.stderr.strip() or f"detekt exited {output.returncode}", root)
                 issue = ExecutionIssue("detekt", "tool-failure", message, output.returncode)
@@ -1260,7 +1262,7 @@ def _invoke_react_doctor(
     *,
     projects: Sequence[Path],
     root: Path,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     use_local_binary: bool,
     file_count: int,
     staged: bool,
@@ -1378,19 +1380,21 @@ def _react_doctor_baseline_retry_runner(
     doctor_argv: Sequence[str],
     *,
     root: Path,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     explicit_base: str,
-) -> ProcessRunner:
+) -> ProcessExecutor:
     expected_argv = tuple(doctor_argv)
-    head_before = runner(("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"), cwd=root)
+    head_before = runner.run(
+        process_request(("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"), cwd=root)
+    )
     expected_head = head_before.stdout.strip()
     eligible = head_before.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}", expected_head) is not None
     attempted = False
 
-    def bounded(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+    def bounded(request: ProcessRequest) -> ProcessOutput:
         nonlocal attempted
-        output = runner(argv, cwd=cwd)
-        if attempted or tuple(argv) != expected_argv:
+        output = runner.run(request)
+        if attempted or request.argv != expected_argv:
             return output
         attempted = True
         if not eligible or not _retryable_react_doctor_baseline(output, explicit_base=explicit_base):
@@ -1402,9 +1406,9 @@ def _react_doctor_baseline_retry_runner(
             expected_head=expected_head,
         ):
             return output
-        return runner(argv, cwd=cwd)
+        return runner.run(request)
 
-    return bounded
+    return RequestExecutor(bounded, executor_capabilities(runner))
 
 
 def _retryable_react_doctor_baseline(output: ProcessOutput, *, explicit_base: str) -> bool:
@@ -1426,7 +1430,7 @@ def _retryable_react_doctor_baseline(output: ProcessOutput, *, explicit_base: st
 def _react_doctor_retry_git_state_is_safe(
     root: Path,
     *,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     explicit_base: str,
     expected_head: str,
 ) -> bool:
@@ -1434,11 +1438,13 @@ def _react_doctor_retry_git_state_is_safe(
         return False
     if ".." in explicit_base or "@{" in explicit_base:
         return False
-    base = runner(
-        ("git", "rev-parse", "--verify", "--end-of-options", f"{explicit_base}^{{commit}}"),
-        cwd=root,
+    base = runner.run(
+        process_request(
+            ("git", "rev-parse", "--verify", "--end-of-options", f"{explicit_base}^{{commit}}"),
+            cwd=root,
+        )
     )
-    head = runner(("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"), cwd=root)
+    head = runner.run(process_request(("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"), cwd=root))
     resolved_base = base.stdout.strip()
     resolved_head = head.stdout.strip()
     if (
@@ -1448,7 +1454,9 @@ def _react_doctor_retry_git_state_is_safe(
         or resolved_head != expected_head
     ):
         return False
-    ancestor = runner(("git", "merge-base", "--is-ancestor", resolved_base, resolved_head), cwd=root)
+    ancestor = runner.run(
+        process_request(("git", "merge-base", "--is-ancestor", resolved_base, resolved_head), cwd=root)
+    )
     return ancestor.returncode == 0
 
 
@@ -1458,7 +1466,7 @@ def _parse_react_doctor_staged_with_full_fallback(
     root: Path,
     expected_projects: frozenset[Path],
     allow_empty_projects: bool,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     cwd: Path,
     full_argv: Sequence[str],
 ) -> tuple[Diagnostic, ...]:
@@ -1488,7 +1496,7 @@ def _parse_react_doctor_staged_with_full_fallback(
         require_react_detection=False,
     )
     staged_paths = _react_doctor_staged_paths(root, runner=runner)
-    output = runner(full_argv, cwd=cwd)
+    output = runner.run(process_request(full_argv, cwd=cwd))
     if output.returncode not in {0, 1}:
         msg = output.stderr.strip() or f"React Doctor full fallback exited {output.returncode}"
         raise OSError(msg)
@@ -1508,7 +1516,7 @@ def _parse_react_doctor_changed_scope(
     root: Path,
     expected_projects: frozenset[Path],
     allow_empty_projects: bool,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     scope_root: Path,
     projects: Sequence[Path],
 ) -> tuple[Diagnostic, ...]:
@@ -1540,7 +1548,7 @@ def _react_doctor_without_untouched_empty_projects(
     *,
     expected_projects: frozenset[Path],
     root: Path,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     scope_root: Path,
     staged: bool,
 ) -> _ReactDoctorReport:
@@ -1585,7 +1593,7 @@ def _react_doctor_scoped_project_set(
     *,
     expected_projects: frozenset[Path],
     root: Path,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     scope_root: Path,
     staged: bool,
 ) -> frozenset[Path]:
@@ -1616,7 +1624,7 @@ def _react_doctor_empty_changed_scope_has_no_source(
     *,
     projects: Sequence[Path],
     root: Path,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     scope_root: Path,
 ) -> bool:
     if report.projects or report.diagnostics or report.diff is None:
@@ -1637,10 +1645,12 @@ def _react_doctor_empty_changed_scope_has_no_source(
     )
 
 
-def _react_doctor_staged_paths(root: Path, *, runner: ProcessRunner) -> frozenset[str]:
-    output = runner(
-        ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMRT", "-z", "--"),
-        cwd=root,
+def _react_doctor_staged_paths(root: Path, *, runner: ProcessExecutor) -> frozenset[str]:
+    output = runner.run(
+        process_request(
+            ("git", "diff", "--cached", "--name-only", "--diff-filter=ACMRT", "-z", "--"),
+            cwd=root,
+        )
     )
     if output.returncode != 0:
         msg = output.stderr.strip() or "git diff --cached failed while recovering React Doctor coverage"
@@ -1659,7 +1669,7 @@ def _react_doctor_changed_scope_is_disjoint(
     projects: Sequence[Path],
     *,
     root: Path,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     scope_root: Path,
     reported_base: str,
 ) -> bool:
@@ -1667,13 +1677,17 @@ def _react_doctor_changed_scope_is_disjoint(
         return False
     if ".." in reported_base or "@{" in reported_base:
         return False
-    resolved_base_output = runner(
-        ("git", "rev-parse", "--verify", "--end-of-options", f"{reported_base}^{{commit}}"),
-        cwd=root,
+    resolved_base_output = runner.run(
+        process_request(
+            ("git", "rev-parse", "--verify", "--end-of-options", f"{reported_base}^{{commit}}"),
+            cwd=root,
+        )
     )
-    resolved_head_output = runner(
-        ("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"),
-        cwd=root,
+    resolved_head_output = runner.run(
+        process_request(
+            ("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"),
+            cwd=root,
+        )
     )
     resolved_base = resolved_base_output.stdout.strip()
     resolved_head = resolved_head_output.stdout.strip()
@@ -1684,20 +1698,24 @@ def _react_doctor_changed_scope_is_disjoint(
         or re.fullmatch(r"[0-9a-f]{40}", resolved_head) is None
     ):
         return False
-    ancestor = runner(("git", "merge-base", "--is-ancestor", resolved_base, resolved_head), cwd=root)
+    ancestor = runner.run(
+        process_request(("git", "merge-base", "--is-ancestor", resolved_base, resolved_head), cwd=root)
+    )
     if ancestor.returncode != 0:
         return False
-    changed = runner(
-        (
-            "git",
-            "diff",
-            f"{resolved_base}...{resolved_head}",
-            "--name-only",
-            "--no-renames",
-            "-z",
-            "--",
-        ),
-        cwd=root,
+    changed = runner.run(
+        process_request(
+            (
+                "git",
+                "diff",
+                f"{resolved_base}...{resolved_head}",
+                "--name-only",
+                "--no-renames",
+                "-z",
+                "--",
+            ),
+            cwd=root,
+        )
     )
     if changed.returncode != 0:
         return False
@@ -1715,10 +1733,14 @@ def _react_doctor_changed_scope_is_disjoint(
         return False
     if not _changed_paths_are_disjoint(changed.stdout, resolved_root, resolved_projects):
         return False
-    status = runner(("git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--"), cwd=root)
+    status = runner.run(
+        process_request(("git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--"), cwd=root)
+    )
     if status.returncode != 0 or status.stdout:
         return False
-    final_head = runner(("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"), cwd=root)
+    final_head = runner.run(
+        process_request(("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"), cwd=root)
+    )
     return final_head.returncode == 0 and final_head.stdout.strip() == resolved_head
 
 
@@ -1750,7 +1772,7 @@ def _react_doctor_scope_has_no_source(
     projects: Sequence[Path],
     *,
     root: Path,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     staged: bool,
     scope_root: Path | None = None,
     reported_base: str | None = None,
@@ -1763,9 +1785,11 @@ def _react_doctor_scope_has_no_source(
     )
     if diff_args is None:
         return False
-    changed = runner(
-        diff_args,
-        cwd=root,
+    changed = runner.run(
+        process_request(
+            diff_args,
+            cwd=root,
+        )
     )
     if changed.returncode != 0:
         return False
@@ -1789,8 +1813,10 @@ def _react_doctor_scope_has_no_source(
         return True
     # Native changedFileCount uses ACMR, but source coverage must also reject
     # type-changed source files that its counter deliberately omits.
-    source_diff = runner(
-        tuple("--diff-filter=ACMRT" if arg == "--diff-filter=ACMR" else arg for arg in diff_args), cwd=root
+    source_diff = runner.run(
+        process_request(
+            tuple("--diff-filter=ACMRT" if arg == "--diff-filter=ACMR" else arg for arg in diff_args), cwd=root
+        )
     )
     return source_diff.returncode == 0 and _changed_scope_has_no_source(
         tuple(item for item in source_diff.stdout.split("\0") if item),
@@ -1805,7 +1831,7 @@ def _react_doctor_scope_has_no_source(
 def _react_doctor_git_diff_args(
     root: Path,
     *,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     staged: bool,
     reported_base: str | None,
     diff_filter: str,
@@ -1922,7 +1948,7 @@ def _invoke_python_projects(
     files: Sequence[str],
     *,
     root: Path,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     parser: ProtocolParser,
     project_mode: bool,
 ) -> tuple[ToolReport, ...]:
@@ -1987,37 +2013,42 @@ def _invoke_ruff_projects(
     files: Sequence[str],
     *,
     root: Path,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
 ) -> tuple[ToolReport, ...]:
     reports: list[ToolReport] = []
     for project, config, scoped_files in ruff_project_groups(files, root):
         project_id = None if project == root else InvocationId(project.relative_to(root).as_posix())
-        report = _invoke(
-            "ruff",
-            _ruff_argv(scoped_files, config=config),
-            cwd=project,
-            root=root,
-            runner=runner,
-            parser=parse_ruff,
-            invocation_id=project_id,
-            file_count=len(scoped_files),
-        )
-        required_files = _ruff_required_files(scoped_files)
-        if required_files:
-            cast_report = _invoke(
-                "ruff",
-                _ruff_required_argv(required_files),
-                cwd=project,
-                root=root,
-                runner=runner,
-                parser=parse_ruff,
-                invocation_id=project_id,
-                file_count=len(required_files),
-            )
-            cast_report = _with_indirect_cast_findings(cast_report, required_files, root=root)
-            report = _merge_ruff_reports(report, cast_report)
-        reports.append(report)
+        plan = RuffProjectPlan(root, project, config, scoped_files, project_id, runner)
+        reports.append(_execute_ruff_project(plan))
     return tuple(reports)
+
+
+def _execute_ruff_project(plan: RuffProjectPlan) -> ToolReport:
+    report = _invoke(
+        "ruff",
+        _ruff_argv(plan.files, config=plan.config),
+        cwd=plan.project,
+        root=plan.root,
+        runner=plan.executor,
+        parser=parse_ruff,
+        invocation_id=plan.invocation_id,
+        file_count=len(plan.files),
+    )
+    required_files = _ruff_required_files(plan.files)
+    if required_files:
+        cast_report = _invoke(
+            "ruff",
+            _ruff_required_argv(required_files),
+            cwd=plan.project,
+            root=plan.root,
+            runner=plan.executor,
+            parser=parse_ruff,
+            invocation_id=plan.invocation_id,
+            file_count=len(required_files),
+        )
+        cast_report = _with_indirect_cast_findings(cast_report, required_files, root=plan.root)
+        report = _merge_ruff_reports(report, cast_report)
+    return report
 
 
 def _ruff_required_files(files: Sequence[str]) -> tuple[str, ...]:
@@ -2138,7 +2169,7 @@ def _invoke_deptry_projects(
     files: Sequence[str],
     *,
     root: Path,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
 ) -> tuple[ToolReport, ...]:
     projects = _group_deptry_projects(files, root)
     if len(projects) > _MAX_PYTHON_PROJECTS:
@@ -2154,7 +2185,7 @@ def _invoke_deptry_projects(
         project_id = project.relative_to(root).as_posix() or None
         invocation_id = InvocationId("deptry" if project_id is None else f"deptry:{project_id}")
         try:  # ruff: ignore[too-many-statements-in-try-clause] -- one boundary preserves complete per-project telemetry.
-            output = runner(_deptry_argv(project, scoped_files), cwd=project)
+            output = runner.run(process_request(_deptry_argv(project, scoped_files), cwd=project))
             payload = "\n".join(value for value in (output.stdout, output.stderr) if value)
             diagnostics = parse_deptry(payload, root=root, project=project)
             if output.returncode not in {0, 1} or (output.returncode == 1 and not diagnostics):
@@ -2203,7 +2234,7 @@ def _shell_source_reports(
     grouped: GroupedPaths,
     *,
     root: Path,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     capabilities: frozenset[str] | None,
     attest_version: bool,
 ) -> tuple[ToolReport, ...]:
@@ -2231,14 +2262,21 @@ def _embedded_shell_reports(
 
 
 def _shellcheck_reports(
-    grouped: GroupedPaths, *, root: Path, runner: ProcessRunner, attest_version: bool
+    grouped: GroupedPaths, *, root: Path, runner: ProcessExecutor, attest_version: bool
 ) -> tuple[ToolReport, ...]:
+    plan = ShellCheckFamilyPlan(
+        root, tuple(grouped.shellcheck), tuple(grouped.unsupported_shell), attest_version, runner
+    )
+    return _execute_shellcheck_family(plan)
+
+
+def _execute_shellcheck_family(plan: ShellCheckFamilyPlan) -> tuple[ToolReport, ...]:
     reports: list[ToolReport] = []
-    if grouped.unsupported_shell:
+    if plan.unsupported_files:
         issue = ExecutionIssue(
             "shellcheck",
             "coverage-missing",
-            f"ShellCheck does not support zsh; {len(grouped.unsupported_shell)} selected zsh path(s) were not analyzed",
+            f"ShellCheck does not support zsh; {len(plan.unsupported_files)} selected zsh path(s) were not analyzed",
         )
         reports.append(
             ToolReport(
@@ -2247,12 +2285,12 @@ def _shellcheck_reports(
                 issues=(issue,),
                 analyzer_id=AnalyzerId("shellcheck"),
                 invocation_id=InvocationId("shellcheck:zsh"),
-                file_count=len(grouped.unsupported_shell),
+                file_count=len(plan.unsupported_files),
             )
         )
-    if not grouped.shellcheck:
+    if not plan.files:
         return tuple(reports)
-    version_issue = _shellcheck_version_issue(root) if attest_version else None
+    version_issue = _shellcheck_version_issue(plan.root, runner=plan.executor) if plan.attest_version else None
     if version_issue is not None:
         reports.append(
             ToolReport(
@@ -2261,20 +2299,22 @@ def _shellcheck_reports(
                 issues=(version_issue,),
                 analyzer_id=AnalyzerId("shellcheck"),
                 invocation_id=InvocationId("shellcheck:version"),
-                file_count=len(grouped.shellcheck),
+                file_count=len(plan.files),
             )
         )
         return tuple(reports)
-    for batch_number, start in enumerate(range(0, len(grouped.shellcheck), _SHELLCHECK_BATCH_SIZE), start=1):
-        batch = tuple(sorted(grouped.shellcheck[start : start + _SHELLCHECK_BATCH_SIZE]))
+    for batch_number, start in enumerate(range(0, len(plan.files), _SHELLCHECK_BATCH_SIZE), start=1):
+        batch = tuple(sorted(plan.files[start : start + _SHELLCHECK_BATCH_SIZE]))
         reports.append(
-            _invoke_shellcheck(batch, root=root, runner=runner, invocation_id=InvocationId(str(batch_number)))
+            _invoke_shellcheck(
+                batch, root=plan.root, runner=plan.executor, invocation_id=InvocationId(str(batch_number))
+            )
         )
     return tuple(reports)
 
 
 def _invoke_shellcheck(
-    files: Sequence[str], *, root: Path, runner: ProcessRunner, invocation_id: InvocationId
+    files: Sequence[str], *, root: Path, runner: ProcessExecutor, invocation_id: InvocationId
 ) -> ToolReport:
     report = _invoke(
         "shellcheck",
@@ -2305,9 +2345,9 @@ def _invoke_shellcheck(
     )
 
 
-def _shellcheck_version_issue(root: Path) -> ExecutionIssue | None:
+def _shellcheck_version_issue(root: Path, *, runner: ProcessExecutor = DEFAULT_EXECUTOR) -> ExecutionIssue | None:
     try:
-        output = run_process(("shellcheck", "--version"), cwd=root)
+        output = runner.run(process_request(("shellcheck", "--version"), cwd=root, timeout_seconds=5))
     except (OSError, subprocess.SubprocessError) as exc:
         return ExecutionIssue("shellcheck", "missing-dependency", redact_message(str(exc), root))
     match = _SHELLCHECK_VERSION_RE.search(output.stdout)
@@ -2512,24 +2552,45 @@ def _nearest_project(start: Path, root: Path, markers: Sequence[str]) -> Path:
 
 
 def run_process(argv: Sequence[str], *, cwd: Path, timeout_seconds: float = _TIMEOUT.total_seconds()) -> ProcessOutput:
-    return _run_process(argv, cwd=cwd, environment=_analysis_environment(), timeout_seconds=timeout_seconds)
+    return DEFAULT_EXECUTOR.run(process_request(argv, cwd=cwd, timeout_seconds=timeout_seconds))
+
+
+def process_request(
+    argv: Sequence[str],
+    *,
+    cwd: Path,
+    timeout_seconds: float = _TIMEOUT.total_seconds(),
+    deadline: float | None = None,
+    environment: Mapping[str, str] | None = None,
+    input_bytes: bytes | None = None,
+    max_input_bytes: int | None = None,
+) -> ProcessRequest:
+    return ProcessRequest(
+        tuple(argv),
+        cwd,
+        _analysis_environment() if environment is None else environment,
+        timeout_seconds=timeout_seconds,
+        deadline=deadline,
+        input_bytes=input_bytes,
+        max_input_bytes=max_input_bytes,
+        max_stdout_bytes=_MAX_STDOUT_BYTES,
+        max_stderr_bytes=_MAX_STDERR_BYTES,
+    )
 
 
 def run_process_input(argv: Sequence[str], *, cwd: Path, source: str, timeout_seconds: float = 10) -> ProcessOutput:
     if len(source.encode("utf-8")) > 1024 * 1024:
         msg = "analyzer source exceeds the 1 MiB input limit"
         raise OutputLimitError(msg)
-    with tempfile.TemporaryDirectory(prefix="sarj-analyzer-input-") as directory:
-        input_path = Path(directory) / "source"
-        input_path.write_text(source, encoding="utf-8")
-        input_path.chmod(0o600)
-        return _run_process(
+    return DEFAULT_EXECUTOR.run(
+        process_request(
             argv,
             cwd=cwd,
-            environment=_analysis_environment(),
             timeout_seconds=timeout_seconds,
-            input_path=input_path,
+            input_bytes=source.encode("utf-8"),
+            max_input_bytes=1024 * 1024,
         )
+    )
 
 
 def _run_eslint_process(
@@ -2537,7 +2598,17 @@ def _run_eslint_process(
 ) -> ProcessOutput:
     environment = _analysis_environment()
     environment["NODE_OPTIONS"] = _eslint_node_options()
-    return _run_process(argv, cwd=cwd, environment=environment, timeout_seconds=timeout_seconds)
+    return DEFAULT_EXECUTOR.run(
+        process_request(argv, cwd=cwd, environment=environment, timeout_seconds=timeout_seconds)
+    )
+
+
+def _execute_eslint(runner: ProcessExecutor, request: ProcessRequest, *, deadline: float) -> ProcessOutput:
+    environment = dict(request.environment)
+    environment["NODE_OPTIONS"] = _eslint_node_options()
+    if request.deadline is not None:
+        deadline = min(deadline, request.deadline)
+    return runner.run(replace(request, environment=environment, deadline=deadline))
 
 
 def _eslint_node_options() -> str:
@@ -2606,57 +2677,71 @@ def _physical_memory_bytes() -> int | None:
         return None
 
 
-def _run_process(
-    argv: Sequence[str],
-    *,
-    cwd: Path,
-    environment: dict[str, str],
-    timeout_seconds: float = _TIMEOUT.total_seconds(),
-    input_path: Path | None = None,
-) -> ProcessOutput:
-    executable = _analyzer_executable(argv[0])
+def _run_process(request: ProcessRequest) -> ProcessOutput:
+    if request.deadline is not None and time.monotonic() >= request.deadline:
+        raise subprocess.TimeoutExpired(request.argv, 0)
+    executable = _analyzer_executable(request.argv[0])
     if executable is None:
-        msg = f"required analyzer executable is missing: {argv[0]}"
+        msg = f"required analyzer executable is missing: {request.argv[0]}"
         raise FileNotFoundError(msg)
-    with input_path.open("rb") if input_path is not None else contextlib.nullcontext(None) as stdin:
+    with contextlib.ExitStack() as resources:
+        stdin = None
+        if request.input_bytes is not None:
+            stdin = resources.enter_context(tempfile.TemporaryFile())
+            stdin.write(request.input_bytes)
+            stdin.seek(0)
         process = subprocess.Popen(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv and shell stays disabled.
-            [executable, *argv[1:]],
-            cwd=cwd,
+            [executable, *request.argv[1:]],
+            cwd=request.cwd,
             shell=False,
             stdin=stdin,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             start_new_session=os.name == "posix",
-            env=environment,
+            env=request.environment,
         )
     stdout = process.stdout
     stderr = process.stderr
     if stdout is None or stderr is None:  # pragma: no cover - PIPE guarantees streams.
-        process.kill()
+        _terminate_process(process)
+        process.wait(timeout=5)
         msg = "analyzer process did not expose output pipes"
         raise OSError(msg)
     exceeded = threading.Event()
     captures: list[bytes | None] = [None, None]
     threads = (
-        threading.Thread(target=_capture_stream, args=(stdout, _MAX_STDOUT_BYTES, exceeded, captures, 0), daemon=True),
-        threading.Thread(target=_capture_stream, args=(stderr, _MAX_STDERR_BYTES, exceeded, captures, 1), daemon=True),
+        threading.Thread(
+            target=_capture_stream,
+            args=(stdout, request.max_stdout_bytes, exceeded, captures, 0),
+            name=f"sarj-process-{process.pid}-stdout",
+            daemon=True,
+        ),
+        threading.Thread(
+            target=_capture_stream,
+            args=(stderr, request.max_stderr_bytes, exceeded, captures, 1),
+            name=f"sarj-process-{process.pid}-stderr",
+            daemon=True,
+        ),
     )
     try:
         _start_capture_threads(threads)
-        returncode = _wait_for_process(process, threads, exceeded, argv, timeout_seconds=timeout_seconds)
-    except BaseException:
-        if process.poll() is None:
-            _terminate_process(process)
+        returncode = _wait_for_process(process, threads, exceeded, request)
+    except BaseException as error:
         try:
+            # A completed leader wait follows stream closure. Its numeric group
+            # must not be signaled again after reaping releases leader ownership.
+            if process.returncode is None:
+                _terminate_process(process)
             process.wait(timeout=5)
-        except OSError, subprocess.SubprocessError:
-            process.kill()
-        for thread in threads:
-            if thread.ident is not None:
-                thread.join(timeout=5)
+        except (OSError, subprocess.SubprocessError) as cleanup_error:
+            error.add_note(f"analyzer process cleanup failed: {cleanup_error}")
+        try:
+            _join_capture_threads(threads)
+        except OSError as cleanup_error:
+            error.add_note(f"analyzer stream cleanup failed: {cleanup_error}")
         raise
     if exceeded.is_set():
-        msg = "analyzer output exceeded the 16 MiB stdout or 64 KiB stderr limit"
+        msg = f"analyzer output exceeded the {request.max_stdout_bytes} byte stdout or {request.max_stderr_bytes} byte stderr limit"
         raise OutputLimitError(msg)
     stdout_bytes, stderr_bytes = captures
     if stdout_bytes is None or stderr_bytes is None:  # pragma: no cover - drain threads always assign.
@@ -2693,23 +2778,36 @@ def _wait_for_process(
     process: subprocess.Popen[bytes],
     threads: Sequence[threading.Thread],
     exceeded: threading.Event,
-    argv: Sequence[str],
-    *,
-    timeout_seconds: float,
+    request: ProcessRequest,
 ) -> int:
-    deadline = time.monotonic() + timeout_seconds
-    while process.poll() is None and not exceeded.is_set():
+    started = time.monotonic()
+    deadline = started + request.timeout_seconds
+    if request.deadline is not None:
+        deadline = min(deadline, request.deadline)
+    while not exceeded.is_set():
+        exited = _leader_exited(process)
+        if exited is not False and all(not thread.is_alive() for thread in threads):
+            if exceeded.is_set():
+                break
+            try:
+                return process.wait(timeout=max(0.0, deadline - time.monotonic()))
+            except subprocess.TimeoutExpired as error:
+                raise subprocess.TimeoutExpired(request.argv, max(0.0, deadline - started)) from error
         if time.monotonic() >= deadline:
-            _terminate_process(process)
-            process.wait(timeout=5)
-            _join_capture_threads(threads)
-            raise subprocess.TimeoutExpired(argv, timeout_seconds)
+            raise subprocess.TimeoutExpired(request.argv, max(0.0, deadline - started))
         _output_limit_reached = exceeded.wait(0.01)
-    if exceeded.is_set():
-        _terminate_process(process)
-    returncode = process.wait(timeout=5 if exceeded.is_set() else None)
-    _join_capture_threads(threads)
-    return returncode
+    message = f"analyzer output exceeded the {request.max_stdout_bytes} byte stdout or {request.max_stderr_bytes} byte stderr limit"
+    raise OutputLimitError(message)
+
+
+def _leader_exited(process: subprocess.Popen[bytes]) -> bool | None:
+    if os.name == "posix" and hasattr(os, "waitid") and hasattr(os, "WNOWAIT"):
+        # Keep the leader unreaped while descendants can own output streams.
+        # Its reserved PID makes later process-group cleanup safe from PID reuse.
+        return os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None
+    # Without a non-reaping exit probe, preserve the child identity until both
+    # streams close or the request fails. The caller then waits with its deadline.
+    return None
 
 
 def _capture_stream(
@@ -2760,7 +2858,8 @@ def _terminate_process(process: subprocess.Popen[bytes]) -> None:
 
 def _join_capture_threads(threads: Sequence[threading.Thread]) -> None:
     for thread in threads:
-        thread.join(timeout=5)
+        if thread.ident is not None:
+            thread.join(timeout=5)
     if any(thread.is_alive() for thread in threads):
         msg = "analyzer output streams did not close after process termination"
         raise OSError(msg)
@@ -2772,7 +2871,7 @@ def _invoke(
     *,
     cwd: Path,
     root: Path,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     parser: ProtocolParser,
     validator: ProtocolValidator | None = None,
     invocation_id: InvocationId | None = None,
@@ -2813,11 +2912,11 @@ def _invoke_unchecked(
     *,
     cwd: Path,
     root: Path,
-    runner: ProcessRunner,
+    runner: ProcessExecutor,
     parser: ProtocolParser,
     validator: ProtocolValidator | None = None,
 ) -> ToolReport:
-    output = runner(argv, cwd=cwd)
+    output = runner.run(process_request(argv, cwd=cwd))
     if output.returncode not in {0, 1}:
         message = redact_message(output.stderr.strip() or f"{name} exited {output.returncode}", root)
         issue = ExecutionIssue(name, "tool-failure", message, output.returncode)
@@ -3936,22 +4035,24 @@ def _changed_paths_are_disjoint(changed_paths: str, resolved_root: Path, resolve
     return True
 
 
-def _verified_react_changed_base(base: str, root: Path, runner: ProcessRunner) -> str | None:
+def _verified_react_changed_base(base: str, root: Path, runner: ProcessExecutor) -> str | None:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,255}", base) or ".." in base or "@{" in base:
         return None
-    resolved = runner(
-        ("git", "rev-parse", "--verify", "--end-of-options", f"{base}^{{commit}}"),
-        cwd=root,
+    resolved = runner.run(
+        process_request(
+            ("git", "rev-parse", "--verify", "--end-of-options", f"{base}^{{commit}}"),
+            cwd=root,
+        )
     )
     resolved_base = resolved.stdout.strip()
     if resolved.returncode != 0 or re.fullmatch(r"[0-9a-f]{40}", resolved_base) is None:
         return None
-    ancestor = runner(("git", "merge-base", "--is-ancestor", resolved_base, "HEAD"), cwd=root)
+    ancestor = runner.run(process_request(("git", "merge-base", "--is-ancestor", resolved_base, "HEAD"), cwd=root))
     if ancestor.returncode == 0:
         return resolved_base
     if ancestor.returncode != 1:
         return None
-    common = runner(("git", "merge-base", resolved_base, "HEAD"), cwd=root)
+    common = runner.run(process_request(("git", "merge-base", resolved_base, "HEAD"), cwd=root))
     common_base = common.stdout.strip()
     if common.returncode != 0 or re.fullmatch(r"[0-9a-f]{40}", common_base) is None:
         return None

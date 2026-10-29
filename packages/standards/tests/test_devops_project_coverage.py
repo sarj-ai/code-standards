@@ -7,6 +7,7 @@ import pytest
 from sarj_standards.libs.diagnostics import Completion
 from sarj_standards.libs.linting.devops_source import analyze_sources
 from sarj_standards.libs.linting.external import ProcessOutput
+from tests.process_fakes import FakeProcessExecutor
 
 
 if TYPE_CHECKING:
@@ -57,7 +58,7 @@ def test_native_project_reports_count_only_selected_project_inputs(
         paths=paths,
         selected=frozenset({tool}),
         trust_repository_code=mode != "untrusted",
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
     )
     if not paths:
         assert reports == ()
@@ -95,7 +96,7 @@ def test_terraform_formatter_failure_counts_only_submitted_hcl_inputs(tmp_path: 
         root=tmp_path,
         paths=(hcl.name, json_input.name),
         selected=frozenset({"terraform"}),
-        runner=runner,
+        runner=FakeProcessExecutor(runner),
     )
     assert formatter.name == "terraform-fmt"
     assert formatter.completion is Completion.FAILED

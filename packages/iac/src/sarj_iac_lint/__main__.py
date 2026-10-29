@@ -11,7 +11,7 @@ import sys
 import tempfile
 from typing import TYPE_CHECKING, Annotated
 
-from sarj_rule_contracts import RuleId, fix_file
+from sarj_rule_contracts import NewlinePolicy, RuleId, fix_file
 import typer
 
 from sarj_iac_lint import __version__
@@ -24,6 +24,8 @@ from sarj_iac_lint.rules import REGISTRY
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping, Sequence
+
+    from sarj_rule_contracts import SourceCatalog
 
 
 SKIP_DIR_NAMES = frozenset(
@@ -76,7 +78,7 @@ def _suppression_comments(path: Path, source: str, lines: list[str]) -> Mapping[
     return suppression_comment_lines(source)
 
 
-def _check(rule_names: Sequence[str], paths: list[Path]) -> list[Diagnostic]:
+def _check(rule_names: Sequence[str], paths: list[Path], *, sources: SourceCatalog | None = None) -> list[Diagnostic]:
     unknown = [name for name in rule_names if name not in REGISTRY]
     if unknown:
         sys.stderr.write(f"unknown rule(s): {', '.join(unknown)}\n")
@@ -85,7 +87,11 @@ def _check(rule_names: Sequence[str], paths: list[Path]) -> list[Diagnostic]:
     rules = [REGISTRY[RuleId(name)]() for name in rule_names]
     diags: list[Diagnostic] = []
     for p in _expand_paths(paths):
-        source = p.read_text(encoding="utf-8", errors="replace")
+        source = (
+            p.read_text(encoding="utf-8", errors="replace")
+            if sources is None
+            else sources.capture(p).decode("utf-8", errors="replace", newlines=NewlinePolicy.UNIVERSAL).text
+        )
         source_lines = source.splitlines()
         comments = _suppression_comments(p, source, source_lines)
         for rule in rules:
@@ -99,8 +105,10 @@ def _check(rule_names: Sequence[str], paths: list[Path]) -> list[Diagnostic]:
 def analyze(
     rule_ids: Sequence[str],  # sarj-noqa: SARJ093 -- Public parsing boundary accepts raw names.
     paths: list[Path],
+    *,
+    sources: SourceCatalog | None = None,
 ) -> list[Diagnostic]:
-    return _check(rule_ids, paths)
+    return _check(rule_ids, paths, sources=sources)
 
 
 def _baseline_path(path: Path, *, root: Path | None = None) -> str:

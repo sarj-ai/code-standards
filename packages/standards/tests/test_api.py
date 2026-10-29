@@ -547,17 +547,20 @@ def test_standards_facade_update_rejects_noncanonical_exact_target(
 
 
 @pytest.mark.parametrize(
-    ("check_only", "expected_status", "expected_finding"),
+    ("check_only", "exit_code", "expected_status", "expected_finding"),
     [
-        (True, api.Status.DRIFT, "update.latest.available"),
-        (False, api.Status.FAILED, "update.latest.failed"),
+        (True, 1, api.Status.DRIFT, "update.latest.available"),
+        (False, 1, api.Status.FAILED, "update.latest.failed"),
+        (True, 130, api.Status.INTERRUPTED, "update.latest.failed"),
+        (False, 130, api.Status.INTERRUPTED, "update.latest.failed"),
     ],
 )
-def test_latest_update_exit_one_is_truthful_and_has_no_parent_timeout(
+def test_latest_update_preserves_operation_status_and_process_outcome(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     *,
     check_only: bool,
+    exit_code: int,
     expected_status: api.Status,
     expected_finding: str,
 ) -> None:
@@ -569,7 +572,7 @@ def test_latest_update_exit_one_is_truthful_and_has_no_parent_timeout(
     ) -> subprocess.CompletedProcess[str]:
         calls.append(dict(kwargs))
         environments.append(env)
-        return subprocess.CompletedProcess(command, 1, "", "postflight drift")
+        return subprocess.CompletedProcess(command, exit_code, "", "postflight drift")
 
     def which(_name: str) -> str:
         return "/usr/bin/uvx"
@@ -580,6 +583,7 @@ def test_latest_update_exit_one_is_truthful_and_has_no_parent_timeout(
     result = api.Standards(tmp_path).update(install=False, check_only=check_only)
 
     assert result.status is expected_status
+    assert result.exit_code == exit_code
     assert result.findings[0].id == expected_finding
     assert environments[0]["UV_PYTHON_DOWNLOADS_JSON_URL"].endswith("/download-metadata.json")
     assert "timeout" not in calls[0]

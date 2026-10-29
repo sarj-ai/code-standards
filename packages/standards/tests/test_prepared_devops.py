@@ -22,6 +22,7 @@ from sarj_standards.libs.linting.prepared_devops import analyze_prepared
 from sarj_standards.libs.linting.prepared_kubernetes import NATIVE_CHECKS, OMISSION_CHECK
 from sarj_standards.libs.typed_containers import is_object_mapping
 from sarj_standards.libs.yaml_boundary import parse_yaml_documents
+from tests.process_fakes import FakeProcessExecutor
 
 
 if TYPE_CHECKING:
@@ -113,7 +114,10 @@ def _native(argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
 def test_native_null_clean_report_is_complete(tmp_path: Path) -> None:
     path = _receipt(tmp_path).path
     reports = analyze_prepared(
-        (path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),), runner=_native
+        (path,),
+        root=tmp_path,
+        declared=(PreparedTarget("example", "deploy.yaml"),),
+        runner=FakeProcessExecutor(_native),
     )
     assert reports[0].completion is Completion.COMPLETE
     assert not reports[0].diagnostics
@@ -168,7 +172,10 @@ def test_receipt_growth_after_stat_cannot_bypass_byte_bound(tmp_path: Path, monk
         os, "stat", stat_then_grow
     )
     [report] = analyze_prepared(
-        (path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),), runner=_native
+        (path,),
+        root=tmp_path,
+        declared=(PreparedTarget("example", "deploy.yaml"),),
+        runner=FakeProcessExecutor(_native),
     )
     assert report.completion is Completion.FAILED
     assert "bounded regular file" in report.issues[0].message
@@ -242,7 +249,10 @@ def test_rejects_unknown_identity_and_stale_source(tmp_path: Path, key: str, val
     target[key] = value
     _write_receipt(path, target)
     reports = analyze_prepared(
-        (path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),), runner=_native
+        (path,),
+        root=tmp_path,
+        declared=(PreparedTarget("example", "deploy.yaml"),),
+        runner=FakeProcessExecutor(_native),
     )
     assert reports[0].completion is Completion.FAILED
     assert reports[0].issues
@@ -252,13 +262,17 @@ def test_rejects_unknown_identity_and_stale_source(tmp_path: Path, key: str, val
 def test_missing_and_duplicate_targets_are_infrastructure_failures(tmp_path: Path) -> None:
     path = _receipt(tmp_path).path
     declared = (PreparedTarget("example", "deploy.yaml"), PreparedTarget("second", "deploy.yaml"))
-    assert analyze_prepared((path,), root=tmp_path, declared=declared, runner=_native)[0].issues
-    assert analyze_prepared((path, path), root=tmp_path, declared=declared, selected=("example",), runner=_native)[
-        0
-    ].issues
-    assert analyze_prepared((path,), root=tmp_path, declared=declared, selected=("unknown",), runner=_native)[0].issues
+    assert analyze_prepared((path,), root=tmp_path, declared=declared, runner=FakeProcessExecutor(_native))[0].issues
+    assert analyze_prepared(
+        (path, path), root=tmp_path, declared=declared, selected=("example",), runner=FakeProcessExecutor(_native)
+    )[0].issues
+    assert analyze_prepared(
+        (path,), root=tmp_path, declared=declared, selected=("unknown",), runner=FakeProcessExecutor(_native)
+    )[0].issues
     assert (
-        analyze_prepared((path,), root=tmp_path, declared=declared, selected=("example",), runner=_native)[0].completion
+        analyze_prepared(
+            (path,), root=tmp_path, declared=declared, selected=("example",), runner=FakeProcessExecutor(_native)
+        )[0].completion
         is Completion.COMPLETE
     )
 
@@ -274,7 +288,10 @@ def test_artifacts_cannot_escape_receipt_directory(tmp_path: Path, name: str) ->
     }
     _write_receipt(path, target)
     reports = analyze_prepared(
-        (path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),), runner=_native
+        (path,),
+        root=tmp_path,
+        declared=(PreparedTarget("example", "deploy.yaml"),),
+        runner=FakeProcessExecutor(_native),
     )
     assert reports[0].issues
 
@@ -283,7 +300,10 @@ def test_hashes_cover_values_and_manifests(tmp_path: Path) -> None:
     path = _receipt(tmp_path).path
     (path.parent / "resource.yaml").write_text("changed\n", encoding="utf-8")
     assert analyze_prepared(
-        (path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),), runner=_native
+        (path,),
+        root=tmp_path,
+        declared=(PreparedTarget("example", "deploy.yaml"),),
+        runner=FakeProcessExecutor(_native),
     )[0].issues
 
 
@@ -299,10 +319,11 @@ def test_authored_input_changes_invalidate_receipts(tmp_path: Path) -> None:
     _write_receipt(path, target)
     declared = (PreparedTarget("example", "deploy.yaml"),)
     assert (
-        analyze_prepared((path,), root=tmp_path, declared=declared, runner=_native)[0].completion is Completion.COMPLETE
+        analyze_prepared((path,), root=tmp_path, declared=declared, runner=FakeProcessExecutor(_native))[0].completion
+        is Completion.COMPLETE
     )
     catalog.write_text('{"changed":true}', encoding="utf-8")
-    assert analyze_prepared((path,), root=tmp_path, declared=declared, runner=_native)[0].issues
+    assert analyze_prepared((path,), root=tmp_path, declared=declared, runner=FakeProcessExecutor(_native))[0].issues
 
 
 def test_list_resources_are_checked_individually_and_duplicates_rejected(tmp_path: Path) -> None:
@@ -319,14 +340,15 @@ def test_list_resources_are_checked_individually_and_duplicates_rejected(tmp_pat
     _write_receipt(path, target)
     declared = (PreparedTarget("example", "deploy.yaml"),)
     assert (
-        analyze_prepared((path,), root=tmp_path, declared=declared, runner=_native)[0].completion is Completion.COMPLETE
+        analyze_prepared((path,), root=tmp_path, declared=declared, runner=FakeProcessExecutor(_native))[0].completion
+        is Completion.COMPLETE
     )
     resource.write_text("apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: example\n---\n" * 2, encoding="utf-8")
     target["artifacts"] = {
         name: sha256((path.parent / name).read_bytes()).hexdigest() for name in ("resource.yaml", "schema.json")
     }
     _write_receipt(path, target)
-    assert analyze_prepared((path,), root=tmp_path, declared=declared, runner=_native)[0].issues
+    assert analyze_prepared((path,), root=tmp_path, declared=declared, runner=FakeProcessExecutor(_native))[0].issues
 
 
 def test_local_schema_closure_cannot_fetch_http(tmp_path: Path) -> None:
@@ -338,7 +360,10 @@ def test_local_schema_closure_cannot_fetch_http(tmp_path: Path) -> None:
     }
     _write_receipt(path, target)
     assert analyze_prepared(
-        (path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),), runner=_native
+        (path,),
+        root=tmp_path,
+        declared=(PreparedTarget("example", "deploy.yaml"),),
+        runner=FakeProcessExecutor(_native),
     )[0].issues
 
 
@@ -355,7 +380,10 @@ def test_target_namespace_cannot_hide_duplicate_workload_identity(tmp_path: Path
     }
     _write_receipt(path, target)
     [report] = analyze_prepared(
-        (path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),), runner=_native
+        (path,),
+        root=tmp_path,
+        declared=(PreparedTarget("example", "deploy.yaml"),),
+        runner=FakeProcessExecutor(_native),
     )
     assert report.completion is Completion.FAILED
     assert report.issues
@@ -372,7 +400,7 @@ def test_native_missing_schema_and_skipped_resources_never_pass(tmp_path: Path, 
         return _native(argv, cwd=cwd)
 
     reports = analyze_prepared(
-        (path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),), runner=runner
+        (path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),), runner=FakeProcessExecutor(runner)
     )
     assert reports[0].issues
     assert not reports[0].diagnostics
@@ -422,7 +450,7 @@ def test_native_schema_result_must_identify_submitted_resource(field: str, *, mi
         return ProcessOutput(0, json.dumps(parsed), "")
 
     [report] = analyze_prepared(
-        (path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),), runner=runner
+        (path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),), runner=FakeProcessExecutor(runner)
     )
     assert report.completion is Completion.FAILED
     assert not report.diagnostics
@@ -457,7 +485,7 @@ def test_wrong_schema_resource_identity_supersedes_schema_violation(tmp_path: Pa
         )
 
     [report] = analyze_prepared(
-        (path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),), runner=runner
+        (path,), root=tmp_path, declared=(PreparedTarget("example", "deploy.yaml"),), runner=FakeProcessExecutor(runner)
     )
     assert report.completion is Completion.FAILED
     assert not report.diagnostics

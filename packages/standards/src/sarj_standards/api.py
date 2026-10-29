@@ -56,6 +56,7 @@ from .libs.diagnostics import (
 from .libs.filesystem import is_link_like
 from .libs.linting.analysis import analyze as analyze_paths, report_from_tools
 from .libs.linting.complexity_baseline import ComplexityBaselineResolver
+from .libs.linting.execution_plan import analysis_jobs
 from .libs.linting.external import UpstreamESLintRules, analyze_external
 from .libs.linting.library_policy import (
     ManifestPolicyError,
@@ -136,6 +137,17 @@ class Result:
     findings: tuple[Finding, ...] = ()
     changes: tuple[Change, ...] = ()
     exit_code: int = 0
+
+    def __post_init__(self) -> None:
+        if type(self.status) is not Status:
+            msg = "result status must be a Status"
+            raise TypeError(msg)
+        if isinstance(self.exit_code, bool) or not isinstance(self.exit_code, int):  # pyright: ignore[reportUnnecessaryIsInstance] -- validate untyped public constructor and dataclass replacement calls as well as typed callers.
+            msg = "result exit code must be an integer"
+            raise TypeError(msg)
+        if (self.status in {Status.OK, Status.CHANGED}) != (self.exit_code == 0):
+            msg = "result status and exit code must agree on success"
+            raise ValueError(msg)
 
     @property
     def ok(self) -> bool:
@@ -269,10 +281,9 @@ class Standards:
     ) -> AnalysisReport:
         try:
             import_context = initial_import.load(self.root, staged=staged)
+            analysis_jobs(jobs)
         except ValueError as exc:
             return _failed_analysis(self.root, "invalid-input", str(exc))
-        if jobs not in {1, 2}:
-            return _failed_analysis(self.root, "invalid-input", "analysis jobs must be 1 or 2")
         external = external or bool(upstream_rules.ids)
         try:
             normalized_trust = TrustMode(trust)
@@ -300,7 +311,7 @@ class Standards:
         try:
             selection_policy = _selection_policy(self.root, adopted, normalized_mode)
             rule_selection = _rule_selection(rules)
-            selected = _analysis_inputs(self.root, paths, mode=normalized_mode)
+            selected = _analysis_inputs(self.root, paths, adopted=adopted, mode=normalized_mode)
         except (OSError, TypeError, ValueError) as exc:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         try:
@@ -512,7 +523,8 @@ class Standards:
             )
             return Result(Status.FAILED, findings=(finding,), exit_code=1)
         finding = Finding("update.latest.failed", "error", output or "latest standards update failed")
-        return Result(Status.FAILED, findings=(finding,), exit_code=completed.returncode)
+        status = Status.INTERRUPTED if completed.returncode == _INTERRUPTED_EXIT else Status.FAILED
+        return Result(status, findings=(finding,), exit_code=completed.returncode)
 
     def inspect(self) -> Inspection:
         return inspect(self.root)
@@ -823,13 +835,14 @@ def _with_coverage(report: AnalysisReport, coverage: Sequence[CoverageNotice]) -
     return AnalysisReport(report.root, completion, conclusion, report.tools, notices)
 
 
-def _analysis_inputs(root: Path, paths: Sequence[str] | None, *, mode: AnalysisMode = AnalysisMode.POLICY) -> list[str]:
+def _analysis_inputs(
+    root: Path, paths: Sequence[str] | None, *, adopted: Manifest | None, mode: AnalysisMode
+) -> list[str]:
     if paths is not None:
         selected = _contained_paths(root, paths)
         return selected if mode is AnalysisMode.RAW else _with_tracked_terraform_tests(root, selected)
     if mode is AnalysisMode.RAW:
         return [str(root)]
-    adopted = load_manifest(root)
     verify_paths = adopted.verify_paths if adopted is not None else (".",)
     return _with_tracked_terraform_tests(root, [str(root / path) for path in verify_paths])
 

@@ -10,6 +10,8 @@ from sarj_standards.libs.adoption import devops, doctor, lifecycle, manifest
 from sarj_standards.libs.linting import devops_tools
 from sarj_standards.libs.linting.devops_tools import NativeToolError, checked_tool, installed_compose_version
 from sarj_standards.libs.linting.external import ProcessOutput, run_process
+from sarj_standards.libs.linting.process import ProcessCapabilities, ProcessRequest, RequestExecutor
+from tests.process_fakes import FakeProcessExecutor
 
 
 if TYPE_CHECKING:
@@ -67,8 +69,11 @@ def test_consumer_compose_version_changes_attestation_and_setup(tmp_path: Path) 
         assert cwd == tmp_path
         return ProcessOutput(0, '{"version":"v2.39.4"}', "")
 
-    assert checked_tool("docker", root=tmp_path, runner=runner, expected_version="2.39.4").version == "2.39.4"
-    assert installed_compose_version(tmp_path, runner=runner) == "2.39.4"
+    assert (
+        checked_tool("docker", root=tmp_path, runner=FakeProcessExecutor(runner), expected_version="2.39.4").version
+        == "2.39.4"
+    )
+    assert installed_compose_version(tmp_path, runner=FakeProcessExecutor(runner)) == "2.39.4"
     adopted = manifest.Manifest("8.2.0", (), ".", ".", compose_version="2.39.4")
     (tmp_path / manifest.MANIFEST_NAME).write_text(adopted.render(), encoding="utf-8")
     compose = tmp_path / "compose.yaml"
@@ -97,7 +102,7 @@ def test_native_version_timeout_has_an_owned_tool_error(tmp_path: Path) -> None:
         return run_process((sys.executable, "-c", "import time; time.sleep(10)"), cwd=cwd, timeout_seconds=0.05)
 
     with pytest.raises(NativeToolError, match="query timed out") as caught:
-        checked_tool("helm", root=tmp_path, runner=runner)
+        checked_tool("helm", root=tmp_path, runner=FakeProcessExecutor(runner))
     assert isinstance(caught.value.__cause__, subprocess.TimeoutExpired)
 
 
@@ -119,7 +124,8 @@ def test_timed_out_path_tool_preserves_pinned_mise_fallback(
     monkeypatch.setenv("PATH", str(binary_directory))
     calls: list[tuple[str, ...]] = []
 
-    def resolve(argv: Sequence[str], *, cwd: Path, timeout_seconds: float | None = None) -> ProcessOutput:
+    def resolve(request: ProcessRequest) -> ProcessOutput:
+        argv, cwd, timeout_seconds = request.argv, request.cwd, request.timeout_seconds
         assert cwd == tmp_path
         assert timeout_seconds == 5
         calls.append(tuple(argv))
@@ -131,14 +137,14 @@ def test_timed_out_path_tool_preserves_pinned_mise_fallback(
         assert argv == (str(installed), "version", "--short")
         return ProcessOutput(0, f"v{installed_version}\n", "")
 
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise production lookup after a controlled OS-query timeout; the ordinary runner injection bypasses discovery.
-        devops_tools, "run_process", resolve
-    )
     if installed_version == "4.3.1":
-        assert checked_tool("helm", root=tmp_path, runner=resolve).executable == installed
+        assert (
+            checked_tool("helm", root=tmp_path, runner=RequestExecutor(resolve, ProcessCapabilities())).executable
+            == installed
+        )
     else:
         with pytest.raises(NativeToolError, match=r"exact version 4\.3\.1"):
-            checked_tool("helm", root=tmp_path, runner=resolve)
+            checked_tool("helm", root=tmp_path, runner=RequestExecutor(resolve, ProcessCapabilities()))
     reference = "aqua:helm/helm@4.3.1"
     assert calls == [
         (str(stalled), "version", "--short"),
@@ -158,7 +164,7 @@ def test_compose_ambiguous_version_protocol_is_rejected(tmp_path: Path, payload:
         return ProcessOutput(0, payload, "")
 
     with pytest.raises(NativeToolError, match=r"Compose|exact version"):
-        checked_tool("docker", root=tmp_path, runner=runner)
+        checked_tool("docker", root=tmp_path, runner=FakeProcessExecutor(runner))
 
 
 def test_unparseable_path_compose_preserves_pinned_mise_fallback(
@@ -178,7 +184,8 @@ def test_unparseable_path_compose_preserves_pinned_mise_fallback(
     monkeypatch.setenv("PATH", str(binary_directory))
     calls: list[tuple[str, ...]] = []
 
-    def resolve(argv: Sequence[str], *, cwd: Path, timeout_seconds: float | None = None) -> ProcessOutput:
+    def resolve(request: ProcessRequest) -> ProcessOutput:
+        argv, cwd, timeout_seconds = request.argv, request.cwd, request.timeout_seconds
         assert cwd == tmp_path
         assert timeout_seconds == 5
         calls.append(tuple(argv))
@@ -190,10 +197,9 @@ def test_unparseable_path_compose_preserves_pinned_mise_fallback(
         assert argv == (str(installed), "version", "--format", "json")
         return ProcessOutput(0, '{"version":"v5.6.1"}\n', "")
 
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise production lookup after a PATH multicall binary rejects its resolved argv0; the ordinary runner injection bypasses discovery.
-        devops_tools, "run_process", resolve
+    tool = checked_tool(
+        "docker", root=tmp_path, runner=RequestExecutor(resolve, ProcessCapabilities()), expected_version="5.6.1"
     )
-    tool = checked_tool("docker", root=tmp_path, runner=resolve, expected_version="5.6.1")
     assert tool.executable == installed
     assert tool.standalone_compose
     reference = "github:docker/compose@5.6.1"
@@ -290,7 +296,7 @@ def test_mise_resolves_backend_archive_layout_without_installing(
         assert argv[4:] == ("which", "--tool", reference, name)
         return ProcessOutput(0, f"{executable}\n", "")
 
-    result = devops_tools._mise_tool(tool, root=tmp_path, runner=resolve)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- focused native locator contract, separate from unchanged attestation protocol.
+    result = devops_tools._mise_tool(tool, root=tmp_path, runner=FakeProcessExecutor(resolve))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- focused native locator contract, separate from unchanged attestation protocol.
     assert result.executable == executable.resolve()
     assert calls == [
         (str(mise), "--no-config", "--no-env", "--no-hooks", "where", reference),
@@ -335,7 +341,7 @@ def test_mise_rejects_ambiguous_or_escaping_executable_paths(
         return ProcessOutput(1 if case == "failure" else 0, payload, "")
 
     with pytest.raises((OSError, ValueError)):
-        devops_tools._mise_tool(devops_tools.TOOLS["helm"], root=tmp_path, runner=resolve)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- malformed native locator protocol must fail closed before attestation.
+        devops_tools._mise_tool(devops_tools.TOOLS["helm"], root=tmp_path, runner=FakeProcessExecutor(resolve))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- malformed native locator protocol must fail closed before attestation.
 
 
 @pytest.mark.parametrize("managed", [False, True], ids=("runtime", "managed"))
@@ -369,9 +375,9 @@ def test_version_deadline_accepts_slow_knip_without_relaxing_other_native_contra
         assert path is None or sys.executable.startswith(path)
         return str(executable) if command == name else None
 
-    def native_process(argv: Sequence[str], *, cwd: Path, timeout_seconds: float | None = None) -> ProcessOutput:
+    def native_process(request: ProcessRequest) -> ProcessOutput:
+        argv, cwd, timeout_seconds = request.argv, request.cwd, request.timeout_seconds
         assert cwd == tmp_path
-        assert timeout_seconds is not None
         calls.append((tuple(argv), timeout_seconds))
         # Model the bounded OS runner, not the attestation's choice of deadline.
         if elapsed > timeout_seconds:
@@ -381,16 +387,14 @@ def test_version_deadline_accepts_slow_knip_without_relaxing_other_native_contra
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- model executable discovery for the public managed/runtime attestation boundary.
         "shutil.which", which
     )
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- model elapsed native process completion without a real sleep or subprocess.
-        devops_tools, "run_process", native_process
-    )
     tool = devops_tools.TOOLS[name]
+    executor = RequestExecutor(native_process, ProcessCapabilities())
 
     def attest() -> devops_tools.NativeTool:
         return (
-            checked_tool(name, root=tmp_path, runner=native_process)
+            checked_tool(name, root=tmp_path, runner=executor)
             if managed
-            else devops_tools.checked_runtime_tool(tool, root=tmp_path, runner=native_process)
+            else devops_tools.checked_runtime_tool(tool, root=tmp_path, runner=executor)
         )
 
     if error is None:
@@ -422,9 +426,9 @@ def test_managed_knip_keeps_mise_queries_short_before_attesting_aliased_native_v
         assert path is None or sys.executable.startswith(path)
         return str(mise) if command == "mise" else None
 
-    def native_process(argv: Sequence[str], *, cwd: Path, timeout_seconds: float | None = None) -> ProcessOutput:
+    def native_process(request: ProcessRequest) -> ProcessOutput:
+        argv, cwd, timeout_seconds = request.argv, request.cwd, request.timeout_seconds
         assert cwd == tmp_path
-        assert timeout_seconds is not None
         calls.append((tuple(argv), timeout_seconds))
         if argv[0] == str(mise):
             target = installation if argv[4] == "where" else executable
@@ -436,10 +440,8 @@ def test_managed_knip_keeps_mise_queries_short_before_attesting_aliased_native_v
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- isolate managed executable lookup from the host environment.
         "shutil.which", which
     )
-    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise managed lookup and bounded native completion without real execution.
-        devops_tools, "run_process", native_process
-    )
-    result = checked_tool("knip", root=tmp_path, runner=native_process)
+    executor = RequestExecutor(native_process, ProcessCapabilities())
+    result = checked_tool("knip", root=tmp_path, runner=executor)
 
     assert result.executable == executable.resolve()
     assert calls == [

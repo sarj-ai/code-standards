@@ -12,7 +12,8 @@ from typing import TYPE_CHECKING, Final
 
 from sarj_standards._meta import CONFIGS_DIR
 from sarj_standards.libs.json_boundary import parse_json
-from sarj_standards.libs.linting.external import ProcessOutput, ProcessRunner, run_process
+from sarj_standards.libs.linting.external import DEFAULT_EXECUTOR, ProcessExecutor, ProcessOutput, process_request
+from sarj_standards.libs.linting.process import ToolResolution, executor_capabilities
 from sarj_standards.libs.typed_containers import is_object_mapping
 
 
@@ -94,7 +95,7 @@ MISE_REFS: Final = MappingProxyType(
 
 
 def checked_tool(
-    name: str, *, root: Path, runner: ProcessRunner = run_process, expected_version: str | None = None
+    name: str, *, root: Path, runner: ProcessExecutor = DEFAULT_EXECUTOR, expected_version: str | None = None
 ) -> NativeTool:
     tool = TOOLS[name]
     if expected_version is not None:
@@ -108,12 +109,12 @@ def checked_tool(
     return _installed_tool(tool, root=root, runner=runner, managed=True)
 
 
-def checked_runtime_tool(tool: NativeTool, *, root: Path, runner: ProcessRunner = run_process) -> NativeTool:
+def checked_runtime_tool(tool: NativeTool, *, root: Path, runner: ProcessExecutor = DEFAULT_EXECUTOR) -> NativeTool:
     return _installed_tool(tool, root=root, runner=runner, managed=False)
 
 
-def _installed_tool(tool: NativeTool, *, root: Path, runner: ProcessRunner, managed: bool) -> NativeTool:
-    if runner is not run_process:
+def _installed_tool(tool: NativeTool, *, root: Path, runner: ProcessExecutor, managed: bool) -> NativeTool:
+    if executor_capabilities(runner).tool_resolution is ToolResolution.PROVIDED:
         return _attest(tool, root=root, runner=runner)
     adjacent = shutil.which(tool.name, path=str(Path(sys.executable).parent))
     candidates = dict.fromkeys((adjacent, shutil.which(tool.name)))
@@ -141,7 +142,7 @@ def _installed_tool(tool: NativeTool, *, root: Path, runner: ProcessRunner, mana
     return _attest(installed, root=root, runner=runner)
 
 
-def _attest(tool: NativeTool, *, root: Path, runner: ProcessRunner) -> NativeTool:
+def _attest(tool: NativeTool, *, root: Path, runner: ProcessExecutor) -> NativeTool:
     output = _version_output(
         _argv(tool, tool.version_args),
         root=root,
@@ -156,14 +157,10 @@ def _attest(tool: NativeTool, *, root: Path, runner: ProcessRunner) -> NativeToo
 
 
 def _version_output(
-    argv: Sequence[str], *, root: Path, runner: ProcessRunner, timeout_seconds: float = 5
+    argv: Sequence[str], *, root: Path, runner: ProcessExecutor, timeout_seconds: float = 5
 ) -> ProcessOutput:
     try:
-        return (
-            run_process(argv, cwd=root, timeout_seconds=timeout_seconds)
-            if runner is run_process
-            else runner(argv, cwd=root)
-        )
+        return runner.run(process_request(argv, cwd=root, timeout_seconds=timeout_seconds))
     except subprocess.TimeoutExpired as error:
         msg = f"{Path(argv[0]).name} query timed out after {error.timeout} seconds"
         raise NativeToolError(msg) from error
@@ -183,12 +180,14 @@ def _version(tool: NativeTool, source: str) -> str:
     return matches[0].group("version") if len(matches) == 1 else "unknown"
 
 
-def installed_compose_version(root: Path, *, runner: ProcessRunner = run_process) -> str | None:
-    executable = shutil.which("docker") if runner is run_process else "docker"
+def installed_compose_version(root: Path, *, runner: ProcessExecutor = DEFAULT_EXECUTOR) -> str | None:
+    executable = (
+        shutil.which("docker") if executor_capabilities(runner).tool_resolution is ToolResolution.LOCAL else "docker"
+    )
     if executable is None:
         return None
     try:
-        output = runner((executable, *TOOLS["docker"].version_args), cwd=root)
+        output = _version_output((executable, *TOOLS["docker"].version_args), root=root, runner=runner)
         payload = parse_json(output.stdout)
     except OSError, ValueError, subprocess.SubprocessError:
         return None
@@ -201,7 +200,7 @@ def installed_compose_version(root: Path, *, runner: ProcessRunner = run_process
     return exact if re.fullmatch(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)", exact) is not None else None
 
 
-def _mise_tool(tool: NativeTool, *, root: Path, runner: ProcessRunner) -> NativeTool:
+def _mise_tool(tool: NativeTool, *, root: Path, runner: ProcessExecutor) -> NativeTool:
     mise = shutil.which("mise")
     if mise is None:
         msg = f"{tool.name} {tool.version} is missing; run explicit setup to install pinned native tools"
@@ -253,9 +252,9 @@ def _argv(tool: NativeTool, args: tuple[str, ...]) -> tuple[str, ...]:
 
 
 def invoke(
-    tool: NativeTool, args: tuple[str, ...], *, root: Path, runner: ProcessRunner = run_process
+    tool: NativeTool, args: tuple[str, ...], *, root: Path, runner: ProcessExecutor = DEFAULT_EXECUTOR
 ) -> ProcessOutput:
-    output = runner(_argv(tool, args), cwd=root)
+    output = runner.run(process_request(_argv(tool, args), cwd=root))
     if output.returncode not in {0, *tool.finding_exits}:
         msg = f"{tool.name} failed with exit {output.returncode}: {output.stderr.strip()}"
         raise NativeToolError(msg)
