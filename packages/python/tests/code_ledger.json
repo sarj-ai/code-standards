@@ -343,5 +343,6 @@
   "SARJ552": "no-generic-json-parser",
   "SARJ553": "require-constrained-api-integer",
   "SARJ554": "no-redundant-attribute-unpacking",
-  "SARJ555": "no-mutating-input-with-result"
+  "SARJ555": "no-mutating-input-with-result",
+  "SARJ556": "service-singleton-delegates-to-bulk"
 }

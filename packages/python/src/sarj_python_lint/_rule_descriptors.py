@@ -9,6 +9,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("service-singleton-delegates-to-bulk"),
+        module="sarj_python_lint.rules.service_singleton_delegates_to_bulk",
+        class_name="ServiceSingletonDelegatesToBulk",
+        code="SARJ556",
+        description="Service singleton CRUD operations must delegate to a bulk primitive.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("no-async-client-in-constructor"),
         module="sarj_python_lint.rules.no_async_client_in_constructor",
         class_name="NoAsyncClientInConstructor",

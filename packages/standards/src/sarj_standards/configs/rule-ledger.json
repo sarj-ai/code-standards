@@ -219,6 +219,7 @@
       "require-pydantic-for-structured-payload",
       "require-pydantic-ordinal-lower-bound",
       "restated-test-docstring",
+      "service-singleton-delegates-to-bulk",
       "shared-mutable-pydantic-factory",
       "stepdown",
       "store-field-update-reuses-upsert",
@@ -645,7 +646,8 @@
       "SARJ552",
       "SARJ553",
       "SARJ554",
-      "SARJ555"
+      "SARJ555",
+      "SARJ556"
     ],
     "sql": [
       "SARJ101",

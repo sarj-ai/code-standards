@@ -3,6 +3,14 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/service-singleton-delegates-to-bulk",
+      "family": "python",
+      "ruleId": "service-singleton-delegates-to-bulk",
+      "state": "pending",
+      "evidence": "SARJ556 has 177 focused cases, 285 passing focused/neighbor cases and four executable examples with 2 TP, 2 TN and no authored FP/FN. Native isolated calibration covers 1,691 files from pinned corpora; public existing sources have no findings. All nine independent-path findings and a disclosed deterministic sample of twenty missing-bulk findings were inspected among 86 private findings, with no known inspected false positives. The other 57 findings still require review under this campaign's precision gate. Private identities, pins and source remain local; public aggregates and comparative timing limits are recorded in packages/python/benchmarks/service-bulk-first.json. Full field precision, recall and campaign completion are not claimed.",
+      "outcome": "Ship at ERROR under the exact selector's explicit user-requested blocking-policy approval, without autofix. Require an ordinary concrete service singleton to delegate its original item and shared context through a one-item bulk primitive; preserve asynchronous awaiting and reject visible reverse calls. Defer ambiguous callable declarations and unknown ancestry. Finish the remaining field review before marking this calibration task complete."
+    },
+    {
       "task": "rule-audit/python/duplicate-pytest-fixture-params",
       "family": "python",
       "ruleId": "duplicate-pytest-fixture-params",
