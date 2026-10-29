@@ -233,6 +233,7 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
         "SARJ086": frozenset({"SARJ420"}),
         "SARJ087": frozenset({"SARJ420"}),
         "SARJ088": frozenset({"SARJ050", "SARJ085", "SARJ420"}),
+        "SARJ089": frozenset({"SARJ551"}),
         "SARJ092": frozenset({"SARJ086", "SARJ087", "SARJ420"}),
         "SARJ093": frozenset({"SARJ034"}),
         # Visible FastAPI operations have a route-aware contract diagnostic.
@@ -251,7 +252,7 @@ _DIAGNOSTIC_PRECEDENCE = MappingProxyType(
         "SARJ447": frozenset({"SARJ008"}),
         "SARJ450": frozenset({"SARJ521", "SARJ535"}),
         "SARJ521": frozenset({"SARJ535"}),
-        "SARJ457": frozenset({"SARJ045"}),
+        "SARJ457": frozenset({"SARJ045", "SARJ526"}),
         "SARJ465": frozenset({"SARJ071"}),
         "SARJ491": frozenset({"SARJ400"}),
     }

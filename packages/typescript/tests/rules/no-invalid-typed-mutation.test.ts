@@ -146,7 +146,7 @@ SYNTAX_TESTER.run("no-invalid-typed-mutation without type information", rule, {
   valid: [`${COUNTER} Object.assign(counter, { count: "bad" });`], invalid: [],
 });
 
-// Each fixture supplies a native TSProgram so both optional-property policies are tested.
+
 const POLICY_TESTER = new RuleTester({ languageOptions: { parser } });
 const OMITTED_UNDEFINED = 'const counter: { count?: number } = { count: 1 }; Object.assign(counter, { count: undefined });';
 const EXPLICIT_UNDEFINED = 'const counter: { count?: number | undefined } = { count: 1 }; Object.assign(counter, { count: undefined });';

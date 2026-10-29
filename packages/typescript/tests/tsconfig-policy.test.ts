@@ -47,7 +47,7 @@ function nativeConfigSnapshot(configs: Readonly<Record<string, string>>) {
     throw new Error(parsed?.errors.map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")).join("\n") ?? "Config parsing failed");
   }
   return {
-    // The edited syntax tree changes; native compiler and project semantics must not.
+
     options: { ...parsed.options, configFile: undefined },
     fileNames: parsed.fileNames,
     projectReferences: parsed.projectReferences,

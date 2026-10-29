@@ -1,20 +1,20 @@
 // vitest: shared-module-graph
-/**
- * The doc-diet ratchet, ported from `sarj-python-lint`'s `test_rule_meta.py` /
- * `test_rule_links.py`.
- *
- * A rule module used to open with up to 171 lines of `@fileoverview`. That is
- * not documentation a reader gets to choose: it is the first screen of every
- * file, it goes stale silently, and none of this plugin's own comment rules
- * could see it — `no-comment-cruft` and friends exempt JSDoc, so the one place
- * in the repo where prose grew without limit was the one place nothing measured.
- *
- * The shape is fixed: `<name> — <claim>` plus a derived link to the executable
- * examples in `tests/rules/<name>.test.ts`.
- *
- * There is NO budget file and no exemption list. Every rule was converted in one
- * change; an escape hatch would only be a place for the next 171 lines to land.
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -29,18 +29,18 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
 const RULES_DIR = resolve(HERE, "../src/rules");
 
-/**
- * Content lines allowed in a module's `@fileoverview`: the `<name> — <claim>`
- * summary, an optional second claim line, and the derived examples link. The
- * cap is what stops the 171-line block growing back one useful paragraph at a
- * time.
- */
+
+
+
+
+
+
 const MAX_FILEOVERVIEW_LINES = 6;
 
-/**
- * Signals that a source comment is carrying a corpus report rather than
- * explaining the implementation beneath it.
- */
+
+
+
+
 const EVIDENCE_IN_COMMENT =
   /((?<![-\w.#/])\d{3,}|\d+(?:\.\d+)?%|\.tsx?:\d+|\bcorpus\b|\bsweep\b|false[- ]positives?\b|true positives?\b|\bmeasured\b|\bfindings?\b|\bhits?\b|\baudit\b|PR #\d+)/iu;
 
@@ -55,14 +55,14 @@ function moduleSource(name: string): string {
   return readFileSync(resolve(RULES_DIR, `${name}.ts`), "utf8");
 }
 
-/** Sarj rule keys configured by a shipped flat-config module. */
+
 function configuredSarjRuleNames(source: string): Set<string> {
   return new Set(
     Array.from(source.matchAll(/"@sarj\/([a-z0-9-]+)"\s*:/gu), (match) => match[1] ?? ""),
   );
 }
 
-/** The leading block comment's content lines, `*` prefixes and blanks removed. */
+
 function fileoverviewLines(source: string): string[] {
   if (!source.startsWith("/*")) return [];
   const end = source.indexOf("*/");
@@ -73,7 +73,7 @@ function fileoverviewLines(source: string): string[] {
     .filter((line) => line.length > 0);
 }
 
-/** Every comment line in a module, block and line comments alike. */
+
 function commentLines(source: string): { line: number; text: string }[] {
   const out: { line: number; text: string }[] = [];
   let inBlock = false;
@@ -184,22 +184,22 @@ describe("the behavior lives in executable tests", () => {
 });
 
 describe("a rename ships a map, not a hole", () => {
-  /**
-   * Every rule name the 6.1.0 major shipped. Frozen — a name is added when a
-   * rule ships and never edited afterwards.
-   *
-   * This is the assertion the `RENAMED_RULES` map cannot make about itself:
-   * deleting an entry from that map deletes the only thing that knew the old
-   * name existed, so the test that walks it passes on an empty map. Consumers
-   * hold these names in configs, disable comments and suppression baselines, and
-   * a name that simply stops resolving is the failure the SARJ110 renumber
-   * caused. A name may be RETIRED or RENAMED, which are separate, deliberate
-   * acts; it may not quietly vanish.
-   *
-   * "Retired" is not restated here. It is read from `RETIRED_RULES`, the same map
-   * `strict-config-sync.test.ts` derives from git history — so a withdrawal is
-   * recorded in exactly one place and this list never has to be edited for one.
-   */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   const SHIPPED_IN_6_1_0: readonly string[] = [
     "enforce-file-structure",
     "jsdoc-restates-signature",
@@ -254,17 +254,17 @@ describe("a rename ships a map, not a hole", () => {
   ];
 
   it("froze the whole list, so a name cannot be dropped from the guard itself", () => {
-    // Editing an entry OUT of this list would let the rule it names vanish with
-    // nothing failing — the guard would delete its own evidence. The length is
-    // the cheapest thing that notices.
+
+
+
     expect(SHIPPED_IN_6_1_0).toHaveLength(50);
     expect(new Set(SHIPPED_IN_6_1_0).size).toBe(SHIPPED_IN_6_1_0.length);
   });
 
   it("accounts for every name the previous major shipped", () => {
-    // A shipped name is either still a rule, or recorded as renamed, or recorded
-    // as retired. What it may never be is absent from all three, which is a name
-    // that stopped resolving with nothing anywhere saying what to do instead.
+
+
+
     const unaccounted = SHIPPED_IN_6_1_0.filter(
       (name) =>
         !(name in plugin.rules) && !(name in RENAMED_RULES) && !(name in RETIRED_RULES),
@@ -279,19 +279,19 @@ describe("a rename ships a map, not a hole", () => {
   });
 
   it("never both renames and retires the same name", () => {
-    // The two maps answer opposite questions about one name; an entry in both is
-    // a contradiction a consumer's migration script cannot resolve.
+
+
     const both = Object.keys(RENAMED_RULES).filter((name) => name in RETIRED_RULES);
     expect(both).toEqual([]);
   });
 
   it("renames exactly the shipped names it claims to", () => {
-    // The map may only rename FROM a name that shipped: renaming from a name
-    // nobody ever had is a typo that silently protects nothing.
+
+
     for (const from of Object.keys(RENAMED_RULES)) {
       expect(SHIPPED_IN_6_1_0).toContain(from);
     }
-    // ...and every shipped name that is no longer a live rule must be in it.
+
     const live = new Set(RULE_NAMES);
     const orphaned = SHIPPED_IN_6_1_0.filter(
       (name) => !live.has(name) && !(name in RENAMED_RULES) && !(name in RETIRED_RULES),
@@ -300,10 +300,10 @@ describe("a rename ships a map, not a hole", () => {
   });
 
   it("registers no old name — 9.0.0 deleted the deprecated aliases", () => {
-    // 7.0.0 kept each old name registered as a deprecated alias. 9.0.0 deletes
-    // them: the new names are the only names, and a config still naming an old
-    // one gets `Could not find "@sarj/<rule>" in plugin "@sarj"` — which is why
-    // the ledger has to carry the replacement (`rule-ledger.test.ts`).
+
+
+
+
     for (const from of Object.keys(RENAMED_RULES)) {
       expect(Object.keys(plugin.rules)).not.toContain(from);
     }
@@ -322,8 +322,8 @@ describe("a rename ships a map, not a hole", () => {
   });
 
   it("keeps the old names out of both presets", () => {
-    // A preset naming a rule the plugin does not define is `Could not find
-    // "@sarj/<rule>" in plugin "@sarj"` for every consumer of that preset.
+
+
     for (const from of Object.keys(RENAMED_RULES)) {
       expect(plugin.configs.strict.rules).not.toHaveProperty(`@sarj/${from}`);
       expect(plugin.configs.recommended.rules).not.toHaveProperty(`@sarj/${from}`);

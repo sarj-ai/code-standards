@@ -337,5 +337,11 @@
   "SARJ546": "store-mutation-command-fanout",
   "SARJ547": "store-insert-requires-explicit-conflict-policy",
   "SARJ548": "no-discarded-tagged-outcome",
-  "SARJ549": "no-async-client-in-constructor"
+  "SARJ549": "no-async-client-in-constructor",
+  "SARJ550": "prefer-pytest-fixture-contract",
+  "SARJ551": "no-test-comments",
+  "SARJ552": "no-generic-json-parser",
+  "SARJ553": "require-constrained-api-integer",
+  "SARJ554": "no-redundant-attribute-unpacking",
+  "SARJ555": "no-mutating-input-with-result"
 }

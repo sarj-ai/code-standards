@@ -30,7 +30,7 @@ it("keeps source-graph and alias-depth limits independent of cache order", () =>
     const child = program.getSourceFile(join(root, "chain1.ts"));
     if (!cold || !warm || !child) throw new Error("Native graph fixture was not loaded");
     expect(ordinaryObjectEffects(program, cold)).toBe(true);
-    // A sub-root has the same known importers, so warming it cannot bypass the limit.
+
     expect(ordinaryObjectEffects(program, child)).toBe(true);
     expect(ordinaryObjectEffects(program, warm)).toBe(true);
     const independent = program.getSourceFile(join(root, "independent.ts"));
@@ -41,7 +41,7 @@ it("keeps source-graph and alias-depth limits independent of cache order", () =>
     const aliases = program.getSourceFile(join(root, "aliases.ts"));
     if (!aliasCold || !aliasWarm || !aliases) throw new Error("Native alias fixture was not loaded");
     expect(ordinaryObjectEffects(program, aliasCold)).toBe(true);
-    // Warming another source cannot make an over-budget identity proof succeed.
+
     expect(ordinaryObjectEffects(program, aliases)).toBe(true);
     expect(ordinaryObjectEffects(program, aliasWarm)).toBe(true);
   } finally {
@@ -154,7 +154,7 @@ it("distinguishes unavailable runtime bindings from keys, labels and erased type
     for (const [file, , unsafe, error] of cases) {
       const source = program.getSourceFile(join(root, file));
       if (!source) throw new Error(`Native value-role fixture was not loaded: ${file}`);
-      // Missing value information is deliberately retained, never called a clean scan.
+
       expect(program.getSemanticDiagnostics(source).map((diagnostic) => diagnostic.code), file).toEqual(error === null ? [] : [error]);
       expect(ordinaryObjectEffects(program, source), file).toBe(unsafe);
       expect(ordinaryObjectEffects(program, source), `repeated ${file}`).toBe(unsafe);
@@ -166,8 +166,8 @@ it("distinguishes unavailable runtime bindings from keys, labels and erased type
 
 const JSX_BOUNDARY_CONSUMER = "export function observe() {const Box = ({name}: {name: string}) => <span>{name}</span>; const element = <Box {...{name: 'Ada', email: 'needed'}}/>; const selectedName = (element as {props: {name: string}}).props.name; return selectedName;}\n";
 const JSX_BOUNDARY_NAMESPACE = "export namespace JSX {export interface Element {} export interface IntrinsicElements {span: {children?: unknown}}}\n";
-// This deliberately changes no global/prototype state. An implementation can
-// nevertheless observe an omitted prop while constructing an element.
+
+
 const JSX_BOUNDARY_IMPLEMENTATION = JSX_BOUNDARY_NAMESPACE + "export function jsx(_type: unknown, props: {readonly name?: string; readonly email?: string}): JSX.Element {return {props: {name: props.email ?? props.name}};} export {jsx as jsxs, jsx as jsxDEV};\n";
 
 interface RuntimeBindings {
@@ -239,9 +239,9 @@ function readRuntimeBindings(program: ts.Program, root: string, consumers: Reado
 
 function observeRuntimeQueries(program: ts.Program, binding: RuntimeBindings): RuntimeObservation {
   const {sources, bindings} = binding;
-  // Metadata feature faults are fixed before the first helper observation.
-  // Native checking/binding above proves the controls; these faults do not
-  // simulate a different runtime, subtype relationship, or native diagnostic.
+
+
+
   const missing = sources.get("standard/missing.tsx");
   const ambiguous = sources.get("standard/ambiguous.tsx");
   const foreign = sources.get("standard/foreign.tsx");
@@ -281,7 +281,7 @@ function expectRuntimeEffects(observed: RuntimeObservation, binding: RuntimeBind
   const isolated = sources.get("isolated.ts");
   if (!isolated) throw new Error("Missing isolated non-JSX source");
   expect(ordinaryObjectEffects(observedProgram, isolated)).toBe(false);
-  // Indexing all sources must not query their implicit runtime bindings.
+
   expect(queries.size).toBe(0);
   const expectations = [
     ["standard/bridge.tsx", false], ["dependency.ts", false], ["standard/consumer.tsx", false],
@@ -310,8 +310,8 @@ function expectRuntimeEffects(observed: RuntimeObservation, binding: RuntimeBind
 }
 
 function expectRuntimeForwarding(program: ts.Program, root: string, consumers: ReadonlyMap<string, string>, jsx: ts.JsxEmit): void {
-  // Run the receiving rule on the same already-checked native Programs.
-  // The actual feature-fault roots are helper-only controls.
+
+
   for (const [file, count] of [["standard/consumer.tsx", 1], ["standard/bridge.tsx", 1], ["pure/consumer.tsx", 0], ["switch.tsx", jsx === ts.JsxEmit.ReactJSXDev ? 0 : 1]] as const) {
     const code = consumers.get(file);
     if (code === undefined) throw new Error(`Missing forwarding source: ${file}`);
@@ -325,8 +325,8 @@ it("requires the reached native automatic runtime, with Program-owned caches", (
     const consumers = createRuntimeFixture(root);
     const qualified: {program: ts.Program; source: ts.SourceFile}[] = [];
     for (const jsx of [ts.JsxEmit.ReactJSX, ts.JsxEmit.ReactJSXDev]) {
-      // These are two materially different compiler policies over identical paths,
-      // rather than a fresh Program for each consumer or metadata fault.
+
+
       const program = ts.createProgram([...consumers.keys()].map((file) => join(root, file)), {
         strict: true, target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext,
         moduleResolution: ts.ModuleResolutionKind.Bundler, types: [], jsx,
@@ -352,8 +352,8 @@ it("requires the reached native automatic runtime, with Program-owned caches", (
 it("retains the owned ambient declaration assumption through the native runtime binding", () => {
   const root = mkdtempSync(join(tmpdir(), "ordinary-object-ambient-jsx-"));
   try {
-    // Keep this native declaration policy separate: a global ambient declaration
-    // must not override the implementation/external-library controls above.
+
+
     const files = new Map([
       ["jsx-runtime.d.ts", readFileSync(join(import.meta.dirname, "fixtures", "minimal-consumer", "jsx-runtime.d.ts"), "utf8")],
       ["scalar.tsx", JSX_BOUNDARY_CONSUMER],

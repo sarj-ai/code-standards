@@ -1,25 +1,25 @@
-/**
- * Runs the shipped config over real files, which `calculateConfigForFile` cannot.
- *
- * `strict-config-loads.test.ts` next door normalises the config: it resolves
- * every config object and validates every rule id and option against its schema.
- * What it never does is LOAD a rule's implementation, so a plugin that is
- * installable, importable, schema-valid and still broken passes it.
- *
- * That is not hypothetical. `eslint-plugin-react@7.37.5` — the newest published
- * release — calls `context.getFilename()`, removed in ESLint 10, and this config
- * requires ESLint 10 (its unicorn floor pulls `>= 10.4`). Every react rule threw
- * `TypeError: contextOrFilename.getFilename is not a function` on the first file
- * linted, while every existing test passed. A consumer following the README hit
- * a stack trace with no way to tell a broken shared config from their own
- * mistake — and copying the file and deleting imports is the fastest way out of
- * that, which is how vendoring starts.
- *
- * `lintFiles` is the only call that proves the config works. It is slower than
- * `calculateConfigForFile`, so this file lints two small fixtures rather than a
- * corpus: one `.ts` and one `.tsx`, because the `.tsx`-scoped overrides bring in
- * blocks the `.ts` path never merges.
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
@@ -590,8 +590,8 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     "lints %s without a rule throwing",
     async (file) => {
       const messages = await lint(file);
-      // ESLint surfaces a crashed rule as a fatal message rather than a throw
-      // for some failure modes, so assert on both paths.
+
+
       const fatal = messages.filter((message) => message.fatal === true);
       expect(fatal).toEqual([]);
     },
@@ -600,8 +600,8 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
   it("reports real findings, so a silent pass cannot be mistaken for success", async () => {
     const ruleIds = new Set((await lint("example.ts")).map((m) => m.ruleId));
     expect(ruleIds.has("@sarj/no-enum")).toBe(true);
-    // A type-aware rule must fire too, or `projectService` failed to find a
-    // tsconfig and the entire typed half of the config was inert.
+
+
     expect(
       [...ruleIds].some((rule) => rule?.startsWith("@typescript-eslint/")),
     ).toBe(true);
@@ -1160,14 +1160,14 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     expect(ruleIds).not.toContain("promise/prefer-await-to-then");
   });
 
-  /**
-   * The config shipped with no `ignores`, so `eslint .` linted build output.
-   *
-   * Measured over 175,852 deduplicated files: 24.4% of all `@sarj/*` findings
-   * landed on generated paths. The two fixtures below are byte-identical and
-   * both violate; only their directory differs, so a pass here means the
-   * ignore is doing the work and nothing else is.
-   */
+
+
+
+
+
+
+
+
   it("ignores build output and still lints the identical authored file", async () => {
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
@@ -1195,8 +1195,8 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
     });
     expect((await emitted.lintFiles([resolve(FIXTURE_DIR, "lib/compiled.ts")])).flatMap((result) => result.messages)).toEqual([]);
 
-    // The ignore must be a GLOBAL ignore: an entry that grows a `files` key
-    // stops ignoring anything, and nothing else in the config would notice.
+
+
     const globalIgnores = (strictConfig as Linter.Config[]).filter(
       (entry) => entry.ignores !== undefined && entry.files === undefined,
     );
@@ -1236,16 +1236,16 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
       .toMatchObject([{ severity: 2 }]);
   });
 
-  /**
-   * The 18 react rules were dropped wholesale because eslint-plugin-react calls
-   * `context.getFilename()`, removed in ESLint 10. Dropping them swapped a crash
-   * for silence: every consumer got zero React coverage. `@eslint/compat`'s
-   * `fixupPluginRules` restores the removed context APIs, so the rules run.
-   */
+
+
+
+
+
+
   it.runIf(ESLINT_MAJOR >= 10)("keeps every react/* key live through the compat adapter", async () => {
-    // A react/* key is only safe when the plugin is registered AND its removed
-    // context APIs are restored -- otherwise it is "Definition for rule not
-    // found", or a crash, at consumer lint time.
+
+
+
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,
       overrideConfigFile: true,
@@ -1264,10 +1264,10 @@ describe("the shipped eslint.strict.mjs can actually lint", () => {
   });
 
   it.runIf(ESLINT_MAJOR >= 10)("fails once eslint-plugin-react supports ESLint 10, so the adapter expires", async () => {
-    // `lib/util/version.js` is what calls the removed `context.getFilename()`.
-    // This probes the RAW plugin, not the fixed-up one, so it is an honest
-    // upstream check: when a release fixes it this stops throwing, this test
-    // fails, and the @eslint/compat wrapper gets deleted rather than living on.
+
+
+
+
     const { default: react } = await import("eslint-plugin-react");
     const eslint = new ESLint({
       cwd: FIXTURE_DIR,

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "2e981858313f12cda2da15e9e62a63465ca02a2ebab05de985814b5b2c3da8e8",
-  "cliSha256": "175b6f151e3af6419aa2b1ad5aec1c5ebaf7eb6ccbb1af6372b003dc8191976a",
+  "catalogSha256": "08e3d8ef71c6557a36ba92dcbf3a0328ef25d09e717399c41eb2826e6acd5639",
+  "cliSha256": "477da4bcc7b4fbd80a9b535ccbc7b07fb26161725a8389b079e66fc3a95018b0",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -716,6 +716,36 @@
           "outcome": "reject",
           "scenarioId": "closed-literal-domain",
           "title": "A string check admits other strings"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/guard.ts",
+              "source": "type Account = { id: string };\nfunction account(value: unknown): value is Account {\n  return typeof value === \"object\" && value !== null;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/guard.ts",
+          "id": "record-fields-unchecked",
+          "outcome": "reject",
+          "scenarioId": "record-fields",
+          "title": "Object membership does not establish required fields"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/guard.ts",
+              "source": "type Account = { id: string };\nfunction account(value: unknown): value is Account {\n  return (\n    typeof value === \"object\" &&\n    value !== null &&\n    \"id\" in value &&\n    typeof value.id === \"string\"\n  );\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/guard.ts",
+          "id": "record-fields-validated",
+          "outcome": "accept",
+          "scenarioId": "record-fields",
+          "title": "Establish fields before promising the record"
         }
       ],
       "optionsSchemaSource": null
@@ -891,6 +921,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not store raw ambient fetch as an object method"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-discarded-validation-result": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app.ts",
+              "source": "import { z } from \"zod\";\nz.string().trim().parse(raw);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.ts",
+          "id": "lost-transform",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The normalized output is discarded"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app.ts",
+              "source": "import { z } from \"zod\";\nfunction parse(raw: unknown) {\n  return z.string().trim().parse(raw);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app.ts",
+          "id": "used-transform",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Return the parsed value"
         }
       ],
       "optionsSchemaSource": null
@@ -1620,6 +1685,41 @@
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"additionalModulePrefixes\": {\n      \"items\": { \"minLength\": 1, \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
+    "eslint:no-generic-json-parser": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/request.ts",
+              "source": "import { z } from \"zod\";\nconst VersionSchema = z.object({ version: z.number().int().positive() });\nfunction load(raw: unknown) {\n  return VersionSchema.parse(raw).version;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/request.ts",
+          "id": "focused-record-read",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Declare only the fields being read"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/request.ts",
+              "source": "import { z } from \"zod\";\nconst JsonSchema = z.record(z.string(), z.unknown());\nfunction load(raw: unknown) {\n  const body = JsonSchema.parse(raw);\n  return body.version;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/request.ts",
+          "id": "open-record-read",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Generic validation does not declare the field"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:no-generic-single-export-module": {
       "examples": [
         {
@@ -2297,6 +2397,111 @@
       ],
       "optionsSchemaSource": null
     },
+    "eslint:no-mutating-container-transform": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/order.ts",
+              "source": "function ordered(values: number[]): number[] {\n  values.sort();\n  return values;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/order.ts",
+          "id": "borrowed-sort",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Returning an array does not hide the mutation"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/order.ts",
+              "source": "function ordered(values: number[]): number[] {\n  const result = [...values];\n  result.sort();\n  return result;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/order.ts",
+          "id": "copied-sort",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Copy before mutating"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-mutating-input-with-result": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/config.ts",
+              "source": "interface Config {\n  enabled: boolean;\n}\nfunction enable(config: Config): Config {\n  config.enabled = true;\n  return config;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/config.ts",
+          "id": "mutates-input",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A result does not undo the caller-visible write"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/config.ts",
+              "source": "interface Config {\n  enabled: boolean;\n}\nfunction enable(config: Config): Config {\n  return { ...config, enabled: true };\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/config.ts",
+          "id": "returns-replacement",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Return the replacement explicitly"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:no-negative-only-http-status-assertion": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/api.test.ts",
+              "source": "import { test, expect } from \"vitest\";\ntest(\"reads\", async () => {\n  const response = await fetch(\"/versions\");\n  expect(response.status).toBe(200);\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/api.test.ts",
+          "id": "expects-intended-status",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Assert the API's intended result"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/api.test.ts",
+              "source": "import { test, expect } from \"vitest\";\ntest(\"reads\", async () => {\n  const response = await fetch(\"/versions\");\n  expect(response.status).not.toBe(500);\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/api.test.ts",
+          "id": "only-excludes-server-error",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A missing route can still pass this test"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:no-numeric-search-param-coercion": {
       "examples": [
         {
@@ -2727,6 +2932,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "eslint:no-redundant-local-alias": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/request.ts",
+              "source": "function request(value: string) {\n  return { accountId: value };\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/request.ts",
+          "id": "direct-property",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use the original binding"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/request.ts",
+              "source": "function request(value: string) {\n  const accountId = value;\n  return { accountId };\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/request.ts",
+          "id": "redundant-alias",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The property already supplies the name"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:no-redundant-optional-array-default": {
       "examples": [
         {
@@ -2987,6 +3227,41 @@
         }
       ],
       "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"libraries\": {\n      \"items\": {\n        \"additionalProperties\": false,\n        \"properties\": {\n          \"id\": { \"minLength\": 1, \"type\": \"string\" },\n          \"module\": { \"minLength\": 1, \"type\": \"string\" },\n          \"note\": { \"minLength\": 1, \"type\": \"string\" },\n          \"replacement\": { \"minLength\": 1, \"type\": \"string\" }\n        },\n        \"required\": [\"id\", \"module\", \"replacement\"],\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    }\n  },\n  \"required\": [\"libraries\"],\n  \"type\": \"object\"\n}\n"
+    },
+    "eslint:no-return-disposed-resource": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/client.ts",
+              "source": "function client() {\n  using handle = acquire();\n  return handle;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/client.ts",
+          "id": "return-disposed-client",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The resource is disposed before return"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/client.ts",
+              "source": "function client() {\n  using handle = acquire();\n  return handle.snapshot();\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/client.ts",
+          "id": "return-snapshot",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Return a value independent of resource lifetime"
+        }
+      ],
+      "optionsSchemaSource": null
     },
     "eslint:no-router-refresh-polling": {
       "examples": [
@@ -3687,6 +3962,46 @@
       ],
       "optionsSchemaSource": null
     },
+    "eslint:no-test-comments": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/request.test.ts",
+              "source": "expect(result.status).toBe(409);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/request.test.ts",
+          "id": "named-behavior",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The assertion expresses the behavior"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/request.test.ts",
+              "source": "expect(result.status).toBe(409); // Confirm the rejected request\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "src/request.test.ts",
+              "source": "expect(result.status).toBe(409);\n"
+            }
+          ],
+          "focusPath": "src/request.test.ts",
+          "id": "narrated-assertion",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Put behavior in the test name"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:no-trailing-value-narration": {
       "examples": [
         {
@@ -4219,6 +4534,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not compare authentication tokens with equality"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:prefer-dependency-interface": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service.ts",
+              "source": "interface Store {\n  read(): string;\n}\nclass SqlStore implements Store {\n  private value = \"ok\";\n  read() {\n    return this.value;\n  }\n}\nclass Service {\n  constructor(private readonly store: SqlStore) {}\n  run() {\n    return this.store.read();\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.ts",
+          "id": "concrete-store",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The consumer uses only the interface"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service.ts",
+              "source": "interface Store {\n  read(): string;\n}\nclass Service {\n  constructor(private readonly store: Store) {}\n  run() {\n    return this.store.read();\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service.ts",
+          "id": "interface-store",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Accept another implementation"
         }
       ],
       "optionsSchemaSource": null
@@ -5375,6 +5725,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "eslint:prefer-test-fixture-reuse": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/store.test.ts",
+              "source": "import { test as base } from \"vitest\";\nclass Store {}\nconst test = base.extend({\n  store: async ({}, use) => {\n    await use(new Store());\n  },\n});\ntest(\"reads\", ({ store }) => {\n  const other = new Store();\n  expect(other).toBeDefined();\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/store.test.ts",
+          "id": "duplicate-store",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The test constructs the store its fixture supplied"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/store.test.ts",
+              "source": "import { test as base } from \"vitest\";\nclass Store {}\nconst test = base.extend({\n  store: async ({}, use) => {\n    await use(new Store());\n  },\n});\ntest(\"reads\", ({ store }) => {\n  expect(store).toBeDefined();\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/store.test.ts",
+          "id": "reuse-store",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Request and use the store fixture"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:prefer-typed-reflection": {
       "examples": [
         {
@@ -5561,6 +5946,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "eslint:production-derived-test-cases": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/roles.test.ts",
+              "source": "import { test, expect } from \"vitest\";\nimport { SUPPORTED_ROLES } from \"./roles.js\";\ntest(\"membership\", () => {\n  expect(SUPPORTED_ROLES).toEqual([\"reader\", \"writer\"]);\n});\ntest.each(SUPPORTED_ROLES)(\"%s\", (role) => {\n  expect(build(role)).toBeDefined();\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/roles.test.ts",
+          "id": "independent-membership",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "An independent assertion notices missing entries"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/roles.test.ts",
+              "source": "import { test, expect } from \"vitest\";\nimport { SUPPORTED_ROLES } from \"./roles.js\";\ntest.each(SUPPORTED_ROLES)(\"%s\", (role) => {\n  expect(build(role)).toBeDefined();\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/roles.test.ts",
+          "id": "production-cases",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Missing production entries also disappear from these cases"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:repeated-static-call-cases": {
       "examples": [
         {
@@ -5701,6 +6121,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "eslint:require-constrained-schema-integer": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/options.ts",
+              "source": "import { z } from \"zod\";\nconst OptionsSchema = z.object({\n  limit: z.number().int().positive(),\n  version: z.int().nonnegative(),\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/options.ts",
+          "id": "constrained-fields",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Declare the numeric domain"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/options.ts",
+              "source": "import { z } from \"zod\";\nconst OptionsSchema = z.object({ limit: z.number() });\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/options.ts",
+          "id": "unconstrained-limit",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A number is broader than a limit"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "eslint:require-explicit-contract-implementation": {
       "examples": [
         {
@@ -5837,6 +6292,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Export behavior through a focused contract"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "eslint:require-jwt-lifetime": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "auth.ts",
+              "source": "import { jwtVerify } from \"jose\";\nfunction verify(token, key) {\n  return jwtVerify(token, key);\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "auth.ts",
+          "id": "optional-expiration",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A signature alone does not require expiration"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "auth.ts",
+              "source": "import { jwtVerify } from \"jose\";\nfunction verify(token, key) {\n  return jwtVerify(token, key, { requiredClaims: [\"exp\"] });\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "auth.ts",
+          "id": "required-expiration",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Require the expiration claim"
         }
       ],
       "optionsSchemaSource": null
@@ -10251,6 +10741,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-generic-json-parser": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_api.py",
+              "source": "from pydantic import JsonValue, RootModel\n\n\nclass Response(RootModel[dict[str, JsonValue]]):\n    pass\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_api.py",
+          "id": "generic-response-parser",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "An open JSON mapping does not declare the response fields"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_api.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Response(BaseModel):\n    version: int\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_api.py",
+          "id": "partial-declarative-response",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Declare just the field this consumer needs"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-generic-single-export-module": {
       "examples": [
         {
@@ -10885,6 +11410,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-mutating-input-with-result": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from attrs import define\n\n\n@define\nclass Request:\n    expected_version: int\n\n\ndef send_update(body: Request) -> Response:\n    body.expected_version = 2\n    return send(body)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "attrs-request-mutated-before-response",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Sending a generated request changes the caller's request"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from attrs import define, evolve\n\n\n@define\nclass Request:\n    expected_version: int\n\n\ndef send_update(body: Request) -> Response:\n    updated = evolve(body, expected_version=2)\n    return send(updated)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "attrs-request-replaced-before-response",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Send a replacement and keep the input unchanged"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-nested-pydantic-field-validator": {
       "examples": [
         {
@@ -11421,6 +11981,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Recording replaces persistence"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-redundant-attribute-unpacking": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_save.py",
+              "source": "def test_save(seeded):\n    assert seeded.scenario.id == seeded.current.id\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_save.py",
+          "id": "direct-attribute-use",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Read names on their owner"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_save.py",
+              "source": "def test_save(seeded):\n    scenario, current = seeded.scenario, seeded.current\n    assert scenario.id == current.id\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_save.py",
+          "id": "repeated-attribute-names",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Keep the named result aggregate"
         }
       ],
       "optionsSchemaSource": null
@@ -12416,6 +13011,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Cancellation becomes a successful return"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-test-comments": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_save.py",
+              "source": "def test_stale_save_is_rejected():\n    assert save_is_rejected()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_save.py",
+          "id": "behavior-in-test-name",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The assertion documents the behavior"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_save.py",
+              "source": "def test_save():\n    # A stale save is rejected.\n    assert save_is_rejected()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_save.py",
+          "id": "comment-narrates-test",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Name the tested behavior"
         }
       ],
       "optionsSchemaSource": null
@@ -14693,6 +15323,21 @@
           "title": "A test constructs its service's store"
         },
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/test_store.py",
+              "source": "from typing import Protocol\n\n\nclass Port(Protocol):\n    def read(self): ...\n\n\nclass Store:\n    def read(self):\n        return 1\n\n\nclass Service:\n    def __init__(self, store: Port):\n        self.store = store\n\n    def read(self):\n        return self.store.read()\n\n\ndef test_read(store: Store):\n    replacement = Store()\n    assert replacement.read() == 1\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_store.py",
+          "id": "duplicate-supplied-store",
+          "outcome": "reject",
+          "scenarioId": "supplied-store",
+          "title": "A second store bypasses the supplied fixture"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -14706,6 +15351,56 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "The store arrives through pytest"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_store.py",
+              "source": "from typing import Protocol\n\n\nclass Port(Protocol):\n    def read(self): ...\n\n\nclass Store:\n    def read(self):\n        return 1\n\n\nclass Service:\n    def __init__(self, store: Port):\n        self.store = store\n\n    def read(self):\n        return self.store.read()\n\n\ndef test_read(store: Store):\n    assert store.read() == 1\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_store.py",
+          "id": "reuse-supplied-store",
+          "outcome": "accept",
+          "scenarioId": "supplied-store",
+          "title": "Use the supplied store fixture"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-pytest-fixture-contract": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/conftest.py",
+              "source": "import pytest\nfrom abc import ABC, abstractmethod\n\n\nclass Store(ABC):\n    @abstractmethod\n    def read(self) -> int: ...\n\n\nclass SqlStore(Store):\n    def read(self) -> int:\n        return 1\n\n\n@pytest.fixture\ndef store() -> Store:\n    return SqlStore()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/conftest.py",
+          "id": "abstract-store-fixture",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The fixture constructs SQL storage and exposes its contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "tests/conftest.py",
+              "source": "import pytest\nfrom abc import ABC, abstractmethod\n\n\nclass Store(ABC):\n    @abstractmethod\n    def read(self) -> int: ...\n\n\nclass SqlStore(Store):\n    def read(self) -> int:\n        return 1\n\n\n@pytest.fixture\ndef store() -> SqlStore:\n    return SqlStore()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/conftest.py",
+          "id": "concrete-store-fixture",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The fixture exposes its storage implementation"
         }
       ],
       "optionsSchemaSource": null
@@ -16069,6 +16764,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Replay-named store callable omits duplicate behavior"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:require-constrained-api-integer": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\nfrom pydantic import PositiveInt\n\nrouter = APIRouter()\n\n\n@router.get(\"/versions\")\ndef versions(limit: PositiveInt = 25):\n    return limit\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "positive-history-limit",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Declare the valid numeric domain"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "api.py",
+              "source": "from fastapi import APIRouter\n\nrouter = APIRouter()\n\n\n@router.get(\"/versions\")\ndef versions(limit: int = 25):\n    return limit\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "api.py",
+          "id": "unbounded-history-limit",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The history API accepts any signed integer"
         }
       ],
       "optionsSchemaSource": null

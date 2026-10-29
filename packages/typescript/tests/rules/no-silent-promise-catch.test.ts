@@ -139,11 +139,11 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
       name: "allows an explained two-argument then rejection handler",
       code: "// Missing data is expected here\nevaluate.then(render, () => null);",
     },
-    // Handler that logs is fine.
+
     {
       code: "p.catch((err) => logger.error({ err }, 'lookup failed'));",
     },
-    // Handler that references its error parameter.
+
     {
       name: "allows recovery that returns the rejection value",
       code: "p.catch((err) => err);",
@@ -155,31 +155,31 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
     {
       code: "p.catch((err) => fallbackFor(err));",
     },
-    // Rethrow.
+
     {
       code: "p.catch((err) => { throw new WrappedError(err); });",
     },
-    // Non-function handler (named recovery fn) — out of scope.
+
     {
       code: "p.catch(handleError);",
     },
-    // try/catch `catch` clauses are covered by the try/catch-form rules.
+
     {
       code: "try { await p; } catch { /* handled elsewhere */ }",
     },
-    // Unknown method access is out of scope.
+
     {
       code: "p[method](() => null);",
     },
-    // Two-argument .then-style catch is not the .catch(fn) form.
+
     {
       code: "p.catch(() => null, extra);",
     },
-    // Returning a computed fallback (does something).
+
     {
       code: "p.catch(() => computeFallback());",
     },
-    // Body-parse-fallback idiom: parse failure is not the handled signal.
+
     {
       name: "allows JSON body parse fallbacks",
       code: "const body = await res.json().catch(() => ({}));",
@@ -197,7 +197,7 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
         "await res.bytes().catch(() => null);",
       ].join("\n"),
     },
-    // Test files are exempt (unhandled-rejection suppression is routine there).
+
     {
       code: "p.catch(() => undefined);",
       filename: "/repo/src/components/widget.test.tsx",
@@ -211,13 +211,13 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
       code: "p.catch(() => null);",
       filename: "/repo/src/__tests__/helpers.ts",
     },
-    // Non-empty object fallback carries information — out of scope.
+
     {
       code: "p.catch(() => ({ ok: false }));",
     },
-    // An eslint-disable-next-line above the call suppresses cleanly even when
-    // the handler sits on a later line than the call (the report is anchored
-    // on the CallExpression, not the handler).
+
+
+
     {
       code: [
         "// eslint-disable-next-line @rule-tester/no-silent-promise-catch -- deliberate",
@@ -285,7 +285,7 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
       code: "fetchUser(id).then(render, () => {});",
       errors: [{ messageId: "silentCatch" }],
     },
-    // The comment guard ignores tooling directives — they are not an explanation.
+
     {
       code: [
         "// @ts-expect-error legacy",
@@ -293,7 +293,7 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
       ].join("\n"),
       errors: [{ messageId: "silentCatch" }],
     },
-    // An undocumented swallow on a non-teardown call still fires.
+
     {
       code: "fetchUser(id).catch(() => null);",
       errors: [{ messageId: "silentCatch" }],
@@ -330,7 +330,7 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
       code: "p.catch(() => []);",
       errors: [{ messageId: "silentCatch" }],
     },
-    // Empty blocks.
+
     {
       code: "p.catch(() => {});",
       errors: [{ messageId: "silentCatch" }],
@@ -339,7 +339,7 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
       code: "p.catch(function () {});",
       errors: [{ messageId: "silentCatch" }],
     },
-    // Block that only returns a sentinel.
+
     {
       code: "p.catch(() => { return null; });",
       errors: [{ messageId: "silentCatch" }],
@@ -353,27 +353,27 @@ RULE_TESTER.run("no-silent-promise-catch", rule, {
       code: "p.catch(function (err) { return undefined; });",
       errors: [{ messageId: "silentCatch" }],
     },
-    // Unused error parameter does not excuse a silent body.
+
     {
       code: "p.catch((err) => null);",
       errors: [{ messageId: "silentCatch" }],
     },
-    // Cast around the sentinel is still silent.
+
     {
       code: "p.catch(() => null as User | null);",
       errors: [{ messageId: "silentCatch" }],
     },
-    // Chained form.
+
     {
       code: "fetchUser(id).then(render).catch(() => null);",
       errors: [{ messageId: "silentCatch" }],
     },
-    // Multi-line: the report anchors at the call, not the handler line.
+
     {
       code: ["p.catch(", "  () => null,", ");"].join("\n"),
       errors: [{ messageId: "silentCatch", line: 1 }],
     },
-    // json/text with arguments or as a plain lookup is NOT the parse idiom.
+
     {
       code: "client.json(payload).catch(() => null);",
       errors: [{ messageId: "silentCatch" }],

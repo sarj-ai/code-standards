@@ -35,17 +35,17 @@ RULE_TESTER.run("no-insecure-random-id", rule, {
       code: "function createToken(Math) { return Math.random(); }",
     },
     { code: NO_INSECURE_RANDOM_ID_DOCUMENTATION.examples[0].files[0].source },
-    // Bare `Math.random()` for jitter — not an identifier.
+
     { code: "const jitter = Math.random() * 100;" },
-    // Sampling / probability roll.
+
     { code: "if (Math.random() < 0.5) doThing();" },
     { code: "const sample = Math.random();" },
     { code: "const roll = Math.floor(Math.random() * 6) + 1;" },
-    // A `.toString(36)` on something that is NOT Math.random() is fine.
+
     { code: "const hex = (255).toString(16);" },
     { code: "const label = value.toString(36);" },
-    // A radix conversion is not itself a security boundary. These commonly
-    // produce ephemeral UI or serialization keys.
+
+
     { code: "const x = Math.random().toString(36).slice(2);" },
     { code: "const value = Math.random().toString(36);" },
     { code: "function spinning() { return Math.random(); }" },
@@ -57,21 +57,21 @@ RULE_TESTER.run("no-insecure-random-id", rule, {
     {
       code: "const simulateTokenRefreshResponse = () => ({ id: `sent-${Date.now()}-${Math.random()}` });",
     },
-    // `.toString` with a non-36 radix on Math.random() is not the flagged idiom
-    // and the binding name is non-sensitive.
+
+
     { code: "const ratio = Math.random().toString();" },
     { code: "const ratio = Math.random().toString(10);" },
-    // The prescribed secure replacements.
+
     { code: "const id = crypto.randomUUID();" },
     {
       code: "const key = crypto.getRandomValues(new Uint8Array(16));",
     },
-    // Sensitive-sounding name but no Math.random() involved.
+
     { code: "const token = generateToken();" },
-    // Math.random() whose enclosing name is not sensitive.
+
     { code: "const opacity = Math.random();" },
     { code: "const delayMs = Math.random() * 1000;" },
-    // Math.random() in a property with a non-sensitive name.
+
     { code: "const cfg = { jitter: Math.random() };" },
     {
       code: "const tempPath = filePath + '.tmp.' + Math.random().toString(36).slice(2);",
@@ -85,12 +85,12 @@ RULE_TESTER.run("no-insecure-random-id", rule, {
     {
       code: "class ContextIdFactory { private readonly session = Math.random(); }",
     },
-    // Bare `id`/`key`/`session` substrings alone no longer fire — we require a
-    // strong security signal and err toward suppressing ambiguous ids.
+
+
     { code: "const id = Math.random();" },
     { code: "const obj = { sessionId: Math.random() };" },
-    // Random value concatenated into a path — even the toString(36) idiom is
-    // suppressed here.
+
+
     { code: "const output = base + '/tmp/' + Math.random().toString(36);" },
     {
       code: "class Mocker { get string() { return Math.random().toString(36).substring(7); } }",
@@ -118,7 +118,7 @@ RULE_TESTER.run("no-insecure-random-id", rule, {
       code: NO_INSECURE_RANDOM_ID_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "insecureRandomId" }],
     },
-    // Genuine security-token shapes with the toString(36) idiom are flagged.
+
     {
       code: "const token = Math.random().toString(36);",
       errors: [{ messageId: "insecureRandomId" }],
@@ -127,7 +127,7 @@ RULE_TESTER.run("no-insecure-random-id", rule, {
       code: "const csrfToken = Math.random().toString(36).slice(2);",
       errors: [{ messageId: "insecureRandomId" }],
     },
-    // Trigger 1 (name-based): strong security name — variable declarators.
+
     {
       code: "const apiKey = Math.random();",
       errors: [{ messageId: "insecureRandomId" }],
@@ -152,17 +152,17 @@ RULE_TESTER.run("no-insecure-random-id", rule, {
       code: "const salt = Math.random();",
       errors: [{ messageId: "insecureRandomId" }],
     },
-    // Name-based even with surrounding arithmetic.
+
     {
       code: "const token = `t-${Math.random()}`;",
       errors: [{ messageId: "insecureRandomId" }],
     },
-    // Strong security name in an object property key.
+
     {
       code: "const obj = { 'access-token': Math.random() };",
       errors: [{ messageId: "insecureRandomId" }],
     },
-    // Strong security name in a class property definition.
+
     {
       code: "class S { token = Math.random(); }",
       errors: [{ messageId: "insecureRandomId" }],

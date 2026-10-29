@@ -1,4 +1,4 @@
-/** Regressions labeled before widening static-member recognition. */
+
 import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";

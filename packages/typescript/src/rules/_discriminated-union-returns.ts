@@ -11,15 +11,30 @@ interface ReturnPaths {
   readonly fallsThrough: boolean;
 }
 
-interface PathBudget {
-  readonly sourceCode: TSESLint.SourceCode;
-  visits: number;
-  objects: number;
-}
-
 const MAX_PATH_VISITS = 2048;
 const MAX_RETURN_OBJECTS = 256;
 const MAX_PATH_DEPTH = 64;
+
+class PathBudget {
+  #visits = 0;
+  #objects = 0;
+
+  readonly sourceCode: TSESLint.SourceCode;
+
+  constructor(sourceCode: TSESLint.SourceCode) {
+    this.sourceCode = sourceCode;
+  }
+
+  within(depth: number): boolean {
+    this.#visits += 1;
+    return this.#visits <= MAX_PATH_VISITS && depth <= MAX_PATH_DEPTH;
+  }
+
+  recordObject(): boolean {
+    this.#objects += 1;
+    return this.#objects <= MAX_RETURN_OBJECTS;
+  }
+}
 
 interface Contract {
   readonly members: readonly TSESTree.TypeElement[];
@@ -43,7 +58,7 @@ export function discriminatedUnionReturns(node: Producer, sourceCode: TSESLint.S
   if (node.generator || node.body === undefined) return undefined;
   const contract = returnContract(node, sourceCode);
   if (contract === undefined) return undefined;
-  const budget: PathBudget = { sourceCode, visits: 0, objects: 0 };
+  const budget = new PathBudget(sourceCode);
   const paths = node.body.type === AST_NODE_TYPES.BlockStatement ? blockPaths(node.body, budget, 0) : {
     objects: returnedObjects(node.body, budget, 0) ?? [], fallsThrough: false,
   };
@@ -194,7 +209,7 @@ function hasTagSpecificPayload(
 
 /** Only analyze simple paths whose completion and return values are locally explicit. */
 function statementPaths(statement: TSESTree.Statement, budget: PathBudget, depth: number): ReturnPaths | undefined {
-  if (!withinBudget(budget, depth)) return undefined;
+  if (!budget.within(depth)) return undefined;
   switch (statement.type) {
     case AST_NODE_TYPES.ReturnStatement: {
       if (statement.argument === null) return undefined;
@@ -224,10 +239,10 @@ function statementPaths(statement: TSESTree.Statement, budget: PathBudget, depth
 
 /** Every switch arm must terminate; only empty labels may share the next body. */
 function switchPaths(statement: TSESTree.SwitchStatement, budget: PathBudget, depth: number): ReturnPaths | undefined {
-  if (!withinBudget(budget, depth) || !reachableSwitch(statement, budget.sourceCode)) return undefined;
+  if (!budget.within(depth) || !reachableSwitch(statement, budget.sourceCode)) return undefined;
   const objects: TSESTree.ObjectExpression[] = [];
   for (const branch of statement.cases) {
-    if (!withinBudget(budget, depth + 1)) return undefined;
+    if (!budget.within(depth + 1)) return undefined;
     if (branch.consequent.length === 0) continue;
     const paths = switchArmPaths(branch.consequent, budget, depth + 1);
     if (paths === undefined) return undefined;
@@ -280,7 +295,7 @@ function reachableSwitchLabels(statement: TSESTree.SwitchStatement, kind: "strin
 
 /** Nested conditions can contradict their switch label; do not invent another witness. */
 function switchArmPaths(statements: readonly TSESTree.Statement[], budget: PathBudget, depth: number): ReturnPaths | undefined {
-  if (!withinBudget(budget, depth) || statements.length !== 1) return undefined;
+  if (!budget.within(depth) || statements.length !== 1) return undefined;
   const statement = statements[0];
   if (statement?.type === AST_NODE_TYPES.BlockStatement) return switchArmPaths(statement.body, budget, depth + 1);
   if (statement?.type === AST_NODE_TYPES.ThrowStatement) return { objects: [], fallsThrough: false };
@@ -294,7 +309,7 @@ function blockPaths(block: TSESTree.BlockStatement, budget: PathBudget, depth: n
 }
 
 function statementsPaths(statements: readonly TSESTree.Statement[], budget: PathBudget, depth: number): ReturnPaths | undefined {
-  if (!withinBudget(budget, depth)) return undefined;
+  if (!budget.within(depth)) return undefined;
   const objects: TSESTree.ObjectExpression[] = [];
   for (const statement of statements) {
     const paths = statementPaths(statement, budget, depth + 1);
@@ -306,10 +321,9 @@ function statementsPaths(statements: readonly TSESTree.Statement[], budget: Path
 }
 
 function returnedObjects(expression: TSESTree.Expression, budget: PathBudget, depth: number): readonly TSESTree.ObjectExpression[] | undefined {
-  if (!withinBudget(budget, depth)) return undefined;
+  if (!budget.within(depth)) return undefined;
   if (expression.type === AST_NODE_TYPES.ObjectExpression) {
-    budget.objects += 1;
-    return budget.objects > MAX_RETURN_OBJECTS ? undefined : [expression];
+    return budget.recordObject() ? [expression] : undefined;
   }
   if (expression.type !== AST_NODE_TYPES.ConditionalExpression || expression.test.type === AST_NODE_TYPES.Literal) return undefined;
   const consequent = returnedObjects(expression.consequent, budget, depth + 1);
@@ -317,10 +331,6 @@ function returnedObjects(expression: TSESTree.Expression, budget: PathBudget, de
   return consequent === undefined || alternate === undefined ? undefined : [...consequent, ...alternate];
 }
 
-function withinBudget(budget: PathBudget, depth: number): boolean {
-  budget.visits += 1;
-  return budget.visits <= MAX_PATH_VISITS && depth <= MAX_PATH_DEPTH;
-}
 
 function propertyName(node: TSESTree.Property | TSESTree.TSPropertySignature): string | undefined {
   if (node.computed) return undefined;

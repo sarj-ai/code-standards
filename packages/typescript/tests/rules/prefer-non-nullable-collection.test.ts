@@ -78,7 +78,7 @@ RULE_TESTER.run("prefer-non-nullable-collection", rule, {
     "function search(ids: string[] | null): Item[] | undefined { return undefined; }",
     "type Result = Promise<Item[] | null>;",
     "type MaybeItem = Item | null;",
-    // A declaration alone cannot prove that nullish and empty carry the same meaning.
+
     "interface Input { organizationIds: OrganizationId[] | null; }",
     "type Response = { items: null | string[] | undefined };",
     "class State { statuses!: Array<Status> | undefined; }",

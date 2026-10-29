@@ -1,5 +1,5 @@
 // vitest: shared-module-graph
-/** Executable contract for TypeScript SQL extraction and masking. */
+
 
 import * as tsParser from "@typescript-eslint/parser";
 import { type TSESTree } from "@typescript-eslint/utils";
@@ -10,7 +10,7 @@ import { createSqlListener, sqlSingleQuotedRanges, sqlTextOf, stripSqlNoise } fr
 
 const RULE_ID = "probe/sql";
 
-/** Every SQL text `createSqlListener` hands a rule, in dispatch order. */
+
 function dispatched(code: string): string[] {
   const linter = new Linter();
   const messages = linter.verify(code, {

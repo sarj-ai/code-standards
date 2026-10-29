@@ -205,8 +205,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // The target state, and the corpus's overwhelming convention: 175 of 229
-    // exported classes look like this.
+
+
     {
       filename: SRC,
       code: `
@@ -228,7 +228,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // The port itself. `abstract class X` must never fire.
+
     {
       filename: SRC,
       code: `
@@ -271,8 +271,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Extending anything is a form of port: framework base classes, error
-    // classes, React components, Lexical nodes, Durable Objects, Workflows.
+
+
     {
       filename: SRC,
       code: `
@@ -324,8 +324,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Framework-mandated: NestJS-style providers are instantiated by class
-    // token, so the class IS the contract.
+
+
     {
       filename: SRC,
       code: `
@@ -347,7 +347,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Not exported: a module-private helper has no consumer to protect.
+
     {
       filename: SRC,
       code: `
@@ -358,7 +358,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Value object / DTO: constructor only, no public method.
+
     {
       filename: SRC,
       code: `
@@ -379,7 +379,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Accessors only — `kind === "get"` is not a public method.
+
     {
       filename: SRC,
       code: `
@@ -390,7 +390,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Only private/protected/static/#private members, so nothing to port.
+
     {
       filename: SRC,
       code: `
@@ -404,7 +404,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // No constructor at all: a zod-schema holder / static namespace class.
+
     {
       filename: SRC,
       code: `
@@ -414,7 +414,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Primitive-only constructor: a value object, no collaborator seam.
+
     {
       filename: SRC,
       code: `
@@ -426,8 +426,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Config bag by TYPE suffix — real FP: one first-party HTTP-client site
-    // whose `JsonHttpClient` takes an all-primitive options record.
+
+
     {
       filename: SRC,
       code: `
@@ -438,7 +438,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Config bag by TYPE suffix where the parameter name is innocent.
+
     {
       filename: SRC,
       code: `
@@ -449,8 +449,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Callback/observer bag — real FP: one first-party realtime-session
-    // manager that takes an OUTBOUND observer bag.
+
+
     {
       filename: SRC,
       code: `
@@ -460,7 +460,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Logger-only and clock-only dependencies are weak evidence of a seam.
+
     {
       filename: SRC,
       code: `
@@ -480,10 +480,10 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Composition root — real FP: one first-party service factory that
-    // receives one `db` and `new`s eleven services onto its own fields.
-    // A class that BUILDS more than it RECEIVES is where concrete types are
-    // supposed to be named.
+
+
+
+
     {
       filename: SRC,
       code: `
@@ -500,7 +500,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Inline object type is data, not a nominal collaborator.
+
     {
       filename: SRC,
       code: `
@@ -511,7 +511,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Function-typed parameter is a callback, not a wholesale collaborator.
+
     {
       filename: SRC,
       code: `
@@ -522,8 +522,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Taken but never stored: a constructor argument used once and discarded is
-    // not a retained collaborator.
+
+
     {
       filename: SRC,
       code: `
@@ -534,8 +534,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Path gating — the same firing source is silent in a test, a story, a
-    // script, and a generated file.
+
+
     {
       filename: "/repo/tests/record-normalizer.test.ts",
       code: `
@@ -587,10 +587,10 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // FRAMEWORK ROUTERS. Three copies of one job-runner template across three
-    // first-party repos — a class the server's bootstrap
-    // mounts and nothing ever injects. The original docstring already called the
-    // first one its single borderline false positive.
+
+
+
+
     {
       filename: "/repo/src/router.ts",
       code: `
@@ -609,7 +609,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // The bare `Router()` spelling of the same factory.
+
     {
       filename: "/repo/src/router.ts",
       code: `
@@ -623,7 +623,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Handling the framework's own namespaced request/response is the same signal.
+
     {
       filename: "/repo/src/webhook.ts",
       code: `
@@ -636,11 +636,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // TRANSPORT WRAPPERS. Two first-party `ky`-wrapper sites, verbatim in
-    // shape as each other. The Python twin
-    // excludes `*Client` for exactly this reason: an ABC over a class whose only
-    // collaborator is somebody else's HTTP transport substitutes nothing, and a
-    // consumer's test fakes the transport rather than the wrapper.
+
+
+
+
+
     {
       filename: "/repo/src/lib/http-client.ts",
       code: `
@@ -692,10 +692,10 @@ RULE_TESTER.run("require-port-for-service", rule, {
       `,
     },
 
-    // OPTIONS-OBJECT CONSTRUCTORS — the shapes the walk must NOT fire on.
-    //
-    // Destructured but never retained: an argument read once is not a
-    // collaborator, exactly as for a named parameter.
+
+
+
+
     {
       filename: SRC,
       code: `
@@ -709,9 +709,9 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // A config bag is a config bag whether it arrives whole or destructured:
-    // the `*Options` suffix that filters `options: HttpClientOptions` has to
-    // filter every binding pulled out of it too.
+
+
+
     {
       filename: SRC,
       code: `
@@ -727,7 +727,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Config-ish BINDING names carry the same signal from the other side.
+
     {
       filename: SRC,
       code: `
@@ -743,7 +743,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Renamed onto a config-ish LOCAL name.
+
     {
       filename: SRC,
       code: `
@@ -755,8 +755,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Renamed off a config-ish KEY name. Either side reading as config-ish is
-    // enough to drop the binding.
+
+
     {
       filename: SRC,
       code: `
@@ -768,9 +768,9 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Inline type literal whose members are primitives: a data record, not a
-    // set of collaborators. The member types are visible here, so the rule uses
-    // them rather than falling back to the annotation's name.
+
+
+
     {
       filename: SRC,
       code: `
@@ -785,7 +785,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // A rest element names no single binding a port could protect.
+
     {
       filename: SRC,
       code: `
@@ -797,7 +797,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // A nested pattern is not a single binding either.
+
     {
       filename: SRC,
       code: `
@@ -809,7 +809,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // A computed key names nothing statically.
+
     {
       filename: SRC,
       code: `
@@ -821,7 +821,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // A string-literal key is not an identifier the rule can match to a member.
+
     {
       filename: SRC,
       code: `
@@ -833,7 +833,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // No annotation at all: nothing names the collaborator's type.
+
     {
       filename: SRC,
       code: `
@@ -844,8 +844,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // A union annotation is not a bare reference, the same rule a named
-    // parameter is held to.
+
+
     {
       filename: SRC,
       code: `
@@ -858,8 +858,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Destructuring changes nothing about the other guards: a class that
-    // already implements a port stays silent.
+
+
     {
       filename: SRC,
       code: `
@@ -871,10 +871,10 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // A GENERIC TYPE PARAMETER is a placeholder, not an implementation. Two
-    // public-corpus classes were reported for one: a tree node holding
-    // `{ value }: { value: T }` and an audit helper holding two
-    // `z.ZodTypeAny`-constrained schema parameters.
+
+
+
+
     {
       filename: SRC,
       code: `
@@ -885,7 +885,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // The constructor's own type parameter counts the same way.
+
     {
       filename: SRC,
       code: `
@@ -896,9 +896,9 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // A BUILT-IN CONTAINER is the same data an inline `{ … }` annotation is,
-    // wearing a nominal name — one public-corpus form model stored three
-    // `Record<…>` fields and was reported for them.
+
+
+
     {
       filename: SRC,
       code: `
@@ -924,11 +924,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // A FUNCTION TYPE behind a nominal alias is still a callback. Three
-    // public-corpus classes were reported for one: a timer holding a
-    // `type HandlerType = (t: Timer) => Promise<void>`, a manager-api store
-    // holding `SetState` / `GetState`, and an event dispatcher holding a
-    // `type Replayer = (e: EventInfoWrapper[]) => void`.
+
+
+
+
+
     {
       filename: SRC,
       code: `
@@ -951,11 +951,11 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // A bag declared in ANOTHER module cannot be read, and is left alone rather
-    // than guessed at — the documented false negative in the header. Guessing
-    // here is what a first cut did, and it invented four false positives in the
-    // public corpus (a boolean, two numbers and a pair of `setState`/`getState`
-    // functions, all of them bindings out of an unresolvable bag).
+
+
+
+
+
     {
       filename: SRC,
       code: `
@@ -967,7 +967,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // A qualified bag names another module by construction.
+
     {
       filename: SRC,
       code: `
@@ -978,7 +978,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // An alias to something that is not an object literal resolves to no members.
+
     {
       filename: SRC,
       code: `
@@ -990,8 +990,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // A bag member that is a FUNCTION type is a callback, not a collaborator —
-    // the shape one public-corpus store used for `setState` / `getState`.
+
+
     {
       filename: SRC,
       code: `
@@ -1007,7 +1007,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // A bag member with a config-ish TYPE keeps the suffix guard.
+
     {
       filename: SRC,
       code: `
@@ -1019,7 +1019,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // A bag member the destructuring does not name contributes nothing.
+
     {
       filename: SRC,
       code: `
@@ -1031,7 +1031,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    // Nor does it change the value-object rule: no public method, no report.
+
     {
       filename: SRC,
       code: `
@@ -1336,9 +1336,9 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // GROUND TRUTH — the origin case raised in review on a first-party repo,
-    // verbatim in shape. Its sibling in the same directory tree does declare an
-    // `ITaskTrackerService` port.
+
+
+
     {
       filename: SRC,
       code: `
@@ -1366,7 +1366,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // Parameter properties are storage too — one first-party service site.
+
     {
       filename: SRC,
       code: `
@@ -1387,7 +1387,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // A same-stem structural port does not cover an additional public method.
+
     {
       filename: SRC,
       code: `
@@ -1409,9 +1409,9 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // A dependency BAG spread onto fields is still a collaborator seam — one
-    // first-party reporting site. `Deps` is
-    // deliberately not in the config-ish suffix list.
+
+
+
     {
       filename: SRC,
       code: `
@@ -1439,8 +1439,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // Multiple collaborators, one of which is a config bag: the config bag is
-    // dropped from the message but the real dependency still fires.
+
+
     {
       filename: SRC,
       code: `
@@ -1470,7 +1470,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // A qualified type name (`catalog.Client`) is still a nominal collaborator.
+
     {
       filename: SRC,
       code: `
@@ -1491,7 +1491,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // `export default class` is exported too.
+
     {
       filename: SRC,
       code: `
@@ -1512,9 +1512,9 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // A defaulted collaborator is still a retained collaborator, and a
-    // constructor that ALSO `new`s something that is not stored on a field is
-    // not a composition root.
+
+
+
     {
       filename: SRC,
       code: `
@@ -1538,10 +1538,10 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // Building ONE internal helper while receiving a real collaborator is an
-    // ordinary service, not a wiring class. The first cut of the composition-root
-    // guard exempted any `new` in a constructor and silently lost two sibling
-    // message handlers in one first-party repo.
+
+
+
+
     {
       filename: SRC,
       code: `
@@ -1566,8 +1566,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // `.tsx` is not an exemption on its own — only `extends` is. A service that
-    // happens to live in a component file still fires.
+
+
     {
       filename: "/repo/src/features/panel.tsx",
       code: `
@@ -1588,9 +1588,9 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // The framework-wiring guard is about routers, not about `express` being in
-    // the file. Drop the `Router()` call and the namespaced parameter types and
-    // the same shape is an ordinary injected service again.
+
+
+
     {
       filename: "/repo/src/router.ts",
       code: `
@@ -1615,8 +1615,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // The DOM `Request`/`Response` a Workers `fetch` handler names are unqualified
-    // and must not read as express wiring.
+
+
     {
       filename: "/repo/src/worker.ts",
       code: `
@@ -1638,7 +1638,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // A first-party domain port keeps an Http-prefixed service actionable.
+
     {
       filename: "/repo/src/services/message-service.ts",
       code: `
@@ -1659,7 +1659,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // The same-file port exists but does not cover the class's full public surface.
+
     {
       filename: "/repo/src/app/api/report-parser.ts",
       code: `
@@ -1683,8 +1683,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // The `unless a same-file interface shares the stem` arm, on a `*Client` name:
-    // an in-file `IApiClient` the class fails to implement is real drift.
+
+
     {
       filename: "/repo/src/lib/api-client.ts",
       code: `
@@ -1708,7 +1708,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // A transport alongside a real collaborator is not a lone transport.
+
     {
       filename: "/repo/src/lib/api-client.ts",
       code: `
@@ -1734,7 +1734,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // A `*Client` whose single collaborator is a domain port, not a transport.
+
     {
       filename: "/repo/src/lib/api-client.ts",
       code: `
@@ -1755,9 +1755,9 @@ RULE_TESTER.run("require-port-for-service", rule, {
       ],
     },
 
-    // OPTIONS-OBJECT CONSTRUCTORS. `constructor({ a, b }: Deps)` is the same
-    // seam as `constructor(a: A, b: B)`; the parameter walk used to see only the
-    // second spelling.
+
+
+
     {
       filename: SRC,
       code: `
@@ -1786,8 +1786,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // Retaining selected members from a named options bag is the same seam as
-    // destructuring that bag in the parameter list.
+
+
     {
       filename: SRC,
       code: `
@@ -1817,7 +1817,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // A `#private` field is storage too.
+
     {
       filename: SRC,
       code: `
@@ -1839,8 +1839,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // A DEFAULTED binding is still a retained collaborator; the default sits
-    // between the key and the identifier the body stores.
+
+
     {
       filename: SRC,
       code: `
@@ -1862,7 +1862,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // A REST element next to a real binding drops only itself.
+
     {
       filename: SRC,
       code: `
@@ -1888,8 +1888,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // A RENAMED binding: storage is checked against the local name, the type
-    // against the contract's own key.
+
+
     {
       filename: SRC,
       code: `
@@ -1911,8 +1911,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // An INLINE TYPE LITERAL annotation names each member's type outright, so
-    // the message reports the collaborator's own type rather than the bag's.
+
+
     {
       filename: SRC,
       code: `
@@ -1937,8 +1937,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // A `type` alias bag resolves the same way an `interface` bag does, and a
-    // member's own namespace qualifier survives into the message.
+
+
     {
       filename: SRC,
       code: `
@@ -1960,8 +1960,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // An INTERSECTION alias (`type Deps = Base & { … }`) is how a bag is usually
-    // extended; the literal arm still resolves.
+
+
     {
       filename: SRC,
       code: `
@@ -1983,7 +1983,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // An EXPORTED bag declaration resolves too.
+
     {
       filename: SRC,
       code: `
@@ -2005,10 +2005,10 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // The three name-hiding guards are narrow, not a blanket. A collaborator
-    // whose type merely SHARES a name with a type parameter of a different
-    // class, an alias to an object type, and a type whose name only starts with
-    // a container's, all still fire.
+
+
+
+
     {
       filename: SRC,
       code: `
@@ -2037,8 +2037,8 @@ RULE_TESTER.run("require-port-for-service", rule, {
         },
       ],
     },
-    // A destructured bag ALONGSIDE a named parameter: both spellings feed the
-    // same list.
+
+
     {
       filename: SRC,
       code: `
