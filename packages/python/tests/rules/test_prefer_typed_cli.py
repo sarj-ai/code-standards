@@ -17,6 +17,71 @@ CASES = (
     ("raw-index", "import sys as system\nservice = system.argv[1]", 1),
     ("direct-alias", "from sys import argv as arguments\nmain(arguments)", 1),
     ("program-name", "import sys\nname = sys.argv[0]", 0),
+    (
+        "literal-program-name-fallback",
+        'import sys\nprogram = sys.argv[0] if sys.argv else "tool.py"\n',
+        0,
+    ),
+    (
+        "sys-import-alias",
+        'import sys as system\nprogram = system.argv[0] if system.argv else "tool.py"\n',
+        0,
+    ),
+    (
+        "argv-import-alias",
+        'from sys import argv as arguments\nprogram = arguments[0] if arguments else "tool.py"\n',
+        0,
+    ),
+    (
+        "real-argv-slice-retained-error",
+        "import sys\narguments = sys.argv[1:] if sys.argv else []\n",
+        2,
+    ),
+    (
+        "real-argv-index-retained-error",
+        'import sys\nargument = sys.argv[1] if sys.argv else "fallback"\n',
+        2,
+    ),
+    (
+        "actual-match-plus-metadata",
+        'import sys\nmatch sys.argv:\n    case [_, value]: pass\nprogram = sys.argv[0] if sys.argv else "tool.py"\n',
+        1,
+    ),
+    (
+        "argparse-plus-metadata",
+        'import argparse, sys\nparser = argparse.ArgumentParser()\nprogram = sys.argv[0] if sys.argv else "tool.py"\n',
+        1,
+    ),
+    (
+        "nonliteral-fallback-not-proven",
+        "import sys\nprogram = sys.argv[0] if sys.argv else fallback()\n",
+        1,
+    ),
+    (
+        "nonstring-fallback-not-metadata",
+        "import sys\nprogram = sys.argv[0] if sys.argv else None\n",
+        1,
+    ),
+    (
+        "false-is-not-int-zero",
+        'import sys\nprogram = sys.argv[False] if sys.argv else "tool.py"\n',
+        2,
+    ),
+    (
+        "dynamic-index-not-proven",
+        'import sys\nprogram = sys.argv[index] if sys.argv else "tool.py"\n',
+        2,
+    ),
+    (
+        "whole-argv-retained-error",
+        'import sys\nprogram = sys.argv if sys.argv else "tool.py"\n',
+        2,
+    ),
+    (
+        "shadowed-sys-preserves-abstention",
+        'import sys\ndef name(sys):\n    return sys.argv[0] if sys.argv else "tool.py"\n',
+        0,
+    ),
     ("assign-argv", "import sys\nsys.argv = ['tool']", 0),
     ("assign-slice", "import sys\nsys.argv[:] = ['tool']", 0),
     ("shadowed-sys", "import sys\ndef f(sys):\n    return sys.argv[1:]", 0),
