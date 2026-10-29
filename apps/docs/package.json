@@ -14,7 +14,7 @@
     "build": "astro build",
     "check": "astro check && tsc --project tsconfig.tools.json",
     "lint": "eslint . --max-warnings 0",
-    "test:routing": "node --test scripts/site.test.ts",
+    "test:routing": "node --test scripts/site.test.ts scripts/format-python-examples.test.ts",
     "dev": "astro dev",
     "preview": "astro preview",
     "deploy": "wrangler deploy",
