@@ -27,7 +27,6 @@ if TYPE_CHECKING:
     from sarj_python_lint.rules._ast_index import NodeIndex
 
 
-_NO_BODY = frozenset({204, 304})
 _NON_JSON_RESPONSES = frozenset(
     {"FileResponse", "HTMLResponse", "PlainTextResponse", "RedirectResponse", "StreamingResponse"}
 )
@@ -56,7 +55,9 @@ class FastapiClassRouterContract(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Tests, generated code, and hidden routes are excluded. FastAPI application construction and include_router composition are allowed.",
-            "Response-model checks exclude 204/304 responses and explicit stream/file/HTML/text/redirect responses.",
+            "Response-model checks exclude literal or import-proven 204/205/304 statuses and proven non-JSON response classes, including raw Response.",
+            "Unpacked metadata or an explicit unresolved status cannot prove a JSON response; receiver ownership remains checked while response-model inference abstains.",
+            "Response classes require unshadowed native import provenance; direct provider writes/escapes, custom classes, and unresolved defaults disable JSON-model inference.",
         ),
         examples=(
             RuleExample(
@@ -211,11 +212,10 @@ def _response_problem(
     function: ast.FunctionDef | ast.AsyncFunctionDef, route: Route, index: FastapiIndex
 ) -> str | None:
     keywords = route.keywords
-    status = keywords.get("status_code")
-    if isinstance(status, ast.Constant) and status.value in _NO_BODY:
-        return None
     response_class = keywords.get("response_class") or route.inherited_response_class
     if response_class is not None and flat_name(response_class) in _NON_JSON_RESPONSES:
+        return None
+    if not index.can_infer_json_response(route):
         return None
     response_model = keywords.get("response_model")
     if response_model is None or (isinstance(response_model, ast.Constant) and response_model.value is None):

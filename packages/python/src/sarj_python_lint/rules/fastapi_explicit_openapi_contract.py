@@ -20,6 +20,7 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._ast_index import children
 from sarj_python_lint.rules._fastapi import (
+    NO_BODY_STATUSES,
     SCHEMA_MARKERS,
     FastapiIndex,
     Route,
@@ -89,6 +90,9 @@ class FastapiExplicitOpenapiContract(Rule):
         limitations=(
             "Hidden routes, WebSocket handlers, tests, generated files, documentation-source examples, and unrelated decorators are excluded.",
             "Dynamic response mappings are accepted when their contents cannot be resolved statically.",
+            "Response-body/model inference abstains for unresolved status/class metadata, direct native-provider writes/escapes, and opaque unpacked defaults; no-body JSON metadata includes 205.",
+            "Direct-status alias/callee/catch recognition retains its existing limits; broader coverage requires separate reachability and runtime-dispatch evidence.",
+            "Route conflicts require unconditional registrations on the same local router; conditional composition requires trusted route/schema validation.",
             "Operation ID conflicts require unconditional registrations with literal IDs and paths on the same local router; conditional registrations, dynamic IDs, OpenAPI overrides, and cross-router composition require generated-schema validation.",
             "Explicit status and parameter-location findings are organizational policy even when FastAPI inference would generate valid OpenAPI.",
             (
@@ -268,7 +272,7 @@ class FastapiExplicitOpenapiContract(Rule):
                 findings.extend(_check_metadata(route, index))
                 findings.extend(_check_projection(route))
                 findings.extend(_check_response_statuses(route, index))
-        findings.extend(_check_route_conflicts(declared))
+        findings.extend(_check_route_conflicts(declared, context.parents))
         findings.extend(_check_operation_ids(declared, context.parents))
         return [
             Diagnostic(
@@ -548,7 +552,9 @@ def _check_inferred_return(
     if not builds_fixed_record(function, imports=index.imports):
         return []
     for route in _operations(routes):
-        if route.has_unpack:
+        if route.inherited_has_unpack and route.inherited_responses is None:
+            continue
+        if not index.can_infer_json_response(route):
             continue
         response_model = route.keywords.get("response_model")
         status = _status_code(route.keywords.get("status_code"), index) or HTTPStatus.OK
@@ -572,13 +578,22 @@ def _check_return_route(route: Route, contract: _ReturnContract, index: FastapiI
     if contract.erases_schema and not _concrete_response_model(response_model, index):
         problems.add("response annotation erases its OpenAPI schema; define an output model")
     status = _status_code(keywords.get("status_code"), index)
+    proven_status = index.operation_status_code(route)
+    body_status_is_known = proven_status is not None and proven_status not in NO_BODY_STATUSES
     response_class = keywords.get("response_class") or route.inherited_response_class
-    if contract.is_response and status not in _NO_CONTENT_STATUSES and response_class is None:
+    default_class_is_known = not route.inherited_has_unpack and index.response_classes_are_stable
+    if (
+        contract.is_response
+        and status not in _NO_CONTENT_STATUSES
+        and body_status_is_known
+        and response_class is None
+        and default_class_is_known
+    ):
         problems.add("direct Response return requires response_class= for accurate OpenAPI")
     _check_response_body(route, contract, index, problems)
     if response_model is not None and not response_model_none and _schema_erasing(response_model, index):
         problems.add("response_model erases its OpenAPI schema; define an output model")
-    if status in _NO_CONTENT_STATUSES:
+    if status in _NO_CONTENT_STATUSES and status == proven_status:
         if response_model is not None and not response_model_none:
             problems.add(f"status {status} must not declare a response model")
         if not (contract.is_none or contract.is_response):
@@ -589,19 +604,30 @@ def _check_response_body(route: Route, contract: _ReturnContract, index: Fastapi
     response_model = route.keywords.get("response_model")
     response_model_none = response_model is not None and _literal_none(response_model)
     status = _status_code(route.keywords.get("status_code"), index)
+    proven_status = index.operation_status_code(route)
     response_class = route.keywords.get("response_class") or route.inherited_response_class
     response_name = index.response_name(contract.annotation)
     class_name = index.response_name(response_class)
-    response_class_is_unresolved = response_class is not None and not class_name
+    proven_class_name = index.response_class_name(response_class) if response_class is not None else None
+    response_class_is_unresolved = (response_class is not None and (not class_name or proven_class_name is None)) or (
+        response_class is None and (route.inherited_has_unpack or not index.response_classes_are_stable)
+    )
     has_documented_body = (
         _concrete_response_model(response_model, index)
         or any(_documents_response_content(node, status, index) for node in _route_response_nodes(route))
         or class_name in _SELF_DOCUMENTING_RESPONSE_CLASSES
+        or proven_class_name in _SELF_DOCUMENTING_RESPONSE_CLASSES
         or response_class_is_unresolved
     )
-    if response_name not in {"", "Response"} and class_name and response_name != class_name:
+    if (
+        response_name not in {"", "Response"}
+        and class_name
+        and proven_class_name is not None
+        and response_name != class_name
+    ):
         problems.add(f"return type {response_name} conflicts with response_class={class_name}")
-    if contract.is_response and status not in _NO_CONTENT_STATUSES and not has_documented_body:
+    body_status_is_known = proven_status is not None and proven_status not in NO_BODY_STATUSES
+    if contract.is_response and status not in _NO_CONTENT_STATUSES and body_status_is_known and not has_documented_body:
         problems.add("direct Response return requires a concrete response_model or responses content schema")
     elif not contract.is_response and not contract.is_none and response_model_none:
         problems.add("response_model=None suppresses the declared response schema")
@@ -725,14 +751,7 @@ def _check_direct_responses(
     if not direct.statuses:
         return findings
     for route in _operations(routes):
-        responses = _route_response_nodes(route)
-        if any(not isinstance(node, ast.Dict) for node in responses):
-            continue
-        documented = {
-            status for node in responses if isinstance(node, ast.Dict) for status in _response_codes(node, index)
-        }
-        primary = _status_code(route.keywords.get("status_code"), index)
-        missing = sorted(direct.statuses - documented - ({primary} if primary is not None else set()))
+        missing = _undocumented_direct_statuses(route, direct.statuses, index)
         if missing:
             findings.append(
                 _Finding(
@@ -741,6 +760,23 @@ def _check_direct_responses(
                 )
             )
     return findings
+
+
+def _undocumented_direct_statuses(route: Route, statuses: set[int], index: FastapiIndex) -> list[int]:
+    if route.has_unpack or (route.inherited_has_unpack and route.inherited_responses is None):
+        return []
+    proven_primary = index.operation_status_code(route)
+    if proven_primary is None:
+        return []
+    responses = _route_response_nodes(route)
+    if any(not isinstance(node, ast.Dict) for node in responses):
+        return []
+    documented = {status for node in responses if isinstance(node, ast.Dict) for status in _response_codes(node, index)}
+    primary = _status_code(route.keywords.get("status_code"), index)
+    primary_statuses = {proven_primary}
+    if primary is not None:
+        primary_statuses.add(primary)
+    return sorted(statuses - documented - primary_statuses)
 
 
 @dataclass(frozen=True, slots=True)
@@ -794,13 +830,15 @@ def _direct_statuses(
     statuses: list[tuple[ast.Call, int]] = []
     call = current.exc if isinstance(current, ast.Raise) else None
     if isinstance(call, ast.Call) and index.is_http_exception(call.func) and not catches_http_exception:
-        status = _status_code(_keyword(call, "status_code") or (call.args[0] if call.args else None), index)
-        if status is not None:
+        status_node = _keyword(call, "status_code") or (call.args[0] if call.args else None)
+        status = _status_code(status_node, index)
+        if status is not None and index.status_code(status_node) == status:
             statuses.append((call, status))
     returned = current.value if isinstance(current, ast.Return) else None
     if isinstance(returned, ast.Call) and index.is_response(returned.func):
-        status = _status_code(_keyword(returned, "status_code"), index)
-        if status is not None:
+        status_node = _keyword(returned, "status_code")
+        status = _status_code(status_node, index)
+        if status is not None and index.status_code(status_node) == status:
             statuses.append((returned, status))
     return statuses
 
@@ -890,12 +928,12 @@ def _function_scopes(tree: ast.Module) -> dict[int, int]:
     return scopes
 
 
-def _check_route_conflicts(routes: list[tuple[int, Route]]) -> list[_Finding]:
+def _check_route_conflicts(routes: list[tuple[int, Route]], parents: Mapping[ast.AST, ast.AST]) -> list[_Finding]:
     findings: list[_Finding] = []
     seen: dict[tuple[int, str, str, str], Route] = {}
     dynamic: dict[tuple[int, str, str], list[tuple[Route, re.Pattern[str]]]] = {}
     for scope, route in sorted(routes, key=lambda item: item[1].decorator.lineno):
-        if route.path is None or route.method == "*":
+        if route.path is None or route.method == "*" or _conditional_registration(route.decorator, parents):
             continue
         key = scope, route.receiver, route.method, route.path
         if key in seen:

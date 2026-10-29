@@ -342,3 +342,110 @@ def test_mise_rejects_ambiguous_or_escaping_executable_paths(
 
     with pytest.raises((OSError, ValueError)):
         devops_tools._mise_tool(devops_tools.TOOLS["helm"], root=tmp_path, runner=FakeProcessExecutor(resolve))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- malformed native locator protocol must fail closed before attestation.
+
+
+@pytest.mark.parametrize("managed", [False, True], ids=("runtime", "managed"))
+@pytest.mark.parametrize(
+    ("name", "stdout", "elapsed", "error"),
+    [
+        pytest.param("knip", "6.42.1\n", 6, None, id="six-second-exact-knip"),
+        pytest.param("knip", "6.42.0\n", 6, "exact version 6.42.1", id="slow-wrong-knip"),
+        pytest.param("knip", "6.42.1\n", 16, "timed out after 15", id="knip-exceeds-owned-bound"),
+        pytest.param("helm", "v4.3.1\n", 6, "timed out after 5", id="other-tool-keeps-short-bound"),
+        pytest.param("docker", '{"version":"v5.6.1"}\n', 6, "timed out after 5", id="compose-keeps-short-bound"),
+    ],
+)
+def test_version_deadline_accepts_slow_knip_without_relaxing_other_native_contracts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    name: str,
+    stdout: str,
+    elapsed: int,
+    error: str | None,
+    managed: bool,
+) -> None:
+    # An aliased Knip gets its semantic budget; a non-Knip named "knip" does not.
+    executable = tmp_path / ("renamed-native-launcher" if name == "knip" else "knip")
+    executable.write_text("controlled native process fixture", encoding="utf-8")
+    executable.chmod(0o755)
+    calls: list[tuple[tuple[str, ...], float]] = []
+
+    def which(command: str, *, path: str | None = None) -> str | None:
+        assert path is None or sys.executable.startswith(path)
+        return str(executable) if command == name else None
+
+    def native_process(request: ProcessRequest) -> ProcessOutput:
+        argv, cwd, timeout_seconds = request.argv, request.cwd, request.timeout_seconds
+        assert cwd == tmp_path
+        calls.append((tuple(argv), timeout_seconds))
+        # Model the bounded OS runner, not the attestation's choice of deadline.
+        if elapsed > timeout_seconds:
+            raise subprocess.TimeoutExpired(argv, timeout_seconds)
+        return ProcessOutput(0, stdout, "")
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- model executable discovery for the public managed/runtime attestation boundary.
+        "shutil.which", which
+    )
+    tool = devops_tools.TOOLS[name]
+    executor = RequestExecutor(native_process, ProcessCapabilities())
+
+    def attest() -> devops_tools.NativeTool:
+        return (
+            checked_tool(name, root=tmp_path, runner=executor)
+            if managed
+            else devops_tools.checked_runtime_tool(tool, root=tmp_path, runner=executor)
+        )
+
+    if error is None:
+        installed = attest()
+        assert installed.executable == executable.resolve()
+        assert installed.version == "6.42.1"
+    else:
+        with pytest.raises(NativeToolError, match=error):
+            attest()
+    assert calls == [((str(executable), *tool.version_args), 15 if name == "knip" else 5)]
+
+
+def test_managed_knip_keeps_mise_queries_short_before_attesting_aliased_native_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    directory = tmp_path / "bin"
+    directory.mkdir()
+    mise = directory / "mise"
+    mise.write_text("controlled mise fixture", encoding="utf-8")
+    mise.chmod(0o755)
+    installation = tmp_path / "installed"
+    installation.mkdir()
+    executable = installation / "renamed-native-launcher"
+    executable.write_text("controlled native fixture", encoding="utf-8")
+    executable.chmod(0o755)
+    calls: list[tuple[tuple[str, ...], float]] = []
+
+    def which(command: str, *, path: str | None = None) -> str | None:
+        assert path is None or sys.executable.startswith(path)
+        return str(mise) if command == "mise" else None
+
+    def native_process(request: ProcessRequest) -> ProcessOutput:
+        argv, cwd, timeout_seconds = request.argv, request.cwd, request.timeout_seconds
+        assert cwd == tmp_path
+        calls.append((tuple(argv), timeout_seconds))
+        if argv[0] == str(mise):
+            target = installation if argv[4] == "where" else executable
+            return ProcessOutput(0, f"{target}\n", "")
+        if timeout_seconds < 6:
+            raise subprocess.TimeoutExpired(argv, timeout_seconds)
+        return ProcessOutput(0, "6.42.1\n", "")
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- isolate managed executable lookup from the host environment.
+        "shutil.which", which
+    )
+    executor = RequestExecutor(native_process, ProcessCapabilities())
+    result = checked_tool("knip", root=tmp_path, runner=executor)
+
+    assert result.executable == executable.resolve()
+    assert calls == [
+        ((str(mise), "--no-config", "--no-env", "--no-hooks", "where", "npm:knip@6.42.1"), 5),
+        ((str(mise), "--no-config", "--no-env", "--no-hooks", "which", "--tool", "npm:knip@6.42.1", "knip"), 5),
+        ((str(executable), "--version"), 15),
+    ]

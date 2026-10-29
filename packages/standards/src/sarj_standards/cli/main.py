@@ -2101,7 +2101,7 @@ def _staged_file_names(root: Path, *, include_deleted: bool = True) -> list[str]
         cwd=root,
         check=True,
         capture_output=True,
-        env=_git_environment(),
+        env=_git_environment(staged=True),
     )
     names = [part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0") if part]
     return list(dict.fromkeys(names))
@@ -2165,22 +2165,46 @@ def _unstaged_versions(root: Path, staged_paths: Iterable[str]) -> tuple[str, ..
     if git is None:
         msg = "git is required for --staged"
         raise OSError(msg)
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
-        [git, "diff", "--name-only", "-z"],
-        cwd=root,
-        check=True,
-        capture_output=True,
-        env=_git_environment(),
-    )
-    unstaged = {part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0") if part}
     selected = set(_repository_relative_names(root, staged_paths))
+    if not selected:
+        return ()
+    # Keep the index byte-exact; compare text content and refine opaque binary records internally.
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
+        [
+            git,
+            "--literal-pathspecs",
+            "-c",
+            "diff.autoRefreshIndex=false",
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--exit-code",
+            "--numstat",
+            "-z",
+            "--no-renames",
+            "--",
+            *sorted(selected),
+        ],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        env=_git_environment(staged=True),
+    )
+    if completed.returncode not in {0, 1}:
+        completed.check_returncode()
+    entries = _numstat_entries(completed.stdout)
+    unstaged = {
+        path
+        for path, binary in entries.items()
+        if path in selected and (not binary or _binary_worktree_differs(root, git, path))
+    }
     if selected:
         tracked = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- literal selected paths and NUL records preserve authored filenames.
             [git, "--literal-pathspecs", "ls-files", "-v", "-z", "--", *sorted(selected)],
             cwd=root,
             check=True,
             capture_output=True,
-            env=_git_environment(),
+            env=_git_environment(staged=True),
         )
         unstaged.update(
             entry[2:].decode("utf-8", errors="surrogateescape")
@@ -2188,6 +2212,60 @@ def _unstaged_versions(root: Path, staged_paths: Iterable[str]) -> tuple[str, ..
             if entry and (b"a" <= entry[:1] <= b"z" or entry[:1] == b"S")
         )
     return tuple(sorted(unstaged & selected))
+
+
+def _numstat_entries(output: bytes) -> dict[str, bool]:
+    if not output:
+        return {}
+    if not output.endswith(b"\0"):
+        msg = "git diff returned malformed numstat output"
+        raise OSError(msg)
+    entries: dict[str, bool] = {}
+    for record in output[:-1].split(b"\0"):
+        try:
+            added, deleted, raw_path = record.split(b"\t", 2)
+        except ValueError as exc:
+            msg = "git diff returned malformed numstat output"
+            raise OSError(msg) from exc
+        if not raw_path:
+            msg = "git diff returned malformed numstat output"
+            raise OSError(msg)
+        binary = added == deleted == b"-"
+        if not binary and not (added.isdigit() and deleted.isdigit()):
+            msg = "git diff returned malformed numstat output"
+            raise OSError(msg)
+        path = raw_path.decode("utf-8", errors="surrogateescape")
+        if path not in entries or not binary:
+            entries[path] = binary
+    return entries
+
+
+def _binary_worktree_differs(root: Path, git: str, path: str) -> bool:
+    # Binary numstat records can be stat-only. Internal patch generation compares canonical content and mode.
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv and literal selected path, no shell.
+        [
+            git,
+            "--literal-pathspecs",
+            "-c",
+            "diff.autoRefreshIndex=false",
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--exit-code",
+            "--patch",
+            "--no-renames",
+            "--no-color",
+            "--",
+            path,
+        ],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        env=_git_environment(staged=True),
+    )
+    if completed.returncode not in {0, 1}:
+        completed.check_returncode()
+    return bool(completed.stdout)
 
 
 def _repository_relative_names(root: Path, paths: Iterable[str]) -> list[str]:
@@ -2207,11 +2285,11 @@ def _repository_relative_names(root: Path, paths: Iterable[str]) -> list[str]:
     return list(dict.fromkeys(relative_names))
 
 
-def _git_environment() -> dict[str, str]:
+def _git_environment(*, staged: bool = False) -> dict[str, str]:
     return {
         name: value
-        for name, value in os.environ.items()  # ruff: ignore[banned-api] -- intentionally sanitize Git hook routing.
-        if name in _GIT_SAFE_ENV
+        for name, value in os.environ.items()  # ruff: ignore[banned-api] -- staged hooks retain only Git's prospective index selection in addition to the closed environment.
+        if name in _GIT_SAFE_ENV or (staged and name == "GIT_INDEX_FILE")
     }
 
 
