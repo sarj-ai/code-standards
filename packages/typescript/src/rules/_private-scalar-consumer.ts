@@ -41,7 +41,7 @@ export function exportedSymbols(source: ts.SourceFile, checker: ts.TypeChecker):
     (entry.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(entry) : entry) : []);
 }
 
-export function privateScalarConsumer(node: ScalarConsumerNode, sourceCode: TSESLint.SourceCode, services: ParserServicesWithTypeInformation, exports: ReadonlySet<ts.Symbol>): PrivateScalarConsumer | null {
+export function privateScalarConsumer(node: ScalarConsumerNode, sourceCode: TSESLint.SourceCode, services: ParserServicesWithTypeInformation, exports: ReadonlySet<ts.Symbol>, scalarCalls = false): PrivateScalarConsumer | null {
   const native = services.esTreeNodeToTSNodeMap.get(node);
   if ((!ts.isFunctionDeclaration(native) && !ts.isArrowFunction(native)) || !native.body || !independentSignature(native)) return null;
   const checker = services.program.getTypeChecker();
@@ -57,7 +57,7 @@ export function privateScalarConsumer(node: ScalarConsumerNode, sourceCode: TSES
   if (!signature || signature.typeParameters?.length || checker.getTypePredicateOfSignature(signature)) return null;
   const expression = returnedExpression(native.body);
   if (!expression || !checker.isTypeAssignableTo(checker.getTypeAtLocation(expression), checker.getReturnTypeOfSignature(signature))) return null;
-  const reads = scalarParameterReads(parameter, native.body, checker);
+  const reads = scalarParameterReads(parameter, native.body, checker, scalarCalls ? services.program : undefined);
   return reads?.size ? { parameter, reads } : null;
 }
 

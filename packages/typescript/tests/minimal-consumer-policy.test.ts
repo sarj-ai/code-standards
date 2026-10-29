@@ -36,14 +36,23 @@ function selectedConfig(factory: ConfigFactory): Linter.Config[] {
 describe.each(FACTORIES)("%s minimal consumer policy", (_name, factory) => {
   const eslint = new ESLint({cwd: FIXTURE_ROOT, overrideConfigFile: true, overrideConfig: selectedConfig(factory)});
 
-  it("stages the semantic finding as one warning alongside existing owners", async () => {
-    const code = `${PREFIX}type Role = string | 'reader';\ndeclare const user: {name: string; accountId: string};\nconst erased: unknown = user;\nconst view = <Avatar {...{name: user.name, accountId: user.accountId}} />;`;
+  it.each([
+    ["concrete data", "const user = {name: 'Ada', accountId: 'a'};", 1],
+    ["ambient values remain outside the runtime proof", "declare const user: {name: string; accountId: string};", 0],
+  ] as const)("preserves warning policy alongside existing owners: %s", async (_boundary, source, warnings) => {
+    const code = `${PREFIX}type Role = string | 'reader';\n${source}\nconst erased: unknown = user;\nconst view = <Avatar {...{name: 'Ada', accountId: user.accountId}} />;`;
     const [result] = await eslint.lintText(code, {filePath: "policy.tsx"});
     expect(result?.fatalErrorCount).toBe(0);
-    expect(result?.messages.map(({ruleId, severity}) => [ruleId, severity])).toEqual([[REDUNDANT, 2], [WIDENING, 2], [RULE, 1]]);
-    expect(result?.warningCount).toBe(1);
+    expect(result?.messages.map(({ruleId, severity}) => [ruleId, severity])).toEqual([[REDUNDANT, 2], [WIDENING, 2], ...(warnings ? [[RULE, 1]] : [])]);
+    expect(result?.warningCount).toBe(warnings);
     expect(result?.errorCount).toBe(2);
-    expect(new Set(result?.messages.map(({line, column}) => `${line}:${column}`)).size).toBe(3);
+    expect(new Set(result?.messages.map(({line, column}) => `${line}:${column}`)).size).toBe(2 + warnings);
+  });
+
+  it("does not treat an opaque source field annotation as primitive provenance", async () => {
+    const [result] = await eslint.lintText(`${PREFIX}declare const user: {name: string; accountId: string}; const view = <Avatar {...{name: user.name, accountId: user.accountId}} />;`, {filePath: "policy.tsx"});
+    expect(result?.fatalErrorCount).toBe(0);
+    expect(result?.messages).toEqual([]);
   });
 
   it("supports an exact reasoned suppression", async () => {

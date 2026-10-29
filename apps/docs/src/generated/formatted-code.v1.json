@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "3bbe9b18fd599dad781b3f64f96afa84083c5622fcdd3c23fe535bbd0bb2b5c7",
+  "catalogSha256": "ffdca8f3964f93e6b9e4ce68b125e7f949448c5d39f7c873ebfe87c43e6abdb4",
   "cliSha256": "e6f7d14a1d5428e689572e0bca89ed8afb495dadbd2c68b5e9ea9196df13555a",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -1223,6 +1223,75 @@
     "eslint:no-excess-jsx-props": {
       "examples": [
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "jsx.d.ts",
+              "source": "declare module \"react/jsx-runtime\" {\n  export namespace JSX {\n    interface Element {}\n    interface IntrinsicElements {\n      span: { children?: unknown };\n    }\n  }\n}\n"
+            },
+            {
+              "path": "src/avatar.tsx",
+              "source": "export {};\nlet element: any;\nconst opaque = {\n  toString() {\n    return element.props.email;\n  },\n};\nconst name = opaque as unknown as string;\nconst Avatar = ({ displayName }: { displayName: string }) => (\n  <span>{`${displayName}`}</span>\n);\nelement = <Avatar {...{ displayName: name, email: \"needed\" }} />;\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\",\n    \"jsx\": \"react-jsx\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/avatar.tsx",
+          "id": "asserted-source-alias",
+          "outcome": "accept",
+          "scenarioId": "source-provenance",
+          "title": "An asserted alias can still observe forwarded data"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "jsx.d.ts",
+              "source": "declare module \"react/jsx-runtime\" {\n  export namespace JSX {\n    interface Element {}\n    interface IntrinsicElements {\n      span: { children?: unknown };\n    }\n  }\n}\n"
+            },
+            {
+              "path": "src/avatar.tsx",
+              "source": "export {};\nconst Avatar = ({ displayName }: { displayName: string }) => <span>{displayName}</span>;\nconst element = <Avatar {...{ displayName: \"Ada\", email: \"unused\" }} />;\nconst summary = {\n  displayName: (element as { props: { displayName: string } }).props.displayName,\n};\nexport { summary };\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\",\n    \"jsx\": \"react-jsx\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/avatar.tsx",
+          "id": "consumed-scalar-inspection",
+          "outcome": "reject",
+          "scenarioId": "created-value",
+          "title": "A private element exposes only its consumed scalar"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "jsx.d.ts",
+              "source": "declare module \"react/jsx-runtime\" {\n  export namespace JSX {\n    interface Element {}\n    interface IntrinsicElements {\n      span: { children?: unknown };\n    }\n  }\n}\n"
+            },
+            {
+              "path": "src/avatar.tsx",
+              "source": "export {};\nconst target = { ref: 0 };\nconst Avatar = ({ displayName }: { displayName: string }) => <span>{displayName}</span>;\n(Avatar as unknown as { defaultProps: { email: string } }).defaultProps = {\n  get email() {\n    target.ref = 1;\n    return \"fallback\";\n  },\n};\nconst element = <Avatar {...{ displayName: \"Ada\", email: \"needed\" }} />;\nconst observation = target.ref;\nexport { observation };\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\",\n    \"jsx\": \"react-jsx\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/avatar.tsx",
+          "id": "erased-callable-metadata",
+          "outcome": "accept",
+          "scenarioId": "callable-metadata",
+          "title": "Runtime metadata can observe an omitted field"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -1267,6 +1336,121 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Forward only the declared field"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "jsx.d.ts",
+              "source": "declare module \"react/jsx-runtime\" {\n  export namespace JSX {\n    interface Element {}\n    interface IntrinsicElements {\n      span: { children?: unknown };\n    }\n  }\n}\n"
+            },
+            {
+              "path": "src/avatar.tsx",
+              "source": "export {};\nlet element: any;\nconst Avatar = ({ displayName }: { displayName: string }) => <span>{displayName}</span>;\nelement = <Avatar {...{ displayName: \"Ada\", email: \"needed\" }} />;\nObject.defineProperty(Object.prototype, \"ref\", {\n  configurable: true,\n  get() {\n    Object.defineProperty(this, \"children\", {\n      configurable: true,\n      value: element.props.email,\n    });\n    return null;\n  },\n});\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\",\n    \"jsx\": \"react-jsx\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/avatar.tsx",
+          "id": "inherited-runtime-hook",
+          "outcome": "accept",
+          "scenarioId": "prototype-effects",
+          "title": "An inherited runtime hook can observe forwarded data"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "jsx.d.ts",
+              "source": "declare module \"react/jsx-runtime\" {\n  export namespace JSX {\n    interface Element {}\n    interface IntrinsicElements {\n      span: { children?: unknown };\n    }\n  }\n}\n"
+            },
+            {
+              "path": "src/avatar.tsx",
+              "source": "export {};\nconst name = \"Ada\";\nconst Avatar = ({ displayName }: { displayName: string }) => (\n  <span>{`${displayName}`}</span>\n);\nconst element = <Avatar {...{ displayName: name, email: \"unused\" }} />;\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\",\n    \"jsx\": \"react-jsx\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/avatar.tsx",
+          "id": "literal-source-alias",
+          "outcome": "reject",
+          "scenarioId": "source-provenance",
+          "title": "A proven primitive alias preserves the finding"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "jsx.d.ts",
+              "source": "declare module \"react/jsx-runtime\" {\n  export namespace JSX {\n    interface Element {}\n    interface IntrinsicElements {\n      span: { children?: unknown };\n    }\n  }\n}\n"
+            },
+            {
+              "path": "src/avatar.tsx",
+              "source": "export {};\ndeclare function inspect(value: unknown): void;\nconst Avatar = ({ displayName }: { displayName: string }) => <span>{displayName}</span>;\nconst element = <Avatar {...{ displayName: \"Ada\", email: \"needed\" }} />;\ninspect(element);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\",\n    \"jsx\": \"react-jsx\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/avatar.tsx",
+          "id": "opaque-element-consumer",
+          "outcome": "accept",
+          "scenarioId": "created-value",
+          "title": "An opaque consumer can observe or mutate element props"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "jsx.d.ts",
+              "source": "declare module \"react/jsx-runtime\" {\n  export namespace JSX {\n    interface Element {}\n    interface IntrinsicElements {\n      span: { children?: unknown };\n    }\n  }\n}\n"
+            },
+            {
+              "path": "src/avatar.tsx",
+              "source": "export {};\nconst settings = { defaultProps: { email: \"fallback\" } };\nsettings.defaultProps = { email: \"updated\" };\nconst Avatar = ({ displayName }: { displayName: string }) => <span>{displayName}</span>;\nconst element = <Avatar {...{ displayName: \"Ada\", email: \"unused\" }} />;\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\",\n    \"jsx\": \"react-jsx\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/avatar.tsx",
+          "id": "unrelated-object-metadata",
+          "outcome": "reject",
+          "scenarioId": "callable-metadata",
+          "title": "An unrelated data object's metadata preserves the finding"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "jsx.d.ts",
+              "source": "declare module \"react/jsx-runtime\" {\n  export namespace JSX {\n    interface Element {}\n    interface IntrinsicElements {\n      span: { children?: unknown };\n    }\n  }\n}\n"
+            },
+            {
+              "path": "src/avatar.tsx",
+              "source": "export {};\nconst target = { ref: null };\ntarget.ref = null;\nconst Avatar = ({ displayName }: { displayName: string }) => <span>{displayName}</span>;\nconst element = <Avatar {...{ displayName: \"Ada\", email: \"unused\" }} />;\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\",\n    \"jsx\": \"react-jsx\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/avatar.tsx",
+          "id": "unrelated-runtime-object",
+          "outcome": "reject",
+          "scenarioId": "prototype-effects",
+          "title": "An unrelated own-property write preserves the finding"
         }
       ],
       "optionsSchemaSource": null
@@ -4341,6 +4525,49 @@
     },
     "eslint:prefer-minimal-parameter-contract": {
       "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\nconst account = { name: \"Ada\", email: \"a\" };\nfunction formatName(name: string): string {\n  return name.toUpperCase();\n}\nfunction label(user: { email: string; name: string }): string {\n  return formatName(user.name) + user.email;\n}\nlabel(account);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/case.ts",
+          "id": "helper-and-other-field",
+          "outcome": "accept",
+          "scenarioId": "local-scalar-helper",
+          "title": "The consumer still requires a separately read field"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\nconst account = { name: \"Ada\", email: \"a\" };\nfunction formatName(name: string): string {\n  return name.toUpperCase();\n}\nfunction label(user: { email: string; name: string }): string {\n  return formatName(user.name);\n}\nlabel(account);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\nconst account = { name: \"Ada\", email: \"a\" };\nfunction formatName(name: string): string {\n  return name.toUpperCase();\n}\nfunction label(user: { name: string }): string {\n  return formatName(user.name);\n}\nlabel(account);\n"
+            }
+          ],
+          "focusPath": "src/case.ts",
+          "id": "scalar-helper",
+          "outcome": "reject",
+          "scenarioId": "local-scalar-helper",
+          "title": "Only the name crosses a local scalar helper call"
+        },
         {
           "expectedCount": 1,
           "files": [
