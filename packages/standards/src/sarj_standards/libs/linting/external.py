@@ -2697,6 +2697,8 @@ def _run_process(request: ProcessRequest) -> ProcessOutput:
             stdin=stdin,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            # Deliver available bytes so a held-open pipe cannot hide an overflow.
+            bufsize=0,
             start_new_session=os.name == "posix",
             env=request.environment,
         )

@@ -271,6 +271,48 @@ def test_request_timeout_and_output_limits_survive_decoration(tmp_path: Path, *,
         executor.run(replace(noisy, max_stdout_bytes=128))
 
 
+@pytest.mark.parametrize("decorated", [False, True], ids=("bare", "recording"))
+@pytest.mark.parametrize("stream", ["stdout", "stderr"])
+@pytest.mark.parametrize("limit", [0, 128, 65536], ids=("zero", "small", "read-boundary"))
+def test_held_open_output_overflow_fails_before_timeout(
+    tmp_path: Path, stream: str, limit: int, *, decorated: bool
+) -> None:
+    executor = RequestExecutor(DEFAULT_EXECUTOR.run, DEFAULT_EXECUTOR.capabilities) if decorated else DEFAULT_EXECUTOR
+    request = ProcessRequest(
+        (
+            sys.executable,
+            "-c",
+            f"import sys, time; sys.{stream}.write('x' * {limit + 1}); sys.{stream}.flush(); time.sleep(10)",
+        ),
+        tmp_path,
+        {},
+        timeout_seconds=2,
+        max_stdout_bytes=limit,
+        max_stderr_bytes=limit,
+    )
+
+    with pytest.raises(OutputLimitError, match="analyzer output exceeded"):
+        executor.run(request)
+
+
+@pytest.mark.parametrize("stream", ["stdout", "stderr"])
+@pytest.mark.parametrize("limit", [0, 128, 65536], ids=("zero", "small", "read-boundary"))
+def test_output_exactly_at_limit_is_captured_completely(tmp_path: Path, stream: str, limit: int) -> None:
+    request = ProcessRequest(
+        (sys.executable, "-c", f"import sys; sys.{stream}.write('x' * {limit})"),
+        tmp_path,
+        {},
+        max_stdout_bytes=limit,
+        max_stderr_bytes=limit,
+    )
+
+    output = DEFAULT_EXECUTOR.run(request)
+
+    assert output.returncode == 0
+    assert output.stdout == ("x" * limit if stream == "stdout" else "")
+    assert output.stderr == ("x" * limit if stream == "stderr" else "")
+
+
 def test_expired_deadline_prevents_process_launch(tmp_path: Path) -> None:
     marker = tmp_path / "launched"
     request = process_request(
