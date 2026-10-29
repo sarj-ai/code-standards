@@ -27,6 +27,9 @@ from sarj_sql_lint.rule_base import (
         "CREATE TABLE t (id int) ENGINE = MyISAM;",
         "CREATE TABLE t (name varchar(10) COLLATE utf8mb4_unicode_ci);",
         "CREATE TABLE t (id int UNSIGNED);",
+        "CREATE TABLE t (id int unsigned);",
+        "CREATE TABLE t (id int) ENGINE\n\t=InnoDB;",
+        "CREATE TABLE t (name text COLLATE\nutf8mb4_unicode_ci);",
     ],
 )
 def test_dialect_markers_are_recognised(source: str) -> None:
@@ -41,6 +44,10 @@ def test_dialect_markers_are_recognised(source: str) -> None:
         "CREATE INDEX CONCURRENTLY idx ON users USING gin (payload);",
         "ALTER TABLE users ALTER COLUMN id TYPE bigint USING id::bigint;",
         "CREATE TABLE users (created_at TIMESTAMPTZ DEFAULT now());",
+        "SELECT xUNSIGNED, UNSIGNEDx, ΔUNSIGNED, UNSIGNEDΔ FROM users;",
+        "SELECT AUTO_INCREMENTED, AUTOINCREMENTED, ENGINEERED, COLLATE_utf8 FROM users;",
+        "SELECT 'AUTO_INCREMENT AUTOINCREMENT ENGINE=InnoDB COLLATE utf8 UNSIGNED';",
+        "SELECT 1; -- AUTO_INCREMENT AUTOINCREMENT ENGINE=InnoDB COLLATE utf8 UNSIGNED",
     ],
 )
 def test_postgres_ddl_is_not_mistaken_for_another_dialect(source: str) -> None:

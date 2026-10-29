@@ -16,6 +16,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._resource_provenance import import_name_for_binding
 from sarj_python_lint.rules._sql import is_store_module
 from sarj_python_lint.rules._store_sql import StoreQuery, relation_key, sql_child, store_queries
 from sarj_python_lint.rules._store_writes import methods, own_nodes
@@ -50,7 +51,7 @@ class StoreMutationCommandFanout(Rule):
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "This is API consolidation advice, not proof that writes are equivalent. Checks non-test store modules with an upsert-named command reaching an INSERT and a set_-named direct UPDATE of the same exactly qualified relation. A bounded direct same-class helper call can establish that INSERT target; the command name does not prove conflict handling. Dynamic SQL, inherited upserts, unknown owners and unrelated relations abstain.",
+            "This is API consolidation advice, not proof that writes are equivalent. Checks non-test store modules with an upsert-named command reaching an INSERT and a set_-named direct UPDATE of the same exactly qualified relation. A bounded direct same-class helper call can establish that INSERT target; the command name does not prove conflict handling. Dynamic relation names, inherited upserts, unknown decorators or receivers, unknown owners and unrelated relations abstain. Duplicate or overwritten declarations and direct method attribute assignments are excluded; indirect runtime monkey-patching remains unsupported.",
             "Also reviews source-visible abstract set_ methods declared beside an abstract upsert in a store interface. The explicit setter API spelling triggers this interface policy; it does not prove the method is redundant or identify its implementation.",
             "The precise ordinary-field duplication owner SARJ517 takes precedence at the same method. Guarded and multi-statement operations can still be reported for review, but their transaction and concurrency contracts must be retained. One diagnostic is emitted per method, with no automatic edit.",
         ),
@@ -84,16 +85,23 @@ class StoreMutationCommandFanout(Rule):
         from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- native writes only.
 
         queries = tuple(store_queries(context))
-        upserts = _upsert_relations(queries)
+        declared = _declared_methods(context)
+        upserts = _upsert_relations(queries, declared, context)
         selected: set[Function] = set()
         for query in queries:
-            if query.method is None or query.owner is None or not query.method.name.startswith("set_"):
+            if (
+                query.method is None
+                or query.owner is None
+                or not query.method.name.startswith("set_")
+                or declared.get(query.owner, {}).get(query.method.name) is not query.method
+                or not _instance_method(query.method, context)
+            ):
                 continue
             if isinstance(query.statement, exp.Update) and relation_key(
                 sql_child(query.statement, "this")
             ) in upserts.get(query.owner, set()):
                 selected.add(query.method)
-        selected.update(_abstract_setters(context))
+        selected.update(_abstract_setters(context, declared))
         precise = {finding.line for finding in StoreFieldUpdateReusesUpsert().check_context(context)}
         return [
             Diagnostic(
@@ -109,15 +117,17 @@ class StoreMutationCommandFanout(Rule):
         ]
 
 
-def _upsert_relations(queries: tuple[StoreQuery, ...]) -> dict[ast.ClassDef, set[tuple[str, ...]]]:
+def _upsert_relations(
+    queries: tuple[StoreQuery, ...], declared: dict[ast.ClassDef, dict[str, Function]], context: PythonFileContext
+) -> dict[ast.ClassDef, set[tuple[str, ...]]]:
     from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- parsed INSERT ownership only.
 
     upserts: dict[ast.ClassDef, set[tuple[str, ...]]] = {}
+    reachable = {owner: _upsert_methods(value, context) for owner, value in declared.items()}
     for query in queries:
         if query.owner is None or query.method is None:
             continue
-        reachable = _upsert_methods(query.owner)
-        if query.method not in reachable:
+        if query.method not in reachable.get(query.owner, set()):
             continue
         statement = query.statement
         if not isinstance(statement, exp.Insert):
@@ -129,10 +139,9 @@ def _upsert_relations(queries: tuple[StoreQuery, ...]) -> dict[ast.ClassDef, set
     return upserts
 
 
-def _abstract_setters(context: PythonFileContext) -> set[Function]:
+def _abstract_setters(context: PythonFileContext, owners: dict[ast.ClassDef, dict[str, Function]]) -> set[Function]:
     result: set[Function] = set()
-    for owner in context.nodes(ast.ClassDef):
-        declared = methods(owner)
+    for declared in owners.values():
         upsert = declared.get("upsert")
         if upsert is None or not _abstract(upsert, context):
             continue
@@ -143,16 +152,14 @@ def _abstract_setters(context: PythonFileContext) -> set[Function]:
 
 
 def _abstract(method: Function, context: PythonFileContext) -> bool:
-    return any(
-        context.module_imports.resolves(decorator, sources=frozenset({"abc"}), symbol="abstractmethod")
-        for decorator in method.decorator_list
+    return _instance_method(method, context) and any(
+        _runtime_import_name(decorator, context) == "abc.abstractmethod" for decorator in method.decorator_list
     )
 
 
-def _upsert_methods(owner: ast.ClassDef) -> set[Function]:
-    declared = methods(owner)
+def _upsert_methods(declared: dict[str, Function], context: PythonFileContext) -> set[Function]:
     upsert = declared.get("upsert")
-    if upsert is None:
+    if upsert is None or not _instance_method(upsert, context):
         return set()
     reachable = {upsert}
     for _ in range(3):
@@ -165,8 +172,69 @@ def _upsert_methods(owner: ast.ClassDef) -> set[Function]:
             and isinstance(node.func.value, ast.Name)
             and node.func.value.id == "self"
             and node.func.attr in declared
+            and _instance_method(declared[node.func.attr], context)
+            and context.static_resource_provenance.runtime_binding("self", node)
+            is [*method.args.posonlyargs, *method.args.args][0]
         }
         if discovered <= reachable:
             break
         reachable.update(discovered)
     return reachable
+
+
+def _declared_methods(context: PythonFileContext) -> dict[ast.ClassDef, dict[str, Function]]:
+    declared = {
+        owner: methods(owner)
+        for owner in context.nodes(ast.ClassDef)
+        if not owner.keywords
+        and all(
+            _runtime_import_name(decorator, context) in {"typing.final", "typing_extensions.final"}
+            for decorator in owner.decorator_list
+        )
+    }
+    for node in context.nodes(ast.Attribute):
+        if not isinstance(node.ctx, ast.Store | ast.Del) or not isinstance(node.value, ast.Name):
+            continue
+        binding = context.static_resource_provenance.runtime_binding(node.value.id, node)
+        if isinstance(binding, ast.ClassDef) and binding in declared:
+            declared[binding].pop(node.attr, None)
+    return declared
+
+
+def _instance_method(method: Function, context: PythonFileContext) -> bool:
+    positional = [*method.args.posonlyargs, *method.args.args]
+    return (
+        bool(positional)
+        and positional[0].arg == "self"
+        and all(
+            _runtime_import_name(decorator, context)
+            in {
+                "abc.abstractmethod",
+                "typing.override",
+                "typing_extensions.override",
+                "typing.final",
+                "typing_extensions.final",
+            }
+            for decorator in method.decorator_list
+        )
+    )
+
+
+def _runtime_import_name(expression: ast.expr, context: PythonFileContext) -> str | None:
+    root = expression
+    while isinstance(root, ast.Attribute):
+        root = root.value
+    provenance = context.static_resource_provenance
+    if (
+        not isinstance(root, ast.Name)
+        or provenance.wildcard
+        or provenance.dynamic_namespace
+        or root.id in provenance.mutated
+    ):
+        return None
+    binding = provenance.runtime_binding(root.id, expression)
+    return (
+        import_name_for_binding(expression, binding, context.parents.get(binding))
+        if isinstance(binding, ast.alias)
+        else None
+    )

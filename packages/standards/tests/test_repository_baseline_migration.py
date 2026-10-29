@@ -121,7 +121,23 @@ def test_policy28_migrates_empty_baselines_without_changing_the_warning_ratchet(
     assert migrated == original.replace(b'"policy_version": 27', b'"policy_version": 28')
 
 
-@pytest.mark.parametrize(("before", "after"), [(26, 28), (28, 27), (29, 28), (28, 30), (27, 30), (25, 29), (26, 29)])
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        (26, 28),
+        (28, 27),
+        (29, 28),
+        (28, 31),
+        (27, 31),
+        (29, 31),
+        (30, 29),
+        (30, 31),
+        (25, 29),
+        (26, 29),
+        (25, 30),
+        (26, 30),
+    ],
+)
 def test_empty_baselines_do_not_authorize_other_policy_transitions(before: int, after: int) -> None:
     with pytest.raises(ValueError, match="requires a separately reviewed compatibility decision"):
         repository_baseline.migrate(_baseline(before), _MANIFEST, target_policy_version=after)
@@ -129,8 +145,9 @@ def test_empty_baselines_do_not_authorize_other_policy_transitions(before: int, 
 
 @pytest.mark.parametrize("include_warnings", [None, False, True])
 @pytest.mark.parametrize("fingerprints", [(), ("a" * 64, "f" * 64)])
-def test_policy29_preserves_existing_debt_and_warning_choice(
-    include_warnings: bool | None, fingerprints: tuple[str, ...]
+@pytest.mark.parametrize("target", [29, 30], ids=["policy29", "policy30"])
+def test_policy28_preserves_existing_debt_and_warning_choice(
+    include_warnings: bool | None, fingerprints: tuple[str, ...], target: int
 ) -> None:
     original = _baseline(28, fingerprints=fingerprints)
     if include_warnings is not None:
@@ -139,9 +156,9 @@ def test_policy29_preserves_existing_debt_and_warning_choice(
             b'"schema_version": 2,\r\n\t"include_warnings": ' + str(include_warnings).lower().encode("ascii"),
         )
 
-    migrated = repository_baseline.migrate(original, _MANIFEST, target_policy_version=29)
+    migrated = repository_baseline.migrate(original, _MANIFEST, target_policy_version=target)
 
-    assert migrated == original.replace(b'"policy_version": 28', b'"policy_version": 29')
+    assert migrated == original.replace(b'"policy_version": 28', f'"policy_version": {target}'.encode())
 
 
 @pytest.mark.parametrize("include_warnings", [None, False, True])
@@ -160,7 +177,70 @@ def test_empty_policy27_to29_equals_the_two_reviewed_steps(include_warnings: boo
     assert direct == composed == original.replace(b'"policy_version": 27', b'"policy_version": 29')
 
 
-@pytest.mark.parametrize("before", [27, 28])
+@pytest.mark.parametrize("before", [27, 28, 29])
+@pytest.mark.parametrize("include_warnings", [None, False, True])
+def test_empty_policy30_migration_equals_the_explicit_reviewed_steps(
+    before: int, include_warnings: bool | None
+) -> None:
+    original = _baseline(before)
+    if include_warnings is not None:
+        original = original.replace(
+            b'"schema_version": 2',
+            b'"schema_version": 2,\r\n\t"include_warnings": ' + str(include_warnings).lower().encode("ascii"),
+        )
+    composed = original
+    for version in range(before + 1, 31):
+        composed = repository_baseline.migrate(composed, _MANIFEST, target_policy_version=version)
+
+    direct = repository_baseline.migrate(original, _MANIFEST, target_policy_version=30)
+
+    assert direct == composed == original.replace(f'"policy_version": {before}'.encode(), b'"policy_version": 30')
+
+
+@pytest.mark.parametrize("include_warnings", [None, False, True])
+def test_policy30_keeps_nonempty_policy27_debt_rejected(include_warnings: bool | None) -> None:
+    original = _baseline(27, fingerprints=("b" * 64,))
+    if include_warnings is not None:
+        original = original.replace(
+            b'"schema_version": 2',
+            b'"schema_version": 2,\r\n\t"include_warnings": ' + str(include_warnings).lower().encode("ascii"),
+        )
+
+    with pytest.raises(ValueError, match="requires a separately reviewed compatibility decision"):
+        repository_baseline.migrate(original, _MANIFEST, target_policy_version=30)
+
+
+@pytest.mark.parametrize("include_warnings", [None, False])
+def test_policy30_preserves_error_only_policy29_debt(include_warnings: bool | None) -> None:
+    original = _baseline(29, fingerprints=("a" * 64, "f" * 64))
+    if include_warnings is not None:
+        original = original.replace(b'"schema_version": 2', b'"schema_version": 2,\r\n\t"include_warnings": false')
+
+    migrated = repository_baseline.migrate(original, _MANIFEST, target_policy_version=30)
+
+    assert migrated == original.replace(b'"policy_version": 29', b'"policy_version": 30')
+
+
+def test_policy30_rejects_nonempty_policy29_warning_debt() -> None:
+    original = _baseline(29, fingerprints=("b" * 64,)).replace(
+        b'"schema_version": 2', b'"schema_version": 2,\r\n\t"include_warnings": true'
+    )
+
+    with pytest.raises(ValueError, match="requires a separately reviewed compatibility decision"):
+        repository_baseline.migrate(original, _MANIFEST, target_policy_version=30)
+
+
+@pytest.mark.parametrize("warning_choice", [b"null", b"0", b'"false"', b"[]"])
+def test_policy30_does_not_treat_malformed_warning_choices_as_error_only(warning_choice: bytes) -> None:
+    original = _baseline(29, fingerprints=("b" * 64,)).replace(
+        b'"schema_version": 2', b'"schema_version": 2,\r\n\t"include_warnings": ' + warning_choice
+    )
+
+    with pytest.raises(ValueError, match="baseline"):
+        repository_baseline.migrate(original, _MANIFEST, target_policy_version=30)
+
+
+@pytest.mark.parametrize("before", [27, 28, 29])
 def test_setup_plans_and_applies_the_current_compatible_baseline_migration(tmp_path: Path, before: int) -> None:
     manifest = tmp_path / ".repo-standards" / "repository.toml"
     manifest.parent.mkdir()

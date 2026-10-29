@@ -65,7 +65,7 @@ wheels = [
 
 [[package]]
 name = "code-standards"
-version = "8.159.1"
+version = "8.161.3"
 source = { editable = "." }
 dependencies = [
     { name = "basedpyright" },
@@ -106,7 +106,7 @@ requires-dist = [
     { name = "pydantic", specifier = "==2.14.1" },
     { name = "pyyaml", specifier = "==6.0.3" },
     { name = "referencing", specifier = "==0.37.0" },
-    { name = "repo-standards", specifier = "==6.14.0" },
+    { name = "repo-standards", specifier = "==6.14.1" },
     { name = "ruff", specifier = "==0.17.2" },
     { name = "sarj-iac-lint", editable = "../iac" },
     { name = "sarj-python-lint", editable = "../python" },
@@ -514,7 +514,7 @@ wheels = [
 
 [[package]]
 name = "repo-standards"
-version = "6.14.0"
+version = "6.14.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "conventional-pre-commit" },
@@ -522,9 +522,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8a/a3/54e8be32a45b4cc2bb6baeb13cfc5d7172f48305cf48178312df8870e951/repo_standards-6.14.0.tar.gz", hash = "sha256:cda2e71aa46924fc37f67e15f1e110c4c466d576186872b0c8e343d49d6093d6", size = 133991, upload-time = "2026-10-28T05:24:29.791Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/83/fe/0448cd46cf0a5ad1291765d5f39196a61969ddb8c9270bb9a1168a55c629/repo_standards-6.14.1.tar.gz", hash = "sha256:821a2e93c441d05f1c75a3d9a4893987766a468fa31e2f6f28729d745d3c2991", size = 134166, upload-time = "2026-10-29T01:09:51.413Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/d1/b5a41539549a3fbcf15f44b2d810cb6cf96fa4ec726c6c28ee43456ec32e/repo_standards-6.14.0-py3-none-any.whl", hash = "sha256:10cf5cb168e8abbdbe87ecc9d3a35def84d9ee4dd90d8a550593aeed18e9b313", size = 154619, upload-time = "2026-10-28T05:24:28.291Z" },
+    { url = "https://files.pythonhosted.org/packages/03/4c/b6a276a82e26f56e7c46bdf6a58698b68512b697e9fef43dda5eb3765a0d/repo_standards-6.14.1-py3-none-any.whl", hash = "sha256:d902f373483bbc93fb87fead487264cb5553e2813678fbd0b4a48a7d9acc24f1", size = 154764, upload-time = "2026-10-29T01:09:49.836Z" },
 ]
 
 [[package]]
@@ -667,7 +667,7 @@ dev = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "1.95.0"
+version = "1.97.0"
 source = { editable = "../python" }
 dependencies = [
     { name = "packaging" },
@@ -710,7 +710,7 @@ dev = [
 
 [[package]]
 name = "sarj-sql-lint"
-version = "0.36.0"
+version = "0.38.0"
 source = { editable = "../sql" }
 dependencies = [
     { name = "sarj-rule-contracts" },

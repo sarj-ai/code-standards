@@ -186,3 +186,83 @@ def test_exact_suppression_through_public_analyzer(tmp_path: Path) -> None:
     assert len(analyze([InvalidPostgresDdl.id], [target])) == 1
     target.write_text(f"{source} -- sarj-noqa: SARJ126 -- fixture targets a compatible database fork\n")
     assert analyze([InvalidPostgresDdl.id], [target]) == []
+
+
+@pytest.mark.parametrize("method", ["hash", "gin", "brin", '"hash"'])
+def test_known_builtin_methods_cannot_include_columns(method: str) -> None:
+    source = f"CREATE INDEX item_key ON item USING {method} (id) INCLUDE (label);"
+    findings = InvalidPostgresDdl().check(P, source)
+    assert len(findings) == 1
+    assert "does not support INCLUDE" in findings[0].message
+    assert findings[0].severity is DefaultLevel.WARNING
+
+
+@pytest.mark.parametrize("method", ["btree", "gist", "spgist", "custom_method", '"HASH"'])
+def test_supported_or_unknown_methods_can_include_columns(method: str) -> None:
+    source = f"CREATE INDEX item_key ON item USING {method} (id) INCLUDE (label);"
+    assert InvalidPostgresDdl().check(P, source) == []
+
+
+@pytest.mark.parametrize("included", ["{{ column }}", "label {{ suffix }}", "label {% if extra %}, extra {% endif %}"])
+def test_template_include_entries_remain_outside_identifier_validation(included: str) -> None:
+    source = f"CREATE INDEX item_key ON item (id) INCLUDE ({included});"
+    assert InvalidPostgresDdl().check(P, source) == []
+
+
+def test_template_include_entry_does_not_hide_a_separate_invalid_expression() -> None:
+    source = "CREATE INDEX item_key ON item (id) INCLUDE ({{ column }}, lower(label));"
+    findings = InvalidPostgresDdl().check(P, source)
+    assert len(findings) == 1
+    assert "column names only" in findings[0].message
+
+
+def test_template_include_entry_preserves_proven_access_method_error() -> None:
+    source = "CREATE INDEX item_key ON item USING hash (id) INCLUDE ({{ column }});"
+    findings = InvalidPostgresDdl().check(P, source)
+    assert len(findings) == 1
+    assert "does not support INCLUDE" in findings[0].message
+    assert "column names only" not in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "COPY item FROM stdin",
+        'COPY "app"."item" (id, "label") FROM STDIN',
+        "COPY BINARY item FROM STDIN",
+        "COPY étoile FROM STDIN",
+        "COPY item FROM STDIN WITH (FORMAT csv, DELIMITER '(')",
+    ],
+)
+def test_copy_stdin_payload_and_following_commands_are_outside_analysis(header: str) -> None:
+    source = (
+        f"{header};\nCREATE UNIQUE INDEX item_key ON item USING hash(id);\n"
+        "ALTER TABLE item ADD UNIQUE(id) NOT VALID;\n\\.\n"
+        "CREATE UNIQUE INDEX later_key ON item USING hash(id);"
+    )
+    assert InvalidPostgresDdl().check(P, source) == []
+
+
+def test_copy_cutoff_preserves_same_line_prefix_and_quoted_semicolons() -> None:
+    prefix = 'CREATE UNIQUE INDEX "item;key" ON item USING hash(id); '
+    source = prefix + ("COPY item FROM STDIN;\nCREATE UNIQUE INDEX payload_key ON item USING hash(id);\n\\.\n")
+    findings = InvalidPostgresDdl().check(P, source)
+    assert len(findings) == 1
+    assert (findings[0].line, findings[0].col) == (1, 1)
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "SELECT 'COPY item FROM STDIN;';",
+        "-- COPY item FROM STDIN;\n",
+        'SELECT "COPY item FROM STDIN;";',
+        "DO $$ COPY item FROM STDIN; $$;",
+        "COPY item TO STDOUT;",
+        "COPY item FROM '/tmp/input.csv';",
+        "COPY item FROM PROGRAM 'reader';",
+    ],
+)
+def test_copy_word_and_non_stdin_commands_do_not_hide_later_indexes(prefix: str) -> None:
+    source = f"{prefix}\nCREATE UNIQUE INDEX item_key ON item USING hash(id);"
+    assert len(InvalidPostgresDdl().check(P, source)) == 1

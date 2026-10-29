@@ -119,11 +119,11 @@ def is_dump_file(source: str, path: Path | None = None) -> bool:
 # Tokens (like backticks or AUTO_INCREMENT) that exist in MySQL/SQLite and cannot appear in Postgres DDL.
 _NON_POSTGRES_RE = re.compile(
     r"`[^`\n]+`"  # backtick-quoted identifier — MySQL, MariaDB, SQLite
-    r"|\bAUTO_INCREMENT\b"  # MySQL column attribute
-    r"|\bAUTOINCREMENT\b"  # SQLite column attribute
-    r"|\bENGINE\s*="  # MySQL table option (`ENGINE=InnoDB`)
-    r"|\bCOLLATE\s+utf8"  # MySQL collation family (`utf8mb4_unicode_ci`)
-    r"|\bUNSIGNED\b",  # MySQL integer modifier
+    r"|\b(?:AUTO_INCREMENT\b"  # MySQL column attribute
+    r"|AUTOINCREMENT\b"  # SQLite column attribute
+    r"|ENGINE\s*="  # MySQL table option (`ENGINE=InnoDB`)
+    r"|COLLATE\s+utf8"  # MySQL collation family (`utf8mb4_unicode_ci`)
+    r"|UNSIGNED\b)",  # MySQL integer modifier
     re.IGNORECASE,
 )
 
@@ -613,11 +613,10 @@ class _SqlMasker:
         )
 
     def _scan_token(self) -> None:
-        template_end = _template_end(self.source, self.offset)
-        if template_end is not None:
+        ch = self.source[self.offset]
+        if ch == "{" and (template_end := _template_end(self.source, self.offset)) is not None:
             self._mask(template_end)
             return
-        ch = self.source[self.offset]
         if ch == "`" or (self.cross_dialect_identifiers and ch == "["):
             end = cross_dialect_identifier_end(self.source, self.offset, ch)
             if self.cross_dialect_identifiers:
