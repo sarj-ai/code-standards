@@ -12,7 +12,7 @@ import typer
 
 from sarj_sql_lint import __version__
 from sarj_sql_lint.autofix import fix_source
-from sarj_sql_lint.rule_base import DefaultLevel, Diagnostic, clear_path_caches, is_suppressed
+from sarj_sql_lint.rule_base import DefaultLevel, Diagnostic, clear_path_caches, is_migration_source, is_suppressed
 from sarj_sql_lint.rules import REGISTRY
 from sarj_sql_lint.rules.require_fk_index import index_analysis_session
 
@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
     from sarj_rule_contracts import SourceCatalog
+
+    from sarj_sql_lint.rule_base import Rule
 
 
 SKIP_DIR_NAMES = frozenset(
@@ -79,9 +81,23 @@ def _check(rule_names: Sequence[str], paths: list[Path], *, sources: SourceCatal
             if sources is None
             else sources.capture(p).decode("utf-8", errors="replace", newlines=NewlinePolicy.UNIVERSAL).text
         )
-        for rule in rules:
-            diags.extend(d for d in rule.check(p, source) if not is_suppressed(source, d.line, d.code))
+        diags.extend(_source_diagnostics(p, source, rules, comments_banned="no-migration-comments" in rule_names))
     return diags
+
+
+def _source_diagnostics(path: Path, source: str, rules: Sequence[Rule], *, comments_banned: bool) -> list[Diagnostic]:
+    migration = is_migration_source(path, source)
+    findings: list[Diagnostic] = []
+    for rule in rules:
+        if migration and comments_banned and rule.code in {"SARJ113", "SARJ115"}:
+            continue
+        findings.extend(
+            diagnostic
+            for diagnostic in rule.check(path, source)
+            if (migration and diagnostic.code in {"SARJ114", "SARJ120", "SARJ128"})
+            or not is_suppressed(source, diagnostic.line, diagnostic.code)
+        )
+    return findings
 
 
 def analyze(

@@ -31,6 +31,7 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
         "CREATE TRIGGER update_timestamp BEFORE UPDATE ON calls EXECUTE FUNCTION set_timestamp();",
         "create or replace trigger audit_call after insert on calls execute function audit_call();",
         "CREATE CONSTRAINT TRIGGER tenant_guard AFTER INSERT ON child DEFERRABLE EXECUTE FUNCTION check_tenant();",
+        "CREATE EVENT TRIGGER ddl_audit ON ddl_command_start EXECUTE FUNCTION audit_ddl();",
     ],
 )
 def test_reports_postgres_trigger_creation(source: str) -> None:
@@ -45,6 +46,7 @@ def test_reports_postgres_trigger_creation(source: str) -> None:
         "ALTER TABLE calls ENABLE TRIGGER audit_call;",
         "ALTER TABLE calls ENABLE ALWAYS TRIGGER audit_call;",
         "ALTER TABLE calls ENABLE REPLICA TRIGGER audit_call;",
+        "ALTER EVENT TRIGGER ddl_audit ENABLE ALWAYS;",
     ],
 )
 def test_reports_trigger_reenablement(source: str) -> None:
@@ -95,3 +97,24 @@ CREATE TRIGGER second AFTER UPDATE ON calls EXECUTE FUNCTION second_fn();
 )
 def test_genuine_trigger_ddl_survives_dollar_literal_masking(source: str) -> None:
     assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "SELECT x$CREATE TRIGGER FROM docs;",
+        "SELECT x\u0301CREATE TRIGGER FROM docs;",
+        "SELECT CREATE TRIGGER$label FROM docs;",
+        "SELECT CREATE TRIGGER\u0301 FROM docs;",
+        "SELECT CREATE TRİGGER FROM docs;",
+    ],
+)
+def test_identifier_parts_are_not_trigger_keywords(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_copy_input_is_not_executable_trigger_ddl() -> None:
+    ddl = "CREATE TRIGGER audit AFTER INSERT ON calls EXECUTE FUNCTION audit();"
+    source = f"COPY seed(body) FROM STDIN;\n{ddl}\n\\.\n{ddl}"
+    assert _check(source) == []
+    assert len(_check(f"{ddl}\n{source}")) == 1

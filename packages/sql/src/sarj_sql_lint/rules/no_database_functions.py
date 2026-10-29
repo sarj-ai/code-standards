@@ -5,6 +5,7 @@ import re
 from typing import TYPE_CHECKING, final, override
 
 from sarj_sql_lint.rule_base import (
+    POSTGRES_IDENTIFIER_CONTINUATION,
     AutofixPolicy,
     DefaultLevel,
     Diagnostic,
@@ -21,13 +22,18 @@ from sarj_sql_lint.rule_base import (
     redirect_to_model,
     source_location,
 )
+from sarj_sql_lint.rules._copy_input import sql_before_copy_input
 
 
 if TYPE_CHECKING:
     from pathlib import Path
 
 
-_CREATE_FUNCTION = re.compile(r"(?<![\w$])(?P<ddl>CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION)\b", re.IGNORECASE)
+_CREATE_FUNCTION = re.compile(
+    rf"(?<!{POSTGRES_IDENTIFIER_CONTINUATION})(?P<ddl>CREATE\s+(?:OR\s+REPLACE\s+)?(?:FUNCTION|PROCEDURE))"
+    rf"(?!{POSTGRES_IDENTIFIER_CONTINUATION})",
+    re.ASCII | re.IGNORECASE,
+)
 
 
 @final
@@ -36,16 +42,17 @@ class NoDatabaseFunctions(Rule):
     code = "SARJ120"
     documentation = RuleDocumentation(
         default_level=DefaultLevel.ERROR,
-        summary="Prefer explicit application behavior to stored SQL functions.",
-        rationale="Under a single-writer application architecture, stored functions can obscure application behavior. Database-owned invariants and expression indexes may still require approved stored functions.",
-        remediation="Prefer declarative constraints or explicit transactional application behavior where equivalent. Preserve transaction atomicity and database-enforced integrity; use an exact SARJ120 suppression for an approved database-owned invariant or compatibility exception.",
+        summary="Ban stored SQL functions and procedures in migrations.",
+        rationale="Under a single-writer application architecture, stored functions can obscure application behavior. Migration behavior must remain explicit in application transactions or declarative constraints.",
+        remediation="Prefer declarative constraints or explicit transactional application behavior where equivalent. Preserve transaction atomicity and database-enforced integrity; migrations cannot waive this rule with an inline suppression.",
         category=RuleCategory.ARCHITECTURE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Reports PostgreSQL CREATE FUNCTION and CREATE OR REPLACE FUNCTION, including temporary-schema functions. Calls to built-in or existing functions and DROP FUNCTION remain valid.",
+            "Reports PostgreSQL CREATE [OR REPLACE] FUNCTION and PROCEDURE, including temporary-schema functions. Calls to built-in or existing functions and DROP FUNCTION remain valid.",
             "This is an organization-specific architecture policy. Comments, quoted values (including scalar and nested dollar-quoted strings), dumps, and non-PostgreSQL dialects are excluded. Executable DO and routine bodies remain visible.",
             "Generated migrations report against their owning model when one can be identified. Triggers are covered separately by SARJ114.",
             "Dynamically generated DDL inside procedural bodies is not inferred.",
+            "Analysis stops at COPY FROM STDIN; raw payloads and commands following their terminator are not modeled.",
         ),
         examples=(
             RuleExample(
@@ -112,6 +119,7 @@ class NoDatabaseFunctions(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        source = sql_before_copy_input(source)
         if is_dump_file(source, path) or not is_postgres_source(path, source):
             return []
         diagnostics: list[Diagnostic] = []
@@ -123,7 +131,7 @@ class NoDatabaseFunctions(Rule):
                     line=location.line,
                     col=location.column,
                     code=self.code,
-                    message="Project architecture prefers declarative constraints or explicit transactional application behavior. Preserve atomicity and database-enforced integrity; use an exact SARJ120 suppression for an approved database-owned invariant or compatibility exception.",
+                    message="Project architecture prefers declarative constraints or explicit transactional application behavior. Preserve atomicity and database-enforced integrity; migrations cannot waive this rule with an inline suppression.",
                 )
             )
         return redirect_to_model(diagnostics, model_owned=is_generated_migration(path, source))

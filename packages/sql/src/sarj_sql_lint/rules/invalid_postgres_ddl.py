@@ -183,6 +183,8 @@ def _single_identifier(value: str) -> bool:
 
 
 def _invalid_constraints(source: str) -> Iterator[SourceLocation]:
+    if "VALID" not in source.upper():
+        return
     for statement in split_statements(_masked_top_level_sql(source)):
         text = "\n".join(fragment.text for fragment in statement)
         tokens = tokenize(text)

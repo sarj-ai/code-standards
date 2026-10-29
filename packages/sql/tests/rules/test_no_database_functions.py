@@ -95,22 +95,23 @@ def test_public_examples(example: RuleExample) -> None:
     assert len(NoDatabaseFunctions().check(Path(str(focus.path)), focus.source)) == example.expected_count
 
 
-def test_database_owned_index_invariant_uses_the_approved_exception(tmp_path: Path) -> None:
+def test_database_owned_index_invariant_cannot_waive_the_migration_ban(tmp_path: Path) -> None:
     source = (
         "CREATE FUNCTION normalized_key(value text) RETURNS text LANGUAGE sql IMMUTABLE AS $$ SELECT lower(value) $$;"
     )
     findings = NoDatabaseFunctions().check(Path("supabase/migrations/001.sql"), source)
     assert len(findings) == 1
     assert "atomicity" in findings[0].message
-    assert "database-owned invariant" in findings[0].message
-    path = tmp_path / "001.sql"
+    assert "cannot waive" in findings[0].message
+    path = tmp_path / "migrations" / "001.sql"
+    path.parent.mkdir()
     path.write_text(
         "-- dialect: postgres\n"
         + source
         + " -- sarj-noqa: SARJ120 -- approved database-owned uniqueness invariant\n"
         + "CREATE UNIQUE INDEX IF NOT EXISTS widget_key ON widget (normalized_key(name));\n"
     )
-    assert main(["check", "--rule", "no-database-functions", str(path)]) == 0
+    assert main(["check", "--rule", "no-database-functions", str(path)]) == 1
 
 
 @pytest.mark.parametrize(
@@ -139,3 +140,31 @@ def test_every_function_in_an_anonymous_block_keeps_its_absolute_location() -> N
     first = source.index("CREATE")
     second = source.index("CREATE", first + 1)
     assert [(item.line, item.col) for item in findings] == [(1, first + 1), (1, second + 1)]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "SELECT x$CREATE FUNCTION FROM docs;",
+        "SELECT x\u0301CREATE FUNCTION FROM docs;",
+        "SELECT CREATE FUNCTION$label FROM docs;",
+        "SELECT CREATE FUNCTION\u0301 FROM docs;",
+        "SELECT CREATE FUNCTİON FROM docs;",
+    ],
+)
+def test_identifier_parts_are_not_routine_keywords(source: str) -> None:
+    assert NoDatabaseFunctions().check(Path("supabase/migrations/001.sql"), source) == []
+
+
+@pytest.mark.parametrize("prefix", ["CREATE", "CREATE OR REPLACE"])
+def test_procedures_are_banned_with_functions(prefix: str) -> None:
+    source = f"{prefix} PROCEDURE record_call() LANGUAGE sql AS $$ SELECT 1 $$;"
+    assert len(NoDatabaseFunctions().check(Path("supabase/migrations/001.sql"), source)) == 1
+
+
+def test_copy_input_is_not_executable_routine_ddl() -> None:
+    source = f"COPY seed(body) FROM STDIN;\n{_BAD}\n\\.\n{_BAD}"
+    rule = NoDatabaseFunctions()
+    path = Path("supabase/migrations/001.sql")
+    assert rule.check(path, source) == []
+    assert len(rule.check(path, f"{_BAD}\n{source}")) == 1

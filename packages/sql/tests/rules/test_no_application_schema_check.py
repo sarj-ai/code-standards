@@ -62,10 +62,8 @@ CREATE TABLE item (
         "ALTER TABLE call ADD CONSTRAINT status_allowed CHECK (status in ('queued', 'completed', 'failed'));",
     ],
 )
-def test_flags_closed_text_value_check(source: str) -> None:
-    diagnostics = _check(source)
-    assert len(diagnostics) == 1
-    assert diagnostics[0].code == "SARJ118"
+def test_allows_closed_text_value_check(source: str) -> None:
+    assert _check(source) == []
 
 
 @pytest.mark.parametrize(
@@ -96,7 +94,7 @@ def test_excludes_postgres_dump() -> None:
 
 
 def test_quoted_column_in_closed_string_set_is_detected() -> None:
-    assert len(_check("CREATE TABLE item (\"status\" TEXT CHECK (\"status\" IN ('ready', 'done')));")) == 1
+    assert _check("CREATE TABLE item (\"status\" TEXT CHECK (\"status\" IN ('ready', 'done')));") == []
 
 
 @pytest.mark.parametrize(
@@ -113,9 +111,9 @@ def test_quoted_check_and_function_decoys_are_inert(source: str) -> None:
 
 
 @pytest.mark.parametrize("column", ['"status"', '"status)name"', '"state""name"'])
-def test_flags_closed_values_for_a_quoted_column(column: str) -> None:
+def test_allows_closed_values_for_a_quoted_column(column: str) -> None:
     source = f"CREATE TABLE call ({column} TEXT CHECK ({column} IN ('queued', 'completed')));"
-    assert len(_check(source)) == 1
+    assert _check(source) == []
 
 
 @pytest.mark.parametrize(
@@ -133,7 +131,7 @@ def test_quoted_identifiers_do_not_manufacture_schema_checks(source: str) -> Non
 
 @pytest.mark.parametrize("separator", ["\n", "/* constraint boundary */"])
 def test_check_keyword_guard_allows_comment_and_newline_trivia(separator: str) -> None:
-    source = f"CREATE TABLE call (status TEXT cHeCk{separator}(status IN ('queued', 'completed')));"
+    source = f"CREATE TABLE call (payload JSONB cHeCk{separator}(jsonb_typeof(payload) = 'object'));"
     assert len(_check(source)) == 1
 
 

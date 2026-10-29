@@ -15,6 +15,7 @@ from sarj_sql_lint.rule_base import (
     RuleExample,
     dollar_quoted_lines,
     is_dump_file,
+    is_migration_source,
     locate,
     mask_sql,
     mask_sql_literals_and_comments,
@@ -156,7 +157,7 @@ class InsertRequiresOnConflict(Rule):
         ),
         remediation=(
             "Prefer ON CONFLICT with an explicit DO NOTHING or DO UPDATE action. If duplicate failure is the "
-            "intended contract, add an exact SARJ105 suppression on the INSERT line explaining why."
+            "intended contract outside migrations, add an exact SARJ105 suppression on the INSERT line explaining why. Migration SQL must declare an executable replay policy."
         ),
         category=RuleCategory.CORRECTNESS,
         autofix=AutofixPolicy.NONE,
@@ -229,11 +230,14 @@ class InsertRequiresOnConflict(Rule):
         if is_dump_file(source, path):
             return []
 
+        migration = is_migration_source(path, source)
         masked = mask_sql_literals_and_comments(source, mask_dollar_literals=True)
         exempt = _guarded_dollar_body_lines(mask_sql(source, mask_dollar_literals=True), source)
         diags: list[Diagnostic] = []
         for statement in split_statements(masked):
             text = "\n".join(line for _, line in statement)
+            if "INSERT" not in text.upper():
+                continue
             for write in _insert_writes(text):
                 if write.has_conflict_policy or _select_filters_existing_target(write.text):
                     continue
@@ -249,6 +253,9 @@ class InsertRequiresOnConflict(Rule):
                         message=(
                             "INSERT has no replay policy; add explicit upsert conflict behavior, or an exact SARJ105 "
                             "suppression explaining why insert-only failure semantics are intentional."
+                            if not migration
+                            else "Migration INSERT has no replay policy; add an explicit ON CONFLICT action "
+                            "that preserves the intended write semantics."
                         ),
                     )
                 )

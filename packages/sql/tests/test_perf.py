@@ -53,6 +53,21 @@ def rule_timings() -> dict[str, float]:
     return {rid: _best_time_s(RuleId(rid), path, _SYNTHETIC_SQL) for rid in sorted(REGISTRY)}
 
 
+@pytest.fixture(scope="module")
+def cold_rule_timings() -> dict[str, float]:
+    # Give every rule a fresh input so scanner caches cannot supply another
+    # rule's baseline. Fresh-scan controls compare to this cold cohort.
+    return {
+        rid: _best_time_s(
+            RuleId(rid),
+            Path("synthetic.sql"),
+            _SYNTHETIC_SQL.replace("orders_", f"cold_{index}_orders_"),
+            repeats=1,
+        )
+        for index, rid in enumerate(sorted(REGISTRY))
+    }
+
+
 def test_no_rule_exceeds_absolute_budget(rule_timings: dict[str, float]) -> None:
     loc = _SYNTHETIC_SQL.count("\n") + 1
     for rule_id, seconds in rule_timings.items():
@@ -74,16 +89,16 @@ def test_no_rule_is_algorithmic_outlier(rule_timings: dict[str, float]) -> None:
     )
 
 
-def test_analytical_policy_meets_existing_budgets_on_fresh_plain_sql(rule_timings: dict[str, float]) -> None:
+def test_analytical_policy_meets_existing_budgets_on_fresh_plain_sql(cold_rule_timings: dict[str, float]) -> None:
     source = _SYNTHETIC_SQL.replace("orders_", "cold_orders_")
     seconds = _best_time_s(RuleId(NoAnalyticalQueriesInTransactionalDb.id), Path("fresh.sql"), source, repeats=1)
-    ordered = sorted(rule_timings.values())
+    ordered = sorted(cold_rule_timings.values())
     ceiling = ordered[len(ordered) // 2] * _RELATIVE_OUTLIER_FACTOR + _RELATIVE_SLACK_S
     assert seconds < ceiling
     assert seconds / (source.count("\n") + 1) * 1_000_000 < _ABSOLUTE_MS_PER_KLOC
 
 
-def test_null_comparison_meets_existing_budgets_on_fresh_migration_sql(rule_timings: dict[str, float]) -> None:
+def test_null_comparison_meets_existing_budgets_on_fresh_migration_sql(cold_rule_timings: dict[str, float]) -> None:
     source = "\n".join(
         (
             _SYNTHETIC_SQL.replace("orders_", "null_gate_orders_"),
@@ -92,7 +107,7 @@ def test_null_comparison_meets_existing_budgets_on_fresh_migration_sql(rule_timi
     )
     path = Path("fresh_null.sql")
     seconds = _best_time_s(RuleId(NoNullComparison.id), path, source, repeats=1)
-    ordered = sorted(rule_timings.values())
+    ordered = sorted(cold_rule_timings.values())
     ceiling = ordered[len(ordered) // 2] * _RELATIVE_OUTLIER_FACTOR + _RELATIVE_SLACK_S
     assert seconds < ceiling
     assert seconds / (source.count("\n") + 1) * 1_000_000 < _ABSOLUTE_MS_PER_KLOC
