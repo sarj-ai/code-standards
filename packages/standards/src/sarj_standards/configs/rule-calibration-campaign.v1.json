@@ -3045,6 +3045,14 @@
       "state": "pending",
       "evidence": "2026-10-28 bounded SQL/model review. Focused examples and regressions cover known invalid PostgreSQL index/constraint combinations, valid neighboring forms, unsupported syntax, and exact suppressions. The shared immutable 35-file comparison against published 8.147.0 reports 71 reviewed additions, zero removals or duplicates, and six repaired false-positive controls clear across the affected owners. These aggregate observations are not per-rule precision or recall estimates. Broader field calibration remains pending.",
       "outcome": "SARJ126: Stage at WARNING without autofix. Review only supported invalid PostgreSQL forms; preserve valid index/constraint options and avoid inventing an automatic schema rewrite. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/python/no-async-client-in-constructor",
+      "family": "python",
+      "ruleId": "no-async-client-in-constructor",
+      "state": "pending",
+      "evidence": "Scoped calibration inspected 3,604 Python files from two immutable corpora. All three reported constructor allocations were reviewed as true positives, with no inspected false positives or duplicate findings. Focused positive and abstention controls are executable in the owning rule tests. Broader field calibration remains pending.",
+      "outcome": "SARJ549: Retain the user-requested ERROR policy without autofix. Inject a caller-owned HTTPX AsyncClient and keep async lifetime management at the composition boundary. Import-proven eager construction is checked; shadowed, deferred, escaped and unresolved factory flows conservatively abstain. Full campaign completion is not claimed."
     }
   ]
 }
