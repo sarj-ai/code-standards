@@ -132,6 +132,7 @@ _DEPTRY_ANNOTATION_RE: Final = re.compile(
 )
 _ANALYSIS_DEADLINE = timedelta(seconds=300)
 _REACT_DOCTOR_MAX_DURATION = timedelta(seconds=60)
+_REACT_DOCTOR_FULL_MAX_DURATION = timedelta(minutes=5)
 _REACT_DOCTOR_SMALL_CHANGE_MAX_FILES = 10
 _REACT_DOCTOR_MEDIUM_CHANGE_MAX_FILES = 50
 _REACT_DOCTOR_SOURCE_RE: Final = re.compile(r"\.(?:astro|tsx?|jsx?|mts|mjs|[hH][tT][mM][lL])\Z")
@@ -1308,7 +1309,9 @@ def _invoke_react_doctor(
     duration = _react_doctor_max_duration(file_count)
 
     def doctor_argv(selected_scope: Sequence[str]) -> tuple[str, ...]:
-        selected_duration = _REACT_DOCTOR_MAX_DURATION if tuple(selected_scope) == ("--scope", "full") else duration
+        selected_duration = (
+            _REACT_DOCTOR_FULL_MAX_DURATION if tuple(selected_scope) == ("--scope", "full") else duration
+        )
         argv = packagemanager.exec_argv(
             client,
             name,
