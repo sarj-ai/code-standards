@@ -168,3 +168,142 @@ class ItemStore:
         await self.cursor.execute(query, params)
 """
     assert StoreInsertRequiresExplicitConflictPolicy().check(P, source) == []
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "WITH added AS (INSERT INTO item(id) VALUES(%s) RETURNING id) SELECT id FROM added",
+        (
+            "WITH added AS (INSERT INTO audit(id) VALUES(%s) RETURNING id) "
+            "INSERT INTO item(id) SELECT id FROM added ON CONFLICT DO NOTHING"
+        ),
+        (
+            "WITH added AS (INSERT INTO audit(id) VALUES(%s) ON CONFLICT DO NOTHING RETURNING id) "
+            "INSERT INTO item(id) SELECT id FROM added"
+        ),
+        (
+            "WITH first AS (INSERT INTO audit(id) VALUES(%s) RETURNING id), "
+            "second AS (INSERT INTO item(id) SELECT id FROM first RETURNING id) SELECT id FROM second"
+        ),
+    ],
+)
+def test_each_data_modifying_cte_insert_requires_its_own_policy(query: str) -> None:
+    findings = StoreInsertRequiresExplicitConflictPolicy().check(P, _source(query))
+    assert len(findings) == 1
+    assert findings[0].severity.value == "warning"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "WITH added AS (INSERT INTO item(id) VALUES(%s) ON CONFLICT DO NOTHING RETURNING id) SELECT id FROM added",
+        (
+            "WITH added AS (INSERT INTO audit(id) VALUES(%s) ON CONFLICT DO NOTHING RETURNING id) "
+            "INSERT INTO item(id) SELECT id FROM added ON CONFLICT(id) DO UPDATE SET id=EXCLUDED.id"
+        ),
+        "WITH changed AS (UPDATE item SET id=%s RETURNING id) SELECT id FROM changed",
+    ],
+)
+def test_cte_explicit_insert_policies_and_non_insert_writes_are_not_findings(query: str) -> None:
+    assert StoreInsertRequiresExplicitConflictPolicy().check(P, _source(query)) == []
+
+
+def test_replay_precedence_only_consumes_the_same_source_expression() -> None:
+    source = _source("INSERT INTO item(id) VALUES(%s)", name="ensure").rstrip()
+    source += "; await self.cursor.execute('INSERT INTO item(id) SELECT %s "
+    source += "WHERE NOT EXISTS (SELECT 1 FROM item WHERE id=%s)')\n"
+    findings = StoreInsertRequiresExplicitConflictPolicy().check(P, source)
+    assert len(findings) == 1
+    assert findings[0].line == 6
+    assert findings[0].col == source.splitlines()[-1].rindex("'INSERT") + 1
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        'f"INSERT INTO item(id) VALUES(%s) {suffix}"',
+        '"INSERT INTO item(id) VALUES(%s) " + suffix',
+        '"INSERT INTO item(id) VALUES(%s) {policy}".format(policy=suffix)',
+        'f"INSERT INTO item(id) VALUES({value})"',
+        'f"WITH added AS (INSERT INTO item(id) VALUES(%s) {suffix} RETURNING id) SELECT id FROM added"',
+    ],
+)
+def test_unresolved_sql_identifiers_do_not_prove_absent_conflict_policy(expression: str) -> None:
+    query = "INSERT INTO item(id) VALUES(%s)"
+    source = _source(query).replace("async def insert(self):", "async def insert(self, suffix, value):")
+    source = source.replace(repr(query), expression)
+    assert StoreInsertRequiresExplicitConflictPolicy().check(P, source) == []
+
+
+def test_static_value_braces_are_not_dynamic_sql_identifiers() -> None:
+    source = _source("INSERT INTO item(id) VALUES('{policy}')")
+    assert len(StoreInsertRequiresExplicitConflictPolicy().check(P, source)) == 1
+
+
+def test_python_unique_violation_handler_does_not_replace_exact_exception() -> None:
+    source = _source("INSERT INTO item(id) VALUES(%s)")
+    source = source.replace(
+        "        await self.cursor.execute",
+        "        try:\n            await self.cursor.execute",
+    )
+    source += "        except UniqueViolation:\n            return\n"
+    findings = StoreInsertRequiresExplicitConflictPolicy().check(P, source)
+    assert len(findings) == 1
+    assert findings[0].severity.value == "warning"
+
+
+def _source_with_returning_composition(query: str) -> str:
+    source = _source(query).replace("async def insert(self):", "async def insert(self, fields, suffix, target, value):")
+    expression = f"{query!r}.format(fields=fields, suffix=suffix, target=target, value=value)"
+    return source.replace(repr(query), expression)
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "INSERT INTO item(id) VALUES(%s) RETURNING {fields}",
+        "INSERT INTO item(id) VALUES(%s) RETURNING id, {fields}",
+        "INSERT INTO item(id) VALUES(%s) RETURNING json_build_object({fields})",
+        (
+            "WITH added AS (INSERT INTO audit(id) VALUES(%s) RETURNING {fields}) "
+            "INSERT INTO item(id) SELECT id FROM added ON CONFLICT DO NOTHING"
+        ),
+    ],
+)
+def test_unresolved_insert_returning_fields_cannot_supply_conflict_policy(query: str) -> None:
+    source = _source_with_returning_composition(query)
+    findings = StoreInsertRequiresExplicitConflictPolicy().check(P, source)
+    assert len(findings) == 1
+    assert findings[0].severity.value == "warning"
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "INSERT INTO item(id) VALUES(%s) {suffix} RETURNING {fields}",
+        "INSERT INTO {target}(id) VALUES(%s) RETURNING {fields}",
+        "INSERT INTO item(id) VALUES({value}) RETURNING {fields}",
+        "INSERT INTO item(id) SELECT %s {suffix} RETURNING {fields}",
+        (
+            "INSERT INTO item(id) VALUES(%s) RETURNING "
+            "(WITH nested AS (INSERT INTO audit(id) VALUES({value}) RETURNING id) SELECT id FROM nested)"
+        ),
+        (
+            "WITH added AS (INSERT INTO {target}(id) VALUES(%s) RETURNING {fields}) "
+            "INSERT INTO item(id) SELECT id FROM added ON CONFLICT DO NOTHING"
+        ),
+        "INSERT INTO item(id) VALUES(%s) ON CONFLICT DO NOTHING RETURNING {fields}",
+        "INSERT INTO item(id) VALUES(%s) RETURNING (",
+    ],
+)
+def test_returning_fields_do_not_resolve_other_insert_policy_ambiguity(query: str) -> None:
+    assert StoreInsertRequiresExplicitConflictPolicy().check(P, _source_with_returning_composition(query)) == []
+
+
+def test_nested_insert_returning_fields_use_the_nested_insert_boundary() -> None:
+    query = (
+        "INSERT INTO item(id) VALUES(%s) ON CONFLICT DO NOTHING RETURNING "
+        "(WITH nested AS (INSERT INTO audit(id) VALUES(%s) RETURNING {fields}) SELECT id FROM nested)"
+    )
+    assert len(StoreInsertRequiresExplicitConflictPolicy().check(P, _source_with_returning_composition(query))) == 1

@@ -24,6 +24,7 @@ from sarj_sql_lint.rule_base import (
     mask_sql,
     source_location,
 )
+from sarj_sql_lint.rules._copy_input import sql_before_copy_input
 
 
 if TYPE_CHECKING:
@@ -66,6 +67,7 @@ class NoNullComparison(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Checks parsed authored PostgreSQL SQL, including queries and migrations. Dumps, generated files, tests, fixtures, explicit other dialects, unsupported statements and malformed SQL are excluded.",
+            "Analysis stops before a proven COPY FROM STDIN command; inline input and following commands are not analyzed.",
             "Only bare NULL and parenthesized NULL operands are checked. Casts, computed null values, subquery nullability and row-valued NOT IN lists are not inferred.",
             "The rule recommends explicit predicates even when transform_null_equals is enabled. Catalog-defined non-strict comparison operators and intentional three-valued boolean results require an exact suppression; no automatic rewrite guesses their contract.",
         ),
@@ -112,6 +114,7 @@ class NoNullComparison(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        source = sql_before_copy_input(source)
         if (
             _NULL.search(source) is None
             or {part.casefold() for part in path.parts} & _EXCLUDED
@@ -248,7 +251,12 @@ def _comparison_null(node: exp.Expr) -> exp.Null | None:
 def _exclusion_null(node: exp.Expr) -> exp.Null | None:
     from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- keep row and scalar membership distinct.
 
-    if not isinstance(node, exp.Not) or not isinstance(candidate := _child(node, "this"), exp.In):
+    if not isinstance(node, exp.Not):
+        return None
+    candidate = _child(node, "this")
+    while isinstance(candidate, exp.Paren):
+        candidate = _child(candidate, "this")
+    if not isinstance(candidate, exp.In):
         return None
     items = tuple(child for child in candidate.iter_expressions() if child.arg_key == "expressions")
     if _row_constructor(_child(candidate, "this")) or any(_row_constructor(item) for item in items):

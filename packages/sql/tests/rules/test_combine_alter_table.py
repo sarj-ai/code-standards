@@ -247,3 +247,102 @@ def test_error_cli_and_exact_code_suppression(tmp_path: Path) -> None:
     assert main(["check", "--rule", CombineAlterTable.id, str(target)]) == 1
     target.write_text(f"{source} -- sarj-noqa: SARJ123 -- deployment tooling requires this statement boundary\n")
     assert main(["check", "--rule", CombineAlterTable.id, str(target)]) == 0
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        ("ADD COLUMN a TEXT NULL", "ADD COLUMN b BIGINT NULL"),
+        ("ADD a UUID NULL", "ADD b TEXT"),
+        ("ADD a TEXT", "ADD b TIMESTAMP WITH TIME ZONE NULL"),
+        ("ADD COLUMN IF NOT EXISTS a DOUBLE PRECISION NULL", "ADD IF NOT EXISTS b BOOLEAN NULL"),
+        ("ADD a TEXT /* nullable */ NULL", "ADD b BIGINT null"),
+        ("ADD a TEXT NULL, ADD b BIGINT", "ADD c UUID NULL"),
+    ],
+)
+def test_explicit_nullable_additions_combine(first: str, second: str) -> None:
+    assert len(_check(f"ALTER TABLE item {first}; ALTER TABLE item {second};")) == 1
+
+
+@pytest.mark.parametrize(
+    "action",
+    [
+        "ADD a TEXT NOT NULL",
+        "ADD a TEXT NULL DEFAULT 'legacy'",
+        "ADD a TEXT DEFAULT NULL",
+        "ADD a TEXT NULL CHECK (a IS NOT NULL)",
+        "ADD a TEXT CONSTRAINT nullable NULL",
+        "ADD a app.domain NULL",
+        'ADD a "TEXT" NULL',
+        'ADD a TEXT "NULL"',
+        "ADD a NULL",
+        "ADD a TEXT NULL NULL",
+        "ADD a TEXT NOT NULL NULL",
+    ],
+)
+def test_null_keyword_does_not_hide_constraints_types_or_malformed_syntax(action: str) -> None:
+    assert _check(f"ALTER TABLE item {action}; ALTER TABLE item ADD b TEXT NULL;") == []
+
+
+@pytest.mark.parametrize("relation", ['""', '"".item', 'public.""'])
+def test_empty_relation_parts_are_not_valid_identity_proof(relation: str) -> None:
+    assert _check(f"ALTER TABLE {relation} DROP a; ALTER TABLE {relation} DROP b;") == []
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        ('DROP COLUMN ""', "DROP COLUMN b"),
+        ('DROP CONSTRAINT ""', "DROP CONSTRAINT b"),
+        ('ADD "" TEXT', "ADD b TEXT"),
+        ('ADD "" TEXT NULL', "ADD b TEXT NULL"),
+        ('ALTER "" SET NOT NULL', "ALTER b SET NOT NULL"),
+    ],
+)
+def test_empty_action_identifiers_are_not_valid_independence_proof(first: str, second: str) -> None:
+    assert _check(f"ALTER TABLE item {first}; ALTER TABLE item {second};") == []
+
+
+@pytest.mark.parametrize("name", ['" "', '""""'])
+def test_nonempty_quoted_identifiers_remain_supported(name: str) -> None:
+    assert len(_check(f"ALTER TABLE {name} DROP a; ALTER TABLE {name} DROP b;")) == 1
+    assert len(_check(f"ALTER TABLE item DROP {name}; ALTER TABLE item DROP b;")) == 1
+
+
+@pytest.mark.parametrize(
+    "copy",
+    [
+        "COPY notes (body) FROM STDIN;",
+        "COPY public.notes FROM /* data */ STDIN WITH (FORMAT text);",
+        "COPY BINARY notes FROM STDIN;",
+    ],
+)
+def test_copy_stdin_payload_is_not_executable_sql(copy: str) -> None:
+    source = f"{copy}\nALTER TABLE item DROP a;\nALTER TABLE item DROP b;\n\\.\n"
+    assert _check(source) == []
+
+
+def test_copy_stdin_stops_analysis_after_preserving_prior_findings() -> None:
+    source = (
+        "ALTER TABLE item DROP a;\nALTER TABLE item DROP b;\n"
+        "COPY notes FROM STDIN;\nseed row\n\\.\n"
+        "ALTER TABLE item DROP c;\nALTER TABLE item DROP d;\n"
+    )
+    assert [finding.line for finding in _check(source)] == [2]
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "COPY notes TO STDOUT;",
+        "COPY notes FROM '/tmp/seed';",
+        "COPY notes TO STDOUT WITH (NULL 'FROM STDIN');",
+        "COPY (SELECT * FROM stdin) TO STDOUT;",
+        "SELECT 'COPY notes FROM STDIN;';",
+        "SELECT $$COPY notes FROM STDIN;$$;",
+        "-- COPY notes FROM STDIN;\nSELECT 1;",
+    ],
+)
+def test_copy_stdin_text_outside_an_input_command_does_not_stop_analysis(statement: str) -> None:
+    source = f"{statement}\nALTER TABLE item DROP a;\nALTER TABLE item DROP b;"
+    assert len(_check(source)) == 1

@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from sarj_rule_contracts import RuleId
 
 from sarj_sql_lint.rules import REGISTRY
 from sarj_sql_lint.rules.enforce_timestamptz import EnforceTimestamptz
@@ -21,6 +22,49 @@ from sarj_sql_lint.rules.prefer_uuidv7_default import PreferUuidv7Default
 
 if TYPE_CHECKING:
     from sarj_sql_lint.rule_base import Rule
+
+
+_COPY_SIGNALS = (
+    (RuleId("combine-alter-table"), "ALTER TABLE item DROP a;\nALTER TABLE item DROP b;"),
+    (RuleId("no-null-comparison"), "SELECT value = NULL;"),
+    (RuleId("invalid-concurrent-ddl"), "DROP INDEX CONCURRENTLY item_a, item_b;"),
+    (RuleId("invalid-postgres-ddl"), "CREATE UNIQUE INDEX item_key ON item USING hash (id);"),
+)
+
+
+@pytest.mark.parametrize(("rule_id", "signal"), _COPY_SIGNALS)
+@pytest.mark.parametrize("header", ["COPY seed(body) FROM STDIN;", "COPY étoile(body) FROM stdin;"])
+def test_copy_data_does_not_become_executable_rule_input(rule_id: RuleId, signal: str, header: str) -> None:
+    rule = REGISTRY[rule_id]()
+    path = Path("supabase/migrations/001_copy.sql")
+    assert len(rule.check(path, signal)) == 1
+    source = f"{header}\nrow;\n{signal}\n\\.\n{signal}"
+    assert rule.check(path, source) == []
+
+
+@pytest.mark.parametrize(("rule_id", "signal"), _COPY_SIGNALS)
+def test_copy_boundary_preserves_prior_findings(rule_id: RuleId, signal: str) -> None:
+    rule = REGISTRY[rule_id]()
+    path = Path("supabase/migrations/001_copy.sql")
+    expected = rule.check(path, signal)
+    source = f"{signal}\nCOPY seed FROM STDIN;\nrow;\n{signal}\n\\."
+    assert rule.check(path, source) == expected
+
+
+@pytest.mark.parametrize(("rule_id", "signal"), _COPY_SIGNALS)
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "COPY seed TO STDOUT;",
+        "COPY (SELECT body FROM stdin) TO STDOUT;",
+        "SELECT 'COPY seed FROM STDIN;';",
+        "DO $$ BEGIN RAISE NOTICE 'COPY seed FROM STDIN;'; END $$;",
+    ],
+)
+def test_copy_output_or_opaque_text_does_not_hide_later_findings(rule_id: RuleId, signal: str, prefix: str) -> None:
+    rule = REGISTRY[rule_id]()
+    path = Path("supabase/migrations/001_copy.sql")
+    assert len(rule.check(path, f"{prefix}\n{signal}")) == 1
 
 
 # One signal per migration rule, each firing exactly once:

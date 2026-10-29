@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import PurePosixPath
+import string
 from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import (
@@ -23,6 +24,10 @@ if TYPE_CHECKING:
     from sqlglot.optimizer.scope import Scope
 
     from sarj_python_lint._file_context import PythonFileContext
+
+
+_MAX_IDENTIFIER_BYTES = 63
+_IDENTIFIER_FOLD = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
 
 
 _BAD = """from psycopg import AsyncCursor
@@ -53,8 +58,8 @@ class PreferApplicationModelJoins(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "An architecture review warning, not a claim that SQL joins are inherently incorrect or slow. Distinct literal PostgreSQL relations are a source-visible proxy for ownership; syntax cannot establish whether two relations represent the same domain model.",
-            "Checks native Psycopg execution and direct same-class query-forwarding wrappers in non-test Python. Each SELECT block needs at least two different direct table relations joined in that block. Self joins, CTE references, derived relations, table-valued functions, dynamic relation names, schema-ambiguous qualification and unsupported SQL abstain.",
-            "Ordinary explicit JOINs, comma joins and lateral modifiers over direct relations remain reviewable. A join to a CTE does not borrow its underlying relation as a direct model boundary. One warning is emitted per authored SQL expression; no automatic rewrite moves transaction or locking boundaries.",
+            "Checks native Psycopg execution and direct same-class query-forwarding wrappers in non-test Python. Each SELECT block needs at least two different direct table relations joined in that block. Self joins, CTE references, derived relations, table-valued functions, dynamic relation names, schema-ambiguous qualification and unsupported SQL abstain. Relation, CTE or table-alias identifiers over 63 UTF-8 bytes or with invalid Unicode also abstain.",
+            "Ordinary explicit JOINs and comma joins over direct relations remain reviewable. A join to a CTE does not borrow its underlying relation as a direct model boundary. One warning is emitted per authored SQL expression; no automatic rewrite moves transaction or locking boundaries.",
         ),
         examples=(
             RuleExample(
@@ -100,14 +105,27 @@ class PreferApplicationModelJoins(Rule):
 
 
 def _cross_relation_join(statement: exp.Expr) -> bool:
+    from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- normalize a private parsed-query copy.
     from sqlglot.optimizer.scope import traverse_scope  # ruff: ignore[import-outside-top-level] -- resolve CTE references per native query scope.
 
-    for scope in traverse_scope(statement):
-        relations = _direct_relations(scope)
-        if any(
-            _distinct_relations(left, right) for index, left in enumerate(relations) for right in relations[index + 1 :]
-        ):
-            return True
+    # Fold ASCII before resolving aliases and CTEs without changing the shared cached query.
+    normalized = statement.copy()
+    for identifier in normalized.find_all(exp.Identifier):
+        if isinstance(identifier.parent, exp.Table | exp.TableAlias):
+            try:
+                if len(identifier.name.encode("utf-8")) > _MAX_IDENTIFIER_BYTES:
+                    return False
+            except UnicodeEncodeError:
+                return False
+        if not identifier.args.get("quoted"):
+            identifier.set("this", identifier.name.translate(_IDENTIFIER_FOLD))
+    for scope in traverse_scope(normalized):
+        # Mixed qualification cannot prove whether search_path resolves one spelling to the other.
+        by_qualification: dict[int, tuple[str, ...]] = {}
+        for relation in _direct_relations(scope):
+            previous = by_qualification.setdefault(len(relation), relation)
+            if previous != relation:
+                return True
     return False
 
 
@@ -131,8 +149,3 @@ def _direct_relations(scope: Scope) -> list[tuple[str, ...]]:
         if key is not None:
             resolved.append(key)
     return resolved
-
-
-def _distinct_relations(left: tuple[str, ...], right: tuple[str, ...]) -> bool:
-    # Mixed qualification cannot prove whether search_path resolves one spelling to the other.
-    return len(left) == len(right) and left != right

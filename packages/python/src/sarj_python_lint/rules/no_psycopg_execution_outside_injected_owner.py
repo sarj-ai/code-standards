@@ -160,7 +160,12 @@ def psycopg_execution_calls(
     tree = context.tree
     if tree is None:
         return []
-    types = _type_index(tree)
+    mutated_modules: frozenset[str] | None = frozenset()
+    if (project := context.session.project) is not None:
+        unit = project.unit(context.path)
+        if unit is not None and unit.source == context.source:
+            mutated_modules = project.import_namespace_mutations.for_unit(unit)
+    types = _type_index(tree, mutated_modules)
     annotations = {node: _class_annotation_types(node, types) for node in context.nodes(ast.ClassDef)}
     ownership = {node: _class_ownership(node, types, annotations[node]) for node in context.nodes(ast.ClassDef)}
     calls: list[ast.Call] = []
@@ -174,26 +179,40 @@ def psycopg_execution_calls(
                 include_injected=include_injected,
                 include_probes=include_probes,
                 track_cursor_parameters=include_injected or scope.owner is None,
+                constructor=scope.owner is not None and scope.function.name == "__init__",
             ).analyze(scope.function)
         )
     return calls
 
 
-def _type_index(tree: ast.Module) -> _TypeIndex:
+def _type_index(tree: ast.Module, mutated_modules: frozenset[str] | None = frozenset()) -> _TypeIndex:
     counts = _module_binding_counts(tree)
+    for name in _global_writes(tree):
+        counts[name] = counts.get(name, 0) + 1
     aliases = _module_type_aliases(tree, counts)
     imports = ImportIndex.from_tree(tree, module_scope_only=True)
     preliminary = _TypeIndex(
         imports,
         aliases,
         frozenset(name for name, count in counts.items() if count > 1)
-        | _namespace_mutated_roots(tree, aliases, imports),
+        | _namespace_mutated_roots(tree, aliases, imports)
+        | frozenset(
+            name
+            for name, target in imports.bindings.items()
+            if mutated_modules is None or target.module in mutated_modules
+        ),
         frozenset(),
     )
+    return _TypeIndex(
+        preliminary.imports, aliases, preliminary.ambiguous, _module_database_globals(tree, counts, preliminary)
+    )
+
+
+def _module_database_globals(tree: ast.Module, counts: dict[str, int], types: _TypeIndex) -> frozenset[str]:
     globals_ = {
         target.id
         for statement in tree.body
-        if isinstance(statement, ast.Assign) and _database_creator(statement.value, preliminary)
+        if isinstance(statement, ast.Assign) and _database_creator(statement.value, types)
         for target in statement.targets
         if isinstance(target, ast.Name) and counts.get(target.id) == 1
     }
@@ -203,10 +222,10 @@ def _type_index(tree: ast.Module) -> _TypeIndex:
         if isinstance(statement, ast.AnnAssign)
         and isinstance(statement.target, ast.Name)
         and statement.value is not None
-        and _database_creator(statement.value, preliminary)
+        and _database_creator(statement.value, types)
         and counts.get(statement.target.id) == 1
     )
-    return _TypeIndex(preliminary.imports, aliases, preliminary.ambiguous, frozenset(globals_))
+    return frozenset(globals_)
 
 
 def _class_annotation_types(cls: ast.ClassDef, types: _TypeIndex) -> _TypeIndex:
@@ -219,8 +238,6 @@ def _namespace_mutated_roots(tree: ast.Module, aliases: dict[str, ast.expr], imp
     pending_nodes: list[ast.AST] = [tree]
     while pending_nodes:
         node = pending_nodes.pop()
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda):
-            continue
         if root := _namespace_mutation_root(node):
             roots.add(root)
         pending_nodes.extend(ast.iter_child_nodes(node))
@@ -288,8 +305,6 @@ def _annotation_kind(
             return _subscript_annotation_kind(value, content, types, seen)
         case ast.BinOp(left=left, op=ast.BitOr(), right=right):
             return _compatible_union_kind([left, right], types, seen)
-        case ast.Tuple(elts=elements):
-            return next((kind for item in elements if (kind := _annotation_kind(item, types, seen))), None)
         case _:
             return None
 
@@ -475,6 +490,7 @@ class _FunctionAnalyzer:
         include_injected: bool,
         include_probes: bool,
         track_cursor_parameters: bool,
+        constructor: bool,
     ) -> None:
         self._types = types
         self._annotation_types = annotation_types
@@ -482,6 +498,7 @@ class _FunctionAnalyzer:
         self._allowed_origins = frozenset(_Origin) if include_injected else frozenset({_Origin.EXTERNAL})
         self._include_probes = include_probes
         self._track_cursor_parameters = track_cursor_parameters
+        self._constructor = constructor
         self._findings: list[ast.Call] = []
         self._shadowed: set[str] = set()
 
@@ -493,7 +510,7 @@ class _FunctionAnalyzer:
             and (kind != "cursor" or self._track_cursor_parameters)
         }
         self._shadowed = {argument.arg for argument in _arguments(function)}
-        if function.name == "__init__":
+        if self._constructor:
             state = dict.fromkeys(state, _Origin.INJECTED)
         self._block(function.body, state)
         return self._findings
@@ -512,12 +529,19 @@ class _FunctionAnalyzer:
         match statement:
             case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) | ast.ClassDef(name=name):
                 self._shadowed.add(name)
+                current.pop(name, None)
                 return current
             case ast.Import(names=aliases):
-                self._shadowed.update(alias.asname or alias.name.split(".", maxsplit=1)[0] for alias in aliases)
+                for alias in aliases:
+                    name = alias.asname or alias.name.split(".", maxsplit=1)[0]
+                    self._shadowed.add(name)
+                    current.pop(name, None)
                 return current
             case ast.ImportFrom(names=aliases):
-                self._shadowed.update(alias.asname or alias.name for alias in aliases)
+                for alias in aliases:
+                    name = alias.asname or alias.name
+                    self._shadowed.add(name)
+                    current.pop(name, None)
                 return current
             case ast.Assign(targets=targets, value=value):
                 self._inspect(value, current)
@@ -526,13 +550,17 @@ class _FunctionAnalyzer:
                     self._bind(target, origin, current)
                     self._shadowed.update(_target_names(target))
                 return current
-            case ast.AnnAssign(target=target, annotation=annotation, value=value):
-                if value is not None:
-                    self._inspect(value, current)
+            case ast.AnnAssign(target=target, value=value):
+                if value is None:
+                    return current
+                self._inspect(value, current)
                 origin = self._expression_origin(value, current)
-                if origin is None and _database_annotation(annotation, self._types):
-                    origin = _Origin.EXTERNAL
                 self._bind(target, origin, current)
+                self._shadowed.update(_target_names(target))
+                return current
+            case ast.AugAssign(target=target, value=value):
+                self._inspect(value, current)
+                self._bind(target, None, current)
                 self._shadowed.update(_target_names(target))
                 return current
             case ast.Delete(targets=targets):
@@ -711,8 +739,12 @@ class _FunctionAnalyzer:
         match node:
             case ast.NamedExpr():
                 return self._expression_origin(node.value, state)
+            case ast.Await(value=value):
+                return self._expression_origin(value, state)
             case ast.Name():
-                return state.get(node.id) or (_Origin.EXTERNAL if node.id in self._types.globals else None)
+                return state.get(node.id) or (
+                    _Origin.EXTERNAL if node.id in self._types.globals and node.id not in self._shadowed else None
+                )
             case _:
                 pass
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "self":
@@ -731,6 +763,10 @@ class _FunctionAnalyzer:
         return None
 
     def _context_origin(self, node: ast.expr, state: dict[str, _Origin]) -> _Origin | None:
+        if isinstance(node, ast.Await):
+            return self._context_origin(node.value, state)
+        if _database_creator(node, self._types, self._shadowed):
+            return _Origin.EXTERNAL
         if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
             return None
         if node.func.attr not in {"connection", "cursor"}:
@@ -800,6 +836,37 @@ def _module_binding_counts(tree: ast.Module) -> dict[str, int]:
     return counts
 
 
+def _global_writes(tree: ast.Module) -> set[str]:
+    written: set[str] = set()
+    for scope in _function_scopes(tree):
+        written.update(_scope_global_writes(scope.function))
+    return written
+
+
+def _scope_global_writes(function: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    nodes = _scope_nodes(function)
+    declared = {name for node in nodes if isinstance(node, ast.Global) for name in node.names}
+    if not declared:
+        return set()
+    return {name for node in nodes for name in _binding_names(node) if name in declared}
+
+
+def _binding_names(node: ast.AST) -> set[str]:
+    match node:
+        case ast.Name(id=name, ctx=ast.Store() | ast.Del()):
+            return {name}
+        case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) | ast.ClassDef(name=name):
+            return {name}
+        case ast.Import(names=aliases):
+            return {alias.asname or alias.name.split(".", maxsplit=1)[0] for alias in aliases}
+        case ast.ImportFrom(names=aliases):
+            return {alias.asname or alias.name for alias in aliases}
+        case ast.ExceptHandler(name=str() as name) | ast.MatchAs(name=str() as name):
+            return {name}
+        case _:
+            return set()
+
+
 def _target_names(target: ast.expr) -> set[str]:
     return {
         node.id for node in walk_ast(target) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store | ast.Del)
@@ -846,8 +913,10 @@ def _subscript_annotation_kind(
     direct = _annotation_kind(value, types, seen)
     if direct is not None:
         return direct
-    tail = _tail(value)
-    match tail:
+    if _root_name(value) in types.ambiguous:
+        return None
+    wrapper = types.imports.resolved_symbol(value, sources=frozenset({"typing", "typing_extensions"}))
+    match wrapper:
         case "Annotated":
             first = content.elts[0] if isinstance(content, ast.Tuple) and content.elts else content
             return _annotation_kind(first, types, seen)
@@ -858,14 +927,6 @@ def _subscript_annotation_kind(
             return _compatible_union_kind(elements, types, seen)
         case _:
             return None
-
-
-def _tail(node: ast.expr | None) -> str:
-    match node:
-        case ast.Name(id=name) | ast.Attribute(attr=name):
-            return name
-        case _:
-            return ""
 
 
 def _root_name(node: ast.expr | None) -> str:

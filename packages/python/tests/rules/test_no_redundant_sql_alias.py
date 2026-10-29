@@ -93,3 +93,84 @@ def test_exact_code_suppression() -> None:
 
 def test_generated_source_is_ignored() -> None:
     assert NoRedundantSqlAlias().check(Path("generated/call_store.py"), _source("SELECT id AS id FROM call")) == []
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT {column} AS {output} FROM call",
+        "SELECT {column} AS {column} FROM call",
+        "SELECT id FROM {relation} AS {role}",
+        "SELECT id FROM {relation} AS {relation}",
+        'SELECT "prefix{column}" AS "prefix{output}" FROM call',
+        'SELECT id FROM "prefix{relation}" AS "prefix{role}"',
+    ],
+)
+def test_unresolved_identifiers_do_not_prove_redundancy(query: str) -> None:
+    assert NoRedundantSqlAlias().check(P, _source(query)) == []
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT {relation}.id AS id FROM {relation}",
+        "SELECT id AS id FROM {relation}",
+        "SELECT {column} FROM call AS call",
+        "SELECT {column} AS {output}, id AS id FROM call",
+        "SELECT {column} AS {output} FROM call AS call",
+    ],
+)
+def test_unresolved_identifiers_preserve_independent_static_matches(query: str) -> None:
+    assert len(NoRedundantSqlAlias().check(P, _source(query))) == 1
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        'f"SELECT {column} AS {output} FROM call"',
+        'f"SELECT id FROM {relation} AS {role}"',
+    ],
+)
+def test_constructor_fstring_identifiers_are_unresolved(query: str) -> None:
+    source = f"from psycopg.sql import SQL\nQUERY = SQL({query})\n"
+    assert NoRedundantSqlAlias().check(P, source) == []
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        'f"SELECT {column} AS {output} FROM call"',
+        '"SELECT {column} AS {output} FROM call".format(column=column, output=output)',
+        'SQL("SELECT {column} AS {output} FROM call").format(column=column, output=output)',
+        'f"SELECT id FROM {relation} AS {role}"',
+        '"SELECT id FROM {relation} AS {role}".format(relation=relation, role=role)',
+        'SQL("SELECT id FROM {relation} AS {role}").format(relation=relation, role=role)',
+    ],
+)
+def test_execution_wrappers_preserve_unresolved_identity(expression: str) -> None:
+    source = (
+        "import psycopg\nfrom psycopg.sql import SQL\n"
+        "def read(cursor: psycopg.Cursor, column, output, relation, role):\n"
+        f"    cursor.execute({expression})\n"
+    )
+    assert NoRedundantSqlAlias().check(P, source) == []
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        'f"SELECT id AS id FROM {relation}"',
+        '"SELECT id AS id FROM {relation}".format(relation=relation)',
+        'SQL("SELECT id AS id FROM {relation}").format(relation=relation)',
+        'f"SELECT {column} FROM call AS call"',
+        '"SELECT {column} FROM call AS call".format(column=column)',
+        'SQL("SELECT {column} FROM call AS call").format(column=column)',
+    ],
+)
+def test_execution_wrappers_preserve_static_matches(expression: str) -> None:
+    source = (
+        "import psycopg\nfrom psycopg.sql import SQL\n"
+        "def read(cursor: psycopg.Cursor, column, relation):\n"
+        f"    cursor.execute({expression})\n"
+    )
+    assert len(NoRedundantSqlAlias().check(P, source)) == 1

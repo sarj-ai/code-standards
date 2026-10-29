@@ -246,3 +246,76 @@ def test_many_dollar_literals_keep_linear_masking_and_original_ddl_location() ->
     assert len(findings) == 1
     assert findings[0].line == 3002
     assert "transaction block" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "CREATE INDEX CONCURRENTLY i ON account;",
+        "CREATE INDEX CONCURRENTLY ON account;",
+        "CREATE INDEX CONCURRENTLY i ON account();",
+        "CREATE INDEX CONCURRENTLY i ON account( );",
+        "CREATE INDEX CONCURRENTLY i ON account INCLUDE (email);",
+        "CREATE INDEX CONCURRENTLY IF NOT EXISTS ON account(email);",
+    ],
+)
+def test_incomplete_index_definitions_abstain(command: str) -> None:
+    assert _check(f"BEGIN; {command}") == []
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "CREATE INDEX CONCURRENTLY ON account(email);",
+        "CREATE INDEX CONCURRENTLY i ON account ((lower(email)));",
+        "CREATE INDEX CONCURRENTLY i ON account(email) WHERE email IS NOT NULL;",
+        "CREATE INDEX CONCURRENTLY i ON account(email) INCLUDE (id);",
+        "CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS i ON account(email);",
+        "CREATE INDEX CONCURRENTLY i ON account(email) WITH (fillfactor = 70);",
+    ],
+)
+def test_complete_index_definitions_keep_transaction_findings(command: str) -> None:
+    (finding,) = _check(f"BEGIN; {command}")
+    assert "inside a transaction block" in finding.message
+    assert _check(command) == []
+
+
+@pytest.mark.parametrize(
+    "copy",
+    [
+        "COPY seed(text) FROM STDIN;",
+        'COPY public."seed;data" (text) FROM stdin;',
+        "COPY seed FROM STDIN WITH (FORMAT csv);",
+    ],
+)
+def test_copy_input_is_not_executable_ddl(copy: str) -> None:
+    source = f"{copy}\nrow;\nDROP INDEX CONCURRENTLY a, b CASCADE;\n\\.\n"
+    assert _check(source) == []
+
+
+def test_copy_input_cannot_create_transaction_proof_for_later_commands() -> None:
+    source = f"COPY seed(text) FROM STDIN;\nrow;\nBEGIN;\n\\.\nSELECT 1;\n{_CREATE}"
+    assert _check(source) == []
+
+
+def test_copy_native_boundary_preserves_earlier_findings() -> None:
+    source = "DROP INDEX CONCURRENTLY a, b;\nCOPY seed FROM STDIN;\nrow;\nDROP INDEX CONCURRENTLY x, y;\n\\.\n"
+    (finding,) = _check(source)
+    assert (finding.line, finding.col) == (1, 1)
+    assert "one index" in finding.message
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "COPY seed TO STDOUT;",
+        "COPY seed FROM 'STDIN';",
+        "COPY seed FROM PROGRAM 'STDIN';",
+        "SELECT 'COPY seed FROM STDIN';",
+        "DO $$ BEGIN PERFORM 'COPY seed FROM STDIN'; END $$;",
+    ],
+)
+def test_copy_near_misses_do_not_end_analysis(command: str) -> None:
+    (finding,) = _check(f"{command}\nBEGIN; {_CREATE}")
+    assert finding.line == 2
+    assert "inside a transaction block" in finding.message

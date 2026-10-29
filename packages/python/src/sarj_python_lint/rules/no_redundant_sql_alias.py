@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
 _COMPOSABLE_HOLE = re.compile(r"(?<!\{)\{(?:[A-Za-z_]\w*|\d*)\}(?!\})")
 _SQL_HOLE = "__sarj_sql_hole__"
+_STORE_SQL_HOLE = "__sarj_store_sql_hole__"
 _ASCII_FOLD = str.maketrans(ascii_uppercase, ascii_lowercase)
 
 
@@ -161,4 +162,7 @@ def _identifier(node: exp.Expr | None) -> str | None:
 
     if not isinstance(node, exp.Identifier):
         return None
-    return node.name if node.args.get("quoted") else node.name.translate(_ASCII_FOLD)
+    name = node.name
+    if _SQL_HOLE in name or _STORE_SQL_HOLE in name:
+        return None
+    return name if node.args.get("quoted") else name.translate(_ASCII_FOLD)

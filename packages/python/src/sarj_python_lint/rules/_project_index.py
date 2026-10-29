@@ -25,7 +25,7 @@ from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence, Set as AbstractSet
+    from collections.abc import Callable, Iterator, Sequence, Set as AbstractSet
     from typing import Self
 
     from sarj_python_lint._prepared_sources import PreparedSourceInputs
@@ -191,6 +191,13 @@ class _TypeProviderFacts:
     opaque: bool
 
 
+@dataclass(frozen=True)
+class _ImportNamespaceWrites:
+    modules: frozenset[str]
+    dependencies: frozenset[str]
+    incomplete: bool
+
+
 def imports_outside(tree: ast.Module | None, modules: frozenset[str]) -> bool:
     if tree is None:
         return True
@@ -200,6 +207,45 @@ def imports_outside(tree: ast.Module | None, modules: frozenset[str]) -> bool:
         if isinstance(node, ast.ImportFrom) and (node.level != 0 or node.module not in modules):
             return True
     return False
+
+
+@final
+class ImportNamespaceMutations:
+    def __init__(
+        self,
+        load: Callable[[], Mapping[str, _ImportNamespaceWrites]],
+    ) -> None:
+        self._load = load
+        self._facts: Mapping[str, _ImportNamespaceWrites] | None = None
+        self._reachable: dict[str, frozenset[str] | None] = {}
+
+    def for_unit(self, unit: SourceUnit) -> frozenset[str] | None:
+        if unit.module is None:
+            return frozenset()
+        if unit.module in self._reachable:
+            return self._reachable[unit.module]
+        pending = list(_module_prefixes(unit.module))
+        visited: set[str] = set()
+        mutated: set[str] = set()
+        if self._facts is None:
+            self._facts = self._load()
+        facts = self._facts
+        while pending:
+            module = pending.pop()
+            if module in visited:
+                continue
+            visited.add(module)
+            fact = facts.get(module)
+            if fact is None:
+                continue
+            if fact.incomplete:
+                self._reachable[unit.module] = None
+                return None
+            mutated.update(fact.modules)
+            pending.extend(fact.dependencies - visited)
+        result = frozenset(mutated)
+        self._reachable[unit.module] = result
+        return result
 
 
 @final
@@ -225,6 +271,7 @@ class ProjectIndexSet:
         self._type_providers: dict[ast.Module, _TypeProviderFacts] = {}
         self._bound_value_prefixes: dict[str, bool] = {}
         self._value_origins_incomplete = False
+        self.import_namespace_mutations = ImportNamespaceMutations(self._namespace_write_inventory)
         by_module = {unit.module: unit for unit in units.values() if unit.module is not None}
         self._by_module = MappingProxyType(by_module)
         classes: dict[SymbolRef, ClassSummary] = {}
@@ -379,6 +426,13 @@ class ProjectIndexSet:
 
     def source_unit(self, module: str) -> SourceUnit | None:
         return self._by_module.get(module)
+
+    def _namespace_write_inventory(self) -> Mapping[str, _ImportNamespaceWrites]:
+        def resolve(origin: SymbolRef) -> tuple[SymbolRef, ...] | None:
+            values = self._canonical_value_symbols(origin)
+            return None if not values and self._value_origins_incomplete else values
+
+        return _import_namespace_write_facts(self._units, self._runtime_origins, resolve)
 
     def nominal_membership_is_dynamic(self, symbol: SymbolRef) -> bool:
         if symbol.module not in self._namespace_mutation:
@@ -765,6 +819,79 @@ def _namespace_closure(
                 values[namespace].update(values[target])
             changed = changed or len(values[namespace]) != before
     return MappingProxyType({name: frozenset(targets) for name, targets in values.items()})
+
+
+def _import_namespace_write_facts(
+    units: Mapping[Path, SourceUnit],
+    runtime_origins: Mapping[str, Mapping[str, frozenset[SymbolRef]]],
+    resolve: Callable[[SymbolRef], tuple[SymbolRef, ...] | None],
+) -> Mapping[str, _ImportNamespaceWrites]:
+    facts: dict[str, _ImportNamespaceWrites] = {}
+    for unit in units.values():
+        if unit.module is None or unit.tree is None:
+            continue
+        current = _unit_import_namespace_writes(unit, runtime_origins.get(unit.module, {}), resolve)
+        previous = facts.get(unit.module)
+        if previous is not None:
+            current = _ImportNamespaceWrites(
+                previous.modules | current.modules,
+                previous.dependencies | current.dependencies,
+                previous.incomplete or current.incomplete,
+            )
+        facts[unit.module] = current
+    return MappingProxyType(facts)
+
+
+def _unit_import_namespace_writes(
+    unit: SourceUnit,
+    origins: Mapping[str, frozenset[SymbolRef]],
+    resolve: Callable[[SymbolRef], tuple[SymbolRef, ...] | None],
+) -> _ImportNamespaceWrites:
+    targets: set[str] = set()
+    incomplete = False
+    if unit.tree is not None:
+        for node in walk_ast(unit.tree):
+            reference = _namespace_write_owner(node)
+            if reference is None:
+                continue
+            for origin in _possible_class_symbols(unit, reference, origins):
+                resolved = resolve(origin)
+                if resolved is None:
+                    incomplete = True
+                else:
+                    targets.update(symbol.module or symbol.name for symbol in resolved)
+    return _ImportNamespaceWrites(frozenset(targets), _runtime_dependency_modules(unit), incomplete)
+
+
+def _namespace_write_owner(node: ast.AST) -> ast.Name | ast.Attribute | None:
+    owner: ast.expr | None = None
+    match node:
+        case ast.Attribute(value=value, ctx=ast.Store() | ast.Del()):
+            owner = value
+        case ast.Call(func=ast.Name(id="setattr" | "delattr"), args=[value, _, *_]):
+            owner = value
+        case _:
+            pass
+    return owner if isinstance(owner, ast.Name | ast.Attribute) else None
+
+
+def _runtime_dependency_modules(unit: SourceUnit) -> frozenset[str]:
+    if unit.tree is None:
+        return frozenset()
+    package = (unit.module or "") if unit.path.name == "__init__.py" else (unit.module or "").rpartition(".")[0]
+    dependencies: set[str] = set()
+    for statement in _runtime_import_statements(unit.tree):
+        match statement:
+            case ast.Import(names=aliases):
+                for alias in aliases:
+                    dependencies.update(_module_prefixes(alias.name))
+            case ast.ImportFrom(module=module, level=level, names=aliases):
+                target = _relative_module(package, level, module)
+                if target is None:
+                    continue
+                dependencies.update(_module_prefixes(target))
+                dependencies.update(f"{target}.{alias.name}" for alias in aliases if alias.name != "*")
+    return frozenset(dependencies)
 
 
 def _runtime_import_origins(

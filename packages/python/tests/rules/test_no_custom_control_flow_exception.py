@@ -111,3 +111,87 @@ def test_exact_suppression_and_malformed_source() -> None:
     assert _check(source) == []
     assert check_source([NoCustomControlFlowException()], P, source) == []
     assert _check("class DomainError(Exception):\n    (") == []
+
+
+@pytest.mark.parametrize(
+    "base_use",
+    [
+        "register_handler(Base)",
+        "handler_types = {Base: handler}",
+        "alias = Base",
+        "Base.code = 400",
+        "del Base.code",
+        "def replace():\n    global Base\n    Base = Other\nreplace()",
+    ],
+)
+@pytest.mark.parametrize("depth", [1, 3])
+def test_inherited_escaped_or_mutated_contract_abstains(base_use: str, depth: int) -> None:
+    declarations = ["class Base(Exception): pass", base_use]
+    parent = "Base"
+    for index in range(depth):
+        name = f"Child{index}"
+        declarations.append(f"class {name}({parent}): pass")
+        parent = name
+    source = "\n".join([*declarations, f"raise {parent}", ""])
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("depth", [1, 3])
+def test_stable_local_inheritance_still_warns(depth: int) -> None:
+    declarations = ["class Base(Exception): pass"]
+    parent = "Base"
+    for index in range(depth):
+        name = f"Child{index}"
+        declarations.append(f"class {name}({parent}): pass")
+        parent = name
+    source = "\n".join([*declarations, f"raise {parent}", ""])
+    findings = _check(source)
+    assert len(findings) == 1
+    assert f"`{parent}`" in findings[0].message
+
+
+def test_an_unrelated_escaped_marker_does_not_hide_a_stable_marker() -> None:
+    source = (
+        "class Registered(Exception): pass\n"
+        "register_handler(Registered)\n"
+        "class DomainError(Exception): pass\n"
+        "raise DomainError\n"
+    )
+    findings = _check(source)
+    assert len(findings) == 1
+    assert "`DomainError`" in findings[0].message
+
+
+@pytest.mark.parametrize("ordinary_first", [False, True])
+def test_raise_index_preserves_validator_and_ordinary_raise_order(ordinary_first: bool) -> None:
+    validator = "class Model:\n    @field_validator('value')\n    def validate(cls, value): raise DomainError\n"
+    ordinary = "def read(): raise DomainError\n"
+    source = "from pydantic import field_validator\nclass DomainError(ValueError): pass\n" + (
+        ordinary + validator if ordinary_first else validator + ordinary
+    )
+    assert len(_check(source)) == 1
+
+
+def test_multiple_markers_and_repeated_raises_report_each_definition_once() -> None:
+    source = (
+        "class First(Exception): pass\n"
+        "class Second(Exception): pass\n"
+        "def read(value):\n"
+        "    if value == 1: raise First\n"
+        "    if value == 2: raise First()\n"
+        "    raise Second from None\n"
+    )
+    findings = _check(source)
+    assert [finding.line for finding in findings] == [1, 2]
+
+
+def test_global_rebinding_of_a_direct_marker_abstains() -> None:
+    source = (
+        "class DomainError(Exception): pass\n"
+        "def replace():\n"
+        "    global DomainError\n"
+        "    DomainError = Other\n"
+        "replace()\n"
+        "raise DomainError\n"
+    )
+    assert _check(source) == []

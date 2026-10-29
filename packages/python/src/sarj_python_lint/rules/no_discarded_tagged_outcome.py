@@ -80,7 +80,7 @@ class NoDiscardedTaggedOutcome(ProjectRule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Review warning for standalone synchronous calls and directly awaited async calls to stable source-visible module functions. The return must resolve to at least two direct Pydantic, dataclass or required TypedDict variants sharing a string Literal discriminator with disjoint values. No name such as Result or Error establishes proof.",
-            "Module-local and prepared-project absolute imports, quoted bare aliases and PEP 604 returns, unquoted typing.Union and Annotated, and bounded non-generic type aliases are supported. Quoted typing-wrapper combinations, unknown receivers, decorated or generic functions, re-exports, optional/scalar branches, generic records, inheritance, dynamic namespaces, rebound identities and unsupported annotations abstain.",
+            "Module-local and prepared-project absolute imports, quoted bare aliases and PEP 604 returns, unquoted typing.Union and Annotated, and bounded non-generic type aliases are supported. Quoted typing-wrapper combinations, unknown receivers, decorated or generic functions, re-exports, optional/scalar branches, generic records, inheritance, dynamic namespaces, rebound or escaped callable identities, generator functions and unsupported annotations abstain.",
             "Named assignments, returned, passed or conditionally consumed results are preserved. A direct assignment to the single underscore target is an explicit discard and is reviewed. An unawaited async call belongs to coroutine checks. Direct class-body execution, generated sources and opaque providers are excluded. This rule identifies discarding; it does not prove that an assignment handles every variant or infer expected failure from a record name.",
             "String Literal tags must be direct instance fields on every variant and retain their original class-scope binding. Quoted field tags remain outside the proof; quoted module return annotations retain their source declaration anchor. Dynamic fields, optional TypedDict fields, non-string tags, computed Literal values and multi-field discriminator hierarchies are not inferred. No automatic rewrite changes call behavior or error handling.",
         ),
@@ -145,6 +145,7 @@ class _OutcomeCalls:
         self.contracts = DeclaredContracts(context)
         self.providers: dict[Path, PythonFileContext] = {context.path: context}
         self.outcomes: dict[_Function, bool] = {}
+        self.generator_owners: dict[Path, set[ast.AST | None]] = {}
 
     def discarded(self, statement: _Discard) -> bool:
         value = statement.value
@@ -162,10 +163,20 @@ class _OutcomeCalls:
             members = (
                 self._members(_Reference(source.context, function.returns, function), frozenset())
                 if function.returns is not None
+                and _callable_identity(source.context, function)
+                and self._non_generator(source)
                 else None
             )
             self.outcomes[function] = members is not None and self._tagged(members)
         return self.outcomes[function]
+
+    def _non_generator(self, source: _FunctionSource) -> bool:
+        owner = source.context
+        if owner.path not in self.generator_owners:
+            self.generator_owners[owner.path] = {
+                owner.static_resource_provenance.scope(node) for node in owner.nodes(ast.Yield, ast.YieldFrom)
+            }
+        return source.function not in self.generator_owners[owner.path]
 
     def _function_source(self, expression: ast.expr) -> _FunctionSource | None:
         provenance = self.context.static_resource_provenance
@@ -323,6 +334,44 @@ class _OutcomeCalls:
         if declaration is None or not _record_shape(declaration, provider):
             return None
         return _record_tags(declaration, provider)
+
+
+def _callable_identity(context: PythonFileContext, function: _Function) -> bool:
+    provenance = context.static_resource_provenance
+    pending: list[_Function | ast.Name] = [function]
+    seen: set[ast.AST] = set()
+    while pending:
+        binding = pending.pop()
+        if binding in seen:
+            continue
+        if len(seen) >= _MAX_DEPTH:
+            return False
+        seen.add(binding)
+        name = binding.id if isinstance(binding, ast.Name) else binding.name
+        if name in provenance.mutated or name in provenance.external_bindings:
+            return False
+        for read in provenance.binding_reads(name, binding):
+            parent = context.parents.get(read)
+            if isinstance(parent, ast.Call) and parent.func is read:
+                continue
+            target = _simple_callable_alias(context, read)
+            if target is None:
+                return False
+            pending.append(target)
+    return True
+
+
+def _simple_callable_alias(context: PythonFileContext, read: ast.Name) -> ast.Name | None:
+    assignment = context.parents.get(read)
+    if not isinstance(assignment, ast.Assign | ast.AnnAssign) or assignment.value is not read:
+        return None
+    if not isinstance(context.parents.get(assignment), ast.Module | ast.FunctionDef | ast.AsyncFunctionDef):
+        return None
+    targets = assignment.targets if isinstance(assignment, ast.Assign) else [assignment.target]
+    if len(targets) != 1 or not isinstance(targets[0], ast.Name):
+        return None
+    target = targets[0]
+    return target if context.static_resource_provenance.binding(target.id, target) is target else None
 
 
 def _union_children(node: ast.expr, context: PythonFileContext) -> list[ast.expr] | None:

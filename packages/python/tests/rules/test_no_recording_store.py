@@ -172,3 +172,182 @@ ItemId = typing.NewType('ItemId', str)
         + _RECORD.replace("return item", "return ItemId(str(item))")
     )
     assert NoRecordingStore().check(P, source) == []
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "self.real.append(item)\n        return item",
+        "database[item.id] = item\n        return item",
+        "self.saved = persist_result\n        return item",
+        "return real.upsert(item)",
+    ],
+)
+def test_possible_persistence_effects_are_preserved(replacement: str) -> None:
+    assert NoRecordingStore().check(P, _CONTRACT + _RECORD.replace("return item", replacement)) == []
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "self.writes = []\n        self.writes = real",
+        "if flag:\n            self.writes = []",
+        "self.writes = []\n        register(self)",
+        "return\n        self.writes = []",
+    ],
+)
+def test_constructor_must_prove_a_stable_instance_list(replacement: str) -> None:
+    source = _CONTRACT + _RECORD.replace("self.writes: list[object] = []", replacement)
+    assert NoRecordingStore().check(P, source) == []
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "self.writes = real\n        self.writes.append(item)",
+        "if False:\n            self.writes.append(item)",
+        "return item\n        self.writes.append(item)",
+        "raise RuntimeError\n        self.writes.append(item)",
+        "[self.writes.append(item) for item in ()]",
+    ],
+)
+def test_recording_requires_reachable_straight_line_code(replacement: str) -> None:
+    source = _CONTRACT + _RECORD.replace("self.writes.append(item)", replacement)
+    assert NoRecordingStore().check(P, source) == []
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "def upsert(other, item):",
+        "@staticmethod\n    def upsert(self, item):",
+        "@unknown\n    def upsert(self, item):",
+    ],
+)
+def test_recording_requires_an_ordinary_instance_receiver(replacement: str) -> None:
+    assert NoRecordingStore().check(P, _CONTRACT + _RECORD.replace("def upsert(self, item):", replacement)) == []
+
+
+def test_overwritten_recording_override_is_not_the_implementation() -> None:
+    source = _CONTRACT + _RECORD + "    def upsert(self, item):\n        return real.upsert(item)\n"
+    assert NoRecordingStore().check(P, source) == []
+
+
+@pytest.mark.parametrize("base", ["Store, External", "Store, metaclass=Custom"])
+def test_unsupported_class_ownership_abstains(base: str) -> None:
+    assert NoRecordingStore().check(P, _CONTRACT + _RECORD.replace("Recorder(Store)", f"Recorder({base})")) == []
+
+
+@pytest.mark.parametrize(
+    ("provider", "name"),
+    [
+        ("from typing import NewType\nItem = NewType('Item', str)\n", "Item"),
+        ("from dataclasses import dataclass\n@dataclass\nclass Item:\n    id: str\n", "Item"),
+    ],
+)
+def test_shadowed_value_constructors_retain_possible_persistence(provider: str, name: str) -> None:
+    source = (
+        provider
+        + _CONTRACT
+        + _RECORD.replace("def upsert(self, item):", f"def upsert(self, item, {name}=persist):").replace(
+            "return item", f"return {name}(item)"
+        )
+    )
+    assert NoRecordingStore().check(P, source) == []
+
+
+@pytest.mark.parametrize(
+    "provider",
+    [
+        "from typing import NewType\nItem = NewType('Item', str)\n",
+        "from dataclasses import dataclass\n@dataclass\nclass Item:\n    id: str\n",
+        "from pydantic import BaseModel\nclass Item(BaseModel):\n    id: str\n",
+    ],
+)
+@pytest.mark.parametrize("mutation", ["register(Item)\n", "Alias = Item\nAlias.__new__ = persist\n"])
+def test_escaped_value_constructor_providers_abstain(provider: str, mutation: str) -> None:
+    source = provider + mutation + _CONTRACT + _RECORD.replace("return item", "return Item(item)")
+    assert NoRecordingStore().check(P, source) == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "    def __init__(self, item):\n        persist(item)\n",
+        "    def model_post_init(self, context):\n        persist(self)\n",
+        "    receipt: str = Field(default_factory=persist)\n",
+    ],
+)
+def test_custom_model_construction_retains_possible_persistence(body: str) -> None:
+    source = "from pydantic import BaseModel, Field\nclass Item(BaseModel):\n" + body
+    source += _CONTRACT + _RECORD.replace("return item", "return Item(item)")
+    assert NoRecordingStore().check(P, source) == []
+
+
+def test_inherited_model_constructor_retains_possible_persistence() -> None:
+    source = (
+        """from pydantic import BaseModel
+class Parent(BaseModel):
+    def __init__(self, item):
+        persist(item)
+class Item(Parent):
+    id: str
+"""
+        + _CONTRACT
+        + _RECORD.replace("return item", "return Item(item)")
+    )
+    assert NoRecordingStore().check(P, source) == []
+
+
+def test_plain_inherited_model_value_construction_is_preserved() -> None:
+    source = (
+        """from pydantic import BaseModel
+class Parent(BaseModel):
+    id: str
+class Item(Parent):
+    name: str
+"""
+        + _CONTRACT
+        + _RECORD.replace("return item", "return Item(id=str(item), name=str(item))")
+    )
+    assert len(NoRecordingStore().check(P, source)) == 1
+
+
+@pytest.mark.parametrize(
+    "provider",
+    [
+        "import dataclasses\ndataclasses.dataclass = custom\n@dataclasses.dataclass\nclass Item:\n    id: str\n",
+        "import pydantic\npydantic.BaseModel = Custom\nclass Item(pydantic.BaseModel):\n    id: str\n",
+    ],
+)
+def test_mutated_native_class_provider_retains_unknown_construction(provider: str) -> None:
+    source = provider + _CONTRACT + _RECORD.replace("return item", "return Item(item)")
+    assert NoRecordingStore().check(P, source) == []
+
+
+def test_local_import_cannot_reuse_a_module_value_constructor_proof() -> None:
+    source = (
+        """from typing import NewType
+Item = NewType('Item', str)
+"""
+        + _CONTRACT
+        + _RECORD.replace(
+            "self.writes.append(item)", "from external import Item\n        self.writes.append(item)"
+        ).replace("return item", "return Item(item)")
+    )
+    assert NoRecordingStore().check(P, source) == []
+
+
+def test_value_constructor_escaping_through_a_container_abstains() -> None:
+    source = (
+        """from dataclasses import dataclass
+@dataclass
+class Item:
+    id: str
+providers = [Item]
+register(providers)
+"""
+        + _CONTRACT
+        + _RECORD.replace("return item", "return Item(item)")
+    )
+    assert NoRecordingStore().check(P, source) == []

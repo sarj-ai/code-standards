@@ -33,6 +33,7 @@ from sarj_sql_lint.rules._constraint_analysis import (
     split_actions,
     tokenize,
 )
+from sarj_sql_lint.rules._copy_input import sql_before_copy_input
 
 
 if TYPE_CHECKING:
@@ -117,8 +118,9 @@ class CombineAlterTable(Rule):
         limitations=(
             "Only authored PostgreSQL migrations are checked; dumps, generator-owned migrations, fixtures, and test sources are excluded.",
             "Only adjacent statements with the same explicitly qualified relation and identical IF EXISTS, ONLY, and descendant modifiers are combined. Any intervening statement or migration-section directive ends the group.",
-            "Supported groups contain only DROP COLUMN/DROP CONSTRAINT actions, only nullable additions of recognized built-in scalar types without expressions or constraints, or only identical SET NOT NULL, DROP NOT NULL, or DROP DEFAULT actions on distinct columns.",
+            "Supported groups contain only DROP COLUMN/DROP CONSTRAINT actions, only nullable additions of recognized built-in scalar types with optional NULL and without defaults or other constraints, or only identical SET NOT NULL, DROP NOT NULL, or DROP DEFAULT actions on distinct columns.",
             "Renames, schema and partition changes, type conversions, expressions, defaults, constraint additions/validation, repeated object targets, unsupported types, and malformed syntax remain separate. No catalog or search_path equivalence is inferred.",
+            "Analysis stops at an executable COPY FROM STDIN command because raw data framing is unsupported; later statements are not checked.",
             "No automatic rewrite moves comments or changes migration behavior. Existing DDL event triggers may observe statement boundaries; an intentional boundary needs an exact, explained rule exception.",
         ),
         examples=(
@@ -159,6 +161,7 @@ class CombineAlterTable(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        source = sql_before_copy_input(source)
         if (
             {part.casefold() for part in path.parts} & _NON_PRODUCTION
             or is_dump_file(source, path)
@@ -232,7 +235,7 @@ def _compatible_alter(tokens: list[Token]) -> _Alter | None:
     only = consume(tokens, cursor, "ONLY")
     cursor += 1 if only else 0
     parsed = identifier(tokens, cursor)
-    if parsed is None or len(parsed[0]) > _MAX_RELATION_PARTS:
+    if parsed is None or len(parsed[0]) > _MAX_RELATION_PARTS or not all(parsed[0]):
         return None
     relation, cursor = parsed
     descendants = cursor < len(tokens) and tokens[cursor].text == "*"
@@ -262,7 +265,7 @@ def _action(tokens: list[Token]) -> _Action | None:
         return None
     cursor = 2 if consume(tokens, 1, "COLUMN") else 1
     parsed = identifier(tokens, cursor)
-    if parsed is None or len(parsed[0]) != 1:
+    if parsed is None or len(parsed[0]) != 1 or not all(parsed[0]):
         return None
     name, cursor = parsed
     for operation in _SIMPLE_COLUMN_ACTIONS:
@@ -277,7 +280,7 @@ def _drop_action(tokens: list[Token]) -> _Action | None:
     if sequence(tokens, cursor, ("IF", "EXISTS")):
         cursor += 2
     parsed = identifier(tokens, cursor)
-    if parsed is None or len(parsed[0]) != 1:
+    if parsed is None or len(parsed[0]) != 1 or not all(parsed[0]):
         return None
     name, cursor = parsed
     if cursor < len(tokens) and (consume(tokens, cursor, "CASCADE") or consume(tokens, cursor, "RESTRICT")):
@@ -290,10 +293,12 @@ def _add_action(tokens: list[Token]) -> _Action | None:
     if sequence(tokens, cursor, ("IF", "NOT", "EXISTS")):
         cursor += 3
     parsed = identifier(tokens, cursor)
-    if parsed is None or len(parsed[0]) != 1:
+    if parsed is None or len(parsed[0]) != 1 or not all(parsed[0]):
         return None
     name, cursor = parsed
     type_tokens = tokens[cursor:]
+    if type_tokens and consume(type_tokens, len(type_tokens) - 1, "NULL"):
+        type_tokens = type_tokens[:-1]
     if (
         any(token.quoted for token in type_tokens)
         or tuple(token.text.upper() for token in type_tokens) not in _PLAIN_TYPES

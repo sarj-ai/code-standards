@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import ast
-from pathlib import PurePosixPath
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
 
 from sarj_python_lint.rule_base import (
@@ -16,19 +17,19 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._annotation_semantics import bit_or_members as _flatten_union
-from sarj_python_lint.rules._declared_contracts import MODEL_BASES, DeclaredContracts
+from sarj_python_lint.rules._declared_contracts import MODEL_BASES, DeclaredClass, DeclaredContracts
+from sarj_python_lint.rules._imports import ImportIndex
 
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
-    from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
-    from sarj_python_lint.rules._imports import ImportIndex
 
 
 _MIN_BRANCHES = 2
 _MIN_REVIEW_BRANCHES = 2
+_REVIEW_BASES = MODEL_BASES | {"enum.Enum", "enum.IntEnum", "enum.StrEnum"}
 _ISINSTANCE_ARGS = 2
 _BUILTIN_TYPES = frozenset(
     {
@@ -50,30 +51,7 @@ _BUILTIN_TYPES = frozenset(
         "type",
     }
 )
-_LOWERCASE_AST_TYPES = frozenset(
-    {
-        "alias",
-        "arg",
-        "arguments",
-        "boolop",
-        "cmpop",
-        "comprehension",
-        "excepthandler",
-        "expr",
-        "expr_context",
-        "keyword",
-        "match_case",
-        "mod",
-        "operator",
-        "pattern",
-        "slice",
-        "stmt",
-        "type_ignore",
-        "type_param",
-        "unaryop",
-        "withitem",
-    }
-)
+_STDLIB_AST_TYPES = frozenset(name for name, value in dict[str, object](vars(ast)).items() if isinstance(value, type))
 
 
 class _TypeBranch(NamedTuple):
@@ -84,6 +62,27 @@ class _TypeBranch(NamedTuple):
 class _ReviewBranch(NamedTuple):
     subject: str
     types: frozenset[str]
+    model_or_enum: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _ReviewUnit:
+    imports: ImportIndex
+    unsafe_bindings: frozenset[str]
+
+
+@dataclass(frozen=True, slots=True)
+class _ReviewEvidence:
+    imports: ImportIndex
+    contracts: DeclaredContracts
+    local_classes: frozenset[str]
+    unsafe_bindings: frozenset[str]
+    units: dict[Path, _ReviewUnit]
+
+
+@dataclass(frozen=True, slots=True)
+class _ReviewBase:
+    parent: DeclaredClass | None
     model_or_enum: bool
 
 
@@ -335,18 +334,15 @@ class PreferMatchTypeDispatch(ProjectRule):
             return []
         imports = context.imports
         all_nodes = tuple(context.nodes(ast.AST))
-        unsafe_bindings = _unsafe_local_bound_names(tree, all_nodes, imports) | frozenset(
-            qualified
-            for node in all_nodes
-            if isinstance(node, ast.Attribute)
-            and isinstance(node.ctx, (ast.Store, ast.Del))
-            and (qualified := imports.resolved_qualified_name(node)) is not None
-            and qualified.startswith(("ast.", "builtins."))
-        )
+        unsafe_bindings = _unsafe_local_bound_names(tree, all_nodes, imports) | _namespace_mutations(all_nodes, imports)
         has_wildcard_import = any(
             isinstance(node, ast.ImportFrom) and any(alias.name == "*" for alias in node.names) for node in all_nodes
         )
-        if not imports.builtin_is_unshadowed("isinstance") or "isinstance" in unsafe_bindings or has_wildcard_import:
+        if (
+            not imports.builtin_is_unshadowed("isinstance")
+            or {"isinstance", "builtins.isinstance"} & unsafe_bindings
+            or has_wildcard_import
+        ):
             return []
         local_classes = _unshadowed_module_classes(tree, all_nodes, imports, unsafe_bindings)
         covered: set[int] = set()
@@ -444,11 +440,11 @@ def _review_dispatch_findings(
     unsafe_bindings: frozenset[str],
     existing: list[Diagnostic],
 ) -> list[Diagnostic]:
-    contracts = DeclaredContracts(context)
+    evidence = _ReviewEvidence(context.imports, DeclaredContracts(context), local_classes, unsafe_bindings, {})
     used = {item.line for item in existing}
     findings: list[Diagnostic] = []
     for candidates in _review_sequences(context, used):
-        branches = _review_dispatch_proven(candidates, context, contracts, local_classes, unsafe_bindings)
+        branches = _review_dispatch_proven(candidates, evidence)
         if branches is None:
             continue
         used.update(branch.lineno for branch in branches)
@@ -469,34 +465,31 @@ def _review_dispatch_findings(
 
 def _review_sequences(context: PythonFileContext, used: set[int]) -> Iterator[Iterator[ast.If]]:
     blocks = (block for owner in context.nodes(ast.AST) for block in _statement_blocks(owner))
+    expanded: set[int] = set()
     for block in blocks:
-        yield from _review_block(block, used)
+        yield from _review_block(block, used, expanded)
 
 
-def _review_block(statements: list[ast.stmt], used: set[int]) -> Iterator[Iterator[ast.If]]:
+def _review_block(statements: list[ast.stmt], used: set[int], expanded: set[int]) -> Iterator[Iterator[ast.If]]:
     for index, statement in enumerate(statements):
-        if not isinstance(statement, ast.If):
+        if not isinstance(statement, ast.If) or id(statement) in expanded:
             continue
         branches = _review_branches(statements, index)
         if statement.lineno in used:
-            used.update(branch.lineno for branch in branches)
+            for branch in branches:
+                used.add(branch.lineno)
+                expanded.add(id(branch))
         else:
             yield branches
 
 
-def _review_dispatch_proven(
-    branches: Iterable[ast.If],
-    context: PythonFileContext,
-    contracts: DeclaredContracts,
-    local_classes: frozenset[str],
-    unsafe_bindings: frozenset[str],
-) -> list[ast.If] | None:
+def _review_dispatch_proven(branches: Iterable[ast.If], evidence: _ReviewEvidence) -> list[ast.If] | None:
     proven: list[ast.If] = []
     subject: str | None = None
     seen: set[str] = set()
     has_model_or_enum = False
     for node in branches:
-        branch = _review_branch(node, context, contracts, local_classes, unsafe_bindings)
+        branch = _review_branch(node, evidence)
         if branch is None or (subject is not None and branch.subject != subject) or seen & branch.types:
             return None
         subject = branch.subject
@@ -527,27 +520,118 @@ def _review_branches(statements: list[ast.stmt], index: int) -> Iterator[ast.If]
             return
 
 
-def _review_branch(
-    node: ast.If,
-    context: PythonFileContext,
-    contracts: DeclaredContracts,
-    local_classes: frozenset[str],
-    unsafe_bindings: frozenset[str],
-) -> _ReviewBranch | None:
+def _review_branch(node: ast.If, evidence: _ReviewEvidence) -> _ReviewBranch | None:
     test = node.test
     match test:
         case ast.Call(func=ast.Name(id="isinstance"), args=[ast.Name(id=subject), kind], keywords=[]):
             pass
         case _:
             return None
-    if known := _type_references(kind, context.imports, local_classes, unsafe_bindings):
+    if known := _type_references(kind, evidence.imports, evidence.local_classes, evidence.unsafe_bindings):
         return _ReviewBranch(subject, known, model_or_enum=False)
     if not isinstance(kind, ast.Name | ast.Attribute):
         return None
-    model = contracts.class_type(kind, at=test)
-    if model is None or not contracts.inherits(model, MODEL_BASES | {"enum.Enum", "enum.IntEnum", "enum.StrEnum"}):
+    model = evidence.contracts.class_type(kind, at=test)
+    if model is None or not _review_ancestry_proven(model, evidence):
         return None
     return _ReviewBranch(subject, frozenset({f"{model.unit.module}.{model.declaration.name}"}), model_or_enum=True)
+
+
+def _review_ancestry_proven(model: DeclaredClass, evidence: _ReviewEvidence) -> bool:
+    pending = [(model, False)]
+    active: set[ast.ClassDef] = set()
+    completed: set[ast.ClassDef] = set()
+    inherited = False
+    while pending:
+        current, leaving = pending.pop()
+        declaration = current.declaration
+        if leaving:
+            active.remove(declaration)
+            completed.add(declaration)
+            continue
+        if declaration in completed:
+            continue
+        if declaration in active:
+            return False
+        unit = _review_unit(current, evidence)
+        if unit is None:
+            return False
+        active.add(declaration)
+        pending.append((current, True))
+        for base in declaration.bases:
+            proven = _review_base(base, current, evidence, unit)
+            if proven is None:
+                return False
+            inherited |= proven.model_or_enum
+            if proven.parent is not None:
+                pending.append((proven.parent, False))
+    return inherited
+
+
+def _review_unit(model: DeclaredClass, evidence: _ReviewEvidence) -> _ReviewUnit | None:
+    if model.unit.tree is None:
+        return None
+    unit = evidence.units.get(model.unit.path)
+    if unit is None:
+        imports = ImportIndex.from_tree(model.unit.tree, module_scope_only=True)
+        unit = _ReviewUnit(imports, _namespace_mutations(tuple(ast.walk(model.unit.tree)), imports))
+        evidence.units[model.unit.path] = unit
+    return unit
+
+
+def _review_base(
+    base: ast.expr, model: DeclaredClass, evidence: _ReviewEvidence, unit: _ReviewUnit
+) -> _ReviewBase | None:
+    qualified = unit.imports.resolved_qualified_name(base)
+    root = base
+    while isinstance(root, ast.Attribute):
+        root = root.value
+    if qualified in unit.unsafe_bindings or (isinstance(root, ast.Name) and root.id in unit.unsafe_bindings):
+        return None
+    if qualified in _REVIEW_BASES:
+        return _ReviewBase(None, model_or_enum=True)
+    if _builtin_class_reference(base, unit.imports, unit.unsafe_bindings) is not None:
+        return _ReviewBase(None, model_or_enum=False)
+    parent = evidence.contracts.class_type(base, model.unit, at=base)
+    return _ReviewBase(parent, model_or_enum=False) if parent is not None else None
+
+
+def _namespace_mutations(all_nodes: tuple[ast.AST, ...], imports: ImportIndex) -> frozenset[str]:
+    mutated: set[str] = set()
+    for node in all_nodes:
+        mutated.update(_reflective_namespace_mutations(node, imports))
+        if (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.ctx, (ast.Store, ast.Del))
+            and (qualified := imports.resolved_qualified_name(node)) is not None
+        ):
+            mutated.add(qualified)
+    return frozenset(mutated)
+
+
+def _reflective_namespace_mutations(node: ast.AST, imports: ImportIndex) -> frozenset[str]:
+    operation: str | None = None
+    member: ast.expr | None = None
+    match node:
+        case ast.Attribute(attr="__dict__", value=ast.Name(id=name)):
+            pass
+        case ast.Call(func=ast.Name(id="vars"), args=[ast.Name(id=name)]):
+            operation = "vars"
+        case ast.Call(func=ast.Name(id=operation), args=[ast.Name(id=name), member, *_]) if operation in {
+            "setattr",
+            "delattr",
+        }:
+            pass
+        case _:
+            return frozenset()
+    if operation is not None and not imports.builtin_is_unshadowed(operation):
+        return frozenset()
+    target = imports.bindings.get(name)
+    if target is None or target.symbol is not None:
+        return frozenset()
+    if isinstance(member, ast.Constant) and isinstance(member.value, str):
+        return frozenset({f"{target.module}.{member.value}"})
+    return frozenset({name, "isinstance"} if target.module == "builtins" else {name})
 
 
 def _unshadowed_module_classes(
@@ -1001,27 +1085,17 @@ def _type_reference(
     local_classes: frozenset[str],
     unsafe_bindings: frozenset[str],
 ) -> str | None:
-    if isinstance(expression, ast.Name):
-        if (
-            expression.id in _BUILTIN_TYPES
-            and imports.builtin_is_unshadowed(expression.id)
-            and expression.id not in unsafe_bindings
-            and f"builtins.{expression.id}" not in unsafe_bindings
-        ):
-            return expression.id
-        if expression.id in local_classes and expression.id not in unsafe_bindings:
-            return expression.id
+    if (builtin := _builtin_class_reference(expression, imports, unsafe_bindings)) is not None:
+        return builtin
+    if isinstance(expression, ast.Name) and expression.id in local_classes and expression.id not in unsafe_bindings:
+        return expression.id
     root = expression
     while isinstance(root, ast.Attribute):
         root = root.value
     if isinstance(root, ast.Name) and root.id in unsafe_bindings:
         return None
     symbol = imports.resolved_symbol(expression, sources=frozenset({"ast"}))
-    if (
-        symbol is None
-        or f"ast.{symbol}" in unsafe_bindings
-        or not (symbol[:1].isupper() or symbol in _LOWERCASE_AST_TYPES)
-    ):
+    if symbol is None or f"ast.{symbol}" in unsafe_bindings or symbol not in _STDLIB_AST_TYPES:
         return None
     return f"ast.{symbol}"
 
