@@ -225,6 +225,7 @@ from sarj_python_lint.rules.duplicate_closed_pure_helper import DuplicateClosedP
 from sarj_python_lint.rules.duplicate_pytest_fixture_params import DuplicatePytestFixtureParams
 from sarj_python_lint.rules.failed_probe_zero_threshold import FailedProbeZeroThreshold
 from sarj_python_lint.rules.nan_hidden_by_builtin_min import NanHiddenByBuiltinMin
+from sarj_python_lint.rules.no_async_client_in_constructor import NoAsyncClientInConstructor
 from sarj_python_lint.rules.no_conflicting_pydantic_alias_validation import NoConflictingPydanticAliasValidation
 from sarj_python_lint.rules.no_contradictory_type_guard import NoContradictoryTypeGuard
 from sarj_python_lint.rules.no_create_verb_in_post_path import NoCreateVerbInPostPath
@@ -274,6 +275,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoAsyncClientInConstructor.id: NoAsyncClientInConstructor,
         NoDiscardedTaggedOutcome.id: NoDiscardedTaggedOutcome,
         StoreInsertRequiresExplicitConflictPolicy.id: StoreInsertRequiresExplicitConflictPolicy,
         StoreMutationCommandFanout.id: StoreMutationCommandFanout,
