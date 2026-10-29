@@ -645,7 +645,7 @@ export default createRule<Options, MessageIds>({
     }
 
     /** True when every content line of a JSDoc block is a banner or a section title. */
-    function bannerFix(comment: TSESTree.Comment): ((fixer: TSESLint.RuleFixer) => TSESLint.RuleFix[]) | null {
+    function bannerFix(comment: TSESTree.Comment): TSESLint.ReportFixFunction | null {
       const pure = (candidate: TSESTree.Comment): boolean => {
         const lines = candidate.value.split("\n").map(stripCommentMarker).filter(Boolean);
         return lines.length > 0 && lines.every((line) => BANNER_FULL_RE.test(line));
@@ -659,7 +659,16 @@ export default createRule<Options, MessageIds>({
       while (end + 1 < comments.length && areAdjacentLineComments(comments[end], comments[end + 1])) end += 1;
       const removals = comments.slice(start, end + 1).filter(pure).map((candidate) => ownLineCommentRemovalRange(sourceCode.text, candidate));
       if (removals.some((removal) => removal === null)) return null;
-      return (fixer) => removals.flatMap((removal) => removal === null ? [] : [fixer.replaceTextRange(removal.range, commentLineEndings(sourceCode.text, removal))]);
+      return (fixer) => {
+        const fixes: TSESLint.RuleFix[] = [];
+        for (const removal of removals) {
+          if (removal === null) return null;
+          const endings = commentLineEndings(sourceCode.text, removal);
+          if (endings === null) return null;
+          fixes.push(fixer.replaceTextRange(removal.range, endings));
+        }
+        return fixes;
+      };
     }
 
     function isSectionJsDoc(comment: TSESTree.Comment): boolean {

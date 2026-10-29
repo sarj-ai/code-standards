@@ -34,6 +34,6 @@ it("bounds shared-ancestor validation by the native heritage graph", () => {
     },
   });
   expect(closedObjectContract(checker.getDeclaredTypeOfSymbol(root), observed)).toBe(true);
-  // Two edges per nonbase declaration, plus the two edges into Base and the root.
+
   expect(indexQueries).toBeLessThanOrEqual(16 * 4 + 3);
 });

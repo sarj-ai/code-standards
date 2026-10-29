@@ -165,7 +165,10 @@ export default createRule<Options, MessageIds>({
           context.report({
             node: comment,
             messageId: "restatesSignature",
-            fix: removal === null ? null : (fixer) => fixer.replaceTextRange(removal.range, commentLineEndings(sourceCode.text, removal)),
+            fix: removal === null ? null : (fixer) => {
+              const endings = commentLineEndings(sourceCode.text, removal);
+              return endings === null ? null : fixer.replaceTextRange(removal.range, endings);
+            },
             suggest: removal === null ? [] : [
               {
                 messageId: "deleteBlock",

@@ -15,7 +15,7 @@ const RULE_TESTER = new RuleTester();
 
 RULE_TESTER.run("no-declaration-comment-wall", rule, {
   valid: [
-    // No member comments at all — the overwhelming majority of declarations.
+
     { code: NO_DECLARATION_COMMENT_WALL_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "preserves rationale in consecutive line-comment blocks",
@@ -34,7 +34,7 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
     },
 
-    // Every comment says something the member's own name cannot.
+
     {
       code: [
         "enum Status {",
@@ -48,10 +48,10 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
     },
 
-    // A ONE-WORD comment is a label or a mapping-table cell, never a
-    // re-spelling. An enum member tagged with the CLI subcommand it selects
-    // (ansible's `TargetMode`) is the shape: with `maxNovelWords` at 1 each of
-    // these scores as a restatement by arithmetic unless `isLabel` stops it.
+
+
+
+
     {
       code: [
         "enum TargetMode {",
@@ -63,8 +63,8 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
     },
 
-    // A JSDoc block that is nothing but tags is a directive to a docs
-    // generator. `medusa`'s js-sdk marks half its class members `@ignore`.
+
+
     {
       code: [
         "class Store {",
@@ -92,10 +92,10 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
     },
 
-    // The words of a NESTED VALUE are not the member's own words. `// Hover
-    // background` over a field initialised to `{ background: controlItemBgHover }`
-    // has both its words inside the value it labels and neither in the name it
-    // describes.
+
+
+
+
     {
       code: [
         "class Theme {",
@@ -109,9 +109,9 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
     },
 
-    // The same reading for a METHOD BODY: a body names every identifier it
-    // touches, so judging a comment against it makes any comment "already
-    // said".
+
+
+
     {
       code: [
         "class Ledger {",
@@ -125,7 +125,7 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
     },
 
-    // Two commented rows is not a wall — `minCommentedMembers` is 3.
+
     {
       code: [
         "enum Status {",
@@ -138,8 +138,8 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
     },
 
-    // A MINORITY of commented members is a group of labels, not a wall —
-    // `minCommentedRatio` is 0.6. Three of eight here.
+
+
     {
       code: [
         "enum Status {",
@@ -158,8 +158,8 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
     },
 
-    // One substantive row in three is enough: two thirds is under
-    // `minRestatedRatio` (0.75), so lowering that knob makes this flag.
+
+
     {
       code: [
         "enum Status {",
@@ -173,8 +173,8 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
     },
 
-    // A bare identifier word heading a run of uncommented members is a REGION
-    // label, and deleting it loses the grouping.
+
+
     {
       code: [
         "class Config {",
@@ -190,7 +190,7 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
     },
 
-    // A digit is a bound, a base or a status code — a fact about the world.
+
     {
       code: [
         "enum Code {",
@@ -204,8 +204,8 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       ].join("\n"),
     },
 
-    // Test files, story files and generated files emit member comments rather
-    // than writing them.
+
+
     {
       code: [
         "enum Status {",
@@ -281,15 +281,21 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
   ],
 
   invalid: [
+    ...["\n", "\r\n"].map(ending => ({
+      name: "shared guarded deletion retains normal terminators " + JSON.stringify(ending),
+      code: "class Client {\n  /** Read user. */\n  readUser() {}\n  /** Write user. */\n  writeUser() {}\n  /** Delete user. */\n  deleteUser() {}\n}".replaceAll("\n", ending),
+      output: "class Client {\n\n  readUser() {}\n\n  writeUser() {}\n\n  deleteUser() {}\n}".replaceAll("\n", ending),
+      errors: [{ messageId: "commentWall" as const }],
+    })),
     { name: "automatically removes only exact multiword member names", code: "class Client {\n  /** Read user. */\n  readUser() {}\n  /** Write user. */\n  writeUser() {}\n  /** Delete user. */\n  deleteUser() {}\n}", output: "class Client {\n\n  readUser() {}\n\n  writeUser() {}\n\n  deleteUser() {}\n}", errors: [{ messageId: "commentWall" }] },
-    // The enum arm. medusa/packages/core/utils/src/order/status.ts is this
-    // exact shape, twice in one file.
+
+
     {
       code: NO_DECLARATION_COMMENT_WALL_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "commentWall" }],
     },
 
-    // The class-body arm.
+
     {
       code: [
         "class Server {",
@@ -304,8 +310,8 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       errors: [{ messageId: "commentWall" }],
     },
 
-    // A TRAILING comment is read against its own member the same way a leading
-    // one is.
+
+
     {
       code: [
         "enum Status {",
@@ -317,9 +323,9 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       errors: [{ messageId: "commentWall" }],
     },
 
-    // A region label is not counted as a member comment at all, so the three
-    // restatements are three of THREE rather than three of five. Counting the
-    // labels instead puts the ratio at 0.6 and the wall goes unreported.
+
+
+
     {
       code: [
         "class Config {",
@@ -340,9 +346,9 @@ RULE_TESTER.run("no-declaration-comment-wall", rule, {
       errors: [{ messageId: "commentWall" }],
     },
 
-    // `maxNovelWords` is a knob, and raising it to 2 makes a type whose
-    // comments each add one definition word flag. This is the case that dies
-    // when the option stops being read.
+
+
+
     {
       code: [
         "enum Match {",

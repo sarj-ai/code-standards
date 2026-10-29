@@ -59,8 +59,8 @@ def comprehension_results(node: ast.ListComp | ast.SetComp | ast.DictComp | ast.
     return [child for child in children(node) if isinstance(child, ast.expr)]
 
 
-def has_own_yield(function: ast.AsyncFunctionDef) -> bool:
-    pending: list[ast.AST] = list(function.body)
+def has_own_yield(function: ast.FunctionDef | ast.AsyncFunctionDef | ast.Lambda) -> bool:
+    pending: list[ast.AST] = [function.body] if isinstance(function, ast.Lambda) else list(function.body)
     while pending:
         match pending.pop():
             case ast.Yield() | ast.YieldFrom():

@@ -854,6 +854,7 @@ jobs:
       - name: Install and attest integration native tools
         if: steps.reuse.outputs.reused != 'true'
         run: |
+          sudo sed -i '\|^https://archive\.ubuntu\.com/ubuntu/[[:blank:]]|s/priority:[0-9][0-9]*/priority:0/' /etc/apt/apt-mirrors.txt
           sudo apt-get update
           uv run --frozen python -m sarj_standards.libs.release.native_test_setup --root ../..
       - name: Test against the built wheel

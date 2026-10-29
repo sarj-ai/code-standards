@@ -170,14 +170,14 @@ RULE_TESTER.run("prefer-server-actions", rule, {
       code: "fetch('/api/todos', { method: 'POST' });",
       filename: "/repo/pages/api/todos.ts",
     },
-    // GET is fine — only mutations are flagged.
+
     { code: "fetch('/api/users');" },
     { code: "fetch('/api/users', { method: 'GET' });" },
-    // External URLs are fine.
+
     { code: "fetch('https://api.example.com/users', { method: 'POST' });" },
-    // Mutation against a non-/api URL is fine.
+
     { code: "fetch('/other/users', { method: 'POST' });" },
-    // axios member GET is not a mutation.
+
     { code: "api.get('/api/users');" },
     {
       name: "ignores Express route definitions with inline arrow handlers",
@@ -201,20 +201,20 @@ RULE_TESTER.run("prefer-server-actions", rule, {
         "router.post('/api/users', handler);",
       ].join("\n"),
     },
-    // Direct axios config with GET is fine.
+
     { code: "axios({ method: 'get', url: '/api/users' });" },
-    // Direct axios config against an external URL is fine.
+
     {
       code: "axios({ method: 'post', url: 'https://x.com/api/users' });",
     },
-    // resolveNode: variable resolves to a GET method — not a mutation.
+
     {
       code: "const method = 'GET'; fetch('/api/users', { method });",
     },
   ],
   invalid: [
     { name: "public match example", filename: PREFER_SERVER_ACTIONS_DOCUMENTATION.examples[1].focusPath, code: PREFER_SERVER_ACTIONS_DOCUMENTATION.examples[1].files[0].source, errors: [{ messageId: "preferServerAction" }] },
-    // A React page still fires.
+
     {
       code: `${USE_CLIENT}const r = await fetch('/api/data', { method: 'POST', body });`,
       filename: "/repo/src/pages/index.tsx",
@@ -237,7 +237,7 @@ RULE_TESTER.run("prefer-server-actions", rule, {
       errors: [{ messageId: "preferServerAction" }],
     },
     {
-      // Method casing is normalized.
+
       code: `${USE_CLIENT}fetch('/api/users/1', { method: 'put' });`,
       filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
@@ -248,12 +248,12 @@ RULE_TESTER.run("prefer-server-actions", rule, {
       errors: [{ messageId: "preferServerAction" }],
     },
     {
-      // Dynamic template literal with `/api/` prefix.
+
       code: `${USE_CLIENT}fetch(\`/api/\${id}\`, { method: 'POST' });`,
       filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
-    // Branch 2: axios/custom-wrapper member call (no handler arg).
+
     {
       code: `${USE_CLIENT}import api from 'axios'; api.post('/api/orders', { total: 1 });`,
       filename: NEXT_CLIENT_MODULE,
@@ -270,19 +270,19 @@ RULE_TESTER.run("prefer-server-actions", rule, {
       filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
-    // Branch 3: direct axios config object.
+
     {
       code: `${USE_CLIENT}import axios from 'axios'; axios({ method: 'post', url: '/api/orders' });`,
       filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
     {
-      // request({ method, url }) direct-config form.
+
       code: `${USE_CLIENT}import request from 'axios'; request({ method: 'DELETE', url: '/api/orders/1' });`,
       filename: NEXT_CLIENT_MODULE,
       errors: [{ messageId: "preferServerAction" }],
     },
-    // resolveNode: url and method resolved through variables.
+
     {
       code: `${USE_CLIENT}const url = '/api/orders'; fetch(url, { method: 'POST' });`,
       filename: NEXT_CLIENT_MODULE,

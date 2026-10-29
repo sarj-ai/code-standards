@@ -24,12 +24,12 @@ export const CONSUMER_PREFIX = 'export {}; const account = {name: "Ada", email: 
 export const INLINE_CONTRACT = "{readonly name: string; readonly email: string}";
 export const UNION_DECLARATIONS = "interface Animal {readonly name: string} interface Dog extends Animal {readonly email: string}";
 
-/** Shared adversaries supplement each rule's statically countable own positive/negative suite. */
+
 export function runPrivateConsumerBoundaries<MessageIds extends string>(name: string, rule: TSESLint.RuleModule<MessageIds, []>, contract: string, setup = ""): void {
   PRIVATE_CONSUMER_TESTER.run(name + " private boundaries", rule, {valid: privateConsumerBoundaries(contract, setup), invalid: []});
 }
 
-/** These boundary groups challenge escaping and observable contracts for both focused rules. */
+
 function privateConsumerBoundaries(contract: string, setup: string): { name: string; filename: string; code: string }[] {
   const declaration = `function label(p: ${contract}): string {return p.name;}`;
   const cases = [

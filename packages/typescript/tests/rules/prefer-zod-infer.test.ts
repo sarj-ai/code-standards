@@ -27,26 +27,26 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
     { name: "does not equate different array element types", code: `${IMPORT}const UserSchema = z.object({ id: z.string(), tags: z.array(z.string()) }); interface User { id: string; tags: number[] }` },
     { name: "does not equate different nested object shapes", code: `${IMPORT}const UserSchema = z.object({ id: z.string(), child: z.object({ value: z.string() }) }); interface User { id: string; child: { value: number } }` },
     { name: "accepts the documented inferred type", code: PREFER_ZOD_INFER_DOCUMENTATION.examples[0].files[0].source },
-    // The supported shape: the type is derived, so it cannot drift.
+
     `${IMPORT}const UserSchema = z.object({ id: z.string(), name: z.string() });
      type User = z.infer<typeof UserSchema>;`,
     `${IMPORT}const UserSchema = z.object({ id: z.string() });
      type UserInput = z.input<typeof UserSchema>;
      type UserOutput = z.output<typeof UserSchema>;`,
 
-    // An identical key set without name correlation is insufficient.
+
     `${IMPORT}const userSchema = z.object({ id: z.string(), name: z.string() });
      interface DatabaseRow { id: string; name: string }`,
 
-    // A `z.ZodType<T>` annotation intentionally constrains a schema.
+
     `${IMPORT}type ApiKeyInput = { id: string; label?: string };
      const ApiKeyInputSchema: z.ZodType<ApiKeyInput> = z.object({ id: z.string(), label: z.string().optional() });`,
-    // Every argument in the three-parameter form is protected.
+
     `${IMPORT}type QueryRaw = { limit: string };
      type Query = { limit: string };
      const QuerySchema: z.ZodType<Query, z.ZodTypeDef, QueryRaw> = z.object({ limit: z.string() });`,
 
-    // `z.infer` cannot reproduce a caller-supplied generic parameter.
+
     `${IMPORT}const PageSchema = z.object({ items: z.unknown(), total: z.number() });
      type Page<T> = { items: T[]; total: number };`,
     {
@@ -55,7 +55,7 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
              interface Page<T> { items: T[]; total: number }`,
     },
 
-    // A lenient wire schema and strict domain type are not twins.
+
     `${IMPORT}const ZReadingSchema = z.looseObject({ celsius: z.number().nullish(), taken: z.string().nullish() });
      interface Reading { celsius: number; taken: string }`,
     `${IMPORT}const SettingsSchema = z.object({ theme: z.string() }).partial();
@@ -76,7 +76,7 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
              interface Merged { id: string; name: string }`,
     },
 
-    // Guard (e): the shapes disagree, so the type is deliberately different.
+
     `${IMPORT}const UserSchema = z.object({ id: z.string(), name: z.string() });
      interface User { id: string; name: string; displayName: string }`,
     `${IMPORT}const UserSchema = z.object({ id: z.string(), nickname: z.string().optional() });
@@ -138,11 +138,11 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
     `${IMPORT}const UserSchema = z.object({ id: z.string(), deletedAt: z.string().nullable() });
      interface User { id: string; deletedAt: string }`,
 
-    // A transformed schema may have a separate post-transform type.
+
     `${IMPORT}const UserSchema = z.object({ user_id: z.string(), name: z.string() });
      const UserCamel = UserSchema.transform((row) => ({ userId: row.user_id, name: row.name }));
      interface User { user_id: string; name: string }`,
-    // Same for a field-level transform.
+
     `${IMPORT}const UserSchema = z.object({ id: z.string(), tags: z.string().transform((value) => value.split(",")) });
      interface User { id: string; tags: string }`,
     {
@@ -156,7 +156,7 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
              interface Preprocessed { id: string }`,
     },
 
-    // An extended interface is not a direct restatement.
+
     `${IMPORT}interface Base { createdAt: string }
      const UserSchema = z.object({ id: z.string() });
      interface User extends Base { id: string }`,
@@ -166,17 +166,17 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
              type User = BaseUser & { id: string };`,
     },
 
-    // Every member is a reference, so nothing positively agrees — a bare name
-    // and key-set match is not enough to call it a restatement.
+
+
     `${IMPORT}const RoleSchema = z.object({ id: z.string() });
      const UserSchema = z.object({ role: RoleSchema, backupRole: RoleSchema });
      interface User { role: Role; backupRole: Role }`,
 
-    // Not Zod at all.
+
     `const z = builder; const UserSchema = z.object({ id: z.string() });
      interface User { id: string }`,
 
-    // Guard (a): fixtures declare the two halves of an assertion side by side.
+
     {
       code: `${IMPORT}const UserSchema = z.object({ id: z.string() });
              interface User { id: string }`,
@@ -194,7 +194,7 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
       filename: "src/User.stories.tsx",
     },
 
-    // Escape hatch.
+
     {
       code: `${IMPORT}const UserSchema = z.object({ id: z.string() });
              interface User { id: string }`,
@@ -217,13 +217,13 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
              type User = z.infer<typeof UserSchema>;`,
       errors: [{ messageId: "handWrittenTwin", data: { typeName: "User", schemaName: "UserSchema" } }],
     },
-    // Declaration order does not affect pairing.
+
     {
       code: `${IMPORT}export interface ApiConfig { type: string; endpoint?: string }
              export const apiConfigSchema = z.object({ type: z.string(), endpoint: z.string().optional() });`,
       errors: [{ messageId: "handWrittenTwin", data: { typeName: "ApiConfig", schemaName: "apiConfigSchema" } }],
     },
-    // The `Z`-prefix convention and a type alias rather than an interface.
+
     {
       code: `${IMPORT}const ZJobOptionsSchema = z.object({ id: z.string().optional(), name: z.string(), attempts: z.number() });
              type JobOptions = { id?: string; name: string; attempts: number };`,
@@ -231,7 +231,7 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
              type JobOptions = z.infer<typeof ZJobOptionsSchema>;`,
       errors: [{ messageId: "handWrittenTwin", data: { typeName: "JobOptions", schemaName: "ZJobOptionsSchema" } }],
     },
-    // `XType` is the same claim as `X`.
+
     {
       code: `${IMPORT}const settingsSchema = z.object({ theme: z.string(), compact: z.boolean() });
              interface SettingsType { theme: string; compact: boolean }`,
@@ -239,7 +239,7 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
              type SettingsType = z.infer<typeof settingsSchema>;`,
       errors: [{ messageId: "handWrittenTwin" }],
     },
-    // Nullable and optional agree member for member.
+
     {
       code: `${IMPORT}const RowSchema = z.object({ id: z.string(), label: z.string().nullable(), note: z.string().optional() });
              interface Row { id: string; label: string | null; note?: string }`,
@@ -247,7 +247,7 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
              type Row = z.infer<typeof RowSchema>;`,
       errors: [{ messageId: "handWrittenTwin" }],
     },
-    // A namespace import, and `.describe()` does not change the inferred type.
+
     {
       code: `import * as zod from "zod";
              const eventSchema = zod.object({ kind: zod.literal("click"), at: zod.number() }).describe("an event");
@@ -314,7 +314,7 @@ RULE_TESTER.run("prefer-zod-infer", rule, {
              type Event = z.infer<typeof EventSchema>;`,
       errors: [{ messageId: "handWrittenTwin" }],
     },
-    // The loose tier reports on name correlation without requiring equal shapes.
+
     {
       code: `${IMPORT}const UserSchema = z.object({ id: z.string() });
              interface User { id: string; nickname: string }`,

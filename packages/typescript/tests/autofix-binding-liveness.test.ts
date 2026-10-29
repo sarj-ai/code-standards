@@ -29,6 +29,7 @@ const BROAD = 'export {}; type Opaque = unknown; function read(value: { id: stri
 const KNOWN = 'export {}; type Opaque = unknown; declare const tool: { id: string }; const fields: Opaque = tool;';
 const PREDICATE = 'export {}; type Numeric = number; function positive(value: unknown): value is Numeric { return typeof value === "number" && value > 0; }';
 const EXAMPLES: readonly Example[] = [
+  {name: "closed primitive alias keeps compiler diagnostics and binding liveness", rule: "no-redundant-local-alias", source: "export {};\nfunction request(value: string) {\n  const accountId = value;\n  return { accountId };\n}\nexport const sample = request('kept');\n", expected: "export {};\nfunction request(value: string) {\n\n  return { accountId: value };\n}\nexport const sample = request('kept');\n"},
   {name: "Zod sole return type stays manual", rule: "prefer-zod-parse-output-type", source: ZOD, expected: ZOD, naive: ZOD.replace(": ParsedRow", ": z.output<typeof RowSchema>")},
   {name: "Zod exported type witness survives the actual fix", rule: "prefer-zod-parse-output-type", source: `${ZOD} export type Kept = ParsedRow;`, expected: `${ZOD.replace(": ParsedRow", ": z.output<typeof RowSchema>")} export type Kept = ParsedRow;`},
   {name: "crypto sole runtime factory use stays manual", rule: "prefer-node-crypto-hash", source: CRYPTO, expected: CRYPTO, naive: CRYPTO_FIXED},
@@ -43,7 +44,7 @@ const EXAMPLES: readonly Example[] = [
   {name: "predicate sole alias stays manual", rule: "no-partial-type-predicate", source: PREDICATE, expected: PREDICATE, naive: PREDICATE.replace("value is Numeric", "boolean")},
 ];
 
-/** Use the actual imported compiler implementation, independently of the ESLint fix renderer. */
+
 function nativeDiagnostics(filename: string): readonly string[] {
   const options: ts.CompilerOptions = {strict: true, target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext,
     moduleResolution: ts.ModuleResolutionKind.Bundler, types: ["node"], typeRoots: [join(dirname(dirname(filename)), "node_modules", "@types")],

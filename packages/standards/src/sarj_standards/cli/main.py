@@ -33,7 +33,6 @@ from sarj_standards.libs.staged_git import isolated_environment, staged_environm
 
 
 _TEXT_DIAGNOSTIC_LIMIT: Final = 50
-_NUMSTAT_COLUMN_COUNT: Final = 3
 
 
 if TYPE_CHECKING:
@@ -1269,7 +1268,9 @@ def _staged_input_error(args: _Args, root: Path, message: str) -> int:
 def _select_staged_check(args: _Args, root: Path, scope: _CheckScope) -> int | None:
     try:
         staged_names = _staged_file_names(root, environment=scope.git_environment)
-        scope.react_doctor_triggered = _react_doctor_triggered_by(staged_names)
+        scope.react_doctor_triggered = _react_doctor_triggered_by(
+            staged_names, policy=Policy.from_manifest(root, _declared_manifest(args))
+        )
         staged = _safe_staged_paths(
             root, _staged_file_names(root, include_deleted=False, environment=scope.git_environment)
         )
@@ -1325,7 +1326,9 @@ def _select_pull_request_check(args: _Args, root: Path, scope: _CheckScope, base
 
     try:
         changed_names = _changed_file_names(root, base)
-        scope.react_doctor_triggered = _react_doctor_triggered_by(changed_names)
+        scope.react_doctor_triggered = _react_doctor_triggered_by(
+            changed_names, policy=Policy.from_manifest(root, _declared_manifest(args))
+        )
         args.files = [
             path for path in _safe_staged_paths(root, changed_names) if runner.accepts_hook_path(Path(path), root=root)
         ]
@@ -2142,36 +2145,45 @@ def _changed_file_names(root: Path, base: str) -> list[str]:
     return [part.decode("utf-8", errors="surrogateescape") for part in completed.stdout.split(b"\0") if part]
 
 
-def _react_doctor_triggered_by(paths: Iterable[str]) -> bool:
+def _react_doctor_triggered_by(paths: Iterable[str], *, policy: Policy) -> bool:
     return any(
-        Path(value).name in _REACT_DOCTOR_METADATA or Path(value).suffix.lower() in _REACT_DOCTOR_TYPESCRIPT_SUFFIXES
+        Path(value).name in _REACT_DOCTOR_METADATA
+        or (
+            Path(value).suffix.lower() in _REACT_DOCTOR_TYPESCRIPT_SUFFIXES
+            and (source := _safe_scope_path(policy.root, value)) is not None
+            and policy.allows_path(source)
+        )
         for value in paths
     )
 
 
 def _safe_staged_paths(root: Path, paths: Iterable[str]) -> list[str]:
-    repository = root.resolve()
-    safe: list[str] = []
-    for raw in paths:
-        if not raw:
-            continue
-        supplied = Path(raw)
-        lexical = Path(
-            os.path.abspath(  # ruff: ignore[os-path-abspath] -- preserve lexical symlink components before resolve.
-                supplied if supplied.is_absolute() else repository / supplied
-            )
+    return list(
+        dict.fromkeys(
+            str(path) for raw in paths if (path := _safe_scope_path(root, raw)) is not None and path.is_file()
         )
-        try:
-            relative = lexical.relative_to(repository)
-        except ValueError:
-            continue
-        cursor = repository
-        if any(is_link_like(cursor := cursor / part) for part in relative.parts):
-            continue
-        resolved = lexical.resolve()
-        if resolved.is_relative_to(repository) and resolved.is_file():
-            safe.append(str(resolved))
-    return list(dict.fromkeys(safe))
+    )
+
+
+def _safe_scope_path(root: Path, raw: str) -> Path | None:
+    repository = root.resolve()
+    if not raw:
+        return None
+    supplied = Path(raw)
+    lexical = Path(
+        os.path.abspath(  # ruff: ignore[os-path-abspath] -- preserve lexical symlink components before resolve.
+            supplied if supplied.is_absolute() else repository / supplied
+        )
+    )
+    try:
+        relative = lexical.relative_to(repository)
+    except ValueError:
+        return None
+    cursor = repository
+    if any(is_link_like(cursor := cursor / part) for part in relative.parts):
+        return None
+    resolved = lexical.resolve()
+    return resolved if resolved.is_relative_to(repository) else None
 
 
 def _unstaged_versions(
@@ -2187,6 +2199,7 @@ def _unstaged_versions(
     selected = set(_repository_relative_names(root, staged_paths))
     if not selected:
         return ()
+    # Keep the index byte-exact; compare text content and refine opaque binary records internally.
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv, no shell.
         [
             git,
@@ -2196,50 +2209,72 @@ def _unstaged_versions(
             "diff",
             "--no-ext-diff",
             "--no-textconv",
-            "--no-renames",
+            "--exit-code",
             "--numstat",
             "-z",
+            "--no-renames",
             "--",
             *sorted(selected),
         ],
         cwd=root,
-        check=True,
+        check=False,
         capture_output=True,
         env=selected_environment,
     )
-    unstaged: set[str] = set()
-    for record in completed.stdout.split(b"\0"):
-        if not record:
-            continue
-        fields = record.split(b"\t", 2)
-        if len(fields) != _NUMSTAT_COLUMN_COUNT or not fields[2]:
-            msg = "git returned an invalid NUL-delimited numstat path"
-            raise OSError(msg)
-        path = fields[2].decode("utf-8", errors="surrogateescape")
-        if path not in selected:
-            continue
-        if fields[:2] == [b"-", b"-"] and not _has_unstaged_patch(
-            root, path, git=git, environment=selected_environment
-        ):
-            continue
-        unstaged.add(path)
-    tracked = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- literal selected paths and NUL records preserve authored filenames.
-        [git, "--literal-pathspecs", "ls-files", "-v", "-z", "--", *sorted(selected)],
-        cwd=root,
-        check=True,
-        capture_output=True,
-        env=selected_environment,
-    )
-    unstaged.update(
-        entry[2:].decode("utf-8", errors="surrogateescape")
-        for entry in tracked.stdout.split(b"\0")
-        if entry and (b"a" <= entry[:1] <= b"z" or entry[:1] == b"S")
-    )
+    if completed.returncode not in {0, 1}:
+        completed.check_returncode()
+    entries = _numstat_entries(completed.stdout)
+    unstaged = {
+        path
+        for path, binary in entries.items()
+        if path in selected
+        and (not binary or _binary_worktree_differs(root, git, path, environment=selected_environment))
+    }
+    if selected:
+        tracked = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- literal selected paths and NUL records preserve authored filenames.
+            [git, "--literal-pathspecs", "ls-files", "-v", "-z", "--", *sorted(selected)],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            env=selected_environment,
+        )
+        unstaged.update(
+            entry[2:].decode("utf-8", errors="surrogateescape")
+            for entry in tracked.stdout.split(b"\0")
+            if entry and (b"a" <= entry[:1] <= b"z" or entry[:1] == b"S")
+        )
     return tuple(sorted(unstaged & selected))
 
 
-def _has_unstaged_patch(root: Path, path: str, *, git: str, environment: Mapping[str, str]) -> bool:
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- confirm selected binary content without refreshing the index.
+def _numstat_entries(output: bytes) -> dict[str, bool]:
+    if not output:
+        return {}
+    if not output.endswith(b"\0"):
+        msg = "git diff returned malformed numstat output"
+        raise OSError(msg)
+    entries: dict[str, bool] = {}
+    for record in output[:-1].split(b"\0"):
+        try:
+            added, deleted, raw_path = record.split(b"\t", 2)
+        except ValueError as exc:
+            msg = "git diff returned malformed numstat output"
+            raise OSError(msg) from exc
+        if not raw_path:
+            msg = "git diff returned malformed numstat output"
+            raise OSError(msg)
+        binary = added == deleted == b"-"
+        if not binary and not (added.isdigit() and deleted.isdigit()):
+            msg = "git diff returned malformed numstat output"
+            raise OSError(msg)
+        path = raw_path.decode("utf-8", errors="surrogateescape")
+        if path not in entries or not binary:
+            entries[path] = binary
+    return entries
+
+
+def _binary_worktree_differs(root: Path, git: str, path: str, *, environment: Mapping[str, str]) -> bool:
+    # Binary numstat records can be stat-only. Internal patch generation compares canonical content and mode.
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed argv and literal selected path, no shell.
         [
             git,
             "--literal-pathspecs",
@@ -2248,16 +2283,20 @@ def _has_unstaged_patch(root: Path, path: str, *, git: str, environment: Mapping
             "diff",
             "--no-ext-diff",
             "--no-textconv",
-            "--no-renames",
+            "--exit-code",
             "--patch",
+            "--no-renames",
+            "--no-color",
             "--",
             path,
         ],
         cwd=root,
-        check=True,
+        check=False,
         capture_output=True,
         env=environment,
     )
+    if completed.returncode not in {0, 1}:
+        completed.check_returncode()
     return bool(completed.stdout)
 
 

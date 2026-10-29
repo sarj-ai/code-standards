@@ -94,6 +94,24 @@ function linter(factory = STRICT_CONFIG_FACTORY, options: ConfigOptions = {}, fi
 describe("upstream test and error guards", () => {
   const eslint = linter();
 
+  it.each(CONFIG_FACTORIES)("%s requires an executable test oracle", async (_name, factory) => {
+    const oracle = "vitest/expect-expect";
+    const eslint = linter(factory, { testFrameworks: ["vitest"] }, false, new Set([oracle]));
+    const cases = [
+      { source: 'import { test } from "vitest"; test("loads", () => { load(); });', count: 1 },
+      { source: 'import { test, expect } from "vitest"; test("loads", () => { expect(load()).toBe(true); });', count: 0 },
+      { source: 'import { test, expect } from "vitest"; test("rejects", () => { expect(() => load()).toThrow(); });', count: 0 },
+    ];
+    for (const testCase of cases) {
+      const [result] = await eslint.lintText(testCase.source, { filePath: "src/unit.test.ts" });
+      expect(result?.fatalErrorCount).toBe(0);
+      expect(result?.messages.filter(message => message.ruleId === oracle)).toHaveLength(testCase.count);
+      expect(result?.messages.every(message => message.severity === 1)).toBe(true);
+    }
+    const production = await eslint.lintText(cases[0]!.source, { filePath: "src/feature.ts" });
+    expect(production[0]?.messages.filter(message => message.ruleId === oracle)).toEqual([]);
+  });
+
   it.each([...EXPECT_CASES, ...FOCUS_CASES, ...CAUSE_CASES])("%s", async (_name, source, expected) => {
     const [result] = await eslint.lintText(source, { filePath: "src/unit.test.ts" });
     expect(result?.fatalErrorCount).toBe(0);

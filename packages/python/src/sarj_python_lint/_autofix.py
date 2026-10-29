@@ -123,6 +123,9 @@ class _Source:
         self.export_locations = frozenset(
             (diagnostic.line, diagnostic.col) for diagnostic in diagnostics if diagnostic.code == "SARJ098"
         )
+        self.test_comment_locations = frozenset(
+            (diagnostic.line, diagnostic.col) for diagnostic in diagnostics if diagnostic.code == "SARJ551"
+        )
 
     @cached_property
     def enums(self) -> EnumFixes:
@@ -138,7 +141,7 @@ class _Source:
 
     @cached_property
     def commentary(self) -> CommentFixes:
-        return CommentFixes(self.context)
+        return CommentFixes(self.context, test_comment_locations=self.test_comment_locations)
 
     @cached_property
     def declared_contracts(self) -> DeclaredContractFixes:
@@ -1364,7 +1367,7 @@ _BUILDERS: Final[dict[str, Callable[[_Source, Diagnostic], list[TextEdit]]]] = {
     "SARJ024": _repeated_fix,
     "SARJ032": _exhaustiveness_fix,
     "SARJ046": _xfail_fix,
-    **dict.fromkeys({"SARJ049", "SARJ051", "SARJ054", "SARJ434"}, _commentary_fix),
+    **dict.fromkeys({"SARJ049", "SARJ051", "SARJ054", "SARJ434", "SARJ551"}, _commentary_fix),
     "SARJ067": _mock_fix,
     "SARJ068": _fstring_fix,
     "SARJ070": _pattern_fix,

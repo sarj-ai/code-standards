@@ -431,6 +431,11 @@ def test_cli_rejects_missing_revision(repository: Path, capsys: pytest.CaptureFi
         ("sql", "no-analytical-queries-in-transactional-db", "off", 1),
         ("python", "no-analytical-queries-in-transactional-db", "error", 1),
         ("sql", "no-analytical-queries-in-transactional-db-extra", "error", 1),
+        ("python", "no-async-client-in-constructor", "error", 0),
+        ("python", "no-async-client-in-constructor", "off", 1),
+        ("eslint", "no-async-client-in-constructor", "error", 1),
+        ("python", "no-async-client-in-constructor-extra", "error", 1),
+        ("python", "no-async-client-in-Constructor", "error", 1),
     ],
 )
 def test_error_first_approval_is_exact_and_does_not_allow_disabled_rules(
@@ -470,6 +475,7 @@ def test_error_first_approval_is_exact_and_does_not_allow_disabled_rules(
         "python:no-interpreter-source-arguments",
         "python:no-blanket-suppression",
         "sql:new-table-inline-constraints",
+        "python:no-async-client-in-constructor",
     ],
 )
 def test_explicit_devops_error_first_admission_preserves_exact_selector_scope(

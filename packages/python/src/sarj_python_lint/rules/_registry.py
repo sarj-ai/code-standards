@@ -61,6 +61,7 @@ from sarj_python_lint.rules.no_fixed_sleep_in_loop import NoFixedSleepInLoop
 from sarj_python_lint.rules.no_frozen_after_validator_field_write import (
     NoFrozenAfterValidatorFieldWrite,
 )
+from sarj_python_lint.rules.no_generic_json_parser import NoGenericJsonParser
 from sarj_python_lint.rules.no_generic_single_export_module import NoGenericSingleExportModule
 from sarj_python_lint.rules.no_hidden_constructor_fallback import (
     NoHiddenConstructorFallback,
@@ -73,6 +74,7 @@ from sarj_python_lint.rules.no_loguru_exc_info import NoLoguruExcInfo
 from sarj_python_lint.rules.no_loguru_printf_format import NoLoguruPrintfFormat
 from sarj_python_lint.rules.no_mocked_pydantic_value_object import NoMockedPydanticValueObject
 from sarj_python_lint.rules.no_mutating_container_transform import NoMutatingContainerTransform
+from sarj_python_lint.rules.no_mutating_input_with_result import NoMutatingInputWithResult
 from sarj_python_lint.rules.no_nested_pydantic_field_validator import NoNestedPydanticFieldValidator
 from sarj_python_lint.rules.no_nullable_dependency_fallback import NoNullableDependencyFallback
 from sarj_python_lint.rules.no_offset_pagination import NoOffsetPagination
@@ -83,6 +85,7 @@ from sarj_python_lint.rules.no_psycopg_execution_outside_injected_owner import (
 from sarj_python_lint.rules.no_random_uuid_in_sql import NoRandomUuidInSql
 from sarj_python_lint.rules.no_raw_connection_in_tests import NoRawConnectionInTests
 from sarj_python_lint.rules.no_raw_source_text_test_oracle import NoRawSourceTextTestOracle
+from sarj_python_lint.rules.no_redundant_attribute_unpacking import NoRedundantAttributeUnpacking
 from sarj_python_lint.rules.no_redundant_literal_description import NoRedundantLiteralDescription
 from sarj_python_lint.rules.no_redundant_module_alias_exports import NoRedundantModuleAliasExports
 from sarj_python_lint.rules.no_repeated_string_literal import NoRepeatedStringLiteral
@@ -95,6 +98,7 @@ from sarj_python_lint.rules.no_shallow_container_type_guard import NoShallowCont
 from sarj_python_lint.rules.no_string_concat_in_loop import NoStringConcatInLoop
 from sarj_python_lint.rules.no_swallowed_asyncio_cancellation import NoSwallowedAsyncioCancellation
 from sarj_python_lint.rules.no_tautological_expect import NoTautologicalExpect
+from sarj_python_lint.rules.no_test_comments import NoTestComments
 from sarj_python_lint.rules.no_test_method_grafting import NoTestMethodGrafting
 from sarj_python_lint.rules.no_typed_doc_sections import NoTypedDocSections
 from sarj_python_lint.rules.no_unique_violation_message_match import (
@@ -149,6 +153,7 @@ from sarj_python_lint.rules.prefer_non_nullable_collection import (
 )
 from sarj_python_lint.rules.prefer_or_pattern import PreferOrPattern
 from sarj_python_lint.rules.prefer_pydantic_json_value import PreferPydanticJsonValue
+from sarj_python_lint.rules.prefer_pytest_fixture_contract import PreferPytestFixtureContract
 from sarj_python_lint.rules.prefer_pytest_fixture_injection import PreferPytestFixtureInjection
 from sarj_python_lint.rules.prefer_regex_fullmatch import PreferRegexFullmatch
 from sarj_python_lint.rules.prefer_required_constructor_parameters import PreferRequiredConstructorParameters
@@ -175,6 +180,7 @@ from sarj_python_lint.rules.redundant_module_docstring import RedundantModuleDoc
 from sarj_python_lint.rules.repeated_kwarg_heavy_call_in_test import RepeatedKwargHeavyCallInTest
 from sarj_python_lint.rules.repeated_static_call_cases import RepeatedStaticCallCases
 from sarj_python_lint.rules.repeated_test_composition import RepeatedTestComposition
+from sarj_python_lint.rules.require_constrained_api_integer import RequireConstrainedApiInteger
 from sarj_python_lint.rules.require_explicit_contract_implementation import RequireExplicitContractImplementation
 from sarj_python_lint.rules.require_explicit_psycopg_transaction import RequireExplicitPsycopgTransaction
 from sarj_python_lint.rules.require_explicit_service_contract import RequireExplicitServiceContract
@@ -225,6 +231,7 @@ from sarj_python_lint.rules.duplicate_closed_pure_helper import DuplicateClosedP
 from sarj_python_lint.rules.duplicate_pytest_fixture_params import DuplicatePytestFixtureParams
 from sarj_python_lint.rules.failed_probe_zero_threshold import FailedProbeZeroThreshold
 from sarj_python_lint.rules.nan_hidden_by_builtin_min import NanHiddenByBuiltinMin
+from sarj_python_lint.rules.no_async_client_in_constructor import NoAsyncClientInConstructor
 from sarj_python_lint.rules.no_conflicting_pydantic_alias_validation import NoConflictingPydanticAliasValidation
 from sarj_python_lint.rules.no_contradictory_type_guard import NoContradictoryTypeGuard
 from sarj_python_lint.rules.no_create_verb_in_post_path import NoCreateVerbInPostPath
@@ -274,6 +281,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoAsyncClientInConstructor.id: NoAsyncClientInConstructor,
         NoDiscardedTaggedOutcome.id: NoDiscardedTaggedOutcome,
         StoreInsertRequiresExplicitConflictPolicy.id: StoreInsertRequiresExplicitConflictPolicy,
         StoreMutationCommandFanout.id: StoreMutationCommandFanout,
@@ -435,6 +443,12 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         PreferNativeStringCheck.id: PreferNativeStringCheck,
         PreferSelfDocumentingConstant.id: PreferSelfDocumentingConstant,
         NoDuplicateDunderAllEntry.id: NoDuplicateDunderAllEntry,
+        PreferPytestFixtureContract.id: PreferPytestFixtureContract,
+        NoTestComments.id: NoTestComments,
+        NoGenericJsonParser.id: NoGenericJsonParser,
+        RequireConstrainedApiInteger.id: RequireConstrainedApiInteger,
+        NoRedundantAttributeUnpacking.id: NoRedundantAttributeUnpacking,
+        NoMutatingInputWithResult.id: NoMutatingInputWithResult,
         NoDunderAll.id: NoDunderAll,
         NoDeleteStatement.id: NoDeleteStatement,
         NoBroadKeywordCapture.id: NoBroadKeywordCapture,

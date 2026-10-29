@@ -6,6 +6,7 @@
 import { AST_NODE_TYPES, ESLintUtils, type ParserServicesWithTypeInformation, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 import ts from "typescript";
 
+import { currentNativeSource } from "./_checked-native-source.js";
 import { closedObjectContract } from "./_closed-object-contract.js";
 import { coveringConsumerFix, retainedConsumerTypeUses, validConsumerFixCalls } from "./_private-consumer-fix.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -85,8 +86,10 @@ export default createRule<[], "redundant">({
       "Program:exit"(): void {
         if (dynamic || !candidates.length) return;
         const services = ESLintUtils.getParserServices(context);
+        const source = currentNativeSource(context.sourceCode, services);
+        if (!source) return;
         const checker = services.program.getTypeChecker();
-        const exports = exportedSymbols(services.esTreeNodeToTSNodeMap.get(context.sourceCode.ast), checker);
+        const exports = exportedSymbols(source, checker);
         const candidateAnnotations = candidates.flatMap((node) => { const annotation = consumerAnnotation(node); return annotation ? [annotation] : []; });
         const surfaces = new WeakMap<ts.Type, ReadonlyMap<string, boolean> | null>();
         const fieldsOf = (type: ts.Type): ReadonlyMap<string, boolean> | null => {

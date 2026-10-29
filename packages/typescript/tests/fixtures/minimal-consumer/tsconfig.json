@@ -4,6 +4,9 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "paths": {
+      "contract-effects": ["./prototype-effects.ts"]
+    },
     "jsx": "react-jsx",
     "types": []
   }

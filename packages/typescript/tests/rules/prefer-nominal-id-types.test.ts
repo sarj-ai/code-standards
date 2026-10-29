@@ -32,11 +32,11 @@ RULE_TESTER.run("prefer-nominal-id-types", rule, {
       filename: "src/adapter.mts",
       code: "// eslint-disable-next-line @rule-tester/prefer-nominal-id-types -- external protocol requires raw positional strings\nfunction load(accountId: string, invoiceId: string) {}",
     },
-    // Defaults alone establish neither identifier roles nor a closed set of values.
+
     "function start(serviceVersion: string = 'dev', releaseVersion: string = 'dev') {}",
     "function start(serviceVersion = 'dev', releaseVersion = 'prod') {}",
     "function load(accountId = '', invoiceId = '') {}",
-    // Primitive spellings, optionality, and collection shapes retain their boundaries.
+
     "function load(accountId: bigint, invoiceId: bigint) {}",
     "function load(accountId: boolean, invoiceId: boolean) {}",
     "function load(accountId: 'account', invoiceId: 'invoice') {}",
@@ -48,7 +48,7 @@ RULE_TESTER.run("prefer-nominal-id-types", rule, {
     "function load(accountIds: Array<string | number>, invoiceIds: string[]) {}",
     "function load(accountId: string | null | number, invoiceId: string) {}",
     "function load(accountId: null | undefined, invoiceId: null | undefined) {}",
-    // Mixed and opaque domains are not proof of interchangeable raw primitives.
+
     "type AccountId = string & { readonly account: unique symbol }; function load(accountId: AccountId, invoiceId: string) {}",
     "type AccountId = string & { readonly account: unique symbol }; function load(accountIds: AccountId[], invoiceIds: string[]) {}",
     "enum Id { Account = 'account', Invoice = 'invoice' } function load(accountId: Id, invoiceId: Id) {}",
@@ -71,7 +71,7 @@ RULE_TESTER.run("prefer-nominal-id-types", rule, {
     "type ReadonlyArray<T> = { value: T }; function load(accountIds: ReadonlyArray<string>, invoiceIds: ReadonlyArray<string>) {}",
     "interface Array<T> { value: T } function load(accountIds: Array<string>, invoiceIds: Array<string>) {}",
     "import type { Array } from './wire'; function load(accountIds: Array<string>, invoiceIds: Array<string>) {}",
-    // Independent boundaries and object payloads must never share role state.
+
     "function load(accountId: string) { return (invoiceId: string) => {}; }",
     "function load(accountId: string) {} function save(invoiceId: string) {}",
     "function load({ accountId, invoiceId }: { accountId: string; invoiceId: string }) {}",
@@ -79,7 +79,7 @@ RULE_TESTER.run("prefer-nominal-id-types", rule, {
     "function load(accountIds: string[], ...invoiceIds: string[]) {}",
     "function load(this: { accountId: string; invoiceId: string }, accountId: string) {}",
     "function load(id: string, ids: string[], accountID: string, invoiceID: string) {}",
-    // Operational identifiers are explicit exemptions, including normalized snake case.
+
     "function load(request_id: string, trace_id: string, spanId: string, correlationId: string, processId: string, threadId: string, timeoutId: string, intervalId: string, accountId: string) {}",
     "function load(requestIds: string[], trace_ids: string[], accountIds: string[]) {}",
     {
@@ -157,7 +157,7 @@ RULE_TESTER.run("prefer-nominal-id-types", rule, {
       code: "function load(accountId: string, invoiceId: string) {}",
       errors: [{ messageId: "preferNominalIds" }],
     },
-    // Call and construct signatures are callable contracts too.
+
     {
       code: "interface Load { (accountId: string, invoiceId: string): void }",
       errors: [{ messageId: "preferNominalIds" }],
@@ -201,7 +201,7 @@ RULE_TESTER.run("prefer-nominal-id-types", rule, {
         { messageId: "preferNominalIds" },
       ],
     },
-    // A value binding does not shadow the separate TypeScript type namespace.
+
     {
       code: "const Array = 1; function load(accountIds: Array<string>, invoiceIds: Array<string>) {}",
       errors: [{ messageId: "preferNominalIds" }],
@@ -222,7 +222,7 @@ RULE_TESTER.run("prefer-nominal-id-types", rule, {
       code: "type Id = string; function load(Id: unknown, accountId: Id, invoiceId: Id) {}",
       errors: [{ messageId: "preferNominalIds" }],
     },
-    // Alias lookup uses the declaration's lexical scope, not the use site's shadow.
+
     {
       code: "type Id = string; type Alias = Id; function load<Id>(accountId: Alias, invoiceId: Alias) {}",
       errors: [{ messageId: "preferNominalIds" }],
@@ -287,7 +287,7 @@ RULE_TESTER.run("prefer-nominal-id-types", rule, {
       code: "function outer(accountId: string) { return (invoiceId: string, workspaceId: string) => {}; }",
       errors: [{ messageId: "preferNominalIds" }],
     },
-    // Exactly one diagnostic per boundary; report the first conflicting identifier.
+
     {
       code: "function load(\n  accountId: string,\n  invoiceId: string,\n  workspaceId: string,\n) {}",
       errors: [
@@ -313,7 +313,7 @@ RULE_TESTER.run("prefer-nominal-id-types", rule, {
       code: "// eslint-disable-next-line @rule-tester/prefer-nominal-id-types -- fixed external signature\nfunction load(accountId: string, invoiceId: string) {}\nfunction save(accountId: string, invoiceId: string) {}",
       errors: [{ messageId: "preferNominalIds", line: 3 }],
     },
-    // Generated ownership requires a real header or path segment.
+
     {
       filename: "src/generated-tools/store.ts",
       code: "function load(accountId: string, invoiceId: string) {}",

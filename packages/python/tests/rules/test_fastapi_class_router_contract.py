@@ -78,6 +78,325 @@ class ItemRouter:
 
 
 @pytest.mark.parametrize(
+    ("binding", "status"),
+    [
+        ("", "204"),
+        ("", "205"),
+        ("", "304"),
+        ("from fastapi import status", "status.HTTP_204_NO_CONTENT"),
+        ("import fastapi as api", "api.status.HTTP_205_RESET_CONTENT"),
+        ("from starlette.status import HTTP_204_NO_CONTENT as EMPTY", "EMPTY"),
+        ("from starlette import status as codes", "codes.HTTP_205_RESET_CONTENT"),
+        ("import starlette.status as codes", "codes.HTTP_304_NOT_MODIFIED"),
+        ("from http import HTTPStatus as Codes", "Codes.RESET_CONTENT"),
+        ("import http", "http.HTTPStatus.NOT_MODIFIED"),
+    ],
+)
+@pytest.mark.parametrize("annotation", ["None", "Response", "EmptyResponse"])
+def test_proven_no_body_status_does_not_require_a_json_model(binding: str, status: str, annotation: str) -> None:
+    result = "None" if annotation == "None" else f"{annotation}(status_code={status})"
+    source = f"""
+from fastapi import APIRouter, Response
+{binding}
+class EmptyResponse(Response):
+    pass
+class ClearRouter:
+    def build(self) -> APIRouter:
+        router = APIRouter()
+        @router.delete("/items", status_code={status})
+        def clear() -> {annotation}:
+            return {result}
+        return router
+"""
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "shadow",
+    [
+        "status = provider",
+        "status.HTTP_204_NO_CONTENT = replacement",
+        "setattr(status, 'HTTP_204_NO_CONTENT', replacement)",
+        "alias = status; alias.HTTP_204_NO_CONTENT = replacement",
+    ],
+)
+def test_unresolved_status_does_not_guess_a_json_response(shadow: str) -> None:
+    source = f"""
+from fastapi import APIRouter, status
+class ItemRouter:
+    def build(self) -> APIRouter:
+        {shadow}
+        router = APIRouter()
+        @router.get("/items", status_code=status.HTTP_204_NO_CONTENT)
+        def items() -> ItemsResponse:
+            return ItemsResponse(items=[])
+        return router
+"""
+    assert _check(source) == []
+
+
+def test_status_mutation_through_an_imported_alias_invalidates_the_provider() -> None:
+    source = """
+from fastapi import APIRouter, status
+from starlette import status as codes
+class ItemRouter:
+    def build(self) -> APIRouter:
+        codes.HTTP_204_NO_CONTENT = replacement
+        router = APIRouter()
+        @router.get("/items", status_code=status.HTTP_204_NO_CONTENT)
+        def items() -> ItemsResponse:
+            return ItemsResponse(items=[])
+        return router
+"""
+    assert _check(source) == []
+
+
+def test_enclosing_parameter_shadows_a_status_module() -> None:
+    source = """
+from fastapi import APIRouter, status
+class ItemRouter:
+    def build(self, status) -> APIRouter:
+        router = APIRouter()
+        @router.get("/items", status_code=status.HTTP_204_NO_CONTENT)
+        def items() -> ItemsResponse:
+            return ItemsResponse(items=[])
+        return router
+"""
+    assert _check(source) == []
+
+
+def test_handler_parameter_and_class_namespace_do_not_shadow_a_decorator_status() -> None:
+    source = """
+from fastapi import APIRouter, status
+class ClearRouter:
+    status = provider
+    def build(self) -> APIRouter:
+        router = APIRouter()
+        @router.delete("/items", status_code=status.HTTP_204_NO_CONTENT)
+        def clear(status: str) -> None:
+            return None
+        return router
+"""
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("status", ["", ", status_code=None", ", status_code=200"])
+def test_known_default_json_status_still_requires_a_response_model(status: str) -> None:
+    source = f"""
+from fastapi import APIRouter
+class ItemRouter:
+    def build(self) -> APIRouter:
+        router = APIRouter()
+        @router.get("/items"{status})
+        def items() -> ItemsResponse:
+            return ItemsResponse(items=[])
+        return router
+"""
+    [finding] = _check(source)
+    assert "response_model" in finding.message
+
+
+@pytest.mark.parametrize("constructor", ["FastAPI", "APIRouter"])
+def test_unknown_status_preserves_receiver_ownership(constructor: str) -> None:
+    source = f"""
+from fastapi import FastAPI, APIRouter, Response
+receiver = {constructor}()
+@receiver.get("/items", status_code=select_status())
+def items() -> Response:
+    return Response(status_code=204)
+"""
+    [finding] = _check(source)
+    assert "response_model" not in finding.message
+
+
+def test_unpacked_metadata_does_not_guess_a_json_model() -> None:
+    source = """
+from fastapi import APIRouter
+OPTIONS = {"status_code": 204}
+class ClearRouter:
+    def build(self) -> APIRouter:
+        router = APIRouter()
+        @router.delete("/items", **OPTIONS)
+        def clear() -> None:
+            return None
+        return router
+"""
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("binding", "response_class"),
+    [
+        ("from fastapi.responses import HTMLResponse as Page", "Page"),
+        ("from starlette.responses import FileResponse as Download", "Download"),
+        ("import starlette.responses as wire", "wire.PlainTextResponse"),
+        ("from fastapi import Response as Raw", "Raw"),
+        ("from project.responses import CsvResponse", "CsvResponse"),
+        ("class HTMLResponse(Response):\n    media_type = 'text/csv'", "HTMLResponse"),
+        ("from fastapi.responses import HTMLResponse as Page\nPage = custom_response", "Page"),
+    ],
+)
+def test_non_json_or_unknown_response_class_does_not_require_a_json_model(binding: str, response_class: str) -> None:
+    source = f"""
+from fastapi import APIRouter, Response
+{binding}
+class ExportRouter:
+    def build(self) -> APIRouter:
+        router = APIRouter()
+        @router.get("/export", status_code=200, response_class={response_class})
+        def export() -> {response_class}:
+            return {response_class}("payload")
+        return router
+"""
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("binding", "response_class"),
+    [
+        ("", ""),
+        ("from starlette.responses import JSONResponse as Json", ", response_class=Json"),
+        ("import fastapi.responses as wire", ", response_class=wire.JSONResponse"),
+    ],
+)
+def test_proven_json_response_class_keeps_the_named_model_contract(binding: str, response_class: str) -> None:
+    source = f"""
+from fastapi import APIRouter
+{binding}
+class ItemRouter:
+    def build(self) -> APIRouter:
+        router = APIRouter()
+        @router.get("/items", status_code=200{response_class})
+        def items() -> ItemsResponse:
+            return ItemsResponse(items=[])
+        return router
+"""
+    [finding] = _check(source)
+    assert "response_model" in finding.message
+
+
+def test_unknown_response_class_keeps_receiver_ownership() -> None:
+    source = """
+from fastapi import FastAPI
+from project.responses import CsvResponse
+app = FastAPI()
+@app.get("/export", status_code=200, response_class=CsvResponse)
+def export() -> CsvResponse:
+    return CsvResponse("payload")
+"""
+    [finding] = _check(source)
+    assert "include_router" in finding.message
+
+
+@pytest.mark.parametrize(
+    "alias", ["FileResponse", "HTMLResponse", "PlainTextResponse", "RedirectResponse", "StreamingResponse"]
+)
+def test_precision_repair_preserves_existing_response_name_exemptions(alias: str) -> None:
+    source = f"""
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse as {alias}
+class ItemRouter:
+    def build(self) -> APIRouter:
+        router = APIRouter()
+        @router.get("/items", status_code=200, response_class={alias})
+        def items() -> {alias}:
+            return {alias}({{"items": []}})
+        return router
+"""
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "wire.JSONResponse = ResetResponse",
+        "del wire.JSONResponse",
+        "Json.media_type = 'text/csv'",
+        "del Json.media_type",
+        "alias = Json; alias.media_type = 'text/csv'",
+        "alias = wire; alias.JSONResponse = ResetResponse",
+        "mutate(wire)",
+        "mutate(response_class=Json)",
+        "setattr(Json, 'media_type', 'text/csv')",
+    ],
+)
+@pytest.mark.parametrize("metadata", ["", "status_code=200", "response_class=wire.JSONResponse"])
+def test_unstable_native_response_providers_do_not_prove_a_json_model(mutation: str, metadata: str) -> None:
+    source = f"""
+from fastapi import APIRouter
+import fastapi.responses as wire
+from starlette.responses import JSONResponse as Json
+class ResetResponse(wire.Response):
+    def __init__(self, content=None, status_code=205, **kwargs):
+        super().__init__(content=content, status_code=status_code, **kwargs)
+{mutation}
+class ClearRouter:
+    def build(self) -> APIRouter:
+        router = APIRouter()
+        @router.get("/clear", {metadata})
+        def clear() -> None:
+            return None
+        return router
+"""
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "registration",
+    [
+        "app.include_router(router, default_response_class=Json)",
+        "router.add_api_route('/other', other, response_class=Json)",
+    ],
+)
+def test_native_registration_consumes_response_classes_without_mutating_them(registration: str) -> None:
+    source = f"""
+from fastapi import APIRouter, FastAPI
+from fastapi.responses import JSONResponse as Json
+app = FastAPI(default_response_class=Json)
+class ItemRouter:
+    def build(self) -> APIRouter:
+        router = APIRouter(default_response_class=Json)
+        {registration}
+        @router.get("/items", status_code=200, response_class=Json)
+        def items() -> ItemsResponse:
+            return ItemsResponse(items=[])
+        return router
+"""
+    [finding] = _check(source)
+    assert "response_model" in finding.message
+
+
+@pytest.mark.parametrize(
+    ("constructor", "operation", "requires_model"),
+    [
+        ("**OPTIONS", "", False),
+        ("**OPTIONS", ", status_code=200", False),
+        ("**OPTIONS", ", response_class=Json", True),
+        ("default_response_class=Json, **EXTRA", "", True),
+    ],
+)
+def test_constructor_unpack_keeps_default_response_inference_uncertain(
+    constructor: str, operation: str, requires_model: bool
+) -> None:
+    source = f"""
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse as Json, RedirectResponse
+OPTIONS = {{"default_response_class": RedirectResponse}}
+EXTRA = {{"prefix": "/v1"}}
+class ItemRouter:
+    def build(self) -> APIRouter:
+        router = APIRouter({constructor})
+        @router.get("/items"{operation})
+        def items() -> ItemsResponse:
+            return ItemsResponse(items=[])
+        return router
+"""
+    findings = _check(source)
+    assert bool(findings) is requires_model
+    assert all("response_model" in finding.message for finding in findings)
+
+
+@pytest.mark.parametrize(
     ("binding", "receiver", "decorator"),
     [
         ("from fastapi import FastAPI\napp = FastAPI()", "app", "get('/items', response_model=ItemsResponse)"),

@@ -28,8 +28,14 @@ _UNUSED_API_DIRECTIVE = re.compile(
 
 @final
 class CommentFixes:
-    def __init__(self, context: PythonFileContext) -> None:
+    def __init__(
+        self,
+        context: PythonFileContext,
+        *,
+        test_comment_locations: frozenset[tuple[int, int]] = frozenset(),
+    ) -> None:
         self.context = context
+        self.test_comment_locations = test_comment_locations
         self.lines = StringIO(context.source, newline="").readlines()
         self.starts = [0]
         for line in self.lines:
@@ -58,6 +64,10 @@ class CommentFixes:
         if diagnostic.code == "SARJ434" and diagnostic.severity is Severity.ERROR:
             paragraph = self._restates_narration(token)
             return [self._remove(comment) for comment in paragraph]
+        if diagnostic.code == "SARJ551":
+            paragraph = self._restates_narration(token)
+            if all((comment.start[0], comment.start[1] + 1) in self.test_comment_locations for comment in paragraph):
+                return [self._remove(comment) for comment in paragraph]
         return []
 
     def _unused_api_directive(self, comment: tokenize.TokenInfo) -> bool:

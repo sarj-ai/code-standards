@@ -1,19 +1,19 @@
 // vitest: shared-module-graph
-/**
- * The plugin's own presets have to work in the config format consumers write.
- *
- * Before 5.0.0 they did not. Both declared `plugins: ["@sarj"]` — eslintrc
- * syntax — and ESLint 9 rejects it on sight with "Key `plugins`: This appears to
- * be in eslintrc format (array of strings) rather than flat config format
- * (object)". So `sarj.configs.strict`, the documented way to get these rules
- * WITHOUT copying `eslint.strict.mjs`, threw for everyone who tried it, and the
- * only thing that worked was copying the shared config and editing the copy.
- * That is the vendoring these presets exist to prevent — one measured copy had
- * drifted 30 rules behind while carrying 5 that no longer exist upstream.
- *
- * `strict-config-loads.test.ts` covers the shared config; this covers the
- * lighter path a TypeScript repo can take with one npm package and no Python.
- */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 import { ESLint, Linter } from "eslint";
 import { describe, expect, it } from "vitest";
@@ -39,8 +39,8 @@ describe("configs.recommended / configs.strict are flat config", () => {
     });
     const resolved: unknown = await eslint.calculateConfigForFile("src/index.ts");
     const configured = Object.keys(rulesOf(resolved));
-    // A preset that resolved to nothing would pass "did not throw" while
-    // enforcing nothing, which is the same silence the eslintrc shape produced.
+
+
     expect(configured.length).toBeGreaterThan(40);
     expect(configured.every((rule) => rule.startsWith("@sarj/") || rule === "no-restricted-imports")).toBe(true);
   });
@@ -52,9 +52,9 @@ describe("configs.recommended / configs.strict are flat config", () => {
   });
 
   it.each(PRESETS)("%s carries rules and nothing that fights a host config", (name) => {
-    // No `files`, no parser, no languageOptions: the presets compose with
-    // whatever a repo already has. A `files` key here would silently narrow
-    // every config spread after them.
+
+
+
     expect(Object.keys(plugin.configs[name]).sort()).toEqual([
       "name",
       "plugins",
@@ -63,16 +63,16 @@ describe("configs.recommended / configs.strict are flat config", () => {
   });
 
   it("strict wires every rule the plugin ships", () => {
-    // `recommended` deliberately omits some (strict-only architectural rules,
-    // and ones that need per-repo options to mean anything), but `strict` is
-    // the "every shipped rule" preset -- a rule missing from it is a rule
-    // that shipped and runs nowhere, which is the same written-but-inert
-    // failure the rules themselves exist to catch, one layer up.
-    //
-    // Deprecated aliases are the one exception, and they are exempt because
-    // wiring one would report the same defect twice under two names. That they
-    // stay resolvable, deprecated and out of both presets is asserted in
-    // `rule-docs.test.ts`.
+
+
+
+
+
+
+
+
+
+
     const known = Object.entries(plugin.rules)
       .filter(([, rule]) => rule.meta.deprecated === undefined)
       .map(([rule]) => `@sarj/${rule}`);

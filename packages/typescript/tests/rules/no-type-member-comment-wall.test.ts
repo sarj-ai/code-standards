@@ -31,7 +31,7 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       name: "preserves conditional member contracts",
       code: "interface Flags {\n// Enabled if active.\nenabled: boolean;\n// Active when ready.\nactive: boolean;\n// Ready unless enabled.\nready: boolean;\n}",
     },
-    // No member comments at all — 79% of the OSS corpus.
+
     { code: NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION.examples[0].files[0].source },
     {
       name: "preserves rationale in consecutive line-comment blocks",
@@ -49,10 +49,10 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // Every comment says something the name and the type cannot. Nothing here
-    // is protected, quoted, numbered or tagged: the ONLY thing keeping this
-    // valid is that each comment adds more than `maxNovelWords` content words,
-    // so raising the default makes this case flag.
+
+
+
+
     {
       code: [
         "interface Credentials {",
@@ -65,10 +65,10 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // Exactly two content words past the member's own text — the boundary the
-    // default sits on. `// Partial match` beside `// Exact match` is the pair
-    // that kept `maxNovelWords` at 1: the matching MODE is precisely what
-    // neither `name` nor `string` can state.
+
+
+
+
     {
       code: [
         "interface Filters {",
@@ -81,8 +81,8 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // One substantive row in four is enough: `minRestatedRatio` is 0.75 and
-    // this type restates one comment of four.
+
+
     {
       code: [
         "interface Session {",
@@ -97,7 +97,7 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // Fewer than `minCommentedMembers` rows is not a wall.
+
     {
       code: [
         "interface Pair {",
@@ -108,10 +108,10 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // GROUP LABELS, minority form: a minority of members commented, each
-    // introducing a run. `excalidraw/packages/excalidraw/types.ts:221` and
-    // `typescript-eslint`'s `BinaryOperatorToText.ts:4` are this shape, and
-    // deleting the labels loses the grouping.
+
+
+
+
     {
       code: [
         "interface AppState {",
@@ -130,13 +130,13 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
         ].join("\n"),
     },
-    // GROUP LABELS, majority form — `react-router/packages/react-router/lib/
-    // types/route-module-annotations.ts:212`, which the first version of this
-    // rule flagged. Every label names a ROUTE MODULE EXPORT (`links`, `meta`)
-    // and sits over a member named for the TYPE derived from it
-    // (`LinkDescriptors`, `MetaArgs`); the comment is heading a region, not
-    // describing the row under it, and 13 of the 14 runs are one member long
-    // so `minCommentedRatio` never sees them.
+
+
+
+
+
+
+
     {
       code: [
         "type GetAnnotations = {",
@@ -156,10 +156,10 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "};",
       ].join("\n"),
     },
-    // A documented default is the one fact an optional member's type cannot
-    // hold — `vite/packages/plugin-legacy/src/types.ts:1` is eight of these.
-    // Each row here restates its member apart from the default, so DEFAULT_RE
-    // is the only thing keeping the type unflagged.
+
+
+
+
     {
       code: [
         "interface LegacyOptions {",
@@ -201,8 +201,8 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
       options: [{ minCommentedRatio: 0.8 }],
     },
-    // A digit is a bound, a base or an index origin.
-    // `typescript-eslint/packages/utils/src/ts-eslint/Linter.ts:200`.
+
+
     {
       code: [
         "interface Position {",
@@ -215,8 +215,8 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // A unit word is the same fact spelled without a digit. Strip the unit and
-    // every row here is a restatement, so UNIT_WORD_RE is load-bearing.
+
+
     {
       code: [
         "interface Effort {",
@@ -229,7 +229,7 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // Quoted example values and `e.g.` enumerate what the type only bounds.
+
     {
       code: [
         "interface Instrument {",
@@ -242,12 +242,12 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // A JSDoc value tag means the block is doing something else. The prose is
-    // a restatement in all three rows and the tags carry no words the member
-    // does not, so VALUE_TAG_RE is what this case turns on. (`@deprecated`,
-    // `@see` and `@example` are deliberately absent: each is independently
-    // exempt through `isProtected` or EXAMPLE_RE, so a case built on them
-    // tests those instead.)
+
+
+
+
+
+
     {
       code: [
         "interface Surface {",
@@ -260,8 +260,8 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // Tag-only blocks are documentation-generator directives, not prose that
-    // re-spells a member. Match the declaration-wall rule's ownership.
+
+
     {
       code: [
         "interface ReadonlySurface {",
@@ -287,8 +287,8 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // A rule of dashes is a banner; `no-comment-cruft` owns that shape. Take
-    // the dashes away and each comment is the member's own name.
+
+
     {
       code: [
         "interface Section {",
@@ -301,9 +301,9 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // The nine-signal protected class is an exemption floor here as everywhere.
-    // Each row adds exactly one content word, so without `isProtected` all
-    // three would count as restatements.
+
+
+
     {
       code: [
         "interface Retry {",
@@ -316,11 +316,11 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // Reflection and decorator metadata: "class" and "parameter" are the whole
-    // claim, not filler. `typeorm/src/metadata-args/
-    // TransactionEntityMetadataArgs.ts:4`, a false positive until those two
-    // words came out of STOPWORDS — `Function` cannot say "class" and `number`
-    // cannot say "parameter".
+
+
+
+
+
     {
       code: [
         "interface TransactionEntityMetadataArgs {",
@@ -333,8 +333,8 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // Computed members have no readable name to re-spell — the
-    // `// phantom type` shape in redux-toolkit's `endpointDefinitions.ts`.
+
+
     {
       code: [
         "declare const resultType: unique symbol;",
@@ -350,7 +350,7 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // Non-ASCII prose the tokenizer cannot read.
+
     {
       code: [
         "interface Bill {",
@@ -363,8 +363,8 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // Generated output is rewritten by its generator — 79% of the first-party
-    // raw findings were one `types.gen.ts` per repo.
+
+
     {
       code: [
         "interface Voice {",
@@ -392,10 +392,10 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
       filename: "src/api/schema.ts",
     },
-    // A VENDORED copy of someone else's declarations: the same exemption, by
-    // path. `nest/packages/microservices/external/mqtt-options.interface.ts`
-    // is the MQTT.js typings with an `@see` back to the upstream repo, and
-    // editing its prose desynchronises the copy.
+
+
+
+
     {
       code: [
         "interface MqttWill {",
@@ -409,7 +409,7 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
       filename: "packages/microservices/external/mqtt-options.interface.ts",
     },
-    // Test files: a table of identical case labels is not a documentation wall.
+
     {
       code: [
         "interface Cases {",
@@ -423,11 +423,11 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
       filename: "src/table.test.ts",
     },
-    // A FIXTURE is the input to a test, and its comments are usually the thing
-    // asserted. `storybook/code/renderers/react/src/componentManifest/
-    // __testfixtures__/ForwardRef.tsx` documents three props whose exact
-    // strings `componentMetaExtractor.qa.test.ts:448` compares against, and
-    // `fixtures/` alone did not match that directory.
+
+
+
+
+
     {
       code: [
         "interface TextInputProps {",
@@ -441,9 +441,9 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
       filename: "src/componentManifest/__testfixtures__/ForwardRef.tsx",
     },
-    // A demo story: prop JSDoc in a `stories/` tree is not commentary, it is
-    // OUTPUT — docgen renders it as the args-table description.
-    // `storybook/test-storybooks/mcp/stories/other/card/Card.tsx`.
+
+
+
     {
       code: [
         "interface CardProps {",
@@ -457,8 +457,8 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
       filename: "src/stories/other/card/Card.tsx",
     },
-    // A TRAILING comment belongs to its own member, not to the one below it.
-    // Without the standalone check this reads as three commented members.
+
+
     {
       code: [
         "interface Mixed {",
@@ -469,9 +469,9 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // …and a comment that sits BEFORE its member on the member's own line is a
-    // leading comment, not that member's trailing one. Count `/* gamma */` as
-    // gamma's and this type is three restated rows out of three.
+
+
+
     {
       code: [
         "interface Doc {",
@@ -481,15 +481,15 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // One comment documents ONE member. A trailing comment on a one-line type
-    // literal is claimed once, not once per member that ends on its line.
+
+
     {
       code: "type Row = { id: string; label: string; href: string }; // the record",
     },
-    // A one-line type literal under a doc block: the three members do NOT each
-    // own that block. This shape was 100% of the first-party findings before
-    // `documentingComment` required the member to start its own line — a React
-    // component's inline props type sitting under the component's own JSDoc.
+
+
+
+
     {
       code: [
         "/** A logo. */",
@@ -498,9 +498,9 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "}",
       ].join("\n"),
     },
-    // …and the same rule with the members spread over several lines: `id`
-    // shares the type's opening line, so the block above the type is not its
-    // documentation. Give it to `id` and this becomes three restated rows.
+
+
+
     {
       code: [
         "/** The row. */",
@@ -512,8 +512,8 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
         "};",
       ].join("\n"),
     },
-    // The same shape with a block comment that really does precede a one-line
-    // type alias — one comment, one claim, not three.
+
+
     {
       code: [
         "// Row shape.",
@@ -522,17 +522,23 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
     },
   ],
   invalid: [
+    ...["\n", "\r\n"].map(ending => ({
+      name: "shared guarded deletion retains normal terminators " + JSON.stringify(ending),
+      code: "interface Client {\n  /** Read user. */\n  readUser(): void;\n  /** Write user. */\n  writeUser(): void;\n  /** Delete user. */\n  deleteUser(): void;\n}".replaceAll("\n", ending),
+      output: "interface Client {\n\n  readUser(): void;\n\n  writeUser(): void;\n\n  deleteUser(): void;\n}".replaceAll("\n", ending),
+      errors: [{ messageId: "commentWall" as const }],
+    })),
     { name: "automatically removes only exact multiword member names", code: "interface Client {\n  /** Read user. */\n  readUser(): void;\n  /** Write user. */\n  writeUser(): void;\n  /** Delete user. */\n  deleteUser(): void;\n}", output: "interface Client {\n\n  readUser(): void;\n\n  writeUser(): void;\n\n  deleteUser(): void;\n}", errors: [{ messageId: "commentWall" }] },
-    // typeorm/src/driver/sap/SapConnectionCredentialsOptions.ts:4 — ten members,
-    // ten comments, every one "Database <the member's name>."
+
+
     {
       code: NO_TYPE_MEMBER_COMMENT_WALL_DOCUMENTATION.examples[1].files[0].source,
       errors: [{ messageId: "commentWall" }],
     },
-    // A comment that IS its member's name, blank-line separated exactly like
-    // the react-router valid case above. The difference is the only thing the
-    // label exemption turns on: there the comment named a different identifier
-    // from the member it preceded, here it names the member.
+
+
+
+
     {
       code: [
         "type RouteModule = {",
@@ -552,8 +558,8 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       output: "type RouteModule = {\n  // links\n  links: unknown;\n\n  // meta\n  meta: unknown;\n\n\n  clientLoader: unknown;\n\n\n  errorBoundary: unknown;\n}",
       errors: [{ messageId: "commentWall" }],
     },
-    // A one-word restatement per row is still a wall: no blank lines, no runs,
-    // nothing heading a region — just `count` written over `itemCount`.
+
+
     {
       code: [
         "interface Cart {",
@@ -567,10 +573,10 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
       errors: [{ messageId: "commentWall" }],
     },
-    // JSDoc form, blank-line separated as typeorm writes it, and the
-    // whole-type report survives one substantive row: three of four comments
-    // restate, which is exactly `minRestatedRatio`.
-    // typeorm/src/driver/cordova/CordovaDataSourceOptions.ts:6 is this shape.
+
+
+
+
     {
       code: [
         "interface CordovaOptions {",
@@ -589,8 +595,8 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
       errors: [{ messageId: "commentWall" }],
     },
-    // Method signatures count too — nest/packages/common/interfaces/features/
-    // arguments-host.interface.ts:25.
+
+
     {
       code: [
         "interface ArgumentsHost {",
@@ -604,7 +610,7 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
       errors: [{ messageId: "commentWall" }],
     },
-    // Trailing comments, one per member.
+
     {
       code: [
         "interface Doc {",
@@ -615,7 +621,7 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
       errors: [{ messageId: "commentWall" }],
     },
-    // A nested type literal is judged on its own members.
+
     {
       code: [
         "interface Outer {",
@@ -632,9 +638,9 @@ RULE_TESTER.run("no-type-member-comment-wall", rule, {
       ].join("\n"),
       errors: [{ messageId: "commentWall" }],
     },
-    // The option loosens the per-comment test for a team that wants it. Every
-    // row here adds exactly two words beyond its member — the same shape as
-    // the `// Partial match` valid case, which is what the default protects.
+
+
+
     {
       name: "honours a higher novel-word allowance",
       code: [
