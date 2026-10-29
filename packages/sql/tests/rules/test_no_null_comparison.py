@@ -36,7 +36,16 @@ def test_bare_null_comparisons(operator: str, operands: str) -> None:
 
 @pytest.mark.parametrize(
     "predicate",
-    ["value NOT IN (1, NULL)", "value NOT IN ((NULL), 1)", "NOT value IN (1,NULL)", "value NOT IN (NULL, NULL)"],
+    [
+        "value NOT IN (1, NULL)",
+        "value NOT IN ((NULL), 1)",
+        "NOT value IN (1,NULL)",
+        "value NOT IN (NULL, NULL)",
+        "NOT (value IN (1, NULL))",
+        "NOT ((value IN (1, (NULL))))",
+        "NOT (value IN (NULL, NULL))",
+        "NOT /* predicate */ ((value IN (1, +NULL)))",
+    ],
 )
 def test_literal_null_exclusion_lists(predicate: str) -> None:
     source = f"SELECT id FROM event WHERE {predicate};"  # ruff: ignore[hardcoded-sql-expression] -- fixed parser fixture, never executed.
@@ -61,6 +70,15 @@ def test_literal_null_exclusion_lists(predicate: str) -> None:
         "ROW(1,2) NOT IN (NULL)",
         "((ROW(1,2))) NOT IN (NULL)",
         "value NOT IN (ROW(1,NULL))",
+        "NOT ((a,b) IN ((1,NULL)))",
+        "NOT (ROW(1,2) IN (NULL))",
+        "NOT (((ROW(1,2))) IN (NULL))",
+        "NOT (value IN (ROW(1,NULL)))",
+        "NOT (value IN (SELECT other FROM event))",
+        "NOT (value IN (NULL::integer))",
+        "NOT (value IN (1, 2))",
+        "NOT (value IN (1, NULL) AND FALSE)",
+        "NOT (value IN (1, NULL) OR TRUE)",
         "value = NULL::integer",
         "value = CAST(NULL AS integer)",
         "value OPERATOR(custom.=) NULL",
@@ -104,6 +122,36 @@ def test_one_finding_per_expression_and_original_locations() -> None:
 )
 def test_query_and_migration_statements(source: str) -> None:
     assert len(NoNullComparison().check(Path("supabase/migrations/001.sql"), source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "UPDATE event SET value = NULL;",
+        "UPDATE event SET (value, other) = (NULL, NULL);",
+        "INSERT INTO event(id) VALUES (1) ON CONFLICT (id) DO UPDATE SET value = NULL;",
+        "MERGE INTO event e USING other o ON e.id = o.id WHEN MATCHED THEN UPDATE SET value = NULL;",
+        "SET enable_seqscan = NULL;",
+    ],
+)
+def test_null_assignments_are_not_comparisons(source: str) -> None:
+    assert NoNullComparison().check(P, source) == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "UPDATE event SET flag = (value = NULL);",
+        "UPDATE event SET flag = NOT (value IN (1, NULL));",
+        "INSERT INTO event(id) VALUES (1) ON CONFLICT (id) DO UPDATE SET flag = NOT (value IN (1, NULL));",
+        (
+            "MERGE INTO event e USING other o ON e.id = o.id "
+            "WHEN MATCHED THEN UPDATE SET flag = NOT (o.value IN (1, NULL));"
+        ),
+    ],
+)
+def test_comparison_expressions_inside_assignments_are_checked(source: str) -> None:
+    assert len(NoNullComparison().check(P, source)) == 1
 
 
 def test_bad_statement_does_not_hide_following_valid_statement() -> None:

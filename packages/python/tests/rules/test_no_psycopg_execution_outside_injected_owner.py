@@ -1,9 +1,13 @@
+import ast
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint._analysis_session import AnalysisSession
 from sarj_python_lint._file_context import PythonFileContext
+from sarj_python_lint.rules._project_index import ProjectIndexSet, SourceUnit
 from sarj_python_lint.rules._store_sql import store_queries
 from sarj_python_lint.rules.no_psycopg_execution_outside_injected_owner import (
     NoPsycopgExecutionOutsideInjectedOwner,
@@ -12,7 +16,7 @@ from sarj_python_lint.rules.no_psycopg_execution_outside_injected_owner import (
 
 
 if TYPE_CHECKING:
-    from sarj_python_lint.rule_base import RuleExample
+    from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
 def _check(source: str, path: str = "app/store.py"):
@@ -917,3 +921,189 @@ def write(pool: ConnectionPool):
     context = PythonFileContext(Path("app/cursor_helpers.py"), source)
     assert len(psycopg_execution_calls(context, include_injected=True, include_probes=False)) == 1
     assert [query.method.name for query in store_queries(context) if query.method is not None] == ["write"]
+
+
+@pytest.mark.parametrize(
+    "binding",
+    [
+        "conn = executor",
+        "conn: Connection = executor",
+        "conn += executor",
+        "def conn(query): pass",
+        "class conn: pass",
+        "from vendor import conn",
+        "import vendor as conn",
+    ],
+)
+def test_local_binding_revokes_module_global_execution_origin(binding: str) -> None:
+    source = f"""from psycopg import Connection
+conn = Connection(info)
+def run(executor):
+    {binding}
+    conn.execute(query)
+"""
+    assert _check(source) == []
+    control = source.replace(f"    {binding}\n", "")
+    assert len(_check(control)) == 1
+
+
+def test_unknown_parameter_does_not_inherit_a_same_named_global_connection() -> None:
+    source = """from psycopg import Connection
+conn = Connection(info)
+def run(conn):
+    conn.execute(query)
+"""
+    assert _check(source) == []
+    assert len(_check(source.replace("def run(conn):", "def run():"))) == 1
+
+
+@pytest.mark.parametrize("write", ["conn = executor", "del conn", "from vendor import conn"])
+def test_function_global_write_revokes_module_connection_proof(write: str) -> None:
+    source = f"""from psycopg import Connection
+conn = Connection(info)
+def replace(executor):
+    global conn
+    {write}
+def run():
+    conn.execute(query)
+"""
+    assert _check(source) == []
+    assert len(_check(source.replace(f"    {write}\n", "    pass\n"))) == 1
+
+
+def test_annotated_borrowed_cursor_alias_keeps_unknown_class_ownership() -> None:
+    source = """from psycopg import Cursor
+class Store:
+    def read(self, cursor: Cursor):
+        alias: Cursor = cursor
+        alias.execute(query)
+"""
+    assert _check(source) == []
+    context = PythonFileContext(Path("app/store.py"), source)
+    assert len(psycopg_execution_calls(context, include_injected=True, include_probes=False)) == 1
+    created = source.replace("alias: Cursor = cursor", "alias: Cursor = Cursor(connection)")
+    assert len(_check(created)) == 1
+
+
+@pytest.mark.parametrize("wrapper", ["Annotated", "Optional", "Union"])
+def test_annotation_wrappers_require_the_typing_import_owner(wrapper: str) -> None:
+    content = "Connection, 'db'" if wrapper == "Annotated" else "Connection"
+    source = f"""from vendor import {wrapper}
+from psycopg import Connection
+def run(conn: {wrapper}[{content}]):
+    conn.execute(query)
+"""
+    assert _check(source) == []
+    assert len(_check(source.replace("from vendor import", "from typing import"))) == 1
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["psycopg.Cursor = FakeCursor", "setattr(psycopg, 'Cursor', FakeCursor)", "del psycopg.Cursor"],
+)
+def test_function_namespace_mutations_revoke_native_cursor_constructor_proof(mutation: str) -> None:
+    source = f"""import psycopg
+def configure():
+    {mutation}
+def run(connection):
+    psycopg.Cursor(connection).execute(query)
+"""
+    assert _check(source) == []
+    assert len(_check(source.replace(f"    {mutation}", "    pass"))) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        """import psycopg
+def run(dsn):
+    with psycopg.connect(dsn) as conn:
+        conn.execute(query)
+""",
+        """from psycopg import Connection
+def run(dsn):
+    with Connection.connect(dsn) as conn:
+        conn.execute(query)
+""",
+        """from psycopg import AsyncConnection
+async def run(dsn):
+    conn = await AsyncConnection.connect(dsn)
+    await conn.execute(query)
+""",
+        """from psycopg import AsyncConnection
+async def run(dsn):
+    async with await AsyncConnection.connect(dsn) as conn:
+        await conn.execute(query)
+""",
+    ],
+)
+def test_native_connection_context_and_await_preserve_external_ownership(source: str) -> None:
+    assert len(_check(source)) == 1
+    assert _check(source.replace("psycopg", "vendor")) == []
+
+
+def test_free_helper_named_init_is_not_a_constructor_owner() -> None:
+    source = """from psycopg import Connection
+def __init__(conn: Connection):
+    conn.execute(query)
+"""
+    assert len(_check(source)) == 1
+    owned = """from psycopg import Connection
+class Store:
+    def __init__(self, conn: Connection):
+        conn.execute(query)
+"""
+    assert _check(owned) == []
+
+
+def test_annotation_only_statement_preserves_the_existing_runtime_origin() -> None:
+    source = """from psycopg import Connection
+def run(conn: Connection):
+    conn: Connection
+    conn.execute(query)
+"""
+    assert len(_check(source)) == 1
+    assert _check(source.replace("def run(conn: Connection):", "def run(conn):")) == []
+
+
+def test_tuple_of_annotation_objects_does_not_prove_an_individual_connection() -> None:
+    source = """from psycopg import Connection
+def run(conn: (Connection, str)):
+    conn.execute(query)
+"""
+    assert _check(source) == []
+    assert len(_check(source.replace("(Connection, str)", "Connection"))) == 1
+
+
+@pytest.mark.parametrize(
+    ("mutation", "module", "expected_count"),
+    [
+        ("psycopg.Connection = FakeConnection", "psycopg", 0),
+        ("del psycopg.Connection", "psycopg", 0),
+        ("setattr(psycopg, 'Connection', FakeConnection)", "psycopg", 0),
+        ("delattr(psycopg, 'Connection')", "psycopg", 0),
+        ("psycopg.Connection = FakeConnection", "vendor", 1),
+    ],
+)
+def test_prepared_reachable_native_namespace_mutation_revokes_error_proof(
+    mutation: str, module: str, expected_count: int
+) -> None:
+    native = "from psycopg import Connection\ndef read(conn: Connection):\n    conn.execute(query)\n"
+    patch = f"import {module} as psycopg\nclass FakeConnection:\n    def execute(self, query): pass\n{mutation}\n"
+
+    def check_graph(focus: str, other: str) -> list[Diagnostic]:
+        path = Path("app/focus.py")
+        patch_path = Path("app/patch.py")
+        units = {
+            path: SourceUnit(path, "app.focus", focus, ast.parse(focus), MappingProxyType({})),
+            patch_path: SourceUnit(patch_path, "app.patch", other, ast.parse(other), MappingProxyType({})),
+        }
+        session = AnalysisSession()
+        session.project = ProjectIndexSet(units, sealed=True)
+        rule = NoPsycopgExecutionOutsideInjectedOwner()
+        rule.prepare_session(session)
+        return rule.check(path, focus)
+
+    assert len(check_graph("import app.patch\n" + native, patch)) == expected_count
+    assert len(check_graph(native, patch)) == 1
+    assert len(check_graph("import app.patch\n" + native, "pass\n")) == 1

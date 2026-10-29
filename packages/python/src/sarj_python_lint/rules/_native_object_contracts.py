@@ -701,9 +701,13 @@ def _stub(statement: ast.stmt) -> bool:
 
 
 def builtin_object(node: ast.expr, facts: MappingShapeFacts, at: ast.AST) -> bool:
-    candidate = facts.qualified(node, at) == "builtins.object" or (
+    return builtin_symbol(node, "object", facts, at)
+
+
+def builtin_symbol(node: ast.expr, name: str, facts: MappingShapeFacts, at: ast.AST) -> bool:
+    candidate = facts.qualified(node, at) == f"builtins.{name}" or (
         isinstance(node, ast.Name)
-        and node.id == "object"
+        and node.id == name
         and not facts.shadowed(node.id, at)
         and facts.provenance.binding(node.id, at) is None
     )
@@ -717,13 +721,11 @@ def builtin_object(node: ast.expr, facts: MappingShapeFacts, at: ast.AST) -> boo
     while isinstance(root, ast.Attribute):
         root = root.value
     if isinstance(root, ast.Name):
-        changed = native.namespace_replaced(root.id) if root.id == "object" else native.namespace_rebound(root.id)
+        changed = native.namespace_replaced(root.id) if root.id == name else native.namespace_rebound(root.id)
         if changed:
             return False
     attribute_mutation = any(
-        isinstance(member.ctx, ast.Store | ast.Del)
-        and member.attr == "object"
-        and _builtins_module(member.value, context)
+        isinstance(member.ctx, ast.Store | ast.Del) and member.attr == name and _builtins_module(member.value, context)
         for member in context.nodes(ast.Attribute)
     )
     return not attribute_mutation and not any(
@@ -731,7 +733,7 @@ def builtin_object(node: ast.expr, facts: MappingShapeFacts, at: ast.AST) -> boo
         and call.func.id in {"setattr", "delattr"}
         and len(call.args) >= _PAIR_ARITY
         and _builtins_module(call.args[0], context)
-        and (not isinstance(call.args[1], ast.Constant) or call.args[1].value == "object")
+        and (not isinstance(call.args[1], ast.Constant) or call.args[1].value == name)
         for call in context.nodes(ast.Call)
     )
 

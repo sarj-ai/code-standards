@@ -923,3 +923,91 @@ __CLASS_MUTATION__
     ]
     assert [finding.line for finding in findings] == expected_lines
     assert all(finding.code == "SARJ437" and finding.severity is Severity.WARNING for finding in findings)
+
+
+@pytest.mark.parametrize("native", [False, True])
+@pytest.mark.parametrize("composable", [False, True])
+def test_unknown_relation_holes_do_not_prove_a_wide_self_join(native: bool, composable: bool) -> None:
+    columns = ", ".join(f"a.field_{position}" for position in range(16))
+    query = f"SELECT {columns} FROM {{left}} a JOIN {{right}} b ON TRUE"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    expression = f"SQL({query!r}).format(left=left, right=right)" if composable else f"f{query!r}"
+    prefix = "from psycopg.sql import SQL\n" if composable else "import psycopg\n"
+    if native:
+        source = prefix + f"from psycopg import Cursor\ndef read(handle: Cursor):\n    handle.execute({expression})\n"
+    else:
+        source = prefix + f"cursor.execute({expression})\n"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("relations", "expected"),
+    [
+        ("owner o JOIN item a ON TRUE JOIN item b ON TRUE", 1),
+        ("owner o, item a, item b", 1),
+        ('owner o JOIN public.item a ON TRUE JOIN public."item" b ON TRUE', 1),
+        ('owner o JOIN item a ON TRUE JOIN "ITEM" b ON TRUE', 0),
+        ("owner o JOIN alpha.item a ON TRUE JOIN beta.item b ON TRUE", 0),
+        ("owner o JOIN item a ON TRUE JOIN other b ON TRUE", 0),
+    ],
+)
+def test_wide_self_join_checks_every_explicit_relation_identity(relations: str, expected: int) -> None:
+    columns = ", ".join(f"a.field_{position}" for position in range(16))
+    query = f"SELECT {columns} FROM {relations}"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    findings = _check(f"import psycopg\ncursor.execute({query!r})\n")
+    assert len(findings) == expected
+    assert all("Self-joined" in finding.message for finding in findings)
+
+
+def test_class_body_constructor_import_is_not_visible_inside_a_method() -> None:
+    source = """import psycopg
+class Store:
+    from psycopg.sql import SQL
+    def read(self, cursor):
+        cursor.execute(SQL("SELECT id FROM item JOIN a ON TRUE JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE"))
+"""
+    assert _check(source) == []
+
+
+def test_class_body_shadow_does_not_hide_a_method_global_constructor() -> None:
+    source = """from psycopg.sql import SQL
+class Store:
+    SQL = staticmethod(lambda value: "SELECT 1")
+    def read(self, cursor):
+        cursor.execute(SQL("SELECT id FROM item JOIN a ON TRUE JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE"))
+"""
+    assert len(_check(source)) == 1
+
+
+def test_class_body_can_use_its_own_constructor_import() -> None:
+    source = """from psycopg import Cursor
+class Store:
+    from psycopg.sql import SQL
+    cursor.execute(SQL("SELECT id FROM item JOIN a ON TRUE JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE"))
+"""
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("lock", ["FOR UPDATE", "FOR NO KEY UPDATE", "FOR SHARE", "FOR KEY SHARE"])
+def test_all_postgres_row_locks_preserve_atomic_statement_guidance(lock: str) -> None:
+    query = f"SELECT id FROM item JOIN a ON TRUE JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE {lock}"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    [finding] = _check(f"import psycopg\ncursor.execute({query!r})\n")
+    assert "preserve the atomic statement" in finding.message
+    assert "review bounds, ordering, and locks" in finding.message
+
+
+@pytest.mark.parametrize(
+    "noise",
+    ["'FOR UPDATE'", "$$FOR UPDATE$$", "1 /* FOR UPDATE */", "1 -- FOR UPDATE\n"],
+)
+def test_lock_text_in_sql_noise_does_not_change_review_guidance(noise: str) -> None:
+    query = f"SELECT {noise} FROM item JOIN a ON TRUE JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    [finding] = _check(f"import psycopg\ncursor.execute({query!r})\n")
+    assert "preserve the atomic statement" not in finding.message
+    assert "review cardinality" in finding.message
+
+
+def test_deeply_nested_sql_abstains_without_crashing() -> None:
+    query = "SELECT id FROM item JOIN a ON TRUE JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE"
+    assert len(_check(f"import psycopg\ncursor.execute({query!r})\n")) == 1
+    nested = "".join(("SELECT (" * 200, query, ") FROM item" * 200))
+    assert _check(f"import psycopg\ncursor.execute({nested!r})\n") == []

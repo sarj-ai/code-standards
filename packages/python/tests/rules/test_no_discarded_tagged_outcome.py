@@ -288,3 +288,88 @@ def test_stable_literal_alias_retains_definition_scope() -> None:
         "type Tag = Literal['accepted']\nclass Accepted(BaseModel):",
     ).replace("kind: Literal['accepted']", "kind: Tag")
     assert len(_check(source + "check('value')\n")) == 1
+
+
+@pytest.mark.parametrize(
+    "escape",
+    [
+        "rewrite(check)",
+        "saved = check\nrewrite(saved)",
+        "def factory():\n    return check",
+    ],
+    ids=("direct", "alias", "returned"),
+)
+def test_escaped_callable_identity_abstains(escape: str) -> None:
+    assert _check(_BASE + escape + "\ncheck('value')\n") == []
+
+
+@pytest.mark.parametrize(
+    "alias",
+    [
+        "saved = check\nsaved('other')",
+        "saved = check\ndef use(saved):\n    rewrite(saved)",
+    ],
+    ids=("direct-alias-call", "shadowed-alias-escape"),
+)
+def test_safe_callable_alias_preserves_original_warning(alias: str) -> None:
+    assert len(_check(_BASE + alias + "\ncheck('value')\n")) == 1
+
+
+@pytest.mark.parametrize(
+    ("declaration", "implementation", "call"),
+    [
+        ("def", "yield Accepted(kind='accepted', value=value)", "check('value')"),
+        ("def", "yield from (Accepted(kind='accepted', value=value),)", "check('value')"),
+        (
+            "async def",
+            "yield Accepted(kind='accepted', value=value)",
+            "async def save():\n    await check('value')",
+        ),
+        (
+            "def",
+            "def nested(argument=(yield 1)):\n        return argument\n    return Accepted(kind='accepted', value=value)",
+            "check('value')",
+        ),
+    ],
+    ids=("yield", "yield-from", "async-generator", "yield-in-nested-default"),
+)
+def test_generator_call_is_not_a_returned_outcome(declaration: str, implementation: str, call: str) -> None:
+    source = _BASE.replace("def check(value", f"{declaration} check(value")
+    source = source.replace("return Accepted(kind='accepted', value=value)", implementation)
+    assert _check(source + call + "\n") == []
+
+
+def test_nested_generator_does_not_hide_the_outer_outcome() -> None:
+    source = _BASE.replace(
+        "    return Accepted",
+        "    def nested():\n        yield 1\n    return Accepted",
+    )
+    assert len(_check(source + "check('value')\n")) == 1
+
+
+def test_bounded_callable_alias_graph_abstains() -> None:
+    aliases = "saved0 = check\n" + "".join(f"saved{index + 1} = saved{index}\n" for index in range(30))
+    assert _check(_BASE + aliases + "check('value')\n") == []
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        (
+            "    return Accepted(kind='accepted', value=value)\n",
+            "    return Accepted(kind='accepted', value=value)\nrewrite(check)\n",
+        ),
+        ("return Accepted(kind='accepted', value=value)", "yield Accepted(kind='accepted', value=value)"),
+    ],
+    ids=("escaped-provider", "generator-provider"),
+)
+def test_imported_callable_requires_stable_non_generator_provider(tmp_path: Path, change: tuple[str, str]) -> None:
+    package = tmp_path / "app"
+    package.mkdir()
+    (package / "__init__.py").write_text("")
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='outcomes'\nversion='0.0.0'\n")
+    provider = package / "models.py"
+    provider.write_text(_BASE.replace(*change))
+    consumer = package / "consumer.py"
+    consumer.write_text("from app.models import check as inspect_value\ninspect_value('value')\n")
+    assert analyze([NoDiscardedTaggedOutcome.id], [provider, consumer]) == []

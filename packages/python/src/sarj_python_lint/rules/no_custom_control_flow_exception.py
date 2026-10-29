@@ -61,7 +61,7 @@ class NoCustomControlFlowException(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "This review warning checks stable module-level local Exception/ValueError subclasses whose bodies contain only pass, ellipsis or docstring expressions, including empty local subclasses of those markers. A source-visible direct raise of the class or its constructor is required; imported errors, payload-bearing classes, methods, decorators, generic/ambiguous bases and unused definitions abstain.",
-            "Raising a ValueError-derived marker from an import-proven Pydantic field/model validator or legacy validator preserves that rejection protocol. Unknown external bases and visible escapes of the class to registrations, callbacks or other value consumers abstain; HTTPException and other framework-required exception types remain valid.",
+            "Raising a ValueError-derived marker from an import-proven Pydantic field/model validator or legacy validator preserves that rejection protocol. Unknown external bases and visible mutations or escapes of the class or a local base to registrations, callbacks or other value consumers abstain; HTTPException and other framework-required exception types remain valid.",
             "Expectedness is not inferred from a name, message or prefix. Genuine exceptional markers may also match and require review rather than conversion. Cross-module callers and registrations, indirect raises, dynamically mutated namespaces and class aliases are not inferred.",
             "Tests, generated and vendor code are excluded. No automatic rewrite is safe: a result return must preserve failure handling and transaction/resource unwinding. SARJ435 separately reviews joined-string reason identities.",
         ),
@@ -114,11 +114,10 @@ class NoCustomControlFlowException(Rule):
         if provenance.wildcard or provenance.dynamic_namespace or not provenance.builtin_namespace_untouched:
             return []
         markers = _markers(context, provenance)
+        raised_markers = _direct_raises(markers, context, provenance)
         findings: list[Diagnostic] = []
         for marker in markers.values():
-            if marker.name in provenance.mutated or _escapes(marker, context, provenance):
-                continue
-            if not _direct_raises(marker, context, provenance):
+            if marker not in raised_markers:
                 continue
             if is_suppressed(context.source_lines, marker.lineno, self.code):
                 continue
@@ -152,8 +151,13 @@ def _markers(context: PythonFileContext, provenance: ResourceProvenance) -> dict
             and provenance.binding(base.id, base) is markers.get(base.id)
             and base.id in markers
         )
-        if local or _builtin_base(base, context, provenance):
-            markers[node.name] = node
+        if not (local or _builtin_base(base, context, provenance)):
+            continue
+        if node.name in provenance.mutated or node.name in provenance.external_bindings:
+            continue
+        if _escapes(node, context, provenance):
+            continue
+        markers[node.name] = node
     return markers
 
 
@@ -181,14 +185,24 @@ def _builtin_base(base: ast.expr, context: PythonFileContext, provenance: Resour
     return any(provenance.imported(base, f"builtins.{name}") for name in _BUILTIN_BASES)
 
 
-def _direct_raises(marker: ast.ClassDef, context: PythonFileContext, provenance: ResourceProvenance) -> bool:
+def _direct_raises(
+    markers: dict[str, ast.ClassDef], context: PythonFileContext, provenance: ResourceProvenance
+) -> set[ast.ClassDef]:
+    candidates = set(markers.values())
+    raised_markers: set[ast.ClassDef] = set()
+    value_errors: dict[ast.ClassDef, bool] = {}
     for raised in context.nodes(ast.Raise):
         target = raised.exc.func if isinstance(raised.exc, ast.Call) else raised.exc
-        if not isinstance(target, ast.Name) or provenance.binding(target.id, target) is not marker:
+        if not isinstance(target, ast.Name):
             continue
-        if not (_value_error_marker(marker, context, provenance) and _validation_callback(raised, context, provenance)):
-            return True
-    return False
+        marker = provenance.binding(target.id, target)
+        if not isinstance(marker, ast.ClassDef) or marker not in candidates or marker in raised_markers:
+            continue
+        if marker not in value_errors:
+            value_errors[marker] = _value_error_marker(marker, context, provenance)
+        if not (value_errors[marker] and _validation_callback(raised, context, provenance)):
+            raised_markers.add(marker)
+    return raised_markers
 
 
 def _value_error_marker(marker: ast.ClassDef, context: PythonFileContext, provenance: ResourceProvenance) -> bool:

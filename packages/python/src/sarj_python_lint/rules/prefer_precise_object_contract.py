@@ -15,10 +15,8 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
-from sarj_python_lint.rules._declared_contracts import MODEL_BASES, SETTINGS_BASES, DeclaredContracts
-from sarj_python_lint.rules._native_object_contracts import builtin_object
+from sarj_python_lint.rules._native_object_contracts import builtin_object, builtin_symbol
 from sarj_python_lint.rules._opaque_contracts import REFINEMENT_TYPES, OpaqueContractFacts
-from sarj_python_lint.rules._test_composition import call_arguments, direct_nodes
 from sarj_python_lint.rules.require_pydantic_for_mapping_shape import MappingShapeFacts
 
 
@@ -30,7 +28,6 @@ if TYPE_CHECKING:
 
 _TYPING = frozenset({"typing", "typing_extensions"})
 _MAX_TYPE_DEPTH = 32
-_VALIDATION_BASES = MODEL_BASES | SETTINGS_BASES | {"pydantic.RootModel", "pydantic.root_model.RootModel"}
 _FRAMEWORK_METHODS = frozenset(
     {"__eq__", "__ne__", "__hash__", "__get_pydantic_core_schema__", "__get_pydantic_json_schema__", "model_post_init"}
 )
@@ -134,7 +131,6 @@ class PreferPreciseObjectContract(Rule):
         if facts.provenance.wildcard:
             return []
         findings: list[Diagnostic] = []
-        contracts = DeclaredContracts(context)
         opaque = OpaqueContractFacts(context, facts)
         for owner, annotation in _contracts(context):
             if not _has_object(annotation, context, facts, at=annotation):
@@ -144,8 +140,7 @@ class PreferPreciseObjectContract(Rule):
                 if _framework(function, context) or facts.raw_boundary(annotation):
                     continue
                 if (
-                    _validated_input(function, annotation, contracts)
-                    or _refinement_boundary(function, annotation, context, facts)
+                    _refinement_boundary(function, annotation, context, facts)
                     or _module_getattr_result(function, annotation, context)
                     or opaque.owns(function, annotation)
                 ):
@@ -186,7 +181,7 @@ def _has_object(
     context: PythonFileContext,
     facts: MappingShapeFacts,
     *,
-    at: ast.AST,
+    at: ast.expr,
     depth: int = 0,
     aliases: dict[str, int] | None = None,
 ) -> bool:
@@ -209,7 +204,7 @@ def _has_object(
     return any(_has_object(member, context, facts, at=at, depth=depth + 1, aliases=aliases) for member in members)
 
 
-def _type_arguments(node: ast.expr, facts: MappingShapeFacts, at: ast.AST) -> list[ast.expr] | None:
+def _type_arguments(node: ast.expr, facts: MappingShapeFacts, at: ast.expr) -> list[ast.expr] | None:
     match node:
         case ast.Subscript():
             wrapper = facts.qualified(node.value, at)
@@ -219,11 +214,12 @@ def _type_arguments(node: ast.expr, facts: MappingShapeFacts, at: ast.AST) -> li
             if wrapper in {"typing.Annotated", "typing_extensions.Annotated"}:
                 return members[:1]
             if len(members) == 1 and (
-                facts.builtin(node.value, "type", at)
-                or wrapper in {"builtins.type", "typing.Type", "typing_extensions.Type"}
+                builtin_symbol(node.value, "type", facts, at)
+                or (isinstance(node.value, ast.Name) and wrapper == "builtins.type")
+                or wrapper in {"typing.Type", "typing_extensions.Type"}
             ):
-                argument = facts.context.annotation_semantics.parse(members[0])
-                if argument is not None and _opaque(argument, facts, at):
+                argument = facts.resolve_annotation(members[0], at=at)
+                if argument is not None and _opaque(argument.expression, facts, argument.at):
                     return []
             return members
         case ast.BinOp(op=ast.BitOr()):
@@ -292,30 +288,3 @@ def _module_getattr_result(
         and function.args.kwarg is None
         and not function.decorator_list
     )
-
-
-def _validated_input(
-    function: ast.FunctionDef | ast.AsyncFunctionDef,
-    annotation: ast.expr,
-    contracts: DeclaredContracts,
-) -> bool:
-    parameters = {
-        arg.arg
-        for arg in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
-        if arg.annotation is annotation
-    }
-    if not parameters:
-        return False
-    for node in direct_nodes(function):
-        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
-            continue
-        if node.func.attr != "model_validate":
-            continue
-        values = call_arguments(node, ("obj",))
-        value = values.get("obj") if values is not None else None
-        if not isinstance(value, ast.Name) or value.id not in parameters:
-            continue
-        model = contracts.class_type(node.func.value)
-        if model is not None and contracts.inherits(model, _VALIDATION_BASES):
-            return True
-    return False

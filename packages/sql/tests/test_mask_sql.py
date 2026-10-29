@@ -11,6 +11,7 @@ from sarj_sql_lint.rule_base import (
     normalize_sql_identifier,
     source_location,
     split_statements,
+    sql_comments,
 )
 
 
@@ -61,6 +62,16 @@ def _mask(source: str) -> str:
             id="templates",
         ),
         pytest.param(
+            "SELECT {single}, {{ hidden }}; SELECT live;",
+            "SELECT {single}, " + " " * 12 + "; SELECT live;",
+            id="template-and-nearby-ordinary-braces",
+        ),
+        pytest.param(
+            "SELECT '{{ literal }}', \"{% identifier %}\"; -- {# comment #}\nSELECT live;",
+            "SELECT " + " " * 15 + ", " + " " * 18 + "; " + " " * 16 + "\nSELECT live;",
+            id="template-looking-quoted-and-comment-data",
+        ),
+        pytest.param(
             "SELECT ARRAY[1, 2], indexed[3], [cross;name], `tick;name` FROM entries; SELECT live;",
             "SELECT ARRAY[1, 2], indexed[3], [cross;name], `tick;name` FROM entries; SELECT live;",
             id="identifier-openers",
@@ -72,6 +83,16 @@ def test_plain_scan_runs_preserve_public_outputs_and_offsets(source: str, expect
     assert actual == expected
     assert mask_sql(source, mask_dollar_literals=True) == expected
     assert actual.index("SELECT live") == source.index("SELECT live")
+
+
+def test_templates_preserve_following_comment_locations() -> None:
+    source = "SELECT {{ item }}; -- outside\r\nSELECT '{{ data }}'; /* block */\rSELECT live;"
+    comments = sql_comments(source)
+    assert [(comment.line, comment.column, comment.body, comment.block) for comment in comments] == [
+        (1, 20, "outside", False),
+        (2, 22, "block", True),
+    ]
+    assert _mask(source).index("SELECT live") == source.index("SELECT live")
 
 
 @pytest.mark.parametrize("gap", ["\n", "\r\n", "\n-- a comment\n", "\t-- a comment\r\n \t"])

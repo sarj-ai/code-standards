@@ -30,6 +30,7 @@ from sarj_sql_lint.rule_base import (
     mask_sql_comments,
     source_location,
 )
+from sarj_sql_lint.rules._copy_input import sql_before_copy_input
 
 
 if TYPE_CHECKING:
@@ -98,6 +99,7 @@ class InvalidConcurrentDdl(Rule):
             "Only authored PostgreSQL migrations are checked; tests, fixtures, dumps and recognized generator-owned migrations are excluded.",
             "Transaction proof comes from explicit BEGIN/START TRANSACTION or a valid dbmate up/down directive. COMMIT/END/ROLLBACK/ABORT, AND [NO] CHAIN and section boundaries are tracked; ROLLBACK TO a savepoint keeps the transaction active. Unknown caller transactions and other migration runners are not inferred.",
             "Only parseable CREATE INDEX CONCURRENTLY statements and complete DROP INDEX or REFRESH MATERIALIZED VIEW command forms are inspected. Dollar-quoted procedural and scalar bodies are ignored; SQL-standard BEGIN ATOMIC routine bodies cause file-level abstention. Dynamic SQL, REINDEX and external catalog restrictions are not inferred.",
+            "A parsed COPY FROM STDIN command ends analysis, preserving earlier findings while ignoring inline native input and all later commands.",
             "One finding per command combines all demonstrated restrictions. No automatic transaction or DDL rewrite is safe.",
         ),
         examples=(
@@ -161,6 +163,7 @@ class InvalidConcurrentDdl(Rule):
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
+        source = sql_before_copy_input(source)
         if "CONCURRENTLY" not in source.upper():
             return []
         if (
@@ -244,10 +247,16 @@ def _is_concurrent_create(text: str) -> bool:
         parsed = parse_postgres(text)
     except SqlglotError, RecursionError:
         return False
+    if len(parsed) != 1 or not isinstance(created := parsed[0], exp.Create):
+        return False
+    if not isinstance(index := created.args.get("this"), exp.Index) or not isinstance(
+        params := index.args.get("params"), exp.IndexParameters
+    ):
+        return False
     return (
-        len(parsed) == 1
-        and isinstance(parsed[0], exp.Create)
-        and parsed[0].args.get("kind") == "INDEX"
-        and parsed[0].args.get("concurrently") is True
-        and parsed[0].find(exp.Command) is None
+        created.args.get("kind") == "INDEX"
+        and created.args.get("concurrently") is True
+        and created.find(exp.Command) is None
+        and bool(params.args.get("columns"))
+        and (not created.args.get("exists") or isinstance(index.args.get("this"), exp.Identifier))
     )
