@@ -990,6 +990,7 @@ _REPO_STANDARDS_ARTIFACTS = (
 class Standards8129Lane(PublisherLane, Protocol):
     STANDARDS_8129_ANCHOR: str
     STANDARDS_8129_APPROVED_SHA256: dict[str, str]
+    STANDARDS_8129_REACT_BUDGET_SHA256: dict[str, str]
 
 
 @pytest.fixture
@@ -1060,12 +1061,78 @@ def test_standards_8129_accepts_the_reviewed_repo_standards_adoption(
 def test_standards_8129_later_patch_reuses_the_reviewed_projection(
     standards_8129: Candidate, standards_lane: Standards8129Lane
 ) -> None:
-    _set_standards_8129_version(standards_8129.root, standards_lane, "8.129.10", "8.129.12")
+    _set_standards_8129_version(standards_8129.root, standards_lane, "8.129.10", "8.129.11")
     commit = _commit(standards_8129.root)
     assert (
         standards_lane.validate_lane(standards_8129.root, source_ref=_STANDARDS_8129_REF, commit=commit)
         == "standards-maintenance"
     )
+
+
+def _prepare_react_budget_backport(candidate: Candidate, lane: Standards8129Lane) -> None:
+    _set_standards_8129_version(candidate.root, lane, "8.129.10", "8.129.12")
+    replacements = {
+        "packages/standards/src/sarj_standards/libs/linting/external.py": {
+            "_REACT_DOCTOR_MAX_DURATION = timedelta(seconds=60)\n": (
+                "_REACT_DOCTOR_MAX_DURATION = timedelta(seconds=60)\n"
+                "_REACT_DOCTOR_FULL_MAX_DURATION = timedelta(minutes=5)\n"
+            ),
+            '        selected_duration = _REACT_DOCTOR_MAX_DURATION if tuple(selected_scope) == ("--scope", "full") else duration\n': (
+                "        selected_duration = (\n"
+                '            _REACT_DOCTOR_FULL_MAX_DURATION if tuple(selected_scope) == ("--scope", "full") else duration\n'
+                "        )\n"
+            ),
+        },
+        "packages/standards/tests/test_external_diagnostics.py": {
+            '    assert seen[0][seen[0].index("--max-duration") + 1] == "60"\n': (
+                '    assert seen[0][seen[0].index("--max-duration") + 1] == "300"\n'
+            ),
+            "    assert int(seen[3][duration_index + 1]) >= 60\n": (
+                '    assert seen[3][duration_index + 1] == "300"\n'
+            ),
+        },
+    }
+    for relative, digest in lane.STANDARDS_8129_REACT_BUDGET_SHA256.items():
+        path = candidate.root / relative
+        source = path.read_text()
+        for before, after in replacements[relative].items():
+            assert source.count(before) == 1
+            source = source.replace(before, after)
+        assert hashlib.sha256(source.encode()).hexdigest() == digest
+        path.write_text(source)
+
+
+def test_standards_8129_accepts_the_exact_paired_full_scan_budget_backport(
+    standards_8129: Candidate, standards_lane: Standards8129Lane
+) -> None:
+    _prepare_react_budget_backport(standards_8129, standards_lane)
+    commit = _commit(standards_8129.root)
+    assert (
+        standards_lane.validate_lane(standards_8129.root, source_ref=_STANDARDS_8129_REF, commit=commit)
+        == "standards-maintenance"
+    )
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "packages/standards/src/sarj_standards/libs/linting/external.py",
+        "packages/standards/tests/test_external_diagnostics.py",
+    ],
+)
+@pytest.mark.parametrize("restore_legacy", [False, True])
+def test_standards_8129_requires_both_reviewed_budget_files_without_drift(
+    standards_8129: Candidate, standards_lane: Standards8129Lane, relative: str, *, restore_legacy: bool
+) -> None:
+    _prepare_react_budget_backport(standards_8129, standards_lane)
+    if restore_legacy:
+        _git(standards_8129.root, "checkout", standards_8129.anchor, "--", relative)
+    else:
+        with (standards_8129.root / relative).open("a") as stream:
+            stream.write("\n# unreviewed change\n")
+    commit = _commit(standards_8129.root)
+    with pytest.raises(ValueError, match=f"projection in {re.escape(relative)}"):
+        standards_lane.validate_lane(standards_8129.root, source_ref=_STANDARDS_8129_REF, commit=commit)
 
 
 @pytest.mark.parametrize("version", ["8.129.9", "8.130.0", "8.101.8"])
