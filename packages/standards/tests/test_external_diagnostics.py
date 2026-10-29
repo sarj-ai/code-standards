@@ -3935,7 +3935,7 @@ def test_python_tools_use_the_adopted_config_for_files_outside_its_directory(tmp
                 "--",
                 str(source),
             ),
-            project,
+            tmp_path,
         ),
         (("basedpyright", "--outputjson", "--baselinemode=discard", str(source)), project),
     ]
