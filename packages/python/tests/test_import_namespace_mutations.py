@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING
+import weakref
 
 import pytest
 
-from sarj_python_lint.rules._project_index import ProjectIndexSet, SourceUnit
+from sarj_python_lint.rules._project_index import ImportNamespaceMutations, ProjectIndexSet, SourceUnit
 
 
 if TYPE_CHECKING:
@@ -114,3 +116,44 @@ def test_ambiguous_import_lattice_abstains_without_tainting_unrelated_focus() ->
     indexes = ProjectIndexSet(units, sealed=True)
     assert indexes.import_namespace_mutations.for_unit(units[Path("app/focus.py")]) is None
     assert indexes.import_namespace_mutations.for_unit(units[Path("app/other.py")]) == frozenset()
+
+
+@dataclass(frozen=True)
+class _EscapedNamespaceView:
+    view: ImportNamespaceMutations
+    owner: weakref.ReferenceType[ProjectIndexSet]
+    focus: SourceUnit
+    other: SourceUnit
+
+
+def _escaped_namespace_view(*, loaded: bool) -> _EscapedNamespaceView:
+    units = _units(
+        {
+            "app.focus": "import app.patch\n",
+            "app.other": "import app.patch\n",
+            "app.patch": "import psycopg\npsycopg.Connection = Fake\n",
+        }
+    )
+    indexes = ProjectIndexSet(units, sealed=True)
+    focus = units[Path("app/focus.py")]
+    view = indexes.import_namespace_mutations
+    if loaded:
+        mutations = view.for_unit(focus)
+        assert mutations is not None
+        assert "psycopg" in mutations
+    return _EscapedNamespaceView(view, weakref.ref(indexes), focus, units[Path("app/other.py")])
+
+
+def test_unloaded_namespace_view_does_not_retain_its_index() -> None:
+    escaped = _escaped_namespace_view(loaded=False)
+    assert escaped.owner() is None
+    assert escaped.view.for_unit(escaped.focus) is None
+
+
+def test_loaded_namespace_view_preserves_frozen_facts_after_index_release() -> None:
+    escaped = _escaped_namespace_view(loaded=True)
+    assert escaped.owner() is None
+    mutations = escaped.view.for_unit(escaped.focus)
+    assert mutations is not None
+    assert "psycopg" in mutations
+    assert escaped.view.for_unit(escaped.other) == mutations

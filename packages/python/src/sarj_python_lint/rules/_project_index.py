@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, final
+from weakref import WeakMethod
 
 from sarj_rule_contracts import SourceSnapshot
 
@@ -213,7 +214,7 @@ def imports_outside(tree: ast.Module | None, modules: frozenset[str]) -> bool:
 class ImportNamespaceMutations:
     def __init__(
         self,
-        load: Callable[[], Mapping[str, _ImportNamespaceWrites]],
+        load: Callable[[], Callable[[], Mapping[str, _ImportNamespaceWrites]] | None],
     ) -> None:
         self._load = load
         self._facts: Mapping[str, _ImportNamespaceWrites] | None = None
@@ -228,7 +229,10 @@ class ImportNamespaceMutations:
         visited: set[str] = set()
         mutated: set[str] = set()
         if self._facts is None:
-            self._facts = self._load()
+            load = self._load()
+            if load is None:
+                return None
+            self._facts = load()
         facts = self._facts
         while pending:
             module = pending.pop()
@@ -271,7 +275,7 @@ class ProjectIndexSet:
         self._type_providers: dict[ast.Module, _TypeProviderFacts] = {}
         self._bound_value_prefixes: dict[str, bool] = {}
         self._value_origins_incomplete = False
-        self.import_namespace_mutations = ImportNamespaceMutations(self._namespace_write_inventory)
+        self.import_namespace_mutations = ImportNamespaceMutations(WeakMethod(self._namespace_write_inventory))
         by_module = {unit.module: unit for unit in units.values() if unit.module is not None}
         self._by_module = MappingProxyType(by_module)
         classes: dict[SymbolRef, ClassSummary] = {}
