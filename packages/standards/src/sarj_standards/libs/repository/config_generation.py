@@ -33,7 +33,9 @@ _ESLINT_APPLICATION_REPO: Final = Path("packages/standards/src/sarj_standards/co
 _TYPESCRIPT_PRESET: Final = Path("packages/typescript/src/index.ts")
 _ADVISORY_START: Final = "const ADVISORY_RULES = [\n"
 _ADVISORY_END: Final = "] as const;"
-_RULE_LEVEL = re.compile(r'(?m)^(?P<prefix>\s+"@sarj/(?P<rule>[a-z0-9-]+)":\s*)(?P<array>\[?)"(?:warn|error)"')
+_PRESET_POLICY_START: Final = "const RULE_POLICY = {\n"
+_PRESET_POLICY_END: Final = "} as const satisfies PresetPolicy;"
+_RULE_LEVEL = re.compile(r'(?m)^(?P<prefix>\s+"@sarj/(?P<rule>[a-z0-9-]+)":\s*)(?P<array>(?:\[\s*)?)"(?:warn|error)"')
 
 
 def render_ruff_strict() -> str:
@@ -215,6 +217,8 @@ def sync_warning_levels(repository: Path, *, check: bool, writer: Callable[[Path
 
 
 def _render_typescript_preset(source: str, warnings: frozenset[str]) -> str:
+    if _PRESET_POLICY_START in source or _PRESET_POLICY_END in source:
+        return _render_policy_levels(source, warnings)
     if source.count(_ADVISORY_START) != 1 or source.count(_ADVISORY_END) < 1:
         msg = "TypeScript preset is missing the advisory-rule generation markers"
         raise ValueError(msg)
@@ -223,6 +227,19 @@ def _render_typescript_preset(source: str, warnings: frozenset[str]) -> str:
     advisory = "".join(f'  "@sarj/{name}",\n' for name in sorted(warnings))
     with_advisory = source[:start] + advisory + source[end:]
     return _render_rule_levels(with_advisory, warnings, label="TypeScript presets")
+
+
+def _render_policy_levels(source: str, warnings: frozenset[str]) -> str:
+    if source.count(_PRESET_POLICY_START) != 1 or source.count(_PRESET_POLICY_END) != 1 or _ADVISORY_START in source:
+        msg = "TypeScript preset has an ambiguous or incomplete policy table"
+        raise ValueError(msg)
+    start = source.index(_PRESET_POLICY_START) + len(_PRESET_POLICY_START)
+    end = source.index(_PRESET_POLICY_END)
+    if end < start:
+        msg = "TypeScript preset policy table closes before its declaration"
+        raise ValueError(msg)
+    policy = _render_rule_levels(source[start:end], warnings, label="TypeScript policy")
+    return source[:start] + policy + source[end:]
 
 
 def _render_rule_levels(source: str, warnings: frozenset[str], *, label: str) -> str:

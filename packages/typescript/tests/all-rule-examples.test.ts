@@ -1,13 +1,15 @@
 import { readFileSync } from "node:fs";
+import { extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
 
+import { format as prettierFormat } from "prettier";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { RULES } from "../src/index.js";
-import type { ExampleFile } from "../src/rules/_docs.js";
+import type { ExampleFile, RuleExample } from "../src/rules/_docs.js";
 import { verifyRuleExamples } from "../src/verify-rule-examples.js";
 
 interface DisplayExample {
@@ -48,9 +50,26 @@ describe("every shipped rule's displayed examples", () => {
       expect(formatted.fixedFiles.map((file) => file.path)).toEqual((example.fixedFiles ?? []).map((file) => file.path));
       return { ...example, files: formatted.files, fixedFiles: formatted.fixedFiles };
     });
-    await expect(verifyRuleExamples({ ...rule, documentation: { ...spec, examples } }, SETUP)).resolves.toBe(examples.length);
+    await expect(verifyRuleExamples({ ...rule, documentation: { ...spec, examples } }, { ...SETUP, formatFixedSource: formatDisplayedFixedSource })).resolves.toBe(examples.length);
   });
 });
+
+async function formatDisplayedFixedSource(file: ExampleFile, example: RuleExample): Promise<string> {
+  if (!example.public) return file.source;
+  const lower = file.path.toLowerCase();
+  let parser: "typescript" | "babel";
+  if (/\.(?:ts|cts|mts)$/u.test(lower) || lower.endsWith(".tsx")) parser = "typescript";
+  else if (/\.(?:js|cjs|mjs)$/u.test(lower) || lower.endsWith(".jsx")) parser = "babel";
+  else throw new Error(`${example.id}: no displayed source formatter for ${file.path}`);
+  const normalize = (source: string): string => `${source.replaceAll("\r\n", "\n").replaceAll("\r", "\n").trimEnd()}\n`;
+  return normalize(await prettierFormat(normalize(file.source), {
+    filepath: `example${extname(lower) || ".txt"}`,
+    parser,
+    plugins: [],
+    printWidth: 88,
+    tabWidth: 2,
+  }));
+}
 
 function focusSource(ruleId: keyof typeof RULES, exampleId: string): string {
   const example = RULES[ruleId].documentation?.examples.find((item) => item.id === exampleId);

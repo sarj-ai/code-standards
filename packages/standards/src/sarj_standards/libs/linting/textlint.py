@@ -1164,9 +1164,19 @@ _AUTOFIX_MARKDOWN_FRONTMATTER = re.compile(r"(?:---|\+\+\+)(?:\s|$)|\{")
 
 
 def is_text_path(path: Path) -> bool:
-    name = path.name.lower()
-    if name.endswith(".dockerignore"):
+    if path.name.lower().endswith(".dockerignore"):
         return False
+    return _is_named_text_path(path) or shell_dialect(path) is not None
+
+
+def is_text_path_with_dialect(path: Path, *, known_dialect: str | None) -> bool:
+    if path.name.lower().endswith(".dockerignore"):
+        return False
+    return _is_named_text_path(path) or known_dialect is not None
+
+
+def _is_named_text_path(path: Path) -> bool:
+    name = path.name.lower()
     return (
         path.suffix.lower() in _TEXT_SUFFIXES
         or name in _TEXT_NAMES
@@ -1178,7 +1188,6 @@ def is_text_path(path: Path) -> bool:
             path.suffix.casefold() == ".json"
             and ("cloudbuild" in name or any(part.casefold() in _OPERATIONAL_ROOTS for part in path.parts))
         )
-        or shell_dialect(path) is not None
     )
 
 

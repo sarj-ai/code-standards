@@ -712,3 +712,60 @@ def test_directory_argument_cannot_false_green(tmp_path: Path) -> None:
     )
     assert proc.returncode == 2
     assert "input escapes repository root" in proc.stderr
+
+
+@pytest.mark.parametrize("filename", ["service.py", "migration.sql"])
+def test_native_path_routing_reads_shell_dialect_once(
+    filename: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / filename
+    path.write_text("value = 1\n" if path.suffix == ".py" else "SELECT 1;\n", encoding="utf-8")
+    original = runner.textlint.shell_dialect
+    calls: list[Path] = []
+
+    def read_dialect(selected: Path) -> str | None:
+        calls.append(selected)
+        return original(selected)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept the real routing lookup; injection would bypass its one-read contract.
+        runner.textlint, "shell_dialect", read_dialect
+    )
+    grouped = runner.group_paths([str(path)])
+
+    assert calls == [path]
+    assert grouped.python == ([str(path)] if path.suffix == ".py" else [])
+    assert grouped.sql == ([str(path)] if path.suffix == ".sql" else [])
+    assert grouped.shellcheck == []
+    assert grouped.text == []
+
+
+@pytest.mark.parametrize(
+    ("filename", "source", "zsh"),
+    [
+        ("service.py", "#!/usr/bin/env bash\necho ok\n", False),
+        ("migration.sql", "#!/bin/sh\necho ok\n", False),
+        ("release.sh", "# shellcheck shell=bash\necho ok\n", False),
+        ("interactive.zsh", "#!/bin/zsh\nprint ok\n", True),
+    ],
+)
+def test_single_dialect_classification_preserves_shell_and_text_routing(
+    filename: str, source: str, zsh: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / filename
+    path.write_text(source, encoding="utf-8")
+    original = runner.textlint.shell_dialect
+    calls: list[Path] = []
+
+    def read_dialect(selected: Path) -> str | None:
+        calls.append(selected)
+        return original(selected)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- intercept the real routing lookup; injection would bypass its one-read contract.
+        runner.textlint, "shell_dialect", read_dialect
+    )
+    grouped = runner.group_paths([str(path)])
+
+    assert calls == [path]
+    assert grouped.shellcheck == ([] if zsh else [str(path)])
+    assert grouped.unsupported_shell == ([str(path)] if zsh else [])
+    assert grouped.text == [str(path)]

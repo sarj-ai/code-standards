@@ -5,6 +5,7 @@ import restrictedLoad from "../src/rules/no-restricted-library-load.js";
 import statelessStorage from "../src/rules/no-storage-in-stateless-modules.js";
 import zodOutput from "../src/rules/prefer-zod-parse-output-type.js";
 import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
+import { format } from "prettier";
 import { describe, expect, it } from "vitest";
 
 import { verifyRuleExamples } from "../src/verify-rule-examples.js";
@@ -156,11 +157,51 @@ describe("executable authored examples", () => {
     });
     await expect(verifyRuleExamples(rule)).resolves.toBe(2);
   });
+  it("keeps raw authored fixes exact while comparing an explicitly formatted fixed source", async () => {
+    const rule = probeRule(true, { ...DOCUMENTATION, examples: (DOCUMENTATION.examples ?? []).map((example) =>
+      example.outcome === "match" ? { ...example, files: [{ path: example.focusPath,
+        source: "debugger; \nexport const value: number = 1;\n" }] } : example),
+    });
+    await expect(verifyRuleExamples(rule)).rejects.toThrow("unexpected fixed source");
+    await expect(verifyRuleExamples(rule, { formatFixedSource: async (file, example) => {
+      expect(example.public).toBe(true);
+      expect(file.source).toBe("\nexport const value: number = 1;\n");
+      return format(file.source, { parser: "typescript" });
+    } })).resolves.toBe(3);
+  });
+  it("refuses a persistent raw fix before calling the supplied formatter", async () => {
+    let fixes = 0;
+    let formats = 0;
+    const rule = createRule<[], "debugger">({
+      name: "example-probe",
+      documentation: DOCUMENTATION,
+      meta: { type: "problem", docs: { description: DOCUMENTATION.summary }, schema: [],
+        fixable: "code", messages: { debugger: "Remove debugger." } },
+      defaultOptions: [],
+      create(context) {
+        return { DebuggerStatement(node) {
+          context.report({ node, messageId: "debugger", fix: (fixer) => {
+            fixes += 1;
+            return fixer.replaceText(node, `debugger${" ".repeat(fixes)};`);
+          } });
+        } };
+      },
+    });
+    await expect(verifyRuleExamples(rule, { formatFixedSource: () => {
+      formats += 1;
+      return "export const value: number = 1;\n";
+    } })).rejects.toThrow("fix is not clean and idempotent");
+    expect(fixes).toBeGreaterThan(1);
+    expect(formats).toBe(0);
+  });
   it("rejects a documented fixed output that the rule cannot produce", async () => {
     const rule = probeRule(true, { ...DOCUMENTATION, examples: (DOCUMENTATION.examples ?? []).map((example) =>
       example.outcome === "match" ? { ...example, fixedFiles: [{ path: example.focusPath, source: "export {};\n" }] } : example),
     });
     await expect(verifyRuleExamples(rule)).rejects.toThrow("unexpected fixed source");
+    await expect(verifyRuleExamples(rule, {
+      formatFixedSource: (file) => format(file.source, { parser: "typescript" }),
+    })).rejects.toThrow("unexpected fixed source");
   });
   it("fails an unimplemented detector despite complete public labels", async () => {
     await expect(verifyRuleExamples(probeRule(false))).rejects.toThrow("expected 1 findings, received 0");
@@ -222,7 +263,7 @@ describe("declarative example setup", () => {
   it("runs opt-in public examples while retaining empty production defaults", async () => {
     expect(restrictedLoad.defaultOptions).toEqual([{ libraries: [] }]);
     expect(statelessStorage.defaultOptions).toEqual([{}]);
-    await expect(verifyRuleExamples(restrictedLoad)).resolves.toBe(3);
+    await expect(verifyRuleExamples(restrictedLoad)).resolves.toBe(4);
     await expect(verifyRuleExamples(statelessStorage)).resolves.toBe(2);
   });
   it("uses the exact explicitly installed Zod declarations", async () => {

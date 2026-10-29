@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from sarj_python_lint.rules._runtime_registry import DEFAULT_REGISTRY as DEFAULT_REGISTRY, REGISTRY as REGISTRY
 from sarj_python_lint.rules.async_cleanup_registered_synchronously import AsyncCleanupRegisteredSynchronously
 from sarj_python_lint.rules.async_mock_call_without_await_assertion import AsyncMockCallWithoutAwaitAssertion
 from sarj_python_lint.rules.complex_postgres_query_requires_architecture_review import (
@@ -279,7 +280,7 @@ from sarj_python_lint.rules.store_mutation_command_fanout import StoreMutationCo
 from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOracle
 
 
-REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
+_AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
         NoAsyncClientInConstructor.id: NoAsyncClientInConstructor,
         NoDiscardedTaggedOutcome.id: NoDiscardedTaggedOutcome,
@@ -491,6 +492,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
 )
 
 
-DEFAULT_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
-    {name: rule for name, rule in REGISTRY.items() if rule.enabled_by_default}
+_AUTHORING_DEFAULT_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
+    {name: rule for name, rule in _AUTHORING_REGISTRY.items() if rule.enabled_by_default}
 )

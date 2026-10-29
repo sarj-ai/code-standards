@@ -74,6 +74,16 @@ export const PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION = {
       ],
       focusPath: "src/ids.ts",
       expectedCount: 1,
+      expectedDiagnostics: [{
+        messageId: "preferNative",
+        message: "Where supported by the deployment runtime, prefer native `globalThis.crypto.randomUUID()` over the `uuid` package for UUID v4.",
+        location: { line: 1, column: 175, end: { line: 1, column: 179 } },
+        automaticFix: true,
+        suggestions: [{
+          messageId: "replaceWithNative",
+          output: "import { v4, NIL } from 'uuid'; const nativeUuid = crypto.randomUUID.bind(crypto); function nativeId(): string { return nativeUuid(); } function packageId(): string { return globalThis.crypto.randomUUID(); } export function ids(): string[] { return [nativeId(), packageId(), NIL]; }",
+        }],
+      }],
       fixedFiles: [
         {
           path: "src/ids.ts",
@@ -82,6 +92,24 @@ export const PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION = {
         },
       ],
       public: false,
+    },
+    {
+      id: "uuid-v4-suggestion-only",
+      title: "Keep the unproven native replacement as a suggestion",
+      outcome: "match",
+      files: [{ path: "src/id.ts", source: "import { v4 } from 'uuid'; const id = v4();" }],
+      focusPath: "src/id.ts",
+      expectedCount: 1,
+      expectedDiagnostics: [{
+        messageId: "preferNative",
+        message: "Where supported by the deployment runtime, prefer native `globalThis.crypto.randomUUID()` over the `uuid` package for UUID v4.",
+        location: { line: 1, column: 39, end: { line: 1, column: 43 } },
+        automaticFix: false,
+        suggestions: [{
+          messageId: "replaceWithNative",
+          output: "import { v4 } from 'uuid'; const id = globalThis.crypto.randomUUID();",
+        }],
+      }],
     },
   ],
 } as const satisfies RuleDocumentation;

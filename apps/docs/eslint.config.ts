@@ -5,12 +5,14 @@ import { eslintRuleSetting } from "../../packages/typescript/eslint-rule-setting
 import astro from "eslint-plugin-astro";
 import tseslint from "typescript-eslint";
 
+const strictRuleSettings = new Map(Object.entries(sarj.configs.strict.rules));
+
 const allSarjRules = Object.fromEntries(
   Object.keys(sarj.rules)
     .sort()
     .map((name) => {
       const id = `@sarj/${name}`;
-      const configured = eslintRuleSetting(sarj.configs.strict.rules[id]);
+      const configured = eslintRuleSetting(strictRuleSettings.get(id));
       // Preserve policy options when escalating the shared preset for dogfooding.
       return [
         id,
