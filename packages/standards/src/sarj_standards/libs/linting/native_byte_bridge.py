@@ -59,6 +59,10 @@ def resolve_node(
             raise ValueError(message)
     if completed.returncode != 0 or completed.stderr:
         message = "isolated native runtime path probe failed"
+        if completed.returncode == process.REJECTED_EXIT_CODE and not completed.stdout:
+            reason = process.node_path_failure_reason(completed.stderr)
+            if reason is not None:
+                message = f"{message}: {reason}"
         raise ValueError(message)
     return process.decode_node_path_text(completed.stdout)
 

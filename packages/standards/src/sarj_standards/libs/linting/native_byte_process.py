@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import binascii
 from dataclasses import dataclass
+import errno
 import hashlib
 import json
 import os
@@ -41,6 +42,26 @@ _FILE_KEYS: Final[frozenset[str]] = frozenset(
 )
 _HASHED_FILE_KEYS: Final[frozenset[str]] = _FILE_KEYS | {"sha256"}
 _SEMVER = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:[-+][0-9A-Za-z.-]+)?\Z")
+REJECTED_EXIT_CODE: Final = 2
+_GENERIC_FAILURE: Final = "native byte bridge rejected its payload or execution\n"
+_NODE_PATH_FAILURE_PREFIX: Final = "native Node runtime path rejected: "
+_NODE_PATH_FAILURE_REASONS: Final[dict[str, str]] = {
+    "native Node runtime is absent from the callback environment": "Node is absent from the callback PATH",
+    "native bridge runtime must be a canonical Node path": (
+        "selected Node must resolve to a canonical node or node.exe file"
+    ),
+    "native bridge file is not regular": "selected Node is not a regular file",
+    "Node runtime permissions are unsafe": "selected Node must be executable and not writable by group or others",
+    "native bridge file changed while reading": "selected Node metadata changed while reading",
+    "Node runtime identity changed during inspection": "selected Node identity changed during inspection",
+}
+_NODE_PATH_OS_FAILURE_REASONS: Final[dict[int, str]] = {
+    errno.ENOENT: "selected Node filesystem entry is missing",
+    errno.EACCES: "selected Node filesystem metadata is not accessible",
+    errno.EPERM: "selected Node filesystem metadata access is not permitted",
+    errno.ENOTDIR: "selected Node runtime path has a non-directory component",
+    errno.ELOOP: "selected Node runtime path contains a symbolic-link loop",
+}
 
 
 class FileIdentity(TypedDict):
@@ -639,6 +660,13 @@ def node_path_response() -> bytes:
     return _encoded({"schema": 1, "path": str(node), "stat": runtime_record(node)})
 
 
+def node_path_failure_reason(stderr: str) -> str | None:
+    for reason in (*_NODE_PATH_FAILURE_REASONS.values(), *_NODE_PATH_OS_FAILURE_REASONS.values()):
+        if stderr == f"{_NODE_PATH_FAILURE_PREFIX}{reason}\n":
+            return reason
+    return None
+
+
 def decode_node_path(value: JsonValue) -> Path:
     data = _object(value, {"schema", "path", "stat"})
     _require(condition=_integer(data["schema"]) == 1, message="invalid native Node path response schema")
@@ -686,7 +714,12 @@ def main(arguments: list[str] | None = None) -> int:
         message="native byte bridge requires isolated fixed invocation",
     )
     if supplied[0] == "--node-path":
-        sys.stdout.buffer.write(node_path_response())
+        try:
+            node_response = node_path_response()
+        except (OSError, TypeError, ValueError, KeyError) as error:
+            sys.stderr.write(_failure_diagnostic(error))
+            return REJECTED_EXIT_CODE
+        sys.stdout.buffer.write(node_response)
         return 0
     path = _path(supplied[0])
     before = payload_record(path)
@@ -715,9 +748,26 @@ def main(arguments: list[str] | None = None) -> int:
     return 0
 
 
+def _failure_diagnostic(error: OSError | TypeError | ValueError | KeyError) -> str:
+    reason: str | None = None
+    if isinstance(error, OSError):
+        number = error.errno
+        if type(number) is int:
+            reason = _NODE_PATH_OS_FAILURE_REASONS.get(number)
+    elif isinstance(error, ValueError):
+        match error.args:
+            case (str() as message,) if type(message) is str:
+                reason = _NODE_PATH_FAILURE_REASONS.get(message)
+            case _:
+                return _GENERIC_FAILURE
+    if reason is not None:
+        return f"{_NODE_PATH_FAILURE_PREFIX}{reason}\n"
+    return _GENERIC_FAILURE
+
+
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except OSError, TypeError, ValueError, KeyError:
-        sys.stderr.write("native byte bridge rejected its payload or execution\n")
-        raise SystemExit(2) from None
+        sys.stderr.write(_GENERIC_FAILURE)
+        raise SystemExit(REJECTED_EXIT_CODE) from None

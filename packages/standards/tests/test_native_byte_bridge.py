@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 from dataclasses import FrozenInstanceError, replace
+import errno
 import hashlib
 import json
 import os
@@ -559,3 +560,174 @@ def test_static_node_path_probe_refuses_missing_node_and_unsafe_permissions(
     node.chmod(0o722)
     with pytest.raises(ValueError, match="permissions"):
         process.node_path_response()
+
+
+@pytest.mark.parametrize(
+    ("kind", "reason"),
+    [
+        ("absent", "Node is absent from the callback PATH"),
+        ("unsafe", "selected Node must be executable and not writable by group or others"),
+        ("renamed", "selected Node must resolve to a canonical node or node.exe file"),
+    ],
+)
+def test_isolated_node_probe_reports_only_static_actionable_reasons(
+    tmp_path: Path,
+    kind: str,
+    reason: str,
+) -> None:
+    node = tmp_path / "node"
+    if kind != "absent":
+        runtime = tmp_path / "renamed-runtime" if kind == "renamed" else node
+        runtime.write_bytes(b"protocol Node fixture; never executed\n")
+        runtime.chmod(0o722 if kind == "unsafe" else 0o700)
+        if kind == "renamed":
+            node.symlink_to(runtime)
+    observed: list[subprocess.CompletedProcess[str]] = []
+
+    def run(command: lifecycle.Command) -> subprocess.CompletedProcess[str]:
+        environment = process.child_environment()
+        environment["PATH"] = str(tmp_path)
+        result = subprocess.run(
+            command.argv, cwd=command.cwd, env=environment, capture_output=True, text=True, check=False
+        )
+        observed.append(result)
+        return result
+
+    with pytest.raises(ValueError, match=r"^isolated native runtime path probe failed:") as failure:
+        bridge.resolve_node(tmp_path, run=run)
+
+    assert str(failure.value) == f"isolated native runtime path probe failed: {reason}"
+    assert len(observed) == 1
+    assert observed[0].returncode == 2
+    assert not observed[0].stdout
+    assert observed[0].stderr == f"native Node runtime path rejected: {reason}\n"
+    assert str(tmp_path) not in observed[0].stderr
+    if kind != "absent":
+        assert node.read_bytes() == b"protocol Node fixture; never executed\n"
+
+
+@pytest.mark.parametrize("bad", ["unknown", "suffix", "status", "stdout"])
+def test_resolve_node_does_not_propagate_unrecognized_or_invalid_failure_transport(
+    tmp_path: Path,
+    bad: str,
+) -> None:
+    known = "native Node runtime path rejected: Node is absent from the callback PATH\n"
+    secret = "private-runtime-secret"
+
+    def run(command: lifecycle.Command) -> subprocess.CompletedProcess[str]:
+        stderr = known
+        if bad == "unknown":
+            stderr = secret
+        elif bad == "suffix":
+            stderr += secret
+        return subprocess.CompletedProcess(
+            command.argv, 1 if bad == "status" else 2, secret if bad == "stdout" else "", stderr
+        )
+
+    with pytest.raises(ValueError, match=r"^isolated native runtime path probe failed$") as failure:
+        bridge.resolve_node(tmp_path, run=run)
+
+    assert secret not in str(failure.value)
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["ValueError", "ValueError-object", "ValueError-subclass", "OSError", "OSError-unknown", "OSError-list", "payload"],
+)
+def test_isolated_probe_unknown_errors_and_payload_failures_keep_generic_private_diagnostic(
+    tmp_path: Path,
+    kind: str,
+) -> None:
+    script = Path(process.__file__).resolve()
+    if kind == "payload":
+        argv = (sys.executable, "-I", str(script), str(tmp_path / "private-payload-secret"))
+    else:
+        driver = tmp_path / "probe_driver.py"
+        match kind:
+            case "ValueError-object":
+                failure = "ValueError(PrivateSecret())"
+            case "ValueError-subclass":
+                failure = "ValueError(PrivateString('Node runtime permissions are unsafe'))"
+            case "OSError-unknown":
+                failure = f"OSError({errno.EIO}, 'private-runtime-secret', 'private-filename-secret')"
+            case "OSError-list":
+                failure = "OSError([], 'private-runtime-secret', 'private-filename-secret')"
+            case _:
+                failure = f"{kind}('private-runtime-secret')"
+        driver.write_text(
+            "import runpy\nimport shutil\nimport sys\n"
+            "class PrivateSecret:\n"
+            "    def __str__(self) -> str:\n"
+            "        raise AssertionError('private-runtime-secret')\n"
+            "class PrivateString(str):\n"
+            "    def __hash__(self) -> int:\n"
+            "        raise AssertionError('private-runtime-secret')\n"
+            "def reject(_command: str) -> str | None:\n"
+            f"    raise {failure}\n"
+            "shutil.which = reject\n"
+            "script = sys.argv[1]\n"
+            "sys.argv = [script, '--node-path']\n"
+            "runpy.run_path(script, run_name='__main__')\n",
+            encoding="utf-8",
+        )
+        argv = (sys.executable, "-I", str(driver), str(script))
+    environment = process.child_environment()
+    environment["PATH"] = str(tmp_path)
+
+    result = subprocess.run(argv, cwd=tmp_path, env=environment, capture_output=True, text=True, check=False)
+
+    assert result.returncode == 2
+    assert not result.stdout
+    assert result.stderr == "native byte bridge rejected its payload or execution\n"
+
+
+@pytest.mark.parametrize(
+    ("number", "reason"),
+    [
+        (errno.ENOENT, "selected Node filesystem entry is missing"),
+        (errno.EACCES, "selected Node filesystem metadata is not accessible"),
+        (errno.EPERM, "selected Node filesystem metadata access is not permitted"),
+        (errno.ENOTDIR, "selected Node runtime path has a non-directory component"),
+        (errno.ELOOP, "selected Node runtime path contains a symbolic-link loop"),
+    ],
+)
+def test_isolated_node_probe_reports_allowlisted_os_errors_without_secret_filenames(
+    tmp_path: Path,
+    number: int,
+    reason: str,
+) -> None:
+    driver = tmp_path / "probe_driver.py"
+    driver.write_text(
+        "import runpy\nimport shutil\nimport sys\n"
+        "def reject(_command: str) -> str | None:\n"
+        f"    raise OSError({number}, 'private-runtime-secret', 'private-filename-secret')\n"
+        "shutil.which = reject\n"
+        "script = sys.argv[1]\n"
+        "sys.argv = [script, '--node-path']\n"
+        "runpy.run_path(script, run_name='__main__')\n",
+        encoding="utf-8",
+    )
+    observed: list[subprocess.CompletedProcess[str]] = []
+
+    def run(command: lifecycle.Command) -> subprocess.CompletedProcess[str]:
+        environment = process.child_environment()
+        environment["PATH"] = str(tmp_path)
+        result = subprocess.run(
+            (sys.executable, "-I", str(driver), command.argv[2]),
+            cwd=command.cwd,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        observed.append(result)
+        return result
+
+    with pytest.raises(ValueError, match=r"^isolated native runtime path probe failed:") as failure:
+        bridge.resolve_node(tmp_path, run=run)
+
+    assert str(failure.value) == f"isolated native runtime path probe failed: {reason}"
+    assert len(observed) == 1
+    assert observed[0].returncode == 2
+    assert not observed[0].stdout
+    assert observed[0].stderr == f"native Node runtime path rejected: {reason}\n"
