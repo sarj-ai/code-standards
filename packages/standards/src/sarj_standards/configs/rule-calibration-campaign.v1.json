@@ -1200,7 +1200,7 @@
       "ruleId": "no-database-triggers",
       "state": "complete",
       "evidence": "Three application repositories scanned: 3 findings reviewed, 3 trigger-backed application behaviors, 0 false positives; two repositories had no findings.",
-      "outcome": "Renamed and broadened SARJ114 to cover trigger creation and re-enablement while allowing DROP and DISABLE operations; exact suppressions document approved database-owned invariants."
+      "outcome": "Current 2026-10-30 policy: retain SARJ114 ERROR without autofix. PostgreSQL migration trigger creation, ALTER TRIGGER, ALTER EVENT TRIGGER ENABLE/RENAME/OWNER and ALTER TABLE ENABLE TRIGGER are banned; inline migration suppressions cannot waive the ban. DROP and DISABLE remain available for cleanup. Earlier approved-exception policy and its calibration remain historical evidence, not current migration authorization."
     },
     {
       "task": "rule-audit/sql/no-offset-pagination",
@@ -1247,14 +1247,6 @@
       "family": "sql",
       "ruleId": "require-fk-index",
       "state": "complete"
-    },
-    {
-      "task": "rule-audit/sql/require-lock-timeout",
-      "family": "sql",
-      "ruleId": "require-lock-timeout",
-      "state": "complete",
-      "evidence": "The owning-boundary repairs pass 214 focused tests and all 1,502 SQL package tests, strict BasedPyright, Ruff and 149 native Python rules over the four authored files. Eight normal-runner interaction controls verify exact-code suppression, unrelated-code preservation, repeated results, dollar/identifier noise, malformed input and distinct owner diagnostics. A fixed-pin 521-file / 985,410-byte corpus contains 458 private application SQL files, 47 executable public examples from base-main native rules and 16 synthetic seeds. Each repository and at-most-250-file batch starts a fresh process through all 20 SQL rules. Eight added diagnostics are positive seeds; one removed diagnostic is the seeded quoted-ON false positive. Every delta was inspected: no live/public-example changes or increased duplicate locations. EvaluationCase controls give each owner four true positives and 12 true negatives, with zero false positives, false negatives or duplicate code locations. A copied, content-pinned 95-file / 204,848-byte panel uses three alternating baseline/candidate pairs, one cold and two warm loops per worker. Both changed rules together have cold medians 36.18/46.04 ms and warm 9.16/9.75 ms; the normal combined runner has cold 198.03/205.82 ms and warm 184.99/193.31 ms, peak RSS about 36.5 MB. An oversized full-inventory timing attempt was stopped without partial medians. These shared-host panel observations do not establish a speedup, universal precision or fleet-wide latency. Primary PostgreSQL SET/RESET and lexical/UTF-8 lexer controls inform the finite cases. Private source identities, immutable pins and raw reports remain owner-only. Final primary-source review adds bidirectional current-database catalog and exact pg_temp/numbered-session aliases; the full package, corpus and same timing panel were replayed against that frozen source.",
-      "outcome": "Retain SARJ110 error severity and no autofix. Require a positive effective literal lock_timeout or statement_timeout before migration DDL: a later local value shadows the session value; later session SET or RESET removes an earlier local override; RESET ALL removes prior explicit protection proof. A different positive timeout still bounds DDL, transaction end restores the tracked session value, and nontransactional SET LOCAL remains ineffective. Server defaults, rollback of session SET, savepoints and procedural setting effects remain unresolved."
     },
     {
       "task": "rule-audit/text/commented-out-config",
@@ -2438,7 +2430,7 @@
       "ruleId": "no-database-functions",
       "state": "complete",
       "evidence": "112 focused SQL/Python cases and 915 full SQL cases passed. Expression-index function and deferred integrity-trigger regression cases preserve blocking matches and approved exact exceptions.",
-      "outcome": "Keep the explicit single-writer architecture policy without treating database functions as universally defective. Preserve atomicity/database-enforced integrity and approved database-owned invariant exceptions."
+      "outcome": "Current 2026-10-30 policy: retain SARJ120 ERROR without autofix. Stored function/procedure creation and ALTER FUNCTION/PROCEDURE/ROUTINE in migrations are banned; inline migration suppressions cannot waive the ban. Calls to built-in or existing routines and DROP remain available. Preserve atomicity and database-enforced integrity when moving behavior to declarative constraints or application transactions. Earlier approved-exception policy and its calibration remain historical evidence, not current migration authorization."
     },
     {
       "task": "rule-audit/python/no-injected-module-loader",
@@ -3205,6 +3197,38 @@
       "state": "pending",
       "evidence": "Executable examples and focused controls are maintained in packages/typescript/tests/rules/require-jwt-lifetime.test.ts. Pinned multi-repository field precision/recall and comparative performance calibration remain pending; focused passing tests do not establish those results.",
       "outcome": "@sarj/require-jwt-lifetime: Retain WARNING without autofix. Review import-proven returned JOSE verification results for exp requirements or finite token age, preserving zero age, opaque options and separate local claim validation. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/sql/no-noop-migration-down",
+      "family": "sql",
+      "ruleId": "no-noop-migration-down",
+      "state": "pending",
+      "evidence": "Implemented SARJ127 with focused cases for explicit migration down sections, empty and literal-only rollback bodies, settings and transaction delimiters, empty procedural blocks, real inverse SQL, explicit failures, malformed SQL and comments/strings that resemble directives. Initial fixed local corpus analysis covers 291 SQL files / 306,376 bytes. All 53 findings were inspected: 53 true positives and zero observed false positives. This task does not claim complete field calibration or universal rollback correctness.",
+      "outcome": "Retain the explicitly requested ERROR policy without autofix. Reject proven successful no-op downs; preserve unsupported or nontrivial SQL rather than infer its inverse. Further independent corpus calibration remains pending."
+    },
+    {
+      "task": "rule-audit/sql/no-migration-comments",
+      "family": "sql",
+      "ruleId": "no-migration-comments",
+      "state": "pending",
+      "evidence": "Implemented SARJ128 with focused line/block comment, quoted text, migration-runner directive, COMMENT ON storage/removal, suppression, generated-migration and COPY input controls. Initial fixed local corpus analysis covers 291 SQL files / 306,376 bytes. A deterministic sample of 11 of 1,009 findings was inspected with zero observed false positives; 998 findings remain uninspected. Finite lexical and directive tests do not establish exhaustive migration-tool compatibility or complete field calibration.",
+      "outcome": "Retain the explicitly requested ERROR policy without autofix. Move invariants into SQL constraints and retain executable runner/dialect directives. COMMENT ON NULL and empty-string cleanup remain valid. Further independent corpus and migration-tool compatibility calibration remains pending."
+    },
+    {
+      "task": "rule-audit/sql/prefer-constrained-status",
+      "family": "sql",
+      "ruleId": "prefer-constrained-status",
+      "state": "pending",
+      "evidence": "A bounded truth-table analysis proves dependence between two to six required BOOLEAN columns in supported CHECK expressions. Focused regressions preserve independent flags, nullable and explicit NULL columns, interacting constraints, inherited tables, unknown expressions, quoted identifiers, malformed SQL and COPY payloads. The one live finding from the fixed 291-file / 306,376-byte local corpus was inspected: one valid architecture-review candidate and zero observed false positives. SQL proves flag dependence, not that one status column is the correct domain model. Broader field calibration remains pending.",
+      "outcome": "Retain SARJ129 WARNING without autofix. Review a constrained status column only where explicit boolean CHECK semantics establish dependence; never infer mutual exclusion from names or perform an automatic schema rewrite. One inspected candidate does not estimate general precision or recall."
+    },
+    {
+      "task": "rule-audit/sql/declared-column-bounds",
+      "family": "sql",
+      "ruleId": "declared-column-bounds",
+      "state": "pending",
+      "evidence": "Standalone declaration grammar recognizes explicit numeric/interval ranges and positivity, excluding conditional, historical and qualifying prose. Focused regressions cover literal CHECK proofs, integer native limits and endpoint equivalence, interval units, inherited/computed columns, custom domains, ordinary defaults/identity and Unicode near misses. Both live findings from the fixed 291-file / 306,376-byte local corpus were inspected as true positives with zero observed false positives: declared ranges lacked a proving CHECK. These finite results do not establish broad precision, recall or complete field calibration.",
+      "outcome": "Retain SARJ130 WARNING without autofix. Require SQL proof only for explicit supported declarations; do not invent bounds from column names. Abstain on unknown constraints and inherited, computed or user-defined type contracts. Broader independent corpus calibration remains pending."
     }
   ]
 }
