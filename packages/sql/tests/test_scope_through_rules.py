@@ -70,7 +70,7 @@ def test_copy_output_or_opaque_text_does_not_hide_later_findings(rule_id: RuleId
 # One signal per migration rule, each firing exactly once:
 # SARJ103 `CREATE TYPE ... AS ENUM`, SARJ109 `gen_random_uuid()` default,
 # SARJ112 unindexed cascading `REFERENCES`, SARJ104 `VARCHAR(n)`, SARJ106 `JSON`,
-# SARJ101 `TIMESTAMP`, SARJ108 + SARJ110 the blocking `CREATE INDEX` on a
+# SARJ101 `TIMESTAMP`, SARJ108 the blocking `CREATE INDEX` on a
 # table this file does not create, SARJ111 a validating `ADD CONSTRAINT`,
 # SARJ105 an `INSERT` with no `ON CONFLICT`, SARJ113 the commented-out
 # `DROP TABLE`, SARJ114 `CREATE TRIGGER`, SARJ115 a
@@ -81,8 +81,7 @@ def test_copy_output_or_opaque_text_does_not_hide_later_findings(rule_id: RuleId
 # SARJ120 a stored SQL function, and SARJ102 + SARJ121 an unguarded fresh table
 # followed by a separately declared primary key, SARJ123 adjacent compatible
 # drops, SARJ124 ordinary NULL equality, SARJ125 a concurrent multi-index drop,
-# and SARJ126 a unique hash index. A timeout before the added DDL preserves the
-# original single SARJ110 finding.
+# and SARJ126 a unique hash index. Timeout settings are optional.
 _LEGACY_UUID_DEFAULT = "gen_random_uuid()"
 _ALL_RULES_TEMPLATE = """CREATE TYPE mood AS ENUM ('sad', 'ok');
 -- Create the children table used by the application in this database.
@@ -97,7 +96,7 @@ CREATE TABLE IF NOT EXISTS children (
     parent_id uuid REFERENCES parents (id) ON DELETE CASCADE,
     name VARCHAR(50),
     payload JSON,
-    status TEXT CHECK (status IN ('queued', 'completed')),
+    status TEXT CHECK (jsonb_typeof(payload) = 'object'),
     created_at TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_orders_total ON orders (total);
@@ -125,7 +124,13 @@ ALL_RULES = _ALL_RULES_TEMPLATE.replace("__LEGACY_UUID_DEFAULT__", _LEGACY_UUID_
 
 HAND_WRITTEN = Path("db/migrations/0001_init.sql")
 
-MIGRATION_RULES = tuple(rule_cls for rule_cls in REGISTRY.values() if rule_cls.code not in {"SARJ107", "SARJ122"})
+# Newly authored rules carry their own paired scope fixtures; this fixture retains
+# one signal for each legacy migration rule.
+MIGRATION_RULES = tuple(
+    rule_cls
+    for rule_cls in REGISTRY.values()
+    if rule_cls.code not in {"SARJ107", "SARJ122", "SARJ127", "SARJ128", "SARJ129", "SARJ130"}
+)
 DUMP_EXEMPT = MIGRATION_RULES
 
 MODEL_REDIRECTING = (
@@ -146,13 +151,13 @@ def _ids(classes: tuple[type[Rule], ...]) -> list[str]:
 
 
 def _total(path: Path, source: str) -> int:
-    return sum(len(cls().check(path, source)) for cls in REGISTRY.values())
+    return sum(len(cls().check(path, source)) for cls in MIGRATION_RULES)
 
 
 def test_the_shared_source_fires_every_migration_rule_exactly_once() -> None:
     fired = {cls.code: len(cls().check(HAND_WRITTEN, ALL_RULES)) for cls in MIGRATION_RULES}
     assert fired == dict.fromkeys(fired, 1)
-    assert len(fired) == 24
+    assert len(fired) == 23
 
 
 @pytest.mark.parametrize("rule_cls", DUMP_EXEMPT, ids=_ids(DUMP_EXEMPT))
@@ -162,7 +167,7 @@ def test_each_rule_takes_the_dump_exemption(rule_cls: type[Rule]) -> None:
 
 
 def test_the_dump_exemption_suppresses_all_migration_findings() -> None:
-    assert _total(HAND_WRITTEN, ALL_RULES) == 24
+    assert _total(HAND_WRITTEN, ALL_RULES) == 23
     assert _total(Path("db/structure.sql"), ALL_RULES) == 0
 
 
@@ -198,7 +203,7 @@ def test_a_restore_directory_is_a_dump_signal() -> None:
 
 
 def test_a_hand_written_migration_next_to_those_names_is_still_judged() -> None:
-    assert _total(Path("db/migrations/schema_changes.sql"), ALL_RULES) == 24
+    assert _total(Path("db/migrations/schema_changes.sql"), ALL_RULES) == 23
 
 
 GENERATED = f"--> statement-breakpoint\n{ALL_RULES}"

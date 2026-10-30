@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import time
+from typing import NamedTuple
 
 import pytest
 from sarj_rule_contracts import RuleId
@@ -36,54 +37,83 @@ _RELATIVE_OUTLIER_FACTOR = 10.0
 _RELATIVE_SLACK_S = 0.003
 
 
-def _best_time_s(rule_id: RuleId, path: Path, source: str, repeats: int = 5) -> float:
+class _RuleTiming(NamedTuple):
+    wall_s: float
+    cpu_s: float
+
+
+def _best_timing(rule_id: RuleId, path: Path, source: str, repeats: int = 5) -> _RuleTiming:
     rule = REGISTRY[rule_id]()
-    best = float("inf")
+    best_wall = float("inf")
+    best_cpu = float("inf")
     for _ in range(repeats):
-        start = time.perf_counter()
+        wall_start = time.perf_counter()
+        cpu_start = time.thread_time()
         rule.check(path, source)
-        best = min(best, time.perf_counter() - start)
-    return best
+        cpu_s = time.thread_time() - cpu_start
+        wall_s = time.perf_counter() - wall_start
+        best_wall = min(best_wall, wall_s)
+        best_cpu = min(best_cpu, cpu_s)
+    # Both minima come from the same calls. Wall time caps latency; thread CPU
+    # compares synchronous rule work without shared-VM scheduling delays.
+    return _RuleTiming(best_wall, best_cpu)
 
 
 @pytest.fixture(scope="module")
-def rule_timings() -> dict[str, float]:
+def rule_timings() -> dict[str, _RuleTiming]:
     # Both gates inspect the same five-repeat measurements; neither needs a second run.
     path = Path("synthetic.sql")
-    return {rid: _best_time_s(RuleId(rid), path, _SYNTHETIC_SQL) for rid in sorted(REGISTRY)}
+    return {rid: _best_timing(RuleId(rid), path, _SYNTHETIC_SQL) for rid in sorted(REGISTRY)}
 
 
-def test_no_rule_exceeds_absolute_budget(rule_timings: dict[str, float]) -> None:
+@pytest.fixture(scope="module")
+def cold_rule_timings() -> dict[str, _RuleTiming]:
+    # Give every rule a fresh input so scanner caches cannot supply another
+    # rule's baseline. Fresh-scan controls compare to this cold cohort.
+    return {
+        rid: _best_timing(
+            RuleId(rid),
+            Path("synthetic.sql"),
+            _SYNTHETIC_SQL.replace("orders_", f"cold_{index}_orders_"),
+            repeats=1,
+        )
+        for index, rid in enumerate(sorted(REGISTRY))
+    }
+
+
+def test_no_rule_exceeds_absolute_budget(rule_timings: dict[str, _RuleTiming]) -> None:
     loc = _SYNTHETIC_SQL.count("\n") + 1
-    for rule_id, seconds in rule_timings.items():
-        ms_per_kloc = seconds / loc * 1_000_000
+    for rule_id, timing in rule_timings.items():
+        ms_per_kloc = timing.wall_s / loc * 1_000_000
         assert ms_per_kloc < _ABSOLUTE_MS_PER_KLOC, (
             f"{rule_id}: {ms_per_kloc:.1f} ms/1k LOC exceeds {_ABSOLUTE_MS_PER_KLOC} ms budget"
         )
 
 
-def test_no_rule_is_algorithmic_outlier(rule_timings: dict[str, float]) -> None:
-    ordered = sorted(rule_timings.values())
+def test_no_rule_is_algorithmic_outlier(rule_timings: dict[str, _RuleTiming]) -> None:
+    ordered = sorted(timing.cpu_s for timing in rule_timings.values())
     median = ordered[len(ordered) // 2]
     ceiling = median * _RELATIVE_OUTLIER_FACTOR + _RELATIVE_SLACK_S
-    slow = {rid: t for rid, t in rule_timings.items() if t > ceiling}
+    slow = {rid: timing.cpu_s for rid, timing in rule_timings.items() if timing.cpu_s > ceiling}
     assert not slow, (
         "rule(s) more than "
-        f"{_RELATIVE_OUTLIER_FACTOR:.0f}x the median ({median * 1000:.2f} ms) — likely an "
+        f"{_RELATIVE_OUTLIER_FACTOR:.0f}x the CPU median ({median * 1000:.2f} ms) — likely an "
         f"algorithmic regression: { {k: f'{v * 1000:.2f}ms' for k, v in slow.items()} }"
     )
 
 
-def test_analytical_policy_meets_existing_budgets_on_fresh_plain_sql(rule_timings: dict[str, float]) -> None:
+def test_analytical_policy_meets_existing_budgets_on_fresh_plain_sql(cold_rule_timings: dict[str, _RuleTiming]) -> None:
     source = _SYNTHETIC_SQL.replace("orders_", "cold_orders_")
-    seconds = _best_time_s(RuleId(NoAnalyticalQueriesInTransactionalDb.id), Path("fresh.sql"), source, repeats=1)
-    ordered = sorted(rule_timings.values())
+    timing = _best_timing(RuleId(NoAnalyticalQueriesInTransactionalDb.id), Path("fresh.sql"), source, repeats=1)
+    ordered = sorted(timing.cpu_s for timing in cold_rule_timings.values())
     ceiling = ordered[len(ordered) // 2] * _RELATIVE_OUTLIER_FACTOR + _RELATIVE_SLACK_S
-    assert seconds < ceiling
-    assert seconds / (source.count("\n") + 1) * 1_000_000 < _ABSOLUTE_MS_PER_KLOC
+    assert timing.cpu_s < ceiling
+    assert timing.wall_s / (source.count("\n") + 1) * 1_000_000 < _ABSOLUTE_MS_PER_KLOC
 
 
-def test_null_comparison_meets_existing_budgets_on_fresh_migration_sql(rule_timings: dict[str, float]) -> None:
+def test_null_comparison_meets_existing_budgets_on_fresh_migration_sql(
+    cold_rule_timings: dict[str, _RuleTiming],
+) -> None:
     source = "\n".join(
         (
             _SYNTHETIC_SQL.replace("orders_", "null_gate_orders_"),
@@ -91,9 +121,9 @@ def test_null_comparison_meets_existing_budgets_on_fresh_migration_sql(rule_timi
         )
     )
     path = Path("fresh_null.sql")
-    seconds = _best_time_s(RuleId(NoNullComparison.id), path, source, repeats=1)
-    ordered = sorted(rule_timings.values())
+    timing = _best_timing(RuleId(NoNullComparison.id), path, source, repeats=1)
+    ordered = sorted(timing.cpu_s for timing in cold_rule_timings.values())
     ceiling = ordered[len(ordered) // 2] * _RELATIVE_OUTLIER_FACTOR + _RELATIVE_SLACK_S
-    assert seconds < ceiling
-    assert seconds / (source.count("\n") + 1) * 1_000_000 < _ABSOLUTE_MS_PER_KLOC
+    assert timing.cpu_s < ceiling
+    assert timing.wall_s / (source.count("\n") + 1) * 1_000_000 < _ABSOLUTE_MS_PER_KLOC
     assert len(NoNullComparison().check(path, source)) == 1

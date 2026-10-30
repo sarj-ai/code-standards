@@ -28,7 +28,7 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
     assert len(_check(example.focus_file.source, Path(example.focus_file.path))) == example.expected_count
 
 
-def test_reports_every_unjustified_index_beyond_per_table_budget() -> None:
+def test_reports_every_index_beyond_per_table_budget() -> None:
     source = "\n".join(f"CREATE INDEX event_{column}_idx ON event({column});" for column in "abcdef")
     assert [finding.line for finding in _check(source)] == [4, 5, 6]
 
@@ -47,45 +47,12 @@ def test_reports_indexes_beyond_file_budget_across_tables() -> None:
     ],
 )
 @pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
-def test_accepts_exact_immediately_preceding_justification(comment: str, newline: str) -> None:
+def test_former_justification_comments_cannot_waive_budget(comment: str, newline: str) -> None:
     source = (
         "CREATE INDEX a_idx ON event(a);\nCREATE INDEX b_idx ON event(b);\nCREATE INDEX c_idx ON event(c);\n"
         f"{comment}\nCREATE INDEX d_idx ON event(d);\n"
     )
-    assert _check(source.replace("\n", newline)) == []
-
-
-@pytest.mark.parametrize(
-    "comment",
-    [
-        "-- app-read: delivery queue; ticket: APP-812",
-        "-- index-justification: app-read: delivery queue",
-        "-- index-justification: app-read: delivery queue; ticket: someday",
-        "-- index-justification: app-read: delivery queue; ticket: app-812",
-        "-- index-justification: app-read: delivery queue; ticket: APP-812",
-        "-- index-justification: app-read: delivery queue; query: app/event_store.py#claim",
-        "-- index-justification: app-read: delivery queue; explain: https://example.test/plan",
-        "-- index-justification: app-read: delivery queue; query: /tmp/store.py#claim; explain: https://example.test/plan",
-        "-- index-justification: app-read:  ; ticket: APP-812",
-        "-- index-justification: this seems important",
-        "-- index-justification: referential-action:",
-    ],
-)
-def test_rejects_vague_or_incomplete_justification(comment: str) -> None:
-    source = (
-        "CREATE INDEX a_idx ON event(a);\nCREATE INDEX b_idx ON event(b);\nCREATE INDEX c_idx ON event(c);\n"
-        f"{comment}\nCREATE INDEX d_idx ON event(d);\n"
-    )
-    assert len(_check(source)) == 1
-
-
-def test_justification_is_local_to_the_immediately_following_index() -> None:
-    source = (
-        "CREATE INDEX a_idx ON event(a);\nCREATE INDEX b_idx ON event(b);\nCREATE INDEX c_idx ON event(c);\n"
-        "-- index-justification: app-read: delivery queue; ticket: APP-812\n\n"
-        "CREATE INDEX d_idx ON event(d);\n"
-    )
-    assert len(_check(source)) == 1
+    assert len(_check(source.replace("\n", newline))) == 1
 
 
 def test_explicit_unique_indexes_consume_the_physical_index_budget() -> None:
@@ -93,23 +60,12 @@ def test_explicit_unique_indexes_consume_the_physical_index_budget() -> None:
     assert [finding.line for finding in _check(source)] == [4, 5, 6, 7, 8, 9]
 
 
-def test_uniqueness_justification_applies_only_to_unique_index() -> None:
+def test_unique_index_comment_cannot_waive_budget() -> None:
     prefix = "CREATE INDEX a_idx ON event(a);\nCREATE INDEX b_idx ON event(b);\nCREATE INDEX c_idx ON event(c);\n"
     comment = "-- index-justification: uniqueness-constraint: external account identity; ticket: APP-812\n"
-    assert _check(f"{prefix}{comment}CREATE UNIQUE INDEX d_idx ON event(d);\n") == []
-    [finding] = _check(f"{prefix}{comment}CREATE INDEX d_idx ON event(d);\n")
-    assert "uniqueness-constraint" not in finding.message
-
-
-def test_unique_index_diagnostic_offers_uniqueness_justification() -> None:
-    source = (
-        "CREATE UNIQUE INDEX a_idx ON event(a);\n"
-        "CREATE UNIQUE INDEX b_idx ON event(b);\n"
-        "CREATE UNIQUE INDEX c_idx ON event(c);\n"
-        "CREATE UNIQUE INDEX d_idx ON event(d);\n"
-    )
-    [finding] = _check(source)
-    assert "uniqueness-constraint" in finding.message
+    [finding] = _check(f"{prefix}{comment}CREATE UNIQUE INDEX d_idx ON event(d);\n")
+    assert "inline UNIQUE constraints" in finding.message
+    assert "comment" not in finding.message
 
 
 def test_exact_table_and_file_boundaries_are_allowed() -> None:

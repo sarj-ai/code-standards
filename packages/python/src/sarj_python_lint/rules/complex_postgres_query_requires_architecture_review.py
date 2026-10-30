@@ -85,7 +85,11 @@ def _is_query_context(node: ast.expr, parents: Mapping[ast.AST, ast.AST], roots:
 
 
 def _query_roots(
-    tree: ast.Module, parents: Mapping[ast.AST, ast.AST], *, node_index: NodeIndex | None = None
+    tree: ast.Module,
+    parents: Mapping[ast.AST, ast.AST],
+    *,
+    context: PythonFileContext,
+    node_index: NodeIndex | None = None,
 ) -> frozenset[int]:
     binding_counts: dict[tuple[int, str], int] = {}
     binding_values: dict[tuple[int, str], ast.expr] = {}
@@ -99,11 +103,12 @@ def _query_roots(
 
     constructor_imports = _postgres_sql_constructors(tree, parents, node_index=node_index)
     _query_binding_values(tree, parents, binding_values, node_index=node_index)
+    has_local_classes = bool(nodes(tree, ast.ClassDef, index=node_index))
 
     roots: set[int] = set()
     for call in nodes(tree, ast.Call, index=node_index):
         argument = _query_argument(call)
-        if argument is None:
+        if argument is None or (has_local_classes and _source_local_receiver(call, context)):
             continue
         owner = _scope(call, parents)
         constructors = _visible_constructors(owner, constructor_imports, parents, binding_counts, wildcard_scopes)
@@ -149,6 +154,21 @@ def _query_argument(call: ast.Call) -> ast.expr | None:
     if call.args:
         return call.args[0]
     return next((keyword.value for keyword in call.keywords if keyword.arg in _QUERY_KEYWORDS), None)
+
+
+def _source_local_receiver(call: ast.Call, context: PythonFileContext) -> bool:
+    if not isinstance(call.func, ast.Attribute) or not isinstance(call.func.value, (ast.Name, ast.Call)):
+        return False
+    provenance = context.static_resource_provenance
+    receiver: ast.expr | None = call.func.value
+    if isinstance(receiver, ast.Name):
+        binding = provenance.runtime_binding(receiver.id, call)
+        receiver = provenance.assignment_value(binding, call) if isinstance(binding, ast.Name) else None
+    return (
+        isinstance(receiver, ast.Call)
+        and isinstance(receiver.func, ast.Name)
+        and isinstance(provenance.runtime_binding(receiver.func.id, receiver), ast.ClassDef)
+    )
 
 
 def _postgres_sql_constructors(
@@ -261,13 +281,16 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only statically recoverable SQL passed to execute, executemany, fetch, fetchrow, fetchval, or prepare in non-test modules with explicit PostgreSQL imports is analyzed, regardless of module filename.",
-            "Execution receivers use a conventional database name or import-proven Psycopg ownership. Native execution additionally follows stable module/local SQL bindings and direct same-class query-forwarding wrappers; unknown receivers abstain.",
+            "Execution receivers use a conventional database name or import-proven Psycopg ownership. Conventional names are a heuristic and can warn on unrelated objects with matching methods. Native execution additionally follows stable module/local SQL bindings and direct same-class query-forwarding wrappers; unknown receivers abstain.",
+            "Modules mixing SQLite and PostgreSQL abstain for conventional receivers; import-proven Psycopg execution remains eligible.",
+            "Stable source-local class construction abstains from conventional receiver inference, including custom delegating instances unless native recovery independently proves execution.",
             "Conventional receivers follow one direct, unambiguous same-scope binding. Native Psycopg recovery may follow bounded stable lexical bindings, including module constants. Unexecuted constants, branch-local assignments, mutable attributes, containers and unknown dynamic composition abstain.",
-            "Review covers derived relations in every SELECT (including LATERAL, CTEs, predicates and writes), four explicit or comma joins, six query stages, three joins plus four stages, or 25 projections plus two joins. A self join over the same explicit table also merits review at 16 projected expressions.",
+            "Review covers derived relations in every SELECT (including LATERAL, CTEs, predicates and writes), four explicit or comma joins (including parenthesized joined tables), six query stages, three joins plus four stages, or 25 projections plus two joins. A self join over the same explicit table also merits review at 16 projected expressions.",
             "Derived-relation review requires grouping, HAVING or windowing combined with joins or nested reads; expression density is not a separate trigger.",
-            "Projection width alone is accepted, and UNION branches are measured independently; execution plans and production cardinality remain authoritative.",
-            "ClickHouse and BigQuery syntax is excluded per query, including in mixed-backend modules.",
+            "Projection width alone is accepted, and UNION branches are measured independently. Set operators do not add read stages beyond their SELECT blocks; execution plans and production cardinality remain authoritative.",
+            "Conventional receivers exclude ClickHouse and BigQuery syntax per query, including in mixed-backend modules. Import-proven Psycopg execution uses PostgreSQL parsing even when identifiers or function names overlap another dialect.",
             "The rule does not infer optimizer behavior, materialization, performance, data-model quality, or datastore placement.",
+            "SQL parsing and static query recovery abstain on recursion limits; deeply nested source can withhold native recovery for the file.",
         ),
         examples=(
             RuleExample(
@@ -351,12 +374,17 @@ class ComplexPostgresQueryRequiresArchitectureReview(Rule):
         tree = context.tree
         if tree is None:
             return []
-        if not _is_postgres_module(tree, node_index=context.node_index):
+        imports = _import_names(tree, node_index=context.node_index)
+        if not _has_import_prefix(imports, _POSTGRES_IMPORT_PREFIXES):
             return []
 
-        diagnostics = _conventional_findings(context, self.code)
+        diagnostics = (
+            []
+            if _has_import_prefix(imports, _AMBIGUOUS_RELATIONAL_IMPORT_PREFIXES)
+            else _conventional_findings(context, self.code)
+        )
         for query in store_queries(context):
-            signal = _query_architecture_signal(query.sql, path)
+            signal = _query_architecture_signal(query.sql, path, native_postgres=True)
             if signal is None:
                 continue
             node = query.node
@@ -372,7 +400,7 @@ def _conventional_findings(context: PythonFileContext, code: str) -> list[Diagno
     tree = context.tree
     if tree is None:
         return []
-    query_roots = _query_roots(tree, parents, node_index=context.node_index)
+    query_roots = _query_roots(tree, parents, context=context, node_index=context.node_index)
     diagnostics: list[Diagnostic] = []
     consumed: set[int] = set()
     for node in context.nodes(ast.Constant, ast.BinOp, ast.JoinedStr):
@@ -477,14 +505,13 @@ def _record_sql_constructors(
         )
 
 
-def _query_architecture_signal(text_value: str, path: Path) -> str | None:
+def _query_architecture_signal(text_value: str, path: Path, *, native_postgres: bool = False) -> str | None:
     sql_without_noise = strip_sql_noise(text_value)
-    if (
-        _QUERY_SHAPE.search(sql_without_noise) is None
-        or _CLICKHOUSE_SQL.search(sql_without_noise)
-        or _BIGQUERY_SQL.search(sql_without_noise)
-        or (is_store_module(path) and analytical_signal(sql_without_noise) is not None)
-    ):
+    if _QUERY_SHAPE.search(sql_without_noise) is None:
+        return None
+    if not native_postgres and (_CLICKHOUSE_SQL.search(sql_without_noise) or _BIGQUERY_SQL.search(sql_without_noise)):
+        return None
+    if is_store_module(path) and analytical_signal(sql_without_noise) is not None:
         return None
     return _parse_signal(text_value)
 
@@ -512,8 +539,8 @@ def _architecture_signal(statement: exp.Expr) -> str | None:
     maximum_joins = _maximum_query_joins(statement)
     if maximum_joins >= _JOIN_LIMIT:
         return f"SELECT block has {maximum_joins} JOINs (4+ explicit JOINs or comma relations)"
-    nested_queries = sum(1 for query in statement.walk() if isinstance(query, (exp.Select, exp.SetOperation)))
-    nested_queries -= isinstance(statement, (exp.Select, exp.SetOperation))
+    nested_queries = sum(1 for query in statement.walk() if isinstance(query, exp.Select))
+    nested_queries -= isinstance(_derived_query(statement), exp.Select)
     if (derived_signal := _derived_architecture_signal(statement)) is not None:
         return derived_signal
     if nested_queries >= _STAGE_LIMIT:
@@ -528,7 +555,7 @@ def _projection_width_signal(statement: exp.Expr) -> str | None:
 
     for select in statement.find_all(exp.Select):
         projections = tuple(_expression_args(select, "expressions"))
-        joins = tuple(join for join in _expression_args(select, "joins") if isinstance(join, exp.Join))
+        joins = _select_joins(select)
         if len(projections) >= _WIDE_PROJECTION_LIMIT and len(joins) >= _WIDE_PROJECTION_JOIN_LIMIT:
             return f"Joined query block has {len(projections)} projected expressions"
         if len(projections) >= _WIDE_SELF_JOIN_PROJECTION_LIMIT and _self_join(select, joins):
@@ -559,7 +586,10 @@ def _self_join(select: exp.Select, joins: tuple[exp.Join, ...]) -> bool:
     relations.extend(_expression_arg(join, "this") for join in joins)
     seen: set[tuple[str, ...]] = set()
     for relation in relations:
-        key = relation_key(relation)
+        base = relation
+        while isinstance(base, (exp.Paren, exp.Subquery)):
+            base = _expression_arg(base, "this")
+        key = relation_key(base)
         if key is None or any(_SQL_HOLE in name for name in key):
             continue
         if key in seen:
@@ -572,9 +602,7 @@ def _derived_architecture_signal(statement: exp.Expr) -> str | None:
     from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- keep parser startup off unrelated lint runs
 
     for select in statement.find_all(exp.Select):
-        for join in _expression_args(select, "joins"):
-            if not isinstance(join, exp.Join):
-                continue
+        for join in _select_joins(select):
             if (derived := _derived_query(_expression_arg(join, "this"))) is not None and _has_complex_body(derived):
                 return "JOIN-derived query combines grouping, HAVING or windowing with joins or nested reads"
         from_clause = _expression_arg(select, "from_")
@@ -597,11 +625,11 @@ def _has_complex_body(query: exp.Query) -> bool:
     if not isinstance(query, exp.Select):
         return False
     if _has_row_transform(query) and (
-        _expression_args(query, "joins") or any(select is not query for select in query.find_all(exp.Select))
+        _select_joins(query) or any(select is not query for select in query.find_all(exp.Select))
     ):
         return True
-    for relation in query.find_all(exp.From, exp.Join):
-        if relation.parent is not query:
+    for relation in (_expression_arg(query, "from_"), *_select_joins(query)):
+        if not isinstance(relation, (exp.From, exp.Join)):
             continue
         child = _derived_query(_expression_arg(relation, "this"))
         if child is not None and (_has_row_transform(child) or _has_complex_body(child)):
@@ -624,11 +652,23 @@ def _maximum_query_joins(statement: exp.Expr) -> int:
     from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- keep parser startup off unrelated lint runs
 
     return max(
-        (
-            sum(isinstance(join, exp.Join) for join in _expression_args(select, "joins"))
-            for select in statement.find_all(exp.Select)
-        ),
+        (len(_select_joins(select)) for select in statement.find_all(exp.Select)),
         default=0,
+    )
+
+
+def _select_joins(select: exp.Select) -> tuple[exp.Join, ...]:
+    from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- grouped joined tables retain their SELECT owner.
+
+    relations = (_expression_arg(select, "from_"), *_expression_args(select, "joins"))
+    return tuple(
+        node
+        for relation in relations
+        if relation is not None
+        for node in relation.walk(
+            prune=lambda node: isinstance(node, (exp.Select, exp.SetOperation, exp.Insert, exp.Update, exp.Delete))
+        )
+        if isinstance(node, exp.Join)
     )
 
 
@@ -668,13 +708,6 @@ def _query_review_guidance(text_value: str) -> str:
         else " review bounds, ordering, and locks; review cardinality and a production-like query plan, then "
         "review whether repeated read-time reconstruction should become a stable derived fact maintained at "
         "write-time, or otherwise simplify the query or read model when warranted."
-    )
-
-
-def _is_postgres_module(tree: ast.Module, *, node_index: NodeIndex | None = None) -> bool:
-    imports = _import_names(tree, node_index=node_index)
-    return _has_import_prefix(imports, _POSTGRES_IMPORT_PREFIXES) and not _has_import_prefix(
-        imports, _AMBIGUOUS_RELATIONAL_IMPORT_PREFIXES
     )
 
 

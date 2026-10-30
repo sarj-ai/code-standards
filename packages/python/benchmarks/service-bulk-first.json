@@ -1,0 +1,138 @@
+{
+  "schema": 1,
+  "rule": "python:service-singleton-delegates-to-bulk",
+  "code": "SARJ556",
+  "decision": "ship-error",
+  "recorded_at": "2026-10-29T23:10:48.434299+00:00",
+  "admission": {
+    "defect": "Singleton-only service CRUD APIs force serial callers; parallel singleton and bulk paths duplicate behavior, and inverted bulk adapters can recurse.",
+    "existing_owner": "SARJ421 store-get-delegates-to-bulk-read",
+    "reproduced_gap": {
+      "existing_rule_findings": 0,
+      "new_rule_findings": 1,
+      "example": "missing-bulk-api"
+    },
+    "upstream": "Pinned Ruff 0.17.2 rule catalog has no bulk/delegation relationship rule; BasedPyright checks signatures rather than operation topology.",
+    "error_first_authorization": "Explicit user request for a blocking rule; exact selector approved without changing other rule policies."
+  },
+  "versions": {
+    "python": "1.99.0",
+    "standards": "8.163.0"
+  },
+  "source_sha256": "c0c4ce391914bf2a3921be70df7d666200df19cd521678e0ab6f07e99fcafc96",
+  "validation": {
+    "focused_and_neighboring_tests": 285,
+    "new_rule_cases": 177,
+    "authored_examples": {
+      "TP": 2,
+      "TN": 2,
+      "FP": 0,
+      "FN": 0
+    },
+    "strict_typing": "passed",
+    "changed_file_ruff": "passed",
+    "builtin_source_preflight": {
+      "errors": 0,
+      "inherited_warnings": 7
+    },
+    "duplicates": 0,
+    "autofix": "none",
+    "context_regressions": "Renamed shared context is accepted in direct/private sync/async adapters; same-named swaps and dropped context still error.",
+    "repository_policy_tests": 167,
+    "declaration_regressions": "Callable static/class/descriptor, alias, overload, decorated and dynamically rebound bulk declarations are deferred, including inherited declarations. Noncallable literal members still fail, and import-proven Protocol contracts are excluded.",
+    "local_make_verify": "An earlier authoring snapshot reached package tests before its 90-minute budget; that interrupted run is not a complete pass. Final native hooks and exact-head required CI own the remaining qualification."
+  },
+  "corpora": [
+    {
+      "corpus": "code-standards",
+      "files": 837,
+      "bytes": 12267308,
+      "revision": "a8a98dec025b3ef24b3f358e098117a084fc4b66",
+      "digest": "sha256:defab1dbecc8cc75961a665fffb1f7784419be24982168a38222d90948bcf495"
+    },
+    {
+      "corpus": "pydantic",
+      "files": 105,
+      "bytes": 1820880,
+      "revision": null,
+      "digest": "sha256:b6e2237c8394b70c0585536d05e8c35f9468969a977bacc456bedb1e31252ac6"
+    },
+    {
+      "corpus": "<private-corpus>",
+      "files": 745,
+      "bytes": 6589904
+    },
+    {
+      "corpus": "labeled-examples",
+      "files": 4,
+      "bytes": 672,
+      "revision": null,
+      "digest": "sha256:5dce5ff6ec2a93db9b05837adc540ebc0518f02d9337e97a055bd544eef7103d"
+    }
+  ],
+  "isolation": {
+    "batch_limit": 250,
+    "batches": 9,
+    "files": 1691,
+    "python_safe_path": true,
+    "pins": "Verified before/after. External pins are unchanged; private identities and digests are withheld. The authoring snapshot was explicitly refreshed for the context and declaration-boundary corrections and integration of main a8a98dec. Earlier pins and interrupted attempts remain historical."
+  },
+  "findings": {
+    "public_existing": 0,
+    "private": 86,
+    "labeled_positive": 2,
+    "inspected_private": 29,
+    "inspection": "All 9 independent-path findings and 20 missing-bulk findings selected by ascending SHA-256 of their zero-based diagnostic ordinal.",
+    "sample_ordinals": [
+      55, 51, 39, 49, 65, 9, 50, 46, 53, 8, 54, 47, 78, 29, 60, 66, 41, 59, 13,
+      52
+    ],
+    "known_false_positives_in_inspected_sample": 0,
+    "uninspected_private": 57,
+    "legacy_read_compatibility": "get_by_ids is accepted; its inspected existing independent singleton still correctly reports nondelegation.",
+    "inspection_reuse": "All 86 private finding identities and reasons match the preceding qualified run. Immutable external corpus pins and the same 29 reviewed findings preserve the disclosed inspection evidence."
+  },
+  "performance": {
+    "baseline": {
+      "files": 4,
+      "bytes": 672,
+      "source_digest": "0ddfab969593fc0242042818cf255c918d055e7ec47b62a8393d60366c7f0e29",
+      "first_analysis_seconds": 1.4593472200213,
+      "warm_median_seconds": 0.323161740496289,
+      "peak_process_memory_bytes": 76910592,
+      "repeats": 3
+    },
+    "candidate": {
+      "files": 4,
+      "bytes": 672,
+      "source_digest": "0ddfab969593fc0242042818cf255c918d055e7ec47b62a8393d60366c7f0e29",
+      "first_analysis_seconds": 0.31216879398562014,
+      "warm_median_seconds": 0.16406039445428178,
+      "peak_process_memory_bytes": 76910592,
+      "repeats": 3
+    },
+    "rule-only": {
+      "files": 4,
+      "bytes": 672,
+      "source_digest": "0ddfab969593fc0242042818cf255c918d055e7ec47b62a8393d60366c7f0e29",
+      "first_analysis_seconds": 0.014730925089679658,
+      "warm_median_seconds": 0.016517260519322008,
+      "peak_process_memory_bytes": 76910592,
+      "repeats": 3
+    }
+  },
+  "performance_limits": "First analysis and warm repetitions in the same process on four paired authored examples. Memory is process lifetime. Shared VM measurements are noisy; no speedup is claimed. The earlier 16-file comparison and isolated broad corpus timings are preserved privately.",
+  "limitations": [
+    "Module-level Service/Store/Repository CRUD roles only; domain verbs and TypeScript are outside this rule.",
+    "Unknown imported ancestry, protocols, variadic, aliased, overloaded, rebound, descriptor and rewriting-decorator contracts are not inferred.",
+    "Straight-line adapters and private helpers are bounded to 64 states; complex control flow requires a simpler adapter or exact reasoned exception.",
+    "This proves visible delegation topology and input/context forwarding, not SQL batching, result projection, authorization or transaction equivalence."
+  ],
+  "commands": [
+    "mise exec -- uv run --project packages/standards --frozen pytest -q packages/python/tests/rules/test_service_singleton_delegates_to_bulk.py packages/python/tests/rules/test_store_get_delegates_to_bulk_read.py",
+    "mise exec -- uv run --project packages/standards --frozen code-standards analyze <changed Python files>",
+    "run_isolated_corpora(pinned_sources, (python, \"-P\", \"-m\", \"sarj_python_lint\", \"check\", \"--rule\", \"service-singleton-delegates-to-bulk\"))",
+    "mise exec -- uv run --project packages/standards --frozen code-standards maintain rules verify python:service-singleton-delegates-to-bulk",
+    "mise exec -- make verify"
+  ]
+}

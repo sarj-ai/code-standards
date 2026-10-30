@@ -22,10 +22,10 @@ def sql_before_copy_input(source: str) -> str:
     for separator in re.finditer(r";", masked):
         tokens = tokenize(names_preserved[start : separator.start()])
         if tokens and _copy_from_stdin(tokens):
-            return source[:start]
+            return source[: start + tokens[0].start]
         start = separator.end()
     tokens = tokenize(names_preserved[start:])
-    return source[:start] if tokens and _copy_from_stdin(tokens) else source
+    return source[: start + tokens[0].start] if tokens and _copy_from_stdin(tokens) else source
 
 
 def _copy_from_stdin(tokens: list[Token]) -> bool:

@@ -131,10 +131,6 @@ _DEPTRY_ANNOTATION_RE: Final = re.compile(
     r"(?:,col=(?P<column>[1-9][0-9]*))?,title=(?P<code>DEP00[123])::(?P<message>.*)$"
 )
 _ANALYSIS_DEADLINE = timedelta(seconds=300)
-_REACT_DOCTOR_MAX_DURATION = timedelta(seconds=60)
-_REACT_DOCTOR_FULL_MAX_DURATION = timedelta(minutes=5)
-_REACT_DOCTOR_SMALL_CHANGE_MAX_FILES = 10
-_REACT_DOCTOR_MEDIUM_CHANGE_MAX_FILES = 50
 _REACT_DOCTOR_SOURCE_RE: Final = re.compile(r"\.(?:astro|tsx?|jsx?|mts|mjs|[hH][tT][mM][lL])\Z")
 _REACT_DOCTOR_GENERATED_BUNDLE_RE: Final = re.compile(r"\.(?:iife|umd|global|min)\.m?js\Z", re.IGNORECASE | re.ASCII)
 _REACT_DOCTOR_GENERATED_DIRECTORY_RE: Final = re.compile(r"(?:^|/)__generated__/")
@@ -1271,6 +1267,7 @@ def _invoke_react_doctor(
     allow_empty_projects: bool = False,
 ) -> ToolReport:
     name = "react-doctor"
+    doctor_runner = _react_doctor_budget_runner(runner)
     scope_base = None if staged or full_scan else change_scope_base()
     scope_args = _react_doctor_scope_args(staged=staged, full_scan=full_scan, base=scope_base)
     if scope_base and _react_doctor_changed_scope_is_disjoint(
@@ -1306,12 +1303,8 @@ def _invoke_react_doctor(
             runner=runner,
             staged=True,
         )
-    duration = _react_doctor_max_duration(file_count)
 
     def doctor_argv(selected_scope: Sequence[str]) -> tuple[str, ...]:
-        selected_duration = (
-            _REACT_DOCTOR_FULL_MAX_DURATION if tuple(selected_scope) == ("--scope", "full") else duration
-        )
         argv = packagemanager.exec_argv(
             client,
             name,
@@ -1327,7 +1320,7 @@ def _invoke_react_doctor(
             "--no-score",
             "--no-cache",
             "--max-duration",
-            str(int(selected_duration.total_seconds())),
+            str(_TIMEOUT.total_seconds()),
             "--json",
             "--json-compact",
             "--no-color",
@@ -1346,7 +1339,7 @@ def _invoke_react_doctor(
             _parse_react_doctor_staged_with_full_fallback,
             expected_projects=expected_projects,
             allow_empty_projects=allow_empty_projects,
-            runner=runner,
+            runner=doctor_runner,
             cwd=project,
             full_argv=doctor_argv(("--scope", "full")),
         )
@@ -1359,12 +1352,12 @@ def _invoke_react_doctor(
             scope_root=project,
             projects=projects,
         )
-    execution_runner = runner
+    execution_runner = doctor_runner
     if scope_base and not staged and not full_scan:
         execution_runner = _react_doctor_baseline_retry_runner(
             argv,
             root=root,
-            runner=runner,
+            runner=doctor_runner,
             explicit_base=scope_base,
         )
     return _invoke(
@@ -1377,6 +1370,27 @@ def _invoke_react_doctor(
         invocation_id=InvocationId(project.relative_to(root).as_posix()) or None,
         file_count=file_count,
     )
+
+
+def _react_doctor_budget_runner(runner: ProcessExecutor) -> ProcessExecutor:
+    deadline = time.monotonic() + _TIMEOUT.total_seconds()
+
+    def bounded(request: ProcessRequest) -> ProcessOutput:
+        nonlocal deadline
+        if request.argv[0] == "git" or "--max-duration" not in request.argv:
+            return runner.run(request)
+        now = time.monotonic()
+        deadline = min(deadline, now + request.timeout_seconds)
+        if request.deadline is not None:
+            deadline = min(deadline, request.deadline)
+        remaining = deadline - now
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(request.argv, 0)
+        argv = list(request.argv)
+        argv[argv.index("--max-duration") + 1] = str(remaining)
+        return runner.run(replace(request, argv=tuple(argv), deadline=deadline))
+
+    return RequestExecutor(bounded, executor_capabilities(runner))
 
 
 def _react_doctor_baseline_retry_runner(
@@ -1745,14 +1759,6 @@ def _react_doctor_changed_scope_is_disjoint(
         process_request(("git", "rev-parse", "--verify", "--end-of-options", "HEAD^{commit}"), cwd=root)
     )
     return final_head.returncode == 0 and final_head.stdout.strip() == resolved_head
-
-
-def _react_doctor_max_duration(file_count: int) -> timedelta:
-    if file_count <= _REACT_DOCTOR_SMALL_CHANGE_MAX_FILES:
-        return timedelta(seconds=12)
-    if file_count <= _REACT_DOCTOR_MEDIUM_CHANGE_MAX_FILES:
-        return timedelta(seconds=20)
-    return _REACT_DOCTOR_MAX_DURATION
 
 
 def _react_doctor_scope_args(
@@ -2700,6 +2706,8 @@ def _run_process(request: ProcessRequest) -> ProcessOutput:
             stdin=stdin,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            # Deliver available bytes so a held-open pipe cannot hide an overflow.
+            bufsize=0,
             start_new_session=os.name == "posix",
             env=request.environment,
         )

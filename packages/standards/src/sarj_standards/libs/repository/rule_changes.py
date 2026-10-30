@@ -87,9 +87,15 @@ _ERROR_FIRST_APPROVALS: Final = frozenset(
         # Explicit user-approved blocking policy for compatible adjacent ALTER
         # actions; preserve transaction, section, identity and command boundaries.
         "sql:combine-alter-table",
+        # User-requested blocking migration policies: syntactically proven no-op
+        # rollbacks and comments that replace executable constraints or waive bans.
+        "sql:no-noop-migration-down",
+        "sql:no-migration-comments",
         # User-approved constructor ownership policy: inject import-proven HTTPX
         # clients and retain scoped composition ownership and async cleanup.
         "python:no-async-client-in-constructor",
+        # Explicit user-requested blocking bulk-first service CRUD policy.
+        "python:service-singleton-delegates-to-bulk",
     }
 )
 
