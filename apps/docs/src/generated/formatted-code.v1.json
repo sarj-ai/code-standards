@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e50124d4634a02f119bf506a383ed54f741330407b446f72df280162211d3b23",
+  "catalogSha256": "fcf60dde6b79e051c4b5ed34c6714756eb8b4a1fc6bfe68f6216142fb00793c9",
   "cliSha256": "a6cb0e9bc93a581f123acb681aa58e715facb06d04cda8b9a3569d43fa0a1cd3",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -17522,6 +17522,71 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Docstring records a hidden failure mode"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:service-singleton-delegates-to-bulk": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/users.py",
+              "source": "class UserService:\n    async def get(self, key: str):\n        rows = await self.get_many([key])\n        return rows[0] if rows else None\n\n    async def get_many(self, keys: list[str]):\n        return await self.store.get_many(keys)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/users.py",
+          "id": "bulk-first-adapter",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Implement singleton access as a one-item bulk operation"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/users.py",
+              "source": "class UserService:\n    def upsert(self, user):\n        return self.upsert_many([user])[0]\n\n    def upsert_many(self, users):\n        return self.store.upsert_many(users)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/users.py",
+          "id": "bulk-first-write",
+          "outcome": "accept",
+          "scenarioId": "write",
+          "title": "Write through the bulk primitive"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/users.py",
+              "source": "class UserService:\n    def upsert(self, user):\n        return self.upsert_many([user])[0]\n\n    def upsert_many(self, users):\n        return [self.upsert(user) for user in users]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/users.py",
+          "id": "inverted-bulk-write",
+          "outcome": "reject",
+          "scenarioId": "write",
+          "title": "Bulk writes must not call back through the singleton"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/users.py",
+              "source": "class UserService:\n    async def get(self, key: str):\n        return await self.store.get(key)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/users.py",
+          "id": "missing-bulk-api",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A singleton operation needs a bulk primitive"
         }
       ],
       "optionsSchemaSource": null
