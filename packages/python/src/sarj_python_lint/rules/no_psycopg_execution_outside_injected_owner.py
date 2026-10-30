@@ -160,6 +160,10 @@ def psycopg_execution_calls(
     tree = context.tree
     if tree is None:
         return []
+    if not any(
+        isinstance(call.func, ast.Attribute) and call.func.attr in _EXECUTE_METHODS for call in context.nodes(ast.Call)
+    ):
+        return []
     mutated_modules: frozenset[str] | None = frozenset()
     if (project := context.session.project) is not None:
         unit = project.unit(context.path)
