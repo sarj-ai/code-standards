@@ -123,7 +123,7 @@ class RequireNoDecodeForSplittingSettingsField(Rule):
         imports = context.imports
         source_lines = context.source_lines
         diagnostics: list[Diagnostic] = []
-        for model in (node for node in context.nodes(ast.AST) if isinstance(node, ast.ClassDef)):
+        for model in context.nodes(ast.ClassDef):
             if not _is_direct_settings(model, imports) or _customises_settings_sources(model):
                 continue
             diagnostics.extend(_settings_split_findings(model, imports, source_lines, path, self.code))

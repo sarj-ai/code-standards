@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import partial
 from pathlib import Path
 import re
@@ -35,6 +35,7 @@ from .devops_programs import (
 from .devops_tools import TOOLS, NativeToolError, checked_tool
 from .external import parse_shellcheck, redact_message, run_process_input
 from .policy import Policy
+from .process import current_cancellation, initialize_process_cancellation
 from .shell_policy import ACTION_EXCLUSIONS, SHELLCHECK_ARGS
 
 
@@ -170,7 +171,11 @@ def analyze_sources(
             )
         return tuple(reports)
 
-    with ThreadPoolExecutor(thread_name_prefix="embedded-shell") as workers:
+    with ThreadPoolExecutor(
+        thread_name_prefix="embedded-shell",
+        initializer=initialize_process_cancellation,
+        initargs=(current_cancellation(),),
+    ) as workers:
         return tuple(report for reports in workers.map(analyze, work) for report in reports)
 
 
@@ -250,7 +255,8 @@ def _check_block(
     findings = parse_shellcheck(output.stdout, root=root, source=SourceDocument(path, source), path=path)
     if output.returncode not in {0, 1} or output.stderr.strip() or (output.returncode == 1 and not findings):
         raise NativeToolError(output.stderr.strip() or "incomplete embedded ShellCheck protocol")
-    return tuple(_map_finding(item, candidate.block, document, prefix.count("\n")) for item in findings)
+    source_map = _ShellSourceMap(candidate.block, document, prefix.count("\n"))
+    return tuple(source_map.map_finding(item) for item in findings)
 
 
 def _runtime_prefix(candidate: ShellBlock) -> str:
@@ -267,50 +273,56 @@ def _runtime_prefix(candidate: ShellBlock) -> str:
     return ("set -e\n" if "errexit" in options else "") + ("set -o pipefail\n" if "pipefail" in options else "")
 
 
-def _map_finding(finding: Diagnostic, block: ExecutionBlock, document: SourceDocument, prefix: int = 0) -> Diagnostic:
-    if finding.location.region is not None:
-        region = finding.location.region
-        location = Location(
-            finding.location.path,
-            region=Region(
-                _map_position(region.start, block, document, prefix), _map_position(region.end, block, document, prefix)
-            ),
-        )
-    elif finding.location.position is not None:
-        location = Location(
-            finding.location.path, position=_map_position(finding.location.position, block, document, prefix)
-        )
-    else:
-        location = finding.location
-    notes = finding.notes
-    original = finding.location.region.start if finding.location.region is not None else finding.location.position
-    if block.literal is None and original is not None:
-        notes = (
-            *notes,
-            f"Embedded shell line {max(1, original.line - prefix + 1)}, column {original.character + 1}; this executable field has no literal source mapping.",
-        )
-    return replace(finding, location=location, notes=notes)
+@dataclass(slots=True)
+class _ShellSourceMap:
+    block: ExecutionBlock
+    document: SourceDocument
+    prefix: int = 0
+    _literal_bounds: tuple[int, int] | None = field(default=None, init=False, repr=False, compare=False)
 
+    def map_finding(self, finding: Diagnostic) -> Diagnostic:
+        if finding.location.region is not None:
+            region = finding.location.region
+            location = Location(
+                finding.location.path,
+                region=Region(self._map_position(region.start), self._map_position(region.end)),
+            )
+        elif finding.location.position is not None:
+            location = Location(finding.location.path, position=self._map_position(finding.location.position))
+        else:
+            location = finding.location
+        notes = finding.notes
+        original = finding.location.region.start if finding.location.region is not None else finding.location.position
+        if self.block.literal is None and original is not None:
+            notes = (
+                *notes,
+                f"Embedded shell line {max(1, original.line - self.prefix + 1)}, column {original.character + 1}; this executable field has no literal source mapping.",
+            )
+        return replace(finding, location=location, notes=notes)
 
-def _map_position(position: Position, block: ExecutionBlock, document: SourceDocument, prefix: int) -> Position:
-    origin = block.literal
-    if origin is not None:
-        mapped = document.utf16_point(
-            line=origin.line - 1 + position.line - prefix, character=origin.indent + position.character
-        )
-        if mapped is not None and mapped.byte_offset is not None:
-            start = len(document.text[: origin.start].encode("utf-8", errors="surrogateescape"))
-            end = len(document.text[: origin.end].encode("utf-8", errors="surrogateescape"))
-            if mapped.byte_offset > end:
-                # Native EOF belongs to the scalar boundary, before the next YAML field.
-                return document.region(start_byte=end, end_byte=end).start
-            if mapped.byte_offset >= start:
-                return mapped
-    fallback = document.point(line=block.line, column=1)
-    if fallback is None:
-        message = "execution block source position is outside the authored document"
-        raise ProgramProjectionError(message)
-    return fallback
+    def _map_position(self, position: Position) -> Position:
+        origin = self.block.literal
+        if origin is not None:
+            mapped = self.document.utf16_point(
+                line=origin.line - 1 + position.line - self.prefix, character=origin.indent + position.character
+            )
+            if mapped is not None and mapped.byte_offset is not None:
+                if self._literal_bounds is None:
+                    self._literal_bounds = (
+                        len(self.document.text[: origin.start].encode("utf-8", errors="surrogateescape")),
+                        len(self.document.text[: origin.end].encode("utf-8", errors="surrogateescape")),
+                    )
+                start, end = self._literal_bounds
+                if mapped.byte_offset > end:
+                    # Native EOF belongs to the scalar boundary, before the next YAML field.
+                    return self.document.region(start_byte=end, end_byte=end).start
+                if mapped.byte_offset >= start:
+                    return mapped
+        fallback = self.document.point(line=self.block.line, column=1)
+        if fallback is None:
+            message = "execution block source position is outside the authored document"
+            raise ProgramProjectionError(message)
+        return fallback
 
 
 def _format_report(
@@ -356,8 +368,8 @@ def _format_block(
         return None
     if _only_projected_make_suffix(path, candidate, document, source, formatted):
         return None
-    finding = _map_finding(
-        shell_format.format_diagnostic(path=relative, source=source, formatted=formatted), candidate.block, document
+    finding = _ShellSourceMap(candidate.block, document).map_finding(
+        shell_format.format_diagnostic(path=relative, source=source, formatted=formatted)
     )
     if not fixable(candidate):
         finding = replace(finding, help="Format this embedded shell block manually or extract it to a shell file.")

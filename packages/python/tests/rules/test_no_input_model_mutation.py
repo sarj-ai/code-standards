@@ -109,6 +109,55 @@ def _check(source: str, path: Path = Path("app/records.py")) -> list[Diagnostic]
     return rule.check(path, source)
 
 
+@pytest.mark.parametrize(
+    "terminal_branch",
+    [
+        "        if inner:\n            return\n        else:\n            raise ValueError\n",
+        "        if inner:\n            return\n        raise ValueError\n",
+    ],
+    ids=("nested", "flattened"),
+)
+def test_terminal_conditional_branch_preserves_the_reachable_borrowed_alias(terminal_branch: str) -> None:
+    source = (
+        _MODELS + "def update(record: Record, outer: bool, inner: bool):\n"
+        "    if outer:\n" + terminal_branch + "    else:\n        active = record\n"
+        "    active.name = 'new'\n"
+    )
+
+    findings = _check(source)
+
+    line = next(number for number, text in enumerate(source.splitlines(), start=1) if text == "    active.name = 'new'")
+    assert [(finding.code, finding.line, finding.col, finding.severity.value) for finding in findings] == [
+        ("SARJ481", line, 5, "error")
+    ]
+
+
+def test_partially_terminal_conditional_keeps_its_unknown_normal_continuation() -> None:
+    source = (
+        _MODELS + "def update(record: Record, outer: bool, inner: bool):\n"
+        "    if outer:\n"
+        "        if inner:\n            return\n"
+        "        active = unknown()\n"
+        "    else:\n        active = record\n"
+        "    active.name = 'new'\n"
+    )
+
+    assert _check(source) == []
+
+
+def test_mutation_after_a_terminal_nested_conditional_is_unreachable() -> None:
+    source = (
+        _MODELS + "def update(record: Record, outer: bool, inner: bool):\n"
+        "    if outer:\n"
+        "        if inner:\n            return\n"
+        "        else:\n            raise ValueError\n"
+        "    else:\n        return\n"
+        "    record.name = 'unreachable'\n"
+    )
+
+    assert _check(source) == []
+
+
 @pytest.mark.parametrize("view", ["parent", "element", "direct"])
 @pytest.mark.parametrize("borrowed", [False, True])
 def test_owned_child_replacement_updates_contained_aliases(view: str, *, borrowed: bool) -> None:

@@ -726,9 +726,10 @@ def _validated_initial_import(
         failure = "initial-import changed-line comparison failed"
     if failure is None:
         return report
-    return _with_coverage(
-        report_from_tools(report.root, (*report.tools, *_failed_analysis(report.root, "invalid-input", failure).tools)),
-        report.coverage,
+    return report_from_tools(
+        report.root,
+        (*report.tools, *_failed_analysis(report.root, "invalid-input", failure).tools),
+        coverage=report.coverage,
     )
 
 
@@ -777,7 +778,7 @@ def _with_shell_format_severity(
         )
         for tool in report.tools
     )
-    return report_from_tools(report.root, tools)
+    return report_from_tools(report.root, tools, coverage=report.coverage)
 
 
 def _without_baselined_diagnostics(
@@ -822,17 +823,15 @@ def _without_baselined_diagnostics(
     tools = tuple(filter_tool(item) for item in report.tools)
     if compatibility is not None and compatibility.issues:
         tools = (*tools, ToolReport("sarj-standards", Completion.FAILED, issues=tuple(compatibility.issues)))
-    return report_from_tools(report.root, tools)
+    return report_from_tools(report.root, tools, coverage=report.coverage)
 
 
 def _with_coverage(report: AnalysisReport, coverage: Sequence[CoverageNotice]) -> AnalysisReport:
     notices = tuple(coverage)
     if not notices:
         return report
-    blocking = any(item.blocking for item in notices)
-    completion = Completion.PARTIAL if blocking and report.completion is Completion.COMPLETE else report.completion
-    conclusion = report.conclusion if report.diagnostics or not blocking else Conclusion.INCONCLUSIVE
-    return AnalysisReport(report.root, completion, conclusion, report.tools, notices)
+    combined = tuple(dict.fromkeys((*report.coverage, *notices)))
+    return AnalysisReport.from_tools(report.root, report.tools, coverage=combined)
 
 
 def _analysis_inputs(
@@ -959,7 +958,7 @@ def _with_library_policy(
     except (OSError, TypeError, ValueError, ManifestPolicyError) as exc:
         issue = ExecutionIssue("sarj-library-policy", "policy-failure", f"{type(exc).__name__}: {exc}")
         policy = ToolReport("sarj-library-policy", Completion.FAILED, issues=(issue,))
-    return report_from_tools(root, (*native.tools, policy))
+    return report_from_tools(root, (*native.tools, policy), coverage=native.coverage)
 
 
 def _with_repository_analysis(root: Path, native: AnalysisReport, *, staged: bool) -> AnalysisReport:
@@ -977,7 +976,7 @@ def _with_repository_analysis(root: Path, native: AnalysisReport, *, staged: boo
         )
         repository = ToolReport("repo-standards", Completion.FAILED, issues=(issue,))
     if repository is not None:
-        native = report_from_tools(root, (*native.tools, repository))
+        native = report_from_tools(root, (*native.tools, repository), coverage=native.coverage)
     return native
 
 
@@ -1176,7 +1175,7 @@ def _with_warning_severity(
         )
         for tool in report.tools
     )
-    return report_from_tools(report.root, tools)
+    return report_from_tools(report.root, tools, coverage=report.coverage)
 
 
 def _selector_for_diagnostic(item: Diagnostic) -> RuleSelector | None:

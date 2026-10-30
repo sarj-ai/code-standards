@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import errno
 from pathlib import Path
 
@@ -7,14 +8,73 @@ import pytest
 
 from sarj_standards import api
 from sarj_standards.libs.adoption.manifest import Manifest
-from sarj_standards.libs.diagnostics import Completion, Conclusion, CoverageDisposition
-from sarj_standards.libs.linting import runner
+from sarj_standards.libs.diagnostics import (
+    AnalysisReport,
+    Completion,
+    Conclusion,
+    CoverageDisposition,
+    CoverageNotice,
+    ToolReport,
+)
+from sarj_standards.libs.linting import repo_standards, runner
+from sarj_standards.libs.linting.policy import Policy
+from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelector
 
 
 _ENGINES = (
     ("document.sql", "sql:prefer-jsonb", "sarj-sql-lint"),
     ("main.tf", "iac:no-environment-conditional", "sarj-iac-lint"),
 )
+
+
+def test_covered_report_stays_incomplete_through_tool_and_severity_transforms(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    coverage = (CoverageNotice("sql", "requested input unavailable", 1),)
+    original = AnalysisReport.from_tools(tmp_path, (ToolReport("fixture", Completion.COMPLETE),), coverage=coverage)
+
+    def repository_report(root: Path, *, staged: bool) -> ToolReport:
+        assert root == tmp_path
+        assert not staged
+        return ToolReport("repo-standards", Completion.COMPLETE)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- isolate the repository integration boundary so this regression exercises report composition without Git execution.
+        repo_standards, "analyze", repository_report
+    )
+    shell = api._with_shell_format_severity(original, paths=None, staged=False, changed_scope=None)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise coverage preservation through the internal report transform.
+    warning = api._with_warning_severity(shell, frozenset({RuleSelector(RuleEngine.PYTHON, RuleId("unrelated"))}))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the nonempty-selector transformation path.
+    library = api._with_library_policy(tmp_path, warning, [], Policy.from_manifest(tmp_path, None))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise real library-tool composition with an empty private fixture.
+    repository = api._with_repository_analysis(tmp_path, library, staged=False)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise the successful repository-tool append path.
+
+    for report in (shell, warning, library, repository):
+        assert report.coverage == coverage
+        assert report.completion is Completion.PARTIAL
+        assert report.conclusion is Conclusion.INCONCLUSIVE
+        assert report.exit_code == 2
+        assert not report.diagnostics
+    assert [tool.name for tool in repository.tools] == ["fixture", "repo-standards", "sarj-library-policy"]
+
+
+def test_coverage_append_preserves_distinct_notices_and_exact_duplicate_order(tmp_path: Path) -> None:
+    failed = CoverageNotice("sql", "input unavailable", 1)
+    original = AnalysisReport.from_tools(tmp_path, (), coverage=(failed,))
+    different_count = replace(failed, file_count=2)
+    different_reason = replace(failed, reason="another unavailable input")
+    nonblocking = replace(failed, disposition=CoverageDisposition.EXCLUDED)
+
+    appended = api._with_coverage(original, (failed, different_count, different_reason, nonblocking, different_count))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- exercise explicit append and complete-value deduplication semantics.
+    repeated = api._with_coverage(appended, (failed, nonblocking))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- repeated notices must not change coverage contents or order.
+
+    assert appended.coverage == (failed, different_count, different_reason, nonblocking)
+    assert repeated.coverage == appended.coverage
+    assert repeated.completion is Completion.PARTIAL
+    assert repeated.conclusion is Conclusion.INCONCLUSIVE
+    assert repeated.exit_code == 2
+    assert api._with_coverage(appended, ()) is appended  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- an empty append preserves the original report identity.
+    replacement = AnalysisReport.from_tools(tmp_path, original.tools, coverage=(nonblocking,))
+    assert replacement.coverage == (nonblocking,)
+    assert replacement.completion is Completion.COMPLETE
+    assert replacement.exit_code == 0
 
 
 @pytest.mark.parametrize(("name", "selector", "engine"), _ENGINES)

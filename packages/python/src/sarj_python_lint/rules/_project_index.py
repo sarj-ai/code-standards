@@ -157,6 +157,11 @@ class SourceUnit:
 
 
 @dataclass(frozen=True, slots=True)
+class _AmbiguousModuleSources:
+    paths: tuple[Path, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class LoadedSource:
     path: Path
     source: str
@@ -276,8 +281,18 @@ class ProjectIndexSet:
         self._bound_value_prefixes: dict[str, bool] = {}
         self._value_origins_incomplete = False
         self.import_namespace_mutations = ImportNamespaceMutations(WeakMethod(self._namespace_write_inventory))
-        by_module = {unit.module: unit for unit in units.values() if unit.module is not None}
-        self._by_module = MappingProxyType(by_module)
+        by_module: dict[str, dict[Path, SourceUnit]] = {}
+        for unit in units.values():
+            if unit.module is not None:
+                by_module.setdefault(unit.module, {})[unit.path] = unit
+        self._by_module = MappingProxyType(
+            {
+                module: next(iter(candidates.values()))
+                if len(candidates) == 1
+                else _AmbiguousModuleSources(tuple(candidates))
+                for module, candidates in by_module.items()
+            }
+        )
         classes: dict[SymbolRef, ClassSummary] = {}
         nominals: dict[str, set[SymbolRef]] = {}
         _collect_unit_symbols(units, classes, nominals)
@@ -429,7 +444,8 @@ class ProjectIndexSet:
         return False
 
     def source_unit(self, module: str) -> SourceUnit | None:
-        return self._by_module.get(module)
+        source = self._by_module.get(module)
+        return source if isinstance(source, SourceUnit) else None
 
     def _namespace_write_inventory(self) -> Mapping[str, _ImportNamespaceWrites]:
         def resolve(origin: SymbolRef) -> tuple[SymbolRef, ...] | None:

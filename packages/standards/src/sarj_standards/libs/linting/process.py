@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from enum import StrEnum
 import math
 from pathlib import Path
+from threading import Event
 from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
@@ -18,6 +20,31 @@ class ProcessOutput:
 
 class OutputLimitError(OSError):
     pass
+
+
+class ProcessCancelledError(BaseException):
+    pass
+
+
+# A pool initializer binds one analysis token for the lifetime of its owned worker.
+# Existing no-argument callbacks and executor.run(request) interfaces stay intact.
+_PROCESS_CANCELLATION: ContextVar[Event | None] = ContextVar("analysis_process_cancellation", default=None)
+
+
+def current_cancellation() -> Event | None:
+    return _PROCESS_CANCELLATION.get()
+
+
+def initialize_process_cancellation(cancellation: Event | None) -> None:
+    _PROCESS_CANCELLATION.set(cancellation)
+
+
+def raise_if_cancelled(cancellation: Event | None) -> None:
+    # A request prepared before dispatch must still observe its worker's analysis.
+    active = current_cancellation()
+    if (cancellation is not None and cancellation.is_set()) or (active is not None and active.is_set()):
+        message = "analysis process cancelled"
+        raise ProcessCancelledError(message)
 
 
 class ToolResolution(StrEnum):
@@ -46,6 +73,7 @@ class ProcessRequest:
     max_input_bytes: int | None = None
     max_stdout_bytes: int = 16 * 1024 * 1024
     max_stderr_bytes: int = 64 * 1024
+    cancellation: Event | None = field(default_factory=current_cancellation, repr=False, compare=False, kw_only=True)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "argv", tuple(self.argv))
@@ -66,6 +94,10 @@ class ProcessRequest:
                 message = f"analyzer source exceeds the {self.max_input_bytes} byte input limit"
                 raise OutputLimitError(message)
         object.__setattr__(self, "environment", MappingProxyType(dict(self.environment)))
+        if self.cancellation is not None and not isinstance(self.cancellation, Event):  # pyright: ignore[reportUnnecessaryIsInstance] -- untyped callers and dataclass replacement must preserve the cooperative token contract.
+            message = "process cancellation requires a threading.Event or None"
+            raise TypeError(message)
+        raise_if_cancelled(self.cancellation)
 
 
 def _validate_time(value: float, label: str, *, nonnegative: bool) -> None:
@@ -111,4 +143,5 @@ class RequestExecutor:
     capabilities: ProcessCapabilities
 
     def run(self, request: ProcessRequest) -> ProcessOutput:
+        raise_if_cancelled(request.cancellation)
         return self.execute(request)

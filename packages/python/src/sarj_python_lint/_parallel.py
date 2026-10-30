@@ -143,19 +143,24 @@ def check_parallel(
             for path, source in loaded.items()
         )
         for result in pool.map(_check_file, items, chunksize=1, buffersize=workers * 4):
-            if result.needs_serial:
-                # Drain the actual worker results so another initializer/file
-                # failure cannot be disguised as a clean serial replay.
-                needs_serial = True
+            # Drain actual results after either replay signal so a later worker
+            # failure cannot be disguised as a clean serial replay.
+            if needs_serial:
                 continue
             resolutions.update(result.resolutions)
             modules.update(result.modules)
             # A worker cannot hit either order-dependent limit when the whole
             # union stays strictly below it. At the boundary, discard all output.
-            if not needs_serial and (
-                len(resolutions) >= LOCAL_SOURCE_CACHE_LIMIT or len(modules) >= LOCAL_SOURCE_CACHE_LIMIT
+            if (
+                result.needs_serial
+                or len(resolutions) >= LOCAL_SOURCE_CACHE_LIMIT
+                or len(modules) >= LOCAL_SOURCE_CACHE_LIMIT
             ):
-                return None
+                needs_serial = True
+                diagnostics.clear()
+                resolutions.clear()
+                modules.clear()
+                continue
             diagnostics.extend(result.diagnostics)
         return None if needs_serial else diagnostics
     finally:

@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import ast
 from bisect import bisect_left, insort
+from dataclasses import dataclass
 from functools import cached_property
 from hashlib import sha256
 from io import StringIO
 from itertools import pairwise
 import re
 import tokenize
-from typing import TYPE_CHECKING, Final, NamedTuple
+from typing import TYPE_CHECKING, Final, Literal, NamedTuple
 from unicodedata import normalize
 
 from sarj_rule_contracts import TextEdit, apply_edits
@@ -80,6 +81,8 @@ _WALRUS_CODES = frozenset({"SARJ081", "SARJ432"})
 _JWT_POSITIONAL_PREFIX_ARGUMENTS = 3
 _STREAM_MIN_BODY_LENGTH = 3
 _CONSTANT_TRUE_DEPTH_LIMIT = 32
+# Bound accepted revisions; each rule still owns its work and replacement size.
+_MAX_FIX_PASSES: Final = 256
 _PURE_STRING_TRANSFORMS: Final[dict[str, str]] = {
     "strip": "stripped_value",
     "lower": "lowered_value",
@@ -1360,6 +1363,18 @@ _BUILDERS: Final[dict[str, Callable[[_Source, Diagnostic], list[TextEdit]]]] = {
 }
 
 
+@dataclass(frozen=True, slots=True)
+class _FixCandidate:
+    code: str
+    edits: tuple[TextEdit, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _FixPass:
+    edits: tuple[TextEdit, ...]
+    codes: tuple[str, ...]
+
+
 def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None) -> str:
     from sarj_python_lint.__main__ import check_source  # ruff: ignore[import-outside-top-level] -- the CLI imports this entry point lazily.
 
@@ -1371,6 +1386,8 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
         # Only the closed alias builder owns aligned physical-line buffers and token coordinates here.
         rules = [rule for rule in rules if rule.code == "SARJ531"]
     seen: set[bytes] = set()
+    applied_codes: set[str] = set()
+    passes = 0
     current = source
     while (fingerprint := sha256(current.encode("utf-8")).digest()) not in seen:
         seen.add(fingerprint)
@@ -1380,30 +1397,43 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
         if not candidates:
             return current
         # Batch independent candidates; overlapping candidates get fresh offsets on the next pass.
-        updated = apply_edits(current, _coherent_edits(candidates))
+        selected_pass = _coherent_edits(candidates)
+        updated = apply_edits(current, selected_pass.edits)
         compile(updated, str(path), "exec", dont_inherit=True)
         if updated == current:
             return current
+        if passes == _MAX_FIX_PASSES:
+            raise _convergence_error(path, reason="pass budget exhausted", passes=passes, codes=applied_codes)
+        passes += 1
+        applied_codes.update(selected_pass.codes)
         current = updated
-    msg = f"Python autofixes did not converge: {path}"
-    raise ValueError(msg)
+    raise _convergence_error(path, reason="source cycle", passes=passes, codes=applied_codes)
 
 
-def _candidate_edits(context: PythonFileContext, diagnostics: Sequence[Diagnostic]) -> list[list[TextEdit]]:
+def _convergence_error(
+    path: Path, *, reason: Literal["pass budget exhausted", "source cycle"], passes: int, codes: set[str]
+) -> ValueError:
+    participants = ", ".join(sorted(codes)) or "none"
+    msg = f"Python autofixes did not converge: {path} ({reason}; passes={passes}; rules={participants})"
+    return ValueError(msg)
+
+
+def _candidate_edits(context: PythonFileContext, diagnostics: Sequence[Diagnostic]) -> list[_FixCandidate]:
     view = _Source(context, diagnostics)
     return [
-        edits
+        _FixCandidate(diagnostic.code, tuple(edits))
         for diagnostic in diagnostics
         if (builder := _BUILDERS.get(diagnostic.code)) is not None
         if (edits := builder(view, diagnostic))
     ]
 
 
-def _coherent_edits(candidates: list[list[TextEdit]]) -> list[TextEdit]:
+def _coherent_edits(candidates: list[_FixCandidate]) -> _FixPass:
     accepted: list[TextEdit] = []
+    codes: list[str] = []
     known: set[TextEdit] = set()
     for candidate in candidates:
-        additions = sorted(set(candidate) - known)
+        additions = sorted(set(candidate.edits) - known)
         if any(map(_overlap, additions, additions[1:], strict=False)):
             continue
         for edit in additions:
@@ -1416,7 +1446,9 @@ def _coherent_edits(candidates: list[list[TextEdit]]) -> list[TextEdit]:
             for edit in additions:
                 insort(accepted, edit)
             known.update(additions)
-    return accepted
+            if additions:
+                codes.append(candidate.code)
+    return _FixPass(tuple(accepted), tuple(dict.fromkeys(codes)))
 
 
 def _overlap(first: TextEdit, second: TextEdit) -> bool:

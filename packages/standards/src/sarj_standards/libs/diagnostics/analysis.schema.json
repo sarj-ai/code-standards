@@ -86,7 +86,7 @@
         "key": { "type": "string", "minLength": 1 },
         "name": { "type": "string", "minLength": 1 },
         "summary": { "type": "string", "minLength": 1 },
-        "helpUrl": { "type": "string", "pattern": "^https://" },
+        "helpUrl": { "type": "string", "pattern": "^[hH][tT][tT][pP][sS]://" },
         "tags": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
       }
     },
@@ -112,7 +112,7 @@
         "source": { "type": "string", "minLength": 1 },
         "location": { "$ref": "#/$defs/location" },
         "help": { "type": "string" },
-        "helpUrl": { "type": "string", "pattern": "^https://" },
+        "helpUrl": { "type": "string", "pattern": "^[hH][tT][tT][pP][sS]://" },
         "relatedLocations": { "type": "array", "items": { "$ref": "#/$defs/relatedLocation" } },
         "notes": { "type": "array", "items": { "type": "string", "minLength": 1 } },
         "fixes": { "type": "array", "items": { "$ref": "#/$defs/fix" } },

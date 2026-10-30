@@ -42,6 +42,34 @@ def test_focused_import_provenance(rule: PreferDirectImportModule, source: str, 
 
 
 @pytest.mark.parametrize(
+    ("namespace_import", "expected"),
+    [
+        ("from .builtins import locals as local_fn", 1),
+        ("from builtins import locals as local_fn", 0),
+    ],
+    ids=["relative-module", "actual-builtins-control"],
+)
+def test_relative_builtin_spelling_does_not_hide_static_loader(
+    rule: PreferDirectImportModule, namespace_import: str, expected: int
+) -> None:
+    source = f"import importlib\n{namespace_import}\nlocal_fn()\nplugin = importlib.import_module('plugins.billing')\n"
+    findings = rule.check(Path("app/loader.py"), source)
+    assert [(finding.code, finding.line, finding.col, finding.severity) for finding in findings] == (
+        [("SARJ529", 4, 10, "warning")] if expected else []
+    )
+
+
+def test_unused_parameter_in_another_scope_does_not_hide_static_loader(rule: PreferDirectImportModule) -> None:
+    source = (
+        "import importlib\ndef unrelated(importlib):\n    pass\nplugin = importlib.import_module('plugins.billing')\n"
+    )
+    findings = rule.check(Path("app/loader.py"), source)
+    assert [(finding.code, finding.line, finding.col, finding.severity) for finding in findings] == [
+        ("SARJ529", 4, 10, "warning")
+    ]
+
+
+@pytest.mark.parametrize(
     ("imports", "loader"),
     [
         ("import importlib", "importlib.import_module"),
@@ -149,6 +177,7 @@ def test_static_syntax_preserves_the_literal_module_name(
     "source",
     [
         "from custom import import_module\nplugin = import_module('plugins.billing')",
+        "from .importlib import import_module\nplugin = import_module('plugins.billing')",
         "from importlib import import_module\nimport_module = custom\nplugin = import_module('plugins.billing')",
         "from importlib import import_module\nfrom custom import *\nplugin = import_module('plugins.billing')",
         "from importlib import import_module\ninstall(import_module)\nplugin = import_module('plugins.billing')",
