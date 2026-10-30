@@ -15,6 +15,7 @@ import { consumerAnnotation, directEval, exportedSymbols, primitiveKeyword, priv
 const CONFIG = { path: "tsconfig.json", source: '{"compilerOptions":{"strict":true,"target":"ESNext","module":"ESNext","moduleResolution":"Bundler"}}' } as const;
 const EXAMPLE = 'export {}; const account = {name: "Ada", email: "a"}; function label(user: {readonly email: string; readonly name: string}): string {return user.name;} label(account);';
 const HELPER_EXAMPLE = 'export {}; const account = {name: "Ada", email: "a"}; function formatName(name: string): string {return name.toUpperCase();} function label(user: {email: string; name: string}): string {return formatName(user.name);} label(account);';
+const NULLABLE_EXAMPLE = 'export {}; const account = {name: "Ada", email: null}; function label(user: {email: string | null; name: string}): string {return user.name;} label(account);';
 
 export const PREFER_MINIMAL_PARAMETER_CONTRACT_DOCUMENTATION = {
   defaultLevel: "warning",
@@ -26,7 +27,7 @@ export const PREFER_MINIMAL_PARAMETER_CONTRACT_DOCUMENTATION = {
   limitations: [
     "Automatic fixes additionally require every existing identifier caller to be natively assignable to the original contract, without Any, unknown, error or unresolved types on the relevant surface. Comments inside the annotation and TypeScript suppression directives keep the finding manual. Only unread required property signatures are removed; every read or optional member, modifier and terminator token is preserved. Edits that would merge distinct CR and LF terminators remain manual.",
     "Requires parser-owned TypeScript information and a strict external module. Only top-level private function declarations and raw const arrows with exactly one explicit parameter and an independent broad primitive return annotation are supported. Every callable reference must be a direct call with one identifier argument; exports including type-only exports, typeof queries, callbacks, storage, constructors, contextual signatures, overloads, generics, decorators, async functions and direct eval prevent findings.",
-    "Only anonymous inline contracts made of broad string, number, boolean or bigint property types are supported. Fields may be plain or readonly; the consumer body must still prove read-only usage. Retained field modifiers and optional members are preserved. Named domain contracts, brands, literal discriminants, classes, methods, callbacks, indexes, mapped types and imported parameter contracts are excluded. At least one read required field and one unread required field must be established; all-optional reduced contracts can reject existing callers through weak-type checks.",
+    "Only anonymous inline contracts made of broad string, number, boolean or bigint property types are supported. An unread required field may additionally have exactly one such keyword and null or undefined in a direct two-part union; read or optional nullable fields and more complex unions remain excluded. Fields may be plain or readonly; the consumer body must still prove read-only usage. Retained field modifiers and optional members are preserved. Named domain contracts, brands, literal discriminants, classes, methods, callbacks, indexes, mapped types and imported parameter contracts are excluded. At least one read required field and one unread required field must be established; all-optional reduced contracts can reject existing callers through weak-type checks.",
     "The single return expression may use only fixed scalar field reads, flat destructuring, literals, operators, templates and scalar calls to same-file implemented top-level functions or raw const arrows with an explicit return annotation. These calls require one native resolved declaration, no generic or predicate signature, scalar arguments/result and complete active native checking of the local implementation file. Their helper bodies need not be pure because only scalar values cross the call and only an erased parameter annotation changes. Imported, aliased, ambient, overloaded, optional, spread and member calls remain unsupported. Bound destructured fields count as reads even when their local aliases are unused. Whole-object escape, identity, mutation, closures, reflection, serialization, dynamic keys, implicit Object capabilities and JSX are unsupported. Unknown semantic information causes abstention. Findings outside the fix proof remain manual; this is not a requirement to minimize every object or discard useful producer fields.",
   ],
   examples: [
@@ -34,19 +35,27 @@ export const PREFER_MINIMAL_PARAMETER_CONTRACT_DOCUMENTATION = {
     { id: "used-fields", title: "Every required dependency is read", outcome: "no-match", files: [{ path: "src/case.ts", source: EXAMPLE.replace("return user.name;", 'return user.name + user.email;') }, CONFIG], focusPath: "src/case.ts", expectedCount: 0, public: true },
     { id: "scalar-helper", scenarioId: "local-scalar-helper", title: "Only the name crosses a local scalar helper call", outcome: "match", files: [{ path: "src/case.ts", source: HELPER_EXAMPLE }, CONFIG], focusPath: "src/case.ts", expectedCount: 1, public: true, fixedFiles: [{ path: "src/case.ts", source: HELPER_EXAMPLE.replace("email: string;", "") }] },
     { id: "helper-and-other-field", scenarioId: "local-scalar-helper", title: "The consumer still requires a separately read field", outcome: "no-match", files: [{ path: "src/case.ts", source: HELPER_EXAMPLE.replace("return formatName(user.name);", "return formatName(user.name) + user.email;") }, CONFIG], focusPath: "src/case.ts", expectedCount: 0, public: true },
+    { id: "unread-nullable-field", scenarioId: "nullable-private-field", title: "A required nullable field is never inspected", outcome: "match", files: [{ path: "src/case.ts", source: NULLABLE_EXAMPLE }, CONFIG], focusPath: "src/case.ts", expectedCount: 1, public: true, fixedFiles: [{ path: "src/case.ts", source: NULLABLE_EXAMPLE.replace("email: string | null;", "") }] },
+    { id: "read-nullable-field", scenarioId: "nullable-private-field", title: "An inspected nullable field keeps its contract", outcome: "no-match", files: [{ path: "src/case.ts", source: NULLABLE_EXAMPLE.replace("return user.name;", "return user.email ?? user.name;") }, CONFIG], focusPath: "src/case.ts", expectedCount: 0, public: true },
   ],
 } as const satisfies RuleDocumentation;
 
-function inlineFields(node: ts.TypeLiteralNode): ReadonlyMap<string, boolean> | null {
+function inlineFields(node: ts.TypeLiteralNode, reads: ReadonlySet<string>): ReadonlyMap<string, boolean> | null {
   const fields = new Map<string, boolean>();
   for (const member of node.members) {
     if (!ts.isPropertySignature(member) || !member.name || (!ts.isIdentifier(member.name) && !ts.isStringLiteralLike(member.name)) ||
-      (member.modifiers?.length ?? 0) > 1 || member.modifiers?.some((modifier) => modifier.kind !== ts.SyntaxKind.ReadonlyKeyword) || !primitiveKeyword(member.type)) return null;
+      (member.modifiers?.length ?? 0) > 1 || member.modifiers?.some((modifier) => modifier.kind !== ts.SyntaxKind.ReadonlyKeyword)) return null;
     const key = member.name.text;
+    if (!primitiveKeyword(member.type) && (member.questionToken || reads.has(key) || !nullishPrimitiveUnion(member.type))) return null;
     if (fields.has(key)) return null;
     fields.set(key, !member.questionToken);
   }
   return fields;
+}
+
+function nullishPrimitiveUnion(node: ts.TypeNode | undefined): boolean {
+  return node !== undefined && ts.isUnionTypeNode(node) && node.types.length === 2 && node.types.some(primitiveKeyword) &&
+    node.types.some((part) => part.kind === ts.SyntaxKind.UndefinedKeyword || (ts.isLiteralTypeNode(part) && part.literal.kind === ts.SyntaxKind.NullKeyword));
 }
 
 export default createRule<[], "minimal">({
@@ -78,7 +87,7 @@ export default createRule<[], "minimal">({
           const consumer = privateScalarConsumer(candidate, context.sourceCode, services, exports, true);
           const annotation = consumer?.parameter.type;
           if (!consumer || !annotation || !ts.isTypeLiteralNode(annotation)) continue;
-          const fields = inlineFields(annotation);
+          const fields = inlineFields(annotation, consumer.reads);
           if (!fields || [...consumer.reads].some((key) => !fields.has(key)) || ![...consumer.reads].some((key) => fields.get(key))) continue;
           const unused = [...fields].filter(([key, required]) => required && !consumer.reads.has(key)).map(([key]) => key).sort();
           if (!unused.length) continue;

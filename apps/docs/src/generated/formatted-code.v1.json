@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "44a71bf87e492e7edf922a35e85e85e85aea6b3eb99bd375b588cb8278385a3c",
+  "catalogSha256": "dff5668c4f1871429c3ca730f02b84cca330bdea9bc18bc8dcae359f0f79c5da",
   "cliSha256": "e9a1412228fd0ad7ae80b0641c6428cd3755dc7d700556086138cc55fc035f57",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -4930,6 +4930,25 @@
           "title": "The consumer still requires a separately read field"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\nconst account = { name: \"Ada\", email: null };\nfunction label(user: { email: string | null; name: string }): string {\n  return user.email ?? user.name;\n}\nlabel(account);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/case.ts",
+          "id": "read-nullable-field",
+          "outcome": "accept",
+          "scenarioId": "nullable-private-field",
+          "title": "An inspected nullable field keeps its contract"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -4952,6 +4971,30 @@
           "outcome": "reject",
           "scenarioId": "local-scalar-helper",
           "title": "Only the name crosses a local scalar helper call"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\nconst account = { name: \"Ada\", email: null };\nfunction label(user: { email: string | null; name: string }): string {\n  return user.name;\n}\nlabel(account);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\nconst account = { name: \"Ada\", email: null };\nfunction label(user: { name: string }): string {\n  return user.name;\n}\nlabel(account);\n"
+            }
+          ],
+          "focusPath": "src/case.ts",
+          "id": "unread-nullable-field",
+          "outcome": "reject",
+          "scenarioId": "nullable-private-field",
+          "title": "A required nullable field is never inspected"
         },
         {
           "expectedCount": 1,

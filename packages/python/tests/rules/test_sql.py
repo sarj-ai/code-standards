@@ -3,7 +3,9 @@ from pathlib import Path
 
 import pytest
 
+from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint.rules._sql import is_store_module, sql_string_value, strip_sql_noise
+from sarj_python_lint.rules._store_sql import store_queries
 
 
 def _expr(source: str) -> ast.expr:
@@ -171,3 +173,32 @@ def test_projection_mode_keeps_quotes_as_opaque_tokens() -> None:
     masked = strip_sql_noise(source, preserve_quoted_tokens=True)
     assert masked == "SELECT?       * ?       FROM entries"
     assert len(masked) == len(source)
+
+
+def test_deep_literal_composition_abstains_instead_of_overflowing_recovery() -> None:
+    expression = _expr('"SELECT id FROM item"' + ' + ""' * 1200)
+    assert sql_string_value(expression) is None
+
+
+def test_bounded_composition_preserves_order_and_interpolation_opacity() -> None:
+    expression = _expr('"SELECT " + f"{projection} FROM " + "item"')
+    assert sql_string_value(expression, interpolation_placeholder="__hole__") == "SELECT __hole__ FROM item"
+    assert sql_string_value(_expr('"SELECT " + projection + " FROM item"')) is None
+
+
+def test_native_query_recovery_contains_deep_source_visitor_overflow() -> None:
+    expression = '"SELECT id FROM item"' + ' + ""' * 1200
+    source = f"from psycopg import Cursor\ndef read(handle: Cursor):\n    handle.execute({expression})\n"
+    context = PythonFileContext(Path("app/reader.py"), source)
+    assert list(store_queries(context)) == []
+
+
+def test_native_query_recovery_still_follows_stable_module_bindings() -> None:
+    source = """from psycopg import Cursor
+QUERY = "SELECT id FROM item WHERE id=%s"
+def read(handle: Cursor):
+    handle.execute(QUERY)
+"""
+    [query] = store_queries(PythonFileContext(Path("app/reader.py"), source))
+    assert query.node.lineno == 2
+    assert query.sql == "SELECT id FROM item WHERE id=%s"
