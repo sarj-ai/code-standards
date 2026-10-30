@@ -90,6 +90,8 @@ _ERROR_FIRST_APPROVALS: Final = frozenset(
         # User-approved constructor ownership policy: inject import-proven HTTPX
         # clients and retain scoped composition ownership and async cleanup.
         "python:no-async-client-in-constructor",
+        # Explicit user-requested blocking bulk-first service CRUD policy.
+        "python:service-singleton-delegates-to-bulk",
     }
 )
 
