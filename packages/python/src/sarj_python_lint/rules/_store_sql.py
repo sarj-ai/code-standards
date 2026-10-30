@@ -46,7 +46,11 @@ class _MethodWrites:
 
 def store_queries(context: PythonFileContext) -> Iterator[StoreQuery]:
     if context.store_queries is None:
-        context.store_queries = tuple(recover_store_queries(context))
+        try:
+            queries = tuple(recover_store_queries(context))
+        except RecursionError:
+            queries = ()
+        context.store_queries = queries
     return iter(context.store_queries)
 
 

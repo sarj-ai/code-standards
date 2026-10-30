@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "date": "2026-10-29",
-  "scope": "Every Python rule in the 200-rule registry at main 3d848ea71f4ee1b4c2c7469e8bfebf8f8e036e07 plus six rules added by this change; source-level applicability review, not an assertion of identical enforcement across languages. Updated through Python 1.99.0 at main cba7ffff8548ea30f00cd1c8a9229cd856f2e9c8 with the additional SARJ556 applicability review; the original review and its 13 TypeScript rule additions remain historical facts.",
+  "scope": "Every Python rule in the 200-rule registry at main 3d848ea71f4ee1b4c2c7469e8bfebf8f8e036e07 plus six rules added by this change; source-level applicability review, not an assertion of identical enforcement across languages. Updated through Python 1.100.0 at main 42a984130ef5479a9590f24095ff944193191062 with the additional SARJ556 review and subsequent existing-rule semantic refinements; the original review and its 13 TypeScript rule additions remain historical facts.",
   "decisionDefinitions": {
     "existing-local": "Existing source-semantic TypeScript rule owns the stated bounded concern.",
     "existing-upstream": "Maintained upstream rule owns the portable source form; availability does not imply every consumer enables the same preset.",
@@ -1507,6 +1507,23 @@
       "originalTypeScriptRulesAdded": 13,
       "typeScriptRulesAddedByThisUpdate": 0,
       "basis": "All original 206 descriptor identities and implementation blobs are unchanged in this update. SARJ556 adds a separately reviewed bulk-first architecture policy; no TypeScript contract or generic CRUD-name detector is invented."
+    },
+    {
+      "date": "2026-10-30",
+      "base": "8e35bf3ea4bf7bcc3f418438a546c37af1b7d35d",
+      "head": "42a984130ef5479a9590f24095ff944193191062",
+      "pythonVersion": "1.100.0",
+      "pythonRulesReviewed": 207,
+      "pythonRulesAdded": [],
+      "pythonRulesSemanticallyReviewed": [
+        "SARJ020",
+        "SARJ437",
+        "SARJ541",
+        "SARJ542"
+      ],
+      "typeScriptRulesAddedByThisUpdate": 0,
+      "mappingChanges": false,
+      "basis": "Reviewed PostgreSQL execution ownership, grouped JOIN/read-stage accounting, parser privacy/recursion, Pydantic rejection callbacks, and runtime record/metadata identity changes. The 207 rule IDs and existing applicability decisions remain unchanged. Shared SQL analytics ownership and bounded TypeScript variant/return/exhaustiveness guidance are retained without claiming equivalent embedded-query, exception or nullable-prefix enforcement."
     }
   ]
 }
