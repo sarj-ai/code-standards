@@ -104,6 +104,8 @@ _NO_UPSTREAM_ESLINT_RULES = UpstreamESLintRules()
 
 
 _TIMEOUT = timedelta(minutes=15)
+# Eighth-second steps convert exactly to integer milliseconds in Node.
+_REACT_DOCTOR_TICKS_PER_SECOND = 8
 _ESLINT_ERROR = 2
 _DETEKT_FINDINGS = 2
 _MAX_STDOUT_BYTES = 16 * 1024 * 1024
@@ -1384,7 +1386,7 @@ def _react_doctor_budget_runner(runner: ProcessExecutor) -> ProcessExecutor:
         deadline = min(deadline, now + request.timeout_seconds)
         if request.deadline is not None:
             deadline = min(deadline, request.deadline)
-        remaining = deadline - now
+        remaining = int((deadline - now) * _REACT_DOCTOR_TICKS_PER_SECOND) / _REACT_DOCTOR_TICKS_PER_SECOND
         if remaining <= 0:
             raise subprocess.TimeoutExpired(request.argv, 0)
         argv = list(request.argv)
