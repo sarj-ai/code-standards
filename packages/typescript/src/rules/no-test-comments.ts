@@ -4,7 +4,7 @@
  * Examples: https://github.com/sarj-ai/code-standards/blob/main/packages/typescript/tests/rules/no-test-comments.test.ts
  */
 
-import { AST_NODE_TYPES } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
 import { commentLineEndings, ownLineCommentRemovalRange, trailingCommentRemovalRange } from "./_comment-edits.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
@@ -19,7 +19,7 @@ export const NO_TEST_COMMENTS_DOCUMENTATION = {
   autofix: "safe",
   limitations: [
     "Checks actual line and block comment tokens in recognized maintained test files, including test fixtures; strings and template text remain unchanged. Generated/vendor files are excluded.",
-    "Legal notices, shebangs, TypeScript triple-slash references, coverage/build annotations and explicit lint/type/test/formatter directives remain allowed. Ordinary prose embedded in a directive remains the owning tool's responsibility.",
+    "Legal notices, shebangs, TypeScript triple-slash references, coverage/build annotations and explicit lint/type/test/formatter directives remain allowed. Executable detect-secrets 1.5.0 allowlist/whitelist pragmas retain its case-sensitive delimiter, spacing, physical-line and next-line grammar; arbitrary pragma prose remains ordinary commentary. Rationale on an executable directive remains the owning tool's responsibility.",
     "The automatic fix removes comments and adjacent padding while retaining every line ending and necessary token boundary; it does not rename tests or remove executable statements. Bare integration/e2e directories and ambiguous hyphen/underscore test basenames require another concrete test-path signal or a runtime testing-framework import; ordinary production integration modules and rule implementations ending in -test are preserved.",
   ],
   examples: [
@@ -31,6 +31,56 @@ export const NO_TEST_COMMENTS_DOCUMENTATION = {
 const DIRECTIVE = /^(?:eslint(?:-\S+)?\b|(?:biome|oxlint|jshint|jslint|c8|v8|istanbul|vitest|prettier|dprint)\b|@(?:ts-(?:check|nocheck|expect-error|ignore)|vitest-environment|jest-environment|jsx\w*|license|preserve)\b|[#!]\s*__(?:PURE|NO_SIDE_EFFECTS)__|\/\s*<(?:reference|amd-module|amd-dependency)\b)/u;
 const LEGAL = /(?:^|\n)\s*\*?\s*(?:Copyright\b|SPDX-License-Identifier:|Licensed under\b|@license\b|@preserve\b)/iu;
 const TYPE_CONTRACT = /@(?:type|typedef|template|param|returns?|satisfies|callback|overload|implements|extends|augments|enum|this|import)\b/u;
+
+const DETECT_SECRETS_COMMENT_MARKERS = [
+  { start: "#", end: "" },
+  { start: "//", end: "" },
+  { start: "/\\*", end: " *\\*/" },
+  { start: "'", end: "" },
+  { start: "--", end: "" },
+  { start: "<!--[# \\t]*?", end: " *?-->" },
+] as const;
+const DETECT_SECRETS_PRAGMAS = DETECT_SECRETS_COMMENT_MARKERS.flatMap(({ start, end }) => [
+  { nextLine: false, pattern: new RegExp(`[ \\t]*${start} *pragma: ?(?:allow|white)list[ -]secret[^\\n]*?${end}[ \\t]*(?![\\s\\S])`, "u") },
+  { nextLine: true, pattern: new RegExp(`^[ \\t]*${start} *pragma: ?allowlist[ -]nextline[ -]secret[^\\n]*?${end}[ \\t]*(?![\\s\\S])`, "u") },
+]);
+const PYTHON_WHITESPACE = /\p{White_Space}/u;
+const PYTHON_EXTRA_WHITESPACE: ReadonlySet<string> = new Set(["\u001c", "\u001d", "\u001e", "\u001f"]);
+
+function hasDetectSecretsPragma(comment: TSESTree.Comment, text: string): boolean {
+  if (!comment.value.includes("pragma:")) return false;
+  let lineStart = Math.max(text.lastIndexOf("\r", comment.range[0] - 1), text.lastIndexOf("\n", comment.range[0] - 1)) + 1;
+  while (lineStart < comment.range[1]) {
+    const nextCr = text.indexOf("\r", lineStart);
+    const nextLf = text.indexOf("\n", lineStart);
+    const lineEnd = Math.min(nextCr < 0 ? text.length : nextCr, nextLf < 0 ? text.length : nextLf);
+    if (hasPragmaInReaderLine(comment, text.slice(lineStart, lineEnd), lineStart)) return true;
+    lineStart = lineEnd + (text[lineEnd] === "\r" && text[lineEnd + 1] === "\n" ? 2 : 1);
+  }
+  return false;
+}
+
+function hasPragmaInReaderLine(comment: TSESTree.Comment, rawLine: string, lineStart: number): boolean {
+  const sameLine = stripPythonTrailingWhitespace(rawLine);
+  for (const { nextLine, pattern } of DETECT_SECRETS_PRAGMAS) {
+    const column = nextLine ? 0 : Math.max(0, comment.range[0] - lineStart);
+    const match = pattern.exec((nextLine ? rawLine : sameLine).slice(column));
+    if (match === null) continue;
+    const pragmaStart = lineStart + column + match.index + match[0].indexOf("pragma:");
+    if (pragmaStart >= comment.range[0] && pragmaStart < comment.range[1]) return true;
+  }
+  return false;
+}
+
+function stripPythonTrailingWhitespace(value: string): string {
+  let end = value.length;
+  while (end > 0) {
+    const character = value.charAt(end - 1);
+    if (!PYTHON_WHITESPACE.test(character) && !PYTHON_EXTRA_WHITESPACE.has(character)) break;
+    end--;
+  }
+  return value.slice(0, end);
+}
 
 export default createRule<[], "testComment">({
   name: "no-test-comments",
@@ -70,7 +120,7 @@ export default createRule<[], "testComment">({
         }
         for (const [index, comment] of comments.entries()) {
           const body = comment.value.trim().replace(/^\*\s*/u, "");
-          if (DIRECTIVE.test(body) || LEGAL.test(comment.value) || legalLines.has(index) || TYPE_CONTRACT.test(comment.value)) continue;
+          if (DIRECTIVE.test(body) || LEGAL.test(comment.value) || legalLines.has(index) || TYPE_CONTRACT.test(comment.value) || hasDetectSecretsPragma(comment, context.sourceCode.text)) continue;
           context.report({
             node: comment,
             messageId: "testComment",
