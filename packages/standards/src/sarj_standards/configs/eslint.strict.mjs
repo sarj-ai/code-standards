@@ -246,6 +246,10 @@ const ESLINT_CONCISION_ADVISORY_RULES = {
 };
 const ESLINT_CORRECTNESS_ADVISORY_RULES = {
     "no-constructor-return": "warn",
+    "no-promise-executor-return": "warn",
+    "no-self-compare": "warn",
+    "no-template-curly-in-string": "warn",
+    "no-unmodified-loop-condition": "warn",
     "no-unreachable-loop": "warn",
     "no-return-assign": [
         "warn",
@@ -253,12 +257,14 @@ const ESLINT_CORRECTNESS_ADVISORY_RULES = {
     ]
 };
 const REGEXP_ADVISORY_RULES = {
+    "regexp/no-contradiction-with-assertion": "warn",
     "regexp/no-missing-g-flag": [
         "warn",
         {
             strictTypes: true
         }
-    ]
+    ],
+    "regexp/no-useless-assertions": "warn"
 };
 const UNICORN_CORRECTNESS_RULES = {
     "unicorn/no-conflicting-constraints": "error",
@@ -1235,6 +1241,10 @@ export function createConfig(options = {}) {
                 "no-restricted-syntax": [
                     "error",
                     {
+                        selector: "ForInStatement",
+                        message: "Do not use for-in enumeration. Use for-of with Object.keys or Object.entries for own properties; an inherited-key protocol requires an exact, explained exception."
+                    },
+                    {
                         selector: ":matches(TSAsExpression, TSTypeAssertion)[typeAnnotation.typeName.name='const'] > ObjectExpression > Property > :matches(TSAsExpression, TSTypeAssertion).value[typeAnnotation.typeName.name='const'], :matches(TSAsExpression, TSTypeAssertion)[typeAnnotation.typeName.name='const'] > ArrayExpression > :matches(TSAsExpression, TSTypeAssertion)[typeAnnotation.typeName.name='const']",
                         message: "This member already inherits the enclosing as const assertion. Remove the member's redundant const assertion."
                     },
@@ -1633,6 +1643,23 @@ export function createConfig(options = {}) {
                         allowIndirect: false
                     }
                 ],
+                "no-caller": "off",
+                "no-restricted-properties": [
+                    "error",
+                    {
+                        object: "arguments",
+                        property: "callee",
+                        message: "Use a named function reference instead of legacy arguments introspection."
+                    },
+                    {
+                        object: "arguments",
+                        property: "caller",
+                        message: "Pass context explicitly instead of inspecting the caller."
+                    }
+                ],
+                "no-iterator": "error",
+                "no-proto": "error",
+                "@typescript-eslint/no-for-in-array": "off",
                 "no-prototype-builtins": "error",
                 "no-return-await": "off",
                 eqeqeq: [
