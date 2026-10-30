@@ -115,6 +115,10 @@ def check_parallel(
 ) -> list[Diagnostic] | None:
     # The untouched parent rules/session remain the serial fallback. Workers
     # receive the same complete project snapshot and selected source strings.
+    # Select the untouched serial session before a large batch can require a
+    # complete parallel pass followed by the same quota-sensitive serial replay.
+    if len(loaded) >= LOCAL_SOURCE_CACHE_LIMIT:
+        return None
     source_snapshot = None if source_inputs is None else source_inputs.source_snapshot()
     if source_snapshot is not None and source_snapshot.eligible_raw_count >= LOCAL_SOURCE_CACHE_LIMIT:
         return None
