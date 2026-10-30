@@ -144,7 +144,7 @@ class _NativeFixer(Protocol):
     def fix_source(self, path: Path, source: str, *, rule_ids: Sequence[str] | None = None) -> str: ...
 
 
-def verify_native_rule(rule: type[NativeRule], analyze: NativeAnalyzer) -> int:
+def verify_native_rule(rule: type[NativeRule], analyze: NativeAnalyzer, *, fix: ExampleFixer | None = None) -> int:
     spec = rule.native_spec()
     if spec is None:
         msg = f"{rule.id}: missing source-owned documentation"
@@ -153,8 +153,7 @@ def verify_native_rule(rule: type[NativeRule], analyze: NativeAnalyzer) -> int:
     def run(_root: Path, focus: Path) -> list[ExampleFinding]:
         return [ExampleFinding(d.path, d.line, d.col, d.code, d.message) for d in analyze([rule.id], [focus])]
 
-    fix: ExampleFixer | None = None
-    if any(example.fixed_files for example in spec.examples):
+    if fix is None and any(example.fixed_files for example in spec.examples):
         module = import_module(f"{rule.__module__.partition('.')[0]}.autofix")
         if not isinstance(module, _NativeFixer):
             msg = f"{rule.id}: missing native fix adapter"

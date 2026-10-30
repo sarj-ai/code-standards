@@ -71,10 +71,11 @@ class PreferDirectImportModule(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if context.generated or context.tree is None or "import_module" not in context.symbol_source:
             return []
+        provenance = context.resource_provenance
         loader_references = {
             reference
             for call in context.nodes(ast.Call)
-            if context.imports.resolved_qualified_name(call.func) == "importlib.import_module"
+            if provenance.runtime_import_name(call.func) == "importlib.import_module"
             for reference in ast.walk(call.func)
         }
         if dynamic_namespace_access(
@@ -96,7 +97,7 @@ class PreferDirectImportModule(Rule):
             if isinstance(statement, ast.Assign | ast.AnnAssign | ast.Expr)
             and isinstance(node := statement.value, ast.Call)
             and (module := _literal_module(node)) is not None
-            and context.resource_provenance.runtime_import_name(node.func) == "importlib.import_module"
+            and provenance.runtime_import_name(node.func) == "importlib.import_module"
         ]
 
 

@@ -18,6 +18,10 @@ if TYPE_CHECKING:
     from pydantic import JsonValue
 
 
+def test_shipped_catalog_conforms_to_its_public_schema() -> None:
+    assert validate_local_schema(rule_catalog_artifact.load(), RULE_CATALOG_SCHEMA, (RULE_CATALOG_SCHEMA,)) == ()
+
+
 @pytest.mark.parametrize("schema", [True, 1.0, "1", None], ids=("boolean", "float", "string", "null"))
 def test_shipped_catalog_requires_an_integer_schema_version(tmp_path: Path, schema: bool | float | str | None) -> None:
     path = tmp_path / "catalog.json"

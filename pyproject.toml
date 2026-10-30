@@ -14,7 +14,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
   "Topic :: Software Development :: Quality Assurance",
 ]
-dependencies = ["sarj-rule-contracts==0.5.0", "packaging==26.3", "sqlglot==30.24.0", "typer==0.27.3"]
+dependencies = ["sarj-rule-contracts==0.6.0", "packaging==26.3", "sqlglot==30.24.0", "typer==0.27.3"]
 
 [tool.ruff]
 extend = ".ruff-strict.toml"

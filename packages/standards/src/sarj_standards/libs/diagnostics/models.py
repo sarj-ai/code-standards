@@ -5,10 +5,14 @@ from enum import StrEnum
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
 import re
-from typing import Final, NamedTuple, NewType, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Final, NamedTuple, NewType, NotRequired, TypedDict
 from urllib.parse import urlparse
 
 from sarj_standards.libs.typed_containers import is_object_tuple
+
+
+if TYPE_CHECKING:
+    from typing import Self
 
 
 SCHEMA_VERSION: Final = 1
@@ -151,9 +155,9 @@ class _ToolReportData(TypedDict):
     completion: str
     diagnosticCount: int
     issueCount: int
-    analyzerId: NotRequired[str]
-    invocationId: NotRequired[str]
-    cache: NotRequired[str]
+    analyzerId: str
+    invocationId: str
+    cache: str
     version: NotRequired[str]
     fileCount: NotRequired[int]
     baselinedDiagnosticCount: NotRequired[int]
@@ -519,10 +523,10 @@ class ToolReport:
             "completion": self.completion.value,
             "diagnosticCount": len(self.diagnostics),
             "issueCount": len(self.issues),
+            "analyzerId": self.analyzer_id or self.name,
+            "invocationId": self.invocation_id or self.name,
+            "cache": self.cache_status.value,
         }
-        result["analyzerId"] = self.analyzer_id or self.name
-        result["invocationId"] = self.invocation_id or self.name
-        result["cache"] = self.cache_status.value
         if self.version is not None:
             result["version"] = self.version
         if self.file_count is not None:
@@ -546,27 +550,22 @@ class AnalysisReport:
         _require_instance(self.root, Path, "analysis root")
         _require_instance(self.completion, Completion, "analysis completion")
         _require_instance(self.conclusion, Conclusion, "analysis conclusion")
-        _require_tuple_items(self.tools, ToolReport, "analysis tools")
-        _require_tuple_items(self.coverage, CoverageNotice, "analysis coverage")
-        has_issues = any(tool.issues for tool in self.tools)
-        has_findings = any(tool.diagnostics for tool in self.tools)
-        is_incomplete = has_issues or any(item.blocking for item in self.coverage)
-        expected_completion = (
-            Completion.FAILED
-            if self.tools and all(tool.completion is Completion.FAILED for tool in self.tools)
-            else Completion.COMPLETE
-            if not is_incomplete and all(tool.completion is Completion.COMPLETE for tool in self.tools)
-            else Completion.PARTIAL
-        )
-        if self.completion is not expected_completion:
-            msg = f"analysis completion must be {expected_completion.value} for its tool and coverage states"
+        expected = _analysis_state(self.tools, self.coverage)
+        if self.completion is not expected.completion:
+            msg = f"analysis completion must be {expected.completion.value} for its tool and coverage states"
             raise ValueError(msg)
-        expected = (
-            Conclusion.FINDINGS if has_findings else Conclusion.INCONCLUSIVE if is_incomplete else Conclusion.PASSED
-        )
-        if self.conclusion is not expected:
-            msg = f"analysis conclusion must be {expected.value} for its findings and issues"
+        if self.conclusion is not expected.conclusion:
+            msg = f"analysis conclusion must be {expected.conclusion.value} for its findings and issues"
             raise ValueError(msg)
+
+    @classmethod
+    def from_tools(
+        cls, root: Path, tools: tuple[ToolReport, ...], *, coverage: tuple[CoverageNotice, ...] = ()
+    ) -> Self:
+        """Derive state while preserving tool order, diagnostics and supplied coverage."""
+        _require_instance(root, Path, "analysis root")
+        state = _analysis_state(tools, coverage)
+        return cls(root, state.completion, state.conclusion, tools, coverage)
 
     @property
     def diagnostics(self) -> tuple[Diagnostic, ...]:
@@ -594,8 +593,13 @@ class AnalysisReport:
     def as_dict(self, *, include_fix_source_hashes: bool = False) -> _AnalysisReport:
         _require_instance(include_fix_source_hashes, bool, "include fix source hashes")
         rules: dict[str, RuleDescriptor] = {}
+        identities: dict[str, tuple[str, str]] = {}
         for item in self.diagnostics:
+            identity = (item.source, item.rule_id or item.code)
             key = f"{item.source}:{item.rule_id or item.code}"
+            if identities.setdefault(key, identity) != identity:
+                msg = f"diagnostic rule key {key!r} refers to distinct source/rule identities"
+                raise ValueError(msg)
             rules.setdefault(
                 key,
                 RuleDescriptor(
@@ -617,6 +621,31 @@ class AnalysisReport:
             "tools": [item.as_dict() for item in self.tools],
             "coverage": [item.as_dict() for item in self.coverage],
         }
+
+
+@dataclass(frozen=True, slots=True)
+class _AnalysisState:
+    completion: Completion
+    conclusion: Conclusion
+
+
+def _analysis_state(tools: tuple[ToolReport, ...], coverage: tuple[CoverageNotice, ...]) -> _AnalysisState:
+    _require_tuple_items(tools, ToolReport, "analysis tools")
+    _require_tuple_items(coverage, CoverageNotice, "analysis coverage")
+    has_issues = any(tool.issues for tool in tools)
+    has_findings = any(tool.diagnostics for tool in tools)
+    is_incomplete = has_issues or any(item.blocking for item in coverage)
+    completion = (
+        Completion.FAILED
+        if tools and all(tool.completion is Completion.FAILED for tool in tools)
+        else Completion.COMPLETE
+        if not is_incomplete and all(tool.completion is Completion.COMPLETE for tool in tools)
+        else Completion.PARTIAL
+    )
+    conclusion = (
+        Conclusion.FINDINGS if has_findings else Conclusion.INCONCLUSIVE if is_incomplete else Conclusion.PASSED
+    )
+    return _AnalysisState(completion, conclusion)
 
 
 def diagnostic_fingerprint(diagnostic: Diagnostic, *, anchor: str) -> str:

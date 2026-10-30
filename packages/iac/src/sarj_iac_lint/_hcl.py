@@ -463,6 +463,17 @@ class Block:
         return next((b for b in self.blocks if b.type == block_type), None)
 
 
+@dataclass(frozen=True, slots=True)
+class ParsedDocument:
+    root: Block
+
+
+@dataclass(frozen=True, slots=True)
+class RejectedDocument:
+    reason: str
+    fallback: Block
+
+
 class _BodyParseResult(NamedTuple):
     attributes: tuple[Attribute, ...]
     blocks: tuple[Block, ...]
@@ -476,12 +487,17 @@ class _ValueParseResult(NamedTuple):
 
 
 @lru_cache(maxsize=32)
-def document(source: str) -> Block:
+def document_result(source: str) -> ParsedDocument | RejectedDocument:
     root_end = max(len(physical_lines(source)), 1)
     try:
-        return _parsed_document(source, root_end)
-    except _InvalidHCLSourceError:
-        return Block("", (), 0, 1, 1, root_end, (), ())
+        return ParsedDocument(_parsed_document(source, root_end))
+    except _InvalidHCLSourceError as exc:
+        return RejectedDocument(str(exc), Block("", (), 0, 1, 1, root_end, (), ()))
+
+
+def document(source: str) -> Block:
+    result = document_result(source)
+    return result.root if isinstance(result, ParsedDocument) else result.fallback
 
 
 def _parsed_document(source: str, root_end: int) -> Block:

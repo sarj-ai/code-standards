@@ -6,7 +6,7 @@ import stat
 
 import pytest
 
-from sarj_rule_contracts.files import fix_file
+from sarj_rule_contracts import SourceChangedError, fix_file
 
 
 def test_fix_preserves_bom_crlf_unicode_and_mode(tmp_path: Path) -> None:
@@ -44,8 +44,9 @@ def test_transform_failure_is_unchanged(tmp_path: Path) -> None:
         message = "invalid source"
         raise ValueError(message)
 
-    with pytest.raises(ValueError, match="invalid source"):
+    with pytest.raises(ValueError, match="invalid source") as caught:
         fix_file(path, reject)
+    assert type(caught.value) is ValueError
     assert path.read_text() == "first"
     assert list(tmp_path.iterdir()) == [path]
 
@@ -83,7 +84,7 @@ def test_concurrent_source_edit_is_preserved(tmp_path: Path) -> None:
         path.write_text("concurrent")
         return source.upper()
 
-    with pytest.raises(ValueError, match="changed while fixes"):
+    with pytest.raises(SourceChangedError, match="changed while fixes"):
         fix_file(path, concurrent)
     assert path.read_text() == "concurrent"
     assert list(tmp_path.iterdir()) == [path]
@@ -100,7 +101,7 @@ def test_concurrent_inode_replacement_is_preserved(tmp_path: Path) -> None:
         replacement.replace(path)
         return source.upper()
 
-    with pytest.raises(ValueError, match="changed while fixes"):
+    with pytest.raises(SourceChangedError, match="changed while fixes"):
         fix_file(path, concurrent)
     assert path.read_text() == "first"
     assert path.stat().st_ino != original_inode
@@ -154,8 +155,9 @@ def test_source_edit_during_temporary_fsync_is_preserved(tmp_path: Path, monkeyp
     monkeypatch.setattr(  # sarj-noqa: SARJ445 -- a concurrent edit during native fsync is the behavior under test.
         "sarj_rule_contracts.files.os.fsync", concurrent_fsync
     )
-    with pytest.raises(ValueError, match="changed while fixes"):
+    with pytest.raises(SourceChangedError, match="changed while fixes") as caught:
         fix_file(path, str.upper)
+    assert isinstance(caught.value, ValueError)
     assert path.read_text() == "concurrent"
     assert list(tmp_path.iterdir()) == [path]
 

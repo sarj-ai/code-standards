@@ -8,8 +8,11 @@ import pytest
 # its guards (masking, nesting, value rejoining) are what the rules depend on.
 from sarj_iac_lint.__main__ import analyze
 from sarj_iac_lint._hcl import (
+    ParsedDocument,
+    RejectedDocument,
     blocks,
     document,
+    document_result,
     literal_string,
     literal_token,
     mask_block_comments,
@@ -276,6 +279,45 @@ def test_document_of_an_empty_source_is_an_empty_root():
     root = document("")
     assert root.attributes == ()
     assert root.blocks == ()
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'variable "zone" { default = "unterminated\n',
+        'variable "zone" { type = string }\n/* unterminated',
+        'variable "zone"\n { type = string }\n',
+    ],
+    ids=("incomplete-value", "incomplete-comment", "header-newline"),
+)
+def test_document_result_distinguishes_rejection_from_valid_empty_source(source: str) -> None:
+    empty = document_result("")
+    rejected = document_result(source)
+
+    assert isinstance(empty, ParsedDocument)
+    assert isinstance(rejected, RejectedDocument)
+    assert rejected.reason
+    assert rejected.fallback.attributes == ()
+    assert rejected.fallback.blocks == ()
+    assert document_result(source) is rejected
+    assert document(source) is rejected.fallback
+    assert document("") is empty.root
+    assert blocks(source) is rejected.fallback.blocks
+
+
+def test_document_result_retains_one_bounded_cache_and_legacy_tree_identity() -> None:
+    source = 'variable "region" { type = string }\n'
+    result = document_result(source)
+
+    assert isinstance(result, ParsedDocument)
+    assert document(source) is result.root
+    assert document_result(source) is result
+    assert blocks(source) is result.root.blocks
+    for index in range(40):
+        document_result(f'variable "fixture_{index}" {{ type = string }}\n')
+    info = document_result.cache_info()
+    assert info.maxsize == 32
+    assert info.currsize <= 32
 
 
 def test_empty_and_unbalanced_sources_degrade_without_raising():

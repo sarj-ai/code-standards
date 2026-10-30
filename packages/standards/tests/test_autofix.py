@@ -6,6 +6,11 @@ import sys
 from typing import TYPE_CHECKING
 
 import pytest
+import sarj_python_lint._autofix as python_autofix  # sarj-noqa: SARJ048 -- Set a small private pass budget for the controlled divergent builder without adding a public test seam.
+from sarj_python_lint._autofix import (  # sarj-noqa: SARJ048 -- Control a real builder's divergence to prove multi-file planning fails before any write.
+    _BUILDERS,  # pyright: ignore[reportPrivateUsage] -- The regression replaces a real builder while retaining the multi-file planner.
+)
+from sarj_rule_contracts import TextEdit
 
 import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import lifecycle, manifest
@@ -17,6 +22,9 @@ from sarj_standards.libs.linting.policy import Policy
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
+
+    from sarj_python_lint._autofix import _Source  # pyright: ignore[reportPrivateUsage]  # sarj-noqa: SARJ048 -- Preserve the controlled real builder's private input signature without a test-only public contract.
+    from sarj_python_lint.rule_base import Diagnostic
 
 
 @pytest.mark.parametrize(
@@ -119,6 +127,43 @@ def test_native_fix_paths_resolve_relative_inputs_against_the_explicit_root(
     monkeypatch.chdir(tmp_path)
     assert autofix.fix_paths(root, ["source.py"]) == (source,)
     assert source.read_bytes() == b"\nvalue = 1\n"
+
+
+def test_later_nonconverging_file_leaves_every_planned_source_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first = tmp_path / "first.py"
+    growing = tmp_path / "growing.py"
+    original = b"# ========\nvalue = 1\n"
+    for path in (first, growing):
+        path.write_bytes(original)
+    first.chmod(0o640)
+    growing.chmod(0o750)
+    modes = {path: stat.S_IMODE(path.stat().st_mode) for path in (first, growing)}
+    native_builder = _BUILDERS["SARJ016"]
+    earlier_plans: list[list[TextEdit]] = []
+
+    def fix_or_grow(view: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
+        if view.context.path == growing:
+            return [TextEdit(len(view.text), len(view.text), "# growth\n")]
+        edits = native_builder(view, diagnostic)
+        earlier_plans.append(edits)
+        return edits
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- Keep a real native failure bounded while observing the unchanged transactional planner.
+        python_autofix, "_MAX_FIX_PASSES", 3
+    )
+    monkeypatch.setitem(_BUILDERS, "SARJ016", fix_or_grow)
+
+    with pytest.raises(ValueError, match="pass budget exhausted") as failure:
+        autofix.fix_paths(tmp_path, [str(first), str(growing)])
+
+    assert str(growing) in str(failure.value)
+    assert "rules=SARJ016" in str(failure.value)
+    assert earlier_plans
+    assert any(earlier_plans)
+    assert all(path.read_bytes() == original for path in (first, growing))
+    assert all(stat.S_IMODE(path.stat().st_mode) == modes[path] for path in (first, growing))
 
 
 def test_upstream_fix_plans_honor_rule_exclusions_and_disabled_engines(tmp_path: Path) -> None:

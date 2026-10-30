@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier, Event
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import pytest
 
@@ -14,7 +15,13 @@ from sarj_standards.libs.diagnostics import (
     Severity,
     ToolReport,
 )
+from sarj_standards.libs.linting import scheduling
 from sarj_standards.libs.linting.analysis import report_from_tools
+from sarj_standards.libs.linting.process import (
+    ProcessCancelledError,
+    current_cancellation,
+    initialize_process_cancellation,
+)
 from sarj_standards.libs.linting.scheduling import analyze_groups
 
 
@@ -140,3 +147,157 @@ def test_typed_native_failure_preserves_external_report(tmp_path: Path, jobs: in
         successful,
     )
     assert type(reports[0].name) is str
+
+
+@pytest.mark.parametrize("jobs", [1, 2])
+def test_cancelled_nested_analysis_never_dispatches_callbacks_and_does_not_leak(tmp_path: Path, jobs: int) -> None:
+    cancellation = Event()
+    cancellation.set()
+
+    def unexpected() -> tuple[ToolReport, ...]:
+        pytest.fail("cancelled analysis must not enter a new adapter")
+
+    with ThreadPoolExecutor(
+        max_workers=1,
+        initializer=initialize_process_cancellation,
+        initargs=(cancellation,),
+    ) as workers:
+        result = workers.submit(analyze_groups, tmp_path, unexpected, unexpected, jobs=jobs)
+        with pytest.raises(ProcessCancelledError):
+            result.result(timeout=5)
+    successful = ToolReport("native", Completion.COMPLETE)
+    assert analyze_groups(tmp_path, _consumer_group(successful), lambda: (), jobs=jobs) == (successful,)
+
+
+@pytest.mark.parametrize("interruption_type", [KeyboardInterrupt, SystemExit])
+def test_caller_interruption_retains_actual_worker_cleanup_notes(
+    tmp_path: Path, interruption_type: type[BaseException]
+) -> None:
+    worker_started = Event()
+    original = interruption_type("caller interruption")
+    original.add_note("original caller note")
+
+    def native() -> tuple[ToolReport, ...]:
+        assert worker_started.wait(timeout=5)
+        raise original
+
+    def external() -> tuple[ToolReport, ...]:
+        worker_started.set()
+        cancellation = current_cancellation()
+        assert cancellation is not None
+        assert cancellation.wait(timeout=5)
+        failure = ProcessCancelledError("analysis process cancelled")
+        failure.add_note("analyzer process cleanup failed: owned wait failure")
+        raise failure
+
+    with pytest.raises(interruption_type) as observed:
+        analyze_groups(tmp_path, native, external, jobs=2)
+    assert observed.value is original
+    assert original.__notes__ == [
+        "original caller note",
+        "external worker: analyzer process cleanup failed: owned wait failure",
+    ]
+    assert original.__cause__ is None
+
+
+@pytest.mark.parametrize("interruption_type", [KeyboardInterrupt, SystemExit])
+@pytest.mark.parametrize("replacement_type", [RuntimeError, LookupError])
+def test_caller_interruption_retains_replacement_worker_failure_and_its_cause(
+    tmp_path: Path, interruption_type: type[BaseException], replacement_type: type[Exception]
+) -> None:
+    worker_started = Event()
+    original = interruption_type("caller interruption")
+
+    def native() -> tuple[ToolReport, ...]:
+        assert worker_started.wait(timeout=5)
+        raise original
+
+    def external() -> tuple[ToolReport, ...]:
+        worker_started.set()
+        cancellation = current_cancellation()
+        assert cancellation is not None
+        assert cancellation.wait(timeout=5)
+        cancelled = ProcessCancelledError("analysis process cancelled")
+        cancelled.add_note("analyzer stream cleanup failed: owned drain failure")
+        message = "replacement cleanup failure"
+        raise replacement_type(message) from cancelled
+
+    with pytest.raises(interruption_type) as observed:
+        analyze_groups(tmp_path, native, external, jobs=2)
+    assert observed.value is original
+    assert any(f"{replacement_type.__name__}: replacement cleanup failure" in note for note in original.__notes__)
+    assert any("owned drain failure" in note for note in original.__notes__)
+    assert original.__cause__ is None
+
+
+@pytest.mark.parametrize("interruption_type", [KeyboardInterrupt, SystemExit])
+def test_unformattable_worker_failure_cannot_replace_caller_interruption(
+    tmp_path: Path, interruption_type: type[BaseException]
+) -> None:
+    class UnformattableWorkerError(LookupError):
+        @override
+        def __str__(self) -> str:
+            message = "worker detail formatting failed"
+            raise RuntimeError(message)
+
+    worker_started = Event()
+    original = interruption_type("caller interruption")
+
+    def native() -> tuple[ToolReport, ...]:
+        assert worker_started.wait(timeout=5)
+        raise original
+
+    def external() -> tuple[ToolReport, ...]:
+        worker_started.set()
+        cancellation = current_cancellation()
+        assert cancellation is not None
+        assert cancellation.wait(timeout=5)
+        raise UnformattableWorkerError
+
+    with pytest.raises(interruption_type) as observed:
+        analyze_groups(tmp_path, native, external, jobs=2)
+    assert observed.value is original
+    assert any("cleanup remains unconfirmed" in note for note in original.__notes__)
+    assert original.__cause__ is None
+
+
+@pytest.mark.parametrize("interruption_type", [KeyboardInterrupt, SystemExit])
+def test_first_caller_interrupt_during_failure_join_cancels_the_running_peer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, interruption_type: type[BaseException]
+) -> None:
+    original = interruption_type("caller interrupted the failure join")
+    worker_started = Event()
+    native_failure = LookupError("native failed before caller interruption")
+
+    class InterruptedFirstJoin(ThreadPoolExecutor):
+        interrupted: bool = False
+
+        @override
+        def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
+            if not self.interrupted:
+                self.interrupted = True
+                raise original
+            super().shutdown(wait=wait, cancel_futures=cancel_futures)
+
+    def native() -> tuple[ToolReport, ...]:
+        assert worker_started.wait(timeout=5)
+        raise native_failure
+
+    def external() -> tuple[ToolReport, ...]:
+        worker_started.set()
+        cancellation = current_cancellation()
+        assert cancellation is not None
+        assert cancellation.wait(timeout=5)
+        failure = ProcessCancelledError("analysis process cancelled")
+        failure.add_note("analyzer stream cleanup failed: first-join interruption witness")
+        raise failure
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- interrupt the first real executor shutdown; preserve actual workers and subsequent join.
+        scheduling, "ThreadPoolExecutor", InterruptedFirstJoin
+    )
+    with pytest.raises(interruption_type) as observed:
+        analyze_groups(tmp_path, native, external, jobs=2)
+    assert observed.value is original
+    assert original.__context__ is native_failure
+    assert any("LookupError: native failed before caller interruption" in note for note in original.__notes__)
+    assert any("first-join interruption witness" in note for note in original.__notes__)

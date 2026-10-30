@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Unpack
 
 import pytest
 from sarj_iac_lint.rule_base import Diagnostic as IacDiagnostic
+from sarj_rule_contracts import SourceCatalog
 from sarj_sql_lint.rule_base import Diagnostic as SqlDiagnostic
 
 from sarj_standards import api
@@ -41,6 +42,7 @@ from sarj_standards.libs.diagnostics import (
     Position,
     Region,
     RelatedLocation,
+    RuleDescriptor,
     Severity,
     SourceDocument,
     TextEdit,
@@ -52,10 +54,11 @@ from sarj_standards.libs.diagnostics import (
     to_text,
 )
 from sarj_standards.libs.json_boundary import parse_json
-from sarj_standards.libs.linting import external as external_module
+from sarj_standards.libs.linting import analysis as analysis_module, external as external_module
 from sarj_standards.libs.linting.analysis import analyze as analyze_paths, normalize_native, report_from_tools
 from sarj_standards.libs.linting.policy import Policy
 from sarj_standards.libs.rules import RuleEngine, RuleId, RuleSelection, RuleSelector
+from sarj_standards.libs.schema_boundary import validate_local_schema
 from tests.process_fakes import FakeProcessExecutor
 
 
@@ -98,6 +101,40 @@ def test_canonical_json_schema_is_bundled() -> None:
     assert table_field(schema, "properties")["schemaVersion"] == {"const": 1}
     assert "diagnostic" in table_field(schema, "$defs")
     assert "fix" in table_field(schema, "$defs")
+
+
+def _assert_canonical_schema(report: AnalysisReport) -> None:
+    payload = parse_json(to_json(report))
+    assert validate_local_schema(payload, ANALYSIS_SCHEMA, (ANALYSIS_SCHEMA,)) == ()
+
+
+@pytest.mark.parametrize("scheme", ["https", "HTTPS", "hTtPs"])
+def test_help_url_scheme_casing_preserves_model_and_wire_values(tmp_path: Path, scheme: str) -> None:
+    url = f"{scheme}://example.com/Path?Key=Value#Part"
+    diagnostic = Diagnostic("TEST009", "example", Severity.WARNING, "fixture", Location("example.py"), help_url=url)
+    descriptor = RuleDescriptor("fixture:TEST009", "TEST009", "example", help_url=url)
+    report = AnalysisReport.from_tools(tmp_path, (ToolReport("fixture", Completion.COMPLETE, (diagnostic,)),))
+
+    _assert_canonical_schema(report)
+    payload = as_table(parse_json(to_json(report)))
+
+    assert diagnostic.help_url == url
+    assert descriptor.help_url == url
+    descriptor_data = descriptor.as_dict()
+    assert "helpUrl" in descriptor_data
+    assert descriptor_data["helpUrl"] == url
+    assert as_table(list_field(payload, "diagnostics")[0])["helpUrl"] == url
+    assert as_table(list_field(payload, "rules")[0])["helpUrl"] == url
+    assert url in to_json(report)
+    assert report.tools[0].as_dict() == {
+        "name": "fixture",
+        "completion": "complete",
+        "diagnosticCount": 1,
+        "issueCount": 0,
+        "analyzerId": "fixture",
+        "invocationId": "fixture",
+        "cache": "disabled",
+    }
 
 
 @pytest.mark.parametrize(
@@ -415,6 +452,7 @@ def test_canonical_schema_preserves_rich_diagnostics(tmp_path: Path) -> None:
         ),
     )
 
+    _assert_canonical_schema(report)
     payload = as_table(json.loads(to_json(report)))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
 
     assert payload["schemaVersion"] == 1
@@ -433,6 +471,38 @@ def test_canonical_schema_preserves_rich_diagnostics(tmp_path: Path) -> None:
     assert list_field(result, "relatedLocations")
 
 
+@pytest.mark.parametrize("reverse", [False, True], ids=["first-namespace-colon", "second-namespace-colon"])
+def test_json_rejects_distinct_rule_identities_with_the_same_key(tmp_path: Path, *, reverse: bool) -> None:
+    diagnostics = (
+        Diagnostic("E001", "first", Severity.ERROR, "a:b", Location("first.py"), rule_id="c"),
+        Diagnostic("E002", "second", Severity.ERROR, "a", Location("second.py"), rule_id="b:c"),
+    )
+    if reverse:
+        diagnostics = diagnostics[::-1]
+    report = AnalysisReport.from_tools(tmp_path, (ToolReport("fixture", Completion.COMPLETE, diagnostics=diagnostics),))
+
+    with pytest.raises(ValueError, match="diagnostic rule key 'a:b:c' refers to distinct source/rule identities"):
+        to_json(report)
+
+
+def test_json_preserves_same_rule_identity_with_different_finding_help(tmp_path: Path) -> None:
+    diagnostics = (
+        Diagnostic(
+            "E001", "first", Severity.ERROR, "fixture", Location("first.py"), rule_id="shared", help="First guidance"
+        ),
+        Diagnostic(
+            "E001", "second", Severity.ERROR, "fixture", Location("second.py"), rule_id="shared", help="Second guidance"
+        ),
+    )
+    report = AnalysisReport.from_tools(tmp_path, (ToolReport("fixture", Completion.COMPLETE, diagnostics=diagnostics),))
+
+    payload = report.as_dict()
+
+    assert payload["rules"] == [{"key": "fixture:shared", "name": "shared", "summary": "First guidance"}]
+    assert [finding.get("help") for finding in payload["diagnostics"]] == ["First guidance", "Second guidance"]
+    assert [finding.get("ruleKey") for finding in payload["diagnostics"]] == ["fixture:shared", "fixture:shared"]
+
+
 def test_expected_coverage_does_not_make_execution_incomplete(tmp_path: Path) -> None:
     coverage = CoverageNotice(
         "fixture",
@@ -445,6 +515,84 @@ def test_expected_coverage_does_not_make_execution_incomplete(tmp_path: Path) ->
     assert report.exit_code == 0
     payload = as_table(json.loads(to_json(report)))  # pyright: ignore[reportAny] -- inspect the stdlib decoder's untyped JSON payload before asserting the serialized contract.
     assert as_table(list_field(payload, "coverage")[0])["disposition"] == "excluded"
+
+
+@pytest.mark.parametrize(
+    ("tools", "coverage", "completion", "conclusion", "exit_code"),
+    [
+        ((), (CoverageNotice("sql", "input unavailable", 1),), Completion.PARTIAL, Conclusion.INCONCLUSIVE, 2),
+        (
+            (ToolReport("sql", Completion.FAILED, issues=(ExecutionIssue("sql", "failure", "unavailable"),)),),
+            (CoverageNotice("sql", "input unavailable", 1),),
+            Completion.FAILED,
+            Conclusion.INCONCLUSIVE,
+            2,
+        ),
+        (
+            (),
+            (CoverageNotice("sql", "excluded input", 1, CoverageDisposition.EXCLUDED),),
+            Completion.COMPLETE,
+            Conclusion.PASSED,
+            0,
+        ),
+        (
+            (
+                ToolReport(
+                    "fixture",
+                    Completion.COMPLETE,
+                    (Diagnostic("WARN", "advisory", Severity.WARNING, "fixture", Location("example.py")),),
+                ),
+            ),
+            (),
+            Completion.COMPLETE,
+            Conclusion.FINDINGS,
+            0,
+        ),
+    ],
+    ids=("empty-with-failed-coverage", "all-tools-failed", "expected-coverage", "warning-finding"),
+)
+def test_report_factory_derives_existing_state_priorities(
+    tmp_path: Path,
+    *,
+    tools: tuple[ToolReport, ...],
+    coverage: tuple[CoverageNotice, ...],
+    completion: Completion,
+    conclusion: Conclusion,
+    exit_code: int,
+) -> None:
+    report = AnalysisReport.from_tools(tmp_path, tools, coverage=coverage)
+
+    assert report.completion is completion
+    assert report.conclusion is conclusion
+    assert report.exit_code == exit_code
+    assert report.coverage == coverage
+    assert report.tools == tools
+
+
+def test_report_factory_preserves_order_while_linting_normalizes(tmp_path: Path) -> None:
+    last = Diagnostic("Z", "last", Severity.WARNING, "fixture", Location("z.py"))
+    first = Diagnostic("A", "first", Severity.WARNING, "fixture", Location("a.py"))
+    tools = (ToolReport("z", Completion.COMPLETE, (last, first)), ToolReport("a", Completion.COMPLETE))
+    coverage = (CoverageNotice("sql", "input unavailable", 1),)
+
+    raw = AnalysisReport.from_tools(tmp_path, tools, coverage=coverage)
+    normalized = report_from_tools(tmp_path, tools, coverage=coverage)
+
+    assert raw.tools is tools
+    assert raw.diagnostics == (last, first)
+    assert all(item.fingerprint is None for item in raw.diagnostics)
+    assert [tool.name for tool in normalized.tools] == ["a", "z"]
+    assert [item.code for item in normalized.diagnostics] == ["A", "Z"]
+    assert all(item.fingerprint is not None for item in normalized.diagnostics)
+    assert normalized.coverage == coverage
+    assert normalized.exit_code == 2
+
+
+def test_report_factory_rejects_invalid_inputs_before_deriving_state(tmp_path: Path) -> None:
+    with pytest.raises(TypeError, match="analysis tools must be a tuple"):
+        AnalysisReport.from_tools(tmp_path, [ToolReport("fixture", Completion.COMPLETE)])  # pyright: ignore[reportArgumentType] -- probe the public factory's runtime tuple invariant.
+    with pytest.raises(TypeError, match="analysis coverage must be a tuple"):
+        AnalysisReport.from_tools(tmp_path, (), coverage=[CoverageNotice("sql", "unavailable", 1)])  # pyright: ignore[reportArgumentType] -- probe the public factory's runtime tuple invariant.
 
 
 def test_policy_is_default_all_with_path_rule_and_scoped_denylists(tmp_path: Path) -> None:
@@ -1268,6 +1416,127 @@ def test_invalid_python_encoding_is_incomplete_analysis(tmp_path: Path, raw: byt
     assert report.exit_code == 2
     assert len(report.issues) == 1
     assert report.issues[0].kind == "analyzer-failure"
+
+
+def test_sql_native_binding_preserves_selected_source_catalog_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sarj_sql_lint import __main__ as sql_engine  # ruff: ignore[import-outside-top-level] -- observe the selected real checker boundary without importing it for unrelated tests.
+
+    target = tmp_path / "migrations" / "001_orders.sql"
+    target.parent.mkdir()
+    target.write_text("CREATE TABLE orders (id BIGINT PRIMARY KEY);\n", encoding="utf-8")
+    catalog = SourceCatalog()
+    catalog.capture(target)
+    target.write_text("SELECT 1;\n", encoding="utf-8")
+    analyze_sql = sql_engine.analyze
+
+    def observed(
+        rule_ids: Sequence[str], paths: list[Path], *, sources: SourceCatalog | None = None
+    ) -> list[SqlDiagnostic]:
+        assert rule_ids == ["idempotent-ddl"]
+        assert paths == [target]
+        assert sources is catalog
+        return analyze_sql(rule_ids, paths, sources=sources)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- forward the actual public SQL checker while observing the typed integration boundary.
+        sql_engine, "analyze", observed
+    )
+
+    report = analysis_module._native_report(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- preserve selected IDs, source custody and real native output across the internal binding.
+        "sarj-sql-lint",
+        "sarj_sql_lint",
+        (str(target),),
+        tmp_path,
+        sources=catalog,
+        rule_ids=frozenset({"idempotent-ddl"}),
+    )
+
+    assert report is not None
+    assert report.completion is Completion.COMPLETE
+    assert not report.issues
+    assert [item.rule_id for item in report.diagnostics] == ["idempotent-ddl"]
+
+
+def test_iac_native_binding_preserves_selected_source_catalog_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sarj_iac_lint import __main__ as iac_engine  # ruff: ignore[import-outside-top-level] -- observe the selected real checker boundary without importing it for unrelated tests.
+
+    target = tmp_path / "main.tf"
+    target.write_text('resource "aws_db_instance" "main" { deletion_protection = false }\n', encoding="utf-8")
+    catalog = SourceCatalog()
+    catalog.capture(target)
+    target.write_text('resource "aws_db_instance" "main" { deletion_protection = true }\n', encoding="utf-8")
+    analyze_iac = iac_engine.analyze
+
+    def observed(
+        rule_ids: Sequence[str], paths: list[Path], *, sources: SourceCatalog | None = None
+    ) -> list[IacDiagnostic]:
+        assert rule_ids == ["require-deletion-protection"]
+        assert paths == [target]
+        assert sources is catalog
+        return analyze_iac(rule_ids, paths, sources=sources)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- forward the actual public IaC checker while observing the typed integration boundary.
+        iac_engine, "analyze", observed
+    )
+
+    report = analysis_module._native_report(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- preserve selected IDs, source custody and real native output across the internal binding.
+        "sarj-iac-lint",
+        "sarj_iac_lint",
+        (str(target),),
+        tmp_path,
+        sources=catalog,
+        rule_ids=frozenset({"require-deletion-protection"}),
+    )
+
+    assert report is not None
+    assert report.completion is Completion.COMPLETE
+    assert not report.issues
+    assert [item.rule_id for item in report.diagnostics] == ["require-deletion-protection"]
+
+
+@pytest.mark.parametrize(("files", "selected"), [((), None), (("unread.sql",), frozenset[str]())])
+def test_empty_native_work_does_not_load_a_binding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    files: tuple[str, ...],
+    selected: frozenset[str] | None,
+) -> None:
+    def unexpected(_package: str) -> None:
+        pytest.fail("empty native work must not load an analyzer")
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observe the empty-work boundary without replacing analyzer behavior.
+        analysis_module, "_load_native", unexpected
+    )
+
+    assert (
+        analysis_module._native_report(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- empty paths or explicit empty selection must skip the internal loader.
+            "sarj-sql-lint", "sarj_sql_lint", files, tmp_path, sources=SourceCatalog(), rule_ids=selected
+        )
+        is None
+    )
+
+
+def test_unknown_native_rule_remains_a_failed_analyzer_report(tmp_path: Path) -> None:
+    target = tmp_path / "example.sql"
+    target.write_text("SELECT 1;\n", encoding="utf-8")
+
+    report = analysis_module._native_report(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- an unknown selected ID must stay a failed report rather than silently selecting defaults.
+        "sarj-sql-lint",
+        "sarj_sql_lint",
+        (str(target),),
+        tmp_path,
+        sources=SourceCatalog(),
+        rule_ids=frozenset({"unknown-native-rule"}),
+    )
+
+    assert report is not None
+    assert report.completion is Completion.FAILED
+    assert len(report.issues) == 1
+    assert report.issues[0].kind == "analyzer-failure"
+    assert "unknown sarj_sql_lint rule(s): unknown-native-rule" in report.issues[0].message
 
 
 def test_python_non_roundtripping_encoding_keeps_finding_without_invented_offset(tmp_path: Path) -> None:

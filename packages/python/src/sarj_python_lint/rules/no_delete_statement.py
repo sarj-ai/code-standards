@@ -136,6 +136,6 @@ class NoDeleteStatement(Rule):
                     "immutably, or add an exact SARJ442 suppression explaining why deletion is required."
                 ),
             )
-            for node in context.nodes(ast.AST)
-            if isinstance(node, ast.Delete) and not is_suppressed(source_lines, node.lineno, self.code)
+            for node in context.nodes(ast.Delete)
+            if not is_suppressed(source_lines, node.lineno, self.code)
         ]

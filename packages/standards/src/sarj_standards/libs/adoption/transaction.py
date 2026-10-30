@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import os
 from pathlib import Path
 import stat
 import tempfile
 from typing import Final, Self
 
-from sarj_rule_contracts import fix_file
+from sarj_rule_contracts import SourceChangedError, fix_file
 
 from sarj_standards.libs.filesystem import is_link_like
 
@@ -140,6 +140,13 @@ class FileSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class _PendingMutation:
+    expected: bytes | None
+    intended: bytes | None
+    had_receipt: bool
+
+
+@dataclass(frozen=True, slots=True)
 class RollbackIssue:
     path: Path
     detail: str
@@ -167,6 +174,7 @@ class FileTransaction:
     absent_parents: set[Path]
     explicit_only: bool = False
     source_writes: bool = False
+    _pending: dict[Path, _PendingMutation] = field(default_factory=dict, init=False, repr=False, compare=False)
 
     @classmethod
     def capture(
@@ -206,14 +214,33 @@ class FileTransaction:
 
     def write_bytes(self, path: Path, contents: bytes) -> None:
         snapshot = self.before[path]
-        assert_expected(self.root, path, self.written.get(path, snapshot.contents))
+        expected = self.written.get(path, snapshot.contents)
+        assert_expected(self.root, path, expected)
+        # A pending attempt does not claim untouched state, but survives interruption after replacement.
+        self._pending[path] = _PendingMutation(expected, contents, path in self.written)
         if self.source_writes:
-            _write_source(
-                self.root, path, contents, expected=self.written.get(path, snapshot.contents), snapshot=snapshot
-            )
+            try:
+                _write_source(self.root, path, contents, expected=expected, snapshot=snapshot)
+            except SourceChangedError:
+                # This attempt never replaced the source; retain any earlier successful receipt.
+                self._pending.pop(path, None)
+                raise
         else:
             atomic_write_bytes(self.root, path, contents)
         self.written[path] = contents
+        self._pending.pop(path, None)
+
+    def remove_file(self, path: Path) -> None:
+        if self.source_writes:
+            msg = "source transactions do not support file deletion"
+            raise ValueError(msg)
+        snapshot = self.before[path]
+        expected = self.written.get(path, snapshot.contents)
+        assert_expected(self.root, path, expected)
+        self._pending[path] = _PendingMutation(expected, None, path in self.written)
+        remove_file(self.root, path)
+        self.written[path] = None
+        self._pending.pop(path, None)
 
     def track(self, *paths: Path) -> None:
         for path in paths:
@@ -230,10 +257,18 @@ class FileTransaction:
     def rollback(self) -> RollbackReport:
         issues: list[RollbackIssue] = []
         for path, snapshot in self.before.items():
-            if self.explicit_only and path not in self.written:
+            if self.explicit_only and path not in self.written and path not in self._pending:
                 continue
             expected = self.written.get(path, _UNTRACKED)
-            issue = _restore_path(self.root, path, snapshot, expected, source_write=self.source_writes)
+            issue = _restore_path(
+                self.root,
+                path,
+                snapshot,
+                expected,
+                source_write=self.source_writes,
+                pending=self._pending.get(path),
+                explicit_only=self.explicit_only,
+            )
             if issue is not None:
                 issues.append(issue)
         for parent in sorted(self.absent_parents, key=lambda item: len(item.parts), reverse=True):
@@ -268,12 +303,25 @@ def _restore_path(
     expected: bytes | _Untracked | None,
     *,
     source_write: bool = False,
+    pending: _PendingMutation | None = None,
+    explicit_only: bool = False,
 ) -> RollbackIssue | None:
     try:
         validate_targets(root, (path,))
         current = path.read_bytes() if path.is_file() else None
     except OSError as exc:
         return RollbackIssue(path, str(exc))
+    if pending is not None:
+        # A completed receipt wins if interruption happened before the pending entry was removed.
+        receipt_published = _receipt_is_published(expected, pending)
+        if not receipt_published:
+            if current == pending.expected:
+                if explicit_only and isinstance(expected, _Untracked):
+                    return None
+            elif current == pending.intended:
+                expected = pending.intended
+            else:
+                return RollbackIssue(path, "changed concurrently after the standards write")
     if not isinstance(expected, _Untracked) and current != expected:
         return RollbackIssue(path, "changed concurrently after the standards write")
     try:
@@ -284,6 +332,10 @@ def _restore_path(
     except (OSError, ValueError) as exc:
         return RollbackIssue(path, str(exc))
     return None
+
+
+def _receipt_is_published(expected: bytes | _Untracked | None, pending: _PendingMutation) -> bool:
+    return not isinstance(expected, _Untracked) and (not pending.had_receipt or expected != pending.expected)
 
 
 def _restore_source(
