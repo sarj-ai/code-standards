@@ -60,15 +60,16 @@ def analytical_signal(sql: str) -> str | None:
 
 
 def _grouped_reporting_signal(sql: str) -> str | None:
-    import sqlglot  # ruff: ignore[import-outside-top-level] -- parse only aggregate-shaped SQL after cheap gates
     from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- paired with lazy parser import
     from sqlglot.errors import SqlglotError  # ruff: ignore[import-outside-top-level] -- paired with lazy parser import
+
+    from sarj_python_lint.rules._postgres import parse_postgres  # ruff: ignore[import-outside-top-level] -- unsupported private SQL must not enter dependency logs.
 
     if _GROUP_BY.search(sql) is None or _COMMON_AGGREGATE.search(sql) is None:
         return None
     try:
-        statements = sqlglot.parse(_PLACEHOLDER.sub("?", sql), read="postgres")
-    except SqlglotError:
+        statements = parse_postgres(_PLACEHOLDER.sub("?", sql))
+    except SqlglotError, RecursionError:
         return None
     for statement in statements:
         if not isinstance(statement, exp.Query):

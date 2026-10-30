@@ -1011,3 +1011,219 @@ def test_deeply_nested_sql_abstains_without_crashing() -> None:
     assert len(_check(f"import psycopg\ncursor.execute({query!r})\n")) == 1
     nested = "".join(("SELECT (" * 200, query, ") FROM item" * 200))
     assert _check(f"import psycopg\ncursor.execute({nested!r})\n") == []
+
+
+def _executed_query_source(query: str, *, native: bool) -> str:
+    if native:
+        return f"from psycopg import Cursor\ndef read(handle: Cursor):\n    handle.execute({query!r})\n"
+    return f"import psycopg\ncursor.execute({query!r})\n"
+
+
+@pytest.mark.parametrize("backend", ["sqlite3", "aiosqlite"])
+@pytest.mark.parametrize("form", ["literal", "module-binding", "same-class-wrapper"])
+def test_mixed_sqlite_import_keeps_import_proven_psycopg_execution(backend: str, form: str) -> None:
+    query = "SELECT a.id FROM a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE JOIN e ON TRUE"
+    prefix = f"import {backend}\nfrom psycopg import Cursor\n"
+    match form:
+        case "literal":
+            source = prefix + f"def read(handle: Cursor):\n    handle.execute({query!r})\n"
+        case "module-binding":
+            source = prefix + f"QUERY = {query!r}\ndef read(handle: Cursor):\n    handle.execute(QUERY)\n"
+        case _:
+            source = prefix + (
+                "class Store:\n"
+                "    def _run(self, handle: Cursor, statement):\n"
+                "        handle.execute(statement)\n"
+                "    def read(self, handle: Cursor):\n"
+                f"        self._run(handle, {query!r})\n"
+            )
+    assert len(_check(source, "mixed_adapter.py")) == 1
+    assert _check(f"import {backend}\n" + _executed_query_source(query, native=False), "mixed_adapter.py") == []
+
+
+def test_mixed_typed_backends_keep_psycopg_and_sqlite_execution_distinct() -> None:
+    query = "SELECT a.id FROM a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE JOIN e ON TRUE"
+    source = (
+        "from psycopg import Cursor as PgCursor\n"
+        "from sqlite3 import Cursor as LiteCursor\n"
+        "def read(primary: PgCursor, secondary: LiteCursor):\n"
+        f"    primary.execute({query!r})\n"
+        f"    secondary.execute({query!r})\n"
+    )
+    [finding] = _check(source)
+    assert finding.line == 4
+
+
+@pytest.mark.parametrize("projection", ["a._peerdb_version", "a.argMax", "uniqExact(a.id)", "COUNTIF(a.active)"])
+def test_native_postgres_ownership_precedes_overlapping_dialect_identifiers(projection: str) -> None:
+    query = f"SELECT {projection} FROM a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE JOIN e ON TRUE"  # ruff: ignore[hardcoded-sql-expression] -- synthetic parser fixture, never executed.
+    assert len(_check(_executed_query_source(query, native=True))) == 1
+    assert _check(_executed_query_source(query, native=False)) == []
+
+
+@pytest.mark.parametrize("native", [False, True])
+@pytest.mark.parametrize(
+    ("relations", "expected"),
+    [
+        ("(a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE JOIN e ON TRUE)", 1),
+        ("(a JOIN b ON TRUE JOIN c ON TRUE) JOIN (d JOIN e ON TRUE) ON TRUE", 1),
+        ("(a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE)", 0),
+        (
+            (
+                "a JOIN b ON TRUE JOIN c ON TRUE JOIN "
+                "(SELECT d.id FROM d JOIN e ON TRUE JOIN f ON TRUE JOIN g ON TRUE) q ON TRUE"
+            ),
+            0,
+        ),
+    ],
+)
+def test_parenthesized_joins_retain_their_select_owner(native: bool, relations: str, expected: int) -> None:
+    query = f"SELECT a.id FROM {relations}"  # ruff: ignore[hardcoded-sql-expression] -- synthetic parser fixture, never executed.
+    assert len(_check(_executed_query_source(query, native=native))) == expected
+
+
+@pytest.mark.parametrize("native", [False, True])
+@pytest.mark.parametrize(
+    ("width", "relations", "expected"),
+    [
+        (16, "(item a JOIN item b ON TRUE)", 1),
+        (16, "owner o JOIN (item a JOIN item b ON TRUE) ON TRUE", 1),
+        (15, "(item a JOIN item b ON TRUE)", 0),
+        (16, "(alpha.item a JOIN beta.item b ON TRUE)", 0),
+        (25, "(item a JOIN other b ON TRUE JOIN third c ON TRUE)", 1),
+        (24, "(item a JOIN other b ON TRUE JOIN third c ON TRUE)", 0),
+    ],
+)
+def test_grouped_relations_preserve_projection_thresholds(
+    native: bool, width: int, relations: str, expected: int
+) -> None:
+    columns = ", ".join(f"a.field_{position}" for position in range(width))
+    query = f"SELECT {columns} FROM {relations}"  # ruff: ignore[hardcoded-sql-expression] -- synthetic parser fixture, never executed.
+    assert len(_check(_executed_query_source(query, native=native))) == expected
+
+
+@pytest.mark.parametrize("native", [False, True])
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        (
+            (
+                "SELECT * FROM (owner o JOIN "
+                "(SELECT item.id, COUNT(*) FROM item JOIN tag ON TRUE GROUP BY item.id) totals ON TRUE)"
+            ),
+            1,
+        ),
+        ("SELECT * FROM (SELECT item.id, COUNT(*) FROM (item JOIN tag ON TRUE) GROUP BY item.id) totals", 1),
+        (
+            (
+                "SELECT * FROM (SELECT * FROM (owner o JOIN "
+                "(SELECT id, ROW_NUMBER() OVER (ORDER BY id) rank FROM item) ranked ON TRUE)) envelope"
+            ),
+            1,
+        ),
+        ("SELECT * FROM (owner o JOIN (SELECT id FROM item WHERE id=%s) bounded ON TRUE)", 0),
+        (
+            (
+                "SELECT * FROM (SELECT id FROM item WHERE EXISTS "
+                "(SELECT ROW_NUMBER() OVER (ORDER BY id) FROM tag)) results"
+            ),
+            0,
+        ),
+    ],
+)
+def test_grouped_derived_relations_keep_transform_ownership(native: bool, query: str, expected: int) -> None:
+    assert len(_check(_executed_query_source(query, native=native))) == expected
+
+
+@pytest.mark.parametrize("native", [False, True])
+@pytest.mark.parametrize("parenthesized", [False, True])
+@pytest.mark.parametrize("stages", [5, 6])
+def test_statement_parentheses_do_not_add_a_read_stage(native: bool, parenthesized: bool, stages: int) -> None:
+    stage_sql = [f"s{position} AS (SELECT id FROM item)" for position in range(stages)]  # ruff: ignore[hardcoded-sql-expression] -- fixed stage-count parser fixtures, never executed.
+    query = "WITH " + ", ".join(stage_sql) + " SELECT id FROM s0"  # ruff: ignore[hardcoded-sql-expression] -- fixed stage-count parser fixtures, never executed.
+    if parenthesized:
+        query = f"({query})"
+    assert len(_check(_executed_query_source(query, native=native))) == (1 if stages >= 6 else 0)
+
+
+@pytest.mark.parametrize("native", [False, True])
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT id FROM a UNION ALL SELECT id FROM b UNION ALL SELECT id FROM c UNION ALL SELECT id FROM d",
+        (
+            "SELECT a.id FROM a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE "
+            "UNION ALL SELECT id FROM e UNION ALL SELECT id FROM f"
+        ),
+    ],
+)
+def test_set_operators_do_not_double_count_select_stages(native: bool, query: str) -> None:
+    assert _check(_executed_query_source(query, native=native)) == []
+
+
+def test_deep_grouped_store_query_abstains_before_legacy_overlap_can_overflow() -> None:
+    query = "SELECT COUNT(*) FROM (" * 200 + "SELECT id FROM item" + ") grouped GROUP BY id" * 200
+    assert _check(_executed_query_source(query, native=False), "item_store.py") == []
+
+
+def test_legacy_store_overlap_does_not_log_unsupported_sql(caplog: pytest.LogCaptureFixture) -> None:
+    query = "SELECT COUNT(*) FROM item GROUP BY id; VACUUM private_synthetic_marker"
+    assert _check(_executed_query_source(query, native=False), "item_store.py") == []
+    assert caplog.records == []
+
+
+@pytest.mark.parametrize("native", [False, True])
+def test_deep_python_query_composition_abstains_without_crashing(native: bool) -> None:
+    query = "SELECT a.id FROM a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE JOIN e ON TRUE"
+    expression = repr(query) + ' + ""' * 1200
+    source = (
+        f"from psycopg import Cursor\ndef read(handle: Cursor):\n    handle.execute({expression})\n"
+        if native
+        else f"import psycopg\ncursor.execute({expression})\n"
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("delegates", [False, True])
+def test_local_class_construction_does_not_prove_database_execution(delegates: bool) -> None:
+    method = "self.handle.execute(query)" if delegates else "len(query)"
+    source = """import psycopg
+class Renderer:
+    def execute(self, query):
+        return __METHOD__
+cursor = Renderer()
+cursor.execute("SELECT a.id FROM a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE JOIN e ON TRUE")
+""".replace("__METHOD__", method)
+    assert _check(source) == []
+
+
+def test_native_same_class_forwarding_survives_conventional_class_abstention() -> None:
+    source = """from psycopg import Cursor
+class Store:
+    def __init__(self, handle: Cursor):
+        self.handle = handle
+    def _run(self, query):
+        self.handle.execute(query)
+    def read(self):
+        self._run("SELECT a.id FROM a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE JOIN e ON TRUE")
+"""
+    assert len(_check(source)) == 1
+
+
+def test_unproven_factory_does_not_create_a_local_class_exclusion() -> None:
+    source = """import psycopg
+def make_cursor():
+    return runtime_cursor()
+class Unrelated:
+    pass
+cursor = make_cursor()
+cursor.execute("SELECT a.id FROM a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE JOIN e ON TRUE")
+"""
+    assert len(_check(source)) == 1
+
+
+def test_deep_composition_with_a_local_class_still_abstains_safely() -> None:
+    query = "SELECT a.id FROM a JOIN b ON TRUE JOIN c ON TRUE JOIN d ON TRUE JOIN e ON TRUE"
+    expression = repr(query) + ' + ""' * 1200
+    source = f"import psycopg\nclass Unrelated:\n    pass\ncursor.execute({expression})\n"
+    assert _check(source) == []
