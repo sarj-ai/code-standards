@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._local_source import LocalSourceFacts
 
 
 type _Function = ast.FunctionDef | ast.AsyncFunctionDef
@@ -111,11 +112,13 @@ class OpaqueContractFacts:
         context: PythonFileContext,
         facts: MappingShapeFacts,
         *,
+        local_source: LocalSourceFacts,
         modules: dict[Path, OpaqueContractFacts] | None = None,
         budget: _ProofBudget | None = None,
     ) -> None:
         self.context = context
         self.facts = facts
+        self.local_source = local_source
         self.native = NativeObjectContracts(context, facts)
         self.guards: dict[str, _Refinement | None] = {}
         self.checked: dict[_Function, frozenset[ast.arg]] = {}
@@ -712,20 +715,24 @@ class OpaqueContractFacts:
 
     def _imported_source(self, qualified: str) -> tuple[OpaqueContractFacts, ast.FunctionDef] | None:
         module, _, name = qualified.rpartition(".")
-        path = self.context.session.local_source.resolve_module(
-            self.context.path, module, 0, facts=self.context.session.first_party
-        )
+        path = self.local_source.resolve_module(self.context.path, module, 0, facts=self.context.session.first_party)
         if path is not None and (owner := self.modules.get(path.resolve())) is not None:
             return owner.export(name)
         if len(self.modules) >= _MAX_GUARDS:
             return None
-        loaded = self.context.session.local_source.read_module(path) if path is not None else None
+        loaded = self.local_source.read_module(path) if path is not None else None
         if loaded is None:
             return None
         from sarj_python_lint._file_context import PythonFileContext  # ruff: ignore[import-outside-top-level] -- source loading runs after AnalysisSession initialization.
 
         context = PythonFileContext(loaded.path, loaded.source, self.context.session)
-        owner = OpaqueContractFacts(context, MappingShapeFacts(context), modules=self.modules, budget=self.budget)
+        owner = OpaqueContractFacts(
+            context,
+            MappingShapeFacts(context),
+            local_source=self.local_source,
+            modules=self.modules,
+            budget=self.budget,
+        )
         return owner.export(name)
 
     def export(self, name: str) -> tuple[OpaqueContractFacts, ast.FunctionDef] | None:

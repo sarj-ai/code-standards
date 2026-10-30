@@ -1,10 +1,13 @@
 from pathlib import Path
 
 import pytest
+from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language, SourceCatalog
 from sarj_rule_contracts.examples import verify_native_rule
 
 from sarj_python_lint.__main__ import analyze, check_source
 from sarj_python_lint.rule_base import Rule, Severity
+from sarj_python_lint.rules._local_source import LOCAL_SOURCE_CACHE_LIMIT
+from sarj_python_lint.rules.prefer_precise_object_contract import PreferPreciseObjectContract
 from sarj_python_lint.rules.prefer_typed_mapping_get import PreferTypedMappingGet
 from sarj_python_lint.rules.require_pydantic_for_mapping_shape import RequirePydanticForMappingShape
 
@@ -112,3 +115,217 @@ def test_exact_suppression_and_generated_source() -> None:
     source = CASES[0][1] + "  # sarj-noqa: SARJ535 -- open plugin metadata is intentionally opaque\n"
     assert check_source([PreferTypedMappingGet()], Path("app/state.py"), source) == []
     assert PreferTypedMappingGet().check(Path("vendor/state.py"), CASES[0][1]) == []
+
+
+_PARSER_SOURCE = """
+import json
+from typing import TypedDict
+
+type Raw = dict[str, object]
+
+def decode(text: str) -> Raw:
+    return json.loads(text)
+
+def object_value(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise TypeError
+    return {str(key): item for key, item in value.items()}
+
+def inferred(text: str):
+    return json.loads(text)
+
+def forwarded(text: str):
+    return inferred(text)
+
+def precise(text: str) -> dict[str, str]:
+    return {"name": text}
+
+class State(TypedDict):
+    name: str
+
+def record(text: str) -> State:
+    return {"name": text}
+
+def unknown(text: str):
+    return custom_parser(text)
+
+async def async_decode(text: str) -> Raw:
+    return json.loads(text)
+
+def hooked(text: str):
+    return json.loads(text, object_hook=State)
+
+def mixed(text: str, flag: bool):
+    if flag:
+        return {}
+    return json.loads(text)
+
+def recursive(text: str):
+    return recursive(text)
+"""
+
+_IMPORTED_CASES = (
+    ("direct", "from app.parser import decode\ndef read(text): return decode(text).get('name')", True),
+    ("alias", "from app.parser import decode as parse\ndef read(text): return parse(text).get('name')", True),
+    ("qualified", "import app.parser as wire\ndef read(text): return wire.decode(text).get('name')", True),
+    ("relative", "from .parser import decode\ndef read(text): return decode(text).get('name')", True),
+    ("reexport", "from app.api import decode\ndef read(text): return decode(text).get('name')", True),
+    ("module", "import app.parser\ndef read(text): return app.parser.decode(text).get('name')", True),
+    ("from-module", "from app import parser\ndef read(text): return parser.decode(text).get('name')", True),
+    ("relative-module", "from . import parser\ndef read(text): return parser.decode(text).get('name')", True),
+    (
+        "callable-alias",
+        "from app.parser import decode\ndef read(text):\n    parse = decode\n    return parse(text).get('name')",
+        True,
+    ),
+    ("inferred", "from app.parser import inferred\ndef read(text): return inferred(text).get('name')", True),
+    ("forwarded", "from app.parser import forwarded\ndef read(text): return forwarded(text).get('name')", True),
+    (
+        "value-alias",
+        "from app.parser import decode\ndef read(text):\n    raw = decode(text)\n    alias = raw\n    return alias.get('name', '')",
+        True,
+    ),
+    ("precise", "from app.parser import precise\ndef read(text): return precise(text).get('name')", False),
+    ("record", "from app.parser import record\ndef read(text): return record(text).get('name')", False),
+    ("unknown", "from app.parser import unknown\ndef read(text): return unknown(text).get('name')", False),
+    ("hook", "from app.parser import hooked\ndef read(text): return hooked(text).get('name')", False),
+    ("mixed", "from app.parser import mixed\ndef read(text): return mixed(text, True).get('name')", False),
+    ("recursive", "from app.parser import recursive\ndef read(text): return recursive(text).get('name')", False),
+    (
+        "awaited",
+        "from app.parser import async_decode\nasync def read(text): return (await async_decode(text)).get('name')",
+        True,
+    ),
+    (
+        "coroutine",
+        "from app.parser import async_decode\ndef read(text): return async_decode(text).get('name')",
+        False,
+    ),
+    ("unresolved", "from external import decode\ndef read(text): return decode(text).get('name')", False),
+    (
+        "shadowed",
+        "from app.parser import decode\ndef read(decode, text): return decode(text).get('name')",
+        False,
+    ),
+    (
+        "rebound-module",
+        "import app.parser as wire\nwire = application\ndef read(text): return wire.decode(text).get('name')",
+        False,
+    ),
+    (
+        "mutated-import",
+        "import app.parser as wire\nwire.decode = application\ndef read(text): return wire.decode(text).get('name')",
+        False,
+    ),
+)
+
+
+def _write_parser_project(root: Path) -> Path:
+    (root / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    package = root / "app"
+    package.mkdir()
+    (package / "__init__.py").write_text("")
+    (package / "parser.py").write_text(_PARSER_SOURCE)
+    (package / "api.py").write_text("from .parser import decode\n")
+    return package / "consumer.py"
+
+
+@pytest.mark.parametrize(("case_id", "source", "expected"), _IMPORTED_CASES, ids=[row[0] for row in _IMPORTED_CASES])
+def test_imported_mapping_contracts(tmp_path: Path, case_id: str, source: str, *, expected: bool) -> None:
+    case = EvaluationCase(
+        case_id, Language.PYTHON, source, ExpectedOutcome.MATCH if expected else ExpectedOutcome.NO_MATCH
+    )
+    consumer = _write_parser_project(tmp_path)
+    consumer.write_text(case.source)
+    findings = analyze([PreferTypedMappingGet.id], [consumer])
+    assert len(findings) == int(expected), case.case_id
+    assert all(finding.path == consumer and finding.code == "SARJ535" for finding in findings)
+
+
+def test_imported_decoder_and_object_narrowing_keep_wire_fields_unvalidated(tmp_path: Path) -> None:
+    consumer = _write_parser_project(tmp_path)
+    source = (
+        "from app.parser import decode, object_value\n"
+        "def ready(payload: str):\n"
+        "    deployment = decode(payload)\n"
+        "    status = object_value(deployment.get('status', {}))\n"
+        "    return str(status.get('availableReplicas', '')) == '2'\n"
+    )
+    consumer.write_text(source)
+    findings = analyze([PreferTypedMappingGet.id], [consumer])
+    assert [(finding.line, finding.code) for finding in findings] == [(4, "SARJ535"), (5, "SARJ535")]
+
+
+@pytest.mark.parametrize("jobs", [1, 2])
+def test_prepared_sources_preserve_imported_return_contracts(tmp_path: Path, jobs: int) -> None:
+    first = _write_parser_project(tmp_path)
+    first.write_text("from app.parser import decode\ndef read(text): return decode(text).get('name')\n")
+    second = first.with_name("second.py")
+    second.write_text(first.read_text())
+    catalog = SourceCatalog()
+    helper = first.with_name("parser.py")
+    catalog.capture(helper)
+    helper.write_text("def decode(text: str) -> dict[str, str]: return {'name': text}\n")
+    findings = analyze([PreferTypedMappingGet.id], [first, second, helper], sources=catalog, jobs=jobs)
+    assert [(finding.path, finding.line, finding.code) for finding in findings] == [
+        (first, 2, "SARJ535"),
+        (second, 2, "SARJ535"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "helper",
+    [
+        "from .api import decode\n",
+        "@decorate\ndef decode(text: str) -> dict[str, object]: ...\n",
+        "def decode(text: str) -> dict[str, object]: ...\ndecode = application\n",
+        "def decode(text: str) -> dict[str, object]: ...\ndef decode(text: str) -> dict[str, str]: ...\n",
+        "def decode(:\n",
+    ],
+    ids=["reexport-cycle", "decorated", "rebound", "duplicate", "malformed"],
+)
+def test_imported_uncertain_sources_abstain(tmp_path: Path, helper: str) -> None:
+    consumer = _write_parser_project(tmp_path)
+    consumer.with_name("parser.py").write_text(helper)
+    consumer.write_text("from app.api import decode\ndef read(text): return decode(text).get('name')\n")
+    assert analyze([PreferTypedMappingGet.id], [consumer]) == []
+
+
+def test_imported_mapping_exact_suppression_and_validated_model(tmp_path: Path) -> None:
+    consumer = _write_parser_project(tmp_path)
+    consumer.write_text(
+        "from app.parser import decode\ndef read(text):\n"
+        "    return decode(text).get('name')  # sarj-noqa: SARJ535 -- opaque plugin metadata\n"
+    )
+    assert analyze([PreferTypedMappingGet.id], [consumer]) == []
+    consumer.with_name("parser.py").write_text(
+        "from pydantic import BaseModel\nclass State(BaseModel):\n    labels: dict[str, str]\n"
+        "def decode(text: str) -> State:\n    return State.model_validate_json(text)\n"
+    )
+    consumer.write_text("from app.parser import decode\ndef read(text): return decode(text).labels.get('name')\n")
+    assert analyze([PreferTypedMappingGet.id], [consumer]) == []
+
+
+@pytest.mark.parametrize("jobs", [1, 2])
+def test_imported_contracts_preserve_other_rules_source_budget(tmp_path: Path, jobs: int) -> None:
+    first = _write_parser_project(tmp_path)
+    readers = [first.with_name(f"consumer_{index:04}.py") for index in range(LOCAL_SOURCE_CACHE_LIMIT + 1)]
+    for reader in readers:
+        reader.write_text("from app.parser import decode\ndef read(text): return decode(text).get('name')\n")
+    first.with_name("guard.py").write_text(
+        "from typing import TypeGuard\n"
+        "def is_mapping(value: object) -> TypeGuard[dict[object, object]]:\n"
+        "    return isinstance(value, dict)\n"
+    )
+    last = first.with_name("z_validation.py")
+    last.write_text(
+        "from app.parser import decode\nfrom app.guard import is_mapping\n"
+        "def raw(value: object) -> dict[object, object]:\n"
+        "    assert is_mapping(value)\n    return value\n"
+        "def read(text): return decode(text).get('name')\n"
+    )
+    findings = analyze([PreferPreciseObjectContract.id, PreferTypedMappingGet.id], [*readers, last], jobs=jobs)
+    assert [(finding.path, finding.line, finding.code) for finding in findings] == [
+        *((reader, 2, "SARJ535") for reader in readers),
+        (last, 6, "SARJ535"),
+    ]
