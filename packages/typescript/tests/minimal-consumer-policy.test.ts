@@ -18,6 +18,8 @@ const PREFIX = "export {}; declare namespace JSX { interface Element {} interfac
 const PRIVATE_PREFIX = 'export {}; const account = {name: "Ada", email: "a"};\n';
 const PRIVATE_CASES = [
   [DEPENDENCY, "function label(p: {readonly name: string; readonly email: string}): string {return p.name;} label(account);"],
+  [DEPENDENCY, "const nullableAccount = {...account, email: null}; function label(p: {name: string; email: string | null}): string {return p.name;} label(nullableAccount);"],
+  [DEPENDENCY, "const nullableAccount = {...account, email: undefined}; function label(p: {readonly name: string; readonly email: undefined | string}): string {return p.name;} label(nullableAccount);"],
   [CONSUMER_UNION, "interface Animal {readonly name: string} interface Dog extends Animal {readonly email: string} function label(p: Dog | Animal): string {return p.name;} label(account);"],
 ] as const;
 type ConfigFactory = (options: {tsconfigRootDir: string; projectService?: boolean}) => Linter.Config[];
@@ -95,7 +97,7 @@ describe.each(FACTORIES)("%s minimal consumer policy", (_name, factory) => {
 function nativeContract(source: string, noUnusedLocals = false): {readonly diagnostics: readonly number[]; readonly javascript: readonly string[]} {
   const filename = join(FIXTURE_ROOT, "autofix-native-contract.ts");
   const options: ts.CompilerOptions = {strict: true, target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext,
-    moduleResolution: ts.ModuleResolutionKind.Bundler, types: [], noEmitOnError: true, noUnusedLocals};
+    moduleResolution: ts.ModuleResolutionKind.Bundler, types: [], lib: ["lib.esnext.d.ts"], noEmitOnError: true, noUnusedLocals};
   const host = ts.createCompilerHost(options);
   const originalGetSourceFile = host.getSourceFile.bind(host);
   host.getSourceFile = (name, languageVersion, onError, shouldCreateNewSourceFile) => name === filename

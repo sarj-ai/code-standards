@@ -19,6 +19,9 @@ exclude                  = ["*.md"]
 select = ["ALL"]
 external = ["SARJ"]
 preview = true
+# S307 owns builtin eval calls and preview reference checks; T100 owns
+# breakpoint/debugger calls. Keep those native owners instead of duplicate
+# custom bans. User-defined methods and strings remain ordinary source.
 # Let Ruff's native UP037 own quoted annotations, including TYPE_CHECKING-only
 # imports. Its fix is intentionally unsafe when it must change annotation
 # evaluation semantics, so consumer baselines can grandfather existing debt.

@@ -87,13 +87,21 @@ def test_literal_yaml_fixes_converge_and_preserve_execution(tmp_path: Path, styl
 
 
 def test_crlf_yaml_and_non_ascii_positions(tmp_path: Path) -> None:
-    source = _workflow('echo "😀" $value\nif true; then\necho ok\nfi\n').replace("\n", "\r\n")
+    source = (
+        _workflow('echo "😀" $first\nif true; then\necho ok\nfi\n')
+        + '      - shell: bash\n        run: |\n          echo "é" $second\n'
+    ).replace("\n", "\r\n")
     path = _path(tmp_path, ".github/workflows/checks.yml", source)
     [report] = embedded_shell.analyze_sources(root=tmp_path, paths=(str(path),), selected=frozenset({"shellcheck"}))
-    finding = next(item for item in report.diagnostics if item.rule_id == "SC2086")
-    assert finding.location.region is not None
-    assert finding.location.region.start.byte_offset == path.read_bytes().index(b"$value")
-    assert finding.location.region.start.character == 20
+    findings = [item for item in report.diagnostics if item.rule_id == "SC2086"]
+    assert len(findings) == 2
+    raw = path.read_bytes()
+    for finding, variable, character in zip(findings, (b"$first", b"$second"), (20, 19), strict=True):
+        assert finding.location.region is not None
+        region = finding.location.region
+        assert region.start.byte_offset == raw.index(variable)
+        assert region.end.byte_offset == raw.index(variable) + len(variable)
+        assert region.start.character == character
     assert shell_format.fix_sources(tmp_path, (str(path),)) == 0
     assert b"\r\n            echo ok\r\n" in path.read_bytes()
     assert b"\n" not in path.read_bytes().replace(b"\r\n", b"")

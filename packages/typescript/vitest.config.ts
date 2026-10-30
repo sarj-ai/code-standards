@@ -1,7 +1,9 @@
 import { readdir, readFile } from "node:fs/promises";
 import { availableParallelism } from "node:os";
 
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
+
+import { FirstFailureReporter } from "./tests/first-failure-reporter.ts";
 
 const TEST_DIRECTORY = new URL("./tests/", import.meta.url);
 const TEST_FILE_PATTERN = "tests/**/*.test.ts";
@@ -47,6 +49,7 @@ export default defineConfig({
   },
   test: {
     ...LOCAL_CHECK_WORKER_OPTIONS,
+    reporters: [...configDefaults.reporters, new FirstFailureReporter()],
     globals: false,
     testTimeout: 60_000,
     hookTimeout: 60_000,

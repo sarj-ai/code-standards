@@ -27,7 +27,7 @@ from .contracts import (
     Severity as Severity,
     diagnostic_severity as diagnostic_severity,
 )
-from .files import fix_file as fix_file
+from .files import SourceChangedError as SourceChangedError, fix_file as fix_file
 from .source import (
     ByteDigest as ByteDigest,
     DecodedSource as DecodedSource,

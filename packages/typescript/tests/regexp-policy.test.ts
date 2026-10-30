@@ -69,7 +69,7 @@ describe("upstream regexp safety policy", () => {
     }
   });
 
-  it.each(CONFIG_FACTORIES)("%s enables only the admitted global-flag warning", async (_name, factory) => {
+  it.each(CONFIG_FACTORIES)("%s enables the admitted native regexp warnings", async (_name, factory) => {
     const eslint = new ESLint({ cwd: FIXTURE_ROOT, overrideConfigFile: true, overrideConfig: factory({ tsconfigRootDir: FIXTURE_ROOT }) });
     const config = await eslint.calculateConfigForFile("typed-concision-probe.ts") as Linter.Config;
     const backtracking = config.rules?.[BACKTRACKING];
@@ -80,7 +80,13 @@ describe("upstream regexp safety policy", () => {
     const enabled = Object.entries(config.rules ?? {})
       .filter(([id, setting]) => id.startsWith("regexp/") && (Array.isArray(setting) ? setting[0] : setting) !== 0)
       .map(([id]) => id);
-    expect(enabled).toEqual([MISSING_GLOBAL]);
+    expect(config.rules?.["regexp/no-contradiction-with-assertion"]).toEqual([1]);
+    expect(config.rules?.["regexp/no-useless-assertions"]).toEqual([1]);
+    expect(enabled.toSorted()).toEqual([
+      MISSING_GLOBAL,
+      "regexp/no-contradiction-with-assertion",
+      "regexp/no-useless-assertions",
+    ].toSorted());
     const focused = new ESLint({
       cwd: FIXTURE_ROOT,
       overrideConfigFile: true,

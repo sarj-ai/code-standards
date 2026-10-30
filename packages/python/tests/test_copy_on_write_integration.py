@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import sys
 from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_python_lint.__main__ import analyze, check_source, main
+from sarj_python_lint._analysis_session import AnalysisSession  # sarj-noqa: SARJ048 -- Control real checker order.
 from sarj_python_lint.rules import REGISTRY
+from sarj_python_lint.rules._project_index import ProjectIndexSet  # sarj-noqa: SARJ048 -- Control snapshot order.
+from sarj_python_lint.rules.no_input_model_mutation import NoInputModelMutation
 
 
 if TYPE_CHECKING:
@@ -16,6 +20,7 @@ if TYPE_CHECKING:
 
 
 _RULES = ("no-input-model-mutation", "no-before-validator-input-mutation", "no-unused-copy-result")
+
 
 _CONTAINED_MUTATIONS = (
     "from pydantic import BaseModel, model_validator\n\n\n"
@@ -33,6 +38,52 @@ _CONTAINED_MUTATIONS = (
     "        child['values'] = data['values']\n"
     "        parent['nested']['values'].append('unsafe')\n        return parent['nested']\n"
 )
+
+
+@pytest.mark.parametrize(
+    ("layout", "order", "expected_count"),
+    [
+        ("collision", "normal", 0),
+        ("collision", "reversed", 0),
+        ("plain", "normal", 0),
+        ("pydantic", "normal", 1),
+    ],
+)
+def test_module_candidates_preserve_conservative_borrowed_model_classification(
+    tmp_path: Path, layout: str, order: str, expected_count: int
+) -> None:
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "module-collision"\nversion = "0.1.0"\n')
+    target = tmp_path / "consumer.py"
+    source = 'from models import Record\ndef update(record: Record):\n    record.name = "new"\n'
+    target.write_text(source)
+    plain = "class Record:\n    name: str\n"
+    pydantic = "from pydantic import BaseModel\nclass Record(BaseModel):\n    name: str\n"
+    (tmp_path / "models.py").write_text(pydantic if layout == "pydantic" else plain)
+    if layout == "collision":
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src/models.py").write_text(pydantic)
+    project = ProjectIndexSet.build([target], {target: source})
+    snapshot = project.source_snapshot()
+    if order == "reversed":
+        snapshot = replace(snapshot, units=tuple(reversed(snapshot.units)))
+    project = ProjectIndexSet.from_source_snapshot(snapshot)
+    model_unit = project.source_unit("models")
+    if layout == "collision":
+        assert model_unit is None
+    else:
+        assert model_unit is not None
+        assert model_unit.path == tmp_path / "models.py"
+    session = AnalysisSession()
+    session.project = project
+    rule = NoInputModelMutation()
+    rule.prepare_session(session)
+    rule.prepare(project)
+
+    findings = check_source([rule], target, source, session=session)
+
+    assert [
+        (finding.path, finding.code, finding.line, finding.col, finding.severity.value) for finding in findings
+    ] == [(target, "SARJ481", 3, 5, "error")] * expected_count
 
 
 @pytest.mark.parametrize("filename", ["app/records.py", "tests/test_records.py"])

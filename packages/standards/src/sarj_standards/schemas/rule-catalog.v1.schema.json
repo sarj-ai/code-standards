@@ -86,7 +86,7 @@
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
-          "items": { "enum": ["config", "iac", "markdown", "python", "sql", "typescript"] }
+          "items": { "enum": ["config", "iac", "markdown", "python", "shell", "sql", "typescript"] }
         },
         "defaultLevel": { "enum": ["error", "off", "warning"] },
         "autofix": { "enum": ["none", "safe", "suggestion"] },

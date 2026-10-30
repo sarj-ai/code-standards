@@ -881,6 +881,24 @@ def test_invalid_utf8_declaration_suppresses_orphans_and_comparisons(tmp_path: P
     assert _check_env(root, "dev") == []
 
 
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        'variable "hidden" {\n type = bool\n default = "unterminated\n',
+        'variable "hidden" { type = bool }\n/* unterminated',
+        'variable "hidden"\n { type = bool }\n',
+    ],
+    ids=("incomplete-value", "incomplete-comment", "header-newline"),
+)
+def test_rejected_declaration_suppresses_orphans_and_comparisons(tmp_path: Path, declaration: str) -> None:
+    root = _write_root(
+        tmp_path, _DECLARED_REGION, {"dev": _REGION_ASSIGNMENT + "hidden = true\n", "prod": _REGION_ASSIGNMENT}
+    )
+    (root / "extra.tf").write_text(declaration, encoding="utf-8")
+
+    assert _check_env(root, "dev") == []
+
+
 def test_invalid_utf8_json_environment_blinds_comparisons(tmp_path: Path) -> None:
     root = _write_root(tmp_path, _DECLARED_REGION, {"dev": _REGION_ASSIGNMENT, "prod": _REGION_ASSIGNMENT})
     (root / "staging.tfvars.json").write_bytes(b'{"region":"me-central2","extra":"\xff"}')

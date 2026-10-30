@@ -973,10 +973,8 @@ class CopyOnWriteAnalysis:
                 summaries[key] = _summary_value(_OwnershipSummary(alternatives))
             bindings[name] = summaries[key]
 
-    def _scan(self, statements: list[ast.stmt], bindings: dict[str, _Value]) -> None:
-        for statement in statements:
-            if self._statement(statement, bindings):
-                return
+    def _scan(self, statements: list[ast.stmt], bindings: dict[str, _Value]) -> bool:
+        return any(self._statement(statement, bindings) for statement in statements)
 
     def _statement(self, statement: ast.stmt, bindings: dict[str, _Value]) -> bool:
         match statement:
@@ -991,7 +989,7 @@ class CopyOnWriteAnalysis:
                     self._write(target, bindings)
                     self._bind(target, None, bindings)
             case ast.If():
-                self._branches(statement, bindings)
+                return self._branches(statement, bindings)
             case ast.For() | ast.AsyncFor():
                 self._for(statement, bindings)
             case ast.Expr(value=ast.Call() as call):
@@ -1026,16 +1024,16 @@ class CopyOnWriteAnalysis:
             self._write(target, bindings)
             self._bind(target, value, bindings)
 
-    def _branches(self, statement: ast.If, bindings: dict[str, _Value]) -> None:
+    def _branches(self, statement: ast.If, bindings: dict[str, _Value]) -> bool:
         self._expression(statement.test, bindings)
         branches: list[dict[str, _Value]] = []
         for positive, block in ((True, statement.body), (False, statement.orelse)):
             branch = dict(bindings)
             self._refine(statement.test, branch, positive=positive)
-            self._scan(block, branch)
-            if not block or not isinstance(block[-1], (ast.Return, ast.Raise)):
+            if not self._scan(block, branch):
                 branches.append(branch)
         self._join(branches, bindings)
+        return not branches
 
     def _for(self, statement: ast.For | ast.AsyncFor, bindings: dict[str, _Value]) -> None:
         self._expression(statement.iter, bindings)
