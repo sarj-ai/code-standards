@@ -24,6 +24,7 @@ from . import textlint
 from .devops_tools import TOOLS, NativeToolError, checked_tool
 from .external import redact_message, run_process_input
 from .policy import Policy
+from .process import current_cancellation, initialize_process_cancellation
 
 
 if TYPE_CHECKING:
@@ -133,7 +134,11 @@ def _format_diagnostics(root: Path, sources: tuple[tuple[Path, str, str], ...]) 
         formatted = format_source(source, dialect=dialect, filename=relative, executable=executable, root=root)
         return None if formatted == source else format_diagnostic(path=relative, source=source, formatted=formatted)
 
-    with ThreadPoolExecutor(thread_name_prefix="shfmt") as workers:
+    with ThreadPoolExecutor(
+        thread_name_prefix="shfmt",
+        initializer=initialize_process_cancellation,
+        initargs=(current_cancellation(),),
+    ) as workers:
         return [diagnostic for diagnostic in workers.map(diagnose, sources) if diagnostic is not None]
 
 

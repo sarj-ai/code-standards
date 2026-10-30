@@ -5,6 +5,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from enum import StrEnum
 from functools import lru_cache
+from heapq import nsmallest
 import os
 from pathlib import Path, PurePosixPath
 import re
@@ -69,6 +70,7 @@ class _GapKind(StrEnum):
     OWNER = "owner"
     BYTE_LIMIT = "byte-limit"
     FILE_LIMIT = "file-limit"
+    ENTRY_LIMIT = "entry-limit"
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +90,12 @@ class _IndexScan:
 class _IndexEvidence:
     indexes: frozenset[_IndexedColumns]
     complete: bool
+
+
+@dataclass(slots=True)
+class _DiscoveryBudget:
+    visited: int = 0
+    limit_hit: bool = False
 
 
 _INDEX_SNAPSHOTS: ContextVar[dict[Path, _IndexScan] | None] = ContextVar("sql_index_analysis_snapshots", default=None)
@@ -180,6 +188,8 @@ _MIGRATION_ROOT_NAMES = frozenset({"migrations", "migration", "migrate", "drizzl
 # Bounds on the sibling scan, so a pathological tree cannot turn a per-file lint
 # into a repo-wide one.
 _MAX_TREE_FILES = 600
+# Count every directory entry, including non-SQL files, before retaining or classifying it.
+_MAX_TREE_ENTRIES = 12_000
 _MAX_TREE_BYTES = 1_000_000
 _MAX_CACHED_SOURCE_LENGTH = 16_384
 _MAX_SNAPSHOT_ROOTS = 64
@@ -214,7 +224,7 @@ def _tree_indexes(  # sarj-noqa: SARJ023 — bounded tree helpers stay adjacent.
 
 
 def _gap_is_current(gap: _IndexGap, owners: frozenset[Path], current_file: _FileIdentity) -> bool:
-    if gap.kind in {_GapKind.TRAVERSAL, _GapKind.FILE_LIMIT}:
+    if gap.kind in {_GapKind.TRAVERSAL, _GapKind.FILE_LIMIT, _GapKind.ENTRY_LIMIT}:
         return False
     return gap.path in owners or gap.identity == current_file
 
@@ -237,7 +247,7 @@ def _snapshot_current_paths(files: tuple[_FileIndexes, ...], current: Path, iden
 def _scan_tree_indexes(root: Path) -> _IndexScan:
     files: list[_FileIndexes] = []
     gaps: list[_IndexGap] = []
-    candidates = _migration_sql_paths(root, gaps)
+    candidates = nsmallest(_MAX_TREE_FILES + 1, _migration_sql_paths(root, gaps))
     if len(candidates) > _MAX_TREE_FILES:
         gaps.append(_IndexGap(_GapKind.FILE_LIMIT, None, None))
     for candidate in candidates[:_MAX_TREE_FILES]:
@@ -266,30 +276,43 @@ def _scan_tree_indexes(root: Path) -> _IndexScan:
     return _IndexScan(tuple(files), tuple(gaps))
 
 
-def _migration_sql_paths(root: Path, gaps: list[_IndexGap]) -> list[Path]:
+def _migration_sql_paths(root: Path, gaps: list[_IndexGap]) -> Iterator[Path]:
     directories = [root]
-    paths: list[Path] = []
+    budget = _DiscoveryBudget()
     while directories:
         directory = directories.pop()
-        for entry in _directory_entries(directory, gaps):
-            is_directory = _entry_is_directory(entry, gaps)
-            if is_directory is None:
-                continue
-            path = Path(entry.path)
-            if is_directory:
-                directories.append(path)
-            if path.match("*.sql"):
-                paths.append(path)
-    return sorted(paths)
+        try:
+            with os.scandir(directory) as entries:
+                yield from _directory_paths(entries, directories, gaps, budget)
+        except OSError:
+            gaps.append(_IndexGap(_GapKind.TRAVERSAL, directory, None))
+        if budget.limit_hit:
+            return
 
 
-def _directory_entries(directory: Path, gaps: list[_IndexGap]) -> tuple[os.DirEntry[str], ...]:
-    try:
-        with os.scandir(directory) as entries:
-            return tuple(entries)
-    except OSError:
-        gaps.append(_IndexGap(_GapKind.TRAVERSAL, directory, None))
-        return ()
+def _directory_paths(
+    entries: Iterator[os.DirEntry[str]], directories: list[Path], gaps: list[_IndexGap], budget: _DiscoveryBudget
+) -> Iterator[Path]:
+    for entry in entries:
+        # One lookahead distinguishes an exhausted budget from a complete tree.
+        if budget.visited >= _MAX_TREE_ENTRIES:
+            gaps.append(_IndexGap(_GapKind.ENTRY_LIMIT, None, None))
+            budget.limit_hit = True
+            return
+        budget.visited += 1
+        path = _sql_entry_path(entry, directories, gaps)
+        if path is not None:
+            yield path
+
+
+def _sql_entry_path(entry: os.DirEntry[str], directories: list[Path], gaps: list[_IndexGap]) -> Path | None:
+    is_directory = _entry_is_directory(entry, gaps)
+    if is_directory is None:
+        return None
+    path = Path(entry.path)
+    if is_directory:
+        directories.append(path)
+    return path if path.match("*.sql") else None
 
 
 def _entry_is_directory(entry: os.DirEntry[str], gaps: list[_IndexGap]) -> bool | None:
@@ -393,8 +416,15 @@ class RequireFkIndex(Rule):
             "Explicit schemas and quoted identifier case remain distinct; mixed qualification is unresolved and may refer to the same relation.",
             "Literal FALSE partial indexes cannot cover foreign keys. Other partial predicates retain conservative legacy coverage; arbitrary implication and migration-time index drops are not evaluated.",
             "Unicode escape identifiers (U&) and server-side identifier truncation are not resolved.",
-            "A bounded scan includes indexes from sibling files in the same migration tree.",
-            "Unavailable or budget-excluded sibling evidence prevents a missing-index proof; known indexes remain usable.",
+            (
+                "Sibling discovery classifies at most 12,000 directory entries, with one lookahead to detect exhaustion, "
+                "and parses at most 600 SQL candidates."
+            ),
+            "Complete discovery selects the lexicographically first 600 SQL candidates in the migration tree.",
+            (
+                "Unavailable or budget-excluded sibling evidence, including exhausted directory discovery, prevents a "
+                "missing-index proof; known indexes remain usable."
+            ),
             "Schema dumps are excluded; add the owning change to an authored migration.",
         ),
         examples=(

@@ -5,8 +5,16 @@ from pathlib import Path, PurePosixPath
 
 import pytest
 
-from sarj_rule_contracts import ExampleDependency, ExampleFile, ExpectedOutcome, RuleExample
-from sarj_rule_contracts.examples import ExampleFinding, verify_examples
+from sarj_rule_contracts import (
+    AutofixPolicy,
+    ExampleDependency,
+    ExampleFile,
+    ExpectedOutcome,
+    NativeRuleSpec,
+    RuleCategory,
+    RuleExample,
+)
+from sarj_rule_contracts.examples import ExampleFinding, verify_examples, verify_native_rule
 
 
 def _examples() -> tuple[RuleExample, ...]:
@@ -28,6 +36,44 @@ def _examples() -> tuple[RuleExample, ...]:
             ("accepts", "good = True\n", ExpectedOutcome.NO_MATCH, 0),
         )
     )
+
+
+class _ExtensionRule:
+    __module__ = "sarj_contract_fixture_engine_without_autofix"
+    id = "extension-example"
+
+    @classmethod
+    def native_spec(cls) -> NativeRuleSpec:
+        positive, negative = _examples()
+        positive = replace(positive, fixed_files=(ExampleFile(positive.focus_path, "good = True\n"),))
+        return NativeRuleSpec(
+            engine="extension",
+            rule_id=cls.id,
+            code="SARJ999",
+            summary="Verify an explicitly supplied extension fixer.",
+            rationale="Extension engines need not follow a native module layout.",
+            remediation="Supply a fixer callback for authored rewrite examples.",
+            category=RuleCategory.CORRECTNESS,
+            autofix=AutofixPolicy.SAFE,
+            examples=(positive, negative),
+        )
+
+
+@pytest.mark.parametrize("supply_fix", [False, True], ids=["legacy-missing-module", "explicit-callback"])
+def test_native_extension_can_supply_its_fixer_without_an_autofix_module(*, supply_fix: bool) -> None:
+    def analyze(rule_ids: list[str], paths: list[Path]) -> list[ExampleFinding]:
+        assert rule_ids == [_ExtensionRule.id]
+        [focus] = paths
+        return [ExampleFinding(focus, 1, 1, "SARJ999")] if "bad" in focus.read_text(encoding="utf-8") else []
+
+    def fix(_root: Path, _path: Path, source: str) -> str:
+        return source.replace("bad", "good")
+
+    if supply_fix:
+        assert verify_native_rule(_ExtensionRule, analyze, fix=fix) == 2
+    else:
+        with pytest.raises(ModuleNotFoundError, match="sarj_contract_fixture_engine_without_autofix"):
+            verify_native_rule(_ExtensionRule, analyze)
 
 
 @pytest.mark.parametrize("behavior", ["unimplemented", "always-clean", "always-report", "correct"])

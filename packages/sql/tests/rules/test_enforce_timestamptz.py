@@ -4,25 +4,28 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from sarj_rule_contracts.examples import verify_native_rule
 
+from sarj_sql_lint.__main__ import analyze
+from sarj_sql_lint.autofix import fix_source
 from sarj_sql_lint.rules.enforce_timestamptz import EnforceTimestamptz
 
 
 if TYPE_CHECKING:
-    from sarj_sql_lint.rule_base import Diagnostic, RuleExample
+    from sarj_sql_lint.rule_base import Diagnostic
 
 
 def _check(source: str) -> list[Diagnostic]:
     return EnforceTimestamptz().check(Path("supabase/migrations/001.sql"), source)
 
 
-_PUBLIC_EXAMPLES = EnforceTimestamptz.public_examples()
+def test_authored_examples_verify_fixes_and_convergence() -> None:
+    def fix(_root: Path, path: Path, source: str) -> str:
+        return fix_source(path, source, rule_ids=(EnforceTimestamptz.id,))
 
-
-@pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(example.example_id for example in _PUBLIC_EXAMPLES))
-def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
-    focus = example.focus_file
-    assert len(EnforceTimestamptz().check(Path(focus.path), focus.source)) == example.expected_count
+    documentation = EnforceTimestamptz.documentation
+    assert documentation is not None
+    assert verify_native_rule(EnforceTimestamptz, analyze, fix=fix) == len(documentation.examples)
 
 
 def test_flags_naive_timestamp():

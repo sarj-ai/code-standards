@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from hashlib import sha256
-from importlib import import_module
 from pathlib import Path
 import time
 from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
@@ -14,6 +14,7 @@ from sarj_standards.libs.diagnostics import (
     AnalyzerId,
     Completion,
     Conclusion,
+    CoverageNotice,
     Diagnostic,
     ExecutionIssue,
     Fix,
@@ -35,7 +36,7 @@ from .runner import GroupedPaths, group_paths
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Sequence
     from typing import Self
 
     from sarj_python_lint.rule_base import Fix as PythonFix
@@ -92,26 +93,25 @@ class _FixDiagnostic(Protocol):
 
 
 class _RuleMetadata(Protocol):
-    code: str
-    id: str
-    description: str
+    @property
+    def code(self) -> str: ...
+
+    @property
+    def id(self) -> str: ...
+
+    @property
+    def description(self) -> str: ...
 
 
-@runtime_checkable
-class _CheckerModule(Protocol):
-    def analyze(
-        self, rule_ids: list[str], paths: list[Path], *, sources: SourceCatalog | None = None
+class _NativeAnalyzer(Protocol):
+    def __call__(
+        self, rule_ids: Sequence[str], paths: list[Path], *, sources: SourceCatalog | None = None
     ) -> Sequence[_NativeDiagnostic]: ...
 
 
-@runtime_checkable
-class _RegistryModule(Protocol):
-    REGISTRY: Mapping[str, type[_RuleMetadata]]
-
-
 class _LoadedNative(NamedTuple):
-    checker: _CheckerModule
-    registry: _RegistryModule
+    analyze: _NativeAnalyzer
+    registry: Mapping[str, type[_RuleMetadata]]
 
 
 class _NativeRuleMetadata(NamedTuple):
@@ -192,7 +192,7 @@ def analyze(
         )
         for item in report.tools
     )
-    return report_from_tools(root, filtered)
+    return report_from_tools(root, filtered, coverage=report.coverage)
 
 
 def _selected_ids(selection: RuleSelection | None, engine: RuleEngine) -> frozenset[str] | None:
@@ -212,24 +212,14 @@ def _contained_path(value: str, root: Path) -> str:
     return str(resolved)
 
 
-def report_from_tools(root: Path, reports: Sequence[ToolReport]) -> AnalysisReport:
+def report_from_tools(
+    root: Path, reports: Sequence[ToolReport], *, coverage: tuple[CoverageNotice, ...] = ()
+) -> AnalysisReport:
     normalized = tuple(
         _normalized_tool_report(report)
         for report in sorted(reports, key=lambda report: (report.name, str(report.invocation_id or "")))
     )
-    issues = tuple(issue for report in normalized for issue in report.issues)
-    diagnostics = tuple(item for report in normalized for item in report.diagnostics)
-    if issues:
-        completion = (
-            Completion.FAILED
-            if normalized and all(report.completion is Completion.FAILED for report in normalized)
-            else Completion.PARTIAL
-        )
-        conclusion = Conclusion.FINDINGS if diagnostics else Conclusion.INCONCLUSIVE
-    else:
-        completion = Completion.COMPLETE
-        conclusion = Conclusion.FINDINGS if diagnostics else Conclusion.PASSED
-    return AnalysisReport(root, completion, conclusion, normalized)
+    return AnalysisReport.from_tools(root, normalized, coverage=coverage)
 
 
 def _normalized_tool_report(report: ToolReport) -> ToolReport:
@@ -299,10 +289,10 @@ def _run_native(
     rule_ids: frozenset[str] | None,
 ) -> ToolReport:
     started = time.monotonic()
-    checker_module, registry_module = _load_native(package)
-    metadata = native_metadata(registry_module.REGISTRY)
-    selected_rules = sorted(registry_module.REGISTRY) if rule_ids is None else sorted(rule_ids)
-    unknown = sorted(set(selected_rules) - set(registry_module.REGISTRY))
+    analyzer, registry = _load_native(package)
+    metadata = native_metadata(registry)
+    selected_rules = sorted(registry) if rule_ids is None else sorted(rule_ids)
+    unknown = sorted(set(selected_rules) - set(registry))
     if unknown:
         msg = f"unknown {package} rule(s): {', '.join(unknown)}"
         raise ValueError(msg)
@@ -323,7 +313,7 @@ def _run_native(
             sources=sources,
         )
     else:
-        native_result = checker_module.analyze(selected_rules, paths, sources=sources)
+        native_result = analyzer(selected_rules, paths, sources=sources)
     cache: dict[Path, SourceDocument | PythonSourceDocument | None] = {}
     resolved_paths: dict[Path, Path] = {}
     diagnostics = tuple(
@@ -350,12 +340,25 @@ def _run_native(
 
 
 def _load_native(package: str) -> _LoadedNative:
-    checker_module = import_module(f"{package}.__main__")
-    registry_module = import_module(f"{package}.rules")
-    if not isinstance(checker_module, _CheckerModule) or not isinstance(registry_module, _RegistryModule):
-        msg = f"{package} does not expose the expected in-process analysis API"
-        raise TypeError(msg)
-    return _LoadedNative(checker_module, registry_module)
+    match package:
+        case "sarj_python_lint":
+            from sarj_python_lint.__main__ import analyze as analyze_python  # ruff: ignore[import-outside-top-level] -- bind the actual typed entry point only for the selected Python engine.
+            from sarj_python_lint.rules import REGISTRY as PYTHON_RULES  # ruff: ignore[import-outside-top-level] -- retain the selected engine's live registry and constructor metadata.
+
+            return _LoadedNative(analyze_python, PYTHON_RULES)
+        case "sarj_sql_lint":
+            from sarj_sql_lint.__main__ import analyze as analyze_sql  # ruff: ignore[import-outside-top-level] -- bind the actual typed entry point only for the selected SQL engine.
+            from sarj_sql_lint.rules import REGISTRY as SQL_RULES  # ruff: ignore[import-outside-top-level] -- retain the selected engine's live registry and constructor metadata.
+
+            return _LoadedNative(analyze_sql, SQL_RULES)
+        case "sarj_iac_lint":
+            from sarj_iac_lint.__main__ import analyze as analyze_iac  # ruff: ignore[import-outside-top-level] -- bind the actual typed entry point only for the selected IaC engine.
+            from sarj_iac_lint.rules import REGISTRY as IAC_RULES  # ruff: ignore[import-outside-top-level] -- retain the selected engine's live registry and constructor metadata.
+
+            return _LoadedNative(analyze_iac, IAC_RULES)
+        case _:
+            msg = f"unsupported in-process analysis package: {package}"
+            raise ValueError(msg)
 
 
 def native_metadata(registry: Mapping[str, type[_RuleMetadata]]) -> dict[str, _NativeRuleMetadata]:

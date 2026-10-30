@@ -769,6 +769,163 @@ def test_exactly_600_complete_migrations_can_prove_a_missing_index(tmp_path: Pat
     assert [finding.code for finding in _check(target.read_text(), target)] == ["SARJ112"]
 
 
+@pytest.mark.parametrize("layout", ["flat", "wide", "deep"])
+def test_entry_budget_bounds_real_directory_work(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, layout: str) -> None:
+    root = tmp_path / "migrations"
+    root.mkdir()
+    target = root / "child.sql"
+    target.write_text(_CASCADING_CHILD, encoding="utf-8")
+    match layout:
+        case "flat":
+            for number in range(20):
+                (root / f"{number}.txt").write_text("not SQL", encoding="utf-8")
+        case "wide":
+            for number in range(20):
+                directory = root / str(number)
+                directory.mkdir()
+                (directory / "cover.sql").write_text(_CHILD_INDEX, encoding="utf-8")
+        case _:
+            directory = root
+            for number in range(8):
+                directory /= str(number)
+                directory.mkdir()
+            (directory / "cover.sql").write_text(_CHILD_INDEX, encoding="utf-8")
+    real_scandir = os.scandir
+    observed: list[Path] = []
+    opened: list[Path] = []
+    closed: list[Path] = []
+
+    @contextmanager
+    def tracked_directory(path: str | os.PathLike[str]) -> Generator[Iterator[os.DirEntry[str]]]:
+        opened.append(Path(path))
+        with real_scandir(path) as entries:
+
+            def tracked_entries() -> Iterator[os.DirEntry[str]]:
+                for entry in entries:
+                    observed.append(Path(entry.path))
+                    yield entry
+
+            try:
+                yield tracked_entries()
+            finally:
+                closed.append(Path(path))
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise the fixed cost boundary cheaply with real traversal and SQL parsing.
+        index_module, "_MAX_TREE_ENTRIES", 4
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- count and forward actual global scandir entries and context closure.
+        os, "scandir", tracked_directory
+    )
+    assert _check(_CASCADING_CHILD, target) == []
+    assert len(observed) <= 5
+    assert len(opened) <= 5
+    assert closed == opened
+    if layout == "wide":
+        assert opened == [root]
+
+
+@pytest.mark.parametrize("extra_entry", [False, True], ids=("complete-at-limit", "incomplete-over-limit"))
+def test_exact_entry_budget_can_still_prove_a_missing_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, extra_entry: bool
+) -> None:
+    root = tmp_path / "migrations"
+    root.mkdir()
+    target = root / "child.sql"
+    target.write_text(_CASCADING_CHILD, encoding="utf-8")
+    for number in range(3 + extra_entry):
+        (root / f"{number}.txt").write_text("not SQL", encoding="utf-8")
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise both sides of the real fixed discovery limit without a large fixture.
+        index_module, "_MAX_TREE_ENTRIES", 4
+    )
+    expected = [] if extra_entry else ["SARJ112"]
+    assert [finding.code for finding in _check(_CASCADING_CHILD, target)] == expected
+
+
+def test_complete_discovery_keeps_the_lexicographically_first_600_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "migrations"
+    root.mkdir()
+    (root / "000_cover.sql").write_text(_CHILD_INDEX, encoding="utf-8")
+    target = root / "001_child.sql"
+    target.write_text(_CASCADING_CHILD, encoding="utf-8")
+    for number in range(2, 602):
+        (root / f"{number:03d}_neutral.sql").write_text("SELECT 1;\n", encoding="utf-8")
+    real_scandir = os.scandir
+
+    @contextmanager
+    def descending_directory(path: str | os.PathLike[str]) -> Generator[Iterator[os.DirEntry[str]]]:
+        with real_scandir(path) as entries:
+            yield iter(sorted(entries, key=lambda entry: entry.name, reverse=True))
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- reverse real enumeration order; first-yield truncation would lose the covering index.
+        os, "scandir", descending_directory
+    )
+    with index_analysis_session():
+        evidence = index_module._sibling_indexes(target, ("child",))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- verify actual positive evidence, rather than only absence abstention.
+        assert not evidence.complete
+        assert {(index.table, index.columns) for index in evidence.indexes} == {(("child",), ("parent_id",))}
+        assert _check(_CASCADING_CHILD, target) == []
+
+
+def test_entry_limit_keeps_known_indexes_and_cannot_be_discharged_by_current_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "migrations"
+    root.mkdir()
+    (root / "000_cover.sql").write_text(_CHILD_INDEX, encoding="utf-8")
+    target = root / "001_child.sql"
+    target.write_text(_CASCADING_CHILD, encoding="utf-8")
+    (root / "999_unknown.txt").write_text("not SQL", encoding="utf-8")
+    real_scandir = os.scandir
+
+    @contextmanager
+    def ascending_directory(path: str | os.PathLike[str]) -> Generator[Iterator[os.DirEntry[str]]]:
+        with real_scandir(path) as entries:
+            yield iter(sorted(entries, key=lambda entry: entry.name))
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- constrain the actual fixed budget while retaining real parsed covering evidence.
+        index_module, "_MAX_TREE_ENTRIES", 2
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- expose real covering entries before the deliberately truncated global boundary.
+        os, "scandir", ascending_directory
+    )
+    with index_analysis_session():
+        evidence = index_module._sibling_indexes(target, ("child",))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- a global cost gap must retain known facts and remain incomplete for the supplied current source.
+        assert not evidence.complete
+        assert {(index.table, index.columns) for index in evidence.indexes} == {(("child",), ("parent_id",))}
+        assert _check(_CASCADING_CHILD, target) == []
+
+
+def test_failed_entry_iteration_keeps_known_positive_evidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / "migrations"
+    root.mkdir()
+    (root / "000_cover.sql").write_text(_CHILD_INDEX, encoding="utf-8")
+    target = root / "001_child.sql"
+    target.write_text(_CASCADING_CHILD, encoding="utf-8")
+    real_scandir = os.scandir
+
+    @contextmanager
+    def interrupted_directory(path: str | os.PathLike[str]) -> Generator[Iterator[os.DirEntry[str]]]:
+        with real_scandir(path) as entries:
+            ordered = sorted(entries, key=lambda entry: entry.name)
+
+            def interrupted_entries() -> Iterator[os.DirEntry[str]]:
+                yield ordered[0]
+                raise PermissionError(path)
+
+            yield interrupted_entries()
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- interrupt actual enumeration after a real index entry; retain parsing and identity checks.
+        os, "scandir", interrupted_directory
+    )
+    with index_analysis_session():
+        evidence = index_module._sibling_indexes(target, ("child",))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- preserve real parsed facts across an enumeration failure.
+        assert not evidence.complete
+        assert {(index.table, index.columns) for index in evidence.indexes} == {(("child",), ("parent_id",))}
+        assert _check(_CASCADING_CHILD, target) == []
+
+
 def test_unobservable_subtree_with_a_real_index_prevents_an_absence_finding(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
