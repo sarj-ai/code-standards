@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "date": "2026-10-29",
-  "scope": "Every Python rule in the 200-rule registry at main 3d848ea71f4ee1b4c2c7469e8bfebf8f8e036e07 plus six rules added by this change; source-level applicability review, not an assertion of identical enforcement across languages.",
+  "scope": "Every Python rule in the 200-rule registry at main 3d848ea71f4ee1b4c2c7469e8bfebf8f8e036e07 plus six rules added by this change; source-level applicability review, not an assertion of identical enforcement across languages. Updated through Python 1.99.0 at main cba7ffff8548ea30f00cd1c8a9229cd856f2e9c8 with the additional SARJ556 applicability review; the original review and its 13 TypeScript rule additions remain historical facts.",
   "decisionDefinitions": {
     "existing-local": "Existing source-semantic TypeScript rule owns the stated bounded concern.",
     "existing-upstream": "Maintained upstream rule owns the portable source form; availability does not imply every consumer enables the same preset.",
@@ -15,9 +15,9 @@
     "shared-sql-policy": "The shared SQL engine owns the portable SQL concern; embedded driver/query-builder coverage is not implied."
   },
   "counts": {
-    "pythonRulesReviewed": 206,
+    "pythonRulesReviewed": 207,
     "decisions": {
-      "architecture-review": 23,
+      "architecture-review": 24,
       "existing-local": 75,
       "existing-upstream": 18,
       "extended-local": 1,
@@ -1471,6 +1471,42 @@
       "decision": "new-local",
       "owner": "@sarj/no-mutating-input-with-result",
       "basis": "Direct declared mutable object input writes in result-returning functions now have an explicit counterpart."
+    },
+    {
+      "code": "SARJ556",
+      "ruleId": "service-singleton-delegates-to-bulk",
+      "decision": "architecture-review",
+      "owner": "none",
+      "basis": "Bulk-first service design is useful when a declared application contract requires it. The Python rule enforces a suffix/CRUD convention and visible one-item/context delegation, but explicitly does not prove batching, result projection, authorization or atomicity. Existing TypeScript SQL owners support differing native operation names, while declared service interfaces may validly expose only singleton operations. No equivalent TypeScript bulk contract is established here; a generic Service/Store/Repository get/getMany naming rule would invent one."
+    }
+  ],
+  "updates": [
+    {
+      "date": "2026-10-30",
+      "base": "a59dae471765f9099d8cdf64249abb94b0b3f9c7",
+      "head": "cba7ffff8548ea30f00cd1c8a9229cd856f2e9c8",
+      "pythonVersion": "1.99.0",
+      "previousCounts": {
+        "pythonRulesReviewed": 206,
+        "decisions": {
+          "architecture-review": 23,
+          "existing-local": 75,
+          "existing-upstream": 18,
+          "extended-local": 1,
+          "framework-specific": 20,
+          "native-semantics": 29,
+          "new-local": 24,
+          "new-upstream": 1,
+          "python-api": 11,
+          "shared-sql-policy": 4
+        }
+      },
+      "pythonRulesAdded": [
+        "SARJ556"
+      ],
+      "originalTypeScriptRulesAdded": 13,
+      "typeScriptRulesAddedByThisUpdate": 0,
+      "basis": "All original 206 descriptor identities and implementation blobs are unchanged in this update. SARJ556 adds a separately reviewed bulk-first architecture policy; no TypeScript contract or generic CRUD-name detector is invented."
     }
   ]
 }
