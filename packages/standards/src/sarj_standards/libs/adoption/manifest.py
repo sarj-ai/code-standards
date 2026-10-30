@@ -721,7 +721,7 @@ def _removed_rule_selector(selector: str) -> bool:
     engine, separator, rule = selector.partition(":")
     if not separator or engine not in {*_SARJ_RULE_ENGINES, ledger.ESLINT}:
         return False
-    kind = ledger.CODE if engine == "python" and re.fullmatch(r"SARJ[0-9]{3}", rule) else engine
+    kind = ledger.CODE if engine in _SARJ_RULE_ENGINES and re.fullmatch(r"SARJ[0-9]{3}", rule) else engine
     return any(
         entry.kind == kind and entry.id == rule and entry.status is ledger.Status.REMOVED
         for entry in ledger.load().retired

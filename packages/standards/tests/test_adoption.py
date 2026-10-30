@@ -850,22 +850,32 @@ def test_schema_three_manifest_is_available_to_setup_without_enabling_mobile_too
 
 
 @pytest.mark.parametrize(("schema", "bundle"), [(3, "7.7.0"), (4, "7.32.14")])
-@pytest.mark.parametrize("retired", ["SARJ014", "SARJ449"])
-def test_setup_discards_removed_rule_exclusions(tmp_path: Path, schema: int, bundle: str, retired: str) -> None:
+@pytest.mark.parametrize(
+    ("retired", "active"),
+    [
+        ("python:SARJ014", "python:SARJ012"),
+        ("python:SARJ449", "python:SARJ012"),
+        ("sql:SARJ110", "sql:SARJ108"),
+        ("sql:require-lock-timeout", "sql:SARJ108"),
+    ],
+)
+def test_setup_discards_removed_rule_exclusions(
+    tmp_path: Path, schema: int, bundle: str, retired: str, active: str
+) -> None:
     _python_repo(tmp_path)
     manifest_path = tmp_path / manifest.MANIFEST_NAME
     mobile = ', "swiftformat", "swiftlint", "ktlint", "detekt", "mobile-security"' if schema == 4 else ""
     manifest_path.write_text(
         f'schema = {schema}\nbundle = "{bundle}"\n'
         f'[capabilities]\ndisable = ["pyright", "eslint", "markdownlint", "shellcheck", "taplo", "yamllint"{mobile}]\n'
-        f'[exclude]\npaths = ["generated/**"]\nrules = ["python:SARJ012", "python:{retired}"]\n'
-        f'[[exclude.overrides]]\npaths = ["tests/old/**"]\nrules = ["python:{retired}"]\nreason = "retired"\n'
-        f'[[exclude.overrides]]\npaths = ["tests/**"]\nrules = ["python:SARJ012", "python:{retired}"]\n'
+        f'[exclude]\npaths = ["generated/**"]\nrules = ["{active}", "{retired}"]\n'
+        f'[[exclude.overrides]]\npaths = ["tests/old/**"]\nrules = ["{retired}"]\nreason = "retired"\n'
+        f'[[exclude.overrides]]\npaths = ["tests/**"]\nrules = ["{active}", "{retired}"]\n'
         'reason = "mixed"\n',
         encoding="utf-8",
     )
     if schema == manifest.MANIFEST_SCHEMA:
-        with pytest.raises(ValueError, match=f"unknown Standards rule exclusion: python:{retired}"):
+        with pytest.raises(ValueError, match=f"unknown Standards rule exclusion: {retired}"):
             manifest.load(tmp_path)
 
     proc = _cli("--root", str(tmp_path), "setup", "--no-install")
@@ -875,8 +885,8 @@ def test_setup_discards_removed_rule_exclusions(tmp_path: Path, schema: int, bun
     migrated = manifest.load(tmp_path)
     assert migrated is not None
     assert migrated.excluded_paths == ("generated/**",)
-    assert migrated.excluded_rules == ("python:SARJ012",)
-    assert migrated.exclusion_overrides == (manifest.ExclusionOverride(("tests/**",), ("python:SARJ012",), "mixed"),)
+    assert migrated.excluded_rules == (active,)
+    assert migrated.exclusion_overrides == (manifest.ExclusionOverride(("tests/**",), (active,), "mixed"),)
     updated = manifest_path.read_text(encoding="utf-8")
     assert retired not in updated
     assert manifest.load_for_setup(tmp_path) == migrated
@@ -889,6 +899,8 @@ def test_setup_discards_removed_rule_exclusions(tmp_path: Path, schema: int, bun
     ("exclusions", "message"),
     [
         ('rules = ["python:SARJ449", "python:SARJ999"]', "unknown Standards rule exclusion: python:SARJ999"),
+        ('rules = ["sql:SARJ110", "sql:SARJ999"]', "unknown Standards rule exclusion: sql:SARJ999"),
+        ('rules = ["sql:SARJ110", "sql:SARJ1100"]', "unknown Standards rule exclusion: sql:SARJ1100"),
         ('rules = ["code:SARJ449"]', "must use a canonical engine:rule selector"),
         ('rules = ["python:SARJ449", 449]', "must contain only non-empty strings"),
         (
