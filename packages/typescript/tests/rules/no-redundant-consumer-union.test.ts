@@ -4,6 +4,31 @@ import { CONSUMER_PREFIX, PRIVATE_CONSUMER_TESTER, UNION_DECLARATIONS, runPrivat
 const PREFIX = `${CONSUMER_PREFIX}${UNION_DECLARATIONS}`;
 const NULLABLE_PREFIX = `${CONSUMER_PREFIX}interface Animal {readonly name: string | null} interface Dog extends Animal {readonly email: string}`;
 runPrivateConsumerBoundaries("no-redundant-consumer-union", rule, "Dog | Animal", UNION_DECLARATIONS);
+PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union property declaration origins", rule, {
+  valid: [
+    ...[
+      ["conflicting nullable merge", "interface Animal {readonly name: string} interface Dog extends Animal {readonly email: string | null} interface Dog {readonly email: number | null}"],
+      ["compatible repeated merge", "interface Animal {readonly name: string} interface Dog extends Animal {readonly email: string | null} interface Dog {readonly email: string | null}"],
+      ["incompatible own override", "interface Animal {readonly name: string} interface Base extends Animal {readonly email: string | null} interface Dog extends Base {readonly email: number | null}"],
+      ["recovered dual-base field is assignable to both bases", "interface Animal {readonly name: string} interface First extends Animal {readonly email: string} interface Second extends Animal {readonly email: string | null} interface Dog extends First, Second {}"],
+      ["valid narrower own override", "interface Animal {readonly name: string | null} interface Dog extends Animal {readonly name: string; readonly email: string}"],
+      ["compatible independent bases", "interface Animal {readonly name: string} interface First extends Animal {readonly email: string} interface Second extends Animal {readonly email: string} interface Dog extends First, Second {}"],
+      ["legal overlapping intersection", "interface Animal {readonly name: string} type Dog = Animal & {readonly email: string | null} & {readonly email: string};"],
+      ["legal never intersection", "interface Animal {readonly name: string} type Dog = Animal & {readonly email: string} & {readonly email: number};"],
+    ].map(([name, declarations]) => ({name, filename: "probe.tsx",
+      code: `${CONSUMER_PREFIX}${declarations} export type KeptDog = Dog; declare const input: Dog; function label(p: Dog | Animal): string {return p.name ?? '';} label(input);`})),
+  ],
+  invalid: [
+    ...[
+      ["shared-base diamond", "interface Animal {readonly name: string | null} interface Left extends Animal {readonly email: string} interface Right extends Animal {} interface Dog extends Left, Right {}"],
+      ["disjoint merged fragments", "interface Animal {readonly name: string | null} interface Dog extends Animal {} interface Dog {readonly email: string}"],
+      ["disjoint intersection fields", "interface Animal {readonly name: string | null} type Dog = Animal & {readonly email: string};"],
+    ].map(([name, declarations]) => {
+      const code = `${CONSUMER_PREFIX}${declarations} export type KeptDog = Dog; function label(p: Dog | Animal): string {return p.name ?? '';} label(account);`;
+      return {name, filename: "probe.tsx", code, output: code.replace("Dog | Animal", "Animal"), errors: [{messageId: "redundant" as const}]};
+    }),
+  ],
+});
 PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union", rule, {
   valid: [
     ...["", "declare global {interface Object {readonly __optionalToken: any}}"].map((augmentation) => ({

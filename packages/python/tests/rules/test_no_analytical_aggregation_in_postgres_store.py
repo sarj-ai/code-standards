@@ -691,3 +691,263 @@ def test_type_only_native_connection_annotations_retain_backend_proof(annotation
 def test_local_annotation_shadow_cannot_claim_postgres_ownership() -> None:
     source = "import duckdb\nfrom psycopg import Connection\ndef outer():\n    Connection = duckdb.DuckDBPyConnection\n    def report(db: Connection):\n        db.execute('SELECT COUNT(*) FROM event')\n"
     assert _check(source) == []
+
+
+@pytest.mark.parametrize("table", ["TEMP TABLE report", 'TEMPORARY TABLE IF NOT EXISTS "report.schema"."ON COMMIT"'])
+@pytest.mark.parametrize("on_commit", ["DROP", "DELETE ROWS", "PRESERVE ROWS"])
+@pytest.mark.parametrize(
+    "query", ["SELECT DISTINCT id FROM event", "SELECT COUNT(*) FROM event", "SELECT id FROM event GROUP BY id"]
+)
+def test_temporary_ctas_executes_its_policy_query(table: str, on_commit: str, query: str) -> None:
+    sql = f"CREATE {table} ON COMMIT {on_commit} AS WITH rows AS ({query}) SELECT * FROM rows;"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    [finding] = _check(f"import psycopg\nq = {sql!r}\n")
+    assert finding.code == "SARJ020"
+    assert finding.severity is Severity.ERROR
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT id FROM event WHERE id = $1",
+        "SELECT EXISTS(SELECT 1 FROM event WHERE id = $1)",
+        "SELECT 'SELECT DISTINCT id FROM event; ON COMMIT DROP AS' AS example",
+        'SELECT "DISTINCT", "COUNT" FROM event',
+        "SELECT $$SELECT DISTINCT id FROM event;$$ AS example",
+        "SELECT id /* COUNT(*) DISTINCT */ FROM event",
+    ],
+)
+def test_temporary_ctas_does_not_promote_query_data_or_operational_reads(query: str) -> None:
+    sql = f"CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS ({query}) SELECT * FROM rows;"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    assert _check(f"import psycopg\nq = {sql!r}\n") == []
+
+
+def test_temporary_ctas_preserves_python_literal_locations_and_single_diagnostic() -> None:
+    sql = '-- header\r\nCREATE TEMP TABLE "ON COMMIT DROP AS" ON /* one\r\ntwo */ COMMIT /* three */ DROP AS\r\nWITH rows AS (\r\n  SELECT DISTINCT id, COUNT(*) FROM event GROUP BY id\r\n) SELECT * FROM rows;'
+    [finding] = _check(f"import psycopg\n\ncursor.execute({sql!r})\n")
+    assert (finding.line, finding.col) == (3, 16)
+
+
+@pytest.mark.parametrize("tail", ["", "  # sarj-noqa: SARJ020 -- reviewed transactional invariant"])
+def test_temporary_ctas_native_exception_uses_the_original_python_line(tmp_path: Path, tail: str) -> None:
+    path = tmp_path / "service.py"
+    sql = "CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;"
+    path.write_text(f"import psycopg\ncursor.execute({sql!r}){tail}\n")
+    assert main(["check", "--rule", NoAnalyticalAggregationInPostgresStore.id, str(path)]) == int(not tail)
+
+
+@pytest.mark.parametrize(
+    ("sql", "count"),
+    [
+        (
+            "COPY event FROM STDIN;\nCREATE TEMP TABLE payload ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;\n\\.\n",
+            0,
+        ),
+        (
+            "COPY event FROM STDIN;\nCREATE TEMP TABLE payload ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;\n\\.\nCREATE TEMP TABLE report ON COMMIT DROP AS SELECT DISTINCT id FROM event;",
+            1,
+        ),
+    ],
+)
+def test_copy_stdin_ctas_text_is_not_executable(sql: str, count: int) -> None:
+    assert len(_check(f"import psycopg\nq = {sql!r}\n")) == count
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE TEMP TABLE report ON COMMIT DROP AS SELECT DISTINCT FROM;",
+        "CREATE VIEW report ON COMMIT DROP AS SELECT DISTINCT id FROM event;",
+        "SELECT 'CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows';",
+        "COPY event FROM STDIN;\nCREATE TEMP TABLE payload ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;\n",
+    ],
+)
+def test_ctas_fallback_does_not_promote_malformed_or_opaque_commands(sql: str) -> None:
+    assert _check(f"import psycopg\nq = {sql!r}\n") == []
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "COPY event FROM STDIN;\nraw'quote EXPLAIN\n\\.\nSELECT DISTINCT id FROM event;",
+        'COPY event FROM STDIN;\nraw"quote EXPLAIN\n\\.\nSELECT DISTINCT id FROM event;',
+        "COPY event FROM STDIN;\nraw'quote EXPLAIN\n\\.\nCREATE TEMP TABLE report ON COMMIT DROP AS SELECT DISTINCT id FROM event;",
+        'COPY event FROM STDIN;\nraw"quote EXPLAIN\n\\.\nEXPLAIN ANALYZE CREATE TEMP TABLE report ON COMMIT DROP AS SELECT DISTINCT id FROM event;',
+    ],
+)
+def test_copy_payload_quotes_cannot_hide_a_later_policy_query(sql: str) -> None:
+    [finding] = _check(f"import psycopg\nq = {sql!r}\n")
+    assert finding.code == "SARJ020"
+    assert finding.severity is Severity.ERROR
+
+
+def test_quoted_stdin_filename_cannot_hide_a_later_policy_query() -> None:
+    sql = "COPY event FROM 'STDIN'; SELECT DISTINCT id FROM event;"
+    assert len(_check(f"import psycopg\nq = {sql!r}\n")) == 1
+
+
+@pytest.mark.parametrize(
+    ("sql", "count"),
+    [
+        pytest.param(
+            "CREATE LOCAL TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT id FROM rows;",
+            1,
+            id="local-temp-distinct",
+        ),
+        pytest.param(
+            "CREATE GLOBAL TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT id FROM rows;",
+            1,
+            id="global-temp-distinct",
+        ),
+        pytest.param(
+            "CREATE TEMP TABLE report ON COMMIT DROP TABLESPACE pg_default AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT id FROM rows;",
+            1,
+            id="drop-before-tablespace-distinct",
+        ),
+        pytest.param(
+            'CREATE LOCAL TEMPORARY TABLE IF NOT EXISTS "ON COMMIT"."DROP" TABLESPACE "pg_default" AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT id FROM rows;',
+            1,
+            id="quoted-local-temporary-identifiers",
+        ),
+        pytest.param(
+            'CREATE GLOBAL TEMPORARY TABLE "TABLESPACE" ON COMMIT PRESERVE ROWS TABLESPACE "ON COMMIT DROP" AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT id FROM rows;',
+            1,
+            id="quoted-global-temporary-identifiers",
+        ),
+        pytest.param(
+            "CREATE LOCAL TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT id FROM event WHERE id = $1) SELECT id FROM rows;",
+            0,
+            id="local-temp-operational-lookup",
+        ),
+        pytest.param(
+            "CREATE GLOBAL TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT EXISTS(SELECT 1 FROM event WHERE id = $1) AS present) SELECT present FROM rows;",
+            0,
+            id="global-temp-operational-existence",
+        ),
+        pytest.param(
+            "CREATE TEMP TABLE report ON COMMIT DROP TABLESPACE pg_default AS WITH rows AS (SELECT id FROM event WHERE id = $1) SELECT id FROM rows;",
+            0,
+            id="tablespace-operational-lookup",
+        ),
+        pytest.param(
+            "CREATE GLOBAL TEMP TABLE report ON COMMIT DROP TABLESPACE pg_default AS SELECT 'SELECT DISTINCT id FROM event; LOCAL GLOBAL ON COMMIT DROP' AS example;",
+            0,
+            id="quoted-policy-words-remain-data",
+        ),
+        pytest.param(
+            "COPY event FROM STDIN;\nraw'quote EXPLAIN LOCAL GLOBAL TABLESPACE\n\\.\nEXPLAIN ANALYZE CREATE LOCAL TEMP TABLE report ON COMMIT DROP TABLESPACE pg_default AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT id FROM rows;",
+            1,
+            id="copy-data-and-repeated-explain-normalization",
+        ),
+        pytest.param(
+            "CREATE TABLE report TABLESPACE pg_default AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;",
+            1,
+            id="regular-table-tablespace-distinct",
+        ),
+        pytest.param(
+            "CREATE UNLOGGED TABLE report TABLESPACE pg_default AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;",
+            1,
+            id="unlogged-table-tablespace-distinct",
+        ),
+        pytest.param(
+            "CREATE TEMP TABLE report WITHOUT OIDS ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;",
+            1,
+            id="temporary-table-without-oids-distinct",
+        ),
+        pytest.param(
+            "CREATE TEMP TABLE report USING heap ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;",
+            1,
+            id="supported-using-heap-remains-checked",
+        ),
+        pytest.param(
+            "CREATE TEMP TABLE report WITH (fillfactor=70) ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;",
+            1,
+            id="supported-storage-options-remain-checked",
+        ),
+        pytest.param(
+            "CREATE TEMP TABLE report ON COMMIT DROP TABLESPACE 'pg_default' AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;",
+            0,
+            id="single-quoted-tablespace-is-invalid",
+        ),
+    ],
+)
+def test_qualified_temporary_ctas_preserves_policy_with_real_postgres_store(sql: str, count: int) -> None:
+    source = (
+        "from psycopg_pool import AsyncConnectionPool\n\n\n"
+        "class PsqlProbeStore:\n"
+        "    def __init__(self, pool: AsyncConnectionPool) -> None:\n"
+        "        self.pool = pool\n\n"
+        "    async def load(self) -> None:\n"
+        "        async with self.pool.connection() as conn:\n"
+        f"            await conn.execute({sql!r})\n"
+    )
+    findings = _check(source)
+    assert len(findings) == count
+    if findings:
+        assert findings[0].code == "SARJ020"
+        assert findings[0].severity is Severity.ERROR
+        assert (findings[0].line, findings[0].col) == (10, 32)
+
+
+@pytest.mark.parametrize("parameter", ["%s", "%(ids)s", "%b", "%t", "%(ids)b", "%(ids)t"])
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT DISTINCT ON (language) language, id::text FROM agent_profile WHERE language=ANY({parameter}::text[]) ORDER BY language, created_at",
+        "SELECT COUNT(*) FROM event WHERE id=ANY({parameter}::uuid[])",
+        "SELECT status FROM event WHERE id=ALL({parameter}::uuid[]) GROUP BY status",
+        "CREATE TEMP TABLE report ON COMMIT DROP AS SELECT DISTINCT id FROM event WHERE id=ANY({parameter}::uuid[])",
+    ],
+)
+def test_postgres_parameter_casts_do_not_hide_analytics(parameter: str, query: str) -> None:
+    sql = query.format(parameter=parameter)
+    findings = _check(f"import psycopg\nQUERY = {sql!r}\n")
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ020"
+    assert findings[0].severity is Severity.ERROR
+
+
+@pytest.mark.parametrize("parameter", ["%s", "%(ids)s", "%b", "%t", "%(ids)b", "%(ids)t"])
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT id FROM event WHERE id=ANY({parameter}::uuid[])",
+        "SELECT EXISTS(SELECT 1 FROM event WHERE id=ANY({parameter}::uuid[]))",
+        "SELECT 'DISTINCT COUNT(*) %(quoted)t' AS example FROM event WHERE id=ANY({parameter}::uuid[]) /* GROUP BY %b */",
+    ],
+)
+def test_postgres_parameter_casts_keep_operational_reads(parameter: str, query: str) -> None:
+    sql = query.format(parameter=parameter)
+    assert _check(f"import psycopg\nQUERY = {sql!r}\n") == []
+
+
+@pytest.mark.parametrize(
+    ("sql", "count"),
+    [
+        ("SELECT DISTINCT id FROM event WHERE (sequence %% 2)=%s", 1),
+        ("SELECT COUNT(*) FROM event WHERE label='%%s' AND (sequence %% 2)=%(parity)b", 1),
+        ("SELECT id FROM event WHERE (sequence %% 2)=%t", 0),
+        ("SELECT 'DISTINCT COUNT(*) %%s' AS example FROM event WHERE (sequence %% 2)=%s /* GROUP BY %% */", 0),
+        ("SELECT COUNT(*) FROM event WHERE id=ANY(%d::uuid[])", 0),
+    ],
+)
+def test_postgres_parameter_formats_preserve_percent_data_and_reject_invalid_formats(sql: str, count: int) -> None:
+    assert len(_check(f"import psycopg\nQUERY = {sql!r}\n")) == count
+
+
+@pytest.mark.parametrize("parameter", ["%s", "%(ids)s", "%b", "%t", "%(ids)b", "%(ids)t"])
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT org_id, status, COUNT(*), AVG(amount) FROM item WHERE language=ANY({parameter}::text[]) GROUP BY org_id, status"
+    ],
+)
+def test_legacy_reporting_overlap_keeps_parameter_array_casts(parameter: str, query: str) -> None:
+    assert analytical_signal(query.format(parameter=parameter)) == "grouped reporting shape"
+
+
+@pytest.mark.parametrize("driver", ["sqlite3", "pymysql"])
+@pytest.mark.parametrize("parameter", ["%b", "%t"])
+@pytest.mark.parametrize("query", ["SELECT COUNT(*) FROM event WHERE id={parameter}"])
+def test_postgres_parameter_formats_do_not_broaden_other_dialects(driver: str, parameter: str, query: str) -> None:
+    sql = query.format(parameter=parameter)
+    assert _check(f"import {driver}\nQUERY = {sql!r}\n") == []
