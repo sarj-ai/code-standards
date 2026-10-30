@@ -427,12 +427,14 @@ def test_identifier_normalization_preserves_quoted_identity_and_unparsed_text(so
         ("insert-requires-replay-policy", "INSERT INTO orders (id) VALUES (1);"),
         ("prefer-jsonb", "CREATE TABLE orders (payload JSON);"),
         ("index-concurrently", "CREATE INDEX orders_idx ON orders(id);"),
-        ("no-application-schema-check", "CREATE TABLE orders (status TEXT CHECK (status IN ('ready', 'done')));"),
+        (
+            "no-application-schema-check",
+            "CREATE TABLE orders (payload JSONB CHECK (jsonb_typeof(payload) = 'object'));",
+        ),
         (
             "prefer-uuidv7-default",
             "CREATE TABLE orders (id UUID DEFAULT gen_random_uuid());",  # sarj-noqa: SARJ053 -- intentional positive SQL rule fixture
         ),
-        ("require-lock-timeout", "ALTER TABLE orders ADD COLUMN note TEXT;"),
         ("require-fk-index", "CREATE TABLE orders (owner_id INT REFERENCES owners(id) ON DELETE CASCADE);"),
         ("no-migration-comment-cruft", "-- ALTER TABLE orders ADD COLUMN note TEXT;"),
     ],
@@ -466,15 +468,6 @@ def test_scalar_sibling_index_does_not_cover_a_real_foreign_key(tmp_path: Path) 
     source.write_text("CREATE TABLE orders (owner_id BIGINT REFERENCES owners(id) ON DELETE CASCADE);\n")
     (project / "002_data.sql").write_text("SELECT $$CREATE INDEX orders_owner_idx ON orders(owner_id);$$;\n")
     assert len(analyze(["require-fk-index"], [source])) == 1
-
-
-def test_scalar_timeout_does_not_protect_executable_ddl(tmp_path: Path) -> None:
-    source = tmp_path / "supabase" / "migrations" / "001_orders.sql"
-    source.parent.mkdir(parents=True)
-    source.write_text(
-        "-- dialect: postgres\nSELECT $$SET lock_timeout = '5s';$$;\nALTER TABLE orders ADD COLUMN note TEXT;\n"
-    )
-    assert [(finding.code, finding.line) for finding in analyze(["require-lock-timeout"], [source])] == [("SARJ110", 3)]
 
 
 @pytest.mark.parametrize(

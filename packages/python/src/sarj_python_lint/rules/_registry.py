@@ -272,6 +272,7 @@ from sarj_python_lint.rules.pytest_fixture_returns_closed_resource import Pytest
 from sarj_python_lint.rules.redundant_test_constructor_forwarder import RedundantTestConstructorForwarder
 from sarj_python_lint.rules.repeated_unimplemented_test_contract import RepeatedUnimplementedTestContract
 from sarj_python_lint.rules.require_exp_on_jwt_decode import RequireExpOnJwtDecode
+from sarj_python_lint.rules.service_singleton_delegates_to_bulk import ServiceSingletonDelegatesToBulk
 from sarj_python_lint.rules.store_field_update_reuses_upsert import StoreFieldUpdateReusesUpsert
 from sarj_python_lint.rules.store_insert_requires_explicit_conflict_policy import (
     StoreInsertRequiresExplicitConflictPolicy,
@@ -282,6 +283,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        ServiceSingletonDelegatesToBulk.id: ServiceSingletonDelegatesToBulk,
         NoAsyncClientInConstructor.id: NoAsyncClientInConstructor,
         NoDiscardedTaggedOutcome.id: NoDiscardedTaggedOutcome,
         StoreInsertRequiresExplicitConflictPolicy.id: StoreInsertRequiresExplicitConflictPolicy,

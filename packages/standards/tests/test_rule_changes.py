@@ -436,6 +436,10 @@ def test_cli_rejects_missing_revision(repository: Path, capsys: pytest.CaptureFi
         ("eslint", "no-async-client-in-constructor", "error", 1),
         ("python", "no-async-client-in-constructor-extra", "error", 1),
         ("python", "no-async-client-in-Constructor", "error", 1),
+        ("python", "service-singleton-delegates-to-bulk", "error", 0),
+        ("python", "service-singleton-delegates-to-bulk", "off", 1),
+        ("eslint", "service-singleton-delegates-to-bulk", "error", 1),
+        ("python", "service-singleton-delegates-to-bulk-extra", "error", 1),
     ],
 )
 def test_error_first_approval_is_exact_and_does_not_allow_disabled_rules(

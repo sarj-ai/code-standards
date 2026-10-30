@@ -113,7 +113,6 @@ def test_migration_dialect_evidence_excludes_source_data(source: str, tmp_path: 
     path.write_text(source, encoding="utf-8")
     assert not is_postgres_source(path, source)
     assert not is_postgres_migration(path, source)
-    assert analyze(["require-lock-timeout"], [path]) == []
 
 
 @pytest.mark.parametrize(
@@ -142,10 +141,10 @@ def test_fake_sqlite_dialect_does_not_hide_actual_pg_migration_findings(tmp_path
     path = tmp_path / "db/migrations/001.sql"
     path.parent.mkdir(parents=True)
     path.write_text(source, encoding="utf-8")
-    findings = analyze(["require-lock-timeout"], [path])
+    findings = analyze(["idempotent-ddl"], [path])
     assert len(findings) == 1
     assert findings[0].line == 4
-    assert findings == analyze(["require-lock-timeout"], [path])
+    assert findings == analyze(["idempotent-ddl"], [path])
 
 
 @pytest.mark.parametrize(

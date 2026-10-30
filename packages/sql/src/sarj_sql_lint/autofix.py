@@ -11,6 +11,7 @@ from sarj_sql_lint._autofix_index_name import repair_index_name
 from sarj_sql_lint._autofix_literals import literal_edits
 from sarj_sql_lint._postgres import parse_postgres
 from sarj_sql_lint.rule_base import (
+    dollar_quoted_spans,
     has_file_comment_match,
     is_generated_migration,
     is_mysql,
@@ -22,6 +23,7 @@ from sarj_sql_lint.rule_base import (
     sql_comments,
 )
 from sarj_sql_lint.rules import REGISTRY
+from sarj_sql_lint.rules._copy_input import sql_before_copy_input
 from sarj_sql_lint.rules.idempotent_ddl import ddl_checks
 from sarj_sql_lint.rules.no_comment_cruft import (
     COMMENT_DIRECTIVE_RE,
@@ -45,6 +47,7 @@ _PRESERVED_COMMENT = re.compile(
     r"\b(?:copyright|spdx|licen[cs]e|sarj-noqa|noqa|tflint|checkov|tfsec|trivy|shellcheck|yamllint|markdownlint|prettier-ignore|eslint|ruff|pyright|sqlfluff|squawk-ignore)\b|(?:coding|encoding)\s*[:=]",
     re.IGNORECASE,
 )
+_PROCEDURAL_SQL = re.compile(r"\b(?:DO|FUNCTION|PROCEDURE)\b", re.IGNORECASE)
 
 
 def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None) -> str:
@@ -71,6 +74,7 @@ def _selected_edits(path: Path, source: str, selected: Sequence[RuleId]) -> list
         if rule_id not in {
             "idempotent-ddl",
             "no-migration-comment-cruft",
+            "no-migration-comments",
             "no-long-migration-narration",
             "prefer-text-over-varchar",
             "prefer-jsonb",
@@ -86,9 +90,29 @@ def _selected_edits(path: Path, source: str, selected: Sequence[RuleId]) -> list
             edits.extend(_existence_guards(source, diagnostics))
         elif rule_id in {"no-migration-comment-cruft", "no-long-migration-narration"}:
             edits.extend(_comment_edits(source, diagnostics, banners=rule_id == "no-migration-comment-cruft"))
+        elif rule_id == "no-migration-comments":
+            edits.extend(_migration_comment_edits(path, source, diagnostics))
         else:
             edits.extend(literal_edits(source, diagnostics, rule_id))
     return edits
+
+
+def _migration_comment_edits(path: Path, source: str, diagnostics: Sequence[Diagnostic]) -> list[TextEdit]:
+    if (
+        not diagnostics
+        or source.startswith("\ufeff")
+        or sql_before_copy_input(source) != source
+        or dollar_quoted_spans(source)
+        or _PROCEDURAL_SQL.search(mask_sql(source, mask_dollar_literals=True)) is not None
+    ):
+        return []
+    locations = {(item.line, item.col) for item in diagnostics}
+    proven = [
+        item
+        for item in REGISTRY["no-migration-comment-cruft"]().check(path, source)
+        if (item.line, item.col) in locations and not is_suppressed(source, item.line, item.code)
+    ]
+    return _comment_edits(source, proven, banners=True)
 
 
 def _parseable(source: str) -> bool:
@@ -101,9 +125,11 @@ def _parseable(source: str) -> bool:
 
 def _existence_guards(source: str, diagnostics: Sequence[Diagnostic]) -> list[TextEdit]:
     positions = {diagnostic.line for diagnostic in diagnostics}
-    masked = mask_sql(source, mask_dollar_literals=True)
+    masked = mask_sql(sql_before_copy_input(source), mask_dollar_literals=True)
     edits: list[TextEdit] = []
     for check in ddl_checks(source):
+        if not check.autofix_supported:
+            continue
         for match in check.pattern.finditer(masked):
             if source_location(source, match.start()).line not in positions or not _ddl_statement(
                 masked, match.start()
@@ -158,15 +184,30 @@ def _comment_group_edits(
     lines: Sequence[str], offsets: Sequence[int], first: int, last: int, *, banners: bool
 ) -> list[TextEdit]:
     bodies = [line.lstrip()[2:].strip() for line in lines[first:last]]
+    protected_lines = {
+        index
+        for index, body in enumerate(bodies)
+        if _PRESERVED_COMMENT.search(body)
+        or COMMENT_DIRECTIVE_RE.match(body)
+        or COMMENT_REFERENCE_RE.search(body)
+        or ROLLBACK_CONTEXT_RE.search(body)
+    }
     banner_lines = {
         first + index
         for index, body in enumerate(bodies)
-        if banners and is_decorative_banner(body) and not _PRESERVED_COMMENT.search(body)
+        if banners
+        and is_decorative_banner(body)
+        and not _PRESERVED_COMMENT.search(body)
+        and index not in protected_lines
     }
     payload = "\n".join(body for index, body in enumerate(bodies) if first + index not in banner_lines)
     if _disabled_sql_only(payload, bodies):
         replacement = "".join(re.findall(r"\r\n|\r|\n", "".join(lines[first:last])))
         return [TextEdit(offsets[first], offsets[last], replacement)]
+    if any(
+        body and index not in protected_lines and not is_decorative_banner(body) for index, body in enumerate(bodies)
+    ):
+        return []
     return [
         TextEdit(offsets[index], offsets[index] + len(lines[index].rstrip("\r\n")), "")
         for index in sorted(banner_lines)

@@ -219,6 +219,7 @@
       "require-pydantic-for-structured-payload",
       "require-pydantic-ordinal-lower-bound",
       "restated-test-docstring",
+      "service-singleton-delegates-to-bulk",
       "shared-mutable-pydantic-factory",
       "stepdown",
       "store-field-update-reuses-upsert",
@@ -233,6 +234,7 @@
     ],
     "sql": [
       "combine-alter-table",
+      "declared-column-bounds",
       "enforce-timestamptz",
       "excess-migration-index-requires-justification",
       "existing-table-check-or-foreign-key-requires-not-valid",
@@ -250,14 +252,16 @@
       "no-duplicate-index",
       "no-long-migration-narration",
       "no-migration-comment-cruft",
+      "no-migration-comments",
+      "no-noop-migration-down",
       "no-null-comparison",
       "no-offset-pagination",
       "no-pg-enum",
+      "prefer-constrained-status",
       "prefer-jsonb",
       "prefer-text-over-varchar",
       "prefer-uuidv7-default",
-      "require-fk-index",
-      "require-lock-timeout"
+      "require-fk-index"
     ],
     "iac": [
       "no-comment-cruft",
@@ -645,7 +649,8 @@
       "SARJ552",
       "SARJ553",
       "SARJ554",
-      "SARJ555"
+      "SARJ555",
+      "SARJ556"
     ],
     "sql": [
       "SARJ101",
@@ -657,7 +662,6 @@
       "SARJ107",
       "SARJ108",
       "SARJ109",
-      "SARJ110",
       "SARJ111",
       "SARJ112",
       "SARJ113",
@@ -673,7 +677,11 @@
       "SARJ123",
       "SARJ124",
       "SARJ125",
-      "SARJ126"
+      "SARJ126",
+      "SARJ127",
+      "SARJ128",
+      "SARJ129",
+      "SARJ130"
     ],
     "iac": [
       "SARJ201",
@@ -1050,6 +1058,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Delete SARJ091 suppressions and baseline keys. Sentence count did not identify harmful documentation; retain semantic docstring rules and use Ruff W505 for physical line length."
+    },
+    {
+      "id": "SARJ110",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Removed the per-migration timeout requirement; configure execution timeouts at the migration runner or database session boundary when needed."
     },
     {
       "id": "SARJ208",
@@ -1589,6 +1604,13 @@
       "status": "renamed",
       "replacement": "replay-contract-insert-requires-duplicate-policy",
       "note": "Replace sarj-replay-named-store-insert-requires-duplicate-policy with sarj-replay-contract-insert-requires-duplicate-policy before upgrading."
+    },
+    {
+      "id": "require-lock-timeout",
+      "kind": "sql",
+      "status": "removed",
+      "replacement": null,
+      "note": "Removed the per-migration timeout requirement; configure execution timeouts at the migration runner or database session boundary when needed."
     },
     {
       "id": "require-typed-http-test-response",

@@ -22,7 +22,6 @@ MIXED_PHASES = (
     "UPDATE credential SET token = legacy_token;\n"
     "ALTER TABLE credential DROP COLUMN legacy_token;\n"
 )
-INCOMPLETE_MARKER = "TO" + "DO"
 
 
 def _check(source: str, path: Path = MIGRATION) -> list[Diagnostic]:
@@ -42,47 +41,8 @@ ALTER TABLE credential DROP COLUMN legacy_token;
 
 
 @pytest.mark.parametrize("newline", ["\n", "\r\n", "\r"])
-def test_accepts_complete_reviewed_atomicity_evidence_in_header(newline: str) -> None:
-    assert _check((ATOMICITY_DIRECTIVE + MIXED_PHASES).replace("\n", newline)) == []
-
-
-def test_accepts_semicolon_inside_substantive_evidence_value() -> None:
-    directive = ATOMICITY_DIRECTIVE.replace(
-        "production rehearsal completed in 30 seconds",
-        "production rehearsal completed in 30 seconds; batch stayed below one minute",
-    )
-    assert _check(directive + MIXED_PHASES) == []
-
-
-@pytest.mark.parametrize("missing", ["lock", "runtime", "rollback", "postcondition"])
-def test_incomplete_atomicity_evidence_does_not_hide_a_finding(missing: str) -> None:
-    parts = ATOMICITY_DIRECTIVE.removeprefix("-- sarj-migration-atomicity: ").split("; ")
-    incomplete = "; ".join(part for part in parts if not part.startswith(f"{missing}="))
-    assert len(_check("-- sarj-migration-atomicity: " + incomplete + MIXED_PHASES)) == 1
-
-
-def test_rejects_duplicate_or_placeholder_atomicity_evidence() -> None:
-    duplicate = ATOMICITY_DIRECTIVE.replace("rollback=", "lock=another lock; rollback=")
-    unknown = ATOMICITY_DIRECTIVE.replace("rollback=", "approval=claimed approval; rollback=")
-    placeholder = ATOMICITY_DIRECTIVE.replace(
-        "production rehearsal completed in 30 seconds",
-        INCOMPLETE_MARKER,
-    )
-    assert len(_check(duplicate + MIXED_PHASES)) == 1
-    assert len(_check(unknown + MIXED_PHASES)) == 1
-    assert len(_check(placeholder + MIXED_PHASES)) == 1
-
-
-def test_late_atomicity_directive_cannot_hide_a_finding() -> None:
-    first_statement = "ALTER TABLE credential ADD COLUMN token TEXT;\n"
-    assert len(_check(first_statement + ATOMICITY_DIRECTIVE + MIXED_PHASES)) == 1
-
-
-def test_directive_in_sql_literal_or_down_section_is_not_header_evidence() -> None:
-    literal = "SELECT '-- sarj-migration-atomicity: lock=x; runtime=x; rollback=x; postcondition=x';\n"
-    down_section = "-- migrate:down\n" + ATOMICITY_DIRECTIVE + "-- migrate:up\n"
-    assert len(_check(literal + MIXED_PHASES)) == 1
-    assert len(_check(down_section + MIXED_PHASES)) == 1
+def test_complete_atomicity_comment_cannot_waive_phase_review(newline: str) -> None:
+    assert len(_check((ATOMICITY_DIRECTIVE + MIXED_PHASES).replace("\n", newline))) == 1
 
 
 def test_reports_third_substantive_phase_once() -> None:
