@@ -48,7 +48,7 @@ def dynamic_namespace_access(
 def _namespace_api_aliases(nodes: Iterable[ast.AST]) -> set[str]:
     aliases = set(_NAMESPACE_APIS) | {"__builtins__"}
     for node in nodes:
-        if not isinstance(node, ast.ImportFrom) or node.module not in _MODULE_APIS:
+        if not isinstance(node, ast.ImportFrom) or node.level != 0 or node.module not in _MODULE_APIS:
             continue
         members = _MODULE_APIS[node.module]
         aliases.update(alias.asname or alias.name for alias in node.names if alias.name in members)

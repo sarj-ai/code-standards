@@ -187,6 +187,24 @@ def test_parallel_native_quota_boundary_replays_untouched_serial_state(
     assert {child.pid for child in multiprocessing.active_children()} == before
 
 
+@pytest.mark.parametrize("mode", ["resolutions", "modules"])
+def test_quota_replay_keeps_later_worker_failure_visible(tmp_path: Path, mode: str) -> None:
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "quota-failure"\nversion = "0.1.0"\n')
+    first, failure = tmp_path / "first.py", tmp_path / "failure.py"
+    first_source = f"# {mode}\n" + "".join(f"# missing_{index}.py\n" for index in range(512))
+    failure_source = f"# {mode}\n"
+    first.write_text(first_source)
+    failure.write_text(failure_source)
+    before = {child.pid for child in multiprocessing.active_children()}
+
+    with pytest.raises(RuntimeError, match="fixture file failed"):
+        parallel_engine.check_parallel(
+            [_RequestFacts, _FileFailure], {first: first_source, failure: failure_source}, None, jobs=2
+        )
+
+    assert {child.pid for child in multiprocessing.active_children()} == before
+
+
 @pytest.mark.parametrize("entrypoint", ["console", "module"])
 def test_native_cli_workers_preserve_order_output_baselines_and_errors(tmp_path: Path, entrypoint: str) -> None:
     files = [tmp_path / name for name in ("z.py", "a.py")]

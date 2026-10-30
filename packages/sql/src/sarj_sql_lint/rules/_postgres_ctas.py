@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 _COPY_END = re.compile(r"(?m)^\\\.(?:\r?$)")
 _TEMP_TABLE = (TokenType.CREATE, TokenType.TEMPORARY, TokenType.TABLE)
 _ON_COMMIT_DROP = (TokenType.ON, TokenType.COMMIT, TokenType.DROP)
+_ON_COMMIT_ROWS_SIZE = 4
 
 
 def normalize_postgres_ctas(source: str) -> str:
@@ -65,7 +66,7 @@ def _mask_copy_input(source: str) -> str:
 
 
 def _normalize_header(output: list[str], tokens: Sequence[Token]) -> None:
-    if tuple(token.token_type for token in tokens[:3]) != _TEMP_TABLE:
+    if not _is_table_create(tokens):
         return
     depth = 0
     for index, token in enumerate(tokens):
@@ -74,15 +75,87 @@ def _normalize_header(output: list[str], tokens: Sequence[Token]) -> None:
         elif token.token_type is TokenType.R_PAREN:
             depth -= 1
         elif depth == 0 and token.token_type is TokenType.ALIAS:
-            if tuple(part.token_type for part in tokens[index - 3 : index]) != _ON_COMMIT_DROP:
+            spans = _ignored_header_spans(tokens[:index])
+            if not spans:
                 return
             start = tokens[0].start
             candidate = output[start : tokens[-1].end + 1]
-            _blank(candidate, tokens[index - 3].start - start, tokens[index - 1].end + 1 - start)
+            for first, last in spans:
+                _blank(candidate, first.start - start, last.end + 1 - start)
             if _is_query_create("".join(candidate)):
-                # DROP is the unsupported SQLGlot property; the query and physical offsets stay intact.
-                _blank(output, tokens[index - 3].start, tokens[index - 1].end + 1)
+                for first, last in spans:
+                    _blank(output, first.start, last.end + 1)
             return
+
+
+def _temporary_qualifier(tokens: Sequence[Token]) -> Token | None:
+    if len(tokens) > 1 and tokens[1].token_type is TokenType.VAR and tokens[1].text.upper() in {"GLOBAL", "LOCAL"}:
+        return tokens[1]
+    return None
+
+
+def _is_table_create(tokens: Sequence[Token]) -> bool:
+    kinds = tuple(token.token_type for token in tokens[:4])
+    if kinds[:2] == (TokenType.CREATE, TokenType.TABLE) or kinds[:3] == _TEMP_TABLE:
+        return True
+    if kinds[:3] == (TokenType.CREATE, TokenType.VAR, TokenType.TABLE):
+        return tokens[1].text.upper() == "UNLOGGED"
+    return (
+        kinds == (TokenType.CREATE, TokenType.VAR, TokenType.TEMPORARY, TokenType.TABLE)
+        and _temporary_qualifier(tokens) is not None
+    )
+
+
+def _ignored_header_spans(tokens: Sequence[Token]) -> tuple[tuple[Token, Token], ...]:
+    spans: list[tuple[Token, Token]] = []
+    qualifier = _temporary_qualifier(tokens)
+    if qualifier is not None:
+        spans.append((qualifier, qualifier))
+    end = len(tokens)
+    if _has_tablespace_property(tokens):
+        spans.append((tokens[-2], tokens[-1]))
+        end -= 2
+    commit_start = _commit_property_start(tokens, end)
+    if commit_start < end and tokens[end - 1].token_type is TokenType.DROP:
+        spans.append((tokens[commit_start], tokens[end - 1]))
+    if _has_without_oids_property(tokens[:commit_start]):
+        spans.append((tokens[commit_start - 2], tokens[commit_start - 1]))
+    return tuple(spans)
+
+
+def _commit_property_start(tokens: Sequence[Token], end: int) -> int:
+    if tuple(token.token_type for token in tokens[end - 3 : end]) == _ON_COMMIT_DROP:
+        return end - 3
+    if end < _ON_COMMIT_ROWS_SIZE or tuple(
+        token.token_type for token in tokens[end - _ON_COMMIT_ROWS_SIZE : end - 2]
+    ) != (TokenType.ON, TokenType.COMMIT):
+        return end
+    action, rows = tokens[end - 2 : end]
+    if rows.token_type is TokenType.ROWS and (
+        action.token_type is TokenType.DELETE
+        or (action.token_type is TokenType.VAR and action.text.upper() == "PRESERVE")
+    ):
+        return end - _ON_COMMIT_ROWS_SIZE
+    return end
+
+
+def _has_without_oids_property(tokens: Sequence[Token]) -> bool:
+    return (
+        len(tokens) > 1
+        and tokens[-2].token_type is TokenType.VAR
+        and tokens[-1].token_type is TokenType.VAR
+        and tokens[-2].text.upper() == "WITHOUT"
+        and tokens[-1].text.upper() == "OIDS"
+    )
+
+
+def _has_tablespace_property(tokens: Sequence[Token]) -> bool:
+    return (
+        len(tokens) > 1
+        and tokens[-2].token_type is TokenType.VAR
+        and tokens[-2].text.upper() == "TABLESPACE"
+        and tokens[-1].token_type in {TokenType.VAR, TokenType.IDENTIFIER}
+    )
 
 
 def _is_query_create(candidate: str) -> bool:

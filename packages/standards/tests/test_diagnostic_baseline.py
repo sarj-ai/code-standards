@@ -23,6 +23,8 @@ from sarj_standards.libs.adoption.manifest import (
 from sarj_standards.libs.diagnostics import (
     AnalysisReport,
     Completion,
+    Conclusion,
+    CoverageNotice,
     Diagnostic,
     Location,
     Position,
@@ -173,6 +175,23 @@ def test_makefile_guard_cannot_be_captured_or_hidden_by_a_diagnostic_baseline(tm
     ]
     assert visible.diagnostics == (guarded,)
     assert visible.tools[0].baselined_count == 0
+
+
+def test_hiding_the_last_baselined_finding_preserves_failed_input_coverage(tmp_path: Path) -> None:
+    diagnostic = Diagnostic(
+        "F401", "unused import", Severity.ERROR, "ruff", Location("example.py"), fingerprint="a" * 64
+    )
+    coverage = (CoverageNotice("sql", "requested input unavailable", 1),)
+    report = report_from_tools(tmp_path, (ToolReport("ruff", Completion.COMPLETE, (diagnostic,)),), coverage=coverage)
+
+    visible = api._without_baselined_diagnostics(report, {"a" * 64: 1})  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- baseline removal must not erase independent failed input coverage.
+
+    assert visible.diagnostics == ()
+    assert visible.tools[0].baselined_count == 1
+    assert visible.coverage == coverage
+    assert visible.completion is Completion.PARTIAL
+    assert visible.conclusion is Conclusion.INCONCLUSIVE
+    assert visible.exit_code == 2
 
 
 def test_policy_analysis_hides_only_exact_baselined_diagnostics(tmp_path: Path) -> None:

@@ -783,3 +783,106 @@ def test_copy_payload_quotes_cannot_hide_a_later_policy_query(sql: str) -> None:
 def test_quoted_stdin_filename_cannot_hide_a_later_policy_query() -> None:
     sql = "COPY event FROM 'STDIN'; SELECT DISTINCT id FROM event;"
     assert len(_check(f"import psycopg\nq = {sql!r}\n")) == 1
+
+
+@pytest.mark.parametrize(
+    ("sql", "count"),
+    [
+        pytest.param(
+            "CREATE LOCAL TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT id FROM rows;",
+            1,
+            id="local-temp-distinct",
+        ),
+        pytest.param(
+            "CREATE GLOBAL TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT id FROM rows;",
+            1,
+            id="global-temp-distinct",
+        ),
+        pytest.param(
+            "CREATE TEMP TABLE report ON COMMIT DROP TABLESPACE pg_default AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT id FROM rows;",
+            1,
+            id="drop-before-tablespace-distinct",
+        ),
+        pytest.param(
+            'CREATE LOCAL TEMPORARY TABLE IF NOT EXISTS "ON COMMIT"."DROP" TABLESPACE "pg_default" AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT id FROM rows;',
+            1,
+            id="quoted-local-temporary-identifiers",
+        ),
+        pytest.param(
+            'CREATE GLOBAL TEMPORARY TABLE "TABLESPACE" ON COMMIT PRESERVE ROWS TABLESPACE "ON COMMIT DROP" AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT id FROM rows;',
+            1,
+            id="quoted-global-temporary-identifiers",
+        ),
+        pytest.param(
+            "CREATE LOCAL TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT id FROM event WHERE id = $1) SELECT id FROM rows;",
+            0,
+            id="local-temp-operational-lookup",
+        ),
+        pytest.param(
+            "CREATE GLOBAL TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT EXISTS(SELECT 1 FROM event WHERE id = $1) AS present) SELECT present FROM rows;",
+            0,
+            id="global-temp-operational-existence",
+        ),
+        pytest.param(
+            "CREATE TEMP TABLE report ON COMMIT DROP TABLESPACE pg_default AS WITH rows AS (SELECT id FROM event WHERE id = $1) SELECT id FROM rows;",
+            0,
+            id="tablespace-operational-lookup",
+        ),
+        pytest.param(
+            "CREATE GLOBAL TEMP TABLE report ON COMMIT DROP TABLESPACE pg_default AS SELECT 'SELECT DISTINCT id FROM event; LOCAL GLOBAL ON COMMIT DROP' AS example;",
+            0,
+            id="quoted-policy-words-remain-data",
+        ),
+        pytest.param(
+            "COPY event FROM STDIN;\nraw'quote EXPLAIN LOCAL GLOBAL TABLESPACE\n\\.\nEXPLAIN ANALYZE CREATE LOCAL TEMP TABLE report ON COMMIT DROP TABLESPACE pg_default AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT id FROM rows;",
+            1,
+            id="copy-data-and-repeated-explain-normalization",
+        ),
+        pytest.param(
+            "CREATE TABLE report TABLESPACE pg_default AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;",
+            1,
+            id="regular-table-tablespace-distinct",
+        ),
+        pytest.param(
+            "CREATE UNLOGGED TABLE report TABLESPACE pg_default AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;",
+            1,
+            id="unlogged-table-tablespace-distinct",
+        ),
+        pytest.param(
+            "CREATE TEMP TABLE report WITHOUT OIDS ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;",
+            1,
+            id="temporary-table-without-oids-distinct",
+        ),
+        pytest.param(
+            "CREATE TEMP TABLE report USING heap ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;",
+            1,
+            id="supported-using-heap-remains-checked",
+        ),
+        pytest.param(
+            "CREATE TEMP TABLE report WITH (fillfactor=70) ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;",
+            1,
+            id="supported-storage-options-remain-checked",
+        ),
+        pytest.param(
+            "CREATE TEMP TABLE report ON COMMIT DROP TABLESPACE 'pg_default' AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;",
+            0,
+            id="single-quoted-tablespace-is-invalid",
+        ),
+    ],
+)
+def test_qualified_temporary_ctas_preserves_policy_with_real_postgres_store(sql: str, count: int) -> None:
+    source = (
+        "from psycopg_pool import AsyncConnectionPool\n\n\n"
+        "class PsqlProbeStore:\n"
+        "    def __init__(self, pool: AsyncConnectionPool) -> None:\n"
+        "        self.pool = pool\n\n"
+        "    async def load(self) -> None:\n"
+        "        async with self.pool.connection() as conn:\n"
+        f"            await conn.execute({sql!r})\n"
+    )
+    findings = _check(source)
+    assert len(findings) == count
+    if findings:
+        assert findings[0].code == "SARJ020"
+        assert findings[0].severity is Severity.ERROR
+        assert (findings[0].line, findings[0].col) == (10, 32)

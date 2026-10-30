@@ -78,7 +78,7 @@ def _statements(source: str, dialect: str) -> Iterator[_ParsedStatement]:
     from sarj_sql_lint.rules._postgres_ctas import normalize_postgres_ctas  # ruff: ignore[import-outside-top-level] -- preserve COPY boundaries before and CTAS grammar after executing EXPLAIN normalization.
 
     prepared = _PLACEHOLDER.sub(lambda match: "?".ljust(len(match.group())), source)
-    if dialect == "postgres" and ("COMMIT" in prepared.upper() or "COPY" in prepared.upper()):
+    if dialect == "postgres" and ("CREATE" in prepared.upper() or "COPY" in prepared.upper()):
         prepared = normalize_postgres_ctas(prepared)
     try:
         if dialect == "postgres" and "EXPLAIN" in prepared.upper():

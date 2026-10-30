@@ -117,6 +117,15 @@ class _MarkdownHtmlComment(NamedTuple):
     body: str
 
 
+@dataclass(frozen=True)
+class _MarkdownCommentFacts:
+    source: str
+
+    @cached_property
+    def comments(self) -> tuple[_MarkdownHtmlComment, ...]:
+        return tuple(_markdown_html_comments(self.source))
+
+
 class _ConfigScalarEntry(NamedTuple):
     key: str
     value: str
@@ -1317,10 +1326,15 @@ def fix_source(
         message = f"unknown text rules: {', '.join(sorted(unknown))}"
         raise ValueError(message)
     base = (root or Path.cwd()).resolve()
-    if not _allows_text_fix(path, source, base):
+    comment_facts = _MarkdownCommentFacts(source) if path.suffix.casefold() in {".md", ".mdx"} else None
+    if not _allows_text_fix(path, source, base, comment_facts=comment_facts):
         return source
     lines = _text_source_lines(path, source, keepends=True)
-    edits = _hidden_heading_edits(path, source, lines) if "hidden-markdown-heading" in selected else []
+    edits = (
+        _hidden_heading_edits(path, source, lines, comment_facts=comment_facts)
+        if "hidden-markdown-heading" in selected
+        else []
+    )
     if selected.intersection({"config-comment-wall", "exact-config-comment-restatement", "commented-out-config"}):
         edits.extend(_config_comment_edits(path, source, lines, selected))
     fixed = apply_edits(source, sorted(set(edits), key=lambda edit: edit.start))
@@ -1348,7 +1362,9 @@ def _physical_lines(source: str, *, keepends: bool = False, lf_only: bool = Fals
     return [line.removesuffix("\n").removesuffix("\r") for line in lines]
 
 
-def _allows_text_fix(path: Path, source: str, base: Path) -> bool:
+def _allows_text_fix(
+    path: Path, source: str, base: Path, *, comment_facts: _MarkdownCommentFacts | None = None
+) -> bool:
     relative = _relative(path.resolve(), base)
     if any(fnmatch(relative, pattern) for pattern in _text_policy(base).excluded):
         return False
@@ -1362,14 +1378,16 @@ def _allows_text_fix(path: Path, source: str, base: Path) -> bool:
             comment.line <= _GENERATED_MARKDOWN_HEADER_LINES
             and _GENERATED_CONFIG_OWNERSHIP_RE.match(comment.body)
             and _GENERATED_CONFIG_HANDS_OFF_RE.search(comment.body)
-            for comment in _markdown_html_comments(source)
+            for comment in (comment_facts.comments if comment_facts is not None else _markdown_html_comments(source))
         )
     )
 
 
-def _hidden_heading_edits(path: Path, source: str, lines: list[str]) -> list[TextEdit]:
+def _hidden_heading_edits(
+    path: Path, source: str, lines: list[str], *, comment_facts: _MarkdownCommentFacts | None = None
+) -> list[TextEdit]:
     edits: list[TextEdit] = []
-    for finding in _markdown_hidden_comment_findings(path, source):
+    for finding in _markdown_hidden_comment_findings(path, source, comment_facts=comment_facts):
         if _markdown_suppresses_finding(source, finding):
             continue
         last = finding.line
@@ -2601,7 +2619,9 @@ def _markdown_prose_lines(source: str, *, physical: bool = False) -> list[str]:
     return visible
 
 
-def _markdown_hidden_comment_findings(path: Path, source: str) -> list[Finding]:
+def _markdown_hidden_comment_findings(
+    path: Path, source: str, *, comment_facts: _MarkdownCommentFacts | None = None
+) -> list[Finding]:
     if path.suffix.casefold() not in {".md", ".mdx"}:
         return []
     return [
@@ -2611,7 +2631,7 @@ def _markdown_hidden_comment_findings(path: Path, source: str) -> list[Finding]:
             "SARJ305",
             "HTML comment hides a Markdown heading — delete the disabled section or restore it as maintained documentation.",
         )
-        for comment in _markdown_html_comments(source)
+        for comment in (comment_facts.comments if comment_facts is not None else _markdown_html_comments(source))
         if _hidden_markdown_heading(comment.body)
     ]
 

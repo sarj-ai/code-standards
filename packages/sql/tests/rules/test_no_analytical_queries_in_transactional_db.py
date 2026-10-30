@@ -471,3 +471,137 @@ def test_copy_mask_is_idempotent_before_explain_temporary_ctas(mode: str, count:
     assert len(findings) == count
     if findings:
         assert (findings[0].line, findings[0].col) == (5, query.index("DISTINCT") + 1)
+
+
+@pytest.mark.parametrize(
+    ("source", "count"),
+    [
+        (
+            (
+                "CREATE LOCAL TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * "
+                "FROM rows;"
+            ),
+            1,
+        ),
+        (
+            (
+                "CREATE GLOBAL TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * "
+                "FROM rows;"
+            ),
+            1,
+        ),
+        (
+            (
+                "CREATE TEMP TABLE report ON COMMIT DROP TABLESPACE pg_default AS WITH rows AS (SELECT DISTINCT id FROM "
+                "event) SELECT * FROM rows;"
+            ),
+            1,
+        ),
+        (
+            (
+                'CREATE LOCAL TEMPORARY TABLE IF NOT EXISTS "schema.name"."report" AS WITH rows AS (SELECT DISTINCT id '
+                "FROM event) SELECT * FROM rows;"
+            ),
+            1,
+        ),
+        (
+            (
+                'CREATE GLOBAL TEMP TABLE report ON COMMIT PRESERVE ROWS TABLESPACE "pg default" AS WITH rows AS (SELECT '
+                "DISTINCT id FROM event) SELECT * FROM rows;"
+            ),
+            1,
+        ),
+        (
+            (
+                "CREATE LOCAL TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT id FROM event WHERE id = $1) SELECT "
+                "* FROM rows;"
+            ),
+            0,
+        ),
+        (
+            (
+                "CREATE GLOBAL TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT id FROM event WHERE id = $1) "
+                "SELECT * FROM rows;"
+            ),
+            0,
+        ),
+        (
+            (
+                'CREATE TEMP TABLE report ON COMMIT DROP TABLESPACE "pg default" AS WITH rows AS (SELECT id FROM event '
+                "WHERE id = $1) SELECT * FROM rows;"
+            ),
+            0,
+        ),
+        (
+            (
+                'CREATE LOCAL TEMP TABLE "DISTINCT" ON COMMIT DROP TABLESPACE "COUNT; AS" AS SELECT \'SELECT DISTINCT '
+                "id;' AS example;"
+            ),
+            0,
+        ),
+        (
+            (
+                "COPY event FROM STDIN;\r\n"
+                "EXPLAIN raw'quote\r\n"
+                "\\.\r\n"
+                "EXPLAIN ANALYZE\r\n"
+                'CREATE LOCAL TEMP TABLE report ON /* property */ COMMIT DROP TABLESPACE "pg default" AS WITH rows AS '
+                "(SELECT DISTINCT id FROM event) SELECT * FROM rows;"
+            ),
+            1,
+        ),
+        (
+            (
+                "CREATE TABLE report TABLESPACE pg_default AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM "
+                "rows;"
+            ),
+            1,
+        ),
+        (
+            (
+                "CREATE UNLOGGED TABLE report TABLESPACE pg_default AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT "
+                "* FROM rows;"
+            ),
+            1,
+        ),
+        (
+            (
+                "CREATE TEMP TABLE report WITHOUT OIDS ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) "
+                "SELECT * FROM rows;"
+            ),
+            1,
+        ),
+        (
+            (
+                "CREATE TEMP TABLE report USING heap ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT "
+                "* FROM rows;"
+            ),
+            1,
+        ),
+        (
+            (
+                "CREATE TEMP TABLE report WITH (fillfactor=70) ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM "
+                "event) SELECT * FROM rows;"
+            ),
+            1,
+        ),
+        (
+            (
+                "CREATE TEMP TABLE report ON COMMIT DROP TABLESPACE 'pg_default' AS WITH rows AS (SELECT DISTINCT id FROM "
+                "event) SELECT * FROM rows;"
+            ),
+            0,
+        ),
+    ],
+)
+def test_postgres_temporary_table_header_properties(source: str, count: int) -> None:
+    prepared = normalize_postgres_ctas(source)
+    assert len(prepared) == len(source)
+    assert normalize_postgres_ctas(prepared) == prepared
+    findings = _check(source)
+    assert len(findings) == count
+    if findings:
+        offset = source.rindex("DISTINCT")
+        expected_line = source[:offset].count("\n") + 1
+        expected_column = offset - source.rfind("\n", 0, offset)
+        assert (findings[0].line, findings[0].col) == (expected_line, expected_column)
