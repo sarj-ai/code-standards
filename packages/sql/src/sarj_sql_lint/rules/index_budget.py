@@ -32,18 +32,15 @@ class IndexBudget(Rule):
     code = "SARJ116"
     documentation = RuleDocumentation(
         default_level=DefaultLevel.ERROR,
-        summary="Require a structured local justification for excess explicit indexes in an authored migration.",
+        summary="Limit explicit indexes to three per table and eight per authored migration.",
         rationale=(
             "Every explicit index adds write amplification, storage, vacuum work, and planner surface; bursts of indexes "
             "often encode unmeasured read paths in the transactional database."
         ),
         remediation=(
-            "Keep at most three explicit indexes per table and eight per migration, or place an exact "
-            "`index-justification: app-read: ...; query: path#symbol; explain: URL` or "
-            "`index-justification: referential-action: ...` comment immediately above each excess index. "
-            "For `CREATE UNIQUE INDEX` only, `index-justification: uniqueness-constraint: ...; ticket: ABC-123` "
-            "is also accepted. Do not add reporting-specific indexes without evaluating ClickHouse for reporting, "
-            "historical analysis, and broad aggregations."
+            "Keep at most three explicit indexes per table and eight per migration. Remove redundant indexes, "
+            "express data uniqueness with inline UNIQUE constraints, and review the workload before adding indexes. "
+            "Evaluate ClickHouse for reporting, historical analysis, and broad aggregations."
         ),
         category=RuleCategory.PERFORMANCE,
         autofix=AutofixPolicy.NONE,
@@ -53,11 +50,12 @@ class IndexBudget(Rule):
             "Duplicate index shapes and same-name replacement statements do not consume this budget; SARJ117 reports structural duplicates.",
             "Index declarations inside dollar-quoted stored or anonymous program bodies are not inferred.",
             "The policy budgets distinct explicit index definitions in one file; it does not dereference query or EXPLAIN links, estimate workload selectivity, or reconstruct fleet-wide index state.",
+            "Comment-based index justifications do not waive the budget. The historical rule ID is retained for configuration compatibility.",
         ),
         examples=(
             RuleExample(
-                example_id="unjustified-index-burst",
-                title="A fourth explicit index has no local justification",
+                example_id="excess-index-burst",
+                title="A fourth explicit index exceeds the table budget",
                 outcome=ExampleOutcome.MATCH,
                 files=(
                     ExampleFile.sql(
@@ -71,17 +69,14 @@ class IndexBudget(Rule):
                 public=True,
             ),
             RuleExample(
-                example_id="justified-index-burst",
-                title="An excess index records its application query and plan evidence",
+                example_id="within-index-budget",
+                title="Three explicit indexes stay within the table budget",
                 outcome=ExampleOutcome.NO_MATCH,
                 files=(
                     ExampleFile.sql(
                         "migrations/004_indexes.sql",
                         "CREATE INDEX a_idx ON event(a);\nCREATE INDEX b_idx ON event(b);\n"
-                        "CREATE INDEX c_idx ON event(c);\n"
-                        "-- index-justification: app-read: event delivery queue; "
-                        "query: app/event_store.py#claim; explain: https://metrics.example.test/plans/812\n"
-                        "CREATE INDEX d_idx ON event(d);\n",
+                        "CREATE INDEX c_idx ON event(c);\n",
                     ),
                 ),
                 focus_path=PurePosixPath("migrations/004_indexes.sql"),
@@ -102,7 +97,7 @@ class IndexBudget(Rule):
             table_positions[index.table] += 1
             exceeds_total = total_position > _MIGRATION_INDEX_LIMIT
             exceeds_table = table_positions[index.table] > _TABLE_INDEX_LIMIT
-            if not (exceeds_total or exceeds_table) or index.justified:
+            if not (exceeds_total or exceeds_table):
                 continue
             limits: list[str] = []
             if exceeds_table:
@@ -110,9 +105,6 @@ class IndexBudget(Rule):
             if exceeds_total:
                 lead = "distinct" if limits else "Distinct"
                 limits.append(f"{lead} index {total_position} in this migration exceeds limit 8")
-            accepted_kinds = "app-read with query and EXPLAIN evidence, or referential-action"
-            if index.unique:
-                accepted_kinds += ", or uniqueness-constraint"
             findings.append(
                 Diagnostic(
                     path,
@@ -120,9 +112,9 @@ class IndexBudget(Rule):
                     index.column,
                     self.code,
                     "; ".join(limits)
-                    + f". Remove the index or immediately precede it with an exact {accepted_kinds} justification; "
-                    "do not add reporting-specific indexes without evaluating ClickHouse for reporting, "
-                    "historical analysis, and broad aggregations.",
+                    + ". Remove redundant indexes, express uniqueness with inline UNIQUE constraints, "
+                    "and review the workload. Evaluate ClickHouse for reporting, historical analysis, "
+                    "and broad aggregations.",
                 )
             )
         return findings

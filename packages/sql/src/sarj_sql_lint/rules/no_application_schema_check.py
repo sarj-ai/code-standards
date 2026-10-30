@@ -36,10 +36,6 @@ _JSON_SHAPE_FUNCTION = re.compile(
     rf'(?<!{POSTGRES_IDENTIFIER_CONTINUATION})(?:(?ai:JSONB?_(?:TYPEOF|ARRAY_LENGTH))\b|(?-i:"jsonb?_(?:typeof|array_length)"))[ \t\r\n\f\v]*\(',
     re.IGNORECASE,
 )
-_CLOSED_TEXT_VALUES = re.compile(
-    r'^\s*(?:[A-Za-z_][A-Za-z0-9_$]*|"(?:""|[^"\n])+")\s+IN\s*\(\s+,\s+(?:,\s+)*\)\s*$',
-    re.IGNORECASE | re.DOTALL,
-)
 
 
 def _application_schema_checks(source: str) -> list[int]:
@@ -58,9 +54,7 @@ def _application_schema_checks(source: str) -> list[int]:
                 depth -= 1
                 if depth == 0:
                     expression = source[opening_parenthesis + 1 : index]
-                    if next(sql_code_matches(_JSON_SHAPE_FUNCTION, expression), None) or _CLOSED_TEXT_VALUES.fullmatch(
-                        expression
-                    ):
+                    if next(sql_code_matches(_JSON_SHAPE_FUNCTION, expression), None):
                         findings.append(match.start())
                     break
     return findings
@@ -72,13 +66,13 @@ class NoApplicationSchemaCheck(Rule):
     code = "SARJ118"
     documentation = RuleDocumentation(
         default_level=DefaultLevel.WARNING,
-        summary="Keep JSON shape and closed application value sets out of database CHECK constraints.",
+        summary="Review JSON shape validation duplicated in database CHECK constraints.",
         rationale=(
-            "A database CHECK that repeats an application-owned JSON schema or enum-like value set creates two "
+            "A database CHECK that repeats an application-owned JSON schema creates two "
             "validators that can drift and turn an otherwise valid application deployment into failed writes."
         ),
         remediation=(
-            "If the application owns the contract, validate the JSON payload or closed value set with the typed "
+            "If the application owns the contract, validate the JSON payload with the typed "
             "application boundary before changing its CHECK. Preserve database-owned validation and checks needed by other writers; use an exact SARJ118 suppression explaining ownership. Keep relational constraints such as foreign keys, uniqueness, "
             "nullability, and cross-column invariants in the database."
         ),
@@ -86,7 +80,7 @@ class NoApplicationSchemaCheck(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Only PostgreSQL CHECK expressions that call JSON_TYPEOF, JSONB_TYPEOF, JSON_ARRAY_LENGTH, or JSONB_ARRAY_LENGTH are reported.",
-            "Enum-like checks are reported only for a simple column IN a list of at least two string literals.",
+            "Closed status value sets and numeric/interval bounds are allowed as database integrity constraints.",
             "JSON operators alone are not matched. Function calls inside cross-column or mixed checks can match; application ownership is not proven and removal requires review of every writer.",
             "Dump files are excluded; generated migrations redirect findings to their owning model when identifiable.",
         ),
@@ -129,36 +123,6 @@ class NoApplicationSchemaCheck(Rule):
                 public=True,
                 scenario="json-shape",
             ),
-            RuleExample(
-                example_id="closed-status-values-check",
-                title="Database duplicates an application enum",
-                outcome=ExampleOutcome.MATCH,
-                files=(
-                    ExampleFile.sql(
-                        "supabase/migrations/001_call.sql",
-                        "CREATE TABLE call (status TEXT NOT NULL CHECK (status IN ('queued', 'completed')));\n",
-                    ),
-                ),
-                focus_path=PurePosixPath("supabase/migrations/001_call.sql"),
-                expected_count=1,
-                public=True,
-                scenario="closed-values",
-            ),
-            RuleExample(
-                example_id="application-owned-status-values",
-                title="Application enum owns the closed value set",
-                outcome=ExampleOutcome.NO_MATCH,
-                files=(
-                    ExampleFile.sql(
-                        "supabase/migrations/001_call.sql",
-                        "CREATE TABLE call (status TEXT NOT NULL);\n",
-                    ),
-                ),
-                focus_path=PurePosixPath("supabase/migrations/001_call.sql"),
-                expected_count=0,
-                public=True,
-                scenario="closed-values",
-            ),
         ),
     )
     description = documentation.summary
@@ -182,7 +146,7 @@ class NoApplicationSchemaCheck(Rule):
                         severity=DefaultLevel.WARNING,
                         message=(
                             "Review ownership of this "
-                            "JSON-shape or closed-value CHECK. Move application-owned validation to a typed boundary; retain database invariants and document their ownership."
+                            "JSON-shape CHECK. Move application-owned validation to a typed boundary; retain database invariants and document their ownership."
                         ),
                     )
                 )
