@@ -203,17 +203,23 @@ const ESLINT_CONCISION_ADVISORY_RULES = {
 // Neither upstream rule autofixes the return value or control-flow contract.
 const ESLINT_CORRECTNESS_ADVISORY_RULES = {
   "no-constructor-return": "warn",
+  "no-promise-executor-return": "warn",
+  "no-self-compare": "warn",
+  "no-template-curly-in-string": "warn",
+  "no-unmodified-loop-condition": "warn",
   "no-unreachable-loop": "warn",
   // An unparenthesized assignment can be an accidental comparison. Explicitly
   // grouped assignments, including lazy memoization with ??=, remain allowed.
   "no-return-assign": ["warn", "except-parens"],
 };
 
-// Keep regex analysis focused on native String API failures. Defer the current
-// backtracking rule's accepting-suffix false positives and disjunction-rule
-// removal suggestions that can change backreference-dependent matching.
+// Assertion analysis remains advisory: review capture and matching contracts.
+// Backtracking's accepting-suffix false positives and disjunction suggestions
+// that can change backreference-dependent matching remain deferred.
 const REGEXP_ADVISORY_RULES = {
+  "regexp/no-contradiction-with-assertion": "warn",
   "regexp/no-missing-g-flag": ["warn", { strictTypes: true }],
+  "regexp/no-useless-assertions": "warn",
 };
 
 // Unicorn ships a broad rule set. The enabled subset below was selected by
@@ -1275,6 +1281,10 @@ export function createConfig(options: ConfigOptions = {}): Linter.Config[] {
       "no-restricted-syntax": [
         "error",
         {
+          selector: "ForInStatement",
+          message: "Do not use for-in enumeration. Use for-of with Object.keys or Object.entries for own properties; an inherited-key protocol requires an exact, explained exception.",
+        },
+        {
           // The typed upstream rule skips literal assertions in object/array
           // members. Restrict direct values only: calls, returns, spreads and
           // satisfies expressions can establish independent inference contexts.
@@ -1392,6 +1402,19 @@ export function createConfig(options: ConfigOptions = {}): Linter.Config[] {
       "no-useless-rename": "error",
       "no-useless-return": "error",
       "no-eval": ["error", { allowIndirect: false }],
+      // This native owner also covers computed access and destructuring, which
+      // no-caller misses. Keep one diagnostic for direct arguments access.
+      "no-caller": "off",
+      "no-restricted-properties": [
+        "error",
+        { object: "arguments", property: "callee", message: "Use a named function reference instead of legacy arguments introspection." },
+        { object: "arguments", property: "caller", message: "Pass context explicitly instead of inspecting the caller." },
+      ],
+      "no-iterator": "error",
+      "no-proto": "error",
+      // The syntax restriction covers every for-in loop, including arrays,
+      // without requiring type information or reporting the same loop twice.
+      "@typescript-eslint/no-for-in-array": "off",
       "no-prototype-builtins": "error",
       // The deprecated core rule rejects useful stack frames and safe resource disposal.
       // Typed return-await owns promise error handling where type information exists.

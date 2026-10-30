@@ -91,9 +91,9 @@ describe("additional upstream core smell warnings", () => {
     const eslint = new ESLint({ cwd: FIXTURE_ROOT, overrideConfigFile: true, overrideConfig: factory({ tsconfigRootDir: FIXTURE_ROOT }) });
     const config = await eslint.calculateConfigForFile("typed-concision-probe.ts") as Linter.Config;
     for (const id of WARNING_RULES) expect(config?.rules?.[id]?.[0]).toBe(1);
-    expect(config?.rules?.["no-promise-executor-return"]?.[0] ?? 0).toBe(0);
+    expect(config?.rules?.["no-promise-executor-return"]?.[0]).toBe(1);
     expect(config?.rules?.["no-lone-blocks"]?.[0] ?? 0).toBe(0);
-    expect(config?.rules?.["no-self-compare"]?.[0] ?? 0).toBe(0);
+    expect(config?.rules?.["no-self-compare"]?.[0]).toBe(1);
     expect(config?.rules?.["prefer-regex-literals"]?.[0] ?? 0).toBe(0);
     expect(config?.rules?.["@typescript-eslint/no-unused-private-class-members"]?.[0] ?? 0).toBe(0);
   });
