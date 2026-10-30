@@ -5,6 +5,7 @@ from sarj_rule_contracts.examples import verify_native_rule
 
 from sarj_sql_lint.__main__ import analyze, main
 from sarj_sql_lint.rule_base import DefaultLevel, Diagnostic
+from sarj_sql_lint.rules._postgres_ctas import normalize_postgres_ctas
 from sarj_sql_lint.rules.no_analytical_queries_in_transactional_db import NoAnalyticalQueriesInTransactionalDb
 
 
@@ -366,3 +367,107 @@ def test_set_deduplication_cannot_bypass_distinct_policy(operation: str, modifie
 def test_metadata_free_aggregate_keeps_its_original_function_location() -> None:
     [finding] = _check("-- header\nSELECT JSON_AGG(id) FROM event;\n")
     assert (finding.line, finding.col) == (2, 8)
+
+
+@pytest.mark.parametrize("table", ["TEMP TABLE report", 'TEMPORARY TABLE IF NOT EXISTS "report.schema"."ON COMMIT"'])
+@pytest.mark.parametrize("on_commit", ["DROP", "DELETE ROWS", "PRESERVE ROWS"])
+@pytest.mark.parametrize(
+    "query", ["SELECT DISTINCT id FROM event", "SELECT COUNT(*) FROM event", "SELECT id FROM event GROUP BY id"]
+)
+def test_temporary_ctas_executes_its_policy_query(table: str, on_commit: str, query: str) -> None:
+    source = f"CREATE {table} ON COMMIT {on_commit} AS WITH rows AS ({query}) SELECT * FROM rows;"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    [finding] = _check(source)
+    assert finding.code == "SARJ122"
+    assert finding.severity is DefaultLevel.ERROR
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT id FROM event WHERE id = $1",
+        "SELECT EXISTS(SELECT 1 FROM event WHERE id = $1)",
+        "SELECT 'SELECT DISTINCT id FROM event; ON COMMIT DROP AS' AS example",
+        'SELECT "DISTINCT", "COUNT" FROM event',
+        "SELECT $$SELECT DISTINCT id FROM event;$$ AS example",
+        "SELECT id /* COUNT(*) DISTINCT */ FROM event",
+    ],
+)
+def test_temporary_ctas_does_not_promote_query_data_or_operational_reads(query: str) -> None:
+    source = f"CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS ({query}) SELECT * FROM rows;"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    assert _check(source) == []
+
+
+def test_temporary_ctas_comments_crlf_and_physical_locations() -> None:
+    source = '-- header\r\nCREATE TEMP TABLE "ON COMMIT DROP AS" ON /* one\r\ntwo */ COMMIT /* three */ DROP AS\r\nWITH rows AS (\r\n  SELECT DISTINCT id FROM event\r\n) SELECT * FROM rows;\r\nSELECT SUM(cost) FROM event;'
+    assert [(finding.line, finding.col) for finding in _check(source)] == [(5, 10), (7, 8)]
+
+
+@pytest.mark.parametrize("tail", ["", " -- sarj-noqa: SARJ122 -- reviewed transactional invariant"])
+def test_temporary_ctas_native_exception_uses_the_original_query_line(tmp_path: Path, tail: str) -> None:
+    path = tmp_path / "events.sql"
+    path.write_text(
+        f"CREATE TEMP TABLE report ON COMMIT DROP AS\nWITH rows AS (\nSELECT DISTINCT id FROM event{tail}\n) SELECT * FROM rows;\n"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    )
+    assert main(["check", "--rule", NoAnalyticalQueriesInTransactionalDb.id, str(path)]) == int(not tail)
+
+
+def test_copy_stdin_ctas_text_is_not_executable_and_later_query_keeps_its_location() -> None:
+    source = "COPY event FROM STDIN;\nCREATE TEMP TABLE payload ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;\n\\.\nCREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;"
+    [finding] = _check(source)
+    assert (finding.line, finding.col) == (4, source.splitlines()[3].index("DISTINCT") + 1)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "CREATE TEMP TABLE report ON COMMIT DROP AS SELECT DISTINCT FROM;",
+        "CREATE VIEW report ON COMMIT DROP AS SELECT DISTINCT id FROM event;",
+        "SELECT 'CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows';",
+        "COPY event FROM STDIN;\nCREATE TEMP TABLE payload ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;\n",
+    ],
+)
+def test_ctas_fallback_does_not_promote_malformed_or_opaque_commands(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("payload", ["raw'quote", 'raw"quote'])
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT DISTINCT id FROM event;",
+        "CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;",
+    ],
+)
+def test_copy_text_quotes_do_not_hide_later_executable_policy_queries(payload: str, query: str) -> None:
+    source = f"SELECT ';' AS boundary;\r\nCOPY event FROM STDIN;\r\n{payload}\r\n\\.\r\n{query}"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    [finding] = _check(source)
+    assert (finding.line, finding.col) == (5, query.index("DISTINCT") + 1)
+
+
+def test_copy_filename_named_stdin_is_not_a_text_input_stream() -> None:
+    source = "COPY event FROM 'STDIN';\nSELECT DISTINCT id FROM event;"
+    [finding] = _check(source)
+    assert (finding.line, finding.col) == (2, 8)
+
+
+@pytest.mark.parametrize(("mode", "count"), [("ANALYZE", 1), ("", 0)])
+def test_explain_temporary_ctas_only_checks_executed_queries(mode: str, count: int) -> None:
+    source = f"EXPLAIN {mode}\nCREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    findings = _check(source)
+    assert len(findings) == count
+    if findings:
+        assert (findings[0].line, findings[0].col) == (2, source.splitlines()[1].index("DISTINCT") + 1)
+
+
+@pytest.mark.parametrize(("mode", "count"), [("ANALYZE", 1), ("", 0)])
+def test_copy_mask_is_idempotent_before_explain_temporary_ctas(mode: str, count: int) -> None:
+    query = (
+        "CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;"
+    )
+    source = f"COPY event FROM STDIN;\r\nEXPLAIN raw'quote\r\n\\.\r\nEXPLAIN {mode}\r\n{query}"
+    prepared = normalize_postgres_ctas(source)
+    assert normalize_postgres_ctas(prepared) == prepared
+    findings = _check(source)
+    assert len(findings) == count
+    if findings:
+        assert (findings[0].line, findings[0].col) == (5, query.index("DISTINCT") + 1)

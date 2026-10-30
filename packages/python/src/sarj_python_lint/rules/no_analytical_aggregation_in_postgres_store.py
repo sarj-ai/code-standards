@@ -60,15 +60,16 @@ def analytical_signal(sql: str) -> str | None:
 
 
 def _grouped_reporting_signal(sql: str) -> str | None:
-    import sqlglot  # ruff: ignore[import-outside-top-level] -- parse only aggregate-shaped SQL after cheap gates
     from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- paired with lazy parser import
     from sqlglot.errors import SqlglotError  # ruff: ignore[import-outside-top-level] -- paired with lazy parser import
+
+    from sarj_python_lint.rules._postgres import parse_postgres  # ruff: ignore[import-outside-top-level] -- unsupported private SQL must not enter dependency logs.
 
     if _GROUP_BY.search(sql) is None or _COMMON_AGGREGATE.search(sql) is None:
         return None
     try:
-        statements = sqlglot.parse(_PLACEHOLDER.sub("?", sql), read="postgres")
-    except SqlglotError:
+        statements = parse_postgres(_PLACEHOLDER.sub("?", sql))
+    except SqlglotError, RecursionError:
         return None
     for statement in statements:
         if not isinstance(statement, exp.Query):
@@ -140,7 +141,7 @@ class NoAnalyticalAggregationInPostgresStore(Rule):
         aliases=("no-aggregation-in-store-query", "no-analytical-queries-in-transactional-db"),
         limitations=(
             "Statically recoverable SQL in non-test, non-generated Python modules with native PostgreSQL, MySQL, or SQLite imports is analyzed, regardless of filename. The historical SARJ020 identifier is retained.",
-            "Every parsed SELECT DISTINCT (including DISTINCT ON), deduplicating UNION/INTERSECT/EXCEPT, GROUP BY, and built-in SQL aggregate is reported, including CTEs, nested writes, windowed aggregates, identity-bounded queries, and LIMIT queries. ALL set operations remain valid. This deliberately replaces the former reporting-size thresholds.",
+            "Every parsed SELECT DISTINCT (including DISTINCT ON), deduplicating UNION/INTERSECT/EXCEPT, GROUP BY, and built-in SQL aggregate is reported, including temporary-table AS queries, CTEs, nested writes, windowed aggregates, identity-bounded queries, and LIMIT queries. ALL set operations remain valid. This deliberately replaces the former reporting-size thresholds.",
             "A single imported backend owns module SQL. Resolvable first-party query contracts and re-exports retain their native analytical-provider evidence. Mixed backend modules require a direct query sink on a source-proven native connection or annotated parameter; unresolved receivers and separately bound queries abstain.",
             "Known ClickHouse, BigQuery, DuckDB, Snowflake, Trino, Athena, and Databricks drivers are analytical owners. Comments, scalar SQL values, identifiers, Python docstrings, and IS DISTINCT FROM do not trigger the policy.",
             "SQLite multi-argument MIN/MAX and MySQL ANY_VALUE retain their scalar semantics; PostgreSQL ANY_VALUE remains an aggregate.",
@@ -162,6 +163,40 @@ class NoAnalyticalAggregationInPostgresStore(Rule):
                 ),
                 focus_path=PurePosixPath("app/event_store.py"),
                 expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="temporary-table-distinct",
+                scenario="temporary-table",
+                title="A temporary PostgreSQL table still performs deduplication",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/event_store.py",
+                        "import psycopg\n\n"
+                        'QUERY = "CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS '
+                        '(SELECT DISTINCT team_id FROM event) SELECT team_id FROM rows"\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/event_store.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="temporary-table-operational-read",
+                scenario="temporary-table",
+                title="A temporary PostgreSQL table can materialize an operational row lookup",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/event_store.py",
+                        "import psycopg\n\n"
+                        'QUERY = "CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS '
+                        '(SELECT team_id FROM event WHERE id = %s) SELECT team_id FROM rows"\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/event_store.py"),
+                expected_count=0,
                 public=True,
             ),
             RuleExample(

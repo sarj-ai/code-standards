@@ -128,10 +128,14 @@ def query_signal(sql: str, *, dialect: str = "postgres") -> str | None:
 
 def _prepared_sql(sql: str, dialect: str) -> str:
     prepared = _FORMAT_HOLE.sub(_SQL_HOLE, _PLACEHOLDER.sub("?", sql))
-    if dialect == "postgres" and "EXPLAIN" in prepared.upper():
-        from sarj_python_lint.rules._sql_explain import normalize_postgres_explain  # ruff: ignore[import-outside-top-level] -- only executing EXPLAIN needs native token normalization.
+    if dialect == "postgres":
+        from sarj_python_lint.rules._postgres_ctas import normalize_postgres_ctas  # ruff: ignore[import-outside-top-level] -- recover PostgreSQL temporary-table queries only after the SELECT gate.
 
-        prepared = normalize_postgres_explain(prepared)
+        prepared = normalize_postgres_ctas(prepared)
+        if "EXPLAIN" in prepared.upper():
+            from sarj_python_lint.rules._sql_explain import normalize_postgres_explain  # ruff: ignore[import-outside-top-level] -- only executing EXPLAIN needs native token normalization.
+
+            prepared = normalize_postgres_ctas(normalize_postgres_explain(prepared))
     if "GROUP" in prepared.upper() and ("/*" in prepared or "--" in prepared):
         import sqlglot  # ruff: ignore[import-outside-top-level] -- tokenize only GROUP candidates with comments.
 
@@ -173,13 +177,14 @@ def _statement_signal(statement: exp.Expr, sql: str, dialect: str) -> str | None
 
 
 def transactional_queries(context: PythonFileContext) -> Iterator[TransactionalQuery]:
-    if _SELECT.search(context.source) is None:
+    queries = tuple(_recover_queries(context))
+    if not queries:
         return
     dialects = _source_dialects(context)
     if not dialects or dialects == {"analytical"}:
         return
     single = next(iter(dialects)) if len(dialects) == 1 else None
-    for candidate in _recover_queries(context):
+    for candidate in queries:
         dialect = single or _executing_dialect(candidate.node, context)
         if dialect is not None and dialect != "analytical":
             yield TransactionalQuery(candidate.node, candidate.sql, dialect)

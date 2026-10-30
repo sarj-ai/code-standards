@@ -75,12 +75,17 @@ def _statements(source: str, dialect: str) -> Iterator[_ParsedStatement]:
     from sqlglot.errors import SqlglotError  # ruff: ignore[import-outside-top-level] -- paired with the lazy parser.
     from sqlglot.tokenizer_core import TokenType  # ruff: ignore[import-outside-top-level] -- split statements without splitting quoted values.
 
+    from sarj_sql_lint.rules._postgres_ctas import normalize_postgres_ctas  # ruff: ignore[import-outside-top-level] -- preserve COPY boundaries before and CTAS grammar after executing EXPLAIN normalization.
+
+    prepared = _PLACEHOLDER.sub(lambda match: "?".ljust(len(match.group())), source)
+    if dialect == "postgres" and ("COMMIT" in prepared.upper() or "COPY" in prepared.upper()):
+        prepared = normalize_postgres_ctas(prepared)
     try:
-        prepared = _PLACEHOLDER.sub(lambda match: "?".ljust(len(match.group())), source)
         if dialect == "postgres" and "EXPLAIN" in prepared.upper():
             from sarj_sql_lint.rules._explain import normalize_postgres_explain  # ruff: ignore[import-outside-top-level] -- expose only proven executing EXPLAIN queries.
 
             prepared = normalize_postgres_explain(prepared)
+            prepared = normalize_postgres_ctas(prepared)
         tokens = sqlglot.tokenize(prepared, read=dialect)
     except SqlglotError, RecursionError:
         return
@@ -213,6 +218,36 @@ class NoAnalyticalQueriesInTransactionalDb(Rule):
                 files=(ExampleFile.sql("queries/events.sql", "SELECT DISTINCT team_id FROM event;\n"),),
                 focus_path=PurePosixPath("queries/events.sql"),
                 expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="temporary-table-deduplication",
+                scenario="temporary-table",
+                title="A temporary table does not exempt a transactional reporting query",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "queries/events.sql",
+                        "CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT team_id FROM event) SELECT team_id FROM rows;\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("queries/events.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="temporary-table-operational-read",
+                scenario="temporary-table",
+                title="A temporary table can materialize an operational row lookup",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "queries/events.sql",
+                        "CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT team_id FROM event WHERE id = $1) SELECT team_id FROM rows;\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("queries/events.sql"),
+                expected_count=0,
                 public=True,
             ),
             RuleExample(

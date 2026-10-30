@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "fcf60dde6b79e051c4b5ed34c6714756eb8b4a1fc6bfe68f6216142fb00793c9",
-  "cliSha256": "cee892a74869df6194563a20293f196771fb8524bee2e32b5e77b60f318df803",
+  "catalogSha256": "fc85f814f874cb48f74a2528fd715939c8616b3ac114361f4909b02927a6f8f9",
+  "cliSha256": "7c2656d9286edf8e1e2bc41e6b41592f61f78feb33b66a710d04e7b25a27c9ba",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -4895,6 +4895,25 @@
           "title": "The consumer still requires a separately read field"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\nconst account = { name: \"Ada\", email: null };\nfunction label(user: { email: string | null; name: string }): string {\n  return user.email ?? user.name;\n}\nlabel(account);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/case.ts",
+          "id": "read-nullable-field",
+          "outcome": "accept",
+          "scenarioId": "nullable-private-field",
+          "title": "An inspected nullable field keeps its contract"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -4917,6 +4936,30 @@
           "outcome": "reject",
           "scenarioId": "local-scalar-helper",
           "title": "Only the name crosses a local scalar helper call"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\nconst account = { name: \"Ada\", email: null };\nfunction label(user: { email: string | null; name: string }): string {\n  return user.name;\n}\nlabel(account);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\nconst account = { name: \"Ada\", email: null };\nfunction label(user: { name: string }): string {\n  return user.name;\n}\nlabel(account);\n"
+            }
+          ],
+          "focusPath": "src/case.ts",
+          "id": "unread-nullable-field",
+          "outcome": "reject",
+          "scenarioId": "nullable-private-field",
+          "title": "A required nullable field is never inspected"
         },
         {
           "expectedCount": 1,
@@ -9116,6 +9159,36 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "PostgreSQL computes a time-series reporting rollup"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/event_store.py",
+              "source": "import psycopg\n\nQUERY = \"CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT team_id FROM event) SELECT team_id FROM rows\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/event_store.py",
+          "id": "temporary-table-distinct",
+          "outcome": "reject",
+          "scenarioId": "temporary-table",
+          "title": "A temporary PostgreSQL table still performs deduplication"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/event_store.py",
+              "source": "import psycopg\n\nQUERY = \"CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT team_id FROM event WHERE id = %s) SELECT team_id FROM rows\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/event_store.py",
+          "id": "temporary-table-operational-read",
+          "outcome": "accept",
+          "scenarioId": "temporary-table",
+          "title": "A temporary PostgreSQL table can materialize an operational row lookup"
         }
       ],
       "optionsSchemaSource": null
@@ -18726,6 +18799,36 @@
           "outcome": "accept",
           "scenarioId": "operational-read",
           "title": "A transactional existence check uses an indexed predicate"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "queries/events.sql",
+              "source": "CREATE TEMP TABLE report ON\nCOMMIT\nDROP AS\nWITH\n  rows AS (\n    SELECT DISTINCT\n      team_id\n    FROM\n      event\n  )\nSELECT\n  team_id\nFROM\n  rows;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "queries/events.sql",
+          "id": "temporary-table-deduplication",
+          "outcome": "reject",
+          "scenarioId": "temporary-table",
+          "title": "A temporary table does not exempt a transactional reporting query"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "queries/events.sql",
+              "source": "CREATE TEMP TABLE report ON\nCOMMIT\nDROP AS\nWITH\n  rows AS (\n    SELECT\n      team_id\n    FROM\n      event\n    WHERE\n      id = $1\n  )\nSELECT\n  team_id\nFROM\n  rows;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "queries/events.sql",
+          "id": "temporary-table-operational-read",
+          "outcome": "accept",
+          "scenarioId": "temporary-table",
+          "title": "A temporary table can materialize an operational row lookup"
         },
         {
           "expectedCount": 1,

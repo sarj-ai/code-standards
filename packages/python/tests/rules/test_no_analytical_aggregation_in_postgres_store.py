@@ -11,6 +11,7 @@ from sarj_python_lint.rules.complex_postgres_query_requires_architecture_review 
 )
 from sarj_python_lint.rules.no_analytical_aggregation_in_postgres_store import (
     NoAnalyticalAggregationInPostgresStore,
+    analytical_signal,
 )
 
 
@@ -19,6 +20,39 @@ def _check(source: str, filename: str = "event_store.py") -> list[Diagnostic]:
 
 
 _PUBLIC_EXAMPLES = NoAnalyticalAggregationInPostgresStore.public_examples()
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        (
+            "SELECT org_id, status, COUNT(*), AVG(amount) FROM item GROUP BY org_id, status",
+            "grouped reporting shape",
+        ),
+        ("SELECT org_id, status, COUNT(*), AVG(amount) FROM item WHERE id=%s GROUP BY org_id, status", None),
+        ("SELECT org_id, COUNT(*) FROM item GROUP BY org_id", None),
+        ("SELECT org_id, status, COUNT(*), AVG(amount) FROM item GROUP BY org_id, status FOR UPDATE", None),
+        ("SELECT COUNT(*) FROM item WHERE label='unterminated GROUP BY id", None),
+    ],
+)
+def test_legacy_architecture_overlap_helper_preserves_signals(query: str, expected: str | None) -> None:
+    assert analytical_signal(query) == expected
+
+
+def test_legacy_architecture_overlap_helper_abstains_on_parser_recursion() -> None:
+    query = "SELECT COUNT(*) FROM (" * 200 + "SELECT id FROM item" + ") grouped GROUP BY id" * 200
+    assert analytical_signal(query) is None
+
+
+def test_legacy_architecture_overlap_helper_preserves_supported_signal_without_private_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    query = (
+        "SELECT org_id, status, COUNT(*), AVG(amount) FROM item GROUP BY org_id, status; "
+        "VACUUM private_synthetic_marker"
+    )
+    assert analytical_signal(query) == "grouped reporting shape"
+    assert caplog.records == []
 
 
 @pytest.mark.parametrize(
@@ -657,3 +691,95 @@ def test_type_only_native_connection_annotations_retain_backend_proof(annotation
 def test_local_annotation_shadow_cannot_claim_postgres_ownership() -> None:
     source = "import duckdb\nfrom psycopg import Connection\ndef outer():\n    Connection = duckdb.DuckDBPyConnection\n    def report(db: Connection):\n        db.execute('SELECT COUNT(*) FROM event')\n"
     assert _check(source) == []
+
+
+@pytest.mark.parametrize("table", ["TEMP TABLE report", 'TEMPORARY TABLE IF NOT EXISTS "report.schema"."ON COMMIT"'])
+@pytest.mark.parametrize("on_commit", ["DROP", "DELETE ROWS", "PRESERVE ROWS"])
+@pytest.mark.parametrize(
+    "query", ["SELECT DISTINCT id FROM event", "SELECT COUNT(*) FROM event", "SELECT id FROM event GROUP BY id"]
+)
+def test_temporary_ctas_executes_its_policy_query(table: str, on_commit: str, query: str) -> None:
+    sql = f"CREATE {table} ON COMMIT {on_commit} AS WITH rows AS ({query}) SELECT * FROM rows;"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    [finding] = _check(f"import psycopg\nq = {sql!r}\n")
+    assert finding.code == "SARJ020"
+    assert finding.severity is Severity.ERROR
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT id FROM event WHERE id = $1",
+        "SELECT EXISTS(SELECT 1 FROM event WHERE id = $1)",
+        "SELECT 'SELECT DISTINCT id FROM event; ON COMMIT DROP AS' AS example",
+        'SELECT "DISTINCT", "COUNT" FROM event',
+        "SELECT $$SELECT DISTINCT id FROM event;$$ AS example",
+        "SELECT id /* COUNT(*) DISTINCT */ FROM event",
+    ],
+)
+def test_temporary_ctas_does_not_promote_query_data_or_operational_reads(query: str) -> None:
+    sql = f"CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS ({query}) SELECT * FROM rows;"  # ruff: ignore[hardcoded-sql-expression] -- synthetic lint-rule fixture
+    assert _check(f"import psycopg\nq = {sql!r}\n") == []
+
+
+def test_temporary_ctas_preserves_python_literal_locations_and_single_diagnostic() -> None:
+    sql = '-- header\r\nCREATE TEMP TABLE "ON COMMIT DROP AS" ON /* one\r\ntwo */ COMMIT /* three */ DROP AS\r\nWITH rows AS (\r\n  SELECT DISTINCT id, COUNT(*) FROM event GROUP BY id\r\n) SELECT * FROM rows;'
+    [finding] = _check(f"import psycopg\n\ncursor.execute({sql!r})\n")
+    assert (finding.line, finding.col) == (3, 16)
+
+
+@pytest.mark.parametrize("tail", ["", "  # sarj-noqa: SARJ020 -- reviewed transactional invariant"])
+def test_temporary_ctas_native_exception_uses_the_original_python_line(tmp_path: Path, tail: str) -> None:
+    path = tmp_path / "service.py"
+    sql = "CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;"
+    path.write_text(f"import psycopg\ncursor.execute({sql!r}){tail}\n")
+    assert main(["check", "--rule", NoAnalyticalAggregationInPostgresStore.id, str(path)]) == int(not tail)
+
+
+@pytest.mark.parametrize(
+    ("sql", "count"),
+    [
+        (
+            "COPY event FROM STDIN;\nCREATE TEMP TABLE payload ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;\n\\.\n",
+            0,
+        ),
+        (
+            "COPY event FROM STDIN;\nCREATE TEMP TABLE payload ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;\n\\.\nCREATE TEMP TABLE report ON COMMIT DROP AS SELECT DISTINCT id FROM event;",
+            1,
+        ),
+    ],
+)
+def test_copy_stdin_ctas_text_is_not_executable(sql: str, count: int) -> None:
+    assert len(_check(f"import psycopg\nq = {sql!r}\n")) == count
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE TEMP TABLE report ON COMMIT DROP AS SELECT DISTINCT FROM;",
+        "CREATE VIEW report ON COMMIT DROP AS SELECT DISTINCT id FROM event;",
+        "SELECT 'CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows';",
+        "COPY event FROM STDIN;\nCREATE TEMP TABLE payload ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT id FROM event) SELECT * FROM rows;\n",
+    ],
+)
+def test_ctas_fallback_does_not_promote_malformed_or_opaque_commands(sql: str) -> None:
+    assert _check(f"import psycopg\nq = {sql!r}\n") == []
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "COPY event FROM STDIN;\nraw'quote EXPLAIN\n\\.\nSELECT DISTINCT id FROM event;",
+        'COPY event FROM STDIN;\nraw"quote EXPLAIN\n\\.\nSELECT DISTINCT id FROM event;',
+        "COPY event FROM STDIN;\nraw'quote EXPLAIN\n\\.\nCREATE TEMP TABLE report ON COMMIT DROP AS SELECT DISTINCT id FROM event;",
+        'COPY event FROM STDIN;\nraw"quote EXPLAIN\n\\.\nEXPLAIN ANALYZE CREATE TEMP TABLE report ON COMMIT DROP AS SELECT DISTINCT id FROM event;',
+    ],
+)
+def test_copy_payload_quotes_cannot_hide_a_later_policy_query(sql: str) -> None:
+    [finding] = _check(f"import psycopg\nq = {sql!r}\n")
+    assert finding.code == "SARJ020"
+    assert finding.severity is Severity.ERROR
+
+
+def test_quoted_stdin_filename_cannot_hide_a_later_policy_query() -> None:
+    sql = "COPY event FROM 'STDIN'; SELECT DISTINCT id FROM event;"
+    assert len(_check(f"import psycopg\nq = {sql!r}\n")) == 1

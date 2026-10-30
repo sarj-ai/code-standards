@@ -7,7 +7,7 @@ import pytest
 from sarj_rule_contracts.examples import verify_native_rule
 
 from sarj_python_lint.__main__ import analyze, check_source
-from sarj_python_lint.rule_base import Severity
+from sarj_python_lint.rule_base import AutofixPolicy, Severity
 from sarj_python_lint.rules.no_custom_control_flow_exception import NoCustomControlFlowException
 
 
@@ -195,3 +195,220 @@ def test_global_rebinding_of_a_direct_marker_abstains() -> None:
         "raise DomainError\n"
     )
     assert _check(source) == []
+
+
+@pytest.mark.parametrize("imported", ["Exception", "ValueError", "Exception as ErrorBase", "ValueError as ErrorBase"])
+def test_direct_builtin_exception_import_retains_review_identity(imported: str) -> None:
+    base = imported.rsplit(" as ", maxsplit=1)[-1]
+    source = f"from builtins import {imported}\nclass DomainError({base}): pass\ndef read(): raise DomainError\n"
+    findings = _check(source)
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.WARNING
+    assert findings[0].fixes == ()
+    documentation = NoCustomControlFlowException.documentation
+    assert documentation is not None
+    assert documentation.autofix is AutofixPolicy.NONE
+
+
+@pytest.mark.parametrize(
+    ("prefix", "base"),
+    [
+        ("import builtins as b", "b.Exception"),
+        ("import builtins as b\nb.Exception = Other", "Exception"),
+        ("from builtins import setattr as change", "Exception"),
+        ("from builtins import ValueError as ErrorBase\nErrorBase = Other", "ErrorBase"),
+        ("from builtins import ValueError as ErrorBase\nregister(ErrorBase)", "ErrorBase"),
+        ("from builtins import ValueError as ErrorBase\nErrorBase.flag = Other", "ErrorBase"),
+    ],
+)
+def test_imported_builtin_namespace_and_identity_hazards_still_abstain(prefix: str, base: str) -> None:
+    assert _check(f"{prefix}\nclass DomainError({base}): pass\nraise DomainError\n") == []
+
+
+@pytest.mark.parametrize(
+    "module",
+    ["pydantic.class_validators", "pydantic.v1.class_validators", "pydantic.deprecated.class_validators"],
+)
+@pytest.mark.parametrize(("symbol", "arguments"), [("validator", "'value'"), ("root_validator", "pre=True")])
+@pytest.mark.parametrize("ordinary_raise", [False, True])
+def test_import_proven_legacy_validator_export_paths(
+    module: str, symbol: str, arguments: str, *, ordinary_raise: bool
+) -> None:
+    source = (
+        "from builtins import ValueError as ErrorBase\n"
+        f"from {module} import {symbol} as check\n"
+        "class Parent(ErrorBase): pass\nclass DomainError(Parent): pass\n"
+        f"class Model:\n    @check({arguments})\n    def validate(cls, value): raise DomainError\n"
+    )
+    if ordinary_raise:
+        source += "def read(): raise DomainError\n"
+    assert len(_check(source)) == int(ordinary_raise)
+
+
+_FUNCTIONAL_SOURCE = (
+    "from typing import Annotated\n"
+    "from pydantic import BaseModel, AfterValidator\n"
+    "class DomainError(ValueError): pass\n"
+    "def reject(value): raise DomainError('rejected')\n"
+    "class Model(BaseModel):\n"
+    "    value: Annotated[int, AfterValidator(reject)]\n"
+)
+
+
+@pytest.mark.parametrize("module", ["pydantic", "pydantic.functional_validators"])
+@pytest.mark.parametrize("constructor", ["AfterValidator", "BeforeValidator", "PlainValidator", "WrapValidator"])
+@pytest.mark.parametrize("keyword_argument", [False, True])
+def test_exclusive_annotated_validator_callback_preserves_rejection(
+    module: str, constructor: str, *, keyword_argument: bool
+) -> None:
+    argument = "func=reject" if keyword_argument else "reject"
+    source = _FUNCTIONAL_SOURCE.replace(
+        "from pydantic import BaseModel, AfterValidator",
+        f"from pydantic import BaseModel\nfrom {module} import {constructor} as check",
+    ).replace("AfterValidator(reject)", f"check({argument})")
+    if constructor == "WrapValidator":
+        source = source.replace("def reject(value):", "def reject(value, handler):")
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("", ""),
+        ("class Model(BaseModel):", "alias = reject\nclass Model(BaseModel):"),
+        (
+            "class Model(BaseModel):\n    value: Annotated[int, AfterValidator(reject)]",
+            "type Validated = Annotated[int, AfterValidator(reject)]\nclass Model(BaseModel):\n    value: Validated",
+        ),
+    ],
+)
+def test_functional_rejection_does_not_hide_an_ordinary_raise(old: str, new: str) -> None:
+    source = _FUNCTIONAL_SOURCE.replace(old, new) if old else _FUNCTIONAL_SOURCE
+    if old == "class Model(BaseModel):":
+        source = source.replace("AfterValidator(reject)", "AfterValidator(alias)")
+    assert len(_check(source + "def read(): raise DomainError\n")) == 1
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "reject(1)\n",
+        "register(reject)\n",
+        "unused = reject\n",
+        "class Owner:\n    reject = other\n    def read(self): reject(1)\n",
+    ],
+)
+def test_callback_ordinary_calls_and_unowned_value_uses_still_warn(suffix: str) -> None:
+    assert len(_check(_FUNCTIONAL_SOURCE + suffix)) == 1
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("class Model(BaseModel):", "class Model:"),
+        ("class Model(BaseModel):", "@custom\nclass Model(BaseModel):"),
+        ("class Model(BaseModel):", "class Model(BaseModel):\n    descriptor = Descriptor()"),
+        (
+            "class Model(BaseModel):",
+            "class Model(BaseModel):\n    def __get_pydantic_core_schema__(cls, source, handler): return custom",
+        ),
+        ("def reject(value):", "async def reject(value):"),
+        (
+            "def reject(value): raise DomainError('rejected')",
+            "def reject(value):\n    yield value\n    raise DomainError",
+        ),
+        ("def reject(value):", "@custom\ndef reject(value):"),
+        ("AfterValidator(reject)", "AfterValidator(reject, unknown=True)"),
+        ("AfterValidator(reject)", "AfterValidator(reject, other)"),
+        ("from typing import Annotated", "from external import Annotated"),
+        (
+            "from pydantic import BaseModel, AfterValidator",
+            "from pydantic import BaseModel\nfrom external import AfterValidator",
+        ),
+        ("class DomainError(ValueError):", "AfterValidator = custom\nclass DomainError(ValueError):"),
+        ("class DomainError(ValueError):", "class DomainError(Exception):"),
+    ],
+)
+def test_functional_callback_requires_proven_static_rejection_contract(old: str, new: str) -> None:
+    assert len(_check(_FUNCTIONAL_SOURCE.replace(old, new))) == 1
+
+
+@pytest.mark.parametrize("chain", [False, True])
+def test_stable_callback_assignment_aliases_preserve_rejection(*, chain: bool) -> None:
+    declarations = "alias = reject\nsecond = alias\n" if chain else "alias = reject\n"
+    target = "second" if chain else "alias"
+    source = _FUNCTIONAL_SOURCE.replace("class Model(BaseModel):", declarations + "class Model(BaseModel):").replace(
+        "AfterValidator(reject)", f"AfterValidator({target})"
+    )
+    assert _check(source) == []
+    assert len(_check(source + f"{target}(1)\n")) == 1
+    assert len(_check(source + f"register({target})\n")) == 1
+    assert len(_check(source + f"{target} = other\n")) == 1
+    assert len(_check(source + f"{target}.flag = other\n")) == 1
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_nongeneric_annotation_alias_used_only_by_direct_model_fields(*, legacy: bool) -> None:
+    declaration = "Validated: TypeAlias" if legacy else "type Validated"
+    source = _FUNCTIONAL_SOURCE.replace(
+        "from typing import Annotated", "from typing import Annotated, TypeAlias"
+    ).replace(
+        "class Model(BaseModel):\n    value: Annotated[int, AfterValidator(reject)]",
+        f"{declaration} = Annotated[int, AfterValidator(reject)]\nclass Model(BaseModel):\n    value: Validated",
+    )
+    assert _check(source) == []
+    assert len(_check(source + "register(Validated)\n")) == 1
+    assert len(_check(source + "Validated = other\n")) == 1
+
+
+_NESTED_SOURCE = (
+    "from pydantic import field_validator\n"
+    "class DomainError(ValueError): pass\n"
+    "class Model:\n"
+    "    @field_validator('value')\n"
+    "    def validate(cls, value):\n"
+    "        def reject(): raise DomainError('rejected')\n"
+    "        return reject()\n"
+)
+
+
+def test_nonescaping_direct_nested_helper_preserves_rejection() -> None:
+    assert _check(_NESTED_SOURCE) == []
+    assert len(_check(_NESTED_SOURCE + "def read(): raise DomainError\n")) == 1
+    recursive = _NESTED_SOURCE.replace(
+        "def reject(): raise DomainError('rejected')",
+        "def reject():\n            if again: return reject()\n            raise DomainError",
+    )
+    assert _check(recursive) == []
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        "return reject",
+        "return schedule(reject)",
+        "alias = reject\n        return alias()",
+        "return lambda: reject()",
+        "return (reject() for _ in values)",
+        "def later(): return reject()\n        return later()",
+        "reject = other\n        return reject()",
+        "reject.flag = value\n        return reject()",
+    ],
+)
+def test_nested_helper_escape_or_mutation_retains_review(replacement: str) -> None:
+    assert len(_check(_NESTED_SOURCE.replace("return reject()", replacement))) == 1
+
+
+@pytest.mark.parametrize(("depth", "expected"), [(1, 0), (3, 0), (33, 1)])
+def test_nested_helper_proof_budget(depth: int, expected: int) -> None:
+    lines = [
+        "from pydantic import field_validator",
+        "class DomainError(ValueError): pass",
+        "class Model:",
+        "    @field_validator('value')",
+        "    def validate(cls, value):",
+    ]
+    lines.extend(" " * (8 + level * 4) + f"def helper{level}():" for level in range(depth))
+    lines.append(" " * (8 + depth * 4) + "raise DomainError")
+    lines.extend(" " * (8 + level * 4) + f"return helper{level}()" for level in reversed(range(depth)))
+    assert len(_check("\n".join(lines) + "\n")) == expected
