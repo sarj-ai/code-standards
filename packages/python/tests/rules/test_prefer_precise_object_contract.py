@@ -7,8 +7,10 @@ import pytest
 from sarj_rule_contracts.examples import verify_native_rule
 
 from sarj_python_lint.__main__ import analyze, check_source, main
+from sarj_python_lint._analysis_session import AnalysisSession
 from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics
+from sarj_python_lint.rules._local_source import LOCAL_SOURCE_CACHE_LIMIT
 from sarj_python_lint.rules.no_shallow_container_type_guard import NoShallowContainerTypeGuard
 from sarj_python_lint.rules.no_shallow_record_type_guard import NoShallowRecordTypeGuard
 from sarj_python_lint.rules.prefer_precise_object_contract import PreferPreciseObjectContract
@@ -1557,3 +1559,36 @@ def test_imported_class_capture_keeps_builtin_identity_after_module_mutation(
         + "\ndef choose(kind: Kind[object]) -> None: ...\n"
     )
     assert rule.check(Path("app/contracts.py"), source) == []
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        (
+            (
+                "from boundary import is_mapping\n"
+                "def raw(value: object) -> dict[object, object]:\n"
+                "    assert is_mapping(value)\n    return value\n"
+            ),
+            0,
+        ),
+        ("from boundary import parse\ndef raw(text: str) -> object: return parse(text)\n", 0),
+        ("def domain(value: object) -> None: pass\n", 1),
+    ],
+    ids=["type-guard", "native-parser", "opaque-domain"],
+)
+def test_validator_proofs_survive_other_rules_source_budget(tmp_path: Path, source: str, expected: int) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='boundary-example'\nversion='0.1.0'\n")
+    (tmp_path / "boundary.py").write_text(
+        "import json\nfrom typing import TypeGuard\n"
+        "def is_mapping(value: object) -> TypeGuard[dict[object, object]]:\n"
+        "    return isinstance(value, dict)\n"
+        "def parse(text: str) -> object: return json.loads(text)\n"
+    )
+    path = tmp_path / "client.py"
+    path.write_text(source)
+    session = AnalysisSession()
+    for index in range(LOCAL_SOURCE_CACHE_LIMIT):
+        assert session.local_source.resolve_module(path, f"unavailable_{index}", 0, facts=session.first_party) is None
+    findings = check_source([PreferPreciseObjectContract()], path, source, session=session)
+    assert len(findings) == expected
