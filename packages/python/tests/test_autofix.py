@@ -655,3 +655,116 @@ def test_async_and_generator_metadata_keep_their_nested_docstrings(case: _Case, 
     else:
         source = source.replace("        return ", "        yield ", 1)
     assert fix_source(Path(case.path), source, rule_ids=[case.rule_id]) == source
+
+
+@pytest.mark.parametrize("ending", ["\n", "\r\n"], ids=["LF", "CRLF"])
+@pytest.mark.parametrize(
+    "intervening",
+    ["", "def unrelated(value: str) -> str:\n    return value\n\n"],
+    ids=["adjacent", "crossed-typed-definition"],
+)
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "from __future__ import annotations\n",
+        '"""Service contract."""\nfrom __future__ import annotations\n',
+        "from __future__ import generator_stop\nfrom __future__ import annotations\n",
+        "from __future__ import annotations as future_annotations\n",
+    ],
+    ids=["future", "docstring", "future-prefix", "aliased-feature"],
+)
+def test_stepdown_preserves_postponed_signatures_and_converges(prefix: str, ending: str, intervening: str) -> None:
+    source = (
+        prefix
+        + "def _helper(value: str) -> bool:\n    return bool(value)\n\n"
+        + intervening
+        + "def caller(value: str) -> bool:\n    return _helper(value)\n"
+    ).replace("\n", ending)
+    path = Path("app/service.py")
+
+    fixed = fix_source(path, source, rule_ids=["stepdown"])
+
+    assert fixed != source
+    assert fixed.index("def caller") < fixed.index("def _helper")
+    before = {node.name: ast.dump(node) for node in ast.parse(source).body if isinstance(node, ast.FunctionDef)}
+    after = {node.name: ast.dump(node) for node in ast.parse(fixed).body if isinstance(node, ast.FunctionDef)}
+    assert before == after
+    assert REGISTRY["stepdown"]().check(path, fixed) == []
+    assert fix_source(path, fixed, rule_ids=["stepdown"]) == fixed
+    assert fix_source(path, source, rule_ids=[]) == source
+    if ending == "\r\n":
+        assert "\n" not in fixed.replace("\r\n", "")
+    compile(fixed, str(path), "exec", dont_inherit=True)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            "def _helper(value: str) -> bool:\n    return bool(value)\n\ndef caller(value: str) -> bool:\n    return _helper(value)\n",
+            id="without-future",
+        ),
+        pytest.param(
+            "from __future__ import annotations\ndef _helper(value: str = 'x') -> bool:\n    return bool(value)\n\ndef caller(value: str) -> bool:\n    return _helper(value)\n",
+            id="positional-default",
+        ),
+        pytest.param(
+            "from __future__ import annotations\ndef _helper(*, value: str = 'x') -> bool:\n    return bool(value)\n\ndef caller(value: str) -> bool:\n    return _helper(value=value)\n",
+            id="keyword-default",
+        ),
+        pytest.param(
+            "from __future__ import annotations\ndef _helper(value: str) -> bool:\n    return bool(value)\n\ndef caller(value: str = 'x') -> bool:\n    return _helper(value)\n",
+            id="caller-default",
+        ),
+        pytest.param(
+            "from __future__ import annotations\ndef _helper(value: str) -> bool:\n    return bool(value)\n\ndef unrelated(value=1):\n    return value\n\ndef caller(value: str) -> bool:\n    return _helper(value)\n",
+            id="crossed-default",
+        ),
+        pytest.param(
+            "from __future__ import annotations\ndef _helper[T](value: str) -> bool:\n    return bool(value)\n\ndef caller(value: str) -> bool:\n    return _helper(value)\n",
+            id="helper-type-parameter",
+        ),
+        pytest.param(
+            "from __future__ import annotations\ndef _helper(value: str) -> bool:\n    return bool(value)\n\ndef caller[T](value: str) -> bool:\n    return _helper(value)\n",
+            id="caller-type-parameter",
+        ),
+        pytest.param(
+            "from __future__ import annotations\ndef _helper(value: str) -> bool:\n    return bool(value)\n\ndef unrelated[T](value: T) -> T:\n    return value\n\ndef caller(value: str) -> bool:\n    return _helper(value)\n",
+            id="crossed-type-parameter",
+        ),
+        pytest.param(
+            "from __future__ import annotations\ndef identity(function):\n    return function\n@identity\ndef _helper(value: str) -> bool:\n    return bool(value)\n\ndef caller(value: str) -> bool:\n    return _helper(value)\n",
+            id="decorator",
+        ),
+        pytest.param(
+            "from __future__ import annotations\ndef _helper(value: str) -> bool:\n    return bool(value)  # retained ownership\n\ndef caller(value: str) -> bool:\n    return _helper(value)\n",
+            id="comment",
+        ),
+        pytest.param(
+            "from __future__ import annotations\ndef _helper(value: str) -> bool:\n    return bool(value)\n\nstate = 2\n\ndef caller(value: str) -> bool:\n    return _helper(value)\n",
+            id="statement-barrier",
+        ),
+        pytest.param(
+            "from __future__ import annotations\nevents = []\ndef mark():\n    events.append('annotation')\n    return str\ndef _helper(value: mark()) -> bool:\n    return bool(value)\n\ndef caller(value: mark()) -> bool:\n    return _helper(value)\n",
+            id="annotation-call",
+        ),
+        pytest.param(
+            "from __future__ import annotations\ndef _helper(value: str) -> bool:\n    return bool(value)\n\ndef caller(value: _helper) -> bool:\n    return _helper(value)\n",
+            id="header-reference",
+        ),
+        pytest.param(
+            "from __future__ import annotations\ndef _helper(value: str) -> bool:\n    return bool(value)\n\ndef caller(value: str) -> bool:\n    return _helper(value)\n\ndef another(value: str) -> bool:\n    return _helper(value)\n",
+            id="multiple-callers",
+        ),
+        pytest.param(
+            "from __future__ import annotations\ndef _helper(value: str) -> bool:\n    return bool(value)\n\ndef caller(value: str) -> bool:\n    return _helper\n",
+            id="escaped-helper",
+        ),
+        pytest.param(
+            '"""from __future__ import annotations"""\ndef _helper(value: str) -> bool:\n    return bool(value)\n\ndef caller(value: str) -> bool:\n    return _helper(value)\n',
+            id="future-text-only",
+        ),
+    ],
+)
+def test_stepdown_postponed_annotation_extension_retains_review_boundaries(source: str) -> None:
+    assert fix_source(Path("app/service.py"), source, rule_ids=["stepdown"]) == source

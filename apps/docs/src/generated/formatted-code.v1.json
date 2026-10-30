@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "d5c340109521acd6331c984781d3578a762c805b5fcc85a3e6a0e0e225baed2c",
+  "catalogSha256": "6d662bc083adb674d9ca4c32ccd7e321f4be49001278d125b19b3455ee11534e",
   "cliSha256": "2bf58e5b06b2bfea246593577e00a12a712fc35c6fbaf1795dd6173fca5d6316",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -9194,6 +9194,36 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "PostgreSQL computes a time-series reporting rollup"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/event_store.py",
+              "source": "import psycopg\n\nQUERY = \"CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT DISTINCT team_id FROM event) SELECT team_id FROM rows\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/event_store.py",
+          "id": "temporary-table-distinct",
+          "outcome": "reject",
+          "scenarioId": "temporary-table",
+          "title": "A temporary PostgreSQL table still performs deduplication"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/event_store.py",
+              "source": "import psycopg\n\nQUERY = \"CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS (SELECT team_id FROM event WHERE id = %s) SELECT team_id FROM rows\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/event_store.py",
+          "id": "temporary-table-operational-read",
+          "outcome": "accept",
+          "scenarioId": "temporary-table",
+          "title": "A temporary PostgreSQL table can materialize an operational row lookup"
         }
       ],
       "optionsSchemaSource": null
@@ -17851,6 +17881,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Private helper appears before its sole caller"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from __future__ import annotations\n\n\ndef render(value: str) -> bool:\n    return _parse(value)\n\n\ndef _parse(value: str) -> bool:\n    return bool(value)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "postponed-helper-after-sole-caller",
+          "outcome": "accept",
+          "scenarioId": "postponed-annotations",
+          "title": "Postponed module helper already follows its sole caller"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from __future__ import annotations\n\n\ndef _parse(value: str) -> bool:\n    return bool(value)\n\n\ndef render(value: str) -> bool:\n    return _parse(value)\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "app/service.py",
+              "source": "from __future__ import annotations\n\n\ndef render(value: str) -> bool:\n    return _parse(value)\n\n\ndef _parse(value: str) -> bool:\n    return bool(value)\n"
+            }
+          ],
+          "focusPath": "app/service.py",
+          "id": "safe-postponed-annotations-autofix",
+          "outcome": "reject",
+          "scenarioId": "postponed-annotations",
+          "title": "Postponed module annotations retain their signatures during a safe move"
         }
       ],
       "optionsSchemaSource": null
@@ -18955,6 +19020,36 @@
           "outcome": "accept",
           "scenarioId": "operational-read",
           "title": "A transactional existence check uses an indexed predicate"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "queries/events.sql",
+              "source": "CREATE TEMP TABLE report ON\nCOMMIT\nDROP AS\nWITH\n  rows AS (\n    SELECT DISTINCT\n      team_id\n    FROM\n      event\n  )\nSELECT\n  team_id\nFROM\n  rows;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "queries/events.sql",
+          "id": "temporary-table-deduplication",
+          "outcome": "reject",
+          "scenarioId": "temporary-table",
+          "title": "A temporary table does not exempt a transactional reporting query"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "queries/events.sql",
+              "source": "CREATE TEMP TABLE report ON\nCOMMIT\nDROP AS\nWITH\n  rows AS (\n    SELECT\n      team_id\n    FROM\n      event\n    WHERE\n      id = $1\n  )\nSELECT\n  team_id\nFROM\n  rows;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "queries/events.sql",
+          "id": "temporary-table-operational-read",
+          "outcome": "accept",
+          "scenarioId": "temporary-table",
+          "title": "A temporary table can materialize an operational row lookup"
         },
         {
           "expectedCount": 1,

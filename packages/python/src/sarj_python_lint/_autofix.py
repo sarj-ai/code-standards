@@ -1270,18 +1270,23 @@ def _literal_collection_element(element: ast.expr, names: frozenset[str]) -> boo
     return isinstance(element, ast.Constant) or (isinstance(element, ast.Name) and element.id in names)
 
 
-def _inert_definition(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+def _inert_definition(node: ast.FunctionDef | ast.AsyncFunctionDef, *, postponed_annotations: bool) -> bool:
     args = node.args
     if node.decorator_list or node.type_params:
         return False
     return not (
         args.defaults
         or any(value is not None for value in args.kw_defaults)
-        or node.returns is not None
-        or any(
-            argument.annotation is not None
-            for argument in (*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg)
-            if argument is not None
+        or (
+            not postponed_annotations
+            and (
+                node.returns is not None
+                or any(
+                    argument.annotation is not None
+                    for argument in (*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg)
+                    if argument is not None
+                )
+            )
         )
     )
 
@@ -1290,12 +1295,13 @@ def _stepdown_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
     tree = source.context.tree
     if tree is None:
         return []
+    postponed_annotations = _postponed_module_annotations(tree)
     for index, helper in enumerate(tree.body):
         if not isinstance(helper, (ast.FunctionDef, ast.AsyncFunctionDef)) or not _at(helper, diagnostic):
             continue
-        if not _inert_definition(helper):
+        if not _inert_definition(helper, postponed_annotations=postponed_annotations):
             continue
-        caller = _inert_stepdown_caller(helper, tree.body[index + 1 :])
+        caller = _inert_stepdown_caller(helper, tree.body[index + 1 :], postponed_annotations=postponed_annotations)
         if caller is None or _stepdown_comments(helper, caller, source):
             continue
         span = source.full_statement(helper)
@@ -1307,20 +1313,37 @@ def _stepdown_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
     return []
 
 
+def _postponed_module_annotations(tree: ast.Module) -> bool:
+    for index, statement in enumerate(tree.body):
+        if (
+            index == 0
+            and isinstance(statement, ast.Expr)
+            and isinstance(statement.value, ast.Constant)
+            and isinstance(statement.value.value, str)
+        ):
+            continue
+        if not isinstance(statement, ast.ImportFrom) or statement.module != "__future__" or statement.level != 0:
+            return False
+        if any(alias.name == "annotations" for alias in statement.names):
+            return True
+    return False
+
+
 def _inert_stepdown_caller(
-    helper: ast.FunctionDef | ast.AsyncFunctionDef, later: list[ast.stmt]
+    helper: ast.FunctionDef | ast.AsyncFunctionDef, later: list[ast.stmt], *, postponed_annotations: bool
 ) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
     callers = [
         node
         for node in later
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and _calls_function(node, helper.name)
     ]
-    if len(callers) != 1 or not _inert_definition(callers[0]):
+    if len(callers) != 1 or not _inert_definition(callers[0], postponed_annotations=postponed_annotations):
         return None
     caller = callers[0]
     for node in later:
         if node.lineno <= caller.lineno and (
-            not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not _inert_definition(node)
+            not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            or not _inert_definition(node, postponed_annotations=postponed_annotations)
         ):
             return None
     return caller

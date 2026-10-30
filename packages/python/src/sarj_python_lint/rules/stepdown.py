@@ -68,7 +68,7 @@ class Stepdown(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.SAFE,
         limitations=(
-            "Safe fixes move only unannotated module functions without decorators, type parameters, defaults or comments; class members and observable header evaluation remain review-only.",
+            "Safe fixes move unannotated module functions or module functions with an explicit future-annotations import, without decorators, type parameters, defaults or comments; class members and observable header evaluation remain review-only.",
             "Generated files, tests, `__main__.py`, mutual recursion, and helpers with multiple callers are excluded.",
             "Decorated definitions and dynamic references that cannot prove a sole caller are not reported.",
             "Only lexically resolved builtin classmethod/staticmethod decorators are transparent; other decorators and executable statements are movement barriers.",
@@ -121,6 +121,42 @@ class Stepdown(Rule):
                 ),
                 focus_path=PurePosixPath("app/service.py"),
                 expected_count=1,
+            ),
+            RuleExample(
+                example_id="safe-postponed-annotations-autofix",
+                title="Postponed module annotations retain their signatures during a safe move",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from __future__ import annotations\n\ndef _parse(value: str) -> bool:\n    return bool(value)\n\ndef render(value: str) -> bool:\n    return _parse(value)\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from __future__ import annotations\n\n\ndef render(value: str) -> bool:\n    return _parse(value)\n\ndef _parse(value: str) -> bool:\n    return bool(value)\n\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+                scenario="postponed-annotations",
+            ),
+            RuleExample(
+                example_id="postponed-helper-after-sole-caller",
+                title="Postponed module helper already follows its sole caller",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from __future__ import annotations\n\n\ndef render(value: str) -> bool:\n    return _parse(value)\n\ndef _parse(value: str) -> bool:\n    return bool(value)\n\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+                scenario="postponed-annotations",
             ),
         ),
     )

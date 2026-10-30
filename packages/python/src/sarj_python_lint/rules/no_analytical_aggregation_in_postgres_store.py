@@ -34,7 +34,7 @@ _COMMON_AGGREGATE = re.compile(
     re.IGNORECASE,
 )
 _LOCKING_READ = re.compile(r"\b(?:FOR\s+(?:NO\s+KEY\s+)?UPDATE|FOR\s+SHARE|SKIP\s+LOCKED)\b", re.IGNORECASE)
-_PLACEHOLDER = re.compile(r"%(?:\([^)]+\))?s")
+_PLACEHOLDER = re.compile(r"%%|%(?:\([^)]+\))?[sbt]")
 _GROUP_KEYS_LIMIT = 2
 _GROUP_AGGREGATES_LIMIT = 2
 _SINGLE_GROUP_AGGREGATES_LIMIT = 3
@@ -68,7 +68,9 @@ def _grouped_reporting_signal(sql: str) -> str | None:
     if _GROUP_BY.search(sql) is None or _COMMON_AGGREGATE.search(sql) is None:
         return None
     try:
-        statements = parse_postgres(_PLACEHOLDER.sub("?", sql))
+        statements = parse_postgres(
+            _PLACEHOLDER.sub(lambda match: ("%" if match.group() == "%%" else "?").ljust(len(match.group())), sql)
+        )
     except SqlglotError, RecursionError:
         return None
     for statement in statements:
@@ -141,7 +143,7 @@ class NoAnalyticalAggregationInPostgresStore(Rule):
         aliases=("no-aggregation-in-store-query", "no-analytical-queries-in-transactional-db"),
         limitations=(
             "Statically recoverable SQL in non-test, non-generated Python modules with native PostgreSQL, MySQL, or SQLite imports is analyzed, regardless of filename. The historical SARJ020 identifier is retained.",
-            "Every parsed SELECT DISTINCT (including DISTINCT ON), deduplicating UNION/INTERSECT/EXCEPT, GROUP BY, and built-in SQL aggregate is reported, including CTEs, nested writes, windowed aggregates, identity-bounded queries, and LIMIT queries. ALL set operations remain valid. This deliberately replaces the former reporting-size thresholds.",
+            "Every parsed SELECT DISTINCT (including DISTINCT ON), deduplicating UNION/INTERSECT/EXCEPT, GROUP BY, and built-in SQL aggregate is reported, including temporary-table AS queries, CTEs, nested writes, windowed aggregates, identity-bounded queries, and LIMIT queries. ALL set operations remain valid. This deliberately replaces the former reporting-size thresholds.",
             "A single imported backend owns module SQL. Resolvable first-party query contracts and re-exports retain their native analytical-provider evidence. Mixed backend modules require a direct query sink on a source-proven native connection or annotated parameter; unresolved receivers and separately bound queries abstain.",
             "Known ClickHouse, BigQuery, DuckDB, Snowflake, Trino, Athena, and Databricks drivers are analytical owners. Comments, scalar SQL values, identifiers, Python docstrings, and IS DISTINCT FROM do not trigger the policy.",
             "SQLite multi-argument MIN/MAX and MySQL ANY_VALUE retain their scalar semantics; PostgreSQL ANY_VALUE remains an aggregate.",
@@ -163,6 +165,40 @@ class NoAnalyticalAggregationInPostgresStore(Rule):
                 ),
                 focus_path=PurePosixPath("app/event_store.py"),
                 expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="temporary-table-distinct",
+                scenario="temporary-table",
+                title="A temporary PostgreSQL table still performs deduplication",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/event_store.py",
+                        "import psycopg\n\n"
+                        'QUERY = "CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS '
+                        '(SELECT DISTINCT team_id FROM event) SELECT team_id FROM rows"\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/event_store.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="temporary-table-operational-read",
+                scenario="temporary-table",
+                title="A temporary PostgreSQL table can materialize an operational row lookup",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/event_store.py",
+                        "import psycopg\n\n"
+                        'QUERY = "CREATE TEMP TABLE report ON COMMIT DROP AS WITH rows AS '
+                        '(SELECT team_id FROM event WHERE id = %s) SELECT team_id FROM rows"\n',
+                    ),
+                ),
+                focus_path=PurePosixPath("app/event_store.py"),
+                expected_count=0,
                 public=True,
             ),
             RuleExample(
