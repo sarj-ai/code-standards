@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "e1714f4c286ddc7b62e8e7a532a0e2791ece41027972e789d29e3c095e5bf146",
-  "cliSha256": "38e7f0e5bc549a0c8b972db4c7a088d86f7bf8304a509a497d3ab02a531622bf",
+  "catalogSha256": "0ef7474a8c0b3059ad55087b12e9c4e48b2c7cd0c06d8e94b5d79719c3b51a37",
+  "cliSha256": "c3ce9c2522ce9fb9379e94c338fa6508f200fbed76701bcf9b1c7747cc89a33b",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -13840,6 +13840,36 @@
           "files": [
             {
               "path": "app/service.py",
+              "source": "class UserStore:\n    async def get(self, key: str) -> User | None: ...\n    async def get_many(self, keys: list[str]) -> list[User]: ...\n\n\nasync def load(store: UserStore, keys: list[str]):\n    return await store.get_many(keys)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "bulk-read",
+          "outcome": "accept",
+          "scenarioId": "read-comprehension",
+          "title": "Read the batch after reviewing missing rows and ordering"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class UserStore:\n    async def get(self, key: str) -> User | None: ...\n    async def get_many(self, keys: list[str]) -> list[User]: ...\n\n\nasync def load(store: UserStore, keys: list[str]):\n    return await store.get_many(keys)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "bulk-read-without-fanout",
+          "outcome": "accept",
+          "scenarioId": "async-fanout",
+          "title": "Use bounded bulk reads after reviewing concurrency and failures"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
               "source": "class UserStore:\n    async def upsert(self, user: UserInput) -> User: ...\n    async def upsert_many(self, users: list[UserInput]) -> list[User]: ...\n\n\nasync def save(store: UserStore, users: list[UserInput]):\n    await store.upsert_many(users)\n"
             }
           ],
@@ -13849,6 +13879,51 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Use the existing bulk command"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class UserStore:\n    async def upsert(self, user: UserInput) -> User: ...\n    async def upsert_many(self, users: list[UserInput]) -> list[User]: ...\n\n\nasync def save(store: UserStore, users: list[UserInput]):\n    return await store.upsert_many(users)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "bulk-write-results",
+          "outcome": "accept",
+          "scenarioId": "write-comprehension",
+          "title": "Return bulk results after reviewing cardinality and failures"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "import asyncio\n\n\nclass UserStore:\n    async def get(self, key: str) -> User | None: ...\n    async def get_many(self, keys: list[str]) -> list[User]: ...\n\n\nasync def load(store: UserStore, keys: list[str]):\n    return await asyncio.gather(*(store.get(key) for key in keys))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "eager-read-fanout",
+          "outcome": "reject",
+          "scenarioId": "async-fanout",
+          "title": "Concurrency still schedules one operation per input"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class UserStore:\n    async def get(self, key: str) -> User | None: ...\n    async def get_many(self, keys: list[str]) -> list[User]: ...\n\n\nasync def load(store: UserStore, keys: list[str]):\n    return [await store.get(key) for key in keys]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "read-comprehension",
+          "outcome": "reject",
+          "scenarioId": "read-comprehension",
+          "title": "Review repeated reads against an available bulk API"
         },
         {
           "expectedCount": 1,
@@ -13864,6 +13939,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Collect writes for an available bulk command"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class UserStore:\n    async def upsert(self, user: UserInput) -> User: ...\n    async def upsert_many(self, users: list[UserInput]) -> list[User]: ...\n\n\nasync def save(store: UserStore, users: list[UserInput]):\n    return [await store.upsert(user) for user in users]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "write-comprehension",
+          "outcome": "reject",
+          "scenarioId": "write-comprehension",
+          "title": "Review a comprehension of singleton writes"
         }
       ],
       "optionsSchemaSource": null
