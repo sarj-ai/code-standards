@@ -37,6 +37,8 @@ from .packagemanager import LOCKFILES, Overrides, OverrideValue, PackageManager,
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+    from .transaction import FileTransaction
+
 
 type _PackageValue = JsonValue | OverrideValue | dict[str, _PackageValue]
 
@@ -2264,7 +2266,12 @@ def _record(plan: Plan, path: Path, contents: str, *, force: bool, reason: str) 
     plan.writes.append((path, contents))
 
 
-def apply(plan: Plan, *, preconditions: Mapping[Path, bytes | None] | None = None) -> None:
+def apply(
+    plan: Plan,
+    *,
+    preconditions: Mapping[Path, bytes | None] | None = None,
+    file_transaction: FileTransaction | None = None,
+) -> None:
     from . import transaction  # ruff: ignore[import-outside-top-level] -- avoid a scaffold/transaction import cycle
 
     if plan.root is None:
@@ -2277,16 +2284,37 @@ def apply(plan: Plan, *, preconditions: Mapping[Path, bytes | None] | None = Non
     for path, contents in plan.writes:
         if preconditions is not None and path in preconditions:
             transaction.assert_expected(plan.root, path, preconditions[path])
-        transaction.atomic_write_text(plan.root, path, contents)
-    for path, addition in plan.edits:
-        if preconditions is not None and path in preconditions:
-            transaction.assert_expected(plan.root, path, preconditions[path])
-        current = path.read_text(encoding="utf-8")
-        transaction.atomic_write_text(plan.root, path, current + addition)
+        if file_transaction is None:
+            transaction.atomic_write_text(plan.root, path, contents)
+        else:
+            file_transaction.write_text(path, contents)
+    _apply_edits(plan.root, plan.edits, preconditions=preconditions, file_transaction=file_transaction)
     for path in plan.deletes:
         if preconditions is not None and path in preconditions:
             transaction.assert_expected(plan.root, path, preconditions[path])
-        transaction.remove_file(plan.root, path)
+        if file_transaction is None:
+            transaction.remove_file(plan.root, path)
+        else:
+            file_transaction.remove_file(path)
+
+
+def _apply_edits(
+    root: Path,
+    edits: list[tuple[Path, str]],
+    *,
+    preconditions: Mapping[Path, bytes | None] | None,
+    file_transaction: FileTransaction | None,
+) -> None:
+    from . import transaction  # ruff: ignore[import-outside-top-level] -- avoid a scaffold/transaction import cycle
+
+    for path, addition in edits:
+        if preconditions is not None and path in preconditions:
+            transaction.assert_expected(root, path, preconditions[path])
+        current = path.read_text(encoding="utf-8")
+        if file_transaction is None:
+            transaction.atomic_write_text(root, path, current + addition)
+        else:
+            file_transaction.write_text(path, current + addition)
 
 
 def ci_snippet() -> str:

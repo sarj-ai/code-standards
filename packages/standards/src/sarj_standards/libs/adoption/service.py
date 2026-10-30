@@ -398,6 +398,7 @@ def apply_init(plan: InitPlan, *, install: bool = True) -> InitResult:
     file_transaction: transaction.FileTransaction | None = None
     try:
         file_transaction = transaction.FileTransaction.capture(plan.sync.root, scaffold_targets)
+        file_transaction.explicit_only = True
         result = _apply_init_transaction(plan, file_transaction, install=install)
     except KeyboardInterrupt:
         rollback_error = _rollback_error(file_transaction)
@@ -467,10 +468,10 @@ def _apply_init_transaction(
     if plan.sync is None:
         return InitResult(2, failure=InitFailure.APPLY, error="setup plan is not applicable")
     file_transaction.track(*(target.destination for target in plan.sync.targets))
-    sync_result = _apply_planned_sync(plan.sync, plan.preconditions)
+    sync_result = _apply_planned_sync(plan.sync, plan.preconditions, file_transaction)
     if sync_result.status:
         return InitResult(sync_result.status, sync_result, InitFailure.SYNC)
-    scaffold.apply(plan.scaffold, preconditions=plan.preconditions)
+    scaffold.apply(plan.scaffold, preconditions=plan.preconditions, file_transaction=file_transaction)
     direct_targets = (
         *(target.destination for target in plan.sync.targets),
         *(path for path, _contents in (*plan.scaffold.writes, *plan.scaffold.edits)),
@@ -478,6 +479,10 @@ def _apply_init_transaction(
     )
     file_transaction.mark_written(*(path for path in direct_targets if path.name not in _INSTALL_MUTATED_NAMES))
     if install:
+        file_transaction.explicit_only = False
+        for path in direct_targets:
+            if path.name in _INSTALL_MUTATED_NAMES:
+                file_transaction.written.pop(path, None)
         install_status = lifecycle.execute(plan.install_commands)
         if install_status:
             return InitResult(
@@ -489,11 +494,20 @@ def _apply_init_transaction(
     return InitResult(0, sync_result)
 
 
-def _apply_planned_sync(plan: SyncPlan, preconditions: dict[Path, bytes | None]) -> SyncResult:
+def _apply_planned_sync(
+    plan: SyncPlan,
+    preconditions: dict[Path, bytes | None],
+    file_transaction: transaction.FileTransaction,
+) -> SyncResult:
     records: list[SyncRecord] = []
     for target in plan.targets:
         transaction.assert_expected(plan.root, target.destination, preconditions[target.destination])
-        records.append(SyncRecord(target, _sync_one(target, root=plan.root, force=True, check=False)))
+        records.append(
+            SyncRecord(
+                target,
+                _sync_one(target, root=plan.root, force=True, check=False, file_transaction=file_transaction),
+            )
+        )
     return SyncResult(records=tuple(records), check=False)
 
 
@@ -558,7 +572,14 @@ def _contained_destination(root: Path, requested: str, *, label: str) -> Path:
     return destination
 
 
-def _sync_one(target: SyncTarget, *, root: Path, force: bool, check: bool) -> SyncOutcome:
+def _sync_one(
+    target: SyncTarget,
+    *,
+    root: Path,
+    force: bool,
+    check: bool,
+    file_transaction: transaction.FileTransaction | None = None,
+) -> SyncOutcome:
     destination = target.destination
     if is_link_like(destination):
         if not check:
@@ -579,5 +600,9 @@ def _sync_one(target: SyncTarget, *, root: Path, force: bool, check: bool) -> Sy
         return SyncOutcome.DRIFT
     if destination.exists() and not force:
         return SyncOutcome.SKIPPED
-    transaction.atomic_write_bytes(root, destination, target.source.read_bytes())
+    contents = target.source.read_bytes()
+    if file_transaction is None:
+        transaction.atomic_write_bytes(root, destination, contents)
+    else:
+        file_transaction.write_bytes(destination, contents)
     return SyncOutcome.WRITTEN

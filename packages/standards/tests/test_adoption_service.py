@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, overload, override
 
 import pytest
 
-from sarj_standards.libs.adoption import launcher, lifecycle, manifest
+from sarj_standards.libs.adoption import launcher, lifecycle, manifest, transaction
 from sarj_standards.libs.adoption.service import (
     InitFailure,
     SyncOutcome,
@@ -18,7 +19,6 @@ from sarj_standards.libs.adoption.service import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-    from pathlib import Path
 
 
 def _python_project(root: Path) -> None:
@@ -427,6 +427,126 @@ def test_init_service_rejects_absent_target_created_after_planning(tmp_path: Pat
     assert result.error is not None
     assert "stale" in result.error
     assert target.read_text(encoding="utf-8") == "late user file\n"
+
+
+def test_init_service_preserves_untouched_target_after_partial_sync_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _python_project(tmp_path)
+    original_project = (tmp_path / "pyproject.toml").read_bytes()
+    plan = plan_init(tmp_path, configs=("ruff", "pyright"), hook_manager="none")
+    assert plan.sync is not None
+    assert plan.sync.targets[0].name == "ruff"
+    targets = {target.name: target for target in plan.sync.targets}
+    first = targets["ruff"].destination
+    second = targets["pyright"].destination
+    assert not first.exists()
+    assert not second.exists()
+    independent_bytes = b"late independent user configuration\n"
+    observed: list[Path] = []
+    real_write = transaction.atomic_write_bytes
+
+    def write_then_create_later_target(root: Path, path: Path, contents: bytes, *, mode: int | None = None) -> None:
+        real_write(root, path, contents, mode=mode)
+        if path == first:
+            assert path.read_bytes() == targets["ruff"].source.read_bytes()
+            second.write_bytes(independent_bytes)
+            observed.append(path)
+
+    def forbid_install(_commands: Iterable[lifecycle.Command]) -> int:
+        message = "installers must not run in the direct-write failure fixture"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observes a real direct write before injecting an untouched target
+        transaction, "atomic_write_bytes", write_then_create_later_target
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- forbids installer execution in the direct-write failure fixture
+        lifecycle, "execute", forbid_install
+    )
+
+    result = apply_init(plan, install=False)
+
+    assert observed == [first]
+    assert result.status == 2
+    assert result.failure is InitFailure.APPLY
+    assert result.error is not None
+    assert "changed concurrently" in result.error
+    assert str(second) in result.error
+    assert not first.exists()
+    assert second.read_bytes() == independent_bytes
+    assert (tmp_path / "pyproject.toml").read_bytes() == original_project
+
+
+def test_init_service_restores_direct_files_when_interrupted_after_dropping_installer_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _python_project(tmp_path)
+    project = tmp_path / "pyproject.toml"
+    plan = plan_init(tmp_path, configs=("ruff",), hook_manager="none")
+    assert plan.sync is not None
+    assert not plan.scaffold.errors
+    originals = dict(plan.preconditions)
+    assert originals[project] == project.read_bytes()
+    popped: list[Path] = []
+    missing = object()
+
+    class InterruptAfterPop(dict[Path, bytes | None]):  # ruff: ignore[subclass-builtin] -- exercise real dict pop after successful receipt removal.
+        @overload
+        def pop(self, key: Path, /) -> bytes | None: ...
+
+        @overload
+        def pop(self, key: Path, default: bytes | None, /) -> bytes | None: ...
+
+        @overload
+        def pop[T](self, key: Path, default: T, /) -> bytes | T | None: ...
+
+        @override
+        def pop(self, key: Path, default: object = missing, /) -> object:
+            present = key in self
+            value = super().pop(key) if default is missing else super().pop(key, default)
+            if present and not popped:
+                assert key == project
+                assert isinstance(value, bytes)
+                assert key.read_bytes() == value
+                assert value != originals[key]
+                popped.append(key)
+                raise KeyboardInterrupt
+            return value
+
+    real_capture = transaction.FileTransaction.capture
+
+    def capture(
+        root: Path,
+        extra: tuple[Path, ...] = (),
+        *,
+        explicit_only: bool = False,
+        source_writes: bool = False,
+    ) -> transaction.FileTransaction:
+        captured = real_capture(root, extra, explicit_only=explicit_only, source_writes=source_writes)
+        captured.written = InterruptAfterPop(captured.written)
+        return captured
+
+    def forbid_install(_commands: Iterable[lifecycle.Command]) -> int:
+        message = "installers must not run after the receipt transition is interrupted"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- wraps real captured receipts to interrupt immediately after an actual pop
+        transaction.FileTransaction, "capture", staticmethod(capture)
+    )
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- forbids installer execution after the receipt transition interruption
+        lifecycle, "execute", forbid_install
+    )
+
+    result = apply_init(plan)
+
+    assert popped == [project]
+    assert result.status == 130
+    assert result.failure is InitFailure.INTERRUPTED
+    assert result.error is None
+    for path, original in originals.items():
+        assert (path.read_bytes() if path.is_file() else None) == original
 
 
 def test_init_service_rolls_back_every_file_when_install_fails(

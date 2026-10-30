@@ -12,7 +12,9 @@ from typing import TYPE_CHECKING, NamedTuple, final, override
 
 from sarj_iac_lint._hcl import (
     Block,
+    ParsedDocument,
     document,
+    document_result,
     header_comment_lines,
     literal_string,
     ungrouped_expression,
@@ -678,7 +680,12 @@ def _analyze_root(root: Path) -> _RootAnalysis:
         blind=tuple(sorted(blind, key=lambda item: (item.name, item.reason))),
         declarations_complete=(
             next(iter(root.glob("*.tf.json")), None) is None
-            and all(_read_text(path) is not None and not _is_override(path) for path in root.glob("*.tf"))
+            and all(
+                (text := _read_text(path)) is not None
+                and not _is_override(path)
+                and isinstance(document_result(text), ParsedDocument)
+                for path in root.glob("*.tf")
+            )
         ),
     )
 

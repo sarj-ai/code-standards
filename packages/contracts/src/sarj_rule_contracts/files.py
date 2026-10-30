@@ -12,6 +12,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
+class SourceChangedError(ValueError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class _Snapshot:
     data: bytes
@@ -51,7 +55,7 @@ def fix_file(
             _refuse_extended_attributes(stream.fileno())
         if _snapshot(target) != original:
             message = f"source changed while fixes were prepared: {path}"
-            raise ValueError(message)
+            raise SourceChangedError(message)
         temporary.replace(target)
     finally:
         temporary.unlink(missing_ok=True)

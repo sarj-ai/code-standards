@@ -4,6 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 import subprocess
 import sys
+from threading import Event
 import time
 from typing import TYPE_CHECKING
 
@@ -15,6 +16,7 @@ from sarj_standards.libs.linting.devops_tools import NativeTool, checked_runtime
 from sarj_standards.libs.linting.external import DEFAULT_EXECUTOR, analyze_external, process_request, run_process
 from sarj_standards.libs.linting.process import (
     OutputLimitError,
+    ProcessCancelledError,
     ProcessCapabilities,
     ProcessOutput,
     ProcessRequest,
@@ -391,3 +393,43 @@ def test_owned_process_cleanup_reaps_descendants_and_drains_threads(
     assert output.returncode == 0, output.stderr
     expected = "KeyboardInterrupt" if mode == "interrupt" else "TimeoutExpired"
     assert output.stdout.split() == [expected, "True", "True", "True", "True"]
+
+
+@pytest.mark.parametrize("decorated", [False, True], ids=("bare", "recording"))
+def test_cancelled_request_cannot_launch_a_new_process(tmp_path: Path, *, decorated: bool) -> None:
+    cancellation = Event()
+    request = replace(
+        process_request(
+            (sys.executable, "-c", "from pathlib import Path; Path('unexpected').write_text('started')"),
+            cwd=tmp_path,
+        ),
+        cancellation=cancellation,
+    )
+    executor = RequestExecutor(DEFAULT_EXECUTOR.run, DEFAULT_EXECUTOR.capabilities) if decorated else DEFAULT_EXECUTOR
+    cancellation.set()
+    with pytest.raises(ProcessCancelledError, match="cancelled"):
+        executor.run(request)
+    assert not (tmp_path / "unexpected").exists()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="isolated descendant reaping uses Linux's subreaper API")
+@pytest.mark.parametrize("decorated", [False, True], ids=("bare", "recording"))
+@pytest.mark.parametrize("fallback", [False, True], ids=("waitid", "without-wnowait"))
+def test_outer_caller_sigint_cancels_and_reaps_its_worker_process_tree(
+    tmp_path: Path, *, decorated: bool, fallback: bool
+) -> None:
+    probe = Path(__file__).with_name("process_cleanup_probe.py")
+    output = run_process(
+        (
+            sys.executable,
+            str(probe),
+            str(tmp_path),
+            "outer-interrupt",
+            "recording" if decorated else "bare",
+            "fallback" if fallback else "waitid",
+        ),
+        cwd=tmp_path,
+        timeout_seconds=12,
+    )
+    assert output.returncode == 0, output.stderr
+    assert output.stdout.split() == ["KeyboardInterrupt:ProcessCancelledError:True", "True", "True", "True", "True"]
