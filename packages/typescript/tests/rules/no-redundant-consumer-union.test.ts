@@ -2,6 +2,7 @@ import rule from "../../src/rules/no-redundant-consumer-union.js";
 import { CONSUMER_PREFIX, PRIVATE_CONSUMER_TESTER, UNION_DECLARATIONS, runPrivateConsumerBoundaries } from "../private-consumer-cases.js";
 
 const PREFIX = `${CONSUMER_PREFIX}${UNION_DECLARATIONS}`;
+const NULLABLE_PREFIX = `${CONSUMER_PREFIX}interface Animal {readonly name: string | null} interface Dog extends Animal {readonly email: string}`;
 runPrivateConsumerBoundaries("no-redundant-consumer-union", rule, "Dog | Animal", UNION_DECLARATIONS);
 PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union", rule, {
   valid: [
@@ -35,6 +36,57 @@ PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union", rule, {
     {name: "destructured inherited field", filename: "probe.tsx", code: `${PREFIX}const label = ({name: displayName}: Dog | Animal): string => displayName; label(account);`, output: null, errors: [{messageId: "redundant"}]},
     {name: "imports aliases and re-exports preserve native identity", filename: "probe.tsx", code: `${CONSUMER_PREFIX}import type {ConsumerAlias, ConsumerName} from './consumer-index'; function label(p: ConsumerAlias | ConsumerName): string {return p.name;} label(account);`, output: null, errors: [{messageId: "redundant"}]},
     {name: "boolean and optional readonly fields", filename: "probe.tsx", code: `${CONSUMER_PREFIX}interface Base {readonly name: string; readonly enabled: boolean; readonly note?: string} interface Child extends Base {readonly email: string} const value = {name: 'Ada', enabled: true, email: 'a'}; function label(p: Child | Base): string {return p.enabled ? p.name + (p.note ?? '') : '';} label(value);`, output: null, errors: [{messageId: "redundant"}]},
+  ],
+});
+
+PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union nullable readonly fields", rule, {
+  valid: [
+    ...["Nullable", "'a' | null", "any | null", "unknown | null", "string | null | undefined", "(string) | null", "(string | null)"].map((type) => ({
+      name: "unsupported nullable declaration domain " + type, filename: "probe.tsx",
+      code: `${CONSUMER_PREFIX}export type Nullable = string | null; interface Animal {readonly name: string} interface Dog extends Animal {readonly email: ${type}} function label(p: Dog | Animal): string {return p.name;} label(account);`,
+    })),
+    ...[
+      ["mutable nullable declaration", "interface Animal {readonly name: string} interface Dog extends Animal {email: string | null} function label(p: Dog | Animal): string {return p.name;} label(account);"],
+      ["mutually assignable nullable contracts", "interface Animal {readonly name: string | null} interface Dog {readonly name: string | null} function label(p: Dog | Animal): string {return p.name ?? '';} label(account);"],
+      ["incompatible nullable fields", "interface Animal {readonly name: string; readonly email: number | null} interface Dog {readonly name: string; readonly email: string | null} function label(p: Dog | Animal): string {return p.name;} label(account);"],
+      ["optional covering key can reject a valid original caller", "interface Source {readonly name: string; readonly email: string | null} interface Covering {readonly name: string; readonly note?: string | null} const input = {name: 'Ada', email: null, note: 42}; function label(p: Source | Covering): string {return p.name;} label(input);"],
+      ["all-optional nullable reads lack a required read", "interface Animal {readonly name?: string | null} interface Dog extends Animal {readonly email: string} const input = {email: 'a'}; function label(p: Dog | Animal): string {return p.name ?? '';} label(input);"],
+      ["nullable return annotations stay unsupported", "interface Animal {readonly name: string | null} interface Dog extends Animal {readonly email: string} function label(p: Dog | Animal): string | null {return p.name;} label(account);"],
+    ].map(([name, code]) => ({name, filename: "probe.tsx", code: `${CONSUMER_PREFIX}${code}`})),
+  ],
+  invalid: [
+    ...([
+      ["string", "null", "''"],
+      ["string", "undefined", "''"],
+      ["number", "null", "0"],
+      ["number", "undefined", "0"],
+      ["boolean", "null", "false"],
+      ["boolean", "undefined", "false"],
+      ["bigint", "null", "0n"],
+      ["bigint", "undefined", "0n"],
+    ] as const).map(([keyword, nullish, fallback]) => {
+      const code = `export {}; interface Covering {readonly value: ${keyword} | ${nullish}} interface Covered extends Covering {readonly extra: string} export type KeptCovered = Covered; const input: Covered = {value: ${nullish}, extra: 'a'}; function label(p: Covered | Covering): ${keyword} {return p.value ?? ${fallback};} label(input);`;
+      return {name: "required nullable read " + keyword + " | " + nullish, filename: "probe.tsx", code,
+        output: code.replace("Covered | Covering", "Covering"), errors: [{messageId: "redundant" as const, data: {covered: "Covered", covering: "Covering"}}]};
+    }),
+    ...["Dog | Animal", "Animal | Dog"].map((contract) => ({
+      name: "retain nullable covering contract " + contract, filename: "probe.tsx",
+      code: `${NULLABLE_PREFIX}export type KeptDog = Dog; function label(p: ${contract}): string {return p.name ?? '';} label(account);`,
+      output: `${NULLABLE_PREFIX}export type KeptDog = Dog; function label(p: Animal): string {return p.name ?? '';} label(account);`,
+      errors: [{messageId: "redundant" as const, data: {covered: "Dog", covering: "Animal"}}],
+    })),
+    {name: "nullable field only on the covered contract", filename: "probe.tsx",
+      code: `${CONSUMER_PREFIX}interface Animal {readonly name: string} interface Dog extends Animal {readonly email: string | null} export type KeptDog = Dog; function label(p: Dog | Animal): string {return p.name;} label(account);`,
+      output: `${CONSUMER_PREFIX}interface Animal {readonly name: string} interface Dog extends Animal {readonly email: string | null} export type KeptDog = Dog; function label(p: Animal): string {return p.name;} label(account);`, errors: [{messageId: "redundant"}]},
+    {name: "retain optional nullable field alongside a required read", filename: "probe.tsx",
+      code: `${CONSUMER_PREFIX}interface Animal {readonly name: string; readonly note?: string | null} interface Dog extends Animal {readonly email: string} export type KeptDog = Dog; function label(p: Dog | Animal): string {return p.name + (p.note ?? '');} label(account);`,
+      output: `${CONSUMER_PREFIX}interface Animal {readonly name: string; readonly note?: string | null} interface Dog extends Animal {readonly email: string} export type KeptDog = Dog; function label(p: Animal): string {return p.name + (p.note ?? '');} label(account);`, errors: [{messageId: "redundant"}]},
+    {name: "native nullable value widening proves proper coverage with the same keys", filename: "probe.tsx",
+      code: "export {}; interface Narrow {readonly name: string} interface Broad {readonly name: string | null} export type KeptNarrow = Narrow; const input: Narrow = {name: 'Ada'}; function label(p: Narrow | Broad): string {return p.name ?? '';} label(input);",
+      output: "export {}; interface Narrow {readonly name: string} interface Broad {readonly name: string | null} export type KeptNarrow = Narrow; const input: Narrow = {name: 'Ada'}; function label(p: Broad): string {return p.name ?? '';} label(input);", errors: [{messageId: "redundant", data: {covered: "Narrow", covering: "Broad"}}]},
+    {name: "nullable annotation comments retain a manual finding", filename: "probe.tsx",
+      code: `${NULLABLE_PREFIX}export type KeptDog = Dog; function label(p: Dog /* reviewed domain */ | Animal): string {return p.name ?? '';} label(account);`,
+      output: null, errors: [{messageId: "redundant"}]},
   ],
 });
 
