@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "6af7cc24f4bbd167318d78b6c76e313213c605b42d725042b2b85a0d3e6b46f6",
+  "catalogSha256": "3e76f3b5c66ff1b6b8fab6c69b07b37cd2d98592137fdfd103e32388405596d0",
   "cliSha256": "38e7f0e5bc549a0c8b972db4c7a088d86f7bf8304a509a497d3ab02a531622bf",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -16090,6 +16090,52 @@
     },
     "python:prefer-typed-mapping-get": {
       "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/__init__.py",
+              "source": "# package\n"
+            },
+            {
+              "path": "app/parser.py",
+              "source": "import json\n\n\ndef parse(text: str) -> dict[str, object]:\n    return json.loads(text)\n"
+            },
+            {
+              "path": "app/state.py",
+              "source": "from .parser import parse\n\n\ndef name(text: str):\n    return parse(text).get(\"name\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/state.py",
+          "id": "imported-parser-contract",
+          "outcome": "reject",
+          "scenarioId": "imported-return",
+          "title": "Imported parsing helpers keep their raw mapping contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/__init__.py",
+              "source": "# package\n"
+            },
+            {
+              "path": "app/parser.py",
+              "source": "from pydantic import BaseModel\n\n\nclass State(BaseModel):\n    labels: dict[str, str]\n\n\ndef parse(text: str) -> State:\n    return State.model_validate_json(text)\n"
+            },
+            {
+              "path": "app/state.py",
+              "source": "from .parser import parse\n\n\ndef name(text: str):\n    return parse(text).labels.get(\"name\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/state.py",
+          "id": "imported-validated-model",
+          "outcome": "accept",
+          "scenarioId": "imported-return",
+          "title": "An imported parser validates a named model"
+        },
         {
           "expectedCount": 1,
           "files": [
