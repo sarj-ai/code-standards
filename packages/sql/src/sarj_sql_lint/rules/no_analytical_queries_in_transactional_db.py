@@ -49,6 +49,7 @@ _DISTINCT = re.compile(r"\bDISTINCT(?:ROW)?\b(?!\s+FROM\b)", re.IGNORECASE)
 _GROUP_BY = re.compile(r"\bGROUP\s+BY\b", re.IGNORECASE)
 _SET_OPERATION = re.compile(r"\b(?:UNION|INTERSECT|EXCEPT)\b(?!\s+ALL\b)", re.IGNORECASE)
 _PLACEHOLDER = re.compile(r"%(?:\([^)]+\))?s")
+_POSTGRES_PLACEHOLDER = re.compile(r"%%|%(?:\([^)]+\))?[sbt]")
 
 
 def _dialect(path: Path, source: str) -> str:
@@ -77,7 +78,8 @@ def _statements(source: str, dialect: str) -> Iterator[_ParsedStatement]:
 
     from sarj_sql_lint.rules._postgres_ctas import normalize_postgres_ctas  # ruff: ignore[import-outside-top-level] -- preserve COPY boundaries before and CTAS grammar after executing EXPLAIN normalization.
 
-    prepared = _PLACEHOLDER.sub(lambda match: "?".ljust(len(match.group())), source)
+    parameters = _POSTGRES_PLACEHOLDER if dialect == "postgres" else _PLACEHOLDER
+    prepared = parameters.sub(lambda match: ("%" if match.group() == "%%" else "?").ljust(len(match.group())), source)
     if dialect == "postgres" and ("CREATE" in prepared.upper() or "COPY" in prepared.upper()):
         prepared = normalize_postgres_ctas(prepared)
     try:

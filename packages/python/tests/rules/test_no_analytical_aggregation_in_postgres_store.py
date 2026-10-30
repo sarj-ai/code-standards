@@ -886,3 +886,68 @@ def test_qualified_temporary_ctas_preserves_policy_with_real_postgres_store(sql:
         assert findings[0].code == "SARJ020"
         assert findings[0].severity is Severity.ERROR
         assert (findings[0].line, findings[0].col) == (10, 32)
+
+
+@pytest.mark.parametrize("parameter", ["%s", "%(ids)s", "%b", "%t", "%(ids)b", "%(ids)t"])
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT DISTINCT ON (language) language, id::text FROM agent_profile WHERE language=ANY({parameter}::text[]) ORDER BY language, created_at",
+        "SELECT COUNT(*) FROM event WHERE id=ANY({parameter}::uuid[])",
+        "SELECT status FROM event WHERE id=ALL({parameter}::uuid[]) GROUP BY status",
+        "CREATE TEMP TABLE report ON COMMIT DROP AS SELECT DISTINCT id FROM event WHERE id=ANY({parameter}::uuid[])",
+    ],
+)
+def test_postgres_parameter_casts_do_not_hide_analytics(parameter: str, query: str) -> None:
+    sql = query.format(parameter=parameter)
+    findings = _check(f"import psycopg\nQUERY = {sql!r}\n")
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ020"
+    assert findings[0].severity is Severity.ERROR
+
+
+@pytest.mark.parametrize("parameter", ["%s", "%(ids)s", "%b", "%t", "%(ids)b", "%(ids)t"])
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT id FROM event WHERE id=ANY({parameter}::uuid[])",
+        "SELECT EXISTS(SELECT 1 FROM event WHERE id=ANY({parameter}::uuid[]))",
+        "SELECT 'DISTINCT COUNT(*) %(quoted)t' AS example FROM event WHERE id=ANY({parameter}::uuid[]) /* GROUP BY %b */",
+    ],
+)
+def test_postgres_parameter_casts_keep_operational_reads(parameter: str, query: str) -> None:
+    sql = query.format(parameter=parameter)
+    assert _check(f"import psycopg\nQUERY = {sql!r}\n") == []
+
+
+@pytest.mark.parametrize(
+    ("sql", "count"),
+    [
+        ("SELECT DISTINCT id FROM event WHERE (sequence %% 2)=%s", 1),
+        ("SELECT COUNT(*) FROM event WHERE label='%%s' AND (sequence %% 2)=%(parity)b", 1),
+        ("SELECT id FROM event WHERE (sequence %% 2)=%t", 0),
+        ("SELECT 'DISTINCT COUNT(*) %%s' AS example FROM event WHERE (sequence %% 2)=%s /* GROUP BY %% */", 0),
+        ("SELECT COUNT(*) FROM event WHERE id=ANY(%d::uuid[])", 0),
+    ],
+)
+def test_postgres_parameter_formats_preserve_percent_data_and_reject_invalid_formats(sql: str, count: int) -> None:
+    assert len(_check(f"import psycopg\nQUERY = {sql!r}\n")) == count
+
+
+@pytest.mark.parametrize("parameter", ["%s", "%(ids)s", "%b", "%t", "%(ids)b", "%(ids)t"])
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT org_id, status, COUNT(*), AVG(amount) FROM item WHERE language=ANY({parameter}::text[]) GROUP BY org_id, status"
+    ],
+)
+def test_legacy_reporting_overlap_keeps_parameter_array_casts(parameter: str, query: str) -> None:
+    assert analytical_signal(query.format(parameter=parameter)) == "grouped reporting shape"
+
+
+@pytest.mark.parametrize("driver", ["sqlite3", "pymysql"])
+@pytest.mark.parametrize("parameter", ["%b", "%t"])
+@pytest.mark.parametrize("query", ["SELECT COUNT(*) FROM event WHERE id={parameter}"])
+def test_postgres_parameter_formats_do_not_broaden_other_dialects(driver: str, parameter: str, query: str) -> None:
+    sql = query.format(parameter=parameter)
+    assert _check(f"import {driver}\nQUERY = {sql!r}\n") == []

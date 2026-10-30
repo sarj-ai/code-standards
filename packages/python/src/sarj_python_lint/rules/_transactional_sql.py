@@ -87,6 +87,7 @@ _NATIVE_CONNECTIONS = frozenset(
 )
 _SELECT = re.compile(r"\bSELECT\b", re.IGNORECASE)
 _PLACEHOLDER = re.compile(r"%(?:\([^)]+\))?s")
+_POSTGRES_PLACEHOLDER = re.compile(r"%%|%(?:\([^)]+\))?[sbt]")
 _FORMAT_HOLE = re.compile(r"(?<!\{)\{(?:[A-Za-z_]\w*|\d*)\}(?!\})")
 _SQL_HOLE = "__sarj_sql_hole__"
 _MAX_WRAPPER_DEPTH = 8
@@ -127,7 +128,11 @@ def query_signal(sql: str, *, dialect: str = "postgres") -> str | None:
 
 
 def _prepared_sql(sql: str, dialect: str) -> str:
-    prepared = _FORMAT_HOLE.sub(_SQL_HOLE, _PLACEHOLDER.sub("?", sql))
+    parameters = _POSTGRES_PLACEHOLDER if dialect == "postgres" else _PLACEHOLDER
+    prepared = _FORMAT_HOLE.sub(
+        _SQL_HOLE,
+        parameters.sub(lambda match: ("%" if match.group() == "%%" else "?").ljust(len(match.group())), sql),
+    )
     if dialect == "postgres":
         from sarj_python_lint.rules._postgres_ctas import normalize_postgres_ctas  # ruff: ignore[import-outside-top-level] -- recover PostgreSQL temporary-table queries only after the SELECT gate.
 

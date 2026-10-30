@@ -34,7 +34,7 @@ _COMMON_AGGREGATE = re.compile(
     re.IGNORECASE,
 )
 _LOCKING_READ = re.compile(r"\b(?:FOR\s+(?:NO\s+KEY\s+)?UPDATE|FOR\s+SHARE|SKIP\s+LOCKED)\b", re.IGNORECASE)
-_PLACEHOLDER = re.compile(r"%(?:\([^)]+\))?s")
+_PLACEHOLDER = re.compile(r"%%|%(?:\([^)]+\))?[sbt]")
 _GROUP_KEYS_LIMIT = 2
 _GROUP_AGGREGATES_LIMIT = 2
 _SINGLE_GROUP_AGGREGATES_LIMIT = 3
@@ -68,7 +68,9 @@ def _grouped_reporting_signal(sql: str) -> str | None:
     if _GROUP_BY.search(sql) is None or _COMMON_AGGREGATE.search(sql) is None:
         return None
     try:
-        statements = parse_postgres(_PLACEHOLDER.sub("?", sql))
+        statements = parse_postgres(
+            _PLACEHOLDER.sub(lambda match: ("%" if match.group() == "%%" else "?").ljust(len(match.group())), sql)
+        )
     except SqlglotError, RecursionError:
         return None
     for statement in statements:

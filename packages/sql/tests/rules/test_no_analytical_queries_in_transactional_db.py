@@ -605,3 +605,65 @@ def test_postgres_temporary_table_header_properties(source: str, count: int) -> 
         expected_line = source[:offset].count("\n") + 1
         expected_column = offset - source.rfind("\n", 0, offset)
         assert (findings[0].line, findings[0].col) == (expected_line, expected_column)
+
+
+@pytest.mark.parametrize("parameter", ["%s", "%(ids)s", "%b", "%t", "%(ids)b", "%(ids)t"])
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT DISTINCT ON (language) language, id::text FROM agent_profile WHERE language=ANY({parameter}::text[]) ORDER BY language, created_at",
+        "SELECT COUNT(*) FROM event WHERE id=ANY({parameter}::uuid[])",
+        "SELECT status FROM event WHERE id=ALL({parameter}::uuid[]) GROUP BY status",
+        "CREATE TEMP TABLE report ON COMMIT DROP AS SELECT DISTINCT id FROM event WHERE id=ANY({parameter}::uuid[])",
+    ],
+)
+def test_postgres_parameter_casts_do_not_hide_analytics(parameter: str, query: str) -> None:
+    sql = query.format(parameter=parameter)
+    findings = _check(sql)
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ122"
+
+
+@pytest.mark.parametrize("parameter", ["%s", "%(ids)s", "%b", "%t", "%(ids)b", "%(ids)t"])
+@pytest.mark.parametrize(
+    "query",
+    [
+        "SELECT id FROM event WHERE id=ANY({parameter}::uuid[])",
+        "SELECT EXISTS(SELECT 1 FROM event WHERE id=ANY({parameter}::uuid[]))",
+        "SELECT 'DISTINCT COUNT(*) %(quoted)t' AS example FROM event WHERE id=ANY({parameter}::uuid[]) /* GROUP BY %b */",
+    ],
+)
+def test_postgres_parameter_casts_keep_operational_reads(parameter: str, query: str) -> None:
+    sql = query.format(parameter=parameter)
+    assert _check(sql) == []
+
+
+@pytest.mark.parametrize(
+    ("sql", "count"),
+    [
+        ("SELECT DISTINCT id FROM event WHERE (sequence %% 2)=%s", 1),
+        ("SELECT COUNT(*) FROM event WHERE label='%%s' AND (sequence %% 2)=%(parity)b", 1),
+        ("SELECT id FROM event WHERE (sequence %% 2)=%t", 0),
+        ("SELECT 'DISTINCT COUNT(*) %%s' AS example FROM event WHERE (sequence %% 2)=%s /* GROUP BY %% */", 0),
+        ("SELECT COUNT(*) FROM event WHERE id=ANY(%d::uuid[])", 0),
+    ],
+)
+def test_postgres_parameter_formats_preserve_percent_data_and_reject_invalid_formats(sql: str, count: int) -> None:
+    assert len(_check(sql)) == count
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "mysql"])
+@pytest.mark.parametrize("parameter", ["%b", "%t"])
+def test_postgres_parameter_formats_do_not_broaden_other_dialects(dialect: str, parameter: str) -> None:
+    source = f"-- dialect: {dialect}\nSELECT COUNT(*) FROM event WHERE id={parameter};"
+    assert _check(source) == []
+
+
+def test_parameter_padding_preserves_later_statement_physical_locations() -> None:
+    source = (
+        "SELECT id FROM event WHERE id=ANY(%(long_named_ids)b::uuid[]);\r\n"
+        "SELECT COUNT(*) FROM event WHERE (sequence %% 2)=%t;"
+    )
+    findings = _check(source)
+    assert len(findings) == 1
+    assert (findings[0].line, findings[0].col) == (2, 8)
