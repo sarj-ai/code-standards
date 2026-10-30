@@ -27,11 +27,18 @@ def is_store_module(path: Path) -> bool:
 
 
 def sql_string_value(node: ast.expr, *, interpolation_placeholder: str = " ") -> str | None:
+    try:
+        return _sql_string_value(node, interpolation_placeholder=interpolation_placeholder)
+    except RecursionError:
+        return None
+
+
+def _sql_string_value(node: ast.expr, *, interpolation_placeholder: str) -> str | None:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
-        left = sql_string_value(node.left, interpolation_placeholder=interpolation_placeholder)
-        right = sql_string_value(node.right, interpolation_placeholder=interpolation_placeholder)
+        left = _sql_string_value(node.left, interpolation_placeholder=interpolation_placeholder)
+        right = _sql_string_value(node.right, interpolation_placeholder=interpolation_placeholder)
         if left is not None and right is not None:
             return left + right
     if isinstance(node, ast.JoinedStr):

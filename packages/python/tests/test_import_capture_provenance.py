@@ -158,3 +158,35 @@ def test_import_read_safety_is_specific_to_each_source(*, escaped: bool) -> None
     assert provenance.imported(reference, "sys.getdefaultencoding") is (not escaped)
     assert provenance.imported(reference, "sys.getdefaultencoding") is (not escaped)
     assert provenance.runtime_import_name(reference) == (None if escaped else "sys.getdefaultencoding")
+
+
+@pytest.mark.parametrize(
+    ("imports", "decorator"),
+    [
+        ("from dataclasses import dataclass\n", "dataclass"),
+        ("from dataclasses import dataclass as record\n", "record"),
+        ("import dataclasses as dc\n", "dc.dataclass"),
+    ],
+    ids=["bare", "bare-alias", "namespace"],
+)
+def test_bare_dataclass_decorator_has_stable_import_proofs(imports: str, decorator: str) -> None:
+    context = PythonFileContext(Path("app.py"), imports + f"@{decorator}\nclass State:\n    value: int\n")
+    model = context.nodes(ast.ClassDef)[0]
+    target = model.decorator_list[0]
+    provenance = context.static_resource_provenance
+    assert provenance.imported(target, "dataclasses.dataclass")
+    assert provenance.runtime_import_name(target) == "dataclasses.dataclass"
+
+
+@pytest.mark.parametrize(
+    "effect",
+    ["dataclass = other\n", "dataclass.marker = other\n", "configure(dataclass)\n"],
+    ids=["rebound", "mutated", "escaped"],
+)
+def test_bare_dataclass_decorator_keeps_import_safety_guards(effect: str) -> None:
+    source = "from dataclasses import dataclass\n" + effect + "@dataclass\nclass State:\n    value: int\n"
+    context = PythonFileContext(Path("app.py"), source)
+    target = context.nodes(ast.ClassDef)[0].decorator_list[0]
+    provenance = context.static_resource_provenance
+    assert not provenance.imported(target, "dataclasses.dataclass")
+    assert provenance.runtime_import_name(target) is None

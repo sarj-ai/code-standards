@@ -308,7 +308,8 @@ class ResourceProvenance:
             or (
                 isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
                 and node in parent.decorator_list
-                and self.context.imports.resolved_qualified_name(node) in {"typing.final", "typing_extensions.final"}
+                and self.context.imports.resolved_qualified_name(node)
+                in {"typing.final", "typing_extensions.final", "dataclasses.dataclass"}
             )
         )
 

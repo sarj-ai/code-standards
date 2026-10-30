@@ -11,6 +11,7 @@ from sarj_python_lint.rules.complex_postgres_query_requires_architecture_review 
 )
 from sarj_python_lint.rules.no_analytical_aggregation_in_postgres_store import (
     NoAnalyticalAggregationInPostgresStore,
+    analytical_signal,
 )
 
 
@@ -19,6 +20,39 @@ def _check(source: str, filename: str = "event_store.py") -> list[Diagnostic]:
 
 
 _PUBLIC_EXAMPLES = NoAnalyticalAggregationInPostgresStore.public_examples()
+
+
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        (
+            "SELECT org_id, status, COUNT(*), AVG(amount) FROM item GROUP BY org_id, status",
+            "grouped reporting shape",
+        ),
+        ("SELECT org_id, status, COUNT(*), AVG(amount) FROM item WHERE id=%s GROUP BY org_id, status", None),
+        ("SELECT org_id, COUNT(*) FROM item GROUP BY org_id", None),
+        ("SELECT org_id, status, COUNT(*), AVG(amount) FROM item GROUP BY org_id, status FOR UPDATE", None),
+        ("SELECT COUNT(*) FROM item WHERE label='unterminated GROUP BY id", None),
+    ],
+)
+def test_legacy_architecture_overlap_helper_preserves_signals(query: str, expected: str | None) -> None:
+    assert analytical_signal(query) == expected
+
+
+def test_legacy_architecture_overlap_helper_abstains_on_parser_recursion() -> None:
+    query = "SELECT COUNT(*) FROM (" * 200 + "SELECT id FROM item" + ") grouped GROUP BY id" * 200
+    assert analytical_signal(query) is None
+
+
+def test_legacy_architecture_overlap_helper_preserves_supported_signal_without_private_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    query = (
+        "SELECT org_id, status, COUNT(*), AVG(amount) FROM item GROUP BY org_id, status; "
+        "VACUUM private_synthetic_marker"
+    )
+    assert analytical_signal(query) == "grouped reporting shape"
+    assert caplog.records == []
 
 
 @pytest.mark.parametrize(
