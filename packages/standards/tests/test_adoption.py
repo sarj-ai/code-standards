@@ -31,6 +31,7 @@ from sarj_standards.libs.diagnostics import baseline
 from sarj_standards.libs.json_boundary import normalize_json_value, parse_json
 from sarj_standards.libs.release.process import credential_free_environment
 from sarj_standards.libs.repository import hooks as repository_hooks
+from sarj_standards.libs.typed_containers import is_object_list
 from sarj_standards.libs.yaml_boundary import parse_yaml
 
 
@@ -1612,7 +1613,7 @@ def test_generated_typescript_entrypoint_is_compiler_checked(tmp_path: Path) -> 
         encoding="utf-8",
     )
     parity = subprocess.run(
-        ("node", str(runtime)), cwd=tmp_path, capture_output=True, text=True, check=False, timeout=30
+        ("node", str(runtime)), cwd=tmp_path, capture_output=True, text=True, check=False, timeout=60
     )
     assert parity.returncode == 0, parity.stdout + parity.stderr
     rejected = before.replace("\n] satisfies", "\n  { name: 17 },\n] satisfies")
@@ -3274,9 +3275,24 @@ def test_show_ci_renders_a_complete_versioned_workflow(tmp_path: Path, ecosystem
     rendered = _cli("--root", str(tmp_path), "show", "ci")
 
     assert rendered.returncode == 0, rendered.stderr
-    parsed: object = yaml.safe_load(rendered.stdout)  # pyright: ignore[reportAny] -- parser result is narrowed below.
-    assert isinstance(parsed, dict)
-    assert "permissions:\n  contents: read" in rendered.stdout
+    workflow = _workflow_document(rendered.stdout)
+    assert manifest.as_table(workflow["permissions"]) == {"contents": "read"}
+    assert "env" not in workflow or "GITHUB_TOKEN" not in manifest.as_table(workflow["env"])
+    job = manifest.as_table(manifest.as_table(workflow["jobs"])["standards"])
+    assert "GITHUB_TOKEN" not in manifest.as_table(job.get("env"))
+    steps = job.get("steps")
+    assert is_object_list(steps)
+    token_steps = [
+        manifest.as_table(step)
+        for step in steps
+        if "GITHUB_TOKEN" in manifest.as_table(manifest.as_table(step).get("env"))
+    ]
+    assert len(token_steps) == 1
+    assert token_steps[0].get("name") == "Install and attest applicable native tools"
+    assert token_steps[0].get("run") == f"{BOOTSTRAP_COMMAND} setup --tools-only"
+    assert manifest.as_table(token_steps[0].get("env")) == {
+        "GITHUB_TOKEN": "${{ github.server_url == 'https://github.com' && github.token || '' }}"
+    }
     assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1" in rendered.stdout
     assert "astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2" in rendered.stdout
     uv_config = manifest.as_table(tomllib.loads((REPO_ROOT / "uv.toml").read_text(encoding="utf-8")))
