@@ -21,6 +21,7 @@ from sarj_sql_lint.rule_base import (
     sql_comments,
 )
 from sarj_sql_lint.rules import REGISTRY
+from sarj_sql_lint.rules._copy_input import sql_before_copy_input
 from sarj_sql_lint.rules.idempotent_ddl import ddl_checks
 from sarj_sql_lint.rules.no_comment_cruft import (
     COMMENT_DIRECTIVE_RE,
@@ -93,9 +94,11 @@ def _parseable(source: str) -> bool:
 
 def _existence_guards(source: str, diagnostics: Sequence[Diagnostic]) -> list[TextEdit]:
     positions = {diagnostic.line for diagnostic in diagnostics}
-    masked = mask_sql(source, mask_dollar_literals=True)
+    masked = mask_sql(sql_before_copy_input(source), mask_dollar_literals=True)
     edits: list[TextEdit] = []
     for check in ddl_checks(source):
+        if not check.autofix_supported:
+            continue
         for match in check.pattern.finditer(masked):
             if source_location(source, match.start()).line not in positions or not _ddl_statement(
                 masked, match.start()

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "cec163afa0e1bc3ad2f680719c46b988199d35c13832f5ee9c46f3d249b7f045",
-  "cliSha256": "af794cf87391b44a03604f1cc96229b9edcc4b8bbf19b0d735c804265bd04776",
+  "catalogSha256": "fcf60dde6b79e051c4b5ed34c6714756eb8b4a1fc6bfe68f6216142fb00793c9",
+  "cliSha256": "a6cb0e9bc93a581f123acb681aa58e715facb06d04cda8b9a3569d43fa0a1cd3",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -18101,6 +18101,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "sql:declared-column-bounds": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001_retry.sql",
+              "source": "CREATE TABLE retry (\n  attempts INTEGER NOT NULL -- required; capped 1..10\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_retry.sql",
+          "id": "comment-only-range",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A comment cannot enforce a declared numeric range"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_retry.sql",
+              "source": "CREATE TABLE retry (\n  attempts INTEGER NOT NULL CHECK (attempts BETWEEN 1 AND 10)\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_retry.sql",
+          "id": "encoded-range",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "CHECK encodes the permitted range without commentary"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "sql:enforce-timestamptz": {
       "examples": [
         {
@@ -18169,21 +18204,6 @@
     "sql:excess-migration-index-requires-justification": {
       "examples": [
         {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "migrations/004_indexes.sql",
-              "source": "CREATE INDEX a_idx ON event (a);\n\nCREATE INDEX b_idx ON event (b);\n\nCREATE INDEX c_idx ON event (c);\n\n-- index-justification: app-read: event delivery queue; query: app/event_store.py#claim; explain: https://metrics.example.test/plans/812\nCREATE INDEX d_idx ON event (d);\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "migrations/004_indexes.sql",
-          "id": "justified-index-burst",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "An excess index records its application query and plan evidence"
-        },
-        {
           "expectedCount": 1,
           "files": [
             {
@@ -18193,10 +18213,25 @@
           ],
           "fixedFiles": [],
           "focusPath": "migrations/004_indexes.sql",
-          "id": "unjustified-index-burst",
+          "id": "excess-index-burst",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "A fourth explicit index has no local justification"
+          "title": "A fourth explicit index exceeds the table budget"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/004_indexes.sql",
+              "source": "CREATE INDEX a_idx ON event (a);\n\nCREATE INDEX b_idx ON event (b);\n\nCREATE INDEX c_idx ON event (c);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/004_indexes.sql",
+          "id": "within-index-budget",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Three explicit indexes stay within the table budget"
         }
       ],
       "optionsSchemaSource": null
@@ -18307,6 +18342,21 @@
           "files": [
             {
               "path": "migrations/001_orders.sql",
+              "source": "CREATE INDEX CONCURRENTLY IF NOT EXISTS orders_total ON orders (total);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001_orders.sql",
+          "id": "guarded-index-creation",
+          "outcome": "accept",
+          "scenarioId": "index-existence",
+          "title": "A replay-safe concurrent index creation"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001_orders.sql",
               "source": "CREATE TABLE IF NOT EXISTS orders (id BIGINT PRIMARY KEY);\n"
             }
           ],
@@ -18316,6 +18366,26 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Replay-safe table creation"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001_orders.sql",
+              "source": "CREATE INDEX CONCURRENTLY orders_total ON orders (total);\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "migrations/001_orders.sql",
+              "source": "CREATE INDEX CONCURRENTLY IF NOT EXISTS orders_total ON orders (total);\n"
+            }
+          ],
+          "focusPath": "migrations/001_orders.sql",
+          "id": "unguarded-index-creation",
+          "outcome": "reject",
+          "scenarioId": "index-existence",
+          "title": "An index creation that fails when replayed"
         },
         {
           "expectedCount": 1,
@@ -18693,36 +18763,6 @@
           "title": "Application schema owns the JSON document contract"
         },
         {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "supabase/migrations/001_call.sql",
-              "source": "CREATE TABLE\nCALL (status TEXT NOT NULL);\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "supabase/migrations/001_call.sql",
-          "id": "application-owned-status-values",
-          "outcome": "accept",
-          "scenarioId": "closed-values",
-          "title": "Application enum owns the closed value set"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "supabase/migrations/001_call.sql",
-              "source": "CREATE TABLE\nCALL (\n  status TEXT NOT NULL CHECK (status IN ('queued', 'completed'))\n);\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "supabase/migrations/001_call.sql",
-          "id": "closed-status-values-check",
-          "outcome": "reject",
-          "scenarioId": "closed-values",
-          "title": "Database duplicates an application enum"
-        },
-        {
           "expectedCount": 1,
           "files": [
             {
@@ -18985,6 +19025,76 @@
       ],
       "optionsSchemaSource": null
     },
+    "sql:no-migration-comments": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "CREATE TABLE IF NOT EXISTS settings (retries INTEGER);\n\n-- retries must be positive\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "comment-only-range",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A comment cannot enforce a column range"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "-- migrate:up\nCREATE TABLE IF NOT EXISTS settings (retries INTEGER CHECK (retries > 0));\n\n-- migrate:down\nDROP TABLE IF EXISTS settings;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "enforced-range",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "SQL enforces the bound while runner directives remain executable"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:no-noop-migration-down": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "-- migrate:up\nCREATE TABLE IF NOT EXISTS work (id UUID PRIMARY KEY);\n\n-- migrate:down\nDROP TABLE IF EXISTS work;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "inverse-schema-change",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "The rollback reverses the schema change"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "-- migrate:up\nCREATE TABLE IF NOT EXISTS work (id UUID PRIMARY KEY);\n\n-- migrate:down\nSELECT\n  1;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "literal-only-rollback",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A successful SELECT leaves the created table installed"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "sql:no-null-comparison": {
       "examples": [
         {
@@ -19146,6 +19256,41 @@
           "outcome": "accept",
           "scenarioId": "semantic-boundary",
           "title": "A transaction adds an application-owned text value column"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "sql:prefer-constrained-status": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "supabase/migrations/001_job.sql",
+              "source": "CREATE TABLE job (\n  requested BOOLEAN NOT NULL,\n  confirmed BOOLEAN NOT NULL,\n  CHECK (\n    NOT confirmed\n    OR requested\n  )\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_job.sql",
+          "id": "dependent-lifecycle-flags",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A CHECK makes two required flags dependent"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "supabase/migrations/001_job.sql",
+              "source": "CREATE TABLE job (\n  enabled BOOLEAN NOT NULL,\n  archived BOOLEAN NOT NULL\n);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "supabase/migrations/001_job.sql",
+          "id": "independent-flags",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Unrelated flags retain their independent values"
         }
       ],
       "optionsSchemaSource": null
@@ -19346,71 +19491,6 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Foreign key without a child-table index"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "sql:require-lock-timeout": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "supabase/migrations/001_users.sql",
-              "source": "SET\n  lock_timeout = '3s';\n\nALTER TABLE users\nADD COLUMN note TEXT;\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "supabase/migrations/001_users.sql",
-          "id": "bounded-ddl-lock-wait",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "DDL preceded by a positive lock timeout"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "supabase/migrations/001_users.sql",
-              "source": "SET\n  lock_timeout = '0.6ms';\n\nALTER TABLE users\nADD COLUMN note TEXT;\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "supabase/migrations/001_users.sql",
-          "id": "fractional-timeout-remains-positive",
-          "outcome": "accept",
-          "scenarioId": "timeout-rounding",
-          "title": "A fractional timeout that remains enabled"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "supabase/migrations/001_users.sql",
-              "source": "SET\n  lock_timeout = '0.1ms';\n\nALTER TABLE users\nADD COLUMN note TEXT;\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "supabase/migrations/001_users.sql",
-          "id": "timeout-rounded-to-disabled",
-          "outcome": "reject",
-          "scenarioId": "timeout-rounding",
-          "title": "A fractional timeout can round to zero"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "supabase/migrations/001_users.sql",
-              "source": "ALTER TABLE users\nADD COLUMN note TEXT;\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "supabase/migrations/001_users.sql",
-          "id": "unbounded-ddl-lock-wait",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "DDL without a positive timeout"
         }
       ],
       "optionsSchemaSource": null

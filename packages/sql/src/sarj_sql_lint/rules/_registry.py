@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from sarj_sql_lint.rules.add_constraint_requires_not_valid import AddConstraintRequiresNotValid
 from sarj_sql_lint.rules.combine_alter_table import CombineAlterTable
+from sarj_sql_lint.rules.declared_column_bounds import DeclaredColumnBounds
 from sarj_sql_lint.rules.enforce_timestamptz import EnforceTimestamptz
 from sarj_sql_lint.rules.excessive_commentary import ExcessiveCommentary
 from sarj_sql_lint.rules.idempotent_ddl import IdempotentDdl
@@ -21,14 +22,16 @@ from sarj_sql_lint.rules.no_comment_cruft import NoCommentCruft
 from sarj_sql_lint.rules.no_create_trigger import NoCreateTrigger
 from sarj_sql_lint.rules.no_database_functions import NoDatabaseFunctions
 from sarj_sql_lint.rules.no_duplicate_index import NoDuplicateIndex
+from sarj_sql_lint.rules.no_migration_comments import NoMigrationComments
+from sarj_sql_lint.rules.no_noop_migration_down import NoNoopMigrationDown
 from sarj_sql_lint.rules.no_null_comparison import NoNullComparison
 from sarj_sql_lint.rules.no_offset_pagination import NoOffsetPagination
 from sarj_sql_lint.rules.no_pg_enum import NoPgEnum
+from sarj_sql_lint.rules.prefer_constrained_status import PreferConstrainedStatus
 from sarj_sql_lint.rules.prefer_jsonb import PreferJsonb
 from sarj_sql_lint.rules.prefer_text_over_varchar import PreferTextOverVarchar
 from sarj_sql_lint.rules.prefer_uuidv7_default import PreferUuidv7Default
 from sarj_sql_lint.rules.require_fk_index import RequireFkIndex
-from sarj_sql_lint.rules.require_lock_timeout import RequireLockTimeout
 
 
 if TYPE_CHECKING:
@@ -39,6 +42,10 @@ if TYPE_CHECKING:
 
 REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        DeclaredColumnBounds.id: DeclaredColumnBounds,
+        NoMigrationComments.id: NoMigrationComments,
+        NoNoopMigrationDown.id: NoNoopMigrationDown,
+        PreferConstrainedStatus.id: PreferConstrainedStatus,
         InvalidPostgresDdl.id: InvalidPostgresDdl,
         InvalidConcurrentDdl.id: InvalidConcurrentDdl,
         NoNullComparison.id: NoNullComparison,
@@ -59,7 +66,6 @@ REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoDuplicateIndex.id: NoDuplicateIndex,
         NoApplicationSchemaCheck.id: NoApplicationSchemaCheck,
         PreferUuidv7Default.id: PreferUuidv7Default,
-        RequireLockTimeout.id: RequireLockTimeout,
         AddConstraintRequiresNotValid.id: AddConstraintRequiresNotValid,
         RequireFkIndex.id: RequireFkIndex,
         NoCommentCruft.id: NoCommentCruft,
