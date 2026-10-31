@@ -18,14 +18,34 @@ export function validConsumerFixCalls(node: ScalarConsumerNode, parameter: ts.Pa
   const binding = sourceCode.getDeclaredVariables(owner).find((variable) => variable.defs.some((definition) =>
     definition.node === owner && (definition.type === "FunctionName" || definition.type === "Variable")));
   if (!binding) return false;
+  const declaration = services.esTreeNodeToTSNodeMap.get(node);
+  if ((!ts.isFunctionDeclaration(declaration) && !ts.isArrowFunction(declaration)) || parameter.parent !== declaration ||
+    declaration.parameters.some((entry) => ts.isIdentifier(entry.name) && entry.name.text === "this")) return false;
+  const selected = declaration.parameters.indexOf(parameter);
+  if (selected < 0) return false;
   const checker = services.program.getTypeChecker();
-  const original = checker.getTypeAtLocation(parameter);
+  const originals = declaration.parameters.map((entry) => checker.getTypeAtLocation(entry));
+  const original = originals[selected];
+  if (!original) return false;
   const fields = new Set<string>();
   const collect = (type: ts.Type): void => {
     if (type.isUnionOrIntersection()) type.types.forEach(collect);
     else type.getProperties().forEach((property) => fields.add(property.name));
   };
   collect(original);
+  const validArguments = (call: TSESTree.CallExpression): boolean => {
+    if (declaration.parameters.length > 1) {
+      const nativeCall = services.esTreeNodeToTSNodeMap.get(call);
+      if (!ts.isCallExpression(nativeCall) || checker.getResolvedSignature(nativeCall)?.declaration !== declaration) return false;
+    }
+    return call.arguments.every((argument, index) => {
+      const target = originals[index];
+      const nativeArgument = services.esTreeNodeToTSNodeMap.get(argument);
+      const type = checker.getTypeAtLocation(nativeArgument);
+      return target !== undefined && (index === selected ? knownArgument(type, nativeArgument, fields, checker) : known(type)) &&
+        checker.isTypeAssignableTo(type, target);
+    });
+  };
   let calls = 0;
   for (const reference of binding.references) {
     if (reference.isWrite()) {
@@ -34,11 +54,8 @@ export function validConsumerFixCalls(node: ScalarConsumerNode, parameter: ts.Pa
     }
     const call = reference.identifier.parent;
     if (reference.isTypeReference || !reference.isReadOnly() || call.type !== AST_NODE_TYPES.CallExpression ||
-      call.callee !== reference.identifier || call.optional || call.typeArguments || call.arguments.length !== 1 ||
-      call.arguments[0]?.type !== AST_NODE_TYPES.Identifier) return false;
-    const argument = services.esTreeNodeToTSNodeMap.get(call.arguments[0]);
-    const type = checker.getTypeAtLocation(argument);
-    if (!knownArgument(type, argument, fields, checker) || !checker.isTypeAssignableTo(type, original)) return false;
+      call.callee !== reference.identifier || call.optional || call.typeArguments || call.arguments.length !== declaration.parameters.length ||
+      !call.arguments.every((argument) => argument.type === AST_NODE_TYPES.Identifier) || !validArguments(call)) return false;
     calls += 1;
   }
   return calls > 0;
