@@ -1275,14 +1275,14 @@ def _inert_definition(node: ast.FunctionDef | ast.AsyncFunctionDef, *, postponed
     if node.decorator_list or node.type_params:
         return False
     return not (
-        args.defaults
-        or any(value is not None for value in args.kw_defaults)
+        any(not isinstance(value, ast.Constant) for value in args.defaults)
+        or any(value is not None and not isinstance(value, ast.Constant) for value in args.kw_defaults)
         or (
             not postponed_annotations
             and (
-                node.returns is not None
+                not _inert_annotation(node.returns)
                 or any(
-                    argument.annotation is not None
+                    not _inert_annotation(argument.annotation)
                     for argument in (*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg)
                     if argument is not None
                 )
@@ -1291,11 +1291,17 @@ def _inert_definition(node: ast.FunctionDef | ast.AsyncFunctionDef, *, postponed
     )
 
 
+def _inert_annotation(annotation: ast.expr | None) -> bool:
+    return annotation is None or (
+        isinstance(annotation, ast.Constant) and (annotation.value is None or isinstance(annotation.value, str))
+    )
+
+
 def _stepdown_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
     tree = source.context.tree
     if tree is None:
         return []
-    postponed_annotations = _postponed_module_annotations(tree)
+    postponed_annotations = _postponed_module_annotations(tree) or bool(source.context.nodes(ast.TemplateStr))
     for index, helper in enumerate(tree.body):
         if not isinstance(helper, (ast.FunctionDef, ast.AsyncFunctionDef)) or not _at(helper, diagnostic):
             continue
@@ -1461,8 +1467,7 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
             return current
         # Batch independent candidates; overlapping candidates get fresh offsets on the next pass.
         selected_pass = _coherent_edits(candidates)
-        updated = apply_edits(current, selected_pass.edits)
-        compile(updated, str(path), "exec", dont_inherit=True)
+        updated = _apply_validated_edits(path, current, selected_pass.edits)
         if updated == current:
             return current
         if passes == _MAX_FIX_PASSES:
@@ -1471,6 +1476,19 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
         applied_codes.update(selected_pass.codes)
         current = updated
     raise _convergence_error(path, reason="source cycle", passes=passes, codes=applied_codes)
+
+
+def _apply_validated_edits(path: Path, current: str, edits: Sequence[TextEdit]) -> str:
+    updated = apply_edits(current, edits)
+    try:
+        compile(updated, str(path), "exec", dont_inherit=True)
+    except SyntaxError:
+        try:
+            compile(current, str(path), "exec", dont_inherit=True)
+        except SyntaxError:
+            return current
+        raise
+    return updated
 
 
 def _convergence_error(

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "c6fa6aa4c06ae3c0980bccd6c93f77ee6ac9d0277cf4fde4065db858bf5e8eba",
-  "cliSha256": "2bf58e5b06b2bfea246593577e00a12a712fc35c6fbaf1795dd6173fca5d6316",
+  "catalogSha256": "8f7faa29e8f4b8df5d387af1a7e761783649e0b6b2edbaa333450723019b4da8",
+  "cliSha256": "ef73663ffeb2f2607186960941564cd35c5ce836fc5d1d78b612c02274af82a4",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -13988,6 +13988,36 @@
           "files": [
             {
               "path": "app/service.py",
+              "source": "class UserStore:\n    async def get(self, key: str) -> User | None: ...\n    async def get_many(self, keys: list[str]) -> list[User]: ...\n\n\nasync def load(store: UserStore, keys: list[str]):\n    return await store.get_many(keys)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "bulk-read",
+          "outcome": "accept",
+          "scenarioId": "read-comprehension",
+          "title": "Read the batch after reviewing missing rows and ordering"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class UserStore:\n    async def get(self, key: str) -> User | None: ...\n    async def get_many(self, keys: list[str]) -> list[User]: ...\n\n\nasync def load(store: UserStore, keys: list[str]):\n    return await store.get_many(keys)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "bulk-read-without-fanout",
+          "outcome": "accept",
+          "scenarioId": "async-fanout",
+          "title": "Use bounded bulk reads after reviewing concurrency and failures"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
               "source": "class UserStore:\n    async def upsert(self, user: UserInput) -> User: ...\n    async def upsert_many(self, users: list[UserInput]) -> list[User]: ...\n\n\nasync def save(store: UserStore, users: list[UserInput]):\n    await store.upsert_many(users)\n"
             }
           ],
@@ -13997,6 +14027,51 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Use the existing bulk command"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class UserStore:\n    async def upsert(self, user: UserInput) -> User: ...\n    async def upsert_many(self, users: list[UserInput]) -> list[User]: ...\n\n\nasync def save(store: UserStore, users: list[UserInput]):\n    return await store.upsert_many(users)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "bulk-write-results",
+          "outcome": "accept",
+          "scenarioId": "write-comprehension",
+          "title": "Return bulk results after reviewing cardinality and failures"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "import asyncio\n\n\nclass UserStore:\n    async def get(self, key: str) -> User | None: ...\n    async def get_many(self, keys: list[str]) -> list[User]: ...\n\n\nasync def load(store: UserStore, keys: list[str]):\n    return await asyncio.gather(*(store.get(key) for key in keys))\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "eager-read-fanout",
+          "outcome": "reject",
+          "scenarioId": "async-fanout",
+          "title": "Concurrency still schedules one operation per input"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class UserStore:\n    async def get(self, key: str) -> User | None: ...\n    async def get_many(self, keys: list[str]) -> list[User]: ...\n\n\nasync def load(store: UserStore, keys: list[str]):\n    return [await store.get(key) for key in keys]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "read-comprehension",
+          "outcome": "reject",
+          "scenarioId": "read-comprehension",
+          "title": "Review repeated reads against an available bulk API"
         },
         {
           "expectedCount": 1,
@@ -14012,6 +14087,21 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Collect writes for an available bulk command"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "class UserStore:\n    async def upsert(self, user: UserInput) -> User: ...\n    async def upsert_many(self, users: list[UserInput]) -> list[User]: ...\n\n\nasync def save(store: UserStore, users: list[UserInput]):\n    return [await store.upsert(user) for user in users]\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "write-comprehension",
+          "outcome": "reject",
+          "scenarioId": "write-comprehension",
+          "title": "Review a comprehension of singleton writes"
         }
       ],
       "optionsSchemaSource": null
@@ -17899,6 +17989,36 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "app/service.py",
+              "source": "from string.templatelib import Template\n\n\ndef render(value: str = \"sample\") -> Template:\n    return t\"value: {_parse(value)}\"\n\n\ndef _parse(value: str) -> str:\n    return value.strip()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "already-ordered-deferred-template",
+          "outcome": "accept",
+          "scenarioId": "deferred-template",
+          "title": "Already ordered: Template syntax proves deferred module annotations"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "def render(value: \"str\" = \"sample\") -> \"str\":\n    return _parse(value)\n\n\ndef _parse(value: \"str\" = \"sample\") -> \"str\":\n    return value.strip()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "already-ordered-literal-headers",
+          "outcome": "accept",
+          "scenarioId": "literal-headers",
+          "title": "Already ordered: Literal headers preserve annotations and defaults"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "service.py",
               "source": "def handle(payload: dict) -> dict:\n    return _parse(payload)\n\n\ndef _parse(payload: dict) -> dict:\n    return payload\n"
             }
@@ -17939,6 +18059,46 @@
           "outcome": "accept",
           "scenarioId": "postponed-annotations",
           "title": "Postponed module helper already follows its sole caller"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from string.templatelib import Template\n\n\ndef _parse(value: str) -> str:\n    return value.strip()\n\n\ndef render(value: str = \"sample\") -> Template:\n    return t\"value: {_parse(value)}\"\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "app/service.py",
+              "source": "from string.templatelib import Template\n\n\ndef render(value: str = \"sample\") -> Template:\n    return t\"value: {_parse(value)}\"\n\n\ndef _parse(value: str) -> str:\n    return value.strip()\n"
+            }
+          ],
+          "focusPath": "app/service.py",
+          "id": "safe-autofix-deferred-template",
+          "outcome": "reject",
+          "scenarioId": "deferred-template",
+          "title": "Template syntax proves deferred module annotations"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "def _parse(value: \"str\" = \"sample\") -> \"str\":\n    return value.strip()\n\n\ndef render(value: \"str\" = \"sample\") -> \"str\":\n    return _parse(value)\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "app/service.py",
+              "source": "def render(value: \"str\" = \"sample\") -> \"str\":\n    return _parse(value)\n\n\ndef _parse(value: \"str\" = \"sample\") -> \"str\":\n    return value.strip()\n"
+            }
+          ],
+          "focusPath": "app/service.py",
+          "id": "safe-autofix-literal-headers",
+          "outcome": "reject",
+          "scenarioId": "literal-headers",
+          "title": "Literal headers preserve annotations and defaults"
         },
         {
           "expectedCount": 1,

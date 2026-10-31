@@ -68,7 +68,7 @@ class Stepdown(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.SAFE,
         limitations=(
-            "Safe fixes move unannotated module functions or module functions with an explicit future-annotations import, without decorators, type parameters, defaults or comments; class members and observable header evaluation remain review-only.",
+            "Safe fixes require constant defaults, no decorators/type parameters/comments, and annotations that are absent, literal strings/None, or deferred by an explicit future import or Python 3.14 t-string syntax. Class members and other header evaluation remain review-only.",
             "Generated files, tests, `__main__.py`, mutual recursion, and helpers with multiple callers are excluded.",
             "Decorated definitions and dynamic references that cannot prove a sole caller are not reported.",
             "Only lexically resolved builtin classmethod/staticmethod decorators are transparent; other decorators and executable statements are movement barriers.",
@@ -157,6 +157,78 @@ class Stepdown(Rule):
                 expected_count=0,
                 public=True,
                 scenario="postponed-annotations",
+            ),
+            RuleExample(
+                example_id="safe-autofix-literal-headers",
+                title="Literal headers preserve annotations and defaults",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "def _parse(value: 'str' = 'sample') -> 'str':\n    return value.strip()\n\ndef render(value: 'str' = 'sample') -> 'str':\n    return _parse(value)\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "\ndef render(value: 'str' = 'sample') -> 'str':\n    return _parse(value)\n\ndef _parse(value: 'str' = 'sample') -> 'str':\n    return value.strip()\n\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+                scenario="literal-headers",
+            ),
+            RuleExample(
+                example_id="already-ordered-literal-headers",
+                title="Already ordered: Literal headers preserve annotations and defaults",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "\ndef render(value: 'str' = 'sample') -> 'str':\n    return _parse(value)\n\ndef _parse(value: 'str' = 'sample') -> 'str':\n    return value.strip()\n\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+                scenario="literal-headers",
+            ),
+            RuleExample(
+                example_id="safe-autofix-deferred-template",
+                title="Template syntax proves deferred module annotations",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from string.templatelib import Template\n\ndef _parse(value: str) -> str:\n    return value.strip()\n\ndef render(value: str = 'sample') -> Template:\n    return t\"value: {_parse(value)}\"\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from string.templatelib import Template\n\n\ndef render(value: str = 'sample') -> Template:\n    return t\"value: {_parse(value)}\"\n\ndef _parse(value: str) -> str:\n    return value.strip()\n\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+                scenario="deferred-template",
+            ),
+            RuleExample(
+                example_id="already-ordered-deferred-template",
+                title="Already ordered: Template syntax proves deferred module annotations",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from string.templatelib import Template\n\n\ndef render(value: str = 'sample') -> Template:\n    return t\"value: {_parse(value)}\"\n\ndef _parse(value: str) -> str:\n    return value.strip()\n\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+                scenario="deferred-template",
             ),
         ),
     )

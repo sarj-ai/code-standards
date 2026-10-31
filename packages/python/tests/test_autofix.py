@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+import subprocess
+import sys
 from typing import TYPE_CHECKING, NamedTuple
 
 import pytest
@@ -705,20 +707,20 @@ def test_stepdown_preserves_postponed_signatures_and_converges(prefix: str, endi
             id="without-future",
         ),
         pytest.param(
-            "from __future__ import annotations\ndef _helper(value: str = 'x') -> bool:\n    return bool(value)\n\ndef caller(value: str) -> bool:\n    return _helper(value)\n",
-            id="positional-default",
+            "from __future__ import annotations\ndef _helper(value: str = build()) -> bool:\n    return bool(value)\n\ndef caller(value: str) -> bool:\n    return _helper(value)\n",
+            id="positional-computed-default",
         ),
         pytest.param(
-            "from __future__ import annotations\ndef _helper(*, value: str = 'x') -> bool:\n    return bool(value)\n\ndef caller(value: str) -> bool:\n    return _helper(value=value)\n",
-            id="keyword-default",
+            "from __future__ import annotations\ndef _helper(*, value: str = build()) -> bool:\n    return bool(value)\n\ndef caller(value: str) -> bool:\n    return _helper(value=value)\n",
+            id="keyword-computed-default",
         ),
         pytest.param(
-            "from __future__ import annotations\ndef _helper(value: str) -> bool:\n    return bool(value)\n\ndef caller(value: str = 'x') -> bool:\n    return _helper(value)\n",
-            id="caller-default",
+            "from __future__ import annotations\ndef _helper(value: str) -> bool:\n    return bool(value)\n\ndef caller(value: str = build()) -> bool:\n    return _helper(value)\n",
+            id="caller-computed-default",
         ),
         pytest.param(
-            "from __future__ import annotations\ndef _helper(value: str) -> bool:\n    return bool(value)\n\ndef unrelated(value=1):\n    return value\n\ndef caller(value: str) -> bool:\n    return _helper(value)\n",
-            id="crossed-default",
+            "from __future__ import annotations\ndef _helper(value: str) -> bool:\n    return bool(value)\n\ndef unrelated(value=build()):\n    return value\n\ndef caller(value: str) -> bool:\n    return _helper(value)\n",
+            id="crossed-computed-default",
         ),
         pytest.param(
             "from __future__ import annotations\ndef _helper[T](value: str) -> bool:\n    return bool(value)\n\ndef caller(value: str) -> bool:\n    return _helper(value)\n",
@@ -767,4 +769,150 @@ def test_stepdown_preserves_postponed_signatures_and_converges(prefix: str, endi
     ],
 )
 def test_stepdown_postponed_annotation_extension_retains_review_boundaries(source: str) -> None:
+    assert fix_source(Path("app/service.py"), source, rule_ids=["stepdown"]) == source
+
+
+def _assert_stepdown_runtime_equivalence(source: str, *, ending: str, tmp_path: Path, observation: str) -> None:
+    source = source.replace("\n", ending)
+    path = Path("app/service.py")
+    fixed = fix_source(path, source, rule_ids=["stepdown"])
+
+    assert fixed != source
+    assert fixed.index("def caller") < fixed.index("def _helper")
+    before = {node.name: ast.dump(node) for node in ast.parse(source).body if isinstance(node, ast.FunctionDef)}
+    after = {node.name: ast.dump(node) for node in ast.parse(fixed).body if isinstance(node, ast.FunctionDef)}
+    assert before == after
+    assert REGISTRY["stepdown"]().check(path, fixed) == []
+    assert fix_source(path, fixed, rule_ids=["stepdown"]) == fixed
+    if ending == "\r\n":
+        assert "\n" not in fixed.replace("\r\n", "")
+    outputs: list[str] = []
+    script = tmp_path / "stepdown_program.py"
+    for candidate in (source, fixed):
+        program = candidate + ending + "import inspect" + ending + f"print({observation})" + ending
+        script.write_text(program, encoding="utf-8", newline="")
+        result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, check=False, timeout=10)
+        assert result.returncode == 0, result.stderr
+        outputs.append(result.stdout)
+    assert outputs[0] == outputs[1]
+
+
+@pytest.mark.parametrize("ending", ["\n", "\r\n"], ids=["LF", "CRLF"])
+@pytest.mark.parametrize(
+    "default",
+    [
+        pytest.param("None", id="None"),
+        pytest.param("True", id="boolean"),
+        pytest.param("0", id="integer"),
+        pytest.param("1.5", id="float"),
+        pytest.param("1j", id="complex"),
+        pytest.param("'sample'", id="string"),
+        pytest.param("b'sample'", id="bytes"),
+        pytest.param("...", id="ellipsis"),
+    ],
+)
+def test_stepdown_constant_defaults_preserve_runtime_and_signatures(default: str, ending: str, tmp_path: Path) -> None:
+    source = (
+        f"def _helper(value={default}, *, strict=True):\n    return value, strict\n\n"
+        "def caller():\n    return _helper()\n"
+    )
+    _assert_stepdown_runtime_equivalence(
+        source,
+        ending=ending,
+        tmp_path=tmp_path,
+        observation="(caller(), str(inspect.signature(_helper)), _helper.__annotations__, "
+        "_helper.__defaults__, _helper.__kwdefaults__)",
+    )
+
+
+@pytest.mark.parametrize("ending", ["\n", "\r\n"], ids=["LF", "CRLF"])
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            "def _helper(value: 'str' = 'sample') -> 'str':\n    return value.strip()\n\n"
+            "def caller(value: 'str' = 'sample') -> 'str':\n    return _helper(value)\n",
+            id="quoted-annotations-with-caller-default",
+        ),
+        pytest.param(
+            "def _helper(*, value: 'str' = 'sample') -> None:\n    return None\n\n"
+            "def caller() -> None:\n    return _helper()\n",
+            id="None-return-and-keyword-default",
+        ),
+        pytest.param(
+            "from __future__ import annotations\n\n"
+            "def _helper(value: str = 'sample') -> str:\n    return value\n\n"
+            "def unrelated(value=1):\n    return value\n\n"
+            "def caller(value: str = 'sample') -> str:\n    return _helper(value)\n",
+            id="crossed-constant-default-with-future",
+        ),
+    ],
+)
+def test_stepdown_literal_annotations_and_defaults_preserve_values(source: str, ending: str, tmp_path: Path) -> None:
+    _assert_stepdown_runtime_equivalence(
+        source,
+        ending=ending,
+        tmp_path=tmp_path,
+        observation="(caller(), str(inspect.signature(_helper)), _helper.__annotations__, "
+        "_helper.__defaults__, _helper.__kwdefaults__)",
+    )
+
+
+@pytest.mark.parametrize("ending", ["\n", "\r\n"], ids=["LF", "CRLF"])
+@pytest.mark.parametrize(
+    ("prefix", "body", "observation"),
+    [
+        pytest.param(
+            "from string.templatelib import Template\n\n",
+            'def caller(value: str = "sample") -> Template:\n    return t"value: {_helper(value)}"\n',
+            "(caller().strings, tuple(item.value for item in caller().interpolations), "
+            "str(inspect.signature(_helper)), _helper.__annotations__)",
+            id="interpolation-caller-with-typed-headers",
+        ),
+        pytest.param(
+            'def template(value):\n    return t"value: {value}"\n\n',
+            "def caller(value: str = 'sample') -> str:\n    return _helper(value)\n",
+            "(caller(), str(inspect.signature(_helper)), _helper.__annotations__)",
+            id="template-syntax-outside-moved-definitions",
+        ),
+    ],
+)
+def test_stepdown_template_syntax_proves_deferred_annotation_evaluation(
+    prefix: str, body: str, observation: str, ending: str, tmp_path: Path
+) -> None:
+    source = prefix + "def _helper(value: str) -> str:\n    return value.strip()\n\n" + body
+    _assert_stepdown_runtime_equivalence(source, ending=ending, tmp_path=tmp_path, observation=observation)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            "from __future__ import annotations\ndef _helper(value=[]):\n    return value\n\n"
+            "def caller():\n    return _helper()\n",
+            id="mutable-positional-default",
+        ),
+        pytest.param(
+            "from __future__ import annotations\ndef _helper(*, value={}):\n    return value\n\n"
+            "def caller():\n    return _helper()\n",
+            id="mutable-keyword-default",
+        ),
+        pytest.param(
+            'def template():\n    return t"value"\n\ndef _helper(value=build()):\n    return value\n\n'
+            "def caller():\n    return _helper()\n",
+            id="template-proof-keeps-computed-default-barrier",
+        ),
+        pytest.param(
+            "def template():\n    return 't\"value\"'\n\ndef _helper(value: str) -> str:\n    return value\n\n"
+            "def caller(value: str) -> str:\n    return _helper(value)\n",
+            id="template-text-does-not-prove-language-semantics",
+        ),
+        pytest.param(
+            'def template():\n    return f"value"\n\ndef _helper(value: str) -> str:\n    return value\n\n'
+            "def caller(value: str) -> str:\n    return _helper(value)\n",
+            id="fstring-does-not-prove-deferred-annotations",
+        ),
+    ],
+)
+def test_stepdown_constant_header_expansion_keeps_runtime_boundaries(source: str) -> None:
     assert fix_source(Path("app/service.py"), source, rule_ids=["stepdown"]) == source
