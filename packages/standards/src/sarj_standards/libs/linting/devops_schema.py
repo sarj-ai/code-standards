@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
 from jsonschema import Draft7Validator
+from pydantic import JsonValue
 from referencing import Registry, Resource
 import yaml
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
@@ -31,7 +33,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
     from jsonschema.exceptions import ValidationError
-    from pydantic import JsonValue
     from referencing.jsonschema import Schema
 
 _SCHEMAS = Path(__file__).resolve().parents[2] / "configs" / "schemas"
@@ -110,6 +111,11 @@ _DEPLOY_FIELDS: Mapping[str, dict[str, object]] = MappingProxyType(
 )
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class _ParsedJson:
+    value: JsonValue
+
+
 def analyze_source_schemas(*, root: Path, paths: tuple[str, ...]) -> tuple[ToolReport, ...]:
     reports = list(analyze_actions(root=root, paths=paths))
     validators: dict[str, Draft7Validator] = {}
@@ -120,15 +126,14 @@ def analyze_source_schemas(*, root: Path, paths: tuple[str, ...]) -> tuple[ToolR
         try:
             path.relative_to(root.resolve())
             source = path.read_bytes().decode("utf-8")
-            if path.suffix.lower() == ".json":
-                parse_unique_json(source)
+            parsed_json = _ParsedJson(value=parse_unique_json(source)) if path.suffix.lower() == ".json" else None
             nodes = _documents(source)
         except (OSError, ValueError, yaml.YAMLError, RecursionError) as error:
             if _selected_path(path):
                 reports.append(_failed("devops-schema", error))
             continue
         for node in nodes or [None]:
-            report = _source_schema_report(root, path, source, node, validators=validators)
+            report = _source_schema_report(root, path, source, node, parsed_json=parsed_json, validators=validators)
             if report is not None:
                 reports.append(report)
     return tuple(reports)
@@ -140,12 +145,15 @@ def _source_schema_report(
     source: str,
     node: Node | None,
     *,
+    parsed_json: _ParsedJson | None,
     validators: dict[str, Draft7Validator],
 ) -> ToolReport | None:
     if _cloudbuild_selected(path, node):
         if node is None:
             return _failed("cloudbuild-schema", ValueError("Cloud Build configuration must contain an object"))
-        return _validate_document(root, path, source, node, "cloudbuild/v1", validators=validators)
+        return _validate_document(
+            root, path, source, node, "cloudbuild/v1", parsed_json=parsed_json, validators=validators
+        )
     if not isinstance(node, MappingNode):
         return None
     try:
@@ -156,7 +164,7 @@ def _source_schema_report(
         return None
     if version is None or not version.startswith(("skaffold/", "deploy.cloud.google.com/")):
         return None
-    return _validate_document(root, path, source, node, version, validators=validators)
+    return _validate_document(root, path, source, node, version, parsed_json=parsed_json, validators=validators)
 
 
 def _selected_path(path: Path) -> bool:
@@ -207,6 +215,7 @@ def _validate_document(
     node: Node,
     version: str,
     *,
+    parsed_json: _ParsedJson | None,
     validators: dict[str, Draft7Validator],
 ) -> ToolReport:
     name = "clouddeploy-structure"
@@ -217,7 +226,7 @@ def _validate_document(
     try:  # ruff: ignore[too-many-statements-in-try-clause] -- normalize the external schema and YAML boundaries into one fatal coverage report.
         validator = _source_validator(node, version, validators)
         _validate_keys(node)
-        instance = _source_instance(path, source, node)
+        instance = _source_instance(node, parsed_json=parsed_json)
         errors: Iterable[ValidationError] = validator.iter_errors(instance)  # pyright: ignore[reportUnknownMemberType] -- jsonschema validation boundary.
         document = SourceDocument(path, source)
         findings = tuple(_schema_diagnostic(root, path, document, node, error, name=name) for error in errors)  # pyright: ignore[reportAny] -- external jsonschema iterator stub exposes validated errors as Any.
@@ -226,9 +235,9 @@ def _validate_document(
         return _failed(name, error)
 
 
-def _source_instance(path: Path, source: str, node: Node) -> JsonValue:
-    if path.suffix.lower() == ".json":
-        return normalize_json_value(parse_unique_json(source))
+def _source_instance(node: Node, *, parsed_json: _ParsedJson | None) -> JsonValue:
+    if parsed_json is not None:
+        return normalize_json_value(parsed_json.value)
     loader = yaml.SafeLoader("")
     try:
         return normalize_json_value(loader.construct_document(node))  # pyright: ignore[reportUnknownArgumentType, reportUnknownMemberType] -- normalize the safe YAML constructor boundary.
