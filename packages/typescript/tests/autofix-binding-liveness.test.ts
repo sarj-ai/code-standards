@@ -44,17 +44,65 @@ const EXAMPLES: readonly Example[] = [
 ];
 
 
-function nativeDiagnostics(filename: string): readonly string[] {
+
+interface NativeDiagnosticContext {
+  diagnostics(): readonly string[];
+  dispose(): void;
+}
+
+function nativeCompiler(filename: string): NativeDiagnosticContext {
   const options: ts.CompilerOptions = {strict: true, target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.ESNext,
     moduleResolution: ts.ModuleResolutionKind.Bundler, types: ["node"], typeRoots: [join(dirname(dirname(filename)), "node_modules", "@types")],
     noEmit: true, noUnusedLocals: true, skipLibCheck: true};
-  const host = ts.createCompilerHost(options);
-  host.getCurrentDirectory = () => dirname(dirname(filename));
-  const program = ts.createProgram([filename], options, host);
-  const diagnostics = ts.getPreEmitDiagnostics(program);
-  expect(diagnostics.filter((diagnostic) => [2307, 2688, 2591].includes(diagnostic.code))).toEqual([]);
-  return diagnostics.map((diagnostic) =>
-    `${diagnostic.code}:${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`).sort();
+  const registry = ts.createDocumentRegistry(ts.sys.useCaseSensitiveFileNames, dirname(dirname(filename)));
+  const documents = new Map<string, {filename: string; mode: ts.ResolutionMode}>();
+  const release = (key: string) => {
+    const document = documents.get(key);
+    if (document === undefined) return;
+    registry.releaseDocument(document.filename, options, ts.ScriptKind.TS, document.mode);
+    documents.delete(key);
+  };
+  return {
+    diagnostics() {
+      const host = ts.createCompilerHost(options);
+      host.getCurrentDirectory = () => dirname(dirname(filename));
+      const original = host.getSourceFile.bind(host);
+      host.getSourceFile = (path, languageVersion, onError, fresh) => {
+        const mode = typeof languageVersion === "number" ? undefined : languageVersion.impliedNodeFormat;
+        const key = `${path}\0${mode ?? ""}`;
+        if (fresh || !/\.(?:cts|mts|ts)$/iu.test(path)) {
+          release(key);
+          return original(path, languageVersion, onError, fresh);
+        }
+        let source: string | undefined;
+        try {
+          source = host.readFile(path);
+        } catch {
+          release(key);
+          return original(path, languageVersion, onError, fresh);
+        }
+        if (source === undefined) {
+          release(key);
+          return original(path, languageVersion, onError, fresh);
+        }
+        const snapshot = ts.ScriptSnapshot.fromString(source);
+        if (documents.has(key)) {
+          return registry.updateDocument(path, options, snapshot, source, ts.ScriptKind.TS, languageVersion);
+        }
+        const file = registry.acquireDocument(path, options, snapshot, source, ts.ScriptKind.TS, languageVersion);
+        documents.set(key, {filename: path, mode});
+        return file;
+      };
+      const program = ts.createProgram([filename], options, host);
+      const diagnostics = ts.getPreEmitDiagnostics(program);
+      expect(diagnostics.filter((diagnostic) => [2307, 2688, 2591].includes(diagnostic.code))).toEqual([]);
+      return diagnostics.map((diagnostic) =>
+        `${diagnostic.code}:${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`).sort();
+    },
+    dispose() {
+      for (const key of documents.keys()) release(key);
+    },
+  };
 }
 
 function configuration(root: string, names: readonly (keyof typeof RULES)[]): Linter.Config {
@@ -66,12 +114,14 @@ function configuration(root: string, names: readonly (keyof typeof RULES)[]): Li
 async function check(example: Example): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), "sarj-binding-liveness-"));
   const filename = join(root, "src", example.filename ?? "owner.ts");
+  let compiler: NativeDiagnosticContext | undefined;
   try {
     await mkdir(dirname(filename));
     await symlink(fileURLToPath(new URL("../node_modules", import.meta.url)), join(root, "node_modules"));
     await writeFile(join(root, "tsconfig.json"), JSON.stringify({compilerOptions: {strict: true, target: "ESNext", module: "ESNext", moduleResolution: "Bundler", types: ["node"], skipLibCheck: true}, include: ["src/*.ts"]}));
     await writeFile(filename, example.source);
-    const before = nativeDiagnostics(filename);
+    compiler = nativeCompiler(filename);
+    const before = compiler.diagnostics();
     const config = configuration(root, example.rules ?? [example.rule]);
     const linter = new Linter({cwd: root});
     const messages = linter.verify(example.source, config, {filename});
@@ -83,7 +133,7 @@ async function check(example: Example): Promise<void> {
     if (example.expected === example.source) expect(actual.messages).toEqual(messages);
     else expect(actual.messages).toEqual([]);
     await writeFile(filename, actual.output);
-    expect(nativeDiagnostics(filename)).toEqual(before);
+    expect(compiler.diagnostics()).toEqual(before);
     parser.clearCaches();
     const second = linter.verifyAndFix(actual.output, config, {filename});
     expect(second.fixed).toBe(false);
@@ -91,11 +141,12 @@ async function check(example: Example): Promise<void> {
     expect(second.messages).toEqual(actual.messages);
     if (example.naive !== undefined) {
       await writeFile(filename, example.naive);
-      const changed = nativeDiagnostics(filename);
+      const changed = compiler.diagnostics();
       expect(changed).not.toEqual(before);
       expect(changed.some((message) => /^(?:6133|6196):/u.test(message) && !before.includes(message))).toBe(true);
     }
   } finally {
+    compiler?.dispose();
     parser.clearCaches();
     await rm(root, {recursive: true, force: true});
   }
@@ -115,4 +166,37 @@ describe("actual autofixes preserve named-binding liveness under the compiler", 
       rules: ["no-redundant-consumer-union", "no-unsafe-mock-casting"],
       naive: source.replace("Dog | Animal", "Animal").replace("raw as Mock<() => Dog>", "raw")});
   });
+});
+
+it("refreshes native diagnostics when an imported file changes, disappears and returns", async () => {
+  const root = await mkdtemp(join(tmpdir(), "sarj-binding-diagnostics-"));
+  const filename = join(root, "src", "owner.ts");
+  const dependency = join(root, "src", "types.ts");
+  let compiler: NativeDiagnosticContext | undefined;
+  try {
+    await mkdir(dirname(filename));
+    await symlink(fileURLToPath(new URL("../node_modules", import.meta.url)), join(root, "node_modules"));
+    await writeFile(filename, 'import type { Item } from "./types.js"; export const value: Item = "ok";');
+    await writeFile(dependency, "export type Item = string;");
+    compiler = nativeCompiler(filename);
+    expect(compiler.diagnostics()).toEqual([]);
+    await writeFile(dependency, "export type Item = number;");
+    expect(compiler.diagnostics().some((message) => message.startsWith("2322:"))).toBe(true);
+    await writeFile(dependency, "export type Item = string;");
+    expect(compiler.diagnostics()).toEqual([]);
+    await rm(dependency);
+    const current = compiler;
+    let missing: unknown;
+    try {
+      current.diagnostics();
+    } catch (error) {
+      missing = error;
+    }
+    expect(missing).toHaveProperty("actual", expect.arrayContaining([expect.objectContaining({code: 2307})]));
+    await writeFile(dependency, "export type Item = string;");
+    expect(compiler.diagnostics()).toEqual([]);
+  } finally {
+    compiler?.dispose();
+    await rm(root, {recursive: true, force: true});
+  }
 });
