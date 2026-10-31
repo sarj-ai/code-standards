@@ -298,7 +298,26 @@
       "passed": 14,
       "failed": 0
     },
-    "merge_qualification": "The canonical pinned make verify command, normal commit/push hooks and latest exact-head required CI including installed-artifact qualification remain mandatory separate completion gates. Their actual completion is reported in the pull request; focused evidence does not replace them."
+    "merge_qualification": "The canonical pinned make verify command, normal commit/push hooks and latest exact-head required CI including installed-artifact qualification remain mandatory separate completion gates. Their actual completion is reported in the pull request; focused evidence does not replace them.",
+    "integration_requalification": {
+      "date": "2026-10-31",
+      "upstream_public_commit": "26d0e3f9f57c4ec3fcba226bb5dd7b962e00e7ab",
+      "passed_cases": 1413,
+      "modules": [
+        "test_prefer_bulk_upsert",
+        "test_service_singleton_delegates_to_bulk",
+        "test_store_get_delegates_to_bulk_read",
+        "test_store_mutation_command_fanout",
+        "test_store_field_update_reuses_upsert",
+        "test_prefer_psycopg_executemany",
+        "test_no_psycopg_execution_outside_injected_owner"
+      ],
+      "scope": "The six original complete owner/shared-helper modules plus the PostgreSQL execution-owner neighbor module passed after integrating the upstream candidate-call guard. The fifty review passes remain the original completed campaign.",
+      "source_preflight": "All nine implementation/generated/test files pass pinned Ruff, formatting and strict typing. Complete builtin source analysis reports no blocking errors; eight inherited tuple-API warnings remain advisory.",
+      "corpus_reconciliation": "The same 398 immutable files reproduce byte-identical diagnostics: 92 reviewed architecture-policy findings and no public-corpus findings. Original external pins and inventories are unchanged.",
+      "artifacts": "Canonical source descriptors, inventory, ledger, catalog, third-party catalog, CLI reference, documentation and formatted examples agree; doctor and repository checks pass.",
+      "full_gate_reuse": "The original complete make verify passed 55,687 package cases and 13 documentation routing cases. Unchanged input evidence is retained; the incoming runtime guard has its own verified upstream CI proof and refreshed local checks. Final integration hooks and exact-head CI remain mandatory."
+    }
   },
   "field_calibration": {
     "method": "Native run_isolated_corpora with immutable source pins, safe Python import mode and batches capped at 250 files; source analysis only.",
@@ -359,7 +378,8 @@
     ]
   },
   "performance": {
-    "baseline_public_commit": "aabe082d9dd8f0de059cad54deec6cdc1fed6ef9",
+    "date": "2026-10-31",
+    "baseline_public_commit": "26d0e3f9f57c4ec3fcba226bb5dd7b962e00e7ab",
     "method": "Five alternating fresh worker pairs, one first and two warm native analyses per worker; same interpreter, dependencies, rules and inputs. Operating-system caches untouched.",
     "rules": [
       "service-singleton-delegates-to-bulk",
@@ -371,15 +391,15 @@
     "sample": "Sixteen evenly spaced sorted private corpus paths, eight public Pydantic paths and sixteen current single-file authored examples, materialized outside vendor/cache paths.",
     "summary": {
       "baseline": {
-        "first_analysis_median_seconds": 1.1113975609187037,
-        "warm_analysis_median_seconds": 1.8670484480098821,
-        "worker_lifetime_peak_median_bytes": 73535488,
+        "first_analysis_median_seconds": 0.8153813988901675,
+        "warm_analysis_median_seconds": 0.8414388820528984,
+        "worker_lifetime_peak_median_bytes": 71729152,
         "findings": 8
       },
       "candidate": {
-        "first_analysis_median_seconds": 1.1634200640255585,
-        "warm_analysis_median_seconds": 1.3343732744688168,
-        "worker_lifetime_peak_median_bytes": 73080832,
+        "first_analysis_median_seconds": 1.863896100083366,
+        "warm_analysis_median_seconds": 1.5712377518648282,
+        "worker_lifetime_peak_median_bytes": 72790016,
         "findings": 11
       }
     },
@@ -392,10 +412,11 @@
       "Peak RSS covers worker lifetime including imports and earlier analysis; not analysis-only or aggregate concurrent memory."
     ],
     "ratios_candidate_to_baseline": {
-      "first_analysis_median_seconds": 1.0468081854200328,
-      "warm_analysis_median_seconds": 0.714696651761312,
-      "worker_lifetime_peak_median_bytes": 0.9938171893276889
-    }
+      "first_analysis_median_seconds": 2.285919328820051,
+      "warm_analysis_median_seconds": 1.8673224940965467,
+      "worker_lifetime_peak_median_bytes": 1.0147898583828232
+    },
+    "interpretation": "The expanded selected rules were slower than current main on this bounded sample. The measurements describe the complete revisions on a shared VM and do not isolate a causal cost or establish fleet throughput."
   },
   "supported_boundaries": [
     "Unique stable module-level role classes and bounded local C3 ancestry; inherited singleton declarations and arbitrary domain verbs remain deferred.",
@@ -404,5 +425,50 @@
     "Per-row transactions/effects, filtered or nested result-dependent flow, streams, opaque scheduling and dictionary/cache joins do not establish the supported batch opportunity.",
     "Generated/vendor sources remain excluded; strict runtime ownership and advisory maintained-test policies remain separate. Existing exact suppressions, baselines, severities and no-autofix policy are retained."
   ],
-  "privacy": "Only redacted aggregates and public repository metadata are published. Private source, identities, paths, revisions, pins and identifying hashes remain in owner-readable local evidence. Earlier public benchmark reports are unchanged."
+  "privacy": "Only redacted aggregates and public repository metadata are published. Private source, identities, paths, revisions, pins and identifying hashes remain in owner-readable local evidence. Earlier public benchmark reports are unchanged.",
+  "historical_performance": [
+    {
+      "date": "2026-10-30",
+      "scope": "Completed earlier campaign measurement before latest-main integration; retained with its original comparator and results.",
+      "measurement": {
+        "baseline_public_commit": "aabe082d9dd8f0de059cad54deec6cdc1fed6ef9",
+        "method": "Five alternating fresh worker pairs, one first and two warm native analyses per worker; same interpreter, dependencies, rules and inputs. Operating-system caches untouched.",
+        "rules": [
+          "service-singleton-delegates-to-bulk",
+          "prefer-bulk-upsert",
+          "store-get-delegates-to-bulk-read"
+        ],
+        "files": 40,
+        "bytes": 216500,
+        "sample": "Sixteen evenly spaced sorted private corpus paths, eight public Pydantic paths and sixteen current single-file authored examples, materialized outside vendor/cache paths.",
+        "summary": {
+          "baseline": {
+            "first_analysis_median_seconds": 1.1113975609187037,
+            "warm_analysis_median_seconds": 1.8670484480098821,
+            "worker_lifetime_peak_median_bytes": 73535488,
+            "findings": 8
+          },
+          "candidate": {
+            "first_analysis_median_seconds": 1.1634200640255585,
+            "warm_analysis_median_seconds": 1.3343732744688168,
+            "worker_lifetime_peak_median_bytes": 73080832,
+            "findings": 11
+          }
+        },
+        "stability": "Each variant retained identical diagnostics across all fifteen analyses; source bytes, input bytes and original external pins were verified before and after measurement.",
+        "limits": [
+          "Selected16 private and8 public corpus paths by evenly spaced sorted position, materialized outside vendor/cache paths, plus single-file authored examples; performance sample is not a precision sample.",
+          "Source-only baseline and candidate use identical installed dependencies; canonical installed-artifact CI owns packaging qualification.",
+          "Worker total durations include process startup/imports and all three analyses; first/warm native intervals exclude startup.",
+          "Fresh-process first analysis is not cold OS-cache timing. Shared VM medians establish neither fleet throughput nor tail latency.",
+          "Peak RSS covers worker lifetime including imports and earlier analysis; not analysis-only or aggregate concurrent memory."
+        ],
+        "ratios_candidate_to_baseline": {
+          "first_analysis_median_seconds": 1.0468081854200328,
+          "warm_analysis_median_seconds": 0.714696651761312,
+          "worker_lifetime_peak_median_bytes": 0.9938171893276889
+        }
+      }
+    }
+  ]
 }
