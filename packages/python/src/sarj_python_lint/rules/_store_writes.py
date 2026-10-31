@@ -11,6 +11,7 @@ from sqlglot.errors import SqlglotError
 
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, bit_or_members, scope_bound_names
 from sarj_python_lint.rules._ast_index import walk
+from sarj_python_lint.rules._ast_position import ast_position
 from sarj_python_lint.rules._paths import is_generated
 from sarj_python_lint.rules._project_index import ProjectIndexSet
 
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._ast_position import AstPosition
     from sarj_python_lint.rules._imports import ImportIndex
     from sarj_python_lint.rules._resource_provenance import ResourceProvenance
 
@@ -433,12 +435,6 @@ class _ReceiverOrigin:
     attribute: str | None = None
 
 
-@dataclass(frozen=True, order=True, slots=True)
-class _SourcePosition:
-    line: int
-    column: int
-
-
 class _ReceiverAliases:
     def __init__(self, context: PythonFileContext) -> None:
         self.context = context
@@ -535,8 +531,8 @@ class _ReceiverAliases:
         return frozenset()
 
 
-def _source_position(node: ast.AST) -> _SourcePosition:
-    return _SourcePosition(getattr(node, "lineno", -1), getattr(node, "col_offset", -1))
+def _source_position(node: ast.AST) -> AstPosition:
+    return ast_position(node, missing=-1)
 
 
 class StoreOwners:

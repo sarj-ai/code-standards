@@ -75,8 +75,13 @@ def test_original_error_fix_still_converges_beside_preserved_technical_prose() -
     fixed = fix_source(_PATH, source, rule_ids=[_RULE])
     assert fixed == example.fixed_files[0].source + "\n" + warning
     assert ast.dump(ast.parse(fixed), include_attributes=True) == ast.dump(ast.parse(source), include_attributes=True)
-    assert compile(fixed, str(_PATH), "exec", dont_inherit=True) == compile(
-        source, str(_PATH), "exec", dont_inherit=True
+    assert (
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            fixed, str(_PATH), "exec", dont_inherit=True
+        )
+        == compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            source, str(_PATH), "exec", dont_inherit=True
+        )
     )
     assert REGISTRY[_RULE]().check(_PATH, fixed) == []
     assert fix_source(_PATH, fixed, rule_ids=[_RULE]) == fixed
@@ -112,8 +117,13 @@ def test_test_comment_fix_reuses_the_exact_narration_proof(selected: list[str], 
     actual = fix_source(_TEST_PATH, source, rule_ids=selected)
     assert actual == expected
     assert ast.dump(ast.parse(actual), include_attributes=True) == ast.dump(ast.parse(source), include_attributes=True)
-    assert compile(actual, str(_TEST_PATH), "exec", dont_inherit=True) == compile(
-        source, str(_TEST_PATH), "exec", dont_inherit=True
+    assert (
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            actual, str(_TEST_PATH), "exec", dont_inherit=True
+        )
+        == compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            source, str(_TEST_PATH), "exec", dont_inherit=True
+        )
     )
     assert REGISTRY[_TEST_RULE]().check(_TEST_PATH, actual) == []
     assert fix_source(_TEST_PATH, actual, rule_ids=[_TEST_RULE]) == actual

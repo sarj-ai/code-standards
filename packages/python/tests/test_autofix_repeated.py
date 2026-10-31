@@ -41,7 +41,9 @@ def test_whole_length_only_group_reuses_the_authored_local_binding(newline: str,
 
 
 def _result(source: str) -> object:
-    code = compile(source, str(_PATH), "exec", dont_inherit=True)
+    code = compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        source, str(_PATH), "exec", dont_inherit=True
+    )
     constants: tuple[object, ...] = code.co_consts
     function = next(value for value in constants if isinstance(value, CodeType) and value.co_name == "length_contracts")
     return _invoke(FunctionType(function, {}))

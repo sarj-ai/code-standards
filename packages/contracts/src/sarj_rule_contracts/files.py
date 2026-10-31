@@ -74,10 +74,21 @@ def _snapshot(path: Path) -> _Snapshot:
     if before.st_mode & (stat.S_ISUID | stat.S_ISGID):
         message = f"safe fixes require a source without privileged permission bits: {path}"
         raise ValueError(message)
-    if hasattr(os, "geteuid") and before.st_uid != os.geteuid():
+    if (
+        hasattr(  # sarj-noqa: SARJ499 -- Probe optional OS capabilities while preserving source ownership, permissions, and safe-open behavior.
+            os, "geteuid"
+        )
+        and before.st_uid != os.geteuid()
+    ):
         message = f"safe fixes require a source owned by the current user: {path}"
         raise ValueError(message)
-    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    descriptor = os.open(
+        path,
+        os.O_RDONLY
+        | getattr(  # sarj-noqa: SARJ557 -- Probe optional OS capabilities while preserving source ownership, permissions, and safe-open behavior.
+            os, "O_NOFOLLOW", 0
+        ),
+    )
     with os.fdopen(descriptor, "rb") as stream:
         opened = os.fstat(stream.fileno())
         _refuse_extended_attributes(stream.fileno())
@@ -90,7 +101,9 @@ def _snapshot(path: Path) -> _Snapshot:
 
 
 def _refuse_extended_attributes(descriptor: int) -> None:
-    if not hasattr(os, "listxattr"):
+    if not hasattr(  # sarj-noqa: SARJ499 -- Probe optional OS capabilities while preserving source ownership, permissions, and safe-open behavior.
+        os, "listxattr"
+    ):
         return
     try:
         attributes = os.listxattr(descriptor)
@@ -105,7 +118,9 @@ def _refuse_extended_attributes(descriptor: int) -> None:
 def _preserve_group(descriptor: int, group: int) -> None:
     if os.fstat(descriptor).st_gid == group:
         return
-    if not hasattr(os, "fchown"):
+    if not hasattr(  # sarj-noqa: SARJ499 -- Probe optional OS capabilities while preserving source ownership, permissions, and safe-open behavior.
+        os, "fchown"
+    ):
         message = "safe fixes cannot preserve source group ownership on this platform"
         raise ValueError(message)
     os.fchown(descriptor, -1, group)
@@ -115,7 +130,9 @@ def _preserve_group(descriptor: int, group: int) -> None:
 
 
 def _preserve_mode(descriptor: int, mode: int) -> None:
-    if not hasattr(os, "fchmod"):
+    if not hasattr(  # sarj-noqa: SARJ499 -- Probe optional OS capabilities while preserving source ownership, permissions, and safe-open behavior.
+        os, "fchmod"
+    ):
         message = "safe fixes require descriptor-based permission preservation"
         raise ValueError(message)
     os.fchmod(descriptor, mode)

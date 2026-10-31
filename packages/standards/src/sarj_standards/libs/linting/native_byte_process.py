@@ -309,7 +309,13 @@ def file_record(path: Path, *, contents: bool) -> FileRecord:
     record: FileRecord = {"path": str(path), **_identity(before)}
     if contents:
         _require(condition=before.st_size <= _MAX_PAYLOAD, message="native bridge input is too large")
-        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        descriptor = os.open(
+            path,
+            os.O_RDONLY
+            | getattr(  # sarj-noqa: SARJ557 -- Probe optional OS capabilities while preserving checked safe-open identity and permission guards.
+                os, "O_NOFOLLOW", 0
+            ),
+        )
         with os.fdopen(descriptor, "rb") as stream:
             _require(
                 condition=_identity(os.fstat(stream.fileno())) == _identity(before),

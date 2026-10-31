@@ -198,7 +198,9 @@ class PreferWalrusRegexMatch(Rule):
 def _candidate_bodies(tree: ast.Module) -> list[tuple[ast.AST, list[ast.stmt]]]:
     candidates: list[tuple[ast.AST, list[ast.stmt]]] = []
     for node in walk(tree):
-        raw_body: object = getattr(node, "body", None)
+        raw_body: object = getattr(  # sarj-noqa: SARJ557 -- Inspect optional statement-list fields across heterogeneous AST node types.
+            node, "body", None
+        )
         if not object_list(raw_body):
             continue
         body = [statement for statement in raw_body if isinstance(statement, ast.stmt)]

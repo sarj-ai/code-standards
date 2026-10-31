@@ -522,7 +522,9 @@ def _repeated_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
 def _statement_pairs(context: PythonFileContext) -> Iterator[tuple[ast.stmt, ast.stmt]]:
     for owner in context.nodes(ast.AST):
         for field in ("body", "orelse", "finalbody"):
-            value: object = getattr(owner, field, None)
+            value: object = getattr(  # sarj-noqa: SARJ557 -- Inspect optional statement-list fields across heterogeneous AST node types.
+                owner, field, None
+            )
             if object_list(value):
                 statements = [item for item in value if isinstance(item, ast.stmt)]
                 yield from pairwise(statements)
@@ -802,7 +804,9 @@ def _dispatch_roots(root: ast.If, context: PythonFileContext) -> list[ast.If]:
         return [root]
     parent = context.parents.get(root)
     for field in ("body", "orelse", "finalbody"):
-        value: object = getattr(parent, field, None)
+        value: object = getattr(  # sarj-noqa: SARJ557 -- Inspect optional statement-list fields across heterogeneous AST node types.
+            parent, field, None
+        )
         if not object_list(value) or root not in value:
             continue
         branches: list[ast.If] = []
@@ -1481,10 +1485,14 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
 def _apply_validated_edits(path: Path, current: str, edits: Sequence[TextEdit]) -> str:
     updated = apply_edits(current, edits)
     try:
-        compile(updated, str(path), "exec", dont_inherit=True)
+        compile(  # sarj-noqa: SARJ557 -- Compile proposed fixes to reject invalid scopes without executing them.
+            updated, str(path), "exec", dont_inherit=True
+        )
     except SyntaxError:
         try:
-            compile(current, str(path), "exec", dont_inherit=True)
+            compile(  # sarj-noqa: SARJ557 -- Distinguish pre-existing invalid scope from a broken generated fix without executing input.
+                current, str(path), "exec", dont_inherit=True
+            )
         except SyntaxError:
             return current
         raise

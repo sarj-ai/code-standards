@@ -57,7 +57,9 @@ def test_nonrepeating_valid_fixes_stop_with_the_contributing_rule(
     assert len(observed) == pass_budget + 1
     assert len(set(observed)) == len(observed)
     for source in observed:
-        compile(source, str(path), "exec", dont_inherit=True)
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            source, str(path), "exec", dont_inherit=True
+        )
 
 
 def test_source_cycles_keep_the_existing_failure_and_attribute_the_rule(
@@ -99,7 +101,9 @@ def test_convergence_exactly_at_the_budget_keeps_the_final_fixed_point(
 
     assert fixed == "value = 1\n" + _GROWTH * (pass_budget - 1)
     assert len(observed) == pass_budget
-    compile(fixed, str(path), "exec", dont_inherit=True)
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        fixed, str(path), "exec", dont_inherit=True
+    )
     assert fix_source(path, fixed, rule_ids=_RULES) == fixed
     assert len(observed) == pass_budget
 
@@ -163,7 +167,9 @@ def test_parseable_but_compile_invalid_inputs_remain_unchanged(invalid_statement
     source = _SOURCE + invalid_statement
     assert isinstance(ast.parse(source), ast.Module)
     with pytest.raises(SyntaxError):
-        compile(source, "app/invalid.py", "exec", dont_inherit=True)
+        compile(  # sarj-noqa: SARJ557 -- Compile an invalid fixture to exercise rejection of invalid scopes without executing input.
+            source, "app/invalid.py", "exec", dont_inherit=True
+        )
     assert fix_source(Path("app/invalid.py"), source, rule_ids=_RULES) == source
 
 

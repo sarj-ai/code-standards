@@ -338,7 +338,14 @@ class ResourceProvenance:
             return None
         if not isinstance(self.parents.get(statement), ast.Module | ast.FunctionDef | ast.AsyncFunctionDef):
             return None
-        return statement.value if statement.lineno < getattr(at, "lineno", 0) else None
+        return (
+            statement.value
+            if statement.lineno
+            < getattr(  # sarj-noqa: SARJ557 -- Order heterogeneous AST markers while preserving the missing-location fallback.
+                at, "lineno", 0
+            )
+            else None
+        )
 
     def async_function(self, value: ast.expr, at: ast.AST) -> ast.AsyncFunctionDef | None:
         if self.dynamic_namespace:

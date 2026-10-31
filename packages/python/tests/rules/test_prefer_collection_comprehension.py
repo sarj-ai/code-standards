@@ -195,7 +195,12 @@ def test_inspect_observers_can_see_the_removed_loop_binding(expression: str) -> 
             + f"        return result, 'row' in {expression}\n"
             + "assert build([(1, 2)]) == ({1: 2}, expected)\n"
         )
-        exec(compile(source, "<frame-observer-fixture>", "exec"), {"expected": expected})  # ruff: ignore[exec-builtin] -- execute authored before/after namespace-observer fixtures.
+        exec(  # ruff: ignore[exec-builtin] -- execute authored before/after namespace-observer fixtures.
+            compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+                source, "<frame-observer-fixture>", "exec"
+            ),
+            {"expected": expected},
+        )
 
 
 _PUBLIC_EXAMPLES = PreferCollectionComprehension.public_examples()
@@ -801,7 +806,12 @@ def test_computed_none_filter_preserves_values_and_single_evaluation(
         calls.clear()
         namespace: dict[str, object] = {"values": values, "expected": expected, "parse": parse}
         executable = implementation + "\nassert build(values) == expected\n"
-        exec(compile(executable, "<semantic-fixture>", "exec"), namespace)  # ruff: ignore[exec-builtin] -- execute authored semantic fixtures without external inputs.
+        exec(  # ruff: ignore[exec-builtin] -- execute authored semantic fixtures without external inputs.
+            compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+                executable, "<semantic-fixture>", "exec"
+            ),
+            namespace,
+        )
         assert calls == values
 
 
@@ -820,7 +830,12 @@ def test_constructor_dictionary_preserves_empty_inputs_and_duplicate_keys(rows: 
         namespace: dict[str, object] = {"rows": rows}
         executable = "def Entry(value):\n    return value\n" + implementation
         executable += "\nassert build(rows) == dict(rows)\n"
-        exec(compile(executable, "<semantic-fixture>", "exec"), namespace)  # ruff: ignore[exec-builtin] -- execute authored semantic fixtures without external inputs.
+        exec(  # ruff: ignore[exec-builtin] -- execute authored semantic fixtures without external inputs.
+            compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+                executable, "<semantic-fixture>", "exec"
+            ),
+            namespace,
+        )
 
 
 def test_dictionary_evaluation_order_requires_manual_review() -> None:
@@ -846,4 +861,9 @@ def test_dictionary_evaluation_order_requires_manual_review() -> None:
             f"{implementation}\n"
             "assert build([SimpleNamespace(id=1)]) == expected\n"
         )
-        exec(compile(executable, "<evaluation-order-fixture>", "exec"), {"expected": expected})  # ruff: ignore[exec-builtin] -- prove the documented no-autofix evaluation-order boundary.
+        exec(  # ruff: ignore[exec-builtin] -- prove the documented no-autofix evaluation-order boundary.
+            compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+                executable, "<evaluation-order-fixture>", "exec"
+            ),
+            {"expected": expected},
+        )

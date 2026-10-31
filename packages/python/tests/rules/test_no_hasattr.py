@@ -33,8 +33,8 @@ def test_reports_each_hasattr_call() -> None:
         pytest.param("def is_dc(cls):\n    return hasattr(cls, '__dataclass_fields__')\n", id="dunder-protocol-probe"),
     ],
 )
-def test_allows_runtime_feature_detection(source: str) -> None:
-    assert _lines(source) == []
+def test_rejects_runtime_feature_detection(source: str) -> None:
+    assert len(_lines(source)) == 1
 
 
 @pytest.mark.parametrize(
@@ -59,5 +59,30 @@ def test_allows_non_builtin_or_other_calls(source: str) -> None:
         pytest.param("tests/fakes/fake_agent.py", id="test-support"),
     ],
 )
-def test_skips_test_code(path: str) -> None:
-    assert _lines("hasattr(value, 'x')\n", path=path) == []
+def test_enforces_test_code(path: str) -> None:
+    assert _lines("hasattr(value, 'x')\n", path=path) == [1]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "callback = hasattr\ncallback(value, name)\n",
+        "import builtins as native\nnamespace = native\nnamespace.hasattr(value, name)\n",
+        "def checker(hasattr):\n    return hasattr(value, name)\nhasattr(value, name)\n",
+    ],
+)
+def test_rejects_reference_escapes_without_cross_scope_shadowing(source: str) -> None:
+    assert len(_lines(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "hasattr(value, '__call__')\n",
+        "hasattr(*values, '__call__')\n",
+        "import builtins\nbuiltins.hasattr(value, name)\n",
+        "from builtins import hasattr as probe\nprobe(value, name)\n",
+    ],
+)
+def test_preserves_native_ruff_ownership(source: str) -> None:
+    assert _lines(source) == []

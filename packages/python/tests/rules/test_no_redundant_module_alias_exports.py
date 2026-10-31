@@ -207,5 +207,7 @@ _NATIVE_OWNER_SYNTAX_CASES = (
 
 @pytest.mark.parametrize(("source", "expected"), _NATIVE_OWNER_SYNTAX_CASES)
 def test_native_syntax_reaches_existing_ownership_checks(source: str, expected: int) -> None:
-    compile(source, "public_owner.py", "exec")
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        source, "public_owner.py", "exec"
+    )
     assert len(_check(source)) == expected

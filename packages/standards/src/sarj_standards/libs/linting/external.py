@@ -2840,7 +2840,15 @@ def _wait_for_process(
 
 
 def _leader_exited(process: subprocess.Popen[bytes]) -> bool | None:
-    if os.name == "posix" and hasattr(os, "waitid") and hasattr(os, "WNOWAIT"):
+    if (
+        os.name == "posix"
+        and hasattr(  # sarj-noqa: SARJ499 -- Probe optional POSIX wait APIs before preserving an unreaped process-group leader.
+            os, "waitid"
+        )
+        and hasattr(  # sarj-noqa: SARJ499 -- Probe optional POSIX wait APIs before preserving an unreaped process-group leader.
+            os, "WNOWAIT"
+        )
+    ):
         # Keep the leader unreaped while descendants can own output streams.
         # Its reserved PID makes later process-group cleanup safe from PID reuse.
         return os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT) is not None

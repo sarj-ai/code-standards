@@ -3,6 +3,30 @@
   "precisionGate": "Review every finding up to 200; above 200, review every major cluster and a deterministic stratified sample of at least 50. Treat ambiguous findings as false positives for error-level rules.",
   "tasks": [
     {
+      "task": "rule-audit/python/no-dynamic-builtins",
+      "family": "python",
+      "ruleId": "no-dynamic-builtins",
+      "state": "pending",
+      "evidence": "Focused controls cover unshadowed builtin references, import/value/module aliases, lexical scopes and exact native ownership for S307/S102/T100/B009/TID251. Shared strict-runtime-policy calibration used native isolated immutable corpora: 154 labeled cases yielded 115 TP, 39 TN and zero FP/FN or native/custom overlaps; two deliberate parser failures were recorded separately. All policy references across 1,156 maintained source files were inspected. Three cold runs with three warm repetitions each on a fixed unbiased 200-file sample and redacted aggregate results are recorded in packages/python/benchmarks/python-runtime-bans.json. These bundle-level measurements do not establish broad field recall for each rule; independent field calibration remains pending.",
+      "outcome": "SARJ557: Reject the explicitly requested dynamic builtins at ERROR without a custom autofix. Preserve locally shadowed names and unrelated methods; required compiler, plugin and compatibility boundaries retain exact reasoned local exceptions. Arbitrary reflection and complex rebinding are not reconstructed. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/python/no-sys-path-mutation",
+      "family": "python",
+      "ruleId": "no-sys-path-mutation",
+      "state": "pending",
+      "evidence": "Focused controls cover direct writes, item/slice changes, in-place operations, imported/value/method aliases, list mutators and static builtin/operator mutations. Shared strict-runtime-policy calibration used native isolated immutable corpora: 154 labeled cases yielded 115 TP, 39 TN and zero FP/FN or native/custom overlaps; two deliberate parser failures were recorded separately. All policy references across 1,156 maintained source files were inspected. Three cold runs with three warm repetitions each on a fixed unbiased 200-file sample and redacted aggregate results are recorded in packages/python/benchmarks/python-runtime-bans.json. These bundle-level measurements do not establish broad field recall for each rule; independent field calibration remains pending.",
+      "outcome": "SARJ558: Reject sys.path mutation at ERROR without autofix under the explicit strict-policy request. Accept reads, snapshots and shadowed names. Unknown callbacks, arbitrary reflection and container-held aliases are not inferred; required interpreter bootstrap boundaries need a reasoned local exception. Full campaign completion is not claimed."
+    },
+    {
+      "task": "rule-audit/python/no-shared-mutable-default",
+      "family": "python",
+      "ruleId": "no-shared-mutable-default",
+      "state": "pending",
+      "evidence": "Focused controls and paired pinned-Ruff probes cover lambda defaults, read-only annotations, value/module aliases, bytearray, generic constructors and known mutable container expressions while preserving B006 ownership. Shared strict-runtime-policy calibration used native isolated immutable corpora: 154 labeled cases yielded 115 TP, 39 TN and zero FP/FN or native/custom overlaps; two deliberate parser failures were recorded separately. All policy references across 1,156 maintained source files were inspected. Three cold runs with three warm repetitions each on a fixed unbiased 200-file sample and redacted aggregate results are recorded in packages/python/benchmarks/python-runtime-bans.json. These bundle-level measurements do not establish broad field recall for each rule; independent field calibration remains pending.",
+      "outcome": "SARJ559: Reject proven shared mutable defaults at ERROR without a custom autofix under the explicit strict-policy request. Preserve immutable defaults and unknown factory return mutability; use an explicit cache owner or a reasoned local exception for intentional sharing. Complex rebinding is not reconstructed. Full campaign completion is not claimed."
+    },
+    {
       "task": "rule-audit/python/service-singleton-delegates-to-bulk",
       "family": "python",
       "ruleId": "service-singleton-delegates-to-bulk",
@@ -2701,8 +2725,8 @@
       "family": "python",
       "ruleId": "no-hasattr",
       "state": "pending",
-      "evidence": "Focused cases cover repeated calls on one line, module-level feature probes, shadowed and imported names, getattr, methods named hasattr, malformed input and test, conftest and test-support exclusion. A scan of one private application corpus reported 8 findings in 7 production files; all are attribute probes on typed values or untyped libraries, consistent with the rule. The 10-repository survey shows libraries use hasattr heavily for optional-dependency detection, which is why the rule stays warning-only and suppressible.",
-      "outcome": "Keep SARJ499 warning-only without autofix. Consumers baseline existing findings; genuine runtime feature detection keeps a reasoned local suppression."
+      "evidence": "The earlier warning survey documented optional-dependency and platform capability probes. The explicitly requested strict policy now includes authored tests, support modules and dunder/module probes; strengthened controls cover shadowing, simple aliases and delegation to native B004/TID251. Shared strict-runtime-policy calibration used native isolated immutable corpora: 154 labeled cases yielded 115 TP, 39 TN and zero FP/FN or native/custom overlaps; two deliberate parser failures were recorded separately. All policy references across 1,156 maintained source files were inspected. Three cold runs with three warm repetitions each on a fixed unbiased 200-file sample and redacted aggregate results are recorded in packages/python/benchmarks/python-runtime-bans.json. These bundle-level measurements do not establish broad field recall for each rule; independent field calibration remains pending.",
+      "outcome": "SARJ499: Enforce the explicit user-requested ERROR policy without autofix. Replace dynamic attribute probes with declared contracts where possible; legitimate runtime platform/compatibility boundaries retain exact reasoned local exceptions. The previous blanket test/module/dunder exemptions are removed. Full campaign completion is not claimed."
     },
     {
       "task": "rule-audit/iac/no-plaintext-secret-env",

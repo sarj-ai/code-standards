@@ -381,7 +381,9 @@ def _compiles(context: PythonFileContext) -> bool:
     if context.tree is None:
         return False
     try:
-        compile(context.tree, str(context.path), "exec")
+        compile(  # sarj-noqa: SARJ557 -- Compile the proposed AST to reject invalid scopes without executing it.
+            context.tree, str(context.path), "exec"
+        )
     except SyntaxError:
         return False
     return True

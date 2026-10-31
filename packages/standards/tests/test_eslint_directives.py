@@ -364,7 +364,8 @@ def test_native_postimage_is_immutable_and_retains_remaining_findings(
     assert expected["source.js"].mode == 0o640
     assert expected["source.js"].projection is not None
     assert expected["source.js"].projection.native == _AFTER
-    assert not hasattr(expected, "__setitem__")
+    with pytest.raises(TypeError):
+        expected["source.js"] = expected["source.js"]  # pyright: ignore[reportIndexIssue] -- Exercise the immutable runtime mapping instead of only its static interface.
     with pytest.raises(FrozenInstanceError):
         expected["source.js"].after = b"a different body"  # pyright: ignore[reportAttributeAccessIssue] -- deliberately exercise the frozen runtime assignment guard.
     assert source.read_bytes() == _BEFORE

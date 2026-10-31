@@ -218,7 +218,9 @@ def test_authored_example_files_compile_as_python(rule_id: RuleId, example: Rule
     for file in example.files:
         if file.path.suffix == ".py":
             try:
-                compile(file.source, str(file.path), "exec", dont_inherit=True)
+                compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+                    file.source, str(file.path), "exec", dont_inherit=True
+                )
             except SyntaxError as error:
                 pytest.fail(f"{rule_id}:{example.example_id}:{file.path}: invalid Python example: {error}")
 

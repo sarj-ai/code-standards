@@ -51,7 +51,9 @@ def _fixed(source: str, path: Path = _PATH) -> str:
 
 
 def _function(source: str) -> FunctionType:
-    code = compile(source, str(_PATH), "exec", dont_inherit=True)
+    code = compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        source, str(_PATH), "exec", dont_inherit=True
+    )
     constants: tuple[object, ...] = code.co_consts
     function = next(value for value in constants if isinstance(value, CodeType) and value.co_name == "authenticate")
     return FunctionType(function, {"compare_digest": compare_digest})
@@ -86,7 +88,9 @@ def test_security_autofix_exact_output_and_convergence(operator: str, newline: s
     assert _fixed(before) == expected
     assert _fixed(expected) == expected
     assert not PreferConstantTimeSecretCompare().check(_PATH, expected)
-    compile(expected, str(_PATH), "exec", dont_inherit=True)
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        expected, str(_PATH), "exec", dont_inherit=True
+    )
 
 
 def test_security_autofix_public_api_selection_suppression_and_unicode() -> None:
@@ -121,7 +125,9 @@ def test_security_autofix_preserves_existing_aliases_unicode_and_comparison_newl
     )
     assert _fixed(source) == expected
     assert _fixed(expected) == expected
-    compile(expected, str(_PATH), "exec", dont_inherit=True)
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        expected, str(_PATH), "exec", dont_inherit=True
+    )
 
 
 @pytest.mark.parametrize(

@@ -100,8 +100,15 @@ def _check_comprehension_node(
             if any(not ast.compare(call, candidate) for candidate in calls_in_elts):
                 continue
             reported.add(signature)
-            line = getattr(if_clause, "lineno", 1)
-            col = getattr(if_clause, "col_offset", 0) + 1
+            line = getattr(  # sarj-noqa: SARJ557 -- Preserve diagnostic positions when synthetic AST expressions omit source locations.
+                if_clause, "lineno", 1
+            )
+            col = (
+                getattr(  # sarj-noqa: SARJ557 -- Preserve diagnostic positions when synthetic AST expressions omit source locations.
+                    if_clause, "col_offset", 0
+                )
+                + 1
+            )
             if not is_suppressed(source_lines, line, code):
                 diags.append(
                     Diagnostic(

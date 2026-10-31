@@ -33,7 +33,9 @@ def test_private_opaque_mapping_preserves_exact_output_and_converges(ending: str
     assert not REGISTRY[_RULE]().check(path, after)
     assert fix_source(path, after, rule_ids=[_RULE]) == after
     assert fix_source(path, before, rule_ids=[]) == before
-    compile(after, str(path), "exec", dont_inherit=True)
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        after, str(path), "exec", dont_inherit=True
+    )
 
 
 @pytest.mark.parametrize(
@@ -79,7 +81,9 @@ def test_private_mapping_retains_namespace_aliases_and_unicode_offsets() -> None
     )
     fixed = fix_source(Path("app/service.py"), source, rule_ids=[_RULE])
     assert fixed == source.replace("Records[str, types.Any]", "Records[str, object]")
-    compile(fixed, "app/service.py", "exec", dont_inherit=True)
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        fixed, "app/service.py", "exec", dont_inherit=True
+    )
 
 
 def test_unreferenced_private_mapping_still_has_no_contract_consumers() -> None:

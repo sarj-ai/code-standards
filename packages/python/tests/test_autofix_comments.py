@@ -202,8 +202,12 @@ def test_comment_fixes_compile_to_identical_code_objects(rule_id: RuleId) -> Non
     source = _example(RuleId(rule_id)).focus_file.source
     fixed = fix_source(Path("app/service.py"), source, rule_ids=[rule_id])
     assert fixed != source
-    original_code = compile(source, "app/service.py", "exec", dont_inherit=True)
-    fixed_code = compile(fixed, "app/service.py", "exec", dont_inherit=True)
+    original_code = compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        source, "app/service.py", "exec", dont_inherit=True
+    )
+    fixed_code = compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        fixed, "app/service.py", "exec", dont_inherit=True
+    )
     assert fixed_code == original_code
 
 
@@ -244,8 +248,13 @@ def test_shared_narration_proof_expands_exact_comment_fixes(
     fixed = fix_source(path, source, rule_ids=["excessive-commentary"])
     assert fixed == expected
     assert ast.dump(ast.parse(fixed), include_attributes=True) == ast.dump(ast.parse(source), include_attributes=True)
-    assert compile(fixed, "app/service.py", "exec", dont_inherit=True) == compile(
-        source, "app/service.py", "exec", dont_inherit=True
+    assert (
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            fixed, "app/service.py", "exec", dont_inherit=True
+        )
+        == compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            source, "app/service.py", "exec", dont_inherit=True
+        )
     )
     assert rule.check(path, fixed) == []
     assert fix_source(path, fixed, rule_ids=["excessive-commentary"]) == fixed

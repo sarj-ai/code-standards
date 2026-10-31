@@ -33,7 +33,12 @@ def test_public_accept_example_is_immutable_and_preserves_unhashable_membership(
     source = example.focus_file.source
     namespace: dict[str, object] = {}
 
-    exec(compile(source, str(example.focus_file.path), "exec"), namespace)  # ruff: ignore[exec-builtin] - executable rule fixture
+    exec(  # ruff: ignore[exec-builtin] - executable rule fixture
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            source, str(example.focus_file.path), "exec"
+        ),
+        namespace,
+    )
 
     handle = namespace["handle"]
     assert callable(handle)
@@ -138,7 +143,12 @@ def test_public_final_dictionary_example_preserves_lookup_and_satisfies_both_rul
     example = next(example for example in _PUBLIC_EXAMPLES if example.example_id == "final-module-lookup")
     focus = example.focus_file
     namespace: dict[str, object] = {}
-    exec(compile(focus.source, str(focus.path), "exec"), namespace)  # ruff: ignore[exec-builtin] - executable rule fixture
+    exec(  # ruff: ignore[exec-builtin] - executable rule fixture
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            focus.source, str(focus.path), "exec"
+        ),
+        namespace,
+    )
     handle = namespace["handle"]
     assert callable(handle)
     assert handle("a") == 1

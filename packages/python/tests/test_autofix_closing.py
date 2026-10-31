@@ -72,7 +72,9 @@ def test_closing_candidates_match_exact_output_and_converge(rule_id: RuleId, bef
     assert REGISTRY[rule_id]().check(path, before)
     assert fix_source(path, before, rule_ids=[rule_id]) == after
     assert not REGISTRY[rule_id]().check(path, after)
-    compile(after, str(path), "exec", dont_inherit=True)
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        after, str(path), "exec", dont_inherit=True
+    )
     assert fix_source(path, after, rule_ids=[rule_id]) == after
     assert fix_source(path, before, rule_ids=[]) == before
 

@@ -91,7 +91,16 @@ def run_bytes(
         directory.chmod(0o700)
         process.private_directory(directory)
         payload = directory / f"payload.{hashlib.sha256(raw).hexdigest()}.json"
-        descriptor = os.open(payload, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        descriptor = os.open(
+            payload,
+            os.O_CREAT
+            | os.O_EXCL
+            | os.O_WRONLY
+            | getattr(  # sarj-noqa: SARJ557 -- Probe optional OS capabilities while preserving exclusive private payload creation.
+                os, "O_NOFOLLOW", 0
+            ),
+            0o600,
+        )
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(raw)
         payload_before = process.payload_record(payload)

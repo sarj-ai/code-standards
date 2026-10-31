@@ -235,7 +235,9 @@ def _native(package: str, source: str, paths: Sequence[str]) -> _Engine:
     codes = {
         name: rule.code
         for name, rule in registry.REGISTRY.items()
-        if getattr(rule, "enabled_by_default", True)
+        if getattr(  # sarj-noqa: SARJ557 -- Support native plugin rule classes whose legacy metadata omits enabled_by_default.
+            rule, "enabled_by_default", True
+        )
         and rule.documentation is not None
         and rule.documentation.autofix is AutofixPolicy.SAFE
     }

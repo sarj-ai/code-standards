@@ -51,7 +51,7 @@ def test_static_import_rewrite_loses_an_observable_loader_call(
     rewritten = _SOURCE.replace("plugin = importlib.import_module('sys')", replacement)
     assert not rule.check(_PATH, rewritten)
     load = importlib.import_module
-    canonical_import = builtins.__import__
+    canonical_import = builtins.__import__  # ruff: ignore[banned-api] -- Observe the real import hook to prove the rewrite preserves interpreter state.
     cached_sys = sys.modules["sys"]
     calls: list[str] = []
 
@@ -71,5 +71,5 @@ def test_static_import_rewrite_loses_an_observable_loader_call(
         changed = _load_source(tmp_path / "rewritten_loader.py", rewritten)
         assert not calls
         assert _plugin(original) is _plugin(changed) is sys
-        assert builtins.__import__ is canonical_import
+        assert builtins.__import__ is canonical_import  # ruff: ignore[banned-api] -- Assert the authored loader fixture leaves the real import hook unchanged.
         assert sys.modules["sys"] is cached_sys is sys

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "8f7faa29e8f4b8df5d387af1a7e761783649e0b6b2edbaa333450723019b4da8",
-  "cliSha256": "ef73663ffeb2f2607186960941564cd35c5ce836fc5d1d78b612c02274af82a4",
+  "catalogSha256": "6459666a871828f05b634bb7564578338b9eafb42fc386630df7159fcc7a2ca4",
+  "cliSha256": "375043dd0f985f09d655639a0905e4bc98804a297fff06b5ab4ed902c6abc6e3",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -10404,6 +10404,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-dynamic-builtins": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service/reader.py",
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass User:\n    name: str\n\n\ndef read(value: User) -> str:\n    return value.name\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service/reader.py",
+          "id": "declared-field",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A declared field makes the contract explicit"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service/reader.py",
+              "source": "def read(value, field):\n    return getattr(value, field, None)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service/reader.py",
+          "id": "dynamic-field",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A string field name hides the object contract"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-exception-text-in-500-detail": {
       "examples": [
         {
@@ -12971,6 +13006,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:no-shared-mutable-default": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service/batch.py",
+              "source": "from collections.abc import Sequence\n\n\ndef batch(values: Sequence[int] = ()):\n    return values\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service/batch.py",
+          "id": "immutable-default",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "An immutable tuple can be shared safely"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service/batch.py",
+              "source": "from collections.abc import Sequence\n\n\ndef batch(values: Sequence[int] = []):\n    return values\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service/batch.py",
+          "id": "read-only-annotation",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A Sequence annotation still shares a mutable list"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:no-slash-collection-root-under-prefix": {
       "examples": [
         {
@@ -13197,6 +13267,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Cancellation becomes a successful return"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-sys-path-mutation": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service/bootstrap.py",
+              "source": "import sys\n\nsearch_path = tuple(sys.path)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service/bootstrap.py",
+          "id": "inspect-search-path",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Inspecting a snapshot does not change import resolution"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service/bootstrap.py",
+              "source": "import sys\n\nsys.path.insert(0, \"/opt/application\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service/bootstrap.py",
+          "id": "mutating-search-path",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Import resolution depends on process-wide mutation"
         }
       ],
       "optionsSchemaSource": null

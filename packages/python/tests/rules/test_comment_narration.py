@@ -37,8 +37,13 @@ def test_exact_ordered_action_names_are_errors_with_a_line_preserving_fix(source
     expected = "".join("\n" if line.strip() in comment_rows else line for line in source.splitlines(keepends=True))
     assert fixed == expected
     assert ast.dump(ast.parse(fixed), include_attributes=True) == ast.dump(ast.parse(source), include_attributes=True)
-    assert compile(fixed, str(_PATH), "exec", dont_inherit=True) == compile(
-        source, str(_PATH), "exec", dont_inherit=True
+    assert (
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            fixed, str(_PATH), "exec", dont_inherit=True
+        )
+        == compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            source, str(_PATH), "exec", dont_inherit=True
+        )
     )
     assert ExcessiveCommentary().check(_PATH, fixed) == []
     assert fix_source(_PATH, fixed, rule_ids=["excessive-commentary"]) == fixed
@@ -157,8 +162,13 @@ def test_exact_accumulation_narration_has_a_line_preserving_fix(count: int, newl
     fixed = fix_source(_PATH, source, rule_ids=["excessive-commentary"])
     assert fixed == source.replace(comments.replace("\n", newline), newline * count)
     assert ast.dump(ast.parse(fixed), include_attributes=True) == ast.dump(ast.parse(source), include_attributes=True)
-    assert compile(fixed, str(_PATH), "exec", dont_inherit=True) == compile(
-        source, str(_PATH), "exec", dont_inherit=True
+    assert (
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            fixed, str(_PATH), "exec", dont_inherit=True
+        )
+        == compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            source, str(_PATH), "exec", dont_inherit=True
+        )
     )
     assert ExcessiveCommentary().check(_PATH, fixed) == []
     assert fix_source(_PATH, fixed, rule_ids=["excessive-commentary"]) == fixed

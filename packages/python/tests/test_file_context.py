@@ -96,7 +96,9 @@ def test_syntax_errors_do_not_poison_the_next_context() -> None:
 )
 def test_opaque_surrogate_annotations_do_not_crash_any_registered_rule(source: str) -> None:
     # The outer program is valid Python; only its forward annotation text is unparseable.
-    compile(source, "domain.py", "exec")
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        source, "domain.py", "exec"
+    )
     for rule_type in REGISTRY.values():
         assert rule_type().check(Path("app/services/domain.py"), source) == []
 
@@ -117,7 +119,9 @@ def test_unencodable_source_is_inert_and_does_not_poison_later_checks(prefix: st
 def test_runner_accepts_python_utf8_signature_without_moving_findings(tmp_path: Path, encoding: str) -> None:
     path = tmp_path / "app.py"
     path.write_text('__all__ = ["record"]\nrecord = 1\n', encoding=encoding)
-    compile(path.read_bytes(), str(path), "exec")
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        path.read_bytes(), str(path), "exec"
+    )
     findings = analyze(["no-dunder-all"], [path])
     assert [(finding.code, finding.line, finding.col) for finding in findings] == [("SARJ438", 1, 1)]
 
