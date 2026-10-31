@@ -27,6 +27,12 @@ export function primitiveKeyword(node: ts.TypeNode | undefined): boolean {
     node.kind === ts.SyntaxKind.BooleanKeyword || node.kind === ts.SyntaxKind.BigIntKeyword);
 }
 
+/** Admit only a direct broad primitive and null or undefined pair. */
+export function nullishPrimitiveUnion(node: ts.TypeNode | undefined): boolean {
+  return node !== undefined && ts.isUnionTypeNode(node) && node.types.length === 2 && node.types.some(primitiveKeyword) &&
+    node.types.some((part) => part.kind === ts.SyntaxKind.UndefinedKeyword || (ts.isLiteralTypeNode(part) && part.literal.kind === ts.SyntaxKind.NullKeyword));
+}
+
 export function consumerAnnotation(node: ScalarConsumerNode): TSESTree.TypeNode | undefined {
   if (node.params.length !== 1) return undefined;
   const parameter = node.params[0];
