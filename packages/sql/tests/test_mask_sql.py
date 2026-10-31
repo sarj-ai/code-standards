@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -8,9 +9,11 @@ from sarj_sql_lint.__main__ import analyze, main
 from sarj_sql_lint.rule_base import (
     dollar_quoted_lines,
     mask_sql,
+    mask_sql_literals_and_comments,
     normalize_sql_identifier,
     source_location,
     split_statements,
+    sql_code_matches,
     sql_comments,
 )
 
@@ -83,6 +86,20 @@ def test_plain_scan_runs_preserve_public_outputs_and_offsets(source: str, expect
     assert actual == expected
     assert mask_sql(source, mask_dollar_literals=True) == expected
     assert actual.index("SELECT live") == source.index("SELECT live")
+
+
+def test_code_match_offset_inside_quoted_identifier_keeps_full_context_and_global_spans() -> None:
+    source = 'SELECT "name,(inside)tail", fn(value), final;'
+    masked = mask_sql_literals_and_comments(source)
+
+    matches = tuple(sql_code_matches(re.compile(r"[(),]"), masked, pos=source.index("inside")))
+
+    assert [(match.start(), match.end(), match.group()) for match in matches] == [
+        (26, 27, ","),
+        (30, 31, "("),
+        (36, 37, ")"),
+        (37, 38, ","),
+    ]
 
 
 def test_templates_preserve_following_comment_locations() -> None:

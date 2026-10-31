@@ -5,7 +5,6 @@ from pathlib import Path
 import re
 import shutil
 import tomllib
-from types import MappingProxyType
 from typing import TYPE_CHECKING, Final
 
 from packaging.version import Version
@@ -28,6 +27,7 @@ from . import (
     uvtool,
 )
 from .configs import (
+    CONFIG_SPECS,
     MOBILE_COMPANION_CONFIGS,
     PYTHON_COMPANION_CONFIGS,
     TYPESCRIPT_COMPANION_CONFIGS,
@@ -37,6 +37,8 @@ from .configs import (
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+
+    from .configs import ConfigDestination
 
 
 _BUNDLE_LINE = re.compile(r'(?m)^bundle\s*=\s*"[^"]*"\s*$')
@@ -68,24 +70,6 @@ _INSTALL_MUTATED_NAMES: Final = frozenset(
         "pyproject.toml",
         "uv.lock",
         "yarn.lock",
-    }
-)
-_CONFIG_SOURCES = MappingProxyType(
-    {
-        "ruff": ("ruff.strict.toml", "ruff.application.toml", ".ruff-strict.toml", "python"),
-        "pyright": ("pyright.strict.json", "pyright.strict.json", ".pyright-strict.json", "python"),
-        "eslint": ("eslint.strict.ts", "eslint.application.mjs", "eslint.strict.ts", "typescript"),
-        "swiftformat": ("swiftformat.strict", "swiftformat.strict", ".swiftformat", "swift"),
-        "swiftlint": ("swiftlint.strict.yml", "swiftlint.strict.yml", ".swiftlint.yml", "swift"),
-        "ktlint": ("ktlint.strict.editorconfig", "ktlint.strict.editorconfig", ".editorconfig", "kotlin"),
-        "detekt": ("detekt.strict.yml", "detekt.strict.yml", "config/detekt/detekt.yml", "kotlin"),
-        "mobile-security": ("mobsf.strict.yml", "mobsf.strict.yml", ".mobsf", "root"),
-        "markdownlint": ("markdownlint.strict.yaml", "markdownlint.strict.yaml", ".markdownlint.yaml", "root"),
-        "shellcheck": ("shellcheck.strict.rc", "shellcheck.strict.rc", ".shellcheckrc", "root"),
-        "taplo": ("taplo.strict.toml", "taplo.strict.toml", ".taplo.toml", "root"),
-        "yamllint": ("yamllint.strict.yaml", "yamllint.strict.yaml", ".yamllint.yaml", "root"),
-        "zizmor": ("zizmor.strict.yml", "zizmor.strict.yml", "zizmor.yml", "root"),
-        "checkov": ("checkov.strict.yml", "checkov.strict.yml", ".checkov.yml", "root"),
     }
 )
 _MIRROR_EXCLUDED_PARTS: Final = frozenset({"example", "examples", "fixture", "fixtures", "test", "tests"})
@@ -298,7 +282,7 @@ def _javascript_install_roots(
 
 
 def _upgrade_config_writes(root: Path, adopted: manifest.Manifest, changes: list[Change]) -> list[tuple[Path, Path]]:
-    destinations = {
+    destinations: dict[ConfigDestination, Path] = {
         "root": root,
         "python": (root / adopted.python_dest).resolve(),
         "typescript": (root / adopted.typescript_dest).resolve(),
@@ -307,19 +291,18 @@ def _upgrade_config_writes(root: Path, adopted: manifest.Manifest, changes: list
     }
     config_writes: list[tuple[Path, Path]] = []
     for name in adopted.configs:
-        spec = _CONFIG_SOURCES.get(name)
+        spec = CONFIG_SPECS.get(name)
         if spec is None:
             msg = f"manifest declares unknown config {name!r}"
             raise ValueError(msg)
-        standard, _application, target_name, kind = spec
-        destination = destinations[kind]
+        destination = destinations[spec.destination_kind]
         try:
             destination.relative_to(root.resolve())
         except ValueError as exc:
             msg = f"manifest destination for {name} escapes repository root"
             raise ValueError(msg) from exc
-        target = destination / (eslint_preset_name(destination) if name == "eslint" else target_name)
-        source = CONFIGS_DIR / (target.name if name == "eslint" else standard)
+        target = destination / (eslint_preset_name(destination) if name == "eslint" else spec.destination_name)
+        source = CONFIGS_DIR / (target.name if name == "eslint" else spec.source_name)
         if not target.is_file() or target.read_bytes() != source.read_bytes():
             targets = (target, *_identical_config_mirrors(root, target))
             for config_target in targets:

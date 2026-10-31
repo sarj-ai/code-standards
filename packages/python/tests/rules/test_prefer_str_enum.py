@@ -276,15 +276,77 @@ class Rec:
     assert len(_check(src)) == 1
 
 
-def test_stringized_str_annotation_choice_field_should_flag():
-    src = """
+@pytest.mark.parametrize("annotation", ['"str"', r'"\x73tr"', '"s" "tr"'])
+def test_stringized_str_annotation_choice_field_should_flag(annotation: str) -> None:
+    src = f"""
 from pydantic import BaseModel
 
 class Rec(BaseModel):
     choices = ["a", "b"]
-    status: "str" = "a"
+    status: {annotation} = "a"
 """
     assert len(_check(src)) == 1
+
+
+@pytest.mark.parametrize("annotation", [r'"\x73tr"', '"s" "tr"'])
+def test_encoded_string_choice_findings_do_not_depend_on_hint_comments(annotation: str) -> None:
+    source = f'class Record:\n    choices = ("a", "b")\n    status: {annotation} = "a"\n'
+    commented = source.replace("class Record:", "class Record: # str")
+    assert ast.dump(ast.parse(source)) == ast.dump(ast.parse(commented))
+
+    findings = _check(source)
+
+    assert len(findings) == 1
+    assert _check(commented) == findings
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(
+            r"""class Record:
+    choices = (1, 2)
+    status: "\x73tr" = "a"
+""",
+            id="non-string-choices",
+        ),
+        pytest.param(
+            r"""from application import str
+class Record:
+    choices = ("a", "b")
+    status: "\x73tr" = "a"
+""",
+            id="foreign-string-provider",
+        ),
+        pytest.param(
+            r"""str = int
+class Record:
+    choices = ("a", "b")
+    status: "\x73tr" = "a"
+""",
+            id="rebound-builtin",
+        ),
+        pytest.param(
+            """from application import Unknown
+class Record:
+    choices = ("a", "b")
+    status: "Unknown" = "a"
+""",
+            id="unproven-annotation",
+        ),
+        pytest.param(
+            r"""class Record:
+    choices = ["a", "b"]
+    status: "\x73tr" = "a"
+Record.choices.extend(runtime_choices)
+""",
+            id="mutated-class-collection",
+        ),
+    ],
+)
+def test_encoded_choice_hint_retains_semantic_exclusions(source: str) -> None:
+    assert _check(source) == []
+    assert _check(source.replace("class Record:", "class Record: # str")) == []
 
 
 def test_bare_assignment_without_annotation_not_flagged():
