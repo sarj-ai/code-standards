@@ -21,6 +21,7 @@ const PRIVATE_CASES = [
   [DEPENDENCY, "const nullableAccount = {...account, email: null}; function label(p: {name: string; email: string | null}): string {return p.name;} label(nullableAccount);"],
   [DEPENDENCY, "const nullableAccount = {...account, email: undefined}; function label(p: {readonly name: string; readonly email: undefined | string}): string {return p.name;} label(nullableAccount);"],
   [CONSUMER_UNION, "interface Animal {readonly name: string} interface Dog extends Animal {readonly email: string} function label(p: Dog | Animal): string {return p.name;} label(account);"],
+  [CONSUMER_UNION, "interface Animal {readonly name: string | null} interface Dog extends Animal {readonly email: string} function label(p: Dog | Animal): string {return p.name ?? '';} label(account);"],
 ] as const;
 type ConfigFactory = (options: {tsconfigRootDir: string; projectService?: boolean}) => Linter.Config[];
 const FACTORIES: ReadonlyArray<readonly [string, ConfigFactory]> = [

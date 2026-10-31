@@ -5,11 +5,13 @@ interface ContractProof {
   readonly checker: ts.TypeChecker;
   readonly active: Set<ts.Type>;
   readonly completed: WeakMap<ts.Type, boolean>;
+  readonly origins: Map<string, ts.Declaration> | undefined;
 }
 
 /** Prove that native member lookup has a complete, finite structural key space. */
-export function closedObjectContract(type: ts.Type, checker: ts.TypeChecker): boolean {
-  return visitContract(type, { checker, active: new Set(), completed: new WeakMap() });
+export function closedObjectContract(type: ts.Type, checker: ts.TypeChecker, singlePropertyOrigins = false): boolean {
+  return visitContract(type, { checker, active: new Set(), completed: new WeakMap(),
+    origins: singlePropertyOrigins ? new Map() : undefined });
 }
 
 function visitContract(type: ts.Type, proof: ContractProof): boolean {
@@ -27,10 +29,23 @@ function visitContract(type: ts.Type, proof: ContractProof): boolean {
 
 function completeObject(type: ts.Type, proof: ContractProof): boolean {
   if (!ordinaryObject(type, proof.checker)) return false;
+  if (proof.origins && !singleOrigins(type, proof.origins)) return false;
   // A symbol may also carry value declarations, notably the global Object constructor.
   const declarations = type.getSymbol()?.getDeclarations()?.filter((declaration) => ts.isInterfaceDeclaration(declaration) || ts.isTypeLiteralNode(declaration));
   if (!declarations?.length) return false;
   return declarations.every((declaration) => completeDeclaration(declaration, proof));
+}
+
+/** A recovered merged or overridden property cannot supply an unambiguous contract. */
+function singleOrigins(type: ts.Type, origins: Map<string, ts.Declaration>): boolean {
+  for (const property of type.getProperties()) {
+    const declarations = property.getDeclarations();
+    const declaration = declarations?.[0];
+    if (!declaration || declarations?.length !== 1 ||
+      (origins.has(property.name) && origins.get(property.name) !== declaration)) return false;
+    origins.set(property.name, declaration);
+  }
+  return true;
 }
 
 function ordinaryObject(type: ts.Type, checker: ts.TypeChecker): boolean {

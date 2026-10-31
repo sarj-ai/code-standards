@@ -36,4 +36,7 @@ it("bounds shared-ancestor validation by the native heritage graph", () => {
   expect(closedObjectContract(checker.getDeclaredTypeOfSymbol(root), observed)).toBe(true);
 
   expect(indexQueries).toBeLessThanOrEqual(16 * 4 + 3);
+  const ordinaryQueries = indexQueries;
+  expect(closedObjectContract(checker.getDeclaredTypeOfSymbol(root), observed, true)).toBe(true);
+  expect(indexQueries - ordinaryQueries).toBeLessThanOrEqual(16 * 4 + 3);
 });
