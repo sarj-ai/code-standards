@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "0ef7474a8c0b3059ad55087b12e9c4e48b2c7cd0c06d8e94b5d79719c3b51a37",
+  "catalogSha256": "14b8a47894de50f521d8ae16c9d71d8c754d125b511adf4696694dec8f0d4a53",
   "cliSha256": "c3ce9c2522ce9fb9379e94c338fa6508f200fbed76701bcf9b1c7747cc89a33b",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -2909,6 +2909,49 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "The private consumer needs the covering Animal contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\ninterface Animal {\n  readonly name: string | null;\n}\ninterface Dog extends Animal {\n  readonly breed: string;\n}\nexport type KeptDog = Dog;\nconst dog: Dog = { name: \"Ada\", breed: \"Collie\" };\nfunction label(value: Dog | Animal): string {\n  return value.name ?? \"\";\n}\nlabel(dog);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\ninterface Animal {\n  readonly name: string | null;\n}\ninterface Dog extends Animal {\n  readonly breed: string;\n}\nexport type KeptDog = Dog;\nconst dog: Dog = { name: \"Ada\", breed: \"Collie\" };\nfunction label(value: Animal): string {\n  return value.name ?? \"\";\n}\nlabel(dog);\n"
+            }
+          ],
+          "focusPath": "src/case.ts",
+          "id": "nullable-covered-alternative",
+          "outcome": "reject",
+          "scenarioId": "nullable-readonly-contract",
+          "title": "A nullable name retains the covering Animal contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\ninterface Animal {\n  readonly name: string | null;\n}\ninterface Dog extends Animal {\n  readonly breed: \"Collie\";\n}\nexport type KeptDog = Dog;\nconst dog: Dog = { name: \"Ada\", breed: \"Collie\" };\nfunction label(value: Dog | Animal): string {\n  return value.name ?? \"\";\n}\nlabel(dog);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/case.ts",
+          "id": "nullable-domain-contract",
+          "outcome": "accept",
+          "scenarioId": "nullable-readonly-contract",
+          "title": "A literal breed keeps the authored domain contract"
         },
         {
           "expectedCount": 0,

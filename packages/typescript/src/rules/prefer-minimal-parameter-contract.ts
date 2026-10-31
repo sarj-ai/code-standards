@@ -10,7 +10,7 @@ import { currentNativeSource } from "./_checked-native-source.js";
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isGeneratedFile } from "./_paths.js";
 import { minimalConsumerFix, validConsumerFixCalls } from "./_private-consumer-fix.js";
-import { consumerAnnotation, directEval, exportedSymbols, primitiveKeyword, privateScalarConsumer, type ScalarConsumerNode } from "./_private-scalar-consumer.js";
+import { consumerAnnotation, directEval, exportedSymbols, nullishPrimitiveUnion, primitiveKeyword, privateScalarConsumer, type ScalarConsumerNode } from "./_private-scalar-consumer.js";
 
 const CONFIG = { path: "tsconfig.json", source: '{"compilerOptions":{"strict":true,"target":"ESNext","module":"ESNext","moduleResolution":"Bundler"}}' } as const;
 const EXAMPLE = 'export {}; const account = {name: "Ada", email: "a"}; function label(user: {readonly email: string; readonly name: string}): string {return user.name;} label(account);';
@@ -51,11 +51,6 @@ function inlineFields(node: ts.TypeLiteralNode, reads: ReadonlySet<string>): Rea
     fields.set(key, !member.questionToken);
   }
   return fields;
-}
-
-function nullishPrimitiveUnion(node: ts.TypeNode | undefined): boolean {
-  return node !== undefined && ts.isUnionTypeNode(node) && node.types.length === 2 && node.types.some(primitiveKeyword) &&
-    node.types.some((part) => part.kind === ts.SyntaxKind.UndefinedKeyword || (ts.isLiteralTypeNode(part) && part.literal.kind === ts.SyntaxKind.NullKeyword));
 }
 
 export default createRule<[], "minimal">({

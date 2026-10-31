@@ -313,7 +313,9 @@ function compilerIssues(source: string) {
     ? ts.createSourceFile(path, source, version, true)
     : original(path, version, onError, create);
   const program = ts.createProgram([CONTRACT_PATH], options, host);
-  return [...(loaded.error === undefined ? [] : [loaded.error]), ...parsed.errors, ...ts.getPreEmitDiagnostics(program)].map((issue) => ({
+  const contract = program.getSourceFile(CONTRACT_PATH);
+  if (contract === undefined) throw new Error("Compiler contract source was not loaded.");
+  return [...(loaded.error === undefined ? [] : [loaded.error]), ...parsed.errors, ...ts.getPreEmitDiagnostics(program, contract)].map((issue) => ({
     path: issue.file?.fileName.replaceAll("\\", "/"),
     line: issue.file !== undefined && issue.start !== undefined ? issue.file.getLineAndCharacterOfPosition(issue.start).line + 1 : undefined,
     message: ts.flattenDiagnosticMessageText(issue.messageText, "\n"),
