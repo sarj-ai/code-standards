@@ -1,33 +1,104 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import os
 from pathlib import Path
 import re
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, Literal
 
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 
-CONFIG_NAMES: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
+type ConfigDestination = Literal["root", "python", "typescript", "swift", "kotlin"]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ConfigSpec:
+    source_name: str
+    destination_name: str
+    destination_kind: ConfigDestination
+
+
+CONFIG_SPECS: Final[Mapping[str, ConfigSpec]] = MappingProxyType(
     {
-        "ruff": ("ruff.strict.toml", ".ruff-strict.toml"),
-        "pyright": ("pyright.strict.json", ".pyright-strict.json"),
-        "eslint": ("eslint.strict.ts", "eslint.strict.ts"),
-        "swiftformat": ("swiftformat.strict", ".swiftformat"),
-        "swiftlint": ("swiftlint.strict.yml", ".swiftlint.yml"),
-        "ktlint": ("ktlint.strict.editorconfig", ".editorconfig"),
-        "detekt": ("detekt.strict.yml", "config/detekt/detekt.yml"),
-        "mobile-security": ("mobsf.strict.yml", ".mobsf"),
-        "markdownlint": ("markdownlint.strict.yaml", ".markdownlint.yaml"),
-        "taplo": ("taplo.strict.toml", ".taplo.toml"),
-        "yamllint": ("yamllint.strict.yaml", ".yamllint.yaml"),
-        "shellcheck": ("shellcheck.strict.rc", ".shellcheckrc"),
-        "zizmor": ("zizmor.strict.yml", "zizmor.yml"),
-        "checkov": ("checkov.strict.yml", ".checkov.yml"),
+        "ruff": ConfigSpec(
+            source_name="ruff.strict.toml",
+            destination_name=".ruff-strict.toml",
+            destination_kind="python",
+        ),
+        "pyright": ConfigSpec(
+            source_name="pyright.strict.json",
+            destination_name=".pyright-strict.json",
+            destination_kind="python",
+        ),
+        "eslint": ConfigSpec(
+            source_name="eslint.strict.ts",
+            destination_name="eslint.strict.ts",
+            destination_kind="typescript",
+        ),
+        "swiftformat": ConfigSpec(
+            source_name="swiftformat.strict",
+            destination_name=".swiftformat",
+            destination_kind="swift",
+        ),
+        "swiftlint": ConfigSpec(
+            source_name="swiftlint.strict.yml",
+            destination_name=".swiftlint.yml",
+            destination_kind="swift",
+        ),
+        "ktlint": ConfigSpec(
+            source_name="ktlint.strict.editorconfig",
+            destination_name=".editorconfig",
+            destination_kind="kotlin",
+        ),
+        "detekt": ConfigSpec(
+            source_name="detekt.strict.yml",
+            destination_name="config/detekt/detekt.yml",
+            destination_kind="kotlin",
+        ),
+        "mobile-security": ConfigSpec(
+            source_name="mobsf.strict.yml",
+            destination_name=".mobsf",
+            destination_kind="root",
+        ),
+        "markdownlint": ConfigSpec(
+            source_name="markdownlint.strict.yaml",
+            destination_name=".markdownlint.yaml",
+            destination_kind="root",
+        ),
+        "taplo": ConfigSpec(
+            source_name="taplo.strict.toml",
+            destination_name=".taplo.toml",
+            destination_kind="root",
+        ),
+        "yamllint": ConfigSpec(
+            source_name="yamllint.strict.yaml",
+            destination_name=".yamllint.yaml",
+            destination_kind="root",
+        ),
+        "shellcheck": ConfigSpec(
+            source_name="shellcheck.strict.rc",
+            destination_name=".shellcheckrc",
+            destination_kind="root",
+        ),
+        "zizmor": ConfigSpec(
+            source_name="zizmor.strict.yml",
+            destination_name="zizmor.yml",
+            destination_kind="root",
+        ),
+        "checkov": ConfigSpec(
+            source_name="checkov.strict.yml",
+            destination_name=".checkov.yml",
+            destination_kind="root",
+        ),
     }
+)
+
+CONFIG_NAMES: Final[Mapping[str, tuple[str, str]]] = MappingProxyType(
+    {name: (spec.source_name, spec.destination_name) for name, spec in CONFIG_SPECS.items()}
 )
 
 # ESLint consumers also receive React Doctor's data-only companion config.

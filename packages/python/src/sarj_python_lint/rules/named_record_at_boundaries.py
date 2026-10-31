@@ -251,7 +251,7 @@ def _resolve_annotation(node: ast.expr | None) -> ast.expr | None:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         try:
             return ast.parse(node.value.strip(), mode="eval").body
-        except SyntaxError:
+        except SyntaxError, UnicodeError:
             return None
     return node
 

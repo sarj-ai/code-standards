@@ -19,6 +19,8 @@ from sarj_python_lint.rules._paths import is_generated
 
 
 if TYPE_CHECKING:
+    from typing import Never
+
     from sarj_python_lint.rules._first_party import FirstPartyFacts
 
 
@@ -239,10 +241,14 @@ def _patterns(value: object) -> tuple[str, ...] | None:
     return tuple(item for item in value if isinstance(item, str))
 
 
+def _raise_walk_error(error: OSError) -> Never:
+    raise error
+
+
 def _files(root: Path, pattern: str) -> list[Path]:
     found: list[Path] = []
     try:
-        for count, (directory, directories, filenames) in enumerate(root.walk()):
+        for count, (directory, directories, filenames) in enumerate(root.walk(on_error=_raise_walk_error)):
             if count >= _MAX_DIRECTORIES or len(found) >= _MAX_FILES:
                 # A partial inventory cannot establish uniqueness.
                 return []

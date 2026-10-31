@@ -33,36 +33,75 @@ class NativeTool:
     version_stderr: bool = False
 
 
-TOOLS: Final = MappingProxyType(
-    {
-        tool.name: tool
-        for tool in (
-            NativeTool("helm", "4.3.1", ("version", "--short"), r"^v(?P<version>\d+\.\d+\.\d+)"),
-            NativeTool("kubeconform", "0.8.0", ("-v",), r"^v?(?P<version>\d+\.\d+\.\d+)"),
-            NativeTool("kube-linter", "0.8.3", ("version",), r"v?(?P<version>\d+\.\d+\.\d+)"),
-            NativeTool("shfmt", "3.14.1", ("--version",), r"^v(?P<version>\d+\.\d+\.\d+)"),
-            NativeTool("shellcheck", "0.11.0", ("--version",), r"^version:[ \t]*(?P<version>\d+\.\d+\.\d+)[ \t]*\r?$"),
-            NativeTool("actionlint", "1.7.12", ("-version",), r"^(?P<version>\d+\.\d+\.\d+)"),
-            NativeTool("hadolint", "2.15.1", ("--version",), r"v?(?P<version>\d+\.\d+\.\d+)"),
-            NativeTool("jscpd", "5.4.2", ("--version",), r"^jscpd (?P<version>\d+\.\d+\.\d+)$", frozenset()),
-            NativeTool("knip", "6.42.1", ("--version",), r"^(?P<version>\d+\.\d+\.\d+)$", frozenset()),
-            NativeTool("terraform", "1.17.0", ("version",), r"Terraform v(?P<version>\d+\.\d+\.\d+)"),
-            NativeTool(
-                "tflint",
-                "0.65.0",
-                ("--version", "--config", str(CONFIGS_DIR / "tflint.version.hcl")),
-                r"TFLint version (?P<version>\d+\.\d+\.\d+)",
-                frozenset({2}),
-            ),
-            NativeTool(
-                "docker",
-                "5.6.1",
-                ("compose", "version", "--format", "json"),
-                r'"version"\s*:\s*"v?(?P<version>\d+\.\d+\.\d+)"',
-            ),
-        )
-    }
+@dataclass(frozen=True, slots=True, kw_only=True)
+class _ManagedToolSpec:
+    tool: NativeTool
+    mise_ref: str
+
+
+_MANAGED_TOOL_SPECS: Final = (
+    _ManagedToolSpec(
+        tool=NativeTool("helm", "4.3.1", ("version", "--short"), r"^v(?P<version>\d+\.\d+\.\d+)"),
+        mise_ref="aqua:helm/helm",
+    ),
+    _ManagedToolSpec(
+        tool=NativeTool("kubeconform", "0.8.0", ("-v",), r"^v?(?P<version>\d+\.\d+\.\d+)"),
+        mise_ref="aqua:yannh/kubeconform",
+    ),
+    _ManagedToolSpec(
+        tool=NativeTool("kube-linter", "0.8.3", ("version",), r"v?(?P<version>\d+\.\d+\.\d+)"),
+        mise_ref="aqua:stackrox/kube-linter",
+    ),
+    _ManagedToolSpec(
+        tool=NativeTool("shfmt", "3.14.1", ("--version",), r"^v(?P<version>\d+\.\d+\.\d+)"),
+        mise_ref="aqua:mvdan/sh",
+    ),
+    _ManagedToolSpec(
+        tool=NativeTool("shellcheck", "0.11.0", ("--version",), r"^version:[ \t]*(?P<version>\d+\.\d+\.\d+)[ \t]*\r?$"),
+        mise_ref="aqua:koalaman/shellcheck",
+    ),
+    _ManagedToolSpec(
+        tool=NativeTool("actionlint", "1.7.12", ("-version",), r"^(?P<version>\d+\.\d+\.\d+)"),
+        mise_ref="aqua:rhysd/actionlint",
+    ),
+    _ManagedToolSpec(
+        tool=NativeTool("hadolint", "2.15.1", ("--version",), r"v?(?P<version>\d+\.\d+\.\d+)"),
+        mise_ref="aqua:hadolint/hadolint",
+    ),
+    _ManagedToolSpec(
+        tool=NativeTool("jscpd", "5.4.2", ("--version",), r"^jscpd (?P<version>\d+\.\d+\.\d+)$", frozenset()),
+        mise_ref="github:kucherenko/jscpd",
+    ),
+    _ManagedToolSpec(
+        tool=NativeTool("knip", "6.42.1", ("--version",), r"^(?P<version>\d+\.\d+\.\d+)$", frozenset()),
+        mise_ref="npm:knip",
+    ),
+    _ManagedToolSpec(
+        tool=NativeTool("terraform", "1.17.0", ("version",), r"Terraform v(?P<version>\d+\.\d+\.\d+)"),
+        mise_ref="aqua:hashicorp/terraform",
+    ),
+    _ManagedToolSpec(
+        tool=NativeTool(
+            "tflint",
+            "0.65.0",
+            ("--version", "--config", str(CONFIGS_DIR / "tflint.version.hcl")),
+            r"TFLint version (?P<version>\d+\.\d+\.\d+)",
+            frozenset({2}),
+        ),
+        mise_ref="aqua:terraform-linters/tflint",
+    ),
+    _ManagedToolSpec(
+        tool=NativeTool(
+            "docker",
+            "5.6.1",
+            ("compose", "version", "--format", "json"),
+            r'"version"\s*:\s*"v?(?P<version>\d+\.\d+\.\d+)"',
+        ),
+        mise_ref="github:docker/compose",
+    ),
 )
+
+TOOLS: Final = MappingProxyType({spec.tool.name: spec.tool for spec in _MANAGED_TOOL_SPECS})
 
 
 _VERSION_QUERY_TIMEOUTS: Final = MappingProxyType({"knip": 15})
@@ -76,22 +115,7 @@ class NativeToolMissingError(NativeToolError):
     pass
 
 
-MISE_REFS: Final = MappingProxyType(
-    {
-        "helm": "aqua:helm/helm",
-        "kubeconform": "aqua:yannh/kubeconform",
-        "kube-linter": "aqua:stackrox/kube-linter",
-        "shfmt": "aqua:mvdan/sh",
-        "shellcheck": "aqua:koalaman/shellcheck",
-        "actionlint": "aqua:rhysd/actionlint",
-        "hadolint": "aqua:hadolint/hadolint",
-        "jscpd": "github:kucherenko/jscpd",
-        "knip": "npm:knip",
-        "terraform": "aqua:hashicorp/terraform",
-        "tflint": "aqua:terraform-linters/tflint",
-        "docker": "github:docker/compose",
-    }
-)
+MISE_REFS: Final = MappingProxyType({spec.tool.name: spec.mise_ref for spec in _MANAGED_TOOL_SPECS})
 
 
 def checked_tool(

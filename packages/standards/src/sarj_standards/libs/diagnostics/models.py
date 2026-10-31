@@ -599,12 +599,10 @@ class AnalysisReport:
             if identities.setdefault(key, identity) != identity:
                 msg = f"diagnostic rule key {key!r} refers to distinct source/rule identities"
                 raise ValueError(msg)
-            rules.setdefault(
-                key,
-                RuleDescriptor(
+            if key not in rules:
+                rules[key] = RuleDescriptor(
                     key, item.rule_id or item.code, item.help or item.rule_id or item.code, item.help_url, item.tags
-                ),
-            )
+                )
         return {
             "$schema": SCHEMA_URI,
             "schemaVersion": SCHEMA_VERSION,

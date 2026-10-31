@@ -563,10 +563,8 @@ def _message(column: str, table: str, *, is_dump: bool) -> str:
 
 def _clause_end(statement: str, start: int) -> int:
     depth = 0
-    for match in sql_code_matches(_CLAUSE_DELIMITER, statement):
+    for match in sql_code_matches(_CLAUSE_DELIMITER, statement, pos=start):
         position = match.start()
-        if position < start:
-            continue
         char = match.group()
         if char == "(":
             depth += 1
