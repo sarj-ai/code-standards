@@ -106,7 +106,7 @@ def _run_ci_step(
     command = step["run"]
     assert isinstance(command, str)
     return subprocess.run(
-        ("bash", "-e", "-c", command),
+        ("bash", "--noprofile", "--norc", "-e", "-c", command),
         cwd=root,
         env=environment,
         check=False,
