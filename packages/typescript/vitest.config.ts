@@ -31,6 +31,11 @@ async function sharedModuleGraphTests(): Promise<string[]> {
 
 function localCheckWorkerOptions(): { maxWorkers?: number } {
   const options: { maxWorkers?: number } = {};
+  const workerText = process.env["SARJ_LOCAL_CHECK_WORKERS"];
+  if (workerText !== undefined && /^[1-9]\d*$/u.test(workerText) && Number.isSafeInteger(Number(workerText))) {
+    options.maxWorkers = Math.min(availableParallelism(), Number(workerText));
+    return options;
+  }
   const capacityText = process.env["SARJ_LOCAL_CHECK_JOBS"];
   if (capacityText === undefined || !/^[1-9]\d*$/u.test(capacityText)) return options;
   const capacity = Number(capacityText);
