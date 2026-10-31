@@ -29,7 +29,7 @@ dependencies = [
   "jsonschema==4.26.0",
   "referencing==0.37.0",
   "repo-standards==6.14.1",
-  "ruff==0.17.2",
+  "ruff==0.17.3",
   "shellcheck-py==0.11.0.1; (sys_platform == 'darwin' and platform_machine == 'arm64') or (sys_platform == 'darwin' and platform_machine == 'x86_64') or (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
   "sarj-iac-lint==0.32.1",
   "sarj-python-lint==1.108.0",
