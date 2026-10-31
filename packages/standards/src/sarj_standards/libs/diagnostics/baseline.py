@@ -409,6 +409,7 @@ def render(
             "diagnostics": entries,
         }
         _validate_provenance(payload["provenance"])
+    _baseline_fingerprints(entries)
     return json.dumps(payload, indent=2) + "\n"
 
 
@@ -443,6 +444,7 @@ def merge_scoped(
         "diagnostics": combined,
     }
     _validate_provenance(payload["provenance"])
+    _baseline_fingerprints(combined)
     return json.dumps(payload, indent=_existing_json_indent(document.text)) + "\n"
 
 

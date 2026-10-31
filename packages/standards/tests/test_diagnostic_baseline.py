@@ -376,6 +376,124 @@ def test_v2_baseline_records_and_validates_provenance(tmp_path: Path) -> None:
     }
 
 
+@pytest.mark.parametrize("operation", ["render", "merge"])
+@pytest.mark.parametrize("fingerprint", ["stable-fingerprint", "A" * 64], ids=["custom-text", "uppercase-hex"])
+def test_baseline_writers_reject_fingerprints_the_reader_cannot_load(
+    tmp_path: Path, operation: str, fingerprint: str
+) -> None:
+    finding = Diagnostic("F401", "unused import", Severity.ERROR, "ruff", Location("app.py"), fingerprint=fingerprint)
+    path = tmp_path / "baseline.json"
+    original = baseline.render(())
+    path.write_text(original, encoding="utf-8")
+
+    assert finding.fingerprint == fingerprint
+    if operation == "render":
+        with pytest.raises(ValueError, match="invalid fingerprint"):
+            baseline.render((finding,), bundle_version="9.0.0", consumer_base_sha="a" * 40, catalog_digest="b" * 64)
+    else:
+        with pytest.raises(ValueError, match="invalid fingerprint"):
+            baseline.merge_scoped(
+                path,
+                (finding,),
+                selectors=("ruff:F401",),
+                bundle_version="9.0.0",
+                consumer_base_sha="a" * 40,
+                catalog_digest="b" * 64,
+            )
+    assert path.read_text(encoding="utf-8") == original
+
+
+@pytest.mark.parametrize("operation", ["render", "merge"])
+def test_baseline_writers_round_trip_valid_fingerprints_and_counts(tmp_path: Path, operation: str) -> None:
+    fingerprint = "c" * 64
+    finding = Diagnostic("F401", "unused import", Severity.ERROR, "ruff", Location("app.py"), fingerprint=fingerprint)
+    existing = Diagnostic("F841", "unused local", Severity.WARNING, "ruff", Location("old.py"), fingerprint="d" * 64)
+    path = tmp_path / "baseline.json"
+    path.write_text(baseline.render((existing,)), encoding="utf-8")
+    expected = {fingerprint: 2}
+
+    if operation == "render":
+        rendered = baseline.render(
+            (finding, finding), bundle_version="9.0.0", consumer_base_sha="a" * 40, catalog_digest="b" * 64
+        )
+    else:
+        rendered = baseline.merge_scoped(
+            path,
+            (finding, finding),
+            selectors=("ruff:F401",),
+            bundle_version="9.0.0",
+            consumer_base_sha="a" * 40,
+            catalog_digest="b" * 64,
+        )
+        expected["d" * 64] = 1
+    path.write_text(rendered, encoding="utf-8")
+
+    assert (
+        baseline.load(path, require_v2=True, expected_bundle_version="9.0.0", expected_catalog_digest="b" * 64)
+        == expected
+    )
+    assert json.loads(rendered)["provenance"] == {
+        "bundleVersion": "9.0.0",
+        "consumerBaseSha": "a" * 40,
+        "catalogDigest": "b" * 64,
+    }
+
+
+def test_scoped_merge_keeps_unselected_custom_fingerprints_out_of_the_baseline(tmp_path: Path) -> None:
+    existing = Diagnostic("F841", "unused local", Severity.WARNING, "ruff", Location("old.py"), fingerprint="d" * 64)
+    unselected = Diagnostic(
+        "F401", "unused import", Severity.ERROR, "ruff", Location("app.py"), fingerprint="stable-fingerprint"
+    )
+    path = tmp_path / "baseline.json"
+    path.write_text(baseline.render((existing,)), encoding="utf-8")
+
+    rendered = baseline.merge_scoped(
+        path,
+        (unselected,),
+        selectors=("ruff:OTHER",),
+        bundle_version="9.0.0",
+        consumer_base_sha="a" * 40,
+        catalog_digest="b" * 64,
+    )
+    path.write_text(rendered, encoding="utf-8")
+
+    assert baseline.load(path) == {"d" * 64: 1}
+
+
+def test_legacy_baseline_render_rejects_a_fingerprint_the_reader_cannot_load() -> None:
+    finding = Diagnostic(
+        "F401", "unused import", Severity.ERROR, "ruff", Location("app.py"), fingerprint="stable-fingerprint"
+    )
+
+    with pytest.raises(ValueError, match="invalid fingerprint"):
+        baseline.render((finding,))
+
+
+@pytest.mark.parametrize("operation", ["render", "merge"])
+def test_baseline_writers_validate_provenance_before_invalid_fingerprints(tmp_path: Path, operation: str) -> None:
+    finding = Diagnostic(
+        "F401", "unused import", Severity.ERROR, "ruff", Location("app.py"), fingerprint="stable-fingerprint"
+    )
+    path = tmp_path / "baseline.json"
+    path.write_text(baseline.render(()), encoding="utf-8")
+
+    if operation == "render":
+        with pytest.raises(ValueError, match="provenance requires SHA-256-shaped base and catalog digests"):
+            baseline.render(
+                (finding,), bundle_version="9.0.0", consumer_base_sha="a" * 40, catalog_digest="invalid-digest"
+            )
+    else:
+        with pytest.raises(ValueError, match="provenance requires SHA-256-shaped base and catalog digests"):
+            baseline.merge_scoped(
+                path,
+                (finding,),
+                selectors=("ruff:F401",),
+                bundle_version="9.0.0",
+                consumer_base_sha="a" * 40,
+                catalog_digest="invalid-digest",
+            )
+
+
 def test_policy_mode_rejects_legacy_or_stale_baseline_provenance(tmp_path: Path) -> None:
     legacy = tmp_path / "legacy.json"
     legacy.write_text(baseline.render(()), encoding="utf-8")
