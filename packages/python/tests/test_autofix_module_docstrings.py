@@ -136,7 +136,9 @@ def test_cli_deletes_module_docstring_and_reports_clean_file(
     ids=("promoted-cookie", "cookie-after-shebang", "promoted-shebang", "nested-directive", "nested-comment"),
 )
 def test_module_fixes_preserve_byte_interpretation_and_comments(source: str) -> None:
-    compile(source.encode("utf-8"), "service.py", "exec", dont_inherit=True)
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        source.encode("utf-8"), "service.py", "exec", dont_inherit=True
+    )
     assert fix_source(_PATH, source, rule_ids=_RULES) == source
 
 
@@ -172,7 +174,10 @@ def test_main_module_metadata_fix_preserves_runtime_description(
     module = ModuleType("__main__")
     monkeypatch.setitem(sys.modules, "__main__", module)
     exec(  # ruff: ignore[exec-builtin] -- execute only the authored module-description fixture.
-        compile(fixed, "cli.py", "exec", dont_inherit=True), module.__dict__
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            fixed, "cli.py", "exec", dont_inherit=True
+        ),
+        module.__dict__,
     )
     assert module.__dict__["DESCRIPTION"] == "Command help."
 
@@ -202,7 +207,10 @@ def test_pydoc_generated_help_remains_unchanged(monkeypatch: pytest.MonkeyPatch)
     module = ModuleType("__main__")
     monkeypatch.setitem(sys.modules, "__main__", module)
     exec(  # ruff: ignore[exec-builtin] -- execute only the authored standard-library help fixture.
-        compile(fixed, "cli.py", "exec", dont_inherit=True), module.__dict__
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            fixed, "cli.py", "exec", dont_inherit=True
+        ),
+        module.__dict__,
     )
     assert "Command help." in module.__dict__["DESCRIPTION"]
 

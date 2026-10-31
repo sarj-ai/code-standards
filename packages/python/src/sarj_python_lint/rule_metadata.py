@@ -53,11 +53,19 @@ def is_alias_tuple(value: object) -> TypeIs[tuple[str, ...]]:
 
 def load_descriptors() -> tuple[RuleDescriptor, ...]:
     module = import_module("sarj_python_lint._rule_descriptors")
-    version: object = getattr(module, "SCHEMA_VERSION", None)
+    version: object = (
+        getattr(  # sarj-noqa: SARJ557 -- Validate imported plugin metadata before trusting its declared rule contract.
+            module, "SCHEMA_VERSION", None
+        )
+    )
     if type(version) is not int or version != DESCRIPTOR_SCHEMA_VERSION:
         msg = "unsupported Python rule descriptor schema"
         raise ValueError(msg)
-    value: object = getattr(module, "DESCRIPTORS", None)
+    value: object = (
+        getattr(  # sarj-noqa: SARJ557 -- Validate imported plugin metadata before trusting its declared rule contract.
+            module, "DESCRIPTORS", None
+        )
+    )
     if not _object_tuple(value):
         msg = "Python rule descriptors must be a tuple"
         raise TypeError(msg)
@@ -102,7 +110,12 @@ def _authored_descriptor(rule_id: RuleId, rule: type[Rule]) -> RuleDescriptor:
         msg = f"{rule_id}: instance metadata differs from class metadata"
         raise ValueError(msg)
     module = import_module(rule.__module__)
-    if getattr(module, rule.__name__, None) is not rule:
+    if (
+        getattr(  # sarj-noqa: SARJ557 -- Validate imported plugin metadata before trusting its declared rule contract.
+            module, rule.__name__, None
+        )
+        is not rule
+    ):
         msg = f"{rule_id}: rule class is not importable from its declared module"
         raise ValueError(msg)
     return RuleDescriptor(

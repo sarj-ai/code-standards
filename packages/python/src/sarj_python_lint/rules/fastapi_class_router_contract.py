@@ -196,7 +196,7 @@ def _returns_local_router(function: ast.FunctionDef | ast.AsyncFunctionDef, call
         for node in function.body
         if isinstance(node, (ast.Assign, ast.AnnAssign))
         for target in _assignment_targets(node)
-        if isinstance(target, ast.Name) and getattr(node, "value", None) is call
+        if isinstance(target, ast.Name) and node.value is call
     }
     return bool(names) and any(
         isinstance(node, ast.Return) and isinstance(node.value, ast.Name) and node.value.id in names

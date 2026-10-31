@@ -197,7 +197,9 @@ def test_semantic_candidates_rewrite_only_the_proven_region(case: _Case) -> None
     fixed = fix_source(path, case.before, rule_ids=[case.rule_id])
     assert fixed == case.after
     assert REGISTRY[case.rule_id]().check(path, fixed) == []
-    compile(fixed, case.path, "exec", dont_inherit=True)
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        fixed, case.path, "exec", dont_inherit=True
+    )
 
 
 @pytest.mark.parametrize("case", _CASES, ids=tuple(case.rule_id for case in _CASES))
@@ -278,7 +280,9 @@ def test_independent_marker_fixes_leave_a_valid_function_body() -> None:
     source = "def empty():\n    _ = 1\n    _ = 2\n    _ = 3\n"
     fixed = fix_source(Path("app/service.py"), source, rule_ids=["no-unused-value-marker"])
     assert fixed == "def empty():\n    pass\n"
-    compile(fixed, "empty.py", "exec", dont_inherit=True)
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        fixed, "empty.py", "exec", dont_inherit=True
+    )
 
 
 def test_many_independent_comments_are_fixed_without_changing_execution() -> None:
@@ -498,7 +502,9 @@ def test_token_signature_edit_preserves_other_defaults_annotations_and_multiline
     assert "keep=False" in fixed
     assert "_unused" not in fixed
     assert "*," in fixed
-    compile(fixed, "service.py", "exec", dont_inherit=True)
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        fixed, "service.py", "exec", dont_inherit=True
+    )
     assert fix_source(Path("app/service.py"), fixed, rule_ids=["no-unused-underscored-keyword-parameter"]) == fixed
 
 

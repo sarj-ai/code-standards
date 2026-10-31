@@ -76,7 +76,9 @@ def _constructor_hooks(rule: type[Rule]) -> _ConstructorHooks | None:
         or not _is_constructor_hook(metaclass_call)
     ):
         return None
-    code: object = getattr(initializer, "__code__", None)
+    code: object = getattr(  # sarj-noqa: SARJ557 -- Validate dynamically imported plugin classes and optional native constructor metadata.
+        initializer, "__code__", None
+    )
     if code is not None and not isinstance(code, CodeType):
         return None
     return _ConstructorHooks(initializer, code, allocator, metaclass_call)
@@ -143,7 +145,9 @@ class _RegistryState:
         if entry.module in sys.modules:
             self.external_modules.add(entry.module)
         module = import_module(entry.module)
-        value: object = getattr(module, entry.class_name, None)
+        value: object = getattr(  # sarj-noqa: SARJ557 -- Validate dynamically imported plugin classes and optional native constructor metadata.
+            module, entry.class_name, None
+        )
         if not isinstance(value, type) or not issubclass(value, Rule):
             msg = f"{entry.rule_id}: descriptor does not resolve to a Rule class"
             raise TypeError(msg)
@@ -201,7 +205,10 @@ class _RegistryState:
                 module is None
                 or rule is None
                 or observed is None
-                or getattr(module, entry.class_name, None) is not rule
+                or getattr(  # sarj-noqa: SARJ557 -- Validate dynamically imported plugin classes and optional native constructor metadata.
+                    module, entry.class_name, None
+                )
+                is not rule
             ):
                 return None
             if (

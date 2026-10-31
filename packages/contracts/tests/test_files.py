@@ -304,7 +304,14 @@ def test_unavailable_permission_api_keeps_source_and_cleans_temporary(
 
 
 def test_real_user_attribute_is_preserved_by_refusing_replacement(tmp_path: Path) -> None:
-    if not hasattr(os, "setxattr") or not hasattr(os, "getxattr"):
+    if (
+        not hasattr(  # sarj-noqa: SARJ499 -- Run extended-attribute preservation tests only when the native OS supports those APIs.
+            os, "setxattr"
+        )
+        or not hasattr(  # sarj-noqa: SARJ499 -- Run extended-attribute preservation tests only when the native OS supports those APIs.
+            os, "getxattr"
+        )
+    ):
         pytest.skip("native extended attributes require platform support")
     path = tmp_path / "source.txt"
     path.write_text("first")

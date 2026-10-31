@@ -469,10 +469,16 @@ def test_visible_coroutine_code_metadata_retains_a_manual_finding(reader: str) -
     before: dict[str, object] = {}
     after: dict[str, object] = {}
     exec(  # ruff: ignore[exec-builtin] -- trusted fixture observes the visible coroutine code metadata.
-        compile(source, str(_PATH), "exec", dont_inherit=True), before
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            source, str(_PATH), "exec", dont_inherit=True
+        ),
+        before,
     )
     exec(  # ruff: ignore[exec-builtin] -- compare the same visible observer after a naive alias deletion.
-        compile(direct, str(_PATH), "exec", dont_inherit=True), after
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            direct, str(_PATH), "exec", dont_inherit=True
+        ),
+        after,
     )
     assert before["names"] == ("item", "payload")
     assert after["names"] == ("item",)

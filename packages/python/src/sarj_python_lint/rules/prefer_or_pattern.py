@@ -291,7 +291,9 @@ def _preview(patterns: list[ast.pattern]) -> str | None:
 def _render_valid_or_pattern(patterns: list[ast.pattern]) -> str | None:
     try:
         preview = ast.unparse(ast.MatchOr(patterns=patterns))
-        compile(f"match subject:\n    case {preview}:\n        pass\n", "<sarj-or-pattern>", "exec")
+        compile(  # sarj-noqa: SARJ557 -- Validate generated pattern bindings with the compiler without executing source.
+            f"match subject:\n    case {preview}:\n        pass\n", "<sarj-or-pattern>", "exec"
+        )
     except SyntaxError, ValueError, AttributeError, TypeError, RecursionError:
         return None
     return preview

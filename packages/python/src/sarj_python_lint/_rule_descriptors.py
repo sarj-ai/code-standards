@@ -9,6 +9,33 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("no-shared-mutable-default"),
+        module="sarj_python_lint.rules.no_shared_mutable_default",
+        class_name="NoSharedMutableDefault",
+        code="SARJ559",
+        description="Do not share mutable function defaults through aliases or read-only annotations.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
+        rule_id=RuleId("no-sys-path-mutation"),
+        module="sarj_python_lint.rules.no_sys_path_mutation",
+        class_name="NoSysPathMutation",
+        code="SARJ558",
+        description="Do not mutate the interpreter import search path.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
+        rule_id=RuleId("no-dynamic-builtins"),
+        module="sarj_python_lint.rules.no_dynamic_builtins",
+        class_name="NoDynamicBuiltins",
+        code="SARJ557",
+        description="Use explicit typed state instead of dynamic Python builtin access.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("service-singleton-delegates-to-bulk"),
         module="sarj_python_lint.rules.service_singleton_delegates_to_bulk",
         class_name="ServiceSingletonDelegatesToBulk",
@@ -337,7 +364,7 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         module="sarj_python_lint.rules.no_hasattr",
         class_name="NoHasattr",
         code="SARJ499",
-        description="Production code should not probe attributes with hasattr.",
+        description="Do not probe attributes with the builtin hasattr.",
         aliases=(),
         enabled_by_default=True,
     ),

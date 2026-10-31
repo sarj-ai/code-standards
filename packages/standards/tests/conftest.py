@@ -45,7 +45,12 @@ class _FirstFailurePreview:
 def pytest_sessionstart(session: pytest.Session) -> None:
     config = session.config
     terminal = config.pluginmanager.get_plugin("terminalreporter")
-    if not isinstance(terminal, pytest.TerminalReporter) or hasattr(config, "workerinput"):
+    if (
+        not isinstance(terminal, pytest.TerminalReporter)
+        or hasattr(  # sarj-noqa: SARJ499 -- pytest-xdist adds workerinput only to worker configurations; preserve summary ownership.
+            config, "workerinput"
+        )
+    ):
         return
     if (
         config.getoption("tbstyle", default="auto") == "no"

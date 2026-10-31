@@ -1999,7 +1999,12 @@ def test_rejecting_membership_admits_native_string_forms(collection: str) -> Non
     [diagnostic] = _check(source, "app/render.py")
     assert diagnostic.code == "SARJ006"
     namespace: dict[str, object] = {}
-    exec(compile(source, "native_enum_guard.py", "exec"), namespace)  # ruff: ignore[exec-builtin] -- execute only these fixed public native grammar fixtures.
+    exec(  # ruff: ignore[exec-builtin] -- execute only these fixed public native grammar fixtures.
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            source, "native_enum_guard.py", "exec"
+        ),
+        namespace,
+    )
     function = namespace["render"]
     assert callable(function)
     assert function("text") == "text"
@@ -2048,7 +2053,12 @@ def test_match_accepting_arbitrary_strings_does_not_prove_a_closed_domain(fallba
     assert _check(source, "app/render.py") == []
 
     namespace: dict[str, object] = {}
-    exec(compile(source, "open_match_fixture.py", "exec"), namespace)  # ruff: ignore[exec-builtin] -- execute fixed native match fixtures to prove that arbitrary strings are accepted.
+    exec(  # ruff: ignore[exec-builtin] -- execute fixed native match fixtures to prove that arbitrary strings are accepted.
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            source, "open_match_fixture.py", "exec"
+        ),
+        namespace,
+    )
     render = namespace["render"]
     assert callable(render)
     assert render("plugin") == "plugin"

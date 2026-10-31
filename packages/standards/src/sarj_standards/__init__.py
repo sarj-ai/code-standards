@@ -68,4 +68,9 @@ def __getattr__(name: str) -> object:
 
 
 def __dir__() -> list[str]:
-    return sorted(set(globals()).union(__all__))
+    return sorted(
+        set(
+            globals(  # sarj-noqa: SARJ557 -- Preserve introspection of the lazy public module namespace.
+            )
+        ).union(__all__)
+    )

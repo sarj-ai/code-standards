@@ -66,12 +66,16 @@ def test_every_safe_fixer_preserves_unrelated_quoted_shadow_source(
     path = Path(example.focus_path)
     case = _with_shadow_source(example.focus_file.source, separator)
     source = case.source
-    compile(source, str(path), "exec", dont_inherit=True)
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        source, str(path), "exec", dont_inherit=True
+    )
     before = REGISTRY[rule_id]().check(path, source)
     fixed = fix_source(path, source, rule_ids=[rule_id])
     assert case.prefix in fixed
     assert _data_value(fixed, case.name) == _data_value(source, case.name)
-    compile(fixed, str(path), "exec", dont_inherit=True)
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        fixed, str(path), "exec", dont_inherit=True
+    )
     assert len(REGISTRY[rule_id]().check(path, fixed)) <= len(before)
     assert fix_source(path, fixed, rule_ids=[rule_id]) == fixed
     assert fix_source(path, source, rule_ids=[]) == source

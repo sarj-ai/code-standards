@@ -34,7 +34,9 @@ def test_private_dispatch_reuses_existing_literal_alias_with_reachable_fallback(
     assert not REGISTRY[_RULE]().check(path, expected)
     assert fix_source(path, expected, rule_ids=[_RULE]) == expected
     assert fix_source(path, source, rule_ids=[]) == source
-    compile(expected, str(path), "exec", dont_inherit=True)
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        expected, str(path), "exec", dont_inherit=True
+    )
 
 
 @pytest.mark.parametrize(
@@ -86,7 +88,9 @@ def test_native_identifier_spelling_and_existing_alias_are_preserved(annotation:
     expected = source.replace(f"kind: {annotation}", "kind: 模式")
     fixed = fix_source(Path("app/service.py"), source, rule_ids=[_RULE])
     assert fixed == expected
-    compile(fixed, "app/service.py", "exec", dont_inherit=True)
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        fixed, "app/service.py", "exec", dont_inherit=True
+    )
 
 
 def test_keyword_calls_and_unreferenced_helpers_keep_the_same_domain() -> None:

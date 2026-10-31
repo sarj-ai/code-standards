@@ -39,7 +39,9 @@ def test_new_rule_is_deterministic_and_dry_by_default(tmp_path: Path) -> None:
     assert len(plan.edits) == 2
     assert "this plan includes registration and warning metadata" in plan.render(tmp_path)
     assert "maintain rules evaluate --rule python:prefer-explicit-clock --scope corpus" in plan.render(tmp_path)
-    compile(plan.files[0][1], str(plan.files[0][0]), "exec")
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        plan.files[0][1], str(plan.files[0][0]), "exec"
+    )
 
 
 def test_apply_creates_authored_files_and_registers_atomically(tmp_path: Path) -> None:
@@ -231,7 +233,9 @@ def test_scaffolds_have_real_suffixes_warning_defaults_and_executable_tests(
     assert ".WARNING" in source
     assert "verify_" in test
     assert "NotImplementedError" in source
-    compile(source, str(plan.files[0][0]), "exec")
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        source, str(plan.files[0][0]), "exec"
+    )
     assert RedundantModuleDocstring().check(plan.files[0][0], source) == []
 
 
@@ -276,10 +280,20 @@ def test_dummy_rule_from_scaffold_through_owning_analyzer(
     module = ModuleType(name)
     monkeypatch.setitem(sys.modules, name, module)
     namespace: dict[str, object] = {"__name__": name}
-    exec(compile(source, str(path), "exec"), namespace)  # ruff: ignore[exec-builtin] -- execute the generated scaffold under test.
+    exec(  # ruff: ignore[exec-builtin] -- execute the generated scaffold under test.
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            source, str(path), "exec"
+        ),
+        namespace,
+    )
     module.__dict__.update(namespace)
     registry_namespace: dict[str, object] = {}
-    exec(compile(plan.edits[0].path.read_text(), str(plan.edits[0].path), "exec"), registry_namespace)  # ruff: ignore[exec-builtin] -- exercise the actual generated registry.
+    exec(  # ruff: ignore[exec-builtin] -- exercise the actual generated registry.
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            plan.edits[0].path.read_text(), str(plan.edits[0].path), "exec"
+        ),
+        registry_namespace,
+    )
     registry: object = registry_namespace["REGISTRY"]
     if engine == "text":
         candidate = namespace["DummyRule"]

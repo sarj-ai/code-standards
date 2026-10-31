@@ -118,7 +118,9 @@ def _validate_module(source: str, destination: Path) -> None:
     ):
         msg = "Python descriptor oracle returned incompatible module exports"
         raise ValueError(msg)
-    compile(source, str(destination), "exec", dont_inherit=True)
+    compile(  # sarj-noqa: SARJ557 -- Compile generated descriptor source for validation without executing it.
+        source, str(destination), "exec", dont_inherit=True
+    )
 
 
 def emit(root: Path) -> str:

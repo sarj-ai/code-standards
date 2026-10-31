@@ -348,7 +348,9 @@ def _statement_lists(tree: ast.AST, *, node_index: NodeIndex | None = None) -> l
     result: list[list[ast.stmt]] = []
     for node in walk_ast(tree, index=node_index):
         for field in ("body", "orelse", "finalbody"):
-            value: object = getattr(node, field, None)
+            value: object = getattr(  # sarj-noqa: SARJ557 -- Inspect optional statement-list fields across heterogeneous AST node types.
+                node, field, None
+            )
             if not object_list(value):
                 continue
             statements: list[ast.stmt] = []

@@ -223,7 +223,9 @@ def test_observer_receives_bounded_output_without_putting_it_in_the_public_repor
     )
 
     assert observed == [(b"json\n", b"note\n")]
-    assert not hasattr(report.batches[0], "stdout")
+    assert not hasattr(  # sarj-noqa: SARJ499 -- Assert capture reports never expose retained private output bytes as public attributes.
+        report.batches[0], "stdout"
+    )
 
 
 def test_five_repositories_use_five_real_fresh_processes(tmp_path: Path) -> None:
