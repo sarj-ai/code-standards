@@ -7,11 +7,13 @@
 import {
   AST_NODE_TYPES,
   ASTUtils,
+  type TSESLint,
   type TSESTree,
 } from "@typescript-eslint/utils";
 
 import { unwrapExpression } from "./_unwrap-expression.js";
 import { nativeFetchReference } from "./_native-fetch-reference.js";
+import { staticPropertyName } from "./_static-string.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isScriptFile, isTestFile, matchesAnyPattern } from "./_paths.js";
@@ -36,6 +38,7 @@ export const REQUIRE_FETCH_TIMEOUT_DOCUMENTATION = {
   limitations: [
     "Signal presence establishes an explicit cancellation path, not a guaranteed timeout. Literal null, global undefined, and void 0 do not provide a signal. Erased TypeScript wrappers preserve the same analysis. Unknown spreads and dynamic values are not inferred. Forwarded Request objects retain their signal unless an init explicitly resets it to null.",
     "Unshadowed native fetch members and bounded stable const aliases or destructuring are recognized. Reassigned, defaulted and unknown aliases and arbitrary forwarding functions are excluded.",
+    "Visible writes, callable escapes, whole-global escapes and mutation capabilities anywhere in the file invalidate native fetch identity, including earlier captures. Known unrelated global member writes and typeof global checks do not. Static constructor members and destructuring projections invalidate the proof; indirect reflection and external monkeypatches are not inferred.",
     "Accessors and unproved prototypes are excluded because native option conversion can attach or replace a signal before it is read.",
   ],
   examples: [
@@ -98,6 +101,7 @@ function emptySignal(
 function initSignalState(
   init: TSESTree.CallExpressionArgument,
   resolvesToGlobal: (identifier: TSESTree.Identifier) => boolean,
+  sourceCode: Readonly<TSESLint.SourceCode>,
 ): SignalState {
   init = unwrapExpression(init);
   if (init.type !== AST_NODE_TYPES.ObjectExpression) return "unknown";
@@ -108,22 +112,18 @@ function initSignalState(
       continue;
     }
     if (prop.kind !== "init" || hasUnprovedPrototype(prop)) return "unknown";
-    const isSignal =
-      (!prop.computed &&
-        prop.key.type === AST_NODE_TYPES.Identifier &&
-        prop.key.name === "signal") ||
-      (prop.key.type === AST_NODE_TYPES.Literal && prop.key.value === "signal");
-    if (isSignal) {
+    const name = staticPropertyName(prop, sourceCode);
+    if (name === "signal") {
       state = !prop.method
         ? (emptySignal(prop.value, resolvesToGlobal) ?? "unknown")
         : "unknown";
     } else if (
       !prop.computed &&
-      ASTUtils.getPropertyName(prop) === "__proto__" &&
+      name === "__proto__" &&
       state === "absent"
     ) {
       state = "unknown";
-    } else if (prop.computed && prop.key.type !== AST_NODE_TYPES.Literal) {
+    } else if (prop.computed && name === null) {
       state = "unknown";
     }
   }
@@ -250,7 +250,7 @@ export default createRule<Options, MessageIds>({
           return "unknown";
         }
       }
-      return initSignalState(definition.node.init, resolvesToGlobal);
+      return initSignalState(definition.node.init, resolvesToGlobal, context.sourceCode);
     }
 
     function isForwardedRequest(
@@ -302,7 +302,7 @@ export default createRule<Options, MessageIds>({
             ? "unknown"
             : init.type === AST_NODE_TYPES.Identifier
               ? localConstInitSignalState(init)
-              : initSignalState(init, resolvesToGlobal);
+              : initSignalState(init, resolvesToGlobal, context.sourceCode);
         if (
           first !== undefined &&
           ((node.arguments.length === 1 &&

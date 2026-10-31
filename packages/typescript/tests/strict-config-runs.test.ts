@@ -21,7 +21,9 @@
 
 
 
-import { readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runInNewContext } from "node:vm";
@@ -42,6 +44,51 @@ import { rulesOf } from "./_config.js";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = resolve(HERE, "fixtures/runs");
 const NESTED_MONOREPO_DIR = resolve(HERE, "fixtures/nested-monorepo");
+const PRESET_DIRECTORY = resolve(HERE, "../../standards/src/sarj_standards/configs");
+const TYPESCRIPT_PACKAGE = resolve(HERE, "..");
+const PRESET_PARITY_PROGRAM = `
+import assert from "node:assert/strict";
+import { ESLint } from "eslint";
+import { createConfig as typed } from "./eslint.strict.ts";
+import { createConfig as legacy } from "./eslint.strict.mjs";
+function phaseMarker(phase) {
+  process.stderr.write(JSON.stringify({
+    event: "preset-parity-phase",
+    phase,
+    uptimeSeconds: process.uptime(),
+    performanceMilliseconds: performance.now(),
+    resources: process.getActiveResourcesInfo(),
+    resourceUsage: process.resourceUsage(),
+  }) + "\\n");
+}
+phaseMarker("after-static-imports");
+process.once("beforeExit", () => phaseMarker("before-exit"));
+process.once("exit", () => phaseMarker("exit"));
+const options = { projectService: false, testFrameworks: ["node"] };
+const typedLint = new ESLint({ overrideConfigFile: true, overrideConfig: typed(options) });
+const legacyLint = new ESLint({ overrideConfigFile: true, overrideConfig: legacy(options) });
+phaseMarker("before-typed-config");
+const typedConfig = await typedLint.calculateConfigForFile("example.ts");
+phaseMarker("after-typed-config");
+phaseMarker("before-legacy-config");
+const legacyConfig = await legacyLint.calculateConfigForFile("example.ts");
+phaseMarker("after-legacy-config");
+assert.deepEqual(typedConfig.rules, legacyConfig.rules);
+assert.deepEqual(typedConfig.settings, legacyConfig.settings, "typed and legacy settings must match");
+assert.deepEqual(typedConfig.languageOptions.globals, legacyConfig.languageOptions.globals);
+assert.deepEqual(typedConfig.languageOptions.parserOptions, legacyConfig.languageOptions.parserOptions);
+phaseMarker("after-config-assertions");
+const source = 'var greeting: string = "hello";\\nconsole.log(greeting);\\n';
+phaseMarker("before-typed-lint");
+const [typedResult] = await typedLint.lintText(source, { filePath: "example.ts" });
+phaseMarker("after-typed-lint");
+phaseMarker("before-legacy-lint");
+const [legacyResult] = await legacyLint.lintText(source, { filePath: "example.ts" });
+phaseMarker("after-legacy-lint");
+assert.ok(typedResult.messages.length > 0);
+assert.deepEqual(typedResult.messages, legacyResult.messages);
+phaseMarker("after-all-assertions");
+`;
 type ConfigFactory = (options?: {
   tsconfigRootDir?: string | URL;
   projectService?: boolean | object;
@@ -70,6 +117,56 @@ function severity(setting: unknown): unknown {
 const ESLINT_MAJOR = Number.parseInt(ESLint.version.split(".")[0] ?? "0", 10);
 
 describe("the shipped eslint.strict.mjs can actually lint", () => {
+  it.each([
+    ["matching presets", 0],
+    ["a divergent legacy React setting", 1],
+  ] as const)("checks native typed/legacy parity for %s", async (_scenario, expectedStatus) => {
+    const directory = await mkdtemp(resolve(await realpath(tmpdir()), "sarj-preset-parity-"));
+    try {
+      await writeFile(resolve(directory, "package.json"), '{"name":"web","private":true}\n');
+      const modules = resolve(TYPESCRIPT_PACKAGE, "node_modules");
+      const localModules = resolve(directory, "node_modules");
+      await mkdir(localModules);
+      for (const dependency of await readdir(modules)) {
+        if (dependency === "@sarj") continue;
+        await symlink(resolve(modules, dependency), resolve(localModules, dependency));
+      }
+      const namespace = resolve(localModules, "@sarj");
+      await mkdir(namespace);
+      await symlink(TYPESCRIPT_PACKAGE, resolve(namespace, "eslint-plugin"));
+      await writeFile(resolve(directory, "eslint.strict.ts"), await readFile(resolve(PRESET_DIRECTORY, "eslint.strict.ts")));
+      const legacyName = expectedStatus === 0 ? "eslint.strict.mjs" : "eslint.strict.original.mjs";
+      await writeFile(resolve(directory, legacyName), await readFile(resolve(PRESET_DIRECTORY, "eslint.strict.mjs")));
+      if (expectedStatus === 1) {
+        await writeFile(resolve(directory, "eslint.strict.mjs"), `
+import { createConfig as canonical } from "./eslint.strict.original.mjs";
+export function createConfig(options) {
+  return [...canonical(options), { settings: { react: { version: "18.0.0" } } }];
+}
+`);
+      }
+      const runtime = resolve(directory, "preset-parity.ts");
+      await writeFile(runtime, PRESET_PARITY_PROGRAM);
+      const result = spawnSync(process.execPath, [runtime], {
+        cwd: directory,
+        encoding: "utf8",
+        timeout: 30_000,
+        killSignal: "SIGKILL",
+      });
+      expect(result.error, result.stderr).toBeUndefined();
+      expect(result.signal, result.stderr).toBeNull();
+      expect(result.status, result.stderr).toBe(expectedStatus);
+      if (expectedStatus === 0) {
+        expect(result.stderr).toContain('"phase":"after-all-assertions"');
+      } else {
+        expect(result.stderr).toContain("ERR_ASSERTION");
+        expect(result.stderr).toContain("typed and legacy settings must match");
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     ["new Array(3)", null, { calls: 0, length: 3, keys: [], has0: false }],
     ["Array(3)", "unicorn/new-for-builtins", { calls: 0, length: 3, keys: [], has0: false }],

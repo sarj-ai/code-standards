@@ -51,6 +51,11 @@ CASES = (
         'from loguru import logger\nlogger.bind(request_id="example").warning("failed", exc_info=True)\n',
         matches=True,
     ),
+    _case(
+        "expanded-bind",
+        'from loguru import logger\nlogger.bind(**fields).warning("failed", exc_info=True)\n',
+        matches=True,
+    ),
     _case("opt", 'from loguru import logger\nlogger.opt(depth=0).warning("failed", exc_info=True)\n', matches=True),
     _case(
         "opt-false",
@@ -94,6 +99,46 @@ CASES = (
     _case("unknown-chain", 'from loguru import logger\nlogger.patch(patcher).warning("failed", exc_info=True)\n'),
     _case("rebound", 'from loguru import logger\nlogger = other\nlogger.warning("failed", exc_info=True)\n'),
     _case(
+        "method-override",
+        'from loguru import logger\nlogger.warning = custom\nlogger.warning("failed", exc_info=True)\n',
+    ),
+    _case(
+        "method-deletion",
+        'from loguru import logger\ndel logger.warning\nlogger.warning("failed", exc_info=True)\n',
+    ),
+    _case(
+        "method-setattr",
+        'from loguru import logger\nsetattr(logger, "warning", custom)\nlogger.warning("failed", exc_info=True)\n',
+    ),
+    _case(
+        "method-aliased-setattr",
+        'from builtins import setattr as replace\nfrom loguru import logger\nreplace(logger, "warning", custom)\nlogger.warning("failed", exc_info=True)\n',
+    ),
+    _case(
+        "module-logger-replaced",
+        'import loguru\nloguru.logger = custom\nloguru.logger.warning("failed", exc_info=True)\n',
+    ),
+    _case(
+        "alternate-import-mutation",
+        'from loguru import logger as events\nfrom loguru import logger\nevents.warning = custom\nlogger.warning("failed", exc_info=True)\n',
+    ),
+    _case(
+        "alternate-module-mutation",
+        'import loguru\nfrom loguru import logger\nloguru.logger.warning = custom\nlogger.warning("failed", exc_info=True)\n',
+    ),
+    _case(
+        "alternate-import-escape",
+        'from loguru import logger as events\nfrom loguru import logger\nconfigure(events)\nlogger.warning("failed", exc_info=True)\n',
+    ),
+    _case(
+        "escaped-logger",
+        'from loguru import logger\nconfigure(logger)\nlogger.warning("failed", exc_info=True)\n',
+    ),
+    _case(
+        "namespace-mutation",
+        'from loguru import logger\nglobals().update(overrides)\nlogger.warning("failed", exc_info=True)\n',
+    ),
+    _case(
         "parameter-shadow", 'from loguru import logger\ndef run(logger):\n    logger.warning("failed", exc_info=True)\n'
     ),
     _case(
@@ -109,6 +154,11 @@ CASES = (
         'from loguru import logger\nfrom app.events import *\nlogger.warning("failed", exc_info=True)\n',
     ),
     _case("suppression", 'from loguru import logger\nlogger.warning("failed", exc_info=True)  # sarj-noqa: SARJ508\n'),
+    _case(
+        "other-rule-suppression",
+        'from loguru import logger\nlogger.warning("failed", exc_info=True)  # sarj-noqa: SARJ509\n',
+        matches=True,
+    ),
     _case("generated", '# @generated\nfrom loguru import logger\nlogger.warning("failed", exc_info=True)\n'),
     _case("malformed-source", "from loguru import logger\nlogger.warning(\n"),
     _case("comment-and-string", '# logger.warning("failed", exc_info=True)\nsource = "exc_info=True"\n'),
@@ -131,6 +181,19 @@ def test_rule_is_registered_once(tmp_path: Path) -> None:
     path.write_text(source, encoding="utf-8")
     diagnostics = analyze([NoLoguruExcInfo.id], [path])
     assert [(item.code, item.line) for item in diagnostics] == [("SARJ508", 2)]
+
+
+def test_each_call_reports_once_at_its_exc_info_keyword() -> None:
+    source = (
+        "from loguru import logger\n"
+        "logger.warning(\n"
+        '    "failed",\n'
+        "    exc_info=True,\n"
+        ")\n"
+        'logger.opt(depth=0).warning("again", exc_info=True)\n'
+    )
+    diagnostics = NoLoguruExcInfo().check(Path("app/service.py"), source)
+    assert [(item.code, item.line, item.col) for item in diagnostics] == [("SARJ508", 4, 5), ("SARJ508", 6, 38)]
 
 
 def test_public_examples() -> None:

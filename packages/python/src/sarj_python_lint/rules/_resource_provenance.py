@@ -26,6 +26,7 @@ _RESOURCE_OWNERS = MappingProxyType(
         "httpx": frozenset({"Client", "AsyncClient"}),
         "asyncio": frozenset({"sleep", "CancelledError", "exceptions.CancelledError"}),
         "contextlib": frozenset({"ExitStack", "AsyncExitStack", "_BaseExitStack"}),
+        "functools": frozenset({"cache", "lru_cache", "cached_property"}),
         "subprocess": frozenset({"Popen", "TimeoutExpired"}),
         "re": frozenset({"compile", "Match", "Pattern"}),
         "operator": frozenset({"setitem", "delitem", "iadd", "iconcat", "imul", "iand", "isub", "ixor", "ior"}),
@@ -309,7 +310,14 @@ class ResourceProvenance:
                 isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
                 and node in parent.decorator_list
                 and self.context.imports.resolved_qualified_name(node)
-                in {"typing.final", "typing_extensions.final", "dataclasses.dataclass"}
+                in {
+                    "typing.final",
+                    "typing_extensions.final",
+                    "dataclasses.dataclass",
+                    "functools.cache",
+                    "functools.lru_cache",
+                    "functools.cached_property",
+                }
             )
         )
 

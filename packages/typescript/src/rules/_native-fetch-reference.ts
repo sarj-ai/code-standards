@@ -2,6 +2,8 @@
  * @fileoverview _native-fetch-reference — prove bounded native fetch references without evaluating wrappers.
  */
 import { AST_NODE_TYPES, ASTUtils, type TSESLint, type TSESTree } from "@typescript-eslint/utils";
+import { nativeRuntimeUnchanged } from "./_native-runtime-unchanged.js";
+import { staticPropertyName } from "./_static-string.js";
 import { unwrapExpression } from "./_unwrap-expression.js";
 
 const GLOBAL_RECEIVERS: ReadonlySet<string> = new Set(["globalThis", "self", "window"]);
@@ -10,11 +12,18 @@ const GLOBAL_RECEIVERS: ReadonlySet<string> = new Set(["globalThis", "self", "wi
 export function nativeFetchReference(
   node: TSESTree.Node,
   sourceCode: Readonly<TSESLint.SourceCode>,
+): boolean {
+  return lexicalFetchReference(node, sourceCode) && nativeRuntimeUnchanged(sourceCode, "fetch");
+}
+
+function lexicalFetchReference(
+  node: TSESTree.Node,
+  sourceCode: Readonly<TSESLint.SourceCode>,
   seen = new Set<TSESLint.Scope.Variable>(),
 ): boolean {
   const expression = unwrapExpression(node);
   if (expression.type === AST_NODE_TYPES.MemberExpression) {
-    return ASTUtils.getPropertyName(expression) === "fetch" && globalReceiver(expression.object, sourceCode);
+    return staticPropertyName(expression, sourceCode) === "fetch" && globalReceiver(expression.object, sourceCode);
   }
   if (expression.type !== AST_NODE_TYPES.Identifier) return false;
   const binding = ASTUtils.findVariable(sourceCode.getScope(expression), expression.name);
@@ -25,11 +34,11 @@ export function nativeFetchReference(
   const [definition] = binding.defs;
   if (definition?.type !== "Variable" || definition.parent.kind !== "const" || definition.node.init === null) return false;
   if (definition.node.id.type === AST_NODE_TYPES.Identifier) {
-    return nativeFetchReference(definition.node.init, sourceCode, seen);
+    return lexicalFetchReference(definition.node.init, sourceCode, seen);
   }
   return definition.node.id.type === AST_NODE_TYPES.ObjectPattern && globalReceiver(definition.node.init, sourceCode) &&
     definition.node.id.properties.some(property => property.type === AST_NODE_TYPES.Property &&
-      ASTUtils.getPropertyName(property) === "fetch" && property.value.type === AST_NODE_TYPES.Identifier &&
+      staticPropertyName(property, sourceCode) === "fetch" && property.value.type === AST_NODE_TYPES.Identifier &&
       ASTUtils.findVariable(sourceCode.getScope(property.value), property.value.name) === binding);
 }
 

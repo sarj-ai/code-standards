@@ -698,3 +698,201 @@ def test_reports_direct_messages_concatenation_and_container_elements(source: st
 )
 def test_preserves_derived_values_and_effective_mapping_entries(source: str) -> None:
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("imports", "receiver"),
+    [
+        ("from loguru import logger", "logger"),
+        ("from loguru import logger as log", "log"),
+        ("import loguru", "loguru.logger"),
+        ("import loguru as events", "events.logger"),
+    ],
+)
+@pytest.mark.parametrize(
+    "options",
+    [
+        "exception=True",
+        "depth=1",
+        "lazy=True, record=True",
+        "raw=True",
+        "colors=True",
+        "capture=False",
+        "ansi=False",
+        "exception=error, depth=depth, capture=capture",
+        "",
+    ],
+)
+def test_proven_native_opt_preserves_the_first_bound_secret(imports: str, receiver: str, options: str) -> None:
+    source = f'{imports}\n{receiver}.bind(token=access_token).opt({options}).info("request")\n'
+    diagnostics = _check(source)
+    assert [(item.code, item.line, item.col) for item in diagnostics] == [("SARJ012", 2, len(receiver) + 13)]
+
+
+@pytest.mark.parametrize(
+    "method", ["trace", "debug", "info", "success", "warning", "error", "critical", "exception", "log"]
+)
+def test_opt_binding_requires_a_native_loguru_terminal_method(method: str) -> None:
+    arguments = '"INFO", "request"' if method == "log" else '"request"'
+    source = f"from loguru import logger\nlogger.bind(token=access_token).opt().{method}({arguments})\n"
+    assert [(item.code, item.line, item.col) for item in _check(source)] == [("SARJ012", 2, 19)]
+
+
+@pytest.mark.parametrize(
+    "terminal",
+    [
+        'warn("request")',
+        'fatal("request")',
+        "info()",
+        'info(message="request")',
+        "log()",
+        'log("INFO")',
+        'log("INFO", message="request")',
+        'info("request", token="redacted")',
+        'info("request", **{"token": "redacted"})',
+        'info("request", **fields)',
+        'info("request", request_id=request_id)',
+        "info(*messages)",
+        'info("request", *values)',
+        'log("INFO", *messages)',
+        'log("INFO", "request", *values)',
+    ],
+)
+def test_opt_binding_abstains_on_unsupported_or_overriding_terminal_calls(terminal: str) -> None:
+    source = f"from loguru import logger\nlogger.bind(token=access_token).opt().{terminal}\n"
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("options", ["capture=False", "capture=True", "capture=capture"])
+def test_opt_terminal_fields_remain_a_conservative_exclusion_for_all_capture_options(options: str) -> None:
+    source = (
+        f'from loguru import logger\nlogger.bind(token=access_token).opt({options}).info("request", token="redacted")\n'
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize("method", ["info", "warn", "fatal"])
+def test_opt_terminal_guard_preserves_legacy_message_and_keyword_findings(method: str) -> None:
+    source = (
+        f"from loguru import logger\nlogger.bind(token=access_token).opt().{method}(password, token=refresh_token)\n"
+    )
+    terminal = source.splitlines()[1]
+    diagnostics = _check(source)
+    assert [(item.code, item.line, item.col) for item in diagnostics] == [
+        ("SARJ012", 2, terminal.index("password") + 1),
+        ("SARJ012", 2, terminal.index("refresh_token") + 1),
+    ]
+
+
+@pytest.mark.parametrize("method", ["info", "warn", "fatal"])
+def test_new_opt_guards_leave_legacy_direct_binding_unchanged(method: str) -> None:
+    source = f'from loguru import logger\nlogger.bind(token=access_token).{method}("request", token="redacted")\n'
+    assert [(item.code, item.line, item.col) for item in _check(source)] == [("SARJ012", 2, 19)]
+
+
+def test_two_native_opt_wrappers_preserve_the_original_value_location() -> None:
+    source = (
+        "from loguru import logger\n"
+        "logger.bind(\n"
+        "    token=access_token,\n"
+        ').opt(exception=True).opt(depth=1).info("request")\n'
+    )
+    assert [(item.code, item.line, item.col) for item in _check(source)] == [("SARJ012", 3, 11)]
+
+
+@pytest.mark.parametrize(
+    "receiver",
+    [
+        'logger.bind(token=access_token).bind(token="redacted")',
+        "logger.bind(token=access_token).bind(token=token_redacted)",
+        "logger.bind(token=access_token).bind(token=redact(access_token))",
+        "logger.bind(token=access_token).bind(request_id=request_id)",
+        "logger.bind(token=redact(access_token))",
+        "logger.bind(token=token_prefix)",
+        "logger.bind(credential_present=access_token is not None)",
+    ],
+)
+def test_opt_inspects_only_the_first_bind_and_preserves_redaction(receiver: str) -> None:
+    assert _check(f'from loguru import logger\n{receiver}.opt(exception=True).info("request")\n') == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'logger.bind(token=access_token).opt(exception=True).info("request")\n',
+        'from custom import logger\nlogger.bind(token=access_token).opt().info("request")\n',
+        'from loguru import logger as events\nevents.bind(token=access_token).opt().info("request")\n',
+        'from loguru import logger\nbound = logger.bind(token=access_token)\nbound.opt().info("request")\n',
+        'from loguru import logger\nlogger = custom\nlogger.bind(token=access_token).opt().info("request")\n',
+        'from loguru import logger\ndef run(logger):\n    logger.bind(token=access_token).opt().info("request")\n',
+        'from loguru import logger\ndef run():\n    from custom import logger\n    logger.bind(token=access_token).opt().info("request")\n',
+        'from loguru import logger\nfrom custom import *\nlogger.bind(token=access_token).opt().info("request")\n',
+        'from loguru import logger\nlogger.opt = custom\nlogger.bind(token=access_token).opt().info("request")\n',
+        'from loguru import logger\ndel logger.opt\nlogger.bind(token=access_token).opt().info("request")\n',
+        'from loguru import logger\nsetattr(logger, "bind", custom)\nlogger.bind(token=access_token).opt().info("request")\n',
+        'import loguru\nloguru.logger = custom\nloguru.logger.bind(token=access_token).opt().info("request")\n',
+        'from loguru import logger as events\nfrom loguru import logger\nevents.opt = custom\nlogger.bind(token=access_token).opt().info("request")\n',
+        'from loguru import logger as events\nfrom loguru import logger\nconfigure(events)\nlogger.bind(token=access_token).opt().info("request")\n',
+        'from loguru import logger\nconfigure(logger)\nlogger.bind(token=access_token).opt().info("request")\n',
+        'from loguru import logger\nglobals().update(overrides)\nlogger.bind(token=access_token).opt().info("request")\n',
+        'from loguru import logger\nlogger.bind(token=access_token).patch(patcher).opt().info("request")\n',
+        'from loguru import logger\nlogger.patch(patcher).bind(token=access_token).opt().info("request")\n',
+        'from loguru import logger\nlogger.contextualize(token=access_token).opt().info("request")\n',
+        'from loguru import logger\nlogger.bind(token=access_token, **fields).opt().info("request")\n',
+        'from loguru import logger\nlogger.bind(**{"token": access_token}).opt().info("request")\n',
+        'from loguru import logger\nlogger.bind(token=access_token).opt(**options).info("request")\n',
+        'from loguru import logger\nlogger.bind(token=access_token).opt(unknown=True).info("request")\n',
+        'from loguru import logger\nlogger.opt(unknown=True).bind(token=access_token).opt().info("request")\n',
+        'from loguru import logger\nlogger.bind(token=access_token).bind(**fields).opt().info("request")\n',
+        'from loguru import logger\nlogger.bind(token=access_token).opt(*options).info("request")\n',
+        'from loguru import logger\nlogger.bind(access_token).opt().info("request")\n',
+        'from loguru import logger\nlogger.bind(token=access_token).opt(1).info("request")\n',
+        "from loguru import logger\nlogger.bind(token=access_token).opt(\n",
+        '# logger.bind(token=access_token).opt().info("request")\nsource = "loguru"\n',
+    ],
+)
+def test_new_opt_transparency_abstains_without_a_bounded_native_chain(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_native_opt_does_not_change_legacy_lexical_binding_detection() -> None:
+    source = (
+        "from custom import logger\n"
+        'logger.bind(token=access_token).info("request")\n'
+        'logger.contextualize(password=password).error("request")\n'
+        'logger.bind(token=access_token).opt().info("request", value=access_token)\n'
+    )
+    assert [(item.code, item.line) for item in _check(source)] == [("SARJ012", 2), ("SARJ012", 3), ("SARJ012", 4)]
+
+
+def test_generated_native_opt_logging_retains_secret_detection() -> None:
+    source = '# @generated\nfrom loguru import logger\nlogger.bind(token=access_token).opt().info("request")\n'
+    assert [(item.code, item.line) for item in _check(source)] == [("SARJ012", 3)]
+
+
+def test_opt_keeps_message_and_binding_occurrences_independent() -> None:
+    source = "from loguru import logger\nlogger.bind(token=access_token).opt().info(access_token)\n"
+    assert [(item.line, item.col) for item in _check(source)] == [(2, 44), (2, 19)]
+
+
+def test_opt_binding_preserves_effective_mapping_entries_and_nested_counts() -> None:
+    source = (
+        "from loguru import logger\n"
+        "logger.bind(fields={\n"
+        '    "hidden": access_token, "hidden": "redacted",\n'
+        '    "nested": [access_token, {"value": password}],\n'
+        '}).opt().info("request")\n'
+    )
+    assert [(item.line, item.col) for item in _check(source)] == [(4, 16), (4, 40)]
+
+
+def test_opt_binding_suppression_belongs_to_the_original_value_line() -> None:
+    source = (
+        "from loguru import logger\n"
+        "logger.bind(\n"
+        "    token=access_token,  # sarj-noqa: SARJ012 -- approved sink\n"
+        "    password=password,  # sarj-noqa: SARJ099\n"
+        ').opt().info("request")  # sarj-noqa: SARJ012 -- sink only\n'
+    )
+    assert [(item.line, item.col) for item in _check(source)] == [(3, 11), (4, 14)]
+    assert [(item.line, item.col) for item in _unsuppressed(source)] == [(4, 14)]

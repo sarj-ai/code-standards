@@ -5,6 +5,7 @@ import { Linter } from "eslint";
 import { afterAll, describe, expect, it } from "vitest";
 
 import rule, { NO_RAW_FETCH_OUTSIDE_CLIENTS_DOCUMENTATION } from "../../src/rules/no-raw-fetch-outside-clients.js";
+import noClientSideDataFetching from "../../src/rules/no-client-side-data-fetching.js";
 import preferServerActions from "../../src/rules/prefer-server-actions.js";
 
 RuleTester.afterAll = afterAll;
@@ -428,6 +429,27 @@ RULE_TESTER.run("no-raw-fetch-outside-clients", rule, {
   ],
 });
 
+describe("ownership with no-client-side-data-fetching", () => {
+  it.each([
+    ["", "fetch", "sarj/no-client-side-data-fetching"],
+    ["const fetch=globalThis.fetch;", "fetch", "sarj/no-client-side-data-fetching"],
+    ["const request=globalThis.fetch;", "request", "sarj/no-raw-fetch-outside-clients"],
+    ["const {fetch:request}=globalThis;", "request", "sarj/no-raw-fetch-outside-clients"],
+  ])("keeps one owner for %s %s", (declaration, callee, owner) => {
+    const messages = new Linter().verify(
+      `${declaration} useEffect(() => { ${callee}('/api/items'); }, []);`,
+      {
+        files: ["**/*.tsx"],
+        languageOptions: { parser: tsParser },
+        plugins: { sarj: { rules: { "no-raw-fetch-outside-clients": rule as never, "no-client-side-data-fetching": noClientSideDataFetching as never } } },
+        rules: { "sarj/no-raw-fetch-outside-clients": "error", "sarj/no-client-side-data-fetching": "error" },
+      } as never,
+      "app/ui/items.tsx",
+    );
+    expect(messages.map(({ ruleId }) => ruleId)).toEqual([owner]);
+  });
+});
+
 describe("ownership with prefer-server-actions", () => {
   it.each([
     "let method='POST'; method='GET'; fetch('/api/items',{method});",
@@ -442,6 +464,34 @@ describe("ownership with prefer-server-actions", () => {
       rules: {"sarj/no-raw-fetch-outside-clients": "error", "sarj/prefer-server-actions": "error"},
     } as never, "app/ui/actions.tsx");
     expect(messages.map(({ruleId}) => ruleId)).toEqual(["sarj/no-raw-fetch-outside-clients"]);
+  });
+  it.each([
+    ["/api/items", {}],
+    ["/demo/api/items", { basePath: "/demo" }],
+  ])("keeps native aliases owned by raw-fetch for %s", (url, options) => {
+    for (const [declaration, callee] of [
+      ["const request=globalThis.fetch;", "request"],
+      ["const fetch=globalThis.fetch;", "fetch"],
+      ["const {fetch: request}=globalThis;", "request"],
+    ]) {
+      const call = `${callee}('${url}', {method:'POST'})`;
+      const source = `'use client'; ${declaration} ${call};`;
+      const messages = new Linter().verify(
+        source,
+        {
+          files: ["**/*.tsx"],
+          languageOptions: { parser: tsParser },
+          plugins: { sarj: { rules: { "no-raw-fetch-outside-clients": rule as never, "prefer-server-actions": preferServerActions as never } } },
+          rules: { "sarj/no-raw-fetch-outside-clients": ["error", options], "sarj/prefer-server-actions": ["error", options] },
+        } as never,
+        "app/ui/actions.tsx",
+      );
+      expect(messages.map(({ ruleId }) => ruleId)).toEqual(["sarj/no-raw-fetch-outside-clients"]);
+      const column = source.indexOf(call) + 1;
+      expect(messages[0]).toMatchObject({ messageId: "rawFetch", severity: 2, line: 1, column, endLine: 1, endColumn: column + call.length });
+      expect(messages[0]?.fix).toBeUndefined();
+      expect(messages[0]?.suggestions).toBeUndefined();
+    }
   });
   it.each([
     ["/api/items", {}],

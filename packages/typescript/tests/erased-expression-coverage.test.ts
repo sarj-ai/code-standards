@@ -6,13 +6,20 @@ import { fileURLToPath } from "node:url";
 
 import * as parser from "@typescript-eslint/parser";
 import { Linter, type Rule } from "eslint";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 
 import { RULES } from "../src/index.js";
+import { createExampleParser } from "../src/create-example-parser.js";
 import cases from "./fixtures/erased-expression-coverage.json";
 import literalCases from "./fixtures/literal-result-coverage.json";
 import callCases from "./fixtures/call-expression-coverage.json";
 import wrappedCases from "./fixtures/wrapped-callback-coverage.json";
+
+const EXAMPLE_PARSER = createExampleParser();
+
+afterAll(() => {
+  EXAMPLE_PARSER.clear();
+});
 
 function assertExpectedFix(actual: Linter.FixReport, expected: {
   readonly source: string;
@@ -51,7 +58,7 @@ describe("erased receivers, static template keys and discarded SQL", () => {
       const ruleId = `@sarj/${example.rule}`;
       const config: Linter.Config = {
         files: ["**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}"],
-        languageOptions: { parser, parserOptions: { project: tsconfig, tsconfigRootDir: root } },
+        languageOptions: { parser: EXAMPLE_PARSER, parserOptions: { project: tsconfig, tsconfigRootDir: root, disallowAutomaticSingleRunInference: true } },
         plugins: { "@sarj": { rules: { [example.rule]: rule as unknown as Rule.RuleModule } } },
         rules: { [ruleId]: ["error", ...(example.rule === "no-restricted-library-load" ? [{ libraries: [{ id: "LIB101", module: "axios", replacement: "Ky" }] }] : example.rule === "no-storage-in-stateless-modules"
           ? [{ modules: ["engineer-digest"] }] : rule.defaultOptions ?? [])] },
