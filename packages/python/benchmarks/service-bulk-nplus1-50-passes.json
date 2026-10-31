@@ -1,0 +1,474 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-30",
+  "topic": "Expanded bulk-first CRUD and source-proven batching review",
+  "versions": {
+    "sarj-python-lint": "1.104.0",
+    "code-standards": "8.173.0",
+    "sarj-standards": "8.173.0"
+  },
+  "owners": [
+    {
+      "code": "SARJ556",
+      "rule": "service-singleton-delegates-to-bulk",
+      "level": "error",
+      "decision": "Retain the existing explicit blocking architecture policy without autofix; require no known inspected applicability false positives."
+    },
+    {
+      "code": "SARJ516",
+      "rule": "prefer-bulk-upsert",
+      "level": "warning",
+      "decision": "Expand the existing selector to declared compatible reads and CRUD writes, simple comprehensions and eager gather; retain semantic review and no autofix."
+    },
+    {
+      "code": "SARJ421",
+      "rule": "store-get-delegates-to-bulk-read",
+      "level": "warning",
+      "decision": "Repair shared namespace/member proof and legacy decorator boundaries; retain compatibility alias and duplicate precedence."
+    }
+  ],
+  "review": {
+    "method": "Fifty sequential fresh-context scoped review passes, each with an actual local receipt. Focused probes and repeated fixture variants are not additional independent passes or field observations.",
+    "passes": [
+      {
+        "number": 1,
+        "axis": "Existing ownership",
+        "result": "Confirmed same-file implementation and declared read-caller gaps; retained existing owners and duplicate precedence."
+      },
+      {
+        "number": 2,
+        "axis": "Class provenance",
+        "result": "Confirmed that role inheritance requires a unique stable earlier class binding and conservative dynamic-base handling."
+      },
+      {
+        "number": 3,
+        "axis": "Collected reads",
+        "result": "Four executed probes refined the simple typed read-comprehension opportunity and its result-contract limits."
+      },
+      {
+        "number": 4,
+        "axis": "CRUD write pairs",
+        "result": "Confirmed narrow create/insert/update/delete pair coverage gaps; preserved incompatible outputs and contextual contracts."
+      },
+      {
+        "number": 5,
+        "axis": "Caller implementation",
+        "result": "Expanded the existing caller owner; 132 direct AST variants passed. An incomplete builtin timeout remained recorded for later repair."
+      },
+      {
+        "number": 6,
+        "axis": "Backend singleton fanout",
+        "result": "The typed injected-backend case was covered; per-row effects, transactions and void/aggregate results remained outside the supported shape."
+      },
+      {
+        "number": 7,
+        "axis": "Native source cleanup",
+        "result": "Repaired three builtin source blockers without changing the supported comprehension behavior."
+      },
+      {
+        "number": 8,
+        "axis": "Write comprehensions",
+        "result": "Reproduced the declared compatible write list/dict comprehension gap."
+      },
+      {
+        "number": 9,
+        "axis": "Eager coroutine fanout",
+        "result": "Reproduced the directly awaited, import-proven asyncio.gather gap and preserved opaque scheduler boundaries."
+      },
+      {
+        "number": 10,
+        "axis": "Serial reads and fanout implementation",
+        "result": "Implemented strict write comprehensions, discarded read loops and narrowly proven eager gather fanout."
+      },
+      {
+        "number": 11,
+        "axis": "Receiver identity",
+        "result": "Sixteen AST controls passed for typed and imported owners; the inspected service injection remained clean."
+      },
+      {
+        "number": 12,
+        "axis": "Alias mutation",
+        "result": "Reproduced stale direct receiver proof after alias member writes; positive receiver-alias matching remained deferred."
+      },
+      {
+        "number": 13,
+        "axis": "Bound method aliases",
+        "result": "Reproduced valid stable bound-method adapter rejection and recommended retaining original receiver identity."
+      },
+      {
+        "number": 14,
+        "axis": "Input and receiver mutation",
+        "result": "Repaired alias-member invalidation with 25 passing probes; recorded separate singleton input-flow defects."
+      },
+      {
+        "number": 15,
+        "axis": "Collection allocation",
+        "result": "Implemented stable bound-method delegation and reverse tracking; reproduced allocation and immutable-set cardinality false positives."
+      },
+      {
+        "number": 16,
+        "axis": "Shared context",
+        "result": "Reproduced acceptance of wrapped context instead of the uniquely typed bulk collection input."
+      },
+      {
+        "number": 17,
+        "axis": "Input provenance repair",
+        "result": "Repaired allocation, immutable validation, set cardinality and collection-slot proof; preserved per-row transaction and effect boundaries."
+      },
+      {
+        "number": 18,
+        "axis": "Failure and duplicates",
+        "result": "Retained advisory semantics for missing rows, duplicates, failure, concurrency and per-row exception or transaction blocks."
+      },
+      {
+        "number": 19,
+        "axis": "Result projection",
+        "result": "Confirmed that arbitrary projection and external effects remain documented review concerns rather than a general equivalence proof."
+      },
+      {
+        "number": 20,
+        "axis": "Coroutine relays",
+        "result": "Reproduced rejection of a directly awaited synchronous helper returning the async bulk coroutine."
+      },
+      {
+        "number": 21,
+        "axis": "Helper await repair",
+        "result": "Implemented bounded await-result propagation only through exact synchronous tail-return helper calls."
+      },
+      {
+        "number": 22,
+        "axis": "Reverse receiver binding",
+        "result": "Reproduced a false reverse cycle after rebinding self; required original receiver proof."
+      },
+      {
+        "number": 23,
+        "axis": "Inherited singleton scope",
+        "result": "Recorded the inherited-singleton/child-bulk limitation and explicitly deferred that optional scope expansion."
+      },
+      {
+        "number": 24,
+        "axis": "Imported ports",
+        "result": "Four probes preserved unknown imported ancestry while enforcing locally concrete declared bulk policy; backend equivalence was not inferred."
+      },
+      {
+        "number": 25,
+        "axis": "Multiple inheritance",
+        "result": "Reproduced two opposing diagnostic mismatches from non-C3 inherited method ordering."
+      },
+      {
+        "number": 26,
+        "axis": "Ancestry repair",
+        "result": "Repaired original-receiver reverse tracking, bounded C3 ordering, data-model exclusions and concrete local Protocol implementation scope."
+      },
+      {
+        "number": 27,
+        "axis": "Decorator namespaces",
+        "result": "Reproduced class-evaluation shadowing of supposedly neutral decorator markers in both strict and advisory owners."
+      },
+      {
+        "number": 28,
+        "axis": "Exclusions",
+        "result": "Confirmed separate runtime/test policies and preserved generated, fake, vendor and stub boundaries."
+      },
+      {
+        "number": 29,
+        "axis": "Decorator binding repair",
+        "result": "Repaired declaration-time namespace provenance, retaining deferred function, lambda and comprehension scope behavior."
+      },
+      {
+        "number": 30,
+        "axis": "Conditional adapters",
+        "result": "Four probes preserved the documented straight-line adapter limit and simple helper alternatives."
+      },
+      {
+        "number": 31,
+        "axis": "Context managers",
+        "result": "Preserved try/finally, context-manager rebinding and per-row failure or transaction boundaries."
+      },
+      {
+        "number": 32,
+        "axis": "Dead reverse calls",
+        "result": "Reproduced reverse edges from provably unreachable statements and literal-false flow."
+      },
+      {
+        "number": 33,
+        "axis": "Reverse-flow repair",
+        "result": "Pruned direct terminated statement lists and literal Boolean dead paths; repaired inherited instance-write uncertainty."
+      },
+      {
+        "number": 34,
+        "axis": "Domain verbs",
+        "result": "Contrasting probes retained the explicit CRUD boundary instead of inferring I/O from fetch/load/save names."
+      },
+      {
+        "number": 35,
+        "axis": "Read versus write effects",
+        "result": "Preserved strict scalar/collection write contracts and deliberate per-row effects."
+      },
+      {
+        "number": 36,
+        "axis": "SQL ownership",
+        "result": "Confirmed existing SQL batching ownership and avoided a second name-only query detector."
+      },
+      {
+        "number": 37,
+        "axis": "Bounded chunking",
+        "result": "Three probes distinguished repeated singleton calls from valid bounded bulk batches; the inspected paged consumer remained clean."
+      },
+      {
+        "number": 38,
+        "axis": "Streams and pagination",
+        "result": "Reproduced async-generator awaitability ambiguity and recommended deferral while retaining visible reverse edges."
+      },
+      {
+        "number": 39,
+        "axis": "Caches and generator repair",
+        "result": "Implemented async-generator adapter deferral; cache and dictionary projection controls remained valid."
+      },
+      {
+        "number": 40,
+        "axis": "Empty and singleton inputs",
+        "result": "Extended import-proven immutable builtin scalar handling; 150 AST variants and four cardinality/context controls passed."
+      },
+      {
+        "number": 41,
+        "axis": "Cross-entity enrichment",
+        "result": "Confirmed typed related-entity reads versus bulk prefetch and in-memory identity-map joins."
+      },
+      {
+        "number": 42,
+        "axis": "Bulk result contracts",
+        "result": "Preserved optional reads, list/Sequence and keyed Mapping contracts; ordering, placeholders and duplicates still require review."
+      },
+      {
+        "number": 43,
+        "axis": "Legacy overlap",
+        "result": "Reproduced legacy read advice on methods replaced by identical unknown decorators after strict-owner deferral."
+      },
+      {
+        "number": 44,
+        "axis": "Suppressions",
+        "result": "Three actual controls preserved exact-code reasoned suppressions, physical locations and quoted pragma text."
+      },
+      {
+        "number": 45,
+        "axis": "Mutation and malformed input",
+        "result": "Repaired literal builtin member masks, receiver-class mutation and legacy declaration-time decorator proof; 54 direct probes passed."
+      },
+      {
+        "number": 46,
+        "axis": "Analysis budgets",
+        "result": "Repaired stale receiver proof on alias-budget exhaustion; 29 probes covered alias, helper, ancestry and C3 bounds."
+      },
+      {
+        "number": 47,
+        "axis": "Complete field finding review",
+        "result": "Individually reviewed all 93 pre-fix findings: 92 architecture-policy true positives and one fixed-resource aggregate applicability false positive; implemented a narrow source-shaped deferral."
+      },
+      {
+        "number": 48,
+        "axis": "Missed-case sample",
+        "result": "Inspected representative static candidates and ran four controls; no new defect within the supported contract was confirmed. This was not a recall census."
+      },
+      {
+        "number": 49,
+        "axis": "Metadata and privacy",
+        "result": "Checked three metadata groups, 16 example ASTs, generated input digests, exact package pins and private-literal boundaries; historical public reports remained immutable."
+      },
+      {
+        "number": 50,
+        "axis": "Final adversarial regression",
+        "result": "Fourteen fresh probes passed across aggregate applicability, explicit bulk preservation, mutation and scheduler provenance, cache joins, bound aliases and legacy decorator exclusions."
+      }
+    ]
+  },
+  "native_verification": {
+    "focused_owner_and_shared_helper_neighbor_tests": 1301,
+    "modules": [
+      "test_prefer_bulk_upsert",
+      "test_service_singleton_delegates_to_bulk",
+      "test_store_get_delegates_to_bulk_read",
+      "test_store_mutation_command_fanout",
+      "test_store_field_update_reuses_upsert",
+      "test_prefer_psycopg_executemany"
+    ],
+    "executable_source_owned_examples": 16,
+    "changed_file_preflight": "All eight changed Python implementation/generated/test files pass pinned Ruff, formatting and strict typing. Complete builtin source proofs cover the changed files, including the generated descriptor; five inherited tuple-API warnings in the existing shared helper remain disclosed, with no blocking errors.",
+    "final_adversarial_probes": {
+      "passed": 14,
+      "failed": 0
+    },
+    "merge_qualification": "The canonical pinned make verify command, normal commit/push hooks and latest exact-head required CI including installed-artifact qualification remain mandatory separate completion gates. Their actual completion is reported in the pull request; focused evidence does not replace them.",
+    "integration_requalification": {
+      "date": "2026-10-31",
+      "upstream_public_commit": "26d0e3f9f57c4ec3fcba226bb5dd7b962e00e7ab",
+      "passed_cases": 1413,
+      "modules": [
+        "test_prefer_bulk_upsert",
+        "test_service_singleton_delegates_to_bulk",
+        "test_store_get_delegates_to_bulk_read",
+        "test_store_mutation_command_fanout",
+        "test_store_field_update_reuses_upsert",
+        "test_prefer_psycopg_executemany",
+        "test_no_psycopg_execution_outside_injected_owner"
+      ],
+      "scope": "The six original complete owner/shared-helper modules plus the PostgreSQL execution-owner neighbor module passed after integrating the upstream candidate-call guard. The fifty review passes remain the original completed campaign.",
+      "source_preflight": "All nine implementation/generated/test files pass pinned Ruff, formatting and strict typing. Complete builtin source analysis reports no blocking errors; eight inherited tuple-API warnings remain advisory.",
+      "corpus_reconciliation": "The same 398 immutable files reproduce byte-identical diagnostics: 92 reviewed architecture-policy findings and no public-corpus findings. Original external pins and inventories are unchanged.",
+      "artifacts": "Canonical source descriptors, inventory, ledger, catalog, third-party catalog, CLI reference, documentation and formatted examples agree; doctor and repository checks pass.",
+      "full_gate_reuse": "The original complete make verify passed 55,687 package cases and 13 documentation routing cases. Unchanged input evidence is retained; the incoming runtime guard has its own verified upstream CI proof and refreshed local checks. Final integration hooks and exact-head CI remain mandatory."
+    }
+  },
+  "field_calibration": {
+    "method": "Native run_isolated_corpora with immutable source pins, safe Python import mode and batches capped at 250 files; source analysis only.",
+    "files": {
+      "private_runtime": 293,
+      "public_pydantic": 105,
+      "total": 398
+    },
+    "selected_rules": [
+      "service-singleton-delegates-to-bulk",
+      "prefer-bulk-upsert",
+      "store-get-delegates-to-bulk-read"
+    ],
+    "original_campaign_baseline": {
+      "findings": 86,
+      "codes": {
+        "SARJ556": 86,
+        "SARJ516": 0
+      },
+      "scope": "Historical original campaign revision; SARJ421 was not included. This is not the final-main performance comparator."
+    },
+    "pre_repair_candidate_review": {
+      "findings": 93,
+      "architecture_policy_true_positives": 92,
+      "false_positives": 1,
+      "unresolved": 0,
+      "all_individually_reviewed": true,
+      "repair": "A fixed-resource aggregate update was a real applicability false positive. The missing-bulk UPDATE-only exception requires a stable own parameterless concrete getter and matching earlier stable same-file data-model return types, with no declared or uncertain CRUD bulk peer."
+    },
+    "final_candidate": {
+      "findings": 92,
+      "codes": {
+        "SARJ556": 92,
+        "SARJ516": 0,
+        "SARJ421": 0
+      },
+      "public_findings": 0,
+      "reviewed_architecture_policy_true_positives": 92,
+      "known_inspected_false_positives": 0,
+      "unresolved_applicability": 0,
+      "delta_from_pre_repair": {
+        "added": 0,
+        "removed_confirmed_aggregate_false_positive": 1
+      },
+      "review_reuse": "All retained diagnostics and relevant source bytes match the individually reviewed pre-repair findings; only the confirmed aggregate false positive disappeared."
+    },
+    "static_inventory": {
+      "files": 313,
+      "crud_owners": 89,
+      "unlabelled_loop_or_comprehension_candidates": 113,
+      "interpretation": "A separate source-only inventory, not a defect count or recall denominator. Twenty top-level files are outside the nested native corpus glob and contain no recognized role owner."
+    },
+    "limits": [
+      "Architecture-policy applicability is distinct from a safe body-only rewrite; tenant/auth, cache, locking, transaction, snapshot, partial failure and external effects still require semantic design.",
+      "No natural SARJ516 or SARJ421 match was observed in this final scope. Authored positive cases establish supported behavior, not natural-case recall.",
+      "All final findings were reviewed under the explicit architecture policy; finite selected corpora do not establish universal precision or recall.",
+      "No application, database queries or remote effects were executed. No measured query-count reduction or proven fleet N+1 incidence is claimed."
+    ]
+  },
+  "performance": {
+    "date": "2026-10-31",
+    "baseline_public_commit": "26d0e3f9f57c4ec3fcba226bb5dd7b962e00e7ab",
+    "method": "Five alternating fresh worker pairs, one first and two warm native analyses per worker; same interpreter, dependencies, rules and inputs. Operating-system caches untouched.",
+    "rules": [
+      "service-singleton-delegates-to-bulk",
+      "prefer-bulk-upsert",
+      "store-get-delegates-to-bulk-read"
+    ],
+    "files": 40,
+    "bytes": 216500,
+    "sample": "Sixteen evenly spaced sorted private corpus paths, eight public Pydantic paths and sixteen current single-file authored examples, materialized outside vendor/cache paths.",
+    "summary": {
+      "baseline": {
+        "first_analysis_median_seconds": 0.8153813988901675,
+        "warm_analysis_median_seconds": 0.8414388820528984,
+        "worker_lifetime_peak_median_bytes": 71729152,
+        "findings": 8
+      },
+      "candidate": {
+        "first_analysis_median_seconds": 1.863896100083366,
+        "warm_analysis_median_seconds": 1.5712377518648282,
+        "worker_lifetime_peak_median_bytes": 72790016,
+        "findings": 11
+      }
+    },
+    "stability": "Each variant retained identical diagnostics across all fifteen analyses; source bytes, input bytes and original external pins were verified before and after measurement.",
+    "limits": [
+      "Selected16 private and8 public corpus paths by evenly spaced sorted position, materialized outside vendor/cache paths, plus single-file authored examples; performance sample is not a precision sample.",
+      "Source-only baseline and candidate use identical installed dependencies; canonical installed-artifact CI owns packaging qualification.",
+      "Worker total durations include process startup/imports and all three analyses; first/warm native intervals exclude startup.",
+      "Fresh-process first analysis is not cold OS-cache timing. Shared VM medians establish neither fleet throughput nor tail latency.",
+      "Peak RSS covers worker lifetime including imports and earlier analysis; not analysis-only or aggregate concurrent memory."
+    ],
+    "ratios_candidate_to_baseline": {
+      "first_analysis_median_seconds": 2.285919328820051,
+      "warm_analysis_median_seconds": 1.8673224940965467,
+      "worker_lifetime_peak_median_bytes": 1.0147898583828232
+    },
+    "interpretation": "The expanded selected rules were slower than current main on this bounded sample. The measurements describe the complete revisions on a shared VM and do not isolate a causal cost or establish fleet throughput."
+  },
+  "supported_boundaries": [
+    "Unique stable module-level role classes and bounded local C3 ancestry; inherited singleton declarations and arbitrary domain verbs remain deferred.",
+    "Straight-line singleton adapters, stable local bound method aliases, original item/shared context and bounded private helper await forwarding; arbitrary control flow or result projection is not proven.",
+    "Caller advice requires a source-declared compatible typed or injected receiver contract. Unknown, rebound, decorated, overloaded, inherited or dynamic contracts defer.",
+    "Per-row transactions/effects, filtered or nested result-dependent flow, streams, opaque scheduling and dictionary/cache joins do not establish the supported batch opportunity.",
+    "Generated/vendor sources remain excluded; strict runtime ownership and advisory maintained-test policies remain separate. Existing exact suppressions, baselines, severities and no-autofix policy are retained."
+  ],
+  "privacy": "Only redacted aggregates and public repository metadata are published. Private source, identities, paths, revisions, pins and identifying hashes remain in owner-readable local evidence. Earlier public benchmark reports are unchanged.",
+  "historical_performance": [
+    {
+      "date": "2026-10-30",
+      "scope": "Completed earlier campaign measurement before latest-main integration; retained with its original comparator and results.",
+      "measurement": {
+        "baseline_public_commit": "aabe082d9dd8f0de059cad54deec6cdc1fed6ef9",
+        "method": "Five alternating fresh worker pairs, one first and two warm native analyses per worker; same interpreter, dependencies, rules and inputs. Operating-system caches untouched.",
+        "rules": [
+          "service-singleton-delegates-to-bulk",
+          "prefer-bulk-upsert",
+          "store-get-delegates-to-bulk-read"
+        ],
+        "files": 40,
+        "bytes": 216500,
+        "sample": "Sixteen evenly spaced sorted private corpus paths, eight public Pydantic paths and sixteen current single-file authored examples, materialized outside vendor/cache paths.",
+        "summary": {
+          "baseline": {
+            "first_analysis_median_seconds": 1.1113975609187037,
+            "warm_analysis_median_seconds": 1.8670484480098821,
+            "worker_lifetime_peak_median_bytes": 73535488,
+            "findings": 8
+          },
+          "candidate": {
+            "first_analysis_median_seconds": 1.1634200640255585,
+            "warm_analysis_median_seconds": 1.3343732744688168,
+            "worker_lifetime_peak_median_bytes": 73080832,
+            "findings": 11
+          }
+        },
+        "stability": "Each variant retained identical diagnostics across all fifteen analyses; source bytes, input bytes and original external pins were verified before and after measurement.",
+        "limits": [
+          "Selected16 private and8 public corpus paths by evenly spaced sorted position, materialized outside vendor/cache paths, plus single-file authored examples; performance sample is not a precision sample.",
+          "Source-only baseline and candidate use identical installed dependencies; canonical installed-artifact CI owns packaging qualification.",
+          "Worker total durations include process startup/imports and all three analyses; first/warm native intervals exclude startup.",
+          "Fresh-process first analysis is not cold OS-cache timing. Shared VM medians establish neither fleet throughput nor tail latency.",
+          "Peak RSS covers worker lifetime including imports and earlier analysis; not analysis-only or aggregate concurrent memory."
+        ],
+        "ratios_candidate_to_baseline": {
+          "first_analysis_median_seconds": 1.0468081854200328,
+          "warm_analysis_median_seconds": 0.714696651761312,
+          "worker_lifetime_peak_median_bytes": 0.9938171893276889
+        }
+      }
+    }
+  ]
+}

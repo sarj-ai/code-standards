@@ -18,7 +18,12 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._ast_index import walk as walk_ast
 from sarj_python_lint.rules._sql import is_store_module
-from sarj_python_lint.rules._store_writes import upsert_pair
+from sarj_python_lint.rules._store_writes import (
+    decorator_name,
+    instance_member_bindings,
+    methods as stable_methods,
+    upsert_pair,
+)
 
 
 if TYPE_CHECKING:
@@ -64,7 +69,19 @@ _DISTINCT_ACCESS_MARKERS = frozenset(
     }
 )
 _LOCKING_SQL = ("FOR UPDATE", "FOR SHARE", "SKIP LOCKED")
-_NEUTRAL_DECORATORS = frozenset({"abstractmethod", "overload", "override"})
+_NEUTRAL_DECORATORS = frozenset({"abstractmethod", "overload", "override", "final"})
+_SUPPORTED_DECORATORS = frozenset(
+    {
+        "abc.abstractmethod",
+        "typing.overload",
+        "typing_extensions.overload",
+        "typing.override",
+        "typing_extensions.override",
+        "typing.final",
+        "typing_extensions.final",
+    }
+)
+_MAX_LOCAL_CLASSES = 64
 
 
 class _MethodPair(NamedTuple):
@@ -117,6 +134,7 @@ class StoreGetDelegatesToBulkRead(Rule):
             "Signature compatibility is advisory: dynamic helpers and behavior not visible in the two method bodies require review.",
             "Closed literal starred collection expansions preserve singleton delegation; unknown iterable expansion or additional keys do not prove the singleton contract.",
             "Straight-line command and singleton-collection aliases preserve delegation; reassigned inputs and unsupported alias mutations do not prove that the original command reaches the bulk primitive.",
+            "Rebound or duplicate class members and visible instance member writes, including source-proven literal builtin setattr/delattr, defer advisory pairs; receiver __class__ writes defer the whole API. Same-file ancestor mutation discovery stops at 64 classes; opaque calls and imported constructor effects are not inferred. Unknown or rewriting class/method decorators defer body equivalence; supported abc and typing markers must retain their declaration-time binding.",
         ),
         aliases=("get-delegates-to-get-many",),
         examples=(
@@ -217,12 +235,7 @@ class StoreGetDelegatesToBulkRead(Rule):
             if not isinstance(statement, ast.ClassDef):
                 continue
             methods = _methods_by_name(statement)
-            read_pair = _compatible_pair(statement)
-            pairs = ([] if read_pair is None else [read_pair]) + _compatible_write_pairs(statement)
-            upserts = upsert_pair(statement, context.module_imports)
-            if upserts is not None and _is_concrete(upserts[0]):
-                pairs.append(_MethodPair(*upserts))
-            for singleton, bulk in pairs:
+            for singleton, bulk in _candidate_pairs(statement, context):
                 is_read = singleton.name == "get"
                 if _already_canonical(singleton, bulk, methods, is_read=is_read):
                     continue
@@ -243,6 +256,65 @@ class StoreGetDelegatesToBulkRead(Rule):
                     )
                 )
         return diagnostics
+
+
+def _candidate_pairs(owner: ast.ClassDef, context: PythonFileContext) -> list[_MethodPair]:
+    masked = _instance_member_masks(owner, context)
+    if masked is None or "__class__" in masked:
+        return []
+    stable = stable_methods(owner)
+    read_pair = _compatible_pair(owner)
+    pairs = ([] if read_pair is None else [read_pair]) + _compatible_write_pairs(owner)
+    upserts = upsert_pair(owner, context.module_imports)
+    if upserts is not None and _is_concrete(upserts[0]):
+        pairs.append(_MethodPair(*upserts))
+    supported: list[_MethodPair] = []
+    for singleton, bulk in pairs:
+        if (
+            {singleton.name, bulk.name} & masked
+            or stable.get(singleton.name) is not singleton
+            or stable.get(bulk.name) is not bulk
+            or not _supported_decorators(singleton, owner, context)
+            or not _supported_decorators(bulk, owner, context)
+        ):
+            continue
+        supported.append(_MethodPair(singleton, bulk))
+    return supported
+
+
+def _instance_member_masks(owner: ast.ClassDef, context: PythonFileContext) -> set[str] | None:
+    masks: set[str] = set()
+    pending = [owner]
+    seen: set[ast.ClassDef] = set()
+    while pending:
+        candidate = pending.pop()
+        if candidate in seen:
+            continue
+        if len(seen) >= _MAX_LOCAL_CLASSES:
+            return None
+        seen.add(candidate)
+        masks.update(instance_member_bindings(candidate, context))
+        for base in candidate.bases:
+            target = base.value if isinstance(base, ast.Subscript) else base
+            if isinstance(target, ast.Name):
+                parent = context.static_resource_provenance.runtime_binding(target.id, target)
+                if isinstance(parent, ast.ClassDef) and parent.lineno < candidate.lineno:
+                    pending.append(parent)
+    return masks
+
+
+def _supported_decorators(
+    method: ast.FunctionDef | ast.AsyncFunctionDef, owner: ast.ClassDef, context: PythonFileContext
+) -> bool:
+    tree = context.tree
+    if tree is None:
+        return False
+    imports = context.module_imports
+    return all(decorator_name(d, owner, tree, imports) in _SUPPORTED_DECORATORS for d in owner.decorator_list) and all(
+        decorator_name(d, owner, tree, imports) is not None
+        and decorator_name(d, method, owner, imports) in _SUPPORTED_DECORATORS
+        for d in method.decorator_list
+    )
 
 
 def _already_canonical(

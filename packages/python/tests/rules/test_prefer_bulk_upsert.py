@@ -1,5 +1,5 @@
 from pathlib import Path
-from textwrap import dedent
+from textwrap import dedent, indent
 from typing import TYPE_CHECKING
 
 import pytest
@@ -37,6 +37,52 @@ def test_flags_discarded_serial_upserts_with_proven_bulk_contract(argument: str)
     assert len(findings) == 1
     assert findings[0].code == "SARJ516"
     assert "upsert_many" in findings[0].message
+
+
+@pytest.mark.parametrize("member", ["upsert", "upsert_many"])
+@pytest.mark.parametrize(
+    ("before", "after", "expected"),
+    [
+        ("marker = rewrite", "", 0),
+        ("if enabled:\n    marker = rewrite", "", 0),
+        ("", "marker = rewrite", 1),
+        ("def nested(marker):\n    marker = rewrite", "", 1),
+        ("class Nested:\n    marker = rewrite", "", 1),
+        ("deferred = lambda marker: marker", "", 1),
+        ("values = [marker for marker in values]", "", 1),
+    ],
+)
+def test_pair_markers_use_class_evaluation_binding(member: str, before: str, after: str, expected: int) -> None:
+    contract = CONTRACT.replace("class UserStore:", "class UserStore:\n" + indent(before, "    "))
+    contract = contract.replace(f"    async def {member}(", f"    @marker\n    async def {member}(")
+    contract += indent(after, "    ") + "\n"
+    source = "from typing import override as marker\n" + contract
+    caller = "async def save(store: UserStore, users):\n    for user in users:\n        await store.upsert(user)\n"
+    assert len(_check(caller, source)) == expected
+
+
+@pytest.mark.parametrize("module", ["typing", "typing_extensions", "abc"])
+@pytest.mark.parametrize("shadow", ["", "    markers = replacement\n", "    markers.MARKER = rewrite\n"])
+def test_pair_namespace_markers_require_original_binding(module: str, shadow: str) -> None:
+    marker = "abstractmethod" if module == "abc" else "override"
+    contract = CONTRACT.replace("class UserStore:", "class UserStore:\n" + shadow.replace("MARKER", marker))
+    contract = contract.replace("    async def upsert(", f"    @markers.{marker}\n    async def upsert(")
+    caller = "async def save(store: UserStore, users):\n    for user in users:\n        await store.upsert(user)\n"
+    assert len(_check(caller, f"import {module} as markers\n" + contract)) == (0 if shadow else 1)
+
+
+@pytest.mark.parametrize("marker", ["final", "property", "staticmethod", "classmethod"])
+def test_unproven_or_descriptor_pair_markers_remain_excluded(marker: str) -> None:
+    contract = "from typing import final\n" + CONTRACT.replace(
+        "    async def upsert(", f"    @{marker}\n    async def upsert("
+    )
+    assert (
+        _check(
+            "async def save(store: UserStore, users):\n    for user in users:\n        await store.upsert(user)\n",
+            contract,
+        )
+        == []
+    )
 
 
 @pytest.mark.parametrize(
@@ -240,6 +286,38 @@ def test_imported_contract_is_resolved_without_importing_application(tmp_path: P
     )
     findings = analyze([PreferBulkUpsert.id], [consumer])
     assert [(finding.code, finding.line) for finding in findings] == [("SARJ516", 4)] * expected
+
+
+@pytest.mark.parametrize(
+    ("before_module", "before_class", "expected"),
+    [
+        ("", "", 1),
+        ("", "marker = rewrite", 0),
+        ("", "if enabled:\n    marker = rewrite", 0),
+        ("", "markers.override = rewrite", 0),
+        ("markers.override = rewrite\n", "", 0),
+    ],
+)
+def test_imported_pair_preserves_owner_decorator_bindings(
+    tmp_path: Path, before_module: str, before_class: str, expected: int
+) -> None:
+    package = tmp_path / "app"
+    package.mkdir()
+    (tmp_path / "pyproject.toml").write_text('[project]\nname="example"\nversion="0.0.0"\n', encoding="utf-8")
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    expression = "markers.override" if "markers" in before_class + before_module else "marker"
+    contract = CONTRACT.replace("class UserStore:", "class UserStore:\n" + indent(before_class, "    "))
+    contract = contract.replace("    async def upsert(", f"    @{expression}\n    async def upsert(")
+    (package / "store.py").write_text(
+        "import typing as markers\nfrom typing import override as marker\n" + before_module + contract,
+        encoding="utf-8",
+    )
+    consumer = package / "service.py"
+    consumer.write_text(
+        "from app.store import UserStore\nasync def save(store: UserStore, users):\n    for user in users:\n        await store.upsert(user)\n",
+        encoding="utf-8",
+    )
+    assert len(analyze([PreferBulkUpsert.id], [consumer])) == expected
 
 
 def test_exact_suppression_and_warning_cli(tmp_path: Path) -> None:
@@ -486,4 +564,692 @@ def test_nested_unrelated_self_parameter_is_not_the_service_instance() -> None:
                         await self.store.upsert(user)
         """)
         == []
+    )
+
+
+@pytest.mark.parametrize("operation", ["create", "insert", "update", "delete"])
+def test_flags_compatible_discarded_crud_writes(operation: str) -> None:
+    contract = CONTRACT.replace("upsert", operation)
+    findings = _check(
+        f"async def save(store: UserStore, users):\n    for user in users:\n        await store.{operation}(user)",
+        contract,
+    )
+    assert len(findings) == 1
+    assert f"{operation}_many" in findings[0].message
+
+
+@pytest.mark.parametrize("operation", ["create", "insert", "update", "delete"])
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        (" -> User:", " -> User | None:"),
+        ("list[User]:", "int:"),
+        ("users: list[UserInput]", "users: list[OtherInput]"),
+        ("user: UserInput", "user: UserInput, tenant: str = 'default'"),
+    ],
+    ids=["optional-write-result", "aggregate-result", "different-input-model", "optional-context"],
+)
+def test_crud_pairs_keep_strict_input_and_result_compatibility(operation: str, replacement: tuple[str, str]) -> None:
+    assert (
+        _check(
+            f"async def save(store: UserStore, users):\n    for user in users:\n        await store.{operation}(user)",
+            CONTRACT.replace("upsert", operation).replace(*replacement),
+        )
+        == []
+    )
+
+
+READ_CONTRACT = """
+class UserStore:
+    async def get(self, user_id: str) -> User | None:
+        ...
+    async def get_many(self, user_ids: list[str]) -> list[User]:
+        ...
+"""
+
+
+@pytest.mark.parametrize("bulk_name", ["get_many", "get_by_ids"])
+@pytest.mark.parametrize(
+    "value", ["[await store.get(user_id) for user_id in ids]", "{user_id: await store.get(user_id) for user_id in ids}"]
+)
+@pytest.mark.parametrize(
+    ("imports", "scalar", "result"),
+    [
+        ("", "User", "list[User]"),
+        ("", "User | None", "list[User]"),
+        ("", "None | User", "dict[str, User]"),
+        ("from typing import Optional, Sequence\n", "Optional[User]", "Sequence[User]"),
+        ("from collections.abc import Mapping\n", '"User | None"', "Mapping[str, User]"),
+    ],
+)
+def test_flags_source_proven_read_comprehensions(
+    bulk_name: str, value: str, imports: str, scalar: str, result: str
+) -> None:
+    contract = imports + READ_CONTRACT.replace("get_many", bulk_name).replace("User | None", scalar).replace(
+        "list[User]", result
+    )
+    findings = _check(f"async def load(store: UserStore, ids):\n    return {value}", contract)
+    assert len(findings) == 1
+    assert findings[0].severity.value == "warning"
+    assert bulk_name in findings[0].message
+
+
+def test_sync_read_and_keyword_key_are_supported() -> None:
+    assert (
+        len(
+            _check(
+                "def load(store: UserStore, ids):\n    return [store.get(user_id=user_id) for user_id in ids]",
+                READ_CONTRACT.replace("async def", "def"),
+            )
+        )
+        == 1
+    )
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "[store.get(user_id) for user_id in ids]",
+        "[await store.get(user_id) async for user_id in ids]",
+        "[await store.get(user_id) for user_id in ids if allowed(user_id)]",
+        "[await store.get(user_id) for group in groups for user_id in group]",
+        "[wrap(await store.get(user_id)) for user_id in ids]",
+        "[await store.get(transform(user_id)) for user_id in ids]",
+        "[await store.get(user_id) for user_id in load_ids()]",
+        "{touch(user_id): await store.get(user_id) for user_id in ids}",
+        "[await store.get(user_id) for user_id in ids if (saved := user_id)]",
+        "[await store.get(user_id) for user_id in [only]]",
+        "[await store.get(fixed) for user_id in ids]",
+        "[await store.get(user_id, tenant=tenant) for user_id in ids]",
+        "[await store.get(*user_id) for user_id in ids]",
+        "[await store.get(user_id) for store in stores]",
+        "[await other.get(user_id) for user_id in ids]",
+        "(await store.get(user_id) for user_id in ids)",
+    ],
+)
+def test_read_comprehension_boundaries(value: str) -> None:
+    assert _check(f"async def load(store: UserStore, ids):\n    return {value}", READ_CONTRACT) == []
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        ("get_many", "fetch_many"),
+        ("user_ids: list[str]", "user_ids: list[int]"),
+        ("list[User]", "dict[int, User]"),
+        ("list[User]", "list[Other]"),
+        ("list[User]", "set[User]"),
+        ("user_id: str", "user_id: str, tenant: str"),
+        ("async def get_many", "def get_many"),
+        ("User | None", "User | Other | None"),
+    ],
+    ids=[
+        "missing-canonical-bulk",
+        "different-key-type",
+        "different-mapping-key",
+        "different-result-model",
+        "unordered-result",
+        "required-context",
+        "different-await-mode",
+        "ambiguous-result-union",
+    ],
+)
+def test_read_pairs_require_compatible_source_contracts(replacement: tuple[str, str]) -> None:
+    assert (
+        _check(
+            "async def load(store: UserStore, ids):\n    return [await store.get(user_id) for user_id in ids]",
+            READ_CONTRACT.replace(*replacement),
+        )
+        == []
+    )
+
+
+def test_injected_backend_exposes_a_fake_bulk_read_implementation() -> None:
+    findings = _check(
+        """
+    class UserService:
+        def __init__(self, backend: UserStore):
+            self.backend = backend
+        async def get_many(self, ids):
+            return [await self.backend.get(user_id) for user_id in ids]
+    """,
+        READ_CONTRACT,
+    )
+    assert len(findings) == 1
+
+
+@pytest.mark.parametrize("annotation", ["", ": UnknownBackend", ": dict[str, User]"])
+def test_unproven_backend_or_dictionary_does_not_establish_a_bulk_pair(annotation: str) -> None:
+    assert (
+        _check(
+            f"def load(backend{annotation}, ids):\n    return [backend.get(user_id) for user_id in ids]",
+            READ_CONTRACT,
+        )
+        == []
+    )
+
+
+def test_batched_read_then_dictionary_join_remains_clean() -> None:
+    assert (
+        _check(
+            """
+    async def load(store: UserStore, ids):
+        users = await store.get_many(ids)
+        users_by_id = {user.id: user for user in users}
+        return [users_by_id.get(user_id) for user_id in ids]
+    """,
+            READ_CONTRACT,
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "member",
+    [
+        "create",
+        "create_many",
+        "insert",
+        "insert_many",
+        "update",
+        "update_many",
+        "delete",
+        "delete_many",
+        "get",
+        "get_many",
+        "get_by_ids",
+    ],
+)
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "store.{member} = replacement",
+        "del store.{member}",
+        "setattr(store, '{member}', replacement)",
+        "delattr(store, '{member}')",
+    ],
+)
+def test_new_receiver_members_invalidate_existing_upsert_proof(member: str, mutation: str) -> None:
+    assert (
+        _check(
+            f"async def save(store: UserStore, users):\n    {mutation.format(member=member)}\n    for user in users:\n        await store.upsert(user)"
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize("member", ["get", "get_many", "get_by_ids"])
+def test_injected_read_receiver_method_replacement_is_excluded(member: str) -> None:
+    assert (
+        _check(
+            f"""
+    class UserService:
+        def __init__(self, backend: UserStore):
+            self.backend = backend
+        def customize(self):
+            setattr(self.backend, '{member}', replacement)
+        async def get_many(self, ids):
+            return [await self.backend.get(user_id) for user_id in ids]
+    """,
+            READ_CONTRACT,
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize("operation", ["upsert", "create", "insert", "update", "delete"])
+@pytest.mark.parametrize(
+    "expression",
+    ["[await store.{operation}(user) for user in users]", "{user.id: await store.{operation}(user) for user in users}"],
+    ids=["list-results", "dict-results"],
+)
+@pytest.mark.parametrize("statement", ["return ", ""], ids=["collected", "discarded"])
+def test_flags_strict_compatible_write_comprehensions(operation: str, expression: str, statement: str) -> None:
+    findings = _check(
+        f"async def save(store: UserStore, users):\n    {statement}{expression.replace('{operation}', operation)}",
+        CONTRACT.replace("upsert", operation),
+    )
+    assert len(findings) == 1
+    assert f"{operation}_many" in findings[0].message
+    assert "serial" in findings[0].message
+
+
+def test_sync_write_comprehension_binds_exact_keyword() -> None:
+    findings = _check(
+        "def save(store: UserStore, users):\n    return [store.upsert(user=user) for user in users]",
+        CONTRACT.replace("async def", "def"),
+    )
+    assert len(findings) == 1
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "[await store.upsert(user) for user in users if allowed(user)]",
+        "[wrap(await store.upsert(user)) for user in users]",
+        "[(await store.upsert(user)).id for user in users]",
+        "{audit(user): await store.upsert(user) for user in users}",
+        "[await store.upsert(UserInput(user)) for user in users]",
+        "[store.upsert(user) for user in users]",
+        "[await store.upsert(fixed) for user in users]",
+        "[await store.upsert(user) for user in [only]]",
+        "[await store.upsert(user) for user, store.member in users]",
+    ],
+    ids=[
+        "filter-effects",
+        "result-wrapper",
+        "result-projection",
+        "dict-key-effects",
+        "argument-effects",
+        "unawaited-coroutines",
+        "no-target-dependency",
+        "one-iteration",
+        "target-mutation",
+    ],
+)
+def test_write_comprehensions_preserve_effect_and_shape_boundaries(expression: str) -> None:
+    assert _check(f"async def save(store: UserStore, users):\n    return {expression}") == []
+
+
+@pytest.mark.parametrize(
+    "replacement",
+    [
+        (" -> User:", " -> User | None:"),
+        ("list[User]:", "dict[str, User]:"),
+        ("list[User]:", "list[Other]:"),
+        ("async def upsert_many", "def upsert_many"),
+    ],
+    ids=["optional-write-result", "mapping-write-result", "different-write-result", "async-bulk-parity"],
+)
+@pytest.mark.parametrize(
+    "expression",
+    ["[await store.upsert(user) for user in users]", "await asyncio.gather(*(store.upsert(user) for user in users))"],
+    ids=["serial-comprehension", "eager-gather"],
+)
+def test_new_write_shapes_keep_strict_result_contracts(replacement: tuple[str, str], expression: str) -> None:
+    assert (
+        _check(
+            f"async def save(store: UserStore, users):\n    return {expression}",
+            "import asyncio\n" + CONTRACT.replace(*replacement),
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    ("imports", "callee"),
+    [
+        ("import asyncio\n", "asyncio.gather"),
+        ("import asyncio as aio\n", "aio.gather"),
+        ("from asyncio import gather\n", "gather"),
+        ("from asyncio import gather as collect\n", "collect"),
+    ],
+    ids=["stdlib-module", "module-alias", "stdlib-member", "member-alias"],
+)
+@pytest.mark.parametrize(
+    "expression",
+    ["(store.get(user_id) for user_id in ids)", "[store.get(user_id=user_id) for user_id in ids]"],
+    ids=["generator", "list-keyword"],
+)
+def test_flags_import_proven_eager_read_gather_once(imports: str, callee: str, expression: str) -> None:
+    findings = _check(
+        f"async def load(store: UserStore, ids):\n    return await {callee}(*{expression})", imports + READ_CONTRACT
+    )
+    assert len(findings) == 1
+    assert findings[0].severity.value == "warning"
+    assert "fan-out" in findings[0].message
+    assert "serial" not in findings[0].message
+    assert "cancellation" in findings[0].message
+
+
+@pytest.mark.parametrize("operation", ["upsert", "create", "insert", "update", "delete"])
+def test_flags_eager_write_gather_once(operation: str) -> None:
+    findings = _check(
+        f"async def save(store: UserStore, users):\n    await asyncio.gather(*[store.{operation}(user) for user in users])",
+        "import asyncio\n" + CONTRACT.replace("upsert", operation),
+    )
+    assert len(findings) == 1
+    assert f"{operation}_many" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "contract",
+    [
+        READ_CONTRACT.replace("async def", "def"),
+        READ_CONTRACT.replace("        ...", "        yield user", 1),
+        READ_CONTRACT.replace("        ...", "        yield user"),
+    ],
+    ids=["sync-pair", "async-generator-singleton", "async-generator-pair"],
+)
+def test_gather_requires_coroutine_methods(contract: str) -> None:
+    assert (
+        _check(
+            "async def load(store: UserStore, ids):\n    return await asyncio.gather(*(store.get(user_id) for user_id in ids))",
+            "import asyncio\n" + contract,
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "asyncio.gather(*(store.get(user_id) for user_id in ids))",
+        "await custom.gather(*(store.get(user_id) for user_id in ids))",
+        "await asyncio.gather(*[store.get(user_id) for user_id in ids], return_exceptions=True)",
+        "await asyncio.gather(store.get(fixed), *[store.get(user_id) for user_id in ids])",
+        "await asyncio.gather(*[store.get(user_id) for user_id in ids], *others)",
+        "await asyncio.gather([store.get(user_id) for user_id in ids])",
+        "await asyncio.gather(*(store.get(user_id) for user_id in ids if user_id))",
+        "await asyncio.gather(*(store.get(user_id) async for user_id in ids))",
+        "await asyncio.gather(*(store.get(user_id) for group in groups for user_id in group))",
+        "await asyncio.gather(*(asyncio.create_task(store.get(user_id)) for user_id in ids))",
+        "await asyncio.gather(*(store.get(transform(user_id)) for user_id in ids))",
+        "await asyncio.gather(*(store.get(user_id) for user_id in load_ids()))",
+        "await asyncio.gather(*(store.get(await user_id) for user_id in ids))",
+        "await asyncio.gather(*(store.get(fixed) for user_id in ids))",
+        "await asyncio.gather(*(store.get(*user_id) for user_id in ids))",
+        "await asyncio.gather(*(store.get(user_id) for user_id in [only]))",
+        "await asyncio.gather(*(store.get(user_id) for store in stores))",
+        "await asyncio.gather(*(store.get((saved := user_id)) for user_id in ids))",
+        "await asyncio.gather(*(other.get(user_id) for user_id in ids))",
+    ],
+    ids=[
+        "unawaited-gather",
+        "custom-gather",
+        "per-row-exceptions",
+        "extra-call",
+        "extra-expansion",
+        "unexpanded-list",
+        "filtered",
+        "async-stream",
+        "nested-generators",
+        "task-factory",
+        "argument-effects",
+        "iterable-call",
+        "argument-await-effect",
+        "constant-input",
+        "starred-input",
+        "one-iteration",
+        "receiver-shadow",
+        "assignment-effect",
+        "unknown-receiver",
+    ],
+)
+def test_eager_gather_requires_exact_shape_and_execution_proof(expression: str) -> None:
+    assert (
+        _check(f"async def load(store: UserStore, ids):\n    return {expression}", "import asyncio\n" + READ_CONTRACT)
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    ("imports", "parameters", "prefix", "callee"),
+    [
+        ("", "", "", "asyncio.gather"),
+        ("from custom import gather\n", "", "", "gather"),
+        ("import asyncio\n", ", asyncio", "", "asyncio.gather"),
+        ("from asyncio import gather\n", ", gather", "", "gather"),
+        ("import asyncio\n", "", "    asyncio = custom\n", "asyncio.gather"),
+        ("from asyncio import gather\n", "", "    gather = custom\n", "gather"),
+        ("import asyncio\nasyncio = custom\n", "", "", "asyncio.gather"),
+        ("from asyncio import gather\ngather = custom\n", "", "", "gather"),
+        ("import asyncio\n", "", "    global asyncio\n    asyncio = custom\n", "asyncio.gather"),
+    ],
+    ids=[
+        "unimported-module",
+        "custom-import",
+        "module-parameter",
+        "member-parameter",
+        "local-module-rebind",
+        "local-member-rebind",
+        "global-module-rebind",
+        "global-member-rebind",
+        "explicit-global-write",
+    ],
+)
+def test_gather_spelling_and_shadowed_bindings_do_not_prove_stdlib_execution(
+    imports: str, parameters: str, prefix: str, callee: str
+) -> None:
+    assert (
+        _check(
+            f"async def load(store: UserStore, ids{parameters}):\n{prefix}    return await {callee}(*(store.get(user_id) for user_id in ids))",
+            imports + READ_CONTRACT,
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "asyncio.gather = replacement",
+        "del asyncio.gather",
+        "setattr(asyncio, 'gather', replacement)",
+        "delattr(asyncio, 'gather')",
+        "asyncio.__dict__['gather'] = replacement",
+        "alias.gather = replacement",
+        "asyncio.gather.__code__ = replacement",
+        "patch_module(asyncio)",
+        "patch_function(collect)",
+    ],
+    ids=[
+        "member-assignment",
+        "member-deletion",
+        "setattr",
+        "delattr",
+        "module-dict-mutation",
+        "other-module-alias",
+        "function-mutation",
+        "module-escape",
+        "function-escape",
+    ],
+)
+def test_visible_gather_namespace_mutation_invalidates_all_import_aliases(mutation: str) -> None:
+    assert (
+        _check(
+            f"async def load(store: UserStore, ids):\n    {mutation}\n    return await collect(*(store.get(user_id) for user_id in ids))",
+            "import asyncio\nimport asyncio as alias\nfrom asyncio import gather as collect\n" + READ_CONTRACT,
+        )
+        == []
+    )
+
+
+def test_unrelated_scope_shadow_and_mutation_preserve_real_gather_binding() -> None:
+    findings = _check(
+        """
+        def customize(asyncio, gather):
+            asyncio.gather = gather
+        async def load(store: UserStore, ids):
+            return await collect(*(store.get(user_id) for user_id in ids))
+        """,
+        "import asyncio\nfrom asyncio import gather as collect\n" + READ_CONTRACT,
+    )
+    assert len(findings) == 1
+
+
+@pytest.mark.parametrize(
+    "expression",
+    ["[await store.upsert(user) for user in users]", "await asyncio.gather(*(store.upsert(user) for user in users))"],
+    ids=["serial-write-comprehension", "eager-write-gather"],
+)
+def test_new_shapes_preserve_receiver_mutation_and_exact_suppression(expression: str) -> None:
+    contract = "import asyncio\n" + CONTRACT
+    assert (
+        _check(
+            f"async def save(store: UserStore, users):\n    store.upsert_many = replacement\n    {expression}", contract
+        )
+        == []
+    )
+    assert (
+        _check(
+            f"async def save(store: UserStore, users):\n    {expression}  # sarj-noqa: SARJ516 -- independent effects",
+            contract,
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ("for user_id in ids:\n        await store.get(user_id)", 1),
+        ("users = []\n    for user_id in ids:\n        users.append(await store.get(user_id))", 0),
+        ("for user_id in ids:\n        user = await store.get(user_id)", 0),
+        ("for user_id in ids:\n        await store.get(user_id)\n        audit(user_id)", 0),
+        ("for user_id in ids:\n        await store.get(transform(user_id))", 0),
+        ("for user_id, store.member in ids:\n        await store.get(user_id)", 0),
+    ],
+    ids=[
+        "discarded-read",
+        "append-collector",
+        "assigned-result",
+        "per-row-effect",
+        "argument-effect",
+        "target-mutation",
+    ],
+)
+def test_serial_read_loop_scope_is_limited_to_discarded_calls(body: str, expected: int) -> None:
+    findings = _check(f"async def load(store: UserStore, ids):\n    {body}", READ_CONTRACT)
+    assert len(findings) == expected
+
+
+@pytest.mark.parametrize(
+    "setup",
+    [
+        "backend = store\n    backend.get_many = None",
+        "backend = store\n    backend = backend\n    backend.get_many = None",
+        "backend = store\n    second = backend\n    second.get_many = None",
+        "backend: UserStore = store\n    del backend.get_many",
+        "backend = store\n    setattr(backend, 'get_many', None)",
+        "backend = store\n    delattr(backend, 'get_many')",
+        "backend = store\n    backend.get_many = None\n    backend = other",
+        "backend = store\n    backend: UserStore\n    backend.get_many = None",
+        "backend = other\n    if condition:\n        backend = store\n    backend.get_many = None",
+    ],
+    ids=[
+        "parameter-alias-member-assignment",
+        "self-assignment-preserves-alias-object",
+        "parameter-alias-chain",
+        "annotated-alias-member-delete",
+        "parameter-alias-setattr",
+        "parameter-alias-delattr",
+        "mutation-precedes-alias-rebinding",
+        "annotation-preserves-alias-object",
+        "conditional-alias-may-replace-member",
+    ],
+)
+def test_read_receiver_alias_member_mutation_invalidates_direct_proof(setup: str) -> None:
+    assert (
+        _check(
+            f"async def load(store: UserStore, ids):\n    {setup}\n    return [await store.get(key) for key in ids]",
+            READ_CONTRACT,
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize("aliases", [15, 16, 32], ids=["within-budget", "exhausted", "above-budget"])
+@pytest.mark.parametrize("injected", [False, True], ids=["typed-parameter", "injected-attribute"])
+@pytest.mark.parametrize("mutation", ["{target}.get = replacement", "setattr({target}, 'get_many', replacement)"])
+def test_receiver_mutation_defers_when_alias_origin_budget_exhausts(
+    aliases: int, injected: bool, mutation: str
+) -> None:
+    previous = "self.store" if injected else "store"
+    lines: list[str] = []
+    for index in range(aliases):
+        current = f"alias{index}"
+        lines.append(f"{current} = {previous}")
+        previous = current
+    lines.append(mutation.format(target=previous))
+    receiver = "self.store" if injected else "store"
+    lines.append(f"return [await {receiver}.get(key) for key in ids]")
+    body = "\n".join(lines)
+    caller = (
+        "class Service:\n    def __init__(self, store: UserStore):\n        self.store = store\n    async def load(self, ids):\n"
+        + indent(body, "        ")
+        if injected
+        else "async def load(store: UserStore, ids):\n" + indent(body, "    ")
+    )
+    assert _check(caller, READ_CONTRACT) == []
+
+
+@pytest.mark.parametrize(
+    "setup",
+    [
+        "backend = self.store\n        backend.update_many = None",
+        "backend = self.store\n        second = backend\n        second.update_many = None",
+        "backend = self.store\n        del backend.update_many",
+        "backend = self.store\n        setattr(backend, 'update_many', None)",
+        "backend = self.store\n        delattr(backend, 'update_many')",
+    ],
+    ids=[
+        "injected-alias-member-assignment",
+        "injected-alias-chain",
+        "injected-alias-member-delete",
+        "injected-alias-setattr",
+        "injected-alias-delattr",
+    ],
+)
+def test_injected_receiver_alias_member_mutation_invalidates_gather_proof(setup: str) -> None:
+    assert (
+        _check(
+            f"""
+    class Service:
+        def __init__(self, store: UserStore):
+            self.store = store
+        async def save(self, users):
+            {setup}
+            await asyncio.gather(*(self.store.update(user) for user in users))
+    """,
+            "import asyncio\n" + CONTRACT.replace("upsert", "update"),
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize(
+    "setup",
+    [
+        "backend = store\n    backend = other\n    backend.get_many = None",
+        "backend = store\n    def backend():\n        pass\n    backend.get_many = None",
+        "backend = store\n    import other as backend\n    backend.get_many = None",
+        "backend = other\n    backend.get_many = None\n    backend = store",
+        "def customize(store):\n        backend = store\n        backend.get_many = None",
+        "def customize(backend):\n        backend.get_many = None\n    backend = store",
+        "backend = store\n    def customize(backend):\n        backend.get_many = None",
+    ],
+    ids=[
+        "definite-rebind-before-mutation",
+        "function-definition-rebinds-alias",
+        "import-rebinds-alias",
+        "alias-assignment-follows-mutation",
+        "distinct-parameter-binding",
+        "unrelated-lexical-scope",
+        "nested-parameter-shadows-alias",
+    ],
+)
+def test_unrelated_alias_mutation_preserves_direct_read_proof(setup: str) -> None:
+    assert (
+        len(
+            _check(
+                f"async def load(store: UserStore, ids):\n    {setup}\n    return [await store.get(key) for key in ids]",
+                READ_CONTRACT,
+            )
+        )
+        == 1
+    )
+
+
+@pytest.mark.parametrize("mutation", ["setattr(self, 'cache', primitive)", "delattr(self, 'cache')"])
+def test_unrelated_constructor_member_mutation_preserves_bulk_pair(mutation: str) -> None:
+    contract = CONTRACT + f"    def __init__(self, primitive):\n        {mutation}\n"
+    assert (
+        len(
+            _check(
+                "async def save(store: UserStore, users):\n    for user in users:\n        await store.upsert(user)",
+                contract,
+            )
+        )
+        == 1
     )
