@@ -46,7 +46,7 @@ class BindingInventory:
         for node in context.nodes(ast.AST):
             if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
                 reads[node.id].append(node)
-            for name in _bound_names(node):
+            for name in binding_names(node):
                 bindings[_binding_scope(parents, node)][name].append(node)
                 wildcard |= name == "*"
             if isinstance(node, ast.Global | ast.Nonlocal):
@@ -109,7 +109,7 @@ def _binding_scope(parents: Mapping[ast.AST, ast.AST], node: ast.AST) -> ast.AST
     return scope
 
 
-def _bound_names(node: ast.AST) -> tuple[str, ...]:
+def binding_names(node: ast.AST) -> tuple[str, ...]:
     match node:
         case ast.Name(id=name, ctx=ast.Store() | ast.Del()) | ast.arg(arg=name):
             return (name,)
@@ -129,3 +129,9 @@ def _bound_names(node: ast.AST) -> tuple[str, ...]:
             return tuple(names)
         case _:
             return ()
+
+
+def scope_binding_names(statement: ast.AST) -> frozenset[str]:
+    nodes = tuple(ast.walk(statement))
+    parents = {child: node for node in nodes for child in ast.iter_child_nodes(node)}
+    return frozenset(name for node in nodes if _binding_scope(parents, node) is None for name in binding_names(node))

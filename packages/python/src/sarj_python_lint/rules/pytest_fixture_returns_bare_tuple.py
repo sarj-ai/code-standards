@@ -179,7 +179,7 @@ def _bare_tuple_results(tree: ast.Module) -> list[_TupleResult]:
     hits: list[_TupleResult] = []
     for node, fixture_name, _decorator in fixture_declarations(tree):
         aliases = _type_aliases(tree, before_line=node.lineno)
-        has_yield = _has_own_yield(node)
+        has_yield = fixture_yields(node)
         if node.returns is not None and _homogeneous_tuple_annotation(
             node.returns,
             aliases=aliases,
@@ -495,7 +495,7 @@ def _only_non_none(members: list[ast.expr]) -> ast.expr | None:
     return concrete[0] if len(concrete) == 1 and len(concrete) < len(members) else None
 
 
-def _has_own_yield(fixture: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+def fixture_yields(fixture: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     stack: list[ast.AST] = list(fixture.body)
     while stack:
         node = stack.pop()
