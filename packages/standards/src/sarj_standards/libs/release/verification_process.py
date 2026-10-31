@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from codecs import getincrementaldecoder
 from collections.abc import Callable
-from contextlib import suppress
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from io import IncrementalNewlineDecoder
 import os
@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Final, Self
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Generator, Mapping, Sequence
     from pathlib import Path
     from types import TracebackType
     from typing import IO
@@ -204,11 +204,16 @@ class BaseWatch:
         except BaseException as error:
             _abort_capture_setup(process, error)
             raise
-        with process, capture:
+        with _owned_capture(process, capture):
             while True:
                 if self.cancelled.is_set():
                     return _interrupt(
-                        process, capture, command, 125, f"consumer base changed; {self.phase} cancelled", check=check
+                        process,
+                        capture,
+                        command,
+                        125,
+                        f"consumer base changed; {self.phase} cancelled",
+                        check=check,
                     )
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -232,6 +237,19 @@ class BaseWatch:
                 return
             if self.stopped.wait(self.poll_interval):
                 return
+
+
+@contextmanager
+def _owned_capture(process: subprocess.Popen[bytes], capture: _Capture) -> Generator[None]:
+    try:
+        with capture:
+            yield
+    except BaseException as error:
+        # Never enter Popen.__exit__'s unbounded wait after capture failure.
+        # A reaped leader no longer owns its numeric process-group identity.
+        if process.returncode is None:
+            _abort_capture_setup(process, error)
+        raise
 
 
 def _abort_capture_setup(process: subprocess.Popen[bytes], error: BaseException) -> None:

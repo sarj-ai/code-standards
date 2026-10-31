@@ -10,12 +10,13 @@ from pathlib import Path
 import re
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- fixed read-only git argv.
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING
 
 from pydantic import JsonValue
 
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.json_boundary import parse_unique_json
+from sarj_standards.libs.staged_git import isolated_environment, staged_environment
 from sarj_standards.libs.typed_containers import is_object_mapping
 
 from . import initial_import
@@ -50,10 +51,6 @@ class _ChangedPaths:
     renamed: bool
 
 
-class _DiffOptions(TypedDict, total=False):
-    env: dict[str, str]
-
-
 @dataclass(frozen=True, slots=True)
 class RuleRemoval:
     contents: str
@@ -86,6 +83,10 @@ def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None 
         return None
     if not staged and _GIT_SHA.fullmatch(base) is None:
         return ChangedLineScope(frozenset(), {}, failed=True)
+    try:
+        environment = staged_environment(root) if staged else isolated_environment()
+    except OSError, ValueError:
+        return ChangedLineScope(frozenset(), {}, failed=True)
     git = shutil.which("git")
     if git is None:
         return ChangedLineScope(frozenset(), {}, failed=True)
@@ -97,6 +98,9 @@ def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None 
     comparison = ("--cached",) if staged else (f"{base}...HEAD",)
     if context is not None:
         comparison = (context.parent, context.source)
+        alternate_objects = initial_import.git_environment().get("GIT_ALTERNATE_OBJECT_DIRECTORIES")
+        if alternate_objects is not None:
+            environment["GIT_ALTERNATE_OBJECT_DIRECTORIES"] = alternate_objects
     common = (
         git,
         *(("--no-replace-objects", "--no-lazy-fetch") if context is not None else ()),
@@ -115,26 +119,26 @@ def changed_line_scope(root: Path, *, staged: bool, paths: Iterable[str] | None 
         return None
     if sum(len(os.fsencode(path)) + 1 for path in selected) > _MAX_DIFF_PATH_BYTES:
         selected = ()
-    return _read_changed_scope(root, common, selected, staged=staged, context=context)
+    return _read_changed_scope(root, common, selected, environment, staged=staged, context=context)
 
 
 def _read_changed_scope(
     root: Path,
     common: tuple[str, ...],
     selected: tuple[str, ...],
+    environment: dict[str, str],
     *,
     staged: bool,
     context: initial_import.InitialImport | None,
 ) -> ChangedLineScope:
-    options: _DiffOptions = {"env": initial_import.git_environment()} if context is not None else {}
     try:
         names = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed Git argv with literal repository-relative paths.
             (*common, "--name-status", "-z", "--"),
             cwd=root,
+            env=environment,
             check=False,
             capture_output=True,
             timeout=30,
-            **options,
         )
         changes = _changed_paths(names.stdout)
         if changes.renamed:
@@ -143,10 +147,10 @@ def _read_changed_scope(
         patch = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- fixed Git argv with literal repository-relative paths.
             (*common, "--unified=0", "--no-color", "--src-prefix=a/", "--dst-prefix=b/", "--", *selected),
             cwd=root,
+            env=environment,
             check=False,
             capture_output=True,
             timeout=30,
-            **options,
         )
     except OSError, ValueError, subprocess.TimeoutExpired:
         return ChangedLineScope(frozenset(), {}, failed=True)

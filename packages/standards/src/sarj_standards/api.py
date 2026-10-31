@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from enum import StrEnum
 import os
 from pathlib import Path
 import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] -- latest updates execute a fixed uvx argv.
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeGuard
 
 from ._meta import __version__ as __version__
 from .libs.adoption import launcher
@@ -69,12 +70,11 @@ from .libs.linting.prepared_devops import analyze_prepared
 from .libs.linting.runner import group_paths, run as check
 from .libs.linting.scheduling import analyze_groups
 from .libs.rules import RuleEngine, RuleId, RuleSelection, RuleSelector
+from .libs.staged_git import staged_environment
 from .libs.typed_containers import is_object_list, is_object_mapping
 
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from .libs.adoption.manifest import Manifest, Profile
     from .libs.linting.runner import GroupedPaths
 
@@ -280,8 +280,59 @@ class Standards:
         eslint: bool = True,
     ) -> AnalysisReport:
         try:
-            import_context = initial_import.load(self.root, staged=staged)
+            normalized_paths = _path_inputs(paths) if paths is not None else None
+        except ValueError as exc:
+            return _failed_analysis(self.root, "invalid-input", str(exc))
+        return self._analyze(
+            normalized_paths,
+            external=external,
+            trust=trust,
+            mode=mode,
+            rules=rules,
+            upstream_rules=upstream_rules,
+            staged=staged,
+            react_doctor_triggered=react_doctor_triggered,
+            include_react_doctor=include_react_doctor,
+            pass_on_unpruned_eslint_suppressions=pass_on_unpruned_eslint_suppressions,
+            jobs=jobs,
+            prepared_devops=prepared_devops,
+            prepared_targets=prepared_targets,
+            prepared_only=prepared_only,
+            python_type_check=python_type_check,
+            eslint=eslint,
+        )
+
+    def _analyze(
+        self,
+        paths: tuple[str, ...] | None,
+        *,
+        external: bool,
+        trust: TrustMode | str,
+        mode: AnalysisMode | str,
+        rules: Sequence[str | RuleSelector] | None,
+        upstream_rules: UpstreamESLintRules,
+        staged: bool,
+        react_doctor_triggered: bool,
+        include_react_doctor: bool,
+        pass_on_unpruned_eslint_suppressions: bool,
+        jobs: int,
+        prepared_devops: Sequence[Path],
+        prepared_targets: Sequence[str],
+        prepared_only: bool,
+        python_type_check: bool,
+        eslint: bool,
+    ) -> AnalysisReport:
+        try:
             analysis_jobs(jobs)
+        except ValueError as exc:
+            return _failed_analysis(self.root, "invalid-input", str(exc))
+        if staged:
+            try:
+                staged_environment(self.root)
+            except (OSError, ValueError) as exc:
+                return _failed_analysis(self.root, "invalid-input", str(exc))
+        try:
+            import_context = initial_import.load(self.root, staged=staged)
         except ValueError as exc:
             return _failed_analysis(self.root, "invalid-input", str(exc))
         external = external or bool(upstream_rules.ids)
@@ -438,7 +489,9 @@ class Standards:
         from .libs.linting import autofix  # ruff: ignore[import-outside-top-level] -- selected operation only.
 
         try:
-            selected = [str(self.root / path) for path in paths] if paths is not None else [str(self.root)]
+            selected = (
+                [str(self.root / path) for path in _path_inputs(paths)] if paths is not None else [str(self.root)]
+            )
             result = autofix.run(self.root, selected, trusted=True, default_scope=paths is None)
         except (OSError, SyntaxError, TypeError, UnicodeError, ValueError) as exc:
             return Result(
@@ -446,7 +499,8 @@ class Standards:
                 findings=(Finding("fix.input.invalid", "error", str(exc)),),
                 exit_code=_INVALID_EXIT,
             )
-        return _operation_result(result.status)
+        changes = tuple(Change("update", "applied safe fixes", path) for path in result.changed)
+        return _operation_result(result.status, changes)
 
     def doctor(self) -> Result:
         diagnosed = diagnose(self.root)
@@ -1245,9 +1299,26 @@ def _repository_root(root: str | Path) -> Path:
     return resolved
 
 
+def _path_inputs(value: object) -> tuple[str, ...]:
+    if not _is_path_sequence(value):
+        msg = "paths must be a sequence of path strings; pass a list of paths, for example ['source.py']"
+        raise ValueError(msg)
+    result: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item or "\0" in item:
+            msg = "each path must be a nonempty string without NUL; pass a list of paths"
+            raise ValueError(msg)
+        result.append(item)
+    return tuple(result)
+
+
+def _is_path_sequence(value: object) -> TypeGuard[Sequence[object]]:
+    return isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray))
+
+
 def _contained_paths(root: Path, paths: Sequence[str]) -> list[str]:
     selected: list[str] = []
-    for raw in paths:
+    for raw in _path_inputs(paths):
         supplied = Path(raw)
         candidate = supplied if supplied.is_absolute() else root / supplied
         try:

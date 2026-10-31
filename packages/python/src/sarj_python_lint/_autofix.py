@@ -26,7 +26,7 @@ from sarj_python_lint._autofix_exhaustiveness import ExhaustivenessFixes
 from sarj_python_lint._autofix_parameters import ParameterFixes
 from sarj_python_lint._autofix_repeated import RepeatedLiteralFixes
 from sarj_python_lint._autofix_security import fixes as security_fixes
-from sarj_python_lint._autofix_sql_projection import fixes as sql_projection_fixes
+from sarj_python_lint._autofix_sql_projection import alias_fixes as sql_alias_fixes, fixes as sql_projection_fixes
 from sarj_python_lint._autofix_tests import fixes as testing_fixes
 from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint._fixes import apply_fixes as apply_native_fixes
@@ -41,6 +41,7 @@ from sarj_python_lint.rules import (
 from sarj_python_lint.rules._ast_index import object_list
 from sarj_python_lint.rules._closed_helpers import dynamic_namespace
 from sarj_python_lint.rules._resource_provenance import ResourceProvenance
+from sarj_python_lint.rules.prefer_match_type_dispatch import body_terminates
 
 
 if TYPE_CHECKING:
@@ -125,6 +126,9 @@ class _Source:
         self.export_locations = frozenset(
             (diagnostic.line, diagnostic.col) for diagnostic in diagnostics if diagnostic.code == "SARJ098"
         )
+        self.test_comment_locations = frozenset(
+            (diagnostic.line, diagnostic.col) for diagnostic in diagnostics if diagnostic.code == "SARJ551"
+        )
 
     @cached_property
     def enums(self) -> EnumFixes:
@@ -140,7 +144,7 @@ class _Source:
 
     @cached_property
     def commentary(self) -> CommentFixes:
-        return CommentFixes(self.context)
+        return CommentFixes(self.context, test_comment_locations=self.test_comment_locations)
 
     @cached_property
     def declared_contracts(self) -> DeclaredContractFixes:
@@ -460,6 +464,10 @@ def _sql_projection_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdi
     return sql_projection_fixes(source.context, diagnostic)
 
 
+def _sql_alias_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
+    return sql_alias_fixes(source.context, diagnostic)
+
+
 def _alias_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
     if not diagnostic.fixes:
         return source.aliases.fixes(diagnostic)
@@ -767,9 +775,15 @@ def _dispatch_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
     if diagnostic.code == "SARJ080" and diagnostic.severity is not Severity.ERROR:
         return []
     for root in source.context.nodes(ast.If):
-        if not _at(root, diagnostic) or source.comments_between(root.lineno, _last_line(root)):
+        if not _at(root, diagnostic):
             continue
-        matched = _dispatch_match(root, source.context, type_dispatch=diagnostic.code == "SARJ080")
+        type_dispatch = diagnostic.code == "SARJ080"
+        roots = _dispatch_roots(root, source.context) if type_dispatch else [root]
+        if source.comments_between(root.lineno, _last_line(roots[-1])) or (
+            len(roots) > 1 and any(source.full_statement(branch) is None for branch in roots)
+        ):
+            continue
+        matched = _dispatch_match(roots, source.context, type_dispatch=type_dispatch)
         if matched is None or not isinstance(matched.subject, ast.Name):
             continue
         if not _dispatch_parameter(root, matched.subject, source):
@@ -777,15 +791,41 @@ def _dispatch_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
         rendered = ast.unparse(matched)
         indent = source.lines[root.lineno - 1][: root.col_offset]
         newline = "\r\n" if "\r\n" in source.text else "\n"
-        return [source.replace(root, (newline + indent).join(rendered.splitlines()))]
+        return [
+            TextEdit(
+                source.span(root).start, source.span(roots[-1]).end, (newline + indent).join(rendered.splitlines())
+            )
+        ]
     return []
 
 
-def _dispatch_match(root: ast.If, context: PythonFileContext, *, type_dispatch: bool) -> ast.Match | None:
+def _dispatch_roots(root: ast.If, context: PythonFileContext) -> list[ast.If]:
+    if root.orelse:
+        return [root]
+    parent = context.parents.get(root)
+    for field in ("body", "orelse", "finalbody"):
+        value: object = getattr(  # sarj-noqa: SARJ557 -- Inspect optional statement-list fields across heterogeneous AST node types.
+            parent, field, None
+        )
+        if not object_list(value) or root not in value:
+            continue
+        branches: list[ast.If] = []
+        for statement in value[value.index(root) :]:
+            if isinstance(statement, ast.If) and statement.orelse:
+                return [root]
+            if not isinstance(statement, ast.If) or not body_terminates(statement.body):
+                break
+            branches.append(statement)
+        return branches or [root]
+    return [root]
+
+
+def _dispatch_match(roots: Sequence[ast.If], context: PythonFileContext, *, type_dispatch: bool) -> ast.Match | None:
     cases: list[ast.match_case] = []
-    branch = root
+    pending = list(reversed(roots))
     subject: ast.Name | None = None
-    while True:
+    while pending:
+        branch = pending.pop()
         if type_dispatch and _type_parameter_reference(branch.test, context):
             return None
         pattern = _dispatch_pattern(branch.test, type_dispatch=type_dispatch)
@@ -794,11 +834,12 @@ def _dispatch_match(root: ast.If, context: PythonFileContext, *, type_dispatch: 
         subject = pattern[0]
         cases.append(ast.match_case(pattern=pattern[1], guard=None, body=branch.body))
         if len(branch.orelse) == 1 and isinstance(branch.orelse[0], ast.If):
-            branch = branch.orelse[0]
-            continue
-        if branch.orelse:
+            pending.append(branch.orelse[0])
+        elif branch.orelse:
             cases.append(ast.match_case(pattern=ast.MatchAs(), guard=None, body=branch.orelse))
-        return ast.Match(subject=subject, cases=cases)
+    if subject is None or (type_dispatch and len(cases) == 1):
+        return None
+    return ast.Match(subject=subject, cases=cases)
 
 
 def _dispatch_pattern(test: ast.expr, *, type_dispatch: bool) -> tuple[ast.Name, ast.pattern] | None:
@@ -1233,19 +1274,30 @@ def _literal_collection_element(element: ast.expr, names: frozenset[str]) -> boo
     return isinstance(element, ast.Constant) or (isinstance(element, ast.Name) and element.id in names)
 
 
-def _inert_definition(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+def _inert_definition(node: ast.FunctionDef | ast.AsyncFunctionDef, *, postponed_annotations: bool) -> bool:
     args = node.args
     if node.decorator_list or node.type_params:
         return False
     return not (
-        args.defaults
-        or any(value is not None for value in args.kw_defaults)
-        or node.returns is not None
-        or any(
-            argument.annotation is not None
-            for argument in (*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg)
-            if argument is not None
+        any(not isinstance(value, ast.Constant) for value in args.defaults)
+        or any(value is not None and not isinstance(value, ast.Constant) for value in args.kw_defaults)
+        or (
+            not postponed_annotations
+            and (
+                not _inert_annotation(node.returns)
+                or any(
+                    not _inert_annotation(argument.annotation)
+                    for argument in (*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg)
+                    if argument is not None
+                )
+            )
         )
+    )
+
+
+def _inert_annotation(annotation: ast.expr | None) -> bool:
+    return annotation is None or (
+        isinstance(annotation, ast.Constant) and (annotation.value is None or isinstance(annotation.value, str))
     )
 
 
@@ -1253,12 +1305,13 @@ def _stepdown_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
     tree = source.context.tree
     if tree is None:
         return []
+    postponed_annotations = _postponed_module_annotations(tree) or bool(source.context.nodes(ast.TemplateStr))
     for index, helper in enumerate(tree.body):
         if not isinstance(helper, (ast.FunctionDef, ast.AsyncFunctionDef)) or not _at(helper, diagnostic):
             continue
-        if not _inert_definition(helper):
+        if not _inert_definition(helper, postponed_annotations=postponed_annotations):
             continue
-        caller = _inert_stepdown_caller(helper, tree.body[index + 1 :])
+        caller = _inert_stepdown_caller(helper, tree.body[index + 1 :], postponed_annotations=postponed_annotations)
         if caller is None or _stepdown_comments(helper, caller, source):
             continue
         span = source.full_statement(helper)
@@ -1270,20 +1323,37 @@ def _stepdown_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
     return []
 
 
+def _postponed_module_annotations(tree: ast.Module) -> bool:
+    for index, statement in enumerate(tree.body):
+        if (
+            index == 0
+            and isinstance(statement, ast.Expr)
+            and isinstance(statement.value, ast.Constant)
+            and isinstance(statement.value.value, str)
+        ):
+            continue
+        if not isinstance(statement, ast.ImportFrom) or statement.module != "__future__" or statement.level != 0:
+            return False
+        if any(alias.name == "annotations" for alias in statement.names):
+            return True
+    return False
+
+
 def _inert_stepdown_caller(
-    helper: ast.FunctionDef | ast.AsyncFunctionDef, later: list[ast.stmt]
+    helper: ast.FunctionDef | ast.AsyncFunctionDef, later: list[ast.stmt], *, postponed_annotations: bool
 ) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
     callers = [
         node
         for node in later
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and _calls_function(node, helper.name)
     ]
-    if len(callers) != 1 or not _inert_definition(callers[0]):
+    if len(callers) != 1 or not _inert_definition(callers[0], postponed_annotations=postponed_annotations):
         return None
     caller = callers[0]
     for node in later:
         if node.lineno <= caller.lineno and (
-            not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not _inert_definition(node)
+            not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            or not _inert_definition(node, postponed_annotations=postponed_annotations)
         ):
             return None
     return caller
@@ -1322,6 +1392,7 @@ def _parameter_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
 
 _BUILDERS: Final[dict[str, Callable[[_Source, Diagnostic], list[TextEdit]]]] = {
     "SARJ021": _sql_projection_fix,
+    "SARJ543": _sql_alias_fix,
     "SARJ002": _literal_loop_fix,
     "SARJ006": _enum_fix,
     "SARJ011": _security_fix,
@@ -1332,7 +1403,7 @@ _BUILDERS: Final[dict[str, Callable[[_Source, Diagnostic], list[TextEdit]]]] = {
     "SARJ024": _repeated_fix,
     "SARJ032": _exhaustiveness_fix,
     "SARJ046": _xfail_fix,
-    **dict.fromkeys({"SARJ049", "SARJ051", "SARJ054", "SARJ434"}, _commentary_fix),
+    **dict.fromkeys({"SARJ049", "SARJ051", "SARJ054", "SARJ434", "SARJ551"}, _commentary_fix),
     "SARJ067": _mock_fix,
     "SARJ068": _fstring_fix,
     "SARJ070": _pattern_fix,
@@ -1378,7 +1449,7 @@ class _FixPass:
 
 
 def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None) -> str:
-    from sarj_python_lint.__main__ import check_source  # ruff: ignore[import-outside-top-level] -- the CLI imports this entry point lazily.
+    from sarj_python_lint.__main__ import check_context  # ruff: ignore[import-outside-top-level] -- the CLI imports this entry point lazily.
 
     selected = list(REGISTRY) if rule_ids is None else list(rule_ids)
     rules = [REGISTRY[rule_id]() for rule_id in selected if REGISTRY[rule_id].code in _BUILDERS]
@@ -1394,16 +1465,13 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
     while (fingerprint := sha256(current.encode("utf-8")).digest()) not in seen:
         seen.add(fingerprint)
         context = PythonFileContext(path, current)
-        diagnostics = check_source(rules, path, current)
+        diagnostics = check_context(rules, context)
         candidates = _candidate_edits(context, diagnostics)
         if not candidates:
             return current
         # Batch independent candidates; overlapping candidates get fresh offsets on the next pass.
         selected_pass = _coherent_edits(candidates)
-        updated = apply_edits(current, selected_pass.edits)
-        compile(  # sarj-noqa: SARJ557 -- Compile proposed fixes to reject invalid scopes without executing them.
-            updated, str(path), "exec", dont_inherit=True
-        )
+        updated = _apply_validated_edits(path, current, selected_pass.edits)
         if updated == current:
             return current
         if passes == _MAX_FIX_PASSES:
@@ -1412,6 +1480,23 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
         applied_codes.update(selected_pass.codes)
         current = updated
     raise _convergence_error(path, reason="source cycle", passes=passes, codes=applied_codes)
+
+
+def _apply_validated_edits(path: Path, current: str, edits: Sequence[TextEdit]) -> str:
+    updated = apply_edits(current, edits)
+    try:
+        compile(  # sarj-noqa: SARJ557 -- Compile proposed fixes to reject invalid scopes without executing them.
+            updated, str(path), "exec", dont_inherit=True
+        )
+    except SyntaxError:
+        try:
+            compile(  # sarj-noqa: SARJ557 -- Distinguish pre-existing invalid scope from a broken generated fix without executing input.
+                current, str(path), "exec", dont_inherit=True
+            )
+        except SyntaxError:
+            return current
+        raise
+    return updated
 
 
 def _convergence_error(
@@ -1423,6 +1508,8 @@ def _convergence_error(
 
 
 def _candidate_edits(context: PythonFileContext, diagnostics: Sequence[Diagnostic]) -> list[_FixCandidate]:
+    if not diagnostics:
+        return []
     view = _Source(context, diagnostics)
     return [
         _FixCandidate(diagnostic.code, tuple(edits))

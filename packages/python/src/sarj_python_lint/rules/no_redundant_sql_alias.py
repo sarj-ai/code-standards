@@ -6,6 +6,7 @@ import re
 from string import ascii_lowercase, ascii_uppercase
 from typing import TYPE_CHECKING, final, override
 
+from sarj_python_lint._closed_sql_literal import literal_query, owned_literal
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
@@ -36,6 +37,13 @@ _ASCII_FOLD = str.maketrans(ascii_uppercase, ascii_lowercase)
 
 _BAD = 'from psycopg.sql import SQL\nQUERY = SQL("SELECT call.id AS id FROM call AS call WHERE id = %s")\n'
 _GOOD = 'from psycopg.sql import SQL\nQUERY = SQL("SELECT call.id FROM call WHERE id = %s")\n'
+_SAFE = (
+    "from psycopg import Connection\n"
+    "def literal_rows():\n"
+    "    with Connection.connect() as connection:\n"
+    '        return connection.execute(\'SELECT "r"."id" AS "id" FROM (VALUES (1)) AS "r"("id")\').fetchall()\n'
+)
+_FIXED = _SAFE.replace('"r"."id" AS "id"', '"r"."id"')
 
 
 @final
@@ -48,13 +56,35 @@ class NoRedundantSqlAlias(Rule):
         rationale="A self-alias adds syntax without naming a distinct role or result field. It obscures useful aliases among repeated names.",
         remediation="Remove an alias whose PostgreSQL identifier equals the original table or bare column name. Keep role aliases for self joins, renamed outputs, quoted case distinctions and alias column lists.",
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
             "Checks parsed PostgreSQL queries in proven psycopg SQL constructors and execution contexts. Generated sources, comments, malformed statements, opaque dynamic SQL and unrelated strings are excluded.",
-            "Only table self-aliases without alias column lists and bare-column output self-aliases are checked. Identifier folding follows PostgreSQL UTF-8 ASCII case rules. Casts, computed expressions, CTE aliases, different role names and quoted identifier case retain their contract. No automatic edit changes formatting, comments or query composition.",
+            "Only table self-aliases without alias column lists and bare-column output self-aliases are checked. Identifier folding follows PostgreSQL UTF-8 ASCII case rules. Casts, computed expressions, CTE aliases, different role names and quoted identifier case retain their contract.",
+            "Autofix only removes qualified bare-column self-aliases over one to eight equally wide VALUES rows of unsigned integer literals with explicit known unique labels, directly returned through a fresh default Psycopg Connection in a closed source-owned function. Already unaliased qualified columns remain unchanged. Table aliases, external relations, comments, configured connections, query composition and other consumers remain manual. Original token spelling, output names, values, row order and SQL clauses are preserved.",
             "The finding is emitted once per SQL expression even when it contains several redundant aliases. It does not infer that different relation names belong to the same model.",
         ),
         examples=(
+            RuleExample(
+                example_id="safe-autofix",
+                title="Remove a self-alias from a closed literal result column",
+                outcome=ExampleOutcome.MATCH,
+                scenario="owned-literal-self-alias",
+                files=(ExampleFile.python("app/literal_rows.py", _SAFE),),
+                fixed_files=(ExampleFile.python("app/literal_rows.py", _FIXED),),
+                focus_path=PurePosixPath("app/literal_rows.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="fixed-owned-literal",
+                title="A closed literal column keeps its implicit output name",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="owned-literal-self-alias",
+                files=(ExampleFile.python("app/literal_rows.py", _FIXED),),
+                focus_path=PurePosixPath("app/literal_rows.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="self-aliases",
                 title="Aliases repeat the existing names",
@@ -87,6 +117,7 @@ class NoRedundantSqlAlias(Rule):
         candidates: dict[ast.expr, bool] = {}
         for query in store_queries(context):
             candidates[query.node] = candidates.get(query.node, False) or _statement_alias(query.statement)
+        _record_closed_literal(candidates, context.tree, context.source)
         for call in context.nodes(ast.Call):
             if context.static_resource_provenance.runtime_import_name(call.func) not in {
                 "psycopg.sql.SQL",
@@ -111,6 +142,16 @@ class NoRedundantSqlAlias(Rule):
             for node, redundant in candidates.items()
             if redundant and not is_suppressed(context.source_lines, node.lineno, self.code)
         ]
+
+
+def _record_closed_literal(candidates: dict[ast.expr, bool], tree: ast.Module, source: str) -> None:
+    closed_literal = owned_literal(tree)
+    if closed_literal is None:
+        return
+    closed_query = literal_query(source, closed_literal)
+    if closed_query is None:
+        return
+    candidates[closed_literal] = candidates.get(closed_literal, False) or _redundant_alias(closed_query)
 
 
 def _redundant_alias(source: str) -> bool:
@@ -142,8 +183,8 @@ def _table_self_alias(node: exp.Expr) -> bool:
     alias = _child(node, "alias")
     if not isinstance(alias, exp.TableAlias) or any(child.arg_key == "columns" for child in alias.iter_expressions()):
         return False
-    original = _identifier(_child(node, "this"))
-    return original is not None and original == _identifier(_child(alias, "this"))
+    original = identifier_key(_child(node, "this"))
+    return original is not None and original == identifier_key(_child(alias, "this"))
 
 
 def _column_self_alias(node: exp.Expr) -> bool:
@@ -152,15 +193,15 @@ def _column_self_alias(node: exp.Expr) -> bool:
     column = _child(node, "this")
     if not isinstance(column, exp.Column):
         return False
-    original = _identifier(_child(column, "this"))
-    return original is not None and original == _identifier(_child(node, "alias"))
+    original = identifier_key(_child(column, "this"))
+    return original is not None and original == identifier_key(_child(node, "alias"))
 
 
 def _child(node: exp.Expr, key: str) -> exp.Expr | None:
     return next((child for child in node.iter_expressions() if child.arg_key == key), None)
 
 
-def _identifier(node: exp.Expr | None) -> str | None:
+def identifier_key(node: exp.Expr | None) -> str | None:
     from sqlglot import exp  # ruff: ignore[import-outside-top-level] -- parse SQL only after ownership proof.
 
     if not isinstance(node, exp.Identifier):

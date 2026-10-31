@@ -29,10 +29,24 @@ _FLAT = "def activate():\n" + "".join("    " + line for line in (_COMMENTS + _CA
     ],
     ids=("module", "function", "async", "test", "assignment-and-return", "method", "nested-function"),
 )
-def test_exact_ordered_action_names_are_errors_without_an_expanded_fix(source: str) -> None:
+def test_exact_ordered_action_names_are_errors_with_a_line_preserving_fix(source: str) -> None:
     findings = ExcessiveCommentary().check(_PATH, source)
     assert [finding.severity for finding in findings] == [Severity.ERROR]
-    assert fix_source(_PATH, source, rule_ids=["excessive-commentary"]) == source
+    fixed = fix_source(_PATH, source, rule_ids=["excessive-commentary"])
+    comment_rows = frozenset(_COMMENTS.splitlines())
+    expected = "".join("\n" if line.strip() in comment_rows else line for line in source.splitlines(keepends=True))
+    assert fixed == expected
+    assert ast.dump(ast.parse(fixed), include_attributes=True) == ast.dump(ast.parse(source), include_attributes=True)
+    assert (
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            fixed, str(_PATH), "exec", dont_inherit=True
+        )
+        == compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            source, str(_PATH), "exec", dont_inherit=True
+        )
+    )
+    assert ExcessiveCommentary().check(_PATH, fixed) == []
+    assert fix_source(_PATH, fixed, rule_ids=["excessive-commentary"]) == fixed
 
 
 @pytest.mark.parametrize(
@@ -136,7 +150,7 @@ def test_existing_restatement_qualifiers_veto_even_exact_identifier_words(senten
 
 @pytest.mark.parametrize("count", [2, 3, 4])
 @pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=("lf", "crlf"))
-def test_accumulation_errors_keep_the_four_line_autofix_boundary(count: int, newline: str) -> None:
+def test_exact_accumulation_narration_has_a_line_preserving_fix(count: int, newline: str) -> None:
     subjects = ("account", "endpoint", "profile", "action")[:count]
     comments = "".join(f"    # Collect current {subject} profile activation reasons\n" for subject in subjects)
     calls = "".join(
@@ -146,21 +160,18 @@ def test_accumulation_errors_keep_the_four_line_autofix_boundary(count: int, new
     findings = ExcessiveCommentary().check(_PATH, source)
     assert [finding.severity for finding in findings] == [Severity.ERROR]
     fixed = fix_source(_PATH, source, rule_ids=["excessive-commentary"])
-    assert (fixed != source) is (count == 4)
-    if count == 4:
-        assert fixed == source.replace(comments.replace("\n", newline), newline * count)
-        assert ast.dump(ast.parse(fixed), include_attributes=True) == ast.dump(
-            ast.parse(source), include_attributes=True
+    assert fixed == source.replace(comments.replace("\n", newline), newline * count)
+    assert ast.dump(ast.parse(fixed), include_attributes=True) == ast.dump(ast.parse(source), include_attributes=True)
+    assert (
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            fixed, str(_PATH), "exec", dont_inherit=True
         )
-        assert (
-            compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
-                fixed, str(_PATH), "exec"
-            )
-            == compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
-                source, str(_PATH), "exec"
-            )
+        == compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            source, str(_PATH), "exec", dont_inherit=True
         )
-        assert fix_source(_PATH, fixed, rule_ids=["excessive-commentary"]) == fixed
+    )
+    assert ExcessiveCommentary().check(_PATH, fixed) == []
+    assert fix_source(_PATH, fixed, rule_ids=["excessive-commentary"]) == fixed
 
 
 @pytest.mark.parametrize(

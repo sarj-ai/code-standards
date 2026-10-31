@@ -512,7 +512,7 @@ def _review_branches(statements: list[ast.stmt], index: int) -> Iterator[ast.If]
         return
     for position in range(index + 1, len(statements)):
         statement = statements[position]
-        if current.orelse or not _body_terminates(current.body) or not isinstance(statement, ast.If):
+        if current.orelse or not body_terminates(current.body) or not isinstance(statement, ast.If):
             return
         yield statement
         current = statement
@@ -855,7 +855,7 @@ def _terminal_prefix(
     seen: set[str] = set()
     for cursor in range(index, len(statements)):
         statement = statements[cursor]
-        if not isinstance(statement, ast.If) or statement.orelse or not _body_terminates(statement.body):
+        if not isinstance(statement, ast.If) or statement.orelse or not body_terminates(statement.body):
             break
         branch = _type_branch(statement.test, imports, local_classes, unsafe_bindings)
         if branch is None or (subject is not None and branch.subject != subject) or bool(seen & branch.types):
@@ -993,7 +993,7 @@ def _is_preceding_type_branch(
     local_classes: frozenset[str],
     unsafe_bindings: frozenset[str],
 ) -> bool:
-    if not isinstance(statement, ast.If) or statement.orelse or not _body_terminates(statement.body):
+    if not isinstance(statement, ast.If) or statement.orelse or not body_terminates(statement.body):
         return False
     branch = _type_branch(statement.test, imports, local_classes, unsafe_bindings)
     return branch is not None and branch.subject == subject
@@ -1114,7 +1114,7 @@ def _diagnostic(path: Path, code: str, node: ast.If, dispatch: _Dispatch, shape:
     )
 
 
-def _body_terminates(body: list[ast.stmt]) -> bool:
+def body_terminates(body: list[ast.stmt]) -> bool:
     if not body:
         return False
     last = body[-1]
@@ -1122,7 +1122,7 @@ def _body_terminates(body: list[ast.stmt]) -> bool:
         case ast.Return() | ast.Raise() | ast.Break() | ast.Continue():
             return True
         case ast.If(body=if_body, orelse=else_body):
-            return bool(else_body) and _body_terminates(if_body) and _body_terminates(else_body)
+            return bool(else_body) and body_terminates(if_body) and body_terminates(else_body)
         case _:
             return False
 

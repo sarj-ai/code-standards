@@ -152,10 +152,24 @@ class RuntimeNames:
                 return False
         if name == "hasattr":
             return value == "__call__"
+        if name == "delattr":
+            return self._native_delattr_owner(parent, receiver, value)
         if name != "getattr":
             return False
         mangled = value.startswith("__") and not value.endswith("__")
         return value.isidentifier() and not keyword.iskeyword(value) and not mangled
+
+    def _native_delattr_owner(self, call: ast.Call, receiver: ast.expr, value: str) -> bool:
+        statement = self.context.parents.get(call)
+        return (
+            isinstance(statement, ast.Expr)
+            and statement.value is call
+            and not isinstance(receiver, ast.Starred)
+            and value != "__debug__"
+            and value.isidentifier()
+            and not keyword.iskeyword(value)
+            and not (value.startswith("__") and not value.endswith("__"))
+        )
 
     def _binding_scope(self, name: str, at: ast.AST) -> ast.AST | None:
         scope = self._scope(at)

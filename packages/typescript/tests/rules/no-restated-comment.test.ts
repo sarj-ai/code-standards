@@ -107,6 +107,12 @@ RULE_TESTER.run("no-restated-comment", rule, {
     },
   ],
   invalid: [
+    ...["\n", "\r\n"].map(ending => ({
+      name: "shared guarded deletion retains normal terminators " + JSON.stringify(ending),
+      code: "// Serialize key\nconst key = serialize(input);".replaceAll("\n", ending),
+      output: "\nconst key = serialize(input);".replaceAll("\n", ending),
+      errors: [{ messageId: "restatesLineBelow" as const, suggestions: 1 }],
+    })),
     { name: "does not group an unrelated type query", code: "// Serialize key\nconst key = serialize(input);\ntype Payload = typeof other;", output: "\nconst key = serialize(input);\ntype Payload = typeof other;", errors: [{ messageId: "restatesLineBelow", suggestions: 1 }] },
     {
       name: "uses identifiers inside template interpolations but not template text",

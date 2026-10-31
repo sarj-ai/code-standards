@@ -7,10 +7,14 @@ import { Linter, type Rule } from "eslint";
 
 import type { DiagnosticExpectation, DocumentedRule, ExampleFile, ExampleLocation, RuleExample } from "./rules/_docs.js";
 
+export type { ExampleFile, RuleExample } from "./rules/_docs.js";
+
+export type FixedSourceFormatter = (file: ExampleFile, example: RuleExample) => string | Promise<string>;
+
 /** Execute all authored examples, including private regressions, in isolated projects. */
 export async function verifyRuleExamples<Options extends readonly unknown[], MessageIds extends string>(
   rule: DocumentedRule<Options, MessageIds>,
-  setup: { readonly installedDependencyRoot?: string } = {},
+  setup: { readonly installedDependencyRoot?: string; readonly formatFixedSource?: FixedSourceFormatter } = {},
 ): Promise<number> {
   const spec = rule.documentation;
   if (spec === undefined || !spec.publicExamples.some((item) => item.outcome === "match") ||
@@ -49,7 +53,7 @@ export async function verifyRuleExamples<Options extends readonly unknown[], Mes
         plugins: { "@sarj": { rules: { [spec.ruleId]: rule as unknown as Rule.RuleModule } } },
         rules: { [ruleId]: ["error", ...(example.ruleOptions ?? rule.defaultOptions ?? [])] },
       };
-      await verifyExample(new Linter({ cwd: root }), config, example, root, ruleId);
+      await verifyExample(new Linter({ cwd: root }), config, example, root, ruleId, setup.formatFixedSource);
     } finally {
       parser.clearCaches();
       await rm(root, { recursive: true, force: true });
@@ -73,7 +77,7 @@ function validateFixtureSyntax(exampleId: string, file: ExampleFile, path: strin
   }
 }
 
-async function verifyExample(linter: Linter, config: Linter.Config, example: RuleExample, root: string, ruleId: string): Promise<void> {
+async function verifyExample(linter: Linter, config: Linter.Config, example: RuleExample, root: string, ruleId: string, formatFixedSource?: FixedSourceFormatter): Promise<void> {
   const focus = example.files.find((file) => file.path === example.focusPath);
   if (focus === undefined) throw new Error(`${example.id}: focus file is missing`);
   const filename = fixturePath(root, focus.path);
@@ -101,11 +105,15 @@ async function verifyExample(linter: Linter, config: Linter.Config, example: Rul
     if (input === undefined) throw new Error(`${example.id}: fixed file has no original`);
     const options = { filename: fixturePath(root, input.path) };
     const fixed = linter.verifyAndFix(input.source, config, options);
-    if (fixed.output !== expected.source) throw new Error(`${example.id}: unexpected fixed source`);
+    if (formatFixedSource === undefined && fixed.output !== expected.source) throw new Error(`${example.id}: unexpected fixed source`);
     await writeFile(options.filename, fixed.output);
     const repeated = linter.verifyAndFix(fixed.output, config, options);
     if (repeated.fixed || repeated.output !== fixed.output || repeated.messages.length > 0) {
       throw new Error(`${example.id}: fix is not clean and idempotent`);
+    }
+    if (formatFixedSource !== undefined &&
+        await formatFixedSource({ path: input.path, source: fixed.output }, example) !== expected.source) {
+      throw new Error(`${example.id}: unexpected fixed source`);
     }
   }
 }

@@ -46,14 +46,58 @@ class NoTestComments(Rule):
         rationale="Test prose can drift from the setup and assertion it describes; executable contracts keep the explanation checked.",
         remediation="Remove the comment, clarify the test or helper name, or express the invariant with an assertion. Preserve legal notices and required tool directives.",
         category=RuleCategory.TESTING,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
             "Checks real comment tokens in recognized test and test-support paths, including inline comments; string contents and docstrings are outside this policy.",
             "Ambiguous test-like filenames require collected test declarations; test and test-support directories and conftest own their source independently of declarations.",
             "Generated files, malformed source, legal notices, shebangs, encoding declarations and tool directives are excluded. Existing comment rules retain their own diagnostic ownership.",
-            "This is an explicitly requested style policy, released as a warning. No automatic deletion of potentially useful rationale is offered.",
+            "This is an explicitly requested style policy, released as a warning. Safe fixes reuse the existing ordered-narration proof only when every line in the complete standalone paragraph is an unsuppressed finding owned by this rule and exactly repeats its corresponding flat zero-argument action or the closed accumulation shape. Every removed comment retains its blank line; all other rationale remains manual.",
         ),
         examples=(
+            RuleExample(
+                example_id="flat-test-action-narration",
+                scenario="flat-test-action-narration",
+                title="Remove only test prose proved by the existing ordered-action contract",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_activation.py",
+                        "def test_activation():\n"
+                        "    # Load current account profile activation settings\n"
+                        "    # Build current account profile activation response\n"
+                        "    load_current_account_profile_activation_settings()\n"
+                        "    return build_current_account_profile_activation_response()\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "tests/test_activation.py",
+                        "def test_activation():\n\n\n"
+                        "    load_current_account_profile_activation_settings()\n"
+                        "    return build_current_account_profile_activation_response()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_activation.py"),
+                expected_count=2,
+                public=True,
+            ),
+            RuleExample(
+                example_id="flat-test-action-narration-fixed",
+                scenario="flat-test-action-narration",
+                title="The exact action sequence needs no test prose",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "tests/test_activation.py",
+                        "def test_activation():\n\n\n"
+                        "    load_current_account_profile_activation_settings()\n"
+                        "    return build_current_account_profile_activation_response()\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("tests/test_activation.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="comment-narrates-test",
                 title="Name the tested behavior",

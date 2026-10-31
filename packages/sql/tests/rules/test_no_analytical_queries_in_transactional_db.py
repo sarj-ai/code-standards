@@ -1,12 +1,20 @@
+from __future__ import annotations
+
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from sarj_rule_contracts.examples import verify_native_rule
+import sqlglot
 
 from sarj_sql_lint.__main__ import analyze, main
 from sarj_sql_lint.rule_base import DefaultLevel, Diagnostic
 from sarj_sql_lint.rules._postgres_ctas import normalize_postgres_ctas
 from sarj_sql_lint.rules.no_analytical_queries_in_transactional_db import NoAnalyticalQueriesInTransactionalDb
+
+
+if TYPE_CHECKING:
+    from sqlglot.tokenizer_core import Token
 
 
 def test_documented_examples() -> None:
@@ -667,3 +675,79 @@ def test_parameter_padding_preserves_later_statement_physical_locations() -> Non
     findings = _check(source)
     assert len(findings) == 1
     assert (findings[0].line, findings[0].col) == (2, 8)
+
+
+@pytest.mark.parametrize(
+    ("opening", "closing"),
+    [
+        pytest.param("SELECT 'COPY", "';", id="quoted-scalar"),
+        pytest.param('SELECT "COPY', '";', id="quoted-identifier"),
+        pytest.param("SELECT $body$COPY", "$body$;", id="dollar-scalar"),
+        pytest.param("/* COPY", " */", id="block-comment"),
+    ],
+)
+def test_ctas_normalization_avoids_retokenizing_quoted_semicolons(
+    monkeypatch: pytest.MonkeyPatch, opening: str, closing: str
+) -> None:
+    query = "CREATE TEMP TABLE report ON COMMIT DROP AS SELECT DISTINCT id FROM event;"
+    prefix = opening + ";" * 128 + closing + "\r\n"
+    source = prefix + query
+    tokenize = sqlglot.tokenize
+    work: list[int] = []
+
+    def observe(sql: str, *, read: str) -> list[Token]:
+        work.append(len(sql))
+        return tokenize(sql, read=read)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observe real tokenizer work while forwarding every PostgreSQL input.
+        sqlglot, "tokenize", observe
+    )
+
+    normalized = normalize_postgres_ctas(source)
+
+    assert normalized == prefix + query.replace("ON COMMIT DROP", " " * len("ON COMMIT DROP"))
+    assert sum(work) <= len(source) * 2
+
+
+def test_ctas_copy_candidate_probes_stay_within_linear_work_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    query = "CREATE TEMP TABLE report ON COMMIT DROP AS SELECT DISTINCT id FROM event;"
+    prefix = "SELECT '" + " COPY" * 128 + "';\r\n"
+    source = prefix + query
+    tokenize = sqlglot.tokenize
+    work: list[int] = []
+
+    def observe(sql: str, *, read: str) -> list[Token]:
+        work.append(len(sql))
+        return tokenize(sql, read=read)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observe real tokenizer work while forwarding every PostgreSQL input.
+        sqlglot, "tokenize", observe
+    )
+
+    normalized = normalize_postgres_ctas(source)
+
+    assert normalized == prefix + query.replace("ON COMMIT DROP", " " * len("ON COMMIT DROP"))
+    assert sum(work) <= len(source) * 4
+
+
+@pytest.mark.parametrize("ending", [pytest.param("\n", id="LF"), pytest.param("\r\n", id="CRLF")])
+def test_ctas_raw_copy_payload_is_masked_before_tokenization(monkeypatch: pytest.MonkeyPatch, ending: str) -> None:
+    query = "CREATE TEMP TABLE report ON COMMIT DROP AS SELECT DISTINCT id FROM event;"
+    payload_marker = "RAW_COPY_PAYLOAD_MUST_NOT_REACH_LEXER"
+    payload = ending.join([payload_marker + " 1 2 3"] * 128)
+    prefix = "COPY event FROM STDIN;" + ending + payload + ending + "\\." + ending
+    source = prefix + query
+    tokenize = sqlglot.tokenize
+
+    def observe(sql: str, *, read: str) -> list[Token]:
+        assert payload_marker not in sql
+        return tokenize(sql, read=read)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- reject raw payload inputs and forward every actual PostgreSQL tokenization.
+        sqlglot, "tokenize", observe
+    )
+
+    normalized = normalize_postgres_ctas(source)
+
+    masked_prefix = "".join(char if char in {"\r", "\n"} else " " for char in prefix)
+    assert normalized == masked_prefix + query.replace("ON COMMIT DROP", " " * len("ON COMMIT DROP"))

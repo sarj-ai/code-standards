@@ -86,6 +86,12 @@ RULE_TESTER.run("no-restated-jsdoc", rule, {
     },
   ],
   invalid: [
+    ...["\n", "\r\n"].map(ending => ({
+      name: "shared guarded deletion retains normal terminators " + JSON.stringify(ending),
+      code: "/** Get the user by id. */\nexport function getUserById(id: string) { return id; }".replaceAll("\n", ending),
+      output: "\nexport function getUserById(id: string) { return id; }".replaceAll("\n", ending),
+      errors: [{ messageId: "restatesSignature" as const, suggestions: 1 }],
+    })),
     {
       name: "automatically deletes a redundant own-line block",
       code: "/** Get the user by id. */\nexport function getUserById(id: string) { return id; }",

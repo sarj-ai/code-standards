@@ -39,7 +39,7 @@ class ExcessiveCommentary(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.SAFE,
         limitations=(
-            "Safe fixes remove only a four-or-more-line paragraph whose ordered plain-word lines exactly match all following zero-argument direct call identifiers in an otherwise exact initializer/accumulator-calls/return function body. Each removed comment leaves its original blank line.",
+            "Safe fixes remove only a paragraph accepted by the shared ordered-narration proof: flat zero-argument direct calls, single-name call assignments and a terminal call return, or the exact initializer/accumulator-calls/return shape. Every line must repeat its corresponding action name; constraints, directives, qualifiers and extra statements remain protected. Each removed comment leaves its original blank line.",
             "Contiguous standalone implementation comment blocks with at least two non-empty lines and 12 words are inspected.",
             "An error requires each line to exactly repeat its corresponding direct zero-argument call identifier in the same order. Supported owners contain only those flat calls, single-name call assignments and call returns, or the exact accumulation shape.",
             "Guards, loops, branches, additional statements, intervening comments, arguments, qualified calls, quoted text, novel words and meaning-bearing qualifiers cause abstention. Arbitrary prose is not inferred to be redundant from its length.",

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "a6d07f739c908bbdbe24bb8881754d64347bc15cd0e54ba414c46a989058d7f4",
-  "cliSha256": "9991df1e9a185bac1bdf59d87985590d2631fba2744341774f8f798233519777",
+  "catalogSha256": "6459666a871828f05b634bb7564578338b9eafb42fc386630df7159fcc7a2ca4",
+  "cliSha256": "375043dd0f985f09d655639a0905e4bc98804a297fff06b5ab4ed902c6abc6e3",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -2977,6 +2977,41 @@
     },
     "eslint:no-redundant-local-alias": {
       "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/request.ts",
+              "source": "export {};\nfunction request(value: string) {\n  const accountId = value;\n  return { accountId };\n}\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "src/request.ts",
+              "source": "export {};\nfunction request(value: string) {\n  return { accountId: value };\n}\n"
+            }
+          ],
+          "focusPath": "src/request.ts",
+          "id": "closed-primitive-parameter-alias",
+          "outcome": "reject",
+          "scenarioId": "closed-primitive-parameter-alias",
+          "title": "The closed primitive return preserves the data-field contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/request.ts",
+              "source": "export {};\nfunction request(value: string) {\n  return { accountId: value };\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/request.ts",
+          "id": "closed-primitive-parameter-alias-fixed",
+          "outcome": "accept",
+          "scenarioId": "closed-primitive-parameter-alias",
+          "title": "The direct data field needs no local alias"
+        },
         {
           "expectedCount": 0,
           "files": [
@@ -12414,6 +12449,41 @@
           "title": "Use the existing relation and column names"
         },
         {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/literal_rows.py",
+              "source": "from psycopg import Connection\n\n\ndef literal_rows():\n    with Connection.connect() as connection:\n        return connection.execute(\n            'SELECT \"r\".\"id\" FROM (VALUES (1)) AS \"r\"(\"id\")'\n        ).fetchall()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/literal_rows.py",
+          "id": "fixed-owned-literal",
+          "outcome": "accept",
+          "scenarioId": "owned-literal-self-alias",
+          "title": "A closed literal column keeps its implicit output name"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/literal_rows.py",
+              "source": "from psycopg import Connection\n\n\ndef literal_rows():\n    with Connection.connect() as connection:\n        return connection.execute(\n            'SELECT \"r\".\"id\" AS \"id\" FROM (VALUES (1)) AS \"r\"(\"id\")'\n        ).fetchall()\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "app/literal_rows.py",
+              "source": "from psycopg import Connection\n\n\ndef literal_rows():\n    with Connection.connect() as connection:\n        return connection.execute(\n            'SELECT \"r\".\"id\" FROM (VALUES (1)) AS \"r\"(\"id\")'\n        ).fetchall()\n"
+            }
+          ],
+          "focusPath": "app/literal_rows.py",
+          "id": "safe-autofix",
+          "outcome": "reject",
+          "scenarioId": "owned-literal-self-alias",
+          "title": "Remove a self-alias from a closed literal result column"
+        },
+        {
           "expectedCount": 1,
           "files": [
             {
@@ -13267,6 +13337,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Name the tested behavior"
+        },
+        {
+          "expectedCount": 2,
+          "files": [
+            {
+              "path": "tests/test_activation.py",
+              "source": "def test_activation():\n    # Load current account profile activation settings\n    # Build current account profile activation response\n    load_current_account_profile_activation_settings()\n    return build_current_account_profile_activation_response()\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "tests/test_activation.py",
+              "source": "def test_activation():\n\n    load_current_account_profile_activation_settings()\n    return build_current_account_profile_activation_response()\n"
+            }
+          ],
+          "focusPath": "tests/test_activation.py",
+          "id": "flat-test-action-narration",
+          "outcome": "reject",
+          "scenarioId": "flat-test-action-narration",
+          "title": "Remove only test prose proved by the existing ordered-action contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "tests/test_activation.py",
+              "source": "def test_activation():\n\n    load_current_account_profile_activation_settings()\n    return build_current_account_profile_activation_response()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "tests/test_activation.py",
+          "id": "flat-test-action-narration-fixed",
+          "outcome": "accept",
+          "scenarioId": "flat-test-action-narration",
+          "title": "The exact action sequence needs no test prose"
         }
       ],
       "optionsSchemaSource": null
@@ -17989,6 +18094,36 @@
           "expectedCount": 0,
           "files": [
             {
+              "path": "app/service.py",
+              "source": "from string.templatelib import Template\n\n\ndef render(value: str = \"sample\") -> Template:\n    return t\"value: {_parse(value)}\"\n\n\ndef _parse(value: str) -> str:\n    return value.strip()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "already-ordered-deferred-template",
+          "outcome": "accept",
+          "scenarioId": "deferred-template",
+          "title": "Already ordered: Template syntax proves deferred module annotations"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "def render(value: \"str\" = \"sample\") -> \"str\":\n    return _parse(value)\n\n\ndef _parse(value: \"str\" = \"sample\") -> \"str\":\n    return value.strip()\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "already-ordered-literal-headers",
+          "outcome": "accept",
+          "scenarioId": "literal-headers",
+          "title": "Already ordered: Literal headers preserve annotations and defaults"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
               "path": "service.py",
               "source": "def handle(payload: dict) -> dict:\n    return _parse(payload)\n\n\ndef _parse(payload: dict) -> dict:\n    return payload\n"
             }
@@ -18014,6 +18149,81 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Private helper appears before its sole caller"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from __future__ import annotations\n\n\ndef render(value: str) -> bool:\n    return _parse(value)\n\n\ndef _parse(value: str) -> bool:\n    return bool(value)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "postponed-helper-after-sole-caller",
+          "outcome": "accept",
+          "scenarioId": "postponed-annotations",
+          "title": "Postponed module helper already follows its sole caller"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from string.templatelib import Template\n\n\ndef _parse(value: str) -> str:\n    return value.strip()\n\n\ndef render(value: str = \"sample\") -> Template:\n    return t\"value: {_parse(value)}\"\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "app/service.py",
+              "source": "from string.templatelib import Template\n\n\ndef render(value: str = \"sample\") -> Template:\n    return t\"value: {_parse(value)}\"\n\n\ndef _parse(value: str) -> str:\n    return value.strip()\n"
+            }
+          ],
+          "focusPath": "app/service.py",
+          "id": "safe-autofix-deferred-template",
+          "outcome": "reject",
+          "scenarioId": "deferred-template",
+          "title": "Template syntax proves deferred module annotations"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "def _parse(value: \"str\" = \"sample\") -> \"str\":\n    return value.strip()\n\n\ndef render(value: \"str\" = \"sample\") -> \"str\":\n    return _parse(value)\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "app/service.py",
+              "source": "def render(value: \"str\" = \"sample\") -> \"str\":\n    return _parse(value)\n\n\ndef _parse(value: \"str\" = \"sample\") -> \"str\":\n    return value.strip()\n"
+            }
+          ],
+          "focusPath": "app/service.py",
+          "id": "safe-autofix-literal-headers",
+          "outcome": "reject",
+          "scenarioId": "literal-headers",
+          "title": "Literal headers preserve annotations and defaults"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from __future__ import annotations\n\n\ndef _parse(value: str) -> bool:\n    return bool(value)\n\n\ndef render(value: str) -> bool:\n    return _parse(value)\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "app/service.py",
+              "source": "from __future__ import annotations\n\n\ndef render(value: str) -> bool:\n    return _parse(value)\n\n\ndef _parse(value: str) -> bool:\n    return bool(value)\n"
+            }
+          ],
+          "focusPath": "app/service.py",
+          "id": "safe-postponed-annotations-autofix",
+          "outcome": "reject",
+          "scenarioId": "postponed-annotations",
+          "title": "Postponed module annotations retain their signatures during a safe move"
         }
       ],
       "optionsSchemaSource": null
@@ -18939,6 +19149,41 @@
           "files": [
             {
               "path": "migrations/001_index.sql",
+              "source": "CREATE INDEX item_key ON app.item (id);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001_index.sql",
+          "id": "fixed-explicit-index-schema",
+          "outcome": "accept",
+          "scenarioId": "same-explicit-index-schema",
+          "title": "The table supplies the schema of its index"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001_index.sql",
+              "source": "CREATE INDEX app.item_key ON app.item (id);\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "migrations/001_index.sql",
+              "source": "CREATE INDEX item_key ON app.item (id);\n"
+            }
+          ],
+          "focusPath": "migrations/001_index.sql",
+          "id": "same-explicit-index-schema",
+          "outcome": "reject",
+          "scenarioId": "same-explicit-index-schema",
+          "title": "The table already fixes the index schema"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001_index.sql",
               "source": "CREATE UNIQUE INDEX item_key ON app.item USING btree (id) INCLUDE (label);\n"
             }
           ],
@@ -19443,6 +19688,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "SQL enforces the bound while runner directives remain executable"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "-- DROP TABLE legacy;\nSELECT\n  1;\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "migrations/001.sql",
+              "source": "SELECT\n  1;\n"
+            }
+          ],
+          "focusPath": "migrations/001.sql",
+          "id": "inert-disabled-statement",
+          "outcome": "reject",
+          "scenarioId": "inert-comment",
+          "title": "Remove a proven disabled statement without changing executable SQL"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "SELECT\n  1;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "inert-disabled-statement-fixed",
+          "outcome": "accept",
+          "scenarioId": "inert-comment",
+          "title": "Executable SQL remains after removing the inert comment"
         }
       ],
       "optionsSchemaSource": null

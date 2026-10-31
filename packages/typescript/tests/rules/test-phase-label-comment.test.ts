@@ -31,6 +31,13 @@ RULE_TESTER.run("test-phase-label-comment", rule, {
     { code: "// @generated\n// Arrange\nconst widget = makeWidget();", filename: "widget.test.ts" },
   ],
   invalid: [
+    ...["\n", "\r\n"].map(ending => ({
+      name: "shared guarded deletion retains normal terminators " + JSON.stringify(ending),
+      filename: "widget.test.ts",
+      code: "// Assertions\nexpect(run()).toBe(true);".replaceAll("\n", ending),
+      output: "\nexpect(run()).toBe(true);".replaceAll("\n", ending),
+      errors: [{ messageId: "removeLabel" as const }],
+    })),
     {
       code: TEST_PHASE_LABEL_COMMENT_DOCUMENTATION.examples[1].files[0].source,
       filename: "widget.test.ts",

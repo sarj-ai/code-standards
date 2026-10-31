@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -149,3 +150,53 @@ def test_conflicting_groups_stay_atomic_and_only_new_accepted_work_is_attributed
 
     assert selected.edits == (first, second, last)
     assert selected.codes == ("SARJ001", "SARJ005")
+
+
+@pytest.mark.parametrize(
+    "invalid_statement",
+    [
+        pytest.param("return 1\n", id="module-return"),
+        pytest.param("nonlocal missing\n", id="module-nonlocal"),
+        pytest.param("break\n", id="break-outside-loop"),
+        pytest.param("continue\n", id="continue-outside-loop"),
+        pytest.param("await call()\n", id="await-outside-async"),
+        pytest.param("def broken(value, value):\n    return value\n", id="duplicate-parameters"),
+    ],
+)
+def test_parseable_but_compile_invalid_inputs_remain_unchanged(invalid_statement: str) -> None:
+    source = _SOURCE + invalid_statement
+    assert isinstance(ast.parse(source), ast.Module)
+    with pytest.raises(SyntaxError):
+        compile(  # sarj-noqa: SARJ557 -- Compile an invalid fixture to exercise rejection of invalid scopes without executing input.
+            source, "app/invalid.py", "exec", dont_inherit=True
+        )
+    assert fix_source(Path("app/invalid.py"), source, rule_ids=_RULES) == source
+
+
+def test_stepdown_does_not_rewrite_a_parseable_module_with_invalid_scope() -> None:
+    source = "def _helper(value):\n    return value\n\ndef caller(value):\n    return _helper(value)\n\nreturn 1\n"
+    assert fix_source(Path("app/invalid.py"), source, rule_ids=["stepdown"]) == source
+
+
+def test_template_annotation_proof_does_not_hide_a_misplaced_future_import() -> None:
+    source = (
+        "marker = 1\nfrom __future__ import annotations\n"
+        "def _helper(value: str) -> str:\n    return value\n\n"
+        "def caller(value: str) -> str:\n    return _helper(value)\n\n"
+        'def template():\n    return t"value"\n'
+    )
+    assert fix_source(Path("app/invalid.py"), source, rule_ids=["stepdown"]) == source
+
+
+def test_a_valid_generated_repair_of_invalid_input_keeps_its_existing_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _SOURCE + "return 1\n"
+
+    def repair_input(view: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
+        assert diagnostic.code == "SARJ016"
+        return [TextEdit(0, len(view.text), "value = 1\n")]
+
+    monkeypatch.setitem(_BUILDERS, "SARJ016", repair_input)
+
+    assert fix_source(Path("app/repaired.py"), source, rule_ids=_RULES) == "value = 1\n"

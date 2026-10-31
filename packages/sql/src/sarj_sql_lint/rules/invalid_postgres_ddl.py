@@ -74,15 +74,52 @@ class InvalidPostgresDdl(Rule):
             "UNIQUE or PRIMARY KEY additions. Preserve the intended uniqueness and query-access contract."
         ),
         category=RuleCategory.CORRECTNESS,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
             "Checks authored PostgreSQL SQL and the built-in PostgreSQL 18 access methods. Explicit other dialects, dumps, generated migrations, fixtures, and test sources are excluded.",
             "Only parsed CREATE INDEX definitions and direct ALTER TABLE ADD UNIQUE/PRIMARY KEY actions are inspected. Unknown access methods, unsupported syntax, column-level constraints, and procedural or dynamically executed SQL remain outside this rule.",
             "INCLUDE entries must be single identifiers; quoted column names containing punctuation remain valid. Templated entries remain outside identifier validation. Included columns do not contribute to the key-count check.",
             "Analysis stops before a proven top-level COPY FROM STDIN command; payload framing and commands following its data terminator are not modeled.",
-            "The rule does not infer table contents, installed operator classes, function volatility, referenced constraints, partition keys, or deployment transaction boundaries. It does not rewrite DDL.",
+            "Autofix only repairs one comment-free CREATE INDEX whose explicitly qualified index name and table use the same exact PostgreSQL schema identity. It removes that index schema prefix, preserves physical lines and every other source byte, and requires one supported parsed index with identical table, basename and complete index signature. Other DDL, mismatched or unqualified schemas, multiple statements and other index errors remain manual.",
+            "The repair corrects unsupported syntax from the explicit same-schema declaration; it does not claim runtime equivalence for the invalid preimage or infer table contents, installed operator classes, function volatility, referenced constraints, partition keys or deployment transaction boundaries.",
         ),
         examples=(
+            RuleExample(
+                example_id="same-explicit-index-schema",
+                title="The table already fixes the index schema",
+                outcome=ExampleOutcome.MATCH,
+                scenario="same-explicit-index-schema",
+                files=(
+                    ExampleFile.sql(
+                        "migrations/001_index.sql",
+                        "CREATE INDEX app.item_key ON app.item(id);\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.sql(
+                        "migrations/001_index.sql",
+                        "CREATE INDEX item_key ON app.item(id);\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("migrations/001_index.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="fixed-explicit-index-schema",
+                title="The table supplies the schema of its index",
+                outcome=ExampleOutcome.NO_MATCH,
+                scenario="same-explicit-index-schema",
+                files=(
+                    ExampleFile.sql(
+                        "migrations/001_index.sql",
+                        "CREATE INDEX item_key ON app.item(id);\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("migrations/001_index.sql"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="unsupported-unique-hash",
                 title="A built-in hash index cannot enforce uniqueness",

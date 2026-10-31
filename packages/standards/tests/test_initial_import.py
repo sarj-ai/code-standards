@@ -11,6 +11,7 @@ from sarj_standards import api
 from sarj_standards.libs.adoption.manifest import MANIFEST_NAME, Manifest
 from sarj_standards.libs.diagnostics import baseline, initial_import
 from sarj_standards.libs.linting.analysis import analyze
+from sarj_standards.libs.staged_git import staged_environment
 
 
 if TYPE_CHECKING:
@@ -266,10 +267,60 @@ def test_initial_import_uses_the_prospective_index(imported: ImportRepository, m
     monkeypatch.setenv(_ENV, imported.source)
 
     scope = baseline.changed_line_scope(imported.root, staged=True, paths=("app.py",))
+    environment = staged_environment(imported.root)
+    report = api.Standards(imported.root).analyze(["app.py"], staged=True, rules=_RULES)
 
     assert scope is not None
     assert not scope.failed
     assert scope.lines["app.py"] == frozenset({3})
+    assert environment["GIT_INDEX_FILE"] == str(pending)
+    assert environment["GIT_ALTERNATE_OBJECT_DIRECTORIES"] == str(imported.original / ".git/objects")
+    assert report.issues == ()
+    assert report.exit_code == 1
+    assert sum(tool.baselined_count for tool in report.tools) == 1
+
+
+@pytest.mark.parametrize("index_kind", ["external", "symlink"])
+def test_initial_import_does_not_authorize_an_unowned_index(
+    imported: ImportRepository, monkeypatch: pytest.MonkeyPatch, index_kind: str
+) -> None:
+    index = imported.root / ".git/index"
+    supplied = imported.root / ".git/pending-index"
+    if index_kind == "external":
+        supplied = imported.root.parent / "foreign-index"
+        supplied.write_bytes(index.read_bytes())
+    else:
+        supplied.symlink_to(index)
+    before = index.read_bytes(), supplied.read_bytes()
+    monkeypatch.setenv(_ENV, imported.source)
+    monkeypatch.setenv("GIT_INDEX_FILE", str(supplied))
+
+    report = api.Standards(imported.root).analyze(["app.py"], staged=True, rules=_RULES)
+    scope = baseline.changed_line_scope(imported.root, staged=True, paths=("app.py",))
+
+    assert report.exit_code == 2
+    assert any("active Git index" in issue.message for issue in report.issues)
+    assert scope is not None
+    assert scope.failed
+    assert (index.read_bytes(), supplied.read_bytes()) == before
+
+
+@pytest.mark.parametrize("variable", ["GIT_OBJECT_DIRECTORY", "GIT_NAMESPACE", "GIT_SHALLOW", "GIT_QUARANTINE_PATH"])
+def test_initial_import_does_not_authorize_other_object_routing(
+    imported: ImportRepository, monkeypatch: pytest.MonkeyPatch, variable: str
+) -> None:
+    pending = imported.root / ".git/pending-index"
+    pending.write_bytes((imported.root / ".git/index").read_bytes())
+    before = pending.read_bytes()
+    monkeypatch.setenv(_ENV, imported.source)
+    monkeypatch.setenv("GIT_INDEX_FILE", str(pending))
+    monkeypatch.setenv(variable, str(imported.original / ".git/objects"))
+
+    report = api.Standards(imported.root).analyze(["app.py"], staged=True, rules=_RULES)
+
+    assert report.exit_code == 2
+    assert any("unsupported object-store context" in issue.message for issue in report.issues)
+    assert pending.read_bytes() == before
 
 
 def test_initial_import_rejects_failed_scope_and_preserves_findings(

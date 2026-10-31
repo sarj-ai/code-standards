@@ -44,7 +44,7 @@ export const NO_CONTRADICTORY_TYPE_PREDICATE_DOCUMENTATION = {
     "For the intrinsic object target, typeof-object also admits null only when the declared input admits null and strictNullChecks is enabled. This narrow check does not infer structural property validation or classify other object/function relationships. Overloaded implementations, contextually typed callbacks and methods with class heritage or contextual object contracts retain their separate callable domain.",
     "Compiler-invalid predicate target/input relations and typeof comparisons impossible for the input remain with existing compiler and unnecessary-condition controls. This rule does not validate arbitrary predicates or runtime refinements. Generated files are excluded; tests remain checked.",
     "A sole native Array.isArray call on unknown cannot establish a plain primitive-element array target. Standard-library call signatures and an unshadowed Array binding are required. Element validators, any/unknown elements, tuples, enums, branded or opaque elements and independent callable contracts abstain. Visible Array or host-global aliases, mutation, escapes, extracted methods, any value constructor or unresolved computed-property access and unrelated Array namespace uses disable this proof: structural receiver types cannot establish runtime constructor identity. Native Reflect value uses and Object prototype/descriptor reflection or namespace aliases also withdraw authority. Indirect opaque runtime replacements are not inferred.",
-    "For a same-file nongeneric named record with a required data property, a sole typeof-object check, optionally conjoined with a null exclusion, cannot establish that property from unknown or object input. Optional-only records, dictionaries, classes, imported/generic contracts and implementations with field checks are excluded. A non-null object without the required own property supplies the contradiction; this profile has no automatic fix.",
+    "For a same-file nongeneric named record with a required data property, a sole typeof-object check, optionally conjoined with a null exclusion, cannot establish that property from unknown or object input. Optional-only records, dictionaries, classes, imported/generic contracts and implementations with field checks are excluded. A non-null object without the required own property supplies the contradiction. The same unused-private predicate proof may remove its unobserved narrowing contract; observed callable contracts and sole named-type uses remain manual.",
   ],
   references: ["https://www.typescriptlang.org/docs/handbook/release-notes/typescript-5-5.html#inferred-type-predicates"],
   examples: [
@@ -111,7 +111,7 @@ export default createRule<Options, MessageIds>({
       const target = checker.getTypeAtLocation(services.esTreeNodeToTSNodeMap.get(annotation.typeAnnotation.typeAnnotation));
       if (!checker.isTypeAssignableTo(target, input)) return;
       if (shallowRecordCheck(expression, parameter, input, target, context.sourceCode, checker, services.esTreeNodeToTSNodeMap.get(node).getSourceFile())) {
-        context.report({ node: annotation, messageId: "uncheckedRecordFields", data: { promised: checker.typeToString(target) } });
+        context.report({ node: annotation, messageId: "uncheckedRecordFields", fix: privatePredicateBooleanFix(context.sourceCode, node, annotation, context.filename), data: { promised: checker.typeToString(target) } });
         return;
       }
       if (check === undefined) {

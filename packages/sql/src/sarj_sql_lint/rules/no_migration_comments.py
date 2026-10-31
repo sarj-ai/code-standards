@@ -70,7 +70,7 @@ class NoMigrationComments(Rule):
             "and statement-boundary directives. Migration sarj-noqa comments are also reported."
         ),
         category=RuleCategory.MAINTAINABILITY,
-        autofix=AutofixPolicy.NONE,
+        autofix=AutofixPolicy.SAFE,
         limitations=(
             "Checks authored and generated migrations; schema dumps and non-migration SQL are excluded.",
             "Exact standalone dbmate, Goose, sql-migrate, Liquibase, Atlas, dialect and Drizzle breakpoint directives are preserved.",
@@ -78,9 +78,31 @@ class NoMigrationComments(Rule):
             "Strings and quoted identifiers are not comments, including scalar dollar-quoted data. Comments in executable bodies are checked.",
             "COMMENT ON cleanup using unquoted NULL or an empty plain, escape, or dollar-quoted string is allowed; quoted NULL and nonempty strings still store comments.",
             "Analysis stops before top-level COPY FROM STDIN; payloads and following commands are not inferred.",
-            "The rule does not invent a constraint from arbitrary prose or delete comments automatically.",
+            "Conditional safe fixes reuse the existing banner and complete supported disabled-SQL line-comment profiles only when both rules report the same location. Arbitrary prose, declared ranges, COMMENT ON statements, directives, references, rollback guidance, suppression and license comments remain manual.",
+            "Safe fixes preserve physical newlines and refuse COPY input, dollar-quoted data and procedural sources. Direct source-string fixes refuse a visible BOM prefix; file fixes preserve the original UTF-8 BOM through the shared file adapter. Generated migrations remain model-owned. No constraint is invented from prose.",
         ),
         examples=(
+            RuleExample(
+                example_id="inert-disabled-statement",
+                scenario="inert-comment",
+                title="Remove a proven disabled statement without changing executable SQL",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.sql("migrations/001.sql", "-- DROP TABLE legacy;\nSELECT 1;\n"),),
+                fixed_files=(ExampleFile.sql("migrations/001.sql", "\nSELECT 1;\n"),),
+                focus_path=PurePosixPath("migrations/001.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="inert-disabled-statement-fixed",
+                scenario="inert-comment",
+                title="Executable SQL remains after removing the inert comment",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.sql("migrations/001.sql", "\nSELECT 1;\n"),),
+                focus_path=PurePosixPath("migrations/001.sql"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="comment-only-range",
                 title="A comment cannot enforce a column range",

@@ -209,3 +209,94 @@ def test_comment_fixes_compile_to_identical_code_objects(rule_id: RuleId) -> Non
         fixed, "app/service.py", "exec", dont_inherit=True
     )
     assert fixed_code == original_code
+
+
+_FLAT_ACTION_NARRATION = "# Load current pending account user profile\n# Save current pending account user profile\nload_current_pending_account_user_profile()\nsave_current_pending_account_user_profile()\n"
+
+_EXACT_NARRATION_CASES = (
+    pytest.param(
+        _FLAT_ACTION_NARRATION,
+        "\n\nload_current_pending_account_user_profile()\nsave_current_pending_account_user_profile()\n",
+        id="flat-action-calls",
+    ),
+    pytest.param(
+        "def render():\n    # Load current pending account user profile\n    # Save current pending account user profile\n    result = load_current_pending_account_user_profile()\n    return save_current_pending_account_user_profile()\n",
+        "def render():\n\n\n    result = load_current_pending_account_user_profile()\n    return save_current_pending_account_user_profile()\n",
+        id="assignment-and-terminal-return",
+    ),
+    pytest.param(
+        "def render():\n    # Load current pending account user profile\n    # Save current pending account user profile\n    result = []\n    result.append(load_current_pending_account_user_profile())\n    result.append(save_current_pending_account_user_profile())\n    return result\n",
+        "def render():\n\n\n    result = []\n    result.append(load_current_pending_account_user_profile())\n    result.append(save_current_pending_account_user_profile())\n    return result\n",
+        id="two-line-exact-accumulation",
+    ),
+)
+
+
+@pytest.mark.parametrize(("source", "expected"), _EXACT_NARRATION_CASES)
+@pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=["lf", "crlf"])
+@pytest.mark.parametrize("final_newline", [False, True], ids=["eof", "newline"])
+def test_shared_narration_proof_expands_exact_comment_fixes(
+    source: str, expected: str, newline: str, *, final_newline: bool
+) -> None:
+    if not final_newline:
+        source, expected = source.removesuffix("\n"), expected.removesuffix("\n")
+    source, expected = source.replace("\n", newline), expected.replace("\n", newline)
+    path = Path("app/service.py")
+    rule = REGISTRY["excessive-commentary"]()
+    findings = rule.check(path, source)
+    assert len(findings) == 1
+    fixed = fix_source(path, source, rule_ids=["excessive-commentary"])
+    assert fixed == expected
+    assert ast.dump(ast.parse(fixed), include_attributes=True) == ast.dump(ast.parse(source), include_attributes=True)
+    assert (
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            fixed, "app/service.py", "exec", dont_inherit=True
+        )
+        == compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            source, "app/service.py", "exec", dont_inherit=True
+        )
+    )
+    assert rule.check(path, fixed) == []
+    assert fix_source(path, fixed, rule_ids=["excessive-commentary"]) == fixed
+    assert fix_source(path, source, rule_ids=[]) == source
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("# Save current", "# Save extra current"),
+        ("# Save current", "# Save only current"),
+        ("save_current_pending_account_user_profile()", "save_current_pending_account_user_profile(1)"),
+        ("save_current_pending_account_user_profile()", "client.save_current_pending_account_user_profile()"),
+        (
+            "load_current_pending_account_user_profile()",
+            "load_current_pending_account_user_profile()\n# Keep the independent boundary",
+        ),
+        ("save_current_pending_account_user_profile()", "save_current_pending_account_user_profile()\nEXTRA = 1"),
+        ("# Save current pending account user profile", "# ruff: noqa: F401"),
+    ],
+    ids=[
+        "novel-word",
+        "meaning-bearing-qualifier",
+        "argument",
+        "qualified-call",
+        "intervening-comment",
+        "extra-statement",
+        "directive",
+    ],
+)
+def test_action_narration_fix_preserves_near_misses(old: str, new: str) -> None:
+    source = _FLAT_ACTION_NARRATION
+    source = source.replace(old, new)
+    path = Path("app/service.py")
+    assert REGISTRY["excessive-commentary"]().check(path, source) == []
+    assert fix_source(path, source, rule_ids=["excessive-commentary"]) == source
+
+
+def test_action_narration_fix_preserves_exact_suppression() -> None:
+    source = _FLAT_ACTION_NARRATION
+    source = source.replace(
+        "# Load current pending account user profile",
+        "# Load current pending account user profile  # sarj-noqa: SARJ434 -- retained boundary",
+    )
+    assert fix_source(Path("app/service.py"), source, rule_ids=["excessive-commentary"]) == source

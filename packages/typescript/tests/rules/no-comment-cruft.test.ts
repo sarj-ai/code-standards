@@ -286,6 +286,12 @@ RULE_TESTER.run("no-comment-cruft", rule, {
     },
   ],
   invalid: [
+    ...["\n", "\r\n"].map(ending => ({
+      name: "shared guarded deletion retains normal terminators " + JSON.stringify(ending),
+      code: "const value = 1;\n// =================\n// -----------------\nconst next = 2;".replaceAll("\n", ending),
+      output: "const value = 1;\n\n\nconst next = 2;".replaceAll("\n", ending),
+      errors: [{ messageId: "sectionBanner" as const }],
+    })),
     { name: "removes a punctuation-only banner run in one pass", code: "const value = 1;\n// =================\n// -----------------\nconst next = 2;", output: "const value = 1;\n\n\nconst next = 2;", errors: [{ messageId: "sectionBanner" }] },
 
     {

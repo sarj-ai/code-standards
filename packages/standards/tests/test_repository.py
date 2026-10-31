@@ -1084,8 +1084,9 @@ def test_comment_corpus_closes_records_descriptor_when_fstat_fails(
 @pytest.mark.parametrize(
     "hook_type", ["pre-commit", "pre-push", "commit-msg", "post-checkout", "post-commit", "post-merge"]
 )
+@pytest.mark.parametrize("legacy_managed", [False, True], ids=("generated", "previous-managed"))
 def test_hook_install_resolves_environment_binaries(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, hook_type: str
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, hook_type: str, legacy_managed: bool
 ) -> None:
     calls: list[list[str]] = []
 
@@ -1118,7 +1119,8 @@ def test_hook_install_resolves_environment_binaries(
     )
     hook = tmp_path / ".git/hooks" / hook_type
     hook.parent.mkdir(parents=True)
-    hook.write_text(f'#!/bin/sh\ncall_lefthook run "{hook_type}" "$@"\n', encoding="utf-8")
+    arguments = " --no-auto-install" if legacy_managed else ""
+    hook.write_text(f'#!/bin/sh\ncall_lefthook run "{hook_type}"{arguments} "$@"\n', encoding="utf-8")
     (tmp_path / "lefthook.yml").write_text(f"{hook_type}: {{}}\n", encoding="utf-8")
 
     hooks.install(tmp_path)
@@ -1133,6 +1135,7 @@ def test_hook_install_resolves_environment_binaries(
     assert hook.read_text(encoding="utf-8").count(f"export LEFTHOOK_BIN={durable.as_posix()}") == 1
     assert hook.read_text(encoding="utf-8").count("# sarj-standards: empty-index gate") == (hook_type == "pre-commit")
     assert hooks.managed_hook_call(hook_type) in hook.read_text(encoding="utf-8")
+    assert hook.read_text(encoding="utf-8").count("--no-stage-fixed") == (hook_type == "pre-commit")
     assert hook.read_text(encoding="utf-8").count('export PATH=/bin:"$PATH" # sarj-standards: uvx-path') == 1
 
 

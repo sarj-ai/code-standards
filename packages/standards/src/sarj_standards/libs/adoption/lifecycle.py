@@ -220,7 +220,11 @@ def select_eslint_commands(
     expand_directories: bool = False,
     include_config_sources: bool = False,
     disabled_rules: Sequence[str] = (),
+    _directive_dry_run: bool = False,
 ) -> EslintSelection:
+    if _directive_dry_run and (fix or disabled_rules):
+        msg = "directive-only planning cannot enable broad fixes or change rule severity"
+        raise ValueError(msg)
     repository = root.resolve()
     fallback_project = _adopted_typescript_project(repository)
     candidates = _selected_eslint_candidates(
@@ -254,6 +258,11 @@ def select_eslint_commands(
                     "eslint",
                     *config_args,
                     *(("--fix",) if fix else ()),
+                    *(
+                        ("--fix-dry-run", "--fix-type", "directive", "--format", "json", "--no-cache")
+                        if _directive_dry_run
+                        else ()
+                    ),
                     *(argument for rule in disabled_rules for argument in ("--rule", f"{rule}:off")),
                     "--",
                     *sorted(scoped),
@@ -316,6 +325,12 @@ def staged_eslint_commands(root: Path, paths: Iterable[str]) -> list[Command]:
     return selected_eslint_commands(root, paths, label="staged")
 
 
+def is_eslint_source(path: Path, *, include_config_sources: bool = False) -> bool:
+    return path.suffix.lower() in _ESLINT_SUFFIXES and (
+        include_config_sources or path.name not in _ESLINT_GLOBAL_IGNORE_NAMES
+    )
+
+
 def _selected_eslint_candidates(
     root: Path,
     paths: Iterable[str],
@@ -350,11 +365,7 @@ def _selected_eslint_candidates(
                 candidates.add(candidate)
             else:
                 candidates.update(sources)
-        elif (
-            candidate.suffix.lower() in _ESLINT_SUFFIXES
-            and (include_config_sources or candidate.name not in _ESLINT_GLOBAL_IGNORE_NAMES)
-            and candidate.is_file()
-        ):
+        elif is_eslint_source(candidate, include_config_sources=include_config_sources) and candidate.is_file():
             candidates.add(candidate)
 
     for raw_path in paths:
@@ -380,8 +391,7 @@ def _eslint_sources(directory: Path, *, include_config_sources: bool = False) ->
         sources.update(
             base / name
             for name in names
-            if Path(name).suffix.lower() in _ESLINT_SUFFIXES
-            and (include_config_sources or name not in _ESLINT_GLOBAL_IGNORE_NAMES)
+            if is_eslint_source(base / name, include_config_sources=include_config_sources)
             and not is_link_like(base / name)
         )
     return sources
