@@ -1232,3 +1232,16 @@ def test_deep_field_union_preserves_private_class_boundary_exclusion(owner: str,
     annotation = " | ".join(["str"] * 3001 + ["None"])
     source = f"class {owner}:\n    payload: {annotation}\n    def payload_record(self) -> dict[str, object]:\n        return {{'id': 1}}\n"
     assert len(_check(source)) == expected
+
+
+@pytest.mark.parametrize("annotation", [r'"\ud800"', r'"\udfff"', '"?"'])
+def test_unparseable_nested_annotation_does_not_abort_other_record_findings(annotation: str) -> None:
+    source = f'def opaque() -> dict[str, {annotation}]:\n    return {{"id": 1}}\n'
+    assert _check(source) == []
+
+    source += '\ndef known() -> dict[str, int]:\n    return {"id": 1}\n'
+    findings = _check(source)
+
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ008"
+    assert findings[0].line >= 4

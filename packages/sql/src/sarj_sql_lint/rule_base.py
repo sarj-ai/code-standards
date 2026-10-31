@@ -722,11 +722,13 @@ def quoted_identifier_spans(source: str) -> tuple[tuple[int, int], ...]:
     return _scan(source, preserve_quoted_identifiers=True).identifier_spans if '"' in source else ()
 
 
-def sql_code_matches(pattern: re.Pattern[str], source: str, *, group: str | int = 0) -> Iterator[re.Match[str]]:
+def sql_code_matches(
+    pattern: re.Pattern[str], source: str, *, group: str | int = 0, pos: int = 0
+) -> Iterator[re.Match[str]]:
     # The caller supplies a literal/comment-masked view that preserves identifiers.
     spans = quoted_identifier_spans(source)
     starts = tuple(start for start, _ in spans)
-    for match in pattern.finditer(source):
+    for match in pattern.finditer(source, pos):
         position = match.start(group)
         preceding = bisect_right(starts, position) - 1
         if preceding >= 0:
