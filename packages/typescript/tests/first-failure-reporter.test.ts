@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterAll, describe, expect, it } from "vitest";
 
@@ -11,6 +11,7 @@ const CLI = fileURLToPath(new URL("../node_modules/vitest/dist/cli.js", import.m
 const VITEST = new URL("../node_modules/vitest/dist/index.js", import.meta.url).href;
 const PREVIEW_START = "First failed test (preview; complete details remain in the final report):";
 const PREVIEW_END = "[End of first failure preview]";
+const DEFAULT_REPORTER_DELAY_MARKER = "Default reporter callback completed.";
 
 let privateCache: string | undefined;
 
@@ -27,15 +28,41 @@ afterAll(async () => {
   if (privateCache !== undefined) await rm(privateCache, { recursive: true, force: true });
 });
 
-async function runFixture(source: string, options: { arguments?: string[]; acknowledgePreview?: boolean; collect?: boolean } = {}) {
+async function runFixture(source: string, options: { arguments?: string[]; acknowledgePreview?: boolean; collect?: boolean; delayDefaultReporter?: boolean } = {}) {
   const root = await mkdtemp(join(tmpdir(), "sarj-first-failure-"));
   try {
     await mkdir(join(root, ".git"));
     await mkdir(join(root, "tests"));
     await writeFile(join(root, "tests/cases.test.ts"), `import { afterEach, beforeEach, expect, test } from ${JSON.stringify(VITEST)};\n${source}`);
+    let config = CONFIG;
+    if (options.delayDefaultReporter) {
+      config = join(root, "vitest.config.mjs");
+      await writeFile(config, `
+import base from ${JSON.stringify(pathToFileURL(CONFIG).href)};
+class SlowDefaultReporter {
+  delayed = false;
+  onTestCaseResult(test) {
+    if (this.delayed || test.result().state !== "failed") return;
+    this.delayed = true;
+    const until = performance.now() + 2500;
+    while (performance.now() < until) {}
+    process.stderr.write(${JSON.stringify(DEFAULT_REPORTER_DELAY_MARKER + "\n")});
+  }
+}
+const slow = new SlowDefaultReporter();
+let inserted = false;
+const reporters = base.test.reporters.flatMap(reporter => {
+  if (typeof reporter !== "string" || inserted) return [reporter];
+  inserted = true;
+  return [slow, reporter];
+});
+if (!inserted) throw new Error("The native default reporter was not loaded.");
+export default { ...base, test: { ...base.test, reporters } };
+`);
+    }
     const env = await fixtureEnvironment();
     const started = performance.now();
-    const child = spawn(process.execPath, [CLI, options.collect ? "list" : "run", "--root", root, "--config", CONFIG, "--maxWorkers=1", "--no-color", ...options.arguments ?? []], {
+    const child = spawn(process.execPath, [CLI, options.collect ? "list" : "run", "--root", root, "--config", config, "--maxWorkers=1", "--no-color", ...options.arguments ?? []], {
       timeout: 15_000,
       stdio: ["ignore", "pipe", "pipe"],
       env,
@@ -68,7 +95,7 @@ async function runFixture(source: string, options: { arguments?: string[]; ackno
 }
 
 describe("native first failure preview", () => {
-  it("previews one bounded failure while another case is running and preserves full final details", async () => {
+  it.each([false, true])("previews one bounded failure while another case is running and preserves full final details: delayed default=%s", async (delayDefaultReporter) => {
     const message = `first assertion ${"x".repeat(5000)} final detail`;
     const result = await runFixture(`
 import { existsSync } from "node:fs";
@@ -81,7 +108,7 @@ test("later case", async () => {
   }
 });
 test("second failure", () => { throw new Error("second assertion"); });
-`, { acknowledgePreview: true });
+`, { acknowledgePreview: true, delayDefaultReporter });
     expect(result.status).toBe(1);
     expect(result.stderr.split(PREVIEW_START)).toHaveLength(2);
     const preview = result.stderr.split(PREVIEW_END)[0]?.split(PREVIEW_START)[1] ?? "";
@@ -94,6 +121,7 @@ test("second failure", () => { throw new Error("second assertion"); });
     expect(result.output).toContain("second assertion");
     expect(result.output).toContain("1 passed");
     expect(result.output).not.toContain("preview was withheld");
+    if (delayDefaultReporter) expect(result.stderr).toContain(DEFAULT_REPORTER_DELAY_MARKER);
   });
 
   it.each([

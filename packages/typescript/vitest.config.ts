@@ -49,7 +49,7 @@ export default defineConfig({
   },
   test: {
     ...LOCAL_CHECK_WORKER_OPTIONS,
-    reporters: [...configDefaults.reporters, new FirstFailureReporter()],
+    reporters: [new FirstFailureReporter(), ...configDefaults.reporters],
     globals: false,
     testTimeout: 60_000,
     hookTimeout: 60_000,
