@@ -6,8 +6,11 @@ from sarj_python_lint.rules.prefer_namedtuple_over_tuple_return import PreferNam
 from sarj_python_lint.rules.prefer_nominal_id_types import PreferNominalIdTypes
 
 
-@pytest.mark.parametrize("base", ["object", "Root", "External", "Base[int]", "factory()", "Left, Right"])
-def test_explicit_inheritance_preserves_method_contracts(base: str) -> None:
+@pytest.mark.parametrize(
+    ("base", "nominal_lines"),
+    [("object", [3, 5]), ("Root", []), ("External", []), ("Base[int]", []), ("factory()", []), ("Left, Right", [])],
+)
+def test_explicit_bases_preserve_each_rules_inheritance_policy(base: str, nominal_lines: list[int]) -> None:
     source = (
         "class Root: pass\n"
         f"class Adapter({base}):\n"
@@ -16,7 +19,7 @@ def test_explicit_inheritance_preserves_method_contracts(base: str) -> None:
         "    def coordinates(self) -> tuple[int, int]: ...\n"
     )
     path = Path("app/service.py")
-    assert PreferNominalIdTypes().check(path, source) == []
+    assert [finding.line for finding in PreferNominalIdTypes().check(path, source)] == nominal_lines
     assert PreferNamedtupleOverTupleReturn().check(path, source) == []
 
 

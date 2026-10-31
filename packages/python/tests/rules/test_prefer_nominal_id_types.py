@@ -7,6 +7,7 @@ import pytest
 from sarj_python_lint.__main__ import check_source, main
 from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.prefer_nominal_id_types import PreferNominalIdTypes
+from sarj_python_lint.rules.require_explicit_service_contract import RequireExplicitServiceContract
 from sarj_python_lint.rules.require_keyword_only_swap_prone_params import RequireKeywordOnlySwapProneParams
 
 
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
     from contextlib import AbstractContextManager
     from typing import Literal
 
-    from sarj_python_lint.rule_base import Diagnostic, RuleExample
+    from sarj_python_lint.rule_base import Diagnostic, Rule, RuleExample
 
 
 def _check(source: str, path: str = "app/services/files.py") -> list[Diagnostic]:
@@ -970,6 +971,94 @@ def test_unmarked_inherited_raw_id_contract_is_preserved() -> None:
         "    def internal(self, file_id: str, folder_id: str) -> None: ...\n"
     )
     assert [item.line for item in _check(source)] == [2]
+
+
+@pytest.mark.parametrize(
+    ("imports", "base"),
+    [
+        ("", "object"),
+        ("import builtins\n", "builtins.object"),
+        ("from builtins import object as Root\n", "Root"),
+        ("from abc import ABC\n", "ABC"),
+        ("import abc as contracts\n", "contracts.ABC"),
+        ("from abc import ABC as Port\n", "Port"),
+        ("from typing import Protocol\n", "Protocol"),
+        ("from typing import Protocol as Port\n", "Port"),
+        ("import typing as contracts\n", "contracts.Protocol"),
+        ("from typing_extensions import Protocol\n", "Protocol"),
+        ("from typing import Generic, TypeVar\nT = TypeVar('T')\n", "Generic[T]"),
+        ("from typing import Protocol, TypeVar\nT = TypeVar('T')\n", "Protocol[T]"),
+        ("from abc import ABC\nfrom typing import Generic, TypeVar\nT = TypeVar('T')\n", "ABC, Generic[T]"),
+    ],
+)
+@pytest.mark.parametrize(
+    "body",
+    [
+        "    file_id: str\n    folder_id: str\n",
+        "    def move(self, file_id: str, folder_id: str) -> None: ...\n",
+    ],
+)
+def test_marker_bases_do_not_hide_owned_nominal_boundaries(imports: str, base: str, body: str) -> None:
+    findings = _check(f"{imports}class Files({base}):\n{body}")
+    assert len(findings) == 1
+    assert findings[0].code == "SARJ093"
+    assert findings[0].severity is Severity.ERROR
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from foreign import Port\nclass Files(Port):\n",
+        "from abc import ABC\nfrom foreign import Port\nclass Files(ABC, Port):\n",
+        "from foreign import object\nclass Files(object):\n",
+        "from foreign import Protocol\nclass Files(Protocol):\n",
+        "from abc import ABC\nABC = replacement\nclass Files(ABC):\n",
+        "import abc\nabc.ABC = replacement\nclass Files(abc.ABC):\n",
+        "import abc\nexpose(abc)\nclass Files(abc.ABC):\n",
+        "import typing\nexpose(typing)\nclass Files(typing.Protocol):\n",
+        "import builtins\nbuiltins.object = replacement\nclass Files(object):\n",
+        "import builtins\nexpose(builtins)\nclass Files(object):\n",
+    ],
+)
+def test_unproven_or_mutated_bases_preserve_inherited_contracts(source: str) -> None:
+    assert _check(source + "    def move(self, file_id: str, folder_id: str) -> None: ...\n") == []
+
+
+@pytest.mark.parametrize("body", ["    file_id: str\n", "    def load(self, file_id: str) -> None: ...\n"])
+def test_owned_contract_reuses_established_single_id_brand(tmp_path: Path, body: str) -> None:
+    findings = _project_check(
+        tmp_path,
+        "from abc import ABC\nclass Files(ABC):\n" + body,
+        "from typing import NewType\nFileId = NewType('FileId', str)\n",
+    )
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.ERROR
+
+
+def test_service_contract_requirement_keeps_nominal_ids_blocking() -> None:
+    source = (
+        "from abc import ABC, abstractmethod\n"
+        "class FilePort(ABC):\n"
+        "    @abstractmethod\n"
+        "    def move(self, file_id: str, folder_id: str) -> None: ...\n"
+        "class FileService(FilePort):\n"
+        "    def __init__(self, worker: Worker) -> None:\n        self.worker = worker\n"
+        "    def move(self, file_id: str, folder_id: str) -> None:\n"
+        "        self.worker.move(file_id, folder_id)\n"
+    )
+    rules: list[Rule] = [RequireExplicitServiceContract(), PreferNominalIdTypes()]
+    findings = check_source(rules, Path("app/service.py"), source)
+    assert [(finding.code, finding.severity) for finding in findings] == [("SARJ093", Severity.ERROR)]
+    assert check_source(rules[::-1], Path("app/service.py"), source) == findings
+
+
+def test_native_cli_blocks_owned_abstract_contract_ids(tmp_path: Path) -> None:
+    path = tmp_path / "owned.py"
+    path.write_text(
+        "from abc import ABC, abstractmethod\nclass FilePort(ABC):\n"
+        "    @abstractmethod\n    def move(self, file_id: str, folder_id: str) -> None: ...\n"
+    )
+    assert main(["check", "--rule", PreferNominalIdTypes.id, str(path)]) == 1
 
 
 def test_unencodable_forward_annotation_is_not_a_nominal_role() -> None:

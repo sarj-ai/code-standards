@@ -7,6 +7,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from sarj_rule_contracts.contracts import RuleId
+
 
 if TYPE_CHECKING:
     from sarj_rule_contracts.contracts import NativeRuleSpec, RuleExample
@@ -141,7 +143,7 @@ type NativeAnalyzer = Callable[[list[str], list[Path]], Sequence[NativeFinding]]
 
 @runtime_checkable
 class _NativeFixer(Protocol):
-    def fix_source(self, path: Path, source: str, *, rule_ids: Sequence[str] | None = None) -> str: ...
+    def fix_source(self, path: Path, source: str, *, rule_ids: Sequence[RuleId] | None = None) -> str: ...
 
 
 def verify_native_rule(rule: type[NativeRule], analyze: NativeAnalyzer, *, fix: ExampleFixer | None = None) -> int:
@@ -160,7 +162,7 @@ def verify_native_rule(rule: type[NativeRule], analyze: NativeAnalyzer, *, fix: 
             raise TypeError(msg)
 
         def fix_source(_root: Path, path: Path, source: str) -> str:
-            return module.fix_source(path, source, rule_ids=(rule.id,))
+            return module.fix_source(path, source, rule_ids=(RuleId(rule.id),))
 
         fix = fix_source
     return verify_examples(spec.examples, run, expected_code=spec.code, fix=fix)

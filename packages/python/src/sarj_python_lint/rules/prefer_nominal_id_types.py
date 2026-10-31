@@ -22,6 +22,7 @@ from sarj_python_lint.rule_base import (
 )
 from sarj_python_lint.rules._annotation_semantics import bit_or_members as _flatten_union
 from sarj_python_lint.rules._ast_index import nodes, parent_map, walk as walk_ast
+from sarj_python_lint.rules._imports import ABC_SOURCES
 from sarj_python_lint.rules._inherited_contract import inherited_contract
 from sarj_python_lint.rules._nominal_project import NominalSource
 
@@ -160,9 +161,48 @@ class PreferNominalIdTypes(Rule):
             "Non-ID role discovery uses exact snake-case names and proven matching carriers; it does not infer brands from names alone. Dependency discovery respects declared workspace members and exclusions, and excludes optional and transitive dependencies.",
             "Rebound aliases, generic aliases, carrier names shadowed by type parameters, and mutated or escaped canonical provider namespaces are skipped conservatively across the file.",
             "Generated code, migrations, external adapters, operational context, raw schemas, SQLAlchemy Mapped fields, ambiguous imports, and unlike carrier shapes are excluded.",
-            "Classes with explicit bases, including object, are excluded without requiring an override decorator. Local base declarations do not prove runtime member ownership remains closed; class construction, native hooks and escaped handles can change inheritance. Independent module functions and plain classes remain eligible.",
+            "Canonical object, ABC, Protocol and Generic bases do not hide fields or methods declared by the class. Mutated, escaped or rebound providers remain unknown. Other explicit bases stay excluded without requiring an override decorator; their inherited API may prescribe raw carriers. Local custom bases do not prove runtime member ownership remains closed.",
         ),
         examples=(
+            RuleExample(
+                example_id="owned-abstract-contract-id-roles",
+                scenario="owned-contract",
+                title="Abstract contracts declare their own nominal ID boundary",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/contracts.py",
+                        "from abc import ABC, abstractmethod\n"
+                        "class FilePort(ABC):\n"
+                        "    @abstractmethod\n"
+                        "    def move(self, file_id: str, folder_id: str) -> None: ...\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/contracts.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="owned-abstract-contract-nominal-ids",
+                scenario="owned-contract",
+                title="Abstract contracts use distinct domain identifiers",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/contracts.py",
+                        "from abc import ABC, abstractmethod\n"
+                        "from typing import NewType\n"
+                        "FileId = NewType('FileId', str)\n"
+                        "FolderId = NewType('FolderId', str)\n"
+                        "class FilePort(ABC):\n"
+                        "    @abstractmethod\n"
+                        "    def move(self, file_id: FileId, folder_id: FolderId) -> None: ...\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/contracts.py"),
+                expected_count=0,
+                public=True,
+            ),
             RuleExample(
                 example_id="swappable-primitive-id-roles",
                 title="Two domain ID roles share the same primitive carrier",
@@ -289,7 +329,7 @@ class PreferNominalIdTypes(Rule):
 
         imports = context.imports
         original_facts = _type_facts(tree, imports, node_index=context.node_index)
-        boundaries = _boundary_nodes(tree, imports)
+        boundaries = _boundary_nodes(tree, imports, original_facts)
         facts = (
             self._expanded_facts(context, tree, imports)
             if any(_can_expand(node, imports, original_facts) for node in boundaries)
@@ -388,6 +428,7 @@ def _is_excluded_path(path: Path) -> bool:
 def _boundary_nodes(
     tree: ast.Module,
     imports: ImportIndex,
+    facts: _TypeFacts,
 ) -> list[ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef]:
     result: list[ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef] = []
     for statement in tree.body:
@@ -397,7 +438,7 @@ def _boundary_nodes(
             continue
         if not isinstance(statement, ast.ClassDef):
             continue
-        if inherited_contract(statement):
+        if inherited_contract(statement) and not _has_only_marker_bases(statement, imports, facts.shadowed_names):
             continue
         if _name_parts(statement.name) & _OPERATIONAL_NAME_PARTS:
             continue
@@ -406,6 +447,23 @@ def _boundary_nodes(
         result.append(statement)
         result.extend(_boundary_methods(statement))
     return result
+
+
+def _has_only_marker_bases(node: ast.ClassDef, imports: ImportIndex, shadowed_names: frozenset[str]) -> bool:
+    for expression in node.bases:
+        base = expression.value if isinstance(expression, ast.Subscript) else expression
+        if _expression_is_shadowed(base, shadowed_names):
+            return False
+        if isinstance(base, ast.Name) and base.id == "object" and imports.builtin_is_unshadowed("object"):
+            continue
+        if imports.resolves(base, sources=_BUILTIN_SOURCES, symbol="object"):
+            continue
+        if imports.resolves(base, sources=ABC_SOURCES, symbol="ABC"):
+            continue
+        if imports.resolved_symbol(base, sources=_TYPING_SOURCES) in {"Generic", "Protocol"}:
+            continue
+        return False
+    return True
 
 
 def _is_operational_function(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
@@ -725,7 +783,7 @@ def _is_builtin_namespace_call(node: ast.Call, imports: ImportIndex) -> bool:
 
 
 def _escaped_provider_names(tree: ast.Module, imports: ImportIndex, *, node_index: NodeIndex | None) -> set[str]:
-    providers = _TYPING_SOURCES | _BUILTIN_SOURCES | _UUID_SOURCES
+    providers = _TYPING_SOURCES | _BUILTIN_SOURCES | _UUID_SOURCES | ABC_SOURCES
     namespaces = {
         name: binding.module
         for name, binding in imports.bindings.items()
@@ -763,7 +821,7 @@ def _mutated_builtin_names(node: ast.expr, member: str | None, imports: ImportIn
     binding = imports.bindings.get(node.id)
     if binding is None or binding.module != "builtins" or binding.symbol is not None:
         return set()
-    carriers = {"str", "int"} | _BUILTIN_COLLECTIONS
+    carriers = {"str", "int", "object"} | _BUILTIN_COLLECTIONS
     changed = carriers if member is None or member.startswith("__") else carriers & {member}
     if not changed:
         return set()

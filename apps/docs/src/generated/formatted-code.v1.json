@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "c02e3afaa6d44697a974964d57872160fdfb864dc90a31d0eac2db59c4a3343d",
-  "cliSha256": "28caa79438ff720af84fcd6656e3eee200ab8e54e90e3a0a8ae318a7e40f74af",
+  "catalogSha256": "4b79c480c3fb1f08bd613e50f06814723fd71ac498050c162122352f7b164d81",
+  "cliSha256": "008aa24304765c9be9909429abcd61ef6655855b7c313b304abc2787d87f4034",
   "formatterVersions": {
     "prettier": "3.9.10",
     "prettierPluginSh": "0.20.2",
@@ -15391,6 +15391,36 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "NewType makes the two domain roles distinct"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/contracts.py",
+              "source": "from abc import ABC, abstractmethod\n\n\nclass FilePort(ABC):\n    @abstractmethod\n    def move(self, file_id: str, folder_id: str) -> None: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/contracts.py",
+          "id": "owned-abstract-contract-id-roles",
+          "outcome": "reject",
+          "scenarioId": "owned-contract",
+          "title": "Abstract contracts declare their own nominal ID boundary"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/contracts.py",
+              "source": "from abc import ABC, abstractmethod\nfrom typing import NewType\n\nFileId = NewType(\"FileId\", str)\nFolderId = NewType(\"FolderId\", str)\n\n\nclass FilePort(ABC):\n    @abstractmethod\n    def move(self, file_id: FileId, folder_id: FolderId) -> None: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/contracts.py",
+          "id": "owned-abstract-contract-nominal-ids",
+          "outcome": "accept",
+          "scenarioId": "owned-contract",
+          "title": "Abstract contracts use distinct domain identifiers"
         },
         {
           "expectedCount": 1,
