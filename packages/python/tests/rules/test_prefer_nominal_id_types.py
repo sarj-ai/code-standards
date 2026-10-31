@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -10,6 +11,10 @@ from sarj_python_lint.rules.require_keyword_only_swap_prone_params import Requir
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from contextlib import AbstractContextManager
+    from typing import Literal
+
     from sarj_python_lint.rule_base import Diagnostic, RuleExample
 
 
@@ -277,6 +282,44 @@ def test_domain_brands_require_declared_dependency(tmp_path: Path, *, depends: b
     path.write_text(source)
     findings = PreferNominalIdTypes().check(path, source)
     assert len(findings) == int(depends)
+
+
+@pytest.mark.parametrize("visibility", ["unique", "duplicate", "unreadable"])
+def test_domain_brand_uniqueness_requires_complete_distribution_traversal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    visibility: Literal["unique", "duplicate", "unreadable"],
+) -> None:
+    (tmp_path / ".git").mkdir()
+    consumer = tmp_path / "consumer"
+    consumer.mkdir()
+    (consumer / "pyproject.toml").write_text('[project]\nname = "consumer"\ndependencies = ["shared"]\n')
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    (shared / "pyproject.toml").write_text('[project]\nname = "shared"\n')
+    (shared / "ids.py").write_text("from typing import NewType\nRoomName = NewType('RoomName', str)\n")
+    second = tmp_path / "second_shared"
+    if visibility != "unique":
+        second.mkdir()
+        (second / "pyproject.toml").write_text('[project]\nname = "shared"\n')
+    path = consumer / "service.py"
+    source = "def record(room_name: str, call_id: str) -> None: ...\n"
+    path.write_text(source)
+    real_scandir = os.scandir
+
+    def scan(directory: str | Path) -> AbstractContextManager[Iterator[os.DirEntry[str]]]:
+        if Path(directory) == second:
+            raise PermissionError(13, "fixture denied directory enumeration", str(directory))
+        return real_scandir(directory)
+
+    if visibility == "unreadable":
+        monkeypatch.setattr(  # sarj-noqa: SARJ445 -- fail one included directory through the real walk's public scandir error path.
+            os, "scandir", scan
+        )
+
+    findings = PreferNominalIdTypes().check(path, source)
+
+    assert len(findings) == int(visibility == "unique")
 
 
 def test_duplicate_domain_brand_definitions_are_unknown(tmp_path: Path) -> None:

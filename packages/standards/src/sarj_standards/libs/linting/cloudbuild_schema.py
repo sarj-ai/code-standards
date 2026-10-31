@@ -9,8 +9,7 @@ from typing import TYPE_CHECKING
 from jsonschema import FormatChecker
 from pydantic import JsonValue
 
-from sarj_standards.libs.json_boundary import normalize_json_value, parse_json
-from sarj_standards.libs.typed_containers import is_object_mapping
+from sarj_standards.libs.json_boundary import parse_json
 
 
 if TYPE_CHECKING:
@@ -74,7 +73,7 @@ def build_schema(directory: Path) -> JsonSchema:
         message = "Pinned upstream Cloud Build schema digest does not match"
         raise ValueError(message)
     schema = parse_json(payload.decode("utf-8"))
-    if not is_object_mapping(schema):
+    if not isinstance(schema, dict):
         message = "Pinned Cloud Build schema must contain an object"
-        raise ValueError(message)
-    return {str(key): normalize_json_value(value) for key, value in schema.items()}
+        raise TypeError(message)
+    return schema
