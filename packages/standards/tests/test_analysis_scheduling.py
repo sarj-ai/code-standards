@@ -169,6 +169,46 @@ def test_cancelled_nested_analysis_never_dispatches_callbacks_and_does_not_leak(
     assert analyze_groups(tmp_path, _consumer_group(successful), lambda: (), jobs=jobs) == (successful,)
 
 
+@pytest.mark.parametrize("failure_kind", ["native", "external"])
+@pytest.mark.parametrize("failure_type", [LookupError, AssertionError])
+@pytest.mark.parametrize("cleanup_type", [ProcessCancelledError, LookupError, RuntimeError])
+def test_unexpected_worker_failure_cancels_peer_and_retains_cleanup_details(
+    tmp_path: Path, failure_kind: str, failure_type: type[Exception], cleanup_type: type[BaseException]
+) -> None:
+    peer_started = Event()
+    peer_finished = Event()
+    original = failure_type("unexpected analyzer failure")
+    original.add_note("original worker note")
+
+    def failing() -> tuple[ToolReport, ...]:
+        assert peer_started.wait(timeout=5)
+        raise original
+
+    def peer() -> tuple[ToolReport, ...]:
+        cancellation = current_cancellation()
+        assert cancellation is not None
+        peer_started.set()
+        assert cancellation.wait(timeout=5)
+        failure = cleanup_type("cancelled peer cleanup")
+        failure.add_note("owned peer cleanup witness")
+        peer_finished.set()
+        raise failure
+
+    native, external = (failing, peer) if failure_kind == "native" else (peer, failing)
+    with pytest.raises(failure_type) as observed:
+        analyze_groups(tmp_path, native, external, jobs=2)
+    assert observed.value is original
+    assert peer_finished.is_set()
+    assert original.__notes__[0] == "original worker note"
+    peer_kind = "external" if failure_kind == "native" else "native"
+    assert f"{peer_kind} worker: owned peer cleanup witness" in original.__notes__
+    if cleanup_type is not ProcessCancelledError:
+        assert f"{peer_kind} worker: {cleanup_type.__name__}: cancelled peer cleanup" in original.__notes__
+    assert original.__cause__ is None
+    successful = ToolReport("native", Completion.COMPLETE)
+    assert analyze_groups(tmp_path, _consumer_group(successful), lambda: (), jobs=2) == (successful,)
+
+
 @pytest.mark.parametrize("interruption_type", [KeyboardInterrupt, SystemExit])
 def test_caller_interruption_retains_actual_worker_cleanup_notes(
     tmp_path: Path, interruption_type: type[BaseException]

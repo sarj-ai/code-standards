@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, wait
 from threading import Event
 from typing import TYPE_CHECKING, Final
 
@@ -46,17 +46,22 @@ def analyze_groups(
         for group in (plan.native, plan.external):
             future = workers.submit(_run_group, group, root)
             submitted.append((group.kind, future))
-        reports = (*submitted[0][1].result(), *submitted[1][1].result())
+        reports = _group_reports(submitted)
     except (KeyboardInterrupt, SystemExit) as interruption:
         _finish_interruption(workers, submitted, cancellation, interruption, root)
         raise
-    except BaseException:
+    except BaseException as failure:
+        cancellation.set()
         try:
-            workers.shutdown(wait=True)
+            workers.shutdown(wait=True, cancel_futures=True)
         except (KeyboardInterrupt, SystemExit) as interruption:
             # This is a first caller interruption, even though a peer failed earlier.
             _finish_interruption(workers, submitted, cancellation, interruption, root)
             raise
+        try:
+            _attach_worker_outcomes(failure, submitted, root)
+        except BaseException:  # ruff: ignore[blind-except] -- preserve the original worker failure if cleanup detail formatting fails or is interrupted.
+            failure.add_note("Worker cleanup evidence could not be fully collected; cleanup remains unconfirmed.")
         raise
     else:
         try:
@@ -65,6 +70,14 @@ def analyze_groups(
             _finish_interruption(workers, submitted, cancellation, interruption, root)
             raise
         return reports
+
+
+def _group_reports(submitted: list[tuple[GroupKind, Future[tuple[ToolReport, ...]]]]) -> tuple[ToolReport, ...]:
+    wait([future for _, future in submitted], return_when=FIRST_EXCEPTION)
+    for _, future in submitted:
+        if future.done():
+            future.result()
+    return (*submitted[0][1].result(), *submitted[1][1].result())
 
 
 def _finish_interruption(
