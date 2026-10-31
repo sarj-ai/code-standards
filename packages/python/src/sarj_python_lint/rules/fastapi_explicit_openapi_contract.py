@@ -256,11 +256,14 @@ class FastapiExplicitOpenapiContract(Rule):
         tree = context.tree
         if tree is None:
             return []
+        functions = context.nodes(ast.FunctionDef, ast.AsyncFunctionDef)
+        if not any(function.decorator_list for function in functions):
+            return []
         index = context.fastapi
         scopes = _function_scopes(tree)
         findings: list[_Finding] = []
         declared: list[tuple[int, Route]] = []
-        for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
+        for function in functions:
             all_routes = index.routes(function)
             declared.extend((scopes[id(function)], route) for route in all_routes)
             routes = tuple(route for route in all_routes if not route.is_hidden)

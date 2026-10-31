@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint._file_context import PythonFileContext
 from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.fastapi_explicit_openapi_contract import FastapiExplicitOpenapiContract
 from sarj_python_lint.rules.named_record_at_boundaries import NamedRecordAtBoundaries
@@ -19,6 +20,26 @@ _PUBLIC_EXAMPLES = FastapiExplicitOpenapiContract.public_examples()
 
 def _check(source: str, path: str = "api.py") -> list[Diagnostic]:
     return FastapiExplicitOpenapiContract().check(Path(path), source)
+
+
+def test_undecorated_functions_do_not_build_route_index() -> None:
+    source = """
+async def handler(items: list[int]) -> str:
+    return str(len(items))
+
+class Helpers:
+    def display(self, value: str) -> str:
+        return value
+
+def outer():
+    async def inner() -> str:
+        return "ready"
+    return inner
+"""
+    context = PythonFileContext(Path("service.py"), source)
+
+    assert FastapiExplicitOpenapiContract().check_context(context) == []
+    assert "fastapi" not in vars(context)
 
 
 @pytest.mark.parametrize("example", _PUBLIC_EXAMPLES, ids=tuple(e.example_id for e in _PUBLIC_EXAMPLES))
