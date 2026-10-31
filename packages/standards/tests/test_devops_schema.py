@@ -5,11 +5,15 @@ from typing import TYPE_CHECKING
 import pytest
 
 from sarj_standards.libs.diagnostics import Completion
+from sarj_standards.libs.json_boundary import parse_unique_json
+from sarj_standards.libs.linting import devops_schema
 from sarj_standards.libs.linting.devops_schema import analyze_source_schemas
 
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from pydantic import JsonValue
 
     from sarj_standards.libs.diagnostics import ToolReport
 
@@ -123,3 +127,54 @@ def test_schema_alias_expansion_fails_coverage_before_construction(
     assert reports[0].completion is Completion.FAILED
     assert reports[0].diagnostics == ()
     assert reports[0].issues[0].kind == "coverage-failure"
+
+
+@pytest.mark.parametrize(
+    ("name", "source"),
+    [
+        pytest.param("cloudbuild.json", '{"steps": [{"name": "alpine", "args": ["true"]}]}', id="cloudbuild"),
+        pytest.param("config.json", '{"apiVersion": "skaffold/v4beta7", "kind": "Config"}', id="skaffold"),
+        pytest.param(
+            "config.json",
+            '{"apiVersion": "deploy.cloud.google.com/v1", "kind": "Target", "metadata": {"name": "example"}}',
+            id="clouddeploy",
+        ),
+    ],
+)
+def test_selected_json_is_decoded_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, name: str, source: str) -> None:
+    decoded: list[str] = []
+
+    def counted_parse(text: str) -> JsonValue:
+        decoded.append(text)
+        return parse_unique_json(text)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- observe the production parser lookup; injecting a parser would bypass the lookup whose repeated calls are under test.
+        devops_schema, "parse_unique_json", counted_parse
+    )
+    reports = _reports(tmp_path, source, name=name)
+    assert len(reports) == 1
+    assert reports[0].completion is Completion.COMPLETE
+    assert reports[0].diagnostics == ()
+    assert decoded == [source]
+
+
+@pytest.mark.parametrize("suffix", ["json", "yaml"])
+def test_selected_null_remains_an_invalid_object(tmp_path: Path, suffix: str) -> None:
+    reports = _reports(tmp_path, "null", name=f"cloudbuild.{suffix}")
+    assert len(reports) == 1
+    assert reports[0].completion is Completion.COMPLETE
+    assert len(reports[0].diagnostics) == 1
+    assert reports[0].diagnostics[0].message == "None is not of type 'object'"
+
+
+def test_json_instance_is_not_reused_for_a_following_yaml_file(tmp_path: Path) -> None:
+    (tmp_path / "cloudbuild.json").write_text('{"steps": [{"name": "builder"}]}', encoding="utf-8")
+    (tmp_path / "cloudbuild.yaml").write_text("steps:\n- name: builder\n  args: true\n", encoding="utf-8")
+    reports = analyze_source_schemas(root=tmp_path, paths=("cloudbuild.json", "cloudbuild.yaml"))
+    assert len(reports) == 2
+    assert all(report.completion is Completion.COMPLETE for report in reports)
+    assert reports[0].diagnostics == ()
+    assert len(reports[1].diagnostics) == 1
+    assert reports[1].diagnostics[0].location.path == "cloudbuild.yaml"
+    assert reports[1].diagnostics[0].location.position is not None
+    assert reports[1].diagnostics[0].location.position.line == 2
