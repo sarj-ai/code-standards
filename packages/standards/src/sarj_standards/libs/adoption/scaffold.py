@@ -2417,6 +2417,8 @@ def github_ci_workflow(root: Path, *, ecosystems: Ecosystems | None = None) -> s
                 "python -m sarj_standards.libs.adoption.native_bootstrap"
             ),
             "      - name: Install and attest applicable native tools",
+            "        env:",
+            "          GITHUB_TOKEN: ${{ github.server_url == 'https://github.com' && github.token || '' }}",
             f"        run: {runner} setup --tools-only",
         )
     )
