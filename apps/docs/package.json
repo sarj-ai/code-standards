@@ -58,6 +58,7 @@
     },
     "@sarj/design": {
       "@astrojs/starlight": "$@astrojs/starlight"
-    }
+    },
+    "minimatch@^10.0.0": "11.0.1"
   }
 }

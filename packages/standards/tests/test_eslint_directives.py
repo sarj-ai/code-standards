@@ -3,7 +3,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import FrozenInstanceError, dataclass, field
 import json
+import os
 from pathlib import Path
+import shutil
 import stat
 import subprocess
 import sys
@@ -16,7 +18,7 @@ from sarj_standards.libs.adoption import lifecycle, transaction
 from sarj_standards.libs.linting import directive_formatter, eslint_directives, native_byte_bridge
 from sarj_standards.libs.staged_git import isolated_environment
 
-from .native_package_fixture import materialize_installed_packages
+from .native_package_fixture import materialize_installed_packages, materialize_node_runtime
 
 
 if TYPE_CHECKING:
@@ -736,6 +738,45 @@ def test_native_bom_crlf_and_non_bmp_output_round_trips_exactly(
     assert eslint_directives.validate(tmp_path, expected) == frozenset({"source.js"})
 
 
+@pytest.mark.parametrize(
+    "source_mode",
+    [
+        pytest.param(0o700, id="private-runtime"),
+        pytest.param(0o722, id="group-and-other-writable-runtime"),
+        pytest.param(0o777, id="shared-runner-runtime"),
+    ],
+)
+def test_private_node_fixture_preserves_installed_bytes_and_permissions(tmp_path: Path, source_mode: int) -> None:
+    source = tmp_path / "installed" / "node"
+    source.parent.mkdir()
+    source.write_bytes(b"Node fixture data; never executed\n")
+    source.chmod(source_mode)
+
+    node = materialize_node_runtime(tmp_path / "consumer", source)
+
+    assert node.read_bytes() == source.read_bytes() == b"Node fixture data; never executed\n"
+    assert stat.S_IMODE(node.stat().st_mode) == 0o700
+    assert stat.S_IMODE(source.stat().st_mode) == source_mode
+    assert node.resolve() == node
+    assert node.parent.is_relative_to(tmp_path / "consumer")
+
+
+def test_private_node_fixture_refuses_an_external_modules_link(tmp_path: Path) -> None:
+    source = tmp_path / "node"
+    source.write_bytes(b"Node fixture data; never executed\n")
+    source.chmod(0o700)
+    project = tmp_path / "consumer"
+    project.mkdir(mode=0o700)
+    external = tmp_path / "external"
+    external.mkdir()
+    (project / "node_modules").symlink_to(external, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="inside its private project"):
+        materialize_node_runtime(project, source)
+
+    assert not tuple(external.iterdir())
+
+
 def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(tmp_path: Path) -> None:
     source_bytes = (
         b"export function original() {\n  /* eslint-disable no-alert */\n  /* eslint-disable no-console */\n"
@@ -749,6 +790,9 @@ def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(tmp_pat
         },
         expected_versions={"eslint": "10.13.0", "prettier": "3.9.10"},
     )
+    installed_node = shutil.which("node")
+    assert installed_node is not None
+    node = materialize_node_runtime(tmp_path, Path(installed_node))
     _project(tmp_path, {"source.js": source_bytes, "unselected.js": _BEFORE})
     assert local.roots["eslint"].version == "10.13.0"
     assert local.roots["prettier"].version == "3.9.10"
@@ -771,10 +815,12 @@ def test_actual_pinned_eslint_fixes_only_unused_directives_and_converges(tmp_pat
     statuses: list[tuple[str, int]] = []
 
     def native(command: lifecycle.Command) -> subprocess.CompletedProcess[str]:
+        environment = native_byte_bridge.child_environment()
+        environment["PATH"] = os.pathsep.join((str(node.parent), environment.get("PATH", os.defpath)))
         result = subprocess.run(
             command.argv,
             cwd=command.cwd,
-            env=native_byte_bridge.child_environment(),
+            env=environment,
             capture_output=True,
             text=True,
             check=False,

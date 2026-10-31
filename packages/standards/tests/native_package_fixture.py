@@ -266,6 +266,28 @@ def materialize_installed_packages(
     )
 
 
+def materialize_node_runtime(destination: Path, source: Path) -> Path:
+    if destination.is_symlink():
+        msg = "runtime fixture cannot use a symlink"
+        raise ValueError(msg)
+    destination = _create_destination(destination)
+    source = source.resolve(strict=True)
+    if source.name not in {"node", "node.exe"} or not source.is_file() or not os.access(source, os.X_OK):
+        msg = "runtime fixture requires an installed Node executable"
+        raise ValueError(msg)
+    modules = destination / "node_modules"
+    modules.mkdir(mode=0o700, exist_ok=True)
+    if modules.resolve(strict=True) != modules:
+        msg = "runtime fixture must remain inside its private project"
+        raise ValueError(msg)
+    directory = modules / ".native-runtime"
+    directory.mkdir(mode=0o700, exist_ok=False)
+    node = directory / source.name
+    _copy_file(source, node)
+    node.chmod(0o700)
+    return node
+
+
 def _validate_destination(destination: Path) -> Path:
     destination = destination.absolute()
     if destination.is_symlink():
