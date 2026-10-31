@@ -20,13 +20,24 @@ def __getattr__(name: str) -> object:
         raise AttributeError(msg)
     from sarj_python_lint._analysis_session import AnalysisSession as _AnalysisSession  # ruff: ignore[import-outside-top-level] -- lightweight metadata imports do not need semantic rules.
 
-    globals()["AnalysisSession"] = _AnalysisSession
+    globals(  # sarj-noqa: SARJ557 -- Preserve the lazy public module namespace and historical star-import exports.
+    )["AnalysisSession"] = _AnalysisSession
     if name == "__all__":
         # Star imports previously exposed the complete post-session public namespace.
         # Discover it on demand instead of freezing a narrower list of exports.
-        return tuple(public for public in globals() if not public.startswith("_"))
+        return tuple(
+            public
+            for public in globals(  # sarj-noqa: SARJ557 -- Preserve the lazy public module namespace and historical star-import exports.
+            )
+            if not public.startswith("_")
+        )
     return _AnalysisSession
 
 
 def __dir__() -> list[str]:
-    return sorted(set(globals()).union({"AnalysisSession"}))
+    return sorted(
+        set(
+            globals(  # sarj-noqa: SARJ557 -- Preserve the lazy public module namespace and historical star-import exports.
+            )
+        ).union({"AnalysisSession"})
+    )

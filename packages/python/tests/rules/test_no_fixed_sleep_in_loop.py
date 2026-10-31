@@ -35,7 +35,9 @@ def test_reports_one_warning_at_the_awaited_sleep() -> None:
 @pytest.mark.parametrize("operation", ["/ 1", "+ 0.5", "* 0.5", "// 0.5"])
 def test_overflowing_duration_arithmetic_does_not_crash_analysis(operation: str) -> None:
     source = _polling(f"await asyncio.sleep({10**400} {operation})")
-    compile(source, "poller.py", "exec")
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        source, "poller.py", "exec"
+    )
     assert _check(source) == []
 
 

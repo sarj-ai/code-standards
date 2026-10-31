@@ -47,7 +47,11 @@ def object_list(value: object) -> TypeIs[list[object]]:  # sarj-noqa: SARJ528 --
 def children(node: ast.AST) -> list[ast.AST]:
     out: list[ast.AST] = []
     for name in node._fields:
-        value: object = getattr(node, name, None)
+        value: object = (
+            getattr(  # sarj-noqa: SARJ557 -- Preserve the profiled AST child traversal and missing-field behavior.
+                node, name, None
+            )
+        )
         if object_list(value):
             out += [item for item in value if isinstance(item, _AST)]
         elif isinstance(value, _AST):

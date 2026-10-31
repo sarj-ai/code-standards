@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "policy": "strict-python-runtime-bans",
+  "defaultLevel": "error",
+  "tools": {
+    "python": "3.15.0",
+    "ruff": "0.17.2"
+  },
+  "rules": {
+    "SARJ499": "no-hasattr",
+    "SARJ557": "no-dynamic-builtins",
+    "SARJ558": "no-sys-path-mutation",
+    "SARJ559": "no-shared-mutable-default"
+  },
+  "nativeOwners": [
+    "S307",
+    "S102",
+    "T100",
+    "PLW0602",
+    "PLW0603",
+    "PLW0604",
+    "F403",
+    "F406",
+    "B006",
+    "B004",
+    "B009",
+    "TID251"
+  ],
+  "calibration": {
+    "baseline": {
+      "tp": 37,
+      "fp": 0,
+      "fn": 78,
+      "tn": 39
+    },
+    "candidate": {
+      "tp": 115,
+      "fp": 0,
+      "fn": 0,
+      "tn": 39
+    }
+  },
+  "corpora": {
+    "immutableMaintainedSourceFiles": 1156,
+    "unbiasedPerformanceSampleFiles": 200,
+    "labeledCases": 154,
+    "intentionalParserErrorCases": 2,
+    "nativeCustomCollisions": 0,
+    "maintainedSourcePolicyReferences": 141
+  },
+  "performance": {
+    "baseline-sample": {
+      "cold_median_seconds": 1.2338285169098526,
+      "warm_median_seconds": 1.0092271720059216,
+      "peak_median_kib": 56208,
+      "findings": 0
+    },
+    "baseline-labeled": {
+      "cold_median_seconds": 0.3523839758709073,
+      "warm_median_seconds": 0.07720713713206351,
+      "peak_median_kib": 36804,
+      "findings": 37
+    },
+    "candidate-sample": {
+      "cold_median_seconds": 4.6944066260475665,
+      "warm_median_seconds": 3.8864729159977287,
+      "peak_median_kib": 56608,
+      "findings": 29
+    },
+    "candidate-labeled": {
+      "cold_median_seconds": 0.3776979479007423,
+      "warm_median_seconds": 0.14269412797875702,
+      "peak_median_kib": 36804,
+      "findings": 116
+    }
+  },
+  "method": "Native run_isolated_corpora verifies immutable inventories before and after each batch. Compare three fresh-process runs and three in-process repetitions per run using identical inputs and pinned tools. Report median seconds and peak Python-worker RSS in KiB; timings cover the selected policy checks, not the full lint pipeline.",
+  "review": "All inspected source hits are the explicitly requested APIs. Compiler validation, platform capabilities, lazy module exports, plugin loading and authored semantic fixtures retain narrow reasoned local exceptions. Parser errors are separate from policy classification.",
+  "limitations": [
+    "Unknown factory return mutability, complex rebinding, container-held aliases and arbitrary reflection are not reconstructed.",
+    "The custom checks offer no automatic fixes because replacements can change behavior; native Ruff checks retain their existing fix policies.",
+    "Measurements run on a shared VM; component timings do not estimate the complete lint pipeline."
+  ]
+}

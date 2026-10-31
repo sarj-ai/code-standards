@@ -200,7 +200,12 @@ def test_match_preserves_nested_guard_fallthrough(value: object, enabled: bool) 
             "    assert check(value, enabled) == 'fallback'\n"
         )
     )
-    exec(compile(source, "<reviewed-example>", "exec"), {"value": value, "enabled": enabled})  # ruff: ignore[exec-builtin] -- execute reviewed equivalence fixtures without external inputs.
+    exec(  # ruff: ignore[exec-builtin] -- execute reviewed equivalence fixtures without external inputs.
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            source, "<reviewed-example>", "exec"
+        ),
+        {"value": value, "enabled": enabled},
+    )
 
 
 def test_invalid_tail_preserves_existing_prefix_diagnostic() -> None:
@@ -964,7 +969,12 @@ else:
 """
     )
 
-    exec(compile(source, "<reviewed-metaclass-example>", "exec"), {})  # ruff: ignore[exec-builtin] -- execute the authored runtime-contract proof without external inputs.
+    exec(  # ruff: ignore[exec-builtin] -- execute the authored runtime-contract proof without external inputs.
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            source, "<reviewed-metaclass-example>", "exec"
+        ),
+        {},
+    )
     assert _check(source) == []
 
 
@@ -1723,7 +1733,12 @@ except TypeError:
 else:
     raise AssertionError('An inherited factory metaclass can replace its class with a runtime tuple')
 """
-    exec(compile(source, "<reviewed-enum-metaclass-example>", "exec"), {})  # ruff: ignore[exec-builtin] -- execute the authored runtime-contract proof without external inputs.
+    exec(  # ruff: ignore[exec-builtin] -- execute the authored runtime-contract proof without external inputs.
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            source, "<reviewed-enum-metaclass-example>", "exec"
+        ),
+        {},
+    )
     assert _review_check(source) == []
 
 

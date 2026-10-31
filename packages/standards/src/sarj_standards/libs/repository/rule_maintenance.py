@@ -206,7 +206,11 @@ def _load_ledger(path: Path) -> dict[str, JsonValue]:
 
 def _registry(module_name: str) -> Mapping[str, type[Rule]]:
     module = import_module(module_name)
-    value: object = getattr(module, "REGISTRY", None)
+    value: object = (
+        getattr(  # sarj-noqa: SARJ557 -- Validate dynamically imported rule registries before trusting plugin metadata.
+            module, "REGISTRY", None
+        )
+    )
     if not is_object_mapping_view(value):
         msg = f"{module_name} has no registry"
         raise TypeError(msg)
@@ -225,9 +229,21 @@ def _registry(module_name: str) -> Mapping[str, type[Rule]]:
 def _is_rule_class(value: object) -> TypeIs[type[Rule]]:
     return (
         isinstance(value, type)
-        and isinstance(getattr(value, "code", None), str)
-        and isinstance(getattr(value, "__module__", None), str)
-        and hasattr(value, "documentation")
+        and isinstance(
+            getattr(  # sarj-noqa: SARJ557 -- Validate dynamically imported rule registries before trusting plugin metadata.
+                value, "code", None
+            ),
+            str,
+        )
+        and isinstance(
+            getattr(  # sarj-noqa: SARJ557 -- Validate dynamically imported rule registries before trusting plugin metadata.
+                value, "__module__", None
+            ),
+            str,
+        )
+        and hasattr(  # sarj-noqa: SARJ499 -- Validate dynamically imported rule registries before trusting plugin metadata.
+            value, "documentation"
+        )
     )
 
 

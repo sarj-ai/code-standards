@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
 
@@ -15,12 +14,11 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
-from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
+from sarj_python_lint.rules._runtime_names import RuntimeNames
 
 
 if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
-    from sarj_python_lint.rules._imports import ImportIndex
 
 
 @final
@@ -28,10 +26,10 @@ class NoHasattr(Rule):
     id = "no-hasattr"
     code = "SARJ499"
     documentation = RuleDocumentation(
-        default_level=Severity.WARNING,
-        summary="Production code should not probe attributes with hasattr.",
+        default_level=Severity.ERROR,
+        summary="Do not probe attributes with the builtin hasattr.",
         rationale=(
-            "In a strictly typed application, hasattr hides whether an attribute can be missing at all: it silences "
+            "In strictly typed code, hasattr hides whether an attribute can be missing at all: it silences "
             "the type checker instead of fixing a loose type, so a renamed field quietly takes the fallback branch."
         ),
         remediation=(
@@ -41,8 +39,8 @@ class NoHasattr(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only direct calls to the unshadowed builtin hasattr are reported; probes of an imported module and of dunder protocol attributes are accepted.",
-            "Test modules and shared test support are excluded; runtime feature detection still needs a local suppression.",
+            "Unshadowed builtin references and simple builtins-module aliases are reported, including tests, module probes and dunder probes.",
+            "Native Ruff B004 owns direct __call__ probes; TID251 owns qualified builtin access and imports. Required feature detection needs an explained local suppression.",
         ),
         examples=(
             RuleExample(
@@ -83,44 +81,14 @@ class NoHasattr(Rule):
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
         if "hasattr" not in context.symbol_source or context.tree is None or context.generated:
             return []
-        if is_test_path(context.path) or is_test_support_path(context.path):
-            return []
-        if not context.imports.builtin_is_unshadowed("hasattr"):
-            return []
         return [
             Diagnostic(
                 context.path,
-                node.lineno,
-                node.col_offset + 1,
+                reference.node.lineno,
+                reference.node.col_offset + 1,
                 self.code,
                 "hasattr hides whether this attribute can be missing. Narrow the type with isinstance, a Protocol, "
                 "or a typed wrapper instead.",
-                severity=Severity.WARNING,
             )
-            for node in context.nodes(ast.Call)
-            if isinstance(node.func, ast.Name)
-            and node.func.id == "hasattr"
-            and not _is_feature_detection(node, context.imports)
+            for reference in RuntimeNames(context).banned_references(frozenset({"hasattr"}))
         ]
-
-
-def _is_feature_detection(call: ast.Call, imports: ImportIndex) -> bool:
-    match call.args:
-        case [target, name]:
-            pass
-        case _:
-            return False
-    if (
-        isinstance(name, ast.Constant)
-        and isinstance(name.value, str)
-        and name.value.startswith("__")
-        and name.value.endswith("__")
-    ):
-        return True
-    root = target
-    while isinstance(root, ast.Attribute):
-        root = root.value
-    if not isinstance(root, ast.Name):
-        return False
-    binding = imports.bindings.get(root.id)
-    return binding is not None and binding.symbol is None

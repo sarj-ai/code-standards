@@ -96,6 +96,11 @@ _ERROR_FIRST_APPROVALS: Final = frozenset(
         "python:no-async-client-in-constructor",
         # Explicit user-requested blocking bulk-first service CRUD policy.
         "python:service-singleton-delegates-to-bulk",
+        # Explicit user-requested strict Python runtime bans, qualified with native
+        # ownership controls, inspected exceptions and immutable corpus evidence.
+        "python:no-dynamic-builtins",
+        "python:no-shared-mutable-default",
+        "python:no-sys-path-mutation",
     }
 )
 

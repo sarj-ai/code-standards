@@ -55,7 +55,10 @@ def _runtime(
         namespace["transform"] = transform
     program = source + "\nresult = render(item)\n"
     exec(  # ruff: ignore[exec-builtin] -- trusted declarations exercise real call and value semantics.
-        compile(program, str(_PATH), "exec", dont_inherit=True), namespace
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            program, str(_PATH), "exec", dont_inherit=True
+        ),
+        namespace,
     )
     return namespace["result"]
 
@@ -72,7 +75,9 @@ def test_closed_dict_alias_has_native_finding_exact_output_and_convergence(newli
     assert fix_source(_PATH, source, rule_ids=[]) == source
     assert not REGISTRY[_RULE]().check(_PATH, expected)
     assert _fixed(expected) == expected
-    compile(expected, str(_PATH), "exec", dont_inherit=True)
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        expected, str(_PATH), "exec", dont_inherit=True
+    )
     before = [node for node in ast.walk(ast.parse(source)) if isinstance(node, ast.FunctionDef)]
     after = [node for node in ast.walk(ast.parse(expected)) if isinstance(node, ast.FunctionDef)]
     assert [node.name for node in before] == [node.name for node in after]
@@ -91,7 +96,10 @@ def test_canonical_dict_preserves_value_identity_without_inspecting_it() -> None
     for source in (_SOURCE, _FIXED):
         namespace: dict[str, object] = {"item": item}
         exec(  # ruff: ignore[exec-builtin] -- the closed fixture proves real constructor and identity behavior.
-            compile(source + suffix, str(_PATH), "exec", dont_inherit=True), namespace
+            compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+                source + suffix, str(_PATH), "exec", dont_inherit=True
+            ),
+            namespace,
         )
     assert _runtime(_SOURCE, item) == {"payload": item}
     assert _runtime(_FIXED, item) == {"payload": item}
@@ -280,7 +288,9 @@ def test_practical_raw_name_and_multiline_aliases_preserve_every_other_byte(
     assert fix_source(_PATH, source, rule_ids=[]) == source
     assert not REGISTRY[_RULE]().check(_PATH, expected)
     assert _fixed(expected) == expected
-    compile(expected, str(_PATH), "exec", dont_inherit=True)
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        expected, str(_PATH), "exec", dont_inherit=True
+    )
     item = object()
     assert _runtime(source, item) == _runtime(expected, item)
 
@@ -326,7 +336,9 @@ def test_nonphysical_separators_in_module_data_never_redirect_alias_edits(
     assert ast.dump(ast.parse(source).body[0]) == ast.dump(ast.parse(expected).body[0])
     assert not REGISTRY[_RULE]().check(_PATH, expected)
     assert _fixed(expected) == expected
-    compile(expected, str(_PATH), "exec", dont_inherit=True)
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        expected, str(_PATH), "exec", dont_inherit=True
+    )
     item = object()
     assert _runtime(source, item) == _runtime(expected, item)
     other_rule = "no-delete-statement"

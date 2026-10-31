@@ -42,8 +42,13 @@ def test_already_exhaustive_dispatch_removes_only_its_argument_ignore(ending: st
         ast.parse(expected), include_attributes=True
     )
     assert source.splitlines()[0:-1] == expected.splitlines()[0:-1]
-    assert compile(source, str(path), "exec", dont_inherit=True) == compile(
-        expected, str(path), "exec", dont_inherit=True
+    assert (
+        compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            source, str(path), "exec", dont_inherit=True
+        )
+        == compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+            expected, str(path), "exec", dont_inherit=True
+        )
     )
 
 

@@ -172,7 +172,9 @@ def _compile_displayed_python(example: _DisplayExample) -> None:
     # Native analyzers may deliberately skip malformed sources as unprovable.
     for file in (*example.files, *example.fixed_files):
         if PurePosixPath(file.path).suffix == ".py":
-            compile(file.source, file.path, "exec", dont_inherit=True)
+            compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+                file.source, file.path, "exec", dont_inherit=True
+            )
 
 
 def _canonical_comparison(files: tuple[_DisplayFile, ...]) -> tuple[_DisplayFile, ...]:

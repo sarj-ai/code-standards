@@ -1020,7 +1020,9 @@ def test_native_semantic_contract_reaches_existing_ast_owner(
         path.write_text(source)
         paths.append(path)
         if relative == focus:
-            compile(source, relative, "exec")
+            compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+                source, relative, "exec"
+            )
     findings = analyze([rule_id], paths)
     assert sum(finding.path == tmp_path / focus for finding in findings) == expected
     assert analyze([rule_id], paths) == findings
@@ -1082,7 +1084,9 @@ def test_normalized_module_export_name_keeps_original_utf8_diagnostic_column(tmp
     source = 'π = 0; __ａｌｌ__ = ["value"]\nvalue = 1\n'
     path = tmp_path / "service.py"
     path.write_text(source)
-    compile(source, str(path), "exec")
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        source, str(path), "exec"
+    )
     [finding] = analyze(["no-dunder-all"], [path])
     assert (finding.line, finding.col, finding.code) == (1, 9, "SARJ438")
     assert path.read_text() == source
@@ -1106,7 +1110,9 @@ def test_normalized_module_export_name_keeps_original_utf8_diagnostic_column(tmp
     ],
 )
 def test_project_admission_retains_original_native_ast_and_source(source: str) -> None:
-    compile(source, "models.py", "exec")
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        source, "models.py", "exec"
+    )
     index = ProjectIndexSet.single(Path("models.py"), source)
     unit = index.unit(Path("models.py"))
     assert unit is not None

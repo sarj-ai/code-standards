@@ -16,6 +16,10 @@ class AstPosition:
 
 def ast_position(node: ast.AST, *, missing: int) -> AstPosition:
     return AstPosition(
-        line=getattr(node, "lineno", missing),
-        column=getattr(node, "col_offset", missing),
+        line=getattr(  # sarj-noqa: SARJ557 -- Generic AST markers may omit source locations; preserve the caller fallback.
+            node, "lineno", missing
+        ),
+        column=getattr(  # sarj-noqa: SARJ557 -- Generic AST markers may omit source locations; preserve the caller fallback.
+            node, "col_offset", missing
+        ),
     )

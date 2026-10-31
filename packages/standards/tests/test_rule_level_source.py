@@ -31,7 +31,9 @@ def test_explicit_native_levels_preserve_field_order_and_unicode(
     promoted = rule_level_source.prepare(tmp_path, selector, "rule.py", DefaultLevel.ERROR)
     assert promoted.current is DefaultLevel.WARNING
     assert promoted.after == source.replace(f"{enum}.WARNING", f"{enum}.ERROR")
-    compile(promoted.after, "rule.py", "exec")
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        promoted.after, "rule.py", "exec"
+    )
     path.write_text(promoted.after, encoding="utf-8")
     assert rule_level_source.prepare(tmp_path, selector, "rule.py", DefaultLevel.WARNING).after == source
 
@@ -51,7 +53,9 @@ def test_missing_native_level_imports_enum_and_compiles(tmp_path: Path, engine: 
     assert staged.current is DefaultLevel.ERROR
     assert f"default_level={enum}.WARNING" in staged.after
     assert staged.after.count(enum) == 2
-    compile(staged.after, "rule.py", "exec")
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        staged.after, "rule.py", "exec"
+    )
     path.write_text(staged.after, encoding="utf-8")
     assert rule_level_source.prepare(tmp_path, selector, "rule.py", DefaultLevel.WARNING).after == staged.after
 
@@ -111,7 +115,9 @@ def test_native_promotion_preserves_enum_alias(tmp_path: Path) -> None:
     promoted = rule_level_source.prepare(tmp_path, RuleSelector.parse("python:sample"), "rule.py", DefaultLevel.ERROR)
 
     assert promoted.after == source.replace("Level.WARNING", "Level.ERROR")
-    compile(promoted.after, "rule.py", "exec")
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        promoted.after, "rule.py", "exec"
+    )
 
 
 @pytest.mark.parametrize("engine", [RuleEngine.PYTHON, RuleEngine.SQL, RuleEngine.IAC])
@@ -127,7 +133,9 @@ def test_native_staging_preserves_backslash_imports(tmp_path: Path, engine: Rule
 
     staged = rule_level_source.prepare(tmp_path, selector, "rule.py", DefaultLevel.WARNING)
 
-    compile(staged.after, "rule.py", "exec")
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        staged.after, "rule.py", "exec"
+    )
     assert "Rule as BaseRule" in staged.after
     assert "# retain this alias" in staged.after
     assert "\\\n" in staged.after
@@ -157,7 +165,9 @@ def test_native_staging_preserves_positional_arguments(tmp_path: Path, arguments
 
     assert staged.current is DefaultLevel.ERROR
     assert "Severity.WARNING" in staged.after
-    compile(staged.after, "rule.py", "exec")
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        staged.after, "rule.py", "exec"
+    )
     path.write_text(staged.after, encoding="utf-8")
     assert rule_level_source.prepare(tmp_path, selector, "rule.py", DefaultLevel.WARNING).after == staged.after
 

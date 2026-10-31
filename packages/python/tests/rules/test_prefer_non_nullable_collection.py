@@ -31,7 +31,9 @@ def _path_id(path: Path) -> str:
 def test_public_documentation_examples_are_executable(example: RuleExample) -> None:
     focus = example.focus_file
     assert len(_check(focus.source, Path(focus.path))) == example.expected_count
-    compile(focus.source, str(focus.path), "exec")
+    compile(  # sarj-noqa: SARJ557 -- Compile reviewed fixtures to validate compiler behavior and transformation equivalence.
+        focus.source, str(focus.path), "exec"
+    )
 
 
 def test_rule_identity_and_ui_match_advisory_list_boundary() -> None:

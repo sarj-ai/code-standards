@@ -306,7 +306,11 @@ def _analysis_facts(context: PythonFileContext) -> _AnalysisFacts:
     parents = context.parents
     for owner in context.nodes(ast.AST):
         for field_name in owner._fields:
-            statements = _statement_list(getattr(owner, field_name, None))
+            statements = _statement_list(
+                getattr(  # sarj-noqa: SARJ557 -- Inspect parser-declared fields across heterogeneous AST node types.
+                    owner, field_name, None
+                )
+            )
             if statements is None:
                 continue
             suite_id = len(suites)

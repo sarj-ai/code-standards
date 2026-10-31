@@ -127,8 +127,13 @@ class PreferStructOverNamedtuple(Rule):
     def _diag(self, path: Path, node: ast.AST) -> Diagnostic:
         return Diagnostic(
             path=path,
-            line=getattr(node, "lineno", 1),
-            col=getattr(node, "col_offset", 0) + 1,
+            line=getattr(  # sarj-noqa: SARJ557 -- Preserve diagnostic positions when synthetic AST nodes omit source locations.
+                node, "lineno", 1
+            ),
+            col=getattr(  # sarj-noqa: SARJ557 -- Preserve diagnostic positions when synthetic AST nodes omit source locations.
+                node, "col_offset", 0
+            )
+            + 1,
             code=self.code,
             message=(
                 "static `collections.namedtuple` fields have no type declarations — prefer a class-based "

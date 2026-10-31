@@ -585,8 +585,12 @@ def _mark_unsafe_import(
         return
     for statement, index in imports.items():
         if isinstance(context.parents.get(statement), ast.Module) and (statement.lineno, statement.col_offset) < (
-            getattr(at, "lineno", 0),
-            getattr(at, "col_offset", 0),
+            getattr(  # sarj-noqa: SARJ557 -- AST nodes without source locations need a deterministic ordering fallback.
+                at, "lineno", 0
+            ),
+            getattr(  # sarj-noqa: SARJ557 -- AST nodes without source locations need a deterministic ordering fallback.
+                at, "col_offset", 0
+            ),
         ):
             continue
         unsafe.update(

@@ -514,7 +514,9 @@ def _repeated_fix(source: _Source, diagnostic: Diagnostic) -> list[TextEdit]:
 def _statement_pairs(context: PythonFileContext) -> Iterator[tuple[ast.stmt, ast.stmt]]:
     for owner in context.nodes(ast.AST):
         for field in ("body", "orelse", "finalbody"):
-            value: object = getattr(owner, field, None)
+            value: object = getattr(  # sarj-noqa: SARJ557 -- Inspect optional statement-list fields across heterogeneous AST node types.
+                owner, field, None
+            )
             if object_list(value):
                 statements = [item for item in value if isinstance(item, ast.stmt)]
                 yield from pairwise(statements)
@@ -1399,7 +1401,9 @@ def fix_source(path: Path, source: str, *, rule_ids: Sequence[str] | None = None
         # Batch independent candidates; overlapping candidates get fresh offsets on the next pass.
         selected_pass = _coherent_edits(candidates)
         updated = apply_edits(current, selected_pass.edits)
-        compile(updated, str(path), "exec", dont_inherit=True)
+        compile(  # sarj-noqa: SARJ557 -- Compile proposed fixes to reject invalid scopes without executing them.
+            updated, str(path), "exec", dont_inherit=True
+        )
         if updated == current:
             return current
         if passes == _MAX_FIX_PASSES:
