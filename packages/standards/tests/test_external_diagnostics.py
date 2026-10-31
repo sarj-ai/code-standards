@@ -1927,6 +1927,54 @@ def test_react_doctor_fallback_retains_a_stricter_initial_budget(
     assert len(execute.requests) == 2
 
 
+@pytest.mark.parametrize("remaining", [0.125, 0.126, 1.001, 1.009, 120.50001, 882.5780710449219])
+def test_react_doctor_fractional_budget_is_node_timer_compatible(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, remaining: float
+) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- exercise the real dispatch boundary with the fractional deadline that Node rejects.
+        time, "monotonic", lambda: 100.0
+    )
+
+    def clean_output(_argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        return ProcessOutput(0, "{}", "")
+
+    execute = FakeProcessExecutor(clean_output)
+    bounded = external_module._react_doctor_budget_runner(execute)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- verify the duration passed to the native tool, not a separate formatter.
+    request = ProcessRequest(("react-doctor", "--max-duration", "900.0"), tmp_path, {}, timeout_seconds=remaining)
+
+    bounded.run(request)
+
+    dispatched = execute.requests[0]
+    native_seconds = float(dispatched.argv[-1])
+    assert 0 < native_seconds <= remaining
+    assert (native_seconds * 1_000).is_integer()
+    assert dispatched.deadline == pytest.approx(100 + remaining)
+    assert replace(dispatched, argv=request.argv, deadline=request.deadline) == request
+
+
+@pytest.mark.parametrize("remaining", [0.0001, 0.001, 0.124999])
+def test_react_doctor_does_not_launch_after_rounding_budget_to_zero(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, remaining: float
+) -> None:
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- ensure rounding cannot turn a nearly expired native deadline into an unlimited zero duration.
+        time, "monotonic", lambda: 100.0
+    )
+
+    def clean_output(_argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
+        assert cwd == tmp_path
+        return ProcessOutput(0, "{}", "")
+
+    execute = FakeProcessExecutor(clean_output)
+    bounded = external_module._react_doctor_budget_runner(execute)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage] -- no native command may receive a zero duration.
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        bounded.run(
+            ProcessRequest(("react-doctor", "--max-duration", "900.0"), tmp_path, {}, timeout_seconds=remaining)
+        )
+    assert not execute.requests
+
+
 def test_react_doctor_budget_leaves_git_requests_unchanged(tmp_path: Path) -> None:
     def clean_output(_argv: Sequence[str], *, cwd: Path) -> ProcessOutput:
         assert cwd == tmp_path
