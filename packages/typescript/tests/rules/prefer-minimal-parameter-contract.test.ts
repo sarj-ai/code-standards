@@ -62,14 +62,23 @@ for (const [primitive, value] of NULLISH_PRIMITIVES) {
     }
   }
 }
+for (const [primitive, value] of NULLISH_PRIMITIVES) {
+  for (const nullish of ["null", "undefined"]) {
+    PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract retained " + primitive + " | " + nullish, rule, {
+      valid: [
+        {name: "every field is read", filename: "probe.tsx", code: `export {}; const input = {name: 'Ada', value: ${value}}; function label(p: {name: string; value: ${primitive} | ${nullish}}): string {return p.name + typeof p.value;} label(input);`},
+        {name: "optional-only retained reads preserve weak-type exclusion", filename: "probe.tsx", code: `export {}; const input = {spare: 'audit'}; function label(p: {value?: ${primitive} | ${nullish}; spare: string}): string {return typeof p.value;} label(input);`},
+      ],
+      invalid: [false, true].map((optional) => {
+        const code = `export {}; const input = {name: 'Ada', value: ${value}, spare: 'audit'}; function label(p: {readonly name: string; readonly value${optional ? "?" : ""}: ${primitive} | ${nullish}; readonly spare: string}): string {return p.name + typeof p.value;} label(input);`;
+        return {name: "retain " + (optional ? "optional" : "required") + " nullable read", filename: "probe.tsx", code, output: code.replace("readonly spare: string", ""), errors: [{messageId: "minimal" as const, data: {used: "name, value", unused: "spare"}}]};
+      }),
+    });
+  }
+}
 PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract unread nullish fields", rule, {
   valid: [
     ...[
-      ["nullable coalescing is an inspection", "function label(p: {name: string; email: string | null; spare: string}): string {return p.email ?? p.name;}"],
-      ["runtime typeof is an inspection", "function label(p: {name: string; email: string | null; spare: string}): string {return p.name + typeof p.email;}"],
-      ["a conditional reads its nullable condition", "function label(p: {name: string; email: string | undefined; spare: string}): string {return p.email ? p.name : '';}"],
-      ["escaped fixed reads keep the normalized nullable key", "function label(p: {name: string; email: string | null; spare: string}): string {return p['em\\u0061il'] ?? p.name;}"],
-      ["destructuring reads even an unreturned nullable alias", "function label({name, email: unused}: {name: string; email: string | null; spare: string}): string {return name;}"],
       ["optional nullish member excludes the whole contract", "function label(p: {name: string; email?: string | null; spare: string}): string {return p.name;}"],
       ["optional-only retained reads remain excluded", "function label(p: {name?: string; email: string | null}): string {return p.name ?? '';}"],
       ["computed member declarations are unsupported", "function label(p: {name: string; ['email']: string | null}): string {return p.name;}"],
@@ -77,7 +86,6 @@ PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract unread nullish fi
       ["a local type query is outside the single-expression proof", "function label(p: {name: string; email: string | null}): string {type Local = typeof p.email; return p.name satisfies Exclude<Local, null>;}"],
       ["type assertions can carry a field dependency", "function label(p: {name: string; email: string | null}): string {return (p.name as typeof p.email)!;}"],
       ["explicit helper type arguments carry dependencies", "function helper<T>(value: T): string {return String(value);} function label(p: {name: string; email: string | null}): string {return helper<typeof p.email>(p.name);}"],
-      ["scalar helper nullable reads remain excluded", "function helper(value: string | null): string {return value ?? '';} function label(p: {name: string; email: string | null; spare: string}): string {return p.name + helper(p.email);}"],
       ["imported reexported inherited field types remain named", "import type {ConsumerAccount} from './consumer-index'; function label(p: {name: string; email: ConsumerAccount['email'] | null}): string {return p.name;}"],
     ].map(([name, declaration]) => ({name, filename: "probe.tsx", code: `${PREFIX}const input = {...account, spare: 'audit'};${declaration}label(input);`})),
     ...["Nullable", "'a' | null", "(string) | null", "string | (null)", "string | null | undefined", "null | undefined", "string | number", "any | null", "unknown | null", "never | null", "void | string", "object | null", "(string & {brand: true}) | null"].map((type) => ({
@@ -91,6 +99,17 @@ PRIVATE_CONSUMER_TESTER.run("prefer-minimal-parameter-contract unread nullish fi
     ].map((observation) => ({name: "callable type observation " + observation, filename: "probe.tsx", code: `${PREFIX}${NULLISH_DECLARATION}label(account); ${observation}`})),
   ],
   invalid: [
+    ...[
+      ["nullable coalescing is an inspection", "function label(p: {name: string; email: string | null; spare: string}): string {return p.email ?? p.name;}"],
+      ["runtime typeof is an inspection", "function label(p: {name: string; email: string | null; spare: string}): string {return p.name + typeof p.email;}"],
+      ["a conditional reads its nullable condition", "function label(p: {name: string; email: string | undefined; spare: string}): string {return p.email ? p.name : '';}"],
+      ["escaped fixed reads keep the normalized nullable key", "function label(p: {name: string; email: string | null; spare: string}): string {return p['em\\u0061il'] ?? p.name;}"],
+      ["destructuring reads even an unreturned nullable alias", "function label({name, email: unused}: {name: string; email: string | null; spare: string}): string {return name;}"],
+      ["scalar helper retains its nullable input", "function helper(value: string | null): string {return value ?? '';} function label(p: {name: string; email: string | null; spare: string}): string {return p.name + helper(p.email);}"],
+    ].map(([name, declaration]) => {
+      const code = `${PREFIX}const input = {...account, spare: 'audit'};${declaration}label(input);`;
+      return {name, filename: "probe.tsx", code, output: code.replace("spare: string", ""), errors: [{messageId: "minimal" as const, data: {used: "email, name", unused: "spare"}}]};
+    }),
     ...[
       ["producer-only type query does not observe the callable", `export type Email = typeof account.email; ${NULLISH_DECLARATION}`],
       ["flat destructuring of only the required read remains supported", `function label({name: display}: ${NULLISH_CONTRACT}): string {return display;}`],
