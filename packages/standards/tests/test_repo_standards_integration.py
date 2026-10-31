@@ -102,6 +102,42 @@ def test_staged_policy_analysis_reads_repo_manifest_from_index(tmp_path: Path) -
     assert not report.issues
 
 
+def test_image_only_staged_commit_requires_a_staged_asset_declaration(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    manifest = _adopt(tmp_path)
+    rule = "repository/artifacts/undeclared-images"
+    manifest.write_text(
+        f'repository_id = "fixture"\ncomponents = []\nenabled_rules = ["{rule}"]\n',
+        encoding="utf-8",
+    )
+    (tmp_path / ".sarj-standards.toml").write_text(
+        f'schema = 4\nbundle = "{api.__version__}"\n[capabilities]\ndisable = {json.dumps([name for name in adoption_manifest.ALL_CAPABILITIES if name != "taplo"])}\n[hooks]\nmanager = "none"\n',
+        encoding="utf-8",
+    )
+    assert main(["--root", str(tmp_path), "setup", "--no-install"]) == 0
+    subprocess.run(("git", "init", "--quiet"), cwd=tmp_path, check=True)
+    _commit(tmp_path)
+    arguments = ["--root", str(tmp_path), "check", "--staged"]
+    assert main(arguments) == 0
+    capsys.readouterr()
+    (tmp_path / "frame.PNG").write_bytes(b"\x89PNG\r\n\x1a\n")
+    subprocess.run(("git", "add", "frame.PNG"), cwd=tmp_path, check=True)
+
+    assert main(arguments) == 1
+    assert rule in capsys.readouterr().out
+
+    with manifest.open("a", encoding="utf-8") as stream:
+        stream.write(
+            '\n[[images.artifacts]]\npath = "frame.PNG"\nkind = "fixture"\nreason = "Decoder regression input."\n'
+        )
+    assert main(arguments) == 1
+    assert rule in capsys.readouterr().out
+
+    subprocess.run(("git", "add", str(manifest)), cwd=tmp_path, check=True)
+    assert main(arguments) == 0
+
+
 def test_invalid_committed_repo_manifest_is_an_execution_issue(tmp_path: Path) -> None:
     manifest = _adopt(tmp_path)
     manifest.write_text("not valid TOML\n", encoding="utf-8")
