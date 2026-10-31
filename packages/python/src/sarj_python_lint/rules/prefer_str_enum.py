@@ -419,7 +419,7 @@ class PreferStrEnum(Rule):
         if tree is None:
             return []
         signals = context.symbol_source
-        class_choice_signal = "str" in signals and any(name in signals.lower() for name in CHOICES_ATTR_NAMES)
+        class_choice_signal = _has_class_choice_signal(signals)
         wrapper_signal = any(symbol in signals for symbol in ("Annotated", "Optional", "Union"))
         imports = context.imports if class_choice_signal or "assert_never" in signals or wrapper_signal else None
         rejection_imports = _assert_never_imports(context, imports)
@@ -694,9 +694,16 @@ class PreferStrEnum(Rule):
         return diags
 
 
+def _has_class_choice_signal(source: str) -> bool:
+    # Decoded string annotations can spell str through escapes or adjacent literals.
+    return ("str" in source or '"' in source or "'" in source) and any(
+        name in source.lower() for name in CHOICES_ATTR_NAMES
+    )
+
+
 def _has_str_enum_signal(source: str) -> bool:
     has_string_literal = '"' in source or "'" in source
-    if "str" in source and any(name in source.lower() for name in CHOICES_ATTR_NAMES):
+    if _has_class_choice_signal(source):
         return True
     has_rejection = "raise" in source or "assert_never" in source
     return (

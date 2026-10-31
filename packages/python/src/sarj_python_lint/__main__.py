@@ -103,7 +103,7 @@ def _python_files(p: Path) -> list[Path]:
     for directory, directories, filenames in p.walk():
         directories[:] = [name for name in directories if name not in SKIP_DIR_NAMES]
         for name in filenames:
-            if not fnmatch(name, "*.py"):
+            if not fnmatch(name, "*.py") and not fnmatch(name, "*.pyi"):
                 continue
             child = directory / name
             if child.is_file():

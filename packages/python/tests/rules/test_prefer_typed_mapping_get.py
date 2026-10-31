@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language, SourceCatalog
@@ -9,7 +12,150 @@ from sarj_python_lint.rule_base import Rule, Severity
 from sarj_python_lint.rules._local_source import LOCAL_SOURCE_CACHE_LIMIT
 from sarj_python_lint.rules.prefer_precise_object_contract import PreferPreciseObjectContract
 from sarj_python_lint.rules.prefer_typed_mapping_get import PreferTypedMappingGet
-from sarj_python_lint.rules.require_pydantic_for_mapping_shape import RequirePydanticForMappingShape
+from sarj_python_lint.rules.require_pydantic_for_mapping_shape import (
+    MappingShapeFacts,
+    RequirePydanticForMappingShape,
+)
+
+
+if TYPE_CHECKING:
+    import ast
+    from collections.abc import Callable
+
+
+def _mapping_receiver_queries(monkeypatch: pytest.MonkeyPatch) -> Callable[[], int]:
+    entries = 0
+    original = MappingShapeFacts.mapping
+
+    def counted(
+        facts: MappingShapeFacts,
+        node: ast.expr,
+        *,
+        seen: frozenset[ast.AST] = frozenset(),
+    ) -> bool:
+        nonlocal entries
+        entries += 1
+        return original(facts, node, seen=seen)
+
+    monkeypatch.setattr(  # sarj-noqa: SARJ445 -- count delegated real proof entries without replacing inference or diagnostics.
+        MappingShapeFacts, "mapping", counted
+    )
+
+    def count() -> int:
+        return entries
+
+    return count
+
+
+@pytest.mark.parametrize("depth", [4, 6, 8], ids=["four-levels", "six-levels", "eight-levels"])
+def test_shared_return_proofs_avoid_repeated_branch_expansion(monkeypatch: pytest.MonkeyPatch, depth: int) -> None:
+    entries = _mapping_receiver_queries(monkeypatch)
+    definitions = ["import json\ndef f0(payload): return json.loads(payload)\n"]
+    definitions.extend(
+        f"def f{index}(payload):\n"
+        f"    if payload:\n        return f{index - 1}(payload)\n"
+        f"    return f{index - 1}(payload)\n"
+        for index in range(1, depth + 1)
+    )
+    source = "".join(definitions) + f"def read(payload): return f{depth}(payload).get('name')\n"
+    findings = PreferTypedMappingGet().check(Path("app/state.py"), source)
+    assert [finding.code for finding in findings] == ["SARJ535"]
+    assert entries() <= 2 * depth + 2
+
+
+def test_repeated_negative_return_proofs_preserve_cycle_abstention(monkeypatch: pytest.MonkeyPatch) -> None:
+    entries = _mapping_receiver_queries(monkeypatch)
+    source = (
+        "def loop(payload): return loop(payload)\n"
+        "def read(payload):\n"
+        "    first = loop(payload).get('first')\n"
+        "    second = loop(payload).get('second')\n"
+        "    return loop(payload).get('third')\n"
+    )
+    assert PreferTypedMappingGet().check(Path("app/state.py"), source) == []
+    assert entries() <= 4
+
+
+@pytest.mark.parametrize("deep_first", [False, True], ids=["shallow-first", "deep-first"])
+def test_return_proofs_preserve_the_exact_active_depth_budget(deep_first: bool) -> None:
+    definitions = ["import json\ndef f0(payload): return json.loads(payload)\n"]
+    definitions.extend(f"def f{index}(payload): return f{index - 1}(payload)\n" for index in range(1, 32))
+    calls = ["    shallow = f0(payload).get('name')", "    deep = f31(payload).get('name')"]
+    if deep_first:
+        calls.reverse()
+    source = "".join(definitions) + "def read(payload):\n" + "\n".join(calls) + "\n"
+    findings = PreferTypedMappingGet().check(Path("app/state.py"), source)
+    shallow_line = source.splitlines().index("    shallow = f0(payload).get('name')") + 1
+    assert [(finding.line, finding.code) for finding in findings] == [(shallow_line, "SARJ535")]
+
+
+@pytest.mark.parametrize("precise_first", [False, True], ids=["raw-first", "precise-first"])
+def test_identical_helper_asts_keep_their_source_owner(tmp_path: Path, precise_first: bool) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    app = tmp_path / "app"
+    app.mkdir()
+    (app / "__init__.py").write_text("")
+    bridge = "from .producer import parse\ndef decoded(payload): return parse(payload)\n"
+    for name, producer in [
+        ("raw", "import json\ndef parse(payload): return json.loads(payload)\n"),
+        ("precise", "def parse(payload) -> dict[str, str]: return {'name': payload}\n"),
+    ]:
+        package = app / name
+        package.mkdir()
+        (package / "__init__.py").write_text("")
+        (package / "bridge.py").write_text(bridge)
+        (package / "producer.py").write_text(producer)
+    calls = ["    raw_value = raw(payload).get('name')", "    precise_value = precise(payload).get('name')"]
+    if precise_first:
+        calls.reverse()
+    source = (
+        "from .raw.bridge import decoded as raw\n"
+        "from .precise.bridge import decoded as precise\n"
+        "def read(payload):\n" + "\n".join(calls) + "\n"
+    )
+    consumer = app / "consumer.py"
+    consumer.write_text(source)
+    findings = analyze([PreferTypedMappingGet.id], [consumer], jobs=1)
+    raw_line = source.splitlines().index("    raw_value = raw(payload).get('name')") + 1
+    assert [(finding.line, finding.code) for finding in findings] == [(raw_line, "SARJ535")]
+
+
+@pytest.mark.parametrize("awaited_first", [True, False], ids=["awaited-first", "unawaited-first"])
+def test_cached_async_return_proofs_still_require_await(awaited_first: bool) -> None:
+    calls = ["    awaited = (await parse(payload)).get('name')", "    unawaited = parse(payload).get('name')"]
+    if not awaited_first:
+        calls.reverse()
+    source = (
+        "import json\nasync def parse(payload): return json.loads(payload)\n"
+        "async def read(payload):\n" + "\n".join(calls) + "\n"
+    )
+    findings = PreferTypedMappingGet().check(Path("app/state.py"), source)
+    awaited_line = source.splitlines().index("    awaited = (await parse(payload)).get('name')") + 1
+    assert [(finding.line, finding.code) for finding in findings] == [(awaited_line, "SARJ535")]
+
+
+@pytest.mark.parametrize(
+    ("body", "count"),
+    [
+        ("    def inner(): return {'name': 'precise'}\n    return json.loads(payload)\n", 1),
+        ("    def inner(): return json.loads(payload)\n    return {'name': 'precise'}\n", 0),
+        ("    return json.loads(payload)\n    return {'name': 'precise'}\n", 0),
+    ],
+    ids=["raw-outer-precise-inner", "precise-outer-raw-inner", "unreachable-precise-return"],
+)
+def test_return_node_index_preserves_scope_and_conservative_returns(body: str, count: int) -> None:
+    source = "import json\ndef parse(payload):\n" + body + "def read(payload): return parse(payload).get('name')\n"
+    assert len(PreferTypedMappingGet().check(Path("app/state.py"), source)) == count
+
+
+def test_return_proof_cache_overflow_recomputes_without_losing_findings() -> None:
+    count = 513
+    definitions = [f"def parse_{index}(payload): return json.loads(payload)\n" for index in range(count)]
+    calls = [f"    value_{index} = parse_{index}(payload).get('name')\n" for index in range(count)]
+    source = "import json\n" + "".join(definitions) + "def read(payload):\n" + "".join(calls)
+    findings = PreferTypedMappingGet().check(Path("app/state.py"), source)
+    assert len(findings) == count
+    assert len({(finding.line, finding.col) for finding in findings}) == count
 
 
 def test_documented_examples() -> None:

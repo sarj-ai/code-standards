@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, final, override
 
 from sarj_python_lint.rule_base import (
@@ -22,8 +22,6 @@ from sarj_python_lint.rules.require_pydantic_for_mapping_shape import MappingSha
 
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from sarj_python_lint._file_context import PythonFileContext
 
 _UNTYPED = frozenset(
@@ -39,6 +37,7 @@ _UNTYPED = frozenset(
 )
 _JSON_PARSERS = frozenset({"json.load", "json.loads"})
 _MAX_DEPTH = 32
+_MAX_RETURN_PROOFS = 512
 _BAD = "def service_name(state: dict[str, object]):\n    return state.get('name')\n"
 _GOOD = "from typing import TypedDict\nclass State(TypedDict):\n    name: str\ndef service_name(state: State) -> str | None:\n    return state.get('name')\n"
 
@@ -195,11 +194,49 @@ class _ImportLocation:
     name: str
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class _ReturnProofKey:
+    owner_path: Path
+    definition: ast.FunctionDef | ast.AsyncFunctionDef
+    seen: frozenset[ast.AST]
+
+
 class _ReturnContracts:
     def __init__(self, facts: MappingShapeFacts) -> None:
         self.owners = {facts.context.path: facts}
         # Return lookups must leave other rules enough budget to resolve their validators.
         self.local_source = LocalSourceFacts(source_inputs=facts.context.session.source_inputs)
+        self._return_proofs: dict[_ReturnProofKey, bool] = {}
+        self._return_nodes: dict[Path, dict[ast.FunctionDef | ast.AsyncFunctionDef, tuple[ast.Return, ...]]] = {}
+
+    def returned_mapping(
+        self, owner: MappingShapeFacts, function: ast.FunctionDef | ast.AsyncFunctionDef, seen: frozenset[ast.AST]
+    ) -> bool:
+        key = _ReturnProofKey(owner_path=owner.context.path, definition=function, seen=seen)
+        cached = self._return_proofs.get(key)
+        if cached is not None:
+            return cached
+        returned = self.return_nodes(owner, function)
+        result = bool(returned) and all(
+            node.value is not None and _untyped_receiver(node.value, owner, self, seen=seen | {function})
+            for node in returned
+        )
+        if len(self._return_proofs) < _MAX_RETURN_PROOFS:
+            self._return_proofs[key] = result
+        return result
+
+    def return_nodes(
+        self, owner: MappingShapeFacts, function: ast.FunctionDef | ast.AsyncFunctionDef
+    ) -> tuple[ast.Return, ...]:
+        path = owner.context.path
+        if path not in self._return_nodes:
+            grouped: dict[ast.FunctionDef | ast.AsyncFunctionDef, list[ast.Return]] = {}
+            for node in owner.context.nodes(ast.Return):
+                scope = owner.provenance.scope(node)
+                if isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef):
+                    grouped.setdefault(scope, []).append(node)
+            self._return_nodes[path] = {scope: tuple(nodes) for scope, nodes in grouped.items()}
+        return self._return_nodes[path].get(function, ())
 
     def function(
         self, expression: ast.expr, facts: MappingShapeFacts, seen: frozenset[ast.AST]
@@ -343,11 +380,7 @@ def _returned_mapping(
         return owner.annotation(function.returns, function.returns, mapping=True) or _erased_annotation(
             function.returns, owner
         )
-    returned = [node for node in owner.context.nodes(ast.Return) if owner.provenance.scope(node) is function]
-    return bool(returned) and all(
-        node.value is not None and _untyped_receiver(node.value, owner, contracts, seen=seen | {function})
-        for node in returned
-    )
+    return contracts.returned_mapping(owner, function, seen)
 
 
 def _name_receiver(
