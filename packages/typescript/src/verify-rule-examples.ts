@@ -5,6 +5,7 @@ import { dirname, join, resolve, sep } from "node:path";
 import * as parser from "@typescript-eslint/parser";
 import { Linter, type Rule } from "eslint";
 
+import { createExampleParser } from "./create-example-parser.js";
 import type { DiagnosticExpectation, DocumentedRule, ExampleFile, ExampleLocation, RuleExample } from "./rules/_docs.js";
 
 export type { ExampleFile, RuleExample } from "./rules/_docs.js";
@@ -21,43 +22,48 @@ export async function verifyRuleExamples<Options extends readonly unknown[], Mes
       !spec.publicExamples.some((item) => item.outcome === "no-match")) {
     throw new Error("rule requires documented public matching and non-matching examples");
   }
-  for (const example of spec.examples) {
-    const root = await mkdtemp(join(tmpdir(), "sarj-rule-example-"));
-    try {
-      for (const file of example.files) {
-        const path = fixturePath(root, file.path);
-        validateFixtureSyntax(example.id, file, path);
-        await mkdir(dirname(path), { recursive: true });
-        await writeFile(path, file.source);
+  const exampleParser = createExampleParser();
+  try {
+    for (const example of spec.examples) {
+      const root = await mkdtemp(join(tmpdir(), "sarj-rule-example-"));
+      try {
+        for (const file of example.files) {
+          const path = fixturePath(root, file.path);
+          validateFixtureSyntax(example.id, file, path);
+          await mkdir(dirname(path), { recursive: true });
+          await writeFile(path, file.source);
+        }
+        for (const dependency of example.installedDependencies ?? []) {
+          if (setup.installedDependencyRoot === undefined) throw new Error(`${example.id}: explicit installed dependency root is required`);
+          const packageFile = fixturePath(resolve(setup.installedDependencyRoot), `node_modules/${dependency.module}/package.json`);
+          const metadata: unknown = JSON.parse(await readFile(packageFile, "utf8"));
+          if (typeof metadata !== "object" || metadata === null || !("name" in metadata) || !("version" in metadata) || metadata.name !== dependency.module || metadata.version !== dependency.version) throw new Error(`${example.id}: installed dependency identity/version mismatch for ${dependency.module}`);
+          const destination = fixturePath(root, `node_modules/${dependency.module}`);
+          await mkdir(dirname(destination), { recursive: true });
+          await symlink(dirname(packageFile), destination, process.platform === "win32" ? "junction" : "dir");
+        }
+        const tsconfig = join(root, "tsconfig.json");
+        if (!example.files.some((file) => file.path === "tsconfig.json")) {
+          await writeFile(tsconfig, JSON.stringify({ compilerOptions: {
+            target: "ESNext", module: "ESNext", moduleResolution: "Bundler", strict: true,
+            allowJs: true, jsx: "preserve", noEmit: true,
+          }, include: ["**/*"] }));
+        }
+        const ruleId = `@sarj/${spec.ruleId}`;
+        const config: Linter.Config = {
+          files: ["**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}"],
+          languageOptions: { parser: exampleParser, parserOptions: { project: tsconfig, tsconfigRootDir: root, disallowAutomaticSingleRunInference: true } },
+          plugins: { "@sarj": { rules: { [spec.ruleId]: rule as unknown as Rule.RuleModule } } },
+          rules: { [ruleId]: ["error", ...(example.ruleOptions ?? rule.defaultOptions ?? [])] },
+        };
+        await verifyExample(new Linter({ cwd: root }), config, example, root, ruleId, setup.formatFixedSource);
+      } finally {
+        parser.clearCaches();
+        await rm(root, { recursive: true, force: true });
       }
-      for (const dependency of example.installedDependencies ?? []) {
-        if (setup.installedDependencyRoot === undefined) throw new Error(`${example.id}: explicit installed dependency root is required`);
-        const packageFile = fixturePath(resolve(setup.installedDependencyRoot), `node_modules/${dependency.module}/package.json`);
-        const metadata: unknown = JSON.parse(await readFile(packageFile, "utf8"));
-        if (typeof metadata !== "object" || metadata === null || !("name" in metadata) || !("version" in metadata) || metadata.name !== dependency.module || metadata.version !== dependency.version) throw new Error(`${example.id}: installed dependency identity/version mismatch for ${dependency.module}`);
-        const destination = fixturePath(root, `node_modules/${dependency.module}`);
-        await mkdir(dirname(destination), { recursive: true });
-        await symlink(dirname(packageFile), destination, process.platform === "win32" ? "junction" : "dir");
-      }
-      const tsconfig = join(root, "tsconfig.json");
-      if (!example.files.some((file) => file.path === "tsconfig.json")) {
-        await writeFile(tsconfig, JSON.stringify({ compilerOptions: {
-          target: "ESNext", module: "ESNext", moduleResolution: "Bundler", strict: true,
-          allowJs: true, jsx: "preserve", noEmit: true,
-        }, include: ["**/*"] }));
-      }
-      const ruleId = `@sarj/${spec.ruleId}`;
-      const config: Linter.Config = {
-        files: ["**/*.{ts,tsx,js,jsx,mts,cts,mjs,cjs}"],
-        languageOptions: { parser, parserOptions: { project: tsconfig, tsconfigRootDir: root, disallowAutomaticSingleRunInference: true } },
-        plugins: { "@sarj": { rules: { [spec.ruleId]: rule as unknown as Rule.RuleModule } } },
-        rules: { [ruleId]: ["error", ...(example.ruleOptions ?? rule.defaultOptions ?? [])] },
-      };
-      await verifyExample(new Linter({ cwd: root }), config, example, root, ruleId, setup.formatFixedSource);
-    } finally {
-      parser.clearCaches();
-      await rm(root, { recursive: true, force: true });
     }
+  } finally {
+    exampleParser.clear();
   }
   return spec.examples.length;
 }

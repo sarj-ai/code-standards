@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 import ts from "typescript";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const PACKAGE_ROOT = join(import.meta.dirname, "..");
 const FIXTURE = join(PACKAGE_ROOT, "src", "example-options-contract.ts").replaceAll("\\", "/");
@@ -48,7 +48,12 @@ interface CompilerIssue {
   readonly message: string;
 }
 
-function compile(source: string): readonly CompilerIssue[] {
+interface CompilerFixture {
+  readonly program: ts.Program;
+  readonly configIssues: readonly ts.Diagnostic[];
+}
+
+function prepareCompilerFixture(source: string): CompilerFixture {
   const loaded = ts.readConfigFile(join(PACKAGE_ROOT, "tsconfig.json"), (path) => ts.sys.readFile(path));
   const parsed = ts.parseJsonConfigFileContent(loaded.config, ts.sys, PACKAGE_ROOT);
   const options = { ...parsed.options, noEmit: true, incremental: false };
@@ -58,7 +63,12 @@ function compile(source: string): readonly CompilerIssue[] {
     ? ts.createSourceFile(path, source, version, true)
     : original(path, version, onError, create);
   const program = ts.createProgram([FIXTURE], options, host);
-  return [...(loaded.error === undefined ? [] : [loaded.error]), ...parsed.errors, ...ts.getPreEmitDiagnostics(program)]
+  if (program.getSourceFile(FIXTURE)?.text !== source) throw new Error("The compiler did not load the intended contract source.");
+  return { program, configIssues: [...(loaded.error === undefined ? [] : [loaded.error]), ...parsed.errors] };
+}
+
+function compilerIssues(fixture: CompilerFixture): readonly CompilerIssue[] {
+  return [...fixture.configIssues, ...ts.getPreEmitDiagnostics(fixture.program)]
     .map((issue) => ({
       code: issue.code,
       path: issue.file?.fileName.replaceAll("\\", "/"),
@@ -68,17 +78,37 @@ function compile(source: string): readonly CompilerIssue[] {
 }
 
 describe("authored example option tuples", () => {
-  it("accepts actual readonly, defaulted, empty and optional rule configurations", () => {
-    expect(compile(ACCEPTED)).toEqual([]);
+  describe("accepted compiler fixture", () => {
+    let fixture: CompilerFixture | undefined;
+    beforeAll(() => {
+      fixture = prepareCompilerFixture(ACCEPTED);
+    });
+    afterAll(() => {
+      fixture = undefined;
+    });
+    it("accepts actual readonly, defaulted, empty and optional rule configurations", () => {
+      if (fixture === undefined) throw new Error("The accepted compiler fixture did not complete.");
+      expect(compilerIssues(fixture)).toEqual([]);
+    });
   });
 
-  it("rejects invalid options through RuleExample, RuleDocumentation and actual createRule calls", () => {
-    const issues = compile(REJECTED);
-    const rejectedLines = REJECTED.split("\n")
-      .flatMap((line, index) => line.includes("// ") ? [index + 1] : []);
-    for (const line of rejectedLines) {
-      expect(issues.some((issue) => issue.path === FIXTURE && issue.line === line), REJECTED.split("\n")[line - 1]).toBe(true);
-    }
-    expect(issues.filter((issue) => issue.path !== FIXTURE || issue.line === undefined || !rejectedLines.includes(issue.line))).toEqual([]);
+  describe("rejected compiler fixture", () => {
+    let fixture: CompilerFixture | undefined;
+    beforeAll(() => {
+      fixture = prepareCompilerFixture(REJECTED);
+    });
+    afterAll(() => {
+      fixture = undefined;
+    });
+    it("rejects invalid options through RuleExample, RuleDocumentation and actual createRule calls", () => {
+      if (fixture === undefined) throw new Error("The rejected compiler fixture did not complete.");
+      const issues = compilerIssues(fixture);
+      const rejectedLines = REJECTED.split("\n")
+        .flatMap((line, index) => line.includes("// ") ? [index + 1] : []);
+      for (const line of rejectedLines) {
+        expect(issues.some((issue) => issue.path === FIXTURE && issue.line === line), REJECTED.split("\n")[line - 1]).toBe(true);
+      }
+      expect(issues.filter((issue) => issue.path !== FIXTURE || issue.line === undefined || !rejectedLines.includes(issue.line))).toEqual([]);
+    });
   });
 });

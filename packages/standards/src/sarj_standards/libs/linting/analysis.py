@@ -169,6 +169,7 @@ def analyze(
             _text_report(
                 routed,
                 root,
+                sources=sources,
                 rule_ids=_selected_ids(rule_selection, RuleEngine.TEXT),
             ),
         )
@@ -546,18 +547,21 @@ def _text_report(
     grouped: GroupedPaths,
     root: Path,
     *,
+    sources: SourceCatalog,
     rule_ids: frozenset[str] | None = None,
 ) -> ToolReport | None:
     if not grouped.text or rule_ids == frozenset():
         return None
     try:
-        return _run_text(grouped.text, root, rule_ids=rule_ids)
+        return _run_text(grouped.text, root, sources=sources, rule_ids=rule_ids)
     except Exception as exc:  # ruff: ignore[blind-except] -- retain results from independent analyzers.
         issue = ExecutionIssue("sarj-text-lint", "analyzer-failure", f"{type(exc).__name__}: {exc}")
         return ToolReport("sarj-text-lint", Completion.FAILED, issues=(issue,))
 
 
-def _run_text(files: Sequence[str], root: Path, *, rule_ids: frozenset[str] | None) -> ToolReport:
+def _run_text(
+    files: Sequence[str], root: Path, *, sources: SourceCatalog, rule_ids: frozenset[str] | None
+) -> ToolReport:
     selected = frozenset(textlint.REGISTRY) if rule_ids is None else rule_ids
     unknown = sorted(selected - textlint.REGISTRY.keys())
     if unknown:
@@ -565,12 +569,12 @@ def _run_text(files: Sequence[str], root: Path, *, rule_ids: frozenset[str] | No
         raise ValueError(msg)
     raw = tuple(
         finding
-        for finding in textlint.check_paths(files, root=root, rule_ids=rule_ids)
+        for finding in textlint.check_paths(files, root=root, rule_ids=rule_ids, sources=sources)
         if any(meta.code == finding.code and rule_id in selected for rule_id, meta in textlint.REGISTRY.items())
     )
     by_code = {meta.code: (rule_id, meta.description, meta.blocking) for rule_id, meta in textlint.REGISTRY.items()}
-    documents: dict[Path, SourceDocument | None] = {}
-    diagnostics = tuple(_normalize_text(item, root, by_code, documents) for item in raw)
+    documents: dict[Path, SourceDocument] = {}
+    diagnostics = tuple(_normalize_text(item, root, by_code, documents, sources=sources) for item in raw)
     return ToolReport("sarj-text-lint", Completion.COMPLETE, diagnostics=diagnostics)
 
 
@@ -578,16 +582,18 @@ def _normalize_text(
     item: textlint.Finding,
     root: Path,
     metadata: Mapping[str, tuple[str, str, bool]],
-    documents: dict[Path, SourceDocument | None],
+    documents: dict[Path, SourceDocument],
+    *,
+    sources: SourceCatalog,
 ) -> Diagnostic:
-    resolved = item.path.resolve()
-    document = documents.get(resolved)
-    if resolved not in documents:
-        try:
-            document = SourceDocument.read(resolved)
-        except OSError:
-            document = None
-        documents[resolved] = document
+    snapshot = sources.get(item.path)
+    if snapshot is None:
+        msg = f"text diagnostic source was not captured: {item.path}"
+        raise ValueError(msg)
+    document = documents.get(item.path)
+    if document is None:
+        document = SourceDocument.from_snapshot(snapshot)
+        documents[item.path] = document
     rule_id, help_text, blocking = metadata[item.code]
     location = _text_location(item, root, document)
     return Diagnostic(
@@ -601,9 +607,9 @@ def _normalize_text(
     )
 
 
-def _text_location(item: textlint.Finding, root: Path, document: SourceDocument | None) -> Location:
-    path = _relative_path(item.path.resolve(), root)
-    if document is None or (item.code == "SARJ310" and item.end_line is None):
+def _text_location(item: textlint.Finding, root: Path, document: SourceDocument) -> Location:
+    path = _relative_path(document.path, root)
+    if item.code == "SARJ310" and item.end_line is None:
         return Location(path)
     start = document.point(line=item.line, column=1)
     if item.end_line is not None and item.end_column is not None:

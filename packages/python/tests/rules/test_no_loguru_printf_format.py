@@ -166,6 +166,13 @@ def test_format_and_exception_arguments_are_independent_defects() -> None:
     assert sorted(item.code for item in diagnostics) == ["SARJ508", "SARJ509"]
 
 
+def test_expanded_binding_retains_each_rules_chain_boundary() -> None:
+    source = 'from loguru import logger\nlogger.bind(**fields).error("value=%s", value, exc_info=True)\n'
+    path = Path("app/service.py")
+    assert len(NoLoguruExcInfo().check(path, source)) == 1
+    assert NoLoguruPrintfFormat().check(path, source) == []
+
+
 def test_explicit_exception_capture_only_resolves_the_exception_defect() -> None:
     source = 'from loguru import logger\nlogger.exception("value=%s", value, exc_info=True)\n'
     path = Path("app/service.py")

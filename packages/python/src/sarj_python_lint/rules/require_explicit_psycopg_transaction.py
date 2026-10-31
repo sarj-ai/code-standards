@@ -313,6 +313,8 @@ class _Analysis:
             state.constants[target.id] = value
 
     def executions(self, statement: ast.stmt, state: _State) -> None:
+        if not state.bindings:
+            return
         for node in _eager_nodes(statement):
             if (
                 not isinstance(node, ast.Call)

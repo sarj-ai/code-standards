@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "6459666a871828f05b634bb7564578338b9eafb42fc386630df7159fcc7a2ca4",
+  "catalogSha256": "7759ceafd52d8e4eee3a5f68e811f0560a8790ba29f3d72bad526c42d8002cc5",
   "cliSha256": "375043dd0f985f09d655639a0905e4bc98804a297fff06b5ab4ed902c6abc6e3",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -850,7 +850,37 @@
           "id": "svg-enabled",
           "outcome": "reject",
           "scenarioId": "primary",
-          "title": "Do not enable active SVG delivery"
+          "title": "SVG opt-in requires explicit hardening under this policy"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "next.config.mjs",
+              "source": "export default {\n  images: {\n    dangerouslyAllowSVG: true,\n    contentDispositionType: \"attachment\",\n    contentSecurityPolicy: \"script-src 'none'; sandbox;\",\n  },\n};\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "next.config.mjs",
+          "id": "svg-explicit-hardening",
+          "outcome": "accept",
+          "scenarioId": "explicit-hardening",
+          "title": "Allow SVG delivery with explicit hardening"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "next.config.mjs",
+              "source": "export default {\n  images: {\n    dangerouslyAllowSVG: true,\n    contentDispositionType: \"attachment\",\n    contentSecurityPolicy: \"script-src 'unsafe-inline'; script-src 'none'; sandbox;\",\n  },\n};\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "next.config.mjs",
+          "id": "svg-unsafe-first-directive",
+          "outcome": "reject",
+          "scenarioId": "explicit-hardening",
+          "title": "A later duplicate cannot replace the effective policy"
         }
       ],
       "optionsSchemaSource": null
@@ -2952,6 +2982,49 @@
           "outcome": "accept",
           "scenarioId": "nullable-readonly-contract",
           "title": "A literal breed keeps the authored domain contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\ninterface Animal {\n  readonly name: string;\n}\ninterface Dog extends Animal {\n  readonly breed?: string;\n}\nexport type KeptDog = Dog;\nconst dog: Dog = { name: \"Ada\", breed: \"Collie\" };\nfunction label(value: Dog | Animal): string {\n  return value.name;\n}\nlabel(dog);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\ninterface Animal {\n  readonly name: string;\n}\ninterface Dog extends Animal {\n  readonly breed?: string;\n}\nexport type KeptDog = Dog;\nconst dog: Dog = { name: \"Ada\", breed: \"Collie\" };\nfunction label(value: Animal): string {\n  return value.name;\n}\nlabel(dog);\n"
+            }
+          ],
+          "focusPath": "src/case.ts",
+          "id": "optional-covered-alternative",
+          "outcome": "reject",
+          "scenarioId": "optional-readonly-contract",
+          "title": "An unread optional breed retains the smaller Animal surface"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\ninterface Animal {\n  readonly name: string;\n}\ninterface Dog extends Animal {\n  readonly breed?: string;\n}\nexport type KeptDog = Dog;\nconst dog: Dog = { name: \"Ada\", breed: \"Collie\" };\nexport function label(value: Dog | Animal): string {\n  return value.name;\n}\nlabel(dog);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/case.ts",
+          "id": "optional-public-contract",
+          "outcome": "accept",
+          "scenarioId": "optional-readonly-contract",
+          "title": "A public optional union retains its observable alternatives"
         },
         {
           "expectedCount": 0,
@@ -18110,6 +18183,21 @@
           "files": [
             {
               "path": "app/service.py",
+              "source": "def render() -> \"tuple\":\n    return _pack()\n\n\ndef _pack(value: \"tuple\" = (-1, (None, -0.0, +1j))) -> \"tuple\":\n    return value\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "already-ordered-immutable-defaults",
+          "outcome": "accept",
+          "scenarioId": "immutable-defaults",
+          "title": "Already ordered: Signed numeric and deeply immutable tuple defaults"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
               "source": "def render(value: \"str\" = \"sample\") -> \"str\":\n    return _parse(value)\n\n\ndef _parse(value: \"str\" = \"sample\") -> \"str\":\n    return value.strip()\n"
             }
           ],
@@ -18184,6 +18272,26 @@
           "outcome": "reject",
           "scenarioId": "deferred-template",
           "title": "Template syntax proves deferred module annotations"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "def _pack(value: \"tuple\" = (-1, (None, -0.0, +1j))) -> \"tuple\":\n    return value\n\n\ndef render() -> \"tuple\":\n    return _pack()\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "app/service.py",
+              "source": "def render() -> \"tuple\":\n    return _pack()\n\n\ndef _pack(value: \"tuple\" = (-1, (None, -0.0, +1j))) -> \"tuple\":\n    return value\n"
+            }
+          ],
+          "focusPath": "app/service.py",
+          "id": "safe-autofix-immutable-defaults",
+          "outcome": "reject",
+          "scenarioId": "immutable-defaults",
+          "title": "Signed numeric and deeply immutable tuple defaults"
         },
         {
           "expectedCount": 1,

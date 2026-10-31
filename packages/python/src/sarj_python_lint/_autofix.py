@@ -82,6 +82,7 @@ _WALRUS_CODES = frozenset({"SARJ081", "SARJ432"})
 _JWT_POSITIONAL_PREFIX_ARGUMENTS = 3
 _STREAM_MIN_BODY_LENGTH = 3
 _CONSTANT_TRUE_DEPTH_LIMIT = 32
+_INERT_DEFAULT_NODE_LIMIT: Final = 128
 # Bound accepted revisions; each rule still owns its work and replacement size.
 _MAX_FIX_PASSES: Final = 256
 _PURE_STRING_TRANSFORMS: Final[dict[str, str]] = {
@@ -1279,8 +1280,8 @@ def _inert_definition(node: ast.FunctionDef | ast.AsyncFunctionDef, *, postponed
     if node.decorator_list or node.type_params:
         return False
     return not (
-        any(not isinstance(value, ast.Constant) for value in args.defaults)
-        or any(value is not None and not isinstance(value, ast.Constant) for value in args.kw_defaults)
+        any(not _inert_default(value) for value in args.defaults)
+        or any(value is not None and not _inert_default(value) for value in args.kw_defaults)
         or (
             not postponed_annotations
             and (
@@ -1293,6 +1294,41 @@ def _inert_definition(node: ast.FunctionDef | ast.AsyncFunctionDef, *, postponed
             )
         )
     )
+
+
+def _inert_default(value: ast.expr) -> bool:
+    if isinstance(value, ast.Constant):
+        return True
+    pending: list[tuple[ast.expr, bool]] = [(value, False)]
+    remaining = _INERT_DEFAULT_NODE_LIMIT
+    while pending:
+        if not remaining:
+            return False
+        expression, numeric_required = pending.pop()
+        remaining -= 1
+        match expression:
+            case ast.Constant(value=literal):
+                literal_type = type(literal)
+                if (
+                    numeric_required
+                    and literal_type is not int
+                    and literal_type is not float
+                    and literal_type is not complex
+                ):
+                    return False
+                continue
+            case ast.Tuple(elts=elements) if not numeric_required:
+                children: Sequence[ast.expr] = elements
+                child_numeric_required = False
+            case ast.UnaryOp(op=ast.UAdd() | ast.USub(), operand=operand):
+                children = (operand,)
+                child_numeric_required = True
+            case _:
+                return False
+        if len(children) + len(pending) > remaining:
+            return False
+        pending.extend((child, child_numeric_required) for child in children)
+    return True
 
 
 def _inert_annotation(annotation: ast.expr | None) -> bool:

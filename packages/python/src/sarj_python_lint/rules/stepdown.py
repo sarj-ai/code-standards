@@ -68,7 +68,7 @@ class Stepdown(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.SAFE,
         limitations=(
-            "Safe fixes require constant defaults, no decorators/type parameters/comments, and annotations that are absent, literal strings/None, or deferred by an explicit future import or Python 3.14 t-string syntax. Class members and other header evaluation remain review-only.",
+            "Safe fixes require immutable literal defaults, no decorators/type parameters/comments, and annotations that are absent, literal strings/None, or deferred by an explicit future import or Python 3.14 t-string syntax. Signed numeric constants and deeply immutable tuples are accepted within a small expression budget. Mutable/computed defaults, class members and other header evaluation remain review-only.",
             "Generated files, tests, `__main__.py`, mutual recursion, and helpers with multiple callers are excluded.",
             "Decorated definitions and dynamic references that cannot prove a sole caller are not reported.",
             "Only lexically resolved builtin classmethod/staticmethod decorators are transparent; other decorators and executable statements are movement barriers.",
@@ -193,6 +193,42 @@ class Stepdown(Rule):
                 expected_count=0,
                 public=True,
                 scenario="literal-headers",
+            ),
+            RuleExample(
+                example_id="safe-autofix-immutable-defaults",
+                title="Signed numeric and deeply immutable tuple defaults",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "def _pack(value: 'tuple' = (-1, (None, -0.0, +1j))) -> 'tuple':\n    return value\n\ndef render() -> 'tuple':\n    return _pack()\n",
+                    ),
+                ),
+                fixed_files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "\ndef render() -> 'tuple':\n    return _pack()\n\ndef _pack(value: 'tuple' = (-1, (None, -0.0, +1j))) -> 'tuple':\n    return value\n\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+                scenario="immutable-defaults",
+            ),
+            RuleExample(
+                example_id="already-ordered-immutable-defaults",
+                title="Already ordered: Signed numeric and deeply immutable tuple defaults",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "\ndef render() -> 'tuple':\n    return _pack()\n\ndef _pack(value: 'tuple' = (-1, (None, -0.0, +1j))) -> 'tuple':\n    return value\n\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+                scenario="immutable-defaults",
             ),
             RuleExample(
                 example_id="safe-autofix-deferred-template",

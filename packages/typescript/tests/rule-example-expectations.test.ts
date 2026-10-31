@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { TSESLint } from "@typescript-eslint/utils";
 import { Linter, type Rule } from "eslint";
 import ts from "typescript";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   createRule,
@@ -303,7 +303,13 @@ createRule<Options, "found" | "replace">({ ...base, documentation: { ...document
 createRule<Options, "found" | "replace">({ ...base, documentation: { ...documentation, examples: [{ ...example, ruleOptions: [{ mode: "loose" }] }] } }); // options-stay-authoritative
 `;
 
-function compilerIssues(source: string) {
+interface CompilerFixture {
+  readonly program: ts.Program;
+  readonly contract: ts.SourceFile;
+  readonly configIssues: readonly ts.Diagnostic[];
+}
+
+function prepareCompilerFixture(source: string): CompilerFixture {
   const loaded = ts.readConfigFile(join(PACKAGE_ROOT, "tsconfig.json"), (path) => ts.sys.readFile(path));
   const parsed = ts.parseJsonConfigFileContent(loaded.config, ts.sys, PACKAGE_ROOT);
   const options = { ...parsed.options, noEmit: true, incremental: false };
@@ -314,8 +320,12 @@ function compilerIssues(source: string) {
     : original(path, version, onError, create);
   const program = ts.createProgram([CONTRACT_PATH], options, host);
   const contract = program.getSourceFile(CONTRACT_PATH);
-  if (contract === undefined) throw new Error("Compiler contract source was not loaded.");
-  return [...(loaded.error === undefined ? [] : [loaded.error]), ...parsed.errors, ...ts.getPreEmitDiagnostics(program, contract)].map((issue) => ({
+  if (contract?.text !== source) throw new Error("The compiler did not load the intended contract source.");
+  return { program, contract, configIssues: [...(loaded.error === undefined ? [] : [loaded.error]), ...parsed.errors] };
+}
+
+function compilerIssues(fixture: CompilerFixture) {
+  return [...fixture.configIssues, ...ts.getPreEmitDiagnostics(fixture.program, fixture.contract)].map((issue) => ({
     path: issue.file?.fileName.replaceAll("\\", "/"),
     line: issue.file !== undefined && issue.start !== undefined ? issue.file.getLineAndCharacterOfPosition(issue.start).line + 1 : undefined,
     message: ts.flattenDiagnosticMessageText(issue.messageText, "\n"),
@@ -323,13 +333,33 @@ function compilerIssues(source: string) {
 }
 
 describe("actual typed authored expectation contracts", () => {
-  it("accepts readonly diagnostics and complete optional end points with typed options", () => {
-    expect(compilerIssues(ACCEPTED)).toEqual([]);
+  describe("accepted compiler fixture", () => {
+    let fixture: CompilerFixture | undefined;
+    beforeAll(() => {
+      fixture = prepareCompilerFixture(ACCEPTED);
+    });
+    afterAll(() => {
+      fixture = undefined;
+    });
+    it("accepts readonly diagnostics and complete optional end points with typed options", () => {
+      if (fixture === undefined) throw new Error("The accepted compiler fixture did not complete.");
+      expect(compilerIssues(fixture)).toEqual([]);
+    });
   });
-  it("rejects malformed fields and half end points through the actual compiler and createRule", () => {
-    const issues = compilerIssues(REJECTED);
-    const rejectedLines = REJECTED.split("\n").flatMap((line, index) => line.includes("// ") ? [index + 1] : []);
-    for (const line of rejectedLines) expect(issues.some((issue) => issue.path === CONTRACT_PATH && issue.line === line), REJECTED.split("\n")[line - 1]).toBe(true);
-    expect(issues.filter((issue) => issue.path !== CONTRACT_PATH || issue.line === undefined || !rejectedLines.includes(issue.line))).toEqual([]);
+  describe("rejected compiler fixture", () => {
+    let fixture: CompilerFixture | undefined;
+    beforeAll(() => {
+      fixture = prepareCompilerFixture(REJECTED);
+    });
+    afterAll(() => {
+      fixture = undefined;
+    });
+    it("rejects malformed fields and half end points through the actual compiler and createRule", () => {
+      if (fixture === undefined) throw new Error("The rejected compiler fixture did not complete.");
+      const issues = compilerIssues(fixture);
+      const rejectedLines = REJECTED.split("\n").flatMap((line, index) => line.includes("// ") ? [index + 1] : []);
+      for (const line of rejectedLines) expect(issues.some((issue) => issue.path === CONTRACT_PATH && issue.line === line), REJECTED.split("\n")[line - 1]).toBe(true);
+      expect(issues.filter((issue) => issue.path !== CONTRACT_PATH || issue.line === undefined || !rejectedLines.includes(issue.line))).toEqual([]);
+    });
   });
 });

@@ -7,6 +7,7 @@
 import { AST_NODE_TYPES, ASTUtils, type TSESTree } from "@typescript-eslint/utils";
 
 import { unwrapExpression } from "./_unwrap-expression.js";
+import { nativeFetchReference } from "./_native-fetch-reference.js";
 
 import { createRule, type RuleDocumentation } from "./_docs.js";
 import { isScriptFile, isTestFile } from "./_paths.js";
@@ -27,7 +28,7 @@ export const NO_RAW_FETCH_OUTSIDE_CLIENTS_DOCUMENTATION = {
   rationale: "Scattered fetch calls bypass shared transport policy and are harder to stub and observe consistently.",
   remediation: "Move the request into a client module and call that abstraction from application code.",
   category: "architecture",
-  limitations: ["Tests, client-layer paths, constructed handoffs, and pre-signed URL transfers are excluded. Configure the same literal Next.js basePath here and on prefer-server-actions so one rule owns each internal mutation.", "Effect and pre-signed-transfer exemptions use recognized syntax and naming conventions, not complete React or URL provenance. Those conservative exclusions are recall limitations, not evidence that every excluded request satisfies transport policy."],
+  limitations: ["Tests, client-layer paths, constructed handoffs, and pre-signed URL transfers are excluded. Configure the same literal Next.js basePath here and on prefer-server-actions so one rule owns each internal mutation.", "Effect and pre-signed-transfer exemptions use recognized syntax and naming conventions, not complete React or URL provenance. Those conservative exclusions are recall limitations, not evidence that every excluded request satisfies transport policy.", "Unshadowed native members and bounded stable const aliases or single-property destructuring are recognized. Visible writes, callable escapes, whole-global escapes and mutation capabilities anywhere in the file invalidate that proof, including earlier captures. Known unrelated global member writes and typeof global checks do not. Static constructor members and destructuring projections invalidate the proof; indirect reflection, external monkeypatches and arbitrary forwarding functions are not inferred."],
   examples: [
     { id: "client-call", title: "Use a client abstraction", outcome: "no-match", files: [{ path: "src/routes/handler.ts", source: "const response = await billingClient.getInvoice(id);" }], focusPath: "src/routes/handler.ts", expectedCount: 0, public: true },
     { id: "raw-fetch", title: "Do not call global fetch here", outcome: "match", files: [{ path: "src/routes/handler.ts", source: "const response = await fetch('/api/invoices');" }], focusPath: "src/routes/handler.ts", expectedCount: 1, public: true },
@@ -53,13 +54,6 @@ const DEFAULT_ALLOW: readonly string[] = [
 /** Additional non-production trees that may call `fetch` directly. */
 const NON_PRODUCTION_TREE_RE =
   /[\\/](playwright|cypress|__testfixtures__)[\\/]/;
-
-/** Receivers on which `.fetch()` is the global, not some cache/query API. */
-const GLOBAL_RECEIVERS: ReadonlySet<string> = new Set([
-  "globalThis",
-  "window",
-  "self",
-]);
 
 const PRESIGNED_URL_NAME_RE = /(?:pre-?signed|signed|upload|download)Url$/i;
 
@@ -94,33 +88,6 @@ function isValidBasePath(basePath: string): boolean {
     !basePath.split("/").some((segment) => segment === "." || segment === "..");
 }
 
-function isGlobalFetchCall(
-  node: TSESTree.CallExpression,
-  resolvesToGlobal: (identifier: TSESTree.Identifier) => boolean,
-): boolean {
-  const callee = unwrapExpression(node.callee);
-
-
-  if (callee.type === "Identifier") {
-    return callee.name === "fetch" && resolvesToGlobal(callee);
-  }
-
-  if (
-    callee.type === "MemberExpression" &&
-    !callee.computed &&
-    callee.property.type === "Identifier" &&
-    callee.property.name === "fetch" &&
-    callee.object.type === "Identifier"
-  ) {
-    return (
-      GLOBAL_RECEIVERS.has(callee.object.name) &&
-      resolvesToGlobal(callee.object)
-    );
-  }
-
-  return false;
-}
-
 /** True for a lone `fetch(new URL(...))` / `fetch(new Request(...))`. */
 function isConstructedArgumentHandoff(
   node: TSESTree.CallExpression,
@@ -139,7 +106,7 @@ function isConstructedArgumentHandoff(
 
 function effectOwns(node: TSESTree.CallExpression): boolean {
   const unwrappedNodeCallee = unwrapExpression(node.callee);
-  if (unwrappedNodeCallee.type !== AST_NODE_TYPES.Identifier) return false;
+  if (unwrappedNodeCallee.type !== AST_NODE_TYPES.Identifier || unwrappedNodeCallee.name !== "fetch") return false;
   const method = readDirectMethod(node);
   if (method !== null && method !== "GET") return false;
 
@@ -349,6 +316,8 @@ export default createRule<Options, MessageIds>({
       const unwrappedNodeCallee = unwrapExpression(node.callee);
       if (
         unwrappedNodeCallee.type !== AST_NODE_TYPES.Identifier ||
+        unwrappedNodeCallee.name !== "fetch" ||
+        !resolvesToGlobal(unwrappedNodeCallee) ||
         !hasUseClientDirective ||
         hasUseServerDirective ||
         importsServerOnly ||
@@ -454,7 +423,7 @@ export default createRule<Options, MessageIds>({
 
     return {
       CallExpression(node: TSESTree.CallExpression): void {
-        if (!isGlobalFetchCall(node, resolvesToGlobal)) {
+        if (!nativeFetchReference(unwrapExpression(node.callee), context.sourceCode)) {
           return;
         }
         if (

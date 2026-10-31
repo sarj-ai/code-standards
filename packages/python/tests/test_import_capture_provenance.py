@@ -160,6 +160,45 @@ def test_import_read_safety_is_specific_to_each_source(*, escaped: bool) -> None
     assert provenance.runtime_import_name(reference) == (None if escaped else "sys.getdefaultencoding")
 
 
+@pytest.mark.parametrize("static", [False, True])
+@pytest.mark.parametrize("decorator", ["cache", "lru_cache", "cached_property"])
+def test_bare_functools_decorator_preserves_partial_provenance(*, static: bool, decorator: str) -> None:
+    source = f"import functools as ft\n@ft.{decorator}\ndef target():\n    return 1\nresult = ft.partial(target)\n"
+    context = PythonFileContext(Path("app.py"), source)
+    provenance = context.static_resource_provenance if static else context.resource_provenance
+    reference = context.nodes(ast.Call)[0].func
+
+    assert provenance.imported(reference, "functools.partial")
+    assert provenance.runtime_import_name(reference) == "functools.partial"
+
+
+@pytest.mark.parametrize("static", [False, True])
+def test_escaped_cache_invalidates_functools_but_preserves_unrelated_owner(*, static: bool) -> None:
+    source = (
+        "from functools import partial, cache\nimport re\nconfigure(cache)\n"
+        "callback = partial(target)\npattern = re.compile('x')\n"
+    )
+    context = PythonFileContext(Path("app.py"), source)
+    provenance = context.static_resource_provenance if static else context.resource_provenance
+    references = [call.func for call in context.nodes(ast.Call)][1:]
+
+    assert [provenance.runtime_import_name(reference) for reference in references] == [None, "re.compile"]
+    assert not provenance.imported(references[0], "functools.partial")
+    assert provenance.imported(references[1], "re.compile")
+
+
+@pytest.mark.parametrize("static", [False, True])
+@pytest.mark.parametrize("module", ["typing", "typing_extensions"])
+def test_bare_final_decorator_preserves_other_typing_provenance(*, static: bool, module: str) -> None:
+    source = f"from {module} import final, cast\n@final\nclass Service:\n    pass\nresult = cast(Service, value)\n"
+    context = PythonFileContext(Path("app.py"), source)
+    provenance = context.static_resource_provenance if static else context.resource_provenance
+    reference = context.nodes(ast.Call)[0].func
+
+    assert provenance.imported(reference, f"{module}.cast")
+    assert provenance.runtime_import_name(reference) == f"{module}.cast"
+
+
 @pytest.mark.parametrize(
     ("imports", "decorator"),
     [

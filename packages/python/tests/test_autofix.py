@@ -783,6 +783,7 @@ def test_stepdown_postponed_annotation_extension_retains_review_boundaries(sourc
 def _assert_stepdown_runtime_equivalence(source: str, *, ending: str, tmp_path: Path, observation: str) -> None:
     source = source.replace("\n", ending)
     path = Path("app/service.py")
+    assert REGISTRY["stepdown"]().check(path, source)
     fixed = fix_source(path, source, rule_ids=["stepdown"])
 
     assert fixed != source
@@ -796,8 +797,24 @@ def _assert_stepdown_runtime_equivalence(source: str, *, ending: str, tmp_path: 
         assert "\n" not in fixed.replace("\r\n", "")
     outputs: list[str] = []
     script = tmp_path / "stepdown_program.py"
+    literal_observation = (
+        "def __stepdown_literal_state(value):\n"
+        "    if type(value) is float:\n        return ('float', value.hex())\n"
+        "    if type(value) is complex:\n        return ('complex', value.real.hex(), value.imag.hex())\n"
+        "    if type(value) is tuple:\n        return ('tuple', tuple(__stepdown_literal_state(item) for item in value))\n"
+        "    return type(value).__name__, repr(value)\n"
+    ).replace("\n", ending)
     for candidate in (source, fixed):
-        program = candidate + ending + "import inspect" + ending + f"print({observation})" + ending
+        program = (
+            candidate
+            + ending
+            + literal_observation
+            + ending
+            + "import inspect"
+            + ending
+            + f"print({observation})"
+            + ending
+        )
         script.write_text(program, encoding="utf-8", newline="")
         result = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, check=False, timeout=10)
         assert result.returncode == 0, result.stderr
@@ -817,9 +834,20 @@ def _assert_stepdown_runtime_equivalence(source: str, *, ending: str, tmp_path: 
         pytest.param("'sample'", id="string"),
         pytest.param("b'sample'", id="bytes"),
         pytest.param("...", id="ellipsis"),
+        pytest.param("-1", id="negative-integer"),
+        pytest.param("+1", id="positive-integer-sign"),
+        pytest.param("-0.0", id="negative-float-zero"),
+        pytest.param("+0.0", id="positive-float-zero"),
+        pytest.param("-1j", id="negative-imaginary"),
+        pytest.param("-0j", id="negative-complex-zero"),
+        pytest.param("--1", id="double-negative-integer"),
+        pytest.param("+(-(-1j))", id="nested-numeric-signs"),
+        pytest.param("()", id="empty-tuple"),
+        pytest.param("(1,)", id="singleton-tuple"),
+        pytest.param("(-1, (+0.0, -0j), None, True, b'sample', ...)", id="deeply-immutable-tuple"),
     ],
 )
-def test_stepdown_constant_defaults_preserve_runtime_and_signatures(default: str, ending: str, tmp_path: Path) -> None:
+def test_stepdown_literal_defaults_preserve_runtime_and_signatures(default: str, ending: str, tmp_path: Path) -> None:
     source = (
         f"def _helper(value={default}, *, strict=True):\n    return value, strict\n\n"
         "def caller():\n    return _helper()\n"
@@ -828,9 +856,94 @@ def test_stepdown_constant_defaults_preserve_runtime_and_signatures(default: str
         source,
         ending=ending,
         tmp_path=tmp_path,
-        observation="(caller(), str(inspect.signature(_helper)), _helper.__annotations__, "
-        "_helper.__defaults__, _helper.__kwdefaults__)",
+        observation="(__stepdown_literal_state(caller()), str(inspect.signature(_helper)), _helper.__annotations__, "
+        "_helper.__defaults__, _helper.__kwdefaults__, caller()[0] is caller()[0])",
     )
+
+
+@pytest.mark.parametrize("ending", ["\n", "\r\n"], ids=["LF", "CRLF"])
+def test_stepdown_literal_defaults_preserve_positional_keyword_and_crossed_sharing(ending: str, tmp_path: Path) -> None:
+    default = "(-1, (-0.0, -0j, +1j), None, True)"
+    source = (
+        f"def _helper(value={default}, /, *, fallback={default}):\n    return value, fallback\n\n"
+        f"def unrelated(value={default}):\n    return value\n\n"
+        f"def caller(value={default}):\n    return _helper()\n"
+    )
+    _assert_stepdown_runtime_equivalence(
+        source,
+        ending=ending,
+        tmp_path=tmp_path,
+        observation="(__stepdown_literal_state(caller()), str(inspect.signature(_helper)), "
+        "str(inspect.signature(caller)), str(inspect.signature(unrelated)), "
+        "_helper.__defaults__[0] is _helper.__kwdefaults__['fallback'], "
+        "caller.__defaults__[0] is _helper.__defaults__[0], "
+        "unrelated.__defaults__[0] is _helper.__defaults__[0], caller()[0] is caller()[0])",
+    )
+
+
+@pytest.mark.parametrize(
+    "default",
+    [
+        pytest.param("([1],)", id="nested-list"),
+        pytest.param("({'key': 1},)", id="nested-dictionary"),
+        pytest.param("({1},)", id="nested-set"),
+        pytest.param("(build(),)", id="nested-call"),
+        pytest.param("(value,)", id="nested-name"),
+        pytest.param("(state.value,)", id="nested-attribute"),
+        pytest.param("(*values,)", id="tuple-unpacking"),
+        pytest.param("((item for item in values),)", id="nested-comprehension"),
+        pytest.param("(1 + 2,)", id="nested-binary-expression"),
+        pytest.param("(f'{value}',)", id="nested-fstring"),
+        pytest.param("(lambda: 1,)", id="nested-lambda"),
+        pytest.param("((value := 1),)", id="nested-assignment-expression"),
+        pytest.param("-(1, 2)", id="signed-tuple"),
+        pytest.param("-'text'", id="signed-string"),
+        pytest.param("+b'data'", id="signed-bytes"),
+        pytest.param("-None", id="signed-None"),
+        pytest.param("-...", id="signed-ellipsis"),
+        pytest.param("-True", id="signed-boolean"),
+        pytest.param("~1", id="unsupported-unary-operator"),
+        pytest.param("not 0", id="boolean-operator"),
+    ],
+)
+def test_stepdown_literal_defaults_refuse_nonliteral_or_effectful_members(default: str) -> None:
+    source = f"def _helper(value={default}):\n    return value\n\ndef caller():\n    return _helper()\n"
+    assert fix_source(Path("app/service.py"), source, rule_ids=["stepdown"]) == source
+
+
+@pytest.mark.parametrize(
+    ("default", "expected_fix"),
+    [
+        pytest.param("1", True, id="existing-constant"),
+        pytest.param("'" + "x" * 4096 + "'", True, id="large-constant-is-one-node"),
+        pytest.param("()", True, id="empty-tuple"),
+        pytest.param("--1", True, id="short-numeric-chain"),
+        pytest.param("(1, 2)", True, id="small-tuple"),
+        pytest.param("(1, (2, 3))", True, id="small-nested-tuple"),
+        pytest.param("(" + ",".join("0" for _ in range(127)) + ",)", True, id="tuple-fanout-at-budget"),
+        pytest.param("(" + ",".join("0" for _ in range(128)) + ",)", False, id="tuple-fanout-over-budget"),
+        pytest.param("(" + ",".join("0" for _ in range(4096)) + ",)", False, id="large-tuple-abstains"),
+        pytest.param("-" * 127 + "1", True, id="long-unary-chain-at-budget"),
+        pytest.param("-" * 128 + "1", False, id="long-unary-chain-over-budget"),
+        pytest.param("(" * 127 + "0" + ",)" * 127, True, id="deep-tuple-at-budget"),
+        pytest.param("(" * 128 + "0" + ",)" * 128, False, id="deep-tuple-over-budget"),
+        pytest.param("((), " + "-" * 125 + "1)", True, id="pending-tuple-at-budget"),
+        pytest.param("((), " + "-" * 126 + "1)", False, id="numeric-chain-reserves-pending-tuple"),
+    ],
+)
+def test_stepdown_literal_default_budget_preserves_detection_and_optional_fix(
+    default: str, *, expected_fix: bool
+) -> None:
+    source = f"def _helper(value={default}):\n    return value\n\ndef caller():\n    return _helper()\n"
+    path = Path("app/service.py")
+    assert REGISTRY["stepdown"]().check(path, source)
+    fixed = fix_source(path, source, rule_ids=["stepdown"])
+    assert (fixed != source) is expected_fix
+    if expected_fix:
+        assert REGISTRY["stepdown"]().check(path, fixed) == []
+        assert fix_source(path, fixed, rule_ids=["stepdown"]) == fixed
+    else:
+        assert REGISTRY["stepdown"]().check(path, fixed)
 
 
 @pytest.mark.parametrize("ending", ["\n", "\r\n"], ids=["LF", "CRLF"])

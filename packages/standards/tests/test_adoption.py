@@ -1576,6 +1576,14 @@ def test_generated_typescript_entrypoint_is_compiler_checked(tmp_path: Path) -> 
     namespace.mkdir()
     (namespace / "eslint-plugin").symlink_to(modules.parent, target_is_directory=True)
     assert _cli("--root", str(tmp_path), "setup", "--no-install").returncode == 0
+    checkout_configs = REPO_ROOT / "packages/standards/src/sarj_standards/configs"
+    assert (tmp_path / "eslint.strict.ts").read_bytes() == (CONFIGS_DIR / "eslint.strict.ts").read_bytes()
+    assert (CONFIGS_DIR / "eslint.strict.ts").read_bytes() == (
+        checkout_configs / "eslint.strict.ts"
+    ).read_bytes()  # sarj-noqa: SARJ402 -- installed preset bytes must match the runtime-tested source
+    assert (CONFIGS_DIR / "eslint.strict.mjs").read_bytes() == (
+        checkout_configs / "eslint.strict.mjs"
+    ).read_bytes()  # sarj-noqa: SARJ402 -- installed legacy bytes must match the runtime-tested source
     entrypoint = tmp_path / "eslint.config.ts"
     before = entrypoint.read_text(encoding="utf-8")
     # Both the generated preset and its authored override remain compiler checked.
@@ -1598,35 +1606,6 @@ def test_generated_typescript_entrypoint_is_compiler_checked(tmp_path: Path) -> 
     )
     accepted = subprocess.run(command, cwd=tmp_path, capture_output=True, text=True, check=False, timeout=30)
     assert accepted.returncode == 0, accepted.stdout + accepted.stderr
-    (tmp_path / "eslint.strict.mjs").write_text(
-        (CONFIGS_DIR / "eslint.strict.mjs").read_text(encoding="utf-8"), encoding="utf-8"
-    )
-    runtime = tmp_path / "preset-parity.ts"
-    runtime.write_text(
-        'import assert from "node:assert/strict";\n'
-        'import { ESLint } from "eslint";\n'
-        'import { createConfig as typed } from "./eslint.strict.ts";\n'
-        'import { createConfig as legacy } from "./eslint.strict.mjs";\n'
-        'const options = { projectService: false, testFrameworks: ["node"] };\n'
-        "const typedLint = new ESLint({ overrideConfigFile: true, overrideConfig: typed(options) });\n"
-        "const legacyLint = new ESLint({ overrideConfigFile: true, overrideConfig: legacy(options) });\n"
-        'const typedConfig = await typedLint.calculateConfigForFile("example.ts");\n'
-        'const legacyConfig = await legacyLint.calculateConfigForFile("example.ts");\n'
-        "assert.deepEqual(typedConfig.rules, legacyConfig.rules);\n"
-        "assert.deepEqual(typedConfig.settings, legacyConfig.settings);\n"
-        "assert.deepEqual(typedConfig.languageOptions.globals, legacyConfig.languageOptions.globals);\n"
-        "assert.deepEqual(typedConfig.languageOptions.parserOptions, legacyConfig.languageOptions.parserOptions);\n"
-        "const source = 'var greeting: string = \"hello\";\\nconsole.log(greeting);\\n';\n"
-        'const [typedResult] = await typedLint.lintText(source, { filePath: "example.ts" });\n'
-        'const [legacyResult] = await legacyLint.lintText(source, { filePath: "example.ts" });\n'
-        "assert.ok(typedResult.messages.length > 0);\n"
-        "assert.deepEqual(typedResult.messages, legacyResult.messages);",
-        encoding="utf-8",
-    )
-    parity = subprocess.run(
-        ("node", str(runtime)), cwd=tmp_path, capture_output=True, text=True, check=False, timeout=30
-    )
-    assert parity.returncode == 0, parity.stdout + parity.stderr
     rejected = before.replace("\n] satisfies", "\n  { name: 17 },\n] satisfies")
     assert rejected != before
     entrypoint.write_text(rejected, encoding="utf-8")
