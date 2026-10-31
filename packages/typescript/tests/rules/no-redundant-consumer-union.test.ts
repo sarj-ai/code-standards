@@ -3,6 +3,66 @@ import { CONSUMER_PREFIX, PRIVATE_CONSUMER_TESTER, UNION_DECLARATIONS, runPrivat
 
 const PREFIX = `${CONSUMER_PREFIX}${UNION_DECLARATIONS}`;
 const NULLABLE_PREFIX = `${CONSUMER_PREFIX}interface Animal {readonly name: string | null} interface Dog extends Animal {readonly email: string}`;
+const OPTIONAL_DECLARATIONS = "interface Name {readonly name: string} interface Full extends Name {readonly email?: string}";
+const OPTIONAL_CALLER = "const input = {name: 'Ada', email: 42};";
+const OPTIONAL_PREFIX = `export {}; ${OPTIONAL_DECLARATIONS} export type KeptFull = Full; ${OPTIONAL_CALLER}`;
+
+const MERGED_OPTIONAL_SOURCE = "export {};\ninterface Name {readonly name: string}\ninterface Full {readonly name: string; readonly email?: string}\ninterface Full {readonly note?: string}\nexport type KeptFull = Full;\nconst full: Full = {name: 'Ada', email: 'a'};\nconst incompatibleExtra = {name: 'Ada', email: 42};\nfunction label(p: Full | Name): string {return p.name;}\nlabel(full); label(incompatibleExtra);\n";
+
+PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union mutual optional surfaces", rule, {
+  valid: [
+    {name: "mixed exported and local fragments cannot establish one binding", filename: "probe.tsx",
+      code: MERGED_OPTIONAL_SOURCE.replace("interface Full {readonly note?: string}", "export interface Full {readonly name: number; readonly note?: string}")},
+    {name: "same-source-global-contract-unsupported", filename: "probe.tsx", code: "export {};\ndeclare global {interface __Pass05GlobalName {readonly name: string}}\ninterface Full extends __Pass05GlobalName {readonly email?: string}\nexport type KeptFull = Full;\nconst input = {name: 'Ada', email: 42};\nfunction label(p: Full | __Pass05GlobalName): string {return p.name;}\nlabel(input);\n"},
+    {name: "defaulted-generic-alias-unsupported", filename: "probe.tsx", code: "export {};\ninterface Name {readonly name: string}\ntype Full<_Unused = unknown> = {readonly name: string; readonly email?: string};\nexport type KeptFull = Full;\nconst input = {name: 'Ada', email: 42};\nfunction label(p: Full | Name): string {return p.name;}\nlabel(input);\n"},
+
+    {name: "imported mutual contracts remain outside the local binding proof", filename: "probe.tsx", code: "export {}; import type {ConsumerName as Name} from './consumer-index'; interface Full extends Name {readonly email?: string} export type KeptFull = Full; const input = {name: 'Ada', email: 42}; function label(p: Full | Name): string {return p.name;} label(input);"},
+    {name: "malformed duplicate alias headers cannot establish mutual coverage", filename: "probe.tsx", code: "export {};\ninterface Name {readonly name: string}\ntype Ambiguous = {readonly name: string; readonly email?: string};\ntype Ambiguous = {readonly name: number; readonly email?: string};\ntype Full = Ambiguous;\nexport type KeptFull = Full;\nconst full: Full = {name: 'Ada', email: 'a'};\nconst incompatibleExtra = {name: 'Ada', email: 42};\nfunction label(p: Full | Name): string {return p.name;}\nlabel(full); label(incompatibleExtra);\n"},
+    {name: "equal-key mutual contracts stay unsupported", filename: "probe.tsx",
+      code: `${OPTIONAL_PREFIX.replace("interface Full extends Name {readonly email?: string}", "interface Full extends Name {}")} function label(p: Full | Name): string {return p.name;} label(input);`},
+    ...["", "readonly phone?: string;"].map((extra) => ({
+      name: "incomparable optional keys stay unsupported with " + (extra ? "unequal" : "equal") + " counts", filename: "probe.tsx",
+      code: `export {}; interface Name {readonly name: string; readonly note?: string} interface Full {readonly name: string; readonly email?: string; ${extra}} export type KeptFull = Full; const incompatibleExtra = {name: 'Ada', email: 42}; const incompatibleRetained = {name: 'Ada', note: 42}; function label(p: Full | Name): string {return p.name;} label(incompatibleExtra); label(incompatibleRetained);`,
+    })),
+    {name: "implicit Object Any does not make a required extra optional", filename: "probe.tsx",
+      code: "export {}; declare global {interface Object {readonly __pass05RequiredToken: any}} interface Name {readonly name: string} interface Full extends Name {readonly __pass05RequiredToken: string} export type KeptFull = Full; const input = {name: 'Ada', __pass05RequiredToken: 42}; function label(p: Full | Name): string {return p.name;} label(input);"},
+    {name: "all-optional mutual surface lacks a required read", filename: "probe.tsx",
+      code: `${OPTIONAL_PREFIX.replace("readonly name: string", "readonly name?: string")} function label(p: Full | Name): string {return p.name ?? '';} label(input);`},
+    {name: "reading the extra surface remains unsupported", filename: "probe.tsx",
+      code: `${OPTIONAL_PREFIX} function label(p: Full | Name): string {return 'email' in p ? typeof p.email : p.name;} label(input);`},
+    {name: "fresh literals retain excess-property checking", filename: "probe.tsx",
+      code: `${OPTIONAL_PREFIX.replace(OPTIONAL_CALLER, "")} function label(p: Full | Name): string {return p.name;} label({name: 'Ada', email: 'a'});`},
+    {name: "public mutual surface remains observable", filename: "probe.tsx",
+      code: `${OPTIONAL_PREFIX} export function label(p: Full | Name): string {return p.name;} label(input);`},
+    {name: "a public type observes the callable union", filename: "probe.tsx",
+      code: `${OPTIONAL_PREFIX} function label(p: Full | Name): string {return p.name;} export type Signature = typeof label; label(input);`},
+  ],
+  invalid: [
+    {name: "exported disjoint fragments retain their shared native binding", filename: "probe.tsx",
+      code: MERGED_OPTIONAL_SOURCE.replaceAll("interface Full", "export interface Full"),
+      output: MERGED_OPTIONAL_SOURCE.replaceAll("interface Full", "export interface Full").replace("Full | Name", "Name"),
+      errors: [{messageId: "redundant", data: {covered: "Full", covering: "Name"}}]},
+    {name: "local-merged-default-export-and-value-shadow", filename: "probe.tsx", code: "export {};\nexport default interface Name {readonly name: string}\ninterface Full extends Name {}\ninterface Full {readonly email?: string}\nexport type KeptFull = Full;\nconst input = {name: 'Ada', email: 42};\nfunction label(Name: Full | Name): string {return Name.name;}\nlabel(input);\n", output: "export {};\nexport default interface Name {readonly name: string}\ninterface Full extends Name {}\ninterface Full {readonly email?: string}\nexport type KeptFull = Full;\nconst input = {name: 'Ada', email: 42};\nfunction label(Name: Name): string {return Name.name;}\nlabel(input);\n", errors: [{messageId: "redundant", data: {covered: "Full", covering: "Name"}}]},
+    ...["Full | Name", "Name | Full"].map((contract) => {
+      const code = `${OPTIONAL_PREFIX} function label(p: ${contract}): string {return p.name;} label(input);`;
+      return {name: "retain smaller Name despite an incompatible extra identifier: " + contract, filename: "probe.tsx", code,
+        output: code.replace(contract, "Name"), errors: [{messageId: "redundant" as const, data: {covered: "Full", covering: "Name"}}]};
+    }),
+    ...([
+      ["local alias", "FullAlias | Name", "FullAlias", `export {}; ${OPTIONAL_DECLARATIONS} type FullAlias = Full; export type KeptFull = FullAlias; ${OPTIONAL_CALLER} function label(p: FullAlias | Name): string {return p.name;} label(input);`],
+
+      ["shared nullable and optional fields", "Full | Name", "Full", `export {}; interface Name {readonly name: string | null; readonly note?: string | undefined} interface Full extends Name {readonly email?: string | null} export type KeptFull = Full; ${OPTIONAL_CALLER} function label(p: Full | Name): string {return p.name ?? p.note ?? '';} label(input);`],
+    ] as const).map(([name, contract, covered, code]) => ({name: "mutual optional surface with " + name, filename: "probe.tsx", code,
+      output: code.replace(contract, "Name"), errors: [{messageId: "redundant" as const, data: {covered, covering: "Name"}}]})),
+    {name: "without a public removed-type anchor the finding stays manual", filename: "probe.tsx",
+      code: `${OPTIONAL_PREFIX.replace("export type KeptFull = Full;", "")} function label(p: Full | Name): string {return p.name;} label(input);`,
+      output: null, errors: [{messageId: "redundant", data: {covered: "Full", covering: "Name"}}]},
+    {name: "comments inside the mutual annotation keep the finding manual", filename: "probe.tsx",
+      code: `${OPTIONAL_PREFIX} function label(p: Full /* keep reviewed domain note */ | Name): string {return p.name;} label(input);`,
+      output: null, errors: [{messageId: "redundant", data: {covered: "Full", covering: "Name"}}]},
+  ],
+});
+
 runPrivateConsumerBoundaries("no-redundant-consumer-union", rule, "Dog | Animal", UNION_DECLARATIONS);
 PRIVATE_CONSUMER_TESTER.run("no-redundant-consumer-union property declaration origins", rule, {
   valid: [

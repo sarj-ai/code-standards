@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "19bbd347422b21f6399afcd780fc4b5a1c0ee354873aca23b043835ba63fba85",
+  "catalogSha256": "a160e83d676cb0771102676fe967e6b42726682023ceed115b45ce03ad59d072",
   "cliSha256": "e4a97494e94c657897c1b2ddeeb27edbfea4b5b81bc176ed2a605b924c75b973",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -2982,6 +2982,49 @@
           "outcome": "accept",
           "scenarioId": "nullable-readonly-contract",
           "title": "A literal breed keeps the authored domain contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\ninterface Animal {\n  readonly name: string;\n}\ninterface Dog extends Animal {\n  readonly breed?: string;\n}\nexport type KeptDog = Dog;\nconst dog: Dog = { name: \"Ada\", breed: \"Collie\" };\nfunction label(value: Dog | Animal): string {\n  return value.name;\n}\nlabel(dog);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\ninterface Animal {\n  readonly name: string;\n}\ninterface Dog extends Animal {\n  readonly breed?: string;\n}\nexport type KeptDog = Dog;\nconst dog: Dog = { name: \"Ada\", breed: \"Collie\" };\nfunction label(value: Animal): string {\n  return value.name;\n}\nlabel(dog);\n"
+            }
+          ],
+          "focusPath": "src/case.ts",
+          "id": "optional-covered-alternative",
+          "outcome": "reject",
+          "scenarioId": "optional-readonly-contract",
+          "title": "An unread optional breed retains the smaller Animal surface"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\ninterface Animal {\n  readonly name: string;\n}\ninterface Dog extends Animal {\n  readonly breed?: string;\n}\nexport type KeptDog = Dog;\nconst dog: Dog = { name: \"Ada\", breed: \"Collie\" };\nexport function label(value: Dog | Animal): string {\n  return value.name;\n}\nlabel(dog);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/case.ts",
+          "id": "optional-public-contract",
+          "outcome": "accept",
+          "scenarioId": "optional-readonly-contract",
+          "title": "A public optional union retains its observable alternatives"
         },
         {
           "expectedCount": 0,
