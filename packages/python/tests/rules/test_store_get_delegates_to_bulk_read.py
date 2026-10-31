@@ -1,9 +1,11 @@
 from pathlib import Path
+from textwrap import indent
 from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_python_lint.rule_base import Severity, is_suppressed
+from sarj_python_lint.rules.service_singleton_delegates_to_bulk import ServiceSingletonDelegatesToBulk
 from sarj_python_lint.rules.store_get_delegates_to_bulk_read import StoreGetDelegatesToBulkRead
 
 
@@ -637,7 +639,8 @@ def test_all_status_wrappers_must_delegate_to_parameterized_bulk() -> None:
 
 
 def test_abstract_parameterized_bulk_still_requires_concrete_wrappers_to_delegate() -> None:
-    source = """class TaskStore:
+    source = """import abc
+class TaskStore:
     async def set_to_failed(self, task_id: str) -> Task:
         return await self._update_status(task_id, TaskStatus.FAILED)
 
@@ -803,3 +806,93 @@ def test_try_finally_wrapper_is_outside_the_narrow_control_flow_grammar() -> Non
 """
 
     assert _check(source, Path("app/task_store.py")) == []
+
+
+@pytest.mark.parametrize("inherited", [False, True], ids=["own", "inherited"])
+@pytest.mark.parametrize("external_base", [False, True], ids=["known-mro", "unknown-mro"])
+@pytest.mark.parametrize("member", ["get", "get_many", "__class__"])
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "self.{member} = primitive",
+        "del self.{member}",
+        "setattr(self, '{member}', primitive)",
+        "delattr(self, '{member}')",
+    ],
+    ids=["attribute-assignment", "attribute-deletion", "builtin-assignment", "builtin-deletion"],
+)
+def test_visible_member_masks_defer_strict_and_legacy_pairs(
+    inherited: bool, external_base: bool, member: str, mutation: str
+) -> None:
+    initializer = f"    def __init__(self, primitive):\n        {mutation.format(member=member)}\n"
+    source = "class Base:\n    pass\n" + (initializer if inherited else "")
+    bases = "Base, External" if external_base else "Base"
+    source += f"class UserStore({bases}):\n"
+    source += "    def get(self, key: str) -> User | None:\n        return self.backend.fetch_one(key)\n"
+    source += (
+        "    def get_many(self, keys: list[str]) -> dict[str, User]:\n        return self.backend.fetch_many(keys)\n"
+    )
+    if not inherited:
+        source += initializer
+    assert ServiceSingletonDelegatesToBulk().check(PATH, source) == []
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("before", "decorator", "after", "expected"),
+    [
+        ("final = rewrite", "final", "", 0),
+        ("if enabled:\n    final = rewrite", "final", "", 0),
+        ("", "rewrite", "", 0),
+        ("", "final()", "", 0),
+        ("", "final", "final = rewrite", 1),
+        ("def nested(final):\n    final = rewrite", "final", "", 1),
+        ("", "final", "", 1),
+    ],
+    ids=[
+        "class-rebind",
+        "conditional-rebind",
+        "opaque-identical",
+        "unsupported-call",
+        "later-rebind",
+        "deferred-scope",
+        "real-final",
+    ],
+)
+def test_declaration_time_markers_guard_both_rule_owners(
+    before: str, decorator: str, after: str, expected: int
+) -> None:
+    source = "from typing import final\ndef rewrite(fn):\n    return lambda *args: None\nclass UserStore:\n"
+    if before:
+        source += indent(before, "    ") + "\n"
+    source += (
+        f"    @{decorator}\n    def get(self, key: str) -> User | None:\n        return self.backend.fetch_one(key)\n"
+    )
+    source += f"    @{decorator}\n    def get_many(self, keys: list[str]) -> dict[str, User]:\n        return self.backend.fetch_many(keys)\n"
+    if after:
+        source += indent(after, "    ") + "\n"
+    assert len(ServiceSingletonDelegatesToBulk().check(PATH, source)) == expected
+    assert len(_check(source)) == expected
+
+
+@pytest.mark.parametrize("marker", ["final", "override"])
+def test_real_neutral_marker_on_one_method_preserves_legacy_advice(marker: str) -> None:
+    source = f"from typing import {marker}\nclass UserStore:\n    @{marker}\n"
+    source += "    def get(self, key: str) -> User | None:\n        return self.backend.fetch_one(key)\n"
+    source += (
+        "    def get_many(self, keys: list[str]) -> dict[str, User]:\n        return self.backend.fetch_many(keys)\n"
+    )
+    assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize("binding", ["get = replacement", "get_many = replacement"])
+def test_class_member_rebinding_defers_legacy_advice(binding: str) -> None:
+    source = (
+        "class UserStore:\n    def get(self, key: str) -> User | None:\n        return self.backend.fetch_one(key)\n"
+    )
+    source += (
+        "    def get_many(self, keys: list[str]) -> dict[str, User]:\n        return self.backend.fetch_many(keys)\n"
+    )
+    source += f"    {binding}\n"
+    assert ServiceSingletonDelegatesToBulk().check(PATH, source) == []
+    assert _check(source) == []

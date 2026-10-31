@@ -256,7 +256,7 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         module="sarj_python_lint.rules.prefer_bulk_upsert",
         class_name="PreferBulkUpsert",
         code="SARJ516",
-        description="Use a declared compatible upsert_many instead of discarded serial upserts.",
+        description="Use declared compatible bulk APIs for repeated singleton reads and writes.",
         aliases=(),
         enabled_by_default=True,
     ),

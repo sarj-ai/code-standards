@@ -32,7 +32,7 @@ dependencies = [
   "ruff==0.17.2",
   "shellcheck-py==0.11.0.1; (sys_platform == 'darwin' and platform_machine == 'arm64') or (sys_platform == 'darwin' and platform_machine == 'x86_64') or (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
   "sarj-iac-lint==0.32.0",
-  "sarj-python-lint==1.103.50",
+  "sarj-python-lint==1.104.50",
   "sarj-sql-lint==0.41.1",
   "typer==0.27.3",
 ]
