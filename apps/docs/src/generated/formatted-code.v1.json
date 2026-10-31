@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "7759ceafd52d8e4eee3a5f68e811f0560a8790ba29f3d72bad526c42d8002cc5",
+  "catalogSha256": "9093665af9951a71153f079f1b4483769f207c4ea654d00977b34b2b1ea23bb6",
   "cliSha256": "375043dd0f985f09d655639a0905e4bc98804a297fff06b5ab4ed902c6abc6e3",
   "formatterVersions": {
     "prettier": "3.9.10",
@@ -5063,6 +5063,49 @@
           "outcome": "accept",
           "scenarioId": "nullable-private-field",
           "title": "An inspected nullable field keeps its contract"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\nconst account = { name: null, email: \"a\" };\nfunction label(user: { readonly email: string; readonly name: string | null }): string {\n  return user.name ?? user.email;\n}\nlabel(account);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/case.ts",
+          "id": "retained-nullable-all-used",
+          "outcome": "accept",
+          "scenarioId": "retained-nullable-field",
+          "title": "Both requirements remain when the nullable view reads email too"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\nconst account = { name: null, email: \"a\" };\nfunction label(user: { readonly email: string; readonly name: string | null }): string {\n  return user.name ?? \"\";\n}\nlabel(account);\n"
+            },
+            {
+              "path": "tsconfig.json",
+              "source": "{\n  \"compilerOptions\": {\n    \"strict\": true,\n    \"target\": \"ESNext\",\n    \"module\": \"ESNext\",\n    \"moduleResolution\": \"Bundler\"\n  }\n}\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "src/case.ts",
+              "source": "export {};\nconst account = { name: null, email: \"a\" };\nfunction label(user: { readonly name: string | null }): string {\n  return user.name ?? \"\";\n}\nlabel(account);\n"
+            }
+          ],
+          "focusPath": "src/case.ts",
+          "id": "retained-nullable-read",
+          "outcome": "reject",
+          "scenarioId": "retained-nullable-field",
+          "title": "A nullable name remains while an unread email requirement is removed"
         },
         {
           "expectedCount": 1,

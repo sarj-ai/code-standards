@@ -127,11 +127,11 @@ def test_policy28_migrates_empty_baselines_without_changing_the_warning_ratchet(
         (26, 28),
         (28, 27),
         (29, 28),
-        (28, 31),
-        (27, 31),
-        (29, 31),
+        (28, 33),
+        (27, 33),
+        (29, 33),
         (30, 29),
-        (30, 31),
+        (30, 33),
         (25, 29),
         (26, 29),
         (25, 30),
@@ -243,7 +243,74 @@ def test_policy30_does_not_treat_malformed_warning_choices_as_error_only(warning
         repository_baseline.migrate(original, _MANIFEST, target_policy_version=30)
 
 
-@pytest.mark.parametrize("before", [27, 28, 29])
+@pytest.mark.parametrize("before", [28, 30], ids=["before-migration-warning", "before-image-rule"])
+@pytest.mark.parametrize("after", [31, 32], ids=["image-warning", "image-error"])
+@pytest.mark.parametrize("include_warnings", [False, True], ids=["error-debt", "warning-debt"])
+def test_image_policy_preserves_prior_debt_and_warning_choice(
+    before: int, after: int, *, include_warnings: bool
+) -> None:
+    original = _baseline(before, fingerprints=("a" * 64, "f" * 64)).replace(
+        b'"schema_version": 2',
+        b'"schema_version": 2,\r\n\t"include_warnings": ' + str(include_warnings).lower().encode("ascii"),
+    )
+
+    migrated = repository_baseline.migrate(original, _MANIFEST, target_policy_version=after)
+
+    assert migrated == original.replace(f'"policy_version": {before}'.encode(), f'"policy_version": {after}'.encode())
+
+
+@pytest.mark.parametrize("before", [29, 31], ids=["migration-warning", "image-warning"])
+@pytest.mark.parametrize("include_warnings", [None, False], ids=["legacy-error-only", "explicit-error-only"])
+def test_image_error_policy_preserves_error_only_debt(before: int, include_warnings: bool | None) -> None:
+    original = _baseline(before, fingerprints=("a" * 64, "f" * 64))
+    if include_warnings is not None:
+        original = original.replace(b'"schema_version": 2', b'"schema_version": 2,\r\n\t"include_warnings": false')
+
+    migrated = repository_baseline.migrate(original, _MANIFEST, target_policy_version=32)
+
+    assert migrated == original.replace(f'"policy_version": {before}'.encode(), b'"policy_version": 32')
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [
+        pytest.param(29, 31, id="migration-warning-to-image-warning"),
+        pytest.param(29, 32, id="migration-warning-to-image-error"),
+        pytest.param(31, 32, id="image-warning-to-image-error"),
+    ],
+)
+def test_image_policy_rejects_obsolete_nonempty_warning_debt(before: int, after: int) -> None:
+    original = _baseline(before, fingerprints=("b" * 64,)).replace(
+        b'"schema_version": 2', b'"schema_version": 2,\r\n\t"include_warnings": true'
+    )
+
+    with pytest.raises(ValueError, match="requires a separately reviewed compatibility decision"):
+        repository_baseline.migrate(original, _MANIFEST, target_policy_version=after)
+
+
+@pytest.mark.parametrize(
+    "before", [27, 28, 29, 30, 31], ids=["policy27", "policy28", "policy29", "policy30", "policy31"]
+)
+@pytest.mark.parametrize("include_warnings", [None, False, True], ids=["legacy-errors", "errors", "warnings"])
+def test_image_error_policy_composes_reviewed_empty_migrations(before: int, include_warnings: bool | None) -> None:
+    original = _baseline(before)
+    if include_warnings is not None:
+        original = original.replace(
+            b'"schema_version": 2',
+            b'"schema_version": 2,\r\n\t"include_warnings": ' + str(include_warnings).lower().encode("ascii"),
+        )
+    composed = original
+    for version in range(before + 1, 33):
+        composed = repository_baseline.migrate(composed, _MANIFEST, target_policy_version=version)
+
+    direct = repository_baseline.migrate(original, _MANIFEST, target_policy_version=32)
+
+    assert direct == composed == original.replace(f'"policy_version": {before}'.encode(), b'"policy_version": 32')
+
+
+@pytest.mark.parametrize(
+    "before", [27, 28, 29, 30, 31], ids=["policy27", "policy28", "policy29", "policy30", "policy31"]
+)
 def test_setup_plans_and_applies_the_current_compatible_baseline_migration(tmp_path: Path, before: int) -> None:
     manifest = tmp_path / ".repo-standards" / "repository.toml"
     manifest.parent.mkdir()

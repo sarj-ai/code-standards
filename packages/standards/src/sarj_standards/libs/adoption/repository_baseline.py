@@ -37,8 +37,26 @@ PATH = ".repo-standards/baseline.json"
 # no accepted warning debt to invalidate. Error-only policy 29 baselines also
 # exclude that warning; parsing an omitted include_warnings flag means False.
 # Nonempty policy 29 warning baselines still require a separate review.
-_COMPATIBLE_TRANSITIONS = frozenset({(18, 19), (18, 20), (19, 20), (25, 26), (25, 27), (26, 27), (28, 29), (28, 30)})
+# Policies 31/32 introduce/promote the opt-in image rule. Policy 30 debt
+# predates it; all existing rule identities and empty-image scopes stay stable.
+# Policy 31 warning debt may include image-v1 findings: preserve rejection
+# unless it is empty or explicitly error-only, rather than dropping that debt.
+_COMPATIBLE_TRANSITIONS = frozenset(
+    {
+        (18, 19),
+        (18, 20),
+        (19, 20),
+        (25, 26),
+        (25, 27),
+        (26, 27),
+        (28, 29),
+        (28, 30),
+        (30, 31),
+        (30, 32),
+    }
+)
 _POLICY_VERSION = re.compile(rb'("policy_version"\s*:\s*)[0-9]+(?=\s*[,}])')
+_IMAGE_POLICY_BASE = 30
 
 
 def read_optional(root: Path) -> bytes | None:
@@ -67,9 +85,12 @@ def migrate(contents: bytes, manifest: bytes, *, target_policy_version: int) -> 
         raise ValueError(msg)
     if baseline.policy_version == target_policy_version:
         return contents
+    if baseline.policy_version < _IMAGE_POLICY_BASE and target_policy_version in {31, 32}:
+        intermediate = migrate(contents, manifest, target_policy_version=_IMAGE_POLICY_BASE)
+        return migrate(intermediate, manifest, target_policy_version=target_policy_version)
     transition = (baseline.policy_version, target_policy_version)
-    empty_compatible = transition in {(27, 28), (27, 29), (27, 30), (29, 30)} and not baseline.fingerprints
-    error_only_compatible = transition == (29, 30) and not baseline.include_warnings
+    empty_compatible = transition in {(27, 28), (27, 29), (27, 30), (29, 30), (31, 32)} and not baseline.fingerprints
+    error_only_compatible = transition in {(29, 30), (31, 32)} and not baseline.include_warnings
     if transition not in _COMPATIBLE_TRANSITIONS and not empty_compatible and not error_only_compatible:
         msg = (
             f"repository baseline migration {baseline.policy_version} -> {target_policy_version} "
