@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -74,7 +75,9 @@ export default { ...base, test: { ...base.test, reporters } };
     child.stderr.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
       if (options.acknowledgePreview && acknowledged === undefined && stderr.includes(PREVIEW_END)) {
-        acknowledged = writeFile(join(root, "continue"), "preview received");
+        acknowledged = Promise.resolve().then(() => {
+          writeFileSync(join(root, "continue"), "preview received");
+        });
       }
     });
     const status = await new Promise<number | null>((resolve, reject) => {
